@@ -35,8 +35,10 @@ public sealed class GitWatcher : WatchedTree
         return parts.IsEmpty ? path == Top : HoldsRefs(First(parts));
     }
 
+    /// <summary>A change to what says Git's state moved (<see cref="Moves"/>), or to the folder itself, where changes lost or a
+    /// failed watch are noted: anything may have moved then.</summary>
     protected override Notice Noticed(string path, bool created) =>
-        Moves(First(PathNames.Below(path, Top))) ? new Notice(Takes: true, Counts: false, Canonical: null) : default;
+        path == Top || Moves(First(PathNames.Below(path, Top))) ? new Notice(Takes: true, Counts: false, Canonical: null) : default;
 
     protected override void Take(string path, bool created, Notice notice) => moved = true;
 

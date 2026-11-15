@@ -661,6 +661,113 @@ public sealed class FolderWatchTests : IDisposable
         window.Close();
     }
 
+    /// <summary>A file made in a new folder and one deleted while the folder's watcher heard nothing, as changes the system
+    /// dropped without a word, are found once the window comes in front, as when a person comes back to it from a terminal:
+    /// Go to File and the Explorer gain the one and lose the other, and Git's status lists both. The watchers stop while the
+    /// files change, so the changes are lost as a dropped event loses them.</summary>
+    [AvaloniaTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Files_made_and_deleted_while_the_watcher_heard_nothing_are_found_once_the_window_comes_in_front(bool eachFolder)
+    {
+        Write("One.cs", "class One { }\n");
+        Write("Old/Gone.cs", "class Gone { }\n");
+        TestGit.Init(folder);
+        string made = Path.Combine("Fresh", "Fresh.cs");
+        string deleted = Path.Combine("Old", "Gone.cs");
+        MainWindow window = Open(eachFolder ? FolderWatching.Inotify : FolderWatching.WholeTree, languageServer: false);
+        Ui.WaitFor(() => window.FileIndex.Files.Contains(deleted) && window.Vcs.Branch == "main", "the folder's files in Go to File and its branch read");
+        List<FileSystemWatcher> watchers = [.. window.FolderWatcher!.Watches.Values];
+        watchers.ForEach(w => w.EnableRaisingEvents = false);
+        try
+        {
+            File.Delete(Path.Combine(folder, deleted));
+            Write(made, "class Fresh { }\n");
+            Ui.Settle();
+            Assert.False(window.FileIndex.Files.Contains(made), "Go to File listed a file made while the folder's watcher was deaf before the window came in front");
+
+            window.Activate();
+            Ui.WaitFor(() => window.FileIndex.Files.Contains(made) && !window.FileIndex.Files.Contains(deleted) && window.ExplorerView.Tree.Rows.Any(r => r.Name == "Fresh")
+                    && Listed(Passenger.Vcs.ChangeKind.Unversioned, made) && Listed(Passenger.Vcs.ChangeKind.Deleted, deleted),
+                () => $"the file made and the one deleted unheard to be found once the window came in front, where Go to File lists {string.Join(", ", window.FileIndex.Files)}, "
+                    + $"the Explorer shows {string.Join(", ", window.ExplorerView.Tree.Rows.Select(r => r.Name))} "
+                    + $"and Git's status lists {string.Join(", ", window.Vcs.Changes.Select(c => $"{Path.GetRelativePath(folder, c.Path)} ({c.Kind})"))}");
+        }
+        finally
+        {
+            watchers.ForEach(w => w.EnableRaisingEvents = true);
+        }
+        window.Close();
+
+        bool Listed(Passenger.Vcs.ChangeKind kind, string relative) => window.Vcs.Changes.Any(c => c.Kind == kind && PathNames.Same(c.Path, Path.Combine(folder, relative)));
+    }
+
+    /// <summary>A branch switched from outside while the watcher of Git's folder heard nothing is read once that watcher's
+    /// watch fails, which says at once that anything there may have moved, rather than at the next change it hears: in a
+    /// folder opened below the repository's top, whose Git folder is outside it and watched apart.</summary>
+    [AvaloniaTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_branch_switched_while_gits_watcher_heard_nothing_is_read_once_its_watch_fails(bool eachFolder)
+    {
+        Write("src/Shop.cs", "class Shop { }\n");
+        TestGit.Init(folder);
+        MainWindow window = Open(eachFolder ? FolderWatching.Inotify : FolderWatching.WholeTree, languageServer: false, opened: Path.Combine(folder, "src"));
+        Ui.WaitFor(() => window.Vcs.Branch == "main", () => $"the branch read (it is {window.Vcs.Branch})");
+        Passenger.App.Vcs.GitWatcher git = Assert.Single(window.Vcs.GitWatchers);
+        List<FileSystemWatcher> watchers = [.. git.Watches.Values];
+        watchers.ForEach(w => w.EnableRaisingEvents = false);
+        try
+        {
+            Git("switch", "-q", "-c", "switched");
+            Ui.Settle();
+            Assert.True(window.Vcs.Branch == "main", $"The branch switched while Git's watcher was deaf was read before its watch failed (it is {window.Vcs.Branch})");
+
+            RaiseError(git.Watches[git.Top], new IOException("The watch failed."));
+            Ui.WaitFor(() => window.Vcs.Branch == "switched", () => $"the branch switched unheard to be read once the watch of Git's folder failed (it is {window.Vcs.Branch})");
+        }
+        finally
+        {
+            watchers.ForEach(w => w.EnableRaisingEvents = true);
+        }
+        window.Close();
+    }
+
+    /// <summary>A folder of branches made while the watcher of Git's folder heard nothing, each folder watched on its own as
+    /// on Linux, is watched once the window comes in front: a branch made in it from outside after that joins the Git
+    /// window's branches. In a folder opened below the repository's top, whose Git folder is outside it and watched apart.</summary>
+    [AvaloniaFact]
+    public void A_folder_of_branches_made_while_gits_watcher_heard_nothing_is_watched_once_the_window_comes_in_front()
+    {
+        Write("src/Shop.cs", "class Shop { }\n");
+        TestGit.Init(folder);
+        MainWindow window = Open(FolderWatching.Inotify, languageServer: false, opened: Path.Combine(folder, "src"));
+        Ui.WaitFor(() => window.Vcs.Branch == "main", () => $"the branch read (it is {window.Vcs.Branch})");
+        Passenger.App.Vcs.GitWatcher git = Assert.Single(window.Vcs.GitWatchers);
+        window.Perform(AppActions.ShowGit);
+        Passenger.App.ToolWindows.BranchesPanel panel = window.GitBranches;
+        Ui.WaitFor(() => panel.Branches.Any(b => b.Ref.Name == "main"), () => $"the Git window's branches (they are {Branches()})");
+        List<FileSystemWatcher> watchers = [.. git.Watches.Values];
+        watchers.ForEach(w => w.EnableRaisingEvents = false);
+        try
+        {
+            Git("branch", "team/one");
+        }
+        finally
+        {
+            watchers.ForEach(w => w.EnableRaisingEvents = true);
+        }
+        window.Activate();
+        Ui.WaitFor(() => panel.Branches.Any(b => b.Ref.Name == "team/one"), () => $"the branch made unheard among the branches once the window came in front (they are {Branches()})");
+
+        Git("branch", "team/two");
+        Ui.WaitFor(() => panel.Branches.Any(b => b.Ref.Name == "team/two"), () => $"a branch made from outside in the folder of branches made unheard to join the branches, "
+            + $"where they are {Branches()} and Git's watcher watches {string.Join(", ", git.Watches.Keys.Select(k => Path.GetRelativePath(git.Top, k)))}");
+        window.Close();
+
+        string Branches() => string.Join(", ", panel.Branches.Select(b => b.Ref.Name));
+    }
+
     /// <summary>A file made, which Go to File lists, then deleted unheard, as a burst on a busy machine drops the deletion's
     /// event: the folder's watcher took the file into its record as it handed it over, so the listing after the burst
     /// finds it gone, and Go to File lets it go. A batch's hand-over, looking at what came or went in it on disk, needs
@@ -1120,13 +1227,14 @@ public sealed class FolderWatchTests : IDisposable
 
     private void Write(string relative, string text) => TestFolders.Write(folder, relative, text);
 
-    /// <summary>A window on the folder, watching it the platform's way unless told another; with the C# language server
-    /// only where a test asks C# of it, so a project's folder starts and restores none for nothing.</summary>
-    private MainWindow Open(FolderWatching? watching = null, bool languageServer = true)
+    /// <summary>A window on the folder, or one <paramref name="opened"/> under it, watching it the platform's way unless told
+    /// another; with the C# language server only where a test asks C# of it, so a project's folder starts and restores none
+    /// for nothing.</summary>
+    private MainWindow Open(FolderWatching? watching = null, bool languageServer = true, string? opened = null)
     {
         MainWindow window = new() { Width = 1200, Height = 800, Watching = watching ?? FolderWatching.Platform, StartsLanguageServer = languageServer };
         window.Show();
-        window.OpenFolder(folder);
+        window.OpenFolder(opened ?? folder);
         Ui.Settle();
         return window;
     }

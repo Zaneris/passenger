@@ -29,6 +29,15 @@ public partial class MainWindow
         }
     };
 
+    /// <summary>Back from another program, the open folder's watcher and those of Git's folders outside it look again, off the
+    /// window's thread, for what the system dropped without a word (macOS's watcher passes over its word that it did): each
+    /// folder they recorded whose stamp moved is listed again, and what came or went there is handed over as heard.</summary>
+    private void AddLookingAgain() => Activated += (_, _) =>
+    {
+        session.Watcher?.LookAgain();
+        session.Vcs.LookAgain();
+    };
+
     /// <summary>How the folders opened from now on are watched: the system's way, unless another is chosen.</summary>
     public FolderWatching Watching { get; set; } = FolderWatching.Platform;
 

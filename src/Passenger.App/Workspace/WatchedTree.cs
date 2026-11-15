@@ -77,6 +77,9 @@ public abstract class WatchedTree : IDisposable
     /// background work only once it runs.</summary>
     private int walksApart;
     private bool rewalking;
+
+    /// <summary>Whether a look (<see cref="LookAgain"/>) is asked for and not yet begun.</summary>
+    private bool lookAsked;
     private bool lost;
     private bool overflowed;
 
@@ -739,9 +742,27 @@ public abstract class WatchedTree : IDisposable
     /// <summary>Lists again, after the changes already asked for, each recorded folder whose stamp moved since it was listed:
     /// a name come or gone that the system dropped without a word (macOS's watcher passes over its word that it did) is
     /// found against the record and handed over. A file written in place, which moves no folder's stamp, is left to its own
-    /// change.</summary>
-    public void LookAgain() => Follow(() =>
+    /// change. Asked again before a look begins, it adds none.</summary>
+    public void LookAgain()
     {
+        lock (gate)
+        {
+            if (lookAsked || disposed)
+            {
+                return;
+            }
+            lookAsked = true;
+        }
+        Follow(Look);
+    }
+
+    /// <summary>The look <see cref="LookAgain"/> asks for, in turn.</summary>
+    private void Look()
+    {
+        lock (gate)
+        {
+            lookAsked = false;
+        }
         if (recordedAt is null || IsDisposed || StampsMoved() is not { Count: > 0 } listing)
         {
             return;
@@ -755,7 +776,7 @@ public abstract class WatchedTree : IDisposable
         {
             IdeErrors.Write($"{Shown} found {Plural.Of(found.Found, "change")} it never heard, looking again at {Plural.Of(listing.Count, "folder")} whose stamp moved");
         }
-    });
+    }
 
     /// <summary>The recorded folders whose stamp moved since they were listed.</summary>
     private HashSet<string> StampsMoved()

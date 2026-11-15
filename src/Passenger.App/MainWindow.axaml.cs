@@ -120,6 +120,7 @@ public partial class MainWindow : IdeWindow
         AddAutosave();
         AddReadOnly();
         AddConflicts();
+        AddLookingAgain();
         AddErrors();
         AddAbout();
         AddContextHelp();

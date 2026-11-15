@@ -182,6 +182,20 @@ public sealed class VcsController : IDisposable
     /// repository's above a folder opened below its top), watched for Git's own state moving.</summary>
     private readonly List<GitWatcher> gitWatchers = [];
 
+    /// <summary>The watchers of Git's folders outside the open folder.</summary>
+    public IReadOnlyList<GitWatcher> GitWatchers => gitWatchers;
+
+    /// <summary>Has each watcher of Git's folders outside the open folder look again, off the window's thread, for what the
+    /// system dropped without a word (<see cref="WatchedTree.LookAgain"/>), as the window comes in front.</summary>
+    public void LookAgain()
+    {
+        UiThread.Check();
+        foreach (GitWatcher watcher in gitWatchers)
+        {
+            watcher.LookAgain();
+        }
+    }
+
     /// <summary>How Git's folders outside the open folder are watched: the session's way.</summary>
     public FolderWatching Watching { get; set; } = FolderWatching.Platform;
 
