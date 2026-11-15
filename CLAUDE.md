@@ -208,7 +208,7 @@ Projects in `src/`; `find_symbol` finds the rest from the names here. A pointer'
   `EnvironmentValues.Milliseconds`, a PASSENGER_* stand-in for a host `EnvironmentValues.Address` (read in Program.Main's checks); a Windows command line `WindowsCommandLine`; git's environment variables `GitVariables`; the version `Product`, Passenger's own program `Product.Program`; a log below the
   App `PassengerLog`, never `IdeLog`; an MSBuild name Passenger writes `MSBuildNames`; another program's or a person's
   JSON `JsonMembers` (`Value` for a member of any kind), never a bare `TryGetProperty`/`GetProperty` (PSG0008); a search
-  by halving `Sorted`, never a loop of your own; the newest of folders named by versions `VersionOrder.Newest`; a primitive `PrimitiveTypes`; an SDK into an installation
+  by halving `Sorted`, never a loop of your own; the newest of folders named by versions `VersionOrder.Newest`; a primitive `PrimitiveTypes`; a file's stamp (length, last write, through its links) `FileStamp`; an SDK into an installation
   `DotnetMerge`; a path in a project file `ItemPaths`, which files an MSBuild value names `ItemPaths.Matches` (its parts `ItemPaths.Parts`), a project file's items `ProjectItems`; a Mac program's slices and what it links `MachOFile`; whether this process runs translated `Dotnet.Translated`, a program's processors
   `ProgramProcessors`; work any thread asks for by
   key (a download), begun once however many ask, an ask that stops waiting never letting it go, `SharedWork` (`unheld` where any window asks, saying why); a folder first on a PATH `Programs.FirstOnPath`; a shell's kind `ShellKinds.Of`; a macOS app bundle from a path `MacBundles`; requests to a peer answered by number `PendingRequests` (one asked after its end fails at once), never a table of one's own.
@@ -646,8 +646,8 @@ a new name, and `just site-shots` retakes its images.
   Resources); TMPDIR goes through the /var link, so build or restore a test's project by its real path (a restore by /var writes an assets file with no projectReferences) (two spellings restored at
   once collide).
 - **.NET's watcher on macOS passes over FSEvents' word that it dropped events** (dotnet/runtime#136577), so a folder is
-  watched only through `WatchedTree`, never a bare `FileSystemWatcher` (#607, #609); settings.json, watched alone, is
-  read again on its watcher's error and as a window comes in front (`SettingsStore.LookAgain`).
+  watched only through `WatchedTree`, never a bare `FileSystemWatcher` (#607, #609); a file watched alone (settings.json,
+  vimrc) only through `WatchedFile`, read again on its watcher's error and as a window comes in front (`LookAgain`).
 - **macOS's "damaged" dialog** comes from reading or starting a Passenger.app whose seal no longer holds: a mounted disk
   image whose file was replaced (`just package-mac` ejects one first) or a bundle written into (#450). Tests never start
   a program inside an unsigned bundle, and a run's folder ends in `.noindex`, so Spotlight reads none of it.
