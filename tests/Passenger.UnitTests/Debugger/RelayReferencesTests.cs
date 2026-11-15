@@ -1,6 +1,12 @@
 using System.Collections.Concurrent;
+using System.Collections.Immutable;
+using System.Reflection.Metadata;
 using System.Runtime.InteropServices;
 using System.Runtime.InteropServices.Marshalling;
+using System.Text;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.Emit;
 using Passenger.Debugger.Interop;
 using Passenger.Debugger.Relay;
 
@@ -8,7 +14,8 @@ namespace Passenger.UnitTests.Debugger;
 
 /// <summary>The engine's hold on an app's objects through the relay: each object let go in the app once the engine holds
 /// none of it, the objects the app's debugger keeps anyway held for the session, what an object said asked of the app
-/// once, for as long as it holds, and the metadata an update takes to be there made in the app first.</summary>
+/// once, for as long as it holds, the metadata an update takes to be there made in the app first, and the update applied
+/// to the host's copy of the module's metadata once the app took it.</summary>
 public class RelayReferencesTests
 {
     [Fact]
@@ -120,14 +127,81 @@ public class RelayReferencesTests
         Assert.True(app.Released.Count == 1, $"The importer the app's debugger handed back was not let go, or more was: {string.Join(", ", app.Released)}");
     }
 
+    [Fact]
+    public void An_update_the_app_took_is_applied_to_the_hosts_copy_of_the_modules_metadata_so_a_method_it_added_is_read()
+    {
+        string folder = Directory.CreateTempSubdirectory("relay-update").FullName;
+        try
+        {
+            (byte[] image, byte[] delta) = AddingMethod("static class Greeter { static string Greet() => \"Hello\"; }",
+                "static class Greeter { static string Greet() => \"Hello\"; static string Added() => \"Added\"; }", "Added");
+            File.WriteAllBytes(Path.Combine(folder, "Greeting.dll"), image);
+            App app = new() { ModuleName = "/data/user/0/com.shop/files/.__override__/arm64-v8a/Greeting.dll" };
+            RelaySession session = new(app, new DeviceModules(folder), null);
+            nint block = session.Take(new RemotePointer(0x6000, 0x6000), RemoteInterfaces.Of(typeof(ICorDebugModule)));
+            ICorDebugModule module = (ICorDebugModule)new StrategyBasedComWrappers().GetOrCreateObjectForComInstance(block, CreateObjectFlags.UniqueInstance);
+            Guid import = typeof(IMetaDataImport).GUID;
+            Assert.Equal(0, module.TryGetMetaDataInterface(ref import, out object? _));
+
+            Assert.Equal(0, ((ICorDebugModule2)module).TryApplyChanges((uint)delta.Length, delta, 0, []));
+
+            Guid emitting = typeof(IMetaDataEmit).GUID;
+            Assert.Equal(0, module.TryGetMetaDataInterface(ref emitting, out object? emitter));
+            IMetaDataEmit emit = (IMetaDataEmit)emitter!;
+            Assert.Equal(0, emit.TryGetSaveSize(0, out uint size));
+            byte[] saved = new byte[size];
+            Assert.Equal(0, emit.TrySaveToMemory(saved, size));
+            string[] methods = Methods(saved);
+            Assert.True(methods.Contains("Added"), $"The host's copy of the module's metadata does not have the method the update added, so an expression calling it "
+                + $"finds no such method: it has {string.Join(", ", methods)}");
+        }
+        finally
+        {
+            Directory.Delete(folder, recursive: true);
+        }
+    }
+
+    /// <summary>A module's image built from <paramref name="before"/>, and the metadata of the update that makes it
+    /// <paramref name="after"/>, which adds the method named <paramref name="added"/> to its one class.</summary>
+    private static (byte[] Image, byte[] Delta) AddingMethod(string before, string after, string added)
+    {
+        CSharpCompilationOptions options = new(OutputKind.DynamicallyLinkedLibrary, optimizationLevel: OptimizationLevel.Debug);
+        MetadataReference[] references = [MetadataReference.CreateFromFile(typeof(object).Assembly.Location)];
+        CSharpCompilation first = CSharpCompilation.Create("Greeting", [CSharpSyntaxTree.ParseText(before)], references, options);
+        using MemoryStream image = new();
+        using MemoryStream symbols = new();
+        Assert.True(first.Emit(image, symbols, options: new EmitOptions(debugInformationFormat: DebugInformationFormat.PortablePdb)).Success, "The module did not build");
+        EmitBaseline baseline = EmitBaseline.CreateInitialBaseline(first, ModuleMetadata.CreateFromImage(image.ToArray()), _ => default, _ => default, true);
+        CSharpCompilation second = first.ReplaceSyntaxTree(first.SyntaxTrees[0], CSharpSyntaxTree.ParseText(after));
+        ISymbol method = second.GetTypeByMetadataName("Greeter")!.GetMembers(added).Single();
+        using MemoryStream metadata = new();
+        using MemoryStream il = new();
+        using MemoryStream pdb = new();
+        EmitDifferenceResult update = second.EmitDifference(baseline, [new SemanticEdit(SemanticEditKind.Insert, null, method)], _ => false, metadata, il, pdb);
+        Assert.True(update.Success, $"The update did not build: {string.Join("; ", update.Diagnostics)}");
+        return (image.ToArray(), metadata.ToArray());
+    }
+
+    /// <summary>The names of the methods metadata saved whole defines.</summary>
+    private static string[] Methods(byte[] metadata)
+    {
+        using MetadataReaderProvider provider = MetadataReaderProvider.FromMetadataImage(ImmutableArray.Create(metadata));
+        MetadataReader reader = provider.GetMetadataReader();
+        return [.. reader.MethodDefinitions.Select(handle => reader.GetString(reader.GetMethodDefinition(handle).Name))];
+    }
+
     /// <summary>An app's debugger as the relay carries it: every call answered by its arguments' kinds, a frame
-    /// enumerator's Next with <see cref="Frames"/> frames, every call's object and slot and every release heard.</summary>
+    /// enumerator's Next with <see cref="Frames"/> frames, a module's name <see cref="ModuleName"/>, every call's object and
+    /// slot and every release heard.</summary>
     private sealed class App : IRelayLink
     {
         private readonly ConcurrentQueue<uint> _asked = new();
         private ulong _next = 0x10000;
 
         public int Frames { get; init; }
+
+        /// <summary>The name a module answers, as the app's runtime names it; null where none is asked for.</summary>
+        public string? ModuleName { get; init; }
 
         public List<ulong> Released { get; } = [];
 
@@ -147,6 +221,12 @@ public class RelayReferencesTests
             if (slot == 0)
             {
                 return new RelayReply(0, [], [[new RemotePointer(obj + 8, obj)]]);
+            }
+            if (ModuleName is { } name && slot == RelaySession.SlotOf(typeof(ICorDebugModule), nameof(ICorDebugModule.TryGetName)) && args.Count == 3)
+            {
+                byte[] chars = new byte[args[2].Size];
+                Encoding.Unicode.GetBytes(name).CopyTo(chars, 0);
+                return new RelayReply(0, [BitConverter.GetBytes(name.Length + 1), chars], []);
             }
             if (slot == RelaySession.SlotOf(typeof(ICorDebugFrameEnum), nameof(ICorDebugFrameEnum.TryNext)) && args.Count == 3)
             {

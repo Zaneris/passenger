@@ -255,6 +255,10 @@ internal sealed unsafe partial class RelaySession
             RelayReply reply = _link.Call(standIn.Pointer, (uint)slot, sent);
             nint[][] objects = Taken(reply, sent, method, args);
             Write(reply.Hr, reply.Outs, objects, sent, method, args);
+            if (reply.Hr >= 0)
+            {
+                Carried(standIn, method, args);
+            }
             if (scope != AnswerScope.None && reply.Hr == 0)
             {
                 Remember(standIn.Owner, key, scope, reply.Outs, objects);

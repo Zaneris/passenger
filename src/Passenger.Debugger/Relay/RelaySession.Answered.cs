@@ -110,6 +110,19 @@ internal sealed unsafe partial class RelaySession
         return null;
     }
 
+    /// <summary>What a call the app took changes here: an update its runtime applied to a module is applied to the host's
+    /// copy of the module's metadata too, as the app's debugger applies it to its own, so the engine reads the module as
+    /// updated (a method the update added, for an expression evaluated after).</summary>
+    private void Carried(StandIn standIn, MethodPlan method, nint* args)
+    {
+        if (standIn.Plan.Type == typeof(ICorDebugModule2) && method.Name == nameof(ICorDebugModule2.TryApplyChanges)
+            && !_modules.Updated(DeviceModules.KeyOf(_moduleFiles.GetValueOrDefault(standIn.Owner.Identity), standIn.Owner.Identity),
+                new ReadOnlySpan<byte>((void*)args[1], (int)(uint)args[0])))
+        {
+            _log?.Invoke("The update was not applied to the host's copy of the module's metadata: the debugger reads the module as it was before");
+        }
+    }
+
     /// <summary>The app's debugger made to hold its own copy of a module's metadata, which its ApplyChanges updates and
     /// takes to be there: the engine's own asks for the metadata are answered on the host, so the app's is asked for here,
     /// the importer it hands back let go at once (the module keeps its copy).</summary>
