@@ -55,6 +55,9 @@ public sealed partial class Vim
     /// reaches every line's end ($).</summary>
     private (int Anchor, int Cursor, bool ToEnd) blockColumns;
 
+    /// <summary>The columns . takes a block's change again over: as many as it took, whatever characters they cut.</summary>
+    private (int Left, int Right)? blockAgain;
+
     /// <summary>The last visual stretch, for gv: its mode, whether its cursor stood first, and a block's columns; its
     /// ends are the marks &lt; and &gt;.</summary>
     private (VimMode Mode, bool CursorFirst, (int Anchor, int Cursor, bool ToEnd) Block)? lastVisual;
@@ -152,6 +155,8 @@ public sealed partial class Vim
         {
             int column = TextNavigation.VisualColumn(text, regions[0].Cursor, tab);
             blockColumns = (column, column, visualAims[0] == int.MaxValue);
+            // j and k aim for the column normal mode's cursor stood in, a tab's last, until the block's cursor moves along its line.
+            visualAims[0] = visualAims[0] >= 0 ? visualAims[0] : CaretColumn(text, regions[0].Cursor, tab);
         }
         if (count > 1)
         {
@@ -234,6 +239,10 @@ public sealed partial class Vim
     {
         int tab = view.Indent.TabWidth;
         (int anchor, int cursor, bool toEnd) = blockColumns;
+        if (blockAgain is { } again)
+        {
+            return (again.Left, toEnd ? int.MaxValue : again.Right);
+        }
         int anchorEnd = anchor + Math.Max(1, CellsOf(text, r.Anchor, tab)) - 1;
         int cursorEnd = cursor + Math.Max(1, CellsOf(text, VimMotions.OffsetAtColumn(text, text.GetLineFromOffset(r.Cursor), cursor, tab), tab)) - 1;
         return (Math.Min(anchor, cursor), toEnd ? int.MaxValue : Math.Max(anchorEnd, cursorEnd));

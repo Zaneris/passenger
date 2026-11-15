@@ -525,6 +525,7 @@ public sealed partial class Vim(VimRegisters registers)
         finally
         {
             replaying = false;
+            blockAgain = null;
             pending.Clear();
         }
         if (plans.Count == 0)

@@ -2122,6 +2122,29 @@ public class VimTests
     public void A_block_of_several_lines_deleted_goes_to_register_one(string before, string keys, string after) =>
         Assert.Equal(after, Run(before, keys));
 
+    /// <summary>. after a visual change within a line takes as many cells again as the stretch showed, a tab counting all
+    /// of its, from the caret's character's last cell; after a block's, its columns from the caret's first exactly, a tab
+    /// they cut split; a block begun on a tab aims j and k at the tab's last column, as Vim's do.</summary>
+    [Theory]
+    [InlineData("a|\tbcdefgh\nabcdefghijk", "vdj0.", "abcdefgh\n|defghijk")]
+    [InlineData("|a\tbcdefgh\nabcdefghijk", "vlldj0.", "cdefgh\n|fghijk")]
+    [InlineData("ab|cdefgh\nab\tcdefghijk", "vlldj0l.", "abfgh\na|cdefghijk")]
+    [InlineData("a|b\tcdefgh\nab\tcdefghijk", "vlldj0ll.", "adefgh\nab|fghijk")]
+    [InlineData("a|\tbcdefgh\nabcdefghijk", "vrxj0.", "axbcdefgh\n|xxxdefghijk")]
+    [InlineData("a|\tbcdefgh\nabcdefghijk", "v~j0.", "a\tbcdefgh\n|ABCdefghijk")]
+    [InlineData("|a\tbc\tdef\tg\nabcdefghijklm\nxy\tz\t\tuvw\tqrs\nxy\tz\t\tuvw\tqrs", "<C-v>djj0ll.",
+        "\tbc\tdef\tg\nabcdefghijklm\nxy| z\t\tuvw\tqrs\nxy\tz\t\tuvw\tqrs")]
+    [InlineData("|a\tbc\tdef\tg\nabcdefghijklm\nxy\tz\t\tuvw\tqrs\nxy\tz\t\tuvw\tqrs", "<C-v>ldjj0.",
+        "bc\tdef\tg\nabcdefghijklm\n|z\t\tuvw\tqrs\nxy\tz\t\tuvw\tqrs")]
+    [InlineData("|a\tbc\tdef\tg\nabcdefghijklm\nxy\tz\t\tuvw\tqrs\nxy\tz\t\tuvw\tqrs", "<C-v>jldjj0llll.",
+        "  bc\tdef\tg\ncdefghijklm\nxy\tz| \tuvw\tqrs\nxy\tz \tuvw\tqrs")]
+    [InlineData("a|\tbc\tdef\tg\nabcdefghijklm\nxy\tz\t\tuvw\tqrs\nxy\tz\t\tuvw\tqrs", "<C-v>jldjj0.",
+        "ac\tdef\tg\nafghijklm\n|z\t\tuvw\tqrs\nz\t\tuvw\tqrs")]
+    [InlineData("x|\tabc\nabcdefgh", "<C-v>j<Esc>", "x\tabc\nabc|defgh")]
+    [InlineData("x|\tabc\nabcdefgh", "<C-v>hlj<Esc>", "x\tabc\na|bcdefgh")]
+    public void Dot_after_a_visual_change_takes_as_many_cells_again_a_tab_counting_all_it_shows(string before, string keys, string after) =>
+        Assert.Equal(after, Run(before, keys));
+
     [Fact]
     public void A_huge_count_ends_at_the_texts_edge()
     {
