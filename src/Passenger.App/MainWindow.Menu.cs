@@ -572,32 +572,27 @@ public partial class MainWindow
         return Request(action, context);
     }
 
-    /// <summary>An editing action on a text box (a search field, a dialog's), as a native Edit menu sends it there.</summary>
+    /// <summary>The editing actions a text box with the keys (a search field, a dialog's) takes itself, as a native Edit menu
+    /// sends them there; the rest go to the editor shown.</summary>
+    private static readonly Dictionary<string, Action<TextBox>> TextBoxEdits = new(StringComparer.Ordinal)
+    {
+        [EditorActions.Undo] = box => box.Undo(),
+        [EditorActions.Redo] = box => box.Redo(),
+        [EditorActions.Cut] = box => box.Cut(),
+        [EditorActions.Copy] = box => box.Copy(),
+        [EditorActions.Paste] = box => box.Paste(),
+        [EditorActions.SelectAll] = box => box.SelectAll(),
+    };
+
+    /// <summary>Runs an editing action on a text box, where it takes it (<see cref="TextBoxEdits"/>).</summary>
     private static bool Edit(TextBox box, string action)
     {
-        switch (action)
+        if (!TextBoxEdits.TryGetValue(action, out Action<TextBox>? edit))
         {
-            case EditorActions.Undo:
-                box.Undo();
-                return true;
-            case EditorActions.Redo:
-                box.Redo();
-                return true;
-            case EditorActions.Cut:
-                box.Cut();
-                return true;
-            case EditorActions.Copy:
-                box.Copy();
-                return true;
-            case EditorActions.Paste:
-                box.Paste();
-                return true;
-            case EditorActions.SelectAll:
-                box.SelectAll();
-                return true;
-            default:
-                return false;
+            return false;
         }
+        edit(box);
+        return true;
     }
 
     /// <summary>A menu item's command: runs its action; whether it can is the item's IsEnabled, set as its menu opens.</summary>

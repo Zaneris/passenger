@@ -268,17 +268,20 @@ public partial class MainWindow
                 InEditor = true,
                 WhyNot = context => ExplorerEdits(id, context) ? WhyNotOnRow(id, context)
                     : context.File is null && context.Focused is not (TextBox or CodeEditor) ? Refusals.NoFile
-                    : id is E.ToggleLineComment or E.ToggleBlockComment ? CommentRefused(context) : null,
+                    : E.IsChange(id) ? ChangeRefused(id, context) : null,
                 TitleIn = id == E.Delete ? context => DeleteTitle(context) ?? title : null,
                 Menus = menus.GetValueOrDefault(id, []),
             });
         }
     }
 
-    /// <summary>Why a comment's toggle greys: the editor it goes to (one with the keys, else the active one) refuses changes,
-    /// in that editor's words; null where it takes them.</summary>
-    private static string? CommentRefused(ActionContext context) =>
-        (context.Focused as CodeEditor ?? context.Editor) is { IsReadOnly: true, ReadOnlyWhy: { } why } ? why : null;
+    /// <summary>Why an action changing the text greys: the editor it goes to (another with the keys, a diff's side, else the
+    /// one showing the file) refuses changes, in that editor's words, or the file shown is read-only; null where it takes
+    /// them, a text box with the keys taking its own.</summary>
+    private static string? ChangeRefused(string action, ActionContext context) =>
+        context.Focused is TextBox && TextBoxEdits.ContainsKey(action) ? null
+        : context.Focused is CodeEditor other && other != context.Editor ? (other is { IsReadOnly: true, ReadOnlyWhy: { } why } ? why : null)
+        : context.File is { } shown && context.Editor.IsReadOnly ? Refusals.ReadOnly(shown.Name) : null;
 
     private void Edit(string action, ActionContext context)
     {

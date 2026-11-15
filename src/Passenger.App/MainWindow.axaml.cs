@@ -491,7 +491,12 @@ public partial class MainWindow : IdeWindow
             return;
         }
         bool own = editor == Editors.CodeEditor;
-        if (own && !shifted && action is EditorActions.Undo or EditorActions.Redo && UndoCommand(action == EditorActions.Redo, Editors.Active))
+        if (!shifted && EditorActions.IsChange(action) && editor is { IsReadOnly: true, ReadOnlyWhy: { } readOnly })
+        {
+            Say(readOnly);
+            e.Handled = true;
+        }
+        else if (own && !shifted && action is EditorActions.Undo or EditorActions.Redo && UndoCommand(action == EditorActions.Redo, Editors.Active))
         {
             e.Handled = true;
         }

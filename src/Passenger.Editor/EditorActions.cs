@@ -101,7 +101,18 @@ public static class EditorActions
     private static readonly HashSet<string> Movements =
         [Left, Right, Up, Down, WordLeft, WordRight, LineStart, LineEnd, TextStart, TextEnd, PageUp, PageDown];
 
+    private static readonly HashSet<string> Changes =
+    [
+        Backspace, Delete, DeleteWordLeft, DeleteWordRight, NewLine, StartNewLine, StartNewLineBefore, Indent, Outdent, Duplicate,
+        DeleteLine, MoveLineUp, MoveLineDown, ToggleLineComment, ToggleBlockComment, Comment, Uncomment, JoinLines, ToggleCase,
+        CutToLineEnd, Undo, Redo, Cut, Paste,
+    ];
+
     public static bool IsMovement(string action) => Movements.Contains(action);
+
+    /// <summary>Whether an action changes the text, which an editor refusing changes (<see cref="CodeEditor.IsReadOnly"/>)
+    /// refuses; the rest move, choose, copy or fold.</summary>
+    public static bool IsChange(string action) => Changes.Contains(action);
 
     /// <summary>Whether an action is one the mouse drags, its gesture's press starting it: a click may share that gesture,
     /// run as the press is let go where it was made.</summary>

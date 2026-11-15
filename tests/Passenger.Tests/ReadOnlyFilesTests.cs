@@ -12,7 +12,8 @@ namespace Passenger.Tests;
 
 /// <summary>A file the editor shows read-only (here decompiled code, as Go to Declaration opens it) is never edited or written,
 /// whatever asks: Save greys there, as on a file with nothing to save, Replace in Files names it as not replaced, and the
-/// find bar's replace row and the colour picker grey saying why; what the disk holds still reaches its tab.</summary>
+/// Edit menu's changes, the find bar's replace row and the colour picker grey saying why; what the disk holds still reaches
+/// its tab.</summary>
 public sealed class ReadOnlyFilesTests : IDisposable
 {
     private const string Trims = "root = true\n[*]\ntrim_trailing_whitespace = true\ninsert_final_newline = true\n";
@@ -102,6 +103,62 @@ public sealed class ReadOnlyFilesTests : IDisposable
         Assert.Equal("A.cs is read-only", ToolTip.GetTip(bar.FindControl<Control>("ReplaceRow")!));
         Assert.Equal("class A\n{\n    // class B\n}\n", editor.Document.Snapshot.ToString());
         window.Close();
+    }
+
+    /// <summary>On a decompiled file, every action of the Edit menu that would change it greys saying it is read-only, as
+    /// every other editor action changing text does, and those that only copy, choose or find stay enabled, Replace among
+    /// them (its replace row says why); the keys of those that change it say so in the status bar and change nothing. A
+    /// text box with the keys over it takes its own Cut, Paste, Undo and Redo.</summary>
+    [AvaloniaFact]
+    public void Every_action_of_the_edit_menu_that_would_change_a_decompiled_file_greys_saying_it_is_read_only()
+    {
+        const string Text = "class A\n{\n    int b;\n    int c;\n}\n";
+        Write("MetadataAsSource/A.cs", Text);
+        MainWindow window = Open("MetadataAsSource/A.cs");
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        const string ReadOnly = "A.cs is read-only";
+        HashSet<string> changing = [EditorActions.Backspace, EditorActions.Delete, EditorActions.DeleteWordLeft, EditorActions.DeleteWordRight,
+            EditorActions.NewLine, EditorActions.StartNewLine, EditorActions.StartNewLineBefore, EditorActions.Indent, EditorActions.Outdent,
+            EditorActions.Duplicate, EditorActions.DeleteLine, EditorActions.MoveLineUp, EditorActions.MoveLineDown, EditorActions.ToggleLineComment,
+            EditorActions.ToggleBlockComment, EditorActions.Comment, EditorActions.Uncomment, EditorActions.JoinLines, EditorActions.ToggleCase,
+            EditorActions.CutToLineEnd, EditorActions.Undo, EditorActions.Redo, EditorActions.Cut, EditorActions.Paste];
+        List<string> edit = [.. ActionsIn(MainMenu.Build(window.Actions.All).Single(m => m.Title == "Edit"))];
+        string[] named = [EditorActions.Cut, EditorActions.Paste, EditorActions.Duplicate, EditorActions.DeleteLine, EditorActions.MoveLineUp, EditorActions.MoveLineDown];
+        Assert.True(named.All(edit.Contains), $"The Edit menu lacks some of {string.Join(", ", named)}: {string.Join(", ", edit)}");
+
+        ActionContext context = window.Actions.Context();
+        List<string> offered = [];
+        List<string> greyed = [];
+        foreach (string id in edit.Concat(EditorActions.All.Select(a => a.Id)).Distinct())
+        {
+            string? why = window.Actions.WhyNot(id, context);
+            if (changing.Contains(id) ? why != ReadOnly : why is not null && !(id == AppActions.HighlightUsages && why == Refusals.NoCSharp))
+            {
+                (changing.Contains(id) ? offered : greyed).Add($"{id} ({why ?? "enabled"})");
+            }
+        }
+        Assert.True(offered.Count == 0, $"On the decompiled A.cs, which nothing can change, these are offered or greyed for another reason: {string.Join(", ", offered)}");
+        Assert.True(greyed.Count == 0, $"On the decompiled A.cs, these only read it but are greyed: {string.Join(", ", greyed)}");
+
+        editor.Selections = Passenger.Text.SelectionSet.Single(new Passenger.Text.Selection(Text.IndexOf("int b", StringComparison.Ordinal), Text.IndexOf("int c", StringComparison.Ordinal)));
+        Assert.NotEqual(ReadOnly, window.Status);
+        Ui.Run(window, EditorActions.Duplicate);
+        Assert.Equal(ReadOnly, window.Status);
+        foreach (string id in new[] { EditorActions.Cut, EditorActions.Paste, EditorActions.Backspace, EditorActions.NewLine, EditorActions.MoveLineUp, EditorActions.Undo })
+        {
+            Ui.Run(window, id);
+            Assert.True(editor.Document.Snapshot.ToString() == Text, $"{id}'s key changed the decompiled A.cs: {editor.Document.Snapshot}");
+        }
+
+        Ui.Press(window, Ui.Shortcut(AppActions.Find));
+        context = window.Actions.Context();
+        Assert.IsAssignableFrom<TextBox>(context.Focused);
+        Assert.True(window.Actions.WhyNot(EditorActions.Paste, context) is null && window.Actions.WhyNot(EditorActions.Cut, context) is null,
+            "Paste or Cut greyed in the find bar's field over a read-only file, which takes them itself");
+        Assert.Equal(ReadOnly, window.Actions.WhyNot(EditorActions.Duplicate, context));
+        window.Close();
+
+        static IEnumerable<string> ActionsIn(MenuEntry menu) => menu.Action is { } id ? [id] : (menu.Items ?? []).SelectMany(ActionsIn);
     }
 
     [AvaloniaFact]
