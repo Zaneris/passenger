@@ -10,7 +10,8 @@ namespace Passenger.Tests;
 /// <summary>What the C# language server registered to hear of in a folder only Passenger's watchers of its own watch for
 /// it, a project's obj: a burst there, a build's or a script's, more at once than macOS's watcher names, still reaches the
 /// server, every file of it, as the folder's watcher's bursts do, and so does what a project below another's writes in its
-/// own obj. The class's windows share one project, restored once, but that last test's, which makes its own.</summary>
+/// own obj, and what was written there unheard once the window comes in front. The class's windows share one project,
+/// restored once, but that one test's, which makes its own.</summary>
 public sealed class ServerWatchTests : IClassFixture<ServerWatchTests.Project>
 {
     private const int Files = 1000;
@@ -112,6 +113,37 @@ public sealed class ServerWatchTests : IClassFixture<ServerWatchTests.Project>
             watchers.ForEach(w => w.EnableRaisingEvents = true);
         }
         Assert.True(heardGone, $"The language server was never told the source deleted unheard in obj went, so it keeps its document and its problems: {WatchLog(window)}");
+        window.Close();
+    }
+
+    /// <summary>A source written in obj while obj's watcher heard nothing, as the system drops a change without a word,
+    /// reaches the server once the window comes in front, as a person comes back from a terminal: the server's own watchers
+    /// look again with the folder's.</summary>
+    [AvaloniaFact]
+    public void A_source_written_unheard_in_obj_reaches_the_server_once_the_window_comes_in_front()
+    {
+        MainWindow window = project.Open("Program.cs");
+        WatchedFiles watched = Watched(window);
+        string obj = PathNames.Canonical(project.PathOf("obj"));
+        WatchedTree tree = window.CSharpService!.Watching!.Of(obj)!;
+        Ui.WaitFor(() => tree.Ready.IsCompleted, "obj's watcher to have recorded what is in it");
+        List<FileSystemWatcher> watchers = [.. tree.Watches.Values];
+        using Told made = new(watched, name => name == "Unheard.cs", gone: false);
+        try
+        {
+            watchers.ForEach(w => w.EnableRaisingEvents = false);
+            File.WriteAllText(Path.Combine(obj, "Unheard.cs"), "static class Unheard\n{\n}\n");
+            Ui.Settle();
+            Assert.True(made.Count == 0, "The server was told of a source written in obj while obj's watcher heard nothing before the window came in front");
+
+            window.Activate();
+            Assert.True(Ui.Pumped(() => made.Count == 1, TimeSpan.FromSeconds(30)),
+                $"The language server was never told of the source written unheard in obj once the window came in front, so it never compiles it: {WatchLog(window)}");
+        }
+        finally
+        {
+            watchers.ForEach(w => w.EnableRaisingEvents = true);
+        }
         window.Close();
     }
 

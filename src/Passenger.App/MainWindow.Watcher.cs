@@ -29,14 +29,39 @@ public partial class MainWindow
         }
     };
 
-    /// <summary>Back from another program, the open folder's watcher and those of Git's folders outside it look again, off the
-    /// window's thread, for what the system dropped without a word (macOS's watcher passes over its word that it did): each
-    /// folder they recorded whose stamp moved is listed again, and what came or went there is handed over as heard.</summary>
-    private void AddLookingAgain() => Activated += (_, _) =>
+    /// <summary>How long after an agent's call began its next looks again first (<see cref="AgentCalling"/>): long enough for
+    /// the agent to have worked through its own shell meanwhile, as a person comes back from a terminal.</summary>
+    public static readonly TimeSpan AgentAway = TimeSpan.FromSeconds(1);
+
+    /// <summary>When an agent's call last began, a timestamp of <see cref="System.Diagnostics.Stopwatch.GetTimestamp"/>'s, or
+    /// none yet; and the look the calls since wait for.</summary>
+    private long agentCalled;
+    private Task agentLook = Task.CompletedTask;
+
+    /// <summary>Back from another program, the window looks again (<see cref="LookAgainAsync"/>).</summary>
+    private void AddLookingAgain() => Activated += (_, _) => IdeErrors.Observe(LookAgainAsync());
+
+    /// <summary>An agent's call begins: its first, and one coming <see cref="AgentAway"/> or more after the last, looks again
+    /// first, as the window coming in front does, which an agent's own IDE never does; a call meanwhile waits for the same
+    /// look. The look to wait for, done once what it found was handed to the window's thread.</summary>
+    public Task AgentCalling()
     {
-        session.Watcher?.LookAgain();
-        session.Vcs.LookAgain();
-    };
+        UiThread.Check();
+        long now = System.Diagnostics.Stopwatch.GetTimestamp();
+        if (agentCalled == 0 || System.Diagnostics.Stopwatch.GetElapsedTime(agentCalled, now) >= AgentAway)
+        {
+            agentLook = LookAgainAsync();
+        }
+        agentCalled = now;
+        return agentLook;
+    }
+
+    /// <summary>The open folder's watcher, those of Git's folders outside it and the language server's own look again, off the
+    /// window's thread, for what the system dropped without a word (macOS's watcher passes over its word that it did): each
+    /// folder they recorded whose stamp moved is listed again, and what came or went there is handed over as heard, which
+    /// the task waits for.</summary>
+    private Task LookAgainAsync() => Task.WhenAll(session.Watcher?.LookAgainAsync() ?? Task.CompletedTask, session.Vcs.WatchersLookAgainAsync(),
+        session.CSharp?.Watching?.LookAgainAsync() ?? Task.CompletedTask);
 
     /// <summary>How the folders opened from now on are watched: the system's way, unless another is chosen.</summary>
     public FolderWatching Watching { get; set; } = FolderWatching.Platform;

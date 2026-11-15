@@ -186,14 +186,12 @@ public sealed class VcsController : IDisposable
     public IReadOnlyList<GitWatcher> GitWatchers => gitWatchers;
 
     /// <summary>Has each watcher of Git's folders outside the open folder look again, off the window's thread, for what the
-    /// system dropped without a word (<see cref="WatchedTree.LookAgain"/>), as the window comes in front.</summary>
-    public void LookAgain()
+    /// system dropped without a word (<see cref="WatchedTree.LookAgainAsync"/>), as the window comes in front: done once
+    /// what they found is handed over.</summary>
+    public Task WatchersLookAgainAsync()
     {
         UiThread.Check();
-        foreach (GitWatcher watcher in gitWatchers)
-        {
-            watcher.LookAgain();
-        }
+        return Task.WhenAll(gitWatchers.Select(watcher => watcher.LookAgainAsync()));
     }
 
     /// <summary>How Git's folders outside the open folder are watched: the session's way.</summary>

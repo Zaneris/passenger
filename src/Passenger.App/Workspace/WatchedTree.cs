@@ -78,8 +78,8 @@ public abstract class WatchedTree : IDisposable
     private int walksApart;
     private bool rewalking;
 
-    /// <summary>Whether a look (<see cref="LookAgain"/>) is asked for and not yet begun.</summary>
-    private bool lookAsked;
+    /// <summary>The look (<see cref="LookAgainAsync"/>) asked for and not yet begun, done once it has run.</summary>
+    private TaskCompletionSource? looking;
     private bool lost;
     private bool overflowed;
 
@@ -354,7 +354,7 @@ public abstract class WatchedTree : IDisposable
         }
         watcher.Created += (_, e) => OnCreated(e.FullPath, made: true);
         watcher.Deleted += (_, e) => OnDeleted(e.FullPath);
-        watcher.Changed += (_, e) => Note(e.FullPath, created: false);
+        watcher.Changed += (_, e) => OnChanged(e.FullPath);
         watcher.Renamed += (_, e) =>
         {
             OnDeleted(e.OldFullPath);
@@ -393,6 +393,10 @@ public abstract class WatchedTree : IDisposable
     /// in as found.</summary>
     private void OnCreated(string path, bool made)
     {
+        if (IsUnheard(path))
+        {
+            return;
+        }
         if (eachFolder && Kept(path) && Directory.Exists(path))
         {
             Follow(() =>
@@ -410,12 +414,41 @@ public abstract class WatchedTree : IDisposable
 
     private void OnDeleted(string path)
     {
+        if (IsUnheard(path))
+        {
+            return;
+        }
         if (eachFolder && IsWatched(path))
         {
             Follow(() => Unwatch(path));
         }
         Note(path, created: true);
     }
+
+    private void OnChanged(string path)
+    {
+        if (!IsUnheard(path))
+        {
+            Note(path, created: false);
+        }
+    }
+
+    /// <summary>The variable naming a file whose changes every watcher passes over as the system drops one without a word,
+    /// by its name in whatever folder: a test's hold, for what finds such a change otherwise.</summary>
+    [IdentifierHome]
+    public const string UnheardVariable = "PASSENGER_UNHEARD";
+
+    /// <summary>The name <see cref="UnheardVariable"/> gives, or null; a value that is more than a file's name is fatal, as a
+    /// malformed flag is.</summary>
+    private static readonly string? Unheard = Environment.GetEnvironmentVariable(UnheardVariable) switch
+    {
+        null or "" => null,
+        { } name when name.AsSpan().IndexOfAny(PathNames.Separators) < 0 && name is not ("." or "..") => name,
+        { } other => throw new FormatException($"{UnheardVariable} is \"{other}\": it must be a file's name, or unset"),
+    };
+
+    /// <summary>Whether a change heard is one <see cref="UnheardVariable"/> has passed over.</summary>
+    private static bool IsUnheard(string path) => Unheard is { } name && Path.GetFileName(path.AsSpan()).Equals(name, StringComparison.Ordinal);
 
     private void OnError(FileSystemWatcher source, Exception error)
     {
@@ -743,38 +776,61 @@ public abstract class WatchedTree : IDisposable
     /// a name come or gone that the system dropped without a word (macOS's watcher passes over its word that it did) is
     /// found against the record and handed over. A file written in place, which moves no folder's stamp, is left to its own
     /// change. Asked again before a look begins, it adds none.</summary>
-    public void LookAgain()
+    public void LookAgain() => IdeErrors.Observe(LookAgainAsync());
+
+    /// <summary><see cref="LookAgain"/>, done once the look has run and what it found was handed over (<see cref="Hand"/>).
+    /// While the first walk, or a walk apart, is under way none is asked: the walk reads what is there itself, and one
+    /// apart can go on for minutes.</summary>
+    public Task LookAgainAsync()
+    {
+        TaskCompletionSource asked;
+        lock (gate)
+        {
+            if (disposed || !Ready.IsCompleted || walksApart > 0)
+            {
+                return Task.CompletedTask;
+            }
+            if (looking is { } waiting)
+            {
+                return waiting.Task;
+            }
+            asked = looking = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        }
+        Follow(() => Look(asked));
+        return asked.Task;
+    }
+
+    /// <summary>The look <see cref="LookAgainAsync"/> asks for, in turn: what it found handed over at once rather than
+    /// gathered a moment, so the caller waiting on it reads it next.</summary>
+    private void Look(TaskCompletionSource asked)
     {
         lock (gate)
         {
-            if (lookAsked || disposed)
+            looking = null;
+        }
+        try
+        {
+            if (recordedAt is null || IsDisposed || StampsMoved() is not { Count: > 0 } listing)
             {
                 return;
             }
-            lookAsked = true;
+            if (ListAgain(listing, since: null, new Dictionary<string, DateTime>(StringComparer.Ordinal)) is not { } found)
+            {
+                Lose();
+            }
+            else if (found.Found > 0)
+            {
+                IdeErrors.Write($"{Shown} found {Plural.Of(found.Found, "change")} it never heard, looking again at {Plural.Of(listing.Count, "folder")} whose stamp moved");
+            }
+            else
+            {
+                return;
+            }
+            HandOver();
         }
-        Follow(Look);
-    }
-
-    /// <summary>The look <see cref="LookAgain"/> asks for, in turn.</summary>
-    private void Look()
-    {
-        lock (gate)
+        finally
         {
-            lookAsked = false;
-        }
-        if (recordedAt is null || IsDisposed || StampsMoved() is not { Count: > 0 } listing)
-        {
-            return;
-        }
-        if (ListAgain(listing, since: null, new Dictionary<string, DateTime>(StringComparer.Ordinal)) is not { } found)
-        {
-            Lose();
-            return;
-        }
-        if (found.Found > 0)
-        {
-            IdeErrors.Write($"{Shown} found {Plural.Of(found.Found, "change")} it never heard, looking again at {Plural.Of(listing.Count, "folder")} whose stamp moved");
+            asked.TrySetResult();
         }
     }
 

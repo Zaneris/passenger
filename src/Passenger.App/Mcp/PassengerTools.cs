@@ -2538,6 +2538,21 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
     /// <summary>Whether the agent is attached to a person's window, beside the person, rather than in an IDE of its own.</summary>
     private bool Beside => connection is { Attached: true };
 
+    /// <summary>How long a call waits for the look its coming asked for (<see cref="LookedAgainAsync"/>): one queued behind a
+    /// walk of a whole folder lets the call go on, what it finds coming as heard.</summary>
+    private static TimeSpan LookLimit => Waits.Of(TimeSpan.FromSeconds(5));
+
+    /// <summary>An agent's call coming to the window: the window looks again for what the system dropped, as it does coming
+    /// in front, when the agent's calls had stopped a while (<see cref="MainWindow.AgentCalling"/>), and the call waits until
+    /// what it found reached the window's thread, so the call's own work, queued after, reads it.</summary>
+    internal async Task LookedAgainAsync(CancellationToken cancel)
+    {
+        Task look = await UiThread.InvokeAsync(() => window.AgentCalling());
+        // A wait with no fault to leave behind: a look ends however it went.
+        await Task.WhenAny(look, Task.Delay(LookLimit, cancel));
+        cancel.ThrowIfCancellationRequested();
+    }
+
     /// <summary>A tool's work on the UI thread, its waits ended by <paramref name="cancel"/> (the agent gave up on the
     /// call, or went), once the folder's projects are read and evaluated, which is what every tool that runs, builds or
     /// tests a project asks about (unless <paramref name="projects"/> is false, for one that asks nothing of them). What it

@@ -463,8 +463,9 @@ public sealed class AgentConnection(CancellationToken gone, bool attached)
 
 /// <summary>A tool as one connection reaches it: its call cancelled with the connection, and on a person's window held
 /// until the agent is let in, then first allowed by them when it changes something (not read-only nor declared harmless),
-/// and named in the status bar while it runs; told to the agent as it goes and logged (<see cref="AgentCall"/>), an
-/// exception it ends with written to the IDE's log whole, its stack and what it wrapped with it.</summary>
+/// and named in the status bar while it runs; after a quiet spell, run once the window looked again for what the system
+/// dropped (<see cref="PassengerTools.LookedAgainAsync"/>); told to the agent as it goes and logged (<see cref="AgentCall"/>),
+/// an exception it ends with written to the IDE's log whole, its stack and what it wrapped with it.</summary>
 internal sealed class ConnectedTool(McpServerTool tool, MainWindow? window, AgentConnection connection, Task<PassengerTools> tools) : DelegatingMcpServerTool(tool)
 {
     public override async ValueTask<CallToolResult> InvokeAsync(RequestContext<CallToolRequestParams> request, CancellationToken cancellationToken = default)
@@ -504,6 +505,7 @@ internal sealed class ConnectedTool(McpServerTool tool, MainWindow? window, Agen
         {
             // --mcp's own IDE, whose server answers before the IDE is up: a call waits for it.
             McpHost.Serving.Value = await tools.WaitAsync(cancel);
+            await McpHost.Serving.Value.LookedAgainAsync(cancel);
             return await base.InvokeAsync(request, cancel);
         }
         // Read-only or not, no call goes on before the agent is let into the window.
@@ -524,6 +526,7 @@ internal sealed class ConnectedTool(McpServerTool tool, MainWindow? window, Agen
         told.Logged("working");
         // The tools are every connection's (McpHost.Tools): the call reaches this one's.
         McpHost.Serving.Value = await tools;
+        await McpHost.Serving.Value.LookedAgainAsync(cancel);
         if (shown.Annotations is { ReadOnlyHint: true })
         {
             return await base.InvokeAsync(request, cancel);
