@@ -42,11 +42,14 @@ internal static class Program
         {
             options = LaunchOptions.Parse(args);
             _ = Updates.ReleaseFeed.Default;
+            _ = Web.JsonSchemas.Place;
+            _ = Web.DockerHubTags.Named;
+            _ = OpenVsx.Registry;
+            _ = Mobile.AndroidLicences.Repository;
+            _ = DotnetReleases.Feed;
+            _ = Xaml.SourceLink.Server;
             _ = Discord.DiscordIpc.Default;
             _ = ThemeSource.Repository.Reached;
-            Web.JsonSchemas.CheckVariable();
-            Web.DockerHubTags.CheckVariable();
-            OpenVsx.CheckVariable();
             _ = Containers.BuildKitChecks.ByDefault;
             _ = Debugging.BrowserRun.Proxy;
             Mcp.McpProxy.CheckVariable();

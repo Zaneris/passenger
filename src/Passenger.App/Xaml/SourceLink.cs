@@ -29,8 +29,12 @@ public sealed class SourceLink : ILibraryFiles
     /// <summary>A library's portable PDB is some megabytes, the largest some tens of them.</summary>
     private static readonly HttpClient Http = OutboundHttp.Client(TimeSpan.FromSeconds(20), most: 256 * 1024 * 1024);
 
-    /// <summary>The symbol server asked for PDBs.</summary>
-    public static string Server => Environment.GetEnvironmentVariable(Variable) is { Length: > 0 } set ? set.TrimEnd('/') + "/" : "https://symbols.nuget.org/download/symbols/";
+    private static readonly Uri NuGets = new("https://symbols.nuget.org/download/symbols/");
+
+    /// <summary>The symbol server asked for PDBs: NuGet's, or the one <see cref="Variable"/> names
+    /// (<see cref="EnvironmentValues.Address(string, string)"/>).</summary>
+    public static Uri Server =>
+        EnvironmentValues.Address(Variable, "of the symbol server PDBs are asked for at instead") is { } named ? WebAddress.Folder(named) : NuGets;
 
     public async Task<string?> FileAsync(string assembly, string assemblyName, string path, IProgress<string>? why, CancellationToken cancel)
     {
@@ -110,8 +114,8 @@ public sealed class SourceLink : ILibraryFiles
             return pdb;
         }
         // A portable PDB's key on a symbol server is its id with FFFFFFFF where a Windows PDB's age would be.
-        string url = $"{Server}{Uri.EscapeDataString(name)}/{codeView.Guid:N}FFFFFFFF/{Uri.EscapeDataString(name)}";
-        using HttpRequestMessage request = OutboundHttp.Request(HttpMethod.Get, new Uri(url));
+        Uri url = new(Server, $"{Uri.EscapeDataString(name)}/{codeView.Guid:N}FFFFFFFF/{Uri.EscapeDataString(name)}");
+        using HttpRequestMessage request = OutboundHttp.Request(HttpMethod.Get, url);
         // NuGet's symbol server gives a portable PDB only to a request naming the checksum the assembly holds of it.
         if (checksums.Count > 0)
         {

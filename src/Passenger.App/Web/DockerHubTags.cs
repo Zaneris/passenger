@@ -1,3 +1,5 @@
+using Passenger.Core;
+
 namespace Passenger.App.Web;
 
 /// <summary>Whether and where the Dockerfile server asks for an image's tags as it completes <c>FROM image:</c>: Docker
@@ -14,22 +16,9 @@ public static class DockerHubTags
 
     /// <summary>What the server's <c>PASSENGER_DOCKER_HUB</c> says: off while the setting is (<paramref name="asks"/>
     /// false), else the place standing in for Docker Hub, else nothing (Docker Hub itself).</summary>
-    public static string? Told(bool asks, Uri? standIn) => !asks ? "off" : (standIn ?? Named())?.AbsoluteUri;
+    public static string? Told(bool asks, Uri? standIn) => !asks ? "off" : (standIn ?? Named)?.AbsoluteUri;
 
-    /// <summary>Checks <c>PASSENGER_DOCKER_HUB</c> as the IDE starts, a malformed one being fatal.</summary>
-    public static void CheckVariable() => Named();
-
-    /// <summary>The place the IDE's <c>PASSENGER_DOCKER_HUB</c> names; null when it names none.</summary>
-    private static Uri? Named()
-    {
-        if (Environment.GetEnvironmentVariable(Variable) is not { Length: > 0 } named)
-        {
-            return null;
-        }
-        if (!Uri.TryCreate(named, UriKind.Absolute, out Uri? place) || (place.Scheme != Uri.UriSchemeHttp && place.Scheme != Uri.UriSchemeHttps))
-        {
-            throw new FormatException($"{Variable} takes the http or https URL Docker Hub's requests for image tags go to instead, not '{named}'");
-        }
-        return place;
-    }
+    /// <summary>The place the IDE's <c>PASSENGER_DOCKER_HUB</c> names; null when it names none
+    /// (<see cref="EnvironmentValues.Address(string, string)"/>).</summary>
+    public static Uri? Named => EnvironmentValues.Address(Variable, "Docker Hub's requests for image tags go to instead");
 }

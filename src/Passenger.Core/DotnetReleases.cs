@@ -39,7 +39,7 @@ public sealed record DotnetChannel(string Version, string Support, Uri Releases)
 /// each channel's releases.json naming every SDK with its archive for each system and that archive's SHA-512.</summary>
 public static class DotnetReleases
 {
-    /// <summary>Where the metadata is read, in place of Microsoft's: an http or https URL of a folder holding releases-index.json.</summary>
+    /// <summary>Where the metadata is read, in place of Microsoft's: the address of a folder holding releases-index.json.</summary>
     [IdentifierHome]
     public const string Variable = "PASSENGER_DOTNET_RELEASES";
 
@@ -53,11 +53,9 @@ public static class DotnetReleases
 
     private static readonly HttpClient Http = OutboundHttp.Client(TimeSpan.FromSeconds(60), MostMetadata);
 
-    /// <summary>Microsoft's, or the one <see cref="Variable"/> names; a value there that is no http or https URL is fatal.</summary>
-    public static Uri Feed => Environment.GetEnvironmentVariable(Variable) is { Length: > 0 } named
-        ? WebAddress.Of(named.EndsWith('/') ? named : named + "/")
-            ?? throw new FormatException($"{Variable} takes the http or https URL of a folder holding .NET's releases-index.json, not '{named}'")
-        : Microsoft;
+    /// <summary>Microsoft's, or the one <see cref="Variable"/> names (<see cref="EnvironmentValues.Address(string, string)"/>).</summary>
+    public static Uri Feed =>
+        EnvironmentValues.Address(Variable, "of a folder holding .NET's releases-index.json") is { } named ? WebAddress.Folder(named) : Microsoft;
 
     /// <summary>The download page of a channel's SDKs ("10.0"), or of them all.</summary>
     public static Uri PageOf(string? channel) => channel is null ? DownloadPage : new Uri($"https://dotnet.microsoft.com/download/dotnet/{channel}");

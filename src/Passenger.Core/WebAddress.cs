@@ -27,6 +27,9 @@ public static class WebAddress
     /// alone.</summary>
     public static bool Secure(Uri url) => url.Scheme == Uri.UriSchemeHttps || (url.Scheme == Uri.UriSchemeHttp && OnThisMachine(url));
 
+    /// <summary>An address as a folder's, ending in <c>/</c>, so a relative one resolves under it rather than beside it.</summary>
+    public static Uri Folder(Uri address) => address.AbsoluteUri.EndsWith('/') ? address : new Uri(address.AbsoluteUri + "/");
+
     /// <summary>An address listened at (<c>ASPNETCORE_URLS</c>, an <c>applicationUrl</c>) as one to call: a host on every
     /// interface (<c>*</c>, <c>+</c>, <c>0.0.0.0</c>, <c>[::]</c>), which no client can name, as <c>localhost</c>, the name a
     /// development certificate is made for; by family, for a call no certificate names, as that family's loopback

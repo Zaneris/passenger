@@ -93,22 +93,12 @@ public sealed class JsonSchemas(Func<bool> download)
         return File.Exists(path) ? path : null;
     }
 
-    /// <summary>Where a schema is asked for: its own URL, or under the place <c>PASSENGER_SCHEMAS</c> names, its path kept.</summary>
-    private static Uri From(Uri schema)
-    {
-        if (Environment.GetEnvironmentVariable(Variable) is not { Length: > 0 } named)
-        {
-            return schema;
-        }
-        if (!Uri.TryCreate(named, UriKind.Absolute, out Uri? place) || (place.Scheme != Uri.UriSchemeHttp && place.Scheme != Uri.UriSchemeHttps))
-        {
-            throw new FormatException($"{Variable} takes the http or https URL schemas are asked for at, not '{named}'");
-        }
-        return new Uri(place, schema.PathAndQuery);
-    }
+    /// <summary>The place <c>PASSENGER_SCHEMAS</c> names to ask for schemas at in place of their own hosts; null for none
+    /// (<see cref="EnvironmentValues.Address(string, string)"/>).</summary>
+    public static Uri? Place => EnvironmentValues.Address(Variable, "schemas are asked for at");
 
-    /// <summary>Checks <c>PASSENGER_SCHEMAS</c> as the IDE starts, a malformed one being fatal.</summary>
-    public static void CheckVariable() => From(new Uri("https://json.schemastore.org/"));
+    /// <summary>Where a schema is asked for: its own URL, or at <see cref="Place"/>, its path kept.</summary>
+    private static Uri From(Uri schema) => Place is { } place ? new Uri(place, schema.PathAndQuery) : schema;
 
     private static async Task<string> DownloadAsync(Uri uri)
     {

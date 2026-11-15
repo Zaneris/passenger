@@ -29,15 +29,9 @@ public sealed record ReleaseFeed(Uri Latest, TimeSpan Timeout)
     /// else the same path on the feed's own host.</summary>
     public Uri Downloads => Latest == GitHub ? new Uri("https://github.com/Zaneris/passenger/releases/download/") : new Uri(Latest, "/Zaneris/passenger/releases/download/");
 
-    /// <summary>GitHub's, or the one <c>PASSENGER_RELEASES</c> names; a value there that is no http or https URL is
-    /// fatal.</summary>
-    public static ReleaseFeed Default => Environment.GetEnvironmentVariable(Variable) is { Length: > 0 } named
-        ? new ReleaseFeed(Parse(named), ShortTimeout)
-        : new ReleaseFeed(GitHub, ShortTimeout);
-
-    private static Uri Parse(string text) =>
-        WebAddress.Of(text)
-        ?? throw new FormatException($"{Variable} takes the http or https URL of a latest release as GitHub's API answers it, not '{text}'");
+    /// <summary>GitHub's, or the one <c>PASSENGER_RELEASES</c> names (<see cref="EnvironmentValues.Address(string, string)"/>).</summary>
+    public static ReleaseFeed Default =>
+        new(EnvironmentValues.Address(Variable, "of a latest release as GitHub's API answers it") ?? GitHub, ShortTimeout);
 }
 
 /// <summary>A release newer than the running Passenger: its version ("0.2.0"), its tag ("v0.2.0"), and what its link

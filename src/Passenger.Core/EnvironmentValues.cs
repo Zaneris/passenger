@@ -20,4 +20,19 @@ public static class EnvironmentValues
                 ? TimeSpan.FromMilliseconds(milliseconds)
                 : throw new FormatException($"{variable} takes a whole number of milliseconds above 0, not '{given}'")
             : otherwise;
+
+    /// <summary>The address <paramref name="variable"/> names in place of a host Passenger asks (a stand-in's), or null while
+    /// it is unset or empty: https, or http to this machine alone (<see cref="WebAddress.Secure"/>), as what comes from it is
+    /// taken as the host's own. Any other value throws a <see cref="FormatException"/> saying the variable takes the address
+    /// <paramref name="what"/> ("Open VSX's API is asked at instead").</summary>
+    public static Uri? Address(string variable, string what) => Address(variable, Environment.GetEnvironmentVariable(variable), what);
+
+    /// <summary>The address the value <paramref name="given"/> for <paramref name="variable"/> names, as
+    /// <see cref="Address(string, string)"/> reads it.</summary>
+    internal static Uri? Address(string variable, string? given, string what) =>
+        given is { Length: > 0 }
+            ? WebAddress.Of(given) is { } address && WebAddress.Secure(address)
+                ? address
+                : throw new FormatException($"{variable} takes the https address (http on this machine) {what}, not '{given}'")
+            : null;
 }

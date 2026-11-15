@@ -137,6 +137,25 @@ public sealed class CommandLineTests : IDisposable
             $"Passenger with {variable}={value} was to be refused with exit code 2 saying \"{reason}\"; it exited {code} and wrote:\n{error}");
     }
 
+    /// <summary>A variable naming a stand-in for a host Passenger asks is checked as Passenger starts: an address that is
+    /// no URL, or plain http to another machine, ends it at once rather than failing when the host is first asked.</summary>
+    [Theory]
+    [InlineData(global::Passenger.App.Mobile.AndroidLicences.Variable, "repository2-3.xml")]
+    [InlineData(global::Passenger.Core.DotnetReleases.Variable, "releases")]
+    [InlineData(global::Passenger.App.Xaml.SourceLink.Variable, "symbols")]
+    [InlineData(global::Passenger.App.Updates.ReleaseFeed.Variable, "http://192.0.2.10/repos/Zaneris/passenger/releases/latest")]
+    [InlineData(global::Passenger.App.Web.JsonSchemas.Variable, "http://192.0.2.10/")]
+    [InlineData(global::Passenger.App.Web.DockerHubTags.Variable, "http://192.0.2.10/")]
+    [InlineData(global::Passenger.App.OpenVsx.Variable, "http://192.0.2.10/")]
+    public async Task A_variable_naming_no_https_address_for_a_host_ends_Passenger_with_exit_code_2_and_the_reason_before_anything_starts(string variable, string value)
+    {
+        (int code, string error) = await Run(["--mcp", "."], settings, new Dictionary<string, string> { [variable] = value });
+
+        string reason = $"passenger: {variable} takes the https address (http on this machine) ";
+        Assert.True(code == 2 && error.StartsWith(reason, StringComparison.Ordinal) && error.Contains($", not '{value}'", StringComparison.Ordinal),
+            $"Passenger with {variable}={value} was to be refused with exit code 2 saying \"{reason}…, not '{value}'\"; it exited {code} and wrote:\n{error}");
+    }
+
     [Gate]
     [Fact]
     public async Task A_screenshot_named_with_the_file_before_its_folder_and_a_click_at_the_corner_is_taken_at_its_crop()

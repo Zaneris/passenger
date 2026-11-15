@@ -55,26 +55,10 @@ public static class OpenVsx
     private static readonly TimeSpan Limit = TimeSpan.FromSeconds(30);
     private static readonly HttpClient Http = OutboundHttp.Client(Limit, most: VsCodeThemes.MostVsixBytes);
 
-    /// <summary>Where its API is asked: <see cref="Variable"/>'s address, else Open VSX's own. A value there that is no http
-    /// or https address is fatal.</summary>
-    public static Uri Registry
-    {
-        get
-        {
-            if (Environment.GetEnvironmentVariable(Variable) is not { Length: > 0 } named)
-            {
-                return Own;
-            }
-            if (WebAddress.Of(named) is not { } place || !WebAddress.Secure(place))
-            {
-                throw new FormatException($"{Variable} takes the https address (http on this machine) Open VSX's API is asked at instead, not '{named}'");
-            }
-            return place.AbsoluteUri.EndsWith('/') ? place : new Uri(place.AbsoluteUri + "/");
-        }
-    }
-
-    /// <summary>Checks <see cref="Variable"/> as the IDE starts, a malformed one being fatal.</summary>
-    public static void CheckVariable() => _ = Registry;
+    /// <summary>Where its API is asked: <see cref="Variable"/>'s address (<see cref="EnvironmentValues.Address(string, string)"/>),
+    /// else Open VSX's own.</summary>
+    public static Uri Registry =>
+        EnvironmentValues.Address(Variable, "Open VSX's API is asked at instead") is { } named ? WebAddress.Folder(named) : Own;
 
     /// <summary>The address of a search of its themes for some words (all of them for none), in an order, a page from
     /// <paramref name="offset"/>.</summary>

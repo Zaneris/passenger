@@ -15,15 +15,18 @@ public static class AndroidLicences
     [IdentifierHome]
     public const string Variable = "PASSENGER_ANDROID_REPOSITORY";
 
-    private const string Repository = "https://dl.google.com/android/repository/repository2-3.xml";
+    private static readonly Uri Google = new("https://dl.google.com/android/repository/repository2-3.xml");
+
+    /// <summary>The repository's XML: Google's, or the stand-in <see cref="Variable"/> names
+    /// (<see cref="EnvironmentValues.Address(string, string)"/>).</summary>
+    public static Uri Repository => EnvironmentValues.Address(Variable, "of the XML Google's repository of Android SDK packages is read from instead") ?? Google;
 
     /// <summary>The licences the packages use (the SDK's own licence where one is not listed), each once, in the
     /// repository's order.</summary>
     public static async Task<IReadOnlyList<AndroidLicence>> ReadAsync(IReadOnlyList<string> packages, CancellationToken cancel)
     {
-        string address = Environment.GetEnvironmentVariable(Variable) is { Length: > 0 } standIn ? standIn : Repository;
         using HttpClient client = OutboundHttp.Client(TimeSpan.FromSeconds(60), 64L * 1024 * 1024);
-        await using Stream body = await client.GetStreamAsync(new Uri(address), cancel);
+        await using Stream body = await client.GetStreamAsync(Repository, cancel);
         return Read(body, packages);
     }
 
