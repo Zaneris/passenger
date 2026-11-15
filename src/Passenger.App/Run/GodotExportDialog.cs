@@ -9,12 +9,18 @@ namespace Passenger.App.Run;
 
 /// <summary>The Godot found as an export takes it, read off the window's thread: its templates' version ("4.7.2.stable.mono")
 /// and their folder, or why no export can run (no Godot, one that cannot run the project).</summary>
-public sealed record GodotExportGodot(string? Version, string? Templates, string? Problem);
+public sealed record GodotExportGodot(string? Version, string? Templates, string? Problem)
+{
+    /// <summary>Why its editor would build no C# of the project, which the export publishes through; null where it would, or
+    /// the project is GDScript alone (<see cref="GodotExportPlan.BuildsOf"/>).</summary>
+    public string? Unbuilt { get; init; }
+}
 
 /// <summary>Publish of a Godot project: its export_presets.cfg's presets, the one chosen exported as a release or a debug
 /// build to its path (the preset's own, or another typed), with the command line Godot runs; whether the Godot found has the
 /// templates the export takes, with Install Templates… from a .tpz the person picks and the link to Godot's download of
-/// them. Export closes with the export to run, greyed with why while the templates are missing.</summary>
+/// them. Export closes with the export to run, greyed with why while the templates are missing or Godot's editor would build
+/// no C# of the game.</summary>
 public sealed class GodotExportDialog : IdeWindow
 {
     /// <summary>The words of a release export, the first kind offered.</summary>
@@ -172,6 +178,7 @@ public sealed class GodotExportDialog : IdeWindow
         problem.Text = presets.Count == 0 ? $"The project has no {GodotExports.FileName}: make an export preset in Godot's editor (Project, Export)"
             : path.Length == 0 ? "Give the file to export to"
             : godot is { Problem: { } cannot } ? cannot
+            : godot is { Unbuilt: { } unbuilt } && preset is not null ? $"{preset.Name} cannot be exported: {unbuilt}"
             : missing.Count > 0 ? $"Install the templates {preset!.Name} takes first"
             : null;
         export.IsEnabled = Problem is null && godot is not null && !installing;

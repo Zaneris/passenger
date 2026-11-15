@@ -51,14 +51,18 @@ public sealed record GodotExportPlan(string Program, IReadOnlyList<string> Argum
             arguments.Add(GodotExecutables.Headless);
         }
         arguments.AddRange(["--path", request.Folder, request.Debug ? "--export-debug" : "--export-release", preset.Name, output]);
-        // A C# game's export publishes it through the editor's own build.
-        GodotEditorDotnet.Given builds = scripts ? GodotEditorDotnet.Given.AsItStands
-            : GodotEditorDotnet.For(found, GodotUserFolders.Into(new Dictionary<string, string>(), folders), request.Folder, null, runsGame: false);
         return (new GodotExportPlan(found.Executable, arguments, output, GodotExports.Missing(preset, request.Debug, templates, File.Exists, request.Folder), templates, version)
         {
-            Builds = builds,
+            Builds = BuildsOf(found, request.Folder, scripts, folders),
         }, null);
     }
+
+    /// <summary>What the Godot found's editor needs for its build of the project in <paramref name="folder"/>, which a C# game's
+    /// export publishes through, the Godot user folders given over its environment; nothing for one of GDScript alone
+    /// (<paramref name="scripts"/>). Reads the disk.</summary>
+    public static GodotEditorDotnet.Given BuildsOf(GodotFound found, string folder, bool scripts, IReadOnlyDictionary<string, string>? folders) => scripts
+        ? GodotEditorDotnet.Given.AsItStands
+        : GodotEditorDotnet.For(found, GodotUserFolders.Into(new Dictionary<string, string>(), folders), folder, null, runsGame: false);
 }
 
 /// <summary>A Godot project's export: Godot's headless export of a preset in the Run window, its errors folded and linked as
@@ -100,14 +104,14 @@ public sealed partial class BuildRunController
             {
                 return Refused(why!);
             }
+            if (plan.Builds.WhyNot is { } unbuilt)
+            {
+                return Refused($"{request.Preset} cannot be exported: {unbuilt}");
+            }
             if (plan.Missing.Count > 0)
             {
                 return Refused($"{request.Preset} cannot be exported: Godot {plan.Version} has no {Plural.Listed(plan.Missing)} among its export templates"
                     + $"{(plan.Templates is { } folder ? $" ({PathNames.Shown(folder, null)})" : string.Empty)}: install them from a {GodotExports.Archive} in Publish");
-            }
-            if (plan.Builds.WhyNot is { } unbuilt)
-            {
-                return Refused($"{request.Preset} cannot be exported: {unbuilt}");
             }
             if (await parts.Editors.SaveAllLandedAsync(work, work.Stopping) is { } unsaved)
             {

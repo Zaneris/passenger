@@ -152,6 +152,40 @@ public sealed class GodotExportTests
         }
     }
 
+    /// <summary>A C# game whose export Godot's editor would build none of here (on macOS, DOTNET_ROOT among the window's Godot
+    /// variables naming a .NET whose released SDK the installer's dotnet lacks, which Passenger then keeps): the Export dialog
+    /// says why as it opens and greys Export, before any template is installed, in the words an export asked for anyway is
+    /// refused with (#1727).</summary>
+    [AvaloniaFact]
+    public void A_csharp_games_export_godots_editor_would_build_none_of_is_refused_in_the_dialog_as_it_opens()
+    {
+        Assert.SkipWhen(Godot is not { WhyNot: null, Version: not null, Packages: not null },
+            Godot is null ? "No Godot was found (GODOT, the PATH, Applications): install Godot 4's .NET build to run this test" : $"The Godot found cannot export C#: {Godot.WhyNot}");
+        (string folder, IReadOnlyDictionary<string, string> homes) = CSharpGame();
+        string? root = Environment.GetEnvironmentVariable(RuntimeVariables.Root);
+        Dictionary<string, string> godots = new(homes) { [RuntimeVariables.Root] = root ?? string.Empty };
+        string? why = GodotExportPlan.BuildsOf(Godot!, PathNames.Canonical(folder), scripts: false, godots).WhyNot;
+        Assert.SkipWhen(why is null, $"Godot's editor builds a C# game here on the .NET DOTNET_ROOT names ({root ?? "unset"}): only on macOS, where it builds with the "
+            + "installer's dotnet, does a .NET whose released SDK that lacks break its builds");
+        MainWindow window = Open(folder, godots);
+        try
+        {
+            Assert.Null(window.Actions.Run(AppActions.Publish));
+            GodotExportDialog dialog = Asked(window);
+            Assert.Equal($"{Preset} cannot be exported: {why}", dialog.Problem);
+            Assert.False(dialog.GetVisualDescendants().OfType<Button>().Single(b => b.Content as string == "Export").IsEnabled, "Export is enabled for an export Godot would build none of");
+            dialog.Close();
+
+            BuildOutcome refused = Ui.Await(window.Builds.ExportGodotAsync(new GodotExportRequest(PathNames.Canonical(folder), Preset)), "the export refused");
+            Assert.True(refused.Status == BuildStatus.Refused && refused.Message == dialog.Problem, $"An export Godot would build none of ended {refused.Status}: {refused.Message}");
+        }
+        finally
+        {
+            window.Close();
+            Directory.Delete(Path.Combine(folder, "..", Path.GetFileName(folder) + "-home"), recursive: true);
+        }
+    }
+
     /// <summary>The file the C# game's preset exports it to, from the project's folder.</summary>
     private static string CSharpOutput => OperatingSystem.IsMacOS() ? "build/Spinner.zip" : OperatingSystem.IsWindows() ? "build/Spinner.exe" : $"build/Spinner.{Arch}";
 

@@ -88,7 +88,7 @@ public partial class MainWindow
     }
 
     /// <summary>The Godot found as a project's export takes it: its templates' version and folder in the window's Godot user
-    /// folders, or why none runs the project.</summary>
+    /// folders and why its editor would build no C# of the project, or why none runs the project.</summary>
     private async Task<GodotExportGodot> ExportGodotAsync(string folder)
     {
         string? setting = settings.GodotExecutable;
@@ -110,7 +110,10 @@ public partial class MainWindow
             }
             string? templates = GodotExports.TemplatesFolder(found.Executable, version, OperatingSystem.IsWindows(), OperatingSystem.IsMacOS(),
                 name => GodotUserFolders.Variable(folders, name), File.Exists);
-            return new GodotExportGodot(version, templates, templates is null ? "No folder for Godot's export templates is known: HOME (APPDATA on Windows) is not set" : null);
+            return new GodotExportGodot(version, templates, templates is null ? "No folder for Godot's export templates is known: HOME (APPDATA on Windows) is not set" : null)
+            {
+                Unbuilt = GodotExportPlan.BuildsOf(found, folder, scripts, folders).WhyNot,
+            };
         });
     }
 
