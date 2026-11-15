@@ -17,7 +17,7 @@ namespace Passenger.App.Updates;
 /// command the person is given, which keeps the release replaced in the update's folder in the state until the new one
 /// starts, as a person's does; a copy a package manager installed is left to it.</summary>
 [SupportedOSPlatform("linux")]
-public sealed partial class LinuxUpdater : Updater
+public sealed partial class LinuxUpdater : InPlaceUpdater
 {
     /// <summary>Where install.sh installs for everyone, with <c>--system</c>.</summary>
     public const string SystemFolder = "/opt/passenger";
@@ -38,7 +38,6 @@ public sealed partial class LinuxUpdater : Updater
     private readonly bool mayAsk;
     private readonly string running;
     private readonly IReadOnlyDictionary<string, string> environment;
-    private readonly Func<string, Task> start;
     private Task<UpdatedElsewhere?>? elsewhere;
 
     /// <summary>pkexec, found as the update was made ready, by which Restart to Update installs it as root; or null.</summary>
@@ -50,6 +49,7 @@ public sealed partial class LinuxUpdater : Updater
     /// test's HOME), <paramref name="start"/> how Restart to Update starts it (its launcher, apart, by default).</summary>
     public LinuxUpdater(string install, string staging, InstallKind kind, bool mayAsk = true, string? running = null,
         IReadOnlyDictionary<string, string>? environment = null, Func<string, Task>? start = null)
+        : base(start ?? Launch)
     {
         Folder = install;
         Staging = staging;
@@ -57,7 +57,6 @@ public sealed partial class LinuxUpdater : Updater
         this.mayAsk = mayAsk;
         this.running = running ?? Product.Version;
         this.environment = environment ?? new Dictionary<string, string>();
-        this.start = start ?? Launch;
     }
 
     /// <summary>Whose install a copy is, by where install.sh put it.</summary>
@@ -278,68 +277,19 @@ public sealed partial class LinuxUpdater : Updater
         }
     }
 
-    public override void Install(bool restart)
-    {
-        try
-        {
-            InstallReady(restart);
-        }
-        finally
-        {
-            LetRelaysGo();
-        }
-    }
+    /// <summary>The release's passenger/ folder, unpacked beside the install or in the state's folder for it.</summary>
+    protected override string Staged(string version) => Path.Combine(UnpackedFolder(version), "passenger");
 
-    private void InstallReady(bool restart)
+    protected override string? Replace(string staged, string version) => kind == InstallKind.System ? InstallForEveryone(staged) : Swap(staged);
+
+    /// <summary>The download's folder, of one person's install; an install for everyone left the release it replaced
+    /// there, for the new one's start to remove (<see cref="TidyAsync"/>).</summary>
+    protected override void Tidy(string version)
     {
-        NotInstalled = null;
-        if (Ready is not { } version)
-        {
-            return;
-        }
-        if (Asks is not null && !restart)
-        {
-            IdeErrors.Write($"Updates: Passenger {version} stays ready: installing it asks for an administrator's password, which only Restart to Update asks for");
-            return;
-        }
-        string passenger = Path.Combine(UnpackedFolder(version), "passenger");
-        if (!Directory.Exists(passenger))
-        {
-            NotInstalled = $"{passenger} is gone";
-            IdeErrors.Write($"Updates: Passenger {version} was not installed: {NotInstalled}");
-            return;
-        }
-        IReadOnlyList<OtherCopy> others = Others();
-        if (WaitsFor(others, version, Folder) is { } named)
-        {
-            NotInstalled = $"another Passenger ran from {Folder} ({named})";
-            return;
-        }
-        FollowRelays(others, version);
-        string? why = kind == InstallKind.System ? InstallForEveryone(passenger) : Swap(passenger);
-        // The release is in place, or the old one still is: either way the relays start again from it.
-        LetRelaysGo();
-        if (why is not null)
-        {
-            NotInstalled = why;
-            IdeErrors.Write($"Updates: Passenger {version} was not installed in {Folder}: {why}");
-            Restart(restart, start);
-            IdeErrors.Flush();
-            return;
-        }
-        if (kind != InstallKind.System)
-        {
-            Refresh();
-        }
-        IdeErrors.Write($"Updates: Passenger {version} installed in {Folder}{(restart ? ", and started" : string.Empty)}");
-        Restart(restart, start);
-        Ready = null;
-        // An install for everyone left the release it replaced there, for the new one's start to remove (TidyAsync).
         if (kind != InstallKind.System)
         {
             Remove(Path.Combine(Staging, version));
         }
-        IdeErrors.Flush();
     }
 
     /// <summary>The release unpacked beside the install and the install trade places in one step, where the file system
@@ -410,10 +360,15 @@ public sealed partial class LinuxUpdater : Updater
             : $"install.sh failed ({ran.Said}). To install it, run {Command(passenger)}";
     }
 
-    /// <summary>The menu entry, its icons and file types and the command's link, refreshed by the installed install.sh,
-    /// the new release's, as it installs them; a failure is logged, the release being in place all the same.</summary>
-    private void Refresh()
+    /// <summary>One person's menu entry, its icons and file types and the command's link, refreshed by the installed
+    /// install.sh, the new release's, as it installs them; a failure is logged, the release being in place all the same.
+    /// An install for everyone's were refreshed by the install.sh that put the release in place.</summary>
+    protected override void Placed()
     {
+        if (kind == InstallKind.System)
+        {
+            return;
+        }
         ProcessStartInfo command = ChildProcesses.Command("/bin/sh", [Path.Combine(Folder, "install.sh")]);
         command.Environment.Remove("SUDO_USER");
         ChildResult ran = Run(command);

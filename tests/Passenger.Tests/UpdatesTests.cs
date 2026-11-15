@@ -887,12 +887,11 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
         }
         Assert.True(copy.InstalledVersion == Product.Version, $"{copy.Bundle} is {copy.InstalledVersion} after an update that could not take its place");
         Assert.True(copy.SignatureHolds(), $"{copy.Bundle} is not whole after an update that could not take its place");
-        Assert.Contains(Ui.IdeLog().Split('\n'), line => line.Contains($"Updates: Passenger {newer} was not installed: ", StringComparison.Ordinal)
-            && line.Contains("Permission denied", StringComparison.Ordinal));
+        Assert.Contains(Ui.IdeLog().Split('\n'), line => line.Contains($"Updates: Passenger {newer} was not installed in {copy.Bundle}: Permission denied", StringComparison.Ordinal));
 
         window = Started(copy.Updater());
         window.WatchForUpdates();
-        Assert.Equal($"Passenger {newer} did not install: Help, Show Log says why", window.Status);
+        Assert.Equal($"Passenger {newer} did not install: Permission denied", window.Status);
         Ui.WaitFor(() => Notice(window) == $"Restart to update to Passenger {newer}", "the update that did not install to be offered again");
         Assert.True(github.RequestsFor(copy.Package(newer)).Length == 1, $"{copy.Package(newer)} was downloaded again");
         window.Close();
@@ -900,7 +899,7 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
 
     [AvaloniaFact]
     [SupportedOSPlatform("macos")]
-    public void Another_Passenger_open_from_the_same_app_holds_the_update_back_until_it_closes()
+    public void Another_Passenger_open_from_the_same_app_holds_the_update_back_until_it_closes_and_the_next_start_names_it()
     {
         Assert.SkipUnless(OperatingSystem.IsMacOS(),
             "On Windows Velopack's Update.exe replaces the install once this process has ended; a test cannot end its own process");
@@ -939,6 +938,14 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
             Assert.True(copy.InstalledVersion == Product.Version, $"The app another Passenger runs from was replaced by {copy.InstalledVersion}");
             Assert.True(copy.Holds(newer), $"v{newer} is no longer ready once Passenger closed without installing it");
             Assert.Contains(Ui.IdeLog().Split('\n'), line => line.Contains($"Updates: Passenger {newer} waits to install: another Passenger runs from {copy.Bundle}", StringComparison.Ordinal));
+
+            window = Started(copy.Updater());
+            window.WatchForUpdates();
+            Assert.True(window.Status?.StartsWith($"Passenger {newer} did not install: another Passenger ran from {copy.Bundle} (process {other.Id}: ", StringComparison.Ordinal) == true
+                && window.Status.Contains("Passenger 120", StringComparison.Ordinal),
+                $"The next start does not say the Passenger running from the same app held the update back: '{window.Status}'");
+            Ui.WaitFor(() => Notice(window) == $"Restart to update to Passenger {newer}", "the update held back to be offered again");
+            window.Close();
         }
         finally
         {

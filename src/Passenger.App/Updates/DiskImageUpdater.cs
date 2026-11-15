@@ -12,29 +12,27 @@ namespace Passenger.App.Updates;
 /// two apps trade places in one step where the volume allows (renamex_np's swap), and Restart to Update starts the new
 /// one through LaunchServices: nothing of the update runs after Passenger has gone.</summary>
 [SupportedOSPlatform("macos")]
-public sealed partial class DiskImageUpdater : Updater
+public sealed partial class DiskImageUpdater : InPlaceUpdater
 {
     /// <summary>The app at the image's top, as tools/package-mac.sh makes it.</summary>
     private const string AppName = "Passenger.app";
 
     /// <summary>The app made ready, named so LaunchServices never takes it for an app to open until it is in place.</summary>
-    private const string Staged = "Passenger.update";
+    private const string ReadyApp = "Passenger.update";
 
     private const string Sums = ReleaseSums.Name;
 
     private static readonly TimeSpan ToolLimit = TimeSpan.FromMinutes(10);
-
-    private readonly Func<string, Task> start;
 
     /// <param name="bundle">The installed Passenger.app.</param>
     /// <param name="staging">Where downloads are made ready: the state folder's <c>updates/</c>.</param>
     /// <param name="start">How the installed app is started again by Restart to Update: LaunchServices' open by
     /// default.</param>
     public DiskImageUpdater(string bundle, string staging, Func<string, Task>? start = null)
+        : base(start ?? Open)
     {
         Bundle = bundle;
         Staging = staging;
-        this.start = start ?? Open;
     }
 
     /// <summary>The installed Passenger.app this copy runs from.</summary>
@@ -99,7 +97,7 @@ public sealed partial class DiskImageUpdater : Updater
             return Announced(release, "disk image for this processor");
         }
         string folder = Path.Combine(Staging, release.Version);
-        string app = Path.Combine(folder, Staged);
+        string app = Path.Combine(folder, ReadyApp);
         // Not held: removing old copies is the disk's work, which nothing drawn waits for.
         await BackgroundWork.Unheld(() => CleanAsync(keep: release.Version), cancel).ConfigureAwait(false);
         string identifier = await PlistAsync(Bundle, "CFBundleIdentifier", cancel).ConfigureAwait(false)
@@ -127,112 +125,80 @@ public sealed partial class DiskImageUpdater : Updater
         return new UpdateOutcome.Ready($"Passenger {release.Version} downloaded to {app}: {package.Download.Name}'s SHA-256 is {Sums}' {expected}, and the app's signature holds{Signed(team)}");
     }
 
-    public override void Install(bool restart)
-    {
-        try
-        {
-            InstallReady(restart);
-        }
-        finally
-        {
-            LetRelaysGo();
-        }
-    }
-
-    private void InstallReady(bool restart)
-    {
-        if (Ready is not { } version)
-        {
-            return;
-        }
-        string app = Path.Combine(Staging, version, Staged);
-        if (!Directory.Exists(app))
-        {
-            IdeErrors.Write($"Updates: Passenger {version} was not installed: {app} is gone");
-            return;
-        }
-        IReadOnlyList<OtherCopy> others = Others();
-        if (WaitsFor(others, version, Bundle) is not null)
-        {
-            return;
-        }
-        FollowRelays(others, version);
-        (string? why, string? old) = Replace(app, version);
-        // The app is in place, or the old one still is: either way the relays start again from it.
-        LetRelaysGo();
-        if (why is not null)
-        {
-            IdeErrors.Write($"Updates: Passenger {version} was not installed: {app} could not take the place of {Bundle}: {why}");
-            Restart(restart, start);
-            IdeErrors.Flush();
-            return;
-        }
-        // LaunchServices notices a bundle that changed by its date.
-        Directory.SetLastWriteTimeUtc(Bundle, DateTime.UtcNow);
-        IdeErrors.Write($"Updates: Passenger {version} installed in {Bundle}{(restart ? ", and started" : string.Empty)}");
-        Restart(restart, start);
-        Remove(old);
-        Ready = null;
-        // As the process ends, after its last window: nothing is left to await it.
-        Synchronously.Run(() => CleanAsync(keep: null));
-        IdeErrors.Flush();
-    }
+    protected override string Staged(string version) => Path.Combine(Staging, version, ReadyApp);
 
     /// <summary>The new app takes the installed one's place: the two trade places in one step where the volume can swap
-    /// folders (APFS), the app copied beside the installed one first when the state folder is on another volume, and on a
-    /// volume that cannot swap (HFS+) in two renames, the old app put back should the second fail. Gives why not, or where
-    /// the old app now is.</summary>
-    private (string? Why, string? Old) Replace(string app, string version)
+    /// folders (APFS), the app copied beside the installed one first (<see cref="Beside"/>) when the state folder is on
+    /// another volume, and on a volume that cannot swap (HFS+) in two renames, the old app put back should the second
+    /// fail. The old app is left where the new one was, for <see cref="Tidy"/>.</summary>
+    protected override string? Replace(string staged, string version)
     {
-        int failed = Swap(app, Bundle);
+        int failed = Swap(staged, Bundle);
         if (failed == 0)
         {
-            return (null, app);
+            return null;
         }
         if (failed is not (CrossDevice or NotSupported))
         {
-            return (Marshal.GetPInvokeErrorMessage(failed), null);
+            return Marshal.GetPInvokeErrorMessage(failed);
         }
-        string beside = Path.Combine(Path.GetDirectoryName(Bundle)!, $".{Path.GetFileName(Bundle)}.{version}");
+        string beside = Beside(version);
         Remove(beside);
-        ChildResult copied = Run("ditto", [app, beside]);
+        ChildResult copied = Run("ditto", [staged, beside]);
         if (!copied.Succeeded)
         {
             Remove(beside);
-            return ($"it could not be copied beside it: {copied.Said}", null);
+            return $"the new app could not be copied into {Path.GetDirectoryName(Bundle)}: {copied.Said}";
         }
         failed = Swap(beside, Bundle);
         if (failed == 0)
         {
-            return (null, beside);
+            return null;
         }
         if (failed != NotSupported)
         {
             Remove(beside);
-            return (Marshal.GetPInvokeErrorMessage(failed), null);
+            return Marshal.GetPInvokeErrorMessage(failed);
         }
-        string old = beside + ".old";
         try
         {
-            Directory.Move(Bundle, old);
+            Directory.Move(Bundle, beside + Old);
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
             Remove(beside);
-            return (error.Message, null);
+            return error.Message;
         }
         try
         {
             Directory.Move(beside, Bundle);
-            return (null, old);
+            return null;
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
-            Directory.Move(old, Bundle);
+            Directory.Move(beside + Old, Bundle);
             Remove(beside);
-            return (error.Message, null);
+            return error.Message;
         }
     }
+
+    /// <summary>LaunchServices notices a bundle that changed by its date.</summary>
+    protected override void Placed() => Directory.SetLastWriteTimeUtc(Bundle, DateTime.UtcNow);
+
+    /// <summary>The old app, wherever <see cref="Replace"/> left it, and every download made ready.</summary>
+    protected override void Tidy(string version)
+    {
+        Remove(Beside(version));
+        Remove(Beside(version) + Old);
+        // As the process ends, after its last window: nothing is left to await it.
+        Synchronously.Run(() => CleanAsync(keep: null));
+    }
+
+    /// <summary>Where the new app is copied beside the installed one, on its volume, hidden.</summary>
+    private string Beside(string version) => Path.Combine(Path.GetDirectoryName(Bundle)!, $".{Path.GetFileName(Bundle)}.{version}");
+
+    /// <summary>The installed app's name while the new one takes its place in two renames.</summary>
+    private const string Old = ".old";
 
     public override async Task DiscardAsync()
     {

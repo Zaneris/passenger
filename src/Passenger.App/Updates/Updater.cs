@@ -160,24 +160,6 @@ public abstract class Updater
         }
     }
 
-    /// <summary>Starts the install again through <paramref name="start"/> for Restart to Update, a failure logged.</summary>
-    protected void Restart(bool restart, Func<string, Task> start)
-    {
-        if (!restart)
-        {
-            return;
-        }
-        try
-        {
-            // As the process ends, after its last window: nothing is left to await it.
-            Synchronously.Run(() => start(Installed));
-        }
-        catch (Exception error) when (ChildFailures.Of(error))
-        {
-            IdeErrors.Write($"Updates: {Installed} could not be started again: {error.Message}");
-        }
-    }
-
     /// <summary>A tool run where a failure to start or finish is an exit code of -1 saying why.</summary>
     protected static async Task<ChildResult> ToolAsync(ProcessStartInfo command, TimeSpan limit, CancellationToken cancel)
     {
