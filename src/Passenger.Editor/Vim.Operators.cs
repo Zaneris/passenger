@@ -52,15 +52,18 @@ public sealed partial class Vim
     }
 
     /// <summary>An operator done over the stretches it takes at the carets, the text it took kept in the registers; a
-    /// block's (<paramref name="block"/>) kept as one.</summary>
-    private VimResult Act(Command command, string op, List<Stretch> stretches, TextSnapshot text, SelectionSet selections, IVimView view, bool block = false)
+    /// block's (<paramref name="block"/>) kept as one, a piece for each of its lines (<paramref name="lines"/>).</summary>
+    private VimResult Act(Command command, string op, List<Stretch> stretches, TextSnapshot text, SelectionSet selections, IVimView view, bool block = false,
+        (int Top, int Bottom, int Left, int Right)? lines = null)
     {
         stretches.Sort((a, b) => a.Start.CompareTo(b.Start));
         if (op != "y" && view.Refuses is { } why)
         {
             return Refused(why, SelectionSet.Create([.. stretches.Select(t => Selection.At(Settled(text, t.Landing, breakEnds)))], Math.Min(selections.PrimaryIndex, stretches.Count - 1)));
         }
-        VimRegister taken = new([.. Merged(stretches, pieces: true).Select(m => Taken(text, m))], stretches[0].Lines) { Blockwise = block };
+        VimRegister taken = block && lines is { } over && stretches.All(t => t.First == t.Last)
+            ? BlockTaken(text, stretches, over, view.Indent.TabWidth)
+            : new([.. Merged(stretches, pieces: true).Select(m => Taken(text, m))], stretches[0].Lines) { Blockwise = block };
         VimResult result = op switch
         {
             "d" => Delete(text, selections, stretches),
@@ -136,6 +139,21 @@ public sealed partial class Vim
     }
 
     /// <summary>The text a stretch takes, as a register keeps it: line breaks "\n", whole lines each ending with one.</summary>
+    /// <summary>A block's text as a register keeps it: a piece for each of its lines, a line ending where the block
+    /// begins giving an empty one and a line short of it as many spaces as the block is wide (one more after $), the
+    /// block as wide as its columns or after $ its longest piece.</summary>
+    private static VimRegister BlockTaken(TextSnapshot text, List<Stretch> stretches, (int Top, int Bottom, int Left, int Right) block, int tab)
+    {
+        List<string?> found = [.. Enumerable.Range(block.Top, block.Bottom - block.Top + 1)
+            .Select(line => stretches.FindIndex(t => t.First == line) is int at and >= 0 ? Taken(text, stretches[at])
+                : TextNavigation.VisualColumn(text, text.GetLine(line).End, tab) >= block.Left ? string.Empty
+                : null)];
+        int longest = found.Max(p => p is null ? 0 : TextNavigation.VisualColumn(TextSnapshot.From(p), p.Length, tab));
+        bool toEnd = block.Right == int.MaxValue;
+        int width = toEnd ? longest : block.Right - block.Left + 1;
+        return new VimRegister([.. found.Select(p => p ?? new string(' ', toEnd ? longest + 1 : width))], false) { Blockwise = true, Width = width };
+    }
+
     private static string Taken(TextSnapshot text, Stretch s)
     {
         if (s.Lines)

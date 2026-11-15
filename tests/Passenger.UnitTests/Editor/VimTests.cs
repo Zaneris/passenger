@@ -2048,6 +2048,22 @@ public class VimTests
     public void A_blocks_text_with_a_line_break_goes_on_its_first_line_alone(string before, string keys, string after) =>
         Assert.Equal(after, Run(before, keys));
 
+    /// <summary>A block yanked or deleted keeps a piece for each of its lines, a line short of it as many spaces as the
+    /// block is wide (one more after $), and a put pads each line out to its column, as Vim's do.</summary>
+    [Theory]
+    [InlineData("|abcdef\n\nghijkl\nmn", "<C-v>$jyp", "a|abcdefbcdef\n \nghijkl\nmn")]
+    [InlineData("|abcdef\n\nghijkl\nmn", "<C-v>$jyjp", "abcdef\n|abcdef\n      ghijkl\nmn")]
+    [InlineData("|abcdef\n\nghijkl\nmn", "<C-v>$jy$p", "abcdef|abcdef\n      \nghijkl\nmn")]
+    [InlineData("a|bcdef\n\nghijkl\nmn\nopqrstuvwx\ny", "<C-v>$jjyp", "ab|bcdefcdef\n        \nghhijklijkl\nmn\nopqrstuvwx\ny")]
+    [InlineData("a|bcdef\n\nghijkl\nmn\nopqrstuvwx\ny", "<C-v>lljjyp", "ab|bcdcdef\n     \nghhijijkl\nmn\nopqrstuvwx\ny")]
+    [InlineData("a|bcdef\n\nghijkl\nmn\nopqrstuvwx\ny", "<C-v>$jjyjjjp", "abcdef\n\nghijkl\nmn|bcdef\nop      qrstuvwx\ny hijkl")]
+    [InlineData("abc|def\nab\nghijkl\n\nopqrstuvwx\ny", "<C-v>$jjyP", "abc|defdef\nab     \nghijkljkl\n\nopqrstuvwx\ny")]
+    [InlineData("abc|def\n\nghijkl\nmn\nopqrstuvwx\ny", "<C-v>$jjyGp", "abcdef\n\nghijkl\nmn\nopqrstuvwx\ny|def\n     \n jkl")]
+    [InlineData("a|bcdef\n\nghijkl\nmn\nopq", "<C-v>$jjdjjp", "a\n\ng|bcdef\nm      n\nohijklpq")]
+    [InlineData("abc|def\nab\nghijkl\nmnopqrs", "<C-v>lljjdGp", "abc\nab\nghi\nm|defnopqrs\n    \n jkl")]
+    public void A_block_keeps_a_piece_for_each_line_and_puts_each_out_to_its_column(string before, string keys, string after) =>
+        Assert.Equal(after, Run(before, keys));
+
     [Fact]
     public void A_huge_count_ends_at_the_texts_edge()
     {

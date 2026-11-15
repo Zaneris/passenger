@@ -117,7 +117,7 @@ public sealed partial class Vim
             {
                 return PutOver(acting, op == "P", text, stretches, carets, block, view, top, block ? text.GetLineFromOffset(taken[0].Cursor) : bottom);
             }
-            return Act(acting, basic, stretches, text, carets, view, block && !lines);
+            return Act(acting, basic, stretches, text, carets, view, block && !lines, (top, bottom, left, right));
         }
     }
 
@@ -642,7 +642,7 @@ public sealed partial class Vim
         LineSpan home = VimMotions.LineOf(text, caret);
         int column = TextNavigation.VisualColumn(text, caret, tab) + (before || home.Length == 0 ? 0 : CellsOf(text, caret, tab));
         int[] widths = [.. value.Parts.Select(p => TextNavigation.VisualColumn(TextSnapshot.From(p), p.Length, tab))];
-        int width = widths.Max();
+        int width = value.Width ?? widths.Max();
         int times = Math.Clamp(count, 1, Math.Max(1, MostRepeatedText / Math.Max(1, width * value.Parts.Count)));
         List<TextEdit> edits = [];
         int last = VimMotions.LastLine(text, breakEnds);
@@ -652,7 +652,7 @@ public sealed partial class Vim
         string added = string.Empty;
         for (int i = 0; i < value.Parts.Count; i++)
         {
-            string padded = value.Parts[i] + new string(' ', width - widths[i]);
+            string padded = value.Parts[i] + new string(' ', Math.Max(0, width - widths[i]));
             int line = home.Line + i;
             int at;
             string lead;

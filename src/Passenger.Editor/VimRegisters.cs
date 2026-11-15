@@ -7,6 +7,9 @@ public sealed record VimRegister(IReadOnlyList<string> Parts, bool Linewise)
     /// <summary>A block's text, one piece for each of its lines, put back as a block.</summary>
     public bool Blockwise { get; init; }
 
+    /// <summary>The columns a block's pieces are padded to where text follows them; null for its longest piece's.</summary>
+    public int? Width { get; init; }
+
     /// <summary>The pieces as one text: lines one after another, or pieces joined by a line break.</summary>
     public string Text => Linewise ? string.Concat(Parts) : string.Join('\n', Parts);
 }
