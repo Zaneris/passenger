@@ -99,7 +99,7 @@ tests run with a 4 MB `System.GC.Gen0MaxBudget`, so a young collection fits a 14
 - **No secret on a command line** (any process can read it): give it through the environment, or don't make it. Secrets
   are masked everywhere (Details, logs, consoles, hints, agents' answers, `ChildProcesses.Shown`) by one rule,
   `ContainerSecrets`.
-- **Containers are ended by label** (`ContainerLabels`), never by `down` or `--remove-orphans`, which take the person's
+- **Containers are ended by label** (`ContainerLabels`; what this process made of a Compose project only through `ContainerLabels.Ours(project, folder)`), never by `down` or `--remove-orphans`, which take the person's
   own; Aspire's unlabelled DCP containers and network through `AspireContainerOwnership`; persistent containers and the
   person's own never.
 - **Colours are tokens** (`Passenger.*` in `Theme/Tokens.axaml`, the default theme every other is laid over), given in
@@ -382,7 +382,7 @@ Projects in `src/`; `find_symbol` finds the rest from the names here. A pointer'
   asked: without the plugin docker answers `scout … --format` with "unknown flag", so find it by `docker scout version`.
   docker exec's end ends nothing it started, only closing its standard input; a container's first process takes no
   SIGKILL from inside it, so Stop lets one attached to go (`ManagedDebugger.Unending`).
-- **Aspire.** `AspireController` checks bearer tokens first; a Functions app, its own or an AppHost's, runs through `func start`, the debugger attached to the worker func starts (`FunctionsHost`; Debug through `DebugController.StartThroughAsync`, func ending with its session, `DebugTab.FollowedStarts`); func's host restarts a held worker every 60 s, so one no debugger reaches is never let go and func is started again unheld (`AspireController.UnheldFunctionsAsync`; `DebugController.RefuseNextAttach` in tests); deploy logins are read from each tool's files, never by
+- **Aspire.** `AspireController` checks bearer tokens first; a resource's state is read only through `AspireStates` (`HasEnded`, `IsStopped`, `IsBetween`, `IsFailed`), the protocol's run modes `AspireRunModes`; a Functions app, its own or an AppHost's, runs through `func start`, the debugger attached to the worker func starts (`FunctionsHost`; Debug through `DebugController.StartThroughAsync`, func ending with its session, `DebugTab.FollowedStarts`); func's host restarts a held worker every 60 s, so one no debugger reaches is never let go and func is started again unheld (`AspireController.UnheldFunctionsAsync`; `DebugController.RefuseNextAttach` in tests); deploy logins are read from each tool's files, never by
   running a cloud CLI; metrics only while shown. MetricsEventSource's CollectionStart and Stop reach TraceEvent as
   `Collection/Start` and `Collection/Stop`, and a histogram's count is the interval's.
 - **Web apps' data.** The Requests window reads only while someone looks; Migrations takes connection strings by
