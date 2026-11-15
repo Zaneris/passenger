@@ -1,5 +1,6 @@
 using System.Xml;
 using System.Xml.Linq;
+using Passenger.Core;
 
 namespace Passenger.App.Templates;
 
@@ -48,7 +49,7 @@ public static class TemplateProjects
                 string said = comment.Value.Trim();
                 within += said.StartsWith("#if", StringComparison.Ordinal) ? 1 : said.StartsWith("#endif", StringComparison.Ordinal) ? -1 : 0;
             }
-            else if (node is XElement { Name.LocalName: "OutputType", Parent: { Name.LocalName: "PropertyGroup" } group } element)
+            else if (node is XElement { Name.LocalName: MSBuildNames.OutputType, Parent: { Name.LocalName: "PropertyGroup" } group } element)
             {
                 written.Add(element.Value.Trim());
                 holds |= within == 0 && group.Parent == root && element.Attribute("Condition") is null && group.Attribute("Condition") is null;
