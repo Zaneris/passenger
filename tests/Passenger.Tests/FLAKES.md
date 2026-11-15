@@ -30,6 +30,16 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 
 ## 2026-11-15
 
+- `TerminalTests`' `Scrolled_back_the_terminal_holds_its_place_as_output_arrives`, this Mac in a run of the three terminal
+  classes in one process (#1744): "seven notches of the wheel scrolled 22 lines back, not 21". **The test waited wrong**: it
+  typed its second command (`./cases wait …`) as soon as the first program's line 300 showed, then waited only for an
+  empty cursor row. Where the first program's exit lagged, the tty echoed the command typed ahead and left the cursor on
+  an empty row, so the wheel turned; once the program had gone, sh drew its prompt with the command again on that row and
+  moved a row lower, one line the view rightly held its place over. With the program's exit slowed 60–80 ms it failed
+  with these words in 2 of 25 runs; unslowed, 30 runs beside 16 busy loops never typed ahead. Not #1736's: that change
+  touches only the shell's own end, which this test never meets, and with it taken out the slowed test failed alike. It
+  and the selection test beside it now type only once the prompt is below the first program's lines
+  (`WaitForPromptBelow`), passing 30 of 30 runs so slowed beside 12 busy loops (dad457277).
 - `RunConfigurationsTests`' `Use_external_console_chosen_in_the_dialog_runs_the_program_in_the_terminal_and_is_kept_with_the_configuration`,
   this Mac beside two other test processes (#1736): "The program did not run in the terminal with the configuration's
   arguments and folder", its tab showing only "Process finished with exit code 0.". **A race in the IDE**: the terminal
