@@ -82,7 +82,7 @@ public partial class MainWindow
                 Request(A.CloseTab);
                 break;
             case VimRequestKind.SaveAndClose:
-                IdeErrors.Observe(SaveThenCloseAsync());
+                VimWork(SaveThenCloseAsync());
                 break;
             case VimRequestKind.Open:
                 OpenFile(request.Path!);
@@ -95,16 +95,7 @@ public partial class MainWindow
                 }
                 else if (editor == Editors.CodeEditor && Editors.Active is { } shown)
                 {
-                    Task reformatting = Assist.Actions.ReformatLinesAsync(shown, request.Lines);
-                    // A command line's run waits for it before its next command, so the layout is part of its change.
-                    if (vimRunWork is { } waited)
-                    {
-                        waited.Add(reformatting);
-                    }
-                    else
-                    {
-                        IdeErrors.Observe(reformatting);
-                    }
+                    VimWork(Assist.Actions.ReformatLinesAsync(shown, request.Lines));
                 }
                 break;
             case VimRequestKind.Action:
@@ -124,8 +115,22 @@ public partial class MainWindow
     }
 
     /// <summary>What the commands of the command line Vim mode is running started that the next waits for (= laying out
-    /// its lines); null while none runs.</summary>
+    /// its lines, :x saving and closing its file); null while none runs.</summary>
     private List<Task>? vimRunWork;
+
+    /// <summary>Work a command of Vim mode's started: waited for before a command line's next command, so it is part of
+    /// that command's change and its stop's, else left to run.</summary>
+    private void VimWork(Task work)
+    {
+        if (vimRunWork is { } waited)
+        {
+            waited.Add(work);
+        }
+        else
+        {
+            IdeErrors.Observe(work);
+        }
+    }
 
     /// <summary>A stop of a command line's run: an open file, a split's editor, a place in a file, or the file shown as it is.</summary>
     private sealed record VimStop(OpenDocument? Document = null, EditorGroup? Group = null, ToolWindows.Usage? Place = null);
@@ -307,13 +312,15 @@ public partial class MainWindow
         Request(id);
     }
 
-    /// <summary>:wq and :x: the file saved as Save saves it where it changed, then its tab closed.</summary>
+    /// <summary>:wq and :x: the file shown as asked saved as Save saves it where it changed, then its tab closed in the split
+    /// that showed it, whatever is shown once the save has ended.</summary>
     private async Task SaveThenCloseAsync()
     {
-        if (Editors.Active is { IsModified: true })
+        ActionContext asked = Editors.Active is { } file ? TabContext(Editors.ActiveGroup, file) : Context();
+        if (asked.File is { IsModified: true })
         {
             await SaveExplicitly(all: false);
         }
-        Request(A.CloseTab);
+        Request(A.CloseTab, asked);
     }
 }

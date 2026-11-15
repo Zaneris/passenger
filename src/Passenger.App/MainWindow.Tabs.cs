@@ -159,12 +159,13 @@ public partial class MainWindow
     /// <summary>The tab menu, its items run on the tab it opened on.</summary>
     private void FillTabMenu(TabMenu opening)
     {
-        ActionContext context = new(opening.Document, opening.Group.Editor, null, null, session.Debug.IsDebugging ? session.Debug.Session?.State : null)
-        {
-            Tab = (opening.Group, opening.Document),
-        };
+        ActionContext context = TabContext(opening.Group, opening.Document);
         opening.Menu.ItemsSource = TabMenuItems(opening.Document).Select(entry => FlyoutEntry(entry, context)).ToList();
     }
+
+    /// <summary>Where a tab action runs on one tab of a group, whatever is shown or has the keys when it runs.</summary>
+    private ActionContext TabContext(EditorGroup group, OpenDocument file) =>
+        new(file, group.Editor, null, null, session.Debug.IsDebugging ? session.Debug.Session?.State : null) { Tab = (group, file) };
 
     private static MenuEntry[] Items(params string?[] ids) => [.. ids.Select(id => new MenuEntry(id))];
 }

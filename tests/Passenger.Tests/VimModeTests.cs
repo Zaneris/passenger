@@ -730,6 +730,41 @@ public sealed class VimModeTests : IDisposable
         static string Shown(MainWindow window, string path) => window.EditorArea.Find(PathNames.Canonical(path))!.Text.Snapshot.ToString();
     }
 
+    /// <summary>:windo x saves each split's file and closes its tab in that split, the save laying the script out off the
+    /// window's thread first (Reformat on save), each split's other tab left shown.</summary>
+    [AvaloniaFact]
+    public void Windo_x_saves_and_closes_each_splits_own_file_while_its_save_lays_it_out()
+    {
+        string one = Path.Combine(folder, "one.gd");
+        string two = TestFolders.Write(folder, "two.gd", "extends Node\nvar x=1\n");
+        string three = TestFolders.Write(folder, "three.gd", "extends Node\n");
+        (MainWindow window, _) = Open("extends Node\nvar x=1\n", name: "one.gd");
+        try
+        {
+            window.OpenFile(three);
+            Assert.True(window.Perform(AppActions.SplitRight));
+            window.OpenFile(two);
+            window.EditorArea.SetActiveGroup(window.EditorArea.Groups[0]);
+            window.OpenFile(one);
+            Ui.Settle();
+            (string, string)[] Tabs() => [.. window.EditorArea.Groups.SelectMany(g => g.Tabs.Select(t => (t.Document.Name, g.Active == t.Document ? "shown" : "")))];
+            Assert.Equal([("one.gd", "shown"), ("three.gd", ""), ("three.gd", ""), ("two.gd", "shown")], Tabs());
+            window.ApplySettings(window.Settings with { VimMode = true, GDScriptFormatOnSave = true });
+            Ui.Settle();
+            Keys(window, ":windo %s/=1/=2/<CR>");
+            Keys(window, ":windo x<CR>");
+            Ui.WaitFor(() => File.ReadAllText(one).Contains("var x = 2", StringComparison.Ordinal) && File.ReadAllText(two).Contains("var x = 2", StringComparison.Ordinal),
+                () => $":windo x left one.gd \"{File.ReadAllText(one)}\" and two.gd \"{File.ReadAllText(two)}\" on disk, not each laid out and saved");
+            Ui.WaitFor(() => Tabs().SequenceEqual([("three.gd", "shown"), ("three.gd", "shown")]),
+                () => $":windo x left the tabs {string.Join(", ", Tabs())}, not each split's own file closed");
+            Assert.Equal(["three.gd"], window.EditorArea.Documents.Select(d => d.Name));
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     /// <summary>:cdo runs its commands at each match Find in Files lists in the Find window, as Vim runs them at each entry
     /// of its quickfix list, as one command of the IDE's undo: :s and :update at each match in each file, u taking back
     /// both files; :cfdo runs its command once in each file at its first match and :cdo at every match, :normal x taking
