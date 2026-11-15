@@ -93,11 +93,15 @@ public partial class MainWindow
         {
             IdeErrors.Observe(ListRunTargetsAsync(project));
         }
-        if (TargetProject() == project)
+        if (StillTargeted(project) is { } now)
         {
-            ShowRunTargets(project);
+            ShowRunTargets(now);
         }
     }
+
+    /// <summary>The chosen configuration's project of targets, where it is still <paramref name="project"/>'s, as evaluated
+    /// now: a listing restores the project, after which it is evaluated again.</summary>
+    private ProjectModel? StillTargeted(ProjectModel project) => TargetProject() is { } now && PathNames.Same(now.Path, project.Path) ? now : null;
 
     /// <summary>The project's targets listed again by each platform's workload (Android's now), off the window's thread.</summary>
     private async Task ListRunTargetsAsync(ProjectModel project)
@@ -154,9 +158,9 @@ public partial class MainWindow
         {
             using Working? work = actions!.Work.Begin(A.ChooseRunTarget, $"Looking for where {project.Name} runs…");
             await ListRunTargetsAsync(project);
-            if (TargetProject() == project)
+            if (StillTargeted(project) is { } now)
             {
-                ShowRunTargets(project);
+                ShowRunTargets(now);
             }
         }
     }
