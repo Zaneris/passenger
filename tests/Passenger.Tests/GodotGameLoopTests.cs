@@ -164,10 +164,13 @@ public sealed class GodotGameLoopTests : IClassFixture<GodotGameLoopTests.Game>
             int frames = Array.FindIndex(File.ReadAllText(Path.Combine(game.Folder, "main.gd")).Split('\n'), l => l.StartsWith("var frames", StringComparison.Ordinal));
             Ui.WaitFor(() => Frames(script, frames) is not null, () => $"the frame count's value in main.gd ({Hints(script)}; {window.GodotValues.Unread})", TimeSpan.FromMinutes(1));
             Assert.NotNull(Ui.AwaitPumped(running.TryCountAsync(), "the count before the helper is freed", TimeSpan.FromMinutes(1)));
+            // The helper comes in after a beat of the game's, so only a beat after its answer counts it among the nodes.
+            int beats = 0;
+            running.MonitorsChanged += (_, _) => beats++;
 
             GodotNode before = Ui.AwaitPumped(running.SceneTreeAsync(), "the game's tree", TimeSpan.FromMinutes(1));
             GodotNode main = before.All().First(n => n.Name == "Main");
-            Ui.WaitFor(() => running.Monitors is not null, () => $"the game's first monitors, its count of nodes ({window.Status})", TimeSpan.FromMinutes(1));
+            Ui.WaitFor(() => beats > 0, () => $"the game's monitors once the helper answered, its count of nodes with the helper ({window.Status})", TimeSpan.FromMinutes(1));
             double nodes = running.Monitors!.Nodes;
             Ui.AwaitPumped(running.SetPropertyAsync(main.Id, "free_helper", true), "Main told to free the helper", TimeSpan.FromMinutes(1));
             Ui.WaitFor(() => Run(window).Contains("helper freed", StringComparison.Ordinal), () => $"the game to free the helper ({Run(window)[^Math.Min(400, Run(window).Length)..]})", TimeSpan.FromMinutes(1));
