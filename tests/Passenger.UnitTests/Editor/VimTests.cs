@@ -2031,6 +2031,23 @@ public class VimTests
     public void Visual_mode_takes_the_column_j_and_k_aim_for(string before, string keys, string after) =>
         Assert.Equal(after, Run(before, keys));
 
+    /// <summary>A block's c, s, I or A whose text has a line break types it on the block's first line alone, the other
+    /// lines left as the change found them, with no padding, as Vim's do.</summary>
+    [Theory]
+    [InlineData("|one two\nthree\nfour five six\nseven", "<C-v>jlc7<CR>8<Esc>", "7\n|8e two\nree\nfour five six\nseven")]
+    [InlineData("o|ne two\nthree\nfour five six\nseven", "<C-v>jlc7<CR>8<Esc>", "o7\n|8two\ntee\nfour five six\nseven")]
+    [InlineData("o|ne two\nthree\nfour five six\nseven", "<C-v>jjc7<CR>8<Esc>", "o7\n|8e two\ntree\nfur five six\nseven")]
+    [InlineData("o|ne two\nthree\nfour five six\nseven", "<C-v>jls7<CR>8<Esc>", "o7\n|8two\ntee\nfour five six\nseven")]
+    [InlineData("o|ne two\nthree\nfour five six\nseven", "<C-v>jlc7<CR>8<CR>9<Esc>", "o7\n8\n|9two\ntee\nfour five six\nseven")]
+    [InlineData("o|ne two\nthree\nfour five six\nseven", "<C-v>jI7<CR>8<Esc>", "o7\n|8ne two\nthree\nfour five six\nseven")]
+    [InlineData("o|ne two\nthree\nfour five six\nseven", "<C-v>jA7<CR>8<Esc>", "on7\n|8e two\nthree\nfour five six\nseven")]
+    [InlineData("one t|wo\nthree\nfour five six\nseven", "<C-v>jA7<CR>8<Esc>", "one tw7\n|8o\nthree\nfour five six\nseven")]
+    [InlineData("o|ne two\nthree\nfour five six\nseven", "<C-v>j$A7<CR>8<Esc>", "one two7\n|8\nthree\nfour five six\nseven")]
+    [InlineData("o|ne two\nthree\nfour five six\nseven", "<C-v>jlc7<CR>8<Esc>j.", "o7\n8two\n7\n|8e\nur five six\nseven")]
+    [InlineData("    a|b cd\n    ef gh\n    ij kl", "<C-v>jjc7<CR>8<Esc>", "    a7\n    |8cd\n    e gh\n    i kl")]
+    public void A_blocks_text_with_a_line_break_goes_on_its_first_line_alone(string before, string keys, string after) =>
+        Assert.Equal(after, Run(before, keys));
+
     [Fact]
     public void A_huge_count_ends_at_the_texts_edge()
     {

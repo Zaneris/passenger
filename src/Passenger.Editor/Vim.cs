@@ -83,7 +83,7 @@ public sealed partial class Vim(VimRegisters registers)
 
     /// <summary>The insert session under way: the command that began it and how, where its first caret began, the text's
     /// length and the carets then, and the count to repeat its text by.</summary>
-    private (IReadOnlyList<string> Keys, int Count, string How, int First, int Length, int Carets)? inserting;
+    private (IReadOnlyList<string> Keys, int Count, string How, int First, int Length, int Carets, int Top)? inserting;
 
     /// <summary>A put from + or * waiting for the clipboard's text.</summary>
     private (bool Before, int Count, bool CursorAfter)? clipboardPut;
@@ -290,6 +290,7 @@ public sealed partial class Vim(VimRegisters registers)
     {
         Mode = VimMode.Insert;
         Begin(command, how, carets, text.Length);
+        RememberBlock(text, carets);
         return new VimResult(true, carets);
     }
 
@@ -298,19 +299,54 @@ public sealed partial class Vim(VimRegisters registers)
     {
         Mode = VimMode.Insert;
         Begin(command, how, plan.Selections, text.Length + plan.Edits.Sum(e => e.Text.Length - e.Length));
+        RememberBlock(text.Apply(plan.Edits), plan.Selections);
         return new VimResult(true, Edits: [plan]);
+    }
+
+    /// <summary>A block's insert or change over several lines remembered as it begins (<see cref="blockStart"/>).</summary>
+    private void RememberBlock(TextSnapshot text, SelectionSet carets)
+    {
+        int[] pads = blockPads ?? [];
+        blockPads = null;
+        blockStart = (blockCorner is not null || blockChange) && carets.Count > 1
+            ? (text, [.. carets.Items.Select(c => text.GetLineFromOffset(c.Caret)).Order()], pads)
+            : null;
+    }
+
+    /// <summary>Each line of a block but its first as the session found it, where the session typed line breaks: the
+    /// text with a line break goes on the first line alone, and a short line keeps no padding. Null where it typed none.</summary>
+    private static EditPlan? OnFirstLineAlone(TextSnapshot text, SelectionSet carets, (TextSnapshot Text, int[] Lines, int[] Pads) start)
+    {
+        int count = start.Lines.Length;
+        int added = text.LineCount - start.Text.LineCount;
+        if (carets.Count != count || added <= 0 || added % count != 0)
+        {
+            return null;
+        }
+        // Each line a caret typed on became as many lines as every other did.
+        int breaks = added / count;
+        List<TextEdit> edits = [];
+        for (int i = 1; i < count; i++)
+        {
+            LineSpan from = text.GetLine(start.Lines[i] + (breaks * i));
+            LineSpan to = text.GetLine(start.Lines[i] + (breaks * i) + breaks);
+            LineSpan was = start.Text.GetLine(start.Lines[i]);
+            int pad = i < start.Pads.Length ? start.Pads[i] : 0;
+            edits.Add(new TextEdit(from.Start, to.End - from.Start, start.Text.GetText(was.Start, was.Length - pad)));
+        }
+        return new EditPlan(edits, SelectionSet.Single(carets.Items.Min(c => c.Caret)), EditKind.Joined);
     }
 
     /// <summary>An insert session begun; only i, a, I, gI, A, o and O repeat what it types by their count.</summary>
     private void Begin(Command command, string how, SelectionSet carets, int length) =>
-        inserting = (command.Keys, command.Count, how, carets.Items[0].Caret, length, carets.Count);
+        inserting = (command.Keys, command.Count, how, carets.Items[0].Caret, length, carets.Count, carets.Items.Min(c => c.Caret));
 
     /// <summary>Escape in insert mode: the carets step back onto the text, a line the session indented and left blank loses
     /// its indent, a count repeats what it typed, and what it typed is kept for . to type again.</summary>
     private VimResult LeaveInsert(TextSnapshot text, SelectionSet selections, IVimView view)
     {
         Mode = VimMode.Normal;
-        (IReadOnlyList<string> Keys, int Count, string How, int First, int Length, int Carets)? session = inserting;
+        (IReadOnlyList<string> Keys, int Count, string How, int First, int Length, int Carets, int Top)? session = inserting;
         inserting = null;
         string? typed = null;
         if (session is { } s && selections.Count == s.Carets && text.Length >= s.Length && (text.Length - s.Length) % s.Carets == 0
@@ -318,7 +354,19 @@ public sealed partial class Vim(VimRegisters registers)
         {
             typed = text.GetText(s.First, (text.Length - s.Length) / s.Carets).Replace("\r\n", "\n", StringComparison.Ordinal);
         }
+        else if (session is { } trimmed && selections.Count == trimmed.Carets && selections.Items.Min(c => c.Caret) is int top && top >= trimmed.Top)
+        {
+            // A line break that took the blanks after it makes the lengths differ: what the first caret typed stands before it.
+            typed = text.GetText(trimmed.Top, top - trimmed.Top).Replace("\r\n", "\n", StringComparison.Ordinal);
+        }
         List<EditPlan> plans = [];
+        if (blockStart is { } start && OnFirstLineAlone(text, selections, start) is { } alone)
+        {
+            plans.Add(alone);
+            (text, selections) = (text.Apply(alone.Edits), alone.Selections);
+            (blockCorner, blockChange) = (null, false);
+        }
+        blockStart = null;
         // A line the session indented and left blank loses its indent, as Vim's autoindent takes back.
         bool indents = session is { How: "o" or "O" or "cc" } && typed == string.Empty || typed is not null && BlankAfterBreak(typed);
         int[]? indentAims = null;

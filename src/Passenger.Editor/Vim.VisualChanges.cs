@@ -316,6 +316,7 @@ public sealed partial class Vim
         }
         List<TextEdit> pads = [];
         List<int> places = [];
+        List<int> padded = [];
         for (int line = top; line <= bottom; line++)
         {
             LineSpan span = text.GetLine(line);
@@ -326,16 +327,19 @@ public sealed partial class Vim
                 if (width >= left)
                 {
                     places.Add(width == left ? span.End : BlockPiece(text, line, left, right, tab)!.Value.Start);
+                    padded.Add(0);
                 }
                 continue;
             }
             if (right == int.MaxValue)
             {
                 places.Add(span.End);
+                padded.Add(0);
             }
             else if (width > right + 1)
             {
                 places.Add(BlockPiece(text, line, left, right, tab)!.Value.End);
+                padded.Add(0);
             }
             else
             {
@@ -343,6 +347,7 @@ public sealed partial class Vim
                 int pad = right + 1 - width;
                 pads.Add(new TextEdit(span.End, 0, new string(' ', pad)));
                 places.Add(span.End);
+                padded.Add(pad);
             }
         }
         if (places.Count == 0)
@@ -351,6 +356,7 @@ public sealed partial class Vim
             return VimResult.Held;
         }
         blockCorner = BlockPiece(text, top, left, right, tab)?.Start ?? text.GetLine(top).End;
+        blockPads = [.. padded];
         if (pads.Count == 0)
         {
             return Insert(text, SelectionSet.Create([.. places.Select(Selection.At)], 0), command, how);
