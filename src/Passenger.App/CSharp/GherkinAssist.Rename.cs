@@ -110,8 +110,8 @@ internal sealed partial class GherkinAssist
         {
             return RefactorOutcome.Refused(refused);
         }
-        string left = skipped > 0 ? $"; {skipped} {(skipped == 1 ? "step" : "steps")} with placeholders or no arguments to keep left as written" : string.Empty;
-        return new RefactorOutcome($"Renamed the step to \"{renamed}\" in {changes.Count} {(changes.Count == 1 ? "file" : "files")}{left}", null,
+        string left = skipped > 0 ? $"; {Plural.Of(skipped, "step")} with placeholders or no arguments to keep left as written" : string.Empty;
+        return new RefactorOutcome($"Renamed the step to \"{renamed}\" in {Plural.Of(changes.Count, "file")}{left}", null,
             [.. changes.Select(c => new RefactoredFile(c.Path, RefactoredChange.Changed, []))], []);
     }
 
