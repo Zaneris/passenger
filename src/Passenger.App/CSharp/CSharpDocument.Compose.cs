@@ -1,4 +1,3 @@
-using System.Text.Json;
 using Passenger.App.Containers;
 using Passenger.Core;
 using Passenger.Lsp;
@@ -6,6 +5,10 @@ using Passenger.Roslyn.Extension;
 using Passenger.Text;
 
 namespace Passenger.App.CSharp;
+
+/// <summary>What a compose file's warning of a connection string a .NET service's environment does not set carries for its
+/// fix: the compose file, the service and the name, by which the gap is found again as the file's check last found it.</summary>
+internal sealed record ComposeGapMark(string Compose, string Service, string Name);
 
 public sealed partial class CSharpDocument
 {
@@ -35,13 +38,9 @@ public sealed partial class CSharpDocument
     {
         IReadOnlyList<ComposeGap> gaps = service.ComposeGaps?.Invoke() ?? [];
         List<(TextRange, ComposeGap)> marked = [];
-        foreach ((Diagnostic diagnostic, TextRange range) in diagnostics.PlacedRanges)
+        foreach ((TextRange range, _, ComposeGapMark mark) in OwnOn<ComposeGapMark>(ComposeDiagnosticSource, line))
         {
-            if (diagnostic.Source == ComposeDiagnosticSource
-                && (line is not { } on || diagnostic.Range.Start.Line <= on && on <= diagnostic.Range.End.Line)
-                && diagnostic.Data is { ValueKind: JsonValueKind.Object } data
-                && JsonMembers.Text(data, "compose") is { } compose && JsonMembers.Text(data, "service") is { } named && JsonMembers.Text(data, "name") is { } name
-                && gaps.FirstOrDefault(g => PathNames.Same(g.Compose, compose) && g.Service == named && g.Name == name) is { } gap)
+            if (gaps.FirstOrDefault(g => PathNames.Same(g.Compose, mark.Compose) && g.Service == mark.Service && g.Name == mark.Name) is { } gap)
             {
                 marked.Add((range, gap));
             }
@@ -80,7 +79,7 @@ public sealed partial class CSharpDocument
                     Severity = gap.Weak ? DiagnosticSeverity.Information : DiagnosticSeverity.Warning,
                     Source = ComposeDiagnosticSource,
                     Message = $"{Path.GetFileName(gap.Compose)}: {gap.Said}",
-                    Data = JsonSerializer.SerializeToElement(new Dictionary<string, string> { ["compose"] = gap.Compose, ["service"] = gap.Service, ["name"] = gap.Name }),
+                    Data = DataOf(new ComposeGapMark(gap.Compose, gap.Service, gap.Name)),
                 });
             }
         }

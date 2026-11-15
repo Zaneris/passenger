@@ -1,4 +1,3 @@
-using System.Text.Json;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Passenger.App.Workspace;
@@ -10,6 +9,9 @@ using Passenger.Workspace;
 using static Microsoft.CodeAnalysis.CSharpExtensions;
 
 namespace Passenger.App.CSharp;
+
+/// <summary>What a warning of a configuration key nothing gives carries for its fix: the key and whether it is a secret's.</summary>
+internal sealed record ConfigurationKeyMark(string Key, bool Secret);
 
 public sealed partial class CSharpDocument
 {
@@ -65,21 +67,8 @@ public sealed partial class CSharpDocument
 
     /// <summary>The keys the file's warnings say nothing gives, on a server's line of the text as it stands (any line for
     /// null): each with where it is read, the key, and whether its name is a secret's, which its fix keeps in user secrets.</summary>
-    internal IReadOnlyList<(TextRange Range, string Key, bool Secret)> ConfigurationMissingOn(int? line)
-    {
-        List<(TextRange, string, bool)> missing = [];
-        foreach ((Diagnostic diagnostic, TextRange range) in diagnostics.PlacedRanges)
-        {
-            if (diagnostic.Source == ConfigurationDiagnosticSource
-                && (line is not { } on || diagnostic.Range.Start.Line <= on && on <= diagnostic.Range.End.Line)
-                && diagnostic.Data is { ValueKind: JsonValueKind.Object } data
-                && JsonMembers.Text(data, "key") is { } named)
-            {
-                missing.Add((range, named, JsonMembers.Text(data, "secret") == "true"));
-            }
-        }
-        return missing;
-    }
+    internal IReadOnlyList<(TextRange Range, string Key, bool Secret)> ConfigurationMissingOn(int? line) =>
+        [.. OwnOn<ConfigurationKeyMark>(ConfigurationDiagnosticSource, line).Select(m => (m.Range, m.Data.Key, m.Data.Secret))];
 
     /// <summary>Whether a configuration key is a secret's by Passenger's one rule (<see cref="Containers.ContainerSecrets.Secret(string)"/>),
     /// its sections read as the words of one name (Payments:ApiKey as Payments_ApiKey).</summary>
@@ -133,7 +122,7 @@ public sealed partial class CSharpDocument
             Severity = DiagnosticSeverity.Warning,
             Source = ConfigurationDiagnosticSource,
             Message = $"Nothing {code.Names} runs with gives the configuration key '{r.Key}': not {sources}.",
-            Data = JsonSerializer.SerializeToElement(new Dictionary<string, string> { ["key"] = r.Key, ["secret"] = SecretKey(r.Key) ? "true" : "false" }),
+            Data = DataOf(new ConfigurationKeyMark(r.Key, SecretKey(r.Key))),
         })];
     }
 }

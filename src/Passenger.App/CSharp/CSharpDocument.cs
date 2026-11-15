@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Text.Json;
 using Passenger.App.Workspace;
 using Passenger.Core;
 using Passenger.Editor;
@@ -57,6 +58,41 @@ public sealed partial class CSharpDocument : IServerDocument, IDisposable
 
     /// <summary>The diagnostics last pulled, moved with the text since, so their lines are the text's as it is now.</summary>
     public IReadOnlyList<Diagnostic> Diagnostics => diagnostics.Placed;
+
+    /// <summary>How Passenger's own findings carry their data: each kind a record, read back only where every member its
+    /// constructor takes is there, so the kinds one source marks are told apart.</summary>
+    private static readonly JsonSerializerOptions OwnData = new() { RespectRequiredConstructorParameters = true };
+
+    /// <summary>The data a finding of Passenger's own carries for its fix (<see cref="OwnOn"/>).</summary>
+    private static JsonElement DataOf<T>(T data) => JsonSerializer.SerializeToElement(data, OwnData);
+
+    /// <summary>Passenger's own findings of a source on a server's line of the text as it stands (any line for null), each
+    /// with where it now lies, its words and its data; one whose data is none, or of another kind, is passed over.</summary>
+    internal IReadOnlyList<(TextRange Range, string Message, T Data)> OwnOn<T>(string source, int? line) where T : class
+    {
+        List<(TextRange, string, T)> found = [];
+        foreach ((Diagnostic diagnostic, TextRange range) in diagnostics.PlacedRanges)
+        {
+            if (diagnostic.Source == source && (line is not { } on || diagnostic.Range.Start.Line <= on && on <= diagnostic.Range.End.Line)
+                && diagnostic.Data is { ValueKind: JsonValueKind.Object } data && Read(data) is { } read)
+            {
+                found.Add((range, diagnostic.Message, read));
+            }
+        }
+        return found;
+
+        static T? Read(JsonElement data)
+        {
+            try
+            {
+                return data.Deserialize<T>(OwnData);
+            }
+            catch (JsonException)
+            {
+                return null;
+            }
+        }
+    }
 
     /// <summary>Opens the file in the server unless it is open there already; whether it was opened now.</summary>
     internal bool Connect(RoslynSession session)

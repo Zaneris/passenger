@@ -1,4 +1,3 @@
-using System.Text.Json;
 using Passenger.Core;
 using Passenger.Lsp;
 using Passenger.Roslyn.Extension;
@@ -6,6 +5,16 @@ using Passenger.Text;
 using Passenger.Workspace;
 
 namespace Passenger.App.CSharp;
+
+/// <summary>What an Aspire warning of a reference an AppHost lacks carries for its fix: the service and the resource.</summary>
+internal sealed record AspireReferenceMark(string Service, string Resource);
+
+/// <summary>What an Aspire warning of a connection string no resource names carries for its fix: the name read and the
+/// resources' names near it, nearest first (none where the name is not written plainly, so cannot be changed).</summary>
+internal sealed record AspireConnectionMark(string Connection, IReadOnlyList<string> Near);
+
+/// <summary>What an Aspire warning of a parameter with no value carries for its fix: its name and whether it is a secret.</summary>
+internal sealed record AspireParameterMark(string Parameter, bool Secret);
 
 public sealed partial class CSharpDocument
 {
@@ -38,59 +47,19 @@ public sealed partial class CSharpDocument
     /// <summary>The references the file's Aspire warnings say its AppHost lacks, on a server's line of the text as it stands
     /// (any line for null): each with the place it is warned at, the service and the resource, from which the WithReference
     /// fix is worked out as it is chosen.</summary>
-    internal IReadOnlyList<(TextRange Range, string Service, string Resource)> AspireMissingOn(int? line)
-    {
-        List<(TextRange, string, string)> missing = [];
-        foreach ((Diagnostic diagnostic, TextRange range) in diagnostics.PlacedRanges)
-        {
-            if (diagnostic.Source == AspireDiagnosticSource
-                && (line is not { } on || diagnostic.Range.Start.Line <= on && on <= diagnostic.Range.End.Line)
-                && diagnostic.Data is { ValueKind: JsonValueKind.Object } data
-                && JsonMembers.Text(data, "service") is { } named
-                && JsonMembers.Text(data, "resource") is { } wanted)
-            {
-                missing.Add((range, named, wanted));
-            }
-        }
-        return missing;
-    }
+    internal IReadOnlyList<(TextRange Range, string Service, string Resource)> AspireMissingOn(int? line) =>
+        [.. OwnOn<AspireReferenceMark>(AspireDiagnosticSource, line).Select(m => (m.Range, m.Data.Service, m.Data.Resource))];
 
     /// <summary>The connection strings the file's Aspire warnings say it reads by a name no resource of its AppHost has, on a
     /// server's line of the text as it stands (any line for null): each with where its name is, the name and the names of the
     /// AppHost's resources near it, nearest first (none where the name is not written plainly, so cannot be changed).</summary>
-    internal IReadOnlyList<(TextRange Range, string Name, IReadOnlyList<string> Near)> AspireUnknownOn(int? line)
-    {
-        List<(TextRange, string, IReadOnlyList<string>)> unknown = [];
-        foreach ((Diagnostic diagnostic, TextRange range) in diagnostics.PlacedRanges)
-        {
-            if (diagnostic.Source == AspireDiagnosticSource
-                && (line is not { } on || diagnostic.Range.Start.Line <= on && on <= diagnostic.Range.End.Line)
-                && diagnostic.Data is { ValueKind: JsonValueKind.Object } data
-                && JsonMembers.Text(data, "connection") is { } name)
-            {
-                unknown.Add((range, name, JsonMembers.Text(data, "near") is { Length: > 0 } names ? names.Split('\n') : []));
-            }
-        }
-        return unknown;
-    }
+    internal IReadOnlyList<(TextRange Range, string Name, IReadOnlyList<string> Near)> AspireUnknownOn(int? line) =>
+        [.. OwnOn<AspireConnectionMark>(AspireDiagnosticSource, line).Select(u => (u.Range, u.Data.Connection, u.Data.Near))];
 
     /// <summary>The parameters the file's Aspire warnings say have no value in its AppHost's configuration, on a server's line
     /// of the text as it stands (any line for null): each with where its name is, its name and whether it is a secret.</summary>
-    internal IReadOnlyList<(TextRange Range, string Name, bool Secret)> AspireUnsetOn(int? line)
-    {
-        List<(TextRange, string, bool)> unset = [];
-        foreach ((Diagnostic diagnostic, TextRange range) in diagnostics.PlacedRanges)
-        {
-            if (diagnostic.Source == AspireDiagnosticSource
-                && (line is not { } on || diagnostic.Range.Start.Line <= on && on <= diagnostic.Range.End.Line)
-                && diagnostic.Data is { ValueKind: JsonValueKind.Object } data
-                && JsonMembers.Text(data, "parameter") is { } name)
-            {
-                unset.Add((range, name, JsonMembers.Text(data, "secret") == "true"));
-            }
-        }
-        return unset;
-    }
+    internal IReadOnlyList<(TextRange Range, string Name, bool Secret)> AspireUnsetOn(int? line) =>
+        [.. OwnOn<AspireParameterMark>(AspireDiagnosticSource, line).Select(p => (p.Range, p.Data.Parameter, p.Data.Secret))];
 
     /// <summary>An AppHost's parameters that take their value from its configuration alone and have none there (the settings
     /// files of the environments it runs in, its user secrets, as the editor has them when open), each a warning on its name;
@@ -117,7 +86,7 @@ public sealed partial class CSharpDocument
                 Source = AspireDiagnosticSource,
                 Message = $"Parameter '{p.Name}' has no value in the AppHost's configuration, so it asks for one as it runs. "
                     + (p.Secret ? $"Set Parameters:{p.Name} in its user secrets." : $"Set Parameters:{p.Name} in its appsettings.json."),
-                Data = JsonSerializer.SerializeToElement(new Dictionary<string, string> { ["parameter"] = p.Name, ["secret"] = p.Secret ? "true" : "false" }),
+                Data = DataOf(new AspireParameterMark(p.Name, p.Secret)),
             })];
         }
         catch (LanguageServerFailed)
@@ -150,7 +119,7 @@ public sealed partial class CSharpDocument
                 Severity = DiagnosticSeverity.Warning,
                 Source = AspireDiagnosticSource,
                 Message = $"AppHost resource '{m.Service}' does not reference '{m.Resource}'. Add WithReference({m.Resource}) to '{m.Service}'.",
-                Data = JsonSerializer.SerializeToElement(new Dictionary<string, string> { ["service"] = m.Service, ["resource"] = m.Resource }),
+                Data = DataOf(new AspireReferenceMark(m.Service, m.Resource)),
             })];
         }
         catch (LanguageServerFailed)
@@ -172,7 +141,7 @@ public sealed partial class CSharpDocument
             Source = AspireDiagnosticSource,
             Message = $"No resource of the AppHost is named '{read.Name}', and the service's appsettings give no connection string of that name."
                 + (near.Count > 0 ? $" Did you mean '{near[0]}'?" : string.Empty),
-            Data = JsonSerializer.SerializeToElement(new Dictionary<string, string> { ["connection"] = read.Name, ["near"] = read.Exact ? string.Join('\n', near) : string.Empty }),
+            Data = DataOf(new AspireConnectionMark(read.Name, read.Exact ? near : [])),
         };
     }
 }

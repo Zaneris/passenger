@@ -64,7 +64,7 @@ public sealed partial class CSharpDocument
             Severity = f.Error ? DiagnosticSeverity.Error : DiagnosticSeverity.Warning,
             Source = GodotDiagnosticSource,
             Message = f.Message,
-            Data = f.Offer is { Any: true } offer ? offer.ToJson() : null,
+            Data = f.Offer is { Any: true } offer ? DataOf(offer) : null,
         })];
     }
 
@@ -102,17 +102,5 @@ public sealed partial class CSharpDocument
 
     /// <summary>What the file's Godot findings offer to mend them, on a server's line of the text as it stands (any line for
     /// null): each with where its finding now lies and its words.</summary>
-    internal IReadOnlyList<(TextRange Range, string Message, GodotOffer Offer)> GodotOffersOn(int? line)
-    {
-        List<(TextRange, string, GodotOffer)> offers = [];
-        foreach ((Diagnostic diagnostic, TextRange range) in diagnostics.PlacedRanges)
-        {
-            if (diagnostic.Source == GodotDiagnosticSource && (line is not { } on || diagnostic.Range.Start.Line <= on && on <= diagnostic.Range.End.Line)
-                && GodotOffer.Of(diagnostic.Data) is { } offer)
-            {
-                offers.Add((range, diagnostic.Message, offer));
-            }
-        }
-        return offers;
-    }
+    internal IReadOnlyList<(TextRange Range, string Message, GodotOffer Offer)> GodotOffersOn(int? line) => OwnOn<GodotOffer>(GodotDiagnosticSource, line);
 }

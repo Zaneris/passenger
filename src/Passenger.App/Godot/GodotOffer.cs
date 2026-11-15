@@ -1,4 +1,3 @@
-using System.Text.Json;
 using System.Text.Json.Serialization;
 using Passenger.Roslyn.Extension;
 
@@ -29,25 +28,6 @@ internal sealed record GodotOffer
     /// <summary>Whether it offers anything.</summary>
     [JsonIgnore]
     public bool Any => Near.Count > 0 || Make is not null || Defines.Count > 0 || Function is not null;
-
-    public JsonElement ToJson() => JsonSerializer.SerializeToElement(this);
-
-    /// <summary>An offer read back from its mark's data; null for data of none.</summary>
-    public static GodotOffer? Of(JsonElement? data)
-    {
-        if (data is not { ValueKind: JsonValueKind.Object } json)
-        {
-            return null;
-        }
-        try
-        {
-            return json.Deserialize<GodotOffer>();
-        }
-        catch (JsonException)
-        {
-            return null;
-        }
-    }
 }
 
 /// <summary>A name of a kind defined where Godot looks for it: an input action or autoload as a setting of project.godot's
