@@ -303,13 +303,13 @@ public sealed class LocalHistoryTests : IDisposable
         using (history.During("Git checkout"))
         {
             File.WriteAllText(shop, Saved1);
-            history.Noticed([shop]);
+            history.Noticed([shop], []);
             Ui.WaitFor(() => history.Snapshot().Events.Any(e => e.Name == "Git checkout"), "the checkout's change kept under its name");
         }
         // Heard a moment after the checkout ended, as its own writes are, but written past its moment.
         File.WriteAllText(shop, Saved2);
         File.SetLastWriteTimeUtc(shop, DateTime.UtcNow + TimeSpan.FromMinutes(1));
-        history.Noticed([shop]);
+        history.Noticed([shop], []);
         Ui.Settle();
 
         (IReadOnlyList<HistoryEvent> events, IReadOnlyDictionary<string, string?> known) = history.Snapshot();
@@ -345,7 +345,7 @@ public sealed class LocalHistoryTests : IDisposable
         try
         {
             // The watcher's word of the first save, read only once the second is written.
-            history.Noticed([shop]);
+            history.Noticed([shop], []);
             Ui.PumpUntil(() => Volatile.Read(ref reads) > 0, "Local History reading Shop.cs for the change heard");
             window.EditorArea.CodeEditor.GoTo(new TextPosition(6, 8));
             window.KeyTextInput("count++; ");
@@ -367,6 +367,33 @@ public sealed class LocalHistoryTests : IDisposable
             $"Two saves, the second written as the first's change heard was read, were kept as {string.Join(", ", rows.Select(r => r.Title))}, not two changes");
         Assert.Equal(Saved1, Encoding.UTF8.GetString(history.Content(rows[0].Version!)!));
         Assert.Equal(Original, Encoding.UTF8.GetString(history.Content(rows[1].Version!)!));
+        window.Close();
+    }
+
+    /// <summary>A folder the watcher names though nothing came in it, as Windows names one as a file in it is first read
+    /// since it was written (a scanner's read, a build's), brings no change: its files, made as the folder opened and never
+    /// looked at or saved here, are not kept as made by another program. A folder that comes is looked in, its file kept.</summary>
+    [AvaloniaFact]
+    public void A_folder_named_as_a_file_in_it_is_first_read_brings_no_change_where_a_folder_that_comes_brings_its_files()
+    {
+        Write("Shop.cs", Original);
+        string project = Write("Lib/Lib.csproj", "<Project Sdk=\"Microsoft.NET.Sdk\" />\n");
+        string notes = Write("Lib/Notes.txt", "a note\n");
+        // Made as the folder opens, however long the window takes to open.
+        File.SetCreationTimeUtc(project, DateTime.UtcNow + TimeSpan.FromMinutes(1));
+        File.SetCreationTimeUtc(notes, DateTime.UtcNow + TimeSpan.FromMinutes(1));
+        MainWindow window = Open("Shop.cs");
+        LocalHistory history = window.LocalHistory!;
+        history.Noticed([Path.GetDirectoryName(project)!], []);
+        Ui.WaitFor(() => !history.IsRecording, "the history to read the folder Windows named");
+
+        string readme = Write("Docs/Readme.md", "# Docs\n");
+        Ui.WaitFor(() => HistoryRows.OfFolder(history.Snapshot().Events, folder).Any(r => r.Files.Contains(readme, PathNames.Comparer)),
+            "the folder that came looked in, its file kept");
+        Ui.WaitFor(() => !history.IsRecording, "the history to keep what it heard");
+        IReadOnlyList<HistoryRow> rows = HistoryRows.OfFolder(history.Snapshot().Events, folder);
+        Assert.True(!rows.Any(r => r.Files.Any(f => PathNames.Within(f, Path.GetDirectoryName(project)!))),
+            $"The folder Windows names as a file in it is first read is kept as changed by another program: {string.Join("; ", rows.Select(r => $"{r.Title} [{string.Join(", ", r.Files.Select(Path.GetFileName))}]"))}");
         window.Close();
     }
 

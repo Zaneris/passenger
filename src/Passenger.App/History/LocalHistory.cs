@@ -329,12 +329,12 @@ public sealed class LocalHistory
         }
     }
 
-    /// <summary>Paths the folder watcher saw change: a file the history knows is read and compared with what it knew, a
-    /// change kept under the activity over that file (<see cref="Over"/>), else the activity under way, else as an
-    /// external change; one it does not know is read and kept only as <see cref="BulkArrivals"/> says. A folder made is
-    /// looked in for its files, one deleted takes what the history knew under it, and a file gone whose content another
-    /// just made has is a move.</summary>
-    public void Noticed(IReadOnlyCollection<string> paths)
+    /// <summary>Paths the folder watcher saw change, with those that <paramref name="came"/> (made, moved in): a file
+    /// the history knows is read and compared with what it knew, a change kept under the activity over that file
+    /// (<see cref="Over"/>), else the activity under way, else as an external change; one it does not know is read and kept
+    /// only as <see cref="BulkArrivals"/> says. A folder that came is looked in for its files, one deleted takes what the
+    /// history knew under it, and a file gone whose content another just made has is a move.</summary>
+    public void Noticed(IReadOnlyCollection<string> paths, IReadOnlyCollection<string> came)
     {
         List<string> kept = [.. paths.Where(Keeps)];
         if (kept.Count == 0)
@@ -343,11 +343,12 @@ public sealed class LocalHistory
         }
         DateTimeOffset time = Keeping.Clock();
         DateTime heard = DateTime.UtcNow;
+        HashSet<string> come = new(came.Where(c => kept.Contains(c, PathNames.Comparer)), PathNames.Comparer);
         foreach (IGrouping<(long Set, string Name)?, string> named in kept.GroupBy(Claimed))
         {
             (long set, string name) = named.Key ?? Seen();
             List<string> these = [.. named];
-            Enqueue(() => RecordNotice(these, set, name, time, heard));
+            Enqueue(() => RecordNotice(these, come, set, name, time, heard));
         }
     }
 
@@ -879,7 +880,7 @@ public sealed class LocalHistory
     private HistoryEvent External(string path, string? was, string? now, DateTimeOffset time) =>
         new(NewSet(), time, was is null ? HistoryKind.Created : now is null ? HistoryKind.Deleted : HistoryKind.Changed, path, null, was, now, ExternalChange);
 
-    private void RecordNotice(IReadOnlyList<string> paths, long set, string name, DateTimeOffset time, DateTime heard)
+    private void RecordNotice(IReadOnlyList<string> paths, IReadOnlySet<string> came, long set, string name, DateTimeOffset time, DateTime heard)
     {
         // What another Passenger on the same state made and kept is known, not a change made elsewhere.
         CatchUp();
@@ -905,13 +906,13 @@ public sealed class LocalHistory
             }
             if (Directory.Exists(path))
             {
-                // A folder whose files it knows has their changes already; a link holds nothing new.
+                // A folder whose files it knows has their changes; a link, or one Windows names as a file in it is first read, nothing new.
                 bool knownUnder;
                 lock (gate)
                 {
                     knownUnder = known.Keys.Any(k => PathNames.IsUnder(k, path));
                 }
-                if (!knownUnder && new DirectoryInfo(path).LinkTarget is null)
+                if (!knownUnder && came.Contains(path) && new DirectoryInfo(path).LinkTarget is null)
                 {
                     folders.Add(path);
                 }
@@ -975,7 +976,7 @@ public sealed class LocalHistory
         Append(made);
         if (later.Count > 0)
         {
-            Enqueue(() => RecordNotice(later, set, name, time, heard));
+            Enqueue(() => RecordNotice(later, came, set, name, time, heard));
         }
 
         // Whether the files it does not know are already a bulk arrival's, so the folders come need no more looking in.

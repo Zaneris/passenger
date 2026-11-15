@@ -41,7 +41,8 @@ public partial class MainWindow
         {
             return;
         }
-        session.LocalHistory?.Noticed(changes.Paths);
+        // Lost changes may have brought anything.
+        session.LocalHistory?.Noticed(changes.Paths, changes.Lost ? changes.Paths : changes.ComeOrGone);
         Godot.GodotScripts.FolderChanged(changes);
         session.DesignTimeBuilds.FolderChanged(changes);
         session.FilesChanged(changes);

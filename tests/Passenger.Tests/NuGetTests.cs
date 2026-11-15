@@ -748,6 +748,8 @@ public sealed class NuGetTests : IDisposable
     [AvaloniaFact]
     public void An_install_under_central_management_is_one_change_set_of_local_history_named_as_the_install()
     {
+        Project("Lib", Restorable, string.Empty);
+        Project("App", Restorable, string.Empty);
         File.WriteAllText(Path.Combine(folder, "Directory.Packages.props"),
             "<Project>\n  <PropertyGroup>\n    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>\n  </PropertyGroup>\n  <ItemGroup>\n  </ItemGroup>\n</Project>\n");
         MainWindow window = Open();
@@ -756,17 +758,27 @@ public sealed class NuGetTests : IDisposable
         Choose(nuget, "1.1.0");
         Ui.Click(Action(nuget, "Lib", "Install") ?? throw new Xunit.Sdk.XunitException("The NuGet window offers no Install on Lib's line"));
         Ui.Landed(() => !nuget.IsBusy, "Lib's install");
+        DateTimeOffset installed = DateTimeOffset.Now;
         Assert.True(File.ReadAllText(lib).Contains(Id, StringComparison.Ordinal), $"The install left Lib.csproj without {Id}: {nuget.Status}\n{nuget.Log}");
 
         string install = $"Install {Id} 1.1.0 in Lib";
         Passenger.App.History.HistoryTab history = window.ShowLocalHistory(folder) ?? throw new Xunit.Sdk.XunitException($"No history of the folder: {window.Status}");
-        Ui.WaitFor(() => history.Rows.Any(r => r.Title == install), () => $"the install in the folder's history, which lists [{string.Join(", ", history.Rows.Select(r => r.Title))}]");
+        Ui.WaitFor(() => history.Rows.Any(r => r.Title == install), () => $"the install in the folder's history, which keeps:\n{Kept(window, installed)}");
         Assert.True(history.Rows.Select(r => r.Title).SequenceEqual([install]),
-            $"The folder's history lists [{string.Join(", ", history.Rows.Select(r => r.Title))}], not the install as one change set");
+            $"The folder's history lists [{string.Join(", ", history.Rows.Select(r => r.Title))}], not the install as one change set; it keeps:\n{Kept(window, installed)}");
         history.Select(history.Rows[0]);
         Ui.Settle();
         Assert.Equal(["Directory.Packages.props", "Lib.csproj"], history.Files.Select(f => Path.GetFileName(f.Path)).Order(StringComparer.Ordinal));
         window.Close();
+    }
+
+    /// <summary>What a window's Local History keeps of its folder, a line a change: its set's name, what it did to which file,
+    /// and when it was heard against a moment the test saw.</summary>
+    private string Kept(MainWindow window, DateTimeOffset against)
+    {
+        string root = Passenger.Core.PathNames.Canonical(folder);
+        return string.Join("\n", window.LocalHistory!.Snapshot().Events.Select(e => $"  set {e.Set} {e.Name ?? "(no name)"}: {e.Kind} {Path.GetRelativePath(root, e.Path ?? root)}"
+            + $"{(e.To is { } to ? $" to {Path.GetRelativePath(root, to)}" : string.Empty)}, heard {(e.Time - against).TotalMilliseconds:+0;-0} ms from {against:HH:mm:ss.fff}"));
     }
 
     /// <summary>An install dotnet add package writes, of a project open in the editor, is named as the install in the
@@ -774,6 +786,8 @@ public sealed class NuGetTests : IDisposable
     [AvaloniaFact]
     public void An_install_dotnet_writes_is_named_in_local_history_and_a_save_made_as_it_runs_stays_the_persons()
     {
+        Project("Lib", Restorable, string.Empty);
+        Project("App", Restorable, string.Empty);
         string notes = Path.Combine(folder, "Notes.txt");
         File.WriteAllText(notes, "a note\n");
         MainWindow window = Open();
