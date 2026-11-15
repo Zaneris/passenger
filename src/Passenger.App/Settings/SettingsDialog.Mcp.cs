@@ -141,10 +141,11 @@ public sealed partial class SettingsDialog
         });
     }
 
-    /// <summary>The setup's one column: every block as wide as the others, Copy buttons in a line, narrowing with the dialog.</summary>
+    /// <summary>The setup's one column, as wide as an option's row: every block as wide as the others, Copy buttons in a
+    /// line, narrowing with the dialog.</summary>
     private static Grid Column(Control block)
     {
-        Grid column = new() { ColumnDefinitions = { new ColumnDefinition(GridLength.Star) { MaxWidth = 640 } } };
+        Grid column = new() { ColumnDefinitions = { new ColumnDefinition(GridLength.Star) { MaxWidth = OptionRow.LabelWidth + OptionRow.EditorWidth } } };
         column.Children.Add(block);
         return column;
     }

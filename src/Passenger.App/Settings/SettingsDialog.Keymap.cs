@@ -161,9 +161,9 @@ public sealed partial class SettingsDialog
         Keymap current = Current;
         foreach (IdeAction action in actions.All.OrderBy(a => a.Title, StringComparer.Ordinal))
         {
-            WrapPanel keys = new() { Width = 300, VerticalAlignment = VerticalAlignment.Center };
+            WrapPanel keys = new() { VerticalAlignment = VerticalAlignment.Center };
             Button edit = ToolButtons.Of(IconKeys.More, "Edit Shortcuts");
-            StackPanel editor = new() { Orientation = Orientation.Horizontal, Spacing = 6, Children = { keys, edit } };
+            NarrowingField editor = new(keys, edit) { MaxWidth = OptionRow.EditorWidth };
             Panel row = (Panel)Add(KeymapPage, action.Title, editor, RowWords(action, ShownOf(current, action.Id)), action: action.Id);
             // Transparent so a click anywhere along the row is the row's.
             row.Background = Brushes.Transparent;

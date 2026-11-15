@@ -5,6 +5,8 @@ using Avalonia.Controls.Primitives;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.Input;
+using Avalonia.Layout;
+using Avalonia.LogicalTree;
 using Avalonia.Media;
 using Avalonia.VisualTree;
 using Passenger.App;
@@ -1138,6 +1140,75 @@ public sealed class SettingsTests : IDisposable
                 Assert.True(scrolled, $"At {width:0} by {height:0} no page of Settings scrolled, so none showed its scroll bar to keep clear of");
             }
             Assert.True(under.Count == 0, $"These rows of Settings run under the page's scroll bar, their right drawn under its thumb:\n{string.Join("\n", under.Take(40))}");
+        }
+        finally
+        {
+            dialog.Close();
+            window.Close();
+        }
+    }
+
+    /// <summary>At Settings' own size, between, and at its smallest, every row's editor that takes a line of text or
+    /// lists several (a path, a glob, the theme sources) and every note under an editor reach one right edge: the widest
+    /// editor's where the page has room, the page's where it has not, so none stands narrower than its neighbours nor
+    /// wider than a narrow page; and every number box stands at a number's width.</summary>
+    [AvaloniaFact]
+    public void Every_rows_text_box_list_and_note_reach_one_edge_and_narrow_with_the_page()
+    {
+        MainWindow window = Open();
+        SettingsDialog dialog = window.ShowSettings();
+        try
+        {
+            List<string> off = [];
+            int fields = 0;
+            int notes = 0;
+            foreach ((double width, double height) in new[] { (dialog.Width, dialog.Height), (800.0, 600.0), (dialog.MinWidth, dialog.MinHeight) })
+            {
+                dialog.Width = width;
+                dialog.Height = height;
+                Ui.Settle();
+                foreach (string page in dialog.Pages.ToList())
+                {
+                    dialog.Page = page;
+                    Ui.Settle();
+                    foreach (OptionRow row in dialog.GetVisualDescendants().OfType<OptionRow>().Where(r => r.IsEffectivelyVisible))
+                    {
+                        // Where the row's editors start, and the edge none of them passes.
+                        double left = row.IsStacked ? 0 : OptionRow.LabelWidth;
+                        double edge = Math.Min(row.Bounds.Width, left + OptionRow.EditorWidth);
+                        string where = $"{width:0} wide, {page}, {row.Label.Text}";
+                        // The theme explorer lays itself under the theme picker's row, as wide as that row.
+                        if (row.Editor is not ThemeExplorer && row.Editor.GetSelfAndLogicalDescendants().Any(c => c is TextBox or ListBox))
+                        {
+                            fields++;
+                            if (Math.Abs(row.Editor.Bounds.Right - edge) > 0.5)
+                            {
+                                off.Add($"{where}: its editor ends at {row.Editor.Bounds.Right:0}, where the editors' edge is {edge:0}");
+                            }
+                        }
+                        foreach (NumericUpDown number in row.Editor.GetSelfAndLogicalDescendants().OfType<NumericUpDown>())
+                        {
+                            if (Math.Abs(number.Bounds.Width - Math.Min(OptionRow.NumberWidth, row.Bounds.Width)) > 0.5)
+                            {
+                                off.Add($"{where}: its number box is {number.Bounds.Width:0} wide, where a number's is {OptionRow.NumberWidth:0}");
+                            }
+                        }
+                        if (row.Note is { IsEffectivelyVisible: true } note)
+                        {
+                            notes++;
+                            // The width the note's lines wrap at: what the row gave it, held by any most of its own.
+                            double wraps = Math.Min(LayoutInformation.GetPreviousMeasureConstraint(note)!.Value.Width, note.MaxWidth);
+                            if (Math.Abs(note.Bounds.X + wraps - edge) > 0.5)
+                            {
+                                off.Add($"{where}: its note wraps at {note.Bounds.X + wraps:0}, where the editors' edge is {edge:0}");
+                            }
+                        }
+                    }
+                }
+            }
+            Assert.True(fields >= 10 && notes >= 50, $"Only {fields} rows of a text box or list and {notes} notes were found: the search no longer reads them");
+            Assert.True(off.Count == 0, $"These rows' editors and notes stand at widths of their own rather than reaching the edge every editor reaches, "
+                + $"so the page's right edges are ragged where there is room and may run past a narrow page:\n{string.Join("\n", off.Take(60))}");
         }
         finally
         {

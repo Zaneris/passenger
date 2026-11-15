@@ -2018,6 +2018,64 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
             + $"SettingsDialog.PlaceOfPage and the dialog's constant for it, one of {string.Join(", ", pages)}:\n{string.Join("\n", found)}");
     }
 
+    /// <summary>No editor of a Settings row, nothing it holds and no note under it is given a width of its own: each narrows
+    /// with the page by its most width, one of the row's (OptionRow.EditorWidth, a number box's OptionRow.NumberWidth), a
+    /// field and what follows it through NarrowingField, a drop-down at the form's width the theme gives. The theme
+    /// explorer is passed over: it lays itself under the theme picker's row at the widths that row took.</summary>
+    [AvaloniaFact]
+    public void No_settings_editor_or_note_is_given_a_width_of_its_own_each_narrowing_by_the_rows_most()
+    {
+        MainWindow window = Open(1400, 880);
+        SettingsDialog? settings = null;
+        try
+        {
+            settings = window.ShowSettings();
+            Ui.Settle();
+            double[] mosts = [OptionRow.EditorWidth, OptionRow.NumberWidth];
+            double dropDown = (double)window.FindResource(TokenKeys.DropDownWidth)!;
+            List<string> held = [];
+            int rows = 0;
+            foreach (string page in settings.Pages.ToList())
+            {
+                settings.Page = page;
+                Ui.Settle();
+                foreach (OptionRow row in settings.GetVisualDescendants().OfType<OptionRow>())
+                {
+                    rows++;
+                    IEnumerable<Control> parts = row.Editor.GetSelfAndLogicalDescendants().OfType<Control>()
+                        .Where(c => !c.GetSelfAndLogicalAncestors().OfType<ThemeExplorer>().Any());
+                    foreach (Control part in row.Note is null ? parts : parts.Append(row.Note))
+                    {
+                        string what = $"{page}, {row.Label.Text}: a {part.GetType().Name}";
+                        if (double.IsFinite(part.Width) && Avalonia.Diagnostics.AvaloniaObjectExtensions.GetDiagnostic(part, Layoutable.WidthProperty).Priority
+                            == Avalonia.Data.BindingPriority.LocalValue)
+                        {
+                            held.Add($"{what} given a Width of {part.Width:0}");
+                        }
+                        if (double.IsFinite(part.MaxWidth) && !mosts.Contains(part.MaxWidth))
+                        {
+                            held.Add($"{what} given a MaxWidth of {part.MaxWidth:0}");
+                        }
+                        if (part is NarrowingField { Most: var most } && double.IsFinite(most) && !mosts.Contains(most) && most != dropDown)
+                        {
+                            held.Add($"{what} whose field is given a most of {most:0}");
+                        }
+                    }
+                }
+            }
+            Assert.True(rows >= 100, $"Only {rows} rows of Settings were found: the search no longer reads them");
+            Assert.True(held.Count == 0, $"These parts of Settings' rows hold widths of their own, so they stand at widths their neighbours don't and "
+                + $"never narrow with the page: give each a MaxWidth of OptionRow.EditorWidth (a number box OptionRow.NumberWidth), or a field "
+                + $"and its button a NarrowingField:\n{string.Join("\n", held.Distinct().Take(60))}");
+        }
+        finally
+        {
+            settings?.Close();
+            Ui.Settle();
+            window.Close();
+        }
+    }
+
     /// <summary>Every list's rows, a drop-down's choices and a strip's tabs are made once by ReusedRows and handed each item
     /// shown there, so scrolling builds no row again: rows from an item template (ItemTemplate, a data template of any
     /// kind) or a container's template of its own fail here, naming the line.</summary>

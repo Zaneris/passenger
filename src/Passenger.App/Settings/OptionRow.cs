@@ -6,16 +6,20 @@ namespace Passenger.App.Settings;
 
 /// <summary>An option's row in Settings: its label, what edits it, and a note under the editor. On a page with room for the
 /// labels' column beside the widest editor, the label stands at the left with the editor and note beside it; on a
-/// narrower page, as every row of it does, the label stands above the editor and the note under it, each as wide as the
-/// page lets it be, and a lone check box before its label. An editor that stretches up to a most width (a list, a box of
-/// several lines) is given that width where there is room and the page's where there is not; any other takes its own.</summary>
+/// narrower page, as every row of it does, the label stands above the editor and the note under it, and a lone check box
+/// before its label. An editor that stretches up to a most width (a list, a line of text, a number box) is given that
+/// width where there is room and the page's where there is not; any other takes its own. The note wraps where the widest
+/// editor ends, or at the page's edge before it.</summary>
 public sealed class OptionRow : Panel
 {
     /// <summary>The labels' column beside the editors.</summary>
     public const double LabelWidth = 220;
 
-    /// <summary>The widest an editor stands beside its label: a list's, a box of several lines'.</summary>
+    /// <summary>The widest an editor stands: a list's, a line of text's, a box of several lines'; a note wraps where it ends.</summary>
     public const double EditorWidth = 420;
+
+    /// <summary>The widest a number box stands: room for the longest number a setting takes, and its buttons.</summary>
+    public const double NumberWidth = 140;
 
     /// <summary>Between the label, the editor and the note, where they stand one over another.</summary>
     private const double Gap = 4;
@@ -68,7 +72,7 @@ public sealed class OptionRow : Panel
         if (!IsStacked)
         {
             Label.Measure(new Size(LabelWidth, double.PositiveInfinity));
-            Note?.Measure(new Size(width - LabelWidth, double.PositiveInfinity));
+            Note?.Measure(new Size(NoteRoom(width - LabelWidth), double.PositiveInfinity));
             return new Size(LabelWidth + Math.Max(Editor.DesiredSize.Width, Note?.DesiredSize.Width ?? 0), Beside() + Below());
         }
         Editor.Measure(new Size(width, double.PositiveInfinity));
@@ -76,12 +80,12 @@ public sealed class OptionRow : Panel
         {
             double lead = Editor.DesiredSize.Width + BoxGap;
             Label.Measure(new Size(Math.Max(0, width - lead), double.PositiveInfinity));
-            Note?.Measure(new Size(Math.Max(0, width - lead), double.PositiveInfinity));
+            Note?.Measure(new Size(Math.Max(0, NoteRoom(width) - lead), double.PositiveInfinity));
             return new Size(lead + Math.Max(Label.DesiredSize.Width, Note?.DesiredSize.Width ?? 0),
                 Math.Max(Label.DesiredSize.Height, Editor.DesiredSize.Height) + Below());
         }
         Label.Measure(new Size(width, double.PositiveInfinity));
-        Note?.Measure(new Size(width, double.PositiveInfinity));
+        Note?.Measure(new Size(NoteRoom(width), double.PositiveInfinity));
         return new Size(Math.Max(Label.DesiredSize.Width, Math.Max(Editor.DesiredSize.Width, Note?.DesiredSize.Width ?? 0)),
             Label.DesiredSize.Height + Gap + Editor.DesiredSize.Height + Below());
     }
@@ -95,14 +99,14 @@ public sealed class OptionRow : Panel
             double box = Math.Max(Label.DesiredSize.Height, Editor.DesiredSize.Height);
             Editor.Arrange(new Rect(0, 0, Editor.DesiredSize.Width, box));
             Label.Arrange(new Rect(lead, 0, Math.Max(0, width - lead), box));
-            Note?.Arrange(new Rect(lead, box + Gap, Math.Max(0, width - lead), Note.DesiredSize.Height));
+            Note?.Arrange(new Rect(lead, box + Gap, Math.Max(0, NoteRoom(width) - lead), Note.DesiredSize.Height));
         }
         else if (IsStacked)
         {
             Label.Arrange(new Rect(0, 0, width, Label.DesiredSize.Height));
             double y = Label.DesiredSize.Height + Gap;
             Editor.Arrange(new Rect(0, y, Across(width), Editor.DesiredSize.Height));
-            Note?.Arrange(new Rect(0, y + Editor.DesiredSize.Height + Gap, width, Note.DesiredSize.Height));
+            Note?.Arrange(new Rect(0, y + Editor.DesiredSize.Height + Gap, NoteRoom(width), Note.DesiredSize.Height));
         }
         else
         {
@@ -110,7 +114,7 @@ public sealed class OptionRow : Panel
             double top = Math.Max(0, labelTop);
             Label.Arrange(new Rect(0, top, LabelWidth, line - top));
             Editor.Arrange(new Rect(LabelWidth, 0, Across(width - LabelWidth), line));
-            Note?.Arrange(new Rect(LabelWidth, line + Gap, width - LabelWidth, Note.DesiredSize.Height));
+            Note?.Arrange(new Rect(LabelWidth, line + Gap, NoteRoom(width - LabelWidth), Note.DesiredSize.Height));
         }
         return finalSize;
     }
@@ -120,6 +124,9 @@ public sealed class OptionRow : Panel
 
     private double Below() => Note is null ? 0 : Gap + Note.DesiredSize.Height;
 
+    /// <summary>What a note takes of the room beside or under the label: up to where the widest editor ends.</summary>
+    private static double NoteRoom(double room) => Math.Min(room, EditorWidth);
+
     /// <summary>The editor's width in the room it has: up to its most width where it stretches to one, else its own.</summary>
     private double Across(double room) =>
         Editor.HorizontalAlignment == HorizontalAlignment.Stretch && double.IsFinite(Editor.MaxWidth)
@@ -127,8 +134,9 @@ public sealed class OptionRow : Panel
             : Math.Min(room, Editor.DesiredSize.Width);
 }
 
-/// <summary>A field and what acts on it after it (a drop-down and its Add from File…): the field <see cref="Most"/> wide
-/// where there is room, narrower where not, so the two keep to the room they have.</summary>
+/// <summary>A field and what follows it (a drop-down and its Add from File…, a number box and its unit, an action's keys and
+/// their Edit Shortcuts): the field <see cref="Most"/> wide where there is room, narrower where not, so the two keep to
+/// the room they have; with no most, the field takes all the room the other leaves.</summary>
 public sealed class NarrowingField : Panel
 {
     public static readonly StyledProperty<double> MostProperty = AvaloniaProperty.Register<NarrowingField, double>(nameof(Most), double.PositiveInfinity);

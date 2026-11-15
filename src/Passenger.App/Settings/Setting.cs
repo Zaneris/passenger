@@ -67,19 +67,20 @@ public sealed class ToggleSetting(Func<AppSettings, bool> get, Func<AppSettings,
 public sealed class NumberSetting(Func<AppSettings, double> get, Func<AppSettings, double, AppSettings> set, double min, double max, double step,
     SettingRow? row = null, string? unit = null, Func<AppSettings, bool>? given = null) : Setting(row)
 {
-    public override Control Editor(AppSettings now, Action<Func<AppSettings, AppSettings>> change) => unit is null ? Box(now, change) : new StackPanel
-    {
-        Orientation = Orientation.Horizontal,
-        Spacing = 8,
-        Children = { Box(now, change), new TextBlock { Text = unit, VerticalAlignment = VerticalAlignment.Center } },
-    };
+    public override Control Editor(AppSettings now, Action<Func<AppSettings, AppSettings>> change) =>
+        unit is null ? Box(now, change) : WithUnit(Box(now, change), unit);
+
+    /// <summary>A number box with its unit after it, the box as wide as a number's where there is room.</summary>
+    public static NarrowingField WithUnit(NumericUpDown box, string unit) =>
+        new(box, new TextBlock { Text = unit, VerticalAlignment = VerticalAlignment.Center }) { Most = OptionRow.NumberWidth };
 
     /// <summary>The spin box alone, for a row the dialog builds round it.</summary>
     public NumericUpDown Box(AppSettings now, Action<Func<AppSettings, AppSettings>> change)
     {
         NumericUpDown number = new()
         {
-            Value = (decimal)get(now), Minimum = (decimal)min, Maximum = (decimal)max, Increment = (decimal)step, Width = 140, FormatString = step < 1 ? "0.0" : "0",
+            Value = (decimal)get(now), Minimum = (decimal)min, Maximum = (decimal)max, Increment = (decimal)step, MaxWidth = OptionRow.NumberWidth,
+            HorizontalAlignment = HorizontalAlignment.Stretch, FormatString = step < 1 ? "0.0" : "0",
         };
         number.ValueChanged += (_, e) =>
         {
@@ -277,10 +278,10 @@ public sealed class ProgramSetting(Func<AppSettings, string?> get, Func<AppSetti
 
     public override Control Editor(AppSettings now, Action<Func<AppSettings, AppSettings>> change)
     {
-        TextBox line = new() { Classes = { StyleClasses.Search }, Text = get(now) ?? string.Empty, PlaceholderText = found(), Width = 320 };
-        TextBlock problem = new() { TextWrapping = TextWrapping.Wrap, MaxWidth = 320, HorizontalAlignment = HorizontalAlignment.Left };
+        TextBox line = new() { Classes = { StyleClasses.Search }, Text = get(now) ?? string.Empty, PlaceholderText = found() };
+        TextBlock problem = new() { TextWrapping = TextWrapping.Wrap, HorizontalAlignment = HorizontalAlignment.Left };
         problem.Classes.Add(StyleClasses.Error);
-        TextBlock runs = new() { Classes = { StyleClasses.Muted }, TextWrapping = TextWrapping.Wrap, MaxWidth = 320, HorizontalAlignment = HorizontalAlignment.Left, IsVisible = described is not null };
+        TextBlock runs = new() { Classes = { StyleClasses.Muted }, TextWrapping = TextWrapping.Wrap, HorizontalAlignment = HorizontalAlignment.Left, IsVisible = described is not null };
         int asked = 0;
         Said();
         line.TextChanged += (_, _) =>
@@ -288,7 +289,7 @@ public sealed class ProgramSetting(Func<AppSettings, string?> get, Func<AppSetti
             change(s => set(s, string.IsNullOrWhiteSpace(line.Text) ? null : line.Text.Trim()));
             Said();
         };
-        return new StackPanel { Spacing = 4, Children = { line, problem, runs } };
+        return new StackPanel { Spacing = 4, MaxWidth = OptionRow.EditorWidth, Children = { line, problem, runs } };
 
         // What the line runs, the last asked winning.
         async Task DescribeAsync(string? typed)

@@ -295,8 +295,7 @@ public sealed partial class SettingsDialog : IdeWindow
             Change(s => s with { SaveWhenIdle = v });
             seconds.IsEnabled = v;
         });
-        TextBlock unit = new() { Text = "seconds", VerticalAlignment = VerticalAlignment.Center };
-        Add(SystemPage, "Save when idle for", new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { idle, seconds, unit } },
+        Add(SystemPage, "Save when idle for", new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { idle, NumberSetting.WithUnit(seconds, "seconds") } },
             "autosave files idle inactive seconds");
 
         Add(Declared.CheckForUpdates);
@@ -319,7 +318,7 @@ public sealed partial class SettingsDialog : IdeWindow
         Add(Declared.SolutionWideAnalysis);
         Add(Declared.ParameterHints);
         Add(Declared.TypeHints);
-        TextBox masks = new() { Classes = { StyleClasses.Search }, Text = Working.SoftWrapFiles, PlaceholderText = "No files", Width = 260, IsEnabled = Working.SoftWrap };
+        TextBox masks = new() { Classes = { StyleClasses.Search }, Text = Working.SoftWrapFiles, PlaceholderText = "No files", IsEnabled = Working.SoftWrap };
         ToolTip.SetTip(masks, "Use * and ? as wildcards and ; to separate patterns");
         masks.TextChanged += (_, _) => Change(s => s with { SoftWrapFiles = masks.Text ?? string.Empty });
         CheckBox wrapFiles = Check(Working.SoftWrap, v =>
@@ -327,7 +326,8 @@ public sealed partial class SettingsDialog : IdeWindow
             Change(s => s with { SoftWrap = v });
             masks.IsEnabled = v;
         });
-        Add(EditorPage, "Soft-wrap these files", new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { wrapFiles, masks } },
+        DockPanel.SetDock(wrapFiles, Dock.Left);
+        Add(EditorPage, "Soft-wrap these files", new DockPanel { HorizontalSpacing = 8, MaxWidth = OptionRow.EditorWidth, Children = { wrapFiles, masks } },
             "soft wrap wrapping long lines width markdown text files masks");
         Add(Declared.SoftWrapIndent);
         Add(Declared.ShowWhitespaces);
@@ -380,7 +380,7 @@ public sealed partial class SettingsDialog : IdeWindow
         Add(Declared.DebugBrowser);
 
         string? onPath = Passenger.Core.Programs.Node();
-        TextBox node = new() { Classes = { StyleClasses.Search }, Text = Working.NodeInterpreter ?? string.Empty, PlaceholderText = onPath ?? "Not found on the PATH", Width = 320 };
+        TextBox node = new() { Classes = { StyleClasses.Search }, Text = Working.NodeInterpreter ?? string.Empty, PlaceholderText = onPath ?? "Not found on the PATH", MaxWidth = OptionRow.EditorWidth };
         node.TextChanged += (_, _) => Change(s => s with { NodeInterpreter = string.IsNullOrWhiteSpace(node.Text) ? null : node.Text.Trim() });
         Add(NodePage, "Node interpreter", node, "node nodejs interpreter javascript typescript html css json language server npm path",
             "The Node.js the JavaScript, TypeScript, HTML, CSS and JSON language servers run on. Empty, it is the first on the PATH, "
@@ -433,7 +433,7 @@ public sealed partial class SettingsDialog : IdeWindow
         {
             Orientation = Orientation.Horizontal,
             Spacing = 8,
-            Children = { whenIdle, idleMinutes, new TextBlock { Text = "minutes", VerticalAlignment = VerticalAlignment.Center } },
+            Children = { whenIdle, NumberSetting.WithUnit(idleMinutes, "minutes") },
         }, $"{Discord} idle inactive away timeout minutes");
 
         Add(Declared.TraceProtocols);
@@ -498,7 +498,7 @@ public sealed partial class SettingsDialog : IdeWindow
             VerticalAlignment = firstLine < 0 ? VerticalAlignment.Center : VerticalAlignment.Top,
         };
         AutomationProperties.SetLabeledBy(editor, name);
-        TextBlock? said = note is null ? null : new TextBlock { Text = note, TextWrapping = TextWrapping.Wrap, MaxWidth = 360, HorizontalAlignment = HorizontalAlignment.Left, Classes = { StyleClasses.Muted } };
+        TextBlock? said = note is null ? null : new TextBlock { Text = note, TextWrapping = TextWrapping.Wrap, HorizontalAlignment = HorizontalAlignment.Left, Classes = { StyleClasses.Muted } };
         OptionRow row = new(name, editor, said, firstLine);
         options.Add(new Option(page, label, row, $"{page} {label} {keywords}", action));
         return row;

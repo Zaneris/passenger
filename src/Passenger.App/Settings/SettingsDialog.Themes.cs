@@ -37,7 +37,7 @@ public sealed partial class SettingsDialog
     public Button RefreshThemesButton { get; } = new() { Content = "Refresh" };
 
     /// <summary>Why the last source asked for was not added, or what a refresh came to.</summary>
-    public TextBlock ThemeSourceWords { get; } = new() { TextWrapping = TextWrapping.Wrap, MaxWidth = 420, HorizontalAlignment = HorizontalAlignment.Left, IsVisible = false };
+    public TextBlock ThemeSourceWords { get; } = new() { TextWrapping = TextWrapping.Wrap, HorizontalAlignment = HorizontalAlignment.Left, IsVisible = false };
 
     private void AddThemes()
     {
@@ -87,7 +87,7 @@ public sealed partial class SettingsDialog
             Children =
             {
                 new Border { Classes = { StyleClasses.Framed }, Child = ThemeSourceList },
-                new NarrowingField(ThemeSourceBox, AddThemeSourceButton) { Most = 300 },
+                new NarrowingField(ThemeSourceBox, AddThemeSourceButton),
                 new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { RemoveThemeSourceButton, RefreshThemesButton } },
                 ThemeSourceWords,
             },
