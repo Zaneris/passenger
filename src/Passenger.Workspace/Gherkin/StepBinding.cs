@@ -28,7 +28,7 @@ public sealed record StepScope(string? Tag, string? Feature, string? Scenario)
     public int Restrictions => (Tag is null ? 0 : 1) + (Feature is null ? 0 : 1) + (Scenario is null ? 0 : 1);
 }
 
-/// <summary>Where a binding is written: a file, and a line and column from zero.</summary>
+/// <summary>Where a binding is written: a file, and a line and character from zero as the C# server counts them.</summary>
 public sealed record BindingPlace(string Path, int Line, int Column);
 
 /// <summary>A step definition: the kind of step it binds, its expression (none where the method's name is its step), the

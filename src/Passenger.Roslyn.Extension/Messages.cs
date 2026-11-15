@@ -54,6 +54,7 @@ public static class Handlers
     public const string MauiXamlChecks = "Passenger.Roslyn.Extension.MauiXamlChecks";
     public const string MauiExpressionUses = "Passenger.Roslyn.Extension.MauiExpressionUses";
     public const string CompletionCall = "Passenger.Roslyn.Extension.CompletionCall";
+    public const string StepBindings = "Passenger.Roslyn.Extension.StepBindings";
 
     public static readonly IReadOnlyList<string> All =
     [
@@ -62,7 +63,7 @@ public static class Handlers
         AspireRename, AspireParameters, ConnectionReads, WebRoutes, RouteBody, LocalizedReads, SymbolsNamed, SymbolAt, WrittenPlaces,
         ComponentClass, GeneratedTexts, GeneratedNamed, PartialHalf, GeneratedParts, GeneratedDocuments, JsInteropCalls, GodotCode, GodotNames, GodotPaths, GodotKindStrings, GodotNameStrings, GodotFix, ToolkitRenames,
         MauiExpressionCompletion, MauiExpressionSymbol, MauiXamlChecks, MauiExpressionUses,
-        CompletionCall,
+        CompletionCall, StepBindings,
     ];
 }
 
@@ -963,6 +964,79 @@ public static class RouteKinds
 public sealed record RoutesFound(
     [property: JsonPropertyName("routes")] IReadOnlyList<WebRoute> Routes,
     [property: JsonPropertyName("projects")] IReadOnlyList<string> Projects);
+
+/// <summary>The projects whose Reqnroll or SpecFlow bindings are asked for, by their project files' paths (none asks for every
+/// project's), with the assemblies beside a project's own its configuration names (<c>bindingAssemblies</c>), by project.</summary>
+public sealed record StepsRequest(
+    [property: JsonPropertyName("projects")] IReadOnlyList<string> Projects,
+    [property: JsonPropertyName("bindingAssemblies")] IReadOnlyDictionary<string, IReadOnlyList<string>>? BindingAssemblies = null);
+
+/// <summary>A place in a file and the length written there.</summary>
+public sealed record StepPlace(
+    [property: JsonPropertyName("path")] string Path,
+    [property: JsonPropertyName("at")] Place At,
+    [property: JsonPropertyName("length")] int Length);
+
+/// <summary>A step definition's or hook's parameter: its name, its type's full metadata name, an enum's members.</summary>
+public sealed record StepParameterFound(
+    [property: JsonPropertyName("name")] string Name,
+    [property: JsonPropertyName("type")] string Type,
+    [property: JsonPropertyName("members")] IReadOnlyList<string>? Members = null);
+
+/// <summary>A <c>[Scope]</c>'s tag, feature title and scenario title, those given.</summary>
+public sealed record StepScopeFound(
+    [property: JsonPropertyName("tag")] string? Tag,
+    [property: JsonPropertyName("feature")] string? Feature,
+    [property: JsonPropertyName("scenario")] string? Scenario);
+
+/// <summary>A step definition as its code declares it: its kind (Given, When, Then or StepDefinition), expression (none
+/// where the method's name is its step) and its expression type when the attribute names one (CucumberExpression,
+/// RegularExpression), its method, type and parameters, its scopes, why Reqnroll would refuse it, and where its method's
+/// name and its expression's string literal are written.</summary>
+public sealed record StepDefinitionFound(
+    [property: JsonPropertyName("kind")] string Kind,
+    [property: JsonPropertyName("expression")] string? Expression,
+    [property: JsonPropertyName("expressionType")] string? ExpressionType,
+    [property: JsonPropertyName("method")] string Method,
+    [property: JsonPropertyName("type")] string Type,
+    [property: JsonPropertyName("parameters")] IReadOnlyList<StepParameterFound> Parameters,
+    [property: JsonPropertyName("scopes")] IReadOnlyList<StepScopeFound> Scopes,
+    [property: JsonPropertyName("error")] string? Error,
+    [property: JsonPropertyName("methodAt")] StepPlace? MethodAt,
+    [property: JsonPropertyName("expressionAt")] StepPlace? ExpressionAt);
+
+/// <summary>A hook: its kind (its attribute's name: BeforeScenario), method, type, scopes (its tags among them) and order.</summary>
+public sealed record StepHookFound(
+    [property: JsonPropertyName("kind")] string Kind,
+    [property: JsonPropertyName("method")] string Method,
+    [property: JsonPropertyName("type")] string Type,
+    [property: JsonPropertyName("scopes")] IReadOnlyList<StepScopeFound> Scopes,
+    [property: JsonPropertyName("order")] int Order,
+    [property: JsonPropertyName("methodAt")] StepPlace? MethodAt);
+
+/// <summary>A <c>[StepArgumentTransformation]</c>: its regular expression, name and return type's full metadata name.</summary>
+public sealed record StepTransformationFound(
+    [property: JsonPropertyName("regex")] string? Regex,
+    [property: JsonPropertyName("name")] string? Name,
+    [property: JsonPropertyName("returnType")] string ReturnType,
+    [property: JsonPropertyName("methodAt")] StepPlace? MethodAt);
+
+/// <summary>A Reqnroll or SpecFlow project's bindings: those its own code and the projects and binding assemblies it
+/// references declare, each with the project file it is written in.</summary>
+public sealed record ProjectStepsFound(
+    [property: JsonPropertyName("project")] string Project,
+    [property: JsonPropertyName("specFlow")] bool SpecFlow,
+    [property: JsonPropertyName("steps")] IReadOnlyList<ProjectStep> Steps,
+    [property: JsonPropertyName("hooks")] IReadOnlyList<StepHookFound> Hooks,
+    [property: JsonPropertyName("transformations")] IReadOnlyList<StepTransformationFound> Transformations);
+
+/// <summary>A step definition and the project whose code declares it (none for a binding assembly's).</summary>
+public sealed record ProjectStep(
+    [property: JsonPropertyName("definition")] StepDefinitionFound Definition,
+    [property: JsonPropertyName("declaredIn")] string? DeclaredIn);
+
+/// <summary>The Reqnroll and SpecFlow projects of those asked for, each read even when it declares no binding.</summary>
+public sealed record StepsFound([property: JsonPropertyName("projects")] IReadOnlyList<ProjectStepsFound> Projects);
 
 /// <summary>The AppHost whose proven project resources and source locations are read.</summary>
 public sealed record AspireResourcesRequest(string AppHost);

@@ -972,6 +972,9 @@ public sealed class ProjectSession : IAsyncDisposable
     /// <summary>The routes the folder's web projects declare in their code, as the language server's extension last read them.</summary>
     public Endpoints.RouteCatalog Routes { get; } = new();
 
+    /// <summary>The Reqnroll and SpecFlow projects' bindings, read from their code.</summary>
+    public Bdd.StepCatalog Steps { get; } = new();
+
     /// <summary>The profile each project last published with, which Publish Again publishes it with.</summary>
     public PublishMemory Publishing { get; } = new();
 

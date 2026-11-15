@@ -589,6 +589,8 @@ public partial class MainWindow
             service.Connected += (_, _) => structure?.FollowServer();
             service.StateChanged += (_, _) => RoutesServerChanged(service);
             service.ProjectsLoaded += (_, _) => RoutesProjectsLoaded(service);
+            service.StateChanged += (_, _) => StepsServerChanged(service);
+            service.ProjectsLoaded += (_, _) => StepsServerChanged(service, loaded: true);
             service.StateChanged += (_, _) =>
             {
                 // Ready, as it loaded the folder's projects: the open AppHosts' resources are read from it once.
