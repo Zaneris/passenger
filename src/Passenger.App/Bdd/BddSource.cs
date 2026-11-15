@@ -26,8 +26,15 @@ internal sealed class BddSource(Func<ProjectSession> session, EditorArea editors
     /// <summary>The bindings a file's project sees; null for a file of no Reqnroll project.</summary>
     public ProjectSteps? StepsOf(string path) => session().Steps.For(session().ProjectOf(path)?.Path);
 
-    /// <summary>An open feature's reading of its text as it stands.</summary>
-    public Task<FeatureAnalysis?> AnalysisAsync(OpenDocument document) => Checks.CurrentAsync(document);
+    /// <summary>An open feature's reading of its text and the bindings as they stand, a read of the bindings that is due made first.</summary>
+    public async Task<FeatureAnalysis?> AnalysisAsync(OpenDocument document)
+    {
+        if (session().Steps.Wants)
+        {
+            await readSteps(CancellationToken.None);
+        }
+        return await Checks.CurrentAsync(document);
+    }
 
     /// <summary>The step definition a C# file declares at an offset: on its method's name or its expression's string.</summary>
     public StepBinding? BindingAt(OpenDocument document, int offset)
