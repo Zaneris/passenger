@@ -794,6 +794,12 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         CancellationToken cancel = default) => OnUi(cancel, () => Patience.RunAsync(Editors.Commands, () => Session.CSharp?.Session, async patience =>
     {
         using AgentsChange naming = window.NameAgentsChange(choice is null ? title : $"{title} ({choice})");
+        string what = choice is null ? $"'{title}'" : $"'{title}' ({choice})";
+        // A C# file is opened only once its project has it; any other is refused before its language is asked.
+        if (Languages.Language.ForPath(path).Service != Languages.LanguageService.CSharp)
+        {
+            RefuseReadOnly(await DocumentAsync(path, cancel), what);
+        }
         if (Godot.GodotScriptTypes.IsScript(Resolve(path)))
         {
             OpenDocument script = await DocumentAsync(path, cancel);
@@ -803,6 +809,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
                 patience, name);
         }
         Served served = await Serve(path, cancel);
+        RefuseReadOnly(served.Document, what);
         switch (served)
         {
             case XamlServed xaml:
@@ -854,7 +861,6 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         {
             throw new InvalidOperationException($"'{title}' offers no choices");
         }
-        string what = choice is null ? $"'{title}'" : $"'{title}' ({choice})";
         CodeAction resolved = await lsp.ResolveChosenAsync(chosen, scope);
         // Resolved again once the files come under the projects its edit reaches are in them, as the window's are.
         if (resolved.Edit is { } reaching && Session.CSharp is { IsReady: true } csharp)
@@ -892,6 +898,16 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         await SaveLandedAsync(cancel);
         return ActionApplied(what, made, unrun);
     }, AgentCall.Say, cancel));
+
+    /// <summary>Refuses a code action on a file the editor shows read-only, before its fixes or any server's actions are
+    /// asked for.</summary>
+    private static void RefuseReadOnly(OpenDocument document, string what)
+    {
+        if (document.IsReadOnly)
+        {
+            throw new InvalidOperationException($"{what} was not applied: {Refusals.ReadOnly(document.Name)}");
+        }
+    }
 
     /// <summary>What an agent hears of a code action's edit made: the files it changed, made or deleted, counted, those it
     /// renamed, a command it carries that Passenger cannot run, those left as edited meanwhile, and a file that could not

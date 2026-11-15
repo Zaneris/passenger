@@ -1857,11 +1857,11 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
 
     /// <summary>An agent's format, Code Cleanup and Optimize Imports of a file the editor shows read-only, a library's XAML
     /// as Source Link gave it and a framework type the language server decompiled, are refused saying so: nothing there
-    /// changes, so nothing is said to be reformatted, tidied or already so; and each other refactoring and rename of the
-    /// decompiled type are refused up front in the same words. Reformat Code, Code Cleanup, Optimize Imports and the
-    /// refactorings grey on the decompiled file, saying why.</summary>
+    /// changes, so nothing is said to be reformatted, tidied or already so; and each other refactoring, rename and code
+    /// action there are refused up front in the same words. Reformat Code, Code Cleanup, Optimize Imports, the
+    /// refactorings and the Edit menu's changes grey on the decompiled file, saying why.</summary>
     [Fact]
-    public async Task An_agents_format_tidy_refactorings_and_rename_of_a_read_only_xaml_or_cs_file_are_refused_saying_it_is_read_only()
+    public async Task An_agents_format_tidy_refactorings_rename_and_code_actions_of_a_read_only_xaml_or_cs_file_are_refused_saying_it_is_read_only()
     {
         string folder = await TakeFolderAsync();
         // Where Passenger keeps what Source Link gives of a library, as it would hold Fluent's Button.xaml.
@@ -1879,6 +1879,10 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         Assert.True(cleaned.IsError == true && Text(cleaned).Contains("Code Cleanup was not applied: Button.xaml is read-only", StringComparison.Ordinal),
             $"code_cleanup of a read-only XAML file answered: {Text(cleaned)}");
         Assert.True(File.ReadAllText(button) == laid, "code_cleanup wrote a read-only XAML file");
+        CallToolResult extracted = await Result(client, McpTools.ApplyCodeAction, new() { ["path"] = button, ["line"] = 3, ["column"] = 38, ["title"] = "Extract Resource", ["name"] = "Padding8" });
+        Assert.True(extracted.IsError == true && Text(extracted).Contains("'Extract Resource' was not applied: Button.xaml is read-only", StringComparison.Ordinal),
+            $"apply_code_action on a read-only XAML file answered: {Text(extracted)}");
+        Assert.True(File.ReadAllText(button) == laid, "apply_code_action wrote a read-only XAML file");
 
         string decompiled = Assert.Single((await Call(client, McpTools.Definition, new() { ["path"] = "Program.cs", ["line"] = 6, ["column"] = 1 })).EnumerateArray())
             .GetProperty("path").GetString()!;
@@ -1916,11 +1920,18 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         {
             answered.Add($"rename: {Text(renamed)}");
         }
-        Assert.True(answered.Count == 0, $"Refactorings or rename of the decompiled {Path.GetFileName(decompiled)} were not refused as read-only:\n{string.Join('\n', answered)}");
-        Assert.True(File.ReadAllText(decompiled) == written, "A refactoring or rename wrote a decompiled C# file");
+        // Refused before the server is asked what it offers there, whatever the action.
+        CallToolResult acted = await Result(client, McpTools.ApplyCodeAction, new() { ["path"] = decompiled, ["line"] = declared + 1, ["column"] = column, ["title"] = "Generate overrides..." });
+        if (acted.IsError != true || !Text(acted).Contains($"'Generate overrides...' was not applied: {Path.GetFileName(decompiled)} is read-only", StringComparison.Ordinal))
+        {
+            answered.Add($"apply_code_action: {Text(acted)}");
+        }
+        Assert.True(answered.Count == 0, $"Refactorings, rename or a code action of the decompiled {Path.GetFileName(decompiled)} were not refused as read-only:\n{string.Join('\n', answered)}");
+        Assert.True(File.ReadAllText(decompiled) == written, "A refactoring, rename or code action wrote a decompiled C# file");
 
         await Call(client, McpTools.Open, new() { ["path"] = decompiled });
-        foreach (string id in new[] { AppActions.Reformat, AppActions.CodeCleanup, AppActions.OptimizeUsings, AppActions.Rename, AppActions.ExtractMethod, AppActions.ChangeSignature })
+        foreach (string id in new[] { AppActions.Reformat, AppActions.CodeCleanup, AppActions.OptimizeUsings, AppActions.Rename, AppActions.ExtractMethod, AppActions.ChangeSignature,
+            EditorActions.Paste, EditorActions.Duplicate, EditorActions.JoinLines })
         {
             string action = Assert.Single((await Call(client, McpTools.IdeActions, new() { ["query"] = id })).EnumerateArray(),
                 a => a.GetString()!.StartsWith($"{id}:", StringComparison.Ordinal)).GetString()!;
