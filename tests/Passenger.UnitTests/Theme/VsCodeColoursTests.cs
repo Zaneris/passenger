@@ -179,6 +179,9 @@ public class VsCodeColoursTests
         ThemeFile own = ThemeFiles.ReadTheme("Mine.json", Encoding.UTF8.GetBytes("""{"format": 1, "name": "Mine", "vscode": {"file": "vscode/dark.json"}}"""),
             new Dictionary<string, ThemeTokenKind>()).Read!;
         Assert.Equal(new VsCodeBase(null, null, null, "vscode/dark.json"), own.Base);
+        ThemeFile named = ThemeFiles.ReadTheme("Mine.json", Encoding.UTF8.GetBytes("""{"format": 1, "name": "Mine", "vscode": {"file": "Theme.json"}}"""),
+            new Dictionary<string, ThemeTokenKind>()).Read!;
+        Assert.Equal(new VsCodeBase(null, null, null, "Theme.json"), named.Base);
         ThemeFile scheme = ThemeFiles.ReadCodeColours("Mine.json", Encoding.UTF8.GetBytes("""{"format": 1, "name": "Mine", "vscode": {"id": "a.b", "theme": "T"}}"""),
             new Dictionary<string, ThemeTokenKind>()).Read!;
         Assert.Equal(new VsCodeBase("a.b", "T", null), scheme.Base);
@@ -246,7 +249,6 @@ public class VsCodeColoursTests
     [InlineData("""{"vscode": {"id": "no-dot", "theme": "Dracula"}}""", "it is an extension's Open VSX id")]
     [InlineData("""{"vscode": {"id": "a.b", "theme": "Dracula", "version": "1 2"}}""", "it is the extension's version")]
     [InlineData("""{"vscode": {"id": "a.b"}}""", "gives no theme")]
-    [InlineData("""{"vscode": {"file": "theme.json"}}""", "not named theme.json")]
     [InlineData("""{"vscode": {"file": "../dark.json"}}""", "with no ..")]
     [InlineData("""{"vscode": {"file": "dark.json", "id": "a.b"}}""", "given instead of an id")]
     public void A_vs_code_base_named_wrongly_refuses_the_theme_saying_why(string member, string why)

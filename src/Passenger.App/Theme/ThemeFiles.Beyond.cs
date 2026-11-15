@@ -294,12 +294,10 @@ public static partial class ThemeFiles
         PassOver(file, named.Value, [Member.Id, Member.Theme, Member.Version, Member.File], Member.VsCode, problems);
         if (JsonMembers.Value(named.Value, Member.File) is { } beside)
         {
-            // theme.json is the name a theme's own file is kept under, beside which this one is kept.
-            if (beside.ValueKind != JsonValueKind.String || !Inside(beside.GetString()!, [".json"]) || beside.GetString() == "theme.json"
-                || JsonMembers.Value(named.Value, Member.Id) is not null)
+            if (beside.ValueKind != JsonValueKind.String || !Inside(beside.GetString()!, [".json"]) || JsonMembers.Value(named.Value, Member.Id) is not null)
             {
                 throw new FormatException($"gives vscode's file as {ThemeJson.Shown(beside)}: it is a VS Code theme's JSON beside the theme's file, its folders joined by /, "
-                    + "with no .., ending .json and not named theme.json, given instead of an id");
+                    + "with no .., ending .json, given instead of an id");
             }
             return new VsCodeBase(null, null, null, beside.GetString());
         }

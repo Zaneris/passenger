@@ -85,8 +85,14 @@ public static class KeptThemes
     }
 
     /// <summary>The folder a theme's VS Code base is kept in beside its file: the extension's manifest and the theme's files at
-    /// their paths in the extension.</summary>
+    /// their paths in the extension, or a base named as a file beside the theme's and the files it includes at their paths
+    /// there, so none meets the theme's own file.</summary>
     public const string BaseFolder = "vscode";
+
+    /// <summary>The files of a theme's base named as a file, by their paths beside it, named by where they are kept beside
+    /// the theme's file.</summary>
+    public static Dictionary<string, byte[]> BaseBeside(IReadOnlyDictionary<string, byte[]> files) =>
+        files.ToDictionary(f => $"{BaseFolder}/{f.Key}", f => f.Value, StringComparer.Ordinal);
 
     /// <summary>The files of a kept theme's VS Code base, by their paths in its extension, each held to the most a theme file
     /// may be.</summary>
@@ -165,12 +171,12 @@ public static class KeptThemes
     }
 
     /// <summary>Keeps a theme laid over a VS Code theme and giving nothing of its own (<see cref="ThemeFiles.Wrapping"/>), with
-    /// its base's files: by their paths in its extension for a base by id, beside the theme's file for one by file; why not
-    /// where it cannot be written. Its name is one <see cref="ThemeFiles.NameOf"/> made.</summary>
+    /// its base's files under <see cref="BaseFolder"/>: by their paths in its extension for a base by id, beside the base's
+    /// file for one by file; why not where it cannot be written. Its name is one <see cref="ThemeFiles.NameOf"/> made.</summary>
     public static string? KeepOver(ThemeSource source, bool code, string name, VsCodeBase based, IReadOnlyDictionary<string, byte[]> files) =>
         based.File is null
             ? KeepBase(source, code, name, files) ?? Keep(source, code, name, ThemeFiles.Wrapping(name, based))
-            : Keep(source, code, name, ThemeFiles.Wrapping(name, based), files);
+            : Keep(source, code, name, ThemeFiles.Wrapping(name, based), BaseBeside(files));
 
     /// <summary>The file of every theme or scheme of a source kept here, for the list Settings shows without the source.</summary>
     public static IReadOnlyList<byte[]> Of(ThemeSource source, bool code)

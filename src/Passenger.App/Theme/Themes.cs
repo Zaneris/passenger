@@ -133,7 +133,7 @@ public static class Themes
             {
                 if (why is not null)
                 {
-                    unfetched[(code, theme)] = $"{theme.Name}'s VS Code theme {wanted.Theme} ({wanted.Id}) is refused: {why}";
+                    unfetched[(code, theme)] = $"{theme.Name}'s VS Code theme {wanted.File ?? $"{wanted.Theme} ({wanted.Id})"} is refused: {why}";
                 }
                 return null;
             }

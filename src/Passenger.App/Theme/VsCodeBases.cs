@@ -30,8 +30,9 @@ public static class VsCodeBases
     }
 
     /// <summary>The files of a theme's base named as a file beside it, the files it includes too, each read by its path
-    /// there through <paramref name="read"/>, so they are kept with the theme; none for a base by its id, and why not where
-    /// one cannot be read or the theme refused.</summary>
+    /// there through <paramref name="read"/> and named by where it is kept beside the theme's file
+    /// (<see cref="KeptThemes.BaseBeside"/>), so they are kept with the theme and never meet its own file; none for a base
+    /// by its id, and why not where one cannot be read or the theme refused.</summary>
     public static async Task<(Dictionary<string, byte[]> Files, string? Why)> BesideAsync(ThemeFile theme, Func<string, Task<(byte[]? Bytes, string? Why)>> read)
     {
         Dictionary<string, byte[]> files = new(StringComparer.Ordinal);
@@ -40,12 +41,12 @@ public static class VsCodeBases
         {
             if (files.ContainsKey(next) || files.Count == VsCodeThemes.MostIncludes)
             {
-                return (files, $"{theme.Base!.File} includes more than the {VsCodeThemes.MostIncludes} files Passenger reads of one theme");
+                return (KeptThemes.BaseBeside(files), $"{theme.Base!.File} includes more than the {VsCodeThemes.MostIncludes} files Passenger reads of one theme");
             }
             (byte[]? bytes, string? why) = await read(next);
             if (bytes is null)
             {
-                return (files, $"{theme.Name}'s VS Code theme {next} could not be read: {why}");
+                return (KeptThemes.BaseBeside(files), $"{theme.Name}'s VS Code theme {next} could not be read: {why}");
             }
             files[next] = bytes;
             next = VsCodeThemes.Included(next, bytes);
@@ -55,10 +56,10 @@ public static class VsCodeBases
             ThemeRead<VsCodeTheme> whole = VsCodeThemes.ReadTheme(file, null, null, path => files.TryGetValue(path, out byte[]? bytes) ? (bytes, null) : (null, $"no {path}"));
             if (whole.Read is null)
             {
-                return (files, $"{theme.Name}'s VS Code theme is refused: {whole.Refused}");
+                return (KeptThemes.BaseBeside(files), $"{theme.Name}'s VS Code theme is refused: {whole.Refused}");
             }
         }
-        return (files, null);
+        return (KeptThemes.BaseBeside(files), null);
     }
 
     /// <summary>The version of a theme's base kept beside it, or null where none is kept.</summary>
@@ -75,10 +76,15 @@ public static class VsCodeBases
         why = null;
         if (wanted.File is { } beside)
         {
-            VsCodeThemes.ExtensionFile besides = KeptThemes.BesideFiles(source, code, name);
+            VsCodeThemes.ExtensionFile besides = KeptThemes.BaseFiles(source, code, name);
             if (besides(beside).Bytes is null)
             {
-                return null;
+                // A base kept beside the theme's own file rather than under its base folder is read there.
+                besides = KeptThemes.BesideFiles(source, code, name);
+                if (besides(beside).Bytes is null)
+                {
+                    return null;
+                }
             }
             ThemeRead<VsCodeTheme> read = VsCodeThemes.ReadTheme(beside, null, null, besides);
             why = read.Refused;

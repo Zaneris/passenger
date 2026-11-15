@@ -16,8 +16,9 @@ namespace Passenger.Tests;
 /// theme its extensions contribute, most downloaded first, by rating or by words on request; one chosen shows at once,
 /// in its own variant whatever the setting, is kept with its base and draws with Open VSX gone; a <c>.vsix</c> that cannot
 /// be read is refused, saying why; and a Passenger theme naming a VS Code theme by its id draws that base under its own
-/// tokens, kept so it draws offline; and Add from File taking a VS Code theme's JSON or .vsix as a theme, and one as a code
-/// colour scheme under any theme.</summary>
+/// tokens, kept so it draws offline, and one naming a VS Code theme beside it kept apart from the theme's own file whatever
+/// it is named; and Add from File taking a VS Code theme's JSON or .vsix as a theme, and one as a code colour scheme under
+/// any theme.</summary>
 public sealed class VsCodeThemeExplorerTests : IDisposable
 {
     private readonly string folder = TestFolders.Create("vscode-themes-folder-");
@@ -244,6 +245,70 @@ public sealed class VsCodeThemeExplorerTests : IDisposable
         finally
         {
             registry.Dispose();
+            window.ApplySettings(new AppSettings());
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact]
+    public void A_theme_s_VS_Code_theme_beside_it_named_Theme_json_or_including_theme_json_is_kept_apart_from_the_theme_s_own_file_and_draws()
+    {
+        // On a file system that ignores letter case, Theme.json is the name the theme's own file is kept under.
+        string source = Path.Combine(sources, "beside");
+        string lit = Path.Combine(source, "lit");
+        string dim = Path.Combine(source, "dim");
+        Directory.CreateDirectory(lit);
+        Directory.CreateDirectory(dim);
+        byte[] lanternJson = CarriedThemes.VsCodeBytes("Lantern.json");
+        byte[] lanternBase = CarriedThemes.VsCodeBytes("lantern-base.json");
+        File.WriteAllText(Path.Combine(source, ThemeFiles.IndexFile), """{"format": 1, "themes": ["lit/Lit.json", "dim/Dim.json"]}""");
+        string litFile = Path.Combine(lit, "Lit.json");
+        File.WriteAllText(litFile, """{"format": 1, "name": "Lit", "vscode": {"file": "Theme.json"}, "tokens": {"Frame": "#0A0A12"}}""");
+        File.WriteAllBytes(Path.Combine(lit, "Theme.json"), lanternJson);
+        File.WriteAllBytes(Path.Combine(lit, "lantern-base.json"), lanternBase);
+        File.WriteAllText(Path.Combine(dim, "Dim.json"), """{"format": 1, "name": "Dim", "vscode": {"file": "dusk.json"}, "tokens": {"Frame": "#0B0B13"}}""");
+        File.WriteAllText(Path.Combine(dim, "dusk.json"), """{"name": "Dusk", "type": "dark", "include": "./theme.json", "colors": {"editor.foreground": "#ECE7F5"}}""");
+        File.WriteAllBytes(Path.Combine(dim, "theme.json"), lanternJson);
+        File.WriteAllBytes(Path.Combine(dim, "lantern-base.json"), lanternBase);
+        ThemeFile lantern = CarriedThemes.Theme(CarriedThemes.VsCodePrefix + "Lantern")!;
+        MainWindow window = Open();
+        try
+        {
+            window.KeepSettings();
+            SettingsDialog dialog = window.ShowSettings();
+            Ui.Settle();
+            dialog.ThemeSourceBox.Text = source;
+            Ui.Click(dialog.AddThemeSourceButton);
+            Ui.Settle();
+            string added = PathNames.Canonical(source);
+            ThemeSource from = new(ThemeSourceKind.Folder, added);
+            ThemePicker picker = dialog.ThemePicker;
+            picker.Box.IsDropDownOpen = true;
+            Ui.WaitFor(() => picker.Listed.Contains($"Lit ({added})") && picker.Listed.Contains($"Dim ({added})"),
+                () => $"Lit and Dim listed, where it lists {string.Join(", ", picker.Listed)}");
+            picker.Box.IsDropDownOpen = false;
+            foreach ((string name, string frame) in ((string, string)[])[("Lit", "#0A0A12"), ("Dim", "#0B0B13")])
+            {
+                picker.Choose(name, added);
+                Ui.Settle();
+                Assert.True(picker.Problems is null && Themes.Said is null, $"{name} was refused: {picker.Problems ?? Themes.Said}");
+                Assert.Equal(Color.Parse(frame), Drawn(window, TokenKeys.Frame));
+                Assert.True(Token(lantern, "Editor.Background") == Drawn(window, TokenKeys.Editor_Background)
+                    && Token(lantern, "Syntax.Keyword") == Drawn(window, TokenKeys.Syntax_Keyword),
+                    $"{name} chosen from its source does not draw Lantern's colours, so its VS Code theme was lost to its own kept file");
+                Assert.Equal(File.ReadAllBytes(Path.Combine(source, name.ToLowerInvariant(), $"{name}.json")), KeptThemes.Bytes(from, false, name));
+            }
+
+            // Added from its file, the theme and its VS Code theme are kept apart too.
+            Assert.Null(Ui.Await(picker.AddFileAsync(litFile), "Lit added from its file"));
+            Ui.Settle();
+            Assert.Equal(new SourcedTheme(ThemeSource.Added.Name, "Lit"), dialog.Working.Look);
+            Assert.True(Themes.Said is null, $"Lit added was refused: {Themes.Said}");
+            Assert.Equal(Token(lantern, "Editor.Background"), Drawn(window, TokenKeys.Editor_Background));
+            dialog.Close();
+        }
+        finally
+        {
             window.ApplySettings(new AppSettings());
             window.Close();
         }

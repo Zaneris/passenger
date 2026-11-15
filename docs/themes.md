@@ -342,7 +342,7 @@ A kind a theme colours no way takes the one after "else", then Passenger's palet
 ```
 
 `vscode` names a VS Code colour theme as the theme's base, by its Open VSX id or as a VS Code theme's JSON beside the
-theme's file (`file`, its folders joined by `/`, no `..`, the files it includes beside it, not named `theme.json`): `id` is its extension's Open VSX id (`publisher.name`), `theme`
+theme's file (`file`, its folders joined by `/`, no `..`, the files it includes beside it): `id` is its extension's Open VSX id (`publisher.name`), `theme`
 its label in that extension, and `version`, which may be left out, pins the extension's version. The VS Code theme gives
 every colour as above, and the theme's own tokens, background, fonts, languages and layout are laid over it, so a theme
 gives only what it changes; it shows in the base's variant. The base is fetched with the theme, from Open VSX or beside the

@@ -187,7 +187,7 @@ public sealed class ThemePicker : StackPanel
                 (byte[]? bytes, string? why) = ThemeSourceReads.BesideFile(path, file);
                 if (bytes is not null)
                 {
-                    read[$"{KeptThemes.BaseFolder}/{file}"] = bytes;
+                    read[file] = bytes;
                 }
                 return (bytes, why);
             });
@@ -197,7 +197,7 @@ public sealed class ThemePicker : StackPanel
             }
             said.AddRange(vs.Problems);
             string name = ThemeFiles.NameOf(theme.Name);
-            VsCodeBase over = new(null, null, null, $"{KeptThemes.BaseFolder}/{Path.GetFileName(path)}");
+            VsCodeBase over = new(null, null, null, Path.GetFileName(path));
             added.Add(new Added(name, () => KeptThemes.KeepOver(ThemeSource.Added, code, name, over, read)));
             return null;
         }
