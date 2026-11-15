@@ -4,12 +4,10 @@ using System.Runtime.InteropServices;
 namespace Passenger.Core;
 
 /// <summary>The processors a program's code is built for, read from its header alone: a Mach-O's CPU type, each slice's of
-/// a universal one, or a Windows program's machine. Empty for a file that is neither, or is cut short.</summary>
+/// a universal one (<see cref="MachOFile.Slices"/>), a Linux program's ELF machine, or a Windows program's machine. Empty
+/// for a file that is none of these, is cut short, or is for a processor .NET does not run on.</summary>
 public static class ProgramProcessors
 {
-    /// <summary>The most slices a universal program is taken to have: a Java class file begins as one does.</summary>
-    private const int MostSlices = 16;
-
     /// <summary>The processors of the program at a path; none where it cannot be read.</summary>
     public static IReadOnlyList<Architecture> Of(string path)
     {
@@ -26,29 +24,19 @@ public static class ProgramProcessors
 
     public static IReadOnlyList<Architecture> Of(Stream program)
     {
-        Span<byte> head = stackalloc byte[8];
-        if (!Read(program, 0, head))
+        if (MachOFile.Slices(program) is { } slices)
+        {
+            return [.. slices.Select(slice => Cpu(slice.Cpu)).OfType<Architecture>()];
+        }
+        Span<byte> head = stackalloc byte[20];
+        if (!Read(program, 0, head[..8]))
         {
             return [];
         }
-        // A thin 64-bit Mach-O is little-endian, as every Mac's since Intel; a universal one's table big-endian.
-        if (BinaryPrimitives.ReadUInt32LittleEndian(head) == 0xFEEDFACF)
+        // An ELF header names its byte order (EI_DATA: 1 little-endian, 2 big-endian) before its machine.
+        if (head[..4].SequenceEqual("\u007fELF"u8) && head[5] is 1 or 2 && Read(program, 0, head))
         {
-            return Cpu(BinaryPrimitives.ReadInt32LittleEndian(head[4..])) is { } thin ? [thin] : [];
-        }
-        if (BinaryPrimitives.ReadUInt32BigEndian(head) == 0xCAFEBABE)
-        {
-            List<Architecture> slices = [];
-            Span<byte> slice = stackalloc byte[4];
-            uint count = Math.Min(BinaryPrimitives.ReadUInt32BigEndian(head[4..]), MostSlices);
-            for (int at = 0; at < count && Read(program, 8 + (at * 20), slice); at++)
-            {
-                if (Cpu(BinaryPrimitives.ReadInt32BigEndian(slice)) is { } cpu)
-                {
-                    slices.Add(cpu);
-                }
-            }
-            return slices;
+            return Machine(head[5] == 1 ? BinaryPrimitives.ReadUInt16LittleEndian(head[18..]) : BinaryPrimitives.ReadUInt16BigEndian(head[18..])) is { } processor ? [processor] : [];
         }
         Span<byte> machine = stackalloc byte[6];
         if (head[0] == 'M' && head[1] == 'Z' && Read(program, 0x3C, head[..4])
@@ -71,6 +59,20 @@ public static class ProgramProcessors
         0x01000007 => Architecture.X64,
         0x0100000C => Architecture.Arm64,
         7 => Architecture.X86,
+        _ => null,
+    };
+
+    /// <summary>An ELF e_machine's processor, each that .NET runs Linux on.</summary>
+    private static Architecture? Machine(ushort machine) => machine switch
+    {
+        62 => Architecture.X64,
+        183 => Architecture.Arm64,
+        40 => Architecture.Arm,
+        3 => Architecture.X86,
+        243 => Architecture.RiscV64,
+        258 => Architecture.LoongArch64,
+        22 => Architecture.S390x,
+        21 => Architecture.Ppc64le,
         _ => null,
     };
 

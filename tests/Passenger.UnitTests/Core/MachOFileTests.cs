@@ -4,17 +4,47 @@ using Passenger.Core;
 
 namespace Passenger.UnitTests.Core;
 
-/// <summary>What a macOS program links, read from its load commands: a thin program's, each slice's of a universal one, and
-/// nothing past what the file holds, whatever its sizes say.</summary>
+/// <summary>A macOS program read from its header: its slices, a thin program's one or each a universal one's table names
+/// (with 32-bit or 64-bit offsets), and what each links, read from its load commands, nothing past what the file holds,
+/// whatever its sizes say.</summary>
 public class MachOFileTests
 {
     private const string AppKit = "/System/Library/Frameworks/AppKit.framework/Versions/C/AppKit";
     private const string LibSystem = "/usr/lib/libSystem.B.dylib";
 
+    private const int Arm64 = 0x0100000C;
+
     private static IReadOnlyList<string>? Linked(byte[] program)
     {
         using MemoryStream stream = new(program);
         return MachOFile.Libraries(stream);
+    }
+
+    private static IReadOnlyList<(int Cpu, long Offset)>? Sliced(byte[] program)
+    {
+        using MemoryStream stream = new(program);
+        return MachOFile.Slices(stream);
+    }
+
+    [Fact]
+    public void A_thin_program_is_one_slice_at_its_start_and_a_universal_one_each_its_table_names_by_32_or_64_bit_offsets()
+    {
+        byte[] first = MachOBytes.Thin(LibSystem);
+        byte[] second = MachOBytes.Thin(AppKit);
+
+        Assert.Equal([(Arm64, 0L)], Sliced(first));
+        Assert.Equal([(Arm64, 8L + (2 * 20)), (Arm64, 8L + (2 * 20) + first.Length)], Sliced(MachOBytes.Universal(first, second)));
+        Assert.Equal([(Arm64, 8L + (2 * 32)), (Arm64, 8L + (2 * 32) + first.Length)], Sliced(MachOBytes.Universal(wide: true, first, second)));
+        Assert.Equal([LibSystem, AppKit], Linked(MachOBytes.Universal(wide: true, first, second)));
+    }
+
+    [Fact]
+    public void A_header_cut_short_or_a_table_of_no_slice_is_no_program()
+    {
+        Assert.Null(Sliced(MachOBytes.Thin(LibSystem)[..31]));
+        Assert.Null(Sliced([0xCA, 0xFE, 0xBA, 0xBF, 0, 0, 0, 0]));
+        Assert.Null(Sliced([0xCA, 0xFE, 0xBA, 0xBE, 0, 0, 0, 17]));
+        Assert.Empty(Sliced([0xCA, 0xFE, 0xBA, 0xBF, 0, 0, 0, 1, .. new byte[31]])!);
     }
 
     [Fact]
@@ -117,17 +147,32 @@ internal static class MachOBytes
         return [.. header, .. body.ToArray()];
     }
 
-    public static byte[] Universal(params byte[][] slices)
+    public static byte[] Universal(params byte[][] slices) => Universal(wide: false, slices);
+
+    /// <summary>A universal program of the slices given, each named in its table by its CPU type, where it begins and its
+    /// size: 20 bytes an entry, or 32 with 64-bit offsets and sizes (<paramref name="wide"/>).</summary>
+    public static byte[] Universal(bool wide, params byte[][] slices)
     {
         using MemoryStream program = new();
-        byte[] header = new byte[8 + (20 * slices.Length)];
-        BinaryPrimitives.WriteUInt32BigEndian(header, 0xCAFEBABE);
+        int entry = wide ? 32 : 20;
+        byte[] header = new byte[8 + (entry * slices.Length)];
+        BinaryPrimitives.WriteUInt32BigEndian(header, wide ? 0xCAFEBABF : 0xCAFEBABE);
         BinaryPrimitives.WriteUInt32BigEndian(header.AsSpan(4), (uint)slices.Length);
         uint at = (uint)header.Length;
         for (int slice = 0; slice < slices.Length; slice++)
         {
-            BinaryPrimitives.WriteUInt32BigEndian(header.AsSpan(8 + (slice * 20) + 8), at);
-            BinaryPrimitives.WriteUInt32BigEndian(header.AsSpan(8 + (slice * 20) + 12), (uint)slices[slice].Length);
+            Span<byte> named = header.AsSpan(8 + (slice * entry));
+            BinaryPrimitives.WriteInt32BigEndian(named, BinaryPrimitives.ReadInt32LittleEndian(slices[slice].AsSpan(4)));
+            if (wide)
+            {
+                BinaryPrimitives.WriteUInt64BigEndian(named[8..], at);
+                BinaryPrimitives.WriteUInt64BigEndian(named[16..], (ulong)slices[slice].Length);
+            }
+            else
+            {
+                BinaryPrimitives.WriteUInt32BigEndian(named[8..], at);
+                BinaryPrimitives.WriteUInt32BigEndian(named[12..], (uint)slices[slice].Length);
+            }
             at += (uint)slices[slice].Length;
         }
         program.Write(header);

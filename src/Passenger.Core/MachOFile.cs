@@ -3,8 +3,9 @@ using System.Text;
 
 namespace Passenger.Core;
 
-/// <summary>What a macOS program links, read from its load commands alone: a thin Mach-O or each slice of a universal one.
-/// Sizes are the file's word, so each is held to what it can be; a file cut short gives what was read of it.</summary>
+/// <summary>A macOS program read from its header alone: its slices, a thin Mach-O's one or each of a universal one's, and
+/// what it links, from each slice's load commands. Sizes are the file's word, so each is held to what it can be; a file cut
+/// short gives what was read of it.</summary>
 public static class MachOFile
 {
     private const uint Thin32 = 0xFEEDFACE;
@@ -21,35 +22,43 @@ public static class MachOFile
     /// <summary>The load commands that name a library a program links (LC_LOAD_DYLIB and its weak, re-exported, lazy and upward kinds).</summary>
     private static readonly uint[] Linking = [0x0C, 0x80000018, 0x8000001F, 0x20, 0x80000023];
 
-    /// <summary>The libraries a program links, in the order its commands name them, a universal program's each once; null for
-    /// a file that is no Mach-O.</summary>
-    public static IReadOnlyList<string>? Libraries(Stream program)
+    /// <summary>Each slice of a program, its CPU type and where its own header begins: a thin Mach-O's one at its start
+    /// (little-endian, as every Mac's since Intel), a universal one's by the big-endian table after its header, an entry the
+    /// file ends within left out; null for a file that is no Mach-O, or a table of no slice or of more than a program has.</summary>
+    public static IReadOnlyList<(int Cpu, long Offset)>? Slices(Stream program)
     {
         if (Read(program, 0, 8) is not { } start)
         {
             return null;
         }
-        uint magic = BinaryPrimitives.ReadUInt32BigEndian(start);
-        if (magic is Universal32 or Universal64)
+        uint thin = BinaryPrimitives.ReadUInt32LittleEndian(start);
+        if (thin is Thin32 or Thin64)
         {
-            uint slices = BinaryPrimitives.ReadUInt32BigEndian(start.AsSpan(4));
-            return slices is 0 or > MostSlices ? null : [.. Slices(program, slices, magic == Universal64).SelectMany(offset => Linked(program, offset) ?? []).Distinct(StringComparer.Ordinal)];
+            return Read(program, 0, thin == Thin64 ? 32 : 28) is null ? null : [(BinaryPrimitives.ReadInt32LittleEndian(start.AsSpan(4)), 0)];
         }
-        return Linked(program, 0);
-    }
-
-    /// <summary>Where each slice of a universal program begins, by the table after its header, which is big-endian.</summary>
-    private static IEnumerable<long> Slices(Stream program, uint slices, bool wide)
-    {
+        uint magic = BinaryPrimitives.ReadUInt32BigEndian(start);
+        uint count = BinaryPrimitives.ReadUInt32BigEndian(start.AsSpan(4));
+        if (magic is not (Universal32 or Universal64) || count is 0 or > MostSlices)
+        {
+            return null;
+        }
+        bool wide = magic == Universal64;
         int entry = wide ? 32 : 20;
-        for (int slice = 0; slice < slices; slice++)
+        List<(int Cpu, long Offset)> slices = [];
+        for (int slice = 0; slice < count; slice++)
         {
             if (Read(program, 8 + (slice * entry), entry) is { } read)
             {
-                yield return wide ? (long)BinaryPrimitives.ReadUInt64BigEndian(read.AsSpan(8)) : BinaryPrimitives.ReadUInt32BigEndian(read.AsSpan(8));
+                slices.Add((BinaryPrimitives.ReadInt32BigEndian(read), wide ? (long)BinaryPrimitives.ReadUInt64BigEndian(read.AsSpan(8)) : BinaryPrimitives.ReadUInt32BigEndian(read.AsSpan(8))));
             }
         }
+        return slices;
     }
+
+    /// <summary>The libraries a program links, in the order its commands name them, a universal program's each once; null for
+    /// a file that is no Mach-O.</summary>
+    public static IReadOnlyList<string>? Libraries(Stream program) =>
+        Slices(program) is { } slices ? [.. slices.SelectMany(slice => Linked(program, slice.Offset) ?? []).Distinct(StringComparer.Ordinal)] : null;
 
     /// <summary>The libraries a thin Mach-O at an offset names; null where it is none. Its fields are little-endian, as every
     /// Mac's since Intel.</summary>

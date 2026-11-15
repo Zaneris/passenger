@@ -332,25 +332,26 @@ public class MobileNeedsTests
     /// <summary>The first bytes of the Android workload's Linux aapt2 (37.2.31), an x64 program's ELF header.</summary>
     private static readonly byte[] X64Aapt2 = [0x7F, (byte)'E', (byte)'L', (byte)'F', 2, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 62, 0];
 
+    private static IReadOnlyList<Architecture> Processors(byte[] aapt2)
+    {
+        using MemoryStream program = new(aapt2);
+        return ProgramProcessors.Of(program);
+    }
+
     [Fact]
     public void Linux_on_any_processor_but_x64_builds_no_Android_app_unless_the_installed_packs_aapt2_is_its_own()
     {
-        ushort? x64 = AndroidHosts.Machine(X64Aapt2);
-        byte[] arm64 = [.. X64Aapt2[..18], 183, 0];
-        byte[] bigEndian = [.. X64Aapt2[..5], 2, .. X64Aapt2[6..18], 0, 183];
+        IReadOnlyList<Architecture> x64 = Processors(X64Aapt2);
+        IReadOnlyList<Architecture> arm64 = Processors([.. X64Aapt2[..18], 183, 0]);
 
-        Assert.Equal((ushort)62, x64);
-        Assert.Equal((ushort)183, AndroidHosts.Machine(arm64));
-        Assert.Equal((ushort)183, AndroidHosts.Machine(bigEndian));
-        Assert.Null(AndroidHosts.Machine("#!/bin/bash -e\nexec as\n"u8));
-        Assert.Null(AndroidHosts.Machine(X64Aapt2[..12]));
-
-        Assert.Equal("Linux on Arm64", AndroidHosts.Unbuilt(Architecture.Arm64, null));
+        Assert.Equal([Architecture.X64], x64);
+        Assert.Equal("Linux on Arm64", AndroidHosts.Unbuilt(Architecture.Arm64, []));
         Assert.Equal("Linux on Arm64", AndroidHosts.Unbuilt(Architecture.Arm64, x64));
-        Assert.Null(AndroidHosts.Unbuilt(Architecture.Arm64, AndroidHosts.Machine(arm64)));
-        Assert.Null(AndroidHosts.Unbuilt(Architecture.X64, null));
+        Assert.Null(AndroidHosts.Unbuilt(Architecture.Arm64, arm64));
+        Assert.Null(AndroidHosts.Unbuilt(Architecture.X64, []));
         Assert.Null(AndroidHosts.Unbuilt(Architecture.X64, x64));
-        Assert.Equal("Linux on RISC-V", AndroidHosts.Unbuilt(Architecture.RiscV64, null));
+        Assert.Equal("Linux on RISC-V", AndroidHosts.Unbuilt(Architecture.RiscV64, []));
+        Assert.Equal("Linux on Arm64", AndroidHosts.Unbuilt(Architecture.Arm64, Processors("#!/bin/bash -e\nexec as\n"u8.ToArray())));
     }
 
     [Fact]
