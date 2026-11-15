@@ -243,6 +243,11 @@ public sealed class LanguageServer : IAsyncDisposable
     /// then is in what it loads. Raised on the answering thread, before the answer goes.</summary>
     public event EventHandler<ProjectGiven>? ProjectGiven;
 
+    /// <summary>Passenger's project loader in the server asked for a project's design-time builds (as it named the project),
+    /// which it loads once given: raised on the answering thread before they are looked for, <see cref="ProjectGiven"/>
+    /// following once they go.</summary>
+    public event EventHandler<string>? ProjectAsked;
+
     /// <summary>The server's colours moved in a way only it knows (a project reloaded, a file changed elsewhere): the
     /// semantic tokens should be asked for again. Raised on any thread.</summary>
     public event EventHandler? ColoursRefreshRequested;
@@ -1734,6 +1739,7 @@ public sealed class LanguageServer : IAsyncDisposable
             }
             DateTime at = DateTime.UtcNow;
             owner.Changing(Roslyn.Extension.ProjectMethods.Info);
+            owner.ProjectAsked?.Invoke(owner, asked.Path);
             FedProject fed = await feed.InfoAsync(asked.Path, CancellationToken.None).ConfigureAwait(false);
             owner.WatchedFiles.Tell(fed.Changed);
             owner.ProjectGiven?.Invoke(owner, new ProjectGiven(asked.Path, at, fed.Changed.Count > 0));

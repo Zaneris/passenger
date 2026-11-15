@@ -3144,11 +3144,12 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             throw new InvalidOperationException(Refusals.TooDeep(Path.GetFileName(document.Path)));
         }
         string? reloading = null;
+        bool settled = false;
         await Until(() =>
         {
             if (Session.CSharp is not { } csharp || csharp.IsStopped)
             {
-                return true;
+                return settled = true;
             }
             // The agent is told what a load after a restore, or its builds' writes, keep it waiting for.
             if (csharp.IsReady && csharp.ReloadingWhat(document.Path) is var what && what != reloading)
@@ -3156,7 +3157,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
                 reloading = what;
                 AgentCall.Say(what is null ? null : $"Waiting for {what}");
             }
-            return csharp.IsReady && reloading is null && !csharp.AwaitsRestore(document.Path) && csharp.For(document)?.Lsp is not null;
+            return settled = csharp.IsReady && reloading is null && !csharp.AwaitsRestore(document.Path) && csharp.For(document)?.Lsp is not null;
         }, ServerLimit, cancel);
         if (reloading is not null)
         {
@@ -3165,6 +3166,15 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         if (Session.CSharp is { IsStopped: true })
         {
             throw new InvalidOperationException(Refusals.CSharpStopped);
+        }
+        // Run out with the server still loading, or with what a restore brought still to come, its answer would be of the code before.
+        if (!settled && Session.CSharp is { IsReady: false } unready)
+        {
+            throw new TimeoutException(Refusals.StillLoading(ServerLimit, unready.State));
+        }
+        if (!settled && (reloading ?? (Session.CSharp?.AwaitsRestore(document.Path) == true ? $"the C# language server to restore {Session.ProjectOf(document.Path)?.Name}" : null)) is { } coming)
+        {
+            throw new TimeoutException(Refusals.StillComing(ServerLimit, coming));
         }
         if (!takenIn)
         {

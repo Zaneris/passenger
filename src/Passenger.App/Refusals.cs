@@ -172,6 +172,11 @@ public static class Refusals
         $"The C# language server is still loading the folder's projects after {Durations.Said(waited)} ({(state.Length > 0 ? state : "starting")}), "
         + "so it has nothing of them to answer from yet: ask again once workspace says languageServer is ready";
 
+    /// <summary>A C# code tool asked while what a restore brought, or a load again, is still to reach the language server
+    /// after the wait: <paramref name="coming"/> says what, as the agent was told it waited for.</summary>
+    public static string StillComing(TimeSpan waited, string coming) =>
+        $"Passenger waited {Durations.Said(waited)} for {coming}, which has not come, so the answer would be of the code before it: ask again in a moment";
+
     /// <summary>An x64 Passenger the system translates found only a .NET SDK of the system's own processor, whose MSBuild it
     /// cannot load (<see cref="MissingSdk.ForOtherProcessor"/>).</summary>
     public static string OnlyNativeSdk => OperatingSystem.IsMacOS()

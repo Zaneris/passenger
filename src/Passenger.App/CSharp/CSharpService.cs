@@ -318,15 +318,19 @@ public sealed partial class CSharpService : IAsyncDisposable
     /// <summary>Whether a project of <see cref="restoredToLoad"/> loaded in the batch under way.</summary>
     private bool restoredLoaded;
 
-    /// <summary>When the server last said how its loads and restores went: a project restored that it has not loaded
-    /// again once it has said nothing for <see cref="LoadsQuiet"/>, with no restore under way, it never will (its assets
-    /// written as they were).</summary>
+    /// <summary>When the server last said how its loads and restores went, or was given a project's builds to load: a
+    /// project restored that it has not loaded again once it has said nothing for <see cref="LoadsQuiet"/>, with no restore
+    /// under way and no builds asked for still to give, it never will (its assets written as they were).</summary>
     private long loadSaid;
+
+    /// <summary>How many of its projects' design-time builds the server asked for that it has not been given yet: a load
+    /// waits on each, however long the host takes to build.</summary>
+    private int buildsAsked;
 
     private static TimeSpan LoadsQuiet => Waits.Of(TimeSpan.FromSeconds(15));
 
     /// <summary>Whether a project a restore brought something to is still to load again (<see cref="restoredToLoad"/>).</summary>
-    private bool RestoredStillToLoad() => restoredToLoad.Count > 0 && (restoringTheirs || Stopwatch.GetElapsedTime(loadSaid) < LoadsQuiet);
+    private bool RestoredStillToLoad() => restoredToLoad.Count > 0 && (restoringTheirs || buildsAsked > 0 || Stopwatch.GetElapsedTime(loadSaid) < LoadsQuiet);
 
     /// <summary>The files the server's builds wrote that it held otherwise than the disk as the generators' wait last looked
     /// (<see cref="WaitForGenerators"/>).</summary>
@@ -1478,6 +1482,7 @@ public sealed partial class CSharpService : IAsyncDisposable
                 LetGoOfUnloaded();
             });
             EventHandler<ProjectGiven> onGiven = (_, built) => OnProjectGiven(started.Server, built);
+            EventHandler<string> onAsked = (_, _) => OnProjectAsked(started.Server);
             EventHandler<string> onExited = (_, _) =>
             {
                 gone.TrySetResult();
@@ -1494,6 +1499,7 @@ public sealed partial class CSharpService : IAsyncDisposable
             started.Server.DiagnosticsRefreshRequested += onDiagnostics;
             started.Server.ProjectsLoaded += onProjects;
             started.Server.ProjectGiven += onGiven;
+            started.Server.ProjectAsked += onAsked;
             started.Server.Exited += onExited;
             started.Server.NotResponding += onHung;
             started.Server.Waited += onWaited;
@@ -1507,6 +1513,7 @@ public sealed partial class CSharpService : IAsyncDisposable
                 started.Server.DiagnosticsRefreshRequested -= onDiagnostics;
                 started.Server.ProjectsLoaded -= onProjects;
                 started.Server.ProjectGiven -= onGiven;
+                started.Server.ProjectAsked -= onAsked;
                 started.Server.Exited -= onExited;
                 started.Server.NotResponding -= onHung;
                 started.Server.Waited -= onWaited;
@@ -1878,6 +1885,8 @@ public sealed partial class CSharpService : IAsyncDisposable
                 }
                 reloadingRestored = restoredLoaded = false;
                 restoreFailed = false;
+                // Every load of the batch was given its builds, or failed without them.
+                buildsAsked = 0;
                 if (batch.Count > batchSaid)
                 {
                     SayLoadProblems();

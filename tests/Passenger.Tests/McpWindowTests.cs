@@ -506,6 +506,55 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
         }
     }
 
+    /// <summary>A MAUI page's folder whose load after its first restore waits for its design-time builds (held back here)
+    /// longer than an agent's code tools wait for the C# language server: the agent's definition of the InitializeComponent
+    /// MAUI's generator declares, asked as the folder opens, is refused as the server still loading once the wait is over,
+    /// never answered as nothing from the load before the restore.</summary>
+    [AvaloniaFact]
+    public void An_agents_definition_asked_while_the_server_loads_again_past_the_wait_is_refused_as_still_loading()
+    {
+        string folder = McpNavigationTests.MauiPage("mcp-maui-slow-");
+        DeleteAtEnd(folder);
+        string project = Path.Combine(folder, "MauiApp1.csproj");
+        MainWindow window = new() { Width = 1200, Height = 800 };
+        window.Show();
+        TaskCompletionSource loading = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource reloading = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        McpClient? client = null;
+        try
+        {
+            // Pumped, not settled throughout: the server's load held waits on the window.
+            Task opening = window.OpenFolder(folder);
+            Ui.PumpUntil(() => opening.IsCompleted && window.CSharpService is not null, "the folder to open with a language server", AgentLimit);
+            Task loadHeld = window.Session.DesignTimeBuilds.HoldNextAsked(project, loading.Task);
+            window.ApplySettings(window.Settings with { McpServer = true });
+            Assert.True(window.AgentSocket is not null, $"The window does not listen for agents: {window.Status}");
+            client = Ui.AwaitPumped(Waiting.Apart(() => Start(["--mcp-attach", ProcessId])), "the agent attaching", AgentLimit);
+            Heard heard = new();
+            Task<CallToolResult> asked = Waiting.Apart(() => Result(client, McpTools.Definition, new() { ["path"] = "MainPage.xaml.cs", ["line"] = 9, ["column"] = 9 }, heard: heard));
+            Ui.PumpUntil(() => loadHeld.IsCompleted && window.CSharpService!.Session is not null && (heard.Told.Count > 0 || asked.IsCompleted),
+                "the server's first load of MauiApp1 to be held while the agent's definition waits", AgentLimit);
+            Task reloadHeld = window.Session.DesignTimeBuilds.HoldNextAsked(project, reloading.Task);
+            loading.SetResult();
+            Ui.PumpUntil(() => asked.IsCompleted || reloadHeld.IsCompleted, "the server's load after the restore to ask for MauiApp1's design-time builds", AgentLimit);
+            CallToolResult answer = Ui.AwaitPumped(asked, "the agent's definition, asked as the server's load after the restore waits", AgentLimit);
+            string said = Text(answer);
+            Assert.True(answer.IsError == true && (said.Contains("is still loading the folder's projects", StringComparison.Ordinal)
+                || said.Contains("load MauiApp1 again with what its restore brought, which has not come", StringComparison.Ordinal)),
+                $"definition of a MAUI page's InitializeComponent, asked while the server's load after the restore waited past the agent's wait, answered: {said}");
+        }
+        finally
+        {
+            loading.TrySetResult();
+            reloading.TrySetResult();
+            if (client is not null)
+            {
+                Gone(client);
+            }
+            window.Close();
+        }
+    }
+
     /// <summary>Two projects each given a package once loaded, the first's change loaded and restored as the second's waits:
     /// the server's next batch loads the second alone, before it hears of the first's restore (held back here), then
     /// restores the second, which fails, no feed holding its package. An agent's definition of the class the first's

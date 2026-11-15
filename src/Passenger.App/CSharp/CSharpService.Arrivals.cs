@@ -409,7 +409,16 @@ public sealed partial class CSharpService
         }
     }
 
-    /// <summary>A server asked for a project's design-time builds, from its thread.</summary>
+    /// <summary>A server asked for a project's design-time builds, from its thread: its load waits on them.</summary>
+    private void OnProjectAsked(LanguageServer from) => UiThread.Post(() =>
+    {
+        if (session?.Server == from)
+        {
+            buildsAsked++;
+        }
+    });
+
+    /// <summary>A server was given a project's design-time builds it asked for, from its thread.</summary>
     private void OnProjectGiven(LanguageServer from, ProjectGiven built)
     {
         string project = PathNames.Canonical(built.Project);
@@ -417,6 +426,9 @@ public sealed partial class CSharpService
         {
             if (session?.Server == from)
             {
+                // Given, the load goes on, which the server reports in its own time.
+                buildsAsked = Math.Max(0, buildsAsked - 1);
+                loadSaid = Stopwatch.GetTimestamp();
                 given[project] = given.GetValueOrDefault(project) > built.Asked ? given[project] : built.Asked;
             }
         });
@@ -516,6 +528,7 @@ public sealed partial class CSharpService
         leftOut.Clear();
         given.Clear();
         failedAsked.Clear();
+        buildsAsked = 0;
         HoldBack(null);
     }
 }
