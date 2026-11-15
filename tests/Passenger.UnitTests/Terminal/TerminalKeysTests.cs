@@ -5,7 +5,8 @@ namespace Passenger.UnitTests.Terminal;
 
 /// <summary>A key's bytes as the program in the terminal reads them: xterm's until it asks for the kitty keyboard
 /// protocol, every one as before; then the protocol's "disambiguate escape codes", which tells Enter, Tab, Backspace and
-/// Esc held with any modifier apart from the key alone, and Ctrl+J from Enter's line feed.</summary>
+/// Esc held with any modifier apart from the key alone, and Ctrl+J from Enter's line feed. A function key held with
+/// modifiers is its one number and final either way, each modifier, Meta too, counted alike.</summary>
 public class TerminalKeysTests
 {
     private const KeyModifiers Shift = KeyModifiers.Shift;
@@ -124,6 +125,67 @@ public class TerminalKeysTests
         Assert.True(sent == bytes, $"The keypad's {key} with {held} under the kitty protocol sent {Shown(sent)}, where the protocol gives {Shown(bytes)}");
         Assert.True(Legacy(key, held, physical: physical) == Legacy(key, held),
             $"The keypad's {key} without the protocol sent {Shown(Legacy(key, held, physical: physical))}, not what the key it moves as sends");
+    }
+
+    [Theory]
+    [InlineData(KeyModifiers.None, false, "\e[E")]
+    [InlineData(KeyModifiers.None, true, "\eOE")]
+    [InlineData(Shift, false, "\e[1;2E")]
+    [InlineData(Ctrl, true, "\e[1;5E")]
+    public void Without_the_protocol_the_keypads_5_with_Num_Lock_off_is_xterms_Begin(KeyModifiers held, bool applicationCursor, string bytes)
+    {
+        string? sent = Legacy(Key.Clear, held, applicationCursor: applicationCursor, physical: PhysicalKey.NumPad5);
+        Assert.True(sent == bytes,
+            $"The keypad's 5 with Num Lock off and {held}{(applicationCursor ? " in the application cursor mode" : string.Empty)} sent {Shown(sent)} to a program that never asked for the kitty protocol, where xterm sends {Shown(bytes)}: the program never hears the key");
+    }
+
+    [Theory]
+    [InlineData(Key.Up, Super, "\e[1;9A")]
+    [InlineData(Key.Home, Super | Shift, "\e[1;10H")]
+    [InlineData(Key.Delete, Super | Ctrl, "\e[3;13~")]
+    [InlineData(Key.F1, Super, "\e[1;9P")]
+    [InlineData(Key.F12, Super | Ctrl | Alt | Shift, "\e[24;16~")]
+    public void Without_the_protocol_a_function_key_held_with_Meta_says_so_as_xterm_does(Key key, KeyModifiers held, string bytes) =>
+        Assert.True(Legacy(key, held) == bytes,
+            $"{held} {key} sent {Shown(Legacy(key, held))} to a program that never asked for the kitty protocol, where xterm's modifiers give {Shown(bytes)}: the program reads it as the key without Meta");
+
+    [Theory]
+    [InlineData(Key.Up)]
+    [InlineData(Key.Down)]
+    [InlineData(Key.Right)]
+    [InlineData(Key.Left)]
+    [InlineData(Key.Home)]
+    [InlineData(Key.End)]
+    [InlineData(Key.Clear)]
+    [InlineData(Key.Insert)]
+    [InlineData(Key.Delete)]
+    [InlineData(Key.PageUp)]
+    [InlineData(Key.PageDown)]
+    [InlineData(Key.F1)]
+    [InlineData(Key.F2)]
+    [InlineData(Key.F4)]
+    [InlineData(Key.F5)]
+    [InlineData(Key.F6)]
+    [InlineData(Key.F7)]
+    [InlineData(Key.F8)]
+    [InlineData(Key.F9)]
+    [InlineData(Key.F10)]
+    [InlineData(Key.F11)]
+    [InlineData(Key.F12)]
+    public void A_function_key_held_with_any_modifier_is_sent_alike_with_the_protocol_or_without(Key key)
+    {
+        foreach (KeyModifiers held in (KeyModifiers[])[Shift, Alt, Ctrl, Super, Ctrl | Shift, Alt | Super, Ctrl | Alt | Shift | Super])
+        {
+            Assert.True(Legacy(key, held) == Kitty(key, held),
+                $"{held} {key} sent {Shown(Legacy(key, held))} without the kitty protocol and {Shown(Kitty(key, held))} with it, where both give its number and final with the modifiers");
+        }
+    }
+
+    [Fact]
+    public void F3_held_with_a_modifier_keeps_xterms_letter_without_the_protocol_and_the_protocols_number_with_it()
+    {
+        Assert.True(Legacy(Key.F3, Ctrl) == "\e[1;5R", $"Ctrl+F3 without the kitty protocol sent {Shown(Legacy(Key.F3, Ctrl))}, where xterm sends ESC [ 1 ; 5 R");
+        Assert.True(Legacy(Key.F3, KeyModifiers.None) == "\eOR", $"F3 without the kitty protocol sent {Shown(Legacy(Key.F3, KeyModifiers.None))}, where xterm sends ESC O R");
     }
 
     [Theory]

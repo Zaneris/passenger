@@ -22,40 +22,21 @@ public static class TerminalKeys
     public static string? Of(Key key, KeyModifiers modifiers, PhysicalKey physical, bool applicationCursor, int keyboardFlags, bool altSendsEscape) =>
         (keyboardFlags & Disambiguate) != 0 ? Kitty(key, modifiers, physical, altSendsEscape) : Xterm(key, modifiers, applicationCursor, altSendsEscape);
 
-    /// <summary>xterm's bytes for a key that is not plain text: Enter, the arrows and the keypad's keys, the function keys,
-    /// and Ctrl (or Alt, as a leading ESC) with a letter.</summary>
+    /// <summary>xterm's bytes for a key that is not plain text: Enter, the function keys by their number and final
+    /// (<see cref="Functional"/>), and Ctrl (or Alt, as a leading ESC) with a letter. Held with none, F1 to F4 take SS3,
+    /// as the cursor keys do in the application cursor mode.</summary>
     private static string? Xterm(Key key, KeyModifiers mods, bool applicationCursor, bool altSendsEscape)
     {
         bool ctrl = mods.HasFlag(KeyModifiers.Control);
         bool alt = mods.HasFlag(KeyModifiers.Alt) && altSendsEscape;
+        int held = Held(mods);
         string? plain = key switch
         {
             Key.Enter => "\r",
             Key.Back => ctrl ? "\x08" : "\x7f",
             Key.Tab => mods.HasFlag(KeyModifiers.Shift) ? "\x1b[Z" : "\t",
             Key.Escape => "\x1b",
-            Key.Up => Cursor('A'),
-            Key.Down => Cursor('B'),
-            Key.Right => Cursor('C'),
-            Key.Left => Cursor('D'),
-            Key.Home => Cursor('H'),
-            Key.End => Cursor('F'),
-            Key.Insert => Tilde(2),
-            Key.Delete => Tilde(3),
-            Key.PageUp => Tilde(5),
-            Key.PageDown => Tilde(6),
-            Key.F1 => Function('P'),
-            Key.F2 => Function('Q'),
-            Key.F3 => Function('R'),
-            Key.F4 => Function('S'),
-            Key.F5 => Tilde(15),
-            Key.F6 => Tilde(17),
-            Key.F7 => Tilde(18),
-            Key.F8 => Tilde(19),
-            Key.F9 => Tilde(20),
-            Key.F10 => Tilde(21),
-            Key.F11 => Tilde(23),
-            Key.F12 => Tilde(24),
+            _ when Functional(key) is (int number, char final) => held == 0 && Ss3(final) ? $"\x1bO{final}" : Csi(number, final, held),
             _ => null,
         };
         if (plain is not null)
@@ -73,11 +54,45 @@ public static class TerminalKeys
         }
         return null;
 
-        int Modifier() => 1 + (mods.HasFlag(KeyModifiers.Shift) ? 1 : 0) + (mods.HasFlag(KeyModifiers.Alt) ? 2 : 0) + (ctrl ? 4 : 0);
-        string Cursor(char final) => Modifier() > 1 ? $"\x1b[1;{Modifier()}{final}" : applicationCursor ? $"\x1bO{final}" : $"\x1b[{final}";
-        string Tilde(int code) => Modifier() > 1 ? $"\x1b[{code};{Modifier()}~" : $"\x1b[{code}~";
-        string Function(char final) => Modifier() > 1 ? $"\x1b[1;{Modifier()}{final}" : $"\x1bO{final}";
+        bool Ss3(char final) => final is >= 'P' and <= 'S' || (applicationCursor && final is >= 'A' and <= 'H');
     }
+
+    /// <summary>The modifiers held, as both xterm and the kitty protocol count them before adding 1: Shift 1, Alt 2,
+    /// Ctrl 4 and Meta (the protocol's Super) 8.</summary>
+    private static int Held(KeyModifiers mods) =>
+        (mods.HasFlag(KeyModifiers.Shift) ? 1 : 0) + (mods.HasFlag(KeyModifiers.Alt) ? 2 : 0)
+        + (mods.HasFlag(KeyModifiers.Control) ? 4 : 0) + (mods.HasFlag(KeyModifiers.Meta) ? 8 : 0);
+
+    /// <summary>A function key's number and final, as xterm and the kitty protocol both send it held with modifiers
+    /// (CSI number;modifiers final): the cursor keys and the keypad's Begin (its 5 with Num Lock off, which Avalonia names
+    /// Clear) by a letter, the editing keys and F5 to F12 by their numbers before ~, F1 to F4 by a letter.</summary>
+    private static (int Number, char Final)? Functional(Key key) => key switch
+    {
+        Key.Up => (1, 'A'),
+        Key.Down => (1, 'B'),
+        Key.Right => (1, 'C'),
+        Key.Left => (1, 'D'),
+        Key.Clear => (1, 'E'),
+        Key.End => (1, 'F'),
+        Key.Home => (1, 'H'),
+        Key.Insert => (2, '~'),
+        Key.Delete => (3, '~'),
+        Key.PageUp => (5, '~'),
+        Key.PageDown => (6, '~'),
+        Key.F1 => (1, 'P'),
+        Key.F2 => (1, 'Q'),
+        Key.F3 => (1, 'R'),
+        Key.F4 => (1, 'S'),
+        Key.F5 => (15, '~'),
+        Key.F6 => (17, '~'),
+        Key.F7 => (18, '~'),
+        Key.F8 => (19, '~'),
+        Key.F9 => (20, '~'),
+        Key.F10 => (21, '~'),
+        Key.F11 => (23, '~'),
+        Key.F12 => (24, '~'),
+        _ => null,
+    };
 
     /// <summary>The control character Ctrl makes of a key: Ctrl+A is 1 through Ctrl+Z 26, and the few punctuation keys
     /// terminals give the rest of C0 to.</summary>
@@ -99,8 +114,7 @@ public static class TerminalKeys
     /// Ctrl 4 and Super 8 added, and left out when there are none.</summary>
     private static string? Kitty(Key key, KeyModifiers mods, PhysicalKey physical, bool altSendsEscape)
     {
-        int held = (mods.HasFlag(KeyModifiers.Shift) ? 1 : 0) + (mods.HasFlag(KeyModifiers.Alt) ? 2 : 0)
-            + (mods.HasFlag(KeyModifiers.Control) ? 4 : 0) + (mods.HasFlag(KeyModifiers.Meta) ? 8 : 0);
+        int held = Held(mods);
         if (Keypad(key, physical) is { } pad)
         {
             return Csi(pad.Number, pad.Final, held);
@@ -111,29 +125,9 @@ public static class TerminalKeys
             Key.Tab => held == 0 ? "\t" : Csi(9, 'u', held),
             Key.Back => held == 0 ? "\x7f" : Csi(127, 'u', held),
             Key.Escape => Csi(27, 'u', held),
-            Key.Up => Csi(1, 'A', held),
-            Key.Down => Csi(1, 'B', held),
-            Key.Right => Csi(1, 'C', held),
-            Key.Left => Csi(1, 'D', held),
-            Key.Home => Csi(1, 'H', held),
-            Key.End => Csi(1, 'F', held),
-            Key.Clear => Csi(1, 'E', held),
-            Key.Insert => Csi(2, '~', held),
-            Key.Delete => Csi(3, '~', held),
-            Key.PageUp => Csi(5, '~', held),
-            Key.PageDown => Csi(6, '~', held),
-            Key.F1 => Csi(1, 'P', held),
-            Key.F2 => Csi(1, 'Q', held),
+            // CSI R is also the cursor's place reported, so the protocol moves F3 to a number of its own.
             Key.F3 => Csi(13, '~', held),
-            Key.F4 => Csi(1, 'S', held),
-            Key.F5 => Csi(15, '~', held),
-            Key.F6 => Csi(17, '~', held),
-            Key.F7 => Csi(18, '~', held),
-            Key.F8 => Csi(19, '~', held),
-            Key.F9 => Csi(20, '~', held),
-            Key.F10 => Csi(21, '~', held),
-            Key.F11 => Csi(23, '~', held),
-            Key.F12 => Csi(24, '~', held),
+            _ when Functional(key) is (int number, char final) => Csi(number, final, held),
             >= Key.F13 and <= Key.F24 => Csi(57376 + (key - Key.F13), 'u', held),
             Key.PrintScreen => Csi(57361, 'u', held),
             Key.Scroll => Csi(57359, 'u', held),
@@ -191,7 +185,8 @@ public static class TerminalKeys
     };
 
     /// <summary>A keypad key that types no text, by where it is: its Enter, and with Num Lock off the moves its digits
-    /// give (Avalonia names those as the moves themselves), each by the protocol's own number for it.</summary>
+    /// give (Avalonia names those as the moves themselves), each by the protocol's own number for it; its 5, Begin, has
+    /// none and goes as <see cref="Functional"/> names it.</summary>
     private static (int Number, char Final)? Keypad(Key key, PhysicalKey physical) => physical switch
     {
         PhysicalKey.NumPadEnter => (57414, 'u'),
@@ -201,7 +196,6 @@ public static class TerminalKeys
         PhysicalKey.NumPad2 => (57420, 'u'),
         PhysicalKey.NumPad3 => (57422, 'u'),
         PhysicalKey.NumPad4 => (57417, 'u'),
-        PhysicalKey.NumPad5 => (1, 'E'),
         PhysicalKey.NumPad6 => (57418, 'u'),
         PhysicalKey.NumPad7 => (57423, 'u'),
         PhysicalKey.NumPad8 => (57419, 'u'),
