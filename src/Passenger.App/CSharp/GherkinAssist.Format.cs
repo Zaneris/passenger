@@ -23,33 +23,35 @@ internal sealed partial class GherkinAssist
         IndentOptions indent = document.Indentation.Options;
         string path = document.Path;
         string language = Bdd?.Checks.Of(document)?.Reading.Dialect.Language ?? GherkinDialects.English;
+        string eol = document.LineEnding;
         List<TextEdit> edits = await BackgroundWork.Run(() =>
         {
             EditorConfig config = EditorConfig.For(path);
             GherkinFormatOptions options = GherkinFormatOptions.Of(key => config[key], indent.UseTabs ? "\t" : new string(' ', indent.Size));
-            return LineEdits(snapshot, GherkinFormatter.Format(snapshot.ToString(), options, language), within);
+            return LineEdits(snapshot, GherkinFormatter.Format(snapshot.ToString(), options, language), within, eol);
         });
         return CodeActions.Reformatted.Apply(context.Editors, document, asked, edits, what);
     }
 
-    /// <summary>The lines of a text that differ in its laid-out text (which keeps its lines), each replaced whole but its
-    /// break; only those a range touches where given.</summary>
-    private static List<TextEdit> LineEdits(TextSnapshot text, string laid, TextRange? within)
+    /// <summary>The lines of a text that differ in its laid-out text (which keeps its lines and their breaks), each line of
+    /// both read as the editor reads one, a "\r\n"'s '\r' its break's, and replaced whole but its break, in the text's
+    /// <paramref name="eol"/>; only those a range touches where given. The indentation is the file's own already.</summary>
+    private static List<TextEdit> LineEdits(TextSnapshot text, string laid, TextRange? within, string eol)
     {
-        string[] lines = laid.Split('\n');
+        TextSnapshot lines = TextSnapshot.From(laid);
         int first = within is { } range ? text.GetLineFromOffset(range.Start) : 0;
         int last = within is { } until ? text.GetLineFromOffset(until.End) : text.LineCount - 1;
         List<TextEdit> edits = [];
-        for (int line = first; line <= last && line < lines.Length && line < text.LineCount; line++)
+        for (int line = first; line <= last && line < lines.LineCount && line < text.LineCount; line++)
         {
             string written = text.GetLineText(line);
-            string now = lines[line];
+            string now = lines.GetLineText(line);
             if (written != now)
             {
                 edits.Add(new TextEdit(text.GetLineStart(line), written.Length, now));
             }
         }
-        return edits;
+        return LineEndings.Fit(text, edits, eol);
     }
 
     /// <summary>A line broken at the end of a table's row in the feature shown (Enter, which types no text) lays out that

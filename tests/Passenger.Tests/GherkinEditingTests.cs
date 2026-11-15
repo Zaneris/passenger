@@ -109,6 +109,43 @@ public sealed class GherkinEditingTests : FileColoursFolder
     }
 
     [AvaloniaFact]
+    public void A_CRLF_feature_is_laid_out_and_its_tables_aligned_with_each_line_ending_in_one_CRLF()
+    {
+        MainWindow window = Window();
+        CodeEditor editor = Open(window, "Crlf.feature", "Feature: F\r\n\r\n  Scenario: S\r\nGiven the users\r\n|name|age|\r\n| Ann | 7 |\r\n    And   more\r\n");
+        OpenDocument document = window.EditorArea.Active!;
+        const string Laid = "Feature: F\r\n\r\nScenario: S\r\n  Given the users\r\n    | name | age |\r\n    | Ann  |   7 |\r\n  And more\r\n";
+        editor.Focus();
+        Ui.Run(window, AppActions.Reformat);
+        Ui.WaitFor(() => window.Status is "Reformatted" or "Already formatted", "the reformat");
+        Assert.True(editor.Document.Snapshot.ToString() == Laid, $"The feature should be laid out in its own line breaks: {Shown(editor.Document.Snapshot.ToString())}");
+
+        int version = document.Text.Version;
+        Ui.Run(window, AppActions.Reformat);
+        Ui.WaitFor(() => window.Status == "Already formatted" || document.Text.Version != version,
+            () => $"the second reformat: {window.Status}, {Shown(editor.Document.Snapshot.ToString())}");
+        Assert.True(document.Text.Version == version, $"A feature laid out already should take no edit: {Shown(editor.Document.Snapshot.ToString())}");
+
+        Ui.PlaceAfter(editor, "| Ann  |   7 |");
+        Ui.Press(window, "ENTER");
+        window.KeyTextInput("|Bartholomew");
+        window.KeyTextInput("|");
+        Ui.WaitFor(() => editor.Document.Snapshot.ToString().Contains("    | name        | age |\r\n    | Ann         |   7 |\r\n    | Bartholomew |", StringComparison.Ordinal),
+            () => $"the table aligned as the bar was typed: {Shown(editor.Document.Snapshot.ToString())}");
+        Typing.Replace(window, "    | Bartholomew |", "    | Bartholomew |\n    |Zed|");
+        Ui.PlaceAfter(editor, "|Zed|");
+        Ui.Press(window, "ENTER");
+        Ui.WaitFor(() => editor.Document.Snapshot.ToString().Contains("    | Bartholomew |\r\n    | Zed         |\r\n", StringComparison.Ordinal),
+            () => $"the table aligned as Enter ended its row: {Shown(editor.Document.Snapshot.ToString())}");
+        string text = editor.Document.Snapshot.ToString();
+        Assert.True(text.Replace("\r\n", "", StringComparison.Ordinal).IndexOfAny(['\r', '\n']) < 0,
+            $"Every line of a CRLF feature should still end in one CRLF: {Shown(text)}");
+        window.Close();
+
+        static string Shown(string text) => text.Replace("\r", "\\r", StringComparison.Ordinal).Replace("\n", "\\n", StringComparison.Ordinal);
+    }
+
+    [AvaloniaFact]
     public void A_feature_in_another_language_completes_its_own_keywords_and_one_of_no_project_marks_no_step_undefined()
     {
         MainWindow window = Window();
