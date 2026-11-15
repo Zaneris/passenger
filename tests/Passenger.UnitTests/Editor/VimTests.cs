@@ -2004,6 +2004,33 @@ public class VimTests
     public void Dot_after_a_visual_change_to_the_lines_end_takes_the_line_to_its_end(string before, string keys, string after) =>
         Assert.Equal(after, Run(before, keys));
 
+    /// <summary>Escape from S, cc, o or O with nothing typed takes the indent back and leaves j and k aiming for the
+    /// column it took the caret to, as Vim's do.</summary>
+    [Theory]
+    [InlineData("ab\n|    cdef ghij\nklmnopqrstuv\nwx", "S<Esc>j", "ab\n\nklmn|opqrstuv\nwx")]
+    [InlineData("ab\n|\tcdef ghij\nklmnopqrstuv\nwx", "cc<Esc>2j", "ab\n\nklmnopqrstuv\nw|x")]
+    [InlineData("ab\n|  cdef\n\nklmnopqrstuv\nwx", "S<Esc>jj", "ab\n\n\nkl|mnopqrstuv\nwx")]
+    [InlineData("ab\n|    cdef ghij\nklmnopqrstuv\nwx", "o<Esc>j", "ab\n    cdef ghij\n\nklmn|opqrstuv\nwx")]
+    [InlineData("ab\n|    cdef ghij\nklmnopqrstuv\nwx", "S<Esc>k", "a|b\n\nklmnopqrstuv\nwx")]
+    [InlineData("ab\n|    cdef ghij\nklmnopqrstuv\nwx", "S<Esc>3lj", "ab\n\nklmn|opqrstuv\nwx")]
+    [InlineData("ab\n|\tcdef ghij\nklmnopqrstuv\nwx", "S<Esc>xj", "ab\n\n|klmnopqrstuv\nwx")]
+    [InlineData("ab\n|\tcdef ghij\nklmnopqrstuv\nwx", "S<Esc>vjd", "ab\n|pqrstuv\nwx")]
+    public void An_emptied_indent_leaves_j_and_k_aiming_for_its_column(string before, string keys, string after) =>
+        Assert.Equal(after, Run(before, keys));
+
+    /// <summary>Visual mode begins with j and k aiming for the column normal mode's did, a block after $ reaching each
+    /// line's end, as Vim's does.</summary>
+    [Theory]
+    [InlineData("abc|defgh\nij\nklmnopqrstu\nvw\nxyzABCDEFGHI", "jvjd", "abcdefgh\ni|opqrstu\nvw\nxyzABCDEFGHI")]
+    [InlineData("abcdef|gh\nij\nklmnopqrstu\nvw\nxyzABCDEFGHI", "j<C-v>jd", "abcdefgh\n|i\nkrstu\nvw\nxyzABCDEFGHI")]
+    [InlineData("|abcdefgh\nij\nklmnopqrstu\nvw\nxyzABCDEFGHI", "$<C-v>jjd", "abcdef|g\nij\nklmnopq\nvw\nxyzABCDEFGHI")]
+    [InlineData("|abcdefgh\nij\nklmnopqrstu\nvw\nxyzABCDEFGHI", "$vjjd", "abcdefg|vw\nxyzABCDEFGHI")]
+    [InlineData("|abcdefgh\nij\nklmnopqrstu\nvw\nxyzABCDEFGHI", "jj$k<C-v>jd", "abcdefgh\n|i\nk\nvw\nxyzABCDEFGHI")]
+    [InlineData("abcdef|gh\nijklm\nno\npqrstuvwx\nyz", "jj<C-v>kA7<Esc>", "abcdefgh\ni|jklm 7\nno    7\npqrstuvwx\nyz")]
+    [InlineData("abc|defgh\nijklm\nno\npqrstuvwx\nyz", "jjvkd", "abcdefgh\nij|k\npqrstuvwx\nyz")]
+    public void Visual_mode_takes_the_column_j_and_k_aim_for(string before, string keys, string after) =>
+        Assert.Equal(after, Run(before, keys));
+
     [Fact]
     public void A_huge_count_ends_at_the_texts_edge()
     {

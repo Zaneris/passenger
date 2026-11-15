@@ -201,6 +201,7 @@ public sealed partial class Vim
     private VimResult Run(Command command, TextSnapshot text, SelectionSet selections, IVimView view)
     {
         int n = Math.Max(command.Count, 1);
+        int[]? aims = wantedFor is { } known && known.SameAs(selections) ? wanted : null;
         if (command is not { Operator: null, Name: "j" or "k" or "$" or "m" })
         {
             // Any other command but setting a mark sets the column j and k aim for afresh, even where the caret stays.
@@ -218,11 +219,11 @@ public sealed partial class Vim
         switch (command.Name)
         {
             case "v":
-                return EnterVisual(VimMode.Visual, command.Count, text, selections, view);
+                return EnterVisual(VimMode.Visual, command.Count, text, selections, view, aims);
             case "V":
-                return EnterVisual(VimMode.VisualLine, command.Count, text, selections, view);
+                return EnterVisual(VimMode.VisualLine, command.Count, text, selections, view, aims);
             case VimKeys.CtrlV:
-                return EnterVisual(VimMode.VisualBlock, command.Count, text, selections, view);
+                return EnterVisual(VimMode.VisualBlock, command.Count, text, selections, view, aims);
             case "gv":
                 return Reselect(text, view);
             case "gJ":

@@ -321,8 +321,11 @@ public sealed partial class Vim(VimRegisters registers)
         List<EditPlan> plans = [];
         // A line the session indented and left blank loses its indent, as Vim's autoindent takes back.
         bool indents = session is { How: "o" or "O" or "cc" } && typed == string.Empty || typed is not null && BlankAfterBreak(typed);
+        int[]? indentAims = null;
         if (indents && Unindented(text, selections) is { } unindent)
         {
+            // j and k go on aiming for the column the indent took the caret to.
+            indentAims = [.. selections.Items.Select(c => TextNavigation.VisualColumn(text, c.Caret, view.Indent.TabWidth))];
             plans.Add(unindent);
             (text, selections) = (text.Apply(unindent.Edits), unindent.Selections);
             typed = typed is null ? null : TrimLastIndent(typed);
@@ -362,6 +365,10 @@ public sealed partial class Vim(VimRegisters registers)
             back = SelectionSet.Single(back.Items.MinBy(c => c.Caret));
         }
         (blockCorner, blockChange) = (null, false);
+        if (indentAims is { } columns && plans.Count == 1 && columns.Length == back.Count)
+        {
+            (wantedFor, wanted) = (back, columns);
+        }
         if (plans.Count == 0)
         {
             return new VimResult(true, back);

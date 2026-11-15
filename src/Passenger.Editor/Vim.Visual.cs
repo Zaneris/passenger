@@ -129,18 +129,22 @@ public sealed partial class Vim
         }
     }
 
-    private VimResult EnterVisual(VimMode mode, int count, TextSnapshot text, SelectionSet carets, IVimView view)
+    /// <summary>Visual mode begun at each caret (a block's at the primary one), j and k aiming for the columns normal
+    /// mode's <paramref name="aims"/> for them, a block after $ reaching each line's end.</summary>
+    private VimResult EnterVisual(VimMode mode, int count, TextSnapshot text, SelectionSet carets, IVimView view, int[]? aims = null)
     {
         Mode = mode;
         IReadOnlyList<Selection> from = mode == VimMode.VisualBlock ? [carets.Primary] : carets.Items;
         regions = [.. from.Select(s => new Region(s.Caret, s.Caret))];
         visualPrimary = mode == VimMode.VisualBlock ? 0 : carets.PrimaryIndex;
-        visualAims = [.. regions.Select(_ => -1)];
+        visualAims = aims is null || aims.Length != carets.Count ? [.. regions.Select(_ => -1)]
+            : mode == VimMode.VisualBlock ? [aims[carets.PrimaryIndex]]
+            : [.. aims];
         int tab = view.Indent.TabWidth;
         if (mode == VimMode.VisualBlock)
         {
             int column = TextNavigation.VisualColumn(text, regions[0].Cursor, tab);
-            blockColumns = (column, column, false);
+            blockColumns = (column, column, visualAims[0] == int.MaxValue);
         }
         if (count > 1)
         {
