@@ -64,6 +64,16 @@ public sealed class GutScriptsTests
         Assert.Equal(3, test.Line);
     }
 
+    /// <summary>A class or a test is named as Godot reads a name, by Unicode's identifier characters: one starting with a
+    /// letter past ASCII, or holding a spacing mark (ि) or a joiner, is read whole and runs.</summary>
+    [Fact]
+    public void A_name_past_ascii_or_holding_marks_is_a_tests_or_a_classs_whole()
+    {
+        FileTests read = Read("class_name गिनतीTester\nextends GutTest\n\n\nfunc test_गिनती():\n\tpass\n\n\nclass Testसूची extends GutTest:\n\tfunc test_a\u200Cb():\n\t\tpass\n");
+        Assert.Equal([("test.test_spinner", "test_गिनती"), ("test.test_spinner+Testसूची", "test_a\u200Cb")], read.Tests.Select(t => (t.Type, t.Method)));
+        Assert.Contains("गिनतीTester", read.Attributes);
+    }
+
     [Fact]
     public void A_script_of_no_test_class_inherits_no_tests()
     {

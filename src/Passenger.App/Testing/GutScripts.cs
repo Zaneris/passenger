@@ -3,6 +3,7 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using Passenger.Core;
 using Passenger.Workspace;
+using Passenger.Workspace.GDScript;
 
 namespace Passenger.App.Testing;
 
@@ -166,7 +167,7 @@ public static partial class GutScripts
             {
                 inner = null;
             }
-            if (top && (Extends().Match(line) is { Success: true } extends ? extends : ClassName().Match(line)) is { Success: true } head)
+            if (top && Named(Extends().Match(line) is { Success: true } extends ? extends : ClassName().Match(line)) is { Success: true } head)
             {
                 className = head.Groups["name"] is { Success: true } given ? given.Value : className;
                 if (head.Groups["base"] is { Success: true } extended)
@@ -177,7 +178,7 @@ public static partial class GutScripts
                 }
                 continue;
             }
-            if (top && InnerClass().Match(line) is { Success: true } declared)
+            if (top && Named(InnerClass().Match(line)) is { Success: true } declared)
             {
                 string name = declared.Groups["name"].Value;
                 string extended = BaseOf(declared.Groups["base"].Value, resource);
@@ -191,7 +192,7 @@ public static partial class GutScripts
                 typePlaces.Add(new DeclaredPlace($"{type}+{name}", null, at, at, End(lines, at)));
                 continue;
             }
-            if (!top && inner is { Tests: false } plain && Extends().Match(line.TrimStart()) is { Success: true } innerExtends && plain.Name.StartsWith("Test", StringComparison.Ordinal))
+            if (!top && inner is { Tests: false } plain && Named(Extends().Match(line.TrimStart())) is { Success: true } innerExtends && plain.Name.StartsWith("Test", StringComparison.Ordinal))
             {
                 string extended = BaseOf(innerExtends.Groups["base"].Value, resource);
                 inner = plain with { Tests = IsGut(extended) };
@@ -201,7 +202,7 @@ public static partial class GutScripts
                 }
                 continue;
             }
-            if (Function().Match(line) is not { Success: true } function)
+            if (Named(Function().Match(line)) is not { Success: true } function)
             {
                 continue;
             }
@@ -320,15 +321,27 @@ public static partial class GutScripts
         return count;
     }
 
-    [GeneratedRegex(@"^extends\s+(?<base>[A-Za-z_]\w*|""[^""]*""|'[^']*')(?:\s+class_name\s+(?<name>[A-Za-z_]\w*))?")]
+    /// <summary>A match whose names are each a GDScript name whole, as Godot's tokenizer reads one, else a failed match.</summary>
+    private static Match Named(Match match) =>
+        match.Success && (IsName(match.Groups["name"]) is false || IsName(match.Groups["base"]) is false) ? Match.Empty : match;
+
+    /// <summary>Whether a group the patterns read a name in holds one, a quoted path aside; null where it took nothing.</summary>
+    private static bool? IsName(Group group) =>
+        !group.Success ? null : group.Value[0] is '"' or '\'' || GDScriptTokenizer.IsIdentifier(group.Value);
+
+    /// <summary>What the patterns read as a name, before <see cref="Named"/> reads it whole: a run of ASCII's letters, digits
+    /// and '_' and any other character but a space.</summary>
+    private const string Name = @"(?:[A-Za-z0-9_]|[^\x00-\x7F\s])+";
+
+    [GeneratedRegex(@"^extends\s+(?<base>" + Name + @"|""[^""]*""|'[^']*')(?:\s+class_name\s+(?<name>" + Name + "))?")]
     private static partial Regex Extends();
 
-    [GeneratedRegex(@"^class_name\s+(?<name>[A-Za-z_]\w*)(?:\s+extends\s+(?<base>[A-Za-z_]\w*|""[^""]*""|'[^']*'))?")]
+    [GeneratedRegex(@"^class_name\s+(?<name>" + Name + @")(?:\s+extends\s+(?<base>" + Name + @"|""[^""]*""|'[^']*'))?")]
     private static partial Regex ClassName();
 
-    [GeneratedRegex(@"^class\s+(?<name>[A-Za-z_]\w*)(?:\s+extends\s+(?<base>[A-Za-z_]\w*|""[^""]*""|'[^']*'))?\s*:")]
+    [GeneratedRegex(@"^class\s+(?<name>" + Name + @")(?:\s+extends\s+(?<base>" + Name + @"|""[^""]*""|'[^']*'))?\s*:")]
     private static partial Regex InnerClass();
 
-    [GeneratedRegex(@"^\s*(?:static\s+)?func\s+(?<name>[A-Za-z_]\w*)\s*\(")]
+    [GeneratedRegex(@"^\s*(?:static\s+)?func\s+(?<name>" + Name + @")\s*\(")]
     private static partial Regex Function();
 }

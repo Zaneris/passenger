@@ -67,37 +67,31 @@ public static partial class GodotMembers
     /// named where <c>class_name</c> names it, else by its file, on that line or its <c>extends</c> line, else the first.</summary>
     public static GodotScriptMembers OfGdScript(TextSnapshot text, string path)
     {
+        GDScriptTree tree = GDScriptTree.Parse(text.ToString());
         List<GodotScriptMember> members = [];
-        foreach (GDScriptMember member in GDScriptTree.Parse(text.ToString()).Members)
+        foreach (GDScriptMember member in tree.Members)
         {
             if (member.Node is GDScriptVariable { IsStatic: false, Getter: null, GetterName: null, Identifier: { } variable })
             {
                 members.Add(new GodotScriptMember(variable.Name, text.GetLineFromOffset(member.Offset + variable.Start)));
             }
         }
-        string? named = null;
-        int classLine = -1;
+        string file = path[(path.LastIndexOf('/') + 1)..];
+        if (tree.Class.Identifier is { } named)
+        {
+            return new GodotScriptMembers(path, named.Name, text.GetLineFromOffset(Math.Min(named.Start, text.Length)), members);
+        }
+        int classLine = 0;
         for (int line = 0; line < text.LineCount; line++)
         {
             LineSpan span = text.GetLine(line);
-            // Only a line that starts at its first column with a class's word is read.
-            if (span.Length < 4 || text[span.Start] is not ('c' or 'e'))
-            {
-                continue;
-            }
-            string words = text.GetText(span.Start, span.Length);
-            if (named is null && ClassName().Match(words) is { Success: true } name)
-            {
-                named = name.Groups[1].Value;
-                classLine = line;
-            }
-            else if (classLine < 0 && words.StartsWith("extends", StringComparison.Ordinal))
+            if (span.Length >= 7 && text.GetText(span.Start, 7) == "extends")
             {
                 classLine = line;
+                break;
             }
         }
-        string file = path[(path.LastIndexOf('/') + 1)..];
-        return new GodotScriptMembers(path, named ?? Path.GetFileNameWithoutExtension(file), Math.Max(0, classLine), members);
+        return new GodotScriptMembers(path, Path.GetFileNameWithoutExtension(file), classLine, members);
     }
 
     /// <summary>What of a GDScript's own class Godot's reading of a node runs: each <c>var</c> with a getter of its own,
@@ -158,9 +152,6 @@ public static partial class GodotMembers
     /// <summary>The file Godot lists a project's <c>class_name</c>s in.</summary>
     private const string ClassCache = "res://.godot/global_script_class_cache.cfg";
 
-    [GeneratedRegex(@"""class"": &""(\w+)""[^}]*?""path"": ""([^""]+)""")]
+    [GeneratedRegex(@"""class"": &""([^""]+)""[^}]*?""path"": ""([^""]+)""")]
     private static partial Regex CachedClass();
-
-    [GeneratedRegex(@"^class_name\s+([A-Za-z_]\w*)")]
-    private static partial Regex ClassName();
 }

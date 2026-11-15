@@ -102,6 +102,15 @@ public class GodotLiveValuesTests
         Assert.Equal(("crate", 0), (plain.Class, plain.ClassLine));
     }
 
+    /// <summary>A class_name is read as Godot reads a name: one starting past ASCII and holding marks names the class whole,
+    /// on its own line.</summary>
+    [Fact]
+    public void A_gdscripts_class_name_past_ascii_and_holding_marks_names_its_class_whole()
+    {
+        GodotScriptMembers members = GodotMembers.OfGdScript(TextSnapshot.From("extends Node\n\nclass_name गिनती\nvar total = 1\n"), "res://things/counter.gd");
+        Assert.Equal(("गिनती", 2), (members.Class, members.ClassLine));
+    }
+
     [Fact]
     public void What_reading_a_node_runs_is_each_getter_and_get_of_its_script_and_those_it_extends_by_path_or_by_class_name()
     {
