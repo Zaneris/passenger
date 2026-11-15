@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text;
 using System.Text.RegularExpressions;
+using Passenger.Core;
 
 namespace Passenger.Workspace.Gherkin;
 
@@ -31,7 +32,7 @@ public static partial class StepSnippets
             if (part.Literal is { } literal)
             {
                 expression.Append(cucumber ? EscapeCucumber(literal) : RegexSyntax().Replace(literal, m => "\\" + m.Value));
-                words.AddRange(WordSplit().Split(literal).Where(w => w.Length > 0));
+                words.AddRange(NameWords(literal));
                 continue;
             }
             expression.Append(cucumber ? part.Cucumber : part.Regex);
@@ -56,6 +57,46 @@ public static partial class StepSnippets
         string returns = async ? "async Task" : "void";
         string code = $"[{step.Kind}({attribute})]\npublic {returns} {method}({string.Join(", ", parameters.Select(p => $"{p.Type} {p.Name}"))})\n{{\n    throw new PendingStepException();\n}}\n";
         return new StepSnippet(code, method, step.Kind);
+    }
+
+    /// <summary>The binding class written for a feature's steps where none binds them, named for its title: its words, parted
+    /// at spaces, '-', '_', '.' and '/', each begun in capitals and kept to a name's characters (<see cref="InName"/>),
+    /// '_' before one no C# name begins with, then StepDefinitions.</summary>
+    public static string ClassFor(string title)
+    {
+        string joined = string.Concat(title.Split([' ', '-', '_', '.', '/'], StringSplitOptions.RemoveEmptyEntries)
+            .Select(w => new string([.. w.Where(InName)])).Where(w => w.Length > 0).Select(w => char.ToUpperInvariant(w[0]) + w[1..]));
+        return (joined.Length == 0 ? "Feature" : CSharpNames.Starts(joined[0]) ? joined : "_" + joined) + "StepDefinitions";
+    }
+
+    /// <summary>Whether a character belongs to a word a name is made of: one that carries a C# name on, but connector
+    /// punctuation, which parts words, and a format character, which C# leaves out of a name.</summary>
+    private static bool InName(char c) =>
+        CSharpNames.Continues(c) && CharUnicodeInfo.GetUnicodeCategory(c) is not (UnicodeCategory.ConnectorPunctuation or UnicodeCategory.Format);
+
+    /// <summary>A text's words as a name takes them: its runs of a name's characters, parted at anything else but a format
+    /// character, which is left out.</summary>
+    private static List<string> NameWords(string text)
+    {
+        List<string> words = [];
+        StringBuilder word = new();
+        foreach (char c in text)
+        {
+            if (InName(c))
+            {
+                word.Append(c);
+            }
+            else if (CharUnicodeInfo.GetUnicodeCategory(c) != UnicodeCategory.Format && word.Length > 0)
+            {
+                words.Add(word.ToString());
+                word.Clear();
+            }
+        }
+        if (word.Length > 0)
+        {
+            words.Add(word.ToString());
+        }
+        return words;
     }
 
     /// <summary>A name not among those taken: itself, else with the first number after it that makes it new.</summary>
@@ -149,16 +190,16 @@ public static partial class StepSnippets
         return new Part(null, "{}", "(.*)", "string", parameter);
     }
 
-    /// <summary>A placeholder's name as a C# parameter's: its letters and digits, first lower case.</summary>
+    /// <summary>A placeholder's name as a C# parameter's: its words (<see cref="NameWords"/>), first lower case.</summary>
     private static string Identifier(string name)
     {
-        string[] words = WordSplit().Split(name).Where(w => w.Length > 0).ToArray();
-        if (words.Length == 0)
+        List<string> words = NameWords(name);
+        if (words.Count == 0)
         {
             return "value";
         }
         string joined = words[0].ToLowerInvariant() + string.Concat(words.Skip(1).Select(w => char.ToUpperInvariant(w[0]) + w[1..]));
-        return char.IsDigit(joined[0]) ? "p" + joined : Keywords.Contains(joined) ? "@" + joined : joined;
+        return !CSharpNames.Starts(joined[0]) ? "p" + joined : Keywords.Contains(joined) ? "@" + joined : joined;
     }
 
     /// <summary>C#'s reserved words, which a parameter named after one is written verbatim to take.</summary>
@@ -181,9 +222,6 @@ public static partial class StepSnippets
 
     [GeneratedRegex(@"^\p{L}+$")]
     private static partial Regex OneWord();
-
-    [GeneratedRegex(@"[^\p{L}\p{Nd}]+")]
-    private static partial Regex WordSplit();
 
     [GeneratedRegex(@"[\\{(/]")]
     private static partial Regex CucumberSyntax();

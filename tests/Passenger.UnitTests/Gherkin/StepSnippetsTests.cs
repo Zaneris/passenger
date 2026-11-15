@@ -80,6 +80,26 @@ public sealed class StepSnippetsTests
     }
 
     [Fact]
+    public void A_binding_class_is_named_for_its_features_title_in_a_csharp_names_characters_keeping_a_scripts_marks()
+    {
+        Assert.Equal("लॉगिनStepDefinitions", StepSnippets.ClassFor("लॉगिन"));
+        Assert.Equal("UserLoginPageStepDefinitions", StepSnippets.ClassFor("user login-page"));
+        Assert.Equal("CantLoginStepDefinitions", StepSnippets.ClassFor("Can't login"));
+        Assert.Equal("_३StepsStepDefinitions", StepSnippets.ClassFor("३ steps"));
+        Assert.Equal("ABStepDefinitions", StepSnippets.ClassFor("A\u200DB"));
+        Assert.Equal("LoginStepDefinitions", StepSnippets.ClassFor("\U0001D49C login"));
+        Assert.Equal("FeatureStepDefinitions", StepSnippets.ClassFor("!?"));
+    }
+
+    [Fact]
+    public void A_steps_method_and_a_placeholders_parameter_keep_a_scripts_marks()
+    {
+        StepSnippet snippet = Snippet("Feature: F\nScenario Outline: O\n  Given मैं <नाम> से लॉगिन करता हूँ\n\nExamples:\n  | नाम |\n  | राम |\n");
+
+        Assert.StartsWith("[Given(\"मैं {word} से लॉगिन करता हूँ\")]\npublic void Givenमैंसेलॉगिनकरताहूँ(string नाम)\n", snippet.Code, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void A_placeholder_named_as_a_csharp_keyword_is_a_verbatim_parameter()
     {
         StepSnippet snippet = Snippet("Feature: F\nScenario Outline: O\n  Given the <class> list\n\nExamples:\n  | class |\n  | a     |\n");

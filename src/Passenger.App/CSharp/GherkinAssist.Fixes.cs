@@ -74,17 +74,9 @@ internal sealed partial class GherkinAssist
         }
         string root = folder ?? System.IO.Path.GetDirectoryName(feature)!;
         string into = Directory.Exists(System.IO.Path.Combine(root, "StepDefinitions")) ? System.IO.Path.Combine(root, "StepDefinitions") : root;
-        string name = Identifier(analysis.Reading.Feature?.Title is { Length: > 0 } title ? title : System.IO.Path.GetFileNameWithoutExtension(feature)) + "StepDefinitions";
+        string name = StepSnippets.ClassFor(analysis.Reading.Feature?.Title is { Length: > 0 } title ? title : System.IO.Path.GetFileNameWithoutExtension(feature));
         string path = System.IO.Path.Combine(into, name + ".cs");
         return File.Exists(path) ? new Target(path, name, null) : new Target(path, null, bdd.NamespaceFor(into));
-    }
-
-    /// <summary>A title as a C# type's name: its words joined, each begun in capitals.</summary>
-    private static string Identifier(string title)
-    {
-        string joined = string.Concat(title.Split([' ', '-', '_', '.', '/'], StringSplitOptions.RemoveEmptyEntries)
-            .Select(w => new string([.. w.Where(char.IsLetterOrDigit)])).Where(w => w.Length > 0).Select(w => char.ToUpperInvariant(w[0]) + w[1..]));
-        return joined.Length == 0 ? "Feature" : char.IsDigit(joined[0]) ? "_" + joined : joined;
     }
 
     /// <summary>The definitions of steps written as one command of Undo, then shown: into the target class before its closing
