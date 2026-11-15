@@ -52,4 +52,13 @@ public sealed class ReqnrollConfigTests
             Directory.Delete(folder, recursive: true);
         }
     }
+
+    [Fact]
+    public void A_folder_with_no_file_writes_steps_as_its_framework_does()
+    {
+        ReqnrollConfig none = ReqnrollConfig.In(Directory.CreateTempSubdirectory("passenger-unit-").FullName);
+
+        Assert.Equal((SkeletonStyle.CucumberExpression, SkeletonStyle.Regex), (none.SkeletonFor(specFlow: false), none.SkeletonFor(specFlow: true)));
+        Assert.Equal(SkeletonStyle.AsyncRegex, ReqnrollConfig.Parse("""{ "trace": { "stepDefinitionSkeletonStyle": "AsyncRegexAttribute" } }""", false) with { Written = true } is var said ? said.SkeletonFor(specFlow: false) : default);
+    }
 }

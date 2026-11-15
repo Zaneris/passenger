@@ -101,4 +101,23 @@ public sealed class GherkinEditingTests : FileColoursFolder
             () => $"the row's number aligned as its bar was typed: {editor.Document.Snapshot}");
         window.Close();
     }
+
+    [AvaloniaFact]
+    public void A_feature_in_another_language_completes_its_own_keywords_and_one_of_no_project_marks_no_step_undefined()
+    {
+        MainWindow window = Window();
+        CodeEditor editor = Open(window, "Rechner.feature", "# language: de\nFunktionalität: Rechner\n\nSzenario: Addieren\n  Angenommen eine Zahl 5\n");
+        OpenDocument document = window.EditorArea.Active!;
+        Ui.WaitFor(() => KindOf(editor, "Angenommen") == TokenKind.Keyword, "the German keywords coloured from Gherkin's reading");
+        Assert.Empty(document.Markers);
+
+        Ui.PlaceAfter(editor, "eine Zahl 5");
+        editor.Focus();
+        Ui.Press(window, "ENTER");
+        window.KeyTextInput("W");
+        Ui.WaitFor(() => window.Assist.IsCompletionOpen && window.Assist.CompletionLabels.Contains("Wenn"),
+            () => $"German's keywords offered: {string.Join(", ", window.Assist.CompletionLabels)}");
+        Assert.DoesNotContain("When", window.Assist.CompletionLabels);
+        window.Close();
+    }
 }

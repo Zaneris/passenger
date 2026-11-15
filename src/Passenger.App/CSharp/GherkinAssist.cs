@@ -9,12 +9,12 @@ using Passenger.Workspace.Gherkin;
 namespace Passenger.App.CSharp;
 
 /// <summary>A .feature file's steps and their step definitions as one thing: completion offers the keywords where the caret
-/// is, the steps the project's definitions bind after a step's keyword (each parameter a hole to fill) and the project's
-/// tags after an @; the hover card says which definition binds a step, or why none does; Go to Declaration goes from a
-/// step to its definition (a list where several bind it) and from a scenario's or feature's header to the hooks that run
-/// for it; Find Usages goes from a step, or a step definition's method or expression in C#, to every step it binds in the
-/// features of the projects that see it; Show Context Actions on a step none binds writes its definition; Rename on a step,
-/// or on a definition's expression, renames the step everywhere.</summary>
+/// is (doc string delimiters too), the steps the project's definitions bind after a step's keyword (each parameter a hole),
+/// the project's tags after an @ and Gherkin's languages on a <c># language:</c> line; the hover card says which definition
+/// binds a step, or why none does; Go to Declaration goes from a step to its definition and from a header to its hooks;
+/// Find Usages goes from a step, or a C# definition's method or expression, to every step it binds in the features of the
+/// projects that see it; Show Context Actions on a step none binds writes its definition; Rename on a step, or on a
+/// definition's expression, renames the step everywhere.</summary>
 internal sealed partial class GherkinAssist(AssistContext context, PopupPlacement popups, CodeCompletion completion, CodeNavigation navigation, CodeActions actions) : LanguageAssist
 {
     /// <summary>What the window gives the editor's commands of its BDD; null while none is set.</summary>
@@ -50,7 +50,7 @@ internal sealed partial class GherkinAssist(AssistContext context, PopupPlacemen
             AlignTable(shown);
             return true;
         }
-        bool opens = (text.EndsWith('@') && trimmed.StartsWith('@'))
+        bool opens = (text.EndsWith('@') && trimmed.StartsWith('@')) || (text.EndsWith(' ') && trimmed == LanguageLine)
             || (text.EndsWith(' ') && StepKeywordOf(DialectOf(shown), trimmed) is { } keyword && keyword.Length == trimmed.Length)
             || (trimmed.Length == 1 && char.IsLetter(trimmed[0]));
         if (opens)
@@ -87,6 +87,12 @@ internal sealed partial class GherkinAssist(AssistContext context, PopupPlacemen
             StepKind kind = KindAt(analysis, line, keyword);
             items.AddRange(StepItems(analysis, kind));
         }
+        else if (trimmed.StartsWith('#') && (analysis.Reading.Feature is not { } read || read.Line > line))
+        {
+            start = lineStart + indent;
+            items.AddRange(GherkinDialects.Languages.Select(l => (Item($"{LanguageLine}{l}", CompletionItemKind.Constant, "language", l),
+                $"Gherkin's keywords in {DialectName(l)}", (StepSample?)null, $"{LanguageLine}{l}")));
+        }
         else if (trimmed.StartsWith('@'))
         {
             start = lineStart + before.LastIndexOf('@');
@@ -114,6 +120,21 @@ internal sealed partial class GherkinAssist(AssistContext context, PopupPlacemen
         }
         completion.Open(new CodeCompletion.Completion([.. items.Select(i => i.Item)], start, [], false) { Own = this, WordCharacters = " @<>\"'[]{}-" });
         return true;
+    }
+
+    private const string LanguageLine = "# language: ";
+
+    /// <summary>A Gherkin language's code said as its culture's English name where .NET knows it ("de": German).</summary>
+    private static string DialectName(string code)
+    {
+        try
+        {
+            return System.Globalization.CultureInfo.GetCultureInfo(code).EnglishName;
+        }
+        catch (System.Globalization.CultureNotFoundException)
+        {
+            return code;
+        }
     }
 
     private static CompletionItem Item(string label, CompletionItemKind kind, string detail, string sort) =>
@@ -148,6 +169,8 @@ internal sealed partial class GherkinAssist(AssistContext context, PopupPlacemen
                 .. dialect.RuleKeywords.Select(k => (k, "A business rule the scenarios under it illustrate", true, 3)),
                 .. dialect.GivenStepKeywords.Concat(dialect.WhenStepKeywords).Concat(dialect.ThenStepKeywords).Concat(dialect.AndStepKeywords).Concat(dialect.ButStepKeywords)
                     .Where(k => k.Trim() != "*").Select(k => (k.TrimEnd(), "A step", false, 0)),
+                ("\"\"\"", "A doc string: text the step above takes, to a line of the same", false, 4),
+                ("```", "A doc string: text the step above takes, to a line of the same", false, 4),
             ]
             : dialect.FeatureKeywords.Select(k => (k, "The feature the file describes", true, 0));
         HashSet<string> seen = new(StringComparer.Ordinal);
@@ -155,7 +178,7 @@ internal sealed partial class GherkinAssist(AssistContext context, PopupPlacemen
         {
             if (seen.Add(keyword))
             {
-                string insert = header ? keyword + ": " : keyword + " ";
+                string insert = header ? keyword + ": " : keyword.StartsWith('"') || keyword.StartsWith('`') ? keyword : keyword + " ";
                 yield return (Item(keyword, CompletionItemKind.Keyword, header ? "header" : "step", $"{rank}{keyword}"), said, null, insert);
             }
         }

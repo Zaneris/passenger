@@ -90,4 +90,11 @@ public sealed class GherkinFormatterTests
         Assert.Equal("Feature: F\nScenario: S\n    Given text\n        \"\"\"\n        kept  \n        \"\"\"\n",
             Format("Feature: F\nScenario: S\nGiven text\n\"\"\"\nkept  \n\"\"\"\n"));
     }
+
+    [Fact]
+    public void A_file_of_crlf_lines_keeps_its_line_breaks()
+    {
+        Assert.Equal("Feature: F\r\nScenario: S\r\n    Given one\r\n        | a |\r\n",
+            Format("Feature: F\r\nScenario: S\r\nGiven one\r\n|a|\r\n"));
+    }
 }

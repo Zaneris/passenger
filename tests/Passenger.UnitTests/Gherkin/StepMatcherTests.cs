@@ -216,4 +216,14 @@ public sealed class StepMatcherTests
 
         Assert.Equal(MatchStatus.Defined, Match(matcher, StepKind.Given, "I log in").Status);
     }
+
+    [Fact]
+    public void A_features_background_step_is_matched_in_the_scenarios_under_its_rules_too()
+    {
+        FeatureReading reading = FeatureReading.Read(
+            "Feature: F\n\nBackground:\n  Given I log in\n\nRule: R\n\n  @admin\n  Scenario: A\n    Then one\n", "en");
+        StepBinding admin = Binding(BindingKind.Given, "I log in", "GivenILogIn") with { Scopes = [new StepScope("admin", null, null)] };
+
+        Assert.Equal(MatchStatus.Defined, Matcher(admin).Match(reading.Steps[0], reading).Status);
+    }
 }

@@ -229,7 +229,8 @@ public sealed class StepMatcher
         string? feature = reading.Feature?.Title;
         if (scenario.Kind == ScenarioKind.Background)
         {
-            FeatureScenario[] after = [.. reading.Scenarios.Where(s => s.Kind != ScenarioKind.Background && s.Line > scenario.Line && s.Rule == scenario.Rule)];
+            // A feature's background runs before every scenario of it, those under its rules too; a rule's before its own.
+            FeatureScenario[] after = [.. reading.Scenarios.Where(s => s.Kind != ScenarioKind.Background && s.Line > scenario.Line && (scenario.Rule is null || s.Rule == scenario.Rule))];
             if (after.Length == 0)
             {
                 return [(step.Text, new StepContext(feature, null, scenario.AllTags))];
