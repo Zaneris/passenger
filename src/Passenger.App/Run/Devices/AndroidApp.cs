@@ -1,4 +1,4 @@
-using System.Text.Json;
+using Passenger.App.Workspace;
 using Passenger.Core;
 
 namespace Passenger.App.Run.Devices;
@@ -9,7 +9,8 @@ namespace Passenger.App.Run.Devices;
 public sealed record AndroidApp(string Serial, string Adb, string Package, string Activity, string Intermediate)
 {
     /// <summary>The properties the workload's <c>ComputeRunArguments</c> leaves that the app's start reads.</summary>
-    public static readonly IReadOnlyList<string> Properties = ["AndroidLaunchActivity", "_AndroidPackage", "_AdbToolPath", MSBuildNames.IntermediateOutputPath, "AndroidInstrumentation"];
+    public static readonly IReadOnlyList<string> Properties =
+        [MSBuildNames.AndroidLaunchActivity, MSBuildNames.AndroidPackage, MSBuildNames.IntermediateOutputPath, MSBuildNames.AndroidInstrumentation];
 
     /// <summary>The profiler the runtime loads Passenger's relay as (its class id, which the relay's factory answers to).</summary>
     public const string RelayProfiler = "{7A3E5B2C-8D41-4F6A-9C0E-5B1D2E3F4A50}";
@@ -29,23 +30,20 @@ public sealed record AndroidApp(string Serial, string Adb, string Package, strin
     [IdentifierHome]
     public const string RelayWaitVariable = "PASSENGER_DEBUG_WAIT_MS";
 
-    /// <summary>The app's start as <c>dotnet msbuild -getProperty</c> wrote it after <c>ComputeRunArguments</c>; why not where
-    /// it launches no activity.</summary>
-    public static (AndroidApp? App, string? Problem) Read(string json, string serial, string projectFolder)
+    /// <summary>The app's start as MSBuild answered <see cref="Properties"/> after <c>ComputeRunArguments</c>, run on the
+    /// device by <paramref name="adb"/>; why not where it launches no activity.</summary>
+    public static (AndroidApp? App, string? Problem) Read(MSBuildAnswer said, string serial, string adb, string projectFolder)
     {
-        using JsonDocument read = JsonDocument.Parse(json);
-        JsonElement? properties = JsonMembers.Object(read.RootElement, "Properties");
-        string package = JsonMembers.Text(properties, "_AndroidPackage") ?? string.Empty;
-        string activity = JsonMembers.Text(properties, "AndroidLaunchActivity") ?? string.Empty;
-        string adb = JsonMembers.Text(properties, "_AdbToolPath") ?? string.Empty;
-        string intermediate = JsonMembers.Text(properties, MSBuildNames.IntermediateOutputPath) ?? string.Empty;
-        if (package.Length == 0 || adb.Length == 0)
+        string package = said.Property(MSBuildNames.AndroidPackage) ?? string.Empty;
+        string activity = said.Property(MSBuildNames.AndroidLaunchActivity) ?? string.Empty;
+        string intermediate = said.Property(MSBuildNames.IntermediateOutputPath) ?? string.Empty;
+        if (package.Length == 0)
         {
             return (null, "The Android workload did not say which package it installed");
         }
         if (activity.Length == 0)
         {
-            return (null, JsonMembers.Text(properties, "AndroidInstrumentation") is { Length: > 0 }
+            return (null, said.Property(MSBuildNames.AndroidInstrumentation) is { Length: > 0 }
                 ? $"{package} starts through its instrumentation, which Passenger does not run: give it a launcher activity"
                 : $"{package} has no launcher activity to start");
         }

@@ -66,4 +66,31 @@ public sealed class FrameworkNamesTests
         Assert.True(FrameworkNames.Major(framework) == (version is null ? (int?)null : int.Parse(version.Split('.')[0], System.Globalization.CultureInfo.InvariantCulture)),
             $"{framework ?? "null"}'s major reads as {FrameworkNames.Major(framework)?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "none"}");
     }
+
+    [Theory]
+    [InlineData("net11.0-android", FrameworkNames.Android)]
+    [InlineData("net11.0-android36.0", FrameworkNames.Android)]
+    [InlineData("NET11.0-iOS", FrameworkNames.Ios)]
+    [InlineData("net11.0-maccatalyst18.0", FrameworkNames.MacCatalyst)]
+    [InlineData("net11.0-windows10.0.19041.0", FrameworkNames.Windows)]
+    [InlineData("net11.0-windows", FrameworkNames.Windows)]
+    [InlineData("net11.0-tizen", FrameworkNames.Tizen)]
+    [InlineData("net11.0-browser", "browser")]
+    [InlineData("net11.0", null)]
+    [InlineData("net11.0-", null)]
+    [InlineData("netstandard2.0", null)]
+    [InlineData(null, null)]
+    public void A_target_frameworks_platform_reads_in_lower_case_whatever_its_version(string? framework, string? platform)
+    {
+        Assert.True(FrameworkNames.PlatformOf(framework) == platform, $"{framework ?? "null"}'s platform reads as {FrameworkNames.PlatformOf(framework) ?? "none"}");
+    }
+
+    [Fact]
+    public void A_platforms_version_is_told_from_a_framework_naming_the_platform_alone()
+    {
+        Assert.True(FrameworkNames.NamesPlatformVersion("net11.0-windows10.0.19041.0"), "A Windows app's head names its platform's version");
+        Assert.True(FrameworkNames.NamesPlatformVersion("net11.0-android36.0"), "An Android framework of API 36 names its platform's version");
+        Assert.False(FrameworkNames.NamesPlatformVersion("net11.0-windows"), "A desktop Windows app's framework was read as naming a version");
+        Assert.False(FrameworkNames.NamesPlatformVersion("net11.0"), "A framework of no platform was read as naming a platform's version");
+    }
 }

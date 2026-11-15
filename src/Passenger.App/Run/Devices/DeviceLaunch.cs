@@ -98,7 +98,7 @@ public static class DeviceLaunches
         }
         listed(targets);
         say($"Installing {name} on {target.Name}…");
-        (AndroidApp? app, string? uninstalled) = await AndroidDevices.DeployAsync(project, device.Framework, serial, globals, cancel);
+        (AndroidApp? app, string? uninstalled) = await AndroidDevices.DeployAsync(project, device.Framework, serial, tools.Adb, globals, cancel);
         if (app is null)
         {
             return (null, $"{name} could not be installed on {target.Name}: {uninstalled}");

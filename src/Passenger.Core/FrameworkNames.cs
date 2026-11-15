@@ -1,7 +1,8 @@
 namespace Passenger.Core;
 
 /// <summary>The names of .NET's frameworks Passenger reads in a project's restore, its evaluation and a package's
-/// metadata, each named once: the shared frameworks a project references and a target framework's short name.</summary>
+/// metadata, each named once: the shared frameworks a project references, a target framework's short name and the
+/// platform it names.</summary>
 [IdentifierHome]
 public static class FrameworkNames
 {
@@ -14,8 +15,31 @@ public static class FrameworkNames
     /// <summary>The Windows desktop shared framework's Windows Forms profile (<c>UseWindowsForms</c>).</summary>
     public const string WindowsForms = "Microsoft.WindowsDesktop.App.WindowsForms";
 
+    // The platforms a target framework names after its dash (net11.0-android), as PlatformOf reads them.
+    public const string Android = "android";
+    public const string Ios = "ios";
+    public const string MacCatalyst = "maccatalyst";
+    public const string Tvos = "tvos";
+    public const string Macos = "macos";
+    public const string Windows = "windows";
+    public const string Tizen = "tizen";
+
     /// <summary>.NET's identifier in a target framework's long name (<c>.NETCoreApp,Version=v10.0</c>).</summary>
     private const string NetCoreApp = ".NETCoreApp";
+
+    /// <summary>The platform a target framework names, in lower case as MSBuild compares it in any: android of
+    /// net11.0-android36.0, windows of net11.0-windows10.0.19041.0 and of net11.0-windows; null where it names none.</summary>
+    public static string? PlatformOf(string? framework)
+    {
+        int dash = framework?.IndexOf('-') ?? -1;
+        string platform = dash < 0 ? string.Empty : new([.. framework![(dash + 1)..].TakeWhile(char.IsLetter)]);
+        return platform.Length > 0 ? platform.ToLowerInvariant() : null;
+    }
+
+    /// <summary>Whether a target framework names its platform's version after the platform (36.0 of net11.0-android36.0),
+    /// as a desktop Windows app's net11.0-windows does not.</summary>
+    public static bool NamesPlatformVersion(string framework) =>
+        PlatformOf(framework) is { } platform && framework.Length > framework.IndexOf('-') + 1 + platform.Length;
 
     /// <summary>Whether a shared framework a project references is the Windows desktop's, whole or a profile of it.</summary>
     public static bool IsWindowsDesktop(string framework) =>

@@ -2,7 +2,8 @@ namespace Passenger.Core;
 
 /// <summary>MSBuild's names Passenger writes, each named once: what it gives the builds, servers and evaluations it starts, or
 /// keeps from them (in their environment, where a property given is one MSBuild takes as the project's, or as a global
-/// property), the properties it asks an evaluation for or writes into a project or publish profile, and the targets it runs.
+/// property), the properties and items it asks an evaluation or a question for or writes into a project or publish
+/// profile, and the targets it runs.
 /// Those an evaluation carries (Host's CarriedProperties) are named there. Framework-free, since the project host compiles
 /// it in.</summary>
 [IdentifierHome]
@@ -162,4 +163,46 @@ public static class MSBuildNames
     /// them, with no compile.</summary>
     public const string GenerateComputedBuildStaticWebAssets = "GenerateComputedBuildStaticWebAssets";
     public const string ResolveReferencedProjectsStaticWebAssets = "ResolveReferencedProjectsStaticWebAssets";
+
+    /// <summary>The target that restores a project's packages.</summary>
+    public const string Restore = "Restore";
+
+    /// <summary>"true" has a question's evaluation pass over the restore's assets, which it reads nothing of.</summary>
+    public const string SkipResolvePackageAssets = "SkipResolvePackageAssets";
+
+    /// <summary>The version of the platform a project builds for (37.0 of net11.0-android, its own where the framework names none).</summary>
+    public const string TargetPlatformVersion = "TargetPlatformVersion";
+
+    /// <summary>The SDK's target naming the workloads a project's frameworks need that the .NET it builds with lacks.</summary>
+    public const string GetRequiredWorkloads = "_GetRequiredWorkloads";
+
+    // A mobile workload's: the device a run takes, its listing of devices, an app's install there and how it starts.
+    public const string Device = "Device";
+    public const string Devices = "Devices";
+    public const string ComputeAvailableDevices = "ComputeAvailableDevices";
+    public const string DeployToDevice = "DeployToDevice";
+    public const string ComputeRunArguments = "ComputeRunArguments";
+
+    // The Android workload's: the Android SDK and JDK it builds with, the SDK's tools, what an app needs installed and its installer.
+    public const string AndroidSdkDirectory = "AndroidSdkDirectory";
+    public const string JavaSdkDirectory = "JavaSdkDirectory";
+    public const string JavaSdkVersion = "JavaSdkVersion";
+    public const string AdbToolPath = "AdbToolPath";
+    public const string EmulatorToolPath = "EmulatorToolPath";
+    public const string GetAndroidDependencies = "GetAndroidDependencies";
+    public const string AndroidDependency = "AndroidDependency";
+    public const string JavaDependency = "JavaDependency";
+    public const string InstallAndroidDependencies = "InstallAndroidDependencies";
+    public const string AndroidInstallJavaDependencies = "AndroidInstallJavaDependencies";
+    public const string AcceptAndroidSdkLicenses = "AcceptAndroidSDKLicenses";
+
+    // An installed Android app's start, as the workload's ComputeRunArguments leaves it.
+    public const string AndroidPackage = "_AndroidPackage";
+    public const string AndroidLaunchActivity = "AndroidLaunchActivity";
+    public const string AndroidInstrumentation = "AndroidInstrumentation";
+
+    // The Apple workloads' check of the Xcode they build with: its developer folder and SDK version.
+    public const string DetectSdkLocations = "_DetectSdkLocations";
+    public const string SdkDevPath = "_SdkDevPath";
+    public const string SdkVersion = "_SdkVersion";
 }

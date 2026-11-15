@@ -1,6 +1,7 @@
 using System.Text;
 using Passenger.App.Run;
 using Passenger.App.Run.Devices;
+using Passenger.App.Workspace;
 using Passenger.Core;
 using Passenger.Host;
 using Passenger.Workspace;
@@ -28,10 +29,13 @@ public class DeviceTargetsTests
         }
         """;
 
+    /// <summary>What MSBuild answered a question, as it wrote it on its output.</summary>
+    private static MSBuildAnswer Answer(string output) => new(new ChildResult(0, output, string.Empty));
+
     [Fact]
     public void The_workloads_devices_are_listed_an_emulator_kept_by_its_avd_and_one_not_running_said_so()
     {
-        IReadOnlyList<DeviceTarget> targets = DeviceTargets.Parse(TargetPlatform.Android, Listed);
+        IReadOnlyList<DeviceTarget> targets = DeviceTargets.Parse(TargetPlatform.Android, Answer(Listed));
 
         Assert.Equal(["Pixel 9", "Tablet (not running)", "Galaxy S24"], targets.Select(t => t.Shown));
         Assert.Equal(["pixel", "tablet", "R5CT1234"], targets.Select(t => t.Key));
@@ -40,10 +44,21 @@ public class DeviceTargetsTests
     }
 
     [Fact]
+    public void A_listing_is_read_past_the_lines_written_before_and_after_its_answer()
+    {
+        const string Before = "/src/App/App.csproj(12,5): warning PS0001: A warning before the answer, with braces { and } in it [/src/App/App.csproj]";
+        const string After = "said on the console by a task after the answer";
+
+        IReadOnlyList<DeviceTarget> targets = DeviceTargets.Parse(TargetPlatform.Android, Answer(Before + "\n" + Listed + "\n" + After + "\n"));
+
+        Assert.Equal(["Pixel 9", "Tablet (not running)", "Galaxy S24"], targets.Select(t => t.Shown));
+    }
+
+    [Fact]
     public void An_answer_with_no_devices_lists_none()
     {
-        Assert.Empty(DeviceTargets.Parse(TargetPlatform.Android, """{ "Items": { } }"""));
-        Assert.Empty(DeviceTargets.Parse(TargetPlatform.Android, """{ "Properties": { } }"""));
+        Assert.Empty(DeviceTargets.Parse(TargetPlatform.Android, Answer("""{ "Items": { } }""")));
+        Assert.Empty(DeviceTargets.Parse(TargetPlatform.Android, Answer("""{ "Properties": { } }""")));
     }
 
     [Fact]
@@ -161,19 +176,18 @@ public class DeviceTargetsTests
     [Fact]
     public void The_apps_start_is_read_from_the_workloads_properties_and_one_without_an_activity_is_refused()
     {
-        (AndroidApp? app, string? problem) = AndroidApp.Read("""
-            { "Properties": { "AndroidLaunchActivity": "crc64.MainActivity", "_AndroidPackage": "com.shop", "_AdbToolPath": "/sdk/platform-tools/adb",
-              "IntermediateOutputPath": "obj/Debug/net11.0-android/" } }
-            """, "emulator-5554", "/src/Shop");
+        (AndroidApp? app, string? problem) = AndroidApp.Read(Answer("""
+            { "Properties": { "AndroidLaunchActivity": "crc64.MainActivity", "_AndroidPackage": "com.shop", "IntermediateOutputPath": "obj/Debug/net11.0-android/" } }
+            """), "emulator-5554", "/sdk/platform-tools/adb", "/src/Shop");
 
         Assert.Null(problem);
         Assert.Equal(("com.shop", "crc64.MainActivity", "/sdk/platform-tools/adb"), (app!.Package, app.Activity, app.Adb));
         Assert.Equal(PathNames.Canonical(Path.Combine("/src/Shop", "obj", "Debug", "net11.0-android")), app.Intermediate.TrimEnd('/', '\\'));
         Assert.Equal(Path.Combine(app.Intermediate, "android", "assets", "arm64-v8a"), app.Deployed("arm64-v8a"));
 
-        (AndroidApp? none, string? why) = AndroidApp.Read("""
-            { "Properties": { "_AndroidPackage": "com.shop", "_AdbToolPath": "adb", "AndroidInstrumentation": "Tests" } }
-            """, "emulator-5554", "/src/Shop");
+        (AndroidApp? none, string? why) = AndroidApp.Read(Answer("""
+            { "Properties": { "_AndroidPackage": "com.shop", "AndroidInstrumentation": "Tests" } }
+            """), "emulator-5554", "adb", "/src/Shop");
         Assert.Null(none);
         Assert.Equal("com.shop starts through its instrumentation, which Passenger does not run: give it a launcher activity", why);
     }

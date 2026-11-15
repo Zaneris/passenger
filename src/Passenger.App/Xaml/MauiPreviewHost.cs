@@ -112,14 +112,14 @@ internal sealed class MauiPreviewHost : ChildPreviewHost
             $"-p:{MSBuildNames.ArtifactsPath}={PlainFolder(project.Path)}"];
     }
 
-    /// <summary>The platform a target framework is for, or a build's folder named for one (<c>net11.0-ios</c>,
-    /// <c>debug_net11.0-ios</c>); null for one of no platform.</summary>
-    internal static string? PlatformOf(string framework) => framework switch
+    /// <summary>The platform a target framework is for, or a build's folder named for one, its configuration before an
+    /// underscore (<c>net11.0-ios</c>, <c>debug_net11.0-ios</c>); null for one of no platform.</summary>
+    internal static string? PlatformOf(string framework) => FrameworkNames.PlatformOf(framework[(framework.IndexOf('_') + 1)..]) switch
     {
-        _ when framework.Contains("-android", StringComparison.OrdinalIgnoreCase) => MauiPreviewDevices.Android,
-        _ when framework.Contains("-ios", StringComparison.OrdinalIgnoreCase) => MauiPreviewDevices.IOS,
-        _ when framework.Contains("-maccatalyst", StringComparison.OrdinalIgnoreCase) => MauiPreviewDevices.MacCatalyst,
-        _ when framework.Contains("-windows", StringComparison.OrdinalIgnoreCase) => MauiPreviewDevices.Windows,
+        FrameworkNames.Android => MauiPreviewDevices.Android,
+        FrameworkNames.Ios => MauiPreviewDevices.IOS,
+        FrameworkNames.MacCatalyst => MauiPreviewDevices.MacCatalyst,
+        FrameworkNames.Windows => MauiPreviewDevices.Windows,
         _ => null,
     };
 

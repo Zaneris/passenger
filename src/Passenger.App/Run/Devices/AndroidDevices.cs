@@ -1,6 +1,6 @@
 using System.Diagnostics;
-using System.Text.Json;
 using Passenger.App.Mobile;
+using Passenger.App.Workspace;
 using Passenger.Core;
 
 namespace Passenger.App.Run.Devices;
@@ -26,38 +26,38 @@ public static class AndroidDevices
     public static async Task<(IReadOnlyList<DeviceTarget> Targets, AndroidTools? Tools, string? Problem)> ListAsync(string project, string framework,
         IReadOnlyDictionary<string, string> globals, CancellationToken cancel)
     {
-        string folder = Path.GetDirectoryName(project)!;
-        if (AndroidHosts.Unbuilt(folder) is { } host)
+        if (AndroidHosts.Unbuilt(Path.GetDirectoryName(project)!) is { } host)
         {
             return ([], null, Refusals.AndroidBuiltElsewhere(host));
         }
-        string[] given = [.. globals.Where(g => g.Key != MSBuildNames.TargetFramework).Select(g => $"-property:{g.Key}={g.Value}")];
-        ChildResult listed = await ChildProcesses.RunAsync(ChildProcesses.DotnetQuestion(["msbuild", project, "-nologo", "-target:Restore", .. given], folder), cancel: cancel);
+        MSBuildAnswer listed = await MSBuildQuestions.AskAsync(project, null, globals, new MSBuildQuestion([MSBuildNames.Restore]), cancel);
         if (listed.Succeeded)
         {
-            listed = await ChildProcesses.RunAsync(ChildProcesses.DotnetQuestion(["msbuild", project, "-nologo", "-target:ComputeAvailableDevices", "-getItem:Devices",
-                "-getProperty:AdbToolPath", "-getProperty:EmulatorToolPath", "-getProperty:AndroidSdkDirectory", "-getProperty:TargetPlatformVersion",
-                $"-property:{MSBuildNames.TargetFramework}={framework}", .. given], folder), cancel: cancel);
+            listed = await MSBuildQuestions.AskAsync(project, framework, globals, new MSBuildQuestion([MSBuildNames.ComputeAvailableDevices])
+            {
+                Items = [MSBuildNames.Devices],
+                Properties = [MSBuildNames.AdbToolPath, MSBuildNames.EmulatorToolPath, MSBuildNames.AndroidSdkDirectory, MSBuildNames.TargetPlatformVersion],
+            }, cancel);
         }
+        return Listed(listed);
+    }
+
+    /// <summary>The targets and the SDK's tools a listing answered, or why it listed none, in words for the person.</summary>
+    private static (IReadOnlyList<DeviceTarget> Targets, AndroidTools? Tools, string? Problem) Listed(MSBuildAnswer listed)
+    {
         if (!listed.Succeeded)
         {
-            return ([], null, DeviceTargets.AndroidPlatformLacked(listed.Output + "\n" + listed.Error) is { } lacks
-                ? Refusals.NoAndroidPlatform(lacks) : Refusals.NoAndroid(ProblemOf(listed)));
+            return ([], null, DeviceTargets.AndroidPlatformLacked(listed.Said.Output + "\n" + listed.Said.Error) is { } package
+                ? Refusals.NoAndroidPlatform(package) : Refusals.NoAndroid(ProblemOf(listed.Said)));
         }
-        try
+        if (!listed.Answered)
         {
-            IReadOnlyList<DeviceTarget> targets = DeviceTargets.Parse(TargetPlatform.Android, listed.Output);
-            using JsonDocument read = JsonDocument.Parse(listed.Output);
-            JsonElement? properties = JsonMembers.Object(read.RootElement, "Properties");
-            string adb = JsonMembers.Text(properties, "AdbToolPath") ?? string.Empty;
-            string emulator = JsonMembers.Text(properties, "EmulatorToolPath") ?? string.Empty;
-            string? lacks = PlatformLacked(JsonMembers.Text(properties, "AndroidSdkDirectory"), JsonMembers.Text(properties, "TargetPlatformVersion"));
-            return (targets, new AndroidTools(Tool(adb, "adb"), Tool(emulator, "emulator"), lacks), null);
+            return ([], null, $"The Android workload's list of devices could not be read: {listed.Said.FirstLine}");
         }
-        catch (JsonException)
-        {
-            return ([], null, $"The Android workload's list of devices could not be read: {listed.FirstLine}");
-        }
+        string? lacks = PlatformLacked(listed.Property(MSBuildNames.AndroidSdkDirectory), listed.Property(MSBuildNames.TargetPlatformVersion));
+        AndroidTools tools = new(Tool(listed.Property(MSBuildNames.AdbToolPath) ?? string.Empty, "adb"), Tool(listed.Property(MSBuildNames.EmulatorToolPath) ?? string.Empty, "emulator"),
+            lacks);
+        return (DeviceTargets.Parse(TargetPlatform.Android, listed), tools, null);
     }
 
     /// <summary>The SDK package of the platform the workload builds against (<paramref name="version"/>, 37.0) where the SDK
@@ -165,25 +165,23 @@ public static class AndroidDevices
         ChildProcesses.RunAsync(ChildProcesses.Command(adb, arguments), cancel: cancel);
 
     /// <summary>Installs the built app on a device (<c>DeployToDevice</c>, no build of its own) and reads how it starts
-    /// there; what MSBuild writes goes to <paramref name="output"/>. The app's start, or why not.</summary>
-    public static async Task<(AndroidApp? App, string? Problem)> DeployAsync(string project, string framework, string serial, IReadOnlyDictionary<string, string> globals,
-        CancellationToken cancel)
+    /// there, run by the workload's adb that the device's listing found (<see cref="AndroidTools.Adb"/>). The app's start,
+    /// or why not.</summary>
+    public static async Task<(AndroidApp? App, string? Problem)> DeployAsync(string project, string framework, string serial, string adb,
+        IReadOnlyDictionary<string, string> globals, CancellationToken cancel)
     {
-        List<string> arguments = ["msbuild", project, "-nologo", "-target:DeployToDevice;ComputeRunArguments", $"-property:{MSBuildNames.TargetFramework}={framework}", $"-property:Device={serial}",
-            .. globals.Where(g => g.Key is not MSBuildNames.TargetFramework and not "Device").Select(g => $"-property:{g.Key}={g.Value}"),
-            .. AndroidApp.Properties.Select(p => $"-getProperty:{p}")];
-        ChildResult deployed = await ChildProcesses.RunAsync(ChildProcesses.DotnetQuestion(arguments, Path.GetDirectoryName(project)!), cancel: cancel);
+        MSBuildAnswer deployed = await MSBuildQuestions.AskAsync(project, framework, globals,
+            new MSBuildQuestion([MSBuildNames.DeployToDevice, MSBuildNames.ComputeRunArguments])
+            {
+                Properties = AndroidApp.Properties,
+                Given = new Dictionary<string, string> { [MSBuildNames.Device] = serial },
+            }, cancel);
         if (!deployed.Succeeded)
         {
-            return (null, ProblemOf(deployed));
+            return (null, ProblemOf(deployed.Said));
         }
-        try
-        {
-            return AndroidApp.Read(deployed.Output, serial, Path.GetDirectoryName(project)!);
-        }
-        catch (JsonException)
-        {
-            return (null, $"MSBuild did not say how the app starts: {deployed.FirstLine}");
-        }
+        return deployed.Answered
+            ? AndroidApp.Read(deployed, serial, adb, Path.GetDirectoryName(project)!)
+            : (null, $"MSBuild did not say how the app starts: {deployed.Said.FirstLine}");
     }
 }

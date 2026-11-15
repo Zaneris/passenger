@@ -1,4 +1,3 @@
-using System.Text.Json;
 using System.Text.RegularExpressions;
 using Passenger.App.State;
 using Passenger.App.Workspace;
@@ -581,7 +580,7 @@ public sealed partial record LaunchPlan
         }
         if (target is not null)
         {
-            return await AfterTargetAsync(project, names, globals, target, cancel) ?? await EvaluateAsync(project, framework, names, workspace, cancel);
+            return await AfterTargetAsync(project, framework, names, globals, target, cancel) ?? await EvaluateAsync(project, framework, names, workspace, cancel);
         }
         PropertiesAnswer answer;
         try
@@ -599,32 +598,12 @@ public sealed partial record LaunchPlan
             : new Dictionary<string, string>(answer.Values, StringComparer.OrdinalIgnoreCase);
     }
 
-    /// <summary>The properties as they stand once a target has run, through dotnet msbuild; null when it did not run.</summary>
-    private static async Task<IReadOnlyDictionary<string, string>?> AfterTargetAsync(ProjectModel project, IReadOnlyCollection<string> names,
+    /// <summary>The properties as they stand once a target has run, asked of MSBuild; null when it did not run.</summary>
+    private static async Task<IReadOnlyDictionary<string, string>?> AfterTargetAsync(ProjectModel project, string? framework, IReadOnlyCollection<string> names,
         IReadOnlyDictionary<string, string> globals, string target, CancellationToken cancel)
     {
-        List<string> args = ["msbuild", project.Path, "-nologo", $"-target:{target}", .. names.Select(n => $"-getProperty:{n}"), .. globals.Select(p => $"-property:{p.Key}={p.Value}")];
-        ChildResult msbuild = await ChildProcesses.RunAsync(ChildProcesses.DotnetCommand(args, project.Folder), cancel: cancel);
-        string output = msbuild.Output.Trim();
-        if (!msbuild.Succeeded || output.Length == 0)
-        {
-            return null;
-        }
-        try
-        {
-            using JsonDocument read = JsonDocument.Parse(output);
-            if (JsonMembers.Object(read.RootElement, "Properties") is not { } properties)
-            {
-                return null;
-            }
-            return properties.EnumerateObject()
-                .Where(p => p.Value.ValueKind == JsonValueKind.String && p.Value.GetString()!.Length > 0)
-                .ToDictionary(p => p.Name, p => p.Value.GetString()!, StringComparer.OrdinalIgnoreCase);
-        }
-        catch (Exception error) when (error is JsonException or KeyNotFoundException or InvalidOperationException)
-        {
-            return null;
-        }
+        MSBuildAnswer answer = await MSBuildQuestions.AskAsync(project.Path, framework, globals, new MSBuildQuestion([target]) { Properties = [.. names] }, cancel);
+        return answer.Succeeded && answer.Answered ? answer.Properties : null;
     }
 
     /// <summary>An MSBuild property named in a launch profile's value, <c>$(TargetDir)</c>.</summary>

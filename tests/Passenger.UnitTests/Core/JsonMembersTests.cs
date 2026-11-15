@@ -104,4 +104,17 @@ public sealed class JsonMembersTests
         Assert.Equal("kept", JsonMembers.Text(inner, "name", anyCase: true));
         Assert.Equal("kept", JsonMembers.Text(JsonMembers.Object(read.RootElement, "INNER", anyCase: true), "NAME", anyCase: true));
     }
+
+    [Fact]
+    public void An_object_a_program_wrote_among_other_lines_is_read_whole_whatever_braces_the_lines_beside_it_hold()
+    {
+        const string Indented = "{\n  \"inner\": {\n    \"name\": \"kept\"\n  }\n}";
+        string said = "a line with a { brace\r\n" + Indented.ReplaceLineEndings("\r\n") + "\r\nwarning: } and { after\r\n";
+
+        Assert.Equal("kept", JsonMembers.Text(JsonMembers.Object(JsonMembers.ObjectIn(said), "inner"), "name"));
+        Assert.Equal("one", JsonMembers.Text(JsonMembers.ObjectIn("before\n{ \"line\": \"one\" }\nafter"), "line"));
+        Assert.Equal("kept", JsonMembers.Text(JsonMembers.Object(JsonMembers.ObjectIn("{ not json }\n" + Indented), "inner"), "name"));
+        Assert.True(JsonMembers.ObjectIn("{\n  \"open\": true") is null, "An object never closed was read");
+        Assert.True(JsonMembers.ObjectIn("[1, 2]\nsimctl: error: unable to find a developer folder") is null, "Words holding no object were read as one");
+    }
 }

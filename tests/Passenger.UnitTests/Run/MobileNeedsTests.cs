@@ -2,6 +2,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Xml;
 using Passenger.App.Mobile;
+using Passenger.App.Workspace;
 using Passenger.Core;
 
 namespace Passenger.UnitTests.Run;
@@ -64,6 +65,12 @@ public class MobileNeedsTests
     private static readonly HashSet<string> OnDisk = [Path.Combine(Sdk, "platform-tools"), Path.Combine(Sdk, "platforms"), Path.Combine(Sdk, "platforms", "android-36", "android.jar"),
         Path.Combine(Sdk, "build-tools", "36.1.0")];
 
+    /// <summary>What MSBuild answered a question, as it wrote it on its output and its errors.</summary>
+    private static MSBuildAnswer Answer(string output, string errors = "") => new(new ChildResult(0, output, errors));
+
+    /// <summary>An answer of a run that ended with <paramref name="code"/>.</summary>
+    private static MSBuildAnswer Said(int code, string output, string errors) => new(new ChildResult(code, output, errors));
+
     private static MobileWant Want(IReadOnlyList<ProjectNeeds> projects, bool onMac = true, IReadOnlySet<string>? disk = null, string? androidHome = null,
         string? javaHome = null, string? androidHost = null) =>
         MobileWant.Of(projects, onMac, name => name switch { "ANDROID_HOME" => androidHome, "JAVA_HOME" => javaHome, _ => null }, Sdk, (disk ?? OnDisk).Contains,
@@ -72,24 +79,136 @@ public class MobileNeedsTests
     [Fact]
     public void The_workloads_the_SDK_names_are_each_taken_once_with_the_framework_that_needs_it()
     {
-        IReadOnlyList<WorkloadLacked> workloads = MobileAnswers.Workloads(Required);
+        IReadOnlyList<WorkloadLacked> workloads = MobileAnswers.Workloads(Answer(Required));
 
         Assert.Equal([new WorkloadLacked("tvos", "net11.0-tvos"), new WorkloadLacked("macos", "net11.0-macos")], workloads);
-        Assert.Empty(MobileAnswers.Workloads("""{ "TargetResults": { "_GetRequiredWorkloads": { "Result": "Success", "Items": [] } } }"""));
-        Assert.Empty(MobileAnswers.Workloads("MSBUILD : error MSB1009: Project file does not exist."));
+        Assert.Empty(MobileAnswers.Workloads(Answer("""{ "TargetResults": { "_GetRequiredWorkloads": { "Result": "Success", "Items": [] } } }""")));
+        Assert.Empty(MobileAnswers.Workloads(Answer("MSBUILD : error MSB1009: Project file does not exist.")));
+    }
+
+    /// <summary>A line an in-process task wrote on MSBuild's console, which comes on its output before the answer.</summary>
+    private const string TaskSaid = "said on the console by a task, { before the answer";
+
+    /// <summary>A warning as MSBuild writes one, here on the output after the answer.</summary>
+    private const string WarnedAfter = "/src/App/App.csproj(12,5): warning PS0001: A warning after the answer, with braces { and } in it [/src/App/App.csproj]";
+
+    [Fact]
+    public void An_answer_is_read_past_the_lines_written_before_and_after_it_on_MSBuilds_output()
+    {
+        Assert.Equal([new WorkloadLacked("tvos", "net11.0-tvos"), new WorkloadLacked("macos", "net11.0-macos")],
+            MobileAnswers.Workloads(Answer(TaskSaid + "\n" + Required + "\n" + WarnedAfter + "\n")));
+        Assert.Equal(["platforms;android-37.0", "build-tools;37.0.0", "platform-tools", "cmdline-tools;21.0"],
+            MobileAnswers.Android(Answer(TaskSaid + "\r\n" + AndroidSaid.ReplaceLineEndings("\r\n") + "\r\n" + WarnedAfter))!.Packages);
+    }
+
+    /// <summary>GetAndroidDependencies of <c>dotnet new android</c>'s app on a Mac where the workload finds no JDK and no Android
+    /// SDK, as dotnet msbuild 11.0.100 wrote it (its paths shortened, two of its five dependencies kept): the answer alone
+    /// on its output, every warning on its errors.</summary>
+    private const string AndroidOutput = """
+        {
+          "Properties": {
+            "AndroidSdkDirectory": "",
+            "JavaSdkDirectory": "",
+            "JavaSdkVersion": "21.0.8"
+          },
+          "Items": {
+            "AndroidDependency": [
+              {
+                "Identity": "platforms/android-37.0",
+                "FullPath": "/src/Droid/platforms/android-37.0",
+                "RootDir": "/",
+                "Filename": "android-37",
+                "Extension": ".0",
+                "RelativeDir": "platforms/",
+                "Directory": "src/Droid/platforms/",
+                "RecursiveDir": "",
+                "ModifiedTime": "",
+                "CreatedTime": "",
+                "AccessedTime": "",
+                "DefiningProjectFullPath": "/dotnet/packs/Microsoft.Android.Sdk.Darwin/37.2.31/tools/Xamarin.Android.Common.targets",
+                "DefiningProjectDirectory": "/dotnet/packs/Microsoft.Android.Sdk.Darwin/37.2.31/tools/",
+                "DefiningProjectName": "Xamarin.Android.Common",
+                "DefiningProjectExtension": ".targets"
+              },
+              {
+                "Identity": "build-tools/37.0.0",
+                "Version": "37.0.0",
+                "FullPath": "/src/Droid/build-tools/37.0.0",
+                "RootDir": "/",
+                "Filename": "37.0",
+                "Extension": ".0",
+                "RelativeDir": "build-tools/",
+                "Directory": "src/Droid/build-tools/",
+                "RecursiveDir": "",
+                "ModifiedTime": "",
+                "CreatedTime": "",
+                "AccessedTime": "",
+                "DefiningProjectFullPath": "/dotnet/packs/Microsoft.Android.Sdk.Darwin/37.2.31/tools/Xamarin.Android.Common.targets",
+                "DefiningProjectDirectory": "/dotnet/packs/Microsoft.Android.Sdk.Darwin/37.2.31/tools/",
+                "DefiningProjectName": "Xamarin.Android.Common",
+                "DefiningProjectExtension": ".targets"
+              }
+            ],
+            "JavaDependency": [
+              {
+                "Identity": "jdk",
+                "Version": "21.0.8",
+                "FullPath": "/src/Droid/jdk",
+                "RootDir": "/",
+                "Filename": "jdk",
+                "Extension": "",
+                "RelativeDir": "",
+                "Directory": "src/Droid/",
+                "RecursiveDir": "",
+                "ModifiedTime": "",
+                "CreatedTime": "",
+                "AccessedTime": "",
+                "DefiningProjectFullPath": "/dotnet/packs/Microsoft.Android.Sdk.Darwin/37.2.31/tools/Xamarin.Android.Common.targets",
+                "DefiningProjectDirectory": "/dotnet/packs/Microsoft.Android.Sdk.Darwin/37.2.31/tools/",
+                "DefiningProjectName": "Xamarin.Android.Common",
+                "DefiningProjectExtension": ".targets"
+              }
+            ]
+          }
+        }
+
+        """;
+
+    /// <summary>The same run's errors (its first two warnings, on a JDK it could not use, left out).</summary>
+    private const string AndroidErrors = """
+        /dotnet/packs/Microsoft.Android.Sdk.Darwin/37.2.31/tools/Xamarin.Android.Tooling.targets(55,5): warning XA5300: The Java SDK directory could not be found. Install the Java SDK by following the instructions at: https://aka.ms/dotnet-android-install-sdk [/src/Droid/Droid.csproj]
+        /dotnet/packs/Microsoft.Android.Sdk.Darwin/37.2.31/tools/Xamarin.Android.Tooling.targets(55,5): warning XA5300: To use a custom JDK path for a command line build, set the 'JavaSdkDirectory' MSBuild property to the custom path. [/src/Droid/Droid.csproj]
+        /dotnet/packs/Microsoft.Android.Sdk.Darwin/37.2.31/targets/Microsoft.Android.Sdk.Tooling.targets(22,5): warning XA5300: The Java SDK directory could not be found. Install the Java SDK by following the instructions at: https://aka.ms/dotnet-android-install-sdk [/src/Droid/Droid.csproj]
+        /dotnet/packs/Microsoft.Android.Sdk.Darwin/37.2.31/targets/Microsoft.Android.Sdk.Tooling.targets(22,5): warning XA5300: To use a custom JDK path for a command line build, set the 'JavaSdkDirectory' MSBuild property to the custom path. [/src/Droid/Droid.csproj]
+        /dotnet/packs/Microsoft.Android.Sdk.Darwin/37.2.31/targets/Microsoft.Android.Sdk.Tooling.targets(35,5): warning XA5300: The Android SDK directory could not be found. Install the Android SDK by following the instructions at: https://aka.ms/dotnet-android-install-sdk [/src/Droid/Droid.csproj]
+        /dotnet/packs/Microsoft.Android.Sdk.Darwin/37.2.31/targets/Microsoft.Android.Sdk.Tooling.targets(35,5): warning XA5300: To use a custom SDK path for a command line build, set the 'AndroidSdkDirectory' MSBuild property to the custom path. [/src/Droid/Droid.csproj]
+
+        """;
+
+    [Fact]
+    public void The_Android_workloads_answer_is_read_as_dotnet_msbuild_writes_it_with_its_warnings_on_its_errors()
+    {
+        AndroidAnswer answer = MobileAnswers.Android(Answer(AndroidOutput, AndroidErrors))!;
+
+        Assert.Equal(["platforms;android-37.0", "build-tools;37.0.0"], answer.Packages);
+        Assert.Equal("21.0.8", answer.JavaVersion);
+        Assert.True(answer.JavaUnfound, "The workload's XA5300 said it found no JDK");
+        Assert.True(answer.SdkUnfound, "The workload's XA5300 said it found no Android SDK");
+        Assert.Null(answer.Sdk);
+        Assert.Null(answer.Java);
     }
 
     [Fact]
     public void The_Android_workloads_answer_names_its_packages_as_sdkmanager_does_and_hears_that_it_found_no_JDK()
     {
-        AndroidAnswer answer = MobileAnswers.Android(AndroidSaid, AndroidWarned)!;
+        AndroidAnswer answer = MobileAnswers.Android(Answer(AndroidSaid, AndroidWarned))!;
 
         Assert.Equal(["platforms;android-37.0", "build-tools;37.0.0", "platform-tools", "cmdline-tools;21.0"], answer.Packages);
         Assert.Equal("21.0.8", answer.JavaVersion);
         Assert.True(answer.JavaUnfound, "The workload's XA5300 said it found no JDK");
         Assert.Null(answer.Sdk);
         Assert.Null(answer.Java);
-        Assert.False(MobileAnswers.Android(AndroidSaid, string.Empty)!.JavaUnfound, "With no XA5300, the workload found its JDK");
+        Assert.False(MobileAnswers.Android(Answer(AndroidSaid, string.Empty))!.JavaUnfound, "With no XA5300, the workload found its JDK");
     }
 
     [Fact]
@@ -97,7 +216,7 @@ public class MobileNeedsTests
     {
         ProjectNeeds maui = new(Maui, MauiFrameworks)
         {
-            Android = MobileAnswers.Android(AndroidSaid, AndroidWarned),
+            Android = MobileAnswers.Android(Answer(AndroidSaid, AndroidWarned)),
             Apple = new AppleAnswer("Could not find a valid Xcode developer path", "/Applications/Xcode-beta.app"),
         };
 
@@ -116,7 +235,7 @@ public class MobileNeedsTests
     [Fact]
     public void An_Android_SDK_in_ANDROID_HOME_is_the_one_looked_in_and_with_none_there_the_SDK_is_said_lacking_whole()
     {
-        ProjectNeeds app = new("AndroidApp", ["net11.0-android"]) { Android = MobileAnswers.Android(AndroidSaid, AndroidWarned) };
+        ProjectNeeds app = new("AndroidApp", ["net11.0-android"]) { Android = MobileAnswers.Android(Answer(AndroidSaid, AndroidWarned)) };
 
         MobileWant elsewhere = Want([app], androidHome: "/elsewhere/sdk");
 
@@ -129,8 +248,8 @@ public class MobileNeedsTests
     [Fact]
     public void A_JAVA_HOME_where_the_workload_found_no_JDK_is_said_and_one_beside_a_JDK_found_is_not()
     {
-        ProjectNeeds app = new("AndroidApp", ["net11.0-android"]) { Android = MobileAnswers.Android(AndroidSaid, AndroidWarned) };
-        AndroidAnswer found = MobileAnswers.Android(AndroidSaid.Replace("\"JavaSdkDirectory\": \"\"", "\"JavaSdkDirectory\": \"/jdk\""), string.Empty)!;
+        ProjectNeeds app = new("AndroidApp", ["net11.0-android"]) { Android = MobileAnswers.Android(Answer(AndroidSaid, AndroidWarned)) };
+        AndroidAnswer found = MobileAnswers.Android(Answer(AndroidSaid.Replace("\"JavaSdkDirectory\": \"\"", "\"JavaSdkDirectory\": \"/jdk\"")))!;
 
         MobileWant broken = Want([app], javaHome: "/opt/broken-jdk");
         MobileWant beside = Want([new ProjectNeeds("AndroidApp", ["net11.0-android"]) { Android = found }], javaHome: "/opt/broken-jdk");
@@ -158,8 +277,8 @@ public class MobileNeedsTests
     public void A_platform_in_the_folder_named_by_its_API_level_alone_counts_and_a_found_JDK_and_SDK_say_nothing()
     {
         HashSet<string> disk = [.. OnDisk, Path.Combine(Sdk, "platforms", "android-37", "android.jar"), Path.Combine(Sdk, "build-tools", "37.0.0")];
-        AndroidAnswer found = MobileAnswers.Android(AndroidSaid.Replace("\"AndroidSdkDirectory\": \"\"", $"\"AndroidSdkDirectory\": \"{Sdk.Replace("\\", "\\\\")}\"")
-            .Replace("\"JavaSdkDirectory\": \"\"", "\"JavaSdkDirectory\": \"/jdk\""), string.Empty)!;
+        AndroidAnswer found = MobileAnswers.Android(Answer(AndroidSaid.Replace("\"AndroidSdkDirectory\": \"\"", $"\"AndroidSdkDirectory\": \"{Sdk.Replace("\\", "\\\\")}\"")
+            .Replace("\"JavaSdkDirectory\": \"\"", "\"JavaSdkDirectory\": \"/jdk\"")))!;
 
         MobileWant want = Want([new ProjectNeeds("AndroidApp", ["net11.0-android"]) { Android = found }], disk: disk);
 
@@ -239,7 +358,7 @@ public class MobileNeedsTests
     {
         const string Elsewhere = "builds for Android only on Windows, a Mac or x64 Linux: .NET's Android build tools are x64 programs, which Linux on Arm64 does not run";
         ProjectNeeds lacking = new("AndroidApp", ["net11.0-android"]) { Workloads = [new WorkloadLacked("android", "net11.0-android")] };
-        ProjectNeeds installed = new("AndroidApp", ["net11.0-android"]) { Android = MobileAnswers.Android(AndroidSaid, AndroidWarned) };
+        ProjectNeeds installed = new("AndroidApp", ["net11.0-android"]) { Android = MobileAnswers.Android(Answer(AndroidSaid, AndroidWarned)) };
 
         MobileWant offered = Want([lacking], onMac: false, androidHost: "Linux on Arm64");
         MobileWant loaded = Want([installed], onMac: false, androidHost: "Linux on Arm64");
@@ -279,12 +398,12 @@ public class MobileNeedsTests
     public void An_Apple_workloads_first_error_is_read_in_its_own_words_with_or_without_a_code()
     {
         Assert.Equal("Could not find a valid Xcode developer path",
-            MobileAnswers.Apple(new ChildResult(1, "/packs/Xamarin.Shared.targets(2206,3): error : Could not find a valid Xcode developer path [/src/Ios.csproj]", string.Empty)));
+            MobileAnswers.Apple(Said(1, "/packs/Xamarin.Shared.targets(2206,3): error : Could not find a valid Xcode developer path [/src/Ios.csproj]", string.Empty)));
         Assert.Equal("This version of .NET for iOS (27.2.11039) requires Xcode 27.2. The current version of Xcode is 27.0.",
-            MobileAnswers.Apple(new ChildResult(1, "{}\n/packs/Xamarin.Shared.Sdk.targets(3190,3): error : This version of .NET for iOS (27.2.11039) requires Xcode 27.2. "
+            MobileAnswers.Apple(Said(1, "{}\n/packs/Xamarin.Shared.Sdk.targets(3190,3): error : This version of .NET for iOS (27.2.11039) requires Xcode 27.2. "
                 + "The current version of Xcode is 27.0. [/src/Ios.csproj]", string.Empty)));
         Assert.Equal("The Java SDK directory could not be found.", MobileAnswers.FirstError("t.targets(55,5): error XA5300: The Java SDK directory could not be found. [/p.csproj]"));
-        Assert.Null(MobileAnswers.Apple(new ChildResult(0, "{}", string.Empty)));
+        Assert.Null(MobileAnswers.Apple(Said(0, "{}", string.Empty)));
     }
 
     /// <summary>The iOS workload's check of Xcode 27.0, as it answers asked for its developer folder and SDK version.</summary>
@@ -320,8 +439,8 @@ public class MobileNeedsTests
     [Fact]
     public void An_Apple_workloads_check_names_its_Xcode_and_SDK_and_simctl_the_simulator_runtimes_it_lacks_of_the_SDKs_major_version()
     {
-        Assert.Equal(("/Applications/Xcode-beta.app/Contents/Developer", "27.0"), MobileAnswers.AppleSdk(AppleChecked));
-        Assert.Equal((null, null), MobileAnswers.AppleSdk("/packs/Xamarin.Shared.targets(2206,3): error : Could not find a valid Xcode developer path [/src/Ios.csproj]"));
+        Assert.Equal(("/Applications/Xcode-beta.app/Contents/Developer", "27.0"), MobileAnswers.AppleSdk(Answer(AppleChecked)));
+        Assert.Equal((null, null), MobileAnswers.AppleSdk(Answer("/packs/Xamarin.Shared.targets(2206,3): error : Could not find a valid Xcode developer path [/src/Ios.csproj]")));
 
         Assert.Equal(["iOS 27.0"], MobileAnswers.SimulatorsLacking(NoRuntimes, [("iOS", "27.0")]));
         Assert.Equal(["tvOS 27.0"], MobileAnswers.SimulatorsLacking(SomeRuntimes, [("iOS", "27.0"), ("tvOS", "27.0")]));
@@ -391,13 +510,12 @@ public class MobileNeedsTests
     }
 
     [Fact]
-    public void A_frameworks_platform_and_dotnet_are_read_as_the_workloads_name_them()
+    public void A_frameworks_platform_is_read_as_the_workloads_name_them()
     {
-        Assert.Equal(MobilePlatforms.Android, MobilePlatforms.Of("net11.0-android36.0"));
-        Assert.Equal(MobilePlatforms.MacCatalyst, MobilePlatforms.Of("net11.0-maccatalyst"));
+        Assert.Equal(FrameworkNames.Android, MobilePlatforms.Of("net11.0-android36.0"));
+        Assert.Equal(FrameworkNames.MacCatalyst, MobilePlatforms.Of("NET11.0-MacCatalyst"));
         Assert.Null(MobilePlatforms.Of("net11.0-windows10.0.19041.0"));
         Assert.Null(MobilePlatforms.Of("net11.0"));
-        Assert.Equal(10, MobilePlatforms.DotnetOf("net10.0-ios"));
-        Assert.Null(MobilePlatforms.DotnetOf("netstandard2.0"));
+        Assert.Equal(["net10.0-ios", "net11.0-tvos"], MobilePlatforms.FrameworksOf(["net11.0", "net10.0-ios", "net11.0-windows", "net11.0-tvos"]));
     }
 }

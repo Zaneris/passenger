@@ -2,6 +2,7 @@ using Passenger.App.Debugging;
 using Passenger.App.LiveTree;
 using Passenger.App.Run;
 using Passenger.App.ToolWindows;
+using Passenger.App.Workspace;
 using Passenger.Core;
 using Passenger.Profiler;
 using System.Diagnostics;
@@ -808,10 +809,11 @@ public sealed partial class AspireController(ProjectSession workspace, string st
             throw new LaunchException(failed.Message);
         }
         cancellation.ThrowIfCancellationRequested();
-        ChildResult evaluated = await ChildProcesses.RunAsync(ChildProcesses.DotnetCommand(
-            ["build", configuration.Project, "--output", output, "--no-restore", "--nologo", .. configured?.BuildArgumentsFor(configuration.Project) ?? [],
-                $"-getProperty:{Passenger.Host.CarriedProperties.TargetPath}"], folder), cancel: cancellation);
-        string target = evaluated.Output.Trim();
+        MSBuildQuestion built = new([]) { Properties = [Passenger.Host.CarriedProperties.TargetPath] };
+        MSBuildAnswer evaluated = new(await ChildProcesses.RunAsync(ChildProcesses.DotnetCommand(
+            ["build", configuration.Project, "--output", output, "--no-restore", "--nologo", .. configured?.BuildArgumentsFor(configuration.Project) ?? [], .. built.Asking],
+            folder), cancel: cancellation), built.Alone);
+        string target = evaluated.Property(Passenger.Host.CarriedProperties.TargetPath) ?? string.Empty;
         if (!evaluated.Succeeded || !Path.IsPathFullyQualified(target) || !await BackgroundWork.Run(() => File.Exists(target), cancellation))
         {
             throw new LaunchException($"MSBuild could not resolve the built single-file AppHost {Passenger.Host.CarriedProperties.TargetPath}");

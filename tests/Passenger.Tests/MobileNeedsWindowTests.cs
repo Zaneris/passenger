@@ -165,7 +165,7 @@ public sealed class MobileNeedsWindowTests : IDisposable
             Assert.Skip($"This .NET has the {platform} workload, so nothing is lacking to say");
         }
         Assert.Equal([platform], window.MobileWant.Workloads);
-        string said = AndroidHosts.Unbuilt(folder) is { } host && platform == MobilePlatforms.Android
+        string said = AndroidHosts.Unbuilt(folder) is { } host && platform == FrameworkNames.Android
             ? $"{name} builds for Android only on {AndroidHosts.Builders}: .NET's Android build tools are x64 programs, which {host} does not run"
             : $"{name} needs the .NET workload {platform}";
         Assert.Equal(said, window.MobileSaid);

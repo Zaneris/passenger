@@ -1,3 +1,4 @@
+using Passenger.Core;
 using Passenger.Xaml.Metadata;
 using Passenger.Xaml.Syntax;
 
@@ -112,29 +113,21 @@ public sealed class MauiDialect : XamlDialect
             : null;
 
     /// <summary>The platforms MAUI names (its <c>DevicePlatform</c>'s) by the platform part of a target framework.</summary>
-    private static readonly Dictionary<string, string[]> Platforms = new(StringComparer.OrdinalIgnoreCase)
+    private static readonly Dictionary<string, string[]> Platforms = new(StringComparer.Ordinal)
     {
-        ["android"] = ["Android"],
-        ["ios"] = ["iOS"],
-        ["maccatalyst"] = ["MacCatalyst"],
-        ["windows"] = ["WinUI", "Windows"],
-        ["tizen"] = ["Tizen"],
-        ["macos"] = ["macOS"],
-        ["tvos"] = ["tvOS"],
+        [FrameworkNames.Android] = ["Android"],
+        [FrameworkNames.Ios] = ["iOS"],
+        [FrameworkNames.MacCatalyst] = ["MacCatalyst"],
+        [FrameworkNames.Windows] = ["WinUI", "Windows"],
+        [FrameworkNames.Tizen] = ["Tizen"],
+        [FrameworkNames.Macos] = ["macOS"],
+        [FrameworkNames.Tvos] = ["tvOS"],
     };
 
     /// <summary>Whether a target framework's platform is the one named; a framework of no platform (<c>net11.0</c>) builds
     /// for none of them.</summary>
-    public override bool BuildsFor(string? targetFramework, string platform)
-    {
-        int dash = targetFramework?.IndexOf('-') ?? -1;
-        if (targetFramework is null || dash < 0)
-        {
-            return false;
-        }
-        string part = new([.. targetFramework[(dash + 1)..].TakeWhile(char.IsLetter)]);
-        return Platforms.TryGetValue(part, out string[]? names) && names.Contains(platform, StringComparer.Ordinal);
-    }
+    public override bool BuildsFor(string? targetFramework, string platform) =>
+        FrameworkNames.PlatformOf(targetFramework) is { } part && Platforms.TryGetValue(part, out string[]? names) && names.Contains(platform, StringComparer.Ordinal);
 
     public override bool IsExpression(string value, Func<string, bool> extension)
     {

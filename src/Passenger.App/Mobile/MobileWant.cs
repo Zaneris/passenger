@@ -95,7 +95,7 @@ public sealed record MobileWant
                 workloads.Add(workload.Id);
             }
             needs |= lacking.Count > 0;
-            if (mobile.FirstOrDefault(f => MobilePlatforms.DotnetOf(f) is < MobilePlatforms.FirstOnCoreClr) is { } old)
+            if (mobile.FirstOrDefault(f => FrameworkNames.Major(f) is < MobilePlatforms.FirstOnCoreClr) is { } old)
             {
                 mono.Add((project.Name, old));
                 needs = true;
@@ -105,7 +105,7 @@ public sealed record MobileWant
                 offMac.Add(project.Name);
                 needs = true;
             }
-            bool androidHere = androidHost is null || !mobile.Any(f => MobilePlatforms.Of(f) == MobilePlatforms.Android);
+            bool androidHere = androidHost is null || !mobile.Any(f => MobilePlatforms.Of(f) == FrameworkNames.Android);
             if (!androidHere)
             {
                 androidElsewhere.Add(project.Name);

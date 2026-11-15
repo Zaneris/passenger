@@ -1,3 +1,4 @@
+using Passenger.App.Workspace;
 using Passenger.Core;
 
 namespace Passenger.App.Mobile;
@@ -18,22 +19,26 @@ public static class MobileQuestions
         bool onMac, bool buildsAndroid, CancellationToken cancel)
     {
         IReadOnlyList<string> mobile = MobilePlatforms.FrameworksOf(frameworks);
-        ChildResult required = await MSBuildAsync(project, null, ["-target:_GetRequiredWorkloads", "-getTargetResult:_GetRequiredWorkloads"], globals, cancel);
-        IReadOnlyList<WorkloadLacked> workloads = MobileAnswers.Workloads(required.Output);
+        MSBuildAnswer required = await QuestionAsync(project, null, new([MSBuildNames.GetRequiredWorkloads]) { TargetResults = [MSBuildNames.GetRequiredWorkloads] }, globals,
+            cancel);
+        IReadOnlyList<WorkloadLacked> workloads = MobileAnswers.Workloads(required);
         bool Asked(string framework, Func<string, bool> platform) => platform(MobilePlatforms.Of(framework)!)
-            && MobilePlatforms.DotnetOf(framework) is null or >= MobilePlatforms.FirstOnCoreClr
+            && FrameworkNames.Major(framework) is null or >= MobilePlatforms.FirstOnCoreClr
             && !workloads.Any(w => w.Framework is null || string.Equals(w.Framework, framework, StringComparison.OrdinalIgnoreCase));
         AndroidAnswer? android = null;
-        if (buildsAndroid && mobile.FirstOrDefault(f => Asked(f, p => p == MobilePlatforms.Android)) is { } forAndroid)
+        if (buildsAndroid && mobile.FirstOrDefault(f => Asked(f, p => p == FrameworkNames.Android)) is { } forAndroid)
         {
-            ChildResult said = await MSBuildAsync(project, forAndroid, ["-target:GetAndroidDependencies", "-property:AndroidInstallJavaDependencies=true",
-                "-getItem:AndroidDependency", "-getItem:JavaDependency", "-getProperty:AndroidSdkDirectory", "-getProperty:JavaSdkDirectory", "-getProperty:JavaSdkVersion"], globals, cancel);
-            android = MobileAnswers.Android(said.Output, said.Error);
+            android = MobileAnswers.Android(await QuestionAsync(project, forAndroid, new([MSBuildNames.GetAndroidDependencies])
+            {
+                Items = [MSBuildNames.AndroidDependency, MSBuildNames.JavaDependency],
+                Properties = [MSBuildNames.AndroidSdkDirectory, MSBuildNames.JavaSdkDirectory, MSBuildNames.JavaSdkVersion],
+                Given = new Dictionary<string, string> { [MSBuildNames.AndroidInstallJavaDependencies] = "true" },
+            }, globals, cancel));
         }
         AppleAnswer? apple = null;
         if (onMac && mobile.FirstOrDefault(f => Asked(f, MobilePlatforms.IsApple)) is { } forApple)
         {
-            ChildResult said = await AppleSdkAsync(project, forApple, globals, cancel);
+            MSBuildAnswer said = await AppleSdkAsync(project, forApple, globals, cancel);
             if (MobileAnswers.Apple(said) is { } problem)
             {
                 apple = new AppleAnswer(problem, problem.Contains("developer path", StringComparison.OrdinalIgnoreCase) ? UnchosenXcode() : null);
@@ -51,15 +56,15 @@ public static class MobileQuestions
 
     /// <summary>An Apple workload's check of the Xcode it builds a framework's apps with, saying the developer folder and
     /// SDK version it found.</summary>
-    private static Task<ChildResult> AppleSdkAsync(string project, string framework, IReadOnlyDictionary<string, string> globals, CancellationToken cancel) =>
-        MSBuildAsync(project, framework, ["-target:_DetectSdkLocations", "-getProperty:_SdkDevPath", "-getProperty:_SdkVersion"], globals, cancel);
+    private static Task<MSBuildAnswer> AppleSdkAsync(string project, string framework, IReadOnlyDictionary<string, string> globals, CancellationToken cancel) =>
+        QuestionAsync(project, framework, new([MSBuildNames.DetectSdkLocations]) { Properties = [MSBuildNames.SdkDevPath, MSBuildNames.SdkVersion] }, globals, cancel);
 
     /// <summary>The simulator runtimes the frameworks' apps need (one per platform, of its SDK's version) that the Xcode the
     /// workload found lists none of, asked of that Xcode's own simctl; none where it can't be asked.</summary>
-    private static async Task<IReadOnlyList<string>> SimulatorsLackingAsync(string project, IReadOnlyList<string> frameworks, string asked, ChildResult said,
+    private static async Task<IReadOnlyList<string>> SimulatorsLackingAsync(string project, IReadOnlyList<string> frameworks, string asked, MSBuildAnswer said,
         IReadOnlyDictionary<string, string> globals, CancellationToken cancel)
     {
-        if (frameworks.Count == 0 || MobileAnswers.AppleSdk(said.Output).Developer is not { } developer)
+        if (frameworks.Count == 0 || MobileAnswers.AppleSdk(said).Developer is not { } developer)
         {
             return [];
         }
@@ -71,8 +76,8 @@ public static class MobileQuestions
         List<(string Platform, string? SdkVersion)> wanted = [];
         foreach (string framework in frameworks.DistinctBy(f => MobilePlatforms.Of(f)))
         {
-            ChildResult sdk = string.Equals(framework, asked, StringComparison.OrdinalIgnoreCase) ? said : await AppleSdkAsync(project, framework, globals, cancel);
-            wanted.Add((MobilePlatforms.Named(MobilePlatforms.Of(framework)!), MobileAnswers.AppleSdk(sdk.Output).SdkVersion));
+            MSBuildAnswer sdk = string.Equals(framework, asked, StringComparison.OrdinalIgnoreCase) ? said : await AppleSdkAsync(project, framework, globals, cancel);
+            wanted.Add((MobilePlatforms.Named(MobilePlatforms.Of(framework)!), MobileAnswers.AppleSdk(sdk).SdkVersion));
         }
         try
         {
@@ -87,19 +92,11 @@ public static class MobileQuestions
         }
     }
 
-    /// <summary>One MSBuild question of the project, for a framework or the project as a whole, never restoring: what it
-    /// said, read whole.</summary>
-    private static Task<ChildResult> MSBuildAsync(string project, string? framework, IReadOnlyList<string> asked, IReadOnlyDictionary<string, string> globals,
-        CancellationToken cancel)
-    {
-        List<string> arguments = ["msbuild", project, "-nologo", "-property:SkipResolvePackageAssets=true", .. asked,
-            .. globals.Where(g => g.Key is not MSBuildNames.TargetFramework).Select(g => $"-property:{g.Key}={g.Value}")];
-        if (framework is not null)
-        {
-            arguments.Add($"-property:{MSBuildNames.TargetFramework}={framework}");
-        }
-        return ChildProcesses.RunAsync(ChildProcesses.DotnetQuestion(arguments, Path.GetDirectoryName(project)!), cancel: cancel);
-    }
+    /// <summary>One MSBuild question of the project, for a framework or the project as a whole, never restoring.</summary>
+    private static Task<MSBuildAnswer> QuestionAsync(string project, string? framework, MSBuildQuestion question, IReadOnlyDictionary<string, string> globals,
+        CancellationToken cancel) =>
+        MSBuildQuestions.AskAsync(project, framework, globals,
+            question with { Given = new Dictionary<string, string>(question.Given) { [MSBuildNames.SkipResolvePackageAssets] = "true" } }, cancel);
 
     /// <summary>An Xcode in Applications, where the system chose none (only the command-line tools, or nothing).</summary>
     private static string? UnchosenXcode() =>

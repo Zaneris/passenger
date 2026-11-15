@@ -1,5 +1,6 @@
 using System.Text.Json.Nodes;
 using Passenger.App.State;
+using Passenger.Core;
 using Passenger.Host;
 
 namespace Passenger.App.Workspace;
@@ -118,7 +119,7 @@ public sealed record ProjectModelCache : IStateDocument<ProjectModelCache>
             return;
         }
         foreach (string path in projects.Where(p => p.Value?["targetFrameworks"] is JsonArray frameworks
-            && frameworks.Any(f => f?.GetValueKind() == System.Text.Json.JsonValueKind.String && f.GetValue<string>().Contains("-windows", StringComparison.OrdinalIgnoreCase)))
+            && frameworks.Any(f => f?.GetValueKind() == System.Text.Json.JsonValueKind.String && FrameworkNames.PlatformOf(f.GetValue<string>()) == FrameworkNames.Windows))
             .Select(p => p.Key).ToList())
         {
             projects.Remove(path);

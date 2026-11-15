@@ -52,6 +52,58 @@ public static class JsonMembers
     public static IReadOnlyList<string> Texts(JsonElement? element, string name, bool anyCase = false) =>
         [.. Items(element, name, anyCase).Where(i => i.ValueKind == JsonValueKind.String).Select(i => i.GetString()!)];
 
+    /// <summary>The JSON object a program wrote among the other lines of its words, to read members of: from a line holding
+    /// its opening brace alone to the next holding its closing one alone, as indented JSON's outer braces stand, or one
+    /// line holding it whole. Lines beside it (a warning, the program's other words) are passed over, braces and all; the
+    /// first object that reads is taken, null where none does.</summary>
+    public static JsonElement? ObjectIn(string words)
+    {
+        for (int line = 0; line < words.Length; line = NextLine(words, line))
+        {
+            ReadOnlySpan<char> text = LineAt(words, line);
+            int end = text is "{" ? ClosingLine(words, NextLine(words, line)) : text.StartsWith('{') && text.EndsWith('}') ? line + text.Length : -1;
+            if (end < 0)
+            {
+                continue;
+            }
+            try
+            {
+                using JsonDocument read = JsonDocument.Parse(words.AsMemory(line, end - line));
+                if (read.RootElement.ValueKind == JsonValueKind.Object)
+                {
+                    return read.RootElement.Clone();
+                }
+            }
+            catch (JsonException)
+            {
+                // Words shaped like an object that are none: the object may come later.
+            }
+        }
+        return null;
+    }
+
+    /// <summary>The end of the first line from <paramref name="line"/> on that holds a closing brace alone; -1 where none does.</summary>
+    private static int ClosingLine(string words, int line)
+    {
+        for (; line < words.Length; line = NextLine(words, line))
+        {
+            if (LineAt(words, line) is "}")
+            {
+                return line + 1;
+            }
+        }
+        return -1;
+    }
+
+    /// <summary>The line starting at <paramref name="start"/>, without its line break or the spaces after it.</summary>
+    private static ReadOnlySpan<char> LineAt(string words, int start)
+    {
+        int end = words.IndexOf('\n', start);
+        return words.AsSpan(start, (end < 0 ? words.Length : end) - start).TrimEnd();
+    }
+
+    private static int NextLine(string words, int start) => words.IndexOf('\n', start) is int end and >= 0 ? end + 1 : words.Length;
+
     private static JsonElement? Member(JsonElement? element, string name, bool anyCase)
     {
         if (element is not { ValueKind: JsonValueKind.Object } holder)

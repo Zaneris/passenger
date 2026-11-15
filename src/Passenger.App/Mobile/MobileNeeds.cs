@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Passenger.App.Workspace;
 using Passenger.Core;
 
 namespace Passenger.App.Mobile;
@@ -31,46 +32,22 @@ public sealed record ProjectNeeds(string Name, IReadOnlyList<string> Frameworks)
     public AppleAnswer? Apple { get; init; }
 }
 
-/// <summary>The platforms whose apps a .NET workload builds, by a target framework's platform (<c>net11.0-android</c>).</summary>
+/// <summary>The platforms whose apps a .NET workload builds, by a target framework's platform (<c>net11.0-android</c>,
+/// <see cref="FrameworkNames.PlatformOf"/>).</summary>
 public static class MobilePlatforms
 {
-    public const string Android = "android";
-    public const string Ios = "ios";
-    public const string MacCatalyst = "maccatalyst";
-    public const string Tvos = "tvos";
-    public const string Macos = "macos";
-
     /// <summary>The first .NET whose mobile apps run on CoreCLR, which Passenger's debugger is built for.</summary>
     public const int FirstOnCoreClr = 11;
 
-    /// <summary>The framework's platform among those a workload builds, lower case; null for any other.</summary>
-    public static string? Of(string framework)
-    {
-        int dash = framework.IndexOf('-');
-        if (dash < 0)
-        {
-            return null;
-        }
-        string platform = new string([.. framework[(dash + 1)..].TakeWhile(char.IsLetter)]).ToLowerInvariant();
-        return platform is Android or Ios or MacCatalyst or Tvos or Macos ? platform : null;
-    }
+    /// <summary>The framework's platform among those a workload builds; null for any other.</summary>
+    public static string? Of(string framework) =>
+        FrameworkNames.PlatformOf(framework) is { } platform && (platform is FrameworkNames.Android || IsApple(platform)) ? platform : null;
 
     /// <summary>Whether Xcode builds the platform's apps.</summary>
-    public static bool IsApple(string platform) => platform is Ios or MacCatalyst or Tvos or Macos;
+    public static bool IsApple(string platform) => platform is FrameworkNames.Ios or FrameworkNames.MacCatalyst or FrameworkNames.Tvos or FrameworkNames.Macos;
 
     /// <summary>Whether the platform's apps are built and run with a simulator runtime Xcode installs apart from itself.</summary>
-    public static bool HasSimulator(string platform) => platform is Ios or Tvos;
-
-    /// <summary>The major .NET version a framework names (10 for <c>net10.0-android</c>); null where it names none.</summary>
-    public static int? DotnetOf(string framework)
-    {
-        if (!framework.StartsWith("net", StringComparison.OrdinalIgnoreCase))
-        {
-            return null;
-        }
-        string digits = new([.. framework[3..].TakeWhile(char.IsDigit)]);
-        return digits.Length is > 0 and < 4 && int.TryParse(digits, System.Globalization.CultureInfo.InvariantCulture, out int major) && major >= 5 ? major : null;
-    }
+    public static bool HasSimulator(string platform) => platform is FrameworkNames.Ios or FrameworkNames.Tvos;
 
     /// <summary>The project's frameworks a workload builds, in its order.</summary>
     public static IReadOnlyList<string> FrameworksOf(IEnumerable<string> frameworks) => [.. frameworks.Where(f => Of(f) is not null)];
@@ -78,67 +55,54 @@ public static class MobilePlatforms
     /// <summary>How a person names the platform.</summary>
     public static string Named(string platform) => platform switch
     {
-        Android => "Android",
-        Ios => "iOS",
-        MacCatalyst => "Mac Catalyst",
-        Tvos => "tvOS",
+        FrameworkNames.Android => "Android",
+        FrameworkNames.Ios => "iOS",
+        FrameworkNames.MacCatalyst => "Mac Catalyst",
+        FrameworkNames.Tvos => "tvOS",
         _ => "macOS",
     };
 }
 
-/// <summary>Reads the workloads' answers to Passenger's questions of a project (MSBuild's <c>-getTargetResult</c>,
-/// <c>-getItem</c> and <c>-getProperty</c> JSON, and the warnings and errors around it).</summary>
+/// <summary>Reads the workloads' answers to Passenger's questions of a project (<see cref="MSBuildAnswer"/>: MSBuild's
+/// <c>-getTargetResult</c>, <c>-getItem</c> and <c>-getProperty</c> JSON, and the warnings and errors beside it).</summary>
 public static class MobileAnswers
 {
     /// <summary>The workloads <c>_GetRequiredWorkloads</c> names, each once with the first framework needing it; none for
     /// output that is no such answer.</summary>
-    public static IReadOnlyList<WorkloadLacked> Workloads(string output)
+    public static IReadOnlyList<WorkloadLacked> Workloads(MSBuildAnswer said)
     {
-        if (Json(output) is not { } read)
+        List<WorkloadLacked> found = [];
+        foreach (JsonElement item in JsonMembers.Items(said.TargetResult(MSBuildNames.GetRequiredWorkloads), "Items"))
         {
-            return [];
-        }
-        using (read)
-        {
-            JsonElement? result = JsonMembers.Object(JsonMembers.Object(read.RootElement, "TargetResults"), "_GetRequiredWorkloads");
-            List<WorkloadLacked> found = [];
-            foreach (JsonElement item in JsonMembers.Items(result, "Items"))
+            if (JsonMembers.Text(item, "Identity") is not { Length: > 0 } id || found.Any(w => w.Id == id))
             {
-                if (JsonMembers.Text(item, "Identity") is not { Length: > 0 } id || found.Any(w => w.Id == id))
-                {
-                    continue;
-                }
-                string? framework = (JsonMembers.Text(item, "AdditionalProperties") ?? string.Empty).Split(';')
-                    .Select(p => p.Split('=', 2)).FirstOrDefault(p => p is [MSBuildNames.TargetFramework, _])?[1];
-                found.Add(new WorkloadLacked(id, framework));
+                continue;
             }
-            return found;
+            string? framework = (JsonMembers.Text(item, "AdditionalProperties") ?? string.Empty).Split(';')
+                .Select(p => p.Split('=', 2)).FirstOrDefault(p => p is [MSBuildNames.TargetFramework, _])?[1];
+            found.Add(new WorkloadLacked(id, framework));
         }
+        return found;
     }
 
     /// <summary>What <c>GetAndroidDependencies</c> answered, its items' SDK paths (<c>platforms/android-37.0</c>) named
     /// as sdkmanager names them, with what its warnings say the workload could not find (XA5300); null for output that is
     /// no such answer.</summary>
-    public static AndroidAnswer? Android(string output, string errors)
+    public static AndroidAnswer? Android(MSBuildAnswer said)
     {
-        if (Json(output) is not { } read)
+        if (!said.Answered)
         {
             return null;
         }
-        using (read)
-        {
-            JsonElement? properties = JsonMembers.Object(read.RootElement, "Properties");
-            JsonElement? items = JsonMembers.Object(read.RootElement, "Items");
-            List<string> packages = [.. JsonMembers.Items(items, "AndroidDependency").Select(d => JsonMembers.Text(d, "Identity")).OfType<string>()
-                .Where(p => p.Length > 0).Select(p => p.Replace('/', ';')).Distinct(StringComparer.Ordinal)];
-            string? java = JsonMembers.Items(items, "JavaDependency").Select(d => JsonMembers.Text(d, "Version")).FirstOrDefault(v => v is { Length: > 0 })
-                ?? JsonMembers.Text(properties, "JavaSdkVersion");
-            string said = output + "\n" + errors;
-            bool javaUnfound = Warned(said, "The Java SDK directory could not be found");
-            bool sdkUnfound = Warned(said, "The Android SDK directory could not be found");
-            return new AndroidAnswer(Folder(JsonMembers.Text(properties, "AndroidSdkDirectory")), Folder(JsonMembers.Text(properties, "JavaSdkDirectory")),
-                packages, java is { Length: > 0 } ? java : null, javaUnfound, sdkUnfound);
-        }
+        List<string> packages = [.. said.Items(MSBuildNames.AndroidDependency).Select(d => JsonMembers.Text(d, "Identity")).OfType<string>()
+            .Where(p => p.Length > 0).Select(p => p.Replace('/', ';')).Distinct(StringComparer.Ordinal)];
+        string? java = said.Items(MSBuildNames.JavaDependency).Select(d => JsonMembers.Text(d, "Version")).FirstOrDefault(v => v is { Length: > 0 })
+            ?? said.Property(MSBuildNames.JavaSdkVersion);
+        string words = said.Said.Output + "\n" + said.Said.Error;
+        bool javaUnfound = Warned(words, "The Java SDK directory could not be found");
+        bool sdkUnfound = Warned(words, "The Android SDK directory could not be found");
+        return new AndroidAnswer(Folder(said.Property(MSBuildNames.AndroidSdkDirectory)), Folder(said.Property(MSBuildNames.JavaSdkDirectory)),
+            packages, java is { Length: > 0 } ? java : null, javaUnfound, sdkUnfound);
 
         static bool Warned(string said, string words) => said.Split('\n').Any(l => l.Contains("XA5300", StringComparison.Ordinal) && l.Contains(words, StringComparison.Ordinal));
 
@@ -147,52 +111,39 @@ public static class MobileAnswers
 
     /// <summary>Why an Apple workload's check of Xcode failed, its first error in its own words, less MSBuild's file and
     /// project; null where it passed.</summary>
-    public static string? Apple(ChildResult checkedXcode) => checkedXcode.Succeeded ? null : FirstError(checkedXcode.Output + "\n" + checkedXcode.Error);
+    public static string? Apple(MSBuildAnswer checkedXcode) => checkedXcode.Succeeded ? null : FirstError(checkedXcode.Said.Output + "\n" + checkedXcode.Said.Error);
 
     /// <summary>The Xcode developer folder and SDK version an Apple workload's check found (<c>_SdkDevPath</c>,
     /// <c>_SdkVersion</c>); nulls for output that is no such answer.</summary>
-    public static (string? Developer, string? SdkVersion) AppleSdk(string output)
-    {
-        if (Json(output) is not { } read)
-        {
-            return (null, null);
-        }
-        using (read)
-        {
-            JsonElement? properties = JsonMembers.Object(read.RootElement, "Properties");
-            return (JsonMembers.Text(properties, "_SdkDevPath") is { Length: > 0 } developer ? developer : null,
-                JsonMembers.Text(properties, "_SdkVersion") is { Length: > 0 } version ? version : null);
-        }
-    }
+    public static (string? Developer, string? SdkVersion) AppleSdk(MSBuildAnswer checkedXcode) =>
+        (checkedXcode.Property(MSBuildNames.SdkDevPath) is { Length: > 0 } developer ? developer : null,
+            checkedXcode.Property(MSBuildNames.SdkVersion) is { Length: > 0 } version ? version : null);
 
     /// <summary>Of the simulator runtimes wanted (a platform as simctl names it, "iOS", and its SDK's version, or null where
     /// unknown), those <c>simctl list runtimes -j</c> lists none of that is available and of the SDK's major version, each
     /// named with its version where known ("iOS 27.0"); none for output that is no such answer.</summary>
     public static IReadOnlyList<string> SimulatorsLacking(string listed, IReadOnlyList<(string Platform, string? SdkVersion)> wanted)
     {
-        if (Json(listed) is not { } read)
+        if (JsonMembers.ObjectIn(listed) is not { } read)
         {
             return [];
         }
-        using (read)
+        List<(string Platform, string Version)> available = [.. JsonMembers.Items(read, "runtimes")
+            .Where(r => JsonMembers.Bool(r, "isAvailable") is true)
+            .Select(r => (JsonMembers.Text(r, "platform") ?? string.Empty, JsonMembers.Text(r, "version") ?? string.Empty))];
+        List<string> lacking = [];
+        foreach ((string platform, string? version) in wanted)
         {
-            List<(string Platform, string Version)> available = [.. JsonMembers.Items(read.RootElement, "runtimes")
-                .Where(r => JsonMembers.Bool(r, "isAvailable") is true)
-                .Select(r => (JsonMembers.Text(r, "platform") ?? string.Empty, JsonMembers.Text(r, "version") ?? string.Empty))];
-            List<string> lacking = [];
-            foreach ((string platform, string? version) in wanted)
+            string? major = version?.Split('.')[0];
+            bool found = available.Any(r => string.Equals(r.Platform, platform, StringComparison.OrdinalIgnoreCase)
+                && (major is null || r.Version.Split('.')[0] == major));
+            string named = version is null ? platform : $"{platform} {version}";
+            if (!found && !lacking.Contains(named))
             {
-                string? major = version?.Split('.')[0];
-                bool found = available.Any(r => string.Equals(r.Platform, platform, StringComparison.OrdinalIgnoreCase)
-                    && (major is null || r.Version.Split('.')[0] == major));
-                string named = version is null ? platform : $"{platform} {version}";
-                if (!found && !lacking.Contains(named))
-                {
-                    lacking.Add(named);
-                }
+                lacking.Add(named);
             }
-            return lacking;
         }
+        return lacking;
     }
 
     /// <summary>The first error MSBuild wrote, its words alone ("error XA5300: words [project]" gives "words").</summary>
@@ -216,33 +167,6 @@ public static class MobileAnswers
             return (project > 0 ? rest[..project] : rest).Trim();
         }
         return null;
-    }
-
-    /// <summary>The JSON object MSBuild wrote first, past any line before it; null where there is none.</summary>
-    private static JsonDocument? Json(string output)
-    {
-        int start = output.IndexOf('{');
-        if (start < 0)
-        {
-            return null;
-        }
-        try
-        {
-            return JsonDocument.Parse(output.AsMemory(start), new JsonDocumentOptions { AllowTrailingCommas = false });
-        }
-        catch (JsonException)
-        {
-            // Warnings after the object: read up to its end.
-            int end = output.IndexOf("\n}", start, StringComparison.Ordinal);
-            try
-            {
-                return end > 0 ? JsonDocument.Parse(output.AsMemory(start, end - start + 2)) : null;
-            }
-            catch (JsonException)
-            {
-                return null;
-            }
-        }
     }
 }
 

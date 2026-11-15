@@ -89,7 +89,7 @@ internal static class DefinedSymbols
             (older ? core : symbols).Add(((older ? "NETCOREAPP" : named) + formatted + "_OR_GREATER").Replace('.', '_'));
         }
         symbols.AddRange(core);
-        if (modern && platform.Length > 0 && Version(project.GetPropertyValue("TargetPlatformVersion")) is { } platformVersion)
+        if (modern && platform.Length > 0 && Version(project.GetPropertyValue(MSBuildNames.TargetPlatformVersion)) is { } platformVersion)
         {
             foreach (ProjectItem supported in project.GetItems("SdkSupportedTargetPlatformVersion"))
             {

@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using Passenger.App.Workspace;
 using Passenger.Core;
 
 namespace Passenger.App.Run.Devices;
@@ -63,24 +64,15 @@ public static partial class DeviceTargets
 {
     /// <summary>The target framework's platform (<c>net11.0-android36.0</c>'s Android); null for a framework of no platform
     /// an app runs on elsewhere, or a Windows desktop app's (<c>net11.0-windows</c>).</summary>
-    public static TargetPlatform? PlatformOf(string framework)
+    public static TargetPlatform? PlatformOf(string framework) => FrameworkNames.PlatformOf(framework) switch
     {
-        int dash = framework.IndexOf('-');
-        if (dash < 0)
-        {
-            return null;
-        }
-        string platform = new([.. framework[(dash + 1)..].TakeWhile(char.IsLetter)]);
-        return platform.ToLowerInvariant() switch
-        {
-            "android" => TargetPlatform.Android,
-            "ios" => TargetPlatform.Ios,
-            "maccatalyst" => TargetPlatform.MacCatalyst,
-            // A Windows app's head of several (MAUI's, WinUI's) names its platform's version; a desktop app's runs here as it is.
-            "windows" when framework.Length > dash + 1 + platform.Length => TargetPlatform.Windows,
-            _ => null,
-        };
-    }
+        FrameworkNames.Android => TargetPlatform.Android,
+        FrameworkNames.Ios => TargetPlatform.Ios,
+        FrameworkNames.MacCatalyst => TargetPlatform.MacCatalyst,
+        // A Windows app's head of several (MAUI's, WinUI's) names its platform's version; a desktop app's runs here as it is.
+        FrameworkNames.Windows when FrameworkNames.NamesPlatformVersion(framework) => TargetPlatform.Windows,
+        _ => null,
+    };
 
     /// <summary>The project's framework for a platform, the first of them in its order; null where it targets none.</summary>
     public static string? FrameworkFor(IEnumerable<string> frameworks, TargetPlatform platform) =>
@@ -95,14 +87,12 @@ public static partial class DeviceTargets
     public static bool RunsOnlyElsewhere(IReadOnlyCollection<string> frameworks) =>
         frameworks.Count > 0 && frameworks.All(f => PlatformOf(f) is TargetPlatform.Android or TargetPlatform.Ios or TargetPlatform.MacCatalyst);
 
-    /// <summary>The targets a workload's <c>ComputeAvailableDevices</c> lists, as <c>dotnet msbuild -getItem:Devices</c>
-    /// writes them (its Identity, Description, Type, Status, and an emulator's AvdName). One with no Identity is passed
-    /// over; JSON that is no such answer throws a <see cref="JsonException"/>.</summary>
-    public static IReadOnlyList<DeviceTarget> Parse(TargetPlatform platform, string json)
+    /// <summary>The targets a workload's <c>ComputeAvailableDevices</c> answered (<c>-getItem:Devices</c>: each one's
+    /// Identity, Description, Type, Status, and an emulator's AvdName). One with no Identity is passed over.</summary>
+    public static IReadOnlyList<DeviceTarget> Parse(TargetPlatform platform, MSBuildAnswer listed)
     {
-        using JsonDocument read = JsonDocument.Parse(json);
         List<DeviceTarget> found = [];
-        foreach (JsonElement device in JsonMembers.Items(JsonMembers.Object(read.RootElement, "Items"), "Devices"))
+        foreach (JsonElement device in listed.Items(MSBuildNames.Devices))
         {
             if (JsonMembers.Text(device, "Identity") is not { Length: > 0 } id)
             {
@@ -155,10 +145,10 @@ public static partial class DeviceTargets
         {
             TargetPlatform? platform = words[i] switch
             {
-                "windows" => TargetPlatform.Windows,
-                "android" => TargetPlatform.Android,
-                "ios" => TargetPlatform.Ios,
-                "maccatalyst" => TargetPlatform.MacCatalyst,
+                FrameworkNames.Windows => TargetPlatform.Windows,
+                FrameworkNames.Android => TargetPlatform.Android,
+                FrameworkNames.Ios => TargetPlatform.Ios,
+                FrameworkNames.MacCatalyst => TargetPlatform.MacCatalyst,
                 "mac" when i + 1 < words.Length && words[i + 1] == "catalyst" => TargetPlatform.MacCatalyst,
                 _ => null,
             };
