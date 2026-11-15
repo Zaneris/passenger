@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
@@ -276,7 +277,7 @@ public sealed class GodotLiveValues
         {
             return;
         }
-        long at = Environment.TickCount64;
+        long at = Milliseconds();
         Show(wanted, asks, answers, at);
         history.Forget(at);
     }
@@ -390,7 +391,7 @@ public sealed class GodotLiveValues
         }
         (_, string member, GodotMemberValue read) = shown.Hints[at];
         card.AddCode($"{shown.NodeName}.{member} = {GodotLiveWords.Of(read)}");
-        IReadOnlyList<(long At, double[] Parts)> readings = history.Of(shown.Node, member, Environment.TickCount64);
+        IReadOnlyList<(long At, double[] Parts)> readings = history.Of(shown.Node, member, Milliseconds());
         if (readings.Count < 2)
         {
             card.AddText(GodotLiveWords.Parts(read.Words is null && !read.IsPath ? read.Value : null) is null
@@ -431,6 +432,9 @@ public sealed class GodotLiveValues
 
     /// <summary>How many readings a card's line has room for: a minute's, one a second.</summary>
     private const int Kept = (int)(GodotLiveHistory.Span / 1000);
+
+    /// <summary>The moment now in milliseconds of <see cref="Stopwatch"/>'s clock, which times the history's readings.</summary>
+    private static long Milliseconds() => (long)Stopwatch.GetElapsedTime(0).TotalMilliseconds;
 
     /// <summary>The colours of a value's parts, in the order of the theme's charts.</summary>
     private static readonly string[] Graphs = [TokenKeys.Graph_0, TokenKeys.Graph_1, TokenKeys.Graph_2, TokenKeys.Graph_3];

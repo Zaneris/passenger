@@ -2019,7 +2019,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         // An app debugged on a device or emulator, up once its shell there found its process, which its tab's console says.
         ToolWindows.DebugTab? device = Session.Debug.Chosen is { Plan.Device.App: not null } onDevice ? onDevice : null;
         string? process = null;
-        DateTime until = DateTime.UtcNow + limit;
+        Deadline until = Deadline.In(limit);
         // Running, its GDScript or C# beside it running too: a game stopped in either language is stopped.
         Func<bool> going = () => Session.Debug.Session is { State: DebugState.Running or DebugState.Starting } chosen && !Companions(chosen).Any(b => b.State == DebugState.Paused);
         HeardServing serving = HeardServing.Debugged(Session.Debug);
@@ -2051,7 +2051,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             if (going() && app is { State: LiveTree.LiveAppState.Connected })
             {
                 // A stop in the first layout, just after the inspector's hello, is waited for too; looked at every 50 ms.
-                await Until(() => !going(), Min(LaunchSettle, until - DateTime.UtcNow), cancel);
+                await Until(() => !going(), Min(LaunchSettle, until.Left), cancel);
             }
             DebugSnapshot started = await AfterResume(TimeSpan.Zero, cancel);
             DebugSnapshot shown = app is { State: LiveTree.LiveAppState.Refused or LiveTree.LiveAppState.Ended, Problem: { } refused } ? started with { Status = $"{started.Status}. {refused}" }
@@ -3501,8 +3501,8 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
     /// place saying why; everywhere else <see cref="When"/>.</summary>
     private static async Task Until(Func<bool> condition, TimeSpan limit, CancellationToken cancel)
     {
-        DateTime until = DateTime.UtcNow + limit;
-        while (!condition() && DateTime.UtcNow < until)
+        Deadline until = Deadline.In(limit);
+        while (!condition() && !until.Passed)
         {
             await Task.Delay(50, cancel);
         }

@@ -67,7 +67,7 @@ public sealed partial class PassengerTools
         {
             throw new InvalidOperationException(WithBuildErrors(problem, built.Ended));
         }
-        DateTime until = DateTime.UtcNow.AddSeconds(Math.Clamp(waitSeconds, 1, 120));
+        Deadline until = Deadline.In(TimeSpan.FromSeconds(Math.Clamp(waitSeconds, 1, 120)));
         AspireAppRun app = current.Aspire.OwnedApp(selection.AppHostPath);
         DebugSession debugged;
         try
@@ -77,13 +77,13 @@ public sealed partial class PassengerTools
                 AspireResource? fresh = resources.FirstOrDefault(resource => resource.Name == selection.Resource.Name);
                 DebugSession? now = fresh is null ? null : current.Aspire.FindService(new AspireSelection(selection.AppHostPath, fresh))?.DebugTab?.Session;
                 return Task.FromResult(now is not null && (attach || started || now != previous) ? now : null);
-            }, until - DateTime.UtcNow, "The requested resource did not establish a debug session in this workspace", cancel);
+            }, until.Left, "The requested resource did not establish a debug session in this workspace", cancel);
         }
         catch (Exception failed) when (failed is TimeoutException || failed is InvalidOperationException && (Session != current || current.IsEnded))
         {
             throw new InvalidOperationException("The requested resource did not establish a debug session in this workspace");
         }
-        DebugSnapshot snapshot = await AfterResume(until - DateTime.UtcNow, cancel, debugged);
+        DebugSnapshot snapshot = await AfterResume(until.Left, cancel, debugged);
         if (Session != current || current.IsEnded)
         {
             throw new InvalidOperationException("The workspace changed while reading the resource's debug session");

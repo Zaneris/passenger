@@ -774,12 +774,12 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
             {
                 return scripted;
             }
-            DateTime until = DateTime.UtcNow + Waits.Of(ScriptServed);
+            Deadline until = Deadline.In(Waits.Of(ScriptServed));
             if (context.WebOf(document) is { Lsp: null })
             {
                 context.Say($"Rename waits for Godot's server to read {document.Name}");
             }
-            while (context.WebOf(document) is { Lsp: null } && context.Web?.Invoke()?.CannotStart(document) == false && DateTime.UtcNow < until)
+            while (context.WebOf(document) is { Lsp: null } && context.Web?.Invoke()?.CannotStart(document) == false && !until.Passed)
             {
                 // Looked at every 50 ms: a web server's document comes as the server starts, raising nothing.
                 await Task.Delay(50);

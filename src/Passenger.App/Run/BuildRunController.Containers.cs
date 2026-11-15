@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Passenger.App.Containers;
 using Passenger.App.Debugging;
 using Passenger.App.ToolWindows;
@@ -489,22 +490,22 @@ public sealed partial class BuildRunController
             return;
         }
         // A log followed again that ends at once is not followed for good: the run is said to have ended.
-        bool atOnce = followedAgainAt is { } at && DateTime.UtcNow - at < TimeSpan.FromSeconds(2);
+        bool atOnce = followedAgainAt is { } at && Stopwatch.GetElapsedTime(at) < TimeSpan.FromSeconds(2);
         if (!up || atOnce || run.IsStopped || session.ContainerRun != run || run.Engine.Cli is not { } cli)
         {
             RunLogEnded(code);
             return;
         }
         parts.Views.Run.Append($"{run.Plan.Name}'s services still run: following their log again\n");
-        followedAgainAt = DateTime.UtcNow;
+        followedAgainAt = Stopwatch.GetTimestamp();
         if (Started(session.Runner.Start(cli, run.LogsSince(since), run.Plan.Folder, ContainerEngine.Variables)) is not null)
         {
             RunLogEnded(code);
         }
     }
 
-    /// <summary>When a container run's log was last followed again.</summary>
-    private DateTime? followedAgainAt;
+    /// <summary>When a container run's log was last followed again, a timestamp of <see cref="Stopwatch.GetTimestamp"/>'s.</summary>
+    private long? followedAgainAt;
 
     /// <summary>Whether Detach acts on the container run under way: one is under way, and Detach is the run's whole (see
     /// <see cref="DetachesWhole"/>) or the chosen session is one of its services'.</summary>

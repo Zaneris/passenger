@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.IO.Enumeration;
 using Passenger.Core;
 using Passenger.Text;
@@ -50,12 +51,15 @@ public abstract class WatchedTree : IDisposable
     /// for one gone), so its own change heard late is not handed over twice.</summary>
     private readonly Dictionary<string, (DateTime Written, DateTime At)> handed = new(StringComparer.Ordinal);
 
-    /// <summary>The changes heard in each batch handed over in the last <see cref="Burst"/>, and in the one gathering.</summary>
-    private readonly Queue<(DateTime At, int Heard)> batches = new();
+    /// <summary>The changes heard in each batch handed over in the last <see cref="Burst"/>, and in the one gathering, each by
+    /// when it was handed over, a timestamp of <see cref="Stopwatch.GetTimestamp"/>'s.</summary>
+    private readonly Queue<(long At, int Heard)> batches = new();
     private int heardInBatch;
 
-    /// <summary>When the last change was heard, and the first after a quiet <see cref="Burst"/> before it.</summary>
-    private DateTime lastHeard;
+    /// <summary>When the last change was heard, a timestamp of <see cref="Stopwatch.GetTimestamp"/>'s, which measures the quiet;
+    /// and the first after a quiet <see cref="Burst"/> before it, on the wall clock, as the record's moments and files' writes
+    /// it is set against are.</summary>
+    private long lastHeard;
     private DateTime burstBegan;
 
     /// <summary>The record, by kept folder: its entries' names and its stamp as last listed. Read and changed only by
@@ -84,10 +88,11 @@ public abstract class WatchedTree : IDisposable
     private Action? meanwhile;
 
     /// <summary>A burst at risk is looked at once more when it has been quiet a moment, for what it lost after its last
-    /// look: whether that look is due, and asked for now, when the burst was last at risk and when it began.</summary>
+    /// look: whether that look is due, and asked for now, when the burst was last at risk (a timestamp of
+    /// <see cref="Stopwatch.GetTimestamp"/>'s) and when it began.</summary>
     private bool recheckDue;
     private bool recheck;
-    private DateTime lastRisk;
+    private long lastRisk;
     private DateTime riskBegan;
     private bool pending;
     private bool disposed;
@@ -893,11 +898,12 @@ public abstract class WatchedTree : IDisposable
                 }
                 if (heard)
                 {
-                    if (now - lastHeard > Burst)
+                    long ticks = Stopwatch.GetTimestamp();
+                    if (Stopwatch.GetElapsedTime(lastHeard, ticks) > Burst)
                     {
                         burstBegan = now;
                     }
-                    lastHeard = now;
+                    lastHeard = ticks;
                     heardInBatch++;
                     if (Path.GetDirectoryName((notice.Canonical ?? path).AsSpan()) is { IsEmpty: false } holder)
                     {
@@ -963,7 +969,7 @@ public abstract class WatchedTree : IDisposable
             bool begin = false;
             lock (gate)
             {
-                again = DateTime.UtcNow - lastRisk < Burst && !disposed;
+                again = Stopwatch.GetElapsedTime(lastRisk) < Burst && !disposed;
                 if (!again)
                 {
                     recheckDue = false;
@@ -992,9 +998,10 @@ public abstract class WatchedTree : IDisposable
         lock (gate)
         {
             DateTime now = DateTime.UtcNow;
-            batches.Enqueue((now, heardInBatch));
+            long ticks = Stopwatch.GetTimestamp();
+            batches.Enqueue((ticks, heardInBatch));
             heardInBatch = 0;
-            while (batches.Peek().At < now - Burst)
+            while (Stopwatch.GetElapsedTime(batches.Peek().At, ticks) > Burst)
             {
                 batches.Dequeue();
             }
@@ -1019,7 +1026,7 @@ public abstract class WatchedTree : IDisposable
             if (risky)
             {
                 riskBegan = unlooked ? since : burstBegan;
-                lastRisk = now;
+                lastRisk = ticks;
                 recheckDue = true;
             }
             unlooked = false;

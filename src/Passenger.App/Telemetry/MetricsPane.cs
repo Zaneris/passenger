@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Globalization;
 using Avalonia;
 using Avalonia.Controls;
@@ -201,7 +202,7 @@ public sealed class MetricsPane : DockPanel
                 live = null;
                 await before.DisposeAsync();
             }
-            DateTime first = DateTime.UtcNow;
+            long first = Stopwatch.GetTimestamp();
             bool waited = false;
             for (int attempt = 1; follow == follows; attempt++)
             {
@@ -241,7 +242,7 @@ public sealed class MetricsPane : DockPanel
                         Say(Refusals.MetricsWhilePaused(name));
                         return;
                     }
-                    bool askAgain = place is null ? SessionStarts.AskAgain(error, DateTime.UtcNow - first, HeldStart.PortLimit) : attempt < ContainerAttempts;
+                    bool askAgain = place is null ? SessionStarts.AskAgain(error, Stopwatch.GetElapsedTime(first), HeldStart.PortLimit) : attempt < ContainerAttempts;
                     if (!askAgain)
                     {
                         Say($"{name}: {error.Message}");

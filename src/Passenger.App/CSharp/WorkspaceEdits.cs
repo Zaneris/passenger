@@ -686,7 +686,7 @@ public sealed class Patience
     /// (<see cref="Waits"/>), as the server it waits on is slower there too.</summary>
     public static TimeSpan Limit => Waits.Of(TimeSpan.FromSeconds(10));
 
-    private readonly DateTime until = DateTime.UtcNow + Limit;
+    private readonly Deadline until = Deadline.In(Limit);
     private readonly Dictionary<string, (FileStamp Stamp, string Hash)> seen = new(StringComparer.Ordinal);
     private readonly List<string> behind = [];
     private readonly HashSet<string> awaited = new(StringComparer.Ordinal);
@@ -769,7 +769,7 @@ public sealed class Patience
     /// <paramref name="said"/>, the files waited for before the next attempt; after it <paramref name="kept"/>.</summary>
     internal string Behind(IReadOnlyList<string> paths, Held? server, string said, string kept)
     {
-        if (DateTime.UtcNow >= until)
+        if (until.Passed)
         {
             IdeLog.Write(IdeLog.Ide, $"Waited {Limit.TotalSeconds:0} s for the language server to read {Told(paths, session()?.Server.WatchedFiles)}");
             return kept;
@@ -795,13 +795,13 @@ public sealed class Patience
     {
         HashSet<string> untold = new(StringComparer.Ordinal);
         HashSet<string> dropped = new(StringComparer.Ordinal);
-        if (DateTime.UtcNow < until)
+        if (!until.Passed)
         {
             string first = behind[0];
             waiting(File.Exists(first) ? $"Waiting for the language server to read {Path.GetFileName(first)} as it is on disk"
                 : $"Waiting for the language server to let go of {Path.GetFileName(first)}, deleted");
         }
-        while (DateTime.UtcNow < until)
+        while (!until.Passed)
         {
             List<string> asking = [.. behind.Where(p => !Trusts(p) && !untold.Contains(p) && !dropped.Contains(p))];
             if (held is not null && asking.Count > 0)

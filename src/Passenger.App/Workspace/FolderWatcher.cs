@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Passenger.Core;
 using Passenger.Host;
 using Passenger.Text;
@@ -51,7 +52,8 @@ public sealed class FolderWatcher : WatchedTree
     private readonly HashSet<string> paths = new(StringComparer.Ordinal);
     private readonly HashSet<string> restored = new(StringComparer.Ordinal);
     private readonly HashSet<string> comeOrGone = new(StringComparer.Ordinal);
-    private readonly Dictionary<string, DateTime> ownWrites = new(StringComparer.Ordinal);
+    /// <summary>Until when each file's events are taken for a save's own, by its canonical path.</summary>
+    private readonly Dictionary<string, Deadline> ownWrites = new(StringComparer.Ordinal);
     private bool structure;
     private bool projects;
     private bool launchProfiles;
@@ -75,16 +77,16 @@ public sealed class FolderWatcher : WatchedTree
         string canonical = PathNames.Canonical(path);
         lock (Gate)
         {
-            DateTime now = DateTime.UtcNow;
-            foreach ((string written, DateTime at) in ownWrites)
+            long now = Stopwatch.GetTimestamp();
+            foreach ((string written, Deadline until) in ownWrites)
             {
-                if (now - at >= OwnWriteHeard)
+                if (until.PassedAt(now))
                 {
                     // A dictionary's enumeration survives a removal (since .NET Core 3.0).
                     ownWrites.Remove(written);
                 }
             }
-            ownWrites[canonical] = now;
+            ownWrites[canonical] = Deadline.In(OwnWriteHeard, now);
         }
     }
 
@@ -258,7 +260,7 @@ public sealed class FolderWatcher : WatchedTree
         }
         paths.Add(canonical);
         // A save moves its temporary file over the file: a change, not a file come or gone.
-        bool saved = ownWrites.TryGetValue(canonical, out DateTime at) && DateTime.UtcNow - at < OwnWriteHeard;
+        bool saved = ownWrites.TryGetValue(canonical, out Deadline until) && !until.Passed;
         if (created && !saved)
         {
             structure = true;

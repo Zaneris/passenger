@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
@@ -74,7 +75,8 @@ public sealed class StrokeField : TextBox
     /// <summary>A modifier pressed alone and not yet let go, nothing pressed since.</summary>
     private Keystroke? held;
 
-    /// <summary>A modifier pressed alone and let go, nothing pressed since, and when, a double tap's first.</summary>
+    /// <summary>A modifier pressed alone and let go, nothing pressed since, and when (a timestamp of
+    /// <see cref="Stopwatch.GetTimestamp"/>'s), a double tap's first.</summary>
     private (Keystroke Stroke, long At)? tapped;
 
     public StrokeField(bool passesDialogKeys)
@@ -132,7 +134,7 @@ public sealed class StrokeField : TextBox
         base.OnKeyUp(e);
         if (held is { } alone && Keystroke.Alone(e.Key, KeyModifiers.None) == alone)
         {
-            tapped = (alone, Environment.TickCount64);
+            tapped = (alone, Stopwatch.GetTimestamp());
         }
         held = null;
     }
@@ -151,7 +153,7 @@ public sealed class StrokeField : TextBox
         {
             return;
         }
-        if (tapped is { } tap && tap.Stroke == alone && Environment.TickCount64 - tap.At <= KeymapDispatcher.DoubleTapMs)
+        if (tapped is { } tap && tap.Stroke == alone && Stopwatch.GetElapsedTime(tap.At) <= TimeSpan.FromMilliseconds(KeymapDispatcher.DoubleTapMs))
         {
             tapped = null;
             Stroke = alone;

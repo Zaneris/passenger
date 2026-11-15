@@ -213,7 +213,7 @@ public sealed partial class PassengerTools
     private async Task<IReadOnlyList<ServiceState>> ComposeStatesAsync(ContainerRun run, Func<IReadOnlyList<ServiceState>, bool> done, TimeSpan limit,
         CancellationToken cancel)
     {
-        DateTime until = DateTime.UtcNow + limit;
+        Deadline until = Deadline.In(limit);
         using SemaphoreSlim changed = new(0, 1);
         using IDisposable following = run.Engine.Follow(seen =>
         {
@@ -240,7 +240,7 @@ public sealed partial class PassengerTools
             {
                 throw new InvalidOperationException($"The container engine's answer could not be read: {unread.Message}", unread);
             }
-            TimeSpan left = until - DateTime.UtcNow;
+            TimeSpan left = until.Left;
             if (done(states) || left <= TimeSpan.Zero || run.IsStopped)
             {
                 return states;

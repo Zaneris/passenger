@@ -44,6 +44,10 @@ public sealed partial class CSharpService
     private sealed record Arrival(string Project, DateTime Heard)
     {
         public bool Decided { get; set; }
+
+        /// <summary>Until when an open file it holds back waits: <see cref="Patience.Limit"/> after <see cref="Heard"/>, a moment
+        /// of the wall clock as a file's write time is, what is left of it counted on Stopwatch's clock.</summary>
+        public Deadline HeldUntil { get; } = Deadline.In(Patience.Limit - (DateTime.UtcNow - Heard));
     }
 
     /// <summary>Whether a C# file come under one of the folder's projects may not be in it in the server yet.</summary>
@@ -456,7 +460,7 @@ public sealed partial class CSharpService
         {
             return false;
         }
-        left = Patience.Limit - (DateTime.UtcNow - arrival.Heard);
+        left = arrival.HeldUntil.Left;
         return left > TimeSpan.Zero;
     }
 

@@ -186,7 +186,7 @@ public sealed class WarmServer : IAsyncDisposable
         }
         // By the canonical paths the server's documents have.
         Dictionary<string, string> wanted = texts.ToDictionary(text => PathNames.Canonical(text.Key), text => Roslyn.Extension.TextHash.Of(text.Value), PathNames.Comparer);
-        DateTime until = DateTime.UtcNow + limit;
+        Deadline until = Deadline.In(limit);
         while (true)
         {
             try
@@ -205,7 +205,7 @@ public sealed class WarmServer : IAsyncDisposable
             {
                 return false;
             }
-            if (DateTime.UtcNow >= until)
+            if (until.Passed)
             {
                 return false;
             }

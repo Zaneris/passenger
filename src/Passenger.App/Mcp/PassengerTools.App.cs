@@ -446,12 +446,12 @@ public sealed partial class PassengerTools
         live.TreeChanged += Changed;
         try
         {
-            DateTime until = DateTime.UtcNow + AppUiLimit;
+            Deadline until = Deadline.In(AppUiLimit);
             // Asking for the tree is what has the app say when its controls next change.
             while (live.State == LiveAppState.Connected && (await live.TreeAsync()).Roots.Count == 0)
             {
                 int seen = changes;
-                await When(() => changes != seen || live.State != LiveAppState.Connected, until - DateTime.UtcNow, cancel,
+                await When(() => changes != seen || live.State != LiveAppState.Connected, until.Left, cancel,
                     On(h => live.TreeChanged += h, h => live.TreeChanged -= h), On(h => live.StateChanged += h, h => live.StateChanged -= h));
                 if (changes == seen && live.State == LiveAppState.Connected)
                 {

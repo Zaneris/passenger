@@ -30,8 +30,8 @@ public sealed class RemoteStylesheets(Func<bool> download)
     /// every ask takes; one that gave none is made again by the next ask.</summary>
     private readonly SharedWork<(string Address, string? Integrity), Fetched> fetches = new(Kept);
 
-    /// <summary>When each download last was not what its link's integrity says, by its address and that integrity.</summary>
-    private readonly ConcurrentDictionary<(string Address, string? Integrity), long> refused = new();
+    /// <summary>Until when each download that was not what its link's integrity says is left, by its address and that integrity.</summary>
+    private readonly ConcurrentDictionary<(string Address, string? Integrity), Deadline> refused = new();
 
     /// <summary>The copies' folder as last made of the state's root, swapped whole as any thread may read it.</summary>
     private static (string Root, string Folder)? known;
@@ -74,7 +74,7 @@ public sealed class RemoteStylesheets(Func<bool> download)
     /// <summary>A link's copy, read, else downloaded where Settings allow it, for every ask of the link: never cancelled.</summary>
     private async Task<Fetched> FetchOnceAsync(Uri address, string? integrity, (string, string?) link)
     {
-        if (refused.TryGetValue(link, out long since) && Environment.TickCount64 - since < RefusedFor.TotalMilliseconds)
+        if (refused.TryGetValue(link, out Deadline until) && !until.Passed)
         {
             return NotWhatItSays(address);
         }
@@ -109,7 +109,7 @@ public sealed class RemoteStylesheets(Func<bool> download)
             }
             if (bytes is null)
             {
-                refused[link] = Environment.TickCount64;
+                refused[link] = Deadline.In(RefusedFor);
                 return NotWhatItSays(address);
             }
         }

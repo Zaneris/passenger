@@ -1233,7 +1233,7 @@ public sealed class ContainerRun(ContainerPlan plan, ContainerEngine engine, Con
     /// for the debugger (or, its debugger turned off, saying why), by its assembly; given up on after a minute.</summary>
     internal static async Task<DotnetProcess> HeldProgramAsync(ContainerReach reach, DotnetService service, CancellationToken stop)
     {
-        DateTime until = DateTime.UtcNow + TimeSpan.FromMinutes(1);
+        Deadline until = Deadline.In(TimeSpan.FromMinutes(1));
         string assembly = $"{service.Assembly}.dll";
         while (true)
         {
@@ -1242,7 +1242,7 @@ public sealed class ContainerRun(ContainerPlan plan, ContainerEngine engine, Con
             {
                 return program;
             }
-            if (DateTime.UtcNow > until)
+            if (until.Passed)
             {
                 throw new ContainerToolsException($"no .NET program running {assembly} started in its container {reach.Container} within a minute");
             }

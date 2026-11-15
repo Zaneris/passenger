@@ -1155,8 +1155,8 @@ public sealed class ProjectSession : IAsyncDisposable
     /// waited for even before it has begun.</summary>
     private async Task<IReadOnlyList<string>> ActiveProjectsAsync()
     {
-        DateTime until = DateTime.UtcNow + TimeSpan.FromSeconds(5);
-        while ((!Models.Followed || !Models.Idle.IsCompleted) && DateTime.UtcNow < until && ActiveProjects(evaluated: true) is null)
+        Deadline until = Deadline.In(TimeSpan.FromSeconds(5));
+        while ((!Models.Followed || !Models.Idle.IsCompleted) && !until.Passed && ActiveProjects(evaluated: true) is null)
         {
             await Task.Delay(TimeSpan.FromMilliseconds(100));
         }

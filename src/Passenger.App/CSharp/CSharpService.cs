@@ -975,7 +975,7 @@ public sealed partial class CSharpService : IAsyncDisposable
                     .Where(r => r.Key.Source == source && r.Value.Previous is not null)
                     .Select(r => r.Value.Previous!)];
                 IReadOnlyDictionary<string, string>? frameworks = running.Server.ExtensionProblem is null ? AnalysedFrameworks() : null;
-                DateTime asked = DateTime.UtcNow;
+                long asked = Stopwatch.GetTimestamp();
                 Channel<IReadOnlyList<WorkspaceDocumentDiagnosticReport>> streamed = Channel.CreateUnbounded<IReadOnlyList<WorkspaceDocumentDiagnosticReport>>(
                     new UnboundedChannelOptions { SingleReader = true });
                 using CancellationTokenSource round = CancellationTokenSource.CreateLinkedTokenSource(cancel);
@@ -1052,7 +1052,7 @@ public sealed partial class CSharpService : IAsyncDisposable
                 pause = RefusedPull;
                 Answered();
                 // A source with nothing to hold a pull open on answers at once: it is asked again only now and then.
-                if (changed == 0 && DateTime.UtcNow - asked < TimeSpan.FromSeconds(1))
+                if (changed == 0 && Stopwatch.GetElapsedTime(asked) < TimeSpan.FromSeconds(1))
                 {
                     await Task.Delay(TimeSpan.FromSeconds(2), cancel);
                 }
@@ -1996,8 +1996,8 @@ public sealed partial class CSharpService : IAsyncDisposable
     private async Task TimeActiveFileAsync(RoslynSession started, long began)
     {
         // A wait that never holds a screenshot: a folder may have no C# file open for a long while.
-        DateTime until = DateTime.UtcNow + TimeSpan.FromMinutes(10);
-        while (!disposed && (session is null || session == started) && DateTime.UtcNow < until && !started.Server.HasExited)
+        Deadline until = Deadline.In(TimeSpan.FromMinutes(10));
+        while (!disposed && (session is null || session == started) && !until.Passed && !started.Server.HasExited)
         {
             foreach ((OpenDocument open, CSharpDocument features) in documents)
             {

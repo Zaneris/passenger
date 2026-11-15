@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Globalization;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -204,7 +205,7 @@ public partial class MainWindow
     private async Task FollowAsync(RequestTarget target)
     {
         RequestLog log = RequestLog;
-        DateTime first = DateTime.UtcNow;
+        long first = Stopwatch.GetTimestamp();
         using CancellationTokenSource asked = new();
         startingRequests = (target, asked);
         try
@@ -231,7 +232,7 @@ public partial class MainWindow
                 catch (ProfilingException failed)
                 {
                     // Tools in a container that answered have said why: asking again would only say it again.
-                    if (target.Place is not null || !SessionStarts.AskAgain(failed, DateTime.UtcNow - first, HeldStart.PortLimit))
+                    if (target.Place is not null || !SessionStarts.AskAgain(failed, Stopwatch.GetElapsedTime(first), HeldStart.PortLimit))
                     {
                         RequestLog.Following = failed.Message;
                         return;

@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Diagnostics;
 using ModelContextProtocol.Server;
 using Passenger.App.Migrations;
 using Passenger.App.Packages;
@@ -848,22 +849,22 @@ public sealed partial class PassengerTools
         int version = screen.Version;
         shell.Write(command + "\r");
         AgentCall.Say($"Waiting up to {Math.Clamp(waitSeconds, 1, 600)} s for the terminal's command to finish");
-        DateTime until = DateTime.UtcNow.AddSeconds(Math.Clamp(waitSeconds, 1, 600));
-        DateTime last = DateTime.UtcNow;
+        Deadline until = Deadline.In(TimeSpan.FromSeconds(Math.Clamp(waitSeconds, 1, 600)));
+        long last = Stopwatch.GetTimestamp();
         bool answered = false;
-        while (DateTime.UtcNow < until)
+        while (!until.Passed)
         {
             await Task.Delay(100, cancel);
             if (screen.Version != version)
             {
                 version = screen.Version;
-                last = DateTime.UtcNow;
+                last = Stopwatch.GetTimestamp();
                 answered = true;
                 continue;
             }
             // Its prompt back below it ends a command; one that leaves another prompt (a cd) or none (a server) ends once quiet.
             bool prompted = prompt.Length > 0 && screen.ScreenTop + screen.CursorRow > before && ToolWindows.TerminalPanel.Prompt(screen) == prompt;
-            if (answered && DateTime.UtcNow - last > (prompted ? TimeSpan.FromMilliseconds(200) : TimeSpan.FromSeconds(2)))
+            if (answered && Stopwatch.GetElapsedTime(last) > (prompted ? TimeSpan.FromMilliseconds(200) : TimeSpan.FromSeconds(2)))
             {
                 break;
             }
