@@ -2,6 +2,7 @@ using System.Buffers.Binary;
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Net.Sockets;
+using Passenger.Core;
 
 namespace Passenger.Debugger.Relay;
 
@@ -61,13 +62,11 @@ internal sealed class RelayConnection : IDisposable, IRelayLink
 
     /// <summary>The longest frame the relay sends: a call's answer brings back no more than the call made room for.</summary>
     private const int LongestFrame = 64 << 20;
-    private readonly Socket _socket;
-    private readonly NetworkStream _stream;
+    private readonly Stream _stream;
     private readonly Lock _writing = new();
-    private readonly ConcurrentDictionary<uint, Pending> _pending = new();
+    private readonly PendingRequests<string, byte[]> _pending = new();
     private readonly BlockingCollection<RelayEvent> _events = new();
     private readonly Action<string>? _log;
-    private int _nextId;
     private long _waited;
     private int _answered;
     private int _tallied;
@@ -82,10 +81,11 @@ internal sealed class RelayConnection : IDisposable, IRelayLink
     /// <summary>The runtime's callbacks, as they come; done once the connection ends.</summary>
     public BlockingCollection<RelayEvent> Events => _events;
 
-    private RelayConnection(Socket socket, string? token, Action<string>? log)
+    /// <summary>The relay at the other end of <paramref name="stream"/>, which the connection owns: given
+    /// <paramref name="token"/>, its hello read, and its frames read from then on.</summary>
+    internal RelayConnection(Stream stream, string? token, Action<string>? log)
     {
-        _socket = socket;
-        _stream = new NetworkStream(socket, ownsSocket: false);
+        _stream = stream;
         _log = log;
         if (token is not null)
         {
@@ -115,14 +115,14 @@ internal sealed class RelayConnection : IDisposable, IRelayLink
         int colon = address.LastIndexOf(':');
         string host = colon > 0 ? address[..colon] : "127.0.0.1";
         int port = int.Parse(address[(colon + 1)..], System.Globalization.CultureInfo.InvariantCulture);
-        Deadline deadline = new(within);
+        Deadline deadline = Deadline.In(within);
         while (true)
         {
             Socket socket = new(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp) { NoDelay = true };
             try
             {
                 socket.Connect(host, port);
-                return new RelayConnection(socket, token, log);
+                return new RelayConnection(new NetworkStream(socket, ownsSocket: true), token, log);
             }
             catch (Exception notYet) when (notYet is SocketException or IOException && !deadline.Passed)
             {
@@ -135,11 +135,6 @@ internal sealed class RelayConnection : IDisposable, IRelayLink
 
     public RelayReply Call(ulong obj, uint slot, IReadOnlyList<RelayArg> args)
     {
-        uint id = (uint)Interlocked.Increment(ref _nextId);
-        if (id % 500 == 0)
-        {
-            _log?.Invoke($"Relay calls so far: {id}, waiting {Stopwatch.GetElapsedTime(0, Interlocked.Read(ref _waited)).TotalMilliseconds / Math.Max(1, _answered):F2} ms for each answer");
-        }
         using MemoryStream body = new();
         Span<byte> number = stackalloc byte[8];
         body.WriteByte(1);
@@ -164,7 +159,7 @@ internal sealed class RelayConnection : IDisposable, IRelayLink
                 body.Write(bytes);
             }
         }
-        byte[] answer = Ask(id, body.ToArray());
+        byte[] answer = Ask("a call", body.ToArray());
         int hr = BinaryPrimitives.ReadInt32LittleEndian(answer);
         int at = 4;
         List<byte[]> outs = [];
@@ -206,11 +201,7 @@ internal sealed class RelayConnection : IDisposable, IRelayLink
     }
 
     /// <summary>Lets the app's runtime go on with its start: the debugger has taken hold of it.</summary>
-    public void Go()
-    {
-        uint id = (uint)Interlocked.Increment(ref _nextId);
-        Ask(id, [2]);
-    }
+    public void Go() => Ask("its go-ahead", [2]);
 
     public void Release(ulong pointer)
     {
@@ -254,25 +245,40 @@ internal sealed class RelayConnection : IDisposable, IRelayLink
         }
     }
 
-    private byte[] Ask(uint id, byte[] body)
+    /// <summary>The relay's answer to <paramref name="body"/>, the frame numbered as its request; failed at once where the
+    /// relay's stream has ended, whatever a write into it still takes.</summary>
+    private byte[] Ask(string what, byte[] body)
     {
-        Pending pending = new();
-        _pending[id] = pending;
+        (int id, Task<byte[]> answer) = _pending.Add(what);
+        if (id % 500 == 0)
+        {
+            _log?.Invoke($"Relay calls so far: {id}, waiting {Stopwatch.GetElapsedTime(0, Interlocked.Read(ref _waited)).TotalMilliseconds / Math.Max(1, _answered):F2} ms for each answer");
+        }
         byte[] header = new byte[8];
         BinaryPrimitives.WriteUInt32LittleEndian(header, (uint)body.Length + 4);
-        BinaryPrimitives.WriteUInt32LittleEndian(header.AsSpan(4), id);
-        lock (_writing)
+        BinaryPrimitives.WriteUInt32LittleEndian(header.AsSpan(4), (uint)id);
+        try
         {
-            WriteReleases();
-            _stream.Write(header);
-            _stream.Write(body);
+            lock (_writing)
+            {
+                WriteReleases();
+                _stream.Write(header);
+                _stream.Write(body);
+            }
+        }
+        catch (Exception gone) when (gone is IOException or SocketException or ObjectDisposedException)
+        {
+            _pending.Forget(id, answer);
+            throw;
         }
         long asked = Stopwatch.GetTimestamp();
-        pending.Answered.Wait();
+        // Synchronous as the engine's calls into ICorDebug are: the reader's own thread ends the answer, never one held here.
+        ((IAsyncResult)answer).AsyncWaitHandle.WaitOne();
         Interlocked.Add(ref _waited, Stopwatch.GetTimestamp() - asked);
         Interlocked.Increment(ref _answered);
-        _pending.TryRemove(id, out _);
-        return pending.Answer ?? throw new IOException("The app's relay went away");
+        // Its wait handle let go now, rather than by a finalizer for every call.
+        answer.Dispose();
+        return answer.IsCompletedSuccessfully ? answer.Result : throw answer.Exception!.InnerException!;
     }
 
     private void ReadAll()
@@ -285,10 +291,9 @@ internal sealed class RelayConnection : IDisposable, IRelayLink
                 {
                     _events.Add(new RelayEvent(frame[1], frame[2], frame, 4));
                 }
-                else if (_pending.TryGetValue(id, out Pending? pending))
+                else
                 {
-                    pending.Answer = frame;
-                    pending.Answered.Set();
+                    _pending.Answer((int)id, frame);
                 }
             }
         }
@@ -303,10 +308,7 @@ internal sealed class RelayConnection : IDisposable, IRelayLink
             told = _gone;
         }
         _events.CompleteAdding();
-        foreach (Pending pending in _pending.Values)
-        {
-            pending.Answered.Set();
-        }
+        _pending.End(asked => new IOException($"The app's relay went away before it answered {asked}"));
         told?.Invoke();
     }
 
@@ -371,22 +373,5 @@ internal sealed class RelayConnection : IDisposable, IRelayLink
         return (trips, Stopwatch.GetElapsedTime(0, since).TotalMilliseconds);
     }
 
-    public void Dispose()
-    {
-        _socket.Dispose();
-        _stream.Dispose();
-    }
-
-    private sealed class Pending
-    {
-        public ManualResetEventSlim Answered { get; } = new();
-        public byte[]? Answer { get; set; }
-    }
-
-    /// <summary>A limit on the wall clock for a connect that waits for an app to start listening.</summary>
-    private readonly struct Deadline(TimeSpan within)
-    {
-        private readonly long _end = Environment.TickCount64 + (long)within.TotalMilliseconds;
-        public bool Passed => Environment.TickCount64 > _end;
-    }
+    public void Dispose() => _stream.Dispose();
 }
