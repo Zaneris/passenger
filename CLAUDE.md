@@ -90,7 +90,7 @@ tests run with a 4 MB `System.GC.Gen0MaxBudget`, so a young collection fits a 14
 - **Every program Passenger starts goes through `ChildProcesses`**, so none outlives the IDE (`Lifeline`): `Command`,
   `DotnetCommand`, `HelperCommand` (Passenger's helpers on Passenger's runtime, never the machine's), `ConservingMemory`
   for Roslyn's server and the project host but never the debug adapter, whose program would inherit it, `DotnetQuestion`
-  for the .NET CLI's questions (no telemetry, so it lets go of its folder), `Kill` for it and all it started. Give each
+  for the .NET CLI's questions (no telemetry, so it lets go of its folder), `Kill` for it and all it started; a .cmd or .bat runs through cmd.exe there and in the Terminal (`WindowsCommandLine.ThroughCmd`), never a cmd.exe line of a caller's own. Give each
   its folder as the disk names it, PWD too. On Windows every child shares the IDE's UTF-8 console (`SharedConsole`).
   Read a child through `ChildProcesses.Output`/`Errors`/`Hear`, never `Begin*ReadLine` (banned: its disposal faults a
   read under it). Started elsewhere: the terminal's shell (Porta.Pty), vstest.console, Velopack's Update.exe, an agent's
@@ -201,11 +201,11 @@ tests run with a 4 MB `System.GC.Gen0MaxBudget`, so a young collection fits a 14
 ## Where things are
 
 Projects in `src/`; `find_symbol` finds the rest from the names here. A pointer's "never" is a rule.
-- `Passenger.Core` (no UI), where each of these is the one way: a PATH search `Programs.OnPath`; .NET's folder
+- `Passenger.Core` (no UI), where each of these is the one way: a command's program `Programs.Command`/`CommandIn` (never a Windows `.exe` or `.cmd` name spelled by hand), a file on the PATH `OnPath`; .NET's folder
   `Dotnet.Root`, never `Dotnet.Host()`'s folder, for a folder's work `Dotnet.Root(folder)`/`Host(folder)` (the first installation holding the SDK its global.json takes, its `sdk.paths` searched as the muxer does, `Dotnet.Find(folder)`), which `DotnetCommand(args, folder)` and `NamingDotnet(start, folder)` take; a request of a host `OutboundHttp`; a Unix socket `SocketFolders`; a C
   call made in more than one place `Libc`; whether a process runs `DotnetProcesses.Runs`, a `Process` held too, never
   `HasExited` (PSG0007): ended, one Passenger started has an `ExitCode` to read, one found by id none; a PASSENGER_*_MS
-  `EnvironmentValues.Milliseconds`; a Windows command line `WindowsCommandLine`; the version `Product`; a log below the
+  `EnvironmentValues.Milliseconds`; a Windows command line `WindowsCommandLine`; the version `Product`, Passenger's own program `Product.Program`; a log below the
   App `PassengerLog`, never `IdeLog`; an MSBuild name Passenger writes `MSBuildNames`; another program's or a person's
   JSON `JsonMembers` (`Value` for a member of any kind), never a bare `TryGetProperty`/`GetProperty` (PSG0008); a search
   by halving `Sorted`, never a loop of your own; a primitive `PrimitiveTypes`; an SDK into an installation
