@@ -75,7 +75,11 @@ public sealed partial class Vim
                 {
                     return new VimResult(true, Edits: [joined]);
                 }
-                // Nothing to join below the last line: visual mode ends all the same, the caret at the stretch's start.
+                // Nothing to join: visual mode ends all the same, the caret at the stretch's start, or where . found it.
+                if (replaying)
+                {
+                    return new VimResult(true, SelectionSet.Create([.. taken.Select(r => Selection.At(Settled(text, r.Anchor, breakEnds)))], 0));
+                }
                 return new VimResult(true, block ? SelectionSet.Single(Settled(text, VimMotions.OffsetAtColumn(text, top, left, tab), breakEnds))
                     : mode == VimMode.VisualLine ? starts.With(c => Selection.At(VimMotions.LineOf(text, c.Caret).Start))
                     : starts.With(c => Selection.At(Settled(text, c.Caret, breakEnds))));

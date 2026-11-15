@@ -1953,6 +1953,19 @@ public class VimTests
     public void A_command_that_cannot_act_keeps_the_column_j_and_k_aim_for(string before, string keys, string after) =>
         Assert.Equal(after, Run(before, keys));
 
+    /// <summary>. after a visual J on the last line, with nothing to join, leaves the caret where it stood, where the J
+    /// itself took a linewise stretch's caret to its line's start, as Vim's do.</summary>
+    [Theory]
+    [InlineData("ab cd\nef| gh\nij kl", "VJ.", "ab cd\nef gh| ij kl")]
+    [InlineData("ab cd\nef| gh\nij kl", "VJl.", "ab cd\nef gh |ij kl")]
+    [InlineData("ab cd\nef| gh\nij kl", "vJ.", "ab cd\nef gh| ij kl")]
+    [InlineData("ab cd\nef| gh\nij kl", "VJ$.", "ab cd\nef gh ij k|l")]
+    [InlineData("ab cd\nef| gh\nij kl", "J.", "ab cd\nef gh| ij kl")]
+    [InlineData("ab cd\nef| gh\nij kl", "VjJk.j.", "ab cd| ef gh ij kl")]
+    [InlineData("ab cd\nef gh\nij| kl", "VJ", "ab cd\nef gh\n|ij kl")]
+    public void Dot_after_a_visual_join_with_nothing_to_join_leaves_the_caret(string before, string keys, string after) =>
+        Assert.Equal(after, Run(before, keys));
+
     [Fact]
     public void A_huge_count_ends_at_the_texts_edge()
     {
