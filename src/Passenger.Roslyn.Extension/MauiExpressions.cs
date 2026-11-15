@@ -28,7 +28,7 @@ public sealed class MauiExpressionCompletion : IExtensionWorkspaceMessageHandler
         int at = code.CodeAt(message.At);
         List<MauiCompletion> items = [];
         int? start = null;
-        if (message.Expression is { DataType: not null, Event: null } && MauiExpressionDocument.BoundStart(code.Code, at) is { } bound
+        if (message.Expression is { DataType: not null, Event: null } && MauiExpressionCode.BoundStart(code.Code, at) is { } bound
             && await MauiExpressionDocument.MakeAsync(project, [message.Expression], bound, cancellationToken).ConfigureAwait(false) is { } bindable)
         {
             (int? from, IReadOnlyList<MauiCompletion> found) = await CompleteAsync(bindable, at, "0", cancellationToken).ConfigureAwait(false);
@@ -228,38 +228,6 @@ internal sealed class MauiExpressionDocument
     /// <summary>The project the server holds a XAML file in, as one of its additional files; null for none.</summary>
     public static Project? ProjectOf(Solution solution, string path) =>
         SyntaxReads.DocumentIdsOf(solution, path).FirstOrDefault(id => solution.GetAdditionalDocument(id) is not null) is { } id ? solution.GetProject(id.ProjectId) : null;
-
-    /// <summary>Where a name being written at a place of the code starts, where MAUI may bind it to the data type: not
-    /// after a dot, in a string or past a name's end; null elsewhere, and in code nested too deeply to read.</summary>
-    public static int? BoundStart(string code, int at)
-    {
-        int start = Math.Clamp(at, 0, code.Length);
-        while (start > 0 && (char.IsLetterOrDigit(code[start - 1]) || code[start - 1] == '_'))
-        {
-            start--;
-        }
-        int before = start - 1;
-        while (before >= 0 && char.IsWhiteSpace(code[before]))
-        {
-            before--;
-        }
-        if ((before >= 0 && code[before] == '.' && before > 0) || CodeBrackets.Expression(code) is not { } parsed || InString(parsed, start))
-        {
-            return null;
-        }
-        return start;
-    }
-
-    /// <summary>Whether a place of the code is inside a string's text, not an interpolation's hole.</summary>
-    private static bool InString(ExpressionSyntax parsed, int at)
-    {
-        if (at <= 0 || at - 1 >= parsed.FullSpan.End)
-        {
-            return false;
-        }
-        SyntaxToken token = parsed.FindToken(at - 1);
-        return token.Span.Contains(at - 1) && token.Kind() is SyntaxKind.StringLiteralToken or SyntaxKind.InterpolatedStringTextToken or SyntaxKind.CharacterLiteralToken;
-    }
 
     /// <summary>The expressions written into a document added to a project of the solution; <paramref name="bound"/>, a place
     /// of the first one's code where a name starts, qualified as the data type's whatever the type has. Null where none can

@@ -101,7 +101,7 @@ public static class XamlExpressions
     private static bool InHead(string code, int at)
     {
         int end = 0;
-        while (end < code.Length && (char.IsLetterOrDigit(code[end]) || code[end] == '_'))
+        while (end < code.Length && Microsoft.CodeAnalysis.CSharp.SyntaxFacts.IsIdentifierPartCharacter(code[end]))
         {
             end++;
         }

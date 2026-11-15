@@ -132,6 +132,55 @@ public sealed class MauiXamlTests
         Assert.Equal("{this.(Grid.Row)}", "{" + MauiExpressionCode.Of("{this.(Grid.Row)}")!.Code.Replace("Grid.GetRow(this)", "this.(Grid.Row)", StringComparison.Ordinal) + "}");
     }
 
+    /// <summary>A prefixed type's name and an attached property's element are read as MAUI's generator's patterns read them:
+    /// an ASCII letter starts one and a mark carries it on (Café written with its accent apart), and a name starting past
+    /// ASCII (名前), or a property's holding a mark, is left as written, as the generator leaves it.</summary>
+    [Fact]
+    public void A_prefixed_type_and_an_attached_propertys_element_holding_marks_are_read_whole_as_mauis_generator_reads_them()
+    {
+        Dictionary<string, string> types = new() { ["local:Cafe\u0301"] = "global::App.Cafe\u0301" };
+        Assert.Equal(["local:Cafe\u0301"], MauiExpressionCode.PrefixedNames(MauiExpressionCode.Of("{local:Cafe\u0301.Shout(Name)}")!.Code));
+        Assert.Equal("global::App.Cafe\u0301.Shout(Name)", MauiExpressionCode.Of("{local:Cafe\u0301.Shout(Name)}", types)?.Code);
+        Assert.Equal("Grid.GetRow(cafe\u0301) > 0", MauiExpressionCode.Of("{cafe\u0301.(Grid.Row) GT 0}")?.Code);
+        Assert.Equal("名前.(Grid.Row)", MauiExpressionCode.Of("{名前.(Grid.Row)}")?.Code);
+        Assert.Equal("label.(Grid.Ro\u0301w)", MauiExpressionCode.Of("{label.(Grid.Ro\u0301w)}")?.Code);
+    }
+
+    /// <summary>Where a name being written in an expression starts, for the data type's members to be offered in its place,
+    /// is read as C# reads a name, its marks in it; a name after a dot is a member's, never the data type's.</summary>
+    [Fact]
+    public void A_name_being_written_holding_marks_starts_where_csharp_reads_it_to()
+    {
+        Assert.Equal("Count + ".Length, MauiExpressionCode.BoundStart("Count + गिनती", "Count + गिनती".Length));
+        Assert.Null(MauiExpressionCode.BoundStart("Owner.गिनती", "Owner.गिनती".Length));
+    }
+
+    /// <summary>An expression's first name holding marks is one name: a caret at its end is still in it, where the name may
+    /// still become a markup extension's.</summary>
+    [Fact]
+    public void A_caret_at_the_end_of_a_first_name_holding_marks_is_still_in_it()
+    {
+        const string Typed = """
+            <ContentPage x:Class="App.MainPage" x:DataType="local:MainViewModel" xmlns:local="clr-namespace:App">
+                <Label Text="{गिनती" />
+            </ContentPage>
+            """;
+        const string Code = """
+            namespace App
+            {
+                public partial class MainPage { }
+
+                public class MainViewModel
+                {
+                    public int गिनती { get; set; }
+                }
+            }
+            """;
+        XamlFile file = XamlFiles.Read("MainPage.xaml", Typed, MauiDialect.Instance, ("MainPage.cs", Code));
+        int end = Typed.IndexOf("गिनती", StringComparison.Ordinal) + "गिनती".Length;
+        Assert.True(XamlExpressions.At(file, end) is ({ Code.Code: "गिनती" }, true), "A caret at the end of a first name holding marks was read as past it, so the markup extensions it may become are not offered");
+    }
+
     [Fact]
     public void Each_place_of_an_expressions_code_is_a_place_of_its_value_as_written()
     {

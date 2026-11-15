@@ -414,7 +414,7 @@ public static class XamlNavigation
         return [.. uses.Values];
     }
 
-    private static bool IsWordPart(string text, int at) => at >= 0 && at < text.Length && (char.IsLetterOrDigit(text[at]) || text[at] == '_');
+    private static bool IsWordPart(string text, int at) => at >= 0 && at < text.Length && Microsoft.CodeAnalysis.CSharp.SyntaxFacts.IsIdentifierPartCharacter(text[at]);
 
     /// <summary>Where a file names an element: its <c>x:Name</c> (or <c>Name</c>) value, a binding's
     /// <c>ElementName</c> and <c>#name</c>, and a selector's <c>#name</c>; what renaming the element changes.</summary>

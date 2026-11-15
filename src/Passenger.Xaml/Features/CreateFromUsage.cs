@@ -337,19 +337,19 @@ public static class CreateFromUsage
     private static string Indent(string code, string inside) =>
         string.Join('\n', code.Split('\n').Select((line, i) => i == 0 || line.Length == 0 ? line : inside + line));
 
-    /// <summary>A key as a class's name: its letters, digits and underscores, starting as an identifier may.</summary>
+    /// <summary>A key as a class's name: its characters a C# name may hold, starting as one may.</summary>
     private static string Identifier(string key)
     {
         StringBuilder name = new();
         foreach (char c in key)
         {
-            if (char.IsLetterOrDigit(c) || c == '_')
+            if (SyntaxFacts.IsIdentifierPartCharacter(c))
             {
                 name.Append(c);
             }
         }
         string made = name.ToString();
-        return made.Length > 0 && char.IsDigit(made[0]) ? "_" + made : made;
+        return made.Length > 0 && !SyntaxFacts.IsIdentifierStartCharacter(made[0]) ? "_" + made : made;
     }
 
     /// <summary>The namespace a new type in a folder goes in: that of the project's types already there, else the

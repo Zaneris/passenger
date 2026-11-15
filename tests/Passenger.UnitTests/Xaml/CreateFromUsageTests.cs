@@ -119,6 +119,23 @@ public class CreateFromUsageTests
         Assert.Contains($"<local:{key} x:Key=\"{key}\" />", XamlFiles.Applied(window, fix.Edits(window)), StringComparison.Ordinal);
     }
 
+    /// <summary>A converter's key holding marks names its class and file whole, as C# reads a name, and what it makes compiles.</summary>
+    [Fact]
+    public void A_converter_made_for_a_key_holding_marks_names_its_class_and_file_whole()
+    {
+        const string Key = "मूल्यConverter";
+        string window = "<Window xmlns=\"https://github.com/avaloniaui\" xmlns:x=\"http://schemas.microsoft.com/winfx/2006/xaml\">\n"
+            + $"    <TextBlock Text=\"{{Binding Price, Converter={{StaticResource {Key}}}}}\" />\n</Window>\n";
+        XamlFile file = XamlFiles.Read("MainWindow.axaml", window, AvaloniaDialect.Instance);
+        XamlFix fix = Assert.IsType<XamlFix>(CreateFromUsage.Converter(file, Key));
+        XamlFileChange made = Assert.Single(fix.Others);
+        Assert.True(made.Path == XamlFiles.PathOf(Key + ".cs"), $"The converter for {Key} was made as {Path.GetFileName(made.Path)}, its name cut at its marks");
+        Assert.Contains($"public class {Key} : IValueConverter", made.Made, StringComparison.Ordinal);
+        IReadOnlyList<Diagnostic> errors = Errors(made.Made!);
+        Assert.True(errors.Count == 0, $"The converter made for the key '{Key}' does not compile:\n{string.Join("\n", errors)}\n{made.Made}");
+        Assert.Contains($"<local:{Key} x:Key=\"{Key}\" />", XamlFiles.Applied(window, fix.Edits(window)), StringComparison.Ordinal);
+    }
+
     /// <summary>The errors a file of C# compiles with, Avalonia's IValueConverter declared beside it.</summary>
     private static IReadOnlyList<Diagnostic> Errors(string code)
     {

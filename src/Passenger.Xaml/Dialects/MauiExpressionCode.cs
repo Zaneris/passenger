@@ -1,4 +1,9 @@
+using System.Globalization;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Passenger.Core;
+using Passenger.Languages.CSharp;
 using Passenger.Text;
 
 namespace Passenger.Xaml.Dialects;
@@ -103,29 +108,73 @@ public sealed class MauiExpressionCode
         return found;
     }
 
-    /// <summary>How long a prefixed type's name starting at a place is (<c>local:Helper</c>), not after a name's character;
-    /// null for none.</summary>
+    /// <summary>Where a name being written at a place of the code starts, where MAUI may bind it to the data type: not
+    /// after a dot, in a string or past a name's end; null elsewhere, and in code nested too deeply to read.</summary>
+    public static int? BoundStart(string code, int at)
+    {
+        int start = Math.Clamp(at, 0, code.Length);
+        while (start > 0 && SyntaxFacts.IsIdentifierPartCharacter(code[start - 1]))
+        {
+            start--;
+        }
+        int before = start - 1;
+        while (before >= 0 && char.IsWhiteSpace(code[before]))
+        {
+            before--;
+        }
+        if ((before >= 0 && code[before] == '.' && before > 0) || CodeBrackets.Expression(code) is not { } parsed || InString(parsed, start))
+        {
+            return null;
+        }
+        return start;
+    }
+
+    /// <summary>Whether a place of the code is inside a string's text, not an interpolation's hole.</summary>
+    private static bool InString(ExpressionSyntax parsed, int at)
+    {
+        if (at <= 0 || at - 1 >= parsed.FullSpan.End)
+        {
+            return false;
+        }
+        SyntaxToken token = parsed.FindToken(at - 1);
+        return token.Span.Contains(at - 1) && token.Kind() is SyntaxKind.StringLiteralToken or SyntaxKind.InterpolatedStringTextToken or SyntaxKind.CharacterLiteralToken;
+    }
+
+    /// <summary>How long a prefixed type's name starting at a place is (<c>local:Helper</c>), not after an ASCII letter, digit
+    /// or '_'; null for none. Its prefix and its type's name are read as the generator's pattern reads them: an ASCII
+    /// letter or '_' (an upper case letter for the type's) starts each, and a <see cref="Word"/> character carries it on.</summary>
     private static int? PrefixedAt(string code, int at)
     {
-        if ((at > 0 && (char.IsLetterOrDigit(code[at - 1]) || code[at - 1] == '_')) || !(char.IsLetter(code[at]) || code[at] == '_'))
+        if ((at > 0 && (char.IsAsciiLetterOrDigit(code[at - 1]) || code[at - 1] == '_')) || !StartsName(code[at]))
         {
             return null;
         }
-        int colon = at;
-        while (colon < code.Length && (char.IsLetterOrDigit(code[colon]) || code[colon] == '_'))
-        {
-            colon++;
-        }
-        if (colon + 1 >= code.Length || code[colon] != ':' || !char.IsUpper(code[colon + 1]) || code[at..colon] is "x" or "global")
+        int colon = NameEnd(code, at);
+        if (colon + 1 >= code.Length || code[colon] != ':' || !char.IsAsciiLetterUpper(code[colon + 1]) || code[at..colon] is "x" or "global")
         {
             return null;
         }
-        int end = colon + 1;
-        while (end < code.Length && (char.IsLetterOrDigit(code[end]) || code[end] == '_'))
+        return NameEnd(code, colon + 1) - at;
+    }
+
+    /// <summary>Whether a name in the generator's patterns starts with a character: an ASCII letter or '_'.</summary>
+    private static bool StartsName(char c) => char.IsAsciiLetter(c) || c == '_';
+
+    /// <summary>Whether a character carries a name in the generator's patterns on: one .NET's regular expressions read as a
+    /// word's (<c>\w</c>), a letter, a non-spacing mark, a decimal digit or connector punctuation.</summary>
+    private static bool Word(char c) => CharUnicodeInfo.GetUnicodeCategory(c) is UnicodeCategory.UppercaseLetter or UnicodeCategory.LowercaseLetter
+        or UnicodeCategory.TitlecaseLetter or UnicodeCategory.ModifierLetter or UnicodeCategory.OtherLetter or UnicodeCategory.NonSpacingMark
+        or UnicodeCategory.DecimalDigitNumber or UnicodeCategory.ConnectorPunctuation;
+
+    /// <summary>Where the name whose first character stands at a place ends, its <see cref="Word"/> characters read on.</summary>
+    private static int NameEnd(string text, int at)
+    {
+        int end = at + 1;
+        while (end < text.Length && Word(text[end]))
         {
             end++;
         }
-        return end - at;
+        return end;
     }
 
     /// <summary>Each prefixed type's name a map names written as the map names it in C#.</summary>
@@ -190,19 +239,17 @@ public sealed class MauiExpressionCode
         return made.Ended(text.Length);
     }
 
-    /// <summary>An attached property read from an element starting at a place: where its type's name starts, the dot
-    /// before the property's, and its parentheses; null for none.</summary>
+    /// <summary>An attached property read from an element starting at a place, not after a <see cref="Word"/> character or a
+    /// dot: where its type's name starts, the dot before the property's, and its parentheses; null for none. Its names are
+    /// read as the generator's pattern reads them (<see cref="PrefixedAt"/>), and the property's as a name of letters, digits
+    /// and '_' alone, as the generator splits one off.</summary>
     private static (int Type, int Dot, int Open, int Close)? AttachedAt(string text, int at)
     {
-        if ((at > 0 && (char.IsLetterOrDigit(text[at - 1]) || text[at - 1] is '_' or '.')) || !(char.IsLetter(text[at]) || text[at] == '_'))
+        if ((at > 0 && (Word(text[at - 1]) || text[at - 1] == '.')) || !StartsName(text[at]))
         {
             return null;
         }
-        int end = at;
-        while (end < text.Length && (char.IsLetterOrDigit(text[end]) || text[end] == '_'))
-        {
-            end++;
-        }
+        int end = NameEnd(text, at);
         if (end + 2 >= text.Length || text[end] != '.' || text[end + 1] != '(')
         {
             return null;
@@ -213,18 +260,19 @@ public sealed class MauiExpressionCode
         int dot = -1;
         while (true)
         {
-            int name = i;
-            while (i < text.Length && (char.IsLetterOrDigit(text[i]) || text[i] == '_'))
+            if (i >= text.Length || !StartsName(text[i]))
             {
-                i++;
+                return null;
             }
-            if (i == name || i >= text.Length)
+            int name = i;
+            i = NameEnd(text, i);
+            if (i >= text.Length)
             {
                 return null;
             }
             if (text[i] == ')')
             {
-                return dot > 0 ? (type, dot, open, i) : null;
+                return dot > 0 && Plain(text.AsSpan(name, i - name)) ? (type, dot, open, i) : null;
             }
             if (text[i] != '.')
             {
@@ -233,6 +281,19 @@ public sealed class MauiExpressionCode
             dot = i;
             i++;
         }
+    }
+
+    /// <summary>Whether a name is of letters, digits and '_' alone.</summary>
+    private static bool Plain(ReadOnlySpan<char> name)
+    {
+        foreach (char c in name)
+        {
+            if (!char.IsLetterOrDigit(c) && c != '_')
+            {
+                return false;
+            }
+        }
+        return true;
     }
 
     /// <summary>Which characters of a code are a string's or a character's text, not code: an interpolation's holes are code.</summary>
