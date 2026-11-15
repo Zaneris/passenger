@@ -88,7 +88,7 @@ public sealed class MoveTypeToFileTests : IClassFixture<RestoredFolders>, IDispo
         window.OpenFile(shapes);
         window.EditorArea.CodeEditor.Focus();
         Ui.Run(window, EditorActions.Undo);
-        Assert.Equal([("Undo", $"Undo {command}? It changes Shapes.cs and Circle.cs.")], asked);
+        Assert.Equal([("Undo", $"Undo {command}? It changes Shapes.cs, and deletes Circle.cs.")], asked);
         Assert.False(File.Exists(circle), "Undo left Circle.cs");
         Assert.Equal(Shapes, shapesOpen.Text.Snapshot.ToString());
         Assert.False(window.ExplorerView.Tree.Rows.Any(r => r.Path == circle), "Undo deleted Circle.cs, but the Explorer still shows its row");

@@ -179,7 +179,7 @@ public sealed class RefactoringDialogsTests
 
         window.EditorArea.CodeEditor.Focus();
         Ui.Run(window, EditorActions.Undo);
-        Assert.Equal([("Undo", "Undo Extract Interface? It changes Order.cs and IOrder.cs.")], asked);
+        Assert.Equal([("Undo", "Undo Extract Interface? It changes Order.cs, and deletes IOrder.cs.")], asked);
         Assert.False(File.Exists(extracted), "Undo left IOrder.cs");
         Assert.Equal(Order, window.EditorArea.Active?.Text.Snapshot.ToString());
     }
@@ -206,7 +206,7 @@ public sealed class RefactoringDialogsTests
 
         window.EditorArea.CodeEditor.Focus();
         Ui.Run(window, EditorActions.Undo);
-        Assert.Equal([("Undo", "Undo Move to Another File? It changes Shapes.cs and Circle.cs.")], asked);
+        Assert.Equal([("Undo", "Undo Move to Another File? It changes Shapes.cs, and deletes Circle.cs.")], asked);
         Assert.False(File.Exists(moved), "Undo left Circle.cs");
         Assert.Equal(Shapes, window.EditorArea.Active?.Text.Snapshot.ToString());
     }

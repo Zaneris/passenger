@@ -104,7 +104,7 @@ public sealed class TypeRenameTests : IClassFixture<RestoredFolders>, IDisposabl
         Assert.Equal(Order.Replace("Order", "Purchase", StringComparison.Ordinal), document.Text.Snapshot.ToString());
 
         Ui.Run(window, EditorActions.Undo);
-        Assert.Equal([("Undo", "Undo Rename Order to Purchase? It changes Purchase.cs and Till.cs.")], asked);
+        Assert.Equal([("Undo", "Undo Rename Order to Purchase? It changes Purchase.cs and Till.cs, and renames Purchase.cs back to Order.cs.")], asked);
         Assert.True(File.Exists(OrderPath), $"Undo did not rename Purchase.cs back: {window.Status}");
         Assert.False(File.Exists(PurchasePath), "Undo left Purchase.cs");
         Assert.Equal(OrderPath, document.Path);
@@ -117,7 +117,7 @@ public sealed class TypeRenameTests : IClassFixture<RestoredFolders>, IDisposabl
         Assert.Equal(string.Empty, Git("status", "--porcelain"));
 
         Ui.Run(window, EditorActions.Redo);
-        Assert.Equal(("Redo", "Redo Rename Order to Purchase? It changes Order.cs and Till.cs."), asked[^1]);
+        Assert.Equal(("Redo", "Redo Rename Order to Purchase? It changes Order.cs and Till.cs, and renames Order.cs to Purchase.cs."), asked[^1]);
         Assert.True(File.Exists(PurchasePath), $"Redo did not rename Order.cs again: {window.Status}");
         Assert.Equal(PurchasePath, document.Path);
         Assert.Equal(Order.Replace("Order", "Purchase", StringComparison.Ordinal), document.Text.Snapshot.ToString());
@@ -206,10 +206,10 @@ public sealed class TypeRenameTests : IClassFixture<RestoredFolders>, IDisposabl
     }
 
     /// <summary>Rename on a file in the Solution view offers to rename the class it is named after, which renames it and its
-    /// uses, every row but the file's own staying the row it was, and Undo there takes both back, asked first; a form's
-    /// files nested under it go along; and a file holding types
-    /// of other names keeps its name when one of them is renamed, is renamed alone in the Solution view, and named back by
-    /// Undo there.</summary>
+    /// uses, every row but the file's own staying the row it was, and Undo there takes both back, asked first in words that
+    /// name the file's name going back too; a form's files nested under it go along; and a file holding types of other
+    /// names keeps its name when one of them is renamed, is renamed alone in the Solution view, and named back by Undo
+    /// there.</summary>
     [AvaloniaFact]
     public void Renaming_a_file_in_the_solution_view_offers_to_rename_its_class_takes_a_forms_nested_files_and_renames_a_file_of_other_types_alone()
     {
@@ -238,7 +238,7 @@ public sealed class TypeRenameTests : IClassFixture<RestoredFolders>, IDisposabl
 
         Choose(window, PurchasePath);
         Ui.Run(window, EditorActions.Undo);
-        Assert.Equal([("Undo", "Undo Rename Order to Purchase? It changes Till.cs and Purchase.cs.")], asked);
+        Assert.Equal([("Undo", "Undo Rename Order to Purchase? It changes Till.cs and Purchase.cs, and renames Purchase.cs back to Order.cs.")], asked);
         Assert.True(File.Exists(OrderPath), $"Undo did not rename Purchase.cs back: {window.Status}");
         Assert.False(File.Exists(PurchasePath), "Undo left Purchase.cs");
         Assert.Equal(Order, File.ReadAllText(OrderPath));
@@ -278,7 +278,7 @@ public sealed class TypeRenameTests : IClassFixture<RestoredFolders>, IDisposabl
         asked.Clear();
         Choose(window, figures);
         Ui.Run(window, EditorActions.Undo);
-        Assert.Equal([("Undo", "Undo Rename Shapes.cs to Figures.cs? It changes Figures.cs.")], asked);
+        Assert.Equal([("Undo", "Undo Rename Shapes.cs to Figures.cs? It renames Figures.cs back to Shapes.cs.")], asked);
         Assert.True(File.Exists(shapes), $"Undo did not name Figures.cs back: {window.Status}");
         Assert.Equal("Shapes.cs", window.EditorArea.Active?.Name);
         window.Close();
@@ -668,7 +668,7 @@ public sealed class TypeRenameTests : IClassFixture<RestoredFolders>, IDisposabl
 
         window.EditorArea.CodeEditor.Focus();
         Ui.Run(window, EditorActions.Undo);
-        Assert.Equal([("Undo", "Undo Fix name violation: Shelf? It changes Shelf.cs and Stock.cs.")], asked);
+        Assert.Equal([("Undo", "Undo Fix name violation: Shelf? It changes Shelf.cs and Stock.cs, and renames Shelf.cs back to shelf.cs.")], asked);
         Assert.Contains("shelf.cs", Names());
         Assert.DoesNotContain("Shelf.cs", Names());
         Assert.Equal(lower, document.Path);

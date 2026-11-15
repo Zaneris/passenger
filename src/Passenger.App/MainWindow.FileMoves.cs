@@ -525,11 +525,11 @@ public partial class MainWindow
             return;
         }
         // Named as they are now: after the command's moves for an undo, before them for a redo.
-        IEnumerable<string> files = command.Texts.Select(t => t.Document?.Path ?? (redo ? t.Path : command.Moved(t.Path)))
-            .Concat(command.Moves.Select(m => redo ? m.From : m.To))
-            .Concat(command.Created.Select(c => c.Path))
-            .Concat(command.Deleted.Select(d => d.Path));
-        if (!await Confirm(verb, $"{verb} {command.Name}? It changes {Plural.Listed([.. files.Select(Path.GetFileName).OfType<string>().Distinct(), .. command.Parts.Select(p => p.Name)])}.", verb))
+        string question = UndoQuestion.Of(command.Name, redo, [.. command.Texts.Select(t => t.Document?.Path ?? (redo ? t.Path : command.Moved(t.Path)))],
+            [.. command.Moves.Select(m => redo ? (m.From, m.To) : (m.To, m.From))],
+            [.. (redo ? command.Created.Select(c => c.Path) : command.Deleted.Select(d => d.Path))],
+            [.. (redo ? command.Deleted.Select(d => d.Path) : command.Created.Select(c => c.Path))], [.. command.Parts.Select(p => p.Name)]);
+        if (!await Confirm(verb, question, verb))
         {
             return;
         }

@@ -456,7 +456,7 @@ public sealed class XamlEditingTests : IClassFixture<XamlEditingTests.AvaloniaGa
         Ui.WaitFor(() => document.Markers.Count == 0, "the converter, its class read, resolved and the window marked with nothing");
         Ui.Run(window, EditorActions.Undo);
         Ui.Settle();
-        Assert.Equal([$"Undo Create converter 'ShoutConverter'? It changes {MainFile(dialect)} and ShoutConverter.cs."], asked);
+        Assert.Equal([$"Undo Create converter 'ShoutConverter'? It changes {MainFile(dialect)}, and deletes ShoutConverter.cs."], asked);
         Assert.False(File.Exists(converter), "Undo left the converter's file it made");
         Assert.DoesNotContain("ShoutConverter x:Key", editor.Document.Snapshot.ToString(), StringComparison.Ordinal);
 
