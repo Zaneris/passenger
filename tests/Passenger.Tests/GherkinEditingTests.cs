@@ -1,3 +1,4 @@
+using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Passenger.App;
 using Passenger.App.ToolWindows;
@@ -11,7 +12,8 @@ namespace Passenger.Tests;
 /// <summary>A .feature file is Gherkin's: coloured by its grammar (keywords, tags, comments, its tables as data) and by
 /// Gherkin's reading of it (descriptions, placeholders, an examples table's header),
 /// folded by Gherkin's own reading of it (the feature, each scenario, its examples and doc strings), outlined in Structure
-/// and commented with a <c>#</c>, all with no project or language server.</summary>
+/// and commented with a <c>#</c>, laid out by Reformat Code and its tables aligned as a bar is typed, all with no project
+/// or language server.</summary>
 public sealed class GherkinEditingTests : FileColoursFolder
 {
     private const string Feature =
@@ -74,6 +76,29 @@ public sealed class GherkinEditingTests : FileColoursFolder
         editor.Selections = SelectionSet.Single(Feature.IndexOf("When the", StringComparison.Ordinal));
         Ui.Run(window, EditorActions.ToggleLineComment);
         Assert.Contains("    # When the two numbers are added\n", editor.Document.Snapshot.ToString(), StringComparison.Ordinal);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Reformat_code_lays_out_a_feature_and_a_bar_typed_in_a_row_aligns_its_table()
+    {
+        MainWindow window = Window();
+        CodeEditor editor = Open(window, "Layout.feature", "Feature: F\n\n  Scenario: S\nGiven the users\n|name|age|\n| Ann | 7 |\n    And   more\n");
+        editor.Focus();
+        Ui.Run(window, AppActions.Reformat);
+        Ui.WaitFor(() => editor.Document.Snapshot.ToString() == "Feature: F\n\nScenario: S\n  Given the users\n    | name | age |\n    | Ann  |   7 |\n  And more\n",
+            () => $"the feature laid out: {editor.Document.Snapshot}");
+
+        Ui.PlaceAfter(editor, "| Ann  |   7 |");
+        Ui.Press(window, "ENTER");
+        window.KeyTextInput("|Bartholomew");
+        window.KeyTextInput("|");
+        Ui.WaitFor(() => editor.Document.Snapshot.ToString().Contains("    | name        | age |\n    | Ann         |   7 |\n    | Bartholomew |", StringComparison.Ordinal),
+            () => $"the table aligned as the bar was typed: {editor.Document.Snapshot}");
+        window.KeyTextInput("42");
+        window.KeyTextInput("|");
+        Ui.WaitFor(() => editor.Document.Snapshot.ToString().Contains("    | Bartholomew |  42 |\n", StringComparison.Ordinal),
+            () => $"the row's number aligned as its bar was typed: {editor.Document.Snapshot}");
         window.Close();
     }
 }
