@@ -141,7 +141,7 @@ public static class DotnetInstall
                 if (done / Megabyte != said)
                 {
                     said = done / Megabyte;
-                    stage(string.Create(CultureInfo.InvariantCulture, $"Downloading the .NET SDK {sdk.Version}: {said} MB{(length is > 0 ? $" of {length.Value / Megabyte} MB" : string.Empty)}"));
+                    stage($"Downloading the .NET SDK {sdk.Version}: {Sizes.Said(done)}{(length is > 0 ? $" of {Sizes.Said(length.Value)}" : string.Empty)}");
                 }
             }
         }
@@ -152,6 +152,7 @@ public static class DotnetInstall
         return Convert.ToHexStringLower(sha512.GetHashAndReset());
     }
 
+    /// <summary>How far a download goes between the stages that say it.</summary>
     private const long Megabyte = 1024 * 1024;
 
     /// <summary>A step of a download, given up when no byte comes for <see cref="Stall"/>.</summary>

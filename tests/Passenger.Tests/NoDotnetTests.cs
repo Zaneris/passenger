@@ -589,7 +589,7 @@ public sealed class NoDotnetTests : IAsyncDisposable
     /// error and the holder).</summary>
     private static string Told(IEnumerable<string> stages, MainWindow window)
     {
-        IEnumerable<string> said = stages.Distinct().Where(s => !(s.StartsWith("Downloading the .NET SDK ", StringComparison.Ordinal) && s.EndsWith(" MB", StringComparison.Ordinal)));
+        IEnumerable<string> said = stages.Distinct().Where(s => !(s.StartsWith("Downloading the .NET SDK ", StringComparison.Ordinal) && s.Contains(": ", StringComparison.Ordinal)));
         IEnumerable<string> logged = Ui.IdeLog().Split('\n').Where(l => l.Contains("Install .NET SDK", StringComparison.Ordinal));
         return $"it said {string.Join(" | ", said)}; the window says {window.Status}; the IDE's log says:\n{string.Join('\n', logged)}";
     }
