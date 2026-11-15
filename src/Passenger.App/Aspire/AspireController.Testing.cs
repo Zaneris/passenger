@@ -45,7 +45,7 @@ public sealed partial class AspireController
             }
             Dictionary<string, string> environment = new(execution.Environment, StringComparer.Ordinal)
             {
-                [AspireVariables.DebugSessionRunMode] = debug ? "Debug" : "NoDebug",
+                [AspireVariables.DebugSessionRunMode] = debug ? AspireRunModes.Debug : AspireRunModes.NoDebug,
             };
             Changed?.Invoke(this, EventArgs.Empty);
             return new AspireTestRun(this, app, environment);

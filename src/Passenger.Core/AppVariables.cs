@@ -161,7 +161,7 @@ public static class AspireVariables
     /// <summary>The protocol versions and launch types the IDE's server takes, as JSON.</summary>
     public const string DebugSessionInfo = "DEBUG_SESSION_INFO";
 
-    /// <summary>Debug or NoDebug: how the IDE runs the AppHost's projects.</summary>
+    /// <summary>How the IDE runs the AppHost's projects, one of <see cref="AspireRunModes"/>.</summary>
     public const string DebugSessionRunMode = "DEBUG_SESSION_RUN_MODE";
 
     /// <summary>The Unix socket an AppHost run as Aspire's CLI runs it listens on for the CLI's backchannel, over which it
@@ -170,4 +170,13 @@ public static class AspireVariables
 
     /// <summary>"false" keeps an AppHost from asking anything of a person.</summary>
     public const string InteractivityEnabled = "ASPIRE_INTERACTIVITY_ENABLED";
+}
+
+/// <summary>The modes of the IDE execution protocol, named once: how the IDE runs an AppHost's projects
+/// (<see cref="AspireVariables.DebugSessionRunMode"/>), and how an AppHost asks one of them started.</summary>
+[IdentifierHome]
+public static class AspireRunModes
+{
+    public const string Debug = "Debug";
+    public const string NoDebug = "NoDebug";
 }

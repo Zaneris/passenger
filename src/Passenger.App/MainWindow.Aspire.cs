@@ -266,7 +266,7 @@ public partial class MainWindow
                 }
                 model.SetAppHostConsole(model.SelectedApp is { } selected ? next.Aspire.FindApp(selected.AppHostPath)?.Console ?? next.Aspire.LastAppConsole : next.Aspire.LastAppConsole);
                 model.SetApps(next.Aspire.Apps.Select(app => new AspireApp(app.Configuration.Project,
-                    app.ProcessId ?? app.Runner.ProcessId ?? 0, app.IsTest ? "Testing" : app.Interactions is null ? "Starting" : "Running")).Concat(external));
+                    app.ProcessId ?? app.Runner.ProcessId ?? 0, app.IsTest ? "Testing" : app.Interactions is null ? AspireStates.Starting : AspireStates.Running)).Concat(external));
                 UpdateDisplay();
                 if (connected || previous != model.SelectedApp)
                 {

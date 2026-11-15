@@ -1,5 +1,6 @@
 using System.Collections.Immutable;
 using System.Text.Json.Serialization;
+using Passenger.Core;
 
 namespace Passenger.App.Aspire;
 
@@ -8,7 +9,7 @@ public sealed record AspireProjectLaunch(
     string DcpInstanceId,
     string SessionId,
     string ProjectPath,
-    string Mode,
+    [IdentifierOf(typeof(AspireRunModes))][property: IdentifierOf(typeof(AspireRunModes))] string Mode,
     string? LaunchProfile,
     bool DisableLaunchProfile,
     ImmutableArray<AspireEnvironmentVariable> Environment,
@@ -32,7 +33,7 @@ internal sealed record AspireRunSessionRequest(
 internal sealed record AspireProjectConfiguration(
     [property: JsonPropertyName("type")] string? Type,
     [property: JsonPropertyName("project_path")] string? ProjectPath,
-    [property: JsonPropertyName("mode")] string? Mode,
+    [property: JsonPropertyName("mode"), IdentifierOf(typeof(AspireRunModes))] string? Mode,
     [property: JsonPropertyName("launch_profile")] string? LaunchProfile,
     [property: JsonPropertyName("disable_launch_profile")] bool DisableLaunchProfile);
 

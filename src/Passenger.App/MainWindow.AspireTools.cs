@@ -243,7 +243,7 @@ public partial class MainWindow
             return null;
         }
         if (action is "run" or "debug" && previous is null && StartOf(fresh.Resource) is null
-            && fresh.Resource.State is not ("Finished" or "Exited" or "FailedToStart"))
+            && !AspireStates.IsStopped(fresh.Resource.State))
         {
             // Stopped a moment ago: its AppHost offers Start only once its stream has the stop, which can come late.
             try

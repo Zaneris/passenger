@@ -58,7 +58,7 @@ public sealed class AspireDetailsPane(Action<Uri> browse, Action<string> open, A
         {
             about.Add(("Why", Words(AspireAppRun.NotStartedWhy, brush: TokenKeys.TextMuted)));
         }
-        else if (resource.State == Waiting && WaitingFor(own, others) is { Length: > 0 } waiting)
+        else if (resource.State == AspireStates.Waiting && WaitingFor(own, others) is { Length: > 0 } waiting)
         {
             about.Add(("Why", Words($"Waiting for {waiting}", brush: TokenKeys.TextMuted)));
         }
@@ -124,9 +124,6 @@ public sealed class AspireDetailsPane(Action<Uri> browse, Action<string> open, A
         }
     }
 
-    /// <summary>Aspire's state of a resource held until what it waits for is ready.</summary>
-    private const string Waiting = "Waiting";
-
     /// <summary>The AppHost's kinds of relationship a resource has to another: it waits for it, references it, or is its child.</summary>
     private const string WaitFor = "WaitFor";
     private const string Reference = "Reference";
@@ -146,7 +143,7 @@ public sealed class AspireDetailsPane(Action<Uri> browse, Action<string> open, A
     private static string WaitingFor(IReadOnlyList<(string Name, string Type)> own, IReadOnlyList<AspireResource> others)
     {
         List<(string Name, AspireResource? Resource)> waited = [.. own.Where(r => r.Type == WaitFor).Select(r => (r.Name, others.FirstOrDefault(o => o.IsNamed(r.Name))))];
-        List<string> unready = [.. waited.Where(w => w.Resource is not { State: "Running", HealthStatus: null or "Healthy" })
+        List<string> unready = [.. waited.Where(w => w.Resource is not { State: AspireStates.Running, HealthStatus: null or "Healthy" })
             .Select(w => w.Resource?.State is { } state ? $"{w.Name} ({state.ToLowerInvariant()})" : w.Name)];
         return Plural.Listed(unready.Count > 0 ? unready : [.. waited.Select(w => w.Name)]);
     }

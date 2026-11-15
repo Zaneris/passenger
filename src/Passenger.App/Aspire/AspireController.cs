@@ -173,7 +173,7 @@ public sealed partial class AspireController(ProjectSession workspace, string st
         {
             return null;
         }
-        if (selection.Resource.State is not ("Running" or "Starting"))
+        if (selection.Resource.State is not (AspireStates.Running or AspireStates.Starting))
         {
             return null;
         }
@@ -225,7 +225,7 @@ public sealed partial class AspireController(ProjectSession workspace, string st
             app.Choose(unstarted, debugging);
             return;
         }
-        if (selection.Resource.State is not ("NotStarted" or "Exited" or "Finished" or "FailedToStart")
+        if (!AspireStates.IsStopped(selection.Resource.State)
             || selection.Resource.Uid is not { Length: > 0 } uid
             || !app.OwnedResourceIdentities.TryGetValue(uid, out (string Name, string Project, string IdentityKey)? remembered) || remembered is not { } identity
             || identity.Name != selection.Resource.Name || selection.Resource.Source is not { } source
@@ -463,7 +463,7 @@ public sealed partial class AspireController(ProjectSession workspace, string st
                 environment[name] = value;
             }
             environment.Remove(AspireVariables.DebugSessionCertificate);
-            environment[AspireVariables.DebugSessionRunMode] = mode == RunStart.Debug ? "Debug" : "NoDebug";
+            environment[AspireVariables.DebugSessionRunMode] = mode == RunStart.Debug ? AspireRunModes.Debug : AspireRunModes.NoDebug;
             environment["AppHost__FilePath"] = configuration.Project;
             environment[AspireVariables.TelemetryOptOut] = "1";
             chosen = ConfigureResourceService(app, environment);
@@ -1204,7 +1204,7 @@ public sealed partial class AspireController(ProjectSession workspace, string st
         }
         bool marked = app.Configuration.ServiceActions.Values.Contains(ServiceStart.Debug);
         bool debugging = Chosen?.Invoke(app.Configuration.Name, ((IRunService)resource).Name)
-            ?? (marked ? ResourceAction(app.Configuration, resource) == ServiceStart.Debug : request.Mode == "Debug");
+            ?? (marked ? ResourceAction(app.Configuration, resource) == ServiceStart.Debug : request.Mode == AspireRunModes.Debug);
         return debugging ? RunStart.Debug : app.Mode == RunStart.HotReload ? RunStart.HotReload : null;
     }
 
@@ -1825,7 +1825,7 @@ public sealed class AspireAppRun : ServiceRun
     public bool IsLeftUnstarted(AspireResource resource) => UnstartedName(resource) is not null;
 
     /// <summary>The name of the service a resource is that the run left unstarted (<see cref="IsLeftUnstarted"/>), or null.</summary>
-    public string? UnstartedName(AspireResource resource) => resource.State == "FailedToStart" ? unstarted.FirstOrDefault(name =>
+    public string? UnstartedName(AspireResource resource) => resource.State == AspireStates.FailedToStart ? unstarted.FirstOrDefault(name =>
         resource.IsNamed(name)) : null;
 
     /// <summary>A resource's state as Passenger says it everywhere: <see cref="NotStarted"/> for one the run left unstarted,

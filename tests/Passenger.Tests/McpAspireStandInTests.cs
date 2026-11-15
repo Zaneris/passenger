@@ -260,6 +260,25 @@ public sealed class McpAspireStandInTests(StandInAppHost project) : McpRig, ICla
         Assert.Empty(resources.Errors);
     }
 
+    /// <summary>An agent's run of a resource its AppHost cannot start where it is (RuntimeUnhealthy: its container engine is
+    /// not running) fails at once saying so, as the Aspire window's red dot shows it, never waiting out the call's whole wait
+    /// for it to come up and then answering as if it might yet.</summary>
+    [Fact]
+    public async Task An_agents_run_of_a_resource_whose_container_runtime_is_unhealthy_fails_saying_so()
+    {
+        await project.ResetAsync();
+        await using AspireInteractionHost resources = await AspireInteractionHost.StartAsync(project.KeyFile);
+        resources.PushResource(new Passenger.App.Aspire.Protocol.Resource { Name = "cache", DisplayName = "cache", Uid = "cache", ResourceType = "Container", State = "RuntimeUnhealthy" });
+        await project.ServeAsync(resources);
+        await using McpClient client = await Start(["--mcp", project.Folder], languageServer: false);
+        await Running(client, PathNames.Canonical(project.ProjectFile), "cache");
+        CallToolResult ran = await Result(client, McpTools.Run, new() { ["resource"] = "cache", ["waitSeconds"] = 20 });
+        Assert.True(ran.IsError == true && Text(ran).Contains($"cache of {StandInAppHost.Configuration} failed: RuntimeUnhealthy\n", StringComparison.Ordinal),
+            $"run of a cache that cannot start, which the Aspire window shows failed, answered as if it might yet come up: {Text(ran)}");
+        Assert.Equal("Stopped", (await Call(client, McpTools.Stop)).GetString());
+        Assert.Empty(resources.Errors);
+    }
+
     /// <summary>An agent's debug_start of one replica of a service its AppHost runs as two, named by its resource, debugs that
     /// replica: restarted held by its own resource's command, its session attached to its own new program (stopped at a
     /// breakpoint, its process's id a local there), workspace naming that session on its resource alone, and the other

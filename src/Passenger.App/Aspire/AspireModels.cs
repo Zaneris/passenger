@@ -22,6 +22,7 @@ public sealed class AspireResource(JsonElement data)
         .Where(property => property.Name == "resource.uid" && property.Value.ValueKind == JsonValueKind.String)
         .Select(property => property.Value.GetString()).FirstOrDefault();
     public string Generation => $"{Uid}\n{AspireJson.String(Data, "creationTimestamp")}\n{AspireJson.String(Data, "startTimestamp")}";
+    [IdentifierOf(typeof(AspireStates))]
     public string? State => AspireJson.String(Data, "state");
     public string? HealthStatus => AspireJson.String(Data, "healthStatus");
     public string? Source => AspireJson.String(Data, "source");

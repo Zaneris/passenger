@@ -564,7 +564,7 @@ public sealed class AspireView : DockPanel, IDisposable
             return;
         }
         AspireResource resource = selected.Resource;
-        string? none = resource.State is "Running" ? null : Refusals.NotRunning(resource.DisplayName);
+        string? none = resource.State is AspireStates.Running ? null : Refusals.NotRunning(resource.DisplayName);
         Metrics.Show(resource.DisplayName, none is null ? model.ProgramOf?.Invoke(selected) : null, none);
     }
 
@@ -594,15 +594,14 @@ public sealed class AspireView : DockPanel, IDisposable
         };
     }
 
-    /// <summary>A resource's state as the dot says it: Aspire's own style of it first (an error's red), then running (unhealthy
-    /// while a health report fails), starting or stopping between states, the rest stopped.</summary>
-    private static RunState StateOf(AspireResource resource) => (resource.State, AspireJson.String(resource.Data, "stateStyle")) switch
-    {
-        (_, "error") or ("FailedToStart" or "RuntimeUnhealthy", _) => RunState.Failed,
-        ("Running", _) => resource.HealthStatus == "Unhealthy" ? RunState.Unhealthy : RunState.Running,
-        ("Starting" or "Waiting" or "Stopping" or "Building" or "Activating", _) => RunState.Between,
-        _ => RunState.Stopped,
-    };
+    /// <summary>A resource's state as the dot says it: failed first (red), as Aspire's own style of it says or its state does
+    /// (<see cref="AspireStates.IsFailed"/>), then running (unhealthy while a health report fails), between states, the rest
+    /// stopped.</summary>
+    private static RunState StateOf(AspireResource resource) =>
+        AspireJson.String(resource.Data, "stateStyle") == "error" || AspireStates.IsFailed(resource.State) ? RunState.Failed
+        : resource.State == AspireStates.Running ? resource.HealthStatus == "Unhealthy" ? RunState.Unhealthy : RunState.Running
+        : AspireStates.IsBetween(resource.State) ? RunState.Between
+        : RunState.Stopped;
 
     /// <summary>A row's menu: the service actions first (greyed with why on a resource that is no .NET service), then its
     /// commands, then its address, source and container.</summary>

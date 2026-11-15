@@ -130,7 +130,7 @@ public sealed class McpAspireTests : McpRig, IClassFixture<RestoredFolders>
             using System.Net.WebSockets.ClientWebSocket subscribed = notified;
             Assert.False((int)answer is >= 200 and < 300, "The IDE started a service its configuration says not to start");
             backend.PushResource(project.Refused());
-            WaitFor(() => window.Aspire.ResourceSnapshots.Any(resource => resource.Name == "apiservice" && resource.State == "FailedToStart"), "DCP's word of the refused start");
+            WaitFor(() => window.Aspire.ResourceSnapshots.Any(resource => resource.Name == "apiservice" && resource.State == Passenger.App.Aspire.AspireStates.FailedToStart), "DCP's word of the refused start");
             client = Await(Waiting.Apart(() => Start(["--mcp-attach", ProcessId])), "the agent attaching");
             Task<JsonElement> asked = Waiting.Apart(() => Call(client, McpTools.Workspace));
             WaitFor(() => asked.IsCompleted, "the agent's workspace");

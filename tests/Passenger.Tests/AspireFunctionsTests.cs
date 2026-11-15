@@ -125,7 +125,7 @@ public sealed class AspireFunctionsTests : IClassFixture<AspireFunctionsApp>, ID
             Ui.Launched(window, window.DebugAsync(), "the AppHost under the debugger", TimeSpan.FromMinutes(3));
             ShowResources(window);
             Ui.WaitFor(() => window.AspireRuntime.Apps.Any(app => app.Console.Document.Snapshot.ToString().Contains(Refused, StringComparison.Ordinal))
-                && window.Aspire.ResourceSnapshots.Any(resource => resource.DisplayName == Resource && resource.State == "Running"
+                && window.Aspire.ResourceSnapshots.Any(resource => resource.DisplayName == Resource && resource.State == AspireStates.Running
                     && window.AspireRuntime.FindService(new(project.Host, resource)) is AspireResourceRun { ProcessId: > 0, Worker: null }),
                 () => $"the refused attach said and func started again unheld ({window.Status}; {Seen(window)}; {Said(window)})", TimeSpan.FromMinutes(3));
             string said = string.Concat(window.AspireRuntime.Apps.Select(app => app.Console.Document.Snapshot.ToString()));
@@ -177,7 +177,7 @@ public sealed class AspireFunctionsTests : IClassFixture<AspireFunctionsApp>, ID
     private AspireResourceRun Debugged(MainWindow window, AspireResourceRun? before)
     {
         ShowResources(window);
-        Ui.WaitFor(() => window.Aspire.ResourceSnapshots.Any(resource => resource.DisplayName == Resource && resource.State == "Running"
+        Ui.WaitFor(() => window.Aspire.ResourceSnapshots.Any(resource => resource.DisplayName == Resource && resource.State == AspireStates.Running
             && window.AspireRuntime.FindService(new(project.Host, resource)) is AspireResourceRun { ProcessId: > 0, Worker: > 0, DebugTab.IsLive: true } run
             && run.ProcessId != before?.ProcessId),
             () => $"func to start the Functions app's worker under the debugger ({window.Status}; {Seen(window)}; {Said(window)})", TimeSpan.FromMinutes(3));

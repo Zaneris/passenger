@@ -159,7 +159,7 @@ public sealed class AspireTests : IClassFixture<AspireApp>, IDisposable
             File.AppendAllText(Path.Combine(Path.GetDirectoryName(project.Host)!, "AppHost.cs"), "\n// Rerun runs a changed AppHost again.\n");
             Ui.Run(window, AppActions.Rerun);
             Ui.WaitFor(() => window.AspireRuntime.Apps is [{ ProcessId: int again }] && again != hostPid
-                && window.Aspire.ResourceSnapshots.Any(resource => resource.DisplayName == "apiservice" && resource.State == "Running"),
+                && window.Aspire.ResourceSnapshots.Any(resource => resource.DisplayName == "apiservice" && resource.State == AspireStates.Running),
                 "Rerun to run the changed AppHost again", TimeSpan.FromMinutes(3));
             Assert.False(Processes.IsRunning(hostPid), "The AppHost that ran before Rerun still runs");
         }
@@ -607,7 +607,7 @@ public sealed class AspireTests : IClassFixture<AspireApp>, IDisposable
             Ui.WaitFor(() => AppHostSaid(window).Contains("passenger-profile-port: 5000", StringComparison.Ordinal),
                 () => $"the single-file AppHost given its profile's number value, which it said as:\n{Redacted(AppHostSaid(window))}");
             FindAction(window, "Show Aspire Resources");
-            Ui.WaitFor(() => window.Aspire.ResourceSnapshots.Any(resource => resource.DisplayName == "aspire-dashboard" && resource.State == "Running"), "the single-file AppHost's native resource stream");
+            Ui.WaitFor(() => window.Aspire.ResourceSnapshots.Any(resource => resource.DisplayName == "aspire-dashboard" && resource.State == AspireStates.Running), "the single-file AppHost's native resource stream");
             AspireAppRun app = Assert.Single(window.AspireRuntime.Apps);
             int[] owned = OwnedPids(window);
             Assert.True(app.ProcessId is > 0 && owned.Length > 0);
@@ -993,7 +993,7 @@ public sealed class AspireTests : IClassFixture<AspireApp>, IDisposable
     {
         FindAction(window, "Show Aspire Resources");
         Ui.WaitFor(() => new[] { "apiservice", "webfrontend" }.All(name => window.Aspire.ResourceSnapshots.Any(resource =>
-            resource.DisplayName == name && resource.State == "Running"
+            resource.DisplayName == name && resource.State == AspireStates.Running
                 && window.AspireRuntime.FindService(new(project.Host, resource))?.ProcessId is > 0)),
             "the native API and frontend resource stream", TimeSpan.FromMinutes(3));
     }
@@ -1052,7 +1052,7 @@ public sealed class AspireTests : IClassFixture<AspireApp>, IDisposable
     {
         window.ShowToolWindow(ToolWindowIds.Aspire);
         RefreshUntil(window, () => new[] { "apiservice", "webfrontend" }.All(name =>
-            window.Aspire.ResourceSnapshots.Any(resource => resource.DisplayName == name && resource.State == "Running"
+            window.Aspire.ResourceSnapshots.Any(resource => resource.DisplayName == name && resource.State == AspireStates.Running
                 && window.AspireRuntime.FindService(new(project.Host, resource))?.ProcessId is > 0)), "the API and frontend's real DCP-owned processes");
     }
 

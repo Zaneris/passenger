@@ -115,10 +115,10 @@ public sealed partial class PassengerTools
         }
     }
 
-    /// <summary>What an agent's run of a resource answers once the resource is up or has ended, or waitSeconds have passed,
-    /// following its AppHost's resource stream as it goes, in the shape a compose service's run answers
-    /// (<see cref="ResourceAnswer"/>): how it and its AppHost's other resources stand, and its own console. A start that
-    /// failed is an error.</summary>
+    /// <summary>What an agent's run of a resource answers once the resource is up, has ended or failed, or waitSeconds have
+    /// passed, following its AppHost's resource stream as it goes, in the shape a compose service's run answers
+    /// (<see cref="ResourceAnswer"/>): how it and its AppHost's other resources stand, and its own console. A resource that
+    /// failed (<see cref="AspireStates.IsFailed"/>) is an error.</summary>
     private async Task<RunResult> AspireResourceUpAsync(AspireSelection target, int waitSeconds, CancellationToken cancel)
     {
         ProjectSession current = Session;
@@ -129,7 +129,7 @@ public sealed partial class PassengerTools
         try
         {
             resources = await window.FollowAspireAsync(current, app, now => Task.FromResult(now.FirstOrDefault(resource => resource.Name == name) is { } it
-                && (StandingOf(app, it).IsUp || StandingOf(app, it).HasEnded) ? now : null), TimeSpan.FromSeconds(Math.Max(0, waitSeconds)), $"{name} is not up yet", cancel);
+                && StandingOf(app, it) is { IsUp: true } or { HasEnded: true } or { Failed: true } ? now : null), TimeSpan.FromSeconds(Math.Max(0, waitSeconds)), $"{name} is not up yet", cancel);
         }
         catch (TimeoutException)
         {
@@ -148,7 +148,7 @@ public sealed partial class PassengerTools
             [.. resources.Where(shown => !shown.IsHidden)
                 .Select(shown => StandingOf(app, shown))], app.Notes, output, waitSeconds,
             unstarted ? $"{AspireAppRun.NotStarted}. {AspireAppRun.NotStartedWhy}" : null);
-        if (resource?.State == "FailedToStart" && !unstarted)
+        if (AspireStates.IsFailed(resource?.State) && !unstarted)
         {
             throw new InvalidOperationException($"{answer.Status}\n{output}".TrimEnd());
         }
@@ -156,9 +156,16 @@ public sealed partial class PassengerTools
     }
 
     /// <summary>An AppHost's resource as its run's answer says it: its state (Not started where its run left it so), health and
-    /// exit code.</summary>
+    /// exit code, and how it stands as <see cref="AspireStates"/> reads it.</summary>
     private static Standing StandingOf(AspireAppRun app, AspireResource resource) =>
-        new(resource.Name, resource.State, resource.HealthStatus, ExitCode(resource)) { Shown = app.StateOf(resource) };
+        new(resource.Name, resource.State, resource.HealthStatus, ExitCode(resource))
+        {
+            Shown = app.StateOf(resource),
+            Runs = resource.State == AspireStates.Running,
+            IsUp = resource.State == AspireStates.Running && resource.HealthStatus != "Unhealthy",
+            HasEnded = AspireStates.HasEnded(resource.State),
+            Failed = AspireStates.IsFailed(resource.State),
+        };
 
     private static int? ExitCode(AspireResource resource) => AspireJson.Properties(resource.Data, "properties")
         .Where(property => property.Name == "resource.exitCode")
@@ -175,7 +182,7 @@ public sealed partial class PassengerTools
         foreach (AspireAppRun app in current.Aspire.Apps.Where(app => !app.IsTest && !app.Stopping).ToArray())
         {
             IReadOnlyList<AspireResource> resources = [];
-            string state = app.Interactions is null ? "Starting" : "Running";
+            string state = app.Interactions is null ? AspireStates.Starting : AspireStates.Running;
             try
             {
                 resources = app.Interactions is { } connection ? await connection.GetResourcesAsync(cancel) : [];

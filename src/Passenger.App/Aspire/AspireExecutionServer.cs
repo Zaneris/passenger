@@ -457,7 +457,7 @@ public sealed class AspireExecutionServer : IAsyncDisposable
         AspireProjectConfiguration? project = payload.LaunchConfigurations.FirstOrDefault(configuration => configuration?.Type is ProjectLaunch or FunctionsHost.LaunchType);
         if (project is null || string.IsNullOrWhiteSpace(project.ProjectPath) ||
             !Path.IsPathFullyQualified(project.ProjectPath) || project.ProjectPath.Contains('\0') ||
-            project.Mode is not (null or "Debug" or "NoDebug"))
+            project.Mode is not (null or AspireRunModes.Debug or AspireRunModes.NoDebug))
         {
             return null;
         }
@@ -485,7 +485,7 @@ public sealed class AspireExecutionServer : IAsyncDisposable
             }
             arguments = values.ToImmutable();
         }
-        return new(instanceId, sessionId, project.ProjectPath, project.Mode ?? "Debug", project.LaunchProfile,
+        return new(instanceId, sessionId, project.ProjectPath, project.Mode ?? AspireRunModes.Debug, project.LaunchProfile,
             project.DisableLaunchProfile, environment.ToImmutable(), arguments) { Functions = project.Type == FunctionsHost.LaunchType };
     }
 

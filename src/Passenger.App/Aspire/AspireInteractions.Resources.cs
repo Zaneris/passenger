@@ -522,7 +522,7 @@ public sealed partial class AspireInteractions
         {
             throw new InvalidDataException("The AppHost sent an unsupported health status.");
         }
-        string? health = resource.State != "Running" ? null
+        string? health = resource.State != AspireStates.Running ? null
             : resource.HealthReports.Any(report => !report.HasStatus || report.Status == HealthStatus.Unhealthy) ? "Unhealthy"
             : resource.HealthReports.Any(report => report.Status == HealthStatus.Degraded) ? "Degraded" : "Healthy";
         JsonElement data = JsonSerializer.SerializeToElement(new

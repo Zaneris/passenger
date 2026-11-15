@@ -942,7 +942,18 @@ public sealed record ServiceInContainer(ContainerReach Reach, DotnetProcess Prog
 
 /// <summary>A service's container as the engine says it stands: its service, state, health, published ports, the
 /// container's name and its last exit code.</summary>
-public sealed record ServiceState(string Service, string State, string? Health, string Ports, string? Container, int? ExitCode);
+public sealed record ServiceState(string Service, string State, string? Health, string Ports, string? Container, int? ExitCode)
+{
+    /// <summary>Whether its container runs, its health then said beside its state.</summary>
+    public bool Runs => State.Equals("running", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>Running, and neither unhealthy nor still starting its health check where it has one.</summary>
+    public bool IsUp => Runs && !(Health is { } health
+        && (health.Equals("unhealthy", StringComparison.OrdinalIgnoreCase) || health.Equals("starting", StringComparison.OrdinalIgnoreCase)));
+
+    /// <summary>Whether its container runs no more: it exited, or is dead.</summary>
+    public bool HasEnded => State.Equals("exited", StringComparison.OrdinalIgnoreCase) || State.Equals("dead", StringComparison.OrdinalIgnoreCase);
+}
 
 /// <summary>A container configuration running, a run of services (<see cref="ServiceRun"/>) whose services run in containers:
 /// its plan, Compose's watch of the services that ask for one, and each .NET service's build as it was when started, so
