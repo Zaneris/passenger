@@ -254,6 +254,6 @@ internal sealed class AssistContext(EditorArea editors, Func<CSharpService?> ser
     public static string NameAt(TextSnapshot text, int offset)
     {
         TextRange word = TextNavigation.WordAt(text, Math.Min(offset, text.Length));
-        return word.Length > 0 && TextNavigation.IsWordChar(text[word.Start]) ? text.GetText(word) : string.Empty;
+        return word.Length > 0 && WordCharacters.IsWord(text[word.Start]) ? text.GetText(word) : string.Empty;
     }
 }

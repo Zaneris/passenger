@@ -146,12 +146,13 @@ public static class SelectionCommands
     }
 
     /// <summary>Whether the copy of <paramref name="needle"/> at <paramref name="at"/> is a whole word: no word character
-    /// carries on from its first or its last where that is a word character, so _value and values hold no value.</summary>
+    /// carries on from its first or its last where that is a word character, so _value and values hold no value, and
+    /// no mark or joiner carries on its last, so café holds no cafe (<see cref="WordCharacters"/>).</summary>
     private static bool StandsWhole(TextSnapshot text, int at, string needle)
     {
         int end = at + needle.Length;
-        bool joinedBefore = TextNavigation.IsWordChar(needle[0]) && at > 0 && TextNavigation.IsWordChar(text[at - 1]);
-        bool joinedAfter = TextNavigation.IsWordChar(needle[^1]) && end < text.Length && TextNavigation.IsWordChar(text[end]);
+        bool joinedBefore = at > 0 && WordCharacters.IsWordAt(text, at) && WordCharacters.IsWordAt(text, at - 1);
+        bool joinedAfter = end < text.Length && (WordCharacters.Extends(text[end]) || (WordCharacters.IsWordAt(text, end - 1) && WordCharacters.IsWord(text[end])));
         return !joinedBefore && !joinedAfter;
     }
 

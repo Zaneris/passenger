@@ -333,17 +333,17 @@ public sealed partial class Vim
     {
         LineSpan line = VimMotions.LineOf(text, caret);
         int start = caret;
-        while (start < line.End && !TextNavigation.IsWordChar(text[start]))
+        while (start < line.End && !WordCharacters.IsWordAt(text, start))
         {
             start++;
         }
-        Func<char, bool> taken = TextNavigation.IsWordChar;
+        Func<int, bool> taken = at => WordCharacters.IsWordAt(text, at);
         if (start >= line.End)
         {
-            taken = c => !TextNavigation.IsWordChar(c) && c is not (' ' or '\t');
+            taken = at => !WordCharacters.IsWordAt(text, at) && text[WordCharacters.Base(text, at)] is not (' ' or '\t');
             whole = false;
             start = caret;
-            while (start < line.End && !taken(text[start]))
+            while (start < line.End && !taken(start))
             {
                 start++;
             }
@@ -353,12 +353,12 @@ public sealed partial class Vim
                 return null;
             }
         }
-        while (start > line.Start && taken(text[start - 1]))
+        while (start > line.Start && taken(start - 1))
         {
             start--;
         }
         int end = start;
-        while (end < line.End && taken(text[end]))
+        while (end < line.End && taken(end))
         {
             end++;
         }

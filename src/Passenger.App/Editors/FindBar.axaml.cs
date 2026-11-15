@@ -172,7 +172,7 @@ public partial class FindBar : UserControl
         else if (primary.IsEmpty)
         {
             TextRange word = TextNavigation.WordAt(text, primary.Caret);
-            if (word.Length > 0 && TextNavigation.IsWordChar(text[word.Start]))
+            if (word.Length > 0 && WordCharacters.IsWord(text[word.Start]))
             {
                 seed = text.GetText(word);
             }

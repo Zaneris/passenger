@@ -442,7 +442,7 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
         TextSnapshot text = Editor.Document.Snapshot;
         int caret = Editor.Selections.Primary.Caret;
         TextRange word = RenamedAt(document, text, caret);
-        if (word.Length == 0 || !(TextNavigation.IsWordChar(text[word.Start]) || (context.WebCurrent is { } named && WebAssist.IsWebWordChar(named, text[word.Start]))))
+        if (word.Length == 0 || !(WordCharacters.IsWord(text[word.Start]) || (context.WebCurrent is { } named && WebAssist.IsWebWordChar(named, text[word.Start]))))
         {
             return;
         }

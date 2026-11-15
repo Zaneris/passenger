@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.RegularExpressions;
+using Passenger.Text;
 
 namespace Passenger.Editor;
 
@@ -127,10 +128,10 @@ public static class VimPatterns
                     made.Append('?');
                     break;
                 case '<':
-                    made.Append(@"\b(?=\w)");
+                    made.Append(WordCharacters.NotAfterWord).Append(WordCharacters.BeforeWord);
                     break;
                 case '>':
-                    made.Append(@"\b(?<=\w)");
+                    made.Append(WordCharacters.AfterWord).Append(WordCharacters.NotBeforeWord);
                     break;
                 case '^':
                     // An anchor where a branch begins, else the character itself.
@@ -246,7 +247,7 @@ public static class VimPatterns
         'O' => @"[^0-7\n]",
         'h' => "[A-Za-z_]",
         'H' => @"[^A-Za-z_\n]",
-        'k' or 'i' => @"\w",
+        'k' or 'i' => WordCharacters.Class,
         'K' or 'I' => "[A-Za-z_]",
         _ => null,
     };

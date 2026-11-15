@@ -18,9 +18,19 @@ public readonly record struct VimTarget(int Offset, VimMotionKind Kind);
 /// beep stops the command it was part of.</summary>
 public static class VimMotions
 {
-    /// <summary>A character's kind for word motions: 0 blank or line break, 1 punctuation, 2 a word's; a WORD's every
-    /// non-blank is 2.</summary>
-    public static int Kind(char c, bool bigWord) => char.IsWhiteSpace(c) ? 0 : bigWord || TextNavigation.IsWordChar(c) ? 2 : 1;
+    /// <summary>The kind of the character at an offset for word motions: 0 blank or line break, 1 punctuation, 2 a
+    /// word's (<see cref="WordCharacters"/>), a mark or joiner taking the kind of the character it carries on; a WORD's
+    /// every non-blank is 2.</summary>
+    public static int KindAt(TextSnapshot text, int offset, bool bigWord)
+    {
+        char c = text[offset];
+        c = WordCharacters.Extends(c) ? text[WordCharacters.Base(text, offset)] : c;
+        return char.IsWhiteSpace(c) ? 0 : bigWord || WordCharacters.IsWord(c) ? 2 : 1;
+    }
+
+    /// <summary>Where the character a run of one kind ends with begins: the start of its grapheme, so a word's end lands
+    /// on the letter its marks carry on.</summary>
+    private static int LastOfRun(TextSnapshot text, int last) => StepBack(text, last + 1);
 
     public static LineSpan LineOf(TextSnapshot text, int offset) => text.GetLine(text.GetLineFromOffset(offset));
 
@@ -74,43 +84,23 @@ public static class VimMotions
         return at;
     }
 
-    /// <summary>The cells from its line's start to the offset: a tab reaching its next stop, a wide character two.</summary>
-    public static int ColumnOf(TextSnapshot text, int offset, int tabWidth)
-    {
-        LineSpan line = LineOf(text, offset);
-        int column = 0;
-        for (int p = line.Start; p < offset && p < line.End; p = TextNavigation.NextGrapheme(text, p))
-        {
-            column += CellsAt(text, p, column, tabWidth);
-        }
-        return column;
-    }
-
-    /// <summary>The offset on a line whose cells take in the column, or its last character's where the line is shorter.</summary>
+    /// <summary>The offset on a line whose cells (<see cref="TextNavigation.ColumnAfter(TextSnapshot, int, int, int, int)"/>)
+    /// take in the column, or its last character's where the line is shorter.</summary>
     public static int OffsetAtColumn(TextSnapshot text, int lineNumber, int column, int tabWidth)
     {
         LineSpan line = text.GetLine(lineNumber);
         int at = 0;
-        for (int p = line.Start; p < line.End; p = TextNavigation.NextGrapheme(text, p))
+        for (int p = line.Start; p < line.End;)
         {
-            at += CellsAt(text, p, at, tabWidth);
+            int next = TextNavigation.NextGrapheme(text, p);
+            at = TextNavigation.ColumnAfter(text, p, next, at, tabWidth);
             if (at > column)
             {
                 return p;
             }
+            p = next;
         }
         return SettledOn(text, line, line.End);
-    }
-
-    private static int CellsAt(TextSnapshot text, int offset, int column, int tabWidth)
-    {
-        char c = text[offset];
-        if (c == '\t')
-        {
-            return tabWidth - (column % Math.Max(1, tabWidth));
-        }
-        int rune = char.IsHighSurrogate(c) && offset + 1 < text.Length && char.IsLowSurrogate(text[offset + 1]) ? char.ConvertToUtf32(c, text[offset + 1]) : c;
-        return rune >= 0x1100 && !char.IsSurrogate((char)Math.Min(rune, 0xFFFF)) || rune > 0xFFFF ? (WideCharacters.Contains(rune) ? 2 : 1) : 1;
     }
 
     /// <summary>h, or Backspace crossing into the line before (<paramref name="crossing"/>): fails where it cannot move.</summary>
@@ -199,14 +189,14 @@ public static class VimMotions
             // An empty line is a word whose end is its line break: an operator's last step from one stops past it.
             return LineOf(text, p).EndIncludingBreak;
         }
-        if (p < n && Kind(text[p], bigWord) is var kind and not 0)
+        if (p < n && KindAt(text, p, bigWord) is var kind and not 0)
         {
-            while (p < n && Kind(text[p], bigWord) == kind)
+            while (p < n && KindAt(text, p, bigWord) == kind)
             {
                 p++;
             }
         }
-        while (p < n && Kind(text[p], bigWord) == 0)
+        while (p < n && KindAt(text, p, bigWord) == 0)
         {
             if (stopAtLineEnd && text[p] is '\r' or '\n' && p > offset)
             {
@@ -232,8 +222,8 @@ public static class VimMotions
     private static int NextWordEnd(TextSnapshot text, int offset, bool bigWord, bool breakEnds)
     {
         int n = text.Length;
-        int p = offset + 1;
-        while (p < n && Kind(text[p], bigWord) == 0)
+        int p = TextNavigation.NextGrapheme(text, offset);
+        while (p < n && KindAt(text, p, bigWord) == 0)
         {
             p++;
         }
@@ -242,12 +232,12 @@ public static class VimMotions
             // No word after: the text's last place, where that is further on.
             return Math.Max(offset, Settled(text, n, breakEnds));
         }
-        int kind = Kind(text[p], bigWord);
-        while (p + 1 < n && Kind(text[p + 1], bigWord) == kind)
+        int kind = KindAt(text, p, bigWord);
+        while (p + 1 < n && KindAt(text, p + 1, bigWord) == kind)
         {
             p++;
         }
-        return p;
+        return LastOfRun(text, p);
     }
 
     /// <summary>b and B: the start of this word if the caret is past it, else of the one before; an empty line stops it.</summary>
@@ -264,7 +254,7 @@ public static class VimMotions
             return 0;
         }
         int p = offset - 1;
-        while (p > 0 && Kind(text[p], bigWord) == 0)
+        while (p > 0 && KindAt(text, p, bigWord) == 0)
         {
             if (EmptyLineAt(text, p))
             {
@@ -272,8 +262,8 @@ public static class VimMotions
             }
             p--;
         }
-        int kind = Kind(text[p], bigWord);
-        while (p > 0 && kind != 0 && Kind(text[p - 1], bigWord) == kind)
+        int kind = KindAt(text, p, bigWord);
+        while (p > 0 && kind != 0 && KindAt(text, p - 1, bigWord) == kind)
         {
             p--;
         }
@@ -307,10 +297,10 @@ public static class VimMotions
             return 0;
         }
         int p = offset;
-        int kind = p < text.Length ? Kind(text[p], bigWord) : 0;
+        int kind = p < text.Length ? KindAt(text, p, bigWord) : 0;
         if (kind != 0)
         {
-            while (p > 0 && Kind(text[p - 1], bigWord) == kind)
+            while (p > 0 && KindAt(text, p - 1, bigWord) == kind)
             {
                 p--;
             }
@@ -322,9 +312,9 @@ public static class VimMotions
             {
                 return p;
             }
-            if (Kind(text[p], bigWord) != 0)
+            if (KindAt(text, p, bigWord) != 0)
             {
-                return p;
+                return LastOfRun(text, p);
             }
         }
         return 0;
@@ -332,8 +322,15 @@ public static class VimMotions
 
     /// <summary>Whether a word ends at the offset: a non-blank whose next character is of another kind, or an empty line.</summary>
     private static bool WordEndsAt(TextSnapshot text, int offset, bool bigWord) =>
-        EmptyLineAt(text, offset) || (offset < text.Length && Kind(text[offset], bigWord) != 0
-            && (offset + 1 >= text.Length || Kind(text[offset + 1], bigWord) != Kind(text[offset], bigWord)));
+        EmptyLineAt(text, offset) || (offset < text.Length && KindAt(text, offset, bigWord) != 0 && EndsRun(text, offset, bigWord));
+
+    /// <summary>Whether the character at an offset is its run's last: the character after its grapheme is of another
+    /// kind, or the text ends.</summary>
+    public static bool EndsRun(TextSnapshot text, int offset, bool bigWord)
+    {
+        int next = TextNavigation.NextGrapheme(text, offset);
+        return next >= text.Length || KindAt(text, next, bigWord) != KindAt(text, offset, bigWord);
+    }
 
     private static bool EmptyLineAt(TextSnapshot text, int offset)
     {

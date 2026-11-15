@@ -438,7 +438,7 @@ internal sealed partial class CodeActions
         }
         TextSnapshot text = Editor.Document.Snapshot;
         TextRange word = TextNavigation.WordAt(text, Editor.Selections.Primary.Caret);
-        if (word.Length == 0 || !TextNavigation.IsWordChar(text[word.Start]))
+        if (word.Length == 0 || !WordCharacters.IsWord(text[word.Start]))
         {
             return;
         }

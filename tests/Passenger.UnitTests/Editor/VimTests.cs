@@ -60,6 +60,53 @@ public class VimTests
     public void Word_motions_stop_as_vims_do(string before, string keys, string after) =>
         Assert.Equal(after, Run(before, keys));
 
+    /// <summary>An é written as e and a combining acute.</summary>
+    private const string Cafe = "cafe\u0301";
+
+    /// <summary>Hindi's namaste, two of its letters carrying a nonspacing mark (U+094D, U+0947).</summary>
+    private const string Namaste = "नमस्ते";
+
+    /// <summary>Hindi's namaskar, its ा a spacing mark (U+093E).</summary>
+    private const string Namaskar = "नमस्कार";
+
+    /// <summary>A heart and the selector asking for its emoji look, a nonspacing mark that is no letter's.</summary>
+    private const string Heart = "\u2764\uFE0F";
+
+    /// <summary>A letter's marks go with it: words, word objects and * take them whole, an end lands on the letter they
+    /// mark, and a mark on an emoji keeps it out of the word beside it, as Vim 9.1's do.</summary>
+    [Theory]
+    [InlineData($"|{Cafe} x", "w", $"{Cafe} |x")]
+    [InlineData($"|{Cafe} x", "e", "caf|e\u0301 x")]
+    [InlineData($"{Cafe} |x", "b", $"|{Cafe} x")]
+    [InlineData($"{Cafe} |x", "ge", "caf|e\u0301 x")]
+    [InlineData($"|{Cafe}", "e", "caf|e\u0301")]
+    [InlineData($"|{Cafe}.b", "w", $"{Cafe}|.b")]
+    [InlineData($"|{Cafe}.b", "e", "caf|e\u0301.b")]
+    [InlineData($"x |{Cafe}y", "E", $"x {Cafe}|y")]
+    [InlineData($"|{Cafe} x", "ve", "«cafe\u0301| x")]
+    [InlineData($"|{Namaste} x", "w", $"{Namaste} |x")]
+    [InlineData($"|{Namaste} x", "e", "नमस्|ते x")]
+    [InlineData($"{Namaste} |x", "b", $"|{Namaste} x")]
+    [InlineData($"{Namaste} |x", "ge", "नमस्|ते x")]
+    [InlineData($"|{Namaskar} x", "e", "नमस्का|र x")]
+    [InlineData($"{Namaskar} |x", "ge", "नमस्का|र x")]
+    [InlineData($"|{Heart}abc x", "w", $"{Heart}|abc x")]
+    [InlineData($"|{Heart}abc x", "e", $"{Heart}ab|c x")]
+    [InlineData($"a {Heart}|abc", "b", $"a |{Heart}abc")]
+    [InlineData($"x {Heart}|abc", "ge", $"x |{Heart}abc")]
+    [InlineData($"|{Cafe} {Cafe}", "cwX<Esc>", $"|X {Cafe}")]
+    [InlineData("ca|fe\u0301 x", "diw", "| x")]
+    [InlineData("ca|fe\u0301 x", "daw", "|x")]
+    [InlineData($"|{Namaste} x {Namaste}", "*", $"{Namaste} x |{Namaste}")]
+    [InlineData($"{Namaste} x |{Namaste}", "#", $"|{Namaste} x {Namaste}")]
+    [InlineData($"|{Namaskar} {Namaskar}", "*", $"{Namaskar} |{Namaskar}")]
+    [InlineData($"|{Cafe} x {Cafe}", "*", $"{Cafe} x |{Cafe}")]
+    [InlineData($"|cafe x {Cafe} cafe", "*", $"cafe x {Cafe} |cafe")]
+    [InlineData($"|{Cafe} x cafe {Cafe}", "*", $"{Cafe} x cafe |{Cafe}")]
+    [InlineData($"|x {Cafe}y {Cafe}", "/\\k\\+y<CR>", $"x |{Cafe}y {Cafe}")]
+    public void Word_motions_objects_and_star_take_a_letters_marks_with_it_as_vims_do(string before, string keys, string after) =>
+        Assert.Equal(after, Run(before, keys));
+
     [Theory]
     [InlineData("a\n  b\nc|", "gg", "|a\n  b\nc")]
     [InlineData("|a\n  b\nc", "G", "a\n  b\n|c")]
@@ -837,7 +884,6 @@ public class VimTests
     [InlineData(@"\vt(w|h)o", "t(w|h)o")]
     [InlineData(@"a+b?", @"a\+b\?")]
     [InlineData(@"a\+b\=", "a+b?")]
-    [InlineData(@"\<two\>", @"\b(?=\w)two\b(?<=\w)")]
     [InlineData(@"x\{2,3}y\{-}", "x{2,3}y*?")]
     [InlineData(@"\s\d\w", @"[ \t][0-9][0-9A-Za-z_]")]
     [InlineData(@"o\zsn", "(?<=o)n")]
@@ -847,6 +893,11 @@ public class VimTests
     [InlineData("a^b$", @"a\^b$")]
     public void Vims_patterns_read_as_dotnets(string pattern, string regex) =>
         Assert.Equal(regex, VimPatterns.Translate(pattern, ignoreCase: false, smartCase: false).Regex);
+
+    [Fact]
+    public void Vims_word_edges_and_keyword_class_read_the_editors_words() =>
+        Assert.Equal(WordCharacters.NotAfterWord + WordCharacters.BeforeWord + "two" + WordCharacters.AfterWord + WordCharacters.NotBeforeWord + WordCharacters.Class,
+            VimPatterns.Translate(@"\<two\>\k", ignoreCase: false, smartCase: false).Regex);
 
     [Fact]
     public void A_pattern_with_no_counterpart_is_said_and_case_follows_its_flags_and_smartcase()
@@ -1058,6 +1109,26 @@ public class VimTests
     {
         Vim vim = new();
         vim.Registers.Options.TextWidth = 20;
+        Assert.Equal(after, Run(vim, before, keys));
+    }
+
+    /// <summary>gq and | count a character's cells alike, as Vim 9.1 draws them: two for a wide one, none for a mark,
+    /// each of a flag's two letters on its own.</summary>
+    [Theory]
+    [InlineData("|日本語 日本語 日本語", "gqq", 10, "日本語\n日本語\n|日本語")]
+    [InlineData("|日本語 日本語 日本語", "gqq", 13, "日本語 日本語\n|日本語")]
+    [InlineData($"|{Cafe} {Cafe} {Cafe} {Cafe}", "gqq", 9, $"{Cafe} {Cafe}\n|{Cafe} {Cafe}")]
+    [InlineData($"|{Cafe} {Cafe} {Cafe} {Cafe}", "gqq", 14, $"{Cafe} {Cafe} {Cafe}\n|{Cafe}")]
+    [InlineData($"|{Namaste} {Namaste} {Namaste}", "gqq", 9, $"{Namaste} {Namaste}\n|{Namaste}")]
+    [InlineData("|日本語 xyz", "6|", 0, "日本|語 xyz")]
+    [InlineData($"|{Cafe} x", "6|", 0, $"{Cafe} |x")]
+    [InlineData($"|{Namaste} xyz", "6|", 0, $"{Namaste} |xyz")]
+    [InlineData("|\U0001F1FA\U0001F1F8 xyz", "6|", 0, "\U0001F1FA\U0001F1F8 |xyz")]
+    [InlineData("日|本語\nabcdef", "<C-v>jd", 0, "日|語\nabef")]
+    public void Gq_and_columns_count_a_characters_cells_as_vims_do(string before, string keys, int textWidth, string after)
+    {
+        Vim vim = new();
+        vim.Registers.Options.TextWidth = textWidth;
         Assert.Equal(after, Run(vim, before, keys));
     }
 

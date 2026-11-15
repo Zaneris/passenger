@@ -121,7 +121,7 @@ public sealed partial class Vim
             (int left, int right) = BlockSpan(text, r, view);
             return new VisualExtent(Mode, lines, right == int.MaxValue ? 0 : right - left, blockColumns.ToEnd);
         }
-        int columns = lines == 0 ? r.High - r.Low : VimMotions.ColumnOf(text, r.High, view.Indent.TabWidth);
+        int columns = lines == 0 ? r.High - r.Low : TextNavigation.VisualColumn(text, r.High, view.Indent.TabWidth);
         return new VisualExtent(Mode, lines, columns, false);
     }
 
@@ -133,7 +133,7 @@ public sealed partial class Vim
         int line = (int)Math.Min(text.GetLineFromOffset(caret) + (long)extent.Lines, VimMotions.LastLine(text, breakEnds));
         if (extent.Mode == VimMode.VisualBlock)
         {
-            int column = VimMotions.ColumnOf(text, caret, tab);
+            int column = TextNavigation.VisualColumn(text, caret, tab);
             blockColumns = (column, column + extent.Columns, extent.ToEnd);
             return new Region(caret, VimMotions.OffsetAtColumn(text, line, column + extent.Columns, tab));
         }
@@ -147,7 +147,7 @@ public sealed partial class Vim
             return new Region(caret, Math.Min(caret + extent.Columns, end.End));
         }
         // Past the last line's end, the stretch takes its line break.
-        return new Region(caret, VimMotions.ColumnOf(text, end.End, tab) <= extent.Columns ? end.End : VimMotions.OffsetAtColumn(text, line, extent.Columns, tab));
+        return new Region(caret, TextNavigation.VisualColumn(text, end.End, tab) <= extent.Columns ? end.End : VimMotions.OffsetAtColumn(text, line, extent.Columns, tab));
     }
 
     /// <summary>The stretches of character or line regions, and a caret at each one's start (a line region's first line's).
@@ -186,7 +186,7 @@ public sealed partial class Vim
             if (BlockPiece(text, line, left, right, tab) is not { } piece)
             {
                 LineSpan span = text.GetLine(line);
-                if (lineEnds && (perLine || span.Length > 0) && VimMotions.ColumnOf(text, span.End, tab) == left)
+                if (lineEnds && (perLine || span.Length > 0) && TextNavigation.VisualColumn(text, span.End, tab) == left)
                 {
                     // A line ending just where the block begins takes what a change types or a shift adds there, at its end.
                     stretches.Add(new Stretch(span.End, span.End, false, line, line, span.End, span.End));
@@ -248,7 +248,7 @@ public sealed partial class Vim
         for (int line = top; line <= bottom; line++)
         {
             LineSpan span = text.GetLine(line);
-            int width = VimMotions.ColumnOf(text, span.End, tab);
+            int width = TextNavigation.VisualColumn(text, span.End, tab);
             if (!after)
             {
                 // A line ending just where the block begins takes it at its end; one ending before is passed over.
@@ -468,8 +468,8 @@ public sealed partial class Vim
         string eol = view.LineEnding;
         int caret = selections.Primary.Caret;
         LineSpan home = VimMotions.LineOf(text, caret);
-        int column = VimMotions.ColumnOf(text, caret, tab) + (before || home.Length == 0 ? 0 : CellsOf(text, caret, tab));
-        int[] widths = [.. value.Parts.Select(p => VimMotions.ColumnOf(TextSnapshot.From(p), p.Length, tab))];
+        int column = TextNavigation.VisualColumn(text, caret, tab) + (before || home.Length == 0 ? 0 : CellsOf(text, caret, tab));
+        int[] widths = [.. value.Parts.Select(p => TextNavigation.VisualColumn(TextSnapshot.From(p), p.Length, tab))];
         int width = widths.Max();
         int times = Math.Clamp(count, 1, Math.Max(1, MostRepeatedText / Math.Max(1, width * value.Parts.Count)));
         List<TextEdit> edits = [];
@@ -494,7 +494,7 @@ public sealed partial class Vim
             else
             {
                 LineSpan span = text.GetLine(line);
-                int lineWidth = VimMotions.ColumnOf(text, span.End, tab);
+                int lineWidth = TextNavigation.VisualColumn(text, span.End, tab);
                 if (lineWidth <= column)
                 {
                     (at, lead, followed) = (span.End, new string(' ', column - lineWidth), false);
@@ -502,7 +502,7 @@ public sealed partial class Vim
                 else
                 {
                     at = span.Start;
-                    while (at < span.End && VimMotions.ColumnOf(text, at, tab) < column)
+                    while (at < span.End && TextNavigation.VisualColumn(text, at, tab) < column)
                     {
                         at = TextNavigation.NextGrapheme(text, at);
                     }

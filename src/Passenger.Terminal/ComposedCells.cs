@@ -1,10 +1,11 @@
 using System.Globalization;
 using System.Text;
+using Passenger.Text;
 
 namespace Passenger.Terminal;
 
 /// <summary>Text an input method is composing, laid on the terminal's cells from the cursor as the program will count it
-/// once it is typed: each character (a letter with its marks one) in the columns <see cref="TerminalScreen.Width"/>
+/// once it is typed: each character (a letter with its marks one) in the columns <see cref="WideCharacters.Cells"/>
 /// gives its code points, one at least, on the next row's first column where it would pass the last.</summary>
 public static class ComposedCells
 {
@@ -20,7 +21,7 @@ public static class ComposedCells
             int width = 0;
             foreach (Rune rune in text.AsSpan(start, length).EnumerateRunes())
             {
-                width += TerminalScreen.Width(rune.Value);
+                width += WideCharacters.Cells(rune.Value);
             }
             width = Math.Max(1, width);
             if (column > 0 && column + width > columns)

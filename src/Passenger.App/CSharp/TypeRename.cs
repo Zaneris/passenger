@@ -91,7 +91,7 @@ public static class TypeRename
     /// <summary>The class a Razor component's file makes, for a place at the file's start where no name begins (its markup,
     /// a directive): its definition lands there, and the file has no other place for it; null anywhere else.</summary>
     public static async Task<Component?> ComponentAtAsync(RoslynSession? server, string path, TextSnapshot text, int offset) =>
-        server is not null && offset == 0 && (text.Length == 0 || !TextNavigation.IsWordChar(text[0])) ? await ComponentAsync(server, path) : null;
+        server is not null && offset == 0 && (text.Length == 0 || !WordCharacters.IsWord(text[0])) ? await ComponentAsync(server, path) : null;
 
     /// <summary>Whether a file is a Razor component's whose class Razor names as the file: a .razor file, not the folder's
     /// imports, whose name is a C# name.</summary>

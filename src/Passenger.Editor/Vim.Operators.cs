@@ -244,7 +244,7 @@ public sealed partial class Vim
                 continue;
             }
             int end = TextNavigation.IndentEnd(text, line);
-            int width = VimMotions.ColumnOf(text, end, indent.TabWidth);
+            int width = TextNavigation.VisualColumn(text, end, indent.TabWidth);
             int wanted = right ? width + (indent.Size * times) : Math.Max(0, width - (indent.Size * times));
             string now = text.GetText(line.Start, end - line.Start);
             string made = IndentOf(wanted, indent);

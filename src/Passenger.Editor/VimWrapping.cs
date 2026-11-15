@@ -142,7 +142,7 @@ public static class VimWrapping
         string firstLead = text.GetText(head.Start, head.Words - head.Start);
         string indent = text.GetText(head.Start, head.Indent - head.Start);
         string afterMark = text.GetText(head.Indent + (head.Bullet ? 1 : head.Mark.Length), head.Words - head.Indent - (head.Bullet ? 1 : head.Mark.Length));
-        string nextLead = head.Bullet ? indent + new string(' ', 1 + Columns(afterMark, 0, tabWidth)) : indent + head.Mark + afterMark;
+        string nextLead = head.Bullet ? indent + new string(' ', 1 + TextNavigation.ColumnAfter(afterMark, 0, tabWidth)) : indent + head.Mark + afterMark;
         List<(string Word, string Before, int From)> pieces = [];
         for (int number = first; number <= last; number++)
         {
@@ -183,13 +183,13 @@ public static class VimWrapping
             }
         }
         StringBuilder made = new(firstLead);
-        int column = Columns(firstLead, 0, tabWidth);
+        int column = TextNavigation.ColumnAfter(firstLead, 0, tabWidth);
         bool lineHasWord = false;
         List<(int From, int To, int Length)> placed = [];
         foreach ((string word, string before, int from) in pieces)
         {
             string bare = word.TrimEnd(' ', '\t');
-            if (lineHasWord && column + Columns(before, column, tabWidth) + Columns(bare, 0, tabWidth) > width)
+            if (lineHasWord && TextNavigation.ColumnAfter(before, column, tabWidth) + TextNavigation.ColumnAfter(bare, 0, tabWidth) > width)
             {
                 // A line broken loses the blanks it ended with.
                 int kept = made.Length;
@@ -199,29 +199,18 @@ public static class VimWrapping
                 }
                 made.Length = kept;
                 made.Append(lineEnding).Append(nextLead);
-                column = Columns(nextLead, 0, tabWidth);
+                column = TextNavigation.ColumnAfter(nextLead, 0, tabWidth);
             }
             else if (lineHasWord)
             {
                 made.Append(before);
-                column += Columns(before, column, tabWidth);
+                column = TextNavigation.ColumnAfter(before, column, tabWidth);
             }
             placed.Add((from, made.Length, bare.Length));
             made.Append(word);
-            column += Columns(word, column, tabWidth);
+            column = TextNavigation.ColumnAfter(word, column, tabWidth);
             lineHasWord = true;
         }
         return (made.ToString(), placed);
-    }
-
-    /// <summary>The columns a piece of text takes drawn from <paramref name="column"/>, a tab to its next stop.</summary>
-    private static int Columns(string piece, int column, int tabWidth)
-    {
-        int at = column;
-        foreach (char c in piece)
-        {
-            at = c == '\t' && tabWidth > 0 ? (at / tabWidth + 1) * tabWidth : char.IsLowSurrogate(c) ? at : at + 1;
-        }
-        return at - column;
     }
 }

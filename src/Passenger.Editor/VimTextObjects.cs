@@ -37,7 +37,7 @@ public static class VimTextObjects
         {
             return (offset, offset);
         }
-        int kind = White(text[offset]) ? 0 : VimMotions.Kind(text[offset], bigWord);
+        int kind = KindIn(text, offset, bigWord);
         int start = offset;
         while (start > line.Start && KindIn(text, start - 1, bigWord) == kind)
         {
@@ -54,7 +54,7 @@ public static class VimTextObjects
     /// <summary>Where the run of one kind (word, punctuation, white) the offset is in begins on its line.</summary>
     public static int RunStart(TextSnapshot text, int offset, bool bigWord) => Run(text, offset, bigWord).Start;
 
-    private static int KindIn(TextSnapshot text, int offset, bool bigWord) => White(text[offset]) ? 0 : VimMotions.Kind(text[offset], bigWord);
+    private static int KindIn(TextSnapshot text, int offset, bool bigWord) => White(text[offset]) ? 0 : VimMotions.KindAt(text, offset, bigWord);
 
     /// <summary>iw, aw, iW and aW as an operator takes them: the places <see cref="WordsWalked"/> walks over, an end
     /// it leaves at a later line's start ending at the line before, the lines whole where they begin in an indent.</summary>

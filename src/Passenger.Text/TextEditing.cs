@@ -68,7 +68,7 @@ public static class TextEditing
             {
                 replacements.Add(new Replacement(s.Start, s.End, c.ToString() + Closers[opener], 1, 1, i));
             }
-            else if (s.IsEmpty && quote && !TextNavigation.IsWordChar(previous) && !TextNavigation.IsWordChar(next) && previous != c)
+            else if (s.IsEmpty && quote && !(s.Start > 0 && WordCharacters.IsWordAt(text, s.Start - 1)) && !WordCharacters.IsWord(next) && previous != c)
             {
                 replacements.Add(new Replacement(s.Start, s.End, new string(c, 2), 1, 1, i));
             }
@@ -392,9 +392,7 @@ public static class TextEditing
             for (int i = 0; i < selections.Count; i++)
             {
                 Selection s = selections.Items[i];
-                LineSpan line = text.GetLine(text.GetLineFromOffset(s.Start));
-                string content = text.GetText(line.Start, line.Length);
-                int visual = TextNavigation.VisualColumn(content, s.Start - line.Start, indent.TabWidth);
+                int visual = TextNavigation.VisualColumn(text, s.Start, indent.TabWidth);
                 string inserted = indent.UseTabs ? "\t" : new string(' ', indent.Size - visual % indent.Size);
                 replacements.Add(new Replacement(s.Start, s.End, inserted, inserted.Length, inserted.Length, i));
             }

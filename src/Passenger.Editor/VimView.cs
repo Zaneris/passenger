@@ -76,7 +76,7 @@ public sealed class VimTextView(IndentOptions indent, string lineEnding = "\n", 
         {
             return offset;
         }
-        return VimMotions.OffsetAtColumn(text, line, VimMotions.ColumnOf(text, offset, Indent.TabWidth), Indent.TabWidth);
+        return VimMotions.OffsetAtColumn(text, line, TextNavigation.VisualColumn(text, offset, Indent.TabWidth), Indent.TabWidth);
     }
 
     public int LineShown(TextSnapshot text, VimScreenLine at, int count)

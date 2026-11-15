@@ -61,24 +61,15 @@ public static partial class GDScriptFormatter
         return moved;
     }
 
-    /// <summary>The widest line's columns, a tab to the next of its stops.</summary>
+    /// <summary>The widest line's columns as drawn (<see cref="TextNavigation.ColumnAfter(ReadOnlySpan{char}, int, int)"/>).</summary>
     private static int Longest(string text, int tabWidth)
     {
         int widest = 0;
-        int column = 0;
-        foreach (char ch in text)
+        foreach (Range line in text.AsSpan().Split('\n'))
         {
-            if (ch == '\n')
-            {
-                widest = Math.Max(widest, column);
-                column = 0;
-            }
-            else
-            {
-                column += ch == '\t' ? tabWidth - column % tabWidth : 1;
-            }
+            widest = Math.Max(widest, TextNavigation.ColumnAfter(text.AsSpan()[line], 0, tabWidth));
         }
-        return Math.Max(widest, column);
+        return widest;
     }
 
     /// <summary>The gaps between tokens wrapping breaks, in order: on each line too long, at its own level inside the
@@ -156,16 +147,18 @@ public static partial class GDScriptFormatter
         for (int l = 0; l < lines.Count; l++)
         {
             int length = (l + 1 < lines.Count ? lines[l + 1] - 1 : text.Length) - lines[l];
-            if (firstOn[l] >= 0 && !runOn[l] && !ignored.Contains(l) && length > options.LineLength / options.TabWidth)
+            // No character takes more columns than a tab or a wide one.
+            if (firstOn[l] >= 0 && !runOn[l] && !ignored.Contains(l) && length > options.LineLength / Math.Max(2, options.TabWidth))
             {
-                Wrap(new Run(firstOn[l], lastOn[l], Columns(text, lines[l], t[firstOn[l]].Start, options.TabWidth)));
+                Wrap(new Run(firstOn[l], lastOn[l], Cells(lines[l], t[firstOn[l]].Start, 0)));
             }
         }
         before.Sort();
         return [.. before.Select(i => (t[i - 1].End, t[i].Start))];
 
-        int Col(int i, Run run) => run.Indent + t[i].Start - t[run.First].Start;
-        int End(int i, Run run) => run.Indent + t[i].End - t[run.First].Start;
+        int Cells(int from, int to, int column) => TextNavigation.ColumnAfter(text.AsSpan(from, to - from), column, options.TabWidth);
+        int Col(int i, Run run) => Cells(t[run.First].Start, t[i].Start, run.Indent);
+        int End(int i, Run run) => Cells(t[run.First].Start, t[i].End, run.Indent);
 
         // A line too long wrapped at the shallowest level that makes it narrower, its lines then each wrapped in turn.
         void Wrap(Run run)
@@ -365,17 +358,6 @@ public static partial class GDScriptFormatter
     private static bool IsCall(List<GDScriptToken> t, int o) =>
         o > 0 && (t[o - 1].IsIdentifier || t[o - 1].Kind is K.Self or K.Super or K.Preload or K.Assert or K.Annotation or K.ParenthesisClose
             or K.BracketClose or K.Void);
-
-    /// <summary>The columns from a line's start to an offset on it, a tab to the next of its stops.</summary>
-    private static int Columns(string text, int from, int to, int tabWidth)
-    {
-        int column = 0;
-        for (int i = from; i < to; i++)
-        {
-            column += text[i] == '\t' ? tabWidth - column % tabWidth : 1;
-        }
-        return column;
-    }
 
     /// <summary>Edits making a script into its laid out text, gap by gap between the tokens they share (a trailing comma
     /// added before a closing bracket among them); null where their tokens part.</summary>

@@ -106,6 +106,8 @@ public class GDScriptFormatterTests
     // A line inside brackets opened above it runs on at its own level.
     [InlineData(50, "var all = [\n\tItem.new(\n\t\t\t\"quit_confirmation\", \"Startup/Quit\", \"pressed\", false\n\t),\n]\n",
         "var all = [\n\tItem.new(\n\t\t\t\"quit_confirmation\", \"Startup/Quit\",\n\t\t\t\"pressed\", false\n\t),\n]\n")]
+    // A line's length is its columns as drawn: a wide character takes two.
+    [InlineData(25, "var p = [\"日本語\", \"日本語\"]\n", "var p = [\n\t\"日本語\",\n\t\"日本語\",\n]\n")]
     public void A_long_line_wraps_inside_its_brackets_in_the_guides_multiline_forms(int length, string written, string laid)
     {
         Assert.Equal(laid, Formatted(written, new GDScriptFormatOptions() with { LineLength = length }));

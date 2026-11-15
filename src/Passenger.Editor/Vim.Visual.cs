@@ -121,7 +121,7 @@ public sealed partial class Vim
         int tab = view.Indent.TabWidth;
         if (mode == VimMode.VisualBlock)
         {
-            int column = VimMotions.ColumnOf(text, regions[0].Cursor, tab);
+            int column = TextNavigation.VisualColumn(text, regions[0].Cursor, tab);
             blockColumns = (column, column, false);
         }
         if (count > 1)
@@ -134,12 +134,12 @@ public sealed partial class Vim
                 {
                     Cursor = mode == VimMode.Visual
                         ? VimMotions.Right(text, cursor, count - 1, crossing: false, operating: true, breakEnds)?.Offset ?? cursor
-                        : VimMotions.LinesAway(text, cursor, count - 1, breakEnds) is { } line ? VimMotions.OffsetAtColumn(text, line, VimMotions.ColumnOf(text, cursor, tab), tab) : cursor,
+                        : VimMotions.LinesAway(text, cursor, count - 1, breakEnds) is { } line ? VimMotions.OffsetAtColumn(text, line, TextNavigation.VisualColumn(text, cursor, tab), tab) : cursor,
                 };
             }
             if (mode == VimMode.VisualBlock)
             {
-                blockColumns = blockColumns with { Cursor = VimMotions.ColumnOf(text, regions[0].Cursor, tab) };
+                blockColumns = blockColumns with { Cursor = TextNavigation.VisualColumn(text, regions[0].Cursor, tab) };
             }
         }
         return ShowVisual(text, view);
@@ -214,7 +214,7 @@ public sealed partial class Vim
     private static int CellsOf(TextSnapshot text, int offset, int tab)
     {
         LineSpan line = VimMotions.LineOf(text, offset);
-        return offset >= line.End ? 1 : VimMotions.ColumnOf(text, TextNavigation.NextGrapheme(text, offset), tab) - VimMotions.ColumnOf(text, offset, tab);
+        return offset >= line.End ? 1 : TextNavigation.VisualColumn(text, TextNavigation.NextGrapheme(text, offset), tab) - TextNavigation.VisualColumn(text, offset, tab);
     }
 
     /// <summary>The characters of a line a block's columns take, any cell of theirs inside it; null where the line ends
@@ -227,7 +227,7 @@ public sealed partial class Vim
         int end = line.End;
         for (int p = line.Start; p < line.End; p = TextNavigation.NextGrapheme(text, p))
         {
-            int next = VimMotions.ColumnOf(text, TextNavigation.NextGrapheme(text, p), tab);
+            int next = TextNavigation.VisualColumn(text, TextNavigation.NextGrapheme(text, p), tab);
             if (start < 0 && next > left)
             {
                 start = p;
@@ -394,7 +394,7 @@ public sealed partial class Vim
             regions = [r];
             visualPrimary = 0;
             visualAims = [-1];
-            blockColumns = (VimMotions.ColumnOf(text, r.Anchor, tab), VimMotions.ColumnOf(text, r.Cursor, tab), false);
+            blockColumns = (TextNavigation.VisualColumn(text, r.Anchor, tab), TextNavigation.VisualColumn(text, r.Cursor, tab), false);
         }
         else if (Mode == VimMode.VisualBlock)
         {
@@ -487,7 +487,7 @@ public sealed partial class Vim
                     aim = block ? (blockColumns.ToEnd ? int.MaxValue : visualAims[i] >= 0 ? visualAims[i] : blockColumns.Cursor)
                         : visualAims[i] >= 0 ? visualAims[i] : CaretColumn(text, cursor, tab);
                     moved = VimMotions.LinesAway(text, cursor, command.Name == "j" ? n : -n, breakEnds) is { } line
-                        ? aim == int.MaxValue || (!block && VimMotions.ColumnOf(text, text.GetLine(line).End, tab) <= aim) ? LineEndOf(text, line)
+                        ? aim == int.MaxValue || (!block && TextNavigation.VisualColumn(text, text.GetLine(line).End, tab) <= aim) ? LineEndOf(text, line)
                         : VimMotions.OffsetAtColumn(text, line, aim, tab)
                         : null;
                     break;
@@ -521,11 +521,11 @@ public sealed partial class Vim
                 blockColumns = command.Name is "j" or "k" or "gj" or "gk"
                     ? blockColumns with
                     {
-                        Cursor = blockColumns.ToEnd ? VimMotions.ColumnOf(text, LastCharOf(text, to), tab)
-                            : aim >= 0 && aim != int.MaxValue ? Math.Min(aim, VimMotions.ColumnOf(text, VimMotions.LineOf(text, to).End, tab))
-                            : VimMotions.ColumnOf(text, to, tab),
+                        Cursor = blockColumns.ToEnd ? TextNavigation.VisualColumn(text, LastCharOf(text, to), tab)
+                            : aim >= 0 && aim != int.MaxValue ? Math.Min(aim, TextNavigation.VisualColumn(text, VimMotions.LineOf(text, to).End, tab))
+                            : TextNavigation.VisualColumn(text, to, tab),
                     }
-                    : blockColumns with { Cursor = VimMotions.ColumnOf(text, to, tab), ToEnd = command.Name == "$" };
+                    : blockColumns with { Cursor = TextNavigation.VisualColumn(text, to, tab), ToEnd = command.Name == "$" };
             }
         }
         return ShowVisual(text, view);
@@ -539,8 +539,8 @@ public sealed partial class Vim
         int at = cursor;
         for (int i = 0; i < n && at < end; i++)
         {
-            int p = at + 1;
-            while (p < end && VimMotions.Kind(text[p], bigWord) == 0)
+            int p = TextNavigation.NextGrapheme(text, at);
+            while (p < end && VimMotions.KindAt(text, p, bigWord) == 0)
             {
                 p++;
             }
@@ -548,12 +548,12 @@ public sealed partial class Vim
             {
                 return end;
             }
-            int kind = VimMotions.Kind(text[p], bigWord);
-            while (p + 1 < end && VimMotions.Kind(text[p + 1], bigWord) == kind)
+            int kind = VimMotions.KindAt(text, p, bigWord);
+            while (p + 1 < end && VimMotions.KindAt(text, p + 1, bigWord) == kind)
             {
                 p++;
             }
-            at = p;
+            at = VimMotions.StepBack(text, p + 1);
         }
         return at == cursor ? null : at;
     }
@@ -611,7 +611,7 @@ public sealed partial class Vim
         }
         else if (keeps && Mode == VimMode.VisualBlock)
         {
-            blockColumns = (VimMotions.ColumnOf(text, regions[0].Anchor, tab), VimMotions.ColumnOf(text, regions[0].Cursor, tab), false);
+            blockColumns = (TextNavigation.VisualColumn(text, regions[0].Anchor, tab), TextNavigation.VisualColumn(text, regions[0].Cursor, tab), false);
         }
         else if (key != "p" && !(keeps && key == "s"))
         {
@@ -619,7 +619,7 @@ public sealed partial class Vim
         }
         else if (Mode == VimMode.VisualBlock)
         {
-            blockColumns = blockColumns with { Cursor = VimMotions.ColumnOf(text, regions[0].Cursor, tab), ToEnd = false };
+            blockColumns = blockColumns with { Cursor = TextNavigation.VisualColumn(text, regions[0].Cursor, tab), ToEnd = false };
         }
         return ShowVisual(text, view);
     }

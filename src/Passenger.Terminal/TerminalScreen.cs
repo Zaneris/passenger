@@ -1,4 +1,3 @@
-using System.Globalization;
 using System.Text;
 using Passenger.Text;
 
@@ -753,7 +752,7 @@ public sealed class TerminalScreen
         {
             rune = LineDrawing[rune - 0x5f];
         }
-        int width = Width(rune);
+        int width = WideCharacters.Cells(rune);
         if (width == 0 || JoinsFlag(rune))
         {
             Join(rune);
@@ -1691,27 +1690,6 @@ public sealed class TerminalScreen
             stops[i] = true;
         }
         return stops;
-    }
-
-    /// <summary>How many columns a character takes, as xterm.js's Unicode 11 widths and wcwidth give it: none for a
-    /// combining mark, a format character (a joiner, a direction mark) or a Hangul vowel or final that joins its
-    /// syllable; two for East Asian Wide and Fullwidth characters and emoji (<see cref="WideCharacters"/>); one else.</summary>
-    public static int Width(int rune)
-    {
-        if (rune < 0x300)
-        {
-            return 1;
-        }
-        if (rune is >= 0x1160 and <= 0x11FF or >= 0xD7B0 and <= 0xD7FF)
-        {
-            return 0;
-        }
-        UnicodeCategory category = CharUnicodeInfo.GetUnicodeCategory(rune);
-        if (category is UnicodeCategory.NonSpacingMark or UnicodeCategory.EnclosingMark or UnicodeCategory.Format)
-        {
-            return 0;
-        }
-        return WideCharacters.Contains(rune) ? 2 : 1;
     }
 
     /// <summary>The DEC special graphics set from 0x5F, the box-drawing characters full-screen programs draw with.</summary>

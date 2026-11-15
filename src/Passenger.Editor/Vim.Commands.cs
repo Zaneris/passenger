@@ -460,8 +460,8 @@ public sealed partial class Vim
     /// <summary>The display column a normal-mode caret stands at: a tab's last cell, as its block is drawn over the tab.</summary>
     private static int CaretColumn(TextSnapshot text, int caret, int tabWidth)
     {
-        int column = VimMotions.ColumnOf(text, caret, tabWidth);
-        return caret < text.Length && text[caret] == '\t' ? VimMotions.ColumnOf(text, caret + 1, tabWidth) - 1 : column;
+        int column = TextNavigation.VisualColumn(text, caret, tabWidth);
+        return caret < text.Length && text[caret] == '\t' ? TextNavigation.VisualColumn(text, caret + 1, tabWidth) - 1 : column;
     }
 
     private VimResult Aimed(SelectionSet moved, int[] columns)
@@ -508,7 +508,7 @@ public sealed partial class Vim
             int end = caret;
             for (int i = 0; i < n; i++)
             {
-                bool atEnd = end + 1 >= text.Length || VimMotions.Kind(text[end + 1], big) != VimMotions.Kind(text[end], big);
+                bool atEnd = VimMotions.EndsRun(text, end, big);
                 if (i > 0 || !atEnd)
                 {
                     end = VimMotions.WordEnd(text, end, 1, big, breakEnds)?.Offset ?? end;
