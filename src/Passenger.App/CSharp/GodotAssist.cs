@@ -16,7 +16,7 @@ namespace Passenger.App.CSharp;
 /// and from its signal to the signal its sending node's script declares; Rename on a node's name renames it in every
 /// scene and every GetNode path of the code that names it (<see cref="CSharpAssist.RenameNodesAsync"/>); and a res:// string
 /// completes from the project's files.</summary>
-internal sealed class GodotAssist(AssistContext context, PopupPlacement popups, CodeCompletion completion, CodeNavigation navigation, CSharpAssist csharp) : LanguageAssist
+internal sealed class GodotAssist(AssistContext context, PopupPlacement popups, CodeCompletion completion, CodeNavigation navigation, CodeActions actions, CSharpAssist csharp) : LanguageAssist
 {
     /// <summary>The characters a res:// path holds beyond a name's, which narrow its list rather than close it.</summary>
     private const string PathCharacters = "/.:-";
@@ -244,18 +244,9 @@ internal sealed class GodotAssist(AssistContext context, PopupPlacement popups, 
             return;
         }
         string old = node.Name;
-        RenameBox box = new(old);
-        popups.ShowModal(box, caret, async name =>
-        {
-            if (name is null || name == old)
-            {
-                return;
-            }
-            // Read again for each attempt, as a file written a moment before is one the index has yet to hear of.
-            RefactorOutcome made = await context.PatientlyAsync(AppActions.Rename, async patience => await NodeAtAsync(document, caret) is ({ } again, { Name: var now } same) && now == old
-                ? await csharp.RenameNodesAsync(again, [same], old, name, patience) : RefactorOutcome.Refused(Refusals.ChangedAsRead(old, document.Name)));
-            context.Say(made.Problem ?? made.Said);
-        });
+        // Read again for each attempt, as a file written a moment before is one the index has yet to hear of.
+        actions.AskRename(document, caret, old, async (held, name, patience) => await NodeAtAsync(document, held.Offset) is ({ } again, { Name: var now } same) && now == old
+            ? await csharp.RenameNodesAsync(again, [same], old, name, patience) : RefactorOutcome.Refused(Refusals.ChangedAsRead(old, document.Name)));
     }
 
     /// <summary>The node whose name a scene's offset is on, in its own scene's tree; null for any other place.</summary>

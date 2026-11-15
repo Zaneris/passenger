@@ -295,6 +295,34 @@ public sealed class GodotStringsTests : IClassFixture<GodotStringsTests.Game>
         }
     }
 
+    /// <summary>A line written above an action's string while Rename's box is open on it (by the file's other window, by an
+    /// agent) moves the name down: the rename finds the action where its string now is and renames it, rather than looking
+    /// where the box opened and refusing Main.cs as changed.</summary>
+    [AvaloniaFact]
+    public void A_line_written_above_an_actions_string_while_its_rename_box_is_open_still_renames_the_action()
+    {
+        MainWindow window = game.Open(ScriptPath);
+        try
+        {
+            CodeEditor editor = window.EditorArea.CodeEditor;
+            Ui.PlaceAfter(editor, "IsActionPressed(\"ju");
+            Ui.Run(window, AppActions.Rename);
+            Ui.WaitFor(() => window.Assist.Renaming == "jump", () => $"Rename's box on jump ({window.Assist.Renaming}; {window.Status})");
+            editor.ApplyEdits([new TextEdit(0, 0, "// Written while Rename's box was open.\n")]);
+            window.KeyTextInput("leap");
+            Ui.Press(window, "ENTER");
+            Ui.WaitFor(() => window.Status?.StartsWith("Renamed", StringComparison.Ordinal) == true || window.Status?.Contains("not renamed", StringComparison.Ordinal) == true,
+                () => $"jump's rename to be made or refused ({window.Status})");
+            Assert.StartsWith("Renamed jump to leap", window.Status, StringComparison.Ordinal);
+            Assert.Contains("IsActionPressed(\"leap\")", editor.Document.Snapshot.ToString(), StringComparison.Ordinal);
+            Assert.Contains("\nleap={", File.ReadAllText(ProjectPath), StringComparison.Ordinal);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     /// <summary>Rename at a place in Main.cs, from the name to another, once the status says it was made.</summary>
     private void Renamed(MainWindow window, string after, string old, string name)
     {

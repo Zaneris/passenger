@@ -352,6 +352,64 @@ public sealed class GodotSceneTests : IClassFixture<GodotSceneTests.Game>
         }
     }
 
+    /// <summary>A line written above a node's path while Rename's box is open on it (by the file's other window, by an agent)
+    /// moves the name down: the rename finds the node where its name now is and renames it, rather than looking where the box
+    /// opened and refusing the file as changed.</summary>
+    [AvaloniaFact]
+    public void A_line_written_above_a_nodes_path_while_its_rename_box_is_open_still_renames_the_node()
+    {
+        MainWindow window = game.Open(ScriptPath);
+        try
+        {
+            Ui.WaitFor(() => Marked(window).Count > 0, "the scene's checks to be read");
+            CodeEditor editor = window.EditorArea.CodeEditor;
+            Ui.PlaceAfter(editor, "GetNode<Label>(\"Hud/Sc");
+            Ui.Run(window, AppActions.Rename);
+            Ui.WaitFor(() => window.Assist.Renaming == "Score", () => $"Rename's box on the node Score ({window.Assist.Renaming}; {window.Status})");
+            editor.ApplyEdits([new TextEdit(0, 0, "// Written while Rename's box was open.\n")]);
+            window.KeyTextInput("Points");
+            Ui.Press(window, "ENTER");
+            Ui.WaitFor(() => window.Status?.StartsWith("Renamed", StringComparison.Ordinal) == true || window.Status?.Contains("not renamed", StringComparison.Ordinal) == true,
+                () => $"the node's rename to be made or refused ({window.Status})");
+            Assert.StartsWith("Renamed Score to Points", window.Status, StringComparison.Ordinal);
+            Assert.Contains("[node name=\"Points\" type=\"Label\" parent=\"Hud\"]", File.ReadAllText(ScenePath), StringComparison.Ordinal);
+            Assert.Contains("GetNode<Label>(\"Hud/Points\")", editor.Document.Snapshot.ToString(), StringComparison.Ordinal);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>A line written above a node's name in its scene while Rename's box is open on it moves the name down: the rename
+    /// finds the node where its name now is and renames it, rather than looking where the box opened and refusing the scene as
+    /// changed.</summary>
+    [AvaloniaFact]
+    public void A_line_written_above_a_nodes_name_in_its_scene_while_its_rename_box_is_open_still_renames_the_node()
+    {
+        MainWindow window = game.Open(ScenePath);
+        try
+        {
+            CodeEditor editor = window.EditorArea.CodeEditor;
+            Ui.PlaceAfter(editor, "[node name=\"Sco");
+            Ui.Run(window, AppActions.Rename);
+            Ui.WaitFor(() => window.Assist.Renaming == "Score", () => $"Rename's box on the node Score ({window.Assist.Renaming}; {window.Status})");
+            int above = editor.Document.Snapshot.ToString().IndexOf("[ext_resource", StringComparison.Ordinal);
+            editor.ApplyEdits([new TextEdit(above, 0, "; Written while Rename's box was open.\n")]);
+            window.KeyTextInput("Points");
+            Ui.Press(window, "ENTER");
+            Ui.WaitFor(() => window.Status?.StartsWith("Renamed", StringComparison.Ordinal) == true || window.Status?.Contains("not renamed", StringComparison.Ordinal) == true,
+                () => $"the node's rename to be made or refused ({window.Status})");
+            Assert.StartsWith("Renamed Score to Points", window.Status, StringComparison.Ordinal);
+            Assert.Contains("[node name=\"Points\" type=\"Label\" parent=\"Hud\"]", editor.Document.Snapshot.ToString(), StringComparison.Ordinal);
+            Assert.Contains("GetNode<Label>(\"Hud/Points\")", File.ReadAllText(ScriptPath), StringComparison.Ordinal);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     /// <summary>The scene's connection to a method Main lacks is an error on Main's name, and one whose signal gives an argument
     /// the handler does not take is one on the handler's, each naming the scene and its line; Find Usages of the handler lists
     /// the connection calling it, and Go to Declaration from that connection's method in the scene goes back to the handler, as

@@ -246,18 +246,9 @@ internal sealed partial class CSharpAssist
         {
             return false;
         }
-        RenameBox box = new(named.Name);
-        popups.ShowModal(box, caret, async name =>
-        {
-            if (name is null || name == named.Name)
-            {
-                return;
-            }
-            // Read again for each attempt, as a file written a moment before is one the index has yet to hear of.
-            RefactorOutcome made = await context.PatientlyAsync(AppActions.Rename, async patience => await GodotKindAtAsync(document, caret) is { } now && now.Name == named.Name
-                ? await RenameKindAsync(now, name, patience) : RefactorOutcome.Refused(Refusals.ChangedAsRead(named.Name, document.Name)));
-            context.Say(made.Problem ?? made.Said);
-        });
+        // Read again for each attempt, as a file written a moment before is one the index has yet to hear of.
+        actions.AskRename(document, caret, named.Name, async (held, name, patience) => await GodotKindAtAsync(document, held.Offset) is { } now && now.Name == named.Name
+            ? await RenameKindAsync(now, name, patience) : RefactorOutcome.Refused(Refusals.ChangedAsRead(named.Name, document.Name)));
         return true;
     }
 

@@ -163,19 +163,7 @@ internal sealed class ComposeAssist(AssistContext context, PopupPlacement popups
         {
             return false;
         }
-        RenameBox box = new(renaming.Name);
-        ChangeTracker opened = new(context.Editor.Document);
-        popups.ShowModal(box, renaming.At.Start, async name =>
-        {
-            int now = opened.MapOffset(renaming.At.Start);
-            if (name is null || name == renaming.Name)
-            {
-                return;
-            }
-            RefactorOutcome made = await RenameComposeAsync(document, now, renaming.Name, name);
-            context.Say(made.Problem ?? made.Said);
-        });
-        popups.WhenClosed(opened.Dispose);
+        actions.AskRename(document, renaming.At.Start, renaming.Name, (held, name, _) => RenameComposeAsync(document, held.Offset, renaming.Name, name));
         return true;
     }
 

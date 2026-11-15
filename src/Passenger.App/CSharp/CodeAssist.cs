@@ -88,7 +88,7 @@ public sealed class CodeAssist
         context.Languages = new LanguageAssists(new HttpAssist(context, navigation), new MSBuildAssist(context, popups, completion), xaml,
             new ComposeAssist(context, popups, completion, navigation, actions), new SettingsAssist(context, completion, navigation),
             new CssClassAssist(context, completion, navigation), gdscript, new WebAssist(context, popups, completion, parameterInfo, actions),
-            new GodotShaderAssist(context, completion, navigation, csharp), new GodotAssist(context, popups, completion, navigation, csharp), csharp);
+            new GodotShaderAssist(context, completion, navigation, csharp), new GodotAssist(context, popups, completion, navigation, actions, csharp), csharp);
         // Every editor a split makes is wired the same; what it asks is answered for the active one, which it is.
         editors.ForEachEditor(editor =>
         {

@@ -745,24 +745,8 @@ internal sealed partial class XamlAssist : LanguageAssist
         if (found.Symbol.Named is { } named)
         {
             string old = named.Value;
-            popups.ShowModal(new RenameBox(old), named.ValueStart, async name =>
-            {
-                if (name is null || name == old)
-                {
-                    return;
-                }
-                try
-                {
-                    if (await context.PatientlyAsync(AppActions.Rename, patience => XamlRenameAsync(xaml.Document.Path, old, name, patience), made => made?.Problem is not null) is { } renamed)
-                    {
-                        context.Say(renamed.Problem ?? renamed.Said);
-                    }
-                }
-                catch (LanguageServerFailed failed)
-                {
-                    context.Failed("Rename", failed);
-                }
-            });
+            actions.AskRename(xaml.Document, named.ValueStart, old, async (_, name, patience) =>
+                await XamlRenameAsync(xaml.Document.Path, old, name, patience) ?? RefactorOutcome.Refused(Unread(xaml.Document.Path)));
             return;
         }
         if (DeclarationOf(found.Symbol) is null)
@@ -770,25 +754,12 @@ internal sealed partial class XamlAssist : LanguageAssist
             context.Say(XamlRenamesWhat);
             return;
         }
-        string written = found.Symbol.Name;
-        popups.ShowModal(new RenameBox(written), found.Symbol.Range.Start, async name =>
-        {
-            if (name is null || name == written)
-            {
-                return;
-            }
-            try
-            {
-                RefactorOutcome made = await context.PatientlyAsync(AppActions.Rename, async patience =>
-                    await DeclaredRenameAsync(found.Symbol, name, actions.RenameSettings.RenameFiles, patience) ?? RefactorOutcome.Refused(XamlRenamesWhat));
-                context.Say(made.Problem ?? made.Said);
-            }
-            catch (LanguageServerFailed failed)
-            {
-                context.Failed("Rename", failed);
-            }
-        });
+        actions.AskRename(xaml.Document, found.Symbol.Range.Start, found.Symbol.Name, async (_, name, patience) =>
+            await DeclaredRenameAsync(found.Symbol, name, actions.RenameSettings.RenameFiles, patience) ?? RefactorOutcome.Refused(XamlRenamesWhat));
     }
+
+    /// <summary>Why an element of a XAML file was not renamed where the project's XAML is not read.</summary>
+    internal static string Unread(string path) => $"{Path.GetFileName(path)} is not XAML Passenger reads";
 
     /// <summary>Where the folder's C# declares the type or member a XAML name leads to; null for a name of none of it.</summary>
     internal static SourcePlace? DeclarationOf(XamlSymbol symbol) =>

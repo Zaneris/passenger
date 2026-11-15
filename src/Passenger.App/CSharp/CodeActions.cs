@@ -451,31 +451,38 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
         IdeErrors.Observe(OfferFileRenames(box, document, word.Start));
     }
 
-    /// <summary>The rename box over a name of a file, C#'s, a web language's or a GDScript's: the name is renamed as the box
-    /// closes with one, held on it through what is typed meanwhile, with a type's files where the box offers them and they
-    /// are chosen.</summary>
+    /// <summary>The rename box over a name of a file, C#'s, a web language's or a GDScript's, renamed through its server or
+    /// Passenger's reading of the scripts (<see cref="AskRename(OpenDocument, int, RenameBox, Func{Anchor, string, Patience, Task{RefactorOutcome}})"/>),
+    /// with a type's files where the box offers them and they are chosen.</summary>
     private RenameBox ShowRenameBox(OpenDocument document, TextSnapshot text, TextRange word)
     {
         RenameBox box = new(text.GetText(word));
-        ChangeTracker opened = new(Editor.Document);
-        popups.ShowModal(box, word.Start, async name =>
+        AskRename(document, word.Start, box, (held, name, patience) => RenameSymbolAsync(document, held, name, box.RenamesFiles, patience));
+        return box;
+    }
+
+    /// <summary>Rename's box opened on a name at an offset of a file: once a new name is given, <paramref name="rename"/> renames
+    /// it from a place held on the name through what is written meanwhile, while the box is open and as the rename is worked
+    /// out, made again as <see cref="AssistContext.PatientlyAsync(string, Func{Patience, Task{RefactorOutcome}})"/> makes a
+    /// change, and what it came to said; the name given unchanged renames nothing. A server's failure is said by the box's
+    /// answer (<see cref="PopupPlacement.Carried"/>).</summary>
+    internal void AskRename(OpenDocument document, int at, RenameBox box, Func<Anchor, string, Patience, Task<RefactorOutcome>> rename)
+    {
+        string old = box.Text;
+        ChangeTracker opened = new(document.Text);
+        popups.ShowModal(box, at, async name =>
         {
-            // Let go as the box closed, just before: what was typed while it was open is still mapped.
-            int at = opened.MapOffset(word.Start);
-            if (name is null)
+            // Let go as the box closed, just before: what was written while it was open is still mapped.
+            int now = opened.MapOffset(at);
+            if (name is null || name == old)
             {
                 return;
             }
-            // Held on the name through what is typed while the rename is out, however often it is worked out.
-            Anchor held = HeldAt(document, at);
+            // Held on the name through what is written while the rename is out, however often it is worked out.
+            Anchor held = HeldAt(document, now);
             try
             {
-                RefactorOutcome made = await context.PatientlyAsync(AppActions.Rename, patience => RenameSymbolAsync(document, held, name, box.RenamesFiles, patience));
-                Told("Rename", made);
-            }
-            catch (LanguageServerFailed failed)
-            {
-                context.Failed("Rename", failed);
+                Told("Rename", await context.PatientlyAsync(AppActions.Rename, patience => rename(held, name, patience)));
             }
             finally
             {
@@ -483,8 +490,11 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
             }
         });
         popups.WhenClosed(opened.Dispose);
-        return box;
     }
+
+    /// <summary>Rename's box opened on the name <paramref name="old"/> at an offset of a file (<see cref="AskRename(OpenDocument, int, RenameBox, Func{Anchor, string, Patience, Task{RefactorOutcome}})"/>).</summary>
+    internal void AskRename(OpenDocument document, int at, string old, Func<Anchor, string, Patience, Task<RefactorOutcome>> rename) =>
+        AskRename(document, at, new RenameBox(old), rename);
 
     /// <summary>Whether a name can be written as a C# identifier: as it is, or after an @ (a keyword's name).</summary>
     private static bool IsCSharpName(string name) => Microsoft.CodeAnalysis.CSharp.SyntaxFacts.IsValidIdentifier(name.StartsWith('@') ? name[1..] : name);
@@ -593,7 +603,7 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
         if (document.Language == Languages.Language.CSharp && await context.Languages.Xaml.NamedElementOfAsync(document, definitions, at.Offset) is { Path: { } elementFile } element)
         {
             return element.Name == name ? new RefactorOutcome($"{name} is its name already", null, [], [])
-                : await context.Languages.Xaml.XamlRenameAsync(elementFile, element.Name, name, patience) ?? RefactorOutcome.Refused($"{Path.GetFileName(elementFile)} is not XAML Passenger reads");
+                : await context.Languages.Xaml.XamlRenameAsync(elementFile, element.Name, name, patience) ?? RefactorOutcome.Refused(XamlAssist.Unread(elementFile));
         }
         // A component's file at its start is the class Razor makes of it, which the server takes in the C# made of the file.
         TypeRename.Component? component = context.WebOf(document) is null

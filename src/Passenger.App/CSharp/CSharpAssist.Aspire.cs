@@ -210,29 +210,8 @@ internal sealed partial class CSharpAssist
         {
             return false;
         }
-        int at = lsp.OffsetOf(new LspPosition(start.Line, start.Character));
-        RenameBox box = new(old);
-        ChangeTracker opened = new(context.Editor.Document);
-        popups.ShowModal(box, at, async name =>
-        {
-            int now = opened.MapOffset(at);
-            if (name is null || name == old)
-            {
-                return;
-            }
-            // Held on the name through what is typed while the rename is out, however often it is worked out.
-            Anchor held = actions.HeldAt(document, now);
-            try
-            {
-                RefactorOutcome made = await context.PatientlyAsync(AppActions.Rename, patience => RenameResourceAsync(document, held.Offset, old, name, patience));
-                context.Say(made.Problem ?? made.Said);
-            }
-            finally
-            {
-                held.Remove();
-            }
-        });
-        popups.WhenClosed(opened.Dispose);
+        actions.AskRename(document, lsp.OffsetOf(new LspPosition(start.Line, start.Character)), old,
+            (held, name, patience) => RenameResourceAsync(document, held.Offset, old, name, patience));
         return true;
     }
 
