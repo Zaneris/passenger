@@ -38,6 +38,11 @@ internal sealed partial class GherkinAssist(AssistContext context, CodeCompletio
         int line = snapshot.GetLineFromOffset(caret);
         string before = snapshot.GetText(snapshot.GetLineStart(line), caret - snapshot.GetLineStart(line));
         string trimmed = before.TrimStart();
+        if (text == "|" && trimmed.StartsWith('|') && trimmed.Length > 1)
+        {
+            AlignTable(shown);
+            return true;
+        }
         bool opens = text.EndsWith('@')
             || (text.EndsWith(' ') && StepKeywordOf(DialectOf(shown), trimmed) is { } keyword && keyword.Length == trimmed.Length)
             || (trimmed.Length == 1 && char.IsLetter(trimmed[0]));

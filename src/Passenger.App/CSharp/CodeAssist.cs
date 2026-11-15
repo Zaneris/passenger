@@ -509,10 +509,10 @@ public sealed class CodeAssist
         Code(AppActions.Generate, "Generate…", context => IdeErrors.Observe(actions.ShowFixes(AppActions.Generate, a => RoslynNames.Generate.Any(w => a.Title.StartsWith(w, StringComparison.Ordinal)), "Generate")),
             new("Code", 0, 2));
         Code(AppActions.SurroundWith, "Surround With…", _ => completion.ShowSurround(), new("Code", 0, 3), server: false, syntax: true, markup: true);
-        // A file Prettier formats (Run on 'Reformat Code' action) needs no language server.
+        // A file Prettier formats (Run on 'Reformat Code' action), a GDScript and a .feature file need no language server.
         registry.Add(new IdeAction(AppActions.Reformat, "Reformat Code", "Code", context => IdeErrors.Observe(actions.Reformat()))
         {
-            WhyNot = context => context.File is { } file && (web.PrettierReformats(file) || Godot.GodotScriptTypes.IsScript(file.Path))
+            WhyNot = context => context.File is { } file && (web.PrettierReformats(file) || Godot.GodotScriptTypes.IsScript(file.Path) || Passenger.App.Bdd.FeatureChecks.IsFeature(file.Path))
                 ? (context.Editor.IsReadOnly ? Refusals.ReadOnly(file.Name) : null) : WhyNot(context, server: true, markup: true),
             Menus = [new("Code", 1, 0)],
         });
