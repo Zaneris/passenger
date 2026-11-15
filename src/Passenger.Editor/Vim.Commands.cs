@@ -370,9 +370,16 @@ public sealed partial class Vim
             case "b" or "B":
                 return VimMotions.WordBack(text, caret, n, command.Name == "B");
             case "e" or "E":
-                return VimMotions.WordEnd(text, caret, n, command.Name == "E", breakEnds);
+                return VimMotions.WordEnd(text, caret, n, command.Name == "E", breakEnds, operating);
             case "ge" or "gE":
-                return VimMotions.WordEndBack(text, caret, n, command.Name == "gE");
+                VimTarget? back = VimMotions.WordEndBack(text, caret, n, command.Name == "gE", out bool ranOut);
+                if (operating && ranOut)
+                {
+                    // A count the text's start cuts short fails the operator, the caret left where it ran out.
+                    ranOutAt = back?.Offset;
+                    return null;
+                }
+                return back;
             case "gg":
                 return Line(text, count == 0 ? 0 : Math.Min(count - 1, VimMotions.LastLine(text, breakEnds)));
             case "G":
@@ -469,6 +476,7 @@ public sealed partial class Vim
     /// yank or a change of case over whole lines leaves the caret; null where the motion fails or there is no such object.</summary>
     private (VimSpan Span, int Landing)? SpanOf(Command command, string op, TextSnapshot text, int caret, IVimView view)
     {
+        ranOutAt = null;
         int n = Math.Max(command.Count, 1);
         if (command.Name == "line")
         {
@@ -487,6 +495,7 @@ public sealed partial class Vim
         {
             if (VimTextObjects.Of(text, caret, command.Argument!, command.Name == "i", n, breakEnds) is not { } found)
             {
+                ranOutAt = command.Argument is "w" or "W" ? VimTextObjects.WordsRanOut(text, caret, n, command.Name == "i", command.Argument == "W", breakEnds) : null;
                 return null;
             }
             VimSpan taken = command.Argument == "s" ? VimTextObjects.EndingInFirstColumn(text, found) : found;

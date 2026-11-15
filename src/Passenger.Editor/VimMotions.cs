@@ -194,6 +194,11 @@ public static class VimMotions
     {
         int p = offset;
         int n = text.Length;
+        if (stopAtLineEnd && p < n && EmptyLineAt(text, p))
+        {
+            // An empty line is a word whose end is its line break: an operator's last step from one stops past it.
+            return LineOf(text, p).EndIncludingBreak;
+        }
         if (p < n && Kind(text[p], bigWord) is var kind and not 0)
         {
             while (p < n && Kind(text[p], bigWord) == kind)
@@ -216,11 +221,12 @@ public static class VimMotions
         return p;
     }
 
-    /// <summary>e and E: the last character of this word if the caret is before it, else of the next; inclusive.</summary>
-    public static VimTarget? WordEnd(TextSnapshot text, int caret, int n, bool bigWord, bool breakEnds)
+    /// <summary>e and E: the last character of this word if the caret is before it, else of the next; inclusive. On the
+    /// text's last character an operator's takes that character.</summary>
+    public static VimTarget? WordEnd(TextSnapshot text, int caret, int n, bool bigWord, bool breakEnds, bool operating = false)
     {
         int to = Repeated(n, caret, p => NextWordEnd(text, p, bigWord, breakEnds));
-        return to == caret ? null : new VimTarget(to, VimMotionKind.Inclusive);
+        return to != caret || (operating && caret == Settled(text, text.Length, breakEnds)) ? new VimTarget(to, VimMotionKind.Inclusive) : null;
     }
 
     private static int NextWordEnd(TextSnapshot text, int offset, bool bigWord, bool breakEnds)
@@ -274,10 +280,23 @@ public static class VimMotions
         return p;
     }
 
-    /// <summary>ge and gE: the last character of the word before, an empty line counting as one; inclusive.</summary>
-    public static VimTarget? WordEndBack(TextSnapshot text, int caret, int n, bool bigWord)
+    /// <summary>ge and gE: the last character of the word before, an empty line counting as one; inclusive.
+    /// <paramref name="ranOut"/> says the text began before the count did.</summary>
+    public static VimTarget? WordEndBack(TextSnapshot text, int caret, int n, bool bigWord, out bool ranOut)
     {
-        int to = Repeated(n, caret, p => PreviousWordEnd(text, p, bigWord));
+        int to = caret;
+        int steps = 0;
+        while (steps < n && PreviousWordEnd(text, to, bigWord) is var next && next != to)
+        {
+            to = next;
+            steps++;
+            if (to == 0 && !WordEndsAt(text, 0, bigWord))
+            {
+                // With no word end before, the text's start ends the count as it stands.
+                steps = n;
+            }
+        }
+        ranOut = steps < n;
         return to == caret ? null : new VimTarget(to, VimMotionKind.Inclusive);
     }
 
@@ -310,6 +329,11 @@ public static class VimMotions
         }
         return 0;
     }
+
+    /// <summary>Whether a word ends at the offset: a non-blank whose next character is of another kind, or an empty line.</summary>
+    private static bool WordEndsAt(TextSnapshot text, int offset, bool bigWord) =>
+        EmptyLineAt(text, offset) || (offset < text.Length && Kind(text[offset], bigWord) != 0
+            && (offset + 1 >= text.Length || Kind(text[offset + 1], bigWord) != Kind(text[offset], bigWord)));
 
     private static bool EmptyLineAt(TextSnapshot text, int offset)
     {

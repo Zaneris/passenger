@@ -624,8 +624,33 @@ public sealed partial class Vim
     {
         if (r.Anchor == r.Cursor)
         {
+            // A count of aw the text cuts short takes as many words as there are, found by halving; one of iw fails.
             int at = Settled(text, r.Cursor, breakEnds);
-            return VimTextObjects.Of(text, at, bigWord ? "W" : "w", inner, n, breakEnds) is { } span ? Spanned(text, span) : null;
+            string key = bigWord ? "W" : "w";
+            if (VimTextObjects.Of(text, at, key, inner, n, breakEnds) is { } whole)
+            {
+                return Spanned(text, whole);
+            }
+            if (inner)
+            {
+                return null;
+            }
+            int low = 0;
+            int high = n;
+            VimSpan? most = null;
+            while (high - low > 1)
+            {
+                int mid = low + (high - low) / 2;
+                if (VimTextObjects.Of(text, at, key, inner, mid, breakEnds) is { } found)
+                {
+                    (low, most) = (mid, found);
+                }
+                else
+                {
+                    high = mid;
+                }
+            }
+            return most is { } span ? Spanned(text, span) : null;
         }
         bool back = r.Cursor < r.Anchor;
         int cursor = r.Cursor;

@@ -17,10 +17,12 @@ public sealed partial class Vim
     private VimResult Operate(Command command, string op, TextSnapshot text, SelectionSet selections, IVimView view)
     {
         List<Stretch> stretches = [];
+        List<Selection> ranOut = [];
         foreach (Selection s in selections.Items)
         {
             if (SpanOf(command, op, text, s.Caret, view) is not ({ } span, int landing))
             {
+                ranOut.Add(Selection.At(ranOutAt ?? s.Caret));
                 continue;
             }
             Stretch stretch = span.Linewise
@@ -42,7 +44,9 @@ public sealed partial class Vim
         }
         if (stretches.Count == 0)
         {
-            return VimResult.Held;
+            // Nothing to act on: a count of words cut short leaves each caret where it ran out, as Vim's does.
+            SelectionSet left = SelectionSet.Create(ranOut, selections.PrimaryIndex);
+            return left.SameAs(selections) ? VimResult.Held : new VimResult(true, left);
         }
         return Act(command, op, stretches, text, selections, view);
     }

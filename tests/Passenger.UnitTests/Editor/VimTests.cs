@@ -1342,6 +1342,46 @@ public class VimTests
         Assert.Equal(("|b", "up"), (Marked.Show(text.Apply(vim.RunCommand("s/a/b/", text, carets).Edit!.Edits), carets), vim.Registers.LastCommand));
     }
 
+    /// <summary>Words, WORDs and their objects move as Vim's cursor does, a place at a time: an empty line is a word, an
+    /// operator's last word stops at its line's end, a count running out of words fails leaving the caret where it ran
+    /// out, and a visual stretch carried on by iw or aw goes on over a line's end, or back where its cursor stands first.</summary>
+    [Theory]
+    [InlineData("if (x) { return \"hi\";| }\n}", "VwiwcQ<Esc>", "if (x) { return \"hi\";|Q")]
+    [InlineData("one two three\nfour five |six\n\nseven eight", "v$iwd", "one two three\nfour five |even eight")]
+    [InlineData("a b c\nd e| f", "2daw", "a b c\nd e |f")]
+    [InlineData("last-line, he|re.", "2yaWx", "last-line, her|e")]
+    [InlineData("x = |1\n\n\nclass A:\n    pass", "j2daW", "x = 1\n|A:\n    pass")]
+    [InlineData("one two |three four", "vhawd", "one|hree four")]
+    [InlineData("one two |three four", "vhiwd", "one |hree four")]
+    [InlineData("one two |three four", "vh2awd", "o|hree four")]
+    [InlineData("one two thr|ee four", "vhiwiwd", "one two|e four")]
+    [InlineData("one\n  two |three", "vkawd", "o|hree")]
+    [InlineData("foo bar.\n  b|az qux", "k$2daw", "foo bar| qux")]
+    [InlineData("one |two.\n  baz qux", "2daw", "on|e\n  baz qux")]
+    [InlineData("|one\n\ntwo three", "vjjiwd", "| three")]
+    [InlineData("one\n\n|two three", "vkkawd", "|wo three")]
+    [InlineData("ab cd|\n", "viwiwd", "ab| ")]
+    [InlineData("ab c|d", "vawawd", "a|b")]
+    [InlineData("   |   \nab", "daw", "|")]
+    [InlineData("ab   |   \ncd", "2daw", "ab      \nc|d")]
+    [InlineData("|word\n    indented line", "dw.a7<Esc>", "    i|7ndented line")]
+    [InlineData("a b c\nm n o p q| r", "wgUe", "a b c\nm n o p q |R")]
+    [InlineData("a b c\nm n o p q |r", "dw", "a b c\nm n o p q| ")]
+    [InlineData("a |b c d", "2dge3l", "a b| c d")]
+    [InlineData("one two |three", "3dbx", "|hree")]
+    [InlineData("one |two", "wx", "one t|w")]
+    [InlineData("one |two", "vwd", "one| ")]
+    [InlineData("one t|wo", "ved", "one |t")]
+    [InlineData("one two\n\nthree |four", "3gex", "one t|w\n\nthree four")]
+    [InlineData("|one two\n\nthree four", "3e", "one two\n\nthre|e four")]
+    [InlineData("|one two\n\n  three four", "d3w", "  |three four")]
+    [InlineData("|one two\n\n  three four", "c3w7<Esc>", "|7 four")]
+    [InlineData("on|e two\nthree", "2cwX<Esc>", "on|X\nthree")]
+    [InlineData("|a; b.c d", "wdW", "a|b.c d")]
+    [InlineData("|\n\nab", "2dw", "|ab")]
+    public void Words_and_their_objects_move_as_vims_cursor_does(string before, string keys, string after) =>
+        Assert.Equal(after, Run(before, keys));
+
     [Fact]
     public void A_huge_count_ends_at_the_texts_edge()
     {

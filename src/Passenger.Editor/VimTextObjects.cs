@@ -57,13 +57,24 @@ public static class VimTextObjects
     private static int KindIn(TextSnapshot text, int offset, bool bigWord) => White(text[offset]) ? 0 : VimMotions.Kind(text[offset], bigWord);
 
     /// <summary>iw, aw, iW and aW: <paramref name="n"/> words, white between them counted too for the inner object; the
-    /// outer one takes the white after, or before where none is after or the caret was in white.</summary>
-    private static VimSpan? Word(TextSnapshot text, int caret, int n, bool inner, bool bigWord, bool breakEnds)
+    /// outer one takes the white after each, or where none is after the first the white before it and before each word
+    /// after, or from white the white before each word. An empty line followed by another is a word, the empty lines
+    /// after it its white.</summary>
+    private static VimSpan? Word(TextSnapshot text, int caret, int n, bool inner, bool bigWord, bool breakEnds) =>
+        Word(text, caret, n, inner, bigWord, breakEnds, out _);
+
+    /// <summary>Where a count of words cut short by the text's end left off: the last character of the words it took;
+    /// null where the object is found, or fails from the first.</summary>
+    public static int? WordsRanOut(TextSnapshot text, int caret, int n, bool inner, bool bigWord, bool breakEnds) =>
+        Word(text, caret, n, inner, bigWord, breakEnds, out int ranOut) is null && ranOut >= 0 ? ranOut : null;
+
+    private static VimSpan? Word(TextSnapshot text, int caret, int n, bool inner, bool bigWord, bool breakEnds, out int ranOut)
     {
+        ranOut = -1;
         LineSpan line = VimMotions.LineOf(text, caret);
         if (line.Length == 0)
         {
-            return inner ? new VimSpan(caret, caret, false) : null;
+            return inner ? new VimSpan(caret, caret, false) : EmptyLineWords(text, line, n, bigWord, breakEnds, out ranOut);
         }
         (int start, int end) = Run(text, caret, bigWord);
         bool onWhite = KindIn(text, caret, bigWord) == 0;
@@ -74,6 +85,7 @@ public static class VimTextObjects
                 int next = NextRunEnd(text, end, bigWord, breakEnds);
                 if (next == end)
                 {
+                    ranOut = Math.Max(start, end - 1);
                     return null;
                 }
                 end = next;
@@ -85,35 +97,60 @@ public static class VimTextObjects
             // White before a word: the white and the word after it, n times.
             for (int i = 0; i < n; i++)
             {
-                if (i > 0)
+                int word = i == 0 ? end : WhiteEnd(text, end);
+                int next = NextRunEnd(text, word, bigWord, breakEnds);
+                if (next == word)
                 {
-                    end = WhiteEnd(text, end);
-                }
-                int next = NextRunEnd(text, end, bigWord, breakEnds);
-                if (next == end)
-                {
+                    ranOut = i == 0 ? -1 : Math.Max(start, end - 1);
                     return null;
                 }
                 end = next;
             }
             return new VimSpan(start, end, false);
         }
-        int wordEnd = end;
+        // Units of a word and its white on its line (a line's break where more follow), or from white the white and a word.
+        bool trailing = false;
         for (int i = 0; i < n; i++)
         {
+            int at = end;
             if (i > 0)
             {
-                wordEnd = NextRunEnd(text, WhiteEnd(text, wordEnd), bigWord, breakEnds);
+                LineSpan atLine = VimMotions.LineOf(text, at);
+                if (at == atLine.End && atLine.BreakLength > 0 && atLine.Length > 0)
+                {
+                    at = atLine.EndIncludingBreak;
+                }
+                if (at >= text.Length || VimMotions.LineOf(text, at).Line > VimMotions.LastLine(text, breakEnds))
+                {
+                    ranOut = Math.Max(start, end - 1);
+                    return null;
+                }
+                if (KindIn(text, at, bigWord) == 0 && at < VimMotions.LineOf(text, at).End)
+                {
+                    int word = WhiteEnd(text, at);
+                    if (word >= VimMotions.LineOf(text, at).End)
+                    {
+                        ranOut = Math.Max(start, end - 1);
+                        return null;
+                    }
+                    end = Run(text, word, bigWord).End;
+                    trailing = false;
+                    continue;
+                }
+                at = VimMotions.LineOf(text, at).Length == 0 ? at : Run(text, at, bigWord).End;
             }
-            end = WhiteEnd(text, wordEnd);
-            if (i + 1 < n && end == wordEnd)
+            end = WhiteEnd(text, at);
+            trailing = end > at;
+            LineSpan here = VimMotions.LineOf(text, end);
+            if (!trailing && i + 1 < n && end == here.End && here.BreakLength > 0)
             {
-                wordEnd = end;
+                end = here.EndIncludingBreak;
+                trailing = true;
             }
         }
-        if (end == wordEnd)
+        if (!trailing)
         {
-            // No white after: the white before goes instead, unless it is the line's indent.
+            // No white after the last word: the white before the first goes instead, unless it is the line's indent.
             int white = start;
             while (white > line.Start && White(text[white - 1]))
             {
@@ -122,6 +159,34 @@ public static class VimTextObjects
             start = white > line.Start ? white : start;
         }
         return new VimSpan(start, end, false);
+    }
+
+    /// <summary>aw and aW from an empty line followed by another: that line as a word and the empty lines after it as its
+    /// white, then words with the white after each; null from any other empty line.</summary>
+    private static VimSpan? EmptyLineWords(TextSnapshot text, LineSpan line, int n, bool bigWord, bool breakEnds, out int ranOut)
+    {
+        ranOut = -1;
+        int last = VimMotions.LastLine(text, breakEnds);
+        if (line.Line >= last || text.GetLine(line.Line + 1).Length > 0)
+        {
+            return null;
+        }
+        int below = line.Line + 1;
+        while (below < last && text.GetLine(below + 1).Length == 0)
+        {
+            below++;
+        }
+        int end = text.GetLine(below).EndIncludingBreak;
+        for (int i = 1; i < n; i++)
+        {
+            if (end >= text.Length || below >= last)
+            {
+                ranOut = Math.Max(line.Start, end - 1);
+                return null;
+            }
+            end = WhiteEnd(text, Run(text, end, bigWord).End);
+        }
+        return new VimSpan(line.Start, end, false);
     }
 
     /// <summary>The end of the white run starting at the offset on its line, or the offset itself.</summary>

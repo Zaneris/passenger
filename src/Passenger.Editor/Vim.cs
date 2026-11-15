@@ -98,6 +98,9 @@ public sealed partial class Vim(VimRegisters registers)
     /// for what is being done: where it keeps none, a final line break begins an empty last line.</summary>
     private bool breakEnds = true;
 
+    /// <summary>Where the operator's object or motion that just failed left its caret, a count cut short; null where it stays.</summary>
+    private int? ranOutAt;
+
     public Vim()
         : this(new VimRegisters())
     {
