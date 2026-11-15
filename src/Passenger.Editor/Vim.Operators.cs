@@ -150,8 +150,8 @@ public sealed partial class Vim
         List<TextEdit> edits = [.. merged.Where(s => s.End > s.Start).Select(s => new TextEdit(s.Start, s.End - s.Start, string.Empty))];
         if (edits.Count == 0)
         {
-            // Nothing to delete (a visual stretch over the file's final line break alone): the carets settle all the same.
-            return new VimResult(true, selections.With(c => Selection.At(Settled(text, c.Caret, breakEnds))));
+            // Nothing to delete (an empty block, the file's final line break alone): each caret goes to its stretch's start.
+            return new VimResult(true, selections.With(c => Selection.At(Settled(text, Mine(stretches, c.Caret) is { } s ? s.Start : c.Caret, breakEnds))));
         }
         TextSnapshot after = text.Apply(edits);
         SelectionSet carets = selections.With(c =>

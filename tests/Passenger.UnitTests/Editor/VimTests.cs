@@ -1438,6 +1438,59 @@ public class VimTests
     public void A_visual_stretch_takes_a_short_lines_break_but_never_the_files_final_one(string before, string keys, string after) =>
         Assert.Equal(after, Run(before, keys));
 
+    /// <summary>* and # on a line with no keyword from the caret on search for the run of other non-blanks under the
+    /// caret, or the first after it on the line, as Vim's do: no word edges, g* and g# alike.</summary>
+    [Theory]
+    [InlineData("x f(y|);\nz f(y);", "*", "x f(y);\nz f(y|);")]
+    [InlineData("x f(y|);\nz f(y);", "g*", "x f(y);\nz f(y|);")]
+    [InlineData("x f(y);\nz f(y|);", "#", "x f(y|);\nz f(y);")]
+    [InlineData("x f(y);\nz f(y|);", "g#", "x f(y|);\nz f(y);")]
+    [InlineData("a |:= b\nc := d", "*", "a := |b\nc := d")]
+    [InlineData("a :|= \nc := d", "*", "a := \nc |:= d")]
+    [InlineData("a | := \nc := d", "*", "a  := \nc |:= d")]
+    [InlineData("|  ;;\nx ;;;;", "*", "  ;;\nx |;;;;")]
+    [InlineData("|  ;;\nx ;;;;", "g*", "  ;;\nx |;;;;")]
+    [InlineData("|  ;;\nx ;; ;;", "2*", "  ;;\nx ;; |;;")]
+    [InlineData("x ;;\n  |;;", "#", "x |;;\n  ;;")]
+    [InlineData("a.b|.;\na.b.;", "*", "a.b.;\na.b|.;")]
+    [InlineData("a ;|; b ;;\n;;", "*", "a ;; |b ;;\n;;")]
+    [InlineData("a\t|;;", "*", "a\t|;;")]
+    [InlineData("|   \nab", "*", "|   \nab")]
+    [InlineData("x |\"y\" \"y\"", "*", "x \"y\" \"|y\"")]
+    [InlineData("x y|\"\n\"y\"", "*", "x y\"\n|\"y\"")]
+    [InlineData("a+|+ b\nc ++", "*", "a++ |b\nc ++")]
+    [InlineData("a+|+\nc++", "*", "a++\nc|++")]
+    public void Star_and_hash_with_no_keyword_search_for_the_run_of_other_non_blanks(string before, string keys, string after) =>
+        Assert.Equal(after, Run(before, keys));
+
+    /// <summary>A block with nothing inside, around the caret or ahead of it: an operator takes nothing but leaves the
+    /// caret inside it, as Vim's does; in visual mode an inner block fails, keeping the stretch, an inner string takes
+    /// its quotes, and an inner tag block takes its tags from its end tag's first character.</summary>
+    [Theory]
+    [InlineData("|f()", "di(", "f(|)")]
+    [InlineData("|x\nf()", "di(", "x\nf(|)")]
+    [InlineData("|x\nf()", "ci(X<Esc>", "x\nf(|X)")]
+    [InlineData("|x\nf()", "vi(d", "|\nf()")]
+    [InlineData("|x []", "di[", "x [|]")]
+    [InlineData("|x\n{\n}\n", "di{", "x\n{\n|}\n")]
+    [InlineData("x\n{|\n}\n", "di{", "x\n{\n|}\n")]
+    [InlineData("|f()", "vi(d", "|()")]
+    [InlineData("f(|)", "vi(d", "f|(")]
+    [InlineData("|f()", "yi(x", "f|(")]
+    [InlineData("|x\nf()", "yi(x", "x\nf|(")]
+    [InlineData("|f()", "gUi(x", "f|(")]
+    [InlineData("|x\n{\n}\n", "vi{d", "|\n{\n}\n")]
+    [InlineData("|x \"\"", "vi\"d", "x| ")]
+    [InlineData("x <a>|</a>", "vitd", "x| ")]
+    [InlineData("x <a|></a>", "vitd", "x <a>|/a>")]
+    [InlineData("x f|()", "vi(d", "x f|)")]
+    [InlineData("x f|()", "vlli(d", "x |f")]
+    [InlineData("b <p><a></a></|p>", "vitd", "b <p>|</p>")]
+    [InlineData("x |\"\"", "vi\"y$p", "x \"\"\"|\"")]
+    [InlineData("x \"|\"", "vi\"lx", "x |\"")]
+    public void Objects_with_nothing_inside_do_what_vims_do(string before, string keys, string after) =>
+        Assert.Equal(after, Run(before, keys));
+
     [Fact]
     public void A_huge_count_ends_at_the_texts_edge()
     {

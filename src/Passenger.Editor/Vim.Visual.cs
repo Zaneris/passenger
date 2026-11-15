@@ -842,7 +842,9 @@ public sealed partial class Vim
 
     /// <summary>A block, a tag or a quoted string in visual mode: at a single place the one there; over a longer stretch
     /// the one around its start or the first after it, and for a block or a tag the one around that where the stretch
-    /// already holds more than a character of it. An inner block of whole lines runs to its last line's break.</summary>
+    /// already holds more than a character of it. An inner block of whole lines runs to its last line's break. With
+    /// nothing inside, an inner block fails, an inner string takes its quotes, and an inner tag block takes its tags from
+    /// its end tag's first character.</summary>
     private Region? Around(TextSnapshot text, Region r, string key, bool inner, int n, bool block)
     {
         bool single = r.Anchor == r.Cursor;
@@ -853,6 +855,21 @@ public sealed partial class Vim
             return null;
         }
         (int start, int end) = Charwise(text, found);
+        if (inner && end == start)
+        {
+            if (block && key != "t")
+            {
+                return null;
+            }
+            if (single && !block)
+            {
+                return new Region(start, start - 1);
+            }
+            if (single && r.Cursor == start && VimTextObjects.Of(text, r.Cursor, key, inner: false, n, breakEnds) is { } tags)
+            {
+                (start, end) = Charwise(text, tags);
+            }
+        }
         if (!single && !block)
         {
             return QuotedOn(text, r, key[0], inner);

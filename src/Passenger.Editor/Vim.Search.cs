@@ -327,7 +327,8 @@ public sealed partial class Vim
     private (string Text, bool Error)? searchSaid;
 
     /// <summary>* and # (g* and g# without the word's edges): the keyword at or after the caret on its line searched for,
-    /// forward or back, as the last search.</summary>
+    /// forward or back, as the last search; on a line with none from the caret on, the run of other non-blanks at or
+    /// after it, edges and all.</summary>
     private VimTarget? WordSearch(TextSnapshot text, int caret, int n, bool back, bool whole)
     {
         LineSpan line = VimMotions.LineOf(text, caret);
@@ -336,17 +337,28 @@ public sealed partial class Vim
         {
             start++;
         }
+        Func<char, bool> taken = TextNavigation.IsWordChar;
         if (start >= line.End)
         {
-            searchSaid = ("E348: No string under cursor", true);
-            return null;
+            taken = c => !TextNavigation.IsWordChar(c) && c is not (' ' or '\t');
+            whole = false;
+            start = caret;
+            while (start < line.End && !taken(text[start]))
+            {
+                start++;
+            }
+            if (start >= line.End)
+            {
+                searchSaid = ("E348: No string under cursor", true);
+                return null;
+            }
         }
-        while (start > line.Start && TextNavigation.IsWordChar(text[start - 1]))
+        while (start > line.Start && taken(text[start - 1]))
         {
             start--;
         }
         int end = start;
-        while (end < line.End && TextNavigation.IsWordChar(text[end]))
+        while (end < line.End && taken(text[end]))
         {
             end++;
         }
