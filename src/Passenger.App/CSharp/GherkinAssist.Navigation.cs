@@ -183,6 +183,18 @@ internal sealed partial class GherkinAssist
         return (string.Join(", ", bindings.Select(b => b.Shown).Distinct()), places);
     }
 
+    /// <summary>An agent's usages of a step or step definition (<see cref="UsesAsync"/>), the bindings read first where the
+    /// solution has a Reqnroll project; null where neither is at the place.</summary>
+    internal async Task<(string Title, IReadOnlyList<LspLocation> Places)?> AgentUsesAsync(OpenDocument document, int offset)
+    {
+        if (Bdd is not { } bdd || (!IsFeature(document) && !bdd.Session.Steps.Projects.Any()))
+        {
+            return null;
+        }
+        await bdd.StepsAsync();
+        return await UsesAsync(bdd, document, offset);
+    }
+
     /// <summary>Find Unused Step Definitions: every step definition of the solution's code that no step of the features of
     /// the projects seeing it binds, listed as usages are.</summary>
     public async Task ShowUnusedAsync()

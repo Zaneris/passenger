@@ -114,4 +114,29 @@ internal sealed partial class GherkinAssist
         return new RefactorOutcome($"Renamed the step to \"{renamed}\" in {changes.Count} {(changes.Count == 1 ? "file" : "files")}{left}", null,
             [.. changes.Select(c => new RefactoredFile(c.Path, "changed", []))], []);
     }
+
+    /// <summary>The step definition an agent's place is on, its bindings read first: a step's one definition, or a C#
+    /// definition's expression's; null elsewhere (a definition's method name is C#'s).</summary>
+    internal async Task<StepBinding?> StepAtAsync(OpenDocument document, int offset)
+    {
+        if (Bdd is not { } bdd)
+        {
+            return null;
+        }
+        if (IsFeature(document))
+        {
+            await bdd.AnalysisAsync(document);
+            return BindingOfStep(bdd, document, offset);
+        }
+        if (!PathNames.HasExtension(document.Path, [".cs"]) || !bdd.Session.Steps.Projects.Any())
+        {
+            return null;
+        }
+        await bdd.StepsAsync();
+        return bdd.BindingAt(document, offset) is { ExpressionPlace: not null } at && OnExpression(document.Text.Snapshot, at, offset) ? at : null;
+    }
+
+    /// <summary>An agent's Rename Step (<see cref="RenameStepAsync(BddSource, StepBinding, string)"/>).</summary>
+    internal Task<RefactorOutcome> RenameStepAsync(StepBinding binding, string renamed) =>
+        Bdd is { } bdd ? RenameStepAsync(bdd, binding, renamed) : Task.FromResult(RefactorOutcome.Refused(Refusals.NoReqnrollProject));
 }

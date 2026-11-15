@@ -376,7 +376,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         "Every place the symbol at a position is used, its declaration included, as Find Usages finds them (a C# symbol's in " +
         "XAML too), by file, each as line:column and its line's text, after the C# symbol the place took; in XAML, an " +
         "element's name in its file and code-behind, a resource's key across the project, or a C# type or member as from its " +
-        "declaration. JSON and MSBuild files have none.")]
+        "declaration; a Reqnroll step's or step definition's, every step it binds in .feature files. JSON and MSBuild files have none.")]
     public Task<UsagesFound> Usages(string? path = null, int? line = null, int? column = null, string? symbol = null, CancellationToken cancel = default) => OnUi(cancel, async () =>
     {
         CodePlace at = await AskedAt(path, line, column, symbol, cancel);
@@ -412,6 +412,10 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
                 return await window.Assist.Languages.Shaders.UsesAsync(shader.Document, offset) is (_, { } shaderUses)
                     ? ByFile(null, await Places(shaderUses, cancel))
                     : throw new InvalidOperationException($"No uniform, varying, function, struct or constant the shader declares is at {place}");
+            case FeatureServed feature:
+                return await window.Assist.Languages.Gherkin.AgentUsesAsync(feature.Document, offset) is ({ } stepsOf, { } stepPlaces)
+                    ? ByFile(stepsOf, await Places(stepPlaces, cancel))
+                    : throw new InvalidOperationException($"No step a step definition binds is at {place}");
             case ServerServed unfound when !unfound.Provides("referencesProvider"):
                 throw new InvalidOperationException($"{unfound.Language} has no usages: its language server finds none, so Find Usages finds nothing in {Path.GetFileName(unfound.Document.Path)}");
         }
@@ -435,7 +439,10 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         Roslyn.Extension.NamedSymbol? named = component?.Symbol
             ?? (served.Document.Language == Languages.Language.CSharp ? await server.Lsp.SymbolAtAsync(offset, cancel) : null);
         string? taken = named is null ? null : $"{named.Shown} ({named.Kind})";
-        found = [.. found, .. await window.Assist.Languages.Xaml.CodeUsesAsync(named), .. DocumentUris.Besides(godot, found)];
+        // A step definition's steps, which no language server knows, beside its C# uses.
+        IReadOnlyList<LspLocation> steps = served.Document.Language == Languages.Language.CSharp
+            && await window.Assist.Languages.Gherkin.AgentUsesAsync(served.Document, offset) is (_, { } bound) ? bound : [];
+        found = [.. found, .. await window.Assist.Languages.Xaml.CodeUsesAsync(named), .. DocumentUris.Besides(godot, found), .. steps];
         // Answered now, saying which files that could use it the server has yet to take in.
         IReadOnlyList<(string Path, string Project)> untaken = server.Web is null && Session.CSharp is { } csharp ? await csharp.UntakenAsync(served.Document, offset, cancel) : [];
         // A project whose scripts no scene reaches lists none of its scenes, and says why.
@@ -556,7 +563,8 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         "Razor component (Foo.razor, Foo.razor.css); an Aspire resource's name where its AppHost " +
         "declares it and its services read it; a Godot node's name (in a scene, or a GetNode path) in its scenes and the code's paths; " +
         "a Godot input action, group, animation, autoload, shader parameter or translation key a string names, where defined and in each such string; " +
-        "a XAML element's name with its code-behind's uses; a JSON property (in " +
+        "a XAML element's name with its code-behind's uses; a Reqnroll step (from a step, or its definition's expression: newName " +
+        "the new expression, its parameters as they were), in its attribute and every step; a JSON property (in " +
         "package.json's scripts, every npm run of one); a compose file's names, its override's too. MSBuild files have none. " +
         "force renames a GDScript member where uses Passenger can't see remain, leaving them.")]
     public Task<string> Rename(string newName, string? path = null, int? line = null, int? column = null, string? symbol = null,
@@ -583,6 +591,18 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         Served served = await Serve(at.Path, cancel);
         int offset = Offset(served.Document, at.Line, at.Column);
         naming.Names(Renaming(served.Document, offset, newName));
+        // A Reqnroll step, from a step or its definition's expression (its method's name is C#'s to rename).
+        if ((served is FeatureServed || served.Document.Language == Languages.Language.CSharp)
+            && await window.Assist.Languages.Gherkin.StepAtAsync(served.Document, offset) is { } stepped)
+        {
+            RefactorOutcome step = await window.Assist.Languages.Gherkin.RenameStepAsync(stepped, newName);
+            if (step.Problem is { } refused)
+            {
+                throw new InvalidOperationException(refused);
+            }
+            await SaveLandedAsync(cancel);
+            return $"{step.Said}: {string.Join(", ", step.Files.Select(f => Relative(f.Path)))}";
+        }
         if (served is ServerServed { Web.Kind: WebServerKind.Yaml } yaml && global::Passenger.App.Containers.ComposeFiles.IsCompose(yaml.Document.Path)
             && await ComposeAssist.ComposeRenamingAsync(yaml.Lsp, yaml.Document, offset) is { } composed)
         {
@@ -632,6 +652,8 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
                 throw Lacks(served, "Rename", MSBuildHas);
             case ShaderServed:
                 throw Lacks(served, "Rename", ShaderHas);
+            case FeatureServed feature:
+                throw new InvalidOperationException($"No step one step definition binds is at {Relative(feature.Document.Path)}:{at.Line}:{at.Column}");
             case ScriptServed script:
                 script.Web.AskServer?.Invoke();
                 throw new InvalidOperationException($"No member or local of a script is at {Relative(script.Document.Path)}:{at.Line}:{at.Column} as Passenger reads the "
@@ -738,6 +760,9 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
                 throw new InvalidOperationException(SceneFixesHere);
             case ShaderServed:
                 throw Lacks(served, "fixes or refactorings", ShaderHas);
+            case FeatureServed feature:
+                listed = [.. (await window.Assist.OwnFixesAsync(feature.Document, Offset(feature.Document, line, column))).Select(f => (f.Title, $"{f.Title} [quickfix]"))];
+                break;
             default:
                 int offset = Offset(served.Document, line, column);
                 await AspireMarked(served, cancel);
@@ -788,6 +813,11 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
                 throw new InvalidOperationException(SceneFixesHere);
             case ShaderServed:
                 throw Lacks(served, "fixes or refactorings", ShaderHas);
+            case FeatureServed feature:
+                IReadOnlyList<EditorFix> stepFixes = await window.Assist.OwnFixesAsync(feature.Document, Offset(feature.Document, line, column));
+                return await ApplyOwnFix(feature.Document, stepFixes.FirstOrDefault(f => f.Title == title)
+                    ?? throw new InvalidOperationException(stepFixes.Count == 0 ? $"No fixes here in {Relative(feature.Document.Path)}" : $"No action '{title}' here; there are: {string.Join("; ", stepFixes.Select(f => f.Title))}"),
+                    patience, name);
         }
         ServerServed server = (ServerServed)served;
         int offset = Offset(served.Document, line, column);
@@ -909,13 +939,14 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
     }
 
     [McpServerTool(Name = McpTools.Format, Title = "Reformat a file", Destructive = true), Description(
-        "Reformats a file as Reformat Code does, and saves it: XAML by its .editorconfig, GDScript by Godot's style guide, a web " +
+        "Reformats a file as Reformat Code does, and saves it: XAML by its .editorconfig, GDScript by Godot's style guide, a " +
+        ".feature file by its gherkin_* editorconfig keys, a web " +
         "language by the project's Prettier where it formats it, else the language server. MSBuild files have none.")]
     public Task<string> Format(string path, CancellationToken cancel = default) => OnUi(cancel, async () =>
     {
         OpenDocument document;
         LspDocument? lsp = null;
-        if (Passenger.App.Xaml.XamlService.IsXaml(Resolve(path)) || Godot.GodotScriptTypes.IsScript(Resolve(path)))
+        if (Passenger.App.Xaml.XamlService.IsXaml(Resolve(path)) || Godot.GodotScriptTypes.IsScript(Resolve(path)) || Bdd.FeatureChecks.IsFeature(Resolve(path)))
         {
             document = await DocumentAsync(path, cancel);
         }
@@ -1214,6 +1245,11 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             case ShaderServed shader:
                 return CSharp.GodotShaderAssist.Outline(shader.Document.Text.Snapshot.ToString()) is { Count: > 0 } declared
                     ? string.Join('\n', declared.Select(d => $"{d.Written} ({d.Kind}, line {d.Line})")) : "Nothing is declared in this file";
+            case FeatureServed feature:
+                Outline<Navigation.SymbolRow> parts = await new Editors.FeatureOutline(feature.Document.Text, () => Session.FeatureProjectFolder(feature.Document.Path))
+                    .ReadAsync(feature.Document.Path, null, cancel);
+                return parts.Rows.Count == 0 ? "The file has no feature"
+                    : string.Join('\n', parts.Rows.Select(row => $"{new string(' ', row.Depth * 2)}{row.Detail ?? row.Name}: {row.Name} (line {row.Position.Line + 1})"));
         }
         LspDocument lsp = ((ServerServed)served).Lsp;
         System.Text.StringBuilder text = new();

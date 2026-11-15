@@ -96,9 +96,9 @@ internal sealed class FeatureChecks : IDisposable
         }
     }
 
-    /// <summary>An open feature's last reading where it is of the text as it stands; null otherwise.</summary>
+    /// <summary>An open feature's last reading where it is of the text and the bindings as they stand; null otherwise.</summary>
     public FeatureAnalysis? Of(OpenDocument document) =>
-        documents.TryGetValue(document, out Kept? kept) && kept.Last is { } last && last.Version == document.Text.Version ? last : null;
+        documents.TryGetValue(document, out Kept? kept) && kept.Last is { } last && last.Version == document.Text.Version && last.StepsRead == session.Steps.Version ? last : null;
 
     /// <summary>An open feature's reading of the text as it stands, read now where the last is older.</summary>
     public async Task<FeatureAnalysis?> CurrentAsync(OpenDocument document)
@@ -129,8 +129,9 @@ internal sealed class FeatureChecks : IDisposable
         string? folder = session.FeatureProjectFolder(document.Path);
         ProjectSteps? steps = session.Steps.For(session.ProjectOf(document.Path)?.Path);
         ShownColours shown = kept.Layer?.Shown ?? ShownColours.None;
+        int read = session.Steps.Version;
         FeatureAnalysis analysis = await BackgroundWork.Run(() =>
-            FeatureAnalysis.Of(text, version, folder is null ? ReqnrollConfig.Parse("{}", false) : ReqnrollConfig.In(folder), steps, shown));
+            FeatureAnalysis.Of(text, version, folder is null ? ReqnrollConfig.Parse("{}", false) : ReqnrollConfig.In(folder), steps, shown, read));
         if (!documents.ContainsKey(document) || document.Text.Version != version)
         {
             return analysis;

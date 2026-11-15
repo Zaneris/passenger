@@ -39,6 +39,9 @@ public sealed partial class PassengerTools
     /// <summary>A Godot shader or shader include, read against Godot's shading language and checked by Godot's compiler.</summary>
     private sealed record ShaderServed(OpenDocument Document) : Served(Document, "Godot shader");
 
+    /// <summary>A .feature file, which Passenger's own reading of Gherkin answers for (<see cref="Bdd.FeatureChecks"/>).</summary>
+    private sealed record FeatureServed(OpenDocument Document) : Served(Document, "Gherkin");
+
     /// <summary>A GDScript no Godot server serves, which Passenger's own reading answers for (<see cref="WebDocument.AskServer"/>).</summary>
     private sealed record ScriptServed(OpenDocument Document, WebDocument Web) : Served(Document, "GDScript");
 
@@ -52,6 +55,9 @@ public sealed partial class PassengerTools
     private const string ShaderHas = "definition goes to a uniform, varying, function, struct or constant, an include's too, and from an #include to "
         + "its file; symbol_info says what a built-in, mode, hint or declaration is; usages lists a uniform's uses, the scenes and C# naming it; "
         + "outline gives its declarations; diagnostics Godot's compiler's errors";
+
+    private const string FeatureHas = "definition goes from a step to its step definition and from a header to its hooks; usages lists a step's "
+        + "definition's steps; rename renames a step; code_actions defines a missing step; format lays the file out; outline gives its scenarios";
 
     private const string GodotHas = "definition goes from a res:// path or ExtResource to its file, from a node path to its node, and from a "
         + "connection's method or signal to its code; rename renames a node's name in its scenes and the code's GetNode paths; outline gives its nodes";
@@ -101,13 +107,19 @@ public sealed partial class PassengerTools
         {
             return new ShaderServed(document);
         }
+        if (Bdd.FeatureChecks.IsFeature(document.Path))
+        {
+            // Its steps are matched once the C# server has read the step definitions.
+            await When(() => Session.CSharp is not { } csharp || csharp.IsReady, ServerLimit, cancel, ServerState());
+            return new FeatureServed(document);
+        }
         if (document.Language.Service == Languages.LanguageService.CSharp)
         {
             (_, LspDocument lsp) = await Code(path, cancel, takenIn);
             return new ServerServed(document, document.Language.Name, lsp);
         }
         throw new InvalidOperationException($"Passenger has no code help for {LanguageOf(document)} files such as {name}: the code tools answer C#, Razor, "
-            + "XAML, JavaScript, TypeScript, HTML, CSS, SCSS, Less, JSON, YAML, Dockerfiles, MSBuild files and Godot's scenes and shaders");
+            + "XAML, JavaScript, TypeScript, HTML, CSS, SCSS, Less, JSON, YAML, Dockerfiles, MSBuild files, Gherkin's .feature files and Godot's scenes and shaders");
     }
 
     /// <summary>An MSBuild file's elements, indented, each with its line: a property or metadata with its value as written,

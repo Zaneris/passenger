@@ -27,6 +27,9 @@ public sealed class FeatureAnalysis
 
     public int Version { get; }
 
+    /// <summary>Which read of the bindings it was matched against (<see cref="StepCatalog.Version"/>).</summary>
+    public int StepsRead { get; private set; }
+
     public TextSnapshot Text { get; }
 
     public FeatureReading Reading { get; }
@@ -48,10 +51,10 @@ public sealed class FeatureAnalysis
     public TextRange? ColoursDiffer { get; private set; }
 
     /// <summary>A file's text read in its project's configuration, matched against its project's bindings where known.</summary>
-    public static FeatureAnalysis Of(TextSnapshot text, int version, ReqnrollConfig config, ProjectSteps? steps, ShownColours shown)
+    public static FeatureAnalysis Of(TextSnapshot text, int version, ReqnrollConfig config, ProjectSteps? steps, ShownColours shown, int stepsRead = -1)
     {
         FeatureReading reading = FeatureReading.Read(text.ToString(), GherkinDialects.Default(config.FeatureLanguage));
-        FeatureAnalysis analysis = new(version, text, reading, config, steps);
+        FeatureAnalysis analysis = new(version, text, reading, config, steps) { StepsRead = stepsRead };
         StepMatcher? matcher = analysis.Matcher;
         Dictionary<FeatureStep, StepMatch> matches = [];
         if (matcher is not null)
