@@ -1646,6 +1646,45 @@ public class VimTests
     public void A_block_shifted_right_pads_a_line_ending_where_it_begins(string before, string keys, string after) =>
         Assert.Equal(after, Run(before, keys));
 
+    /// <summary>A put over a visual block does what Vim's does: text of one line goes in each line's part, a line ending
+    /// where the block begins (an empty one too) taking it at its end; a block goes in from the block's top left; lines
+    /// go below the block, or above for P, below its top line where P's part there ran to that line's end past text it
+    /// leaves; and a count puts the register that many times over, in every visual mode.</summary>
+    [Theory]
+    [InlineData("abc|def\nab\nabcdef\nxyz", "ma$yiw`a<C-v>jp", "ababcde|fef\nababcdef\nabcdef\nxyz")]
+    [InlineData("abc|def\nab\nabcdef\nxyz", "ma$yiw`a<C-v>j2p", "ababcdefabcde|fef\nababcdefabcdef\nabcdef\nxyz")]
+    [InlineData("abc|def\nab\nabcdef\nxyz", "maG0y2l`a<C-v>jjP", "abcx|yef\nab\nabcxyef\nxyz")]
+    [InlineData("a|bcdef\n\nabcdef\nxyz", "maG0y2l`a<C-v>jp", "x|ycdef\nxy\nabcdef\nxyz")]
+    [InlineData("abc|def\nab\nabcdef\nxyz", "maG0<C-v>ly`a<C-v>jj2p", "abc|xyxyef\nab\nabcef\nxyz")]
+    [InlineData("abc|def\nab\nabcdef\nxyz", "maGyy`a<C-v>jj2p", "abcef\nab\nabcef\n|xyz\nxyz\nxyz")]
+    [InlineData("a|bcdef\nab\nabcdef\nxyz", "maGyy`a<C-v>j$P", "a\n|xyz\na\nabcdef\nxyz")]
+    [InlineData("a|bcdef\n\nabcdef\nxyz", "maGyy`a<C-v>j$P", "|xyz\n\n\nabcdef\nxyz")]
+    [InlineData("a|bcdef\nab\nabcdef\nxyz\npq", "maG0kvjy`a<C-v>j2p", "a|xyz\npxyz\npcdef\na\nabcdef\nxyz\npq")]
+    [InlineData("ab|cdef\nxyz", "jyiwkv2p", "xyzxy|zbcdef\nxyz")]
+    [InlineData("ab|cdef\nxyz", "jyykV2p", "|xyz\nxyz\nxyz")]
+    [InlineData("ab|cdef\nxyz", "jyiwkV2p", "|xyz\nxyz\nxyz")]
+    public void A_put_over_a_block_fills_each_line_and_a_count_repeats_it(string before, string keys, string after) =>
+        Assert.Equal(after, Run(before, keys));
+
+    /// <summary>A block's cursor moved by j or k onto a tab takes the tab's columns, and after $ onto a shorter line
+    /// stands past that line's end, so I and A go where Vim's do.</summary>
+    [Theory]
+    [InlineData("word\n\tnot\nla|st-line, here.", "<C-v>kI7<Esc>", "word\n|7\tnot\n7last-line, here.")]
+    [InlineData("word\n\tnot\nla|st-line, here.", "<C-v>kd", "word\n|not\n-line, here.")]
+    [InlineData("word\n\tnot\nla|st-line, here.", "<C-v>kA7<Esc>", "word\n|\t7not\nlast7-line, here.")]
+    [InlineData("word\n\tnot\nlast-|line, here.", "<C-v>kI7<Esc>", "word\n\tn|7ot\nlast-7line, here.")]
+    [InlineData("    indented li|ne\n\tnot\nlast", "<C-v>$jI7<Esc>", "    ind|7ented line\n\tnot7\nlast")]
+    [InlineData("    indented li|ne\n\tnot\nlast", "<C-v>$jd", "    in|d\n\tnot\nlast")]
+    [InlineData("    indented li|ne\nnot\nlast", "<C-v>$jI7<Esc>", "   |7 indented line\nnot7\nlast")]
+    [InlineData("    indented li|ne\nnot\nlast", "<C-v>$jA7<Esc>", "   | indented line7\nnot7\nlast")]
+    [InlineData("    indented li|ne\nnot\nlast", "<C-v>$jjI7<Esc>", "    |7indented line\nnot\nlast7")]
+    [InlineData("abcdef|g\nabc\nabcdefgh", "<C-v>$jI7<Esc>", "abc|7defg\nabc7\nabcdefgh")]
+    [InlineData("abcdef|g\nabc\nabcdefgh", "<C-v>$jjI7<Esc>", "abcdef|7g\nabc\nabcdef7gh")]
+    [InlineData("abcdef|g\nabc\nabcdefgh", "<C-v>$jjd", "abcde|f\nabc\nabcdef")]
+    [InlineData("abc|defg\nabc\nabcdefgh", "<C-v>$jI7<Esc>", "abc|7defg\nabc7\nabcdefgh")]
+    public void A_blocks_cursor_on_a_tab_or_after_dollar_takes_the_columns_vims_does(string before, string keys, string after) =>
+        Assert.Equal(after, Run(before, keys));
+
     [Fact]
     public void A_huge_count_ends_at_the_texts_edge()
     {

@@ -517,12 +517,13 @@ public sealed partial class Vim
             visualAims[i] = aim;
             if (block)
             {
-                // Onto a line too short for the column aimed at, the block's cursor stands just past its end.
+                // The block's cursor stands past a line too short for its aim (or after $), on a tab at its first column.
+                int width = TextNavigation.VisualColumn(text, VimMotions.LineOf(text, to).End, tab);
                 blockColumns = command.Name is "j" or "k" or "gj" or "gk"
                     ? blockColumns with
                     {
-                        Cursor = blockColumns.ToEnd ? TextNavigation.VisualColumn(text, LastCharOf(text, to), tab)
-                            : aim >= 0 && aim != int.MaxValue ? Math.Min(aim, TextNavigation.VisualColumn(text, VimMotions.LineOf(text, to).End, tab))
+                        Cursor = blockColumns.ToEnd ? width
+                            : aim >= 0 && aim != int.MaxValue && aim >= width ? width
                             : TextNavigation.VisualColumn(text, to, tab),
                     }
                     : blockColumns with { Cursor = TextNavigation.VisualColumn(text, to, tab), ToEnd = command.Name == "$" };

@@ -73,7 +73,7 @@ public sealed partial class Vim
                 : starts.With(c => Selection.At(Settled(text, c.Caret, breakEnds))));
         }
         (List<Stretch> stretches, SelectionSet carets) = block && !lines
-            ? BlockStretches(text, top, bottom, left, right, tab, perLine: basic == "c", lineEnds: basic == "c" || op == ">")
+            ? BlockStretches(text, top, bottom, left, right, tab, perLine: basic == "c", lineEnds: basic == "c" || op is ">" or "p" or "P", emptyToo: op != ">")
             : RegionStretches(text, taken, lines);
         if (lines && !block && basic is "y" or "g~" or "gu" or "gU")
         {
@@ -175,9 +175,11 @@ public sealed partial class Vim
     }
 
     /// <summary>A block's part of each line from <paramref name="top"/> to <paramref name="bottom"/> that reaches it (with
-    /// <paramref name="lineEnds"/>, an empty part at the end of a line ending where it begins), and a caret at its top
-    /// left, or one at each line's part (<paramref name="perLine"/>) for a change typed on every line.</summary>
-    private (List<Stretch>, SelectionSet) BlockStretches(TextSnapshot text, int top, int bottom, int left, int right, int tab, bool perLine, bool lineEnds = false)
+    /// <paramref name="lineEnds"/>, an empty part at the end of a line ending where it begins, an empty line only where
+    /// <paramref name="emptyToo"/>), and a caret at its top left, or one at each line's part (<paramref name="perLine"/>)
+    /// for a change typed on every line.</summary>
+    private (List<Stretch>, SelectionSet) BlockStretches(TextSnapshot text, int top, int bottom, int left, int right, int tab, bool perLine,
+        bool lineEnds = false, bool emptyToo = false)
     {
         List<Stretch> stretches = [];
         List<Selection> carets = [];
@@ -186,7 +188,7 @@ public sealed partial class Vim
             if (BlockPiece(text, line, left, right, tab) is not { } piece)
             {
                 LineSpan span = text.GetLine(line);
-                if (lineEnds && (perLine || span.Length > 0) && TextNavigation.VisualColumn(text, span.End, tab) == left)
+                if (lineEnds && (emptyToo || span.Length > 0) && TextNavigation.VisualColumn(text, span.End, tab) == left)
                 {
                     // A line ending just where the block begins takes what a change types or a shift adds there, at its end.
                     stretches.Add(new Stretch(span.End, span.End, false, line, line, span.End, span.End));
@@ -376,9 +378,39 @@ public sealed partial class Vim
         stretches.Sort((a, b) => a.Start.CompareTo(b.Start));
         VimRegister replaced = new([.. Merged(stretches, pieces: true).Select(m => Taken(text, m))], stretches[0].Lines) { Blockwise = block };
         string eol = view.LineEnding;
+        int times = Math.Clamp(command.Count, 1, Math.Max(1, MostRepeatedText / Math.Max(1, value.Text.Length)));
         if (block && value.Linewise)
         {
-            return PutLinesBy(value, keep, text, stretches, top, bottom, eol, replaced);
+            // P over a block whose top line's part ran to that line's end, past text it leaves, puts the lines below that line.
+            Stretch first = stretches[0];
+            bool belowTop = keep && first.First == top && first.End > first.Start && first.End == text.GetLine(top).End && first.Start > text.GetLine(top).Start;
+            return PutLinesBy(value, keep, keep && !belowTop, text, stretches, top, belowTop ? top : bottom, eol, replaced, times);
+        }
+        if (block && value.Blockwise)
+        {
+            // A block put over a block: the block deleted, the register's put in its place from its top left.
+            List<TextEdit> deletes = [.. stretches.Where(t => t.End > t.Start).Select(t => new TextEdit(t.Start, t.End - t.Start, string.Empty))];
+            int corner = stretches[0].Start;
+            TextSnapshot cleared = text.Apply(deletes);
+            VimResult put = PutBlock(value, before: true, times, cleared, SelectionSet.Single(TextEditing.MapOffset(corner, deletes, false)), view, cursorAfter: false);
+            if (!keep)
+            {
+                Registers.Delete(null, replaced, always: false);
+            }
+            return new VimResult(true, Edits: [new EditPlan(deletes, SelectionSet.Single(corner), EditKind.Other), .. put.Edits ?? []]);
+        }
+        if (block && !value.Text.Contains('\n', StringComparison.Ordinal))
+        {
+            // Text of one line put over a block takes each line's part of it, the caret on its last character on the first.
+            string each = string.Concat(Enumerable.Repeat(value.Text, times));
+            List<TextEdit> pieces = [.. stretches.Select(t => new TextEdit(t.Start, t.End - t.Start, each))];
+            TextSnapshot filled = text.Apply(pieces);
+            int lastOfFirst = stretches[0].Start + Math.Max(0, each.Length - 1);
+            if (!keep)
+            {
+                Registers.Delete(null, replaced, always: false);
+            }
+            return new VimResult(true, Edits: [new EditPlan(pieces, SelectionSet.Single(Settled(filled, lastOfFirst, breakEnds)), EditKind.Other)]);
         }
         List<TextEdit> edits = [];
         List<int> landed = [];
@@ -393,7 +425,9 @@ public sealed partial class Vim
                 shift -= s.End - s.Start;
                 continue;
             }
-            string piece = LineEndings.In(dealt ? value.Parts[i] : value.Text, eol);
+            string one = LineEndings.In(dealt ? value.Parts[i] : value.Text, eol);
+            // A count puts the text that many times over, lines one under another over lines.
+            string piece = s.Lines && !value.Linewise ? string.Join(eol, Enumerable.Repeat(one, times)) : string.Concat(Enumerable.Repeat(one, times));
             string body = value.Linewise && piece.EndsWith(eol, StringComparison.Ordinal) ? piece[..^eol.Length] : piece;
             string put;
             int landing;
@@ -431,11 +465,12 @@ public sealed partial class Vim
         return new VimResult(true, Edits: [new EditPlan(edits, SelectionSet.Create(putCarets, 0), EditKind.Other)]);
     }
 
-    /// <summary>Whole lines put over a block: the block deleted, the lines put above its top line for P, below its bottom
-    /// line for p, the caret on the first one's first non-blank.</summary>
-    private VimResult PutLinesBy(VimRegister value, bool above, TextSnapshot text, List<Stretch> stretches, int top, int bottom, string eol, VimRegister replaced)
+    /// <summary>Whole lines put over a block: the block deleted, the lines put above its top line (<paramref name="above"/>)
+    /// or below <paramref name="bottom"/>, <paramref name="times"/> over, the caret on the first one's first non-blank;
+    /// the register kept where <paramref name="keep"/>.</summary>
+    private VimResult PutLinesBy(VimRegister value, bool keep, bool above, TextSnapshot text, List<Stretch> stretches, int top, int bottom, string eol, VimRegister replaced, int times)
     {
-        string lines = LineEndings.In(value.Text, eol);
+        string lines = string.Concat(Enumerable.Repeat(LineEndings.In(value.Text, eol), times));
         LineSpan end = text.GetLine(bottom);
         (int at, string put) = above ? (text.GetLineStart(top), lines)
             : end.BreakLength > 0 ? (end.EndIncludingBreak, lines) : (end.End, eol + lines[..^eol.Length]);
@@ -452,7 +487,7 @@ public sealed partial class Vim
         }
         TextSnapshot after = text.Apply(edits);
         int first = after.GetLineFromOffset(Math.Min(TextEditing.MapOffset(at, edits, false) + (above || end.BreakLength > 0 ? 0 : eol.Length), after.Length));
-        if (!above)
+        if (!keep)
         {
             Registers.Delete(null, replaced, always: false);
         }
