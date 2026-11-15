@@ -148,14 +148,6 @@ public sealed class FeatureReadingTests
     }
 
     [Fact]
-    public void Every_language_gherkin_knows_is_listed()
-    {
-        Assert.Contains("de", GherkinDialects.Languages);
-        Assert.Contains("en", GherkinDialects.Languages);
-        Assert.True(GherkinDialects.Languages.Count > 60);
-    }
-
-    [Fact]
     public void A_rules_scenarios_take_its_tags_and_name_it()
     {
         FeatureReading reading = FeatureReading.Read("Feature: X\n\n@r\nRule: one rule\n\n  Scenario: A\n    Given one\n", "en");

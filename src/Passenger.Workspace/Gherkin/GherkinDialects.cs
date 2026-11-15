@@ -1,4 +1,3 @@
-using System.Reflection;
 using Gherkin;
 
 namespace Passenger.Workspace.Gherkin;
@@ -10,18 +9,16 @@ public static class GherkinDialects
 {
     public const string English = "en";
 
-    /// <summary>Every language's code ("de", "en-old"), read from the reader's own dialect factory, whose methods are named
-    /// after them: it lists them nowhere else.</summary>
-    public static IReadOnlyList<string> Languages { get; } = [.. typeof(GherkinDialectProvider)
-        .GetMethods(BindingFlags.Instance | BindingFlags.Static | BindingFlags.NonPublic | BindingFlags.Public)
-        .Select(m => m.Name)
-        .Where(n => n.StartsWith(DialectFactoryPrefix, StringComparison.Ordinal))
-        .Select(n => n[DialectFactoryPrefix.Length..].Replace('_', '-'))
-        .Distinct(StringComparer.Ordinal)
-        .Where(Knows)
-        .Order(StringComparer.Ordinal)];
-
-    private const string DialectFactoryPrefix = "CreateGherkinDialectFor_";
+    /// <summary>Every language's code the reader knows ("de", "en-old"), in ordinal order: written out, since the reader
+    /// lists them nowhere, and held to the reader's own by GherkinDialectsTests.</summary>
+    public static IReadOnlyList<string> Languages { get; } =
+    [
+        "af", "am", "amh", "an", "ar", "ast", "az", "be", "bg", "bm", "bs", "ca", "cs", "cy-GB", "da", "de", "el", "em", "en",
+        "en-Scouse", "en-au", "en-lol", "en-old", "en-pirate", "en-tx", "eo", "es", "et", "fa", "fi", "fr", "ga", "gj", "gl",
+        "he", "hi", "hr", "ht", "hu", "id", "is", "it", "ja", "jv", "ka", "kn", "ko", "lt", "lu", "lv", "mk-Cyrl", "mk-Latn",
+        "ml", "mn", "mr", "ne", "nl", "no", "pa", "pl", "pt", "ro", "ru", "sk", "sl", "sr-Cyrl", "sr-Latn", "sv", "ta", "te",
+        "th", "tlh", "tr", "tt", "uk", "ur", "uz", "vi", "zh-CN", "zh-TW",
+    ];
 
     /// <summary>The language a file with no <c># language:</c> line is read in, from what the project names.</summary>
     public static string Default(string? named)
@@ -42,15 +39,5 @@ public static class GherkinDialects
     /// <summary>A language's keywords; English's for one Gherkin doesn't know.</summary>
     public static GherkinDialect Of(string language) => Knows(language) ? new GherkinDialectProvider(language).DefaultDialect : new GherkinDialectProvider(English).DefaultDialect;
 
-    private static bool Knows(string language)
-    {
-        try
-        {
-            return new GherkinDialectProvider(English).GetDialect(language, null) is not null;
-        }
-        catch (NoSuchLanguageException)
-        {
-            return false;
-        }
-    }
+    private static bool Knows(string language) => Languages.Contains(language, StringComparer.Ordinal);
 }
