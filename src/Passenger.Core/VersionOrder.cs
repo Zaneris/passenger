@@ -14,6 +14,19 @@ public sealed class VersionOrder : IComparer<string>
         int.TryParse(Release(version.Trim()).Split('-', 2)[0].Split('.')[0], System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out int major)
             ? major : null;
 
+    /// <summary>The folder of these whose name is the newest version (<see cref="NewestFirst"/>); null for none.</summary>
+    public static string? Newest(IEnumerable<string> folders) => NewestFirst(folders).FirstOrDefault();
+
+    /// <summary>The folders named by versions (a runtime's, a pack's, a tool's), newest first: a release above its release
+    /// candidates and previews, which share its numbers. A name beginning with no digit is no version and left out; two
+    /// names of one version (1.0, 1.0.0) go by their names, ordinal, so the order they are listed in never decides.</summary>
+    public static IReadOnlyList<string> NewestFirst(IEnumerable<string> folders) =>
+        [.. folders.Select(f => (Folder: f, Name: Path.GetFileName(f.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar))))
+            .Where(f => f.Name.Length > 0 && char.IsAsciiDigit(f.Name[0]))
+            .OrderByDescending(f => f.Name, Instance)
+            .ThenBy(f => f.Name, StringComparer.Ordinal)
+            .Select(f => f.Folder)];
+
     public int Compare(string? x, string? y)
     {
         (long[] a, string[]? aLabel) = Parse(x ?? string.Empty);

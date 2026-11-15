@@ -42,8 +42,7 @@ public static class AndroidHosts
         try
         {
             string packs = Path.Combine(Dotnet.Root(folder), "packs", LinuxPack);
-            if (!Directory.Exists(packs)
-                || Directory.EnumerateDirectories(packs).MaxBy(v => Version.TryParse(Path.GetFileName(v).Split('-')[0], out Version? version) ? version : null) is not { } newest)
+            if (!Directory.Exists(packs) || VersionOrder.Newest(Directory.EnumerateDirectories(packs)) is not { } newest)
             {
                 return null;
             }

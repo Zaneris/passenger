@@ -449,11 +449,7 @@ public sealed record ProjectInputs(
             return [];
         }
         int? major = FrameworkNames.Major(target);
-        // A release above its previews and release candidates, which share its numbers.
-        List<(string Version, string Folder)> versions = [.. Directory.EnumerateDirectories(packs)
-            .Select(d => (Version: Path.GetFileName(d), Folder: d))
-            .Where(v => v.Version.Length > 0 && char.IsAsciiDigit(v.Version[0]))
-            .OrderByDescending(v => v.Version, VersionOrder.Instance)];
+        List<(string Version, string Folder)> versions = [.. VersionOrder.NewestFirst(Directory.EnumerateDirectories(packs)).Select(d => (Version: Path.GetFileName(d), Folder: d))];
         // The version the SDK names first; a workload's pack, versioned by the platform's own numbers, at its newest.
         IEnumerable<(string Version, string Folder)> named = version is null ? [] : versions.Where(v => string.Equals(v.Version, version, StringComparison.OrdinalIgnoreCase));
         foreach ((_, string folder) in named.Concat(versions.Where(v => major is not null && VersionOrder.Major(v.Version) == major)).Concat(versions))

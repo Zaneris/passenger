@@ -125,8 +125,7 @@ public static class EfTools
         {
             return null;
         }
-        string? version = Directory.GetDirectories(store).Select(Path.GetFileName).OfType<string>().Max(VersionOrder.Instance);
-        return version is null ? null : new EfTool(EfToolPlace.Global, version, program);
+        return VersionOrder.Newest(Directory.EnumerateDirectories(store)) is { } newest ? new EfTool(EfToolPlace.Global, Path.GetFileName(newest), program) : null;
     }
 
     /// <summary>Whether the tool's package at a version is in the package cache the folder's restores use, so restoring the
