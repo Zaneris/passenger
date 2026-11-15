@@ -403,6 +403,36 @@ public sealed class ContainersTests
         }
     }
 
+    /// <summary>Prune asks its question once the engine says it serves, however late, before the window is quiet: what waits
+    /// for the window (a screenshot's next step, a test's next key) finds the question asked, never left to come later and
+    /// take the keys from whatever comes next. Cancelled, it prunes nothing.</summary>
+    [AvaloniaFact]
+    public void Prune_asks_its_question_before_the_window_is_quiet_however_late_the_engine_answers()
+    {
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "The stand-in engine is a shell script");
+        string folder = TestFolders.Create("prune-late-");
+        TestFolders.Write(folder, "README.md", "# Shop\n");
+        string engineFolder = TestFolders.Create("prune-late-engine-");
+        (string cli, _) = StandInEngine(engineFolder, up: true, compose: true, late: true);
+        MainWindow window = ContainerRunsTests.Open(folder, engine: new ContainerEngine(cli: cli));
+        try
+        {
+            Assert.True(window.Perform(AppActions.ContainerPrune), $"Prune did not run: {window.Status}");
+            Ui.Settle();
+            ConfirmDialog asked = window.Asked is { IsVisible: true, Title: "Prune" } shown ? shown : throw new Xunit.Sdk.XunitException(
+                $"With the window quiet, Prune had not yet asked its question (the status bar says '{window.Status}'), which would come later and take the keys from what was done next");
+            Ui.ClickButton(asked, "Cancel");
+            Ui.Settle();
+            string[] calls = File.ReadAllLines(Path.Combine(engineFolder, "calls"));
+            Assert.True(!asked.IsVisible && !calls.Contains("container"),
+                $"Cancelled, Prune's question {(asked.IsVisible ? "stayed open" : "closed")} and the engine was asked [{string.Join(", ", calls)}]");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     [AvaloniaFact]
     public void A_compose_project_is_listed_with_its_services_ports_and_health_and_its_logs_stream_with_links_and_merge_its_services()
     {
@@ -1555,12 +1585,12 @@ public sealed class ContainersTests
     }
 
     /// <summary>A docker of the test's own, up or down as its <c>state</c> file says (held: down, its events kept until the
-    /// state changes), each command's first word written to <c>calls</c>: a Linux server at <paramref name="host"/> with no
-    /// Compose v2 or buildx, holding a container of a Compose project "shop" (service web, port 8080) and a stopped one whose
-    /// id begins as web's, its events going on while up, its logs and stats what <paramref name="logs"/> and <paramref
-    /// name="stats"/> write, and <paramref name="more"/> listed too (<c>docker ps</c> lines). The CLI and the state file.</summary>
+    /// state changes), each command's first word written to <c>calls</c>: a Linux server at <paramref name="host"/>, with Compose
+    /// v2 and buildx only where <paramref name="compose"/>, holding a Compose project "shop"'s web (port 8080) and a stopped
+    /// container whose id begins as web's, its events going on while up, its logs, stats and more <c>docker ps</c> lines as given,
+    /// its version said a second late where <paramref name="late"/>. The CLI and the state file.</summary>
     internal static (string Cli, string State) StandInEngine(string folder, bool up, string host = "unix:///nowhere/docker.sock",
-        string logs = "echo 'hello from the stand-in web'", string stats = "exit 1", IReadOnlyList<string>? more = null)
+        string logs = "echo 'hello from the stand-in web'", string stats = "exit 1", IReadOnlyList<string>? more = null, bool compose = false, bool late = false)
     {
         string state = Path.Combine(folder, "state");
         File.WriteAllText(state, up ? "up" : "down");
@@ -1572,10 +1602,12 @@ public sealed class ContainersTests
             "running=$(cat \"$here/state\")",
             "echo \"$1\" >> \"$here/calls\"",
             "case \"$1\" in",
-            "  version) if [ \"$running\" = up ]; then echo '{\"Client\":{\"Version\":\"29.0.0\",\"Context\":\"stand-in\"},\"Server\":{\"Version\":\"29.0.0\",\"Os\":\"linux\",\"Arch\":\"arm64\"}}'; exit 0; fi",
+            (late ? "  version) sleep 1; " : "  version) ") + "if [ \"$running\" = up ]; then echo '{\"Client\":{\"Version\":\"29.0.0\",\"Context\":\"stand-in\"},\"Server\":{\"Version\":\"29.0.0\",\"Os\":\"linux\",\"Arch\":\"arm64\"}}'; exit 0; fi",
             $"    echo '{{\"Client\":{{\"Version\":\"29.0.0\",\"Context\":\"stand-in\"}},\"Server\":null}}'; {Down} ;;",
             $"  context) echo '[{{\"Name\":\"stand-in\",\"Endpoints\":{{\"docker\":{{\"Host\":\"{host}\"}}}}}}]'; exit 0 ;;",
-            "  compose|buildx) echo \"docker: '$1' is not a docker command.\" >&2; exit 1 ;;",
+            .. compose
+                ? (string[])["  compose) [ \"$2\" = version ] && { echo '{\"version\":\"2.30.0\"}'; exit 0; } ;;", "  buildx) echo 'github.com/docker/buildx v0.19.0 stand-in'; exit 0 ;;"]
+                : ["  compose|buildx) echo \"docker: '$1' is not a docker command.\" >&2; exit 1 ;;"],
             "esac",
             "if [ \"$1\" = events ] && [ \"$running\" = held ]; then while [ \"$(cat \"$here/state\")\" = held ]; do sleep 0.2; done; echo events-ended >> \"$here/calls\"; fi",
             $"[ \"$running\" = up ] || {{ {Down}; }}",

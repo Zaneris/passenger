@@ -286,10 +286,12 @@ public partial class MainWindow
         };
     }
 
-    /// <summary>Prune, asked first: what the chosen heading (or the chosen object's kind) gathers that nothing uses.</summary>
+    /// <summary>Prune, asked first: what the chosen heading (or the chosen object's kind) gathers that nothing uses. The
+    /// engine's answer is held work, so its question or refusal is shown before anything waiting for the window goes on.</summary>
     private async Task PruneAsync(ContainerRow? chosen)
     {
-        if (await Engine.StateAsync() is { IsReady: false } state)
+        ContainerEngine engine = Engine;
+        if (await BackgroundWork.Run(() => engine.StateAsync()) is { IsReady: false } state)
         {
             status.Say(state.Problem ?? Refusals.EngineNotRunning, ProblemSeverity.Warning, EnginePlace(state));
             return;
