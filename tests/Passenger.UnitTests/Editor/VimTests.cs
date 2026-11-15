@@ -1753,6 +1753,67 @@ public class VimTests
     public void A_mark_keeps_the_column_j_and_k_aim_for(string before, string keys, string after) =>
         Assert.Equal(after, Run(before, keys));
 
+    /// <summary>A block's change leaves its cursor where typing ended on the first line it changed, a step back from
+    /// there as Escape steps, so . from a line below changes the block's width from that column as Vim's does.</summary>
+    [Theory]
+    [InlineData("o|ne two\nthree\nfour five six\nseven", "<C-v>jlc78<Esc>", "o7|8 two\nt78ee\nfour five six\nseven")]
+    [InlineData("o|ne two\nthree\nfour five six\nseven", "<C-v>jlc<Esc>", "|o two\ntee\nfour five six\nseven")]
+    [InlineData("o|ne two\nthree\nfour five six\nseven", "<C-v>jlC78<Esc>", "o7|8\nt78\nfour five six\nseven")]
+    [InlineData("o|ne two\nthree\nfour five six\nseven", "<C-v>jls78<Esc>jj.", "o78 two\nt78ee\nfo7|8 five six\nse78n")]
+    [InlineData("o|ne two\nthree\nfour five six\nseven", "<C-v>jlc78<Esc>j.", "o78 two\nt77|8e\nfo78 five six\nseven")]
+    [InlineData("|\nthree two\nfour five six\nseven", "j<C-v>kjjlc78<Esc>", "\n7|8ree two\n78ur five six\nseven")]
+    [InlineData("|ab\nthree two\nfour five six\nseven", "jj4l<C-v>kklc78<Esc>", "ab7|8\nth78 two\nfo78five six\nseven")]
+    public void A_blocks_change_leaves_its_cursor_where_typing_ended(string before, string keys, string after) =>
+        Assert.Equal(after, Run(before, keys));
+
+    /// <summary>A block's cursor moved by j or k onto a line too short for its column stands past that line's end, so h
+    /// from there and a shift's blanks go where Vim's do.</summary>
+    [Theory]
+    [InlineData("y = [e, f];\nz = \"g (h) i|\";", "<C-v>khd", "y = [e, f|]\nz = \"g (h);")]
+    [InlineData("y = [e, f];\nz = \"g (h) i|\";", "<C-v>khhd", "y = [e, |f\nz = \"g (h;")]
+    [InlineData("ab\nz = \"g (h) i|\";", "<C-v>khd", "|a\nz;")]
+    [InlineData("y = [e, f];\nz = \"g (h) i|\";", "<C-v>khA7<Esc>", "y = [e, f]|;  7\nz = \"g (h) i\"7;")]
+    [InlineData("y = [e, f];\nz = \"g (h) i|\";", "<C-v>kh>", "y = [e, f]|    ;\nz = \"g (h)     i\";")]
+    [InlineData("y = [e, f];\nz = \"g (h) i|\";", "<C-v>k>", "y = [e, f];|    \nz = \"g (h)     i\";")]
+    [InlineData("ab\nz = \"g (h) i|\";", "<C-v>k>", "ab|    \nz     = \"g (h) i\";")]
+    [InlineData("|ab\nthree two\nfour five six\nseven", "jj4l<C-v>kkhc78<Esc>", "a7|8\nt78 two\nf78five six\nseven")]
+    public void A_blocks_cursor_moved_onto_a_shorter_line_stands_past_its_end(string before, string keys, string after) =>
+        Assert.Equal(after, Run(before, keys));
+
+    /// <summary>A tab a block's edge cuts in two keeps its part outside the block as spaces, and what the block takes of
+    /// it is spaces too: deleted, changed, yanked, inserted before or after, or replaced cell by cell, as Vim's does.</summary>
+    [Theory]
+    [InlineData("|abc\n\tx\ty", "l<C-v>jld", "|a\n \ty")]
+    [InlineData("|abcdef\n\tx\ty", "ll<C-v>jlld", "a|b\n  y")]
+    [InlineData("|abcdefghij\n\tx\ty", "lllll<C-v>jhd", "abcd|ghij\n\t  y")]
+    [InlineData("|abcdef\n\tx\ty", "ll<C-v>jlllD", "a|b\n  ")]
+    [InlineData("|abcdef\n\tx\ty", "ll<C-v>jlllc78<Esc>", "ab7|8\n  78")]
+    [InlineData("|abcdef\n\tx\ty", "ll<C-v>jlllI7<Esc>", "ab|7cdef\n  7  x\ty")]
+    [InlineData("|abcdefghij\n\tx\ty", "lllll<C-v>jhA7<Esc>", "abcd|ef7ghij\n\tx 7  y")]
+    [InlineData("|abcdefghij\n\tx\ty", "lllll<C-v>jhrk", "abcd|kkghij\n\tkk  y")]
+    [InlineData("|abcdef\n\tx\ty", "l<C-v>jrk", "|kkkkef\nkkkkx\ty")]
+    [InlineData("|abc\n\tx\ty", "l<C-v>jlyGo<Esc>p", "abc\n\tx\ty\n|bc\n   x")]
+    [InlineData("|abc\n\tx\ty", "l<C-v>jly", "a|bc\n\tx\ty")]
+    public void A_tab_a_blocks_edge_cuts_keeps_its_outside_part_as_spaces(string before, string keys, string after) =>
+        Assert.Equal(after, Run(before, keys));
+
+    /// <summary>A block's &gt; lays the blanks around its left edge out again as wide again as the shift, and &lt; brings
+    /// what follows the blanks back by it, no further than the edge, keeping the blanks that still fit, as Vim's do.</summary>
+    [Theory]
+    [InlineData("|abcdefghij\n\tx\ty", "lllll<C-v>jh>", "abcd|    efghij\n        x\ty")]
+    [InlineData("|abcdefghij\n\tx\ty", "lllll<C-v>j>", "abcde|    fghij\n\tx       y")]
+    [InlineData("|abcdefghij\nab\t\tx", "lll<C-v>j>", "ab|    cdefghij\nab          x")]
+    [InlineData("|abcdefghij\nx  \t  y", "l<C-v>j2>", "a|        bcdefghij\nx             y")]
+    [InlineData("|abcdefghij\na\tbc", "lllll<C-v>j>", "abcde|    fghij\na\tb    c")]
+    [InlineData("|abcdefghij\nab\t\tx", "lll<C-v>j<", "ab|cdefghij\nab\tx")]
+    [InlineData("|abcdefghij\nab  \tx", "lll<C-v>j<", "abc|defghij\nab  x")]
+    [InlineData("|abcdefghij\n\t\tx", "lll<C-v>j<", "|abcdefghij\n\tx")]
+    [InlineData("|abcdefghij\nab\t   x", "ll<C-v>j<", "ab|cdefghij\nab x")]
+    [InlineData("|abcdefghij\n\t x", "ll<C-v>j<", "|abcdefghij\n x")]
+    [InlineData("|abcdefghij\n        x", "lllll<C-v>j<", "abcde|fghij\n     x")]
+    public void A_blocks_shift_counts_its_blanks_by_columns(string before, string keys, string after) =>
+        Assert.Equal(after, Run(before, keys));
+
     [Fact]
     public void A_huge_count_ends_at_the_texts_edge()
     {

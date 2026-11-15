@@ -49,6 +49,10 @@ public sealed partial class Vim
     /// any other session.</summary>
     private int? blockCorner;
 
+    /// <summary>Whether the insert session under way is a block's change, whose one cursor goes back to where it typed on
+    /// the block's first line.</summary>
+    private bool blockChange;
+
     /// <summary>The visual extent of the change under way, kept with it for . to take again.</summary>
     private VisualExtent? changeExtent;
 
@@ -487,7 +491,7 @@ public sealed partial class Vim
                     aim = block ? (blockColumns.ToEnd ? int.MaxValue : visualAims[i] >= 0 ? visualAims[i] : blockColumns.Cursor)
                         : visualAims[i] >= 0 ? visualAims[i] : CaretColumn(text, cursor, tab);
                     moved = VimMotions.LinesAway(text, cursor, command.Name == "j" ? n : -n, breakEnds) is { } line
-                        ? aim == int.MaxValue || (!block && TextNavigation.VisualColumn(text, text.GetLine(line).End, tab) <= aim) ? LineEndOf(text, line)
+                        ? aim == int.MaxValue || TextNavigation.VisualColumn(text, text.GetLine(line).End, tab) <= aim ? LineEndOf(text, line)
                         : VimMotions.OffsetAtColumn(text, line, aim, tab)
                         : null;
                     break;

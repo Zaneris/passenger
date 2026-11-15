@@ -54,61 +54,111 @@ public sealed partial class Vim
         {
             keptBlockLeft = left;
         }
-        if (op is "I" or "A")
+        // A tab the block's edge cuts in two (r: any tab it takes) is first made the spaces it shows.
+        EditPlan? split = block && !lines && (op is "I" or "A" or "r" || basic is "d" or "c" or "y")
+            ? SplitTabs(text, top, bottom, left, right, tab, cutsLeft: op != "A", cutsRight: op != "I", inside: op == "r")
+            : null;
+        return split is null ? Acted(text) : AfterSplit(split, Acted(text.Apply(split.Edits)), text, keepsText: basic == "y" && op is not ("I" or "A" or "r"), tab);
+
+        VimResult Acted(TextSnapshot text)
         {
-            return VisualInsert(acting, op == "A", mode, taken, text, view, top, bottom, left, right);
-        }
-        if (op is "J" or "gJ")
-        {
-            Remember(acting);
-            int n = Math.Max(2, taken.Max(r => text.GetLineFromOffset(r.High)) - taken.Min(r => text.GetLineFromOffset(r.Low)) + 1);
-            SelectionSet starts = SelectionSet.Create([.. taken.Select(r => Selection.At(r.Low))], 0);
-            if (Join(text, starts, block ? Math.Max(2, bottom - top + 1) : n, spaced: op == "J", Options.JoinSpaces) is { } joined)
+            if (op is "I" or "A")
             {
-                return new VimResult(true, Edits: [joined]);
+                return VisualInsert(acting, op == "A", mode, taken, text, view, top, bottom, left, right);
             }
-            // Nothing to join below the last line: visual mode ends all the same, the caret at the stretch's start.
-            return new VimResult(true, block ? SelectionSet.Single(Settled(text, VimMotions.OffsetAtColumn(text, top, left, tab), breakEnds))
-                : mode == VimMode.VisualLine ? starts.With(c => Selection.At(VimMotions.LineOf(text, c.Caret).Start))
-                : starts.With(c => Selection.At(Settled(text, c.Caret, breakEnds))));
-        }
-        (List<Stretch> stretches, SelectionSet carets) = block && !lines
-            ? BlockStretches(text, top, bottom, left, right, tab, perLine: basic == "c", lineEnds: basic == "c" || op is ">" or "p" or "P", emptyToo: op != ">")
-            : RegionStretches(text, taken, lines);
-        if (lines && !block && basic is "y" or "g~" or "gu" or "gU")
-        {
-            // Over lines whose cursor stands above where the stretch began, a yank or a change of case leaves the caret there.
-            for (int i = 0; i < stretches.Count; i++)
+            if (op is "J" or "gJ")
             {
-                if (text.GetLineFromOffset(taken[i].Cursor) < text.GetLineFromOffset(taken[i].Anchor))
+                Remember(acting);
+                int n = Math.Max(2, taken.Max(r => text.GetLineFromOffset(r.High)) - taken.Min(r => text.GetLineFromOffset(r.Low)) + 1);
+                SelectionSet starts = SelectionSet.Create([.. taken.Select(r => Selection.At(r.Low))], 0);
+                if (Join(text, starts, block ? Math.Max(2, bottom - top + 1) : n, spaced: op == "J", Options.JoinSpaces) is { } joined)
                 {
-                    stretches[i] = stretches[i] with { Landing = taken[i].Cursor };
+                    return new VimResult(true, Edits: [joined]);
+                }
+                // Nothing to join below the last line: visual mode ends all the same, the caret at the stretch's start.
+                return new VimResult(true, block ? SelectionSet.Single(Settled(text, VimMotions.OffsetAtColumn(text, top, left, tab), breakEnds))
+                    : mode == VimMode.VisualLine ? starts.With(c => Selection.At(VimMotions.LineOf(text, c.Caret).Start))
+                    : starts.With(c => Selection.At(Settled(text, c.Caret, breakEnds))));
+            }
+            (List<Stretch> stretches, SelectionSet carets) = block && !lines
+                ? BlockStretches(text, top, bottom, left, right, tab, perLine: basic == "c", lineEnds: basic == "c" || op is ">" or "p" or "P", emptyToo: op != ">")
+                : RegionStretches(text, taken, lines);
+            if (lines && !block && basic is "y" or "g~" or "gu" or "gU")
+            {
+                // Over lines whose cursor stands above where the stretch began, a yank or a change of case leaves the caret there.
+                for (int i = 0; i < stretches.Count; i++)
+                {
+                    if (text.GetLineFromOffset(taken[i].Cursor) < text.GetLineFromOffset(taken[i].Anchor))
+                    {
+                        stretches[i] = stretches[i] with { Landing = taken[i].Cursor };
+                    }
+                }
+            }
+            blockChange = block && !lines && basic == "c" && stretches.Count > 0;
+            if (stretches.Count == 0)
+            {
+                return new VimResult(true, carets);
+            }
+            if (op is ">" or "<")
+            {
+                Remember(acting);
+                return block ? ShiftBlock(text, stretches, Math.Max(command.Count, 1), op == ">", view, top, left) : Shift(text, carets, stretches, op == ">", view, Math.Max(command.Count, 1));
+            }
+            if (op == "r")
+            {
+                Remember(acting);
+                return ReplaceIn(text, stretches, carets, command.Argument!, view);
+            }
+            if (op is "p" or "P")
+            {
+                return PutOver(acting, op == "P", text, stretches, carets, block, view, top, bottom);
+            }
+            return Act(acting, basic, stretches, text, carets, view, block && !lines);
+        }
+    }
+
+    /// <summary>The tabs of a block's lines that its left or right edge cuts in two (with <paramref name="inside"/>, every
+    /// tab it takes) made as many spaces as the cells they show; null where there are none.</summary>
+    private static EditPlan? SplitTabs(TextSnapshot text, int top, int bottom, int left, int right, int tab, bool cutsLeft, bool cutsRight, bool inside)
+    {
+        List<TextEdit> edits = [];
+        for (int line = top; line <= bottom; line++)
+        {
+            if (BlockPiece(text, line, left, right, tab) is not { } piece)
+            {
+                continue;
+            }
+            for (int p = piece.Start; p < piece.End; p = TextNavigation.NextGrapheme(text, p))
+            {
+                if (text[p] != '\t')
+                {
+                    continue;
+                }
+                int from = TextNavigation.VisualColumn(text, p, tab);
+                int to = TextNavigation.VisualColumn(text, p + 1, tab);
+                if (inside || (cutsLeft && from < left) || (cutsRight && right != int.MaxValue && to > right + 1))
+                {
+                    edits.Add(new TextEdit(p, 1, new string(' ', to - from)));
                 }
             }
         }
-        if (block && !lines && basic == "c" && stretches.Count > 0)
+        return edits.Count == 0 ? null : new EditPlan(edits, SelectionSet.Single(edits[0].Start), EditKind.Other);
+    }
+
+    /// <summary>A block's change made after its tabs were split: the split as its first step, or for a yank, which leaves
+    /// the text as it was, its carets carried back to the same columns of the text unsplit.</summary>
+    private static VimResult AfterSplit(EditPlan split, VimResult result, TextSnapshot text, bool keepsText, int tab)
+    {
+        if (keepsText)
         {
-            blockCorner = stretches.Min(t => t.Start);
+            TextSnapshot spaced = text.Apply(split.Edits);
+            return result.Selections is not { } carets ? result : result with
+            {
+                Selections = carets.With(c => Selection.At(VimMotions.OffsetAtColumn(text, spaced.GetLineFromOffset(c.Caret), TextNavigation.VisualColumn(spaced, c.Caret, tab), tab))),
+            };
         }
-        if (stretches.Count == 0)
-        {
-            return new VimResult(true, carets);
-        }
-        if (op is ">" or "<")
-        {
-            Remember(acting);
-            return block ? ShiftBlock(text, stretches, Math.Max(command.Count, 1), op == ">", view, VimMotions.OffsetAtColumn(text, top, left, tab)) : Shift(text, carets, stretches, op == ">", view, Math.Max(command.Count, 1));
-        }
-        if (op == "r")
-        {
-            Remember(acting);
-            return ReplaceIn(text, stretches, carets, command.Argument!, view);
-        }
-        if (op is "p" or "P")
-        {
-            return PutOver(acting, op == "P", text, stretches, carets, block, view, top, bottom);
-        }
-        return Act(acting, basic, stretches, text, carets, view, block && !lines);
+        return result.Edits is { } edits ? result with { Edits = [split, .. edits] }
+            : result with { Edits = [split with { Selections = result.Selections ?? split.Selections }], Selections = null };
     }
 
     /// <summary>How much the primary stretch takes, for . to take again.</summary>
@@ -326,37 +376,76 @@ public sealed partial class Vim
         return new VimResult(true, Edits: [new EditPlan(edits, landed, EditKind.Other)]);
     }
 
-    /// <summary>A block's &gt; and &lt;: blanks added at its left edge on each line, or taken from there.</summary>
-    private VimResult ShiftBlock(TextSnapshot text, List<Stretch> stretches, int times, bool right, IVimView view, int corner)
+    /// <summary>A block's &gt; and &lt; by columns. &gt; lays the blanks around its left edge out again (in spaces, or tabs
+    /// where the file indents with them) as wide again as the shift; &lt; brings the first character after the blanks from
+    /// the edge on back by the shift, no further than the edge, keeping the blanks that still fit and spacing the rest.</summary>
+    private VimResult ShiftBlock(TextSnapshot text, List<Stretch> stretches, int times, bool right, IVimView view, int top, int left)
     {
         int width = view.Indent.Size * times;
+        int tab = view.Indent.TabWidth;
         List<TextEdit> edits = [];
         foreach (Stretch s in stretches.OrderBy(s => s.Start))
         {
+            LineSpan line = VimMotions.LineOf(text, s.Start);
+            int from = s.Start;
+            int to = s.Start;
+            while (to < line.End && text[to] is ' ' or '\t')
+            {
+                to++;
+            }
             if (right)
             {
-                edits.Add(new TextEdit(s.Start, 0, new string(' ', width)));
+                while (from > line.Start && text[from - 1] is ' ' or '\t')
+                {
+                    from--;
+                }
+                int start = TextNavigation.VisualColumn(text, from, tab);
+                edits.Add(new TextEdit(from, to - from, Blanks(start, TextNavigation.VisualColumn(text, to, tab) - start + width, view.Indent)));
                 continue;
             }
-            int end = s.Start;
-            LineSpan line = VimMotions.LineOf(text, s.Start);
-            while (end < line.End && end - s.Start < width && text[end] is ' ' or '\t')
+            if (to == from)
             {
-                end++;
+                continue;
             }
-            if (end > s.Start)
+            int first = TextNavigation.VisualColumn(text, to, tab);
+            int target = first - Math.Min(width, first - left);
+            int kept = from;
+            while (kept < to && TextNavigation.VisualColumn(text, kept + 1, tab) <= target)
             {
-                edits.Add(new TextEdit(s.Start, end - s.Start, string.Empty));
+                kept++;
+            }
+            int reached = TextNavigation.VisualColumn(text, kept, tab);
+            if (kept < to)
+            {
+                edits.Add(new TextEdit(kept, to - kept, new string(' ', Math.Max(0, target - reached))));
             }
         }
-        // The caret goes to the block's top left, where the top line reaches it.
-        SelectionSet caret = SelectionSet.Single(Settled(text, corner, breakEnds));
+        // The caret goes to the block's top left, on the blanks > added at the end of a top line reaching just that far.
         if (edits.Count == 0)
         {
-            return new VimResult(true, caret);
+            return new VimResult(true, SelectionSet.Single(Settled(text, VimMotions.OffsetAtColumn(text, top, left, tab), breakEnds)));
         }
         TextSnapshot after = text.Apply(edits);
-        return new VimResult(true, Edits: [new EditPlan(edits, SelectionSet.Single(Settled(after, TextEditing.MapOffset(corner, edits, false), breakEnds)), EditKind.Other)]);
+        return new VimResult(true, Edits: [new EditPlan(edits, SelectionSet.Single(Settled(after, VimMotions.OffsetAtColumn(after, top, left, tab), breakEnds)), EditKind.Other)]);
+    }
+
+    /// <summary>Blanks from a display column as wide as <paramref name="columns"/>: tabs to each stop they reach and spaces
+    /// after where the file indents with tabs, else spaces alone.</summary>
+    private static string Blanks(int start, int columns, IndentOptions indent)
+    {
+        if (!indent.UseTabs || indent.TabWidth <= 0)
+        {
+            return new string(' ', columns);
+        }
+        System.Text.StringBuilder blanks = new();
+        int at = start;
+        int end = start + columns;
+        while ((at / indent.TabWidth + 1) * indent.TabWidth <= end)
+        {
+            blanks.Append('\t');
+            at = (at / indent.TabWidth + 1) * indent.TabWidth;
+        }
+        return blanks.Append(' ', end - at).ToString();
     }
 
     /// <summary>p and P over a visual stretch: the register's text in place of what is shown, which p keeps in the

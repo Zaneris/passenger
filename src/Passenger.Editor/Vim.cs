@@ -349,7 +349,12 @@ public sealed partial class Vim(VimRegisters registers)
         SelectionSet back = blockCorner is { } corner && corner <= text.Length
             ? SelectionSet.Single(Settled(text, corner, breakEnds))
             : selections.With(c => Selection.At(Settled(text, Math.Max(VimMotions.StepBack(text, c.Caret), VimMotions.LineOf(text, c.Caret).Start), breakEnds)));
-        blockCorner = null;
+        if (blockChange)
+        {
+            // A block's change leaves its one cursor where typing ended on the first line it changed.
+            back = SelectionSet.Single(back.Items.MinBy(c => c.Caret));
+        }
+        (blockCorner, blockChange) = (null, false);
         if (plans.Count == 0)
         {
             return new VimResult(true, back);
