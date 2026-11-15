@@ -101,6 +101,15 @@ public sealed partial class Vim
             blockChange = block && !lines && basic == "c" && stretches.Count > 0;
             if (stretches.Count == 0)
             {
+                // A block of more than one line with nothing in its columns still takes a piece for each.
+                if (block && bottom > top && basic == "y")
+                {
+                    Registers.Yank(command.Register, BlockTaken(text, stretches, (top, bottom, left, right), tab));
+                }
+                else if (block && bottom > top && basic == "d")
+                {
+                    Registers.Delete(command.Register, BlockTaken(text, stretches, (top, bottom, left, right), tab), always: false);
+                }
                 return new VimResult(true, carets);
             }
             if (op is ">" or "<")

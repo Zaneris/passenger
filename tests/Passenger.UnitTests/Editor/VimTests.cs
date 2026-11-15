@@ -2198,6 +2198,19 @@ public class VimTests
     public void A_block_put_over_characters_goes_in_as_a_block_where_they_began(string before, string keys, string after) =>
         Assert.Equal(after, Run(before, keys));
 
+    /// <summary>| aims j and k at the column it asked for however short its line, and a block over more than one line
+    /// with nothing in its columns still yanks or deletes an empty piece for each, as Vim's do.</summary>
+    [Theory]
+    [InlineData("|ab\ncdefgh", "4|j", "ab\ncde|fgh")]
+    [InlineData("|ab\ncdefgh", "9|j", "ab\ncdefg|h")]
+    [InlineData("|7\n\n  // x\nend", "4|2j", "7\n\n  /|/ x\nend")]
+    [InlineData("foo_bar = baz(qux|[0], {k: v})\n\n  // comment here\nend", "VipS7<Esc>4|2j", "7\n  // comment here\nen|d")]
+    [InlineData("|x\n\n\nab", "ylj<C-v>jdp", "x\n|\n\nab")]
+    [InlineData("|x\n\n\nab", "ylj<C-v>jyp", "x\n|\n\nab")]
+    [InlineData("|x\n\n\nab", "ylj<C-v>dp", "x\n|x\n\nab")]
+    public void Bar_keeps_its_column_for_j_and_k_and_an_empty_block_still_takes_its_lines(string before, string keys, string after) =>
+        Assert.Equal(after, Run(before, keys));
+
     [Fact]
     public void A_huge_count_ends_at_the_texts_edge()
     {

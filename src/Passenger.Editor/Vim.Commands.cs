@@ -331,7 +331,13 @@ public sealed partial class Vim
         {
             return VimResult.Held;
         }
-        VimResult result = command.Name == "$" ? Aimed(moved, [.. Enumerable.Repeat(int.MaxValue, moved.Count)]) : new VimResult(true, moved);
+        // $ aims j and k at each line's end, and | at the column it asked for, however short the line.
+        VimResult result = command.Name switch
+        {
+            "$" => Aimed(moved, [.. Enumerable.Repeat(int.MaxValue, moved.Count)]),
+            "|" => Aimed(moved, [.. Enumerable.Repeat(Math.Max(command.Count, 1) - 1, moved.Count)]),
+            _ => new VimResult(true, moved),
+        };
         int from = selections.Primary.Caret;
         if (Jumping.Contains(command.Name) && moved.Primary.Caret != from)
         {
