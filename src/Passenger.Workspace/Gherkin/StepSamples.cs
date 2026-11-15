@@ -2,6 +2,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using CucumberExpressions.Ast;
 using CucumberExpressions.Parsing;
+using Passenger.Core;
 
 namespace Passenger.Workspace.Gherkin;
 
@@ -35,21 +36,7 @@ public static partial class StepSamples
     }
 
     /// <summary>A type as a C# programmer writes it: its keyword where it has one ("int"), else its name.</summary>
-    public static string TypeWords(string type) => type switch
-    {
-        "System.Int32" => "int",
-        "System.Int64" => "long",
-        "System.Int16" => "short",
-        "System.Byte" => "byte",
-        "System.String" => "string",
-        "System.Double" => "double",
-        "System.Single" => "float",
-        "System.Decimal" => "decimal",
-        "System.Boolean" => "bool",
-        "System.Char" => "char",
-        "System.Object" => "object",
-        _ => type[(type.LastIndexOfAny(['.', '+']) + 1)..],
-    };
+    public static string TypeWords(string type) => PrimitiveTypes.Named(type)?.Keyword ?? type[(type.LastIndexOfAny(['.', '+']) + 1)..];
 
     private static StepSample FromCucumber(string expression)
     {
