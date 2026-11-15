@@ -379,6 +379,49 @@ public sealed class TerminalTests
         }
     }
 
+    /// <summary>The keypad's 5 reaches a program as X11 reports it, naming no key for its Begin: with Num Lock off as
+    /// NumPad5 with no symbol and no text, sent as xterm sends Begin until the program asks for the kitty keyboard
+    /// protocol, then as that protocol does; with Num Lock on as NumPad5 with its symbol 5, the 5 it types either way.</summary>
+    [AvaloniaFact]
+    public void The_keypads_5_as_X11_reports_it_reaches_a_program_as_Begin_with_Num_Lock_off_and_5_with_it_on()
+    {
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "Windows names the keypad's 5 with Num Lock off Clear, never NumPad5 with no symbol");
+        (MainWindow window, TerminalSession shell) = Open(TestFolders.Create("terminal-"));
+        try
+        {
+            const string read = "^[[E5";
+            RunCase(window, "keyboard");
+            WaitForLine(shell, "keyboard?", "the program to wait for its keys");
+            Press(window);
+            WaitForScreen(window, shell, s => Lines(s).Contains(read),
+                $"the keypad's Begin as xterm sends it, then its 5, {read}, read by a program that never asked for more: without it the program never hears Begin");
+            WaitForPromptBelow(window, shell, read);
+
+            RunCase(window, "keyboard", "1");
+            WaitForLine(shell, "flags 1", "the program told disambiguation is in force");
+            WaitForScreen(window, shell, s => s.KeyboardFlags == TerminalKeys.Disambiguate && Lines(s).Count(l => l == "keyboard?") == 2,
+                "the program to wait for its keys under the kitty keyboard protocol");
+            Press(window);
+            WaitForScreen(window, shell, s => Lines(s).Count(l => l == read) == 2,
+                $"the keypad's Begin, then its 5, {read}, under the kitty keyboard protocol: without it the program never hears Begin");
+        }
+        finally
+        {
+            window.Close();
+        }
+
+        static void Press(MainWindow window)
+        {
+            window.KeyPress(Key.NumPad5, RawInputModifiers.None, PhysicalKey.NumPad5, null);
+            window.KeyRelease(Key.NumPad5, RawInputModifiers.None, PhysicalKey.NumPad5, null);
+            window.KeyPress(Key.NumPad5, RawInputModifiers.None, PhysicalKey.NumPad5, "5");
+            window.KeyTextInput("5");
+            window.KeyRelease(Key.NumPad5, RawInputModifiers.None, PhysicalKey.NumPad5, "5");
+            window.KeyTextInput("q");
+            Ui.Settle();
+        }
+    }
+
     /// <summary>A program that asks for the mouse's moves reads each move into another cell as xterm reports it: under 1002
     /// (drags) a drag's press, its moves with the button held and its release, and nothing of a move with no button; under
     /// 1003 (every move) a move with no button too.</summary>

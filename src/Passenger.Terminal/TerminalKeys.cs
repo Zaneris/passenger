@@ -18,9 +18,14 @@ public static class TerminalKeys
 
     /// <summary>The bytes of a key held with these modifiers, the arrows in their application form when the program asked
     /// (xterm's alone), under the kitty keyboard flags in force; <paramref name="altSendsEscape"/> where Alt is a modifier
-    /// for the shell rather than the layout's (not macOS's Option, which types).</summary>
-    public static string? Of(Key key, KeyModifiers modifiers, PhysicalKey physical, bool applicationCursor, int keyboardFlags, bool altSendsEscape) =>
-        (keyboardFlags & Disambiguate) != 0 ? Kitty(key, modifiers, physical, altSendsEscape) : Xterm(key, modifiers, applicationCursor, altSendsEscape);
+    /// for the shell rather than the layout's (not macOS's Option, which types). A NumPad5 with no symbol is the keypad's
+    /// Begin, which X11 names no key for (Num Lock's 5 has its symbol), unless <paramref name="beginNamed"/>: the platform
+    /// names the Begin itself (Windows' Clear), so a NumPad5 there is its 5 whatever its symbol.</summary>
+    public static string? Of(Key key, KeyModifiers modifiers, PhysicalKey physical, string? symbol, bool applicationCursor, int keyboardFlags, bool altSendsEscape, bool beginNamed)
+    {
+        Key named = !beginNamed && key == Key.NumPad5 && symbol is null ? Key.Clear : key;
+        return (keyboardFlags & Disambiguate) != 0 ? Kitty(named, modifiers, physical, altSendsEscape) : Xterm(named, modifiers, applicationCursor, altSendsEscape);
+    }
 
     /// <summary>xterm's bytes for a key that is not plain text: Enter, the function keys by their number and final
     /// (<see cref="Functional"/>), and Ctrl (or Alt, as a leading ESC) with a letter. Held with none, F1 to F4 take SS3,
@@ -65,7 +70,8 @@ public static class TerminalKeys
 
     /// <summary>A function key's number and final, as xterm and the kitty protocol both send it held with modifiers
     /// (CSI number;modifiers final): the cursor keys and the keypad's Begin (its 5 with Num Lock off, which Avalonia names
-    /// Clear) by a letter, the editing keys and F5 to F12 by their numbers before ~, F1 to F4 by a letter.</summary>
+    /// Clear, as <see cref="Of"/> names X11's) by a letter, the editing keys and F5 to F12 by their numbers before ~, F1 to
+    /// F4 by a letter.</summary>
     private static (int Number, char Final)? Functional(Key key) => key switch
     {
         Key.Up => (1, 'A'),

@@ -763,7 +763,8 @@ public sealed partial class TerminalView : Control
             // Its character comes as text input, which handling the key here would keep from coming.
             return;
         }
-        if (TerminalKeys.Of(e.Key, mods, e.PhysicalKey, session.Screen.ApplicationCursorKeys, session.Screen.KeyboardFlags, altSendsEscape: !mac) is { } sequence)
+        if (TerminalKeys.Of(e.Key, mods, e.PhysicalKey, e.KeySymbol, session.Screen.ApplicationCursorKeys, session.Screen.KeyboardFlags, altSendsEscape: !mac,
+            beginNamed: OperatingSystem.IsWindows()) is { } sequence)
         {
             Typed();
             session.Write(sequence);

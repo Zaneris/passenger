@@ -107,7 +107,7 @@ public class TerminalKeysTests
     [Fact]
     public void Under_the_protocol_the_arrows_take_its_form_whatever_the_cursor_mode()
     {
-        string? up = TerminalKeys.Of(Key.Up, KeyModifiers.None, PhysicalKey.None, applicationCursor: true, TerminalKeys.Disambiguate, altSendsEscape: true);
+        string? up = TerminalKeys.Of(Key.Up, KeyModifiers.None, PhysicalKey.None, symbol: null, applicationCursor: true, TerminalKeys.Disambiguate, altSendsEscape: true, beginNamed: false);
         Assert.True(up == "\e[A", $"Up in the application cursor mode under the kitty protocol sent {Shown(up)}, the protocol's form being ESC [ A");
         Assert.True(Legacy(Key.Up, KeyModifiers.None, applicationCursor: true) == "\eOA", "Up in the application cursor mode without the protocol no longer sends ESC O A");
     }
@@ -121,7 +121,7 @@ public class TerminalKeysTests
     [InlineData(Key.Delete, PhysicalKey.NumPadDecimal, Ctrl, "\e[57426;5u")]
     public void Under_the_protocol_the_keypads_keys_that_type_nothing_are_its_own(Key key, PhysicalKey physical, KeyModifiers held, string bytes)
     {
-        string? sent = TerminalKeys.Of(key, held, physical, applicationCursor: false, TerminalKeys.Disambiguate, altSendsEscape: true);
+        string? sent = TerminalKeys.Of(key, held, physical, symbol: null, applicationCursor: false, TerminalKeys.Disambiguate, altSendsEscape: true, beginNamed: false);
         Assert.True(sent == bytes, $"The keypad's {key} with {held} under the kitty protocol sent {Shown(sent)}, where the protocol gives {Shown(bytes)}");
         Assert.True(Legacy(key, held, physical: physical) == Legacy(key, held),
             $"The keypad's {key} without the protocol sent {Shown(Legacy(key, held, physical: physical))}, not what the key it moves as sends");
@@ -137,6 +137,44 @@ public class TerminalKeysTests
         string? sent = Legacy(Key.Clear, held, applicationCursor: applicationCursor, physical: PhysicalKey.NumPad5);
         Assert.True(sent == bytes,
             $"The keypad's 5 with Num Lock off and {held}{(applicationCursor ? " in the application cursor mode" : string.Empty)} sent {Shown(sent)} to a program that never asked for the kitty protocol, where xterm sends {Shown(bytes)}: the program never hears the key");
+    }
+
+    /// <summary>X11 names no key for the keypad's 5 with Num Lock off, its Begin: it comes as NumPad5 with no symbol and no
+    /// text, where Num Lock's 5 comes with its symbol 5 and types it. Held with Shift, X11 turns Num Lock round.</summary>
+    [Theory]
+    [InlineData(KeyModifiers.None, false, 0, "\e[E")]
+    [InlineData(KeyModifiers.None, true, 0, "\eOE")]
+    [InlineData(Shift, false, 0, "\e[1;2E")]
+    [InlineData(Ctrl, true, 0, "\e[1;5E")]
+    [InlineData(KeyModifiers.None, false, TerminalKeys.Disambiguate, "\e[E")]
+    [InlineData(Ctrl | Alt, false, TerminalKeys.Disambiguate, "\e[1;7E")]
+    public void On_X11_the_keypads_5_with_Num_Lock_off_is_its_Begin_with_the_protocol_or_without(KeyModifiers held, bool applicationCursor, int keyboardFlags, string bytes)
+    {
+        string? sent = TerminalKeys.Of(Key.NumPad5, held, PhysicalKey.NumPad5, symbol: null, applicationCursor, keyboardFlags, altSendsEscape: true, beginNamed: false);
+        Assert.True(sent == bytes,
+            $"The keypad's 5 as X11 gives it with Num Lock off and {held}{(applicationCursor ? " in the application cursor mode" : string.Empty)}{(keyboardFlags != 0 ? " under the kitty protocol" : string.Empty)} sent {Shown(sent)}, where Begin is {Shown(bytes)}: the program never hears the key");
+    }
+
+    [Theory]
+    [InlineData(KeyModifiers.None, 0, null)]
+    [InlineData(KeyModifiers.None, TerminalKeys.Disambiguate, null)]
+    [InlineData(Ctrl, TerminalKeys.Disambiguate, "\e[57404;5u")]
+    public void On_X11_the_keypads_5_with_Num_Lock_on_is_its_5(KeyModifiers held, int keyboardFlags, string? bytes)
+    {
+        string? sent = TerminalKeys.Of(Key.NumPad5, held, PhysicalKey.NumPad5, symbol: "5", applicationCursor: false, keyboardFlags, altSendsEscape: true, beginNamed: false);
+        Assert.True(sent == bytes,
+            $"The keypad's 5 with Num Lock on and {held}{(keyboardFlags != 0 ? " under the kitty protocol" : string.Empty)} sent {Shown(sent)}, where its 5 is {Shown(bytes)}: the program reads Begin, or a 5 twice");
+    }
+
+    [Theory]
+    [InlineData(Ctrl, 0, null)]
+    [InlineData(Ctrl, TerminalKeys.Disambiguate, "\e[57404;5u")]
+    [InlineData(Alt, TerminalKeys.Disambiguate, "\e[57404;3u")]
+    public void Where_the_platform_names_the_keypads_Begin_its_5_with_no_symbol_is_still_its_5(KeyModifiers held, int keyboardFlags, string? bytes)
+    {
+        string? sent = TerminalKeys.Of(Key.NumPad5, held, PhysicalKey.NumPad5, symbol: null, applicationCursor: false, keyboardFlags, altSendsEscape: true, beginNamed: true);
+        Assert.True(sent == bytes,
+            $"The keypad's 5 with {held} and no symbol where Begin is named Clear{(keyboardFlags != 0 ? " under the kitty protocol" : string.Empty)} sent {Shown(sent)}, where its 5 is {Shown(bytes)}: the program reads Begin for a 5");
     }
 
     [Theory]
@@ -189,22 +227,22 @@ public class TerminalKeysTests
     }
 
     [Theory]
-    [InlineData(Key.A, KeyModifiers.None, true)]
-    [InlineData(Key.A, Shift, true)]
-    [InlineData(Key.Space, Shift, true)]
-    [InlineData(Key.NumPad5, KeyModifiers.None, true)]
-    [InlineData(Key.A, Alt, false)]
-    [InlineData(Key.A, Super, true)]
-    [InlineData(Key.OemPlus, Alt | Shift, false)]
-    public void A_key_that_types_leaves_its_text_to_the_text_input_under_the_protocol(Key key, KeyModifiers held, bool altSendsEscape) =>
-        Assert.True(Kitty(key, held, altSendsEscape) is null,
-            $"{held} {key} under the kitty protocol sent {Shown(Kitty(key, held, altSendsEscape))} as well as the text it types");
+    [InlineData(Key.A, KeyModifiers.None, true, "a")]
+    [InlineData(Key.A, Shift, true, "a")]
+    [InlineData(Key.Space, Shift, true, " ")]
+    [InlineData(Key.NumPad5, KeyModifiers.None, true, "5")]
+    [InlineData(Key.A, Alt, false, "a")]
+    [InlineData(Key.A, Super, true, "a")]
+    [InlineData(Key.OemPlus, Alt | Shift, false, "=")]
+    public void A_key_that_types_leaves_its_text_to_the_text_input_under_the_protocol(Key key, KeyModifiers held, bool altSendsEscape, string symbol) =>
+        Assert.True(Kitty(key, held, altSendsEscape, symbol) is null,
+            $"{held} {key} under the kitty protocol sent {Shown(Kitty(key, held, altSendsEscape, symbol))} as well as the text it types");
 
     private static string? Legacy(Key key, KeyModifiers held, bool altSendsEscape = true, bool applicationCursor = false, PhysicalKey physical = PhysicalKey.None) =>
-        TerminalKeys.Of(key, held, physical, applicationCursor, keyboardFlags: 0, altSendsEscape);
+        TerminalKeys.Of(key, held, physical, symbol: null, applicationCursor, keyboardFlags: 0, altSendsEscape, beginNamed: false);
 
-    private static string? Kitty(Key key, KeyModifiers held, bool altSendsEscape = true) =>
-        TerminalKeys.Of(key, held, PhysicalKey.None, applicationCursor: false, TerminalKeys.Disambiguate, altSendsEscape);
+    private static string? Kitty(Key key, KeyModifiers held, bool altSendsEscape = true, string? symbol = null) =>
+        TerminalKeys.Of(key, held, PhysicalKey.None, symbol, applicationCursor: false, TerminalKeys.Disambiguate, altSendsEscape, beginNamed: false);
 
     private static string Shown(string? bytes) => bytes is null ? "nothing" : $"\"{bytes.Replace("\e", "ESC", StringComparison.Ordinal).Replace("\r", "\\r", StringComparison.Ordinal).Replace("\n", "\\n", StringComparison.Ordinal).Replace("\t", "\\t", StringComparison.Ordinal).Replace("\x7f", "DEL", StringComparison.Ordinal)}\"";
 }
