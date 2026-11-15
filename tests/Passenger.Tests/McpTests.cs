@@ -2175,7 +2175,7 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         string tools = Path.Combine(home, "tools");
         Directory.CreateDirectory(tools);
         string seen = Path.Combine(home, "git-environment");
-        Executable(Path.Combine(tools, "git"), $"#!/bin/sh\nenv > \"{seen}\"\nexec {(await global::Passenger.Core.Programs.GitAsync())!} \"$@\"\n");
+        await EnvironmentGitAsync(tools, seen);
         string skips = Path.Combine(home, "skips-while-read.sh");
         Executable(skips, "#!/bin/sh\nif [ \"$VSCODE_RESOLVING_ENVIRONMENT\" != 1 ] || [ \"$INTELLIJ_ENVIRONMENT_READER\" != 1 ]; then\n"
             + $"  echo 'open terminal failed: not a terminal' >&2\n  exit 1\nfi\nPATH=\"{tools}:$PATH\"; export PATH\nshift 3\nexec /bin/sh -c \"$1\"\n");
@@ -2209,7 +2209,7 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         string tools = Path.Combine(home, "tools");
         Directory.CreateDirectory(tools);
         string seen = Path.Combine(home, "git-environment");
-        Executable(Path.Combine(tools, "git"), $"#!/bin/sh\nenv > \"{seen}\"\nexec {(await Programs.GitAsync())!} \"$@\"\n");
+        await EnvironmentGitAsync(tools, seen);
         // Each login profile names itself: sh reads .profile, bash its own before it, zsh .zprofile.
         foreach (string profile in (string[])[".profile", ".bash_profile", ".zprofile"])
         {
@@ -2433,6 +2433,12 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         File.WriteAllText(Path.Combine(home, ".profile"), $"export PATH=\"{tools}:$PATH\"\n{more}");
         return used;
     }
+
+    /// <summary>A git in <paramref name="tools"/> that writes the environment it was started with to <paramref name="seen"/>,
+    /// whole: beside it, then put in its place, so a read finds one git's whole environment while Passenger starts others.</summary>
+    [System.Runtime.Versioning.UnsupportedOSPlatform("windows")]
+    private static async Task EnvironmentGitAsync(string tools, string seen) =>
+        Executable(Path.Combine(tools, "git"), $"#!/bin/sh\nenv > \"{seen}.$$\" && mv -f \"{seen}.$$\" \"{seen}\"\nexec {(await Programs.GitAsync())!} \"$@\"\n");
 
     /// <summary>launchd's environment, as the Finder or the Dock start Passenger: the bare PATH, no terminal, no .NET or zsh
     /// settings of the person's, the home given.</summary>
