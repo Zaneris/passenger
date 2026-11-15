@@ -2292,6 +2292,18 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
             + $"and their labels drift from every other form's: make each row with FormRows.Of, its form marked by FormRows.Scope:\n{string.Join("\n", found)}");
     }
 
+    /// <summary>A table's rows edited in place are ColumnTitles' ruled rows, so every such table's rows are one height over
+    /// one rule, in the titles' columns: a rule under a row bound by hand to the separator's colour fails here, naming its line.</summary>
+    [Fact]
+    public void Every_editable_tables_rows_are_ColumnTitles_ruled_rows()
+    {
+        Regex ruled = new(@"\.Bind\(\s*(?:Border\.)?BorderBrushProperty\s*,\s*\w+\.GetResourceObservable\(\s*TokenKeys\.Separator\s*\)\s*\)");
+        string[] found = [.. UiFiles().Where(f => f.Path.EndsWith(".cs", StringComparison.Ordinal) && !f.Path.EndsWith("/ColumnTitles.cs", StringComparison.Ordinal))
+            .SelectMany(f => ruled.Matches(f.Text).Select(m => $"{f.Path}:{LineOf(f.Text, m.Index)}"))];
+        Assert.True(found.Length == 0, $"{found.Length} table rows are ruled by hand, so their heights, columns and rules drift from every other table's: make each "
+            + $"with its titles' ColumnTitles.Ruled (an EditableTable's Ruled):\n{string.Join("\n", found)}");
+    }
+
     /// <summary>Words are shown as written, a name's underscores too, since Passenger gives no access keys: every kind of
     /// control that holds words (a button's, a check box's, a menu item's, a tab's, a label's, a group's header), made with
     /// a file's names under the window's theme, draws them whole, and no code makes access-key text of its own; a kind that

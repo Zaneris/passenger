@@ -7,8 +7,8 @@ namespace Passenger.App;
 
 /// <summary>A table's column titles over its rule, one look in every table: muted words a row high
 /// (<see cref="ListRow.Height"/>) over the separator's rule, docked at the table's top, each over its column where the
-/// column's words start, a number's at its column's right. Its rows take the same columns through <see cref="Row"/>.
-/// UiRulesTests fails titles built by hand.</summary>
+/// column's words start, a number's at its column's right. Its rows take the same columns through <see cref="Row"/>, or
+/// <see cref="Ruled"/> where they are edited in place. UiRulesTests fails titles and ruled rows built by hand.</summary>
 public sealed class ColumnTitles : Border
 {
     /// <summary>Where a tree list's rows start inside it, past its padding and theirs, so titles over a list stand over its
@@ -87,7 +87,25 @@ public sealed class ColumnTitles : Border
     /// <summary>A row of the table: its cells in the titles' columns, a row high.</summary>
     public Grid Row(params Control[] cells)
     {
-        Grid row = new() { ColumnDefinitions = new ColumnDefinitions(columns), Height = ListRow.Height };
+        Grid row = Cells(cells);
+        row.Height = ListRow.Height;
+        return row;
+    }
+
+    /// <summary>A row of a table edited in place (<see cref="EditableTable"/>): its cells in the titles' columns, at least a
+    /// row high and as tall as its fields, over a rule as the titles are.</summary>
+    public Border Ruled(params Control[] cells)
+    {
+        Grid row = Cells(cells);
+        row.MinHeight = ListRow.Height;
+        Border ruled = new() { Child = row, BorderThickness = new Thickness(0, 0, 0, 1) };
+        ruled.Bind(BorderBrushProperty, ruled.GetResourceObservable(TokenKeys.Separator));
+        return ruled;
+    }
+
+    private Grid Cells(Control[] cells)
+    {
+        Grid row = new() { ColumnDefinitions = new ColumnDefinitions(columns) };
         for (int i = 0; i < cells.Length; i++)
         {
             Grid.SetColumn(cells[i], i);

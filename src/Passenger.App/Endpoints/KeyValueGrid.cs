@@ -6,9 +6,9 @@ using Passenger.Editor;
 namespace Passenger.App.Endpoints;
 
 /// <summary>A table of keys and values: each row turned on or off by its check box, removed by its ×, and an empty row
-/// last that becomes a new one as soon as something is typed in it. Changing a row raises <see cref="Changed"/>;
+/// last that becomes a new one as soon as something is typed in it. Changing a row raises <see cref="EditableTable.Changed"/>;
 /// <see cref="Set"/> replaces the rows without raising it.</summary>
-public sealed class KeyValueGrid : Border
+public sealed class KeyValueGrid : EditableTable
 {
     /// <summary>One row's controls.</summary>
     public sealed record Row(CheckBox On, TextBox Key, TextBox Value, Button Remove, Border View)
@@ -16,26 +16,17 @@ public sealed class KeyValueGrid : Border
         public bool IsEmpty => string.IsNullOrEmpty(Key.Text) && string.IsNullOrEmpty(Value.Text);
     }
 
-    private const string Columns = "32,*,*,32";
-
-    private readonly StackPanel table = new();
     private readonly List<Row> rows = [];
     private readonly string keyHint;
     private readonly string valueHint;
-    private bool setting;
 
     public KeyValueGrid(string keyHint, string valueHint)
+        : base("32,*,*,32", ["", "Key", "Value"], scrolls: true)
     {
         this.keyHint = keyHint;
         this.valueHint = valueHint;
-        Classes.Add(StyleClasses.Framed);
-        ClipToBounds = true;
-        Child = new DockPanel { Children = { ColumnTitles.Of(Columns, ["", "Key", "Value"]), new ScrollViewer { Content = table } } };
         AddEmpty();
     }
-
-    /// <summary>A row was typed in, turned on or off, added or removed.</summary>
-    public event EventHandler? Changed;
 
     /// <summary>Every row, the empty last one included.</summary>
     public IReadOnlyList<Row> Rows => rows;
@@ -49,24 +40,16 @@ public sealed class KeyValueGrid : Border
         [.. Pairs.Where(p => p.On).Select(p => new KeyValuePair<string, string>(p.Key, p.Value))];
 
     /// <summary>Replaces the rows, an empty one after them, without raising <see cref="Changed"/>.</summary>
-    public void Set(IEnumerable<(bool On, string Key, string Value)> pairs)
+    public void Set(IEnumerable<(bool On, string Key, string Value)> pairs) => Setting(() =>
     {
-        setting = true;
-        try
+        rows.Clear();
+        Table.Children.Clear();
+        foreach ((bool on, string key, string value) in pairs)
         {
-            rows.Clear();
-            table.Children.Clear();
-            foreach ((bool on, string key, string value) in pairs)
-            {
-                Add(on, key, value);
-            }
-            AddEmpty();
+            Add(on, key, value);
         }
-        finally
-        {
-            setting = false;
-        }
-    }
+        AddEmpty();
+    });
 
     private void AddEmpty() => Add(true, string.Empty, string.Empty);
 
@@ -78,27 +61,19 @@ public sealed class KeyValueGrid : Border
         Button remove = ToolButtons.Of(IconKeys.Close, "Remove");
         remove.VerticalAlignment = VerticalAlignment.Center;
         ((PathIcon)remove.Content!).Classes.Add(StyleClasses.Small);
-        Grid cells = new() { ColumnDefinitions = new ColumnDefinitions(Columns) };
-        Control[] parts = [check, keyBox, valueBox, remove];
-        for (int i = 0; i < parts.Length; i++)
-        {
-            Grid.SetColumn(parts[i], i);
-            cells.Children.Add(parts[i]);
-        }
-        Border view = new() { Child = cells, BorderThickness = new Thickness(0, 0, 0, 1) };
-        view.Bind(BorderBrushProperty, view.GetResourceObservable(TokenKeys.Separator));
+        Border view = Ruled(check, keyBox, valueBox, remove);
         Row row = new(check, keyBox, valueBox, remove, view);
         rows.Add(row);
-        table.Children.Add(view);
+        Table.Children.Add(view);
         Mark(row);
         keyBox.TextChanged += (_, _) => Typed(row);
         valueBox.TextChanged += (_, _) => Typed(row);
-        check.IsCheckedChanged += (_, _) => Raise();
+        check.IsCheckedChanged += (_, _) => Tell();
         remove.Click += (_, _) =>
         {
             rows.Remove(row);
-            table.Children.Remove(view);
-            Raise();
+            Table.Children.Remove(view);
+            Tell();
         };
         return row;
     }
@@ -106,7 +81,7 @@ public sealed class KeyValueGrid : Border
     /// <summary>Typing in the empty last row makes it a row of its own, and another empty one follows it.</summary>
     private void Typed(Row row)
     {
-        if (setting)
+        if (IsSetting)
         {
             return;
         }
@@ -119,7 +94,7 @@ public sealed class KeyValueGrid : Border
         {
             Mark(each);
         }
-        Raise();
+        Tell();
     }
 
     /// <summary>The empty last row has no check box or × until it holds something.</summary>
@@ -130,13 +105,5 @@ public sealed class KeyValueGrid : Border
         row.Remove.IsVisible = !last;
         row.Key.PlaceholderText = last ? keyHint : null;
         row.Value.PlaceholderText = last ? valueHint : null;
-    }
-
-    private void Raise()
-    {
-        if (!setting)
-        {
-            Changed?.Invoke(this, EventArgs.Empty);
-        }
     }
 }

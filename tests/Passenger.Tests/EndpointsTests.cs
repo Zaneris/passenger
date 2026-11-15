@@ -5,6 +5,7 @@ using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.Input;
+using Avalonia.Media;
 using Avalonia.VisualTree;
 using Passenger.App;
 using Passenger.App.Editors;
@@ -320,6 +321,38 @@ public sealed class EndpointsTests : IDisposable
         Assert.Equal("GET /items?limit=5&q=x", api.Received[^1].Line);
         dialog.Close();
         window.Close();
+    }
+
+    /// <summary>Interactive Test's Params and Headers are framed as every table edited in a dialog is (a run's services and
+    /// projects), a frame round them on the list's ground, so their rows read as one table rather than lines on the page.</summary>
+    [AvaloniaFact]
+    public void Interactive_tests_params_and_headers_are_framed_as_every_table_edited_in_a_dialog()
+    {
+        MainWindow window = Open(Folder());
+        try
+        {
+            window.ShowToolWindow(ToolWindowIds.Endpoints);
+            Ui.WaitFor(() => window.Endpoints.Requests.Count == 3, "the requests");
+            Ui.Click(RowButton(window, window.Endpoints.Requests[1], "endpointInteractive"));
+            InteractiveTestDialog dialog = window.InteractiveTest ?? throw new Xunit.Sdk.XunitException("Interactive Test opened no dialog");
+            Ui.Settle();
+            Color ground = Token(TokenKeys.List);
+            Color frame = Token(TokenKeys.FieldBorder);
+            foreach ((string name, KeyValueGrid table) in new[] { ("Params", dialog.Params), ("Headers", dialog.Headers) })
+            {
+                Assert.True(table.BorderThickness == new Thickness(1) && (table.BorderBrush as ISolidColorBrush)?.Color == frame && (table.Background as ISolidColorBrush)?.Color == ground,
+                    $"Interactive Test's {name} table has a frame of {table.BorderThickness} in {(table.BorderBrush as ISolidColorBrush)?.Color.ToString() ?? "no colour"} "
+                    + $"on {(table.Background as ISolidColorBrush)?.Color.ToString() ?? "no ground"}, where every table edited in a dialog is framed in {frame} on the list's {ground}");
+            }
+            dialog.Close();
+        }
+        finally
+        {
+            window.Close();
+        }
+
+        Color Token(string key) => window.TryFindResource(key, window.ActualThemeVariant, out object? found) && found is ISolidColorBrush brush ? brush.Color
+            : throw new Xunit.Sdk.XunitException($"The theme gives no colour {key}");
     }
 
     [AvaloniaFact]

@@ -10,7 +10,7 @@ namespace Passenger.App.Run;
 /// Start without debugging; None) and the launch profile of its own it starts in (its default, the first that runs here, or
 /// one named). A project it names that is not loaded keeps its row, unchosen. Up and down move a row, which is the order
 /// they start in.</summary>
-public sealed class ProjectStartsTable : Border
+public sealed class ProjectStartsTable : EditableTable
 {
     /// <summary>One project's row: its project file, its action and launch profile boxes, and the launch profiles listed, the
     /// first (empty) its default.</summary>
@@ -23,57 +23,36 @@ public sealed class ProjectStartsTable : Border
     /// <summary>Each action's words, as Visual Studio's own table says them, in <see cref="ProjectLaunchAction"/>'s order.</summary>
     public static readonly IReadOnlyList<string> ActionWords = ["Start", "Start without debugging", "None"];
 
-    /// <summary>The columns: the project, its action (wide enough for its longest), its launch profile, and its moves.</summary>
-    private const string Columns = "*,220,*,72";
     private const string DefaultProfile = "Default";
 
-    private readonly StackPanel table = new();
-    private readonly TextBlock said = new() { Classes = { StyleClasses.Muted }, TextWrapping = Avalonia.Media.TextWrapping.Wrap, Margin = new Thickness(8, 6) };
     private readonly List<Row> rows = [];
-    private bool setting;
 
-    /// <summary>Styled as the Border it is, so Border.framed frames it.</summary>
-    protected override Type StyleKeyOverride => typeof(Border);
-
+    /// <summary>Its columns: the project, its action (wide enough for its longest), its launch profile, and its moves.</summary>
     public ProjectStartsTable()
+        : base("*,220,*,72", ["Project", "Action", "Launch profile", string.Empty])
     {
-        Classes.Add(StyleClasses.Framed);
-        ClipToBounds = true;
-        Child = new DockPanel { Children = { ColumnTitles.Of(Columns, ["Project", "Action", "Launch profile", string.Empty]), new StackPanel { Children = { table, said } } } };
     }
-
-    /// <summary>A row's action or launch profile changed, or a row moved.</summary>
-    public event EventHandler? Changed;
 
     public IReadOnlyList<Row> Rows => rows;
 
     /// <summary>The rows of a configuration's starts, then of each other project, without raising <see cref="Changed"/>;
     /// <paramref name="profilesOf"/> lists a project's launch profiles.</summary>
-    public void Set(IReadOnlyList<ProjectStart> starts, IReadOnlyList<ProjectModel> projects, Func<ProjectModel, IReadOnlyList<string>> profilesOf)
+    public void Set(IReadOnlyList<ProjectStart> starts, IReadOnlyList<ProjectModel> projects, Func<ProjectModel, IReadOnlyList<string>> profilesOf) => Setting(() =>
     {
-        setting = true;
-        try
+        rows.Clear();
+        Table.Children.Clear();
+        foreach (ProjectStart start in starts)
         {
-            rows.Clear();
-            table.Children.Clear();
-            foreach (ProjectStart start in starts)
-            {
-                ProjectModel? project = projects.FirstOrDefault(p => Core.PathNames.Same(p.Path, start.Project));
-                Add(start.Project, project?.Name, project is null ? [] : profilesOf(project), start);
-            }
-            foreach (ProjectModel project in projects.Where(p => !starts.Any(s => Core.PathNames.Same(s.Project, p.Path))))
-            {
-                Add(project.Path, project.Name, profilesOf(project), null);
-            }
-            Ends();
-            said.IsVisible = rows.Count == 0;
-            said.Text = rows.Count == 0 ? "The solution has no executable project to start" : string.Empty;
+            ProjectModel? project = projects.FirstOrDefault(p => Core.PathNames.Same(p.Path, start.Project));
+            Add(start.Project, project?.Name, project is null ? [] : profilesOf(project), start);
         }
-        finally
+        foreach (ProjectModel project in projects.Where(p => !starts.Any(s => Core.PathNames.Same(s.Project, p.Path))))
         {
-            setting = false;
+            Add(project.Path, project.Name, profilesOf(project), null);
         }
-    }
+        Ends();
+        SayInstead(rows.Count == 0 ? "The solution has no executable project to start" : null);
+    });
 
     /// <summary>The starts as the table has them, in its order: each row it was set from with its action and launch profile
     /// now (one set to None kept, as Visual Studio keeps it), and each other project set to start.</summary>
@@ -128,18 +107,10 @@ public sealed class ProjectStartsTable : Border
         Button up = ToolButtons.Of(IconKeys.ArrowUp, "Start Earlier");
         Button down = ToolButtons.Of(IconKeys.ArrowDown, "Start Later");
         StackPanel moves = new() { Orientation = Orientation.Horizontal, Spacing = 2, Margin = new Thickness(4, 0), Children = { up, down } };
-        Grid cells = new() { ColumnDefinitions = new ColumnDefinitions(Columns), MinHeight = ListRow.Height };
-        Control[] parts = [title, action, profile, moves];
-        for (int i = 0; i < parts.Length; i++)
-        {
-            Grid.SetColumn(parts[i], i);
-            cells.Children.Add(parts[i]);
-        }
-        Border view = new() { Child = cells, BorderThickness = new Thickness(0, 0, 0, 1) };
-        view.Bind(BorderBrushProperty, view.GetResourceObservable(TokenKeys.Separator));
+        Border view = Ruled(title, action, profile, moves);
         Row row = new(path, action, profile, listed, view, up, down) { Was = start };
         rows.Add(row);
-        table.Children.Add(view);
+        Table.Children.Add(view);
         action.SelectionChanged += (_, _) => Tell();
         profile.SelectionChanged += (_, _) => Tell();
         up.Click += (_, _) => Move(row, -1);
@@ -157,8 +128,8 @@ public sealed class ProjectStartsTable : Border
         }
         rows.RemoveAt(at);
         rows.Insert(to, row);
-        table.Children.RemoveAt(at);
-        table.Children.Insert(to, row.View);
+        Table.Children.RemoveAt(at);
+        Table.Children.Insert(to, row.View);
         Ends();
         Tell();
     }
@@ -170,14 +141,6 @@ public sealed class ProjectStartsTable : Border
         {
             rows[i].Up.IsEnabled = i > 0;
             rows[i].Down.IsEnabled = i < rows.Count - 1;
-        }
-    }
-
-    private void Tell()
-    {
-        if (!setting)
-        {
-            Changed?.Invoke(this, EventArgs.Empty);
         }
     }
 }

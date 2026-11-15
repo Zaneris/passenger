@@ -12,7 +12,7 @@ namespace Passenger.App.Run;
 /// .NET resource by its name, its project the one its AppHost names (<see cref="SetNamed"/>); and what Run does with each:
 /// a .NET service Run, Debug or Don't start, any other Start or Don't start. Until the services are read, or when they
 /// cannot be, it says why instead.</summary>
-public sealed class ComposeServicesTable : Border
+public sealed class ComposeServicesTable : EditableTable
 {
     /// <summary>One service's row: its name, the project chosen (null for none) and what it does.</summary>
     public sealed record Row(string Service, ComboBox Project, ComboBox Action, Border View)
@@ -24,90 +24,56 @@ public sealed class ComposeServicesTable : Border
         public string? Named { get; init; }
     }
 
-    private const string Columns = "*,*,130";
     private const string NoProject = "None: as Compose says";
 
-    private readonly StackPanel table = new();
-    private readonly TextBlock said = new() { Classes = { StyleClasses.Muted }, TextWrapping = Avalonia.Media.TextWrapping.Wrap, Margin = new Thickness(8, 6) };
     private readonly List<Row> rows = [];
     private IReadOnlyList<ProjectModel> projects = [];
-    private bool setting;
-
-    /// <summary>Styled as the Border it is, so Border.framed frames it.</summary>
-    protected override Type StyleKeyOverride => typeof(Border);
 
     /// <param name="named">What a row stands for, the first column's title: a Compose service, an AppHost's resource.</param>
     public ComposeServicesTable(string named = "Service")
+        : base("*,*,130", [named, "Project", "Run does"])
     {
-        Classes.Add(StyleClasses.Framed);
-        ClipToBounds = true;
-        Child = new DockPanel { Children = { ColumnTitles.Of(Columns, [named, "Project", "Run does"]), new StackPanel { Children = { table, said } } } };
     }
-
-    /// <summary>A row's project or action changed.</summary>
-    public event EventHandler? Changed;
 
     public IReadOnlyList<Row> Rows => rows;
 
-    /// <summary>Why no services are listed (being read, Compose's refusal), or empty when they are.</summary>
-    public string Said => said.IsVisible ? said.Text ?? string.Empty : string.Empty;
-
-    /// <summary>Says why there are no rows, in their place.</summary>
+    /// <summary>Says why there are no rows (being read, Compose's refusal), in their place.</summary>
     public void Say(string why)
     {
         rows.Clear();
-        table.Children.Clear();
-        said.Text = why;
-        said.IsVisible = true;
+        Table.Children.Clear();
+        SayInstead(why);
     }
 
     /// <summary>The services as a configuration has them, without raising <see cref="Changed"/>.</summary>
     public void Set(IReadOnlyList<(ComposeService Service, string? Project, bool Built)> services, IReadOnlyList<ProjectModel> solution, RunConfiguration configuration,
-        bool editable)
+        bool editable) => Setting(() =>
     {
-        setting = true;
-        try
+        projects = solution;
+        rows.Clear();
+        Table.Children.Clear();
+        SayInstead(services.Count == 0 ? "Compose's model of these files has no services" : null);
+        foreach ((ComposeService service, string? project, bool built) in services)
         {
-            projects = solution;
-            rows.Clear();
-            table.Children.Clear();
-            said.IsVisible = services.Count == 0;
-            said.Text = services.Count == 0 ? "Compose's model of these files has no services" : string.Empty;
-            foreach ((ComposeService service, string? project, bool built) in services)
-            {
-                string runs = built && service.Dockerfile is { } file ? file : service.Image ?? string.Empty;
-                Add(service.Name, runs, project, built, named: false, configuration.ServiceActions.GetValueOrDefault(service.Name, ServiceStart.Run), editable);
-            }
+            string runs = built && service.Dockerfile is { } file ? file : service.Image ?? string.Empty;
+            Add(service.Name, runs, project, built, named: false, configuration.ServiceActions.GetValueOrDefault(service.Name, ServiceStart.Run), editable);
         }
-        finally
-        {
-            setting = false;
-        }
-    }
+    });
 
     /// <summary>An AppHost's .NET resources, each with the project its AppHost names (shown, not chosen here), without
     /// raising <see cref="Changed"/>.</summary>
-    public void SetNamed(IReadOnlyList<(string Name, string Project)> named, IReadOnlyList<ProjectModel> solution, RunConfiguration configuration, bool editable)
+    public void SetNamed(IReadOnlyList<(string Name, string Project)> named, IReadOnlyList<ProjectModel> solution, RunConfiguration configuration, bool editable) => Setting(() =>
     {
-        setting = true;
-        try
+        projects = [.. solution, .. named.Select(n => n.Project).Where(p => !solution.Any(s => Core.PathNames.Same(s.Path, p)))
+            .Distinct(Core.PathNames.Comparer).Select(ProjectModel.Unevaluated)];
+        rows.Clear();
+        Table.Children.Clear();
+        SayInstead(named.Count == 0 ? "This AppHost declares no project resources" : null);
+        foreach ((string name, string project) in named)
         {
-            projects = [.. solution, .. named.Select(n => n.Project).Where(p => !solution.Any(s => Core.PathNames.Same(s.Path, p)))
-                .Distinct(Core.PathNames.Comparer).Select(ProjectModel.Unevaluated)];
-            rows.Clear();
-            table.Children.Clear();
-            said.IsVisible = named.Count == 0;
-            said.Text = named.Count == 0 ? "This AppHost declares no project resources" : string.Empty;
-            foreach ((string name, string project) in named)
-            {
-                Add(name, string.Empty, project, choosable: false, named: true, configuration.ServiceActions.GetValueOrDefault(name, ServiceStart.Run), editable);
-            }
+            Add(name, string.Empty, project, choosable: false, named: true, configuration.ServiceActions.GetValueOrDefault(name, ServiceStart.Run), editable);
         }
-        finally
-        {
-            setting = false;
-        }
-    }
+    });
 
     /// <summary>Each AppHost resource's project, as its AppHost names it, by its name.</summary>
     public Dictionary<string, string> NamedProjects() =>
@@ -180,42 +146,20 @@ public sealed class ComposeServicesTable : Border
         ToolTip.SetTip(projectBox, named ? "The project the AppHost runs for this resource, as its code names it"
             : choosable ? "The project this service runs: Run builds it and runs it in the service's container" : "Runs its image: no project of the solution");
         ComboBox actionBox = new() { Classes = { StyleClasses.Cell }, HorizontalAlignment = HorizontalAlignment.Stretch, IsEnabled = editable };
-        Grid cells = new() { ColumnDefinitions = new ColumnDefinitions(Columns), MinHeight = ListRow.Height };
-        Control[] parts = [name, projectBox, actionBox];
-        for (int i = 0; i < parts.Length; i++)
-        {
-            Grid.SetColumn(parts[i], i);
-            cells.Children.Add(parts[i]);
-        }
-        Border view = new() { Child = cells, BorderThickness = new Thickness(0, 0, 0, 1) };
-        view.Bind(BorderBrushProperty, view.GetResourceObservable(TokenKeys.Separator));
+        Border view = Ruled(name, projectBox, actionBox);
         Row row = new(service, projectBox, actionBox, view) { Named = named ? project : null };
         Actions(row, action);
         rows.Add(row);
-        table.Children.Add(view);
+        Table.Children.Add(view);
         projectBox.SelectionChanged += (_, _) =>
         {
-            if (!setting)
+            if (!IsSetting)
             {
-                setting = true;
-                try
-                {
-                    Actions(row, Action(row));
-                }
-                finally
-                {
-                    setting = false;
-                }
-                Changed?.Invoke(this, EventArgs.Empty);
+                Setting(() => Actions(row, Action(row)));
+                Tell();
             }
         };
-        actionBox.SelectionChanged += (_, _) =>
-        {
-            if (!setting)
-            {
-                Changed?.Invoke(this, EventArgs.Empty);
-            }
-        };
+        actionBox.SelectionChanged += (_, _) => Tell();
     }
 
     /// <summary>A row's choices: a .NET service's Run, Debug and Don't start (Debug is kept for when containers are
