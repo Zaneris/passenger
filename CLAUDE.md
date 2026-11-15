@@ -214,7 +214,7 @@ Projects in `src/`; `find_symbol` finds the rest from the names here. A pointer'
   key (a download), begun once however many ask, an ask that stops waiting never letting it go, `SharedWork` (`unheld` where any window asks, saying why); a folder first on a PATH `Programs.FirstOnPath`; a shell's kind `ShellKinds.Of`; a macOS app bundle from a path `MacBundles`; requests to a peer answered by number `PendingRequests` (one asked after its end fails at once), never a table of one's own.
 - `Passenger.Text`: the rope, `TextDocument`, editing commands as pure functions to an `EditPlan`, `FileText`; an XML
   value through `XmlEntities`, never `SecurityElement.Escape` or a hand Replace; a place in the text held by an anchor
-  (`AnchorAt`), never your own `TextEditing.Map*`; an end tag typed over by hand `EndTagTyping`, never a caret jump.
+  (`AnchorAt`), never your own `TextEditing.Map*`; an end tag typed over by hand `EndTagTyping`, never a caret jump; a line's start, end and the next line's start in a string `TextNavigation.LineStart`/`LineEnd`/`NextLineStart`.
 - `Passenger.Editor`: `CodeEditor`, `Keymap`, `EditorActions`; the code font is `CodeFonts.Key`, never a `FontFamily`
   written elsewhere; a family code or the window's words are drawn in is named through `FallbackFonts` (`Carry`, `Of`), an emoji's fallback asked in
   `und-Zsye` (`FallbackFonts.LanguageOf`), never the culture's, or fontconfig names a text face,
@@ -323,7 +323,7 @@ Projects in `src/`; `find_symbol` finds the rest from the names here. A pointer'
   `CodeActions.ApplyEditAsync`, so a type it renames takes its files along as Rename's (`TypeRename.RenamedByAsync`).
 - **Godot code.** `GodotScenes`, `GodotSceneIndex` (never a walk of every file on the window's thread; an autoload by
   uid, never project.godot's text), the extension's `GodotChecks` and `GodotKinds` (the projects' strings only through
-  `GodotKinds.WritesAsync`). GDScript is Godot's parser and analyzer, ported (`GDScriptTree`, `GDScriptAnalyzer`); a
+  `GodotKinds.WritesAsync`). GDScript is Godot's parser and analyzer, ported (`GDScriptTree`, `GDScriptAnalyzer`), a name its tokenizer's rule (`GDScriptTokenizer.IdentifierStart`/`IdentifierContinue`/`IdentifierWidth`, never `WordCharacters` or `char.IsLetterOrDigit`), a light read of a script's comments, strings, words and calls `GDScriptScan`; a
   newer Godot's warning or error is gated on `GodotEngineApi.Version`; an error is said only where the class is read
   whole and both types are sure (`GDScriptAnalyzer.Knows`, `Sure`); a GDScript session starts no Godot editor, its
   headless one only when asked (`WebLanguages.AskGodot`; a test of Godot's own server opens with
