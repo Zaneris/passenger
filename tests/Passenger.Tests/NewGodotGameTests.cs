@@ -11,9 +11,10 @@ namespace Passenger.Tests;
 /// <summary>New Solution's Godot 4 Game, Passenger's own, beside dotnet new's templates: in C# it makes the game and its
 /// solution on the Godot found's Godot.NET.Sdk, restored from that Godot's own packages, opens it built and offers Passenger
 /// as Godot's script editor, and Run starts the game, whose script prints; by default its solution sits beside
-/// project.godot, where Godot's own editor builds it; in GDScript it makes the game's folder alone, which opens and runs the
-/// same. With no Godot found it is refused saying how to get one. Godot runs headless with the run's user folders; without
-/// a Godot 4 .NET build, the tests that run it skip saying why.</summary>
+/// project.godot, where Godot's own editor builds it, and it targets the newest .NET that editor builds and loads it on; in
+/// GDScript it makes the game's folder alone, which opens and runs the same. With no Godot found it is refused saying how
+/// to get one. Godot runs headless with the run's user folders; without a Godot 4 .NET build, the tests that run it skip
+/// saying why.</summary>
 public sealed class NewGodotGameTests : IDisposable
 {
     private readonly string settings = TestFolders.Create("settings-");
@@ -131,6 +132,66 @@ public sealed class NewGodotGameTests : IDisposable
         {
             End(window);
         }
+    }
+
+    /// <summary>Where the newest .NET whose game Godot's editor builds and runs here is older than Passenger's own (on macOS,
+    /// the installer's .NET 10, which a Godot opened from the Dock runs on, beside the .NET 11 Passenger runs on), the C# Godot
+    /// game targets it by default, the dialog saying so under the framework and warning of a newer one picked; Godot's editor
+    /// started through Passenger builds the game, and opened on that .NET loads it, where the net11.0 game made before was
+    /// built by the one and failed to load in the other (#1727).</summary>
+    [AvaloniaFact]
+    public void A_csharp_godot_game_targets_the_newest_dotnet_its_godot_builds_and_runs_which_godots_editor_builds_and_loads()
+    {
+        SkipWithoutGodot();
+        GodotEditorDotnet.GameTargets? targets = GodotEditorDotnet.TargetsOf(godot!, place);
+        int own = DotnetMachine.Read().Installation?.Runtimes.Where(r => !VersionOrder.IsPrerelease(r)).Select(VersionOrder.Major).Max() ?? 0;
+        Assert.SkipUnless(targets is { Newest.Major: int newest } && newest < own, targets is null
+            ? "Nothing here says which .NET Godot's editor builds and runs a game on (macOS and Godot's .NET build alone do)"
+            : $"Godot's editor builds and runs a game here on .NET {targets.Newest?.Major.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "none"}, no older than Passenger's .NET {own}");
+        GodotEditorDotnet.GameDotnet godots = targets!.Newest!;
+        MainWindow window = Started();
+        try
+        {
+            NewProjectDialog dialog = Chosen(window, "C#");
+            string fits = $"net{godots.Major}.0";
+            Assert.True(dialog.Framework == fits, $"The game targets {dialog.Framework} by default, which Godot's editor here builds or runs no game of: {targets.WhyNot(dialog.Framework)}");
+            Assert.Equal($"{targets.Editor} builds and runs a game here on .NET {godots.Major} at most, that of {godots.Root}, older than Passenger's .NET {own}", dialog.FrameworkNote);
+            Assert.Null(dialog.WindowsNote);
+            string newer = $"net{own}.0";
+            dialog.Framework = newer;
+            Ui.Settle();
+            Assert.True(dialog.Framework == newer && dialog.WindowsNote == targets.WhyNot(newer) && dialog.WindowsNote is not null,
+                $"A {newer} game picked was noted as \"{dialog.WindowsNote}\" (chosen {dialog.Framework})");
+            dialog.Framework = fits;
+            Ui.Settle();
+            Assert.Null(dialog.WindowsNote);
+            Created(dialog);
+            string folder = PathNames.Canonical(Path.Combine(place, "Spinner"));
+            Ui.WaitFor(() => window.WorkspaceModel?.OpenedAs is not null, () => $"the new game's solution to open ({window.Status})", TimeSpan.FromMinutes(2));
+            Assert.Contains($"<TargetFramework>{fits}</TargetFramework>", File.ReadAllText(Path.Combine(folder, "Spinner.csproj")), StringComparison.Ordinal);
+            (string said, int code, bool built) = BuiltByGodotsEditor(window, folder);
+            Assert.True(code == 0 && built && Unbuilt(said) is null, $"Godot's editor started through Passenger did not build the {fits} game ({ExitCodes.Said(code)}):\n{said}");
+            string opened = OpenedByGodotsEditor(window, godots.Root);
+            Assert.True(!opened.Contains("Could not load file or assembly", StringComparison.Ordinal) && Unbuilt(opened) is null,
+                $"Godot's editor on the .NET of {godots.Root} did not load the {fits} game:\n{opened}");
+        }
+        finally
+        {
+            End(window);
+        }
+    }
+
+    /// <summary>What the Run window said as Godot's editor opened the game built and quit, started through the game's Godot
+    /// Editor configuration, headless with the test's user folders, DOTNET_ROOT and this processor's naming
+    /// <paramref name="root"/> as the person's own, so it runs on that .NET; the editor loads the game's assembly as it opens.</summary>
+    private string OpenedByGodotsEditor(MainWindow window, string root)
+    {
+        RunConfiguration editor = window.Configurations.First(c => c.Generated && c.GodotEditor);
+        window.SetConfigurations([editor with { Name = "Godot opens", Generated = false, Arguments = $"{GodotExecutables.Headless} --quit", BuildBeforeLaunch = false,
+            Environment = new(homes) { [RuntimeVariables.Root] = root, [RuntimeVariables.RootFor(RuntimeInformation.ProcessArchitecture.ToString())] = root } }], "Godot opens");
+        Ui.Launched(window, window.RunAsync(), "Godot's editor's start", TimeSpan.FromMinutes(3));
+        int code = Ui.Await(window.RunEnd, "Godot's editor to open the game and quit", TimeSpan.FromMinutes(5));
+        return $"{Output(window)}\n(Godot's editor {ExitCodes.Said(code)})";
     }
 
     /// <summary>The game's build by Godot's own editor, once Passenger's own has ended: the editor started through the game's

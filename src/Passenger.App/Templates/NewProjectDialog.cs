@@ -85,6 +85,11 @@ public sealed class NewProjectDialog : IdeWindow
     private readonly Control? formatRow;
     private readonly TextBlock where = new() { Classes = { StyleClasses.Muted }, FontSize = 12, TextWrapping = TextWrapping.Wrap };
     private readonly ComboBox framework = new() { Classes = { StyleClasses.Form } };
+    private readonly TextBlock frameworkNote = new() { Classes = { StyleClasses.Muted }, FontSize = 12, TextWrapping = TextWrapping.Wrap };
+    private readonly Control frameworkNoteRow;
+
+    /// <summary>The framework the person picked for the template chosen, which a Godot game listed again keeps; null for none.</summary>
+    private string? picked;
     private readonly ComboBox language = new() { Classes = { StyleClasses.Form } };
     private readonly Control languageRow;
     private readonly TemplateOptions options = new();
@@ -137,6 +142,10 @@ public sealed class NewProjectDialog : IdeWindow
     /// framework is chosen by (<see cref="GodotGames.Runnable"/>).</summary>
     private readonly Task<IReadOnlyList<string>> runtimes;
 
+    /// <summary>What a C# Godot game can target for the Godot found to build and run it, read off the window's thread as the
+    /// dialog opens (<see cref="GodotEditorDotnet.TargetsOf"/>); null where nothing here says.</summary>
+    private readonly Task<GodotEditorDotnet.GameTargets?> targets;
+
     /// <summary>A test's hold of the next Create once dotnet new has made its project: what ends it, and what is told it is held.</summary>
     private (Task Release, TaskCompletionSource Reached)? madeHold;
 
@@ -161,6 +170,7 @@ public sealed class NewProjectDialog : IdeWindow
         followFolder = new Passenger.Editor.Debounce(TimeSpan.FromMilliseconds(400), FollowFolderAsync);
         godotFound = BackgroundWork.Run(() => GodotLaunch.Found(godot));
         runtimes = BackgroundWork.Run(() => DotnetMachine.Read().Installation?.Runtimes ?? []);
+        targets = BackgroundWork.Run(async () => await godotFound is { } found ? GodotEditorDotnet.TargetsOf(found, folder) : null);
         create.IsEnabled = false;
         FormRows.Scope(this);
         this.target = target;
@@ -222,7 +232,14 @@ public sealed class NewProjectDialog : IdeWindow
             ShowWhere();
         };
         format.SelectionChanged += (_, _) => ShowWhere();
-        framework.SelectionChanged += (_, _) => Retarget();
+        framework.SelectionChanged += (_, _) =>
+        {
+            if (!setting)
+            {
+                picked = Framework;
+            }
+            Retarget();
+        };
         language.SelectionChanged += (_, _) => Retarget();
 
         StackPanel fields = new() { Spacing = 10 };
@@ -255,10 +272,12 @@ public sealed class NewProjectDialog : IdeWindow
             }
         };
         setupRow = Row("Set up:", setup);
+        frameworkNoteRow = Row(null, frameworkNote);
+        frameworkNoteRow.IsVisible = false;
         details = new StackPanel
         {
             Spacing = 10,
-            Children = { Row("Target framework:", framework), languageRow, options.Panel, setupRow, Row(null, new StackPanel { Spacing = 4, Children = { setupNote, installSetup } }), options.Folded, Row(null, command) },
+            Children = { Row("Target framework:", framework), frameworkNoteRow, languageRow, options.Panel, setupRow, Row(null, new StackPanel { Spacing = 4, Children = { setupNote, installSetup } }), options.Folded, Row(null, command) },
         };
         options.Changed += ShowCommand;
         install.Click += (_, _) => IdeErrors.Observe(InstallAsync());
@@ -494,8 +513,12 @@ public sealed class NewProjectDialog : IdeWindow
     public Button CreateButton => create;
 
     /// <summary>What the dialog notes of the template chosen before Create: a Windows-only app's off Windows, a Godot game's
-    /// without the Godot it needs; null for any other.</summary>
+    /// without the Godot it needs or on a framework that Godot's editor builds or runs no game of here; null for any other.</summary>
     public string? WindowsNote => windowsNote.IsVisible ? windowsNote.Text : null;
+
+    /// <summary>What the dialog says under the framework: a C# Godot game's newest .NET that its Godot builds and runs here,
+    /// where older than Passenger's; null where it says nothing.</summary>
+    public string? FrameworkNote => frameworkNoteRow.IsVisible ? frameworkNote.Text : null;
 
     /// <summary>What Create made, once it closed the dialog; null until then, and when given up.</summary>
     public CreatedProjects? Created { get; private set; }
@@ -704,21 +727,37 @@ public sealed class NewProjectDialog : IdeWindow
         : GodotGames.WhyNot(godotFound.Result, ScriptGame, GodotLaunch.NotFound);
 
     /// <summary>Passenger's own Godot game beside dotnet new's templates, its C# project on those frameworks the console app
-    /// offers that Godot runs, as far as the runtimes are read yet.</summary>
+    /// offers that Godot runs, as far as the runtimes are read yet, by default the newest the Godot found's editor builds and
+    /// runs here (<see cref="GodotGames.Default"/>), once read.</summary>
     private TemplateFamily GodotFamily(TemplateCatalog read)
     {
         TemplateVariant? console = read.Templates.FirstOrDefault(t => t.Pack is null && t.ShortNames.Contains("console"))?.Variant("C#", null);
         IReadOnlyList<string> offered = console?.Frameworks ?? [];
         IReadOnlyList<string> runs = runtimes.IsCompletedSuccessfully ? GodotGames.Runnable(offered, runtimes.Result) : offered;
-        ProjectTemplate game = OwnTemplates.GodotGame(runs, runs.FirstOrDefault(), scripts: target is null);
+        ProjectTemplate game = OwnTemplates.GodotGame(runs, GodotGames.Default(runs, GodotTargets?.Newest?.Major), scripts: target is null);
         return new TemplateFamily(game.Name, [game]);
     }
 
-    /// <summary>Once the Godot is found and the runtimes read, the Godot game listed again on the frameworks Godot runs, and
-    /// the template chosen shown again for a Godot game's words.</summary>
+    /// <summary>What a C# Godot game can target for the Godot found, once read; null before, or where nothing here says.</summary>
+    private GodotEditorDotnet.GameTargets? GodotTargets => targets.IsCompletedSuccessfully ? targets.Result : null;
+
+    /// <summary>What the dialog says under a C# Godot game's framework: the newest .NET whose game the Godot found's editor
+    /// builds and runs here, where older than Passenger's own; null for any other.</summary>
+    private string? GodotDotnetSaid()
+    {
+        if (template is not { GodotGame: true } || ScriptGame || GodotTargets is not { Newest: { } newest } godot || !runtimes.IsCompletedSuccessfully
+            || runtimes.Result.Where(r => !VersionOrder.IsPrerelease(r)).Select(VersionOrder.Major).Max() is not int own || own <= newest.Major)
+        {
+            return null;
+        }
+        return $"{godot.Editor} builds and runs a game here on .NET {newest.Major} at most, that of {PathNames.Shown(newest.Root, null)}, older than Passenger's .NET {own}";
+    }
+
+    /// <summary>Once the Godot is found, the runtimes read and what it builds and runs, the Godot game listed again on the
+    /// frameworks Godot runs, and the template chosen shown again for a Godot game's words.</summary>
     private async Task ShowGodotAsync()
     {
-        await Task.WhenAll(godotFound, runtimes);
+        await Task.WhenAll(godotFound, runtimes, targets);
         if (catalog is not null && creating is null)
         {
             families = TemplateFamilies.With([.. families.Where(f => !f.Types.Any(t => t.GodotGame))], GodotFamily(catalog));
@@ -1266,6 +1305,10 @@ public sealed class NewProjectDialog : IdeWindow
         {
             return;
         }
+        if (lastChosen is null || KnownBy(lastChosen) != KnownBy(chosen))
+        {
+            picked = null;
+        }
         lastChosen = chosen;
         typeOf[chosen.Family] = KnownBy(chosen);
         if (!sameChosen)
@@ -1310,15 +1353,19 @@ public sealed class NewProjectDialog : IdeWindow
         string? was = Framework;
         framework.ItemsSource = frameworks;
         TemplateVariant newest = template.Variant(Language, null);
-        framework.SelectedItem = was is not null && frameworks.Contains(was) ? was : newest.DefaultFramework ?? frameworks.FirstOrDefault();
+        // A Godot game's default is what its Godot builds and runs, read later, so only a framework the person picked stays.
+        bool kept = was is not null && frameworks.Contains(was) && (!template.GodotGame || was == picked);
+        framework.SelectedItem = kept ? was : newest.DefaultFramework ?? frameworks.FirstOrDefault();
         setting = false;
         framework.IsEnabled = frameworks.Count > 1;
         languageRow.IsVisible = template.Languages.Count > 1;
         heading.Text = template.Name;
         description.Text = Variant().Description;
         windowsNote.Text = template.WindowsOnly is { } desktop ? $"{desktop} runs only on Windows: Passenger builds the project here for its code help, and Run, Debug and Profile need Windows"
-            : GodotWhyNot();
+            : GodotWhyNot() ?? (template.GodotGame && !ScriptGame ? GodotTargets?.WhyNot(Framework) : null);
         windowsNote.IsVisible = windowsNote.Text is not null;
+        frameworkNote.Text = GodotDotnetSaid();
+        frameworkNoteRow.IsVisible = frameworkNote.Text is not null;
         // A GDScript game is its folder alone: no project to name, nor a solution's format.
         projectRow.IsVisible = !template.IsSolution && !ScriptGame;
         sameRow.IsVisible = target is null && !template.IsSolution && !ScriptGame;

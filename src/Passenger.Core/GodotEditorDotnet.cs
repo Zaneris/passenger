@@ -8,7 +8,8 @@ namespace Passenger.Core;
 /// system registers, its newest released major from .NET 8 (its plugins roll forward so). Finding no released SDK of that major
 /// where it builds, a Godot carrying Microsoft.Build.Locator before 1.6 takes the PATH's SDK through it, which names a .NET
 /// 11 SDK's folders without their separator, and no build finds Microsoft.NET.Sdk. Such a start is given the installer's
-/// .NET to run on where the game builds there (and loads, for an editor that runs it), else told why its builds fail.</summary>
+/// .NET to run on where the game builds there (and loads, for an editor that runs it), else told why its builds fail; a
+/// new game is offered the newest .NET the editor builds and runs, started so and started on its own.</summary>
 public static class GodotEditorDotnet
 {
     /// <summary>Where Microsoft's installer puts .NET on macOS, whose dotnet Godot's editor builds with there.</summary>
@@ -34,11 +35,35 @@ public static class GodotEditorDotnet
     /// person's own DOTNET_ROOT among them kept), in <paramref name="folder"/>, needs for its builds of a game on
     /// <paramref name="framework"/>; one that runs the game (<paramref name="runsGame"/>, an editor's, as an export's does
     /// not) needs that game's .NET too. Reads the disk.</summary>
-    public static Given For(GodotFound found, IReadOnlyDictionary<string, string> variables, string folder, string? framework, bool runsGame)
+    public static Given For(GodotFound found, IReadOnlyDictionary<string, string> variables, string folder, string? framework, bool runsGame) =>
+        StartOf(found, variables, folder) is { } start ? Decide(start.Machine, runsGame ? FrameworkNames.Major(framework) : null, start.Roots, EditorOf(found)) : Given.AsItStands;
+
+    /// <summary>What a new C# game of the Godot found can target in <paramref name="folder"/>, read once: its editor started
+    /// through Passenger, and started on its own, as from the Dock, where no DOTNET_ROOT names the .NET it runs on; null where
+    /// nothing here says (off macOS, a Godot without .NET, no dotnet to build with or .NET to run on). Reads the disk.</summary>
+    public static GameTargets? TargetsOf(GodotFound found, string folder)
+    {
+        Dictionary<string, string> alone = new(StringComparer.Ordinal)
+        {
+            [RuntimeVariables.Root] = string.Empty,
+            [RuntimeVariables.RootFor("arm64")] = string.Empty,
+            [RuntimeVariables.RootFor(X64)] = string.Empty,
+            [RuntimeVariables.RollForwardToPrerelease] = string.Empty,
+        };
+        Start[] starts = [.. ((Start?[])[StartOf(found, alone, folder), StartOf(found, new Dictionary<string, string>(), folder)]).OfType<Start>()
+            .Where(s => Major(s.Machine.RunsOn, s.Machine.Previews) is not null)];
+        return starts.Length == 0 ? null : new GameTargets(starts, EditorOf(found));
+    }
+
+    /// <summary>What a start of the Godot found meets, given <paramref name="variables"/> over this process's environment (an
+    /// empty one unsetting it), in <paramref name="folder"/>, and the variables Passenger may give it naming the .NET it runs
+    /// on, none where the person named that .NET; null off macOS, for a Godot without .NET, or with no dotnet to build with
+    /// or .NET to run on. Reads the disk.</summary>
+    private static Start? StartOf(GodotFound found, IReadOnlyDictionary<string, string> variables, string folder)
     {
         if (!OperatingSystem.IsMacOS() || found.Sharp is null)
         {
-            return Given.AsItStands;
+            return null;
         }
         string? Variable(string name) => variables.TryGetValue(name, out string? given) ? given : Environment.GetEnvironmentVariable(name);
         string arch = ProcessorOf(found.Executable);
@@ -47,7 +72,7 @@ public static class GodotEditorDotnet
         string? builder = Builder(arch, File.Exists) ?? onPath;
         if (builder is null || RunsOn(arch, Variable, Directory.Exists, FirstLine, File.Exists) is not { } runsOn)
         {
-            return Given.AsItStands;
+            return null;
         }
         DotnetInstallation? taken = onPath is null ? null : DotnetInstallation.Read(Path.GetDirectoryName(PathNames.Canonical(onPath))!);
         GlobalJsonSdk? asked = GlobalJsonSdk.Read(Dotnet.GlobalJsonIn(folder)?.FullName);
@@ -55,13 +80,68 @@ public static class GodotEditorDotnet
             taken?.Sdks.FirstOrDefault(s => asked?.Takes(s) ?? true), LocatorOf(found.Sharp), Variable(RuntimeVariables.RollForwardToPrerelease) == "1");
         string[] roots = variables.ContainsKey(RuntimeVariables.Root) || variables.ContainsKey(RuntimeVariables.RootFor(arch)) ? []
             : [RuntimeVariables.Root, .. Variable(RuntimeVariables.RootFor(arch)) is { Length: > 0 } ? [RuntimeVariables.RootFor(arch)] : Array.Empty<string>()];
-        return Decide(machine, runsGame ? FrameworkNames.Major(framework) : null, roots, found.Version is { } version ? $"Godot {version}'s editor" : "Godot's editor");
+        return new Start(machine, roots);
     }
+
+    /// <summary>The Godot found's editor as its words name it.</summary>
+    private static string EditorOf(GodotFound found) => found.Version is { } version ? $"Godot {version}'s editor" : "Godot's editor";
 
     /// <summary>The installations a start of Godot's editor meets: the one it runs on, the one it builds with and its dotnet,
     /// the SDK the PATH's dotnet takes in its folder (null for none), the Microsoft.Build.Locator it carries (null where
     /// unsaid), and whether its .NET rolls forward to a preview.</summary>
     internal sealed record Machine(DotnetInstallation RunsOn, DotnetInstallation Builds, string Builder, string? PathSdk, Version? Locator, bool Previews);
+
+    /// <summary>A start of Godot's editor: what it meets, and the variables Passenger may give it naming the .NET it runs on.</summary>
+    internal sealed record Start(Machine Machine, IReadOnlyList<string> Roots);
+
+    /// <summary>The newest .NET whose game an editor builds and runs, as a target framework's major, and the installation it
+    /// runs that .NET from.</summary>
+    public sealed record GameDotnet(int Major, string Root);
+
+    /// <summary>What a new C# game of a Godot's editor can target here (<see cref="TargetsOf"/>), from the starts of it read,
+    /// the one on its own first; answered without the disk.</summary>
+    public sealed class GameTargets
+    {
+        private readonly IReadOnlyList<Start> starts;
+
+        internal GameTargets(IReadOnlyList<Start> starts, string editor)
+        {
+            this.starts = starts;
+            Editor = editor;
+            GameDotnet?[] each = [.. starts.Select(NewestOf)];
+            Newest = each.Any(n => n is null) ? null : each.MinBy(n => n!.Major);
+        }
+
+        /// <summary>The editor, as its words name it ("Godot 4.7.2's editor").</summary>
+        public string Editor { get; }
+
+        /// <summary>The newest .NET, from .NET 8, whose game the editor builds and runs however it starts; null where none is.</summary>
+        public GameDotnet? Newest { get; }
+
+        /// <summary>Why the editor builds or runs no game on <paramref name="framework"/> here, started on its own or through
+        /// Passenger, in those words; null where it does either way.</summary>
+        public string? WhyNot(string? framework) =>
+            starts.Select(s => Decide(s.Machine, FrameworkNames.Major(framework), s.Roots, Editor).WhyNot).FirstOrDefault(why => why is not null);
+    }
+
+    /// <summary>The newest .NET, from .NET 8, whose game a start of the editor builds and runs (<see cref="Decide"/>), and the
+    /// installation it then runs on; null where none is, or the .NET it runs on is unknown.</summary>
+    internal static GameDotnet? NewestOf(Start start)
+    {
+        (Machine machine, IReadOnlyList<string> roots) = (start.Machine, start.Roots);
+        if (Major(machine.RunsOn, machine.Previews) is not int on)
+        {
+            return null;
+        }
+        for (int game = Math.Max(on, Major(machine.Builds, machine.Previews) ?? 0); game >= PluginsMajor; game--)
+        {
+            if (Decide(machine, game, roots, string.Empty) is { WhyNot: null } given)
+            {
+                return new GameDotnet(game, given.Variables.Count > 0 ? machine.Builds.Root : machine.RunsOn.Root);
+            }
+        }
+        return null;
+    }
 
     /// <summary>What a start meeting <paramref name="machine"/> is given, its game on .NET <paramref name="game"/> (null
     /// where it runs none): as it stands where its builds work and it runs the game; else the variables

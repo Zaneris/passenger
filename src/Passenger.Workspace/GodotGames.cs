@@ -77,6 +77,12 @@ public static class GodotGames
             .Select(major => $"net{major.ToString(System.Globalization.CultureInfo.InvariantCulture)}.0")];
     }
 
+    /// <summary>The framework a new game's project targets unless the person picks another: the newest of those it can
+    /// (<see cref="Runnable"/>, newest first) no newer than .NET <paramref name="godots"/>, the newest whose game its Godot's
+    /// editor builds and runs here; the newest it can where that is unknown or older than all.</summary>
+    public static string? Default(IReadOnlyList<string> runnable, int? godots) =>
+        runnable.FirstOrDefault(f => godots is int newest && FrameworkNames.Major(f) <= newest) ?? runnable.FirstOrDefault();
+
     private static string Project(string name, bool csharp, string version)
     {
         string features = string.Join('.', version.Split('.').Take(2));

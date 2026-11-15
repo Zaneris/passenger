@@ -86,6 +86,55 @@ public sealed class GodotEditorDotnetTests
             + "which it then runs on from there", given.WhyNot);
     }
 
+    /// <summary>The editor on its own, as from the Dock: no DOTNET_ROOT, so on the installer's .NET, which /etc/dotnet registers.</summary>
+    private static GodotEditorDotnet.Start Alone(DotnetInstallation installed, Version? locator = null) =>
+        new(new GodotEditorDotnet.Machine(installed, installed, Builder, "11.0.100", locator ?? CarriedLocator, Previews: false), []);
+
+    /// <summary>The editor started through Passenger, its DOTNET_ROOT naming the home folder's .NET, which Passenger may replace.</summary>
+    private static GodotEditorDotnet.Start Through(DotnetInstallation own, DotnetInstallation installed) =>
+        new(new GodotEditorDotnet.Machine(own, installed, Builder, "11.0.100", CarriedLocator, Previews: false), [RuntimeVariables.Root]);
+
+    [Fact]
+    public void A_new_game_targets_the_newest_dotnet_its_editor_builds_and_runs_started_on_its_own_and_through_passenger()
+    {
+        GodotEditorDotnet.GameTargets targets = new([Alone(Installed), Through(Own, Installed)], Editor);
+        Assert.Equal(new GodotEditorDotnet.GameDotnet(10, GodotEditorDotnet.InstallerRoot), targets.Newest);
+        Assert.Null(targets.WhyNot("net10.0"));
+        Assert.Null(targets.WhyNot("net9.0"));
+        Assert.Equal($"{Editor} runs no C# of the game here: it runs on .NET 10 of {GodotEditorDotnet.InstallerRoot}, older than the .NET 11 the game targets, and builds "
+            + $"with {Builder}: install the .NET 11 SDK into {GodotEditorDotnet.InstallerRoot} (Microsoft's installer puts it there), or target the game at net10.0, "
+            + "which it then runs on from there", targets.WhyNot("net11.0"));
+    }
+
+    [Fact]
+    public void A_new_game_targets_net11_once_the_installer_holds_a_released_dotnet_11()
+    {
+        DotnetInstallation released = Installed with { Sdks = ["11.0.100", .. Installed.Sdks], Runtimes = ["11.0.0", .. Installed.Runtimes] };
+        GodotEditorDotnet.GameTargets targets = new([Alone(released), Through(Own, released)], Editor);
+        Assert.Equal(new GodotEditorDotnet.GameDotnet(11, GodotEditorDotnet.InstallerRoot), targets.Newest);
+        Assert.Null(targets.WhyNot("net11.0"));
+    }
+
+    [Fact]
+    public void Through_passenger_a_game_targets_the_newer_dotnet_of_the_installation_the_editor_builds_with_which_passenger_hands_it()
+    {
+        DotnetInstallation older = new(Home, ["10.0.404"], ["10.0.15"]);
+        DotnetInstallation released = Installed with { Sdks = ["11.0.100", .. Installed.Sdks], Runtimes = ["11.0.0", .. Installed.Runtimes] };
+        Assert.Equal(new GodotEditorDotnet.GameDotnet(11, GodotEditorDotnet.InstallerRoot), GodotEditorDotnet.NewestOf(Through(older, released)));
+        Assert.Equal(new GodotEditorDotnet.GameDotnet(10, Home), GodotEditorDotnet.NewestOf(Through(older, released) with { Roots = [] }));
+    }
+
+    [Fact]
+    public void An_editor_that_builds_no_csharp_here_offers_no_framework_and_says_why()
+    {
+        DotnetInstallation previews = Installed with { Sdks = ["11.0.100-rc.3.26522.148", "10.0.100-rc.2.25502.107"] };
+        GodotEditorDotnet.GameTargets targets = new([Alone(previews), Through(Own, previews)], Editor);
+        Assert.Null(targets.Newest);
+        Assert.StartsWith($"{Editor} builds no C# here: it runs on .NET 10 of {GodotEditorDotnet.InstallerRoot}", targets.WhyNot("net10.0"), StringComparison.Ordinal);
+        Assert.Equal(new GodotEditorDotnet.GameDotnet(10, GodotEditorDotnet.InstallerRoot),
+            new GodotEditorDotnet.GameTargets([Alone(previews, new Version(1, 6))], Editor).Newest);
+    }
+
     [Fact]
     public void Its_dotnet_is_the_newest_released_major_from_8_or_a_preview_where_it_rolls_to_one()
     {

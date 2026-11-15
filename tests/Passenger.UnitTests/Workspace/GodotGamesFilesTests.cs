@@ -62,4 +62,15 @@ public class GodotGamesFilesTests
     [Fact]
     public void A_games_frameworks_are_all_offered_where_no_runtime_is_known() =>
         Assert.Equal(["net11.0", "net10.0"], GodotGames.Runnable(["net11.0", "net10.0"], []));
+
+    [Fact]
+    public void A_game_targets_the_newest_framework_its_godot_builds_and_runs_else_the_newest_it_can()
+    {
+        string[] runnable = ["net11.0", "net10.0", "net9.0", "net8.0"];
+        Assert.Equal("net10.0", GodotGames.Default(runnable, 10));
+        Assert.Equal("net11.0", GodotGames.Default(runnable, 12));
+        Assert.Equal("net11.0", GodotGames.Default(runnable, null));
+        Assert.Equal("net11.0", GodotGames.Default(runnable, 7));
+        Assert.Null(GodotGames.Default([], 10));
+    }
 }
