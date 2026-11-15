@@ -40,31 +40,6 @@ public static partial class LiteralLines
         return lines;
     }
 
-    /// <summary>The lines inside a Gherkin doc string, between a line that is <c>"""</c> or <c>```</c> (with a content type
-    /// after it) and the next line that is the same delimiter, whose indentation past the delimiter's the step takes.</summary>
-    public static IReadOnlySet<int> DocStrings(TextSnapshot text)
-    {
-        HashSet<int> lines = [];
-        string? open = null;
-        for (int line = 0; line < text.LineCount; line++)
-        {
-            string written = text.GetLineText(line).TrimEnd('\r').Trim();
-            if (open is null)
-            {
-                open = written.StartsWith("\"\"\"", StringComparison.Ordinal) ? "\"\"\"" : written.StartsWith("```", StringComparison.Ordinal) ? "```" : null;
-            }
-            else if (written == open)
-            {
-                open = null;
-            }
-            else
-            {
-                lines.Add(line);
-            }
-        }
-        return lines;
-    }
-
     /// <summary>The lines that begin inside a double-quoted value of Godot's text resources, a built-in script's or shader's
     /// source among them, which a backslash escapes a quote in.</summary>
     public static IReadOnlySet<int> GodotStrings(TextSnapshot text)

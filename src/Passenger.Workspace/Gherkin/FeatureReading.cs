@@ -1,6 +1,7 @@
 using System.Text.RegularExpressions;
 using Gherkin;
 using Gherkin.Ast;
+using Passenger.Text;
 
 namespace Passenger.Workspace.Gherkin;
 
@@ -212,6 +213,14 @@ public sealed partial class FeatureReading
         reading.Close();
         reading.Check(text, language);
         return reading;
+    }
+
+    /// <summary>The lines inside a text's doc strings as Gherkin's reader reads them, whose whitespace a step takes as written;
+    /// one left open runs to the end.</summary>
+    public static IReadOnlySet<int> DocStringLines(TextSnapshot text)
+    {
+        List<FeatureLineKind> lines = Read(text.ToString(), GherkinDialects.English).Lines;
+        return Enumerable.Range(0, lines.Count).Where(line => lines[line] == FeatureLineKind.DocString).ToHashSet();
     }
 
     /// <summary>The step on a line, its doc string's and table's lines included.</summary>

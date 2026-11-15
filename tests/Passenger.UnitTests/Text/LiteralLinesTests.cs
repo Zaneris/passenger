@@ -26,15 +26,6 @@ public sealed class LiteralLinesTests
     }
 
     [Fact]
-    public void A_gherkin_doc_strings_lines_are_kept_between_its_own_delimiters_and_one_left_open_runs_to_the_end()
-    {
-        Assert.Equal([4, 5, 9], Lines(LiteralLines.DocStrings,
-            "Feature: X\n  Scenario: Y\n    Given text\n      \"\"\"json\n      {\"a\": 1}\n        ```\n      \"\"\"\n    Then more\n      ```\n      one\n      ```\n"));
-        Assert.Equal([2, 3, 4], Lines(LiteralLines.DocStrings, "Given a\n  \"\"\"\n  open\n  still\n"));
-        Assert.Empty(Lines(LiteralLines.DocStrings, "Given a \"\"\" in a step\n  | \"\"\" |\n"));
-    }
-
-    [Fact]
     public void A_godot_resources_quoted_value_over_lines_is_kept_an_escaped_quote_going_on()
     {
         Assert.Equal([1, 2, 3, 4], Lines(LiteralLines.GodotStrings, "script/source = \"extends Node\n\nfunc f():\n\tprint(\\\"a\\\")\n\"\nposition = Vector2(1, 2)\n"));

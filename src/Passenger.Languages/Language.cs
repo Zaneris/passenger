@@ -249,7 +249,7 @@ public sealed class Language
     /// <summary>Gherkin's .feature files, Reqnroll's and SpecFlow's tests, folded by Gherkin's own reading of them, their doc
     /// strings' whitespace kept.</summary>
     public static readonly Language Gherkin = new("gherkin", "Gherkin", ["*.feature"], line: "#", indent: 2,
-        grammar: new("text.gherkin.feature", "feature.tmLanguage.json"), folds: FoldScan.Gherkin, literals: LiteralLines.DocStrings);
+        grammar: new("text.gherkin.feature", "feature.tmLanguage.json"), folds: FoldScan.Gherkin, literals: Passenger.Workspace.Gherkin.FeatureReading.DocStringLines);
 
     /// <summary>Languages with no grammar here, commented as C's are or as scripts are.</summary>
     public static readonly Language Code = new("code", "Code", ["*.rs", "*.go", "*.java", "*.kt", "*.swift", "*.c", "*.h", "*.cpp"],

@@ -203,4 +203,15 @@ public sealed class FeatureReadingTests
 
         Assert.Equal(4, Assert.Single(reading.Errors).Line);
     }
+
+    [Fact]
+    public void A_doc_strings_lines_are_kept_between_its_own_delimiters_and_one_left_open_runs_to_the_end()
+    {
+        Assert.Equal([4, 5, 9], DocStringLines(
+            "Feature: X\n  Scenario: Y\n    Given text\n      \"\"\"json\n      {\"a\": 1}\n        ```\n      \"\"\"\n    Then more\n      ```\n      one\n      ```\n"));
+        Assert.Equal([2, 3, 4], DocStringLines("Given a\n  \"\"\"\n  open\n  still\n"));
+        Assert.Empty(DocStringLines("Given a \"\"\" in a step\n  | \"\"\" |\n"));
+    }
+
+    private static int[] DocStringLines(string text) => [.. FeatureReading.DocStringLines(Passenger.Text.TextSnapshot.From(text)).Order()];
 }
