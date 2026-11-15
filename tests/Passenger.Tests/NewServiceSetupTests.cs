@@ -533,7 +533,7 @@ public sealed class NewServiceSetupTests : IDisposable
                 window.Close();
                 Ui.AwaitPumped(window.Ended ?? Task.CompletedTask, "what the closed window started to end", MainWindow.EndLimit + TimeSpan.FromSeconds(5));
             }
-            Detach(volume);
+            TestVolumes.Detach(volume, disk);
         }
     }
 
@@ -546,8 +546,6 @@ public sealed class NewServiceSetupTests : IDisposable
         Assert.True(window.EditorArea.CodeEditor.Document.Snapshot.ToString() == text,
             $"A key typed while the folder was carried did not reach the editor, so the window was not answering: '{window.EditorArea.CodeEditor.Document.Snapshot}'");
     }
-
-    private static void Detach(string volume) => TestVolumes.Detach(volume, Ran);
 
     /// <summary>A system tool run on the thread pool and waited for with the window's loop running.</summary>
     private static ChildResult Ran(string tool, params string[] arguments)

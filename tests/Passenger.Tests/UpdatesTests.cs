@@ -849,7 +849,7 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
         }
         finally
         {
-            Detach(volume);
+            TestVolumes.Detach(volume, disk);
         }
     }
 
@@ -1149,8 +1149,6 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
         window.InstallUpdate();
         Assert.True(copy.InstalledVersion == Product.Version, $"A package manager's copy was changed, to {copy.InstalledVersion}");
     }
-
-    private static void Detach(string volume) => TestVolumes.Detach(volume, (tool, arguments) => Ran(tool, arguments, TimeSpan.FromMinutes(1).Scaled()));
 
     /// <summary>The person's window as the app makes it, its settings kept in the test's state folder, asking the stand-in
     /// within the limit a person's Passenger gives GitHub, scaled to the run, or the test's own (a stand-in held to not

@@ -274,7 +274,7 @@ public sealed class CaseTellingFolderTests : IDisposable
         {
             if (mounted)
             {
-                Detach(place);
+                TestVolumes.Detach(place, Path.Combine(root, "volume.dmg"));
             }
         }
     }
@@ -302,8 +302,6 @@ public sealed class CaseTellingFolderTests : IDisposable
         }
         return (folder, false);
     }
-
-    private static void Detach(string volume) => TestVolumes.Detach(volume, Ran);
 
     /// <summary>A system tool run on the thread pool and waited for with the window's loop running.</summary>
     private static ChildResult Ran(string tool, params string[] arguments)
