@@ -18,7 +18,7 @@ public sealed class BreakpointProperties : UserControl
     private readonly CheckBox suspend = new() { Content = "Suspend execution" };
     private readonly TextBox condition = Field("A C# condition: count > 2");
     private readonly TextBox hitCount = Field("Stop on hits: ==3, >=2, %2");
-    private readonly TextBlock hitCountProblem = new() { TextWrapping = TextWrapping.Wrap, IsVisible = false };
+    private readonly TextBlock hitCountProblem = new() { TextWrapping = TextWrapping.Wrap, IsVisible = false, Margin = new Thickness(0, 6, 0, 0) };
     private readonly TextBox log = Field("Logged on each hit: count is {count}");
     private readonly CheckBox thrownInUserCode = new() { Content = "User code" };
     private readonly CheckBox thrownInExternalCode = new() { Content = "External code" };
@@ -30,21 +30,33 @@ public sealed class BreakpointProperties : UserControl
 
     public BreakpointProperties()
     {
-        Grid fields = new() { ColumnDefinitions = new ColumnDefinitions("Auto,*"), RowDefinitions = new RowDefinitions("Auto,Auto,Auto,Auto"), RowSpacing = 6, ColumnSpacing = 10 };
-        AddRow(fields, 0, "Condition:", condition);
-        AddRow(fields, 1, "Hit count:", hitCount);
-        Grid.SetRow(hitCountProblem, 2);
-        Grid.SetColumn(hitCountProblem, 1);
-        fields.Children.Add(hitCountProblem);
-        AddRow(fields, 3, "Log message:", log);
+        StackPanel fields = new()
+        {
+            Spacing = 6,
+            Children =
+            {
+                FormRows.Of("Condition:", condition),
+                new StackPanel { Children = { FormRows.Of("Hit count:", hitCount), FormRows.Of(null, hitCountProblem) } },
+                FormRows.Of("Log message:", log),
+            },
+        };
         hitCountProblem.Classes.Add(StyleClasses.Error);
         inactive.Classes.Add(StyleClasses.Error);
         hitCount.TextChanged += (_, _) => CheckHitCount();
 
         // The "Suspend If" panel: the exception breakpoint stops when one of each row holds.
-        Grid scenarios = new() { ColumnDefinitions = new ColumnDefinitions("Auto,*"), RowDefinitions = new RowDefinitions("Auto,Auto"), RowSpacing = 4, ColumnSpacing = 10 };
-        AddRow(scenarios, 0, "Exception thrown in:", Row(thrownInUserCode, thrownInExternalCode));
-        AddRow(scenarios, 1, "Exception handler:", Row(handledInUserCode, handledInExternalCode, unhandled));
+        StackPanel scenarios = new()
+        {
+            Spacing = 4,
+            Children =
+            {
+                FormRows.Of("Exception thrown in:", Row(thrownInUserCode, thrownInExternalCode)),
+                FormRows.Of("Exception handler:", Row(handledInUserCode, handledInExternalCode, unhandled)),
+            },
+        };
+        // Two forms, so the rows shown only for an exception breakpoint never widen the labels of every breakpoint's.
+        FormRows.Scope(fields);
+        FormRows.Scope(scenarios);
         foreach (CheckBox box in Scenarios)
         {
             box.IsCheckedChanged += (_, _) => CheckScenarios();
@@ -178,16 +190,6 @@ public sealed class BreakpointProperties : UserControl
         StackPanel row = new() { Orientation = Orientation.Horizontal, Spacing = 16 };
         row.Children.AddRange(controls);
         return row;
-    }
-
-    private static void AddRow(Grid grid, int row, string label, Control field)
-    {
-        TextBlock name = new() { Text = label, VerticalAlignment = VerticalAlignment.Center, Classes = { StyleClasses.Muted } };
-        Grid.SetRow(name, row);
-        Grid.SetRow(field, row);
-        Grid.SetColumn(field, 1);
-        grid.Children.Add(name);
-        grid.Children.Add(field);
     }
 }
 

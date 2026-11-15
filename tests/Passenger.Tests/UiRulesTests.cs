@@ -2269,6 +2269,29 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
             + $"make each with ColumnTitles.Of:\n{string.Join("\n", found)}");
     }
 
+    /// <summary>A form's rows of a label and the field it names are FormRows, so a screen reader hears each field by its
+    /// label and every form's labels stand, wrap and align one way: a grid of an Auto column and a star column given words
+    /// for its first column (a TextBlock added to it, or a helper handed the grid and the words) fails here, naming its line.</summary>
+    [Fact]
+    public void Every_forms_rows_of_a_label_and_its_field_are_FormRows()
+    {
+        Regex labelGrid = new(@"\bGrid\s+(\w+)\s*=\s*new(?:\s+Grid)?\s*(?:\(\))?\s*\{[^;]*?\bColumnDefinitions\s*=\s*new\s+ColumnDefinitions\(\s*""Auto,\s*\*""\s*\)");
+        List<string> found = [];
+        foreach ((string path, string text) in UiFiles().Where(f => f.Path.EndsWith(".cs", StringComparison.Ordinal) && !f.Path.EndsWith("/FormRows.cs", StringComparison.Ordinal)))
+        {
+            foreach (Match match in labelGrid.Matches(text))
+            {
+                string grid = Regex.Escape(match.Groups[1].Value);
+                if (Regex.IsMatch(text, $@"\b{grid}\.Children\.Add\(\s*new\s+TextBlock\b") || Regex.IsMatch(text, $@"\b\w+\(\s*{grid}\s*,[^;\n]*""[^""\n]+"""))
+                {
+                    found.Add($"{path}:{LineOf(text, match.Index)}");
+                }
+            }
+        }
+        Assert.True(found.Count == 0, $"{found.Count} forms lay out their labels beside their fields by hand, so a screen reader hears none of those fields by its label "
+            + $"and their labels drift from every other form's: make each row with FormRows.Of, its form marked by FormRows.Scope:\n{string.Join("\n", found)}");
+    }
+
     /// <summary>Words are shown as written, a name's underscores too, since Passenger gives no access keys: every kind of
     /// control that holds words (a button's, a check box's, a menu item's, a tab's, a label's, a group's header), made with
     /// a file's names under the window's theme, draws them whole, and no code makes access-key text of its own; a kind that

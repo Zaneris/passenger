@@ -22,6 +22,7 @@ public sealed class MigrationScriptDialog : IdeWindow
 
     public MigrationScriptDialog(IReadOnlyList<MigrationRow> migrations, string context)
     {
+        FormRows.Scope(this);
         Title = "Script Migrations";
         Width = 460;
         SizeToContent = SizeToContent.Height;
@@ -32,14 +33,7 @@ public sealed class MigrationScriptDialog : IdeWindow
         From = new ComboBox { Name = "ScriptFrom", ItemsSource = new[] { Start }.Concat(names).ToList(), SelectedIndex = 0, HorizontalAlignment = HorizontalAlignment.Stretch };
         To = new ComboBox { Name = "ScriptTo", ItemsSource = names.Append(Latest).ToList(), SelectedIndex = names.Length, HorizontalAlignment = HorizontalAlignment.Stretch };
         Idempotent = new CheckBox { Name = "ScriptIdempotent", Content = "Idempotent: each step checks the history table first" };
-        Grid choices = new() { ColumnDefinitions = new ColumnDefinitions("Auto,*"), RowDefinitions = new RowDefinitions("Auto,Auto"), RowSpacing = 8, ColumnSpacing = 12 };
-        choices.Children.Add(new TextBlock { Text = "From", VerticalAlignment = VerticalAlignment.Center });
-        From[Grid.ColumnProperty] = 1;
-        choices.Children.Add(From);
-        choices.Children.Add(new TextBlock { Text = "To", VerticalAlignment = VerticalAlignment.Center, [Grid.RowProperty] = 1 });
-        To[Grid.ColumnProperty] = 1;
-        To[Grid.RowProperty] = 1;
-        choices.Children.Add(To);
+        StackPanel choices = new() { Spacing = 8, Children = { FormRows.Of("From:", From), FormRows.Of("To:", To) } };
 
         Button script = DialogFooter.Default("Script");
         script.Click += (_, _) => Close(new MigrationScript(

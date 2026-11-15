@@ -29,6 +29,7 @@ public sealed class CommitSigningDialog : IdeWindow
 
     public CommitSigningDialog(SigningSetup setup, Git? repository, string globalSigners)
     {
+        FormRows.Scope(this);
         this.repository = repository;
         this.globalSigners = globalSigners;
         bool configured = setup.IsSetUp;
@@ -36,9 +37,10 @@ public sealed class CommitSigningDialog : IdeWindow
         gpg = Radio("format", "GPG key", configured && setup.Format is SigningFormat.OpenPgp);
         x509 = Radio("format", "X.509 certificate", configured && setup.Format is SigningFormat.X509);
         key = new TextBox { Name = "SigningKey", Classes = { StyleClasses.Search }, Text = setup.Key ?? string.Empty };
-        found = new WrapPanel { ItemSpacing = 12 };
+        found = new WrapPanel { ItemSpacing = 12, Margin = new Thickness(0, 6, 0, 0) };
         foundNone = MutedText.Of(string.Empty);
         foundNone.TextWrapping = TextWrapping.Wrap;
+        foundNone.Margin = new Thickness(0, 6, 0, 0);
         here = Radio("scope", "This repository", setup.KeyScope is not "global");
         everywhere = Radio("scope", "All your repositories (your global git config)", setup.KeyScope is "global");
         every = new CheckBox { Content = $"Sign every commit ({GitConfigKeys.CommitGpgSign})", IsChecked = setup.Signs || !configured };
@@ -58,11 +60,17 @@ public sealed class CommitSigningDialog : IdeWindow
         here.IsCheckedChanged += (_, _) => Say();
         key.TextChanged += (_, _) => Say();
 
-        Grid fields = new() { ColumnDefinitions = new ColumnDefinitions("Auto,*"), RowSpacing = 10 };
-        Row(fields, "Sign with:", new StackPanel { Orientation = Orientation.Horizontal, Spacing = 16, Children = { ssh, gpg, x509 } });
-        Row(fields, "Key:", new StackPanel { Spacing = 6, Children = { key, found, foundNone } });
-        Row(fields, "Set in:", new StackPanel { Spacing = 6, Children = { here, everywhere } });
-        Row(fields, string.Empty, every);
+        StackPanel fields = new()
+        {
+            Spacing = 10,
+            Children =
+            {
+                FormRows.Of("Sign with:", new StackPanel { Orientation = Orientation.Horizontal, Spacing = 16, Children = { ssh, gpg, x509 } }),
+                new StackPanel { Children = { FormRows.Of("Key:", key), FormRows.Of(null, found), FormRows.Of(null, foundNone) } },
+                FormRows.Of("Set in:", new StackPanel { Spacing = 6, Children = { here, everywhere } }, top: true),
+                FormRows.Of(null, every),
+            },
+        };
         Button ok = DialogFooter.Default();
         ok.Click += (_, _) => Accept();
         DialogFooter.Question(this, "Commit Signing", [fields, listed], DialogFooter.Of(ok, DialogFooter.Cancel(() => Close(null))));
@@ -157,16 +165,4 @@ public sealed class CommitSigningDialog : IdeWindow
     }
 
     private static RadioButton Radio(string group, string words, bool chosen) => new() { GroupName = group, Content = words, IsChecked = chosen };
-
-    private static void Row(Grid grid, string label, Control field)
-    {
-        int row = grid.RowDefinitions.Count;
-        grid.RowDefinitions.Add(new RowDefinition(GridLength.Auto));
-        TextBlock text = new() { Text = label, VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(0, 4, 12, 0) };
-        Grid.SetRow(text, row);
-        Grid.SetRow(field, row);
-        Grid.SetColumn(field, 1);
-        grid.Children.Add(text);
-        grid.Children.Add(field);
-    }
 }

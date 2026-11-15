@@ -4,8 +4,14 @@ using Avalonia.Controls;
 using Avalonia.Headless.XUnit;
 using Avalonia.VisualTree;
 using Passenger.App;
+using Passenger.App.Debugging;
+using Passenger.App.Migrations;
+using Passenger.App.Packages;
 using Passenger.App.Settings;
+using Passenger.App.Vcs;
 using Passenger.Core;
+using Passenger.Packages;
+using Passenger.Vcs;
 
 namespace Passenger.Tests;
 
@@ -125,6 +131,49 @@ public sealed class AccessibilityTests : IDisposable
         _ = FormRows.Of("Target framework", field);
         string name = ControlAutomationPeer.CreatePeerForElement(field).GetName();
         Assert.True(name == "Target framework", $"A form's field is named \"{name}\", not by its label");
+    }
+
+    /// <summary>The dialogs that ask for words, a choice or a box checked, as a screen reader meets each: every field named
+    /// by the label beside it, so someone who cannot see the label still hears what the field is for.</summary>
+    [AvaloniaFact]
+    public void Every_field_of_a_dialogs_form_is_named_by_the_label_beside_it()
+    {
+        ConfigFile config = new(Path.Combine(folder, "nuget.config"), ConfigPlace.Folder, [], [], false, null, null, null);
+        Named(new FeedDialog(config, null), "Name:", "URL:", "User:", "Password:", "Enabled", "Allow insecure connections");
+        Named(new MigrationScriptDialog([new MigrationRow("1", "Initial", true)], "ShopContext"), "From:", "To:");
+        Named(new GitQuestionDialog(new GitQuestion(GitQuestionKind.User, "Username for 'https://example.com': ", "https://example.com"), null), "User:", "Password:");
+        Named(new GitQuestionDialog(new GitQuestion(GitQuestionKind.Passphrase, "Enter passphrase for key '/keys/id': ", "/keys/id"), null), "Passphrase:");
+        Named(new CommitSigningDialog(new SigningSetup(false, SigningFormat.Ssh, null), null, Path.Combine(folder, "allowed_signers")), "Key:");
+        Named(new CloneDialog(folder), "URL:", "Directory:");
+        BreakpointProperties breakpoint = new();
+        breakpoint.Show(new ExceptionBreakpoint("System.InvalidOperationException"));
+        Named(new Window { Title = "Breakpoints", Width = 640, SizeToContent = SizeToContent.Height, Content = breakpoint }, "Condition:", "Hit count:", "Log message:");
+    }
+
+    /// <summary>Shows a dialog and walks it as a screen reader does, holding it to each label naming a field and to no field
+    /// left unnamed.</summary>
+    private static void Named(Window dialog, params string[] labels)
+    {
+        dialog.Show();
+        try
+        {
+            Ui.Settle();
+            string title = dialog.Title ?? dialog.GetType().Name;
+            AutomationPeer[] fields = [.. Walk(ControlAutomationPeer.CreatePeerForElement(dialog))
+                .Where(peer => peer.GetAutomationControlType() is AutomationControlType.Edit or AutomationControlType.ComboBox or AutomationControlType.CheckBox)];
+            foreach (string label in labels)
+            {
+                Assert.True(fields.Any(field => field.GetName() == label), $"In {title} a screen reader hears no field named \"{label}\", the words beside it, only: {Heard(fields)}");
+            }
+            AutomationPeer[] unnamed = [.. fields.Where(field => field.GetName().Length == 0)];
+            Assert.True(unnamed.Length == 0,
+                $"In {title} a screen reader meets {unnamed.Length} fields named nothing ({string.Join(", ", unnamed.Select(field => field.GetAutomationControlType()))}), among: {Heard(fields)}");
+        }
+        finally
+        {
+            dialog.Close();
+            Ui.Settle();
+        }
     }
 
     private static IEnumerable<AutomationPeer> Walk(AutomationPeer peer) => peer.GetChildren().SelectMany(Walk).Prepend(peer);

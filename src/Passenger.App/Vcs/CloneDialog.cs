@@ -2,7 +2,6 @@ using System.Globalization;
 using System.Text.RegularExpressions;
 using Avalonia;
 using Avalonia.Controls;
-using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
@@ -30,6 +29,7 @@ public sealed partial class CloneDialog : IdeWindow
     /// <param name="folder">The folder offered to clone into.</param>
     public CloneDialog(string folder)
     {
+        FormRows.Scope(this);
         Title = "Clone Repository";
         Width = 560;
         SizeToContent = SizeToContent.Height;
@@ -53,14 +53,15 @@ public sealed partial class CloneDialog : IdeWindow
         clone.Click += (_, _) => IdeErrors.Observe(CloneAsync());
         Closing += (_, _) => cloning?.Cancel();
 
-        Grid fields = new() { ColumnDefinitions = new ColumnDefinitions("Auto,*"), RowDefinitions = new RowDefinitions("Auto,Auto,Auto") };
-        Add(fields, new TextBlock { Text = "URL:", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 12, 0) }, 0, 0);
-        Add(fields, url, 0, 1);
-        Grid where = BrowseRow.Of(parent, browse);
-        where.Margin = new Thickness(0, 10, 0, 0);
-        Add(fields, new TextBlock { Text = "Directory:", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 10, 12, 0) }, 1, 0);
-        Add(fields, where, 1, 1);
-        Add(fields, into, 2, 1);
+        StackPanel fields = new()
+        {
+            Spacing = 10,
+            Children =
+            {
+                FormRows.Of("URL:", url),
+                new StackPanel { Children = { FormRows.Of("Directory:", BrowseRow.Of(parent, browse)), FormRows.Of(null, into) } },
+            },
+        };
 
         Content = DialogFooter.Page(new StackPanel
         {
@@ -331,12 +332,5 @@ public sealed partial class CloneDialog : IdeWindow
         {
             Folder = path;
         }
-    }
-
-    private static void Add(Grid grid, Control control, int row, int column)
-    {
-        Grid.SetRow(control, row);
-        Grid.SetColumn(control, column);
-        grid.Children.Add(control);
     }
 }

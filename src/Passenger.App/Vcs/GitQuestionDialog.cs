@@ -1,6 +1,4 @@
-using Avalonia;
 using Avalonia.Controls;
-using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Threading;
 using Passenger.Vcs;
@@ -20,6 +18,7 @@ public sealed class GitQuestionDialog : IdeWindow
     /// <param name="agent">The agent whose call git asks for, or null for the person's own action.</param>
     public GitQuestionDialog(GitQuestion question, string? agent)
     {
+        FormRows.Scope(this);
         this.question = question;
         bool yesNo = question.Kind == GitQuestionKind.YesNo;
         if (question.Kind == GitQuestionKind.User)
@@ -30,19 +29,19 @@ public sealed class GitQuestionDialog : IdeWindow
         {
             secret = new TextBox { Name = "GitSecret", Classes = { StyleClasses.Search }, PasswordChar = '•' };
         }
-        Grid fields = new() { ColumnDefinitions = new ColumnDefinitions("Auto,*"), RowSpacing = 8 };
+        StackPanel fields = new() { Spacing = 8 };
         if (user is not null)
         {
-            Row(fields, "User:", user);
+            fields.Children.Add(FormRows.Of("User:", user));
         }
         if (secret is not null)
         {
-            Row(fields, question.Kind switch
+            fields.Children.Add(FormRows.Of(question.Kind switch
             {
                 GitQuestionKind.Passphrase => "Passphrase:",
                 GitQuestionKind.Other => "Answer:",
                 _ => "Password:",
-            }, secret);
+            }, secret));
         }
 
         Button ok = new() { Content = yesNo ? "Yes" : question.Kind == GitQuestionKind.User ? "Sign In" : "OK", IsDefault = agent is null, Classes = { StyleClasses.Primary } };
@@ -126,16 +125,4 @@ public sealed class GitQuestionDialog : IdeWindow
         GitQuestionKind.Passphrase => $"ssh needs the passphrase of the key {question.About} to reach the remote.",
         _ => question.Prompt.Trim(),
     };
-
-    private static void Row(Grid grid, string label, Control field)
-    {
-        int row = grid.RowDefinitions.Count;
-        grid.RowDefinitions.Add(new RowDefinition(GridLength.Auto));
-        TextBlock text = new() { Text = label, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 12, 0) };
-        Grid.SetRow(text, row);
-        Grid.SetRow(field, row);
-        Grid.SetColumn(field, 1);
-        grid.Children.Add(text);
-        grid.Children.Add(field);
-    }
 }

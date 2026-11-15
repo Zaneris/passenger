@@ -1,6 +1,5 @@
 using Avalonia;
 using Avalonia.Controls;
-using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Threading;
 using Passenger.App.Welcome;
@@ -26,6 +25,7 @@ public sealed class FeedDialog : IdeWindow
 
     public FeedDialog(ConfigFile file, ConfigFeed? feed)
     {
+        FormRows.Scope(this);
         this.file = file;
         this.feed = feed;
         Title = feed is null ? "New feed" : $"Editing: {feed.Name}";
@@ -38,18 +38,24 @@ public sealed class FeedDialog : IdeWindow
         url = new TextBox { Classes = { StyleClasses.Search }, Text = feed?.Value ?? string.Empty, PlaceholderText = "A feed's index.json, a v2 URL, or a folder" };
         user = new TextBox { Classes = { StyleClasses.Search }, Text = feed?.Username ?? string.Empty };
         password = new TextBox { Classes = { StyleClasses.Search }, PasswordChar = '•', PlaceholderText = feed?.HasPassword == true ? "Unchanged" : string.Empty };
-        enabled = new CheckBox { IsChecked = feed is null || !feed.DisabledHere };
-        insecure = new CheckBox { IsChecked = feed?.AllowInsecure == true };
+        enabled = new CheckBox { Content = "Enabled", IsChecked = feed is null || !feed.DisabledHere };
+        insecure = new CheckBox { Content = "Allow insecure connections", IsChecked = feed?.AllowInsecure == true };
         problem = new TextBlock { TextWrapping = TextWrapping.Wrap, IsVisible = false };
         problem.Classes.Add(StyleClasses.Error);
 
-        Grid fields = new() { ColumnDefinitions = new ColumnDefinitions("Auto,*"), RowDefinitions = new RowDefinitions("Auto,Auto,Auto,Auto,Auto,Auto"), RowSpacing = 8 };
-        Row(fields, 0, "Name:", name);
-        Row(fields, 1, "URL:", url);
-        Row(fields, 2, "User:", user);
-        Row(fields, 3, "Password:", password);
-        Row(fields, 4, "Enabled:", enabled);
-        Row(fields, 5, "Allow insecure connections:", insecure);
+        StackPanel fields = new()
+        {
+            Spacing = 8,
+            Children =
+            {
+                FormRows.Of("Name:", name),
+                FormRows.Of("URL:", url),
+                FormRows.Of("User:", user),
+                FormRows.Of("Password:", password),
+                FormRows.Of(null, enabled),
+                FormRows.Of(null, insecure),
+            },
+        };
 
         TextBlock saved = new()
         {
@@ -137,15 +143,5 @@ public sealed class FeedDialog : IdeWindow
         }
         Result = new FeedEdit(chosen, Url.Trim(), FeedEnabled, AllowInsecure, User.Trim().Length == 0 ? null : User.Trim(), password.Text is { Length: > 0 } secret ? secret : null);
         Close(true);
-    }
-
-    private static void Row(Grid grid, int row, string label, Control field)
-    {
-        TextBlock text = new() { Text = label, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 12, 0) };
-        Grid.SetRow(text, row);
-        Grid.SetRow(field, row);
-        Grid.SetColumn(field, 1);
-        grid.Children.Add(text);
-        grid.Children.Add(field);
     }
 }
