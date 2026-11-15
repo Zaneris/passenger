@@ -962,12 +962,7 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
         using IDisposable theme = TestsTheme();
         // A volume of the test's own, as an external drive would be, with Passenger installed on it.
         string folder = TestFolders.Create("installed-");
-        string volume = Directory.CreateDirectory(Path.Combine(folder, "volume")).FullName;
-        string disk = Path.Combine(folder, "volume.dmg");
-        Tool("/usr/bin/hdiutil", "create", "-size", "20m", "-fs", "HFS+", "-volname", "Passenger Tests", "-ov", disk, "-quiet");
-        Tool("/usr/bin/hdiutil", "attach", disk, "-nobrowse", "-noautoopen", "-mountpoint", volume, "-quiet");
-        // Spotlight indexes a volume whatever folder it is mounted in, unless it holds this marker (TestRun.Unindexed's why).
-        File.WriteAllText(Path.Combine(volume, ".metadata_never_index"), string.Empty);
+        (string volume, string disk) = HfsVolume(folder);
         try
         {
             AppBundle copy = new(images, folder, volume);
@@ -991,6 +986,77 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
         {
             TestVolumes.Detach(volume, disk);
         }
+    }
+
+    /// <summary>On a volume that cannot swap two folders (HFS+) the new app takes the installed one's place in two renames.
+    /// Another program taking that place between them leaves neither app there: the install throws nothing, keeps both
+    /// whole, and says where each was left, which the next start says too.</summary>
+    [AvaloniaFact]
+    [SupportedOSPlatform("macos")]
+    public void An_app_whose_place_is_taken_between_its_two_renames_says_where_each_app_was_left()
+    {
+        Assert.SkipUnless(OperatingSystem.IsMacOS(), "A volume that cannot swap two folders is a Mac's HFS+ disk image here");
+        using IDisposable theme = TestsTheme();
+        string folder = TestFolders.Create("installed-");
+        (string volume, string disk) = HfsVolume(folder);
+        try
+        {
+            AppBundle copy = new(images, folder, volume);
+            string newer = Bumped(1, 0);
+            github.Answer = Release($"v{newer}", files: copy.Update(newer));
+            // Something comes to the app's name just as the new app is to take it, and stays.
+            MainWindow window = Started(copy.Updater(renaming: (_, to) =>
+            {
+                if (to == copy.Bundle && !File.Exists(copy.Bundle))
+                {
+                    File.WriteAllText(copy.Bundle, "another program's");
+                }
+            }));
+            window.WatchForUpdates();
+            Ui.WaitFor(() => Notice(window) == $"Restart to update to Passenger {newer}", $"the status bar to offer Restart to Update to v{newer}");
+            window.Close();
+            Ended(window);
+            window.InstallUpdate();
+
+            string old = Path.Combine(volume, $".Passenger.app.{newer}.old");
+            string beside = Path.Combine(volume, $".Passenger.app.{newer}");
+            string notInstalled = $"Updates: Passenger {newer} was not installed in {copy.Bundle}: ";
+            string? said = Ui.IdeLog().Split('\n').LastOrDefault(line => line.Contains(notInstalled, StringComparison.Ordinal));
+            Assert.True(said is not null, $"An install whose app's place was taken did not say it was not installed: {UpdatesSaid(window)}");
+            string why = said[(said.IndexOf(notInstalled, StringComparison.Ordinal) + notInstalled.Length)..].TrimEnd();
+            Assert.True(why.Contains("could not be put back", StringComparison.Ordinal) && why.Contains(old, StringComparison.Ordinal)
+                && why.Contains(beside, StringComparison.Ordinal), $"An install that could put neither app in place does not say where each was left: '{why}'");
+            Assert.True(AppBundle.Version(old) == Product.Version, $"The installed app is not whole where the install says it left it, {old}");
+            Assert.True(AppBundle.Version(beside) == newer, $"Passenger {newer} is not whole where the install says it left it, {beside}");
+
+            // The person puts the app back where the words say it is.
+            File.Delete(copy.Bundle);
+            Directory.Move(old, copy.Bundle);
+            Assert.True(copy.SignatureHolds(), $"The app the install left in {old} is not whole once put back");
+            window = Started(copy.Updater());
+            window.WatchForUpdates();
+            Assert.Equal($"Passenger {newer} did not install: {why}", window.Status);
+            Ui.WaitFor(() => Notice(window) == $"Restart to update to Passenger {newer}", "the update that did not install to be offered again");
+            window.Close();
+        }
+        finally
+        {
+            TestVolumes.Detach(volume, disk);
+        }
+    }
+
+    /// <summary>A volume of the test's own in <paramref name="folder"/>, as an external drive would be: HFS+, which cannot
+    /// swap two folders, and unindexed. <see cref="TestVolumes.Detach"/> takes it off.</summary>
+    [SupportedOSPlatform("macos")]
+    private static (string Volume, string Disk) HfsVolume(string folder)
+    {
+        string volume = Directory.CreateDirectory(Path.Combine(folder, "volume")).FullName;
+        string disk = Path.Combine(folder, "volume.dmg");
+        Tool("/usr/bin/hdiutil", "create", "-size", "20m", "-fs", "HFS+", "-volname", "Passenger Tests", "-ov", disk, "-quiet");
+        Tool("/usr/bin/hdiutil", "attach", disk, "-nobrowse", "-noautoopen", "-mountpoint", volume, "-quiet");
+        // Spotlight indexes a volume whatever folder it is mounted in, unless it holds this marker (TestRun.Unindexed's why).
+        File.WriteAllText(Path.Combine(volume, ".metadata_never_index"), string.Empty);
+        return (volume, disk);
     }
 
     [AvaloniaFact]
@@ -1526,6 +1592,10 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
 
         public override Updater Updater() => new DiskImageUpdater(Bundle, Staging, StartAsync) { Images = Images };
 
+        /// <summary>The copy's updater, <paramref name="renaming"/> run as each rename of the two that put the new app in
+        /// place on a volume that cannot swap two folders begins.</summary>
+        public DiskImageUpdater Updater(Action<string, string> renaming) => new(Bundle, Staging, StartAsync) { Renaming = renaming, Images = Images };
+
         /// <summary>The copy's updater, <paramref name="opening"/> run as each try to open the image begins, waiting
         /// <paramref name="pauses"/> between tries.</summary>
         public DiskImageUpdater Updater(Func<string, int, Task> opening, IReadOnlyList<TimeSpan> pauses) =>
@@ -1626,7 +1696,8 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
             Tool("/usr/bin/codesign", "--force", "--options", "runtime", "--sign", "-", bundle);
         }
 
-        private static string? Version(string bundle)
+        /// <summary>The version of the app at <paramref name="bundle"/>, or null where none is there.</summary>
+        public static string? Version(string bundle)
         {
             string plist = Path.Combine(bundle, "Contents", "Info.plist");
             if (!File.Exists(plist))

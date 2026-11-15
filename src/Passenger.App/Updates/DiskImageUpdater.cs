@@ -129,8 +129,8 @@ public sealed partial class DiskImageUpdater : InPlaceUpdater
 
     /// <summary>The new app takes the installed one's place: the two trade places in one step where the volume can swap
     /// folders (APFS), the app copied beside the installed one first (<see cref="Beside"/>) when the state folder is on
-    /// another volume, and on a volume that cannot swap (HFS+) in two renames, the old app put back should the second
-    /// fail. The old app is left where the new one was, for <see cref="Tidy"/>.</summary>
+    /// another volume, and on a volume that cannot swap (HFS+) in two renames (<see cref="InPlaceUpdater.InTwoRenames"/>).
+    /// The old app is left where the new one was, for <see cref="Tidy"/>.</summary>
     protected override string? Replace(string staged, string version)
     {
         int failed = Swap(staged, Bundle);
@@ -160,26 +160,13 @@ public sealed partial class DiskImageUpdater : InPlaceUpdater
             Remove(beside);
             return Marshal.GetPInvokeErrorMessage(failed);
         }
-        try
-        {
-            Directory.Move(Bundle, beside + Old);
-        }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        (string? why, bool leftAside) = InTwoRenames(beside, beside + Old, version);
+        // The new app's copy goes unless the installed app could not be put back, when it is one of the two left.
+        if (why is not null && !leftAside)
         {
             Remove(beside);
-            return error.Message;
         }
-        try
-        {
-            Directory.Move(beside, Bundle);
-            return null;
-        }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
-        {
-            Directory.Move(beside + Old, Bundle);
-            Remove(beside);
-            return error.Message;
-        }
+        return why;
     }
 
     /// <summary>LaunchServices notices a bundle that changed by its date.</summary>

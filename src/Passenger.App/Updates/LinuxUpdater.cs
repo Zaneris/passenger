@@ -280,7 +280,7 @@ public sealed partial class LinuxUpdater : InPlaceUpdater
     /// <summary>The release's passenger/ folder, unpacked beside the install or in the state's folder for it.</summary>
     protected override string Staged(string version) => Path.Combine(UnpackedFolder(version), "passenger");
 
-    protected override string? Replace(string staged, string version) => kind == InstallKind.System ? InstallForEveryone(staged) : Swap(staged);
+    protected override string? Replace(string staged, string version) => kind == InstallKind.System ? InstallForEveryone(staged) : Swap(staged, version);
 
     /// <summary>The download's folder, of one person's install; an install for everyone left the release it replaced
     /// there, for the new one's start to remove (<see cref="TidyAsync"/>).</summary>
@@ -293,9 +293,9 @@ public sealed partial class LinuxUpdater : InPlaceUpdater
     }
 
     /// <summary>The release unpacked beside the install and the install trade places in one step, where the file system
-    /// can exchange two folders (renameat2's RENAME_EXCHANGE), else in two renames, the install put back should the second
-    /// fail; the release replaced is left beside, where the unpacked one was. Gives why not.</summary>
-    private string? Swap(string passenger)
+    /// can exchange two folders (renameat2's RENAME_EXCHANGE), else in two renames (<see cref="InPlaceUpdater.InTwoRenames"/>);
+    /// the release replaced is left beside, where the unpacked one was. Gives why not.</summary>
+    private string? Swap(string passenger, string version)
     {
         int failed;
         try
@@ -314,32 +314,7 @@ public sealed partial class LinuxUpdater : InPlaceUpdater
         {
             return Marshal.GetPInvokeErrorMessage(failed);
         }
-        string replaced = Path.Combine(Path.GetDirectoryName(passenger)!, "replaced");
-        try
-        {
-            Directory.Move(Folder, replaced);
-        }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
-        {
-            return error.Message;
-        }
-        try
-        {
-            Directory.Move(passenger, Folder);
-            return null;
-        }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
-        {
-            try
-            {
-                Directory.Move(replaced, Folder);
-                return error.Message;
-            }
-            catch (Exception back) when (back is IOException or UnauthorizedAccessException)
-            {
-                return $"{error.Message}, and the installed release could not be put back ({back.Message}): it is in {replaced}";
-            }
-        }
+        return InTwoRenames(passenger, Path.Combine(Path.GetDirectoryName(passenger)!, "replaced"), version).Why;
     }
 
     /// <summary>The install for everyone put in place by its own install.sh, from the release unpacked here: as root

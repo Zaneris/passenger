@@ -11,6 +11,10 @@ namespace Passenger.App.Updates;
 /// <param name="start">How Restart to Update starts the install, given its path.</param>
 public abstract class InPlaceUpdater(Func<string, Task> start) : Updater
 {
+    /// <summary>Runs as each rename of <see cref="InTwoRenames"/> begins, given where from and where to: nothing but in a
+    /// test, which takes the install's place there as another program may.</summary>
+    public Action<string, string>? Renaming { get; init; }
+
     public sealed override void Install(bool restart)
     {
         try
@@ -79,6 +83,49 @@ public abstract class InPlaceUpdater(Func<string, Task> start) : Updater
         Ready = null;
         Tidy(version);
         IdeErrors.Flush();
+    }
+
+    /// <summary>The release <paramref name="version"/> at <paramref name="release"/> takes the install's place in two
+    /// renames, where the file system cannot exchange two folders in one: the install moved to <paramref name="aside"/>,
+    /// then the release into its place, the install put back should that fail. Why not, or null; and whether the install
+    /// was left aside, which why not then says, with where the release was left.</summary>
+    protected (string? Why, bool LeftAside) InTwoRenames(string release, string aside, string version)
+    {
+        try
+        {
+            Rename(Installed, aside);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            return (error.Message, false);
+        }
+        try
+        {
+            Rename(release, Installed);
+            return (null, false);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            try
+            {
+                Rename(aside, Installed);
+                return (error.Message, false);
+            }
+            catch (Exception back) when (back is IOException or UnauthorizedAccessException)
+            {
+                return ($"{Clause(error.Message)}, and the Passenger installed could not be put back ({Clause(back.Message)}): it is in {aside}, "
+                    + $"and Passenger {version} in {release}", true);
+            }
+        }
+    }
+
+    /// <summary>A failure's words as a clause of a longer sentence: without their full stop.</summary>
+    private static string Clause(string said) => said.TrimEnd().TrimEnd('.');
+
+    private void Rename(string from, string to)
+    {
+        Renaming?.Invoke(from, to);
+        Directory.Move(from, to);
     }
 
     /// <summary>Starts the install again for Restart to Update, a failure logged.</summary>
