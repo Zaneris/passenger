@@ -15,8 +15,8 @@ namespace Passenger.Tests;
 /// saved, and the app's own window, the same object, showing the edit; a click on the button added runs the handler, which
 /// writes to the counter through its x:Name field; an element WPF has not is refused with its line, the window left as it
 /// was, its name scope too; a resource dictionary App.xaml merges, saved, reaching what uses it; what the app added in code
-/// kept through both; and two files of one name told apart. WPF's window shows on the screen, and WPF runs on Windows alone,
-/// so elsewhere the tests skip; run alone.</summary>
+/// kept through both; two files of one name told apart; and a control in a folder named C#. WPF's window shows on the
+/// screen, and WPF runs on Windows alone, so elsewhere the tests skip; run alone.</summary>
 [Collection(Alone.Name)]
 public sealed class WpfXamlHotReloadTests : IClassFixture<RestoredFolders>, IDisposable
 {
@@ -452,6 +452,90 @@ public sealed class WpfXamlHotReloadTests : IClassFixture<RestoredFolders>, IDis
             }
             window.Close();
         }
+    }
+
+    /// <summary>A user control in a folder whose name a URI would read as its fragment (Views/C#), edited and saved under Run,
+    /// applies with the dictionary it merges from beside it: the card made again from the edit, its text still the
+    /// dictionary's.</summary>
+    [AvaloniaFact]
+    public void A_saved_control_in_a_folder_named_c_sharp_applies_with_the_dictionary_it_merges_from_beside_it()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), OnlyOnWindows);
+        string views = Path.Combine(folder, "Views", "C#");
+        Directory.CreateDirectory(views);
+        File.WriteAllText(Path.Combine(views, "Palette.xaml"), """
+            <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                                xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                                xmlns:s="clr-namespace:System;assembly=System.Runtime">
+                <s:String x:Key="Word">From the palette</s:String>
+            </ResourceDictionary>
+
+            """);
+        string card = Path.Combine(views, "Card.xaml");
+        File.WriteAllText(card, """
+            <UserControl x:Class="WpfTreeApp.Views.Card"
+                         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+                <Border Height="40">
+                    <Border.Resources>
+                        <ResourceDictionary>
+                            <ResourceDictionary.MergedDictionaries>
+                                <ResourceDictionary Source="Palette.xaml" />
+                            </ResourceDictionary.MergedDictionaries>
+                        </ResourceDictionary>
+                    </Border.Resources>
+                    <TextBlock x:Name="Worded" Text="{StaticResource Word}" />
+                </Border>
+            </UserControl>
+
+            """);
+        File.WriteAllText(Path.Combine(views, "Card.xaml.cs"), """
+            using System.Windows.Controls;
+
+            namespace WpfTreeApp.Views;
+
+            public partial class Card : UserControl
+            {
+                public Card() => InitializeComponent();
+            }
+
+            """);
+        File.WriteAllText(Xaml, File.ReadAllText(Xaml).Replace("x:Class=\"WpfTreeApp.MainWindow\"", "x:Class=\"WpfTreeApp.MainWindow\" xmlns:v=\"clr-namespace:WpfTreeApp.Views\"", StringComparison.Ordinal)
+            .Replace(Counter, $"<v:Card />\n{Counter}", StringComparison.Ordinal));
+        MainWindow window = Ui.OpenFolder(folder, 1400, 900, languageServer: false);
+        try
+        {
+            Ui.Launched(window, window.RunAsync(), "the app to build and start", TimeSpan.FromMinutes(4));
+            Ui.WaitFor(() => window.Session.RunApp is { State: LiveAppState.Connected }, $"the app's inspector to say hello ({window.Status})", TimeSpan.FromMinutes(2));
+            LiveApp app = window.Session.RunApp!;
+            Assert.Equal("From the palette", Text(app, "Worded"));
+
+            window.OpenFile(card);
+            Typing.Replace(window, "Height=\"40\"", "Height=\"48\"");
+            Ui.Run(window, AppActions.SaveAll);
+            Ui.WaitFor(() => RunSays(window, "XAML changes applied: Card.xaml") || RunSays(window, "Card.xaml could not apply")
+                || window.Status?.Contains("Card.xaml could not apply", StringComparison.Ordinal) == true,
+                () => $"the Run window to say what the card's edit came to ({window.Status})");
+            Assert.True(RunSays(window, "XAML changes applied: Card.xaml"),
+                $"The card's edit did not apply, its dictionary beside it looked for elsewhere: {window.Status}");
+            Assert.Equal("From the palette", Text(app, "Worded"));
+        }
+        finally
+        {
+            if (window.Runner.IsRunning)
+            {
+                Ui.Run(window, AppActions.Stop);
+                Ui.WaitFor(() => !window.Runner.IsRunning, "the run to end");
+            }
+            window.Close();
+        }
+    }
+
+    private static bool RunSays(MainWindow window, string words)
+    {
+        OutputView run = window.BottomPanel.Run;
+        run.Flush();
+        return run.Document.Snapshot.ToString().Contains(words, StringComparison.Ordinal);
     }
 
     /// <summary>The caption's colour as the running app has it.</summary>

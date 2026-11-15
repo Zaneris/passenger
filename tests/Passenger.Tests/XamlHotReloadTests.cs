@@ -17,8 +17,8 @@ namespace Passenger.Tests;
 /// the same object, showing the edit in its live visual tree; an edit the app's XAML compiler refuses said with its line,
 /// the app left as it was; a handler added in C# with the button that names it in XAML, applied together, C#'s first; the
 /// XAML written on disk while not open, App.axaml's styles and resources, and Run with Hot Reload through the debugger;
-/// what the app added in code kept through an edit and a refusal, C# applied beside XAML that failed, and two files of one
-/// name told apart. The app is headless, so nothing shows on the screen. It runs and is debugged through the window, so the
+/// what the app added in code kept through an edit and a refusal, C# applied beside XAML that failed, two files of one
+/// name told apart, and a control in a folder named C#. The app is headless, so nothing shows on the screen. It runs and is debugged through the window, so the
 /// tests run alone.</summary>
 [Collection(Alone.Name)]
 public sealed class XamlHotReloadTests : IClassFixture<RestoredFolders>, IDisposable
@@ -484,6 +484,82 @@ public sealed class XamlHotReloadTests : IClassFixture<RestoredFolders>, IDispos
                 return first.Count > 0 && second.Count > 0;
             }, "the app to show both cards");
             Assert.Empty(first.Select(p => p.Box).Intersect(second.Select(p => p.Box)));
+        }
+        finally
+        {
+            if (window.Runner.IsRunning)
+            {
+                Ui.Run(window, AppActions.Stop);
+                Ui.WaitFor(() => !window.Runner.IsRunning, "the run to end");
+            }
+            window.Close();
+        }
+    }
+
+    /// <summary>A user control in a folder whose name a URI would read as its fragment (Views/C#), edited and saved under Run,
+    /// applies with the dictionary it merges from beside it: the card made again from the edit, its text still the
+    /// dictionary's.</summary>
+    [AvaloniaFact]
+    public void A_saved_control_in_a_folder_named_c_sharp_applies_with_the_dictionary_it_merges_from_beside_it()
+    {
+        string views = Path.Combine(folder, "Views", "C#");
+        Directory.CreateDirectory(views);
+        File.WriteAllText(Path.Combine(views, "Palette.axaml"), """
+            <ResourceDictionary xmlns="https://github.com/avaloniaui"
+                                xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+                <x:String x:Key="Word">From the palette</x:String>
+            </ResourceDictionary>
+
+            """);
+        string card = Path.Combine(views, "Card.axaml");
+        File.WriteAllText(card, """
+            <UserControl xmlns="https://github.com/avaloniaui"
+                         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                         x:Class="LiveTreeApp.Views.Card">
+                <Border Height="40">
+                    <Border.Resources>
+                        <ResourceDictionary>
+                            <ResourceDictionary.MergedDictionaries>
+                                <ResourceInclude Source="Palette.axaml" />
+                            </ResourceDictionary.MergedDictionaries>
+                        </ResourceDictionary>
+                    </Border.Resources>
+                    <TextBlock x:Name="Worded" Text="{StaticResource Word}" />
+                </Border>
+            </UserControl>
+
+            """);
+        File.WriteAllText(Path.Combine(views, "Card.axaml.cs"), """
+            using Avalonia.Controls;
+
+            namespace LiveTreeApp.Views;
+
+            public partial class Card : UserControl
+            {
+                public Card() => InitializeComponent();
+            }
+
+            """);
+        File.WriteAllText(Xaml, File.ReadAllText(Xaml).Replace("x:Class=\"LiveTreeApp.MainWindow\"",
+            "xmlns:v=\"using:LiveTreeApp.Views\" x:Class=\"LiveTreeApp.MainWindow\"", StringComparison.Ordinal)
+            .Replace(Pin, $"<v:Card />\n{Pin}", StringComparison.Ordinal));
+        MainWindow window = Ui.OpenFolder(folder, width: 1400, height: 900, languageServer: false);
+        try
+        {
+            Ui.Launched(window, window.RunAsync(), "the app to build and start", TimeSpan.FromMinutes(4));
+            Ui.WaitFor(() => window.Session.RunApp is { State: LiveAppState.Connected }, $"the app's inspector to say hello ({window.Status})", TimeSpan.FromMinutes(2));
+            LiveApp app = window.Session.RunApp!;
+            Assert.Equal("From the palette", Text(app, "Worded"));
+
+            window.OpenFile(card);
+            Typing.Replace(window, "Height=\"40\"", "Height=\"48\"");
+            Ui.Run(window, AppActions.SaveAll);
+            Ui.WaitFor(() => RunSays(window, "XAML changes applied: Card.axaml") || RunSays(window, "Card.axaml could not apply")
+                || window.Status?.Contains("Card.axaml could not apply", StringComparison.Ordinal) == true,
+                () => $"the Run window to say what the card's edit came to ({window.Status})");
+            Assert.True(RunSays(window, "XAML changes applied: Card.axaml"),
+                $"The card's edit did not apply, its dictionary beside it looked for elsewhere: {window.Status}");
+            Assert.Equal("From the palette", Text(app, "Worded"));
         }
         finally
         {

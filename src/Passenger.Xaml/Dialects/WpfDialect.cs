@@ -28,6 +28,9 @@ public sealed class WpfDialect : XamlDialect
 
     public override IReadOnlyList<string> Extensions { get; } = [".xaml"];
 
+    /// <summary>Its pack URI, the assembly escaped as the path is.</summary>
+    public override string UriOf(string assembly, string path) => $"pack://application:,,,/{System.Uri.EscapeDataString(assembly)};component/{path}";
+
     public override IReadOnlyList<string> AssetItems { get; } = ["Resource", "Content"];
 
     public override IReadOnlyList<string> DesignerExtensions { get; } = ["DesignInstance", "DesignData"];

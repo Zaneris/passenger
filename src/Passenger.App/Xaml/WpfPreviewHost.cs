@@ -3,6 +3,7 @@ using System.Text.Json;
 using Passenger.Core;
 using Passenger.Text;
 using Passenger.WpfPreview;
+using Passenger.Xaml;
 using Passenger.Xaml.Projects;
 
 namespace Passenger.App.Xaml;
@@ -94,26 +95,19 @@ internal sealed class WpfPreviewHost : ChildPreviewHost
     {
         string path = Preview.Document.Document.Path;
         double scale = Preview.Scaling;
+        XamlProject project = Builder.Current;
         return application => JsonSerializer.Serialize(new WpfPreviewRequest
         {
             Sequence = sequence,
             Path = path,
             Xaml = text.ToString(),
-            BaseUri = BaseUri(path),
-            Application = application is { } app ? new PreviewSource(app.Path, app.Xaml, BaseUri(app.Path)) : null,
+            BaseUri = BaseUri(project, path),
+            Application = application is { } app ? new PreviewSource(app.Path, app.Xaml, BaseUri(project, app.Path)) : null,
             Scale = scale,
         }, PeerJson.Options);
     }
 
-    /// <summary>A file's pack URI in the project's assembly, which relative URIs in it resolve against as in the build.</summary>
-    private string BaseUri(string path)
-    {
-        ProjectInputs inputs = Builder.Current.Inputs;
-        string relative = Path.GetRelativePath(inputs.Folder, path).Replace('\\', '/');
-        if (relative.StartsWith("../", StringComparison.Ordinal))
-        {
-            relative = Path.GetFileName(path);
-        }
-        return $"pack://application:,,,/{Uri.EscapeDataString(inputs.AssemblyName)};component/{string.Join('/', relative.Split('/').Select(Uri.EscapeDataString))}";
-    }
+    /// <summary>A file's pack URI in the project's assembly, which relative URIs in it resolve against as in the build: a WPF
+    /// project's files all have one.</summary>
+    private static string BaseUri(XamlProject project, string path) => project.UriOf(path)!;
 }

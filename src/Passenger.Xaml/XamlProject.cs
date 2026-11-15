@@ -257,6 +257,23 @@ public sealed class XamlProject
         return new XamlProject(Inputs, Types, Dialect, files, Assets, ThemeKeys, Referenced);
     }
 
+    /// <summary>The URI the project's build names one of its files by (avares:// for Avalonia's, a pack URI for WPF's), what
+    /// relative URIs in it resolve against; null in a dialect whose build names none (MAUI's).</summary>
+    public string? UriOf(string file) => Dialect.UriOf(AssemblyName, PathIn(Folder, file));
+
+    /// <summary>A file's path in the assembly of the project in <paramref name="folder"/>, as a URI writes it
+    /// (<c>Views/C%23/Page.xaml</c>): from the folder where it is inside it, else its name alone, as a build names a file
+    /// linked in from outside, each part escaped.</summary>
+    public static string PathIn(string folder, string file)
+    {
+        string relative = Path.GetRelativePath(folder, file).Replace('\\', '/');
+        if (relative == ".." || relative.StartsWith("../", StringComparison.Ordinal) || Path.IsPathRooted(relative))
+        {
+            relative = Path.GetFileName(file);
+        }
+        return string.Join('/', relative.Split('/').Select(Uri.EscapeDataString));
+    }
+
     /// <summary>The file an include's or asset's <c>Source</c> names from a file: <c>avares://Assembly/path</c> of this
     /// project or one it references, WPF's <c>pack://application:,,,/</c> and <c>/Assembly;component/path</c> likewise, a
     /// path from the project's folder (<c>/Theme/Tokens.axaml</c>), or one from the file's own folder. Null for one in no

@@ -22,6 +22,9 @@ public sealed class AvaloniaDialect : XamlDialect
 
     public override IReadOnlyList<string> Extensions { get; } = [".axaml", ".paml", ".xaml"];
 
+    /// <summary>Its avares:// URI, the assembly its host as Avalonia reads it, unescaped.</summary>
+    public override string UriOf(string assembly, string path) => $"avares://{assembly}/{path}";
+
     public override IReadOnlyList<string> LanguageExtensions { get; } = ["Static", "Type", "Null", "True", "False"];
 
     public override bool CompilesBindings => true;

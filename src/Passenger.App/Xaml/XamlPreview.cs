@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Media.Imaging;
 using Passenger.Core;
 using Passenger.Text;
+using Passenger.Xaml;
 using Passenger.Xaml.Dialects;
 using Passenger.Xaml.Projects;
 using Passenger.Xaml.Syntax;
@@ -503,12 +504,8 @@ public sealed class XamlPreview : IDisposable
         waiting = null;
     }
 
-    /// <summary>The file's path in its project, as the previewers read it (<c>/Views/MainWindow.axaml</c>).</summary>
-    internal string ProjectPath()
-    {
-        string folder = document.Loading.Folder;
-        return "/" + Path.GetRelativePath(folder, document.Document.Path).Replace('\\', '/');
-    }
+    /// <summary>The file's path in its project's assembly, as Avalonia's previewer reads it (<c>/Views/MainWindow.axaml</c>).</summary>
+    internal string ProjectPath() => "/" + XamlProject.PathIn(document.Loading.Folder, document.Document.Path);
 
     /// <summary>The project's newest build output that can run: its assembly with its dependencies beside it, and its runtime
     /// configuration when <paramref name="configured"/> (a class library has none), where MSBuild's evaluation says its

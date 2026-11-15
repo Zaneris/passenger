@@ -77,6 +77,10 @@ public abstract class XamlDialect
     /// framework's that its build leaves out (a MAUI app's WinUI <c>Platforms/Windows/App.xaml</c>).</summary>
     public virtual bool LeavesOut(string relative) => false;
 
+    /// <summary>The URI its build names a XAML file of an assembly by, given the file's path in the assembly as a URI writes
+    /// it (<see cref="XamlProject.PathIn"/>); null in a dialect whose build names none.</summary>
+    public virtual string? UriOf(string assembly, string path) => null;
+
     /// <summary>The language namespace a declaration of <c>x:</c> that Passenger writes names.</summary>
     public virtual string LanguageUri => XamlUri;
 
