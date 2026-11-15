@@ -424,7 +424,7 @@ internal sealed class Prompting : IAsyncDisposable
     /// would do.</summary>
     public IReadOnlyDictionary<string, string> Variables => new Dictionary<string, string>
     {
-        ["GIT_ASKPASS"] = asker.Helper,
+        [GitVariables.AskPass] = asker.Helper,
         ["SSH_ASKPASS"] = asker.Helper,
         ["SSH_ASKPASS_REQUIRE"] = "force",
         [GitAskPass.Variable] = path,

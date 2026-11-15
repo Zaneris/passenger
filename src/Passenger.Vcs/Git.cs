@@ -661,7 +661,10 @@ public sealed partial class Git
 
     /// <summary>Continue Rebase: the resolved commit made with the message it had, and the rest replayed.</summary>
     public Task<GitResult> ContinueRebaseAsync(Signer? signer = null) =>
-        RunSignedAsync(["rebase", "--continue"], signer, new Dictionary<string, string> { ["GIT_EDITOR"] = "true" });
+        RunSignedAsync(["rebase", "--continue"], signer, NoEditor);
+
+    /// <summary>The environment of a git that makes commits with the messages they had, opening no editor.</summary>
+    private static readonly IReadOnlyDictionary<string, string> NoEditor = new Dictionary<string, string> { [GitVariables.Editor] = "true" };
 
     /// <summary>A git that may make commits, each signed as the person's config has it through <paramref name="signer"/>'s
     /// own gpg, a key's passphrase asked of its asker.</summary>
@@ -1401,8 +1404,7 @@ public sealed partial class Git
     /// <paramref name="plan"/> says, its uncommitted changes to tracked files set aside first and put back after
     /// (--autostash); a merge or rebase stopped for conflicts puts them back once it is finished or aborted.</summary>
     public Task<GitResult> IntegrateAsync(UpdatePlan plan, Signer? signer = null) => plan.Rebase
-        ? RunSignedAsync(["rebase", "--autostash", .. plan.RebaseMerges ? new[] { "--rebase-merges" } : []], signer,
-            new Dictionary<string, string> { ["GIT_EDITOR"] = "true" })
+        ? RunSignedAsync(["rebase", "--autostash", .. plan.RebaseMerges ? new[] { "--rebase-merges" } : []], signer, NoEditor)
         : RunSignedAsync(["merge", "--no-edit", "--autostash", .. plan.FastForward is { } fastForward ? new[] { fastForward } : [], "@{upstream}"], signer);
 
     /// <summary>How many commits the branch has that its upstream lacks, and the upstream has that it lacks; null where it
@@ -1528,21 +1530,45 @@ public sealed partial class Git
     public async Task<GitResult> CommitMovesAsync(IReadOnlyList<(string From, string To)> moves, string message, CommitSigning? signing = null, GitAsker? asker = null)
     {
         signing ??= CommitSigning.AsConfigured;
-        using CommitFile index = CommitFile.Index(GitDir, "moves");
-        Dictionary<string, string> environment = new(signing.Environment ?? new Dictionary<string, string>()) { ["GIT_INDEX_FILE"] = index.Path };
-        // The real index's stats go along, or the commit reads every file again; -i asks nothing of a file staged and changed since.
-        GitResult read = await RunAsync(Root, ["read-tree", "-m", "-i", $"--index-output={index.Path}", "HEAD"]);
-        if (!read.Succeeded)
+        using PrivateIndex index = await PrivateIndexAsync("moves", signing);
+        if (!index.Read.Succeeded)
         {
-            return read;
+            return index.Read;
         }
-        (GitResult moved, bool any) = await MoveInIndexAsync(moves, environment);
+        (GitResult moved, bool any) = await MoveInIndexAsync(moves, index.Environment);
         if (!moved.Succeeded || !any)
         {
             return moved.Succeeded ? new GitResult(1, string.Empty, "The last commit has none of the moved files where they were") : moved;
         }
         using CommitFile file = CommitFile.Message(message);
-        return await RunAsync(Root, [.. signing.Before, "commit", "-F", file.Path, .. signing.After], environment: environment, asker: asker);
+        return await RunAsync(Root, [.. signing.Before, "commit", "-F", file.Path, .. signing.After], environment: index.Environment, asker: asker);
+    }
+
+    /// <summary>A commit's index of its own in the git folder, named for <paramref name="kind"/>, read from the last commit,
+    /// and the environment that points git at it beside <paramref name="signing"/>'s; its read's failure is in
+    /// <see cref="PrivateIndex.Read"/>, the index deleted as it is disposed whatever came of it.</summary>
+    private async Task<PrivateIndex> PrivateIndexAsync(string kind, CommitSigning signing)
+    {
+        CommitFile index = CommitFile.Index(GitDir, kind);
+        try
+        {
+            Dictionary<string, string> environment = new(signing.Environment ?? new Dictionary<string, string>()) { [GitVariables.IndexFile] = index.Path };
+            // The real index's stats go along, or the commit reads every file again; -i asks nothing of a file staged and changed since.
+            GitResult read = await RunAsync(Root, ["read-tree", "-m", "-i", $"--index-output={index.Path}", "HEAD"]);
+            return new PrivateIndex(index, environment, read);
+        }
+        catch
+        {
+            index.Dispose();
+            throw;
+        }
+    }
+
+    /// <summary>A commit's own index (<see cref="PrivateIndexAsync"/>): the environment git runs with to use it, and how
+    /// its read from the last commit went.</summary>
+    private sealed record PrivateIndex(CommitFile File, IReadOnlyDictionary<string, string> Environment, GitResult Read) : IDisposable
+    {
+        public void Dispose() => File.Dispose();
     }
 
     /// <summary>A private index keeps excluded changes out of the commit and leaves the real index untouched on failure.</summary>
@@ -1562,21 +1588,18 @@ public sealed partial class Git
             }
             contents[path] = FileText.Encoded(selection.Content(), disk.Encoding, disk.HasBom, disk.CrBreaks);
         }
-        using CommitFile index = CommitFile.Index(GitDir, "commit");
-        Dictionary<string, string> environment = new(signing.Environment ?? new Dictionary<string, string>()) { ["GIT_INDEX_FILE"] = index.Path };
-        // The real index's stats go along, or the commit reads every file again; -i asks nothing of a file staged and changed since.
-        GitResult read = await RunAsync(Root, ["read-tree", "-m", "-i", $"--index-output={index.Path}", "HEAD"]);
-        if (!read.Succeeded)
+        using PrivateIndex index = await PrivateIndexAsync("commit", signing);
+        if (!index.Read.Succeeded)
         {
-            return read;
+            return index.Read;
         }
         string[] relative = [.. paths.Select(Relative).Distinct()];
-        GitResult added = await OnFilesAsync(["add", "-A"], relative, environment: environment);
+        GitResult added = await OnFilesAsync(["add", "-A"], relative, environment: index.Environment);
         if (!added.Succeeded)
         {
             return added;
         }
-        GitResult entries = await RunAsync(Root, ["ls-files", "--stage", "-z"], environment: environment);
+        GitResult entries = await RunAsync(Root, ["ls-files", "--stage", "-z"], environment: index.Environment);
         if (!entries.Succeeded)
         {
             return entries;
@@ -1597,7 +1620,7 @@ public sealed partial class Git
                 return blob.Ran;
             }
             GitResult updated = await RunAsync(Root, ["update-index", "-z", "--index-info"],
-                $"{entry[..6]} {blob.Read!.Trim()}\t{name}\0", environment);
+                $"{entry[..6]} {blob.Read!.Trim()}\t{name}\0", index.Environment);
             if (!updated.Succeeded)
             {
                 return updated;
@@ -1605,7 +1628,7 @@ public sealed partial class Git
         }
         using CommitFile file = CommitFile.Message(message);
         GitResult committed = await RunAsync(Root, [.. signing.Before, "commit", "-F", file.Path, .. amend ? new[] { "--amend" } : [], .. signing.After],
-            environment: environment, asker: asker);
+            environment: index.Environment, asker: asker);
         if (committed.Succeeded)
         {
             GitResult reset = await OnFilesAsync(["reset", "-q", "HEAD"], relative);
@@ -1668,8 +1691,7 @@ public sealed partial class Git
     /// <summary>The current branch rebased onto another; or, given <paramref name="branch"/>, that branch checked out and
     /// rebased onto <paramref name="onto"/> (Checkout and Rebase onto Current, "git rebase HEAD branch").</summary>
     public Task<GitResult> RebaseAsync(string onto, string? branch = null, Signer? signer = null) =>
-        RunSignedAsync(["rebase", "--end-of-options", onto, .. branch is null ? Array.Empty<string>() : [branch]], signer,
-            new Dictionary<string, string> { ["GIT_EDITOR"] = "true" });
+        RunSignedAsync(["rebase", "--end-of-options", onto, .. branch is null ? Array.Empty<string>() : [branch]], signer, NoEditor);
 
     public Task<GitResult> RenameBranchAsync(string from, string to) => RunAsync(Root, ["branch", "-m", "--end-of-options", from, to]);
 
@@ -2237,9 +2259,9 @@ public sealed partial class Git
         }
         ProcessStartInfo start = ChildProcesses.Command(git, arguments, folder);
         // Git never stops to ask on a terminal: it has none (ChildProcesses), and this keeps it from looking for one.
-        start.Environment["GIT_TERMINAL_PROMPT"] = "0";
+        start.Environment[GitVariables.TerminalPrompt] = "0";
         // A background status or diff never takes the index's lock, so a stash, commit or checkout then never fails on it.
-        start.Environment["GIT_OPTIONAL_LOCKS"] = "0";
+        start.Environment[GitVariables.OptionalLocks] = "0";
         MsysGpg.FitGit(start);
         return start;
     }

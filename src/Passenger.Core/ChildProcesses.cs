@@ -26,8 +26,8 @@ public static class ChildProcesses
     /// otherwise take it for its folder's.</summary>
     private static readonly string[] HookVariables =
     [
-        "GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_OBJECT_DIRECTORY", "GIT_ALTERNATE_OBJECT_DIRECTORIES",
-        "GIT_COMMON_DIR", "GIT_PREFIX", "GIT_NAMESPACE", "GIT_QUARANTINE_PATH",
+        GitVariables.Dir, GitVariables.WorkTree, GitVariables.IndexFile, GitVariables.ObjectDirectory, GitVariables.AlternateObjectDirectories,
+        GitVariables.CommonDir, GitVariables.Prefix, GitVariables.Namespace, GitVariables.QuarantinePath,
     ];
 
     /// <summary>A child started; raised on the thread that started it, for the IDE's log.</summary>

@@ -1256,7 +1256,7 @@ public sealed class TerminalTests
     {
         string folder = TestFolders.Create("terminal-unset-");
         // GIT_PREFIX: of a git hook's variables, the one git itself never reads, should anything else started meanwhile get it.
-        string[] takenAway = ["GIT_PREFIX", "PASSENGER_RUN_TAKEN_AWAY"];
+        string[] takenAway = [GitVariables.Prefix, "PASSENGER_RUN_TAKEN_AWAY"];
         try
         {
             foreach (string variable in takenAway)
