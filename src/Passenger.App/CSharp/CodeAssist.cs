@@ -400,7 +400,6 @@ public sealed class CodeAssist
     }
 
     /// <summary>The routes the request on a line (the editor's, from zero) of an .http file calls.</summary>
-
     public Func<string, int, IReadOnlyList<LspLocation>>? HttpRouteTargets
     {
         get => context.Languages.Http.HttpRouteTargets;
