@@ -39,8 +39,8 @@ public sealed class StepRename
     }
 
     /// <summary>A step's text rewritten: the new words around its arguments (each where the old expression matched it, with
-    /// the quotes around one that has them).</summary>
-    public string Step(string text, IReadOnlyList<StepArgument> arguments)
+    /// the quotes around one that has them); null where it is given fewer arguments than the expression's parameters.</summary>
+    public string? Step(string text, IReadOnlyList<StepArgument> arguments)
     {
         StringBuilder written = new();
         int argument = 0;
@@ -53,7 +53,7 @@ public sealed class StepRename
             }
             if (argument >= arguments.Count)
             {
-                break;
+                return null;
             }
             StepArgument at = arguments[argument++];
             int start = at.Start;

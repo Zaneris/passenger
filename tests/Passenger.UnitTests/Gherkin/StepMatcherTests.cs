@@ -184,4 +184,36 @@ public sealed class StepMatcherTests
 
         Assert.Equal(MatchStatus.Defined, Matcher(admin).Match(reading.Steps[0], reading).Status);
     }
+
+    [Fact]
+    public void A_background_steps_arguments_are_kept_however_many_scenarios_it_runs_in()
+    {
+        FeatureReading reading = FeatureReading.Read(
+            "Feature: F\n\nBackground:\n  Given the user \"bob\" logs in\n\nScenario: A\n  Then one\n\nScenario: B\n  Then two\n", "en");
+        StepMatcher matcher = Matcher(Binding(BindingKind.Given, "the user {string} logs in", "GivenLogsIn", P("name", Text)));
+
+        Assert.Equal([new StepArgument(10, 3)], Assert.Single(matcher.Match(reading.Steps[0], reading).Bindings).Arguments);
+    }
+
+    [Fact]
+    public void An_outline_step_with_no_placeholder_keeps_its_arguments_and_one_with_placeholders_but_no_examples_is_not_matched()
+    {
+        FeatureReading reading = FeatureReading.Read(
+            "Feature: F\n\nScenario Outline: O\n  Given the first number is 5\n  And the first number is <a>\n\nExamples:\n  | a |\n", "en");
+        StepMatcher matcher = Matcher(Binding(BindingKind.Given, "the first number is {int}", "GivenTheFirstNumberIs", P("number", Int)));
+
+        Assert.Equal([new StepArgument(20, 1)], Assert.Single(matcher.Match(reading.Steps[0], reading).Bindings).Arguments);
+        Assert.False(StepMatcher.Matchable(reading.Steps[1]));
+        Assert.True(StepMatcher.Matchable(reading.Steps[0]));
+    }
+
+    [Fact]
+    public void Two_attributes_of_one_method_matching_a_step_are_one_definition()
+    {
+        StepMatcher matcher = Matcher(
+            Binding(BindingKind.Given, "I log in", "LogIn"),
+            Binding(BindingKind.StepDefinition, "I log in", "LogIn"));
+
+        Assert.Equal(MatchStatus.Defined, Match(matcher, StepKind.Given, "I log in").Status);
+    }
 }

@@ -39,12 +39,18 @@ internal sealed partial class GherkinAssist(AssistContext context, PopupPlacemen
         int line = snapshot.GetLineFromOffset(caret);
         string before = snapshot.GetText(snapshot.GetLineStart(line), caret - snapshot.GetLineStart(line));
         string trimmed = before.TrimStart();
+        // A description's words and a doc string's text are no Gherkin to complete or align.
+        if (Bdd?.Checks.Of(shown)?.Reading.Lines is { } kinds && line < kinds.Count
+            && kinds[line] is FeatureLineKind.Description or FeatureLineKind.DocString or FeatureLineKind.DocStringSeparator)
+        {
+            return true;
+        }
         if (text == "|" && trimmed.StartsWith('|') && trimmed.Length > 1)
         {
             AlignTable(shown);
             return true;
         }
-        bool opens = text.EndsWith('@')
+        bool opens = (text.EndsWith('@') && trimmed.StartsWith('@'))
             || (text.EndsWith(' ') && StepKeywordOf(DialectOf(shown), trimmed) is { } keyword && keyword.Length == trimmed.Length)
             || (trimmed.Length == 1 && char.IsLetter(trimmed[0]));
         if (opens)
@@ -81,7 +87,7 @@ internal sealed partial class GherkinAssist(AssistContext context, PopupPlacemen
             StepKind kind = KindAt(analysis, line, keyword);
             items.AddRange(StepItems(analysis, kind));
         }
-        else if (trimmed.StartsWith('@') || trimmed.Contains(" @", StringComparison.Ordinal))
+        else if (trimmed.StartsWith('@'))
         {
             start = lineStart + before.LastIndexOf('@');
             items.AddRange((await TagsAsync(bdd, shown, analysis)).Select(t => (Item(t, CompletionItemKind.Constant, "tag", t), $"A tag of the project's features", (StepSample?)null, t)));

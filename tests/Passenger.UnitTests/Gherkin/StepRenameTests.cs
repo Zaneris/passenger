@@ -47,4 +47,10 @@ public sealed class StepRenameTests
         Assert.Equal("\"say \\\"hi\\\" \\\\ {int}\"", StepRename.Literal("say \"hi\" \\ {int}", verbatim: false));
         Assert.Equal("@\"say \"\"hi\"\" (\\d+)\"", StepRename.Literal("say \"hi\" (\\d+)", verbatim: true));
     }
+
+    [Fact]
+    public void A_step_given_fewer_arguments_than_parameters_is_not_rewritten()
+    {
+        Assert.Null(StepRename.Of("the user {string} logs in", "the member {string} logs in", cucumber: true).Step("the user \"bob\" logs in", []));
+    }
 }

@@ -78,4 +78,12 @@ public sealed class StepSnippetsTests
 
         Assert.StartsWith("[Given(\"a\\\\/b \\\\(c) \\\\{d}\")]\npublic void GivenABCD2()\n", snippet.Code, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public void A_placeholder_named_as_a_csharp_keyword_is_a_verbatim_parameter()
+    {
+        StepSnippet snippet = Snippet("Feature: F\nScenario Outline: O\n  Given the <class> list\n\nExamples:\n  | class |\n  | a     |\n");
+
+        Assert.Contains("(string @class)", snippet.Code, StringComparison.Ordinal);
+    }
 }

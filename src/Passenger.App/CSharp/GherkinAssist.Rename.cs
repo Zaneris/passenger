@@ -20,8 +20,9 @@ internal sealed partial class GherkinAssist
         {
             return false;
         }
-        StepBinding? binding = IsFeature(document) ? BindingOfStep(bdd, document, caret) : bdd.BindingAt(document, caret) is { ExpressionPlace: not null } at
-            && document.Text.Snapshot is var text && OnExpression(text, at, caret) ? at : null;
+        // Bindings read before the C# file's last change may be placed where it no longer has them: C#'s Rename is asked then.
+        StepBinding? binding = IsFeature(document) ? BindingOfStep(bdd, document, caret)
+            : !bdd.Session.Steps.Wants && bdd.BindingAt(document, caret) is { ExpressionPlace: not null } at && OnExpression(document.Text.Snapshot, at, caret) ? at : null;
         if (binding?.Expression is not { } expression)
         {
             return false;
@@ -53,7 +54,7 @@ internal sealed partial class GherkinAssist
 
     /// <summary>A step definition's expression renamed, the window's and an agent's alike: its attribute's string and every step
     /// it binds in the features of the projects that see it, as one command of Undo; refused where Reqnroll's Rename Step
-    /// would refuse it, an outline's steps with placeholders left as they are and said.</summary>
+    /// would refuse it, an outline's steps with placeholders (and any whose arguments are not known) left as they are and said.</summary>
     internal async Task<RefactorOutcome> RenameStepAsync(BddSource bdd, StepBinding binding, string renamed)
     {
         bool cucumber = binding.CucumberExpression ?? StepExpressions.IsCucumberExpression(binding.Expression!);
@@ -72,7 +73,10 @@ internal sealed partial class GherkinAssist
             TextPosition at = ServerPlaces.PositionOf(snapshot, new LspPosition(place.Line, place.Column));
             int start = snapshot.GetLineStart(at.Line) + at.Column;
             string written = start + binding.ExpressionLength <= text.Length ? text.Substring(start, binding.ExpressionLength) : string.Empty;
-            return written.Length > 0 && written[^1] == '"' ? [new TextEdit(start, binding.ExpressionLength, StepRename.Literal(renamed, written[0] == '@'))] : [];
+            bool verbatim = written.StartsWith('@');
+            // Only the literal the definition was read with is rewritten: a file changed since leaves the rename refused.
+            return written.Length > 0 && written == StepRename.Literal(binding.Expression!, verbatim)
+                ? [new TextEdit(start, binding.ExpressionLength, StepRename.Literal(renamed, verbatim))] : [];
         })];
         int skipped = 0;
         foreach ((string path, FeatureAnalysis analysis) in await bdd.FeaturesAsync(bdd.ProjectsSeeing(binding).DistinctBy(p => p.Project)))
@@ -89,7 +93,12 @@ internal sealed partial class GherkinAssist
                     skipped++;
                     continue;
                 }
-                edits.Add(new TextEdit(analysis.TextOf(step).Start, step.Text.Length, rename.Step(step.Text, bound.Arguments)));
+                if (rename.Step(step.Text, bound.Arguments) is not { } rewritten)
+                {
+                    skipped++;
+                    continue;
+                }
+                edits.Add(new TextEdit(analysis.TextOf(step).Start, step.Text.Length, rewritten));
             }
             if (edits.Count > 0)
             {
@@ -101,7 +110,7 @@ internal sealed partial class GherkinAssist
         {
             return RefactorOutcome.Refused(refused);
         }
-        string left = skipped > 0 ? $"; {skipped} outline {(skipped == 1 ? "step" : "steps")} with placeholders left as written" : string.Empty;
+        string left = skipped > 0 ? $"; {skipped} {(skipped == 1 ? "step" : "steps")} with placeholders or no arguments to keep left as written" : string.Empty;
         return new RefactorOutcome($"Renamed the step to \"{renamed}\" in {changes.Count} {(changes.Count == 1 ? "file" : "files")}{left}", null,
             [.. changes.Select(c => new RefactoredFile(c.Path, "changed", []))], []);
     }

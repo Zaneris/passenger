@@ -7,6 +7,7 @@ namespace Passenger.Workspace.Gherkin;
 public sealed class ProjectSteps(string project, bool specFlow, IReadOnlyList<StepBinding> bindings, IReadOnlyList<StepHook> hooks,
     IReadOnlyList<StepTransformation> transformations)
 {
+    private readonly Lock made = new();
     private StepMatcher? matcher;
     private string? matcherCulture;
 
@@ -22,16 +23,19 @@ public sealed class ProjectSteps(string project, bool specFlow, IReadOnlyList<St
     public IReadOnlyList<StepTransformation> Transformations { get; } = transformations;
 
     /// <summary>The matcher of the project's steps in a culture (its configuration's binding culture, else its features'
-    /// language, as Reqnroll takes it), made again only when that changes.</summary>
+    /// language, as Reqnroll takes it), made again only when that changes; for any thread.</summary>
     public StepMatcher Matcher(string? culture)
     {
         string name = culture ?? "en-US";
-        if (matcher is null || matcherCulture != name)
+        lock (made)
         {
-            matcher = new StepMatcher(Bindings, Transformations, CultureOf(name));
-            matcherCulture = name;
+            if (matcher is null || matcherCulture != name)
+            {
+                matcher = new StepMatcher(Bindings, Transformations, CultureOf(name));
+                matcherCulture = name;
+            }
+            return matcher;
         }
-        return matcher;
     }
 
     private static CultureInfo CultureOf(string name)

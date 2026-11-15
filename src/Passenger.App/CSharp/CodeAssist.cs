@@ -392,13 +392,14 @@ public sealed class CodeAssist
         set => context.Languages.CSharp.ConfiguredCodeOf = value;
     }
 
-    /// <summary>The routes the request on a line (the editor's, from zero) of an .http file calls.</summary>
     /// <summary>What the window gives the editor's commands of its BDD (<see cref="GherkinAssist"/>).</summary>
     internal Func<Bdd.BddSource?>? Bdd
     {
         get => context.Languages.Gherkin.Source;
         set => context.Languages.Gherkin.Source = value;
     }
+
+    /// <summary>The routes the request on a line (the editor's, from zero) of an .http file calls.</summary>
 
     public Func<string, int, IReadOnlyList<LspLocation>>? HttpRouteTargets
     {

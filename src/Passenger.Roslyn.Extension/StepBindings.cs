@@ -17,7 +17,7 @@ public sealed class StepBindings : IExtensionWorkspaceMessageHandler<StepsReques
 
 /// <summary>Reads a Reqnroll (or SpecFlow) project's bindings from its compilation as the server holds it, with no build, as
 /// Reqnroll's runtime discovers them: every method of a class marked <c>[Binding]</c> (its base classes' too) in the
-/// project's code, the projects it references and the binding assemblies its configuration names, whose attributes derive
+/// project's code and the binding assemblies its configuration names (a referenced project's or a package's), whose attributes derive
 /// from the step definition, hook or transformation attributes; a <c>[Scope]</c> of the class and of the method each an
 /// alternative. A project is Reqnroll's or SpecFlow's where its compilation knows that one's <c>BindingAttribute</c>.</summary>
 internal static class StepBindingReading
@@ -31,9 +31,11 @@ internal static class StepBindingReading
         foreach (Project project in solution.Projects)
         {
             cancel.ThrowIfCancellationRequested();
-            // A multi-targeted project is several of the server's projects of one file: its bindings are read once.
+            // A multi-targeted project is several of the server's projects of one file: its bindings are read once. One that
+            // references no Reqnroll or SpecFlow is never compiled for them.
             if (project.Language != LanguageNames.CSharp || project.FilePath is not { } file
                 || (asked.Projects.Count > 0 && !asked.Projects.Any(path => SamePath(path, file))) || !seen.Add(PathNames.Canonical(file))
+                || !project.MetadataReferences.Any(r => Path.GetFileName(r.Display) is "Reqnroll.dll" or "TechTalk.SpecFlow.dll")
                 || await project.GetCompilationAsync(cancel).ConfigureAwait(false) is not { } compilation)
             {
                 continue;
@@ -52,8 +54,9 @@ internal static class StepBindingReading
         return new StepsFound(found);
     }
 
-    /// <summary>The assemblies a project's bindings may be in: its own, each project it references, and each assembly its
-    /// configuration names; with the project file each is the code of, where it is a project's.</summary>
+    /// <summary>The assemblies a project's bindings may be in, as Reqnroll's runtime finds them: its own, and each its
+    /// configuration names, a referenced project's or a package's; with the project file each is the code of, where it is a
+    /// project's.</summary>
     private static IEnumerable<(IAssemblySymbol Assembly, string? Project)> AssembliesOf(Solution solution, Compilation compilation, IReadOnlyList<string> named)
     {
         Project? owner = solution.Projects.FirstOrDefault(p => p.AssemblyName == compilation.AssemblyName);
@@ -64,14 +67,12 @@ internal static class StepBindingReading
             {
                 continue;
             }
-            if (reference is CompilationReference referenced)
+            if (!named.Contains(assembly.Name, StringComparer.OrdinalIgnoreCase))
             {
-                yield return (assembly, solution.Projects.FirstOrDefault(p => p.AssemblyName == referenced.Compilation.AssemblyName)?.FilePath);
+                continue;
             }
-            else if (named.Contains(assembly.Name, StringComparer.OrdinalIgnoreCase))
-            {
-                yield return (assembly, null);
-            }
+            yield return (assembly, reference is CompilationReference referenced
+                ? solution.Projects.FirstOrDefault(p => p.AssemblyName == referenced.Compilation.AssemblyName)?.FilePath : null);
         }
     }
 
