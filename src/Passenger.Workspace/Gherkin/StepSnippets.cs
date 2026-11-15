@@ -52,8 +52,7 @@ public static partial class StepSnippets
         }
         string method = step.Kind + string.Concat(words.Select(w => char.ToUpperInvariant(w[0]) + w[1..]));
         method = Unique(async ? method + "Async" : method, taken);
-        string attribute = cucumber ? $"\"{expression.ToString().Replace("\\", "\\\\", StringComparison.Ordinal).Replace("\"", "\\\"", StringComparison.Ordinal)}\""
-            : $"@\"{expression.ToString().Replace("\"", "\"\"", StringComparison.Ordinal)}\"";
+        string attribute = cucumber ? CSharpLiterals.Quoted(expression.ToString()) : CSharpLiterals.Written(expression.ToString(), "@");
         string returns = async ? "async Task" : "void";
         string code = $"[{step.Kind}({attribute})]\npublic {returns} {method}({string.Join(", ", parameters.Select(p => $"{p.Type} {p.Name}"))})\n{{\n    throw new PendingStepException();\n}}\n";
         return new StepSnippet(code, method, step.Kind);

@@ -3,6 +3,7 @@ using Passenger.App.Workspace;
 using Passenger.Core;
 using Passenger.Lsp;
 using Passenger.Text;
+using Passenger.Workspace;
 using Passenger.Workspace.Gherkin;
 
 namespace Passenger.App.CSharp;
@@ -31,7 +32,7 @@ internal sealed partial class GherkinAssist
             case MatchStatus.Defined:
                 foreach (BoundStep bound in match.Bindings)
                 {
-                    card.AddCode($"[{bound.Binding.Kind}({Quoted(bound.Binding.Expression)})]\n{bound.Binding.Shown}");
+                    card.AddCode($"[{bound.Binding.Kind}({(bound.Binding.Expression is { } expression ? CSharpLiterals.Quoted(expression) : string.Empty)})]\n{bound.Binding.Shown}");
                     if (bound.Binding.Summary is { } summary)
                     {
                         card.AddText(summary);
@@ -49,8 +50,6 @@ internal sealed partial class GherkinAssist
         }
         return true;
     }
-
-    private static string Quoted(string? expression) => expression is null ? string.Empty : $"\"{expression.Replace("\"", "\\\"", StringComparison.Ordinal)}\"";
 
     public override Task<bool> DefinitionAsync(int offset) => GoToDeclarationAsync(context, navigation, offset, IsFeature);
 

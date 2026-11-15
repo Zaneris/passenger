@@ -68,11 +68,6 @@ public sealed class StepRename
         return written.ToString();
     }
 
-    /// <summary>An expression as a C# string literal: a verbatim one's quotes doubled, a plain one's backslashes and quotes escaped.</summary>
-    public static string Literal(string expression, bool verbatim) => verbatim
-        ? $"@\"{expression.Replace("\"", "\"\"", StringComparison.Ordinal)}\""
-        : $"\"{expression.Replace("\\", "\\\\", StringComparison.Ordinal).Replace("\"", "\\\"", StringComparison.Ordinal)}\"";
-
     /// <summary>An expression's words (as a step writes them) and parameters (as the expression writes them), in order; null
     /// for one with more than those.</summary>
     private static IReadOnlyList<Part>? PartsOf(string expression, bool cucumber)

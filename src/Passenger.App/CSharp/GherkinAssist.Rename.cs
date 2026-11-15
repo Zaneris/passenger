@@ -3,6 +3,7 @@ using Passenger.App.Workspace;
 using Passenger.Core;
 using Passenger.Lsp;
 using Passenger.Text;
+using Passenger.Workspace;
 using Passenger.Workspace.Gherkin;
 using Passenger.Xaml.Features;
 
@@ -73,10 +74,9 @@ internal sealed partial class GherkinAssist
             TextPosition at = ServerPlaces.PositionOf(snapshot, new LspPosition(place.Line, place.Column));
             int start = snapshot.GetLineStart(at.Line) + at.Column;
             string written = start + binding.ExpressionLength <= text.Length ? text.Substring(start, binding.ExpressionLength) : string.Empty;
-            bool verbatim = written.StartsWith('@');
-            // Only the literal the definition was read with is rewritten: a file changed since leaves the rename refused.
-            return written.Length > 0 && written == StepRename.Literal(binding.Expression!, verbatim)
-                ? [new TextEdit(start, binding.ExpressionLength, StepRename.Literal(renamed, verbatim))] : [];
+            // Only the literal the definition was read with is rewritten, in its own kind: a file changed since leaves the rename refused.
+            return written.Length > 0 && written == CSharpLiterals.Written(binding.Expression!, written)
+                ? [new TextEdit(start, binding.ExpressionLength, CSharpLiterals.Written(renamed, written))] : [];
         })];
         int skipped = 0;
         foreach ((string path, FeatureAnalysis analysis) in await bdd.FeaturesAsync(bdd.ProjectsSeeing(binding).DistinctBy(p => p.Project)))
