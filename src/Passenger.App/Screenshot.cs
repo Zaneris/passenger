@@ -27,14 +27,7 @@ public static class Screenshot
 
     public static int Run(LaunchOptions launch, ScreenshotOptions options)
     {
-        PassengerApp.RunsHeadless();
-        AppBuilder.Configure<App>()
-            .UseSkia()
-            .UseHarfBuzz()
-            .UseHeadless(new AvaloniaHeadlessPlatformOptions { UseHeadlessDrawing = false })
-            .Checked()
-            .AfterSetup(builder => Program.ApplyTheme(builder.Instance!, launch))
-            .SetupWithoutStarting();
+        Program.SetUpHeadless(launch);
 
         // A capture lets in only its own agent: no socket at all without one.
         Written written = new();

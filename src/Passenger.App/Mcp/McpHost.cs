@@ -230,6 +230,7 @@ public static partial class McpHost
     /// it), so an agent asking as it connects finds the tools at once; each call waits for the IDE.</summary>
     public static int RunStdio(LaunchOptions launch, Stream input)
     {
+        // Before the head start, so nothing it starts finds a display.
         PassengerApp.RunsHeadless();
         PassengerApp.RunsForAgent();
         Stream output = Console.OpenStandardOutput();
@@ -264,13 +265,7 @@ public static partial class McpHost
         }));
         using System.Runtime.InteropServices.PosixSignalRegistration? terminated = EndOnSignal(() => ended.TrySetResult());
 
-        AppBuilder.Configure<App>()
-            .UseSkia()
-            .UseHarfBuzz()
-            .UseHeadless(new AvaloniaHeadlessPlatformOptions { UseHeadlessDrawing = false })
-            .Checked()
-            .AfterSetup(builder => Program.ApplyTheme(builder.Instance!, launch))
-            .SetupWithoutStarting();
+        Program.SetUpHeadless(launch);
 
         // The agent's own IDE, which no other agent joins.
         MainWindow window = new() { Width = 1600, Height = 1000, AgentsAllowed = false, AgentsOwn = true, TakesLaunches = false, StartsLanguageServer = StartsLanguageServer, HeadStart = ahead };
@@ -297,16 +292,9 @@ public static partial class McpHost
     /// line starts could not start.</summary>
     public static int RunHeadless(LaunchOptions launch, Stream input)
     {
-        PassengerApp.RunsHeadless();
         // Its starter reads nothing of its output or error: the console goes to the log.
         IdeLog.TakeConsole();
-        AppBuilder.Configure<App>()
-            .UseSkia()
-            .UseHarfBuzz()
-            .UseHeadless(new AvaloniaHeadlessPlatformOptions { UseHeadlessDrawing = false })
-            .Checked()
-            .AfterSetup(builder => Program.ApplyTheme(builder.Instance!, launch))
-            .SetupWithoutStarting();
+        Program.SetUpHeadless(launch);
 
         MainWindow window = new() { Width = 1600, Height = 1000, AgentsAllowed = launch.ListenForAgents };
         window.SetRenderScaling(2);

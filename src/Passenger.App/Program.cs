@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using Avalonia;
+using Avalonia.Headless;
 using Avalonia.Styling;
 using Velopack;
 using Passenger.Core;
@@ -189,6 +190,21 @@ internal static class Program
                 _ => ThemeVariant.Default,
             });
         }
+    }
+
+    /// <summary>Avalonia on the headless platform with real Skia drawing, the command line's theme over the one in force, for
+    /// a Passenger nobody sees (<c>--mcp</c>, <c>--headless</c>, a screenshot), the process first taken as headless
+    /// (<see cref="PassengerApp.RunsHeadless"/>) where it was not already.</summary>
+    internal static void SetUpHeadless(LaunchOptions launch)
+    {
+        PassengerApp.RunsHeadless();
+        AppBuilder.Configure<App>()
+            .UseSkia()
+            .UseHarfBuzz()
+            .UseHeadless(new AvaloniaHeadlessPlatformOptions { UseHeadlessDrawing = false })
+            .Checked()
+            .AfterSetup(builder => ApplyTheme(builder.Instance!, launch))
+            .SetupWithoutStarting();
     }
 
     /// <summary>The XAML previewer calls this by name, so it stays public and parameterless. Avalonia's log goes to the
