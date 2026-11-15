@@ -400,6 +400,12 @@ Projects in `src/`; `find_symbol` finds the rest from the names here. A pointer'
   be. An HTTPS page's dev certificate is only read, never made or trusted. Every breakpoint through one pipeline
   (`IHitBreakpoint`). A program attached to in a container maps its paths by its Compose labels' Dockerfile
   (`ContainerReach.PathsAsync`), else back by the engine's own match (`SourcePaths.FileOf`).
+- **BDD (Reqnroll, SpecFlow).** A .feature file is read only through `FeatureReading` (Cucumber's Gherkin package, in its
+  project's language, `FeatureLanguage`) and its steps matched only through `StepMatcher` (Reqnroll's own rules, ported:
+  keep them its); bindings come from the extension's `StepBindings` with no build, never reflection, cached in
+  `StepCatalog`, unknown (no undefined mark) until read; an open feature's marks and colours come from `FeatureChecks`,
+  its commands from `GherkinAssist`; a scenario's test is at its feature line by its code-behind's `#line`
+  (`DeclaredTest.Written`, `TestNode.Places`), never the runner's line for mapped code.
 - **Tests window.** `TestFinder`; tests are keyed by themselves (`TestItem.ById`), never a key string per test;
   a runner's failure stack goes through `FailureStacks.Once` (NUnit's adapter repeats each stack after its number); `VsTestRunner` is the only file that knows VSTest's object model (VSTest starts a debugged .NET test host itself and
   asks to attach: `LaunchTestHost` is never called for one); the person's `GODOT_BIN` wins; GUT's tests are chosen by
@@ -790,7 +796,7 @@ class taking far longer than its work needs is a bug, never held to a limit. A t
 `~/Documents/passenger-vm/vm-test.sh NAME FILTER` (no Node.js; it can't see dot folders), Ubuntu 26.04 ARM64
 `vm-test-linux.sh NAME FILTER`.
 
-**Helpers** (`Ui`, `Waiting`, `TestProjects`, `TestFolders`, `McpRig`, `Docker`): a click is `Ui.Click` (a real press on
+**Helpers** (`Ui`, `Waiting`, `TestProjects`, `TestFolders`, `McpRig`, `Docker`, `ReqnrollProjects`): a click is `Ui.Click` (a real press on
 a control shown, enabled and hit); a chord one `Ui.Press(window, "control M , control S")` (its first key forgotten
 after 2 s); multi-line edits `Typing.Replace` (`KeyTextInput` drops `\n`); a server's request or answer held
 `LanguageServer.HoldNext`/`HoldNextAnswer` (the next answer to come, whatever request it answers), a container run's `up` `BuildRunController.HoldNextUp`; a log the IDE may be
