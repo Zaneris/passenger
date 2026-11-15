@@ -75,7 +75,7 @@ public partial class MainWindow : IdeWindow
             Declare = () => Request(AppActions.GoToDeclaration),
         });
         // One keymap for the whole window, seen before any control: editor actions go to the editor with the focus.
-        windowKeys = new IdeKeys(this, keys, popups, OnEscape, OnKey, OnSideButton, OnActivity, OnLeft);
+        windowKeys = new IdeKeys(this, keys, popups, OnEscape, OnKey, OnTypingRefused, OnSideButton, OnActivity, OnLeft);
         windowKeys.Attach(this);
         AddActions();
         AddTitleBar();
@@ -513,6 +513,16 @@ public partial class MainWindow : IdeWindow
             // Escape with nothing of the editor's own to undo closes what sits over it.
             Editors.FindBar.Close();
             e.Handled = true;
+        }
+    }
+
+    /// <summary>Text typed into an editor refusing changes, in any of the IDE's windows, says why in the status bar, as a
+    /// key changing the text there does.</summary>
+    private void OnTypingRefused(CodeEditor editor)
+    {
+        if (editor.ReadOnlyWhy is { } why)
+        {
+            Say(why);
         }
     }
 

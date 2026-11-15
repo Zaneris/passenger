@@ -823,7 +823,7 @@ public sealed class VimModeTests : IDisposable
 
     /// <summary>A file shown read-only refuses Vim mode's every change as it refuses every other, the status bar saying
     /// so in Refusals' words: x, dd, an insert, u and :s leave its text as it was and normal mode as it was, while a motion
-    /// and a yank work, the yank put in a file that takes changes.</summary>
+    /// and a yank work, saying nothing, the yank put in a file that takes changes.</summary>
     [AvaloniaFact]
     public void A_read_only_file_refuses_vims_every_change_saying_why()
     {
@@ -846,8 +846,10 @@ public sealed class VimModeTests : IDisposable
                     $"{keys} on a read-only file left \"{Text(editor)}\" in {Status(window).Mode}");
                 Assert.Equal("One.txt is read-only", StatusWords(window));
             }
+            Keys(window, ":set ic?<CR>");
             Keys(window, "wyw");
             Assert.Equal(("NORMAL", "1:5"), Status(window));
+            Assert.True(StatusWords(window) == "noignorecase", $"A motion and a yank in a read-only file said \"{StatusWords(window)}\", their keys' text taken for typing");
             window.OpenFile(other);
             Ui.Settle();
             Keys(window, "p");

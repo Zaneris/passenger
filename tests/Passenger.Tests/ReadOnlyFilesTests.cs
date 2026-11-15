@@ -1,6 +1,7 @@
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
+using Avalonia.Input.TextInput;
 using Avalonia.VisualTree;
 using Passenger.App;
 using Passenger.App.Editors;
@@ -12,8 +13,8 @@ namespace Passenger.Tests;
 
 /// <summary>A file the editor shows read-only (here decompiled code, as Go to Declaration opens it) is never edited or written,
 /// whatever asks: Save greys there, as on a file with nothing to save, Replace in Files names it as not replaced, and the
-/// Edit menu's changes, the find bar's replace row and the colour picker grey saying why; what the disk holds still reaches
-/// its tab.</summary>
+/// Edit menu's changes, the find bar's replace row and the colour picker grey saying why, as what is typed there says it;
+/// what the disk holds still reaches its tab.</summary>
 public sealed class ReadOnlyFilesTests : IDisposable
 {
     private const string Trims = "root = true\n[*]\ntrim_trailing_whitespace = true\ninsert_final_newline = true\n";
@@ -159,6 +160,42 @@ public sealed class ReadOnlyFilesTests : IDisposable
         window.Close();
 
         static IEnumerable<string> ActionsIn(MenuEntry menu) => menu.Action is { } id ? [id] : (menu.Items ?? []).SelectMany(ActionsIn);
+    }
+
+    /// <summary>Text typed into a decompiled file, a key's or what an input method composed and committed, changes nothing
+    /// and says in the status bar that the file is read-only, as a key changing it does; the composition is drawn no
+    /// more.</summary>
+    [AvaloniaFact]
+    public void Typing_into_a_decompiled_file_says_in_the_status_bar_it_is_read_only_and_an_input_methods_text_too()
+    {
+        const string Text = "class A\n{\n}\n";
+        Write("MetadataAsSource/A.cs", Text);
+        Write("MetadataAsSource/B.cs", Text);
+        MainWindow window = Open("MetadataAsSource/A.cs");
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        Assert.NotEqual("A.cs is read-only", window.Status);
+        window.KeyTextInput("x");
+        Ui.Settle();
+        Assert.Equal(Text, editor.Document.Snapshot.ToString());
+        Assert.Equal("A.cs is read-only", window.Status);
+
+        window.OpenFile(Path.Combine(folder, "MetadataAsSource", "B.cs"));
+        editor.Focus();
+        editor.Selections = Passenger.Text.SelectionSet.Single("class".Length);
+        Ui.Settle();
+        TextInputMethodClientRequestedEventArgs asked = new() { RoutedEvent = Avalonia.Input.InputElement.TextInputMethodClientRequestedEvent };
+        editor.RaiseEvent(asked);
+        TextInputMethodClient client = asked.Client ?? throw new InvalidOperationException("The editor gave the input method no client");
+        double after = editor.PointOf("class ".Length).X;
+        client.SetPreeditText("にほん");
+        Ui.Settle();
+        Assert.True(editor.PointOf("class ".Length).X > after, "The input method's composition is not drawn at the caret, so its end is not checked");
+        window.KeyTextInput("日本");
+        Ui.Settle();
+        Assert.Equal(Text, editor.Document.Snapshot.ToString());
+        Assert.Equal("B.cs is read-only", window.Status);
+        Assert.True(editor.PointOf("class ".Length).X == after, "The composition the input method committed is still drawn in the read-only B.cs");
+        window.Close();
     }
 
     [AvaloniaFact]

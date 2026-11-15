@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Input.TextInput;
+using Avalonia.Interactivity;
 using Avalonia.Media;
 using Avalonia.Media.TextFormatting;
 using Avalonia.VisualTree;
@@ -84,6 +85,12 @@ public sealed partial class CodeEditor
         }
         if (IsReadOnly)
         {
+            // Outside Vim's insert mode the text is a command's, taken at the key press.
+            if (vim is not { Mode: not Editor.VimMode.Insert } && Printable(e.Text).Length > 0)
+            {
+                RefuseTyping();
+                e.Handled = true;
+            }
             return;
         }
         if (vim is { Mode: not Editor.VimMode.Insert })
@@ -117,6 +124,19 @@ public sealed partial class CodeEditor
             return;
         }
         Typed?.Invoke(this, typed);
+    }
+
+    /// <summary>Text typed while the editor refuses changes: a composition it ended is drawn no more, and the window hears
+    /// of it (<see cref="TypingRefusedEvent"/>).</summary>
+    private void RefuseTyping()
+    {
+        if (Composition.Length > 0)
+        {
+            inputMethod!.Committed();
+            RedrawChanged();
+            FollowInputMethod();
+        }
+        RaiseEvent(new RoutedEventArgs(TypingRefusedEvent, this));
     }
 
     private static readonly System.Buffers.SearchValues<char> ControlCharacters = System.Buffers.SearchValues.Create(

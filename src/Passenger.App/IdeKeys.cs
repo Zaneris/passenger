@@ -27,17 +27,24 @@ public interface IOwnKeys
 /// <param name="activity">A key or a click, in any of them.</param>
 /// <param name="left">One of them was left, perhaps for another program.</param>
 public sealed class IdeKeys(Window main, KeymapDispatcher keys, PopupHost popups, Func<TopLevel, bool> dismissed, Action<TopLevel, object?, KeyEventArgs> pressed,
-    Action<TopLevel, string> sideClicked, Action activity, Action left)
+    Action<CodeEditor> typingRefused, Action<TopLevel, string> sideClicked, Action activity, Action left)
 {
     /// <summary>The window a key is being handled in, while it is: what an action it runs acts on there.</summary>
     public TopLevel? Pressing { get; private set; }
 
     /// <summary>Takes a window in as the IDE's own, before it shows: its keys, its chords and double taps (forgotten on a
-    /// click, a move of the focus or the window left; a double tap on any other key too, wherever it goes), its activity,
-    /// its popups, and the gestures of its editors and of the side buttons.</summary>
+    /// click, a move of the focus or the window left; a double tap on any other key too, wherever it goes), what its
+    /// editors refuse typed, its activity, its popups, and the gestures of its editors and of the side buttons.</summary>
     public void Attach(TopLevel window)
     {
         window.AddHandler(InputElement.KeyDownEvent, (_, e) => OnKeyDown(window, e), RoutingStrategies.Tunnel);
+        window.AddHandler(CodeEditor.TypingRefusedEvent, (_, e) =>
+        {
+            if (e.Source is CodeEditor editor)
+            {
+                typingRefused(editor);
+            }
+        });
         window.AddHandler(InputElement.KeyDownEvent, (_, e) =>
         {
             keys.Heard(e);

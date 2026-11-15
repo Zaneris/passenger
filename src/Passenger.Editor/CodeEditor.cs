@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Input;
+using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Media.TextFormatting;
@@ -376,6 +377,12 @@ public sealed partial class CodeEditor : Control
     /// <summary>Why the text refuses changes while <see cref="IsReadOnly"/>, in the host's words, which Vim mode says as it
     /// refuses one; null for none.</summary>
     public string? ReadOnlyWhy { get; set; }
+
+    /// <summary>Raised from the editor, bubbling to its window, as it refuses text typed while <see cref="IsReadOnly"/> (a
+    /// key's, an input method's), so the host says <see cref="ReadOnlyWhy"/> as it does for a key changing the
+    /// text.</summary>
+    public static readonly RoutedEvent<RoutedEventArgs> TypingRefusedEvent =
+        RoutedEvent.Register<CodeEditor, RoutedEventArgs>("TypingRefused", RoutingStrategies.Bubble);
 
     /// <summary>Whether the gutter shows line numbers; a console's output goes without.</summary>
     public bool ShowLineNumbers { get; set; } = true;
