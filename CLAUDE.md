@@ -106,7 +106,7 @@ tests run with a 4 MB `System.GC.Gen0MaxBudget`, so a young collection fits a 14
   every theme (dark and light; the others live in Zaneris/passenger-themes, the tests' copy in
   `tests/Passenger.Tests/Themes`, Harbour's and Reef by hand, the rest by `just themes FOLDER`; Cubicle, carried in `Theme/BuiltIn`, by
   `tools/themes.py`'s `BUILT_IN`, `ThemeSource.Carried` naming what is carried); a theme file is read
-  only through `ThemeFiles` (format 1, `docs/themes.md`; its JSON `ThemeJson.Read`; one kept over a VS Code theme through `KeptThemes.KeepOver`, its name `ThemeFiles.NameOf`) and laid through `ThemeResources`, so a token added to
+  only through `ThemeFiles` (format 1, `docs/themes.md`; its JSON `ThemeJson.Read`; one kept over a VS Code theme through `KeptThemes.KeepOver`, its base, by id or by file, kept under `vscode/` (`KeptThemes.BaseBeside`), its name `ThemeFiles.NameOf`) and laid through `ThemeResources`, so a token added to
   Tokens.axaml is one a theme may give. A theme is a `SourcedTheme`; a source is read only through `ThemeSourceReads` and
   `ThemeListing`, never at a start whose themes are kept (`KeptThemes`); `PASSENGER_THEMES` names the repository's place; a theme's picture is drawn only through `ThemeBackdrop`
   (`ThemeBackdrops`), its colours by language reach an editor only through `ThemeLanguages.Follow`; a VS Code colour theme is read as data only (`VsCodeThemes`, a `.vsix` as a zip, nothing of it run), mapped by `VsCodeColours`, a theme's base by `VsCodeBases`, and Open VSX reached only through `OpenVsx` while the explorer is open or a theme is picked, never Microsoft's Marketplace; a token a theme may leave out is in `ThemeFiles.Optional`; the code's size in force
