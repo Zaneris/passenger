@@ -1727,3 +1727,18 @@ The one-off report-lane failures of the 0.3.0 PR's CI run 41847036147 (#1268):
   come; it came during Refresh's step and took the keys, so Refresh never ran. Prune now asks through `BackgroundWork.Run`
   (642c97448); the test says, on failure, which actions ran, the status bar's words, the recent list and what has the keys,
   and runs on a container engine of no program, never the machine's own (#1697).
+- `ProblemsTests`' `The_status_bar_says_solution_wide_analysis_is_under_way_until_its_first_round_answers`, CI 43699257512
+  (macOS, report shard 3): "Solution-wide analysis ended its first round with a pull of it unanswered". **The test waited
+  wrong.** It held the first workspace pull's answer and looked once it came, but a first round ends once Passenger's
+  extension says the pull analysed every file, which the server says before it answers, so the held answer kept nothing
+  under way: the test passed only while a slower source was still analysing as it looked (the warm server's sources had
+  all said so within milliseconds; the test took 1.09 s). The status bar is now read as the first pull is held unsent,
+  where the round surely goes on, and the test says each pull, file pull and refresh against its marks
+  (`CSharpService.AnalysisSteps`) (#1708).
+- `ProblemsTests`' `Keys_typed_in_a_burst_have_solution_wide_analysis_ask_the_server_again_once_typing_pauses`, CI
+  43699257512 (Linux, report shard 3): "asked the server again while 10 keys were typed in a burst … enc 1 then 1,
+  HotReloadDiagnostics 1 then 1". **The test waited wrong.** Avalonia's headless `KeyTextInput` runs the window's queued
+  work before it sends the key: a source's two-second rest after an answer with nothing new, come due as the warm-up's
+  settle drew its last frame, ran inside key 1's call with no file pull under way and asked before any key had come; the
+  first key let those pulls go and they were asked again once typing paused. With the window's thread stalled 2.2 s
+  before the first key it failed every time with CI's words; the test now counts from the first key's change (#1708).

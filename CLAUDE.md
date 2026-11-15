@@ -468,7 +468,7 @@ a new name, and `just site-shots` retakes its images.
   thread (`CSharpService.Heard`). It reruns every project's generators a second after its projects load and for each 5 s batch of
   `.dll` changes under .NET's packs folders, which moves every project's version, then says its diagnostics may have changed (`LanguageServer.RefreshedNote` in its log, from the server's start where an `--mcp` lsp.log begins only with the window's settings), bringing no pull of a file no tab shows: solution-wide analysis drops a pull
   under way at the server's diagnostic refresh (`CSharpService.SolutionMoved`), and its first round ends at the
-  extension's word that it analysed everything, never at the answer. A change under such a `**/*.dll` watch reaches the server only for a
+  extension's word that it analysed everything, never at the answer (so a test holding an answer holds no round: it holds the pull unsent). A change under such a `**/*.dll` watch reaches the server only for a
   file a project references (`WatchedFiles.ReferencedAsync`, the extension's `ReferencedFiles`).
 - **`LanguageServer.Changes` moves only for what changes the server's answers**: a request that changes them counts itself (`AnswersMoved`), a read never does; and `lsp.log` is written up to 250 ms late, so a test counting its lines first waits for a later request to show there.
 - **Roslyn's server keeps what it first read of a reference**, a failed read too, and waits 5 s after a change:
@@ -690,6 +690,7 @@ a new name, and `just site-shots` retakes its images.
   content: rows go through `ReusedRows`, made once with their containers (UiRulesTests).
 - **Avalonia's Button lets go of its press when it greys**, and a headless `MouseUp` runs queued work before the release:
   a list listed again greys nothing its choice enables until the choice is taken again (`BranchesPanel.listing`).
+- **Avalonia's headless `KeyTextInput` and `KeyPress` run the window's queued work before the key**, so a count taken around one includes what came due before it: count from the key's change.
 - **Avalonia 12.1 counts a run of clicks per button**: a press of another button starts a new run (`ClickCount` 1); a
   control with no background is no pointer target.
 - **Avalonia 12's ListBox re-points its keys' row by the chosen row's new index before moving rows**, so a focused row
