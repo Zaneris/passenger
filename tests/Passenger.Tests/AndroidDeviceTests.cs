@@ -161,6 +161,74 @@ public sealed class AndroidDeviceTests
         }
     }
 
+    /// <summary>A debugged app ended on the emulator from outside its debugger, as a crash or another program's force-stop
+    /// ends it, ends its session here and leaves nothing of its debugging there: the relay's port forward, the relay, the
+    /// app's mark as debugged.</summary>
+    [AvaloniaFact]
+    public void A_debugged_app_ended_on_the_emulator_from_outside_ends_its_session_and_leaves_nothing_of_its_debugging_there()
+    {
+        (string folder, string project, DeviceTarget target, AndroidTools tools) = Prepared();
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        try
+        {
+            Choose(window, project, target);
+            Ui.Launched(window, window.DebugAsync(), "the debug session's start on the emulator", Slow);
+            string serial = AndroidSerials.Of(window, target);
+            Ui.WaitFor(() => Pid(tools, serial).Length > 0, () => $"the debugged app to run on the emulator: {Ui.Said(window)}\n{Console(window)}", Slow);
+            Assert.True(Left(tools, serial).Length > 0, "The debug start put nothing of its own on the emulator, so there is nothing its end must take out");
+
+            Adb(tools, serial, "shell", "am", "force-stop", Package);
+            Ui.WaitFor(() => !window.Debugger.IsDebugging, () => $"the debug session to end with its app on the emulator: {Ui.Said(window)}", TimeSpan.FromMinutes(1));
+            Ui.WaitFor(() => Left(tools, serial).Length == 0, () => $"what the debugging put on the emulator to be taken out once its app ended there; it still has {Left(tools, serial)}",
+                TimeSpan.FromSeconds(30));
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>A Debug start stopped once Passenger's relay is in the app and a port forwarded to it takes out what it put on
+    /// the emulator by then, the relay, its environment and the forward, so a start that never ran leaves the device as it
+    /// found it and the app's next start loads no relay.</summary>
+    [AvaloniaFact]
+    public void A_debug_start_stopped_once_its_relay_is_in_the_app_leaves_nothing_of_it_on_the_emulator()
+    {
+        (string folder, string project, DeviceTarget target, AndroidTools tools) = Prepared();
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        TaskCompletionSource reached = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource go = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        try
+        {
+            Choose(window, project, target);
+            DeviceLaunches.HeldPuts = () =>
+            {
+                reached.TrySetResult();
+                return go.Task;
+            };
+            Task<string?> debugging = window.DebugAsync();
+            Ui.PumpUntil(() => reached.Task.IsCompleted || debugging.IsCompleted, "the build, the install and the relay put in the app", Slow);
+            if (!reached.Task.IsCompleted)
+            {
+                Assert.Fail($"The debug start ended before it put its relay in the app: {Ui.AwaitPumped(debugging, "the start's end")}{Ui.BuildErrors(window)}");
+            }
+            // The start holds the window busy until it goes on, so the key is pressed with no wait for quiet.
+            Ui.Run(window, AppActions.Stop, settle: false);
+            go.TrySetResult();
+            // A start stopped partway ends canceled, with no answer to read.
+            Ui.WaitFor(() => debugging.IsCompleted, "the stopped start to end", Slow);
+            string serial = Serial(target, project);
+            Ui.WaitFor(() => Left(tools, serial).Length == 0, () => $"what the stopped start put on the emulator to be taken out; it still has {Left(tools, serial)}",
+                TimeSpan.FromSeconds(30));
+        }
+        finally
+        {
+            DeviceLaunches.HeldPuts = null;
+            go.TrySetResult();
+            window.Close();
+        }
+    }
+
     /// <summary>A copy of the test app, the emulator or device to run it on and the Android tools; skipped, saying why, where
     /// the workload, its SDK and Java, a target or the relays are missing.</summary>
     private static (string Folder, string Project, DeviceTarget Target, AndroidTools Tools) Prepared()
@@ -221,17 +289,26 @@ public sealed class AndroidDeviceTests
     private static string? Shown(MainWindow window, string name) => window.BottomPanel.Debug.Tree.Rows.FirstOrDefault(r => r.Depth == 0 && r.Name == name)?.Value;
 
     /// <summary>What a start left on the emulator of <paramref name="serial"/>: a port forwarded to a session's relay, the
-    /// update handlers' socket reversed to Passenger, the app marked as debugged; empty once its end took them away.</summary>
+    /// update handlers' socket reversed to Passenger, the relay in the app, the app marked as debugged; empty once its end
+    /// took them away.</summary>
     private static string Left(AndroidTools tools, string serial)
     {
         string forwards = Adb(tools, serial, "forward", "--list");
         string reverses = Adb(tools, serial, "reverse", "--list");
+        string relay = Adb(tools, serial, "shell", $"run-as {Package} ls files/.__override__/arm64-v8a files/.__override__/x86_64 2>/dev/null");
         string debugged = Adb(tools, serial, "shell", "dumpsys activity processes | grep mDebugApp=");
         return string.Join("; ", [.. forwards.Split('\n').Where(l => l.StartsWith(serial + " ", StringComparison.Ordinal) && l.Contains("localabstract:passenger-debug-", StringComparison.Ordinal))
                 .Select(l => l.Trim()),
             .. reverses.Split('\n').Where(l => l.Contains("localabstract:passenger-handlers-", StringComparison.Ordinal)).Select(l => l.Trim()),
+            .. relay.Contains(AndroidApp.RelayFile, StringComparison.Ordinal) ? ["the relay in the app"] : (string[])[],
             .. debugged.Contains($"mDebugApp={Package}/", StringComparison.Ordinal) ? [$"{Package} marked as debugged"] : (string[])[]]);
     }
+
+    /// <summary>The serial of the emulator a test runs on: the target's own where it ran when listed, else the one its AVD
+    /// runs as once a start booted it.</summary>
+    private static string Serial(DeviceTarget target, string project) => target.Running ? target.Id
+        : Ui.Await(Waiting.Apart(() => AndroidDevices.ListAsync(project, "net11.0-android", new Dictionary<string, string>(), CancellationToken.None)), "the Android workload's devices", Slow)
+            .Targets.FirstOrDefault(t => t.Running && t.Avd == target.Avd)?.Id ?? throw new InvalidOperationException($"{target.Name} was not booted as an emulator the workload lists");
 
     /// <summary>The app's process on the emulator of <paramref name="serial"/>, as pidof says it: empty once it has ended.</summary>
     private static string Pid(AndroidTools tools, string serial) => Adb(tools, serial, "shell", "pidof", Package).Trim();

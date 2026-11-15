@@ -118,6 +118,10 @@ public static class DeviceLaunches
         }, null);
     }
 
+    /// <summary>Waited for once a start has put Passenger's relay in an app and forwarded a port to it, before the start goes
+    /// on: a test's way to stop a start there. Null waits for nothing.</summary>
+    public static Func<Task>? HeldPuts { get; set; }
+
     /// <summary>Passenger's relay put in an installed Debug app, with the runtime's profiler variables beside the build's own
     /// and a token only Passenger knows, a local port forwarded to its socket and the app marked as debugged (and the
     /// inspector beside it, where one is given, and the hook that calls its update handlers after each Hot Reload update,
@@ -141,7 +145,7 @@ public static class DeviceLaunches
     /// the update handlers' hook (<paramref name="handlers"/>), copied in by the app's own shell; the build's environment file
     /// with their variables added; a local port forwarded to the relay's and the inspector's socket in the app, the
     /// inspector told its own, and the hook's socket reversed to Passenger; and, for the relay, the app marked as debugged.
-    /// Whatever fails partway is taken out again.</summary>
+    /// Whatever fails partway, or is stopped once the files are in, is taken out again.</summary>
     private static async Task<(DevicePut? Put, RelaySession? Relay, string? Problem)> PutInAsync(AndroidApp app, bool relayed, DeviceInspector? inspector,
         UpdateHandlerHook.DeviceReach? handlers, CancellationToken cancel)
     {
@@ -209,7 +213,8 @@ public static class DeviceLaunches
             File.Delete(staged);
         }
         string[] carried = [.. files.Select(f => Path.GetFileName(f))];
-        ChildResult put = await AndroidDevices.AdbAsync(app.Adb, app.PutIn(abi, relayed, carried), cancel);
+        // Run to its end however the start is stopped, so what it put in is known to take out again.
+        ChildResult put = await AndroidDevices.AdbAsync(app.Adb, app.PutIn(abi, relayed, carried), CancellationToken.None);
         string[] said = put.Output.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         if (!put.Succeeded || said.Any(l => l.Contains("run-as:", StringComparison.Ordinal) || l.StartsWith("cp:", StringComparison.Ordinal) || l.StartsWith("mkdir:", StringComparison.Ordinal)))
         {
@@ -218,49 +223,70 @@ public static class DeviceLaunches
         string? linked = said.FirstOrDefault(l => l.StartsWith('/'));
         DevicePut placed = new(abi, linked, relayed, carried.Length > 0, []);
         RelaySession? session = null;
-        if (relayed)
+        try
         {
-            if (await ForwardAsync(app, socket, cancel) is not { } port)
+            cancel.ThrowIfCancellationRequested();
+            if (relayed)
             {
-                await EndAsync(app, placed, stop: false);
-                return (null, null, "adb could not forward a port to the debug relay");
-            }
-            placed = placed with { Ports = [.. placed.Ports, port] };
-            session = new RelaySession($"127.0.0.1:{port}", port, token, app.Deployed(abi), abi, linked);
-            await AndroidDevices.AdbAsync(app.Adb, app.SetDebugApp(), cancel);
-        }
-        if (inspector is not null)
-        {
-            if (await ForwardAsync(app, inspector.Socket, cancel) is { } port)
-            {
+                if (await ForwardAsync(app, socket) is not { } port)
+                {
+                    await EndAsync(app, placed, stop: false);
+                    return (null, null, "adb could not forward a port to the debug relay");
+                }
                 placed = placed with { Ports = [.. placed.Ports, port] };
-                inspector.Reach(port);
+                session = new RelaySession($"127.0.0.1:{port}", port, token, app.Deployed(abi), abi, linked);
+                if (HeldPuts is { } held)
+                {
+                    await held();
+                }
+                await AndroidDevices.AdbAsync(app.Adb, app.SetDebugApp(), cancel);
             }
-            else
+            if (inspector is not null)
             {
-                inspector.Unreached("adb could not forward a port to Passenger's inspector in the app");
+                cancel.ThrowIfCancellationRequested();
+                if (await ForwardAsync(app, inspector.Socket) is { } port)
+                {
+                    placed = placed with { Ports = [.. placed.Ports, port] };
+                    inspector.Reach(port);
+                }
+                else
+                {
+                    inspector.Unreached("adb could not forward a port to Passenger's inspector in the app");
+                }
             }
-        }
-        if (handlers is not null)
-        {
-            // Where the reverse fails, the hook reaches nothing and the app runs on, its update handlers uncalled.
-            if (await AndroidDevices.AdbAsync(app.Adb, app.On("reverse", $"localabstract:{handlers.Socket}", $"tcp:{handlers.Port}"), cancel) is { Succeeded: true })
+            if (handlers is not null)
             {
+                // Named before adb is asked, so a stop as it makes the reverse takes it out too.
                 placed = placed with { Reversed = [handlers.Socket] };
+                ChildResult reversed = await AndroidDevices.AdbAsync(app.Adb, app.On("reverse", $"localabstract:{handlers.Socket}", $"tcp:{handlers.Port}"), cancel);
+                if (!reversed.Succeeded)
+                {
+                    // Where the reverse fails, the hook reaches nothing and the app runs on, its update handlers uncalled.
+                    placed = placed with { Reversed = [] };
+                    IdeLog.Write(IdeLog.Ide, $"adb could not reverse {handlers.Socket} on {app.Serial} to the update handlers' hook: {reversed.Said}");
+                }
             }
-            else
-            {
-                IdeLog.Write(IdeLog.Ide, $"adb could not reverse {handlers.Socket} on {app.Serial} to the update handlers' hook");
-            }
+            return (placed, session, null);
         }
-        return (placed, session, null);
+        catch (OperationCanceledException)
+        {
+            // Stopped partway: what the device holds of the start comes out again, as where a step fails.
+            inspector?.Unreached("The start was stopped before Passenger's inspector was reached in the app");
+            await EndAsync(app, placed, stop: false);
+            throw;
+        }
     }
 
-    /// <summary>A local port adb forwards to an abstract socket in the app; null where it could not.</summary>
-    private static async Task<int?> ForwardAsync(AndroidApp app, string socket, CancellationToken cancel)
+    /// <summary>A local port adb forwards to an abstract socket in the app, which the log names beside the socket, so a
+    /// forward left behind is known by its start; null where it could not, adb's words in the log. Run to its end however
+    /// the start is stopped, so the port is known to take out again.</summary>
+    private static async Task<int?> ForwardAsync(AndroidApp app, string socket)
     {
-        ChildResult forward = await AndroidDevices.AdbAsync(app.Adb, app.On("forward", "tcp:0", $"localabstract:{socket}"), cancel);
-        return int.TryParse(forward.Output.Trim(), System.Globalization.CultureInfo.InvariantCulture, out int port) ? port : null;
+        ChildResult forward = await AndroidDevices.AdbAsync(app.Adb, app.On("forward", "tcp:0", $"localabstract:{socket}"), CancellationToken.None);
+        int? port = int.TryParse(forward.Output.Trim(), System.Globalization.CultureInfo.InvariantCulture, out int made) ? made : null;
+        IdeLog.Write(IdeLog.Ide, port is null ? $"adb could not forward a port to localabstract:{socket} on {app.Serial}: {forward.Said}"
+            : $"adb forwarded tcp:{port} to localabstract:{socket} on {app.Serial}");
+        return port;
     }
 
     /// <summary>The app ended on its device (unless <paramref name="stop"/> is false), and what a start put in taken out: the
@@ -279,11 +305,11 @@ public static class DeviceLaunches
                 await AndroidDevices.AdbAsync(app.Adb, app.TakeOut(put.Abi, put.Linked, put.Relayed, put.Carried), CancellationToken.None);
                 foreach (int port in put.Ports)
                 {
-                    await AndroidDevices.AdbAsync(app.Adb, app.On("forward", "--remove", $"tcp:{port}"), CancellationToken.None);
+                    await RemoveAsync(app, "forward", $"tcp:{port}");
                 }
                 foreach (string socket in put.Reversed)
                 {
-                    await AndroidDevices.AdbAsync(app.Adb, app.On("reverse", "--remove", $"localabstract:{socket}"), CancellationToken.None);
+                    await RemoveAsync(app, "reverse", $"localabstract:{socket}");
                 }
                 if (put.Relayed)
                 {
@@ -295,5 +321,14 @@ public static class DeviceLaunches
         {
             IdeLog.Write(IdeLog.Ide, $"{app.Package} on {app.Serial} was not ended cleanly: {gone.Message}");
         }
+    }
+
+    /// <summary>A forward or a reverse a start made taken out, adb's answer in the log whatever it was, so one left behind
+    /// says why.</summary>
+    private static async Task RemoveAsync(AndroidApp app, string kind, string what)
+    {
+        ChildResult removed = await AndroidDevices.AdbAsync(app.Adb, app.On(kind, "--remove", what), CancellationToken.None);
+        IdeLog.Write(IdeLog.Ide, removed.Succeeded ? $"adb took out the {kind} of {what} on {app.Serial}"
+            : $"adb did not take out the {kind} of {what} on {app.Serial}: {removed.Said}");
     }
 }
