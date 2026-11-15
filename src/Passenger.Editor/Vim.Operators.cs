@@ -291,7 +291,7 @@ public sealed partial class Vim
     private VimResult Wrap(bool stay, TextSnapshot text, SelectionSet selections, List<Stretch> stretches, IVimView view)
     {
         int width = Options.TextWidth > 0 ? Options.TextWidth : view.LineLength > 0 ? view.LineLength : VimWrapping.DefaultWidth;
-        VimWrapping.Wrapped wrapped = VimWrapping.Wrap(text, LinesOf(stretches), width, view.Indent.TabWidth, view.LineEnding, view.LineComment);
+        VimWrapping.Wrapped wrapped = VimWrapping.Wrap(text, LinesOf(stretches), width, view.Indent.TabWidth, view.LineEnding, view.LineComment, Options.JoinSpaces);
         IReadOnlyList<TextEdit> edits = wrapped.Edits;
         TextSnapshot after = text.Apply(edits);
         SelectionSet carets = selections.With(c =>
@@ -500,15 +500,16 @@ public sealed partial class Vim
     }
 
     /// <summary>J: each caret's line joined with the <paramref name="n"/> - 1 after it (at least one): the next line's
-    /// indent goes and one space comes between (two after a sentence's end with joinspaces), none after white, before a
-    /// ')' or with an empty side; gJ
-    /// (<paramref name="spaced"/> false) joins them as they are. The caret stands where the last join met.</summary>
+    /// indent goes and <see cref="JoinSpace"/> comes between; gJ (<paramref name="spaced"/> false) joins them as they are.
+    /// The caret stands where the last join met.</summary>
     private EditPlan? Join(TextSnapshot text, SelectionSet selections, int n, bool spaced = true, bool sentenceSpaces = false)
     {
         int lastLine = VimMotions.LastLine(text, breakEnds);
         List<TextEdit> edits = [];
         List<(int LineStart, int Landing)> landings = [];
         int reached = -1;
+        Span<char> ends = stackalloc char[2];
+        Span<char> starts = stackalloc char[1];
         foreach (Selection s in selections.Items)
         {
             int first = text.GetLineFromOffset(s.Caret);
@@ -518,20 +519,26 @@ public sealed partial class Vim
             }
             int last = (int)Math.Min(first + (long)Math.Max(n, 2) - 1, lastLine);
             int joinedLength = text.GetLine(first).Length;
-            char end = joinedLength > 0 ? text[text.GetLine(first).End - 1] : '\n';
+            int joinedFrom = text.GetLine(first).Start;
             int landing = 0;
             for (int line = first; line < last; line++)
             {
                 LineSpan here = text.GetLine(line);
                 LineSpan next = text.GetLine(line + 1);
                 int body = spaced ? TextNavigation.IndentEnd(text, next) : next.Start;
-                bool empty = body >= next.End;
-                // One space after a sentence's end too unless joinspaces is set, as code's comments have it.
-                string space = !spaced || empty || joinedLength == 0 || end is ' ' or '\t' || text[body] == ')' ? string.Empty : sentenceSpaces && end is '.' or '!' or '?' ? "  " : " ";
+                string space = string.Empty;
+                if (spaced)
+                {
+                    Span<char> end = ends[..Math.Min(2, here.End - joinedFrom)];
+                    Span<char> start = starts[..Math.Min(1, next.End - body)];
+                    text.CopyTo(here.End - end.Length, end);
+                    text.CopyTo(body, start);
+                    space = JoinSpace(end, start, joinedLength > 0, sentenceSpaces);
+                }
                 edits.Add(new TextEdit(here.End, body - here.End, space));
                 landing = joinedLength;
                 joinedLength += space.Length + (next.End - body);
-                end = empty ? end : text[next.End - 1];
+                joinedFrom = body;
             }
             landings.Add((text.GetLineStart(first), landing));
             reached = last;
@@ -543,6 +550,28 @@ public sealed partial class Vim
         TextSnapshot after = text.Apply(edits);
         List<Selection> carets = [.. landings.Select(at => Selection.At(Settled(after, Math.Min(TextEditing.MapOffset(at.LineStart, edits, false) + at.Landing, after.Length), breakEnds)))];
         return new EditPlan(edits, SelectionSet.Create(carets, Math.Min(selections.PrimaryIndex, carets.Count - 1)), EditKind.Other);
+    }
+
+    /// <summary>What J and gq put where a line meets the next one joined to it, as Vim 9.1's do: nothing before an empty
+    /// line or a ')', or with nothing joined yet; one space after an empty line; nothing after a blank, but a second space
+    /// after a sentence's end and a space with <paramref name="sentenceSpaces"/> (joinspaces); else one space, two after a
+    /// sentence's end with it. <paramref name="line"/> ends as the line joined (the first whole, one after from its
+    /// indent's end), <paramref name="next"/> begins as the next one from its indent's end.</summary>
+    internal static string JoinSpace(ReadOnlySpan<char> line, ReadOnlySpan<char> next, bool joinedAny, bool sentenceSpaces)
+    {
+        if (next.IsEmpty || !joinedAny || next[0] == ')')
+        {
+            return string.Empty;
+        }
+        if (line.IsEmpty)
+        {
+            return " ";
+        }
+        if (line[^1] is ' ' or '\t')
+        {
+            return sentenceSpaces && line[^1] == ' ' && line.Length > 1 && line[^2] is '.' or '!' or '?' ? " " : string.Empty;
+        }
+        return sentenceSpaces && line[^1] is '.' or '!' or '?' ? "  " : " ";
     }
 
     /// <summary>~: the case of the <paramref name="n"/> characters from each caret on its line toggled, the caret going past them.</summary>

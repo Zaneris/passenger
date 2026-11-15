@@ -1132,6 +1132,36 @@ public class VimTests
         Assert.Equal(after, Run(vim, before, keys));
     }
 
+    /// <summary>J and gq join lines alike, as Vim 9.1's do: with joinspaces two spaces after a sentence's end, and one
+    /// more where a single space already ends it; one space after an empty line, whatever came before it; none before a
+    /// ')' or after a blank, a ')' so joined staying one word with what it follows, which gq breaks before whole.</summary>
+    [Theory]
+    [InlineData(true, "|One. \nTwo.", "J", "One. | Two.")]
+    [InlineData(false, "|One. \nTwo.", "J", "One. |Two.")]
+    [InlineData(true, "|One.\n\nTwo.", "3J", "One.| Two.")]
+    [InlineData(true, "|One. \n\nTwo.", "3J", "One. | Two.")]
+    [InlineData(false, "|One. \n\nTwo.", "3J", "One. | Two.")]
+    [InlineData(false, "|   \n\nOne", "3J", "   | One")]
+    [InlineData(true, "|One. \n)Two", "J", "One. |)Two")]
+    [InlineData(true, "|One.  \nTwo", "J", "One.  |Two")]
+    [InlineData(true, "|One.\t\nTwo", "J", "One.\t|Two")]
+    [InlineData(true, "|One?\n    Two!", "J", "One?|  Two!")]
+    [InlineData(true, "|One two.\nThree four.\nFive.", "gqip", "One two.  Three\n|four.  Five.")]
+    [InlineData(false, "|One two.\nThree four.\nFive.", "gqip", "One two. Three four.\n|Five.")]
+    [InlineData(true, "|One two. \nThree four?\nFive.", "gqip", "One two.  Three\n|four?  Five.")]
+    [InlineData(true, "|// One two.\n// Three four.\n// Five.", "gqip", "// One two.  Three\n|// four.  Five.")]
+    [InlineData(true, "|One two.\n)Three four.\nFive.", "gqip", "One two.)Three four.\n|Five.")]
+    [InlineData(true, "one two.\nthree| four.", "gqk", "one two.  three\n|four.")]
+    [InlineData(false, "|One two three four\n)five six seven.", "gqip", "One two three\n|four)five six seven.")]
+    [InlineData(false, "|One two three\nfour\n)five six seven.", "gqip", "One two three\n|four)five six seven.")]
+    public void J_and_gq_join_lines_alike_as_vims_do(bool joinSpaces, string before, string keys, string after)
+    {
+        Vim vim = new();
+        vim.Registers.Options.JoinSpaces = joinSpaces;
+        vim.Registers.Options.TextWidth = 20;
+        Assert.Equal(after, Run(vim, before, keys));
+    }
+
     [Fact]
     public void Gq_wraps_at_the_width_the_editor_gives_where_textwidth_is_not_set_and_the_languages_own_comment_mark()
     {

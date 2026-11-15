@@ -41,21 +41,23 @@ public static class VimWrapping
         }
     }
 
-    /// <summary>The lines of each range, first to last, wrapped at <paramref name="width"/> columns; the ranges in order,
-    /// none overlapping.</summary>
-    public static Wrapped Wrap(TextSnapshot text, IReadOnlyList<(int First, int Last)> ranges, int width, int tabWidth, string lineEnding, string? lineComment)
+    /// <summary>The lines of each range, first to last, wrapped at <paramref name="width"/> columns, lines joining as J
+    /// joins them (two spaces after a sentence's end with <paramref name="sentenceSpaces"/>, joinspaces); the ranges in
+    /// order, none overlapping.</summary>
+    public static Wrapped Wrap(TextSnapshot text, IReadOnlyList<(int First, int Last)> ranges, int width, int tabWidth, string lineEnding, string? lineComment,
+        bool sentenceSpaces)
     {
         List<TextEdit> edits = [];
         List<(int From, int To, int Length)> words = [];
         int shift = 0;
         foreach ((int first, int last) in ranges)
         {
-            Wrap(text, first, last, width, tabWidth, lineEnding, lineComment, edits, words, ref shift);
+            Wrap(text, first, last, width, tabWidth, lineEnding, lineComment, sentenceSpaces, edits, words, ref shift);
         }
         return new Wrapped(edits, words);
     }
 
-    private static void Wrap(TextSnapshot text, int first, int last, int width, int tabWidth, string lineEnding, string? lineComment,
+    private static void Wrap(TextSnapshot text, int first, int last, int width, int tabWidth, string lineEnding, string? lineComment, bool sentenceSpaces,
         List<TextEdit> edits, List<(int From, int To, int Length)> words, ref int shift)
     {
         int line = first;
@@ -75,7 +77,7 @@ public static class VimWrapping
             int start = text.GetLineStart(line);
             int stop = text.GetLine(end).End;
             string was = text.GetText(start, stop - start);
-            (string made, List<(int From, int To, int Length)> placed) = Paragraph(text, line, end, head, width, tabWidth, lineEnding, lineComment);
+            (string made, List<(int From, int To, int Length)> placed) = Paragraph(text, line, end, head, width, tabWidth, lineEnding, lineComment, sentenceSpaces);
             if (made != was)
             {
                 edits.Add(new TextEdit(start, stop - start, made));
@@ -136,14 +138,14 @@ public static class VimWrapping
     /// <summary>One paragraph's lines as wrapped text, and where each word went in it from where it stood (both from the
     /// paragraph's start).</summary>
     private static (string Text, List<(int From, int To, int Length)> Words) Paragraph(TextSnapshot text, int first, int last, Line head, int width, int tabWidth,
-        string lineEnding, string? lineComment)
+        string lineEnding, string? lineComment, bool sentenceSpaces)
     {
         int paragraphStart = head.Start;
         string firstLead = text.GetText(head.Start, head.Words - head.Start);
         string indent = text.GetText(head.Start, head.Indent - head.Start);
         string afterMark = text.GetText(head.Indent + (head.Bullet ? 1 : head.Mark.Length), head.Words - head.Indent - (head.Bullet ? 1 : head.Mark.Length));
         string nextLead = head.Bullet ? indent + new string(' ', 1 + TextNavigation.ColumnAfter(afterMark, 0, tabWidth)) : indent + head.Mark + afterMark;
-        List<(string Word, string Before, int From)> pieces = [];
+        List<(string Word, string Before, int From, bool Glued)> pieces = [];
         for (int number = first; number <= last; number++)
         {
             Line line = number == first ? head : Read(text, number, lineComment);
@@ -163,6 +165,7 @@ public static class VimWrapping
                     at++;
                 }
                 string before = body[white..wordStart];
+                bool glued = false;
                 if (wordStart == at)
                 {
                     // Blanks a line ends with stay after its last word.
@@ -174,22 +177,24 @@ public static class VimWrapping
                 }
                 if (joined)
                 {
-                    // Lines join as J joins them: one space, none after blanks or before a ')'.
-                    bool endsWhite = pieces.Count > 0 && pieces[^1].Word.Length > 0 && pieces[^1].Word[^1] is ' ' or '\t';
-                    before = pieces.Count == 0 || endsWhite || body[wordStart] == ')' ? string.Empty : " ";
+                    // The last word holds the blanks its line ended with: as much of the line's end as the join reads.
+                    before = Vim.JoinSpace(pieces.Count > 0 ? pieces[^1].Word : string.Empty, body.AsSpan(wordStart), pieces.Count > 0, sentenceSpaces);
+                    // Joined with no blank between, the two are one word, as J leaves them.
+                    glued = before.Length == 0 && pieces.Count > 0 && pieces[^1].Word[^1] is not (' ' or '\t');
                     joined = false;
                 }
-                pieces.Add((body[wordStart..at], before, line.Words - paragraphStart + wordStart));
+                pieces.Add((body[wordStart..at], before, line.Words - paragraphStart + wordStart, glued));
             }
         }
         StringBuilder made = new(firstLead);
         int column = TextNavigation.ColumnAfter(firstLead, 0, tabWidth);
         bool lineHasWord = false;
         List<(int From, int To, int Length)> placed = [];
-        foreach ((string word, string before, int from) in pieces)
+        for (int i = 0; i < pieces.Count; i++)
         {
+            (string word, string before, int from, bool glued) = pieces[i];
             string bare = word.TrimEnd(' ', '\t');
-            if (lineHasWord && TextNavigation.ColumnAfter(before, column, tabWidth) + TextNavigation.ColumnAfter(bare, 0, tabWidth) > width)
+            if (lineHasWord && !glued && TextNavigation.ColumnAfter(before, column, tabWidth) + WidthFrom(pieces, i, tabWidth) > width)
             {
                 // A line broken loses the blanks it ended with.
                 int kept = made.Length;
@@ -212,5 +217,16 @@ public static class VimWrapping
             lineHasWord = true;
         }
         return (made.ToString(), placed);
+    }
+
+    /// <summary>The columns a word takes with those glued to it, without the blanks the last ends with.</summary>
+    private static int WidthFrom(List<(string Word, string Before, int From, bool Glued)> pieces, int first, int tabWidth)
+    {
+        int width = TextNavigation.ColumnAfter(pieces[first].Word.AsSpan().TrimEnd(" \t"), 0, tabWidth);
+        for (int i = first + 1; i < pieces.Count && pieces[i].Glued; i++)
+        {
+            width = TextNavigation.ColumnAfter(pieces[i].Word.AsSpan().TrimEnd(" \t"), width, tabWidth);
+        }
+        return width;
     }
 }
