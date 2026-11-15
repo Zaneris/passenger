@@ -181,7 +181,7 @@ public partial class ManagedDebugger
     private static bool IsDottedName(string expression)
     {
         string[] parts = expression.Split('.');
-        return parts.Length > 1 && parts.All(p => p.Length > 0 && (char.IsLetter(p[0]) || p[0] == '_') && p.All(c => char.IsLetterOrDigit(c) || c == '_'));
+        return parts.Length > 1 && parts.All(p => p.Length > 0 && SyntaxFacts.IsIdentifierStartCharacter(p[0]) && p.All(SyntaxFacts.IsIdentifierPartCharacter));
     }
 
     /// <summary>The compiler's message without its code: "The name 'x' does not exist in the current context".</summary>

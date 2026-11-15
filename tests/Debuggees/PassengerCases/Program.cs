@@ -254,6 +254,7 @@ internal static class Displays
 		LiftedObject lifted = new();
 		Angry angry = new();
 		Unprintable unprintable = new();
+		Tally tally = new();
 		Console.WriteLine("displays");
 	}
 }
@@ -333,6 +334,12 @@ internal sealed class AngryProxy
 	public AngryProxy(Angry target) => throw new InvalidOperationException("no");
 	public int Doubled => 2;
 }
+
+// A display naming a property implemented explicitly by its full name, its names holding marks.
+[DebuggerDisplay("गिनती = {Iगिनती.गिनती}")]
+internal sealed class Tally : Iगिनती { int Iगिनती.गिनती => 7; }
+
+internal interface Iगिनती { int गिनती { get; } }
 
 // A ToString that throws, as one under debugging may: the value is still there to open.
 internal sealed class Unprintable

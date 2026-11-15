@@ -135,6 +135,18 @@ public class VariablesCasesTests(ITestOutputHelper testOutputHelper)
         Assert.DoesNotContain(angry, v => v.Name is "_message" or "StackTrace");
     }
 
+    /// <summary>A [DebuggerDisplay] naming a property the type implements explicitly by its full name, which no C# expression
+    /// evaluates, shows the property's value where its names hold marks too.</summary>
+    [Fact]
+    public async Task DebuggerDisplay_naming_an_explicit_property_by_a_full_name_holding_marks_shows_its_value()
+    {
+        int line = Debuggees.Line("PassengerCases", "Console.WriteLine(\"displays\");");
+        await using DebugSession host = await DebugSession.LaunchToBreakpoint(testOutputHelper, "PassengerCases", line, []);
+        StoppedEvent stop = await host.WaitForStoppedEvent();
+        DapVariable tally = Assert.Single(await host.LocalsAsync(stop), v => v.Name == "tally");
+        Assert.True(tally.Value == "गिनती = 7", $"The display naming Iगिनती.गिनती shows \"{tally.Value}\", the name read only to its first mark");
+    }
+
     /// <summary>A value whose ToString throws shows its type and still opens to its members.</summary>
     [Gate]
     [Fact]
