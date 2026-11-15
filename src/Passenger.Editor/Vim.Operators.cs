@@ -318,7 +318,7 @@ public sealed partial class Vim
         {
             if (stay || Mine(stretches, c.Caret) is not { } s)
             {
-                return Selection.At(Settled(after, wrapped.Map(c.Caret), breakEnds));
+                return Selection.At(Settled(after, wrapped.Map(c.Caret, after), breakEnds));
             }
             int end = TextEditing.MapOffset(text.GetLine(s.Last).End, edits, true);
             return Selection.At(VimMotions.FirstNonBlank(after, after.GetLineFromOffset(Math.Min(end, after.Length)), breakEnds));

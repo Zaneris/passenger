@@ -1175,6 +1175,34 @@ public class VimTests
         Assert.Equal(after, Run(vim, before, keys));
     }
 
+    /// <summary>gw leaves a caret on the blanks after a word on the same blank, or where a line break took their place
+    /// at its line's end; one on a joined line's lead goes to its next word where the lead holds a mark, else as far
+    /// back from the blanks the join put as the lead ran on, as Vim 9.1's does.</summary>
+    [Theory]
+    [InlineData(false, 9, "One| two.\n)three four. \nfive six?\n)seven", "gwip", "On|e\ntwo.)three\nfour.\nfive\nsix?)seven")]
+    [InlineData(false, 9, "One| two.\n)three four. \nfive six?\n)seven", "gwj", "On|e\ntwo.)three\nfour. \nfive six?\n)seven")]
+    [InlineData(false, 9, "a.| b\nc.\n)d e! \nf", "gwip", "a.| b c.)d\ne! f")]
+    [InlineData(false, 6, "a. b\nc.\n)d e!| \nf", "gwip", "a. b\nc.)d\ne!| f")]
+    [InlineData(false, 6, "a. b\nc.\n)d e!| \nf", "gwj", "a. b\nc.\n)d e|!\nf")]
+    [InlineData(false, 9, "|// one two.\n// three)\n// )four five.", "gwj", "|// one\n// two.\n// three)\n// )four five.")]
+    [InlineData(false, 6, "  alpha|  beta gamma\n  delta epsilon\n\nzeta eta", "gwip", "  alph|a\n  beta\n  gamma\n  delta\n  epsilon\n\nzeta eta")]
+    [InlineData(false, 9, "  alpha  beta gamma\n|  delta epsilon\n\nzeta eta", "gwip", "  alpha\n  beta\n  gamm|a\n  delta\n  epsilon\n\nzeta eta")]
+    [InlineData(false, 9, "  alpha  beta gamma\n|  delta epsilon\n\nzeta eta", "gwj", "  alpha  beta gamma\n|  delta\n  epsilon\n\nzeta eta")]
+    [InlineData(false, 9, "word  word  word| word\nx", "gwip", "word\nword\nword| word\nx")]
+    [InlineData(false, 6, "- item| one two\n  more text here\nnext", "gwip", "- ite|m\n  one\n  two\n  more\n  text\n  here\n  next")]
+    [InlineData(false, 40, "aa bb.|  \n   cc dd\n  ee ff", "gwip", "aa bb.|  cc dd ee ff")]
+    [InlineData(false, 40, "aa bb.  \n|   cc dd\n  ee ff", "gwip", "aa bb.  |cc dd ee ff")]
+    [InlineData(false, 40, "aa bb.\n | cc dd", "gwip", "aa bb.| cc dd")]
+    [InlineData(true, 40, "aa bb.\n | cc dd", "gwip", "aa bb. | cc dd")]
+    [InlineData(false, 40, "// aa bb\n|//   cc dd\n// ee", "gwip", "// aa bb |cc dd ee")]
+    public void Gw_leaves_a_caret_on_blanks_or_a_joined_lines_lead_where_vims_does(bool joinSpaces, int textWidth, string before, string keys, string after)
+    {
+        Vim vim = new();
+        vim.Registers.Options.JoinSpaces = joinSpaces;
+        vim.Registers.Options.TextWidth = textWidth;
+        Assert.Equal(after, Run(vim, before, keys));
+    }
+
     [Fact]
     public void Gq_wraps_at_the_width_the_editor_gives_where_textwidth_is_not_set_and_the_languages_own_comment_mark()
     {

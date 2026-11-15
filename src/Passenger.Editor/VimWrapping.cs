@@ -15,13 +15,20 @@ public static class VimWrapping
     /// <summary>The width gq wraps at where no width is set: Vim's own.</summary>
     public const int DefaultWidth = 79;
 
-    /// <summary>What wrapping lines made: the edits, in order, and where each word of theirs went, from its old offset to
-    /// its new one, for gw to put the caret back in the text.</summary>
-    public sealed record Wrapped(IReadOnlyList<TextEdit> Edits, IReadOnlyList<(int From, int To, int Length)> Words)
+    /// <summary>A word wrapping moved: where it stood and where it went, its length, and the blanks after it on its line;
+    /// for a word beginning a line joined to the one before, that line's lead before it (-1 for any other word), whether
+    /// the lead holds a comment's mark, and the blanks the join put before the word.</summary>
+    public readonly record struct Moved(int From, int To, int Length, int Trail, int Lead, bool Marked, int Joined);
+
+    /// <summary>What wrapping lines made: the edits, in order, and where each word of theirs went, for gw to put the caret
+    /// back in the text.</summary>
+    public sealed record Wrapped(IReadOnlyList<TextEdit> Edits, IReadOnlyList<Moved> Words)
     {
-        /// <summary>An offset of the text before carried into the text after: inside a word, the same place in it; between
-        /// words, the start of the next.</summary>
-        public int Map(int offset)
+        /// <summary>An offset of the text before carried into the text after (<paramref name="after"/>): inside a word, the
+        /// same place in it; before a paragraph's first word, as far before it; on the blanks after a word on its line,
+        /// the same blank; on a joined line's lead, its next word where the lead holds a mark, else as far back from the
+        /// blanks the join put as the lead runs on; and from blanks a line break took the place of, the line's end.</summary>
+        public int Map(int offset, TextSnapshot after)
         {
             foreach (TextEdit edit in Edits)
             {
@@ -29,15 +36,58 @@ public static class VimWrapping
                 {
                     continue;
                 }
-                foreach ((int from, int to, int length) in Words)
+                Moved? before = null;
+                foreach (Moved word in Words)
                 {
-                    if (from >= edit.Start && from <= edit.End && offset < from + length)
+                    if (word.From < edit.Start || word.From > edit.End)
                     {
-                        return offset >= from ? to + (offset - from) : to;
+                        continue;
                     }
+                    if (offset < word.From + word.Length)
+                    {
+                        return offset >= word.From ? word.To + (offset - word.From)
+                            : before is not { } last ? word.To - (word.From - offset)
+                            : word.Lead >= 0 && offset >= word.From - word.Lead ? InLead(last, word)
+                            : Blank(last);
+                    }
+                    before = word;
+                }
+                if (before is { } end)
+                {
+                    return Blank(end);
                 }
             }
             return TextEditing.MapOffset(offset, Edits, false);
+
+            int Blank(Moved word)
+            {
+                int end = word.To + word.Length;
+                int at = end + Math.Min(offset - (word.From + word.Length), word.Trail);
+                return Broken(end, at + 1) ? end : at;
+            }
+
+            int InLead(Moved last, Moved word)
+            {
+                if (word.Marked)
+                {
+                    return word.To;
+                }
+                int join = last.To + last.Length + last.Trail;
+                int at = join + Math.Max(0, word.Joined + offset - word.From);
+                return !Broken(last.To + last.Length, word.To) ? at : at < join + word.Joined ? last.To + last.Length : word.To;
+            }
+
+            bool Broken(int from, int to)
+            {
+                for (int p = from; p < to && p < after.Length; p++)
+                {
+                    if (after[p] is '\r' or '\n')
+                    {
+                        return true;
+                    }
+                }
+                return false;
+            }
         }
     }
 
@@ -48,7 +98,7 @@ public static class VimWrapping
         bool sentenceSpaces)
     {
         List<TextEdit> edits = [];
-        List<(int From, int To, int Length)> words = [];
+        List<Moved> words = [];
         int shift = 0;
         foreach ((int first, int last) in ranges)
         {
@@ -58,7 +108,7 @@ public static class VimWrapping
     }
 
     private static void Wrap(TextSnapshot text, int first, int last, int width, int tabWidth, string lineEnding, string? lineComment, bool sentenceSpaces,
-        List<TextEdit> edits, List<(int From, int To, int Length)> words, ref int shift)
+        List<TextEdit> edits, List<Moved> words, ref int shift)
     {
         int line = first;
         while (line <= last)
@@ -77,14 +127,14 @@ public static class VimWrapping
             int start = text.GetLineStart(line);
             int stop = text.GetLine(end).End;
             string was = text.GetText(start, stop - start);
-            (string made, List<(int From, int To, int Length)> placed) = Paragraph(text, line, end, head, width, tabWidth, lineEnding, lineComment, sentenceSpaces);
+            (string made, List<Moved> placed) = Paragraph(text, line, end, head, width, tabWidth, lineEnding, lineComment, sentenceSpaces);
             if (made != was)
             {
                 edits.Add(new TextEdit(start, stop - start, made));
             }
-            foreach ((int from, int to, int length) in placed)
+            foreach (Moved word in placed)
             {
-                words.Add((start + from, start + shift + to, length));
+                words.Add(word with { From = start + word.From, To = start + shift + word.To });
             }
             shift += made.Length - was.Length;
             line = end + 1;
@@ -137,7 +187,7 @@ public static class VimWrapping
 
     /// <summary>One paragraph's lines as wrapped text, and where each word went in it from where it stood (both from the
     /// paragraph's start).</summary>
-    private static (string Text, List<(int From, int To, int Length)> Words) Paragraph(TextSnapshot text, int first, int last, Line head, int width, int tabWidth,
+    private static (string Text, List<Moved> Words) Paragraph(TextSnapshot text, int first, int last, Line head, int width, int tabWidth,
         string lineEnding, string? lineComment, bool sentenceSpaces)
     {
         int paragraphStart = head.Start;
@@ -145,7 +195,7 @@ public static class VimWrapping
         string indent = text.GetText(head.Start, head.Indent - head.Start);
         string afterMark = text.GetText(head.Indent + (head.Bullet ? 1 : head.Mark.Length), head.Words - head.Indent - (head.Bullet ? 1 : head.Mark.Length));
         string nextLead = head.Bullet ? indent + new string(' ', 1 + TextNavigation.ColumnAfter(afterMark, 0, tabWidth)) : indent + head.Mark + afterMark;
-        List<(string Word, string Before, int From, bool Glued)> pieces = [];
+        List<(string Word, string Before, int From, bool Glued, int Trail, int Lead)> pieces = [];
         for (int number = first; number <= last; number++)
         {
             Line line = number == first ? head : Read(text, number, lineComment);
@@ -183,16 +233,22 @@ public static class VimWrapping
                     glued = before.Length == 0 && pieces.Count > 0 && pieces[^1].Word[^1] is not (' ' or '\t');
                     joined = false;
                 }
-                pieces.Add((body[wordStart..at], before, line.Words - paragraphStart + wordStart, glued));
+                int trail = at;
+                while (trail < body.Length && body[trail] is ' ' or '\t')
+                {
+                    trail++;
+                }
+                int lead = number > first && white == 0 ? line.Words - line.Start + wordStart : -1;
+                pieces.Add((body[wordStart..at], before, line.Words - paragraphStart + wordStart, glued, trail - at, lead));
             }
         }
         StringBuilder made = new(firstLead);
         int column = TextNavigation.ColumnAfter(firstLead, 0, tabWidth);
         bool lineHasWord = false;
-        List<(int From, int To, int Length)> placed = [];
+        List<Moved> placed = [];
         for (int i = 0; i < pieces.Count; i++)
         {
-            (string word, string before, int from, bool glued) = pieces[i];
+            (string word, string before, int from, bool glued, int trail, int lead) = pieces[i];
             string bare = word.TrimEnd(' ', '\t');
             if (lineHasWord && !glued && TextNavigation.ColumnAfter(before, column, tabWidth) + WidthFrom(pieces, i, tabWidth) > width)
             {
@@ -211,7 +267,7 @@ public static class VimWrapping
                 made.Append(before);
                 column = TextNavigation.ColumnAfter(before, column, tabWidth);
             }
-            placed.Add((from, made.Length, bare.Length));
+            placed.Add(new Moved(from, made.Length, bare.Length, trail, lead, head.Mark.Length > 0, lead >= 0 ? before.Length : 0));
             made.Append(word);
             column = TextNavigation.ColumnAfter(word, column, tabWidth);
             lineHasWord = true;
@@ -220,7 +276,7 @@ public static class VimWrapping
     }
 
     /// <summary>The columns a word takes with those glued to it, without the blanks the last ends with.</summary>
-    private static int WidthFrom(List<(string Word, string Before, int From, bool Glued)> pieces, int first, int tabWidth)
+    private static int WidthFrom(List<(string Word, string Before, int From, bool Glued, int Trail, int Lead)> pieces, int first, int tabWidth)
     {
         int width = TextNavigation.ColumnAfter(pieces[first].Word.AsSpan().TrimEnd(" \t"), 0, tabWidth);
         for (int i = first + 1; i < pieces.Count && pieces[i].Glued; i++)
