@@ -146,8 +146,8 @@ internal sealed partial class GherkinAssist
             return [];
         }
         TextSnapshot snapshot = TextSnapshot.From(text);
-        string classIndent = LeadingOf(snapshot, declared.SpanStart);
-        string indent = declared.Members.FirstOrDefault() is { } member ? LeadingOf(snapshot, member.SpanStart) : classIndent + "    ";
+        string classIndent = TextNavigation.IndentOf(snapshot, declared.SpanStart);
+        string indent = declared.Members.FirstOrDefault() is { } member ? TextNavigation.IndentOf(snapshot, member.SpanStart) : classIndent + "    ";
         string methods = string.Join("\n", snippets.Select(s => Indented(s.Code, indent)));
         int close = declared.CloseBraceToken.SpanStart;
         int start = snapshot.GetLineStart(snapshot.GetLineFromOffset(close));
@@ -156,13 +156,6 @@ internal sealed partial class GherkinAssist
             return [new TextEdit(start, 0, (declared.Members.Count > 0 ? "\n" : string.Empty) + methods)];
         }
         return [new TextEdit(close, 0, "\n" + methods + classIndent)];
-    }
-
-    /// <summary>The whitespace a line begins with, the line an offset is on.</summary>
-    private static string LeadingOf(TextSnapshot text, int offset)
-    {
-        string line = text.GetLineText(text.GetLineFromOffset(offset));
-        return line[..(line.Length - line.TrimStart().Length)];
     }
 
     /// <summary>Code of lines each ending in a line break, every line that holds anything indented.</summary>
