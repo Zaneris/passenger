@@ -265,7 +265,7 @@ Projects in `src/`; `find_symbol` finds the rest from the names here. A pointer'
   device it runs through `Passenger.DebugRelay` (relay.c), loaded by the Debug app as its profiler, which knows only the
   callbacks' argument kinds: `Passenger.Debugger/Relay` plans each interface from the interop declarations, keeps answers
   in `RelayAnswers` keyed by the interface declaring the method (ICorDebug's interfaces reuse slot numbers), and answers
-  or refuses a raw pointer no plan can size on the host.
+  or refuses a raw pointer no plan can size on the host; a Hot Reload update through it first has the app's debugger make its own copy of the module's metadata (`RelaySession.AppMetadataMade`), which its ApplyChanges assumes.
   `Passenger.ContainerTools` runs inside a Linux container, carried only in the release's archives.
 - `Passenger.Profiler`: EventPipe and ClrMD (its Azure packages stay carried; its DAC stays loaded once used: unloading
   it crashed on Linux); recording in a container trusts nothing in a frame. A heap dump is Passenger's own (`DumpTool`):
@@ -361,7 +361,7 @@ Projects in `src/`; `find_symbol` finds the rest from the names here. A pointer'
   solution's multi-project launch profiles live only in Visual Studio's `.slnLaunch`/`.slnLaunch.user` beside it
   (`SolutionLaunch`, written as text where each stands), each project started as its own configuration
   (`RunConfigurations.ProjectOf`). Whether this machine builds Android apps is `AndroidHosts` (Linux on any processor but x64 builds none; an installed pack's aapt2 answers for itself); a workload install's downloads and words go through `WorkloadInstalls`. What a mobile project needs is asked of its own workloads (`MobileQuestions`, said by `MobileBanner`; an Apple project's simulator runtimes of the workload's own Xcode's `simctl`), and a workload
-  installed reloads every project (`ProjectHosts.EndUnderAsync`, `ProjectModels.EvaluateAll`). An app on a device is a `LaunchPlan.Device` (`DeviceLaunches`; the inspector and relay put in `files/.passenger` by `PutInspectorAsync`/`PutRelayAsync`, never over the app's own assemblies, reached through `adb forward`; its end registered with `ProjectSession.EndsOnDevices`, never left to a session's end event), where a project runs one answer (`DeviceChoices.InForce`); a launch profile naming one platform belongs to it (`DeviceTargets.TiedTo`), taken by the project's configuration where that platform is the target, never a configuration of its own;
+  installed reloads every project (`ProjectHosts.EndUnderAsync`, `ProjectModels.EvaluateAll`). An app on a device is a `LaunchPlan.Device` (`DeviceLaunches`; the inspector and relay put in `files/.passenger` by `PutInspectorAsync`/`PutRelayAsync`, never over the app's own assemblies, reached through `adb forward`; its end registered with `ProjectSession.EndsOnDevices`, never left to a session's end event), where a project runs one answer (`DeviceChoices.InForce`), Run with Hot Reload there attaching quietly through the relay (`DebugController.AttachForHotReloadThroughRelayAsync`), never dotnet watch; a launch profile naming one platform belongs to it (`DeviceTargets.TiedTo`), taken by the project's configuration where that platform is the target, never a configuration of its own;
   Android's only through the workload's `ComputeAvailableDevices`, `DeployToDevice` and `ComputeRunArguments`, adb through
   `ChildProcesses`.
 - **Runs of services.** `ServiceRun` is the one model: Debug, Attach, Restart and Profile written once; one start at a
