@@ -1,6 +1,4 @@
-using System.Diagnostics;
 using System.Runtime.InteropServices;
-using System.Text.Json;
 using Avalonia.Headless.XUnit;
 using Passenger.App;
 using Passenger.App.Run;
@@ -15,8 +13,7 @@ namespace Passenger.Tests;
 /// as Godot's script editor, and Run starts the game, whose script prints; by default its solution sits beside
 /// project.godot, where Godot's own editor builds it; in GDScript it makes the game's folder alone, which opens and runs the
 /// same. With no Godot found it is refused saying how to get one. Godot runs headless with the run's user folders; without
-/// a Godot 4 .NET build, the tests that run it skip saying why, as Godot's editor's build does where that editor builds
-/// nothing with the run's .NET.</summary>
+/// a Godot 4 .NET build, the tests that run it skip saying why.</summary>
 public sealed class NewGodotGameTests : IDisposable
 {
     private readonly string settings = TestFolders.Create("settings-");
@@ -70,88 +67,95 @@ public sealed class NewGodotGameTests : IDisposable
     }
 
     /// <summary>The Godot 4 Game made in C# with the dialog's defaults keeps its solution beside project.godot and the
-    /// project, as Godot's editor lays a game out, and Godot's own editor, headless with the test's user folders, builds it
-    /// there into its .godot folder.</summary>
+    /// project, as Godot's editor lays a game out, and Godot's own editor, started through its Godot Editor configuration
+    /// (headless, building the solution and quitting), builds it there into its .godot folder; or, where that editor builds
+    /// no C# game here (#1726), Passenger says why in the Run window before the editor starts, which then fails as said.</summary>
     [AvaloniaFact]
-    public void A_csharp_godot_games_solution_sits_beside_project_godot_by_default_where_godots_editor_builds_it()
+    public void A_csharp_godot_games_solution_sits_beside_project_godot_by_default_where_godots_editor_builds_it_or_passenger_says_why_not()
     {
         SkipWithoutGodot();
         MainWindow window = Started();
-        Process? editor = null;
         try
         {
             NewProjectDialog dialog = Chosen(window, "C#");
             Assert.True(dialog.SameDirectory, "A C# Godot game was to put its solution beside project.godot unless told otherwise");
+            string? framework = dialog.Framework;
             Created(dialog);
             string folder = PathNames.Canonical(Path.Combine(place, "Spinner"));
             string solution = Path.Combine(folder, $"Spinner.{dialog.SolutionFormat}");
             Ui.WaitFor(() => window.WorkspaceModel?.OpenedAs == solution, () => $"the new game's solution to open beside project.godot ({window.Status})", TimeSpan.FromMinutes(2));
             Assert.True(File.Exists(Path.Combine(folder, GodotProject.FileName)) && File.Exists(Path.Combine(folder, "Spinner.csproj")),
                 $"project.godot and the project were to sit beside the solution: {string.Join(", ", Directory.EnumerateFileSystemEntries(folder).Select(Path.GetFileName))}");
-            Ui.WaitFor(() => !window.IsBuilding && window.Status?.Contains("Make Passenger Godot's Script Editor…", StringComparison.Ordinal) == true,
-                () => $"Passenger's own build of the new game to end ({window.Status})", TimeSpan.FromMinutes(4));
-
-            string log = place + "-editor.log";
-            ProcessStartInfo start = ChildProcesses.Command(godot!.Executable, [GodotExecutables.Headless, "--path", folder, "--build-solutions", "--quit", "--log-file", log], folder);
-            foreach ((string name, string value) in homes)
+            (string said, int code, bool built) = BuiltByGodotsEditor(window, folder);
+            if (Unbuilt(said) is not { } why)
             {
-                start.Environment[name] = value;
+                Assert.True(code == 0 && built, $"Godot's editor did not build the {framework} game where its solution sits ({ExitCodes.Said(code)}), and Passenger said nothing of it:\n{said}");
+                return;
             }
-            if (WhyGodotsEditorBuildsNothing(start.Environment) is { } why)
-            {
-                Assert.Skip(why);
-            }
-            editor = ChildProcesses.Start(start);
-            Ui.Await(editor.WaitForExitAsync(), "Godot's headless editor to build the game and quit", TimeSpan.FromMinutes(5));
-            string said = (File.Exists(log) ? string.Join('\n', File.ReadAllLines(log).TakeLast(30)) : "no log") + BuildIssues();
-            Assert.True(editor.ExitCode == 0, $"Godot's editor did not build the game where its solution sits ({ExitCodes.Said(editor.ExitCode)}):\n{said}");
-            Assert.True(File.Exists(Path.Combine(folder, ".godot", "mono", "temp", "bin", "Debug", "Spinner.dll")), $"Godot's editor built no Spinner.dll:\n{said}");
+            Assert.True(code != 0 && !built, $"Passenger said Godot's editor would build no C# game here, which it built:\n{why}");
+            Assert.True(said.IndexOf(why, StringComparison.Ordinal) < said.IndexOf("Godot Engine v", StringComparison.Ordinal), $"Passenger said why Godot's editor builds no C# game only after it started:\n{said}");
         }
         finally
         {
-            if (editor is not null && DotnetProcesses.Runs(editor.Id))
-            {
-                ChildProcesses.Kill(editor);
-            }
             End(window);
         }
     }
 
-    /// <summary>Why the Godot found, its editor started with this environment, builds no C# game here, or null where it can:
-    /// one carrying a Microsoft.Build.Locator before 1.6, whose builds' dotnet has no release SDK of the .NET its editor runs
-    /// on, registers MSBuild through that locator, which names a .NET 11 SDK's folders without their separator, and every
-    /// build it starts then finds no Microsoft.NET.Sdk (#1715).</summary>
-    private string? WhyGodotsEditorBuildsNothing(IDictionary<string, string?> environment)
+    /// <summary>A C# Godot game on .NET 10 where Godot's editor on macOS builds with the installer's dotnet, which holds a
+    /// released .NET 10 SDK, while DOTNET_ROOT names another installation, whose newest .NET it would otherwise run on and
+    /// find no released SDK of there: Godot's editor started through Passenger runs on the installer's .NET and builds the
+    /// game, where every build it started failed (#1726).</summary>
+    [AvaloniaFact]
+    public void A_csharp_godot_game_on_dotnet_10_is_built_by_godots_editor_through_passenger_where_dotnet_root_names_another_installation()
     {
-        const string Locator = "Microsoft.Build.Locator/";
-        const string Installed = "/usr/local/share/dotnet/dotnet";
-        string deps = Path.Combine(godot!.Sharp!, "Tools", "GodotTools.deps.json");
-        string? Given(string name) => environment.TryGetValue(name, out string? value) && Directory.Exists(value) ? value : null;
-        DotnetInstallation? Of(string? dotnet) => dotnet is null ? null : DotnetInstallation.Read(Path.GetDirectoryName(PathNames.Canonical(dotnet))!);
-        if (!File.Exists(deps))
+        SkipWithoutGodot();
+        string? root = Environment.GetEnvironmentVariable(RuntimeVariables.RootFor(RuntimeInformation.ProcessArchitecture.ToString())) ?? Environment.GetEnvironmentVariable(RuntimeVariables.Root);
+        Assert.SkipUnless(OperatingSystem.IsMacOS() && root is { Length: > 0 } && !PathNames.Same(PathNames.Canonical(root), GodotEditorDotnet.InstallerRoot)
+            && DotnetInstallation.Read(GodotEditorDotnet.InstallerRoot).Sdks.Any(s => !VersionOrder.IsPrerelease(s) && VersionOrder.Major(s) == 10),
+            $"Godot's editor builds with the installer's dotnet on macOS alone, and this test needs DOTNET_ROOT naming another installation ({root ?? "unset"}) "
+            + $"and a released .NET 10 SDK in {GodotEditorDotnet.InstallerRoot}");
+        MainWindow window = Started();
+        try
         {
-            return null;
+            NewProjectDialog dialog = Chosen(window, "C#");
+            dialog.Framework = "net10.0";
+            Assert.SkipWhen(dialog.Framework != "net10.0", $"New Solution offers the Godot game no net10.0 here, only {dialog.Framework}");
+            Created(dialog);
+            string folder = PathNames.Canonical(Path.Combine(place, "Spinner"));
+            Ui.WaitFor(() => window.WorkspaceModel?.OpenedAs is not null, () => $"the new game's solution to open ({window.Status})", TimeSpan.FromMinutes(2));
+            (string said, int code, bool built) = BuiltByGodotsEditor(window, folder);
+            Assert.True(code == 0 && built && Unbuilt(said) is null, $"Godot's editor started through Passenger did not build the net10.0 game ({ExitCodes.Said(code)}), "
+                + $"DOTNET_ROOT naming {root}:\n{said}");
         }
-        using JsonDocument read = JsonDocument.Parse(File.ReadAllText(deps));
-        string? carried = JsonMembers.Properties(read.RootElement, "libraries").Select(p => p.Name)
-            .FirstOrDefault(n => n.StartsWith(Locator, StringComparison.Ordinal))?[Locator.Length..];
-        // The editor's own .NET: its DOTNET_ROOT's newest released runtime from 8, as its plugins roll forward.
-        string? root = Given(RuntimeVariables.RootFor(RuntimeInformation.ProcessArchitecture.ToString())) ?? Given(RuntimeVariables.Root);
-        int? runs = root is null ? null : DotnetInstallation.Read(root).Runtimes.Where(r => !VersionOrder.IsPrerelease(r)).Select(VersionOrder.Major).Max();
-        string? onPath = Programs.CommandIn((environment.TryGetValue("PATH", out string? path) ? path ?? string.Empty : string.Empty)
-            .Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries), "dotnet");
-        // On macOS its builds take the installer's dotnet wherever that is, else the PATH's.
-        string? builder = OperatingSystem.IsMacOS() && File.Exists(Installed) ? Installed : onPath;
-        if (!System.Version.TryParse(carried, out System.Version? locator) || locator >= new System.Version(1, 6) || runs is not int major || major < 8
-            || Of(builder) is not { } builds || builds.Sdks.Any(s => !VersionOrder.IsPrerelease(s) && VersionOrder.Major(s) == major)
-            || Of(onPath) is not { NewestSdk: { } sdk } located || VersionOrder.Major(sdk) < 11)
+        finally
         {
-            return null;
+            End(window);
         }
-        return $"Godot {godot.Version}'s editor builds no C# game here: it builds with {builder}, which has no .NET {major} SDK for the .NET {major} "
-            + $"its editor runs on from {root}, so it registers MSBuild through its Microsoft.Build.Locator {carried}, which names the PATH's SDK {sdk} "
-            + $"by its folders without their separator (MSBuildSDKsPath {Path.Combine(located.Root, "sdk", sdk)}Sdks), and the build finds no Microsoft.NET.Sdk";
     }
+
+    /// <summary>The game's build by Godot's own editor, once Passenger's own has ended: the editor started through the game's
+    /// generated Godot Editor configuration, headless with the test's user folders, building the solution and quitting,
+    /// Passenger building nothing first. What the Run window said (and Godot's build logs), the editor's exit code, and
+    /// whether Godot's own build ended well, as its build log under the test's user folders keeps it, the game's assembly there.</summary>
+    private (string Said, int Code, bool Built) BuiltByGodotsEditor(MainWindow window, string folder)
+    {
+        Ui.WaitFor(() => !window.IsBuilding && window.Status?.Contains("Make Passenger Godot's Script Editor…", StringComparison.Ordinal) == true,
+            () => $"Passenger's own build of the new game to end ({window.Status})", TimeSpan.FromMinutes(4));
+        Ui.WaitFor(() => window.Configurations.Any(c => c.Generated && c.GodotEditor),
+            () => $"the game's Godot Editor configuration ({string.Join(", ", window.Configurations.Select(c => c.Name))})", TimeSpan.FromMinutes(1));
+        RunConfiguration editor = window.Configurations.First(c => c.Generated && c.GodotEditor);
+        window.SetConfigurations([editor with { Name = "Godot builds", Generated = false, Arguments = $"{GodotExecutables.Headless} --build-solutions --quit",
+            BuildBeforeLaunch = false, Environment = new(homes) }], "Godot builds");
+        Ui.Launched(window, window.RunAsync(), "Godot's editor's start", TimeSpan.FromMinutes(3));
+        int code = Ui.Await(window.RunEnd, "Godot's editor to build the game and quit", TimeSpan.FromMinutes(5));
+        bool built = Directory.EnumerateFiles(place + "-home", "msbuild_log.txt", SearchOption.AllDirectories)
+            .Any(log => File.ReadLines(log).LastOrDefault(l => l.StartsWith("Done building project", StringComparison.Ordinal)) == "Done building project \"Spinner.csproj\".");
+        return (Output(window) + BuildIssues(), code, built && File.Exists(Path.Combine(folder, ".godot", "mono", "temp", "bin", "Debug", "Spinner.dll")));
+    }
+
+    /// <summary>What Passenger said in the Run window of why Godot's editor builds or runs no C# of the game; null for nothing.</summary>
+    private static string? Unbuilt(string said) => said.Split('\n').FirstOrDefault(l => l.Contains("'s editor builds no C# here", StringComparison.Ordinal)
+        || l.Contains("'s editor runs no C# of the game here", StringComparison.Ordinal));
 
     /// <summary>The errors and warnings of the builds Godot's editor ran, as its build logs under the test's user folders
     /// keep them, after a line break; empty where it kept none.</summary>

@@ -336,7 +336,7 @@ public sealed partial record LaunchPlan
             StringComparer.OrdinalIgnoreCase);
         if (project.GodotFolder is not null)
         {
-            names.UnionWith([MSBuildNames.GodotSdkVersion, MSBuildNames.Configuration]);
+            names.UnionWith([MSBuildNames.GodotSdkVersion, MSBuildNames.Configuration, MSBuildNames.TargetFramework]);
         }
         if (project.IsWeb)
         {
@@ -374,7 +374,8 @@ public sealed partial record LaunchPlan
                     + $"chosen builds {project.Name} as {builtAs} (as an export does): choose {GodotLaunch.RunsConfiguration} to run it");
             }
             return await GodotLaunch.PlanAsync(configuration, project, game, target, framework, Expand, Passenger.App.Godot.GodotUserFolders.Into(Variables(), godotFolders), godot,
-                properties.GetValueOrDefault(MSBuildNames.GodotSdkVersion), headless, cancel, atHand);
+                properties.GetValueOrDefault(MSBuildNames.GodotSdkVersion), headless, cancel, atHand,
+                properties.GetValueOrDefault(MSBuildNames.TargetFramework) is { Length: > 0 } evaluated ? evaluated : null);
         }
         List<string> arguments = [.. CommandLine.Split(Expand(configuration.Arguments))];
         IReadOnlyList<string> ofProject = [];

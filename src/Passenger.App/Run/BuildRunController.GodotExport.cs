@@ -14,6 +14,9 @@ public sealed record GodotExportRequest(string Folder, string Preset, bool Debug
 /// templates it lacks; or why it cannot run.</summary>
 public sealed record GodotExportPlan(string Program, IReadOnlyList<string> Arguments, string Output, IReadOnlyList<string> Missing, string? Templates, string? Version)
 {
+    /// <summary>What the editor that exports needs for its build of a C# game (<see cref="GodotEditorDotnet"/>).</summary>
+    public GodotEditorDotnet.Given Builds { get; init; } = GodotEditorDotnet.Given.AsItStands;
+
     /// <summary>The plan of a request, read off the window's thread: the preset found in export_presets.cfg, the Godot found
     /// running the project, its templates' folder in the user folders given; why not, else.</summary>
     public static async Task<(GodotExportPlan? Plan, string? Why)> OfAsync(GodotExportRequest request, string? setting, bool scripts, IReadOnlyDictionary<string, string>? folders)
@@ -48,7 +51,13 @@ public sealed record GodotExportPlan(string Program, IReadOnlyList<string> Argum
             arguments.Add(GodotExecutables.Headless);
         }
         arguments.AddRange(["--path", request.Folder, request.Debug ? "--export-debug" : "--export-release", preset.Name, output]);
-        return (new GodotExportPlan(found.Executable, arguments, output, GodotExports.Missing(preset, request.Debug, templates, File.Exists, request.Folder), templates, version), null);
+        // A C# game's export publishes it through the editor's own build.
+        GodotEditorDotnet.Given builds = scripts ? GodotEditorDotnet.Given.AsItStands
+            : GodotEditorDotnet.For(found, GodotUserFolders.Into(new Dictionary<string, string>(), folders), request.Folder, null, runsGame: false);
+        return (new GodotExportPlan(found.Executable, arguments, output, GodotExports.Missing(preset, request.Debug, templates, File.Exists, request.Folder), templates, version)
+        {
+            Builds = builds,
+        }, null);
     }
 }
 
@@ -96,6 +105,10 @@ public sealed partial class BuildRunController
                 return Refused($"{request.Preset} cannot be exported: Godot {plan.Version} has no {Plural.Listed(plan.Missing)} among its export templates"
                     + $"{(plan.Templates is { } folder ? $" ({PathNames.Shown(folder, null)})" : string.Empty)}: install them from a {GodotExports.Archive} in Publish");
             }
+            if (plan.Builds.WhyNot is { } unbuilt)
+            {
+                return Refused($"{request.Preset} cannot be exported: {unbuilt}");
+            }
             if (await parts.Editors.SaveAllLandedAsync(work, work.Stopping) is { } unsaved)
             {
                 return Refused(unsaved);
@@ -133,6 +146,10 @@ public sealed partial class BuildRunController
             try
             {
                 Dictionary<string, string> environment = new(GodotUserFolders.Into(new Dictionary<string, string>(), folders), StringComparer.Ordinal);
+                foreach ((string name, string value) in plan.Builds.Variables)
+                {
+                    environment[name] = value;
+                }
                 (string? notStarted, int code) = await GodotScripts.PuttingBackAsync(request.Folder, async () =>
                 {
                     if (await session.Runner.StartAsync(plan.Program, plan.Arguments, request.Folder, environment) is { } unstarted)
