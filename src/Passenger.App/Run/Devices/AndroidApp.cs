@@ -85,8 +85,10 @@ public sealed record AndroidApp(string Serial, string Adb, string Package, strin
     /// <summary>The lines of the Run window looked through for the start: the plan's notes, then the shell's first.</summary>
     private const int FirstLines = 64;
 
-    /// <summary>Ends the app however it runs.</summary>
-    public IReadOnlyList<string> ForceStop() => On("shell", "am", "force-stop", Package);
+    /// <summary>Ends the app however it runs, the device's shell ending once its process has gone (10 s at most): the system
+    /// kills it as force-stop answers.</summary>
+    public IReadOnlyList<string> ForceStop() => On("shell",
+        $"am force-stop {Package}; i=0; while pidof {Package} >/dev/null && [ $i -lt 100 ]; do sleep 0.1; i=$((i+1)); done");
 
     /// <summary>Marks the app as debugged, so the system lets a stop of its main thread pass without ending it.</summary>
     public IReadOnlyList<string> SetDebugApp() => On("shell", "am", "set-debug-app", Package);

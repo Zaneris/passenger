@@ -135,7 +135,7 @@ public sealed partial class BuildRunController
         }
         ConsoleSink console = tab.Console.Sink;
         Task log = Task.WhenAll(console.PumpAsync(ChildProcesses.Output(shell), ConsoleStream.Output), console.PumpAsync(ChildProcesses.Errors(shell), ConsoleStream.Error));
-        session.EndsOnDevices(EndDebuggedOnDeviceAsync(DebugEnded(debug.SessionNamed(plan.Name)), shell, log, app, put), () => DeviceLaunches.EndAsync(app, put));
+        session.EndsOnDevices(plan.Name, EndDebuggedOnDeviceAsync(DebugEnded(debug.SessionNamed(plan.Name)), shell, log, app, put), () => DeviceLaunches.EndAsync(app, put));
         return null;
     }
 

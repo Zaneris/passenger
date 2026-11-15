@@ -1642,6 +1642,8 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         {
             ToolWindows.DebugTab tab = TabFor(session)!;
             await Session.Debug.StopAsync(tab);
+            // A session's app on a device ends there after the session.
+            await Session.EndedOnDevicesAsync(tab.Name);
             return $"Stopped {tab.Name}";
         }
         string? idle = Builds.WhyNotStop();

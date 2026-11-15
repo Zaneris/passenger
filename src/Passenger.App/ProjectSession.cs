@@ -822,16 +822,26 @@ public sealed class ProjectSession : IAsyncDisposable
     /// <summary>What ends apps Run and Debug started on devices and takes out what their starts put in them, still under
     /// way: the folder's end waits for it (<see cref="CloseAsync"/>), so a Passenger that quits leaves no port forwarded to an
     /// app, nor an app marked as debugged.</summary>
-    private readonly List<(Task Ending, Func<Task> Now)> deviceEnds = [];
+    private readonly List<(string Name, Task Ending, Func<Task> Now)> deviceEnds = [];
 
-    /// <summary>An app's end on its device, under way until its run or session ends and what its start put in is taken out;
-    /// <paramref name="now"/> ends it at once, which the folder's end does where its run or session has not ended first.</summary>
-    public void EndsOnDevices(Task ending, Func<Task> now)
+    /// <summary>The end on its device of the app of a program named <paramref name="name"/>, under way until its run or
+    /// session ends and what its start put in is taken out; <paramref name="now"/> ends it at once, which the folder's end
+    /// does where its run or session has not ended first.</summary>
+    public void EndsOnDevices(string name, Task ending, Func<Task> now)
     {
         UiThread.Check();
         deviceEnds.RemoveAll(d => d.Ending.IsCompleted);
-        deviceEnds.Add((ending, now));
+        deviceEnds.Add((name, ending, now));
         IdeErrors.Observe(ending);
+    }
+
+    /// <summary>Done once the apps on devices of the program named <paramref name="name"/> (of every program where null) have
+    /// ended there, their processes gone and what their starts put in taken out, however each ended: what a Stop waits for
+    /// after its runs and sessions here.</summary>
+    public Task EndedOnDevicesAsync(string? name = null)
+    {
+        UiThread.Check();
+        return Task.WhenAll(deviceEnds.Where(d => name is null || d.Name == name).Select(d => d.Ending.Ended()));
     }
 
     /// <summary>The Avalonia or WPF app Run started last, inspected for its failed bindings and agents' tools (the Live Visual

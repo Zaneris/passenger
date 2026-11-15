@@ -1330,7 +1330,7 @@ public sealed partial class BuildRunController
                 }
                 if (plan.Device?.App is { } inTerminalOnDevice)
                 {
-                    session.EndsOnDevices(EndOnDeviceAsync(refused is null && session.InTerminal is { } shell ? shell.Ended : Task.FromResult(0), inTerminalOnDevice, put),
+                    session.EndsOnDevices(chosen.Name, EndOnDeviceAsync(refused is null && session.InTerminal is { } shell ? shell.Ended : Task.FromResult(0), inTerminalOnDevice, put),
                         () => DeviceLaunches.EndAsync(inTerminalOnDevice, put));
                     if (refused is null && relay is not null)
                     {
@@ -1376,7 +1376,7 @@ public sealed partial class BuildRunController
             if (plan.Device?.App is { } onDevice)
             {
                 // Its shell on the device ends with the app; Stop ends the shell here, so the app is ended there too.
-                session.EndsOnDevices(EndOnDeviceAsync(notStarted is null ? session.Runner.Ended : Task.FromResult(0), onDevice, put), () => DeviceLaunches.EndAsync(onDevice, put));
+                session.EndsOnDevices(chosen.Name, EndOnDeviceAsync(notStarted is null ? session.Runner.Ended : Task.FromResult(0), onDevice, put), () => DeviceLaunches.EndAsync(onDevice, put));
             }
             if (notStarted is null && relay is not null)
             {
@@ -2889,13 +2889,13 @@ public sealed partial class BuildRunController
 
     /// <summary>Stop All, the window's and an agent's stop: as Stop, every program debugged ended rather than the chosen one;
     /// done once each has ended, Run's program has let go of the Run console (its end landed there, so a start after the
-    /// answer finds it free) and a container run's containers are taken down (not left running as its log's end would
-    /// leave them).</summary>
+    /// answer finds it free), a container run's containers are taken down (not left running as its log's end would leave
+    /// them) and an app on a device has ended there.</summary>
     public Task StopAllAsync()
     {
         parts.Work.Stop();
         Task debugged = session.Debug.StopAllAsync();
-        return Task.WhenAll(debugged, StopRest());
+        return Task.WhenAll(debugged, StopRest(), session.EndedOnDevicesAsync());
     }
 
     /// <summary>What every Stop ends besides the debugger's: a container run (done once its containers are down), Run's

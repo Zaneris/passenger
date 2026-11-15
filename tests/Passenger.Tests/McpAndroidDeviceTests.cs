@@ -11,21 +11,20 @@ namespace Passenger.Tests;
 
 /// <summary>An agent's run and debug of an Android app (tests/AndroidApp) on an emulator through its own Passenger
 /// (<c>--mcp</c>): ide_action app.chooseRunTarget chooses the emulator, and run, or debug_start once the session runs
-/// there, answers once the app has started, naming the emulator and the app's process, rather than waiting out its
-/// whole wait; stop ends it. An agent that goes the moment stop answers a debugged app's leaves nothing of Passenger's on
-/// the emulator: the Passenger waits for the app's end there before it goes. An Avalonia app's Android head run there
-/// shows its view root as its one window to app_windows asked the moment run answers; the MAUI template's Android head run
-/// there lists its main page's label and button to app_tree, its window's picture to app_screenshot, and app_click taps the
-/// button. Every adb call names the emulator, ANDROID_SERIAL's where several run. Skips, saying why, without the Android
-/// workload, its SDK and Java, or an emulator (and the relays, for the debugged app; Avalonia's Android packages, or MAUI's
-/// workload, for their apps). Alone, as AndroidDeviceTests is, the emulator being one for both.</summary>
+/// there, answers once the app has started, naming the emulator and the app's process; stop answers once the app has
+/// ended there. An agent that goes as stop answers a debugged app's leaves nothing of Passenger's on the emulator. An
+/// Avalonia app's Android head shows its view root as its one window to app_windows asked as run answers; the MAUI
+/// template's Android head lists its main page's label and button to app_tree, its picture to app_screenshot, and
+/// app_click taps the button. Every adb call names the emulator, ANDROID_SERIAL's where several run. Skips, saying why,
+/// without the Android workload, its SDK and Java, or an emulator (and the relays, for the debugged app; Avalonia's
+/// Android packages, or MAUI's workload, for their apps). Alone, as AndroidDeviceTests is, the emulator one for both.</summary>
 [Collection(Alone.Name)]
 public sealed class McpAndroidDeviceTests : McpRig
 {
     private const string Package = "net.passengeride.tests.androidapp";
 
     [Fact]
-    public async Task An_agents_run_of_an_android_app_on_an_emulator_answers_once_it_has_started_there_naming_the_emulator()
+    public async Task An_agents_run_of_an_android_app_on_an_emulator_answers_once_it_has_started_there_naming_the_emulator_and_stop_once_it_has_ended()
     {
         if (await ChosenAsync() is not ({ } client, { } target, { } tools, { } project))
         {
@@ -48,7 +47,7 @@ public sealed class McpAndroidDeviceTests : McpRig
     }
 
     [Fact]
-    public async Task An_agents_debug_start_of_an_android_app_on_an_emulator_answers_once_its_session_runs_there_naming_the_emulator()
+    public async Task An_agents_debug_start_of_an_android_app_on_an_emulator_answers_once_its_session_runs_there_naming_the_emulator_and_stop_once_it_has_ended()
     {
         if (await ChosenAsync() is not ({ } client, { } target, { } tools, { } project))
         {
@@ -136,11 +135,11 @@ public sealed class McpAndroidDeviceTests : McpRig
         return serial ?? throw new InvalidOperationException($"{target.Name} was not booted as an emulator the workload lists");
     }
 
-    /// <summary>Waits for the app to have ended on the emulator of <paramref name="serial"/>.</summary>
+    /// <summary>That the app has ended on the emulator of <paramref name="serial"/> as stop answers: an agent goes on from there.</summary>
     private static async Task EndedAsync(string serial, AndroidTools tools, string package = Package)
     {
-        await Waiting.UntilAsync(async () => (await ChildProcesses.RunAsync(ChildProcesses.Command(tools.Adb, ["-s", serial, "shell", "pidof", package]))).Output.Trim().Length == 0,
-            TimeSpan.FromSeconds(30), Cancel, TimeSpan.FromMilliseconds(500));
+        string running = (await ChildProcesses.RunAsync(ChildProcesses.Command(tools.Adb, ["-s", serial, "shell", "pidof", package]))).Output.Trim();
+        Assert.True(running.Length == 0, $"stop answered while the app still ran on the emulator as {running}, so an agent's next start there may find it");
     }
 
     [Fact]

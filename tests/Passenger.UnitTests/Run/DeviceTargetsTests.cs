@@ -118,7 +118,8 @@ public class DeviceTargetsTests
         Assert.Contains("p=$(pidof com.shop)", run[3], StringComparison.Ordinal);
         Assert.Contains("logcat -v tag --pid=$p", run[3], StringComparison.Ordinal);
         Assert.Contains("while [ -d /proc/$p ]", run[3], StringComparison.Ordinal);
-        Assert.Equal(["-s", "emulator-5554", "shell", "am", "force-stop", "com.shop"], app.ForceStop());
+        Assert.Equal(["-s", "emulator-5554", "shell", "am force-stop com.shop; i=0; while pidof com.shop >/dev/null && [ $i -lt 100 ]; do sleep 0.1; i=$((i+1)); done"],
+            app.ForceStop());
         Assert.Equal(["-s", "emulator-5554", "shell", "am", "set-debug-app", "com.shop"], app.SetDebugApp());
         Assert.Equal(["-s", "emulator-5554", "shell", "[ \"$(dumpsys activity processes | grep -c 'mDebugApp=com.shop/')\" != 0 ] && am clear-debug-app; true"],
             app.ClearDebugApp());
