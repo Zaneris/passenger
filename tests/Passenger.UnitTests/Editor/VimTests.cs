@@ -2066,6 +2066,18 @@ public class VimTests
     public void A_block_keeps_a_piece_for_each_line_and_puts_each_out_to_its_column(string before, string keys, string after) =>
         Assert.Equal(after, Run(before, keys));
 
+    /// <summary>o in a block $ took to each line's end leaves the corner it moves from past its own line's end, the block
+    /// no longer reaching each line's end, as Vim's does.</summary>
+    [Theory]
+    [InlineData("|abcdef\nab\nghijklmn\nop", "<C-v>$oA7<Esc>", "|abcdef 7\nab\nghijklmn\nop")]
+    [InlineData("|abcdef\nab\nghijklmn\nop", "<C-v>j$oA7<Esc>", "|abc7def\nab 7\nghijklmn\nop")]
+    [InlineData("|abcdef\nab\nghijklmn\nop", "<C-v>$jod", "|def\n\nghijklmn\nop")]
+    [InlineData("|abcdef\nab\nghijklmn\nop", "<C-v>j$ojd", "abcdef\n|\nghijklmn\nop")]
+    [InlineData("|ab cd\nefghij\nk", "<C-v>j$oA7<Esc>", "|ab cd  7\nefghij 7\nk")]
+    [InlineData("|ab cd\nefghij\nk", "<C-v>$ooA7<Esc>", "|ab cd 7\nefghij\nk")]
+    public void O_in_a_block_after_dollar_keeps_its_corner_past_the_lines_end(string before, string keys, string after) =>
+        Assert.Equal(after, Run(before, keys));
+
     [Fact]
     public void A_huge_count_ends_at_the_texts_edge()
     {

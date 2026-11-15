@@ -329,8 +329,9 @@ public sealed partial class Vim
                 VimMode to = first switch { "v" => VimMode.Visual, "V" => VimMode.VisualLine, _ => VimMode.VisualBlock };
                 return to == Mode ? LeaveVisual(text, view) : SwitchVisual(to, text, view);
             case "o":
+                // A block's corner $ took past its line's end stays there, the block no longer reaching each line's end.
                 regions = [.. regions.Select(r => new Region(r.Cursor, r.Anchor))];
-                blockColumns = (blockColumns.Cursor, blockColumns.Anchor, blockColumns.ToEnd);
+                blockColumns = (blockColumns.Cursor, blockColumns.Anchor, false);
                 visualAims = [.. regions.Select(_ => -1)];
                 return ShowVisual(text, view);
             case "O" when Mode == VimMode.VisualBlock:
