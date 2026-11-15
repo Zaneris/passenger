@@ -6,6 +6,7 @@ using Passenger.Core;
 using Passenger.MauiPreview;
 using Passenger.Text;
 using Passenger.Workspace;
+using Passenger.Xaml;
 using Passenger.Xaml.Features;
 using Passenger.Xaml.Projects;
 
@@ -153,58 +154,37 @@ internal sealed class MauiPreviewHost : ChildPreviewHost
         MauiScreen screen = Preview.Look.Screen ?? MauiLook.ScreenFor(platform);
         string theme = Preview.Look.Theme ?? (Application.Current?.ActualThemeVariant == ThemeVariant.Dark ? MauiPreviewThemes.Dark : MauiPreviewThemes.Light);
         Dictionary<string, TextSnapshot> open = Preview.Document.Service.OpenTexts();
+        XamlProject project = Builder.Current;
         return application => JsonSerializer.Serialize(new MauiPreviewRequest
         {
             Sequence = sequence,
             Path = path,
             Xaml = MauiPreviewText.Declared(text.ToString()),
-            Application = application is { } app ? new MauiPreviewSource(app.Path, MauiPreviewText.Declared(MauiPreviewText.WithOpenDictionaries(app.Xaml, source => Opened(open, app.Path, source)))) : null,
+            Application = application is { } app ? new PreviewSource(app.Path, MauiPreviewText.Declared(MauiPreviewText.WithOpenDictionaries(app.Xaml, source => Opened(project, open, app.Path, source)))) : null,
             Scale = scale,
             Width = screen.Width,
             Height = screen.Height,
             Platform = platform,
             Idiom = screen.Idiom,
             Theme = theme,
-        }, MauiPreviewJson.Options);
+        }, PeerJson.Options);
     }
 
-    /// <summary>The text of an open file a merged dictionary's Source names, against the file naming it (against the
-    /// project's folder where it starts with a '/'); null where it is not open.</summary>
-    private string? Opened(Dictionary<string, TextSnapshot> open, string from, string source)
+    /// <summary>The text of an open file a merged dictionary's Source names, found as the project finds it; null where it
+    /// is not open.</summary>
+    private static string? Opened(XamlProject project, Dictionary<string, TextSnapshot> open, string from, string source)
     {
-        string folder = source.StartsWith('/') ? Builder.Current.Inputs.Folder : Path.GetDirectoryName(from)!;
-        string path;
+        string? path;
         try
         {
-            path = Path.GetFullPath(Path.Combine(folder, source.TrimStart('/').Replace('/', Path.DirectorySeparatorChar)));
+            path = project.ResolveSource(source, from);
         }
         catch (ArgumentException)
         {
+            // A Source as it is typed may name no path at all (a NUL in it).
             return null;
         }
-        return open.FirstOrDefault(o => PathNames.Same(o.Key, path)).Value?.ToString();
-    }
-
-    protected override async IAsyncEnumerable<PreviewAnswer> AnswersAsync(Stream output, Action<string> unread)
-    {
-        await foreach (MauiPreviewReply reply in JsonLines.ReadAsync(output, MauiPreviewJson.Reply, (line, _) => unread(line)))
-        {
-            yield return new PreviewAnswer(reply.Kind switch
-            {
-                MauiPreviewKinds.Frame => PreviewAnswerKind.Frame,
-                MauiPreviewKinds.Error => PreviewAnswerKind.Error,
-                _ => PreviewAnswerKind.Nothing,
-            }, reply.Sequence)
-            {
-                Png = reply.Png,
-                Scale = reply.Scale,
-                Boxes = [.. (reply.Elements ?? []).Select(b => (b.Line, b.Column, new Rect(b.X, b.Y, b.Width, b.Height)))],
-                Message = reply.Message,
-                Line = reply.Line,
-                Column = reply.Column,
-                Notes = [.. (reply.Notes ?? []).Select(n => (n, (int?)null))],
-            };
-        }
+        return path is null ? null : open.FirstOrDefault(o => PathNames.Same(o.Key, path)).Value?.ToString();
     }
 }
 

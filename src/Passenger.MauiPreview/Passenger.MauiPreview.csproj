@@ -36,8 +36,11 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- Passenger's requests read as every JSON-lines peer reads its messages. -->
+    <!-- Passenger's requests read as every JSON-lines peer reads its messages, and the wire every previewer shares: its
+         answers, its start and the newest request waiting. -->
     <Compile Include="../Passenger.Core/JsonLines.cs" Link="JsonLines.cs" />
+    <Compile Include="../Passenger.Core/PreviewWire.cs" Link="PreviewWire.cs" />
+    <Compile Include="../Passenger.Core/PreviewRequests.cs" Link="PreviewRequests.cs" />
     <!-- The project's .deps.json read as every other program's JSON is. -->
     <Compile Include="../Passenger.Core/JsonMembers.cs" Link="JsonMembers.cs" />
     <Compile Include="../Passenger.Core/LenientJson.cs" Link="LenientJson.cs" />

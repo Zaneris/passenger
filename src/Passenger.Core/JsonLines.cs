@@ -1,6 +1,7 @@
 using System.IO;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Text.Json.Serialization.Metadata;
 
 namespace Passenger.Core;
@@ -53,4 +54,19 @@ public static partial class JsonLines
             return null;
         }
     }
+}
+
+/// <summary>What Passenger and its own JSON-lines peers (the project host, the previewers) write and read their messages
+/// with: the web's names, a null left out, and each type's metadata to be had before the first message.</summary>
+public static class PeerJson
+{
+    public static readonly JsonSerializerOptions Options = new(JsonSerializerDefaults.Web)
+    {
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+        // Named, as the serializer names it by default, so each message's metadata can be had before the first message.
+        TypeInfoResolver = new DefaultJsonTypeInfoResolver(),
+    };
+
+    /// <summary>A message's type as the options read and write it.</summary>
+    public static JsonTypeInfo<T> Of<T>() => (JsonTypeInfo<T>)Options.GetTypeInfo(typeof(T));
 }

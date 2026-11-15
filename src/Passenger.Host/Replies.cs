@@ -23,14 +23,14 @@ public sealed class Replies(Stream output)
         lock (gate)
         {
             line.Clear();
-            Utf8JsonWriter json = writer ??= new Utf8JsonWriter(line, new JsonWriterOptions { Encoder = HostJson.Options.Encoder });
+            Utf8JsonWriter json = writer ??= new Utf8JsonWriter(line, new JsonWriterOptions { Encoder = PeerJson.Options.Encoder });
             json.Reset(line);
             json.WriteStartObject();
             json.WriteNumber(HostReply.Id, id);
             if (value is not null)
             {
                 json.WritePropertyName(name);
-                JsonSerializer.Serialize(json, value, value.GetType(), HostJson.Options);
+                JsonSerializer.Serialize(json, value, value.GetType(), PeerJson.Options);
             }
             else if (error is not null)
             {

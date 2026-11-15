@@ -204,7 +204,7 @@ public sealed class ProjectHost : IAsyncDisposable
     {
         Reply reply = Reply.Read(first);
         return reply.Error is { } error ? throw new ProjectHostFailed(error) { MissingSdk = MissingSdk.From(error) }
-            : reply.Value.IsEmpty || reply.Partial || JsonSerializer.Deserialize<HostReady>(reply.Value, HostJson.Options) is not { } ready
+            : reply.Value.IsEmpty || reply.Partial || JsonSerializer.Deserialize<HostReady>(reply.Value, PeerJson.Options) is not { } ready
                 ? throw new ProjectHostFailed("the project host did not say which SDK it loaded")
             : ready;
     }
@@ -229,7 +229,7 @@ public sealed class ProjectHost : IAsyncDisposable
     {
         await GiveProgramsAsync(projects, cancel).ConfigureAwait(false);
         return await AskAsync<EvaluateDone>(HostMethods.Evaluate, new EvaluateParams(projects, properties) { Each = each },
-            partial => evaluated(JsonSerializer.Deserialize<EvaluatedProject>(partial, HostJson.Options)!), cancel).ConfigureAwait(false)
+            partial => evaluated(JsonSerializer.Deserialize<EvaluatedProject>(partial, PeerJson.Options)!), cancel).ConfigureAwait(false)
             ?? throw new ProjectHostFailed("the project host gave no answer for its evaluation");
     }
 
@@ -347,7 +347,7 @@ public sealed class ProjectHost : IAsyncDisposable
         TaskCompletionSource held = new(TaskCreationOptions.RunContinuationsAsynchronously);
         Task<bool?> asked = AskAsync<bool?>(HostMethods.Hold, new HoldParams(), partial =>
         {
-            HoldState state = JsonSerializer.Deserialize<HoldState>(partial, HostJson.Options)!;
+            HoldState state = JsonSerializer.Deserialize<HoldState>(partial, PeerJson.Options)!;
             if (state.Held)
             {
                 held.TrySetResult();
@@ -376,7 +376,7 @@ public sealed class ProjectHost : IAsyncDisposable
     /// handed to <paramref name="partial"/> as they come, as their bytes, on the reader's thread.</summary>
     private async Task<T?> AskAsync<T>(string method, object parameters, Action<ReadOnlySpan<byte>>? partial, CancellationToken cancel)
     {
-        (int id, Task<object?> answered) = pending.Add(new Asked(partial, static result => result.IsEmpty ? null : JsonSerializer.Deserialize<T>(result, HostJson.Options)));
+        (int id, Task<object?> answered) = pending.Add(new Asked(partial, static result => result.IsEmpty ? null : JsonSerializer.Deserialize<T>(result, PeerJson.Options)));
         lock (spoiling)
         {
             if (spoiling.GetValueOrDefault(method) > 0)
@@ -463,7 +463,7 @@ public sealed class ProjectHost : IAsyncDisposable
     /// <summary>A request on its way to the host, whose answer, if any, is matched by its id.</summary>
     private void Send(int id, string method, object parameters)
     {
-        string line = JsonSerializer.Serialize(new HostRequest(id, method, JsonSerializer.SerializeToElement(parameters, parameters.GetType(), HostJson.Options)), HostJson.Options);
+        string line = JsonSerializer.Serialize(new HostRequest(id, method, JsonSerializer.SerializeToElement(parameters, parameters.GetType(), PeerJson.Options)), PeerJson.Options);
         try
         {
             lock (writing)

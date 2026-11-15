@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.Json.Serialization.Metadata;
+using Passenger.Core;
 
 namespace Passenger.Host;
 
@@ -96,15 +97,8 @@ public static class HostMethods
 
 public static class HostJson
 {
-    public static readonly JsonSerializerOptions Options = new(JsonSerializerDefaults.Web)
-    {
-        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-        // Named, as the serializer names it by default, so each message's metadata can be had before the first message.
-        TypeInfoResolver = new DefaultJsonTypeInfoResolver(),
-    };
-
     /// <summary>A request's line as the host reads it.</summary>
-    public static JsonTypeInfo<HostRequest> Request { get; } = (JsonTypeInfo<HostRequest>)Options.GetTypeInfo(typeof(HostRequest));
+    public static JsonTypeInfo<HostRequest> Request { get; } = PeerJson.Of<HostRequest>();
 }
 
 /// <summary>The SDK the host loaded: its folder (MSBuild's) and version.</summary>
@@ -402,7 +396,7 @@ public sealed record BuiltProject(string Path, RawJson Infos, IReadOnlyList<Stam
             }
             else if (isInputs)
             {
-                inputs = JsonSerializer.Deserialize<List<Stamp>>(ref reader, HostJson.Options);
+                inputs = JsonSerializer.Deserialize<List<Stamp>>(ref reader, PeerJson.Options);
             }
             else if (isProblem)
             {
@@ -410,7 +404,7 @@ public sealed record BuiltProject(string Path, RawJson Infos, IReadOnlyList<Stam
             }
             else if (isDiagnostics)
             {
-                diagnostics = JsonSerializer.Deserialize<List<BuildDiagnostic>>(ref reader, HostJson.Options);
+                diagnostics = JsonSerializer.Deserialize<List<BuildDiagnostic>>(ref reader, PeerJson.Options);
             }
             else
             {

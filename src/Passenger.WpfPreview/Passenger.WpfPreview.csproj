@@ -21,7 +21,10 @@
   <ItemGroup>
     <!-- The runtime's and WPF's variables as Passenger names them. -->
     <Compile Include="../Passenger.Core/RuntimeVariables.cs" Link="RuntimeVariables.cs" />
-    <!-- Passenger's requests read as every JSON-lines peer reads its messages. -->
+    <!-- Passenger's requests read as every JSON-lines peer reads its messages, and the wire every previewer shares: its
+         answers, its start and the newest request waiting. -->
     <Compile Include="../Passenger.Core/JsonLines.cs" Link="JsonLines.cs" />
+    <Compile Include="../Passenger.Core/PreviewWire.cs" Link="PreviewWire.cs" />
+    <Compile Include="../Passenger.Core/PreviewRequests.cs" Link="PreviewRequests.cs" />
   </ItemGroup>
 </Project>

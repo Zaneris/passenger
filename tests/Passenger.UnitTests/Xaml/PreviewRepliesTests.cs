@@ -1,28 +1,27 @@
 using System.Text;
-using System.Text.Json;
 using Passenger.Core;
-using Passenger.WpfPreview;
 
 namespace Passenger.UnitTests.Xaml;
 
-/// <summary>The WPF previewer's answers read as Passenger reads them, from the UTF-8 bytes it writes a line at a time with
+/// <summary>A previewer's answers read as Passenger reads them, from the UTF-8 bytes it writes a line at a time with
 /// Windows' line ends: a frame with its picture and boxes, an error with its place, nothing to draw, and a line of
 /// another's handed on as text; a frame costing what it is read as, never its text made a string first.</summary>
-public class WpfPreviewRepliesTests
+public class PreviewRepliesTests
 {
     [Fact]
     public async Task Each_answer_the_previewer_writes_is_read_as_it_meant_it()
     {
         byte[] png = [0x89, (byte)'P', (byte)'N', (byte)'G', 1, 2, 3];
         byte[] written = Written(
-            new WpfPreviewReply { Kind = WpfPreviewKinds.Frame, Sequence = 3, Png = png, Scale = 2, Elements = [new WpfPreviewBox(4, 6, 0, 0, 120.5, 40)] },
-            new WpfPreviewReply { Kind = WpfPreviewKinds.Error, Sequence = 4, Message = "'Grid' has no property 'Colour'", Line = 7, Column = 12 },
-            new WpfPreviewReply { Kind = WpfPreviewKinds.Nothing, Sequence = 5, Message = "A ResourceDictionary is not drawn" });
+            new PreviewReply { Kind = PreviewKinds.Frame, Sequence = 3, Png = png, Scale = 2, Elements = [new PreviewBox(4, 6, 0, 0, 120.5, 40)],
+                Notes = [new PreviewNote("d:DataContext did not load", 5), new PreviewNote("App.xaml's resources did not load")] },
+            new PreviewReply { Kind = PreviewKinds.Error, Sequence = 4, Message = "'Grid' has no property 'Colour'", Line = 7, Column = 12 },
+            new PreviewReply { Kind = PreviewKinds.Nothing, Sequence = 5, Message = "A ResourceDictionary is not drawn" });
         byte[] said = [.. "a word of the runtime's own\r\n"u8, .. written];
 
         List<string> others = [];
-        List<WpfPreviewReply> read = [];
-        await foreach (WpfPreviewReply reply in JsonLines.ReadAsync(new ChunkedStream(said, 5), WpfPreviewJson.Reply, (line, _) => others.Add(line),
+        List<PreviewReply> read = [];
+        await foreach (PreviewReply reply in JsonLines.ReadAsync(new ChunkedStream(said, 5), PreviewWire.Reply, (line, _) => others.Add(line),
             TestContext.Current.CancellationToken))
         {
             read.Add(reply);
@@ -31,9 +30,10 @@ public class WpfPreviewRepliesTests
         Assert.Equal(["a word of the runtime's own"], others);
         Assert.Equal([3, 4, 5], read.Select(r => r.Sequence));
         Assert.Equal(png, read[0].Png ?? []);
-        Assert.Equal((2.0, new WpfPreviewBox(4, 6, 0, 0, 120.5, 40)), (read[0].Scale, Assert.Single(read[0].Elements ?? [])));
+        Assert.Equal((2.0, new PreviewBox(4, 6, 0, 0, 120.5, 40)), (read[0].Scale, Assert.Single(read[0].Elements ?? [])));
+        Assert.Equal([new PreviewNote("d:DataContext did not load", 5), new PreviewNote("App.xaml's resources did not load")], read[0].Notes ?? []);
         Assert.Equal(("'Grid' has no property 'Colour'", 7, 12), (read[1].Message, read[1].Line, read[1].Column));
-        Assert.Equal((WpfPreviewKinds.Nothing, "A ResourceDictionary is not drawn"), (read[2].Kind, read[2].Message));
+        Assert.Equal((PreviewKinds.Nothing, "A ResourceDictionary is not drawn"), (read[2].Kind, read[2].Message));
     }
 
     [Fact]
@@ -41,12 +41,12 @@ public class WpfPreviewRepliesTests
     {
         byte[] png = new byte[39_999];
         new Random(2).NextBytes(png);
-        WpfPreviewReply frame = new() { Kind = WpfPreviewKinds.Frame, Sequence = 1, Png = png };
+        PreviewReply frame = new() { Kind = PreviewKinds.Frame, Sequence = 1, Png = png };
         byte[] said = Written(frame, frame with { Sequence = 2 });
 
         long[] after = new long[2];
         int count = 0;
-        await foreach (WpfPreviewReply reply in JsonLines.ReadAsync(new MemoryStream(said), WpfPreviewJson.Reply, (_, _) => { },
+        await foreach (PreviewReply reply in JsonLines.ReadAsync(new MemoryStream(said), PreviewWire.Reply, (_, _) => { },
             TestContext.Current.CancellationToken))
         {
             after[count++] = GC.GetAllocatedBytesForCurrentThread();
@@ -59,14 +59,14 @@ public class WpfPreviewRepliesTests
     }
 
     /// <summary>Answers as the previewer writes them: each serialized and written as a line of UTF-8, with Windows' line end.</summary>
-    private static byte[] Written(params WpfPreviewReply[] replies)
+    private static byte[] Written(params PreviewReply[] replies)
     {
         MemoryStream bytes = new();
         using (StreamWriter protocol = new(bytes, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false), leaveOpen: true) { NewLine = "\r\n" })
         {
-            foreach (WpfPreviewReply reply in replies)
+            foreach (PreviewReply reply in replies)
             {
-                protocol.WriteLine(JsonSerializer.Serialize(reply, WpfPreviewJson.Options));
+                PreviewWire.Answer(protocol, reply);
             }
         }
         return bytes.ToArray();

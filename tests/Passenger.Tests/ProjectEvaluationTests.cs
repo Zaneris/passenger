@@ -435,7 +435,7 @@ public sealed class ProjectHostBytesTests(ITestOutputHelper testOutput) : IDispo
         using JsonDocument infos = JsonDocument.Parse(built.Infos.ToString());
         string arguments = string.Join('\n', infos.RootElement[0].GetProperty("commandLineArgs").EnumerateArray().Select(a => a.GetString()));
         Assert.Contains("System.Runtime.dll", arguments, StringComparison.Ordinal);
-        long json = JsonSerializer.SerializeToUtf8Bytes(built, HostJson.Options).Length;
+        long json = JsonSerializer.SerializeToUtf8Bytes(built, PeerJson.Options).Length;
         testOutput.WriteLine($"{json:N0} bytes of JSON, {least:N0} allocated ({(double)least / json:0.00}×)");
         Assert.True(least <= json * 2,
             $"Reading a design-time build's reply of {json:N0} bytes of JSON allocated {least:N0} bytes ({(double)least / json:0.0}× its JSON): every project's build costs the IDE that much more memory as a solution loads");

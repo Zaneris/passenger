@@ -1,6 +1,5 @@
 using System.Diagnostics;
 using System.Text.Json;
-using Avalonia;
 using Passenger.Core;
 using Passenger.Text;
 using Passenger.WpfPreview;
@@ -101,31 +100,9 @@ internal sealed class WpfPreviewHost : ChildPreviewHost
             Path = path,
             Xaml = text.ToString(),
             BaseUri = BaseUri(path),
-            Application = application is { } app ? new WpfPreviewSource(app.Path, app.Xaml, BaseUri(app.Path)) : null,
+            Application = application is { } app ? new PreviewSource(app.Path, app.Xaml, BaseUri(app.Path)) : null,
             Scale = scale,
-        }, WpfPreviewJson.Options);
-    }
-
-    protected override async IAsyncEnumerable<PreviewAnswer> AnswersAsync(Stream output, Action<string> unread)
-    {
-        await foreach (WpfPreviewReply reply in JsonLines.ReadAsync(output, WpfPreviewJson.Reply, (line, _) => unread(line)))
-        {
-            yield return new PreviewAnswer(reply.Kind switch
-            {
-                WpfPreviewKinds.Frame => PreviewAnswerKind.Frame,
-                WpfPreviewKinds.Error => PreviewAnswerKind.Error,
-                _ => PreviewAnswerKind.Nothing,
-            }, reply.Sequence)
-            {
-                Png = reply.Png,
-                Scale = reply.Scale,
-                Boxes = [.. (reply.Elements ?? []).Select(b => (b.Line, b.Column, new Rect(b.X, b.Y, b.Width, b.Height)))],
-                Message = reply.Message,
-                Line = reply.Line,
-                Column = reply.Column,
-                Notes = [.. (reply.Notes ?? []).Select(n => (n.Message, n.Line))],
-            };
-        }
+        }, PeerJson.Options);
     }
 
     /// <summary>A file's pack URI in the project's assembly, which relative URIs in it resolve against as in the build.</summary>

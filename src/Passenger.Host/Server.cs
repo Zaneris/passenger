@@ -83,7 +83,7 @@ public sealed class Server(Replies replies, HostReady ready)
     }
 
     private static T Read<T>(HostRequest request) =>
-        request.Params.Deserialize<T>(HostJson.Options) ?? throw new InvalidOperationException($"{request.Method} was sent no parameters");
+        request.Params.Deserialize<T>(PeerJson.Options) ?? throw new InvalidOperationException($"{request.Method} was sent no parameters");
 
     private EvaluateDone Evaluate(int id, EvaluateParams asked, CancellationToken cancel)
     {

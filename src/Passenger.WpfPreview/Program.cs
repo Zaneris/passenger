@@ -2,7 +2,6 @@ using System.ComponentModel;
 using System.ComponentModel.Design;
 using System.IO;
 using System.Reflection;
-using System.Text;
 using System.Windows;
 using System.Windows.Navigation;
 using System.Windows.Threading;
@@ -23,16 +22,7 @@ public static class Program
         // Before anything of WPF's, which reads it once: each element then knows its place in the XAML, for its box.
         Environment.SetEnvironmentVariable(RuntimeVariables.XamlDiagnosticsSourceInfo, "1");
         DesignMode();
-        AppDomain.CurrentDomain.UnhandledException += (_, e) =>
-        {
-            // The whole of it, then one line that says it, which is what Passenger shows of a previewer that ended.
-            Console.Error.WriteLine(e.ExceptionObject);
-            Console.Error.WriteLine(e.ExceptionObject is Exception error ? $"The previewer failed: {error.GetType().Name}: {error.Message}" : "The previewer failed");
-        };
-        UTF8Encoding utf8 = new(encoderShouldEmitUTF8Identifier: false);
-        Console.InputEncoding = utf8;
-        TextWriter protocol = new StreamWriter(Console.OpenStandardOutput(), utf8) { AutoFlush = true };
-        Console.SetOut(Console.Error);
+        (TextWriter protocol, TextReader input) = PreviewWire.Start();
         if (args is not ["--assembly", { } path])
         {
             Console.Error.WriteLine("Usage: Passenger.WpfPreview --assembly PROJECT.dll");
@@ -50,14 +40,19 @@ public static class Program
         }
         Application app = new() { ShutdownMode = ShutdownMode.OnExplicitShutdown };
         TakeResources(project);
-        Previewer previewer = new(project, protocol, app.Dispatcher);
+        PreviewRequests<WpfPreviewRequest> requests = new();
+        Previewer previewer = new(project, protocol, requests, app.Dispatcher);
         app.DispatcherUnhandledException += (_, e) =>
         {
             // The project's code failing as it is drawn (a control's Loaded) is the preview's error, not the previewer's end.
             e.Handled = true;
             previewer.Failed(e.Exception);
         };
-        Thread reading = new(() => Read(previewer, app)) { IsBackground = true, Name = "Passenger preview requests" };
+        Thread reading = new(() =>
+        {
+            requests.Read(input, previewer.Arrived);
+            app.Dispatcher.InvokeAsync(app.Shutdown);
+        }) { IsBackground = true, Name = "Passenger preview requests" };
         reading.Start();
         app.Run();
         return 0;
@@ -102,22 +97,5 @@ public static class Program
         {
             return Assembly.LoadFrom(path);
         }
-    }
-
-    private static void Read(Previewer previewer, Application app)
-    {
-        try
-        {
-            while (JsonLines.Read(Console.In, WpfPreviewJson.Request, static (_, error) => Console.Error.WriteLine($"A request that does not read: {error.Message}"))
-                is { } request)
-            {
-                previewer.Take(request);
-            }
-        }
-        catch (IOException error)
-        {
-            Console.Error.WriteLine($"Passenger's requests ended: {error.Message}");
-        }
-        app.Dispatcher.InvokeAsync(app.Shutdown);
     }
 }

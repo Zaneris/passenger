@@ -1,6 +1,5 @@
 using System.Reflection;
 using System.Runtime.CompilerServices;
-using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Xml;
 using Avalonia;
@@ -15,6 +14,7 @@ using Microsoft.Maui.ApplicationModel;
 using Microsoft.Maui.Controls;
 using Microsoft.Maui.Controls.Xaml;
 using Microsoft.Maui.Controls.Xaml.Diagnostics;
+using Passenger.Core;
 using AvaloniaWindow = Avalonia.Controls.Window;
 using ContentPage = Microsoft.Maui.Controls.ContentPage;
 using MauiApplication = Microsoft.Maui.Controls.Application;
@@ -29,9 +29,6 @@ namespace Passenger.MauiPreview;
 /// request's scale to a PNG, with each of the file's elements' boxes by its line and column in the XAML.</summary>
 internal sealed partial class Previewer(Assembly project, Type? appType, IMauiContext context, TextWriter protocol)
 {
-    /// <summary>The largest side a frame is drawn at, in pixels.</summary>
-    private const int Largest = 8192;
-
     /// <summary>How many rounds of the dispatcher's jobs and the render timer a frame is given to settle (images load in
     /// their own job).</summary>
     private const int Settling = 5;
@@ -48,7 +45,7 @@ internal sealed partial class Previewer(Assembly project, Type? appType, IMauiCo
     /// <summary>The newest request's page drawn and answered.</summary>
     public void Draw(MauiPreviewRequest request)
     {
-        MauiPreviewReply reply;
+        PreviewReply reply;
         try
         {
             reply = Drawn(request);
@@ -59,10 +56,10 @@ internal sealed partial class Previewer(Assembly project, Type? appType, IMauiCo
             Console.Error.WriteLine(error);
             reply = Error(request.Sequence, error);
         }
-        protocol.WriteLine(JsonSerializer.Serialize(reply, MauiPreviewJson.Options));
+        PreviewWire.Answer(protocol, reply);
     }
 
-    private MauiPreviewReply Drawn(MauiPreviewRequest request)
+    private PreviewReply Drawn(MauiPreviewRequest request)
     {
         PreviewDevice.Use(request.Platform, request.Idiom);
         bool dark = request.Theme == MauiPreviewThemes.Dark;
@@ -84,8 +81,12 @@ internal sealed partial class Previewer(Assembly project, Type? appType, IMauiCo
             return Nothing(request.Sequence, $"A {root.GetType().Name} has nothing to draw");
         }
         double scale = Math.Clamp(request.Scale, 0.25, 4);
-        double width = Math.Clamp(request.Width, 1, Largest / scale);
-        double height = Math.Clamp(request.Height, 1, Largest / scale);
+        if (PreviewWire.TooLarge(request.Width, request.Height, scale) is { } large)
+        {
+            return new PreviewReply { Kind = PreviewKinds.Error, Sequence = request.Sequence, Message = large };
+        }
+        double width = Math.Max(request.Width, 1);
+        double height = Math.Max(request.Height, 1);
         failed = null;
         IElementHandler handler = view.ToHandler(context);
         Control control = (handler as IViewHandler)?.ContainerView as Control ?? (Control)handler.PlatformView!;
@@ -110,7 +111,7 @@ internal sealed partial class Previewer(Assembly project, Type? appType, IMauiCo
             {
                 return Error(request.Sequence, failure);
             }
-            List<MauiPreviewBox> boxes = [];
+            List<PreviewBox> boxes = [];
             if (root is IVisualTreeElement tree)
             {
                 Walk(tree, window, boxes);
@@ -120,14 +121,14 @@ internal sealed partial class Previewer(Assembly project, Type? appType, IMauiCo
             bitmap.Render(window);
             using MemoryStream png = new();
             bitmap.Save(png, PngBitmapEncoderOptions.Default);
-            return new MauiPreviewReply
+            return new PreviewReply
             {
-                Kind = MauiPreviewKinds.Frame,
+                Kind = PreviewKinds.Frame,
                 Sequence = request.Sequence,
                 Png = png.ToArray(),
                 Scale = scale,
                 Elements = boxes,
-                Notes = applicationProblem is { } problem ? [problem] : null,
+                Notes = applicationProblem is { } problem ? [new PreviewNote(problem)] : null,
             };
         }
         finally
@@ -228,14 +229,14 @@ internal sealed partial class Previewer(Assembly project, Type? appType, IMauiCo
     }
 
     /// <summary>Each element MAUI made from the XAML, with its line and column there and its box in the window.</summary>
-    private static void Walk(IVisualTreeElement element, AvaloniaWindow window, List<MauiPreviewBox> boxes)
+    private static void Walk(IVisualTreeElement element, AvaloniaWindow window, List<PreviewBox> boxes)
     {
         if (VisualDiagnostics.GetSourceInfo(element) is { } source && element is IView { Handler: { } handler })
         {
             Control? control = (handler as IViewHandler)?.ContainerView as Control ?? handler.PlatformView as Control;
             if (control is not null && control.TranslatePoint(new Point(0, 0), window) is { } at)
             {
-                boxes.Add(new MauiPreviewBox(source.LineNumber, source.LinePosition, at.X, at.Y, control.Bounds.Width, control.Bounds.Height));
+                boxes.Add(new PreviewBox(source.LineNumber, source.LinePosition, at.X, at.Y, control.Bounds.Width, control.Bounds.Height));
             }
         }
         foreach (IVisualTreeElement child in element.GetVisualChildren())
@@ -258,10 +259,10 @@ internal sealed partial class Previewer(Assembly project, Type? appType, IMauiCo
         }
     }
 
-    private static MauiPreviewReply Nothing(int sequence, string why) => new() { Kind = MauiPreviewKinds.Nothing, Sequence = sequence, Message = why };
+    private static PreviewReply Nothing(int sequence, string why) => new() { Kind = PreviewKinds.Nothing, Sequence = sequence, Message = why };
 
     /// <summary>An error's answer: its type and message, with its line and column where the XAML's reader gave them.</summary>
-    private static MauiPreviewReply Error(int sequence, Exception error)
+    private static PreviewReply Error(int sequence, Exception error)
     {
         Exception cause = error is TargetInvocationException { InnerException: { } inner } ? inner : error;
         (int Line, int Column)? at = cause switch
@@ -270,9 +271,9 @@ internal sealed partial class Previewer(Assembly project, Type? appType, IMauiCo
             XmlException xml when xml.LineNumber > 0 => (xml.LineNumber, xml.LinePosition),
             _ => null,
         };
-        return new MauiPreviewReply
+        return new PreviewReply
         {
-            Kind = MauiPreviewKinds.Error,
+            Kind = PreviewKinds.Error,
             Sequence = sequence,
             Message = $"{cause.GetType().Name}: {Message(cause)}",
             Line = at?.Line,

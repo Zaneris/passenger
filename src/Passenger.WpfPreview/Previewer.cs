@@ -1,6 +1,5 @@
 using System.IO;
 using System.Reflection;
-using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Windows;
 using System.Windows.Data;
@@ -10,6 +9,7 @@ using System.Windows.Threading;
 using System.Xaml;
 using System.Xml;
 using System.Xml.Linq;
+using Passenger.Core;
 
 namespace Passenger.WpfPreview;
 
@@ -18,17 +18,13 @@ namespace Passenger.WpfPreview;
 /// context set, its root put on a surface (<see cref="Surface"/>) in a window that is never shown, so it is laid out and
 /// loaded as in the app, and the surface rendered to a PNG with each of the file's elements' boxes. Requests that come
 /// while one is drawn wait, and only the newest is drawn.</summary>
-internal sealed partial class Previewer(Assembly project, TextWriter protocol, Dispatcher dispatcher)
+internal sealed partial class Previewer(Assembly project, TextWriter protocol, PreviewRequests<WpfPreviewRequest> requests, Dispatcher dispatcher)
 {
-    /// <summary>The largest side a frame is drawn at, in pixels.</summary>
-    private const int Largest = 8192;
-
     private const string DesignNamespace = "clr-namespace:Passenger.WpfPreview.Design;assembly=Passenger.WpfPreview";
 
     private readonly object gate = new();
     private readonly XamlSchemaContext schema = System.Windows.Markup.XamlReader.GetWpfSchemaContext();
     private readonly string localAssembly = project.GetName().Name ?? string.Empty;
-    private WpfPreviewRequest? waiting;
     private bool posted;
     private bool drawing;
     private int answering;
@@ -37,11 +33,10 @@ internal sealed partial class Previewer(Assembly project, TextWriter protocol, D
     private Surface? shown;
 
     /// <summary>A request read: drawn once the application's thread is free, unless a newer one comes first.</summary>
-    public void Take(WpfPreviewRequest request)
+    public void Arrived()
     {
         lock (gate)
         {
-            waiting = request;
             if (posted)
             {
                 return;
@@ -53,11 +48,10 @@ internal sealed partial class Previewer(Assembly project, TextWriter protocol, D
 
     /// <summary>The project's code failed outside a drawing (a control's handler, later): said as the newest request's
     /// error.</summary>
-    public void Failed(Exception error) => Answer(Error(answering, error));
+    public void Failed(Exception error) => PreviewWire.Answer(protocol, Error(answering, error));
 
     private void Next()
     {
-        WpfPreviewRequest? request;
         lock (gate)
         {
             posted = false;
@@ -66,16 +60,14 @@ internal sealed partial class Previewer(Assembly project, TextWriter protocol, D
                 // Run from the drawing's own wait for the window to settle: drawn once that drawing is done.
                 return;
             }
-            request = waiting;
-            waiting = null;
         }
-        if (request is null)
+        if (requests.Take() is not { } request)
         {
             return;
         }
         drawing = true;
         answering = request.Sequence;
-        WpfPreviewReply reply;
+        PreviewReply reply;
         try
         {
             reply = Draw(request);
@@ -84,10 +76,10 @@ internal sealed partial class Previewer(Assembly project, TextWriter protocol, D
         {
             drawing = false;
         }
-        Answer(reply);
+        PreviewWire.Answer(protocol, reply);
         lock (gate)
         {
-            if (waiting is null || posted)
+            if (!requests.Waiting || posted)
             {
                 return;
             }
@@ -96,15 +88,7 @@ internal sealed partial class Previewer(Assembly project, TextWriter protocol, D
         dispatcher.InvokeAsync(Next);
     }
 
-    private void Answer(WpfPreviewReply reply)
-    {
-        lock (protocol)
-        {
-            protocol.WriteLine(JsonSerializer.Serialize(reply, WpfPreviewJson.Options));
-        }
-    }
-
-    private WpfPreviewReply Draw(WpfPreviewRequest request)
+    private PreviewReply Draw(WpfPreviewRequest request)
     {
         LetGo();
         try
@@ -131,10 +115,10 @@ internal sealed partial class Previewer(Assembly project, TextWriter protocol, D
             }
             Uri baseUri = new(request.BaseUri);
             object root = Load(loose.Text, baseUri);
-            List<WpfPreviewNote> notes = [];
+            List<PreviewNote> notes = [];
             if (applicationProblem is not null)
             {
-                notes.Add(new WpfPreviewNote(applicationProblem));
+                notes.Add(new PreviewNote(applicationProblem));
             }
             ApplyDesignContexts(root, loose, baseUri, notes);
             if (Surface.For(root, loose) is not { } surface)
@@ -151,13 +135,13 @@ internal sealed partial class Previewer(Assembly project, TextWriter protocol, D
             {
                 return Nothing(request, "Nothing to draw: the root is 0 × 0 (sized to content with none, and no d:DesignWidth and d:DesignHeight)");
             }
-            if (size.Width * scale > Largest || size.Height * scale > Largest)
+            if (PreviewWire.TooLarge(size.Width, size.Height, scale) is { } large)
             {
-                return Error(request.Sequence, $"The design is too large to draw: {size.Width:0} × {size.Height:0}");
+                return Error(request.Sequence, large);
             }
-            return new WpfPreviewReply
+            return new PreviewReply
             {
-                Kind = WpfPreviewKinds.Frame,
+                Kind = PreviewKinds.Frame,
                 Sequence = request.Sequence,
                 Png = surface.Render(scale),
                 Scale = scale,
@@ -173,7 +157,7 @@ internal sealed partial class Previewer(Assembly project, TextWriter protocol, D
 
     /// <summary>App.xaml's resources as the application's, read as loose XAML from its <c>Application.Resources</c>; what
     /// kept them from loading, or null.</summary>
-    private string? LoadApplication(WpfPreviewSource application)
+    private string? LoadApplication(PreviewSource application)
     {
         try
         {
@@ -196,7 +180,7 @@ internal sealed partial class Previewer(Assembly project, TextWriter protocol, D
                     dictionary.Add(new XAttribute(declared));
                 }
             }
-            Application.Current.Resources = (ResourceDictionary)Load(dictionary.ToString(SaveOptions.DisableFormatting), new Uri(application.BaseUri));
+            Application.Current.Resources = (ResourceDictionary)Load(dictionary.ToString(SaveOptions.DisableFormatting), application.BaseUri is { } uri ? new Uri(uri) : null);
             return null;
         }
         catch (Exception error) when (error is not OutOfMemoryException)
@@ -209,7 +193,7 @@ internal sealed partial class Previewer(Assembly project, TextWriter protocol, D
 
     /// <summary>Loose XAML loaded as WPF loads it, the project's assembly being the one a namespace with no assembly names,
     /// and relative URIs resolving against the file's place in that assembly.</summary>
-    private object Load(string text, Uri baseUri)
+    private object Load(string text, Uri? baseUri)
     {
         XamlXmlReaderSettings settings = new()
         {
@@ -225,7 +209,7 @@ internal sealed partial class Previewer(Assembly project, TextWriter protocol, D
 
     /// <summary>Each element's <c>d:DataContext</c> as its data context, the designer's prefix taken as the previewer's
     /// (<see cref="Design.DesignInstanceExtension"/>); one that does not load is noted and left out.</summary>
-    private void ApplyDesignContexts(object root, LooseXaml loose, Uri baseUri, List<WpfPreviewNote> notes)
+    private void ApplyDesignContexts(object root, LooseXaml loose, Uri baseUri, List<PreviewNote> notes)
     {
         if (loose.Contexts.Count == 0 || root is not DependencyObject top)
         {
@@ -272,7 +256,7 @@ internal sealed partial class Previewer(Assembly project, TextWriter protocol, D
             }
             catch (Exception error) when (error is not OutOfMemoryException)
             {
-                notes.Add(new WpfPreviewNote($"d:DataContext did not load: {Describe(error).Message}", context.Line));
+                notes.Add(new PreviewNote($"d:DataContext did not load: {Describe(error).Message}", context.Line));
             }
         }
     }
@@ -298,24 +282,24 @@ internal sealed partial class Previewer(Assembly project, TextWriter protocol, D
     /// <summary>The boxes of the file's own elements as drawn: a window's (the whole frame, its title bar included), then
     /// every element of the visual tree the file made, parents before children, below the title bar. What a template or
     /// another file's XAML made inside them is theirs.</summary>
-    private static List<WpfPreviewBox> Boxes(Surface surface, Uri baseUri)
+    private static List<PreviewBox> Boxes(Surface surface, Uri baseUri)
     {
-        List<WpfPreviewBox> boxes = [];
+        List<PreviewBox> boxes = [];
         if (surface.Loaded is Window && VisualDiagnostics.GetXamlSourceInfo(surface.Loaded) is { } top && Ours(top, baseUri))
         {
-            boxes.Add(new WpfPreviewBox(top.LineNumber, top.LinePosition, 0, 0, surface.Size.Width, surface.Size.Height));
+            boxes.Add(new PreviewBox(top.LineNumber, top.LinePosition, 0, 0, surface.Size.Width, surface.Size.Height));
         }
         Walk(surface.Drawn, surface.Drawn, surface.Top, baseUri, boxes);
         return boxes;
     }
 
-    private static void Walk(Visual node, FrameworkElement root, double top, Uri baseUri, List<WpfPreviewBox> boxes)
+    private static void Walk(Visual node, FrameworkElement root, double top, Uri baseUri, List<PreviewBox> boxes)
     {
         if (node != root && node is UIElement { IsVisible: true } element && VisualDiagnostics.GetXamlSourceInfo(node) is { } place
             && Ours(place, baseUri) && node is not FrameworkElement { TemplatedParent: not null })
         {
             Rect box = element.TransformToAncestor(root).TransformBounds(new Rect(element.RenderSize));
-            boxes.Add(new WpfPreviewBox(place.LineNumber, place.LinePosition, box.X, top + box.Y, box.Width, box.Height));
+            boxes.Add(new PreviewBox(place.LineNumber, place.LinePosition, box.X, top + box.Y, box.Width, box.Height));
         }
         int count = VisualTreeHelper.GetChildrenCount(node);
         for (int i = 0; i < count; i++)
@@ -338,16 +322,16 @@ internal sealed partial class Previewer(Assembly project, TextWriter protocol, D
         last.Close();
     }
 
-    private static WpfPreviewReply Nothing(WpfPreviewRequest request, string why) =>
-        new() { Kind = WpfPreviewKinds.Nothing, Sequence = request.Sequence, Message = why };
+    private static PreviewReply Nothing(WpfPreviewRequest request, string why) =>
+        new() { Kind = PreviewKinds.Nothing, Sequence = request.Sequence, Message = why };
 
-    private static WpfPreviewReply Error(int sequence, string message) =>
-        new() { Kind = WpfPreviewKinds.Error, Sequence = sequence, Message = message };
+    private static PreviewReply Error(int sequence, string message) =>
+        new() { Kind = PreviewKinds.Error, Sequence = sequence, Message = message };
 
-    private static WpfPreviewReply Error(int sequence, Exception error)
+    private static PreviewReply Error(int sequence, Exception error)
     {
         (string message, int? line, int? column) = Describe(error);
-        return new WpfPreviewReply { Kind = WpfPreviewKinds.Error, Sequence = sequence, Message = message, Line = line, Column = column };
+        return new PreviewReply { Kind = PreviewKinds.Error, Sequence = sequence, Message = message, Line = line, Column = column };
     }
 
     /// <summary>What an exception says of the XAML, without the place its message repeats, with its line and column, and
@@ -404,5 +388,4 @@ internal sealed partial class Previewer(Assembly project, TextWriter protocol, D
 
     [GeneratedRegex(@"\s*Line \d+, position \d+\.?$")]
     private static partial Regex XmlPlace();
-
 }

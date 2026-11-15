@@ -12,9 +12,9 @@ namespace Passenger.App.Xaml;
 
 /// <summary>A previewer of Passenger's own (WPF's, MAUI's) in a process of its own, run through ChildProcesses on a copy of
 /// the project's last build (the state's <c>previews/</c>, so a build never meets its assemblies locked). Each request
-/// goes as a JSON line with App.xaml's text, open or on disk; each answer comes back as one, a frame as a PNG with its
-/// elements' boxes, the error that kept the XAML from loading, or why there is nothing to draw. What a previewer sends
-/// and how it reads its answers is its own; the rest is here. A UI-thread object.</summary>
+/// goes as a JSON line with App.xaml's text, open or on disk; each answer comes back as one (<see cref="PreviewWire"/>), a
+/// frame as a PNG with its elements' boxes, the error that kept the XAML from loading, or why there is nothing to draw.
+/// What a previewer is asked is its own; the rest is here. A UI-thread object.</summary>
 internal abstract class ChildPreviewHost : IPreviewHost
 {
     private readonly Channel<Sent> outgoing = Channel.CreateUnbounded<Sent>(new UnboundedChannelOptions { SingleReader = true });
@@ -126,10 +126,6 @@ internal abstract class ChildPreviewHost : IPreviewHost
     /// line it returns is written off it, given App.xaml's path and text where the project has one.</summary>
     protected abstract Func<(string Path, string Xaml)?, string> Request(int sequence, TextSnapshot text);
 
-    /// <summary>The previewer's answers, read from its output's UTF-8 bytes; a line that is not the protocol's goes to
-    /// <paramref name="unread"/>.</summary>
-    protected abstract IAsyncEnumerable<PreviewAnswer> AnswersAsync(Stream output, Action<string> unread);
-
     /// <summary>Writes each request off the UI thread: App.xaml read from disk when it is not open, and the text, which may
     /// be long, sent in order.</summary>
     private async Task WriteAsync(Process to)
@@ -165,16 +161,16 @@ internal abstract class ChildPreviewHost : IPreviewHost
         try
         {
             // A line that is not the protocol's is the previewer's own output.
-            await foreach (PreviewAnswer answer in AnswersAsync(ChildProcesses.OutputStream(from), Log.Heard))
+            await foreach (PreviewReply answer in JsonLines.ReadAsync(ChildProcesses.OutputStream(from), PreviewWire.Reply, (line, _) => Log.Heard(line)))
             {
                 TextSnapshot? sent = unanswered.GetValueOrDefault(answer.Sequence);
                 Bitmap? frame = null;
                 IReadOnlyList<PreviewElement> elements = [];
-                if (answer is { Kind: PreviewAnswerKind.Frame, Png: { } png })
+                if (answer is { Kind: PreviewKinds.Frame, Png: { } png })
                 {
                     using MemoryStream bytes = new(png);
                     frame = new Bitmap(bytes);
-                    elements = sent is null ? [] : XamlPreview.Placed(sent, answer.Boxes);
+                    elements = sent is null ? [] : XamlPreview.Placed(sent, [.. (answer.Elements ?? []).Select(b => (b.Line, b.Column, new Rect(b.X, b.Y, b.Width, b.Height)))]);
                 }
                 UiThread.Post(() => Received(answer, frame, sent, elements));
             }
@@ -185,7 +181,7 @@ internal abstract class ChildPreviewHost : IPreviewHost
         }
     }
 
-    private void Received(PreviewAnswer answer, Bitmap? frame, TextSnapshot? sent, IReadOnlyList<PreviewElement> elements)
+    private void Received(PreviewReply answer, Bitmap? frame, TextSnapshot? sent, IReadOnlyList<PreviewElement> elements)
     {
         if (disposed)
         {
@@ -197,7 +193,7 @@ internal abstract class ChildPreviewHost : IPreviewHost
         }
         switch (answer.Kind)
         {
-            case PreviewAnswerKind.Frame when frame is not null:
+            case PreviewKinds.Frame when frame is not null:
                 if (starting is { } clock)
                 {
                     starting = null;
@@ -212,7 +208,7 @@ internal abstract class ChildPreviewHost : IPreviewHost
                     ? $"Live. {string.Join("; ", notes.Select(n => n.Message + XamlPreview.Where(sent ?? Preview.Document.Document.Text.Snapshot, n.Line, null)))}"
                     : "Live";
                 break;
-            case PreviewAnswerKind.Error:
+            case PreviewKinds.Error:
                 Preview.Error = $"{answer.Message}{XamlPreview.Where(sent ?? Preview.Document.Document.Text.Snapshot, answer.Line, answer.Column)}";
                 Preview.Status = "The XAML did not load";
                 break;
@@ -327,31 +323,4 @@ internal abstract class ChildPreviewHost : IPreviewHost
 
     /// <summary>A request as the UI thread made it, for the writer to finish: App.xaml's path, and its text when it is open.</summary>
     private sealed record Sent(string? Application, string? ApplicationText, Func<(string Path, string Xaml)?, string> Line);
-}
-
-/// <summary>What a previewer answered, whichever it is: its kind, the request it answers, a frame's PNG, scale and boxes
-/// (each by its element's line and column from 1 as XML readers count, in the frame's units), an error's message and
-/// place, and what a frame was drawn without, each with the line of the element it is about where it has one.</summary>
-internal sealed record PreviewAnswer(PreviewAnswerKind Kind, int Sequence)
-{
-    public byte[]? Png { get; init; }
-
-    public double Scale { get; init; } = 1;
-
-    public IReadOnlyList<(int Line, int Column, Rect Box)> Boxes { get; init; } = [];
-
-    public string? Message { get; init; }
-
-    public int? Line { get; init; }
-
-    public int? Column { get; init; }
-
-    public IReadOnlyList<(string Message, int? Line)> Notes { get; init; } = [];
-}
-
-internal enum PreviewAnswerKind
-{
-    Frame,
-    Error,
-    Nothing,
 }

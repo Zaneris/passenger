@@ -1,6 +1,5 @@
 using System.Reflection;
 using System.Runtime.Loader;
-using System.Text;
 using Avalonia;
 using Avalonia.Controls.Maui;
 using Avalonia.Headless;
@@ -22,16 +21,7 @@ public static class Program
 {
     public static int Main(string[] args)
     {
-        AppDomain.CurrentDomain.UnhandledException += (_, e) =>
-        {
-            // The whole of it, then one line that says it, which is what Passenger shows of a previewer that ended.
-            Console.Error.WriteLine(e.ExceptionObject);
-            Console.Error.WriteLine(e.ExceptionObject is Exception error ? $"The previewer failed: {error.GetType().Name}: {error.Message}" : "The previewer failed");
-        };
-        UTF8Encoding utf8 = new(encoderShouldEmitUTF8Identifier: false);
-        TextWriter protocol = new StreamWriter(Console.OpenStandardOutput(), utf8) { AutoFlush = true };
-        TextReader input = new StreamReader(Console.OpenStandardInput(), utf8);
-        Console.SetOut(Console.Error);
+        (TextWriter protocol, TextReader input) = PreviewWire.Start();
         if (Options.Read(args) is not { } options)
         {
             Console.Error.WriteLine("Usage: Passenger.MauiPreview --assembly PROJECT.dll [--fonts FOLDER]... [--images FOLDER]... [--packages FOLDER]...");
@@ -67,7 +57,7 @@ public static class Program
             e.Handled = true;
             previewer.Failed(e.Exception);
         };
-        Requests requests = new();
+        PreviewRequests<MauiPreviewRequest> requests = new();
         Thread reading = new(() => requests.Read(input)) { IsBackground = true, Name = "Passenger preview requests" };
         reading.Start();
         while (requests.Next() is { } request)
@@ -137,56 +127,6 @@ public static class Program
                 }
             }
             return args.Length % 2 == 0 && assembly is not null ? new Options(assembly, fonts, images, packages) : null;
-        }
-    }
-}
-
-/// <summary>The newest request read, for the drawing thread to take: one read while another is drawn replaces any still
-/// waiting, so only the newest text is drawn.</summary>
-internal sealed class Requests
-{
-    private readonly object gate = new();
-    private MauiPreviewRequest? waiting;
-    private bool ended;
-
-    /// <summary>Reads requests until Passenger closes the previewer's input.</summary>
-    public void Read(TextReader input)
-    {
-        try
-        {
-            while (JsonLines.Read(input, MauiPreviewJson.Request, static (_, error) => Console.Error.WriteLine($"A request that does not read: {error.Message}"))
-                is { } request)
-            {
-                lock (gate)
-                {
-                    waiting = request;
-                    Monitor.Pulse(gate);
-                }
-            }
-        }
-        catch (IOException error)
-        {
-            Console.Error.WriteLine($"Passenger's requests ended: {error.Message}");
-        }
-        lock (gate)
-        {
-            ended = true;
-            Monitor.Pulse(gate);
-        }
-    }
-
-    /// <summary>The newest request not yet drawn, waited for; null once the requests have ended.</summary>
-    public MauiPreviewRequest? Next()
-    {
-        lock (gate)
-        {
-            while (waiting is null && !ended)
-            {
-                Monitor.Wait(gate);
-            }
-            MauiPreviewRequest? next = waiting;
-            waiting = null;
-            return next;
         }
     }
 }
