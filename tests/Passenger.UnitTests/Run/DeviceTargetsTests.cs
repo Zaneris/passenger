@@ -138,7 +138,7 @@ public class DeviceTargetsTests
         Assert.Contains("for f in *.dll; do d=$(readlink \"$f\") && { [ -e \"${d%/*}/environment\" ] && echo \"${d%/*}/environment\"; break; }; done; ", put, StringComparison.Ordinal);
         Assert.Contains("cp /data/local/tmp/passenger-com.shop-relay libpassenger-debug.so && rm -f environment && cp /data/local/tmp/passenger-com.shop-environment environment'", put,
             StringComparison.Ordinal);
-        Assert.EndsWith("; rm -f /data/local/tmp/passenger-com.shop-relay /data/local/tmp/passenger-com.shop-environment", put, StringComparison.Ordinal);
+        Assert.EndsWith("; s=$?; rm -f /data/local/tmp/passenger-com.shop-relay /data/local/tmp/passenger-com.shop-environment; exit $s", put, StringComparison.Ordinal);
         Assert.EndsWith("rm -f libpassenger-debug.so environment && ln -s /data/local/tmp/fastdeploy2/com.shop/0/arm64-v8a/environment environment'", taken, StringComparison.Ordinal);
         Assert.EndsWith("rm -f libpassenger-debug.so environment'", app.TakeRelayOut("arm64-v8a", null)[^1], StringComparison.Ordinal);
         Assert.Equal("android-arm64", AndroidApp.RelayRuntime("arm64-v8a"));
