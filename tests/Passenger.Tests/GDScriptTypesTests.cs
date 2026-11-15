@@ -13,9 +13,9 @@ namespace Passenger.Tests;
 /// <summary>A GDScript read by Passenger's own parser and analyzer while Godot's server for it has not started (held at its
 /// start where a Godot is found, never started where none is): the types inferred where none is written are shown after
 /// their names (an operator's from the engine's API, so where a Godot is found to dump it), a member completes after
-/// <c>self.</c> and a local by its first letters, and Go to Declaration reaches a function of the script; Godot's warnings
-/// and errors are marked as the project's settings ask and each is fixed as one command of Undo. A Godot editor of its own
-/// each where one is found, so run alone.</summary>
+/// <c>self.</c> and a local by its first letters, and Go to Declaration reaches a function of the script, or of another
+/// as the editor holds it unsaved; Godot's warnings and errors are marked as the project's settings ask and each is fixed
+/// as one command of Undo. A Godot editor of its own each where one is found, so run alone.</summary>
 [Collection(Alone.Name)]
 public sealed class GDScriptTypesTests
 {
@@ -90,6 +90,44 @@ public sealed class GDScriptTypesTests
             Ui.Press(window, Ui.Shortcut(AppActions.GoToDeclaration), settle: false);
             int declared = Script.Split('\n').ToList().FindIndex(l => l.StartsWith("func grow", StringComparison.Ordinal));
             Ui.PumpUntil(() => editor.CaretPosition.Line == declared, $"the caret at grow's declaration, line {declared + 1}", TimeSpan.FromSeconds(30));
+        }
+        finally
+        {
+            window.Close();
+            release.SetResult();
+        }
+    }
+
+    /// <summary>Another script open with lines typed above its function and not saved: Go to Declaration of a call of the
+    /// function lands on it where the editor holds that script, not where the disk has it.</summary>
+    [AvaloniaFact]
+    public void Go_to_declaration_of_another_open_scripts_function_lands_on_it_as_the_editor_holds_that_script()
+    {
+        TestFolders.Write(folder, "helper.gd", "class_name Helper\nextends RefCounted\n\n\nfunc assist() -> int:\n\treturn 1\n");
+        TestFolders.Write(folder, "user.gd", "extends Node\n\n\nfunc _ready() -> void:\n\tHelper.new().assist()\n");
+        (MainWindow window, OpenDocument helper, TaskCompletionSource release) = Open("helper.gd");
+        try
+        {
+            CodeEditor editor = window.EditorArea.CodeEditor;
+            Ui.PlaceAfter(editor, "extends RefCounted\n");
+            editor.Focus();
+            foreach (string line in (string[])["var first := 1", "var second := 2", "var third := 3"])
+            {
+                window.KeyTextInput(line);
+                Ui.Press(window, "ENTER", settle: false);
+            }
+            string held = helper.Text.Snapshot.ToString();
+            Assert.Contains("extends RefCounted\nvar first := 1\nvar second := 2\nvar third := 3\n\n\nfunc assist", held, StringComparison.Ordinal);
+            int declared = held.Split('\n').ToList().FindIndex(l => l.StartsWith("func assist", StringComparison.Ordinal));
+
+            Assert.Null(window.OpenFile(Path.Combine(folder, "user.gd")));
+            Ui.PlaceAfter(window.EditorArea.CodeEditor, ".assi");
+            Ui.Press(window, Ui.Shortcut(AppActions.GoToDeclaration), settle: false);
+            bool landed = Ui.Pumped(() => window.EditorArea.Active == helper && window.EditorArea.CodeEditor.CaretPosition == new TextPosition(declared, "func ".Length),
+                TimeSpan.FromSeconds(30));
+            Assert.True(landed, $"Go to Declaration of assist should land on its name, line {declared + 1}, as the editor holds helper.gd unsaved; it went to "
+                + $"{window.EditorArea.Active?.Name} line {window.EditorArea.CodeEditor.CaretPosition.Line + 1}, column {window.EditorArea.CodeEditor.CaretPosition.Column + 1}");
+            Assert.True(window.Session.Web?.For(helper) is not { Serving: true }, "Godot's server answered: the test's hold of its start did not hold");
         }
         finally
         {

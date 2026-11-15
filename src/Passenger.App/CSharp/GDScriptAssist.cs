@@ -104,13 +104,15 @@ internal sealed partial class GDScriptAssist(AssistContext context, CodeCompleti
     }
 
     /// <summary>Where a C# member's name is written, for Go to Declaration.</summary>
-    internal static async Task<(string Path, TextPosition Position)> PlaceOfAsync(AssistContext context, GodotCSharpMember member)
+    internal static Task<(string Path, TextPosition Position)> PlaceOfAsync(AssistContext context, GodotCSharpMember member) =>
+        PlaceOfAsync(context.Editors.Texts(), member.Path, member.Start);
+
+    /// <summary>Where an offset Passenger's reading gave in a file lies, in the text that reading read: an open file's as the
+    /// editor has it, unsaved lines and all, else the disk's (<see cref="OpenTexts.TextOf"/>).</summary>
+    private static async Task<(string Path, TextPosition Position)> PlaceOfAsync(OpenTexts texts, string path, int offset)
     {
-        OpenTexts texts = context.Editors.Texts();
-        TextSnapshot snapshot = await BackgroundWork.Run(() => texts.TextOf(member.Path) ?? TextSnapshot.From(string.Empty));
-        int at = Math.Min(member.Start, snapshot.Length);
-        int line = snapshot.GetLineFromOffset(at);
-        return (member.Path, new TextPosition(line, at - snapshot.GetLineStart(line)));
+        TextSnapshot text = await BackgroundWork.Run(() => texts.TextOf(path) ?? TextSnapshot.From(string.Empty));
+        return (path, text.GetPosition(Math.Clamp(offset, 0, text.Length)));
     }
 
     public override void Commit(CompletionItem item, int start)
@@ -429,9 +431,7 @@ internal sealed partial class GDScriptAssist(AssistContext context, CodeCompleti
         {
             return null;
         }
-        TextSnapshot snapshot = path == document.Path ? document.Text.Snapshot : TextSnapshot.From(await File.ReadAllTextAsync(path));
-        int line = snapshot.GetLineFromOffset(Math.Min(declared.Start, snapshot.Length));
-        return new Declared(Declared.Served([(path, new TextPosition(line, declared.Start - snapshot.GetLineStart(line)))], ServerPlaces.Texts(context.Editors)),
+        return new Declared(Declared.Served([await PlaceOfAsync(context.Editors.Texts(), path, declared.Start)], ServerPlaces.Texts(context.Editors)),
             Refusals.NoDeclaration);
     }
 }

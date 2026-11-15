@@ -27,8 +27,7 @@ internal sealed class GDScriptOutline(TextDocument document) : FileOutline
         return Outline<SymbolRow>.Of<Part>(roots, part => part.Children, (part, depth) =>
         {
             int start = Math.Clamp(part.Start, 0, text.Length);
-            int line = text.GetLineFromOffset(start);
-            SymbolRow row = new(part.Name, part.Detail, null, part.Kind, path, new TextPosition(line, start - text.GetLineStart(line)), depth,
+            SymbolRow row = new(part.Name, part.Detail, null, part.Kind, path, text.GetPosition(start), depth,
                 text.GetLineFromOffset(Math.Clamp(part.End, start, text.Length)));
             return (row, row.Position.Line, row.EndLine ?? row.Position.Line);
         }, before, cancel);

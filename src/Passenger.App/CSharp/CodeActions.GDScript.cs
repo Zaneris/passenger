@@ -416,8 +416,8 @@ internal sealed partial class CodeActions
             TextSnapshot text = TextSnapshot.From(read.Text);
             foreach ((_, int start, int end) in script)
             {
-                LspPosition from = ServerPlaces.ServerPositionOf(text, PositionOf(text, start));
-                LspPosition to = ServerPlaces.ServerPositionOf(text, PositionOf(text, end));
+                LspPosition from = ServerPlaces.ServerPositionOf(text, text.GetPosition(Math.Clamp(start, 0, text.Length)));
+                LspPosition to = ServerPlaces.ServerPositionOf(text, text.GetPosition(Math.Clamp(end, 0, text.Length)));
                 places.Add(new LspLocation(DocumentUris.FromPath(path), new LspRange(from, to)));
             }
         }
@@ -426,12 +426,6 @@ internal sealed partial class CodeActions
             places.AddRange(await BesideAsync(document, folder, target, d => context.Languages.CSharp.GodotScriptUsesOfAsync(d, target.Start)));
         }
         return (places, found.Unsure);
-    }
-
-    private static TextPosition PositionOf(TextSnapshot text, int offset)
-    {
-        int line = text.GetLineFromOffset(Math.Clamp(offset, 0, text.Length));
-        return new TextPosition(line, Math.Clamp(offset, 0, text.Length) - text.GetLineStart(line));
     }
 
     /// <summary>Rename at the caret of a GDScript: its box, the name renamed by Passenger's reading where it is a member or

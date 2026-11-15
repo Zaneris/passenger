@@ -344,9 +344,7 @@ internal sealed class GodotShaderAssist(AssistContext context, CodeCompletion co
             return null;
         }
         int start = name.Include is null && scene is not null ? scene.Places[declaration.Start] : declaration.Start;
-        TextSnapshot snapshot = TextSnapshot.From(text);
-        int line = snapshot.GetLineFromOffset(start);
-        return new Declared(Declared.Served([(path, new TextPosition(line, start - snapshot.GetLineStart(line)))], ServerPlaces.Texts(context.Editors)), Refusals.NoDeclaration)
+        return new Declared(Declared.Served([(path, TextSnapshot.From(text).GetPosition(start))], ServerPlaces.Texts(context.Editors)), Refusals.NoDeclaration)
         {
             Names = [$"{Words(declaration.Kind)} {declaration.Name}{(name.Include is { } shown ? $" in {shown}" : string.Empty)}"],
         };

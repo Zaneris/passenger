@@ -100,8 +100,7 @@ internal sealed class CssClassAssist(AssistContext context, CodeCompletion compl
             TextSnapshot text = TextSnapshot.From(sheet.First().Text.Text);
             foreach (DefinedClass rule in sheet)
             {
-                int line = text.GetLineFromOffset(rule.Rule.At);
-                places.Add((rule.Path, new TextPosition(line, rule.Rule.At - text.GetLineStart(line))));
+                places.Add((rule.Path, text.GetPosition(rule.Rule.At)));
                 names.Add($"{Selector(rule)} in {rule.Sheet}");
             }
         }
