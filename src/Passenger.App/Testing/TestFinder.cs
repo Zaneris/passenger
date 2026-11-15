@@ -562,9 +562,9 @@ public sealed class TestFinder
                 starts[path] = tests.Count;
                 tests.AddRange(read.Tests.Where(t => !t.Abstract).Select(t => new TestItem(project.Path, $"{t.Type}.{t.Method}", t.Method)
                 {
-                    Path = path,
+                    Path = t.Written is { } written ? PathNames.Canonical(Path.GetFullPath(written.File, Path.GetDirectoryName(path)!)) : path,
                     DeclaredIn = t.DeclaredIn,
-                    Line = t.Line + 1,
+                    Line = (t.Written?.Line ?? t.Line) + 1,
                     Traits = t.Traits,
                     Cases = t.Cases,
                 }));

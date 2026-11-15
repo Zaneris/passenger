@@ -86,6 +86,28 @@ public sealed class TestNode : Observable, ITreeRow
     /// <summary>A method as its code declares it now: where it is, while it is typed.</summary>
     public TestItem? FromCode { get; internal set; }
 
+    /// <summary>The files and lines (from one) its tests are written at: its code's where the code says (a Reqnroll
+    /// scenario's .feature line, from its code-behind's <c>#line</c> directive), and the runner's in other files, whose
+    /// source information for a method of mapped code names its file but not reliably its line.</summary>
+    public IEnumerable<(string Path, int Line)> Places
+    {
+        get
+        {
+            string? coded = FromCode is { Path: { } path, Line: > 0 } code ? path : null;
+            if (coded is not null)
+            {
+                yield return (coded, FromCode!.Line);
+            }
+            foreach (TestItem item in Items)
+            {
+                if (item is { Path: { } at, Line: > 0 } && (coded is null || !PathNames.Same(at, coded)))
+                {
+                    yield return (at, item.Line);
+                }
+            }
+        }
+    }
+
     /// <summary>A data row's test; null for a row its method's run made.</summary>
     public TestItem? Item { get; internal set; }
 
