@@ -1,4 +1,5 @@
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using Avalonia;
 using Avalonia.Headless;
 using Passenger.Core;
@@ -34,9 +35,15 @@ public static class Unseen
         {
             return $"its {Builder}() chooses no renderer (UseSkia, which UsePlatformDetect chooses), and the headless platform draws with the app's own";
         }
-        prepared = (app.TextShapingSubsystemName is null ? app.UseHarfBuzz() : app).UseHeadless(new AvaloniaHeadlessPlatformOptions { UseHeadlessDrawing = false });
+        prepared = Headless(app);
         return null;
     }
+
+    /// <summary>The app's builder on the headless platform, shaping its text with HarfBuzz where it chose nothing to: a
+    /// method of its own, compiled only once <see cref="Prepare"/> has found HarfBuzz in the app's build.</summary>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static AppBuilder Headless(AppBuilder app) =>
+        (app.TextShapingSubsystemName is null ? app.UseHarfBuzz() : app).UseHeadless(new AvaloniaHeadlessPlatformOptions { UseHeadlessDrawing = false });
 
     /// <summary>Runs the app <see cref="Prepare"/> made with the classic desktop lifetime a Main gives it, its arguments the
     /// Main's; its exit code once it ends.</summary>

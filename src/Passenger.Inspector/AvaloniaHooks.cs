@@ -57,18 +57,35 @@ internal sealed class AppAvaloniaContext(string what, string hook) : AssemblyLoa
     /// Reload's) and the headless platform (an app nobody is to see).</summary>
     private static readonly string[] Carried = ["Avalonia.Markup.Xaml.Loader", "Avalonia.Headless"];
 
+    /// <summary>Avalonia's platforms that draw where people see them, by their assemblies.</summary>
+    public static readonly string[] ScreenPlatforms = ["Avalonia.Native", "Avalonia.X11", "Avalonia.Win32", "Avalonia.LinuxFramebuffer"];
+
     /// <summary>Whether the program's own code uses Avalonia's headless platform, so its Main may draw there itself. A build
     /// that only carries the platform, for its tests or through a package, leaves no reference in the program.</summary>
     public static bool ProgramUsesHeadless() => Assembly.GetEntryAssembly()?.GetReferencedAssemblies().Any(a => a.Name == "Avalonia.Headless") == true;
 
-    /// <summary>The Avalonia the program will load, from the assemblies the runtime was given for it, else (an app on a
-    /// device, whose host finds its assemblies itself) as the runtime finds it by name; null when it has none. And whether
-    /// the hooks serve it: its major version theirs.</summary>
-    public static (Version? Version, bool Served) ProgramAvalonia()
+    /// <summary>The Avalonia the program will load (<see cref="Taken"/>), null when it has none; and why the hooks cannot serve
+    /// it, null where they can: no Avalonia, another major version than theirs, or no Avalonia.Controls, as a program taking
+    /// Avalonia.Base alone (a library's tool) has, which makes no windows and whose Application the hooks' threads cannot
+    /// read.</summary>
+    public static (Version? Version, string? WhyNot) ProgramAvalonia()
     {
-        Version? version = StartupHooks.TrustedAssembly("Avalonia.Base.dll") is { } path ? AssemblyName.GetAssemblyName(path).Version : Found("Avalonia.Base");
-        return (version, version?.Major == StartupHooks.AvaloniaMajor);
+        Version? version = Taken("Avalonia.Base");
+        string? whyNot = version is null ? "The app does not use Avalonia"
+            : version.Major != StartupHooks.AvaloniaMajor ? $"The app runs Avalonia {version.ToString(3)}; the Live Visual Tree needs Avalonia {StartupHooks.AvaloniaMajor}"
+            : Taken("Avalonia.Controls") is null ? "The app uses Avalonia without its controls (no Avalonia.Controls among its assemblies), so it has no windows to inspect"
+            : null;
+        return (version, whyNot);
     }
+
+    /// <summary>Whether the program carries one of Avalonia's platforms that draw where people see them, among the assemblies
+    /// the runtime was given for it: without one, its Avalonia draws on no screen.</summary>
+    public static bool CarriesScreenPlatform() => ScreenPlatforms.Any(platform => StartupHooks.TrustedAssembly(platform + ".dll") is not null);
+
+    /// <summary>An assembly's version as the program will load it, from the assemblies the runtime was given for it, else (an
+    /// app on a device, whose host finds its assemblies itself) as the runtime finds it by name; null when it has none.</summary>
+    private static Version? Taken(string name) =>
+        StartupHooks.TrustedAssembly(name + ".dll") is { } path ? AssemblyName.GetAssemblyName(path).Version : Found(name);
 
     /// <summary>An assembly's version as the default context finds it by name, loaded where the program loads it, none of
     /// its code run; null where it finds none.</summary>

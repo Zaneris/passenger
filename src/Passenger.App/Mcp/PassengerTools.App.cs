@@ -550,7 +550,7 @@ public sealed partial class PassengerTools
     }
 
     /// <summary>What Passenger inspects, as a refusal says it.</summary>
-    private const string Inspectable = "an app Passenger inspects (an Avalonia 12 app, Avalonia.Base.dll beside it, or a WPF app on Windows)";
+    private const string Inspectable = "an app Passenger inspects (an Avalonia 12 app, Avalonia.Controls.dll beside it, or a WPF app on Windows)";
 
     /// <summary>The app's tree, flattened, and the window named (else the app's first, or for Passenger's own the window this
     /// agent works in).</summary>

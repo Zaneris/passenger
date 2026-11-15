@@ -244,11 +244,11 @@ public sealed class LiveApp : ILiveTreeSource, IDisposable
     /// <summary>The app said it could not tell more than it had said (<see cref="Untold"/>).</summary>
     public event EventHandler? UntoldChanged;
 
-    /// <summary>The live app for a plan whose program is built with Avalonia (Avalonia.Base beside its assembly), showing
-    /// these renderer debug overlays from its first window, or, with <paramref name="wpf"/>, on Windows with WPF (its
-    /// assembly a WindowsDesktop app's that references WPF's); null for any other program, or when this build of Passenger
-    /// carries no inspector for it. One whose socket could not be made is refused, saying why, its plan still carrying the
-    /// inspector, which lets the app run on without it.</summary>
+    /// <summary>The live app for a plan whose program is an Avalonia app (<see cref="DesktopPrograms.AvaloniaAssembly"/>
+    /// beside its assembly), showing these renderer debug overlays from its first window, or, with <paramref name="wpf"/>, on
+    /// Windows with WPF (its assembly a WindowsDesktop app's that references WPF's); null for any other program (one taking
+    /// Avalonia.Base alone too), or when this build of Passenger carries no inspector for it. One whose socket could not be
+    /// made is refused, saying why, its plan still carrying the inspector, which lets the app run on without it.</summary>
     public static LiveApp? For(LaunchPlan plan, IReadOnlyList<string>? overlays = null, bool wpf = true)
     {
         if (plan.Device is not null)
@@ -260,7 +260,7 @@ public sealed class LiveApp : ILiveTreeSource, IDisposable
             return null;
         }
         LiveAppKind kind;
-        if (File.Exists(Path.Combine(Path.GetDirectoryName(built)!, "Avalonia.Base.dll")) && File.Exists(InspectorPath))
+        if (DesktopPrograms.BesideAvalonia(built) && File.Exists(InspectorPath))
         {
             kind = LiveAppKind.Avalonia;
         }
@@ -276,7 +276,7 @@ public sealed class LiveApp : ILiveTreeSource, IDisposable
         return new LiveApp(plan.Name, socket, listener, plan, overlays ?? [], kind, problem);
     }
 
-    /// <summary>The live app for a plan that runs an app on a device whose build deployed Avalonia (Avalonia.Base.dll among
+    /// <summary>The live app for a plan that runs an app on a device whose build deployed Avalonia (its controls' assembly among
     /// the assemblies its Debug build deployed): its inspector, with the files it carries and its overlays, for the start to
     /// put in (<see cref="Run.Devices.DeviceLaunches"/>), listening on an abstract socket of its own for the token only this
     /// launch knows; null for any other app, one not installed yet, or a build of Passenger with no inspector.</summary>
@@ -287,7 +287,7 @@ public sealed class LiveApp : ILiveTreeSource, IDisposable
             return null;
         }
         string assets = Path.Combine(app.Intermediate, "android", "assets");
-        if (!Directory.Exists(assets) || !Directory.EnumerateFiles(assets, "Avalonia.Base.dll", SearchOption.AllDirectories).Any())
+        if (!Directory.Exists(assets) || !Directory.EnumerateFiles(assets, DesktopPrograms.AvaloniaAssembly, SearchOption.AllDirectories).Any())
         {
             return null;
         }

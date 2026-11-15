@@ -25,6 +25,10 @@ public static class DesktopPrograms
 
     private const string MacApp = "a native macOS app";
 
+    /// <summary>The assembly found beside an Avalonia app: its Application, its windows and their controls, which a program
+    /// taking Avalonia.Base alone (Avalonia's geometry, colours, values) has none of.</summary>
+    public const string AvaloniaAssembly = "Avalonia.Controls.dll";
+
     /// <summary>The package a project takes Avalonia by, or a package named under it.</summary>
     private const string AvaloniaPackage = "Avalonia";
 
@@ -41,7 +45,7 @@ public static class DesktopPrograms
     /// it, and the package a project takes the framework by, or a package named under it.</summary>
     private static readonly (string File, string Called, string Package)[] Frameworks =
     [
-        ("Avalonia.Base.dll", Avalonia, AvaloniaPackage), ("Microsoft.WinUI.dll", "a WinUI app", "Microsoft.WindowsAppSDK"), ("Microsoft.Maui.dll", "a .NET MAUI app", "Microsoft.Maui.Controls"),
+        (AvaloniaAssembly, Avalonia, AvaloniaPackage), ("Microsoft.WinUI.dll", "a WinUI app", "Microsoft.WindowsAppSDK"), ("Microsoft.Maui.dll", "a .NET MAUI app", "Microsoft.Maui.Controls"),
         ("Uno.UI.dll", "an Uno Platform app", "Uno.WinUI"), ("Eto.dll", "an Eto.Forms app", "Eto.Forms"), ("GtkSharp.dll", "a GTK app", "GtkSharp"),
     ];
 
@@ -88,6 +92,9 @@ public static class DesktopPrograms
             return null;
         }
     }
+
+    /// <summary>Whether a program's file is an Avalonia app's, <see cref="AvaloniaAssembly"/> beside it.</summary>
+    public static bool BesideAvalonia(string file) => File.Exists(Path.Combine(Path.GetDirectoryName(file)!, AvaloniaAssembly));
 
     private static bool OpensWindows(string library)
     {

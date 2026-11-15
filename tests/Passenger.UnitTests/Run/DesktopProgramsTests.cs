@@ -32,7 +32,7 @@ public sealed class DesktopProgramsTests : IDisposable
     public void The_assembly_a_named_dotnet_is_given_is_what_runs_past_exec_and_the_hosts_options()
     {
         string assembly = Write("app/App.dll");
-        Write("app/Avalonia.Base.dll");
+        Write("app/Avalonia.Controls.dll");
         Assert.Equal(assembly, DesktopPrograms.Started(Dotnet, ["app/App.dll", "--port", "1"], root, null, null, null)?.File);
         Assert.Equal(assembly, DesktopPrograms.Started(Dotnet, ["exec", "--runtimeconfig", "other.json", assembly], root, null, null, null)?.File);
         Assert.Equal(assembly, DesktopPrograms.Started(Dotnet, ["--roll-forward", "Major", assembly], root, null, null, null)?.File);
@@ -48,11 +48,25 @@ public sealed class DesktopProgramsTests : IDisposable
         Assert.Null(DesktopPrograms.Started(Dotnet, ["ef", "database", "update"], root, null, target: Write("app/App.dll"), declared: null));
     }
 
+    /// <summary>Avalonia.Base holds Avalonia's geometry, colours and values, which a library's tool or a test harness takes
+    /// alone; an app's Application and windows are in Avalonia.Controls.</summary>
+    [Fact]
+    public void A_program_taking_avalonia_base_alone_is_no_desktop_app_and_one_beside_avalonias_controls_is_an_avalonia_app()
+    {
+        string tool = Write("tool/Tool.dll");
+        Write("tool/Avalonia.Base.dll");
+        Assert.True(DesktopPrograms.Started(Dotnet, [tool], root, tool, tool, null) is null && !DesktopPrograms.BesideAvalonia(tool),
+            "A program taking Avalonia.Base alone read as an Avalonia app, so the inspector would go into a program with no windows for it");
+        Write("tool/Avalonia.Controls.dll");
+        Assert.True(DesktopPrograms.Started(Dotnet, [tool], root, tool, tool, null) is { Called: DesktopPrograms.Avalonia } && DesktopPrograms.BesideAvalonia(tool),
+            "A program beside Avalonia's controls did not read as an Avalonia app");
+    }
+
     [Fact]
     public void A_project_s_run_command_is_read_before_the_project_s_own_program()
     {
         string built = Write("app/App.dll");
-        Write("app/Avalonia.Base.dll");
+        Write("app/Avalonia.Controls.dll");
         string other = Write("other/Other");
         Write("other/GtkSharp.dll");
         Assert.Equal("a GTK app", DesktopPrograms.Started(other, [], root, built, built, null)?.Called);
@@ -62,7 +76,7 @@ public sealed class DesktopProgramsTests : IDisposable
     public void A_script_a_project_s_run_command_names_starts_the_project_s_app_a_hook_goes_through()
     {
         string built = Write("app/App.dll");
-        Write("app/Avalonia.Base.dll");
+        Write("app/Avalonia.Controls.dll");
         DesktopProgram? found = DesktopPrograms.Started(Write("run.sh"), [], root, built, built, null);
         Assert.True(found is { Called: DesktopPrograms.Avalonia, PastHooks: null } && found.File == built, $"A script starting the project's app read as {found}");
     }
@@ -73,7 +87,7 @@ public sealed class DesktopProgramsTests : IDisposable
     public void A_named_dotnet_run_starts_what_its_project_builds_past_any_hook_given_it(string command)
     {
         string target = Write("app/App.dll");
-        Write("app/Avalonia.Base.dll");
+        Write("app/Avalonia.Controls.dll");
         DesktopProgram? found = DesktopPrograms.Started(Dotnet, [command, "--no-build"], root, built: null, target, declared: null);
         Assert.True(found is { Called: DesktopPrograms.Avalonia, PastHooks: { } past } && past.StartsWith($"dotnet {command} ", StringComparison.Ordinal),
             $"dotnet {command} of an Avalonia project read as {found}: the inspector it would be given stops in the .NET CLI, and the app opens on the person's screen");
@@ -83,7 +97,7 @@ public sealed class DesktopProgramsTests : IDisposable
     public void A_build_turning_startup_hooks_off_keeps_the_inspector_out()
     {
         string built = Write("app/App.dll");
-        Write("app/Avalonia.Base.dll");
+        Write("app/Avalonia.Controls.dll");
         Assert.Null(DesktopPrograms.Started(Dotnet, [built], root, built, built, null)?.PastHooks);
         Write("app/App.runtimeconfig.json", """{ "runtimeOptions": { "configProperties": { "System.StartupHookProvider.IsSupported": false } } }""");
         Assert.NotNull(DesktopPrograms.Started(Dotnet, [built], root, built, built, null)?.PastHooks);
@@ -158,7 +172,7 @@ public sealed class DesktopProgramsTests : IDisposable
     public void An_avalonia_app_in_a_macs_app_bundle_stays_an_avalonia_app_the_inspector_goes_into()
     {
         string program = Write(Path.Join("App.app", "Contents", "MacOS", "App"));
-        Write(Path.Join("App.app", "Contents", "MacOS", "Avalonia.Base.dll"));
+        Write(Path.Join("App.app", "Contents", "MacOS", "Avalonia.Controls.dll"));
         Assert.Equal(DesktopPrograms.Avalonia, DesktopPrograms.Of(program));
     }
 
@@ -167,7 +181,7 @@ public sealed class DesktopProgramsTests : IDisposable
     [Fact]
     public void A_single_file_publish_on_a_mac_is_known_by_the_ui_framework_inside_it_and_goes_past_the_inspector()
     {
-        string program = WriteBytes("single/App", [.. MachOBytes.Thin("/usr/lib/libSystem.B.dylib"), .. new byte[100], .. Encoding.UTF8.GetBytes("Avalonia.Base.dll"), .. new byte[100]]);
+        string program = WriteBytes("single/App", [.. MachOBytes.Thin("/usr/lib/libSystem.B.dylib"), .. new byte[100], .. Encoding.UTF8.GetBytes("Avalonia.Controls.dll"), .. new byte[100]]);
         DesktopProgram? found = DesktopPrograms.Started(program, [], root, null, null, null);
         Assert.True(found is { Called: "an Avalonia app, published as a single file" }, $"A single-file Avalonia app read as {found}");
         Assert.NotEqual(DesktopPrograms.Avalonia, found!.Called);
@@ -222,7 +236,7 @@ public sealed class DesktopProgramsTests : IDisposable
         Assert.True(found is { Called: "a GTK app", PastHooks: not null } && found.File == other, $"dotnet run of a GTK project read as {found}");
 
         string avalonia = Write("avalonia/App.dll");
-        Write("avalonia/Avalonia.Base.dll");
+        Write("avalonia/Avalonia.Controls.dll");
         Assert.Null(DesktopPrograms.Started(Dotnet, ["run", "--project", other], root, null, avalonia, null, other));
     }
 

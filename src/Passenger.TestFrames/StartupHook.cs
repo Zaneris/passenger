@@ -23,7 +23,7 @@ internal static class StartupHook
         Unlist();
         try
         {
-            if (!AppAvaloniaContext.ProgramAvalonia().Served)
+            if (AppAvaloniaContext.ProgramAvalonia().WhyNot is not null)
             {
                 return;
             }

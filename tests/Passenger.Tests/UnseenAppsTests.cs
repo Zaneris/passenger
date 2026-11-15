@@ -38,7 +38,7 @@ public sealed class UnseenAppsTests : IDisposable
     [Fact]
     public void An_avalonia_program_a_configuration_names_takes_the_inspector_that_keeps_it_off_the_screen()
     {
-        string assembly = Carrying("Avalonia.Base.dll", "App.dll");
+        string assembly = Carrying("Avalonia.Controls.dll", "App.dll");
         LaunchPlan named = Plan(Dotnet.Host()) with { Arguments = [assembly] };
         Assert.Equal(assembly, UnseenApps.Inspected(named));
         Assert.Null(named.WhyNot("run"));
@@ -48,7 +48,7 @@ public sealed class UnseenAppsTests : IDisposable
     [Fact]
     public void A_named_dotnet_run_of_an_avalonia_project_is_kept_off_the_screen_as_no_inspector_goes_through_it()
     {
-        string target = Carrying("Avalonia.Base.dll", "App.dll");
+        string target = Carrying("Avalonia.Controls.dll", "App.dll");
         LaunchPlan named = Plan(Dotnet.Host()) with { Arguments = ["run"], Target = target };
         KeptOff(named, DesktopPrograms.Avalonia);
         Assert.Null(UnseenApps.Inspected(named));
@@ -70,7 +70,7 @@ public sealed class UnseenAppsTests : IDisposable
     [Fact]
     public void An_avalonia_app_dotnet_watch_would_start_is_kept_off_the_screen()
     {
-        string built = Carrying("Avalonia.Base.dll", "App.dll");
+        string built = Carrying("Avalonia.Controls.dll", "App.dll");
         LaunchPlan watched = Plan(Dotnet.Host()) with { Arguments = [built], Built = built, Target = built };
         Assert.Null(watched.WhyNot("run"));
         if (!OperatingSystem.IsWindows())

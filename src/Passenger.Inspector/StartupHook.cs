@@ -6,11 +6,12 @@ using Passenger.Inspector;
 /// <summary>The runtime calls this before the app's Main, as DOTNET_STARTUP_HOOKS names this assembly: only in a run
 /// Passenger launched for its Live Visual Tree, never in the app as shipped. Nothing here touches Avalonia, which the app has
 /// not set up yet: the hook takes itself out of the environment (so nothing the app starts loads it), checks the app's
-/// Avalonia, turns on Avalonia's own diagnostics for the profiler's frames, and starts the inspector in a context of its own.
-/// Nothing it does stops the app, but where nobody is to see it (<see cref="Wire.UnseenVariable"/>): there an app whose Main
-/// would draw where people see it is started by the hook on Avalonia's headless platform in the Main's place
-/// (<see cref="Unseen"/>), or where it cannot be, ends before its Main unless a desktop of its own hides it. A Main whose own
-/// code uses that platform chooses for itself, and ends if it starts one of a screen (<see cref="KeepOffScreens"/>).</summary>
+/// Avalonia and its controls, turns on Avalonia's own diagnostics for the profiler's frames, and starts the inspector in a
+/// context of its own. Nothing it does stops the app, but where nobody is to see it (<see cref="Wire.UnseenVariable"/>):
+/// there an app carrying a platform of a screen, whose Main would draw where people see it, is started by the hook on
+/// Avalonia's headless platform in the Main's place (<see cref="Unseen"/>), or where it cannot be, ends before its Main unless
+/// a desktop of its own hides it. A Main whose own code uses that platform chooses for itself, as one carrying no platform of
+/// a screen runs as it is, and either ends if it starts one of a screen (<see cref="KeepOffScreens"/>).</summary>
 internal static class StartupHook
 {
     /// <summary>The switch Avalonia's Diagnostic class reads once, as Avalonia first measures or renders: on, Avalonia makes its
@@ -20,9 +21,6 @@ internal static class StartupHook
 
     /// <summary>The exit code of an app nobody is to see that ended before it drew where people see it.</summary>
     internal const int EndedUnseen = 1;
-
-    /// <summary>Avalonia's platforms that draw where people see them, by their assemblies.</summary>
-    private static readonly string[] ScreenPlatforms = ["Avalonia.Native", "Avalonia.X11", "Avalonia.Win32", "Avalonia.LinuxFramebuffer"];
 
     /// <summary>Says to Passenger why the app ends over the inspector's own connection, once it has one.</summary>
     private static Action<string>? told;
@@ -38,10 +36,12 @@ internal static class StartupHook
         {
             return;
         }
-        // Only a Main whose own code uses the headless platform can choose it, so only such a Main runs: what it chooses is seen as it starts.
+        // Only a Main whose own code uses the headless platform can choose it, so such a Main runs: what it chooses is seen as it starts.
         bool itself = unseen is not null && AppAvaloniaContext.ProgramUsesHeadless();
-        bool ends = unseen == Wire.UnseenEnds && !itself;
-        if (itself && unseen == Wire.UnseenEnds)
+        // A program carrying no platform of a screen draws on none whatever its Main does, so its Main runs as it is too.
+        bool guarded = unseen is not null && !itself && AppAvaloniaContext.CarriesScreenPlatform();
+        bool ends = unseen == Wire.UnseenEnds && guarded;
+        if (unseen == Wire.UnseenEnds && !guarded)
         {
             KeepOffScreens(socket);
         }
@@ -50,17 +50,14 @@ internal static class StartupHook
         try
         {
             Thread main = Thread.CurrentThread;
-            (Version? avalonia, bool served) = AppAvaloniaContext.ProgramAvalonia();
-            if (!served)
+            (Version? avalonia, string? whyNot) = AppAvaloniaContext.ProgramAvalonia();
+            if (whyNot is not null)
             {
-                string why = avalonia is null
-                    ? "The app does not use Avalonia"
-                    : $"The app runs Avalonia {avalonia.ToString(3)}; the Live Visual Tree needs Avalonia {StartupHooks.AvaloniaMajor}";
-                if (ends && avalonia is not null)
+                if (ends && avalonia is not null && avalonia.Major != StartupHooks.AvaloniaMajor)
                 {
-                    End(socket, avalonia, $"{why}, and only an Avalonia {StartupHooks.AvaloniaMajor} app draws on Avalonia's headless platform where nobody sees it");
+                    End(socket, avalonia, $"{whyNot}, and only an Avalonia {StartupHooks.AvaloniaMajor} app draws on Avalonia's headless platform where nobody sees it");
                 }
-                Connection.Refuse(socket, avalonia, why);
+                Connection.Refuse(socket, avalonia, whyNot);
                 return;
             }
             AppContext.SetSwitch(AvaloniaDiagnostics, true);
@@ -73,7 +70,7 @@ internal static class StartupHook
             inside.GetType("Passenger.Inspector.FrameRecorder", throwOnError: true)!
                 .GetMethod("Start", BindingFlags.Public | BindingFlags.Static)!
                 .Invoke(null, null);
-            if (unseen is not null && !itself)
+            if (guarded)
             {
                 Type hidden = inside.GetType("Passenger.Inspector.Unseen", throwOnError: true)!;
                 if (hidden.GetMethod(nameof(Unseen.Prepare), BindingFlags.Public | BindingFlags.Static)!.CreateDelegate<Func<string?>>()() is { } why)
@@ -120,7 +117,7 @@ internal static class StartupHook
     private static void KeepOffScreens(string socket) =>
         AppDomain.CurrentDomain.AssemblyLoad += (_, loaded) =>
         {
-            if (loaded.LoadedAssembly.GetName().Name is { } platform && ScreenPlatforms.Contains(platform))
+            if (loaded.LoadedAssembly.GetName().Name is { } platform && AppAvaloniaContext.ScreenPlatforms.Contains(platform))
             {
                 NativeLibrary.SetDllImportResolver(loaded.LoadedAssembly, (_, _, _) =>
                 {
