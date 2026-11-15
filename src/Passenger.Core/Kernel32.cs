@@ -20,9 +20,9 @@ public static partial class Kernel32
     public const uint Synchronize = 0x100000;
 
     /// <summary>GetStdHandle's and SetStdHandle's STD_INPUT_HANDLE, STD_OUTPUT_HANDLE and STD_ERROR_HANDLE.</summary>
-    public const int StandardInput = -10;
-    public const int StandardOutput = -11;
-    public const int StandardError = -12;
+    public const int StdInputHandle = -10;
+    public const int StdOutputHandle = -11;
+    public const int StdErrorHandle = -12;
 
     /// <summary>SetHandleInformation's HANDLE_FLAG_INHERIT: a handle a program started inherits.</summary>
     public const uint Inherited = 1;

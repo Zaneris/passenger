@@ -47,9 +47,9 @@ public static unsafe partial class SharedConsole
     /// once it has written, then ended. The process's standard handles stay as they were. False where none could be made.</summary>
     private static bool Make()
     {
-        nint input = Kernel32.GetStdHandle(Kernel32.StandardInput);
-        nint output = Kernel32.GetStdHandle(Kernel32.StandardOutput);
-        nint error = Kernel32.GetStdHandle(Kernel32.StandardError);
+        nint input = Kernel32.GetStdHandle(Kernel32.StdInputHandle);
+        nint output = Kernel32.GetStdHandle(Kernel32.StdOutputHandle);
+        nint error = Kernel32.GetStdHandle(Kernel32.StdErrorHandle);
         ProcessStartInfo start = new(Path.Combine(Environment.SystemDirectory, "cmd.exe"), ["/d", "/c", "pause"])
         {
             UseShellExecute = false,
@@ -81,9 +81,9 @@ public static unsafe partial class SharedConsole
         finally
         {
             End(holder);
-            Kernel32.SetStdHandle(Kernel32.StandardInput, input);
-            Kernel32.SetStdHandle(Kernel32.StandardOutput, output);
-            Kernel32.SetStdHandle(Kernel32.StandardError, error);
+            Kernel32.SetStdHandle(Kernel32.StdInputHandle, input);
+            Kernel32.SetStdHandle(Kernel32.StdOutputHandle, output);
+            Kernel32.SetStdHandle(Kernel32.StdErrorHandle, error);
         }
         if (unmade is not null)
         {

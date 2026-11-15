@@ -12,7 +12,7 @@ public static class StandardHandles
         {
             return;
         }
-        foreach (int standard in (int[])[Kernel32.StandardInput, Kernel32.StandardOutput, Kernel32.StandardError])
+        foreach (int standard in (int[])[Kernel32.StdInputHandle, Kernel32.StdOutputHandle, Kernel32.StdErrorHandle])
         {
             // A handle that is none (a process started with no console) is left as it is.
             _ = NotInherited(Kernel32.GetStdHandle(standard));

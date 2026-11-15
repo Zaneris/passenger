@@ -45,7 +45,7 @@ internal static partial class StandardInput
     private static SafeFileHandle? TakeOnWindows()
     {
         SafeFileHandle? given = null;
-        nint handle = Kernel32.GetStdHandle(Kernel32.StandardInput);
+        nint handle = Kernel32.GetStdHandle(Kernel32.StdInputHandle);
         if (handle is not (0 or -1))
         {
             // The handle given stays open, but no program started inherits it.
@@ -56,7 +56,7 @@ internal static partial class StandardInput
             }
         }
         nothing = File.OpenHandle("NUL", FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
-        if (!Kernel32.SetHandleInformation(nothing.DangerousGetHandle(), Kernel32.Inherited, Kernel32.Inherited) || !Kernel32.SetStdHandle(Kernel32.StandardInput, nothing.DangerousGetHandle()))
+        if (!Kernel32.SetHandleInformation(nothing.DangerousGetHandle(), Kernel32.Inherited, Kernel32.Inherited) || !Kernel32.SetStdHandle(Kernel32.StdInputHandle, nothing.DangerousGetHandle()))
         {
             Unmade();
         }
