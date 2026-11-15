@@ -24,6 +24,12 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- A .feature file read and its steps matched (Gherkin/). -->
+    <PackageReference Include="Gherkin" />
+    <PackageReference Include="Cucumber.CucumberExpressions" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="../Passenger.Core/Passenger.Core.csproj" />
     <ProjectReference Include="../Passenger.Text/Passenger.Text.csproj" />
     <!-- The host's messages, one definition for both ends. -->

@@ -85,6 +85,11 @@
           "Azure.Core": "1.53.0"
         }
       },
+      "Cucumber.Messages": {
+        "type": "Transitive",
+        "resolved": "29.0.1",
+        "contentHash": "R2oo/wR3mXrbdK04Yraf+KhB01f/lyBkLQZcdxYt9XKE6tV+Af45MEk+jfbsew1SVvrAO0WvkIRwGYUozKCJvQ=="
+      },
       "Humanizer.Core": {
         "type": "Transitive",
         "resolved": "2.14.1",
@@ -567,6 +572,8 @@
       "passenger.workspace": {
         "type": "Project",
         "dependencies": {
+          "Cucumber.CucumberExpressions": "[17.1.0, )",
+          "Gherkin": "[35.0.0, )",
           "Passenger.Core": "[0.3.4, )",
           "Passenger.Text": "[0.3.4, )"
         }
@@ -589,6 +596,21 @@
           "Avalonia.BuildServices": "11.3.2",
           "Avalonia.Remote.Protocol": "12.1.6",
           "MicroCom.Runtime": "0.11.6"
+        }
+      },
+      "Cucumber.CucumberExpressions": {
+        "type": "CentralTransitive",
+        "requested": "[17.1.0, )",
+        "resolved": "17.1.0",
+        "contentHash": "IZFDLLwrUCKuGDXQzmAWZa+kQFpVmVwWD8wEl0UWGOR83UQfzqg8hZeSSNUOXlW0Kh3vMO6kEm3FpNC4amKMaw=="
+      },
+      "Gherkin": {
+        "type": "CentralTransitive",
+        "requested": "[35.0.0, )",
+        "resolved": "35.0.0",
+        "contentHash": "ha+QNevQsXEESbzazUceHTCtKOjoBTBa8kLFdKpu6vSEbb3UMt3a55RG78tIoU/C4qzIqX3jQxaIdIcYGO+IWQ==",
+        "dependencies": {
+          "Cucumber.Messages": "29.0.1"
         }
       },
       "ICSharpCode.Decompiler": {
