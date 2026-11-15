@@ -176,7 +176,9 @@ public sealed partial class Vim
             return new VisualExtent(Mode, lines, right == int.MaxValue ? 0 : right - left, blockColumns.ToEnd);
         }
         int columns = lines == 0 ? r.High - r.Low : TextNavigation.VisualColumn(text, r.High, view.Indent.TabWidth);
-        return new VisualExtent(Mode, lines, columns, false);
+        // A stretch $ took to its lines' ends takes . to them too.
+        bool toEnd = Mode == VimMode.Visual && visualAims.Length == regions.Count && visualAims[Math.Clamp(visualPrimary, 0, regions.Count - 1)] == int.MaxValue;
+        return new VisualExtent(Mode, lines, columns, toEnd);
     }
 
     /// <summary>A stretch as much as <paramref name="extent"/> from a caret, for . after a visual change; a block's
@@ -196,12 +198,12 @@ public sealed partial class Vim
             return new Region(caret, text.GetLineStart(line));
         }
         LineSpan end = text.GetLine(line);
-        if (extent.Lines == 0)
+        if (extent.Lines == 0 && !extent.ToEnd)
         {
             return new Region(caret, Math.Min(caret + extent.Columns, end.End));
         }
         // Past the last line's end, the stretch takes its line break.
-        return new Region(caret, TextNavigation.VisualColumn(text, end.End, tab) <= extent.Columns ? end.End : VimMotions.OffsetAtColumn(text, line, extent.Columns, tab));
+        return new Region(caret, extent.ToEnd || TextNavigation.VisualColumn(text, end.End, tab) <= extent.Columns ? end.End : VimMotions.OffsetAtColumn(text, line, extent.Columns, tab));
     }
 
     /// <summary>The stretches of character or line regions, and a caret at each one's start (a line region's first line's).

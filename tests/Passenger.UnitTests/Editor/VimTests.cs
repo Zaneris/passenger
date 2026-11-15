@@ -1990,6 +1990,20 @@ public class VimTests
     public void Bracket_objects_over_a_visual_stretch_go_out_from_its_start_as_vims_do(string before, string keys, string after) =>
         Assert.Equal(after, Run(before, keys));
 
+    /// <summary>. after a visual change whose stretch $ took to the line's end takes the line from the cursor to its end,
+    /// its line break with it, however long the line, as Vim's help has it.</summary>
+    [Theory]
+    [InlineData("ab|cdefgh\nijklmnop\nqrstuvwx\nyzABCDEF\nGHIJKLMN", "v$djj0.", "abijklmnop\nqrstuvwx\n|GHIJKLMN")]
+    [InlineData("ab|cdefgh\nijklmnop\nqrstuvwx\nyzABCDEF\nGHIJKLMN", "v$djj01l.", "abijklmnop\nqrstuvwx\ny|GHIJKLMN")]
+    [InlineData("ab|cdefgh\nijklmnop\nqrstuvwx\nyzABCDEF\nGHIJKLMN", "v$~jj0.", "abCDEFGH\nijklmnop\n|QRSTUVWX\nyzABCDEF\nGHIJKLMN")]
+    [InlineData("ab|cdefgh\nijklmnop\nqrstuvwx\nyzABCDEF\nGHIJKLMN", "v$c7<Esc>jj01l.", "ab7ijklmnop\nqrstuvwx\ny|7GHIJKLMN")]
+    [InlineData("ab|c\ndefgh\nij\nklmno\npq\nrstu", "v$dG.", "abdefgh\nij\nklmno\npq\n|")]
+    [InlineData("|abcdefgh\nij\nklmnopqrstu\nvw\nxyzABCDEFGHI\nJK\nLMNOPQRS", "v$hdjj01l.", "\nij\nk|tu\nvw\nxyzABCDEFGHI\nJK\nLMNOPQRS")]
+    [InlineData("|abcdefgh\nij\nklmnopqrstu\nvw\nxyzABCDEFGHI\nJK\nLMNOPQRS", "vj$djj01l.", "klmnopqrstu\nvw\nx|LMNOPQRS")]
+    [InlineData("|abcdefgh\nij\nklmnopqrstu\nvw\nxyzABCDEFGHI\nJK\nLMNOPQRS", "v2$djj01l.", "klmnopqrstu\nvw\nx|LMNOPQRS")]
+    public void Dot_after_a_visual_change_to_the_lines_end_takes_the_line_to_its_end(string before, string keys, string after) =>
+        Assert.Equal(after, Run(before, keys));
+
     [Fact]
     public void A_huge_count_ends_at_the_texts_edge()
     {
