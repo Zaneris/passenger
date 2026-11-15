@@ -195,4 +195,12 @@ public sealed class FeatureReadingTests
         Assert.Equal(lf.Folds(), crlf.Folds());
         Assert.Empty(crlf.Errors);
     }
+
+    [Fact]
+    public void A_mistake_after_a_lone_carriage_return_is_placed_on_the_editors_line()
+    {
+        FeatureReading reading = FeatureReading.Read("Feature: F\r# a note\nScenario: A\n  Given one\n  | a |\n  Banana\n", "en");
+
+        Assert.Equal(4, Assert.Single(reading.Errors).Line);
+    }
 }

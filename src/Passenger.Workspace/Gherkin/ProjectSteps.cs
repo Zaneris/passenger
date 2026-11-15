@@ -8,8 +8,7 @@ public sealed class ProjectSteps(string project, bool specFlow, IReadOnlyList<St
     IReadOnlyList<StepTransformation> transformations)
 {
     private readonly Lock made = new();
-    private StepMatcher? matcher;
-    private string? matcherCulture;
+    private readonly Dictionary<string, StepMatcher> matchers = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>The project file.</summary>
     public string Project { get; } = project;
@@ -23,16 +22,15 @@ public sealed class ProjectSteps(string project, bool specFlow, IReadOnlyList<St
     public IReadOnlyList<StepTransformation> Transformations { get; } = transformations;
 
     /// <summary>The matcher of the project's steps in a culture (its configuration's binding culture, else its features'
-    /// language, as Reqnroll takes it), made again only when that changes; for any thread.</summary>
+    /// language, as Reqnroll takes it), made once for each; for any thread.</summary>
     public StepMatcher Matcher(string? culture)
     {
         string name = culture ?? "en-US";
         lock (made)
         {
-            if (matcher is null || matcherCulture != name)
+            if (!matchers.TryGetValue(name, out StepMatcher? matcher))
             {
-                matcher = new StepMatcher(Bindings, Transformations, CultureOf(name));
-                matcherCulture = name;
+                matchers[name] = matcher = new StepMatcher(Bindings, Transformations, CultureOf(name));
             }
             return matcher;
         }

@@ -285,6 +285,8 @@ public partial class MainWindow
         ProjectSession running = session;
         string workspace = Folder;
         IReadOnlySet<string>? projects = null;
+        // A feature's tests are placed as its compiler counts its lines: taken to the editor's, as its marks are.
+        Passenger.Lsp.ServerLines? compiled = Bdd.FeatureChecks.IsFeature(path) ? CSharp.ServerPlaces.Compiled(path, CSharp.ServerPlaces.TextOf(Editors, path)) : null;
         RunTests(async () =>
         {
             if (!untilFailure)
@@ -302,7 +304,7 @@ public partial class MainWindow
         bool Matches(Testing.TestNode test) =>
             (test.FullName is { } name && Testing.TestsAtCaret.Matches(name, type, method)
                 && Testing.TestFinder.IsOf(test, projects ??= running.Tests.Finder.ProjectsOf(path)))
-            || test.Places.Any(at => PathNames.Same(at.Path, path) && place.Holds(at.Line));
+            || test.Places.Any(at => PathNames.Same(at.Path, path) && place.Holds(compiled is null ? at.Line : Testing.TestGutter.EditorLine(compiled, at.Line)));
 
         string None(string? unfound) => Refusals.NoTestOf(method ?? type, unfound);
     }

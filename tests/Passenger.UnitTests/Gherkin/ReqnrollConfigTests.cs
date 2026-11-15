@@ -61,4 +61,13 @@ public sealed class ReqnrollConfigTests
         Assert.Equal((SkeletonStyle.CucumberExpression, SkeletonStyle.Regex), (none.SkeletonFor(specFlow: false), none.SkeletonFor(specFlow: true)));
         Assert.Equal(SkeletonStyle.AsyncRegex, ReqnrollConfig.Parse("""{ "trace": { "stepDefinitionSkeletonStyle": "AsyncRegexAttribute" } }""", false) with { Written = true } is var said ? said.SkeletonFor(specFlow: false) : default);
     }
+
+    [Fact]
+    public void A_features_arguments_are_converted_in_its_own_language_unless_a_binding_culture_is_named()
+    {
+        FeatureReading german = FeatureReading.Read("# language: de\nFunktionalität: F\n", "en");
+
+        Assert.Equal("de", ReqnrollConfig.Parse("{}", specFlow: false).BindingCultureOf(german));
+        Assert.Equal("en-US", ReqnrollConfig.Parse("""{ "language": { "binding": "en-US" } }""", specFlow: false).BindingCultureOf(german));
+    }
 }

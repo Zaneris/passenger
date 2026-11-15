@@ -191,6 +191,10 @@ public sealed class TestGutter
 
     private static bool IsFeature(OpenDocument document) => Bdd.FeatureChecks.IsFeature(document.Path);
 
+    /// <summary>A line a compiler gives a test (from one, in its counting) as the editor's, from one.</summary>
+    public static int EditorLine(Passenger.Lsp.ServerLines lines, int line) =>
+        line <= 0 ? line : CSharp.ServerPlaces.PositionOf(lines, new Passenger.Lsp.LspPosition(line - 1, 0)).Line + 1;
+
     /// <summary>The scenario, else the rule, else the feature a .feature file's line is in, as the file was last read; null in
     /// any other file, or outside them.</summary>
     public DeclaredPlace? FeatureTestAt(OpenDocument document, int line)
@@ -321,6 +325,11 @@ public sealed class TestGutter
             testLines.Add(line);
         }
         List<(int Line, TestNode Method)> found = byFile.GetValueOrDefault(document.Path) ?? NoneFound;
+        // A feature's tests are placed as its compiler counts its lines (at a lone '\r' too): taken to the editor's.
+        if (IsFeature(document) && CSharp.ServerPlaces.Compiled(document.Path, document.Text.Snapshot) is { } compiled)
+        {
+            found = [.. found.Select(f => (EditorLine(compiled, f.Line), f.Method))];
+        }
         List<TestMark> marks = new(file.Tests.Types.Count + file.Tests.Tests.Count);
         IReadOnlySet<string>? projects = null;
         foreach (DeclaredPlace place in file.Places.Types)
