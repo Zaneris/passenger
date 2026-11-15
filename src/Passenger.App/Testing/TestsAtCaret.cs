@@ -13,11 +13,13 @@ namespace Passenger.App.Testing;
 public static class TestsAtCaret
 {
     /// <summary>The frameworks' own attributes that make a method a test, as written less "Attribute": xUnit's (and its
-    /// culture's, STA's, WPF's and Avalonia's), NUnit's and TUnit's, and MSTest's (its STA and UI threads' too).</summary>
+    /// culture's, STA's, WPF's, Avalonia's and Xunit.SkippableFact's, which Reqnroll's xUnit v2 code-behind writes), NUnit's
+    /// and TUnit's, and MSTest's (its STA and UI threads' too).</summary>
     private static readonly HashSet<string> TestAttributes = new(StringComparer.Ordinal)
     {
         "Fact", "Theory", "CulturedFact", "CulturedTheory", "StaFact", "StaTheory", "WpfFact", "WpfTheory", "UIFact", "UITheory",
-        "AvaloniaFact", "AvaloniaTheory", "Test", "TestCase", "TestCaseSource", "TestMethod", "DataTestMethod", "STATestMethod", "UITestMethod",
+        "AvaloniaFact", "AvaloniaTheory", "SkippableFact", "SkippableTheory", "Test", "TestCase", "TestCaseSource", "TestMethod", "DataTestMethod",
+        "STATestMethod", "UITestMethod",
     };
 
     /// <summary>The test the caret's line (from zero, the editor's line, which Roslyn may count as several) is in: its
