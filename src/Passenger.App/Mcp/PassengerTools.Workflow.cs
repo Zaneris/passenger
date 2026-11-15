@@ -626,7 +626,7 @@ public sealed partial class PassengerTools
             heap)
         {
             HeapNote = heapNote,
-            Frames = snapshot.Place is { } elsewhere && snapshot.HotSpots.Any(h => h.Module.StartsWith("Avalonia", StringComparison.Ordinal))
+            Frames = snapshot.Place is { } elsewhere && Passenger.Profiler.UiFrames.RanAvalonia(snapshot.HotSpots)
                 ? new UiFramesInfo(0, 0, 0, 0, 0, []) { Why = Profiling.FramesView.InContainer(elsewhere.Where) }
                 : UiFramesOf(snapshot.UiFrames, Math.Clamp(top, 1, 200), inspected),
             Godot = GameFramesOf(snapshot, Math.Clamp(top, 1, 200)),

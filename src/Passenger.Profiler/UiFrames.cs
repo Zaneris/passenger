@@ -54,6 +54,10 @@ public static class UiFrames
     /// <summary>How soon after one window's drawing ends another's begins in the same tick of the render loop.</summary>
     private const double SameTick = 2;
 
+    /// <summary>Whether a run's samples went through Avalonia's code, by the modules of its hot spots, named as the trace
+    /// names them: in lower case for code compiled as the program ran (avalonia.base), as written for the rest.</summary>
+    public static bool RanAvalonia(IEnumerable<HotSpot> spots) => spots.Any(s => s.Module.StartsWith("Avalonia", StringComparison.OrdinalIgnoreCase));
+
     /// <summary>The frames' median time on the UI thread: of an even count, halfway between the two in the middle.</summary>
     public static double MedianMs(IEnumerable<UiFrame> frames) => Percentile([.. frames.Select(f => f.DurationMs).Order()], 0.5);
 

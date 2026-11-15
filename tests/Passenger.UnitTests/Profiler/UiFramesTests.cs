@@ -3,7 +3,8 @@ using Passenger.Profiler;
 namespace Passenger.UnitTests.Profiler;
 
 /// <summary>An Avalonia frame's composite time: the compositor's drawings after it that one tick of the render loop makes,
-/// each window's beginning as the one before it ends, and none past the next frame or a gap.</summary>
+/// each window's beginning as the one before it ends, and none past the next frame or a gap; and whether a run went through
+/// Avalonia's code at all, however the trace names its modules.</summary>
 public sealed class UiFramesTests
 {
     [Fact]
@@ -22,6 +23,18 @@ public sealed class UiFramesTests
         IReadOnlyList<UiFrame> frames = UiFrames.Composited([Frame(2, 30, 10), Frame(1, 0, 10)], [(11, 3), (14, 2), (25, 1), (41, 4)]);
 
         Assert.Equal([(1, 5.0), (2, 4.0)], frames.Select(f => (f.Number, f.CompositeMs)));
+    }
+
+    /// <summary>A profile from a program's start names the module of code compiled as it ran in lower case
+    /// (passenger.inspector, system.text.json in a recording of an Avalonia app's start), and an Avalonia app's code is
+    /// all compiled so: such a run went through Avalonia's code as surely as one naming its modules as written.</summary>
+    [Fact]
+    public void A_run_went_through_avalonias_code_whether_the_trace_names_its_modules_in_lower_case_or_as_written()
+    {
+        Assert.True(UiFrames.RanAvalonia([new HotSpot("Hot.Spin()", "spins", 90, 90), new HotSpot("Avalonia.Media.Color.Parse(String)", "avalonia.base", 10, 10)]),
+            "A run whose hot spots are in avalonia.base, as a profile from its start names the module, is not taken for an Avalonia app's");
+        Assert.True(UiFrames.RanAvalonia([new HotSpot("Avalonia.Layout.Layoutable.Measure(Size)", "Avalonia.Base", 10, 10)]));
+        Assert.False(UiFrames.RanAvalonia([new HotSpot("Hot.Spin()", "spins", 90, 90), new HotSpot("System.Math.Sqrt(Double)", "system.private.corelib", 10, 10)]));
     }
 
     private static UiFrame Frame(int number, double startMs, double durationMs) => new(number, startMs, durationMs, 1, 1, 0, 0, 0, 0, 0, []);

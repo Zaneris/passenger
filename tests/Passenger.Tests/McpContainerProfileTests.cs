@@ -2,13 +2,14 @@ using System.Text.Json;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using Passenger.App.Mcp;
+using Passenger.Core;
 
 namespace Passenger.Tests;
 
 /// <summary>An agent's profile of a program in a container (attach with container): recorded there, its hot method named at
-/// its line from the PDB in the container, and the heap's types from a memory snapshot taken there. Skips, saying why,
-/// where no Linux engine runs; the tools are the run's one publish, made before the class's first test
-/// (<see cref="ContainerRunDebuggingTests.Tools"/>).</summary>
+/// its line from the PDB in the container, the heap's types from a memory snapshot taken there, and an Avalonia program's
+/// frames said to be none there. Skips, saying why, where no Linux engine runs; the tools are the run's one publish, made
+/// before the class's first test (<see cref="ContainerRunDebuggingTests.Tools"/>).</summary>
 [Collection(Alone.Name)]
 public sealed class McpContainerProfileTests(ContainerRunDebuggingTests.Tools tools) : McpRig, IClassFixture<ContainerRunDebuggingTests.Tools>
 {
@@ -32,6 +33,64 @@ public sealed class McpContainerProfileTests(ContainerRunDebuggingTests.Tools to
             $"The hot method in the container is not named at its line: {spin}");
         Assert.Contains(profiled.GetProperty("heap").EnumerateArray(), t => t.GetProperty("type").GetString() == "Keepsake");
         Assert.Equal("running", await Docker.StateAsync(container));
+    }
+
+    /// <summary>An agent's profile of an Avalonia program in a container, recorded from its start, says it has no frames and
+    /// why, as the Frames page does: the trace names the modules of code compiled as the program ran in lower case
+    /// (avalonia.base), which are all of Avalonia's.</summary>
+    [Fact]
+    public async Task An_agents_profile_of_an_avalonia_program_in_a_container_says_why_it_has_no_frames()
+    {
+        string? whyNot = await Docker.WhyNotAsync();
+        Assert.SkipWhen(whyNot is not null, whyNot ?? string.Empty);
+        string root = TestFolders.Unowned("drawn-");
+        DeleteAtEnd(root);
+        string folder = PathNames.Canonical(Path.Combine(root, "Drawn"));
+        await ContainerPrograms.PublishAsync($"linux-{await ContainerPrograms.ProcessorAsync()}");
+        await ContainerPrograms.BuildAsync(folder, $"""
+            <Project Sdk="Microsoft.NET.Sdk">
+              <PropertyGroup>
+                <OutputType>Exe</OutputType>
+                <TargetFramework>{TestProjects.Framework}</TargetFramework>
+                <ImplicitUsings>enable</ImplicitUsings>
+                <AssemblyName>Drawn</AssemblyName>
+              </PropertyGroup>
+              <ItemGroup>
+                <PackageReference Include="Avalonia" Version="{AvaloniaApp.Version}" />
+              </ItemGroup>
+            </Project>
+
+            """, """
+            // Spins in Avalonia's own code, as an app laying out and drawing would, with no window to draw in.
+            using Avalonia;
+            using Avalonia.Media;
+
+            double total = 0;
+            while (true)
+            {
+                Color color = Color.Parse("#FF8800");
+                Matrix turned = Matrix.CreateRotation(total) * Matrix.CreateScale(2, 3);
+                total += color.R + turned.M11 + new Rect(0, 0, 10, 10).Union(new Rect(5, 5, 20, 20)).Width;
+            }
+
+            """, Path.Combine(root, "out"));
+        string image = await ContainerPrograms.ImageAsync(Path.Combine(root, "image"), "drawn", "mcr.microsoft.com/dotnet/runtime:10.0", Path.Combine(root, "out"), "Drawn");
+        string container = $"ptest{Environment.ProcessId.ToString(System.Globalization.CultureInfo.InvariantCulture)}drawn";
+        // Held at its start, so the profile records it from there, as a container run's Profile does.
+        await Docker.RunAsync(["run", "-d", .. Docker.AnyPids, "--name", container, "--label", Docker.RunLabel, "-e", "DOTNET_DefaultDiagnosticPortSuspend=1", image]);
+        try
+        {
+            await using McpClient client = await Start(["--mcp", folder], languageServer: false);
+            JsonElement profiled = await Call(client, McpTools.Profile, new() { ["attach"] = true, ["container"] = container, ["seconds"] = 3 });
+            Assert.True(profiled.GetProperty("hotSpots").EnumerateArray().Any(h => h.GetProperty("method").GetString()!.StartsWith("Avalonia.", StringComparison.Ordinal)),
+                $"The profile of the program in the container sampled none of Avalonia's code: {profiled.GetRawText()}");
+            Assert.True(profiled.TryGetProperty("frames", out JsonElement frames) && frames.GetProperty("why").GetString() == Passenger.App.Profiling.FramesView.InContainer(container),
+                $"The profile of an Avalonia program in a container does not say why it has no frames: {profiled.GetRawText()}");
+        }
+        finally
+        {
+            await Docker.RunAsync("rm", "-f", container);
+        }
     }
 
     /// <summary>A compose configuration profiled as an agent asks: its launched service recorded in its container from its
