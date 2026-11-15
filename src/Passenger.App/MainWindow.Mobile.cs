@@ -69,7 +69,7 @@ public partial class MainWindow
                 : !MobileWant.AndroidLacks ? Refusals.NothingAndroidLacking
                 : null,
             Menus = [new MenuPlace("Tools", 1, 3)],
-            Words = ["Android SDK", "JDK", "Java", "sdkmanager", "InstallAndroidDependencies"],
+            Words = ["Android SDK", "JDK", "Java", "sdkmanager", MSBuildNames.InstallAndroidDependencies],
             Works = AppActions.InstallAndroidDependencies,
         });
         workloadsLink = MobileBanner.Link(actions[AppActions.InstallWorkloads]!.Title, () => Request(AppActions.InstallWorkloads));
