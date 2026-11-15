@@ -30,6 +30,16 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 
 ## 2026-11-15
 
+- `RunConfigurationsTests`' `Use_external_console_chosen_in_the_dialog_runs_the_program_in_the_terminal_and_is_kept_with_the_configuration`,
+  this Mac beside two other test processes (#1736): "The program did not run in the terminal with the configuration's
+  arguments and folder", its tab showing only "Process finished with exit code 0.". **A race in the IDE**: the terminal
+  told a program's end once nothing had been read for 150 ms after its exit, a guess meant for a terminal that stays
+  open, so a reader held that long between taking the program's last line out of the pseudo-terminal and handing it
+  over had the end said first. With the reader held 400 ms there, the test failed with these words every time; traced
+  beside 30 busy loops it read the line 2–25 ms after its write. macOS hangs a terminal up as its program exits, Linux
+  once nothing holds it, so the end now waits for the read's end wherever poll says the terminal hung up (198a3e938). Not
+  #1726's: that change touches only Godot projects. Left: macOS drops a program's output still unread about 0.6 s after
+  its exit began, and a program writing and exiting within a millisecond loses its line now and then (#1742).
 - `ImplementedTests`' `A_LINQ_call_evaluates_the_first_time_in_a_program_that_has_not_loaded_System_Linq`, the report lane
   on CI's Windows x64 runner (43733598402): "The expression took too long to evaluate: it was stopped after 3 s" for its
   first evaluation (the program's loaded assemblies joined into a string), two evaluations in the program taking 3.6 s.

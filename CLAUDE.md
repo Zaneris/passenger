@@ -680,8 +680,9 @@ a new name, and `just site-shots` retakes its images.
   file's `$comment`: a fresh upstream copy loses them (CarriedSchemasTests checks defaults).
 - **The terminal reuses a line** once it leaves the screen and a full scrollback: nothing keeps a `TerminalLine` past
   its line number; cells are written only through `TerminalLine.Writing()`. A pseudo-terminal's close on macOS waits for
-  a write in flight, and an exiting session leader waits for its output to be read: `TerminalSession` reads to the end
-  and closes off the window's thread. macOS's bash 3.2 sometimes prints "child setpgid (N to N): Operation not
+  a write in flight, and an exiting session leader waits for its output to be read, about 0.6 s, then drops it and hangs the terminal up
+  (Linux once nothing holds it): `TerminalSession` reads to the end and closes off the window's thread, a run's end waiting
+  for the read's end where poll says hung up (`TerminalSession.HungUp`), the quiet guess only where the terminal stays open. macOS's bash 3.2 sometimes prints "child setpgid (N to N): Operation not
   permitted", so a test reading a shell's lines allows others between them.
 - **ConPTY** (Porta.Pty's OpenConsole and Windows' own) passes a program's kitty keyboard requests out and CSI u keys in
   as written, but gives a VT-input program a win32-input-mode key (`?9001h`) as xterm's bytes, Shift+Enter a bare `\r`:
