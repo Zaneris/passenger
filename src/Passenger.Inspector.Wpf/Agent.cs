@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Reflection;
 using System.Windows;
 using System.Windows.Threading;
@@ -11,8 +12,14 @@ namespace Passenger.Inspector.Wpf;
 /// window.</summary>
 public static class Agent
 {
-    /// <summary>How often it looks for the app's UI before it is up.</summary>
+    /// <summary>How often it looks for the app's UI while the app may be setting itself up (<see cref="Looking"/>).</summary>
     private static readonly TimeSpan Look = TimeSpan.FromMilliseconds(100);
+
+    /// <summary>How long the main thread has to make a dispatcher of its own before Application's statics are read.</summary>
+    private static readonly TimeSpan MainThreadFirst = TimeSpan.FromSeconds(2);
+
+    /// <summary>How often the trace says the main thread still has no dispatcher.</summary>
+    private static readonly TimeSpan StillNone = TimeSpan.FromSeconds(5);
 
     /// <summary>How long an answer to input waits for what it set going in an app whose UI thread is never idle.</summary>
     private static readonly TimeSpan Busy = TimeSpan.FromSeconds(1);
@@ -27,7 +34,7 @@ public static class Agent
     /// <summary>Until the app shows its first window (its Application is made before its StartupUri's window is), so what is
     /// asked once the app says hello finds it; an app that shows none within a while is said hello to anyway. False when the
     /// dispatcher shut down meanwhile, which then was not the app's.</summary>
-    private static bool WaitForWindow(Dispatcher dispatcher, Inspector inspector)
+    private static bool WaitForWindow(Dispatcher dispatcher, Inspector inspector, Looking looking)
     {
         Deadline until = Deadline.In(FirstWindow);
         Task<int>? asked = null;
@@ -62,7 +69,7 @@ public static class Agent
                 InspectorTrace.Step($"no window to wait for: {error.Message}");
                 return !dispatcher.HasShutdownStarted;
             }
-            Thread.Sleep(Look);
+            looking.Wait();
         }
         return !dispatcher.HasShutdownStarted;
     }
@@ -86,25 +93,28 @@ public static class Agent
     }
 
     /// <summary>The app's UI dispatcher: the main thread's once WPF has made it there (as an Application or a window is made),
-    /// else, for an app that makes its Application on a thread of its own, that Application's; read without making one.</summary>
-    private static Dispatcher WaitForUi(Thread main)
+    /// else, for an app that makes its Application on a thread of its own, that Application's, read without making one once
+    /// the main thread has had its while.</summary>
+    private static Dispatcher WaitForUi(Thread main, Looking looking)
     {
-        for (int looked = 1; ; looked++)
+        long began = Stopwatch.GetTimestamp();
+        long said = began;
+        while (true)
         {
             if (Dispatcher.FromThread(main) is { HasShutdownStarted: false } dispatcher)
             {
                 return dispatcher;
             }
-            // Application's statics are read only after a while, when the main thread has made no dispatcher of its own.
-            if (looked % 20 == 0 && Application.Current?.Dispatcher is { HasShutdownStarted: false } elsewhere)
+            if (Stopwatch.GetElapsedTime(began) >= MainThreadFirst && Application.Current?.Dispatcher is { HasShutdownStarted: false } elsewhere)
             {
                 return elsewhere;
             }
-            if (looked % 50 == 0)
+            if (Stopwatch.GetElapsedTime(said) >= StillNone)
             {
                 InspectorTrace.Step($"still no dispatcher on the main thread (thread {main.ManagedThreadId}, {main.ThreadState})");
+                said = Stopwatch.GetTimestamp();
             }
-            Thread.Sleep(Look);
+            looking.Wait();
         }
     }
 
@@ -122,15 +132,16 @@ public static class Agent
 
         public void Open(Connection connection)
         {
+            using Looking looking = new(Look);
             while (true)
             {
-                Dispatcher found = WaitForUi(main);
+                Dispatcher found = WaitForUi(main, looking);
                 InspectorTrace.Step($"the app's UI dispatcher is thread {found.Thread.ManagedThreadId}'s");
                 try
                 {
                     Inspector made = found.Invoke(() => new Inspector(connection));
                     InspectorTrace.Step("made on the UI thread");
-                    if (WaitForWindow(found, made))
+                    if (WaitForWindow(found, made, looking))
                     {
                         (dispatcher, inspector) = (found, made);
                         return;
@@ -141,7 +152,7 @@ public static class Agent
                     // Found while WPF was still making it (registered before its window, so it takes no work yet), or shut down.
                 }
                 InspectorTrace.Step($"that dispatcher took no work (shut down: {found.HasShutdownStarted}); looking again");
-                Thread.Sleep(Look);
+                looking.Wait();
             }
         }
 

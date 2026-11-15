@@ -2,11 +2,11 @@ using Passenger.Core;
 
 namespace Passenger.Inspector;
 
-/// <summary>When a wait of the inspector's for the app to set itself up (the logger's sink it sets, its Application, its UI
-/// thread) looks again: quickly through the program's first moments and those after each assembly it loads, as an
-/// Avalonia app's setup loads its platform, renderer and XAML, and seldom otherwise, so a program that never makes an
-/// Application (a tool using Avalonia's types, a test harness) wakes the inspector seldom once it has started. Waits until
-/// the next look on the waiting thread; an assembly loaded meanwhile ends the wait at once.</summary>
+/// <summary>When a wait of an inspector's for the app to set itself up (the logger's sink it sets, its Application, its UI
+/// thread, its first window) looks again: quickly through the program's first moments and those after each assembly it
+/// loads, as an app's setup loads its framework's platform, renderer and XAML, and seldom otherwise, so a program that never
+/// makes an Application (a tool using the framework's types, a test harness) wakes the inspector seldom once it has started.
+/// Waits until the next look on the waiting thread; an assembly loaded meanwhile ends the wait at once.</summary>
 internal sealed class Looking : IDisposable
 {
     /// <summary>How long looks come quickly after the program starts or loads an assembly.</summary>
