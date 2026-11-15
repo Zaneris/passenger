@@ -15,8 +15,24 @@ namespace Passenger.App.CSharp;
 /// Find Usages goes from a step, or a C# definition's method or expression, to every step it binds in the features of the
 /// projects that see it; Show Context Actions on a step none binds writes its definition; Rename on a step, or on a
 /// definition's expression, renames the step everywhere.</summary>
-internal sealed partial class GherkinAssist(AssistContext context, PopupPlacement popups, CodeCompletion completion, CodeNavigation navigation, CodeActions actions) : LanguageAssist
+internal sealed partial class GherkinAssist : LanguageAssist
 {
+    private readonly AssistContext context;
+    private readonly PopupPlacement popups;
+    private readonly CodeCompletion completion;
+    private readonly CodeNavigation navigation;
+    private readonly CodeActions actions;
+
+    public GherkinAssist(AssistContext context, PopupPlacement popups, CodeCompletion completion, CodeNavigation navigation, CodeActions actions)
+    {
+        this.context = context;
+        this.popups = popups;
+        this.completion = completion;
+        this.navigation = navigation;
+        this.actions = actions;
+        context.Editors.Opened += (_, document) => FollowLineBreaks(document);
+    }
+
     /// <summary>What the window gives the editor's commands of its BDD; null while none is set.</summary>
     public Func<BddSource?>? Source { get; set; }
 

@@ -12,8 +12,8 @@ namespace Passenger.Tests;
 /// <summary>A .feature file is Gherkin's: coloured by its grammar (keywords, tags, comments, its tables as data) and by
 /// Gherkin's reading of it (descriptions, placeholders, an examples table's header),
 /// folded by Gherkin's own reading of it (the feature, each scenario, its examples and doc strings), outlined in Structure
-/// and commented with a <c>#</c>, laid out by Reformat Code and its tables aligned as a bar is typed, all with no project
-/// or language server.</summary>
+/// and commented with a <c>#</c>, laid out by Reformat Code and its tables aligned as a bar or Enter is typed, all with
+/// no project or language server.</summary>
 public sealed class GherkinEditingTests : FileColoursFolder
 {
     private const string Feature =
@@ -99,6 +99,12 @@ public sealed class GherkinEditingTests : FileColoursFolder
         window.KeyTextInput("|");
         Ui.WaitFor(() => editor.Document.Snapshot.ToString().Contains("    | Bartholomew |  42 |\n", StringComparison.Ordinal),
             () => $"the row's number aligned as its bar was typed: {editor.Document.Snapshot}");
+
+        Typing.Replace(window, "    | Bartholomew |  42 |", "    | Bartholomew |  42 |\n    |Zed|1|");
+        Ui.PlaceAfter(editor, "|Zed|1|");
+        Ui.Press(window, "ENTER");
+        Ui.WaitFor(() => editor.Document.Snapshot.ToString().Contains("    | Bartholomew |  42 |\n    | Zed         |   1 |\n", StringComparison.Ordinal),
+            () => $"the table aligned as Enter ended its row: {editor.Document.Snapshot}");
         window.Close();
     }
 

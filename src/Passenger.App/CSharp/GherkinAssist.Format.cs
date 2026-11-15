@@ -61,12 +61,44 @@ internal sealed partial class GherkinAssist
         return edits;
     }
 
+    /// <summary>A line broken at the end of a table's row in the feature shown (Enter, which types no text) lays out that
+    /// table once the change has landed, as Reqnroll's editors do; Undo's and Redo's own changes never.</summary>
+    private void FollowLineBreaks(OpenDocument document)
+    {
+        if (!IsFeature(document))
+        {
+            return;
+        }
+        document.Text.Changed += (_, e) =>
+        {
+            if (e.Reason != ChangeReason.Edit || context.Editors.Active != document || e.Edits is not [{ Length: 0, Text: var put } edit]
+                || !put.Contains('\n', StringComparison.Ordinal) || put.Trim().Length > 0)
+            {
+                return;
+            }
+            int row = e.Before.GetLineFromOffset(edit.Start);
+            string ended = e.Before.GetLineText(row);
+            if (ended.TrimStart().StartsWith('|') && e.Before.GetText(edit.Start, e.Before.GetLine(row).End - edit.Start).Trim().Length == 0)
+            {
+                UiThread.Post(() =>
+                {
+                    if (context.Editors.Active == document)
+                    {
+                        AlignTable(document, row, keepCaret: false);
+                    }
+                });
+            }
+        };
+    }
+
     /// <summary>A bar typed in a table's row lays out that table, as Reqnroll's editors do.</summary>
-    private void AlignTable(OpenDocument document)
+    private void AlignTable(OpenDocument document) => AlignTable(document, document.Text.Snapshot.GetLineFromOffset(context.Caret), keepCaret: true);
+
+    /// <summary>The table a line is a row of laid out, the caret kept after the bar it was after where asked.</summary>
+    private void AlignTable(OpenDocument document, int line, bool keepCaret)
     {
         TextSnapshot text = document.Text.Snapshot;
-        int line = text.GetLineFromOffset(context.Caret);
-        if (!text.GetLineText(line).TrimStart().StartsWith('|'))
+        if (line >= text.LineCount || !text.GetLineText(line).TrimStart().StartsWith('|'))
         {
             return;
         }
@@ -81,7 +113,7 @@ internal sealed partial class GherkinAssist
             bottom++;
         }
         TextRange table = new(text.GetLineStart(top), text.GetLine(bottom).End - text.GetLineStart(top));
-        IdeErrors.Observe(AlignedAsync(document, table));
+        IdeErrors.Observe(keepCaret ? AlignedAsync(document, table) : ReformatAsync(document, table, "Aligning the table"));
     }
 
     private async Task AlignedAsync(OpenDocument document, TextRange table)

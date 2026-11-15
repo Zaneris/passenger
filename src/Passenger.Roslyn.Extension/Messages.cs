@@ -991,8 +991,8 @@ public sealed record StepScopeFound(
 
 /// <summary>A step definition as its code declares it: its kind (Given, When, Then or StepDefinition), expression (none
 /// where the method's name is its step) and its expression type when the attribute names one (CucumberExpression,
-/// RegularExpression), its method, type and parameters, its scopes, why Reqnroll would refuse it, and where its method's
-/// name and its expression's string literal are written.</summary>
+/// RegularExpression), its method, type and parameters, its scopes, why Reqnroll would refuse it, where its method's name
+/// and its expression's string literal are written, and its documentation comment's summary as words.</summary>
 public sealed record StepDefinitionFound(
     [property: JsonPropertyName("kind")] string Kind,
     [property: JsonPropertyName("expression")] string? Expression,
@@ -1003,7 +1003,8 @@ public sealed record StepDefinitionFound(
     [property: JsonPropertyName("scopes")] IReadOnlyList<StepScopeFound> Scopes,
     [property: JsonPropertyName("error")] string? Error,
     [property: JsonPropertyName("methodAt")] StepPlace? MethodAt,
-    [property: JsonPropertyName("expressionAt")] StepPlace? ExpressionAt);
+    [property: JsonPropertyName("expressionAt")] StepPlace? ExpressionAt,
+    [property: JsonPropertyName("summary")] string? Summary = null);
 
 /// <summary>A hook: its kind (its attribute's name: BeforeScenario), method, type, scopes (its tags among them) and order.</summary>
 public sealed record StepHookFound(

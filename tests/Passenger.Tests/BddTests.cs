@@ -13,7 +13,7 @@ namespace Passenger.Tests;
 
 /// <summary>A Reqnroll solution's steps and their definitions as one thing (<see cref="ReqnrollProjects"/>): the bindings read
 /// from the code with no build, a project's own and those of the library it references; a step no definition binds marked,
-/// the hover card naming a step's definition, Go to Declaration from a step to it, Find Usages from it to its steps, and
+/// the hover card naming a step's definition with its summary, Go to Declaration from a step to it, Find Usages from it to its steps, and
 /// completion offering the steps of a step's kind, and a missing step's definition written by Show Context Actions.</summary>
 public sealed class BddTests : IClassFixture<RestoredFolders>, IDisposable
 {
@@ -56,8 +56,8 @@ public sealed class BddTests : IClassFixture<RestoredFolders>, IDisposable
                 steps.Bindings.Select(b => b.Shown).Order(StringComparer.Ordinal));
             StepBinding first = steps.Bindings.Single(b => b.Method == "GivenTheFirstNumberIs");
             Assert.Equal((BindingKind.Given, "the first number is {int}"), (first.Kind, first.Expression));
-            Assert.Equal(new BindingPlace(PathNames.Canonical(StepsFile), 10, 16), first.MethodPlace);
-            Assert.Equal(new BindingPlace(PathNames.Canonical(StepsFile), 9, 11), first.ExpressionPlace);
+            Assert.Equal(new BindingPlace(PathNames.Canonical(StepsFile), 11, 16), first.MethodPlace);
+            Assert.Equal(new BindingPlace(PathNames.Canonical(StepsFile), 10, 11), first.ExpressionPlace);
             StepBinding clear = steps.Bindings.Single(b => b.Method == "Clear");
             Assert.Equal((BindingKind.StepDefinition, PathNames.Canonical(Path.Combine(folder, "Calc.Steps", "Calc.Steps.csproj"))), (clear.Kind, clear.Project));
             StepHook hook = Assert.Single(steps.Hooks);
@@ -84,11 +84,13 @@ public sealed class BddTests : IClassFixture<RestoredFolders>, IDisposable
             Assert.Equal(MarkerKind.Warning, undefined.Kind);
 
             CodeEditor editor = window.EditorArea.CodeEditor;
-            Assert.Contains("GivenTheFirstNumberIs", Hover(window, editor, "first number is 50"), StringComparison.Ordinal);
+            string card = Hover(window, editor, "first number is 50");
+            Assert.Contains("GivenTheFirstNumberIs", card, StringComparison.Ordinal);
+            Assert.Contains("Keys the first number into the CalculatorStepDefinitions.", card, StringComparison.Ordinal);
 
             Ui.PlaceAfter(editor, "Given the first num");
             Ui.Run(window, AppActions.GoToDeclaration);
-            Ui.WaitFor(() => window.EditorArea.Active?.Path == PathNames.Canonical(StepsFile) && window.EditorArea.CodeEditor.CaretPosition.Line == 10,
+            Ui.WaitFor(() => window.EditorArea.Active?.Path == PathNames.Canonical(StepsFile) && window.EditorArea.CodeEditor.CaretPosition.Line == 11,
                 () => $"Go to Declaration to GivenTheFirstNumberIs ({window.EditorArea.Active?.Path}:{window.EditorArea.CodeEditor.CaretPosition.Line})");
         }
         finally
