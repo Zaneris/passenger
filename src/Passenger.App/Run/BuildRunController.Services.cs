@@ -327,9 +327,9 @@ public sealed partial class BuildRunController
 
     /// <summary>A .NET service the run left unstarted (Don't start) started later by its action, the rest left as they run:
     /// its project built here first where its program runs that build (fast mode; as deployed its image is built as it
-    /// starts), containers of it Passenger did not make asked about first, then started held as chosen (once for the profiler
-    /// when <paramref name="profiled"/>) and attached to where held; the run's from then on (Stop takes it down, Rerun keeps
-    /// it started). Null once started, else why not.</summary>
+    /// starts), containers of it Passenger did not make for the folder asked about first, then started held as chosen (once
+    /// for the profiler when <paramref name="profiled"/>) and attached to where held; the run's from then on (Stop takes it
+    /// down, Rerun keeps it started). Null once started, else why not.</summary>
     private async Task<string?> StartLaterAsync(ServiceRun run, IRunService service, Working work, string why, bool profiled = false)
     {
         if (run.WhyNotStartedLater(service) is { } unfit)

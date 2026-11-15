@@ -15,8 +15,8 @@ public partial class MainWindow
     /// <summary>The question a container run asked last of containers it would replace.</summary>
     public ReplaceContainersDialog? ReplaceQuestion { get; private set; }
 
-    /// <summary>Asks whether a container run may replace containers of its Compose project Passenger did not make; a start
-    /// stopped meanwhile closes the question, answered Cancel.</summary>
+    /// <summary>Asks whether a container run may replace containers of its Compose project Passenger did not make for its
+    /// folder; a start stopped meanwhile closes the question, answered Cancel.</summary>
     private async Task<bool> AskReplaceAsync(string configuration, string project, IReadOnlyList<string> containers, CancellationToken stop)
     {
         ReplaceContainersDialog question = new(configuration, project, containers);

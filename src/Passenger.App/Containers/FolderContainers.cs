@@ -99,9 +99,7 @@ public sealed class FolderContainers(string? folder, ContainerEngine engine)
         {
             return;
         }
-        string[] filters = ["--filter", $"label={ComposeLabels.Project}={compose[named + 1]}", "--filter", $"label={ContainerLabels.Machine}={ContainerLabels.MachineValue}",
-            "--filter", $"label={ContainerLabels.Process}={ContainerLabels.ProcessValue}",
-            .. folder is null ? Array.Empty<string>() : ["--filter", $"label={ContainerLabels.Folder}={ContainerLabels.FolderValue(folder)}"]];
+        string[] filters = ContainerLabels.Ours(compose[named + 1], folder);
         // Several filters of one label key are any of them to the engine, so each service is asked apart.
         IEnumerable<string[]> asked = services is { Count: > 0 } ? services.Select(s => (string[])[.. filters, "--filter", $"label={ComposeLabels.Service}={s}"]) : [filters];
         foreach (string[] each in asked)

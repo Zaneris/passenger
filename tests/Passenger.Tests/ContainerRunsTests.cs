@@ -1092,7 +1092,7 @@ public sealed class ContainerRunsTests(RestoredFolders folders) : IClassFixture<
             Assert.Contains($"{project}-cache-1", listed, StringComparison.Ordinal);
             Assert.DoesNotContain(own, listed, StringComparison.Ordinal);
             Press(asked.CancelButton);
-            Assert.Equal($"Cache was not run: {project}-cache-1 of {project}, which Passenger did not make, were left as they are", Ui.Await(running, "Run to end once Cancel was answered", TimeSpan.FromMinutes(1)));
+            Assert.Equal($"Cache was not run: {project}-cache-1 of {project}, which Passenger did not make for this folder, were left as they are", Ui.Await(running, "Run to end once Cancel was answered", TimeSpan.FromMinutes(1)));
             Assert.Equal(theirs, Container(project, "cache"));
             Assert.Equal("running", Docker.State(theirs));
 
@@ -1233,6 +1233,102 @@ public sealed class ContainerRunsTests(RestoredFolders folders) : IClassFixture<
         Docker.TakenDown(project, "the window's close to take down the containers of the run let go of");
     }
 
+    /// <summary>Two windows on folders of one name (a/x and b/x) run one Compose project, each its own service. Detach in one
+    /// and close it: the question asks of that window's container alone, and Leave Running leaves only it as the person's,
+    /// never the other window's, which stays its run's, so the end of its Passenger would still take it down.</summary>
+    [AvaloniaFact]
+    public void Leave_Running_leaves_the_person_only_the_closing_windows_containers_of_a_Compose_project_another_folder_runs_too()
+    {
+        Assert.SkipWhen(Docker.WhyNot is not null, Docker.WhyNot ?? string.Empty);
+        string project = ProjectNamed("letgo");
+        (string first, string second) = SameNamed(project, "left", "right");
+        MainWindow leaving = Open(first, seen: true);
+        MainWindow staying = Open(second);
+        try
+        {
+            foreach (MainWindow window in (MainWindow[])[leaving, staying])
+            {
+                Assert.True(window.SelectConfiguration("Compose: compose.yaml"), $"No Compose configuration: [{string.Join(", ", window.Configurations.Select(c => c.Name))}]");
+                Launched(window, "the folder's Compose run to come up");
+            }
+            string left = Docker.Run("inspect", "-f", "{{.Id}}", $"{project}-left-1")[..12];
+            string right = Docker.Run("inspect", "-f", "{{.Id}}", $"{project}-right-1")[..12];
+            Assert.True(leaving.Perform(AppActions.Detach), "Detach did not run");
+            Ui.WaitFor(() => !leaving.IsRunning, "the run to be let go of");
+            leaving.Close();
+            Ui.ClickButton(ContainersTests.AskedOfLetGo(leaving), "Leave Running");
+            Ui.WaitFor(() => !leaving.IsVisible, "the window to close once Leave Running was chosen");
+            IReadOnlyList<string> persons = ContainerLabels.LeftIn(TestRun.Settings);
+            Assert.Contains(left, persons);
+            Assert.False(persons.Contains(right), $"Leave Running in {first}'s window left {project}-right-1, the run of {second}'s window, to the person: "
+                + "the end of this Passenger and the next one's clean-up would pass it over");
+            Assert.Equal("running", Docker.State($"{project}-left-1"));
+            Docker.Stopped(staying, project, "the other window's Stop to take its own container down", $"{ComposeLabels.Service}=right");
+        }
+        finally
+        {
+            Closed(project, leaving, staying);
+        }
+    }
+
+    /// <summary>A run of a Compose project another window runs too, from a folder of the same name, asks before taking that
+    /// window's container of a service both start, as it asks of the person's own; Cancel leaves it to the run that made it.</summary>
+    [AvaloniaFact]
+    public void A_run_asks_before_replacing_another_windows_container_of_a_Compose_project_of_the_same_name()
+    {
+        Assert.SkipWhen(Docker.WhyNot is not null, Docker.WhyNot ?? string.Empty);
+        string project = ProjectNamed("taken");
+        (string first, string second) = SameNamed(project, "cache", "cache");
+        MainWindow running = Open(first);
+        MainWindow taking = Open(second);
+        try
+        {
+            Assert.True(running.SelectConfiguration("Compose: compose.yaml"), $"No Compose configuration: [{string.Join(", ", running.Configurations.Select(c => c.Name))}]");
+            Launched(running, "the first folder's Compose run to come up");
+            string theirs = Container(project, "cache");
+            Assert.True(taking.SelectConfiguration("Compose: compose.yaml"));
+            Task<string?> started = taking.RunAsync();
+            Ui.PumpUntil(() => taking.ReplaceQuestion is not null || started.IsCompleted, "the run to ask about the other window's container", TimeSpan.FromMinutes(2));
+            Assert.True(taking.ReplaceQuestion is not null,
+                $"The run took {project}-cache-1 from the other window's run asking nothing: {(started.IsCompleted ? started.Result : null)}");
+            Press(DialogButtonsTests.Check(taking.ReplaceQuestion!).CancelButton);
+            Assert.Equal($"Compose: compose.yaml was not run: {project}-cache-1 of {project}, which Passenger did not make for this folder, were left as they are",
+                Ui.Await(started, "Run to end once Cancel was answered", TimeSpan.FromMinutes(1)));
+            Assert.Equal(theirs, Container(project, "cache"));
+            Assert.Equal("running", Docker.State(theirs));
+        }
+        finally
+        {
+            Closed(project, running, taking);
+        }
+    }
+
+    /// <summary>Two folders of the project's name (a/x and b/x), each a compose.yaml of one sleeping busybox service and no
+    /// name of its own, so each run's Compose project is its folder's name, the same for both.</summary>
+    private static (string First, string Second) SameNamed(string project, string firstService, string secondService)
+    {
+        string root = TestFolders.Create($"ctr-{project}-");
+        string first = PathNames.Canonical(Directory.CreateDirectory(Path.Combine(root, "a", project)).FullName);
+        string second = PathNames.Canonical(Directory.CreateDirectory(Path.Combine(root, "b", project)).FullName);
+        TestFolders.Write(first, "compose.yaml", Sleeping(firstService));
+        TestFolders.Write(second, "compose.yaml", Sleeping(secondService));
+        return (first, second);
+
+        static string Sleeping(string service) =>
+            $"services:\n  {service}:\n    image: {Docker.Image}\n    command: [\"sleep\", \"600\"]\n    network_mode: none\n";
+    }
+
+    /// <summary>Closes the windows and removes what is left of the project: asked, never run, since the windows' own take-down
+    /// may be removing it still.</summary>
+    private static void Closed(string project, params MainWindow[] windows)
+    {
+        foreach (MainWindow window in windows)
+        {
+            window.Close();
+        }
+        Docker.Ask(["rm", "-f", .. Docker.Run("ps", "-aq", "--filter", $"label={ComposeLabels.Project}={project}").Split('\n', StringSplitOptions.RemoveEmptyEntries)]);
+    }
+
     private static void Press(Avalonia.Controls.Button button)
     {
         Ui.Click(button);
@@ -1361,13 +1457,15 @@ public sealed class ContainerRunsTests(RestoredFolders folders) : IClassFixture<
         """;
 
     /// <summary>A window on a Compose solution; with no C# language server unless a test asks it something (Hot Reload),
-    /// since a container run, its debugging and its profiling ask it nothing.</summary>
-    internal static MainWindow Open(string folder, DotnetWords? devCertificates = null, bool agentsAllowed = true, bool languageServer = false, ContainerEngine? engine = null)
+    /// since a container run, its debugging and its profiling ask it nothing; <paramref name="seen"/> as a person's window,
+    /// which asks the person as it closes.</summary>
+    internal static MainWindow Open(string folder, DotnetWords? devCertificates = null, bool agentsAllowed = true, bool languageServer = false, ContainerEngine? engine = null,
+        bool seen = false)
     {
         MainWindow window = new()
         {
             Width = 1200, Height = 800, DevCertificates = devCertificates, AgentsAllowed = agentsAllowed, StartsLanguageServer = languageServer,
-            Engine = engine ?? ContainerEngine.Shared,
+            Engine = engine ?? ContainerEngine.Shared, Unseen = !seen && PassengerApp.ShowsNoWindow,
         };
         window.Show();
         window.OpenFolder(folder);

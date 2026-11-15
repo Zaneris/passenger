@@ -64,12 +64,11 @@ public partial class MainWindow
         return true;
     }
 
-    /// <summary>The containers running, and the networks, this process made for a run's Compose project, by short id; none
-    /// where the engine does not answer.</summary>
+    /// <summary>The containers running, and the networks, this process made for a run's Compose project and folder, by short
+    /// id; none where the engine does not answer.</summary>
     private static async Task<(IReadOnlyList<string> Containers, IReadOnlyList<string> Networks)> MadeForAsync(ContainerRun run)
     {
-        string[] ours = ["--filter", $"label={ComposeLabels.Project}={run.Plan.ProjectName}", "--filter", $"label={ContainerLabels.Process}={ContainerLabels.ProcessValue}",
-            "--filter", $"label={ContainerLabels.Machine}={ContainerLabels.MachineValue}"];
+        string[] ours = ContainerLabels.Ours(run.Plan.ProjectName, run.LabelledFor);
         try
         {
             ChildResult containers = await run.Engine.RunAsync(["ps", "-q", .. ours], ContainerEngine.AskLimit);

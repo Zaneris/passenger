@@ -406,17 +406,19 @@ public sealed partial class BuildRunController
     }
 
     /// <summary>Containers of the run's Compose project, of the services its <c>up</c> makes, that this Passenger did not make
-    /// (the person's own, from their own <c>docker compose up</c>): Compose would make them again with Passenger's labels and
-    /// settings, and Stop would then remove them. The person is asked first (Replace Them, after which they are this run's,
-    /// or Cancel); an agent's run, and an IDE with nobody to ask, replaces none and refuses, saying why. Null when it may go
-    /// on, else what it says.</summary>
+    /// for this folder (the person's own, from their own <c>docker compose up</c>, or another window's run of a project of the
+    /// same name): Compose would make them again with this run's labels and settings, and Stop would then remove them. The
+    /// person is asked first (Replace Them, after which they are this run's, or Cancel); an agent's run, and an IDE with
+    /// nobody to ask, replaces none and refuses, saying why. Null when it may go on, else what it says.</summary>
     private async Task<string?> ReplacesOthersAsync(string starting, ContainerPlan plan, ContainerEngine engine, Working work)
     {
         ChildResult listed;
+        ChildResult ours;
         try
         {
             listed = await BackgroundWork.Run(() => engine.RunAsync(["ps", "-a", "--filter", $"label={ComposeLabels.Project}={plan.ProjectName}", "--format",
-                $"{{{{.Names}}}}\t{{{{.Label \"{ComposeLabels.Service}\"}}}}\t{{{{.Label \"{ContainerLabels.Machine}\"}}}}\t{{{{.Label \"{ContainerLabels.Process}\"}}}}"],
+                $"{{{{.Names}}}}\t{{{{.Label \"{ComposeLabels.Service}\"}}}}"], ContainerEngine.AskLimit, work.Stopping));
+            ours = await BackgroundWork.Run(() => engine.RunAsync(["ps", "-a", .. ContainerLabels.Ours(plan.ProjectName, session.Folder), "--format", "{{.Names}}"],
                 ContainerEngine.AskLimit, work.Stopping));
         }
         catch (Exception unasked) when (ChildFailures.Of(unasked))
@@ -424,19 +426,20 @@ public sealed partial class BuildRunController
             // An engine that does not list them now refuses up's own commands next, which says why.
             return null;
         }
-        // Not trimmed: a container without Passenger's labels ends its line in empty columns.
+        HashSet<string> own = new(ours.Output.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries), StringComparer.Ordinal);
+        // Not trimmed: a container of no service ends its line in an empty column.
         string[] others = [.. listed.Output.Split('\n', StringSplitOptions.RemoveEmptyEntries)
             .Select(line => line.TrimEnd('\r').Split('\t'))
-            .Where(row => row.Length == 4 && plan.Touched.Contains(row[1]) && (row[2] != ContainerLabels.MachineValue || row[3] != ContainerLabels.ProcessValue))
+            .Where(row => row.Length == 2 && plan.Touched.Contains(row[1]) && !own.Contains(row[0]))
             .Select(row => row[0])];
-        if (!listed.Succeeded || others.Length == 0)
+        if (!listed.Succeeded || !ours.Succeeded || others.Length == 0)
         {
             return null;
         }
         string named = string.Join(", ", others);
         if (NoOneToAsk() is { } why)
         {
-            return $"{starting} was not run: it would replace {named} of {plan.ProjectName}, which Passenger did not make, and {why}; "
+            return $"{starting} was not run: it would replace {named} of {plan.ProjectName}, which Passenger did not make for this folder, and {why}; "
                 + "remove them first, or run it from the window";
         }
         bool replace = false;
@@ -454,7 +457,7 @@ public sealed partial class BuildRunController
             }
         }
         work.Stopping.ThrowIfCancellationRequested();
-        return replace ? null : $"{starting} was not run: {named} of {plan.ProjectName}, which Passenger did not make, were left as they are";
+        return replace ? null : $"{starting} was not run: {named} of {plan.ProjectName}, which Passenger did not make for this folder, were left as they are";
     }
 
     /// <summary>The container run whose log ended by itself while it is asked whether its containers still run, which keeps

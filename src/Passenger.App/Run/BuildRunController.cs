@@ -66,8 +66,8 @@ public sealed record BuildRunParts(
     public Action<string, TextPosition>? Navigate { get; init; }
 
     /// <summary>Asks the person whether a container run may replace containers of its Compose project Passenger did not make
-    /// (true), given the configuration, the project and those containers' names; closed unanswered (false) once the start is
-    /// stopped.</summary>
+    /// for its folder (true), given the configuration, the project and those containers' names; closed unanswered (false)
+    /// once the start is stopped.</summary>
     public Func<string, string, IReadOnlyList<string>, CancellationToken, Task<bool>>? AskReplace { get; init; }
 
     /// <summary>Plays a configuration whose game Godot's editor open on the project plays (<see cref="RunConfiguration.GodotInEditor"/>),
