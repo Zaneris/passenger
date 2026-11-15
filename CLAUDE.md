@@ -93,7 +93,7 @@ tests run with a 4 MB `System.GC.Gen0MaxBudget`, so a young collection fits a 14
   for the .NET CLI's questions (no telemetry, so it lets go of its folder), `Kill` for it and all it started (a group killed again until empty: a kill passes over a process forked as it kills); a .cmd or .bat runs through cmd.exe there and in the Terminal (`WindowsCommandLine.ThroughCmd`), never a cmd.exe line of a caller's own. Give each
   its folder as the disk names it, PWD too. On Windows every child shares the IDE's UTF-8 console (`SharedConsole`).
   Read a child through `ChildProcesses.Output`/`Errors`/`Hear`, never `Begin*ReadLine` (banned: its disposal faults a
-  read under it). Started elsewhere: the terminal's shell (Porta.Pty), vstest.console, Velopack's Update.exe, an agent's
+  read under it). Started elsewhere: the terminal's shell (Porta.Pty; on macOS `MacPseudoTerminal`, held until its reader reads, through dash to take its terminal), vstest.console, Velopack's Update.exe, an agent's
   `--mcp-attach` Passenger (`StartApart`), the system web view's helpers; a program run in the terminal is `Adopt`ed.
   Passenger's own standard input is taken at its start (`StandardInput`), so nothing it starts reads it.
 - **No secret on a command line** (any process can read it): give it through the environment, or don't make it. Secrets
@@ -549,7 +549,7 @@ a new name, and `just site-shots` retakes its images.
 - **Chrome and .NET's browser proxy**: Chrome runs a new-document script only once `Page.enable` came, so a page's
   conversation enables Page first, or nothing binds; an app-hosted `/_framework/debug/ws-proxy` binds once per app
   process to its first browser's port; with a fixed `--remote-debugging-port` Chrome writes no DevToolsActivePort; a
-  getter the proxy reads only by itself is called through `Runtime.callFunctionOn` on its object; Chrome's network service, ended as a page fetches its .NET code, fails every fetch until it restarts, so a page whose runtime never came is loaded again (`ChromiumBrowsers.NetworkServiceEnded`).
+  getter the proxy reads only by itself is called through `Runtime.callFunctionOn` on its object; Chrome's network service, ended as a page fetches its .NET code, fails every fetch until it restarts, so a page whose runtime never came is loaded again (`ChromiumBrowsers.NetworkServiceEnded`). Chrome wakes the machine's updater 19 s after it starts, from the person's own Library whatever HOME says, unless `--disable-updater-scheduler` (`BrowserRun.Quiet`).
 - **Aspire's CLI and AppHosts** list pipeline steps only over the CLI's backchannel
   (`--operation inspect --list-steps true`, 13.6+); a real AppHost's `--operation publish` without it runs every step,
   deploy included: never in a probe or a test. They keep running AppHosts in `$HOME/.aspire/cli/bch` whatever
@@ -679,7 +679,10 @@ a new name, and `just site-shots` retakes its images.
 - **The carried schemas hold Passenger's patches** (`WebServers/schemas`, MSBuild's xsd), listed in the notices and each
   file's `$comment`: a fresh upstream copy loses them (CarriedSchemasTests checks defaults).
 - **The terminal reuses a line** once it leaves the screen and a full scrollback: nothing keeps a `TerminalLine` past
-  its line number; cells are written only through `TerminalLine.Writing()`. A pseudo-terminal's close on macOS waits for
+  its line number; cells are written only through `TerminalLine.Writing()`. A pseudo-terminal's last close on macOS waits at most 0.6 s for its output to be read, then drops it, so a program
+  there never runs before its reader reads (`IPseudoTerminal.LetRun`); posix_spawn opens a session leader's terminal
+  before its session (dash's redirection takes it, zsh's doesn't), and Darwin's waitid tells of a held program as ended.
+  A pseudo-terminal's close on macOS waits for
   a write in flight, and an exiting session leader waits for its output to be read, about 0.6 s, then drops it and hangs the terminal up
   (Linux once nothing holds it): `TerminalSession` reads to the end and closes off the window's thread, a run's end waiting
   for the read's end where poll says hung up (`TerminalSession.HungUp`), the quiet guess only where the terminal stays open. macOS's bash 3.2 sometimes prints "child setpgid (N to N): Operation not
