@@ -1685,6 +1685,22 @@ public class VimTests
     public void A_blocks_cursor_on_a_tab_or_after_dollar_takes_the_columns_vims_does(string before, string keys, string after) =>
         Assert.Equal(after, Run(before, keys));
 
+    /// <summary>Where a closing '.', '!' or '?' ends the text, ) counts the place past it as one more sentence's start,
+    /// standing on the last character, so a count and an operator with one reach there as Vim's do.</summary>
+    [Theory]
+    [InlineData("ab cd. |ef gh.", "2)x", "ab cd. ef g|h")]
+    [InlineData("ab cd. |ef gh.", "2d)", "ab cd.| ")]
+    [InlineData("ab cd. |ef gh.", "2g~)", "ab cd. |EF GH.")]
+    [InlineData("ab cd. ef |gh.", "2)x", "ab cd. ef g|h")]
+    [InlineData("ab cd. ef |gh.", "3)x", "ab cd. ef |h.")]
+    [InlineData("|ab cd. ef gh.", "3d)", "|")]
+    [InlineData("ab cd. ef gh|.", "2d)", "ab cd. ef g|h")]
+    [InlineData("ab cd. |ef gh", "2)x", "ab cd. |f gh")]
+    [InlineData("word\n    ind|ented line\n\tnot\nlast-line, here.", "2g~)", "word\n    ind|ENTED LINE\n\tNOT\nLAST-LINE, HERE.")]
+    [InlineData("word\n    indented lin|e\n\tnot\nlast-line, here.", "2<)", "word\n|indented line\nnot\nlast-line, here.")]
+    public void A_counted_sentence_motion_counts_the_end_past_a_closing_mark(string before, string keys, string after) =>
+        Assert.Equal(after, Run(before, keys));
+
     [Fact]
     public void A_huge_count_ends_at_the_texts_edge()
     {

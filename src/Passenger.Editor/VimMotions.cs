@@ -482,6 +482,8 @@ public static class VimMotions
         if (forward)
         {
             int end = Settled(text, text.Length, breakEnds);
+            // Past a closing '.', '!' or '?' that ends the text, its end is one more sentence's start.
+            bool endStops = EndsWithSentence(text);
             for (int i = 0; i < n; i++)
             {
                 int next = i == 0 ? SentenceStartAfter(text, caret) : NextSentenceStart(text, at);
@@ -490,14 +492,19 @@ public static class VimMotions
                     at = next;
                     continue;
                 }
+                if (endStops && at < text.Length)
+                {
+                    at = text.Length;
+                    continue;
+                }
                 // The text's last character is one more place after the last sentence's start, even where it is that start.
-                if (i < n - 1 || end < at)
+                if (i < n - 1 || (end < at && at < text.Length))
                 {
                     return null;
                 }
                 return new VimTarget(end, VimMotionKind.Inclusive);
             }
-            return new VimTarget(at, VimMotionKind.Exclusive);
+            return at >= text.Length ? new VimTarget(end, VimMotionKind.Inclusive) : new VimTarget(at, VimMotionKind.Exclusive);
         }
         bool topAgain = Blank(text, 0);
         for (int i = 0; i < n; i++)
@@ -519,6 +526,21 @@ public static class VimMotions
             at = SentenceStartBefore(text, at);
         }
         return new VimTarget(at, VimMotionKind.Exclusive);
+    }
+
+    /// <summary>Whether the text's last non-blank, past closing brackets and quotes, is a '.', '!' or '?'.</summary>
+    private static bool EndsWithSentence(TextSnapshot text)
+    {
+        int p = text.Length - 1;
+        while (p >= 0 && char.IsWhiteSpace(text[p]))
+        {
+            p--;
+        }
+        while (p >= 0 && text[p] is ')' or ']' or '"' or '\'')
+        {
+            p--;
+        }
+        return p >= 0 && text[p] is '.' or '!' or '?';
     }
 
     /// <summary>The start of the first sentence after the offset, from wherever the offset stands in its own (on its end,
