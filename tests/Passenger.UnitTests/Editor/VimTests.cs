@@ -1382,6 +1382,39 @@ public class VimTests
     public void Words_and_their_objects_move_as_vims_cursor_does(string before, string keys, string after) =>
         Assert.Equal(after, Run(before, keys));
 
+    /// <summary>Visual A and I over characters or lines act on the stretch's lines as Vim's do: I where Vim's operator
+    /// begins, A after the character where it ends, or on it where the columns that operator keeps (a block's before
+    /// it, after $) come out equal; j and k onto a line too short for the column aimed at put the cursor past its end;
+    /// and an operator over lines whose cursor stands above leaves the caret at the cursor.</summary>
+    [Theory]
+    [InlineData("a|bcdef\nghijkl\nmnopqr", "vllAQ<Esc>", "abcd|Qef\nghijkl\nmnopqr")]
+    [InlineData("abcd|ef\nghijkl\nmnopqr", "VjAQ<Esc>", "abcdef\nghijk|Ql\nmnopqr")]
+    [InlineData("abcd|ef\nghijkl\nmnopqr", "Vj$AQ<Esc>", "abcdef\nghijk|Ql\nmnopqr")]
+    [InlineData("abcdef\nghij|kl\nmnopqr", "VkAQ<Esc>", "abcdef\n|Qghijkl\nmnopqr")]
+    [InlineData("abcdef\nghij|kl\nmnopqr", "VkIQ<Esc>", "abcd|Qef\nghijkl\nmnopqr")]
+    [InlineData("abcdef\nghij|kl\nmnopqr", "vkIQ<Esc>", "abcd|Qef\nghijkl\nmnopqr")]
+    [InlineData("abcdef\nghij|kl\nmnopqr", "vAQ<Esc>", "abcdef\nghijk|Ql\nmnopqr")]
+    [InlineData("ab|c", "v0AQ<Esc>", "|Qabc")]
+    [InlineData("a b c |d e f\ng h i j k l\nm n o p q r", "<C-v>iphAQ<Esc>", "a b c d e f\ng h i j k l\n|Qm n o p q r")]
+    [InlineData("foo_bar = baz(qux[0], {k: v}|)", "<C-v>i($AQ<Esc>", "foo_bar = baz(qux[0], {k: v}|Q)")]
+    [InlineData("abcdef\nghij|kl\nmnopqr", "<C-v>jlxggVjAQ<Esc>", "abcdef\ng|Qhij\nmnop")]
+    [InlineData("abcdef\nghij|kl\nmnopqr", "<C-v>jlx0vlAQ<Esc>", "abcdef\ngh|Qij\nmnop")]
+    [InlineData("abc\nab|cdef", "vkd", "ab|def")]
+    [InlineData("abc\nab|cdef", "vkkd", "ab|def")]
+    [InlineData("abc\nab|cdef", "Vkd", "|")]
+    [InlineData("abcdef\nab|c", "vjd", "abcdef\na|b")]
+    [InlineData("abcdef\nab\nab|c", "vkkd", "a|b")]
+    [InlineData("abc\nab|cdef", "vk$jd", "abc\na|b")]
+    [InlineData("abc\nab|cdef", "Vky", "ab|c\nabcdef")]
+    [InlineData("abc\nab|cdef", "Vk~", "AB|C\nABCDEF")]
+    [InlineData("abc\nab|cdef", "vkU", "ab|C\nABCdef")]
+    [InlineData("abc\nab|cdef", "Vjy", "abc\n|abcdef")]
+    [InlineData("abcdef\nab|cdef", "Vk~", "AB|CDEF\nABCDEF")]
+    [InlineData("abcdef\nab|cdef", "VkJ", "abcdef| abcdef")]
+    [InlineData("  abcdef\nab|cdef", "Vk>", "      |abcdef\n    abcdef")]
+    public void Visual_inserts_and_operators_over_lines_land_where_vims_do(string before, string keys, string after) =>
+        Assert.Equal(after, Run(before, keys));
+
     [Fact]
     public void A_huge_count_ends_at_the_texts_edge()
     {

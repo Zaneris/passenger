@@ -52,6 +52,10 @@ public sealed partial class Vim
     /// <summary>The visual extent of the change under way, kept with it for . to take again.</summary>
     private VisualExtent? changeExtent;
 
+    /// <summary>The display column the last block a visual operator took began at, which A over characters or lines
+    /// compares its column with.</summary>
+    private int keptBlockLeft;
+
     public static bool IsVisual(VimMode mode) => mode is VimMode.Visual or VimMode.VisualLine or VimMode.VisualBlock;
 
     /// <summary>Where visual mode's cursors stand while the editor shows its selections, for their block carets; none

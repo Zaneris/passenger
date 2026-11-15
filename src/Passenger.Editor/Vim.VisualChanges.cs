@@ -50,6 +50,10 @@ public sealed partial class Vim
             // Visual mode ends as it would with the change made, the carets at the stretches' starts.
             return Refused(why, block ? SelectionSet.Single(VimMotions.OffsetAtColumn(text, top, left, tab)) : RegionStretches(text, taken, lines).Item2);
         }
+        if (block)
+        {
+            keptBlockLeft = left;
+        }
         if (op is "I" or "A")
         {
             return VisualInsert(acting, op == "A", mode, taken, text, view, top, bottom, left, right);
@@ -71,6 +75,17 @@ public sealed partial class Vim
         (List<Stretch> stretches, SelectionSet carets) = block && !lines
             ? BlockStretches(text, top, bottom, left, right, tab, perLine: basic == "c")
             : RegionStretches(text, taken, lines);
+        if (lines && !block && basic is "y" or "g~" or "gu" or "gU")
+        {
+            // Over lines whose cursor stands above where the stretch began, a yank or a change of case leaves the caret there.
+            for (int i = 0; i < stretches.Count; i++)
+            {
+                if (text.GetLineFromOffset(taken[i].Cursor) < text.GetLineFromOffset(taken[i].Anchor))
+                {
+                    stretches[i] = stretches[i] with { Landing = taken[i].Cursor };
+                }
+            }
+        }
         if (block && !lines && basic == "c" && stretches.Count > 0)
         {
             blockCorner = stretches.Min(t => t.Start);
@@ -190,19 +205,34 @@ public sealed partial class Vim
         return (stretches, SelectionSet.Create(carets, 0));
     }
 
-    /// <summary>I and A in visual mode: insert mode before the stretch (a character or line stretch's first line's start)
-    /// or after it (a line stretch's last line's end), or before or after a block on each line it crosses, a short
-    /// line padded to the block's right edge for A.</summary>
+    /// <summary>I and A in visual mode, before or after a block on each line it crosses (a short line padded to the
+    /// block's right edge for A), or over characters or lines once, as Vim's do: with the cursor on a line above where
+    /// the stretch began, I at the cursor and A at that line's start; otherwise I at the first line's start and A after
+    /// the cursor's character, or on it after $, at a single place in the first column, or where the column it aims at
+    /// is the one the last block began at, or past it from a line too short to reach that.</summary>
     private VimResult VisualInsert(Command command, bool after, VimMode mode, List<Region> taken, TextSnapshot text, IVimView view, int top, int bottom, int left, int right)
     {
         int tab = view.Indent.TabWidth;
         string how = after ? "A" : "I";
         if (mode != VimMode.VisualBlock)
         {
-            SelectionSet at = SelectionSet.Create([.. taken.Select(r => Selection.At(after
-                ? Math.Min(CharEnd(text, r.High), VimMotions.LineOf(text, r.High).End)
-                : VimMotions.LineOf(text, r.Low).Start))], 0);
-            return Insert(text, at, command, how);
+            List<Selection> inserts = [];
+            for (int i = 0; i < taken.Count; i++)
+            {
+                Region r = taken[i];
+                bool above = text.GetLineFromOffset(r.Cursor) < text.GetLineFromOffset(r.Anchor);
+                LineSpan anchorLine = VimMotions.LineOf(text, r.Anchor);
+                int column = CaretColumn(text, r.Cursor, tab);
+                int aim = i < visualAims.Length && visualAims[i] >= 0 ? visualAims[i] : column;
+                bool onIt = r.Anchor == r.Cursor ? column == 0 : aim == keptBlockLeft || (aim > keptBlockLeft && column < keptBlockLeft);
+                int place = !after ? (above ? r.Cursor : anchorLine.Start)
+                    : above ? (keptBlockLeft == 0 || anchorLine.Length == 0 ? anchorLine.Start : TextNavigation.NextGrapheme(text, anchorLine.Start))
+                    : aim == int.MaxValue ? LastCharOf(text, r.Cursor)
+                    : onIt ? r.Cursor
+                    : Math.Min(CharEnd(text, r.Cursor), VimMotions.LineOf(text, r.Cursor).End);
+                inserts.Add(Selection.At(place));
+            }
+            return Insert(text, SelectionSet.Create(inserts, 0), command, how);
         }
         List<TextEdit> pads = [];
         List<int> places = [];
