@@ -37,7 +37,7 @@ public sealed record ReqnrollConfig(string? FeatureLanguage, string? BindingCult
     private static readonly JsonDocumentOptions Lenient = new() { CommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = true };
 
     /// <summary>Each configuration file read, by its path, with the write time and length it was read at.</summary>
-    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, (DateTime Written, long Length, ReqnrollConfig Read)> Kept = new(PathNames.Comparer);
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, (FileStamp Stamp, ReqnrollConfig Read)> Kept = new(PathNames.Comparer);
 
     /// <summary>A project folder's configuration: its reqnroll.json, else its specflow.json, else Reqnroll's defaults; a file
     /// read again only once it changed, as every typing pause in a feature asks. For any thread.</summary>
@@ -46,27 +46,27 @@ public sealed record ReqnrollConfig(string? FeatureLanguage, string? BindingCult
         foreach ((string name, bool specFlow) in new[] { (ReqnrollFile, false), (SpecFlowFile, true) })
         {
             string path = Path.Combine(folder, name);
-            FileInfo file = new(path);
-            if (file.Exists)
+            if (FileStamp.Of(path) is not { } stamp)
             {
-                try
-                {
-                    if (Kept.TryGetValue(path, out (DateTime Written, long Length, ReqnrollConfig Read) kept) && kept.Written == file.LastWriteTimeUtc && kept.Length == file.Length)
-                    {
-                        return kept.Read;
-                    }
-                    ReqnrollConfig read = Parse(File.ReadAllText(path), specFlow) with { Written = true };
-                    Kept[path] = (file.LastWriteTimeUtc, file.Length, read);
-                    return read;
-                }
-                catch (IOException)
-                {
-                    return Parse("{}", specFlow);
-                }
-                catch (UnauthorizedAccessException)
-                {
-                    return Parse("{}", specFlow);
-                }
+                continue;
+            }
+            if (Kept.TryGetValue(path, out (FileStamp Stamp, ReqnrollConfig Read) kept) && kept.Stamp == stamp)
+            {
+                return kept.Read;
+            }
+            try
+            {
+                ReqnrollConfig read = Parse(File.ReadAllText(path), specFlow) with { Written = true };
+                Kept[path] = (stamp, read);
+                return read;
+            }
+            catch (IOException)
+            {
+                return Parse("{}", specFlow);
+            }
+            catch (UnauthorizedAccessException)
+            {
+                return Parse("{}", specFlow);
             }
         }
         return Parse("{}", specFlow: false);
