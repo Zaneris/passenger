@@ -377,9 +377,18 @@ public sealed partial class CSharpService : IAsyncDisposable
         {
             while (true)
             {
-                IReadOnlyList<string> unread = (await asked.GeneratorsRunAsync()).Unread ?? [];
+                if (await RunAsked(asked) is not { } run)
+                {
+                    return;
+                }
+                IReadOnlyList<string> unread = run.Unread ?? [];
                 if (session != asked)
                 {
+                    if (session is { } replacing)
+                    {
+                        IdeErrors.Write($"C# language server (process {asked.Server.ProcessId}) was replaced by process {replacing.Server.ProcessId} as its source generators' run "
+                            + "after its load was waited for: agents' questions wait for the new server's load instead");
+                    }
                     return;
                 }
                 unreadInputs = unread;
@@ -402,6 +411,27 @@ public sealed partial class CSharpService : IAsyncDisposable
             {
                 unreadInputs = [];
             }
+        }
+    }
+
+    /// <summary>The server's answer once the generators' runs it queued have run; null, said in the log, where it refused
+    /// to say (it is waited for no more, so agents' questions go on as of whatever its generators made).</summary>
+    private static async Task<Roslyn.Extension.GeneratorsRan?> RunAsked(RoslynSession asked)
+    {
+        try
+        {
+            return await asked.GeneratorsRunAsync();
+        }
+        catch (LanguageServerFailed refused)
+        {
+            // A server gone is said as it goes.
+            if (refused.Ended)
+            {
+                return null;
+            }
+            IdeErrors.Write($"C# language server (process {asked.Server.ProcessId}) did not say whether its source generators ran after its load ({refused.Reason}): "
+                + "agents' questions no longer wait for them");
+            return null;
         }
     }
 
