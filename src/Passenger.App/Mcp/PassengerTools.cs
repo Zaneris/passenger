@@ -2553,9 +2553,9 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         cancel.ThrowIfCancellationRequested();
     }
 
-    /// <summary>A tool's work on the UI thread, its waits ended by <paramref name="cancel"/> (the agent gave up on the
-    /// call, or went), once the folder's projects are read and evaluated, which is what every tool that runs, builds or
-    /// tests a project asks about (unless <paramref name="projects"/> is false, for one that asks nothing of them). What it
+    /// <summary>A tool's work on the UI thread, its waits ended by <paramref name="cancel"/> (the agent gave up on the call,
+    /// or went), once the folder's projects are read and evaluated as written (<see cref="ProjectSession.ProjectsAsWrittenAsync"/>),
+    /// which every tool that runs, builds or tests a project asks about (unless <paramref name="projects"/> is false). What it
     /// refuses (nothing to debug, no such file) reaches the agent in its own words: the SDK passes only an McpException's
     /// message on, and hides every other's.</summary>
     private async Task<T> OnUi<T>(CancellationToken cancel, Func<Task<T>> work, bool projects = true)
@@ -2585,6 +2585,11 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
                         await Session.WorkspaceRead.WaitAsync(cancel);
                         await Session.Models.Idle.WaitAsync(cancel);
                         AgentCall.Say(null);
+                    }
+                    if (projects)
+                    {
+                        // A project file the agent edited a moment ago, through edit or its own shell, the folder's watcher may not have heard of yet.
+                        await Session.ProjectsAsWrittenAsync(AgentCall.Say, cancel);
                     }
                     return await work();
                 }
@@ -3072,18 +3077,6 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         if ((path is null || Session.ProjectOf(Resolve(path)) is not null) && Unloadable() is { } unloadable)
         {
             throw new InvalidOperationException(unloadable);
-        }
-        if (Session.CSharp is not { IsReady: true })
-        {
-            return false;
-        }
-        // A project's file written a moment ago is evaluated now, before the watcher may hear it, so its load again is waited for.
-        if (await Session.Models.ReadWrittenNowAsync(WorkspaceEdits.Catching))
-        {
-            AgentCall.Say($"Waiting for {Session.Folder ?? "the folder"}'s projects to be read");
-            Session.Evaluate();
-            await Session.Models.Idle.WaitAsync(cancel);
-            AgentCall.Say(null);
         }
         if (Session.CSharp is not { IsReady: true } csharp)
         {

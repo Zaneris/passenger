@@ -8,8 +8,9 @@ using Passenger.Core;
 namespace Passenger.Tests;
 
 /// <summary>What an agent's own Passenger (<c>--mcp</c>) knows of its folder: workspace calls an Android app, which .NET for
-/// Android evaluates as a Library, the Exe it runs as, and a library stays a Library; and a file made while the folder's
-/// watcher heard nothing is found at the agent's next call.</summary>
+/// Android evaluates as a Library, the Exe it runs as, and a library stays a Library; a file made while the folder's
+/// watcher heard nothing is found at the agent's next call; and a project's frameworks the agent just edited are what the
+/// next call answers from.</summary>
 [Collection(Beside.Name)]
 public sealed class McpWorkspaceTests : McpRig
 {
@@ -48,6 +49,76 @@ public sealed class McpWorkspaceTests : McpRig
         Assert.True(found.SequenceEqual(["Shop.cs:1", "Unheard.cs:1"]),
             $"find_in_files at the agent's next call found [{string.Join(", ", found)}], missing the file made while the folder's watcher heard nothing");
     }
+
+    /// <summary>An agent's edit of a project's frameworks, each followed at once by another call, before the folder's watcher
+    /// may have heard of it: workspace lists them as edited, build's publish takes the one now first and run builds and runs
+    /// that one, where each answered from the project as it stood before the edit.</summary>
+    [Fact]
+    public async Task Workspace_build_and_run_right_after_an_edit_of_a_projects_frameworks_each_answer_from_the_frameworks_as_edited()
+    {
+        const string Newer = "net11.0";
+        string older = TestProjects.Framework;
+        string folder = PathNames.Canonical(TestFolders.Create("mcp-frameworks-"));
+        DeleteAtEnd(folder);
+        await TestFolders.PrepareAsync(async () =>
+        {
+            File.WriteAllText(Path.Combine(folder, "App.csproj"), TestProjects.Console().Replace($"<TargetFramework>{older}</TargetFramework>",
+                $"<TargetFrameworks>{older};{Newer}</TargetFrameworks>", StringComparison.Ordinal));
+            File.WriteAllText(Path.Combine(folder, "Program.cs"),
+                $"#if NET11_0_OR_GREATER\nSystem.Console.WriteLine(\"built for {Newer}\");\n#else\nSystem.Console.WriteLine(\"built for {older}\");\n#endif\n");
+            await Restore.RunAsync(folder);
+        }, folder);
+        await using McpClient client = await Start(["--mcp", folder], languageServer: false);
+        await ListedAsync(client, $"{older};{Newer}", "as the folder opened");
+
+        List<string> stale = [];
+        await EditFrameworks(client, $"{older};{Newer}", $"{Newer};{older}");
+        string listed = Frameworks(await Call(client, McpTools.Workspace));
+        if (listed != $"{Newer};{older}")
+        {
+            stale.Add($"workspace right after the edit listed App's frameworks as {listed}, as they stood before it");
+        }
+        // Each edit landed before the next, so a call answering from the project as it stood before an edit answers otherwise.
+        await ListedAsync(client, $"{Newer};{older}", "once the folder's watcher heard of the edit");
+
+        await EditFrameworks(client, $"{Newer};{older}", $"{older};{Newer}");
+        JsonElement published = await Call(client, McpTools.Build, new() { ["publish"] = "App" });
+        string landed = published.TryGetProperty("folder", out JsonElement into) ? into.GetString() ?? string.Empty : string.Empty;
+        if (!published.GetProperty("succeeded").GetBoolean() || Path.GetFileName(Path.GetDirectoryName(Path.TrimEndingDirectorySeparator(landed))) != older)
+        {
+            stale.Add($"build's publish right after the edit put {older} first did not publish {older}, as though {Newer} were still first: {published}");
+        }
+        await ListedAsync(client, $"{older};{Newer}", "once the folder's watcher heard of the edit");
+
+        await EditFrameworks(client, $"{older};{Newer}", $"{Newer};{older}");
+        JsonElement ran = await Call(client, McpTools.Run, new() { ["waitSeconds"] = 120 });
+        if (ran.GetProperty("output").GetString()?.Contains($"built for {Newer}", StringComparison.Ordinal) != true)
+        {
+            stale.Add($"run right after the edit put {Newer} first did not run {Newer}'s build, as though {older} were still first: {ran}");
+        }
+        Assert.True(stale.Count == 0, string.Join('\n', stale));
+    }
+
+    /// <summary>The agent's edit of App.csproj's frameworks, saved.</summary>
+    private async Task EditFrameworks(McpClient client, string from, string to)
+    {
+        string said = Text(await Call(client, McpTools.Edit, new() { ["path"] = "App.csproj", ["oldText"] = from, ["newText"] = to }));
+        Assert.True(said.StartsWith("Changed App.csproj", StringComparison.Ordinal) && said.Contains(", saved:", StringComparison.Ordinal),
+            $"The edit of App.csproj's frameworks to {to} answered: {said}");
+    }
+
+    /// <summary>Waits until workspace lists App's frameworks as given, however late the folder's watcher hears of them.</summary>
+    private async Task ListedAsync(McpClient client, string frameworks, string when)
+    {
+        string listed = string.Empty;
+        await Waiting.UntilAsync(async () => (listed = Frameworks(await Call(client, McpTools.Workspace))) == frameworks, TimeSpan.FromSeconds(60), Cancel,
+            TimeSpan.FromMilliseconds(200));
+        Assert.True(listed == frameworks, $"workspace never listed App's frameworks as {frameworks} {when}, listing {listed}");
+    }
+
+    /// <summary>The frameworks workspace lists for the folder's one project.</summary>
+    private static string Frameworks(JsonElement workspace) =>
+        string.Join(';', workspace.GetProperty("projects").EnumerateArray().Single().GetProperty("targetFrameworks").EnumerateArray().Select(f => f.GetString()));
 
     /// <summary>Where find_in_files found its matches, by file and line.</summary>
     private static string[] Found(JsonElement found) =>

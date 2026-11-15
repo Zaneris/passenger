@@ -774,9 +774,18 @@ public sealed partial class BuildRunController
     }
 
     /// <summary>A configuration's plan, with these arguments in place of its own if given, worked out in the workspace its run
-    /// reads (<see cref="ProjectSession.WorkspaceOfAsync"/>), or why it has none.</summary>
+    /// reads (<see cref="ProjectSession.WorkspaceOfAsync"/>), its projects as the start's save wrote them
+    /// (<see cref="ProjectSession.ProjectsAsWrittenAsync"/>), or why it has none.</summary>
     public async Task<(LaunchPlan? Plan, string? Problem)> ResolvePlanAsync(RunConfiguration chosen, string? arguments, CancellationToken stop = default)
     {
+        try
+        {
+            await session.ProjectsAsWrittenAsync(null, stop);
+        }
+        catch (OperationCanceledException) when (stop.IsCancellationRequested)
+        {
+            return (null, StoppedStarting(chosen.Name));
+        }
         (WorkspaceModel? configured, string? unconfigured) = await session.WorkspaceOfAsync(chosen);
         if (unconfigured is not null)
         {

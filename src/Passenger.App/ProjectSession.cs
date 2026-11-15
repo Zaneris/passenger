@@ -1142,6 +1142,28 @@ public sealed class ProjectSession : IAsyncDisposable
         }
     }
 
+    /// <summary>Done once the projects stand as written: a project's file, or a file one imports, written a moment ago, before
+    /// the folder's watcher may have heard of it (an agent's edit, the save a start makes), is evaluated now and its evaluation
+    /// waited for, <paramref name="waiting"/> told while it is; at once where none was.</summary>
+    public async Task ProjectsAsWrittenAsync(Action<string?>? waiting, CancellationToken cancel)
+    {
+        UiThread.Check();
+        if (IsEnded || !await Models.ReadWrittenNowAsync(WorkspaceEdits.Catching) || IsEnded)
+        {
+            return;
+        }
+        Evaluate();
+        waiting?.Invoke($"Waiting for {Folder ?? "the folder"}'s projects to be read");
+        try
+        {
+            await Models.Idle.WaitAsync(cancel);
+        }
+        finally
+        {
+            waiting?.Invoke(null);
+        }
+    }
+
     /// <summary>Files or folders made, moved or deleted, by the IDE or another program, followed: what was kept of a project
     /// that could not be evaluated where one came is let go (<see cref="ProjectModels.Came"/>), the solution is read again
     /// given <paramref name="readAgain"/>, a project shown missing whose file stands there now is taken as it is, and each
