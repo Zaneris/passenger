@@ -7,11 +7,46 @@ public static class Programs
     /// <summary>The developer folder xcode-select names, once it holds a git: kept, as the stub's choice of it stays put.</summary>
     private static string? developerFolder;
 
-    /// <summary>The first of that name on the PATH, or null.</summary>
+    /// <summary>The extensions of what Windows starts, directly or through cmd.exe, where PATHEXT lists none of them.</summary>
+    private const string StartedExtensions = ".COM;.EXE;.BAT;.CMD";
+
+    /// <summary>The first file of that name on the PATH, or null.</summary>
     public static string? OnPath(string name)
     {
         ShellEnvironment.Ready();
         return PathFolders().Select(folder => Path.Combine(folder, name)).FirstOrDefault(File.Exists);
+    }
+
+    /// <summary>The program a command of that name runs, found on the PATH as a terminal finds it (<see cref="CommandIn"/>),
+    /// or null.</summary>
+    public static string? Command(string name)
+    {
+        ShellEnvironment.Ready();
+        return CommandIn(PathFolders(), name);
+    }
+
+    /// <summary>The program a command of that name runs from these folders, the first folder's first: on Windows a name
+    /// with none of the extensions PATHEXT lists of what Windows starts (.exe, .cmd and the like) is tried with each, in
+    /// its order, and never alone; elsewhere the name alone. Null where none is there.</summary>
+    public static string? CommandIn(IEnumerable<string> folders, string name) =>
+        First(folders, OperatingSystem.IsWindows() ? WindowsNames(name, Environment.GetEnvironmentVariable("PATHEXT")) : [name], File.Exists);
+
+    /// <summary>The first of the names in the folders that <paramref name="exists"/> says is there, each folder's names in
+    /// their order before the next folder's.</summary>
+    internal static string? First(IEnumerable<string> folders, IReadOnlyList<string> names, Func<string, bool> exists) =>
+        folders.SelectMany(folder => names.Select(n => Path.Combine(folder, n))).FirstOrDefault(exists);
+
+    /// <summary>The file names a command runs from on Windows where PATHEXT is <paramref name="pathExtensions"/>: its own
+    /// where it ends in an extension of what Windows starts, else it with each of those PATHEXT lists, in its order.</summary>
+    internal static IReadOnlyList<string> WindowsNames(string name, string? pathExtensions)
+    {
+        string[] started = [.. (pathExtensions ?? string.Empty).Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(e => e.ToLowerInvariant()).Where(e => e is ".com" or ".exe" or ".bat" or ".cmd").Distinct()];
+        if (started.Length == 0)
+        {
+            started = [.. StartedExtensions.ToLowerInvariant().Split(';')];
+        }
+        return started.Contains(Path.GetExtension(name).ToLowerInvariant()) ? [name] : [.. started.Select(e => name + e)];
     }
 
     /// <summary>Every file on the PATH whose name matches <paramref name="pattern"/> (its * and ? as a folder's listing
@@ -49,13 +84,13 @@ public static class Programs
         (Environment.GetEnvironmentVariable("PATH") ?? string.Empty).Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries);
 
     /// <summary>Node.js on the PATH; null when there is none.</summary>
-    public static string? Node() => OnPath(OperatingSystem.IsWindows() ? "node.exe" : "node");
+    public static string? Node() => Command("node");
 
     /// <summary>Git on the PATH, but not Apple's /usr/bin/git when the developer folder xcode-select names holds no git
     /// behind it: that stub only asks to install the command line tools, on every status. Null when there is none.</summary>
     public static async Task<string?> GitAsync()
     {
-        string? git = OnPath(OperatingSystem.IsWindows() ? "git.exe" : "git");
+        string? git = Command("git");
         if (OperatingSystem.IsMacOS() && git == "/usr/bin/git" && !File.Exists("/Library/Developer/CommandLineTools/usr/bin/git")
             && await DeveloperFolderAsync() is null)
         {

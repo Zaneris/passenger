@@ -103,12 +103,11 @@ public static class GpgPrograms
 
     private static string? Of(string? named, string program)
     {
-        string exe = OperatingSystem.IsWindows() ? $"{program}.exe" : program;
         if (named is not null)
         {
-            return Path.IsPathRooted(named) ? (File.Exists(named) ? named : null) : Programs.OnPath(named);
+            return Path.IsPathRooted(named) ? (File.Exists(named) ? named : null) : Programs.Command(named);
         }
-        return Programs.OnPath(exe) ?? (OperatingSystem.IsWindows() && Programs.OnPath("git.exe") is { } git ? Bundled(git, exe, File.Exists) : null);
+        return Programs.Command(program) ?? (OperatingSystem.IsWindows() && Programs.Command("git") is { } git ? Bundled(git, $"{program}.exe", File.Exists) : null);
     }
 
     /// <summary>Git for Windows' own copy of a program, from its git.exe (in cmd\, bin\ or mingw64\bin\ under its top

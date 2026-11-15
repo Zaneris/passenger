@@ -217,7 +217,7 @@ public sealed class AspireClient(string? program = null)
         return PathNames.Canonical(path);
     }
 
-    private string? Executable() => program ?? Programs.OnPath(OperatingSystem.IsWindows() ? "aspire.exe" : "aspire");
+    private string? Executable() => program ?? Programs.Command("aspire");
 
     private static void ValidateName(string name)
     {

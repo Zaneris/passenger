@@ -123,8 +123,7 @@ public sealed class ContainerEngine
 
     private static string? Find()
     {
-        string name = OperatingSystem.IsWindows() ? "docker.exe" : "docker";
-        if (Programs.OnPath(name) is { } onPath)
+        if (Programs.Command("docker") is { } onPath)
         {
             return onPath;
         }
@@ -133,7 +132,7 @@ public sealed class ContainerEngine
             ? [Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "Docker", "Docker", "resources", "bin"), Path.Combine(home, ".rd", "bin")]
             : ["/usr/local/bin", "/opt/homebrew/bin", Path.Combine(home, ".docker", "bin"), Path.Combine(home, ".orbstack", "bin"), Path.Combine(home, ".rd", "bin"),
                 "/Applications/Docker.app/Contents/Resources/bin"];
-        return folders.Select(folder => Path.Combine(folder, name)).FirstOrDefault(File.Exists);
+        return Programs.CommandIn(folders, "docker");
     }
 
     /// <summary>What every <c>docker</c> command Passenger starts is told, since what the CLI says the IDE reads: no colours,

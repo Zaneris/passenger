@@ -33,7 +33,7 @@ public static partial class DeployLogins
     /// <summary>Why the Azure CLI's login is not here: no az on PATH, or a profile that lists no account; null when it is.</summary>
     public static string? AzureWhyNot()
     {
-        if (Programs.OnPath(OperatingSystem.IsWindows() ? "az.cmd" : "az") is null)
+        if (Programs.Command("az") is null)
         {
             return "needs the Azure CLI's login, and no az is on PATH: install the Azure CLI, then run az login in the Terminal";
         }
@@ -70,7 +70,7 @@ public static partial class DeployLogins
     /// context; null when it is.</summary>
     public static string? KubernetesWhyNot()
     {
-        if (Programs.OnPath(OperatingSystem.IsWindows() ? "helm.exe" : "helm") is null)
+        if (Programs.Command("helm") is null)
         {
             return "needs Helm, and no helm is on PATH: install Helm, then deploy again";
         }

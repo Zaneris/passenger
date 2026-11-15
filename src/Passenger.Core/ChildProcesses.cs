@@ -268,28 +268,36 @@ public static class ChildProcesses
         string command = Display(start);
         long began = Stopwatch.GetTimestamp();
         Process process;
-        if (OperatingSystem.IsWindows() && OnOwnDesktops.TryGetValue(start, out string? why))
+        Action? givenBack = ThroughCmdWhereBatch(start);
+        try
         {
-            OwnDesktopStart started = OwnDesktop.Start(start, suspended: false);
-            process = started.Process;
-            OwnStreams.AddOrUpdate(process, started);
-            process.EnableRaisingEvents = true;
-            process.Exited += (_, _) => OnExited(process, start, command, began, answers);
-            PassengerLog.Write($"Started {Path.GetFileName(start.FileName)} (process {process.Id}) on a desktop of its own: {why}");
+            if (OperatingSystem.IsWindows() && OnOwnDesktops.TryGetValue(start, out string? why))
+            {
+                OwnDesktopStart started = OwnDesktop.Start(start, suspended: false);
+                process = started.Process;
+                OwnStreams.AddOrUpdate(process, started);
+                process.EnableRaisingEvents = true;
+                process.Exited += (_, _) => OnExited(process, start, command, began, answers);
+                PassengerLog.Write($"Started {Path.GetFileName(start.FileName)} (process {process.Id}) on a desktop of its own: {why}");
+            }
+            else
+            {
+                process = new() { StartInfo = start, EnableRaisingEvents = true };
+                process.Exited += (_, _) => OnExited(process, start, command, began, answers);
+                try
+                {
+                    process.Start();
+                }
+                catch
+                {
+                    process.Dispose();
+                    throw;
+                }
+            }
         }
-        else
+        finally
         {
-            process = new() { StartInfo = start, EnableRaisingEvents = true };
-            process.Exited += (_, _) => OnExited(process, start, command, began, answers);
-            try
-            {
-                process.Start();
-            }
-            catch
-            {
-                process.Dispose();
-                throw;
-            }
+            givenBack?.Invoke();
         }
         Lifeline.Adopt(process);
         // An id the IDE ended before, whose end went untold (its process disposed first), is another child's now.
@@ -300,6 +308,39 @@ public static class ChildProcesses
             Input(process).Close();
         }
         return process;
+    }
+
+    /// <summary>A batch file's start on Windows made cmd.exe's, which alone runs one, its words given as cmd reads them
+    /// (<see cref="WindowsCommandLine.ThroughCmd"/>), so none is taken for an operator or a variable of cmd's; what gives the
+    /// start back its own program and words once the child is started, so it still says what was asked. Null for another
+    /// start, or one whose arguments are one string; a word cmd cannot carry refuses the start.</summary>
+    private static Action? ThroughCmdWhereBatch(ProcessStartInfo start)
+    {
+        if (!OperatingSystem.IsWindows() || !WindowsCommandLine.IsBatch(start.FileName) || (start.ArgumentList.Count == 0 && start.Arguments.Length > 0))
+        {
+            return null;
+        }
+        string program = start.FileName;
+        string[] words = [.. start.ArgumentList];
+        try
+        {
+            start.Arguments = WindowsCommandLine.ThroughCmd(program, words);
+        }
+        catch (ArgumentException uncarried)
+        {
+            throw new InvalidOperationException(uncarried.Message, uncarried);
+        }
+        start.ArgumentList.Clear();
+        start.FileName = WindowsCommandLine.Cmd;
+        return () =>
+        {
+            start.FileName = program;
+            start.Arguments = string.Empty;
+            foreach (string word in words)
+            {
+                start.ArgumentList.Add(word);
+            }
+        };
     }
 
     /// <summary>The starts to be made on a desktop of their own (<see cref="OnDesktopOfItsOwn"/>), each with why.</summary>
@@ -919,8 +960,19 @@ public static class ChildProcesses
         {
             start.StartDetached = true;
         }
-        using Process process = Process.Start(start) ?? throw new InvalidOperationException($"{start.FileName} did not start");
-        Started?.Invoke(null, new ChildStart(process.Id, Display(start), start.WorkingDirectory) { Start = start });
+        string command = Display(start);
+        Action? givenBack = ThroughCmdWhereBatch(start);
+        Process? started;
+        try
+        {
+            started = Process.Start(start);
+        }
+        finally
+        {
+            givenBack?.Invoke();
+        }
+        using Process process = started ?? throw new InvalidOperationException($"{start.FileName} did not start");
+        Started?.Invoke(null, new ChildStart(process.Id, command, start.WorkingDirectory) { Start = start });
         // What it writes is nobody's: its pipes closed here, its writes to them fail, which .NET's console passes over.
         process.StandardInput.Close();
         process.StandardOutput.Close();

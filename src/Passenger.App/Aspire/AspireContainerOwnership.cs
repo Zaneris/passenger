@@ -307,7 +307,7 @@ internal sealed class AspireContainerOwnership
         {
             return null;
         }
-        return Programs.OnPath(OperatingSystem.IsWindows() ? $"{runtime}.exe" : runtime) is { } cli
+        return Programs.Command(runtime) is { } cli
             ? RuntimeEngines.GetOrAdd(cli, path => new ContainerEngine(cli: path)) : null;
     }
 

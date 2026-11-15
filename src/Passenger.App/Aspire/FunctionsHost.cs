@@ -19,27 +19,24 @@ public static class FunctionsHost
     /// <summary>What the host gives every worker it starts on its command line, which tells the worker among its programs.</summary>
     private const string WorkerArgument = "--functions-worker-id";
 
-    /// <summary>Core Tools' func on the PATH, on Windows its program before npm's script of that name; null where none is.</summary>
-    public static string? Func() => OperatingSystem.IsWindows() ? Programs.OnPath("func.exe") ?? Programs.OnPath("func.cmd") : Programs.OnPath("func");
+    /// <summary>Core Tools' func on the PATH, as a terminal finds it (on Windows its program, or npm's script of that name);
+    /// null where none is.</summary>
+    public static string? Func() => Programs.Command("func");
 
     /// <summary>The app's plan as func start runs it, in the folder its build writes, with the arguments given: the AppHost's
     /// (its <c>--port</c>), else the launch profile's.</summary>
-    public static LaunchPlan Plan(LaunchPlan app, string func, IReadOnlyList<string> arguments)
-    {
-        bool script = func.EndsWith(".cmd", StringComparison.OrdinalIgnoreCase);
-        List<string> leading = script ? ["/d", "/c", func, "start"] : ["start"];
-        return app with
+    public static LaunchPlan Plan(LaunchPlan app, string func, IReadOnlyList<string> arguments) =>
+        app with
         {
-            Program = script ? Path.Combine(Environment.SystemDirectory, "cmd.exe") : func,
-            Arguments = [.. leading, .. arguments],
-            Leading = leading.Count,
+            Program = func,
+            Arguments = ["start", .. arguments],
+            Leading = 1,
             ArgumentsOfProject = false,
             ByAppHost = false,
             WorkingDirectory = Path.GetDirectoryName(app.Target ?? app.Built ?? app.Program)!,
             Functions = true,
             Notes = [],
         };
-    }
 
     /// <summary>The plan with its worker held at its start until a debugger attaches.</summary>
     public static LaunchPlan Debugged(LaunchPlan functions) => functions with { Arguments = [.. functions.Arguments, DebugFlag] };

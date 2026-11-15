@@ -751,6 +751,19 @@ public static class TestFolders
         return path;
     }
 
+    /// <summary>A stand-in program in a test's folder running one command, <paramref name="cmd"/> as a Windows .cmd (as npm
+    /// writes a package's command), else <paramref name="sh"/> as a shell script; its path.</summary>
+    public static string StandIn(string folder, string name, string cmd, string sh)
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return Write(folder, $"{name}.cmd", $"@echo off\r\n{cmd}\r\n");
+        }
+        string program = Write(folder, name, $"#!/bin/sh\n{sh}\n");
+        File.SetUnixFileMode(program, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        return program;
+    }
+
     /// <summary>Many files of a test's folder written as <see cref="Write"/> writes each, several at once: Windows scans a
     /// file as it is made, which a test of a thousand files written one after another waits out a thousand times.</summary>
     public static void WriteAll(string folder, IEnumerable<(string Relative, string Text)> files) =>

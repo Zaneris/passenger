@@ -12,8 +12,9 @@ namespace Passenger.Tests;
 /// <summary>A folder's Node packages through the window: a pnpm monorepo's root and packages named with their package
 /// manager in the Explorer, each package's scripts run configurations that Run starts with pnpm (a stand-in beside the
 /// Node.js Settings names, never npm) in the Run window and Stop ends; an ASP.NET Core app's front end beside its project's
-/// own configuration; and a script that cannot run saying why and how to get what it lacks: no Node.js, a Node.js older
-/// than its engines ask (said as it runs), no Yarn for a Yarn package. A test that cannot find Node.js skips, saying so.</summary>
+/// own configuration; a script's arguments reaching its package manager word for word, a Windows .cmd's too; and a script
+/// that cannot run saying why and how to get what it lacks: no Node.js, a Node.js older than its engines ask (said as it
+/// runs), no Yarn for a Yarn package. A test that cannot find Node.js skips, saying so.</summary>
 public sealed class NodeScriptsTests
 {
     private const string NoNode = "Node.js is not on the PATH, and a package's scripts run on it";
@@ -177,10 +178,59 @@ public sealed class NodeScriptsTests
         }
     }
 
+    /// <summary>Words cmd.exe would read as its own (an operator, a pipe, a variable, an escape) reach a pnpm script's
+    /// package manager as they were given, run in the Run window and in the Terminal, where on Windows pnpm is a .cmd that
+    /// cmd.exe runs; the stand-ins for Node.js and pnpm say what they were given, so no Node.js is needed.</summary>
+    [AvaloniaFact]
+    public void A_scripts_arguments_reach_its_package_manager_word_for_word_through_cmds_operators_and_variables_in_the_Run_window_and_the_Terminal()
+    {
+        const string Words = "R&D a|b %PATH% x^y";
+        string folder = PathNames.Canonical(TestFolders.Create("node-words-"));
+        string tools = Path.Combine(folder, "tools");
+        string node = TestFolders.StandIn(tools, "node", "echo v22.12.0", "echo v22.12.0");
+        TestFolders.StandIn(tools, "pnpm", "echo stand-in pnpm %*", "echo \"stand-in pnpm $*\"");
+        TestFolders.Write(folder, "package.json", """{ "name": "site", "scripts": { "dev": "vite" } }""");
+        TestFolders.Write(folder, "pnpm-lock.yaml", "lockfileVersion: '9.0'\n");
+        MainWindow window = new() { Width = 1200, Height = 800, StartsLanguageServer = false, Autosaves = false };
+        window.Show();
+        try
+        {
+            window.ApplySettings(window.Settings with { NodeInterpreter = node });
+            window.OpenFolder(folder);
+            Ui.WaitFor(() => window.Configuration?.Name == "site: dev", "the package's script chosen, the folder's one configuration");
+            Ui.Launched(window, window.RunAsync(Words), "the script's run in the Run window");
+            Ui.WaitFor(() => window.Shown(window.Configuration!) == "site: dev" && Output(window).Contains("stand-in pnpm", StringComparison.Ordinal),
+                () => $"the stand-in pnpm to say what it was given, and end:\n{Output(window)}\n{window.Status}");
+            Assert.True(Given(Output(window)) == $"run dev {Words}",
+                $"pnpm was given other words than the run's {Words}, as cmd.exe read them as its own:\n{Output(window)}");
+
+            RunConfiguration inTerminal = window.Configuration! with { Name = "site: dev in the terminal", Generated = false, Console = ConsoleKind.Terminal };
+            window.SetConfigurations([inTerminal], inTerminal.Name);
+            Ui.Launched(window, window.RunAsync(Words), "the script's run in the Terminal");
+            TerminalRun run = window.RunInTerminal ?? throw new Xunit.Sdk.XunitException("The script did not run in the Terminal");
+            Ui.WaitFor(() => !run.IsRunning && Shown(run).Contains("stand-in pnpm", StringComparison.Ordinal),
+                () => $"the stand-in pnpm to say in the Terminal what it was given, and end:\n{Shown(run)}");
+            Assert.True(Given(Shown(run)) == $"run dev {Words}",
+                $"pnpm in the Terminal was given other words than the run's {Words}, as cmd.exe read them as its own:\n{Shown(run)}");
+        }
+        finally
+        {
+            window.ApplySettings(new AppSettings());
+            window.Close();
+        }
+
+        // What the stand-in pnpm said it was given, the quotes a .cmd keeps around its arguments taken off.
+        static string Given(string said) =>
+            said.Split('\n').Select(l => l.Trim()).First(l => l.StartsWith("stand-in pnpm ", StringComparison.Ordinal))["stand-in pnpm ".Length..].Replace("\"", string.Empty, StringComparison.Ordinal);
+
+        static string Shown(TerminalRun run) =>
+            string.Join('\n', run.Session.Screen.Scrollback.Select(l => l.Text()).Concat(run.Session.Screen.Lines.Select(l => l.Text())));
+    }
+
     [AvaloniaFact]
     public void A_Yarn_package_with_no_Yarn_says_how_to_get_it_and_starts_nothing_rather_than_npm()
     {
-        Assert.SkipWhen(Programs.OnPath(OperatingSystem.IsWindows() ? "yarn.cmd" : "yarn") is not null, "Yarn is on the PATH, which a package locked by Yarn runs with");
+        Assert.SkipWhen(Programs.Command("yarn") is not null, "Yarn is on the PATH, which a package locked by Yarn runs with");
         string folder = PathNames.Canonical(TestFolders.Create("node-yarn-"));
         string tools = NodeBeside(folder, standIn: null);
         TestFolders.Write(folder, "package.json", """{ "name": "shop", "scripts": { "start": "node index.js" } }""");

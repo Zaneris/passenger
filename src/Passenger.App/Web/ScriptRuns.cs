@@ -22,7 +22,7 @@ public static class ScriptRuns
         string? folder = node.Path is { } path && node.Problem is null ? Path.GetDirectoryName(path) : null;
         ProcessStartInfo? start = package.Manager == NodeManager.Npm && node.Path is { } runtime && folder is not null && Npm.Cli(runtime) is { } cli
             ? ChildProcesses.Command(runtime, [cli, .. words], package.Folder)
-            : Program(package.Manager, folder) is { } program ? Started(program, words, package.Folder)
+            : Program(package.Manager, folder) is { } program ? ChildProcesses.Command(program, words, package.Folder)
             : null;
         if (start is null)
         {
@@ -40,20 +40,13 @@ public static class ScriptRuns
     public static string Said(NodePackage package, string script, IReadOnlyList<string> arguments) =>
         string.Join(' ', [NodeProjects.ProgramOf(package.Manager), .. NodeProjects.RunArguments(package.Manager, script, arguments)]);
 
-    /// <summary>A package manager's program beside the Node.js in use, else on the PATH: on Windows its .exe before its .cmd.</summary>
+    /// <summary>A package manager's program beside the Node.js in use, else on the PATH, each found as a terminal finds a
+    /// command (<see cref="Programs.CommandIn"/>): on Windows its .exe or its .cmd.</summary>
     private static string? Program(NodeManager manager, string? nodeFolder)
     {
         string name = NodeProjects.ProgramOf(manager);
-        string[] names = OperatingSystem.IsWindows() ? [$"{name}.exe", $"{name}.cmd"] : [name];
-        return (nodeFolder is null ? null : names.Select(n => Path.Combine(nodeFolder, n)).FirstOrDefault(File.Exists))
-            ?? names.Select(Programs.OnPath).FirstOrDefault(p => p is not null);
+        return (nodeFolder is null ? null : Programs.CommandIn([nodeFolder], name)) ?? Programs.Command(name);
     }
-
-    /// <summary>A program's start, a Windows .cmd through cmd.exe, which alone runs one.</summary>
-    private static ProcessStartInfo Started(string program, IReadOnlyList<string> words, string folder) =>
-        program.EndsWith(".cmd", StringComparison.OrdinalIgnoreCase)
-            ? ChildProcesses.Command(Path.Combine(Environment.SystemDirectory, "cmd.exe"), ["/d", "/c", program, .. words], folder)
-            : ChildProcesses.Command(program, words, folder);
 
     /// <summary>Why a package's manager cannot run it, with how to get it.</summary>
     private static string Missing(NodePackage package)

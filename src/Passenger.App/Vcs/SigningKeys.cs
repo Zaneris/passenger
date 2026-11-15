@@ -95,7 +95,7 @@ public static class SigningKeys
     /// <summary>What a program wrote, or null where it is not installed or failed.</summary>
     private static async Task<string?> OutputAsync(string program, IReadOnlyList<string> arguments)
     {
-        if (Programs.OnPath(OperatingSystem.IsWindows() ? program + ".exe" : program) is not { } found)
+        if (Programs.Command(program) is not { } found)
         {
             return null;
         }

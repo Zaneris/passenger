@@ -4,8 +4,8 @@ using Passenger.Core;
 namespace Passenger.UnitTests.Core;
 
 /// <summary>Words made one Windows command line, as a program run in the Terminal and a program dbgshim starts get it: quoted
-/// only where they must be, so cmd.exe reads its /c command and a .bat its arguments as .NET's own start hands them, and
-/// split back by the C runtime's rules into the same words.</summary>
+/// only where they must be, so cmd.exe reads its /c command as .NET's own start hands it, and split back by the C runtime's
+/// rules into the same words; and a batch file's words through cmd.exe, which reads them as given, as does what it runs.</summary>
 public sealed class WindowsCommandLineTests
 {
     [Fact]
@@ -37,6 +37,116 @@ public sealed class WindowsCommandLineTests
     {
         Check(["-NoLogo", "C:\\Program\\x.exe", "", "last"], "-NoLogo C:\\Program\\x.exe \"\" last",
             "A plain word would reach a .bat in quotes, which it keeps, or an empty word would be lost");
+    }
+
+    [Fact]
+    public void A_batch_files_words_with_cmds_operators_and_variables_go_through_cmd_quoted_as_given()
+    {
+        Through(["run", "dev", "R&D", "a|b", "%x%"], "run dev \"R&D\" \"a|b\" \"%%cd:~,%x%%cd:~,%\"",
+            "cmd.exe would run D as a command of its own after R, pipe into a command b, or put x's value in place of %x%");
+    }
+
+    [Fact]
+    public void A_batch_files_words_with_quotes_escapes_and_backslashes_reach_the_program_it_runs_as_given()
+    {
+        Through(["say \"hi\"", "x^y", "!z!", "a\\\"b", "C:\\out\\", "", "plain-1.0/x:y@z"],
+            "\"say \"\"hi\"\"\" \"x^y\" \"!z!\" \"a\\\\\"\"b\" \"C:\\out\\\\\" \"\" plain-1.0/x:y@z",
+            "a quote would end cmd's quoting there, a caret be taken away, a trailing backslash escape the closing quote, or an empty word be lost");
+    }
+
+    [Fact]
+    public void A_batch_file_is_run_by_its_path_in_quotes_with_extensions_on_and_delayed_expansion_off()
+    {
+        string line = WindowsCommandLine.ThroughCmd("C:\\Program Files\\nodejs\\pnpm.cmd", ["install"]);
+        Assert.True(line == "/e:ON /v:OFF /d /s /c \"\"C:\\Program Files\\nodejs\\pnpm.cmd\" install\"",
+            $"pnpm.cmd's line through cmd.exe was {line}: cmd would split a path with a space, read the registry's AutoRun, or expand !z! in a word");
+        Assert.True(WindowsCommandLine.IsBatch("C:\\npm\\FUNC.CMD") && WindowsCommandLine.IsBatch("run.bat") && !WindowsCommandLine.IsBatch("func.exe") && !WindowsCommandLine.IsBatch("func"),
+            "A .cmd or .bat, in any letter case, would be started without cmd.exe, or a program through it");
+    }
+
+    [Fact]
+    public void A_line_break_in_a_batch_files_word_is_refused_as_no_line_of_cmds_carries_it()
+    {
+        ArgumentException refused = Assert.Throws<ArgumentException>(() => WindowsCommandLine.ThroughCmd(Path.Combine("npm", "pnpm.cmd"), ["run", "a\nb"]));
+        Assert.StartsWith("pnpm.cmd runs through cmd.exe", refused.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>The variables cmd.exe has where the tests read a line as it does.</summary>
+    private static readonly Dictionary<string, string> Variables = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["x"] = "expanded",
+        ["PATH"] = "C:\\Windows",
+        ["cd"] = "C:\\work",
+    };
+
+    /// <summary>A batch file's line through cmd.exe ends in <paramref name="expected"/> after its path, and the words reach a
+    /// program the batch file hands them to with <c>%*</c> as given: cmd reading the /c line (each <c>%</c> first, then
+    /// its quotes, escapes and operators), the batch file reading its <c>%*</c> line again but its <c>%</c>, and the
+    /// program splitting what it is given by the C runtime's rules.</summary>
+    private static void Through(string[] words, string expected, string consequence)
+    {
+        const string Program = "C:\\Users\\me\\AppData\\Roaming\\npm\\pnpm.cmd";
+        const string Switches = "/e:ON /v:OFF /d /s /c ";
+        string line = WindowsCommandLine.ThroughCmd(Program, words);
+        string start = $"{Switches}\"\"{Program}\" ";
+        Assert.True(line == start + expected + "\"", $"[{string.Join(", ", words)}] went through cmd.exe as {line}, not as {start}{expected}\": {consequence}");
+        // /s takes away the first and last quotes after /c, and what is left is read as a command line.
+        string read = CmdReads(Expanded(line[(Switches.Length + 1)..^1]));
+        string given = read[(Program.Length + 3)..];
+        List<string> split = WindowsCommandLineTests.Split(CmdReads(given));
+        Assert.True(split.SequenceEqual(words), $"{line} reached the program as [{string.Join(", ", split)}], not the words it was made of: {consequence}");
+    }
+
+    /// <summary>A command line's variables as cmd.exe expands them on its /c line: <c>%NAME%</c> of a variable set is its
+    /// value, <c>%NAME:~,%</c> nothing, and any other <c>%</c> kept, read on from the character after it.</summary>
+    private static string Expanded(string line)
+    {
+        StringBuilder expanded = new();
+        for (int i = 0; i < line.Length; i++)
+        {
+            int end = line[i] == '%' ? line.IndexOfAny(['%', ':'], i + 1) : -1;
+            string name = end < 0 ? string.Empty : line[(i + 1)..end];
+            if (end >= 0 && line[end] == '%' && Variables.TryGetValue(name, out string? value))
+            {
+                expanded.Append(value);
+                i = end;
+            }
+            else if (end >= 0 && Variables.ContainsKey(name) && line.AsSpan(end).StartsWith(":~,%", StringComparison.Ordinal))
+            {
+                i = end + 3;
+            }
+            else
+            {
+                expanded.Append(line[i]);
+            }
+        }
+        return expanded.ToString();
+    }
+
+    /// <summary>A command line as cmd.exe reads it once its variables are in: outside double quotes a caret takes the next
+    /// character as it is, and an operator (&amp;, |, &lt;, &gt;) ends the command, which fails the test.</summary>
+    private static string CmdReads(string line)
+    {
+        StringBuilder read = new();
+        bool quoted = false;
+        for (int i = 0; i < line.Length; i++)
+        {
+            char c = line[i];
+            if (c == '"')
+            {
+                quoted = !quoted;
+            }
+            else if (!quoted && c == '^' && i + 1 < line.Length)
+            {
+                c = line[++i];
+            }
+            else if (!quoted && c is '&' or '|' or '<' or '>')
+            {
+                Assert.Fail($"cmd.exe would end the command at the {c} after {read} in {line}");
+            }
+            read.Append(c);
+        }
+        return read.ToString();
     }
 
     /// <summary>The words' command line is <paramref name="expected"/>, and splits back into them.</summary>

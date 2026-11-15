@@ -439,7 +439,7 @@ public sealed record LaunchOptions(string? Folder, IReadOnlyList<string> Files, 
         string program = words[0];
         string? found = program.Contains('/') || program.Contains(Path.DirectorySeparatorChar)
             ? (File.Exists(program) ? Path.GetFullPath(program) : null)
-            : Core.Programs.OnPath(program) ?? (OperatingSystem.IsWindows() ? Core.Programs.OnPath(program + ".exe") : null);
+            : Core.Programs.Command(program);
         return found is null
             ? throw new FormatException($"--agent's program '{program}' is neither a file nor on the PATH")
             : [found, .. words.Skip(1)];

@@ -130,15 +130,16 @@ public sealed class TerminalSession : IAsyncDisposable
             IReadOnlyDictionary<string, string> loader = OperatingSystem.IsMacOS() ? LoaderVariables(environment, Inherited()) : new Dictionary<string, string>();
             (app, args) = Unsetting([.. environment.Where(v => v.Value.Length == 0).Select(v => v.Key)], app, args, environment, loader);
         }
+        bool batch = OperatingSystem.IsWindows() && WindowsCommandLine.IsBatch(app);
         PtyOptions options = new()
         {
             Name = "Passenger",
             Cols = Screen.Columns,
             Rows = Screen.Rows,
             Cwd = cwd,
-            App = app,
-            // On Windows, quoted as the C runtime splits a command line back, and given whole.
-            CommandLine = OperatingSystem.IsWindows() ? [WindowsCommandLine.Of(args)] : args,
+            App = batch ? WindowsCommandLine.Cmd : app,
+            // On Windows, quoted as the C runtime splits a command line back, or a batch file's as cmd.exe does, and given whole.
+            CommandLine = batch ? [WindowsCommandLine.ThroughCmd(app, args)] : OperatingSystem.IsWindows() ? [WindowsCommandLine.Of(args)] : args,
             VerbatimCommandLine = OperatingSystem.IsWindows(),
             Environment = environment,
         };

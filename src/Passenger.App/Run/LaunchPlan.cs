@@ -558,7 +558,7 @@ public sealed partial record LaunchPlan
         {
             return PathNames.Canonical(System.IO.Path.Combine(projectFolder, named));
         }
-        return Programs.OnPath(named) ?? Programs.OnPath(named + (OperatingSystem.IsWindows() ? ".exe" : string.Empty)) ?? named;
+        return Programs.Command(named) ?? named;
     }
 
     /// <summary>The framework a project runs for: the one <paramref name="chosen"/> names, else the first of its several;

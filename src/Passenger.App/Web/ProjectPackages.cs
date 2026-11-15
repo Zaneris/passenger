@@ -109,7 +109,7 @@ public static class Npm
     public static string? Cli(string node)
     {
         string folder = Path.GetDirectoryName(PathNames.Canonical(node)) ?? string.Empty;
-        string onPath = Programs.OnPath(OperatingSystem.IsWindows() ? "npm.cmd" : "npm") is { } npm ? Path.GetDirectoryName(npm) ?? string.Empty : string.Empty;
+        string onPath = Programs.Command("npm") is { } npm ? Path.GetDirectoryName(npm) ?? string.Empty : string.Empty;
         string[] candidates =
         [
             // The Windows installer's layout, and nvm-windows'.
