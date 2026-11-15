@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.Globalization;
 using System.Text.Json;
 using NuGet.Common;
 using Passenger.Core;
@@ -97,12 +98,13 @@ public sealed class CredentialProviders
     }
 
     /// <summary>NuGet's plugin protocol over a provider's standard input and output. The provider's own requests (its
-    /// handshake, its log lines) are answered; what it writes to its errors is read and dropped.</summary>
+    /// handshake, its log lines) are answered; what it writes to its errors is read and dropped. Each request is asked
+    /// by its method, numbered in its RequestId.</summary>
     private sealed class PluginConnection : IAsyncDisposable
     {
         private readonly Process process;
         private readonly string name;
-        private readonly ConcurrentDictionary<string, TaskCompletionSource<JsonElement>> waiting = new(StringComparer.Ordinal);
+        private readonly PendingRequests<string, JsonElement> pending = new();
         private readonly SemaphoreSlim writing = new(1, 1);
         private readonly Task reading;
         private readonly Task draining;
@@ -116,17 +118,15 @@ public sealed class CredentialProviders
             draining = ChildProcesses.Hear(process, errors: _ => { });
         }
 
-        /// <summary>A request's response payload, once it says Success.</summary>
+        /// <summary>A request's response payload, once it says Success; failed at once where the provider's output has ended.</summary>
         public async Task<JsonElement> AskAsync(string method, object payload, TimeSpan limit, CancellationToken cancel)
         {
-            string id = Guid.NewGuid().ToString("D");
-            TaskCompletionSource<JsonElement> answer = new(TaskCreationOptions.RunContinuationsAsynchronously);
-            waiting[id] = answer;
-            await SendAsync(new { RequestId = id, Type = "Request", Method = method, Payload = payload });
+            (int id, Task<JsonElement> answer) = pending.Add(method);
             JsonElement response;
             try
             {
-                response = await answer.Task.WaitAsync(limit, cancel);
+                await SendAsync(new { RequestId = RequestId(id), Type = "Request", Method = method, Payload = payload });
+                response = await answer.WaitAsync(limit, cancel);
             }
             catch (TimeoutException)
             {
@@ -134,7 +134,7 @@ public sealed class CredentialProviders
             }
             finally
             {
-                waiting.TryRemove(id, out _);
+                pending.Forget(id, answer);
             }
             string? code = JsonMembers.Text(response, "ResponseCode");
             return code == "Success" ? response : throw new InvalidOperationException($"{name} answered {method} with {code ?? "nothing"}");
@@ -144,7 +144,7 @@ public sealed class CredentialProviders
         {
             try
             {
-                await SendAsync(new { RequestId = Guid.NewGuid().ToString("D"), Type = "Request", Method = "Close" });
+                await SendAsync(new { RequestId = RequestId(pending.NextId()), Type = "Request", Method = "Close" });
             }
             catch (Exception gone) when (gone is IOException or ObjectDisposedException or InvalidOperationException)
             {
@@ -170,8 +170,11 @@ public sealed class CredentialProviders
             }
         }
 
+        private static string RequestId(int id) => id.ToString(CultureInfo.InvariantCulture);
+
         private async Task ReadAsync()
         {
+            string ended = "ended";
             try
             {
                 TextReader output = ChildProcesses.Output(process);
@@ -191,26 +194,31 @@ public sealed class CredentialProviders
                     {
                         await AnswerAsync(id, method);
                     }
-                    else if (type == "Response" && waiting.TryGetValue(id, out TaskCompletionSource<JsonElement>? answer))
+                    else if (type == "Response" && Number(id) is { } answered)
                     {
-                        answer.TrySetResult(payload);
+                        pending.Answer(answered, payload);
                     }
-                    else if (type == "Fault" && waiting.TryGetValue(id, out TaskCompletionSource<JsonElement>? failed))
+                    else if (type == "Fault" && Number(id) is { } failed)
                     {
                         string why = JsonMembers.Text(payload, "Message") ?? "a fault";
-                        failed.TrySetException(new InvalidOperationException($"{name} answered {method} with {why}"));
+                        pending.Fail(failed, asked => new InvalidOperationException($"{name} answered {asked} with {why}"));
                     }
                 }
             }
-            catch (Exception broken) when (broken is IOException or JsonException or KeyNotFoundException or InvalidOperationException or ObjectDisposedException)
+            catch (JsonException)
             {
-                // A provider that writes what is no message, or ends, fails what was asked of it.
+                ended = "wrote what is no message of NuGet's plugin protocol";
             }
-            foreach (TaskCompletionSource<JsonElement> left in waiting.Values)
+            catch (Exception broken) when (broken is IOException or KeyNotFoundException or InvalidOperationException or ObjectDisposedException)
             {
-                left.TrySetException(new IOException($"{name} ended before it answered"));
+                // A provider whose output can no longer be read has ended, as one that closed it has.
             }
+            pending.End(asked => new IOException($"{name} {ended} before it answered {asked}"));
         }
+
+        /// <summary>The number a response names, null for one no request of this connection's was given.</summary>
+        private static int? Number(string id) =>
+            int.TryParse(id, NumberStyles.None, CultureInfo.InvariantCulture, out int number) ? number : null;
 
         /// <summary>Answers the provider's own request: its handshake, and its log lines, which are dropped.</summary>
         private Task AnswerAsync(string id, string method) => SendAsync(new

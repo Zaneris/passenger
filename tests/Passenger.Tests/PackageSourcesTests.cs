@@ -198,13 +198,7 @@ public sealed class CredentialProviderTests : NuGetFeedsFolder
         }
         File.WriteAllText(config, Config(withCredentials: false));
         feed.Accept("provided", "from-provider");
-        // On PATH, where restore finds a provider that is a program of its own, so the restore gets the credentials too.
-        string plugins = Directory.CreateDirectory(Path.Combine(folder, "plugins")).FullName;
-        string plugin = Path.Combine(plugins, "nuget-plugin-passenger-tests");
-        File.WriteAllText(plugin, Provider("provided", "from-provider"));
-        File.SetUnixFileMode(plugin, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
-        string? was = Environment.GetEnvironmentVariable("PATH");
-        Environment.SetEnvironmentVariable("PATH", plugins + Path.PathSeparator + was);
+        string? was = OnPath(Provider("provided", "from-provider"));
         try
         {
             MainWindow window = Open();
@@ -223,10 +217,59 @@ public sealed class CredentialProviderTests : NuGetFeedsFolder
         }
     }
 
+    /// <summary>A provider that writes a line of its own among its messages (a runtime's warning) has ended its side of the
+    /// conversation: what is asked of it after that fails at once, and the log says what it wrote, not that it was slow.</summary>
+    [AvaloniaFact]
+    public void A_credential_provider_writing_what_is_no_message_fails_what_is_asked_after_it_saying_so()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            Assert.Skip("The stand-in credential provider is a shell script, and Windows runs no shell script as a program");
+            return;
+        }
+        File.WriteAllText(config, Config(withCredentials: false));
+        feed.Accept("provided", "from-provider");
+        string? was = OnPath(Provider("provided", "from-provider", afterHandshake: "Warning: the runtime rolled forward"));
+        try
+        {
+            MainWindow window = Open();
+            NuGetView nuget = window.NuGet;
+            nuget.ChosenFeed = "private";
+            nuget.Query = "passenger";
+            Task searched = nuget.RefreshAsync();
+            Ui.Landed(() => searched.IsCompleted, $"the private feed searched: {nuget.Status}");
+            Assert.True(nuget.Rows.Count == 0 && nuget.Status.Contains("needs credentials", StringComparison.Ordinal),
+                $"With its provider giving nothing, the private feed's search said '{nuget.Status}', not that it needs credentials");
+            string[] said = [.. Ui.IdeLog().Split('\n').Where(l => l.Contains("nuget-plugin-passenger-tests", StringComparison.Ordinal))];
+            Assert.True(said.Any(l => l.Contains("wrote what is no message", StringComparison.Ordinal)) && !said.Any(l => l.Contains("did not answer", StringComparison.Ordinal)),
+                $"The log says of the provider [{string.Join(" | ", said)}], where it should say the provider wrote what is no message, the cause, not that it was slow to answer");
+            Assert.DoesNotContain("from-provider", Ui.IdeLog(), StringComparison.Ordinal);
+            window.Close();
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("PATH", was);
+        }
+    }
+
+    /// <summary>The provider put on PATH, where restore finds a provider that is a program of its own, so the restore gets
+    /// the credentials too; PATH as it was, to put back.</summary>
+    [System.Runtime.Versioning.UnsupportedOSPlatform("windows")]
+    private string? OnPath(string provider)
+    {
+        string plugins = Directory.CreateDirectory(Path.Combine(folder, "plugins")).FullName;
+        string plugin = Path.Combine(plugins, "nuget-plugin-passenger-tests");
+        File.WriteAllText(plugin, provider);
+        File.SetUnixFileMode(plugin, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        string? was = Environment.GetEnvironmentVariable("PATH");
+        Environment.SetEnvironmentVariable("PATH", plugins + Path.PathSeparator + was);
+        return was;
+    }
+
     /// <summary>A credential provider as NuGet's plugin protocol has one, its own handshake included: a JSON message a line
     /// on its input, each request answered by its id; it says it authenticates and gives the feed's user and
-    /// password.</summary>
-    private static string Provider(string user, string password) => $$$"""
+    /// password. A line <paramref name="afterHandshake"/> gives is written after its handshake's answer.</summary>
+    private static string Provider(string user, string password, string? afterHandshake = null) => $$$"""
         #!/bin/sh
         while IFS= read -r line; do
           id=$(printf '%s' "$line" | sed -n 's/.*"RequestId":"\([^"]*\)".*/\1/p')
@@ -241,6 +284,9 @@ public sealed class CredentialProviderTests : NuGetFeedsFolder
             *) payload='{"ResponseCode":"Success"}' ;;
           esac
           printf '{"RequestId":"%s","Type":"Response","Method":"%s","Payload":%s}\n' "$id" "$method" "$payload"
+          if [ "$method" = "Handshake" ] && [ -n '{{{afterHandshake}}}' ]; then
+            printf '%s\n' '{{{afterHandshake}}}'
+          fi
           # The handshake goes both ways: restore waits for the provider's own, which Passenger answers as NuGet does.
           if [ "$method" = "Handshake" ]; then
             printf '{"RequestId":"handshake","Type":"Request","Method":"Handshake","Payload":{"ProtocolVersion":"2.0.0","MinimumProtocolVersion":"1.0.0"}}\n'
