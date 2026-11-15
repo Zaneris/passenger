@@ -1742,3 +1742,30 @@ The one-off report-lane failures of the 0.3.0 PR's CI run 41847036147 (#1268):
   settle drew its last frame, ran inside key 1's call with no file pull under way and asked before any key had come; the
   first key let those pulls go and they were asked again once typing paused. With the window's thread stalled 2.2 s
   before the first key it failed every time with CI's words; the test now counts from the first key's change (#1708).
+- `ProtocolBytesTests`' `A_variables_answer_of_2000_variables_costs_at_most_twice_its_JSON`, CI's macOS report lane at
+  5fe6947ca (run 43708547470): 594,408 bytes for 289,400 of JSON, 2.05 times against its 2, where it measures 1.75.
+  **The IDE**, and not load: a variable's type name is read once through `SharedNames`, which kept a name in one of 512
+  places by its bytes' `HashCode`, seeded anew in each process, so in about one process in a hundred two of the answer's
+  three type names took one place and threw each other out at every turn, about 1,000 variables reading theirs anew. A
+  harness of the test's conversation met two in 16 of 1,500 processes: 2.05 times where `Shop.Orders.Order` and the
+  `List<…>` met (CI's figure among them), 2.03 where the `List<…>` and `string` met, 1.75 in every other; the Ubuntu VM's
+  2.05 and 2.03 of 2026-11-11, put down then to the shared pool, match the first two. Load moved nothing (1.75 in 20
+  processes beside burners and a 3 GB hog). The table now keeps two places a hash, the name read last first (310475924,
+  #1722).
+- `FolderWatchTests`' `A_file_made_or_deleted_among_twenty_thousand_costs_go_to_file_what_it_does_among_two_thousand`, CI
+  43708547470 (Linux report shard 1, 5fe6947ca): "A file made among 20,000 allocated 25,497 KB on its way into Go to File,
+  against 19,874 KB among 2,000 … as if the folder were walked again". **The test counted other tests' allocations**: it
+  counts every thread's (`GC.GetTotalAllocatedBytes`) and ran beside `ListedNamesTests`, whose two tests each parse all of
+  src with Roslyn; a profile put 395 of 400 MB in `ListedNamesTests.Joins`. The watchers walk nothing for a file heard
+  (about 300 KB among 2,000 or 20,000, as before). Started beside ListedNamesTests on purpose it failed with CI's words on
+  the Mac and the Ubuntu VM; it runs alone now (`FolderWatchBytesTests`), its bound as it was (da012a99c, #1721; #1725
+  holds the rule).
+- `NewGodotGameTests`' `A_csharp_godot_games_solution_sits_beside_project_godot_by_default_where_godots_editor_builds_it`,
+  the Mac with Godot 4.7.2: "Godot's editor did not build the game where its solution sits", Godot saying "An EditorPlugin
+  build callback failed … Aborting". **Godot's own defect**, met through this Mac's two .NET installations: its editor ran
+  on DOTNET_ROOT's .NET 11 but on macOS builds with /usr/local/share/dotnet/dotnet, which held .NET 11 only as release
+  candidates, so it registered MSBuild through the Microsoft.Build.Locator 1.2.6 it carries, which appends Sdks to
+  `dotnet --info`'s Base Path, written without its closing separator from .NET 11 on: the build got
+  `MSBuildSDKsPath=…/11.0.100Sdks` and found no Microsoft.NET.Sdk (MSB4236). The VMs' Godot builds with its own runtime's
+  dotnet and passed; CI has no Godot. The test skips saying so where that holds, and a failure names the build's own errors
+  (ad09e8828, #1715; #1726 for what Passenger hands Godot's editor).
