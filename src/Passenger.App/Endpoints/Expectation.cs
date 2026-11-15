@@ -153,7 +153,7 @@ public sealed partial record Expectation(string Kind, string Subject, string Op,
         return new ExpectationResult(this, false, Cut("which this needs whole"));
     }
 
-    private static string Cut(string why) => $"a body cut at {EndpointClient.MostRead / 1024 / 1024} MB, {why}";
+    private static string Cut(string why) => $"a body cut at {Sizes.Said(EndpointClient.MostRead)}, {why}";
 
     private ExpectationResult Text(string? actual)
     {

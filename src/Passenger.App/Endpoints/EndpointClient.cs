@@ -351,7 +351,7 @@ public static class EndpointClient
                 text.Append(chunk, 0, count);
                 if (text.Length > MostSent)
                 {
-                    return (null, $"it is over {MostSent / 1024 / 1024} MB");
+                    return (null, $"it is over {Sizes.Said(MostSent)}");
                 }
             }
             return (text.ToString(), null);

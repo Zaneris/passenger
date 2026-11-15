@@ -4,6 +4,7 @@ using Avalonia.Media;
 using Avalonia.Media.Fonts;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform;
+using Passenger.Core;
 using SkiaSharp;
 
 namespace Passenger.App.Workspace;
@@ -87,7 +88,7 @@ public sealed class AssetPreview : IDisposable
         long limit = kind == AssetKind.Font ? FontBytes : ImageBytes;
         if (length == 0 || length > limit)
         {
-            throw new IOException($"The {(kind == AssetKind.Font ? "font" : "image")} must be non-empty and no larger than {limit / (1024 * 1024)} MB.");
+            throw new IOException($"The {(kind == AssetKind.Font ? "font" : "image")} must be non-empty and no larger than {Sizes.Said(limit)}.");
         }
     }
 

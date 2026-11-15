@@ -1096,7 +1096,7 @@ public sealed class ProfilerCommands
                 heap = await run.TakeMemorySnapshotAsync(intoOutput: true, stopping.Token);
             }
             View.ShowMemory(heap);
-            parts.Say($"{heap.Name} of {name}: {heap.Objects:N0} objects, {heap.Bytes / 1048576.0:N1} MB{(heap.Lacks is null ? string.Empty : ", read from its runtime's GC heap dump")}");
+            parts.Say(string.Create(System.Globalization.CultureInfo.InvariantCulture, $"{heap.Name} of {name}: {heap.Objects:N0} objects, {Sizes.Said(heap.Bytes)}{(heap.Lacks is null ? string.Empty : ", read from its runtime's GC heap dump")}"));
             return (heap, note ?? heap.Lacks);
         }
         catch (Exception error) when (error is HeapUnreadableException or ProfilingException or OperationCanceledException || DiagnosticsFailures.Of(error))

@@ -460,7 +460,7 @@ public static class ContainerTools
         }
         catch (ChildOutputException overran)
         {
-            throw new ContainerToolsException($"Passenger's tools in {container} answered more than the {MostProcesses / (1024 * 1024)} MB a list of programs takes, "
+            throw new ContainerToolsException($"Passenger's tools in {container} answered more than the {Sizes.Said(MostProcesses)} a list of programs takes, "
                 + $"which was not read: {overran.Message}");
         }
         if (!listed.Succeeded)

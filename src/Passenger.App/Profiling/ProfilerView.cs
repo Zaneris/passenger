@@ -337,7 +337,7 @@ public sealed class ProfilerView : DockPanel
         return row.Showing<SnapshotFile>(file =>
         {
             when.Text = file.Written.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss", System.Globalization.CultureInfo.CurrentCulture);
-            size.Text = $"{file.Bytes / 1048576.0,7:N1} MB";
+            size.Text = Sizes.Said(file.Bytes).PadLeft(10);
             // Named for its program and when it ran, which the row says already.
             program.Text = System.Text.RegularExpressions.Regex.Replace(file.Name, @"-\d{8}-\d{6}(-\d+)?$", string.Empty);
         });
@@ -573,7 +573,7 @@ public sealed class ProfilerView : DockPanel
         return row.Showing<AllocatedType>(type =>
         {
             long whole = Snapshot?.Allocations.Sum(a => a.Bytes) ?? 0;
-            size.Text = $"{(whole > 0 ? 100.0 * type.Bytes / whole : 0),5:0.0}%  {type.Bytes / 1048576.0,8:N1} MB";
+            size.Text = string.Create(System.Globalization.CultureInfo.InvariantCulture, $"{(whole > 0 ? 100.0 * type.Bytes / whole : 0),5:0.0}%  {Sizes.Said(type.Bytes),11}");
             name.Text = type.Name;
         });
     }
