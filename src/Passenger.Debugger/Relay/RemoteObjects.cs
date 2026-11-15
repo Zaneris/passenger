@@ -123,5 +123,9 @@ internal sealed class StandIn(RelaySession session, RemoteObject owner, Interfac
 internal readonly record struct AnswerKey(Type Declaring, string Method, ulong First, ulong Second, ulong Third);
 
 /// <summary>An answer kept: the result, the bytes of each value written, the stand-ins handed back (each holding a
-/// reference of the answer's own while it is kept), and the stop it was given in (-1 for one that lasts).</summary>
-internal sealed record RememberedAnswer(int Hr, byte[][] Outs, nint[][] Objects, int Stop);
+/// reference of the answer's own while it is kept), the stop it was given in (-1 for one that outlasts the stop), and the
+/// code's version it was given in (-1 for one no update ends).</summary>
+internal sealed record RememberedAnswer(int Hr, byte[][] Outs, nint[][] Objects, int Stop, int Code);
+
+/// <summary>The stop and the code's version a call was asked in.</summary>
+internal readonly record struct AnswerStamp(int Stop, int Code);

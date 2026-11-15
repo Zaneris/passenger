@@ -25,9 +25,11 @@ internal sealed unsafe partial class RelaySession
     private readonly Lock _lock = new();
     private readonly Dictionary<ulong, RemoteObject> _objects = [];
     private readonly List<StandIn> _heldForTheStop = [];
+    private readonly List<StandIn> _heldForTheCode = [];
     private readonly ConcurrentDictionary<string, int> _tally = new();
     private readonly nint[] _callbackInterfaces = new nint[4];
     private int _stop;
+    private int _code;
 
     public RelaySession(IRelayLink link, DeviceModules modules, Action<string>? log)
     {
@@ -252,7 +254,13 @@ internal sealed unsafe partial class RelaySession
             }
             List<RelayArg> sent = [.. method.Params.Select((each, i) => Sent(each, args[i], args, method))];
             Tally(standIn.Plan, method);
+            AnswerStamp given = Stamp();
             RelayReply reply = _link.Call(standIn.Pointer, (uint)slot, sent);
+            if (RelayAnswers.Updates(method.Name))
+            {
+                // Refused or not, the runtime may hold part of an update: its methods' versions are asked again.
+                NewCode();
+            }
             nint[][] objects = Taken(reply, sent, method, args);
             Write(reply.Hr, reply.Outs, objects, sent, method, args);
             if (reply.Hr >= 0)
@@ -261,7 +269,7 @@ internal sealed unsafe partial class RelaySession
             }
             if (scope != AnswerScope.None && reply.Hr == 0)
             {
-                Remember(standIn.Owner, key, scope, reply.Outs, objects);
+                Remember(standIn.Owner, key, scope, given, reply.Outs, objects);
             }
             return reply.Hr;
         }
@@ -296,7 +304,7 @@ internal sealed unsafe partial class RelaySession
         RememberedAnswer? answer;
         lock (_lock)
         {
-            if (!owner.Answers.TryGetValue(key, out answer) || (answer.Stop >= 0 && answer.Stop != _stop))
+            if (!owner.Answers.TryGetValue(key, out answer) || (answer.Stop >= 0 && answer.Stop != _stop) || (answer.Code >= 0 && answer.Code != _code))
             {
                 return null;
             }
@@ -313,12 +321,22 @@ internal sealed unsafe partial class RelaySession
         return answer.Hr;
     }
 
-    private void Remember(RemoteObject owner, AnswerKey key, AnswerScope scope, IReadOnlyList<byte[]> outs, nint[][] objects)
+    /// <summary>The stop and the code's version an answer asked now is given in, so one that ends as it is asked is never
+    /// recalled after.</summary>
+    private AnswerStamp Stamp()
+    {
+        lock (_lock)
+        {
+            return new AnswerStamp(_stop, _code);
+        }
+    }
+
+    private void Remember(RemoteObject owner, AnswerKey key, AnswerScope scope, AnswerStamp given, IReadOnlyList<byte[]> outs, nint[][] objects)
     {
         List<StandIn> held = [.. objects.SelectMany(each => each).Select(RemoteObjects.Of).OfType<StandIn>()];
         lock (_lock)
         {
-            if (scope == AnswerScope.Object && held.Any(each => !each.Owner.Kept))
+            if (scope is AnswerScope.Object or AnswerScope.Code && held.Any(each => !each.Owner.Kept))
             {
                 // An answer that lasts holds no object that would otherwise be let go.
                 return;
@@ -330,8 +348,12 @@ internal sealed unsafe partial class RelaySession
                 {
                     _heldForTheStop.Add(each);
                 }
+                else if (scope == AnswerScope.Code)
+                {
+                    _heldForTheCode.Add(each);
+                }
             }
-            owner.Answers[key] = new RememberedAnswer(0, [.. outs], objects, scope == AnswerScope.Stop ? _stop : -1);
+            owner.Answers[key] = new RememberedAnswer(0, [.. outs], objects, scope == AnswerScope.Stop ? given.Stop : -1, scope == AnswerScope.Code ? given.Code : -1);
         }
     }
 
@@ -345,6 +367,23 @@ internal sealed unsafe partial class RelaySession
             _stop++;
             held = [.. _heldForTheStop];
             _heldForTheStop.Clear();
+        }
+        foreach (StandIn each in held)
+        {
+            Release(each);
+        }
+    }
+
+    /// <summary>An update made new versions of the program's methods: nothing naming a method's version holds, and what
+    /// those answers held is let go.</summary>
+    private void NewCode()
+    {
+        List<StandIn> held;
+        lock (_lock)
+        {
+            _code++;
+            held = [.. _heldForTheCode];
+            _heldForTheCode.Clear();
         }
         foreach (StandIn each in held)
         {

@@ -2,18 +2,21 @@ using Passenger.Debugger.Interop;
 
 namespace Passenger.Debugger.Relay;
 
-/// <summary>How long an answer from the app holds: never kept, while the object lives, or until the program runs again.</summary>
+/// <summary>How long an answer from the app holds: never kept, while the object lives, while the object lives and no update
+/// has made new versions of the program's methods, or until the program runs again.</summary>
 internal enum AnswerScope
 {
     None,
     Object,
+    Code,
     Stop,
 }
 
 /// <summary>What the stand-ins may answer without asking the app again: the facts of an object that never change while
-/// it lives (a class's token, a type's element type), and what an object says of a stopped program until the program
-/// runs or is written to. Also which objects the app's debugger keeps for as long as their module is loaded, whose
-/// references Passenger keeps too, so their answers outlive any one stop.</summary>
+/// it lives (a class's token, a type's element type), what names a method's version until an update makes a new one (a
+/// module's function for a token), and what an object says of a stopped program until the program runs or is written
+/// to. Also which objects the app's debugger keeps for as long as their module is loaded, whose references Passenger
+/// keeps too, so their answers outlive any one stop.</summary>
 internal static class RelayAnswers
 {
     private static readonly Dictionary<Type, string[]> s_forTheObject = new()
@@ -25,8 +28,7 @@ internal static class RelayAnswers
         [
             nameof(ICorDebugModule.TryGetProcess), nameof(ICorDebugModule.TryGetBaseAddress), nameof(ICorDebugModule.TryGetAssembly),
             nameof(ICorDebugModule.TryGetName), nameof(ICorDebugModule.TryGetToken), nameof(ICorDebugModule.TryIsDynamic),
-            nameof(ICorDebugModule.TryGetSize), nameof(ICorDebugModule.TryIsInMemory), nameof(ICorDebugModule.TryGetFunctionFromToken),
-            nameof(ICorDebugModule.TryGetClassFromToken),
+            nameof(ICorDebugModule.TryGetSize), nameof(ICorDebugModule.TryIsInMemory), nameof(ICorDebugModule.TryGetClassFromToken),
         ],
         [typeof(ICorDebugClass)] = [nameof(ICorDebugClass.TryGetModule), nameof(ICorDebugClass.TryGetToken)],
         [typeof(ICorDebugType)] =
@@ -43,6 +45,13 @@ internal static class RelayAnswers
             nameof(ICorDebugCode.TryGetCode),
         ],
         [typeof(ICorDebugThread)] = [nameof(ICorDebugThread.TryGetProcess), nameof(ICorDebugThread.TryGetID)],
+    };
+
+    /// <summary>Answers naming a method's version: an update makes a new function object for each method it changes or
+    /// adds, where a class, a function's code and a function's own facts stay the objects they were.</summary>
+    private static readonly Dictionary<Type, string[]> s_forTheCode = new()
+    {
+        [typeof(ICorDebugModule)] = [nameof(ICorDebugModule.TryGetFunctionFromToken)],
     };
 
     private static readonly Dictionary<Type, string[]> s_forTheStop = new()
@@ -94,16 +103,22 @@ internal static class RelayAnswers
 
     public static IReadOnlyDictionary<Type, string[]> ForTheObject => s_forTheObject;
 
+    public static IReadOnlyDictionary<Type, string[]> ForTheCode => s_forTheCode;
+
     public static IReadOnlyDictionary<Type, string[]> ForTheStop => s_forTheStop;
 
     public static AnswerScope ScopeOf(Type type, string method) =>
         s_forTheObject.TryGetValue(type, out string[]? lasting) && lasting.Contains(method) ? AnswerScope.Object
+        : s_forTheCode.TryGetValue(type, out string[]? versioned) && versioned.Contains(method) ? AnswerScope.Code
         : s_forTheStop.TryGetValue(type, out string[]? stopped) && stopped.Contains(method) ? AnswerScope.Stop
         : AnswerScope.None;
 
     /// <summary>Whether the app's debugger keeps an object of this kind for as long as its module or process lives, so
     /// that holding it costs the app nothing.</summary>
     public static bool Kept(Type type) => s_kept.Contains(type);
+
+    /// <summary>Whether a call updates the program's code, after which nothing naming a method's version holds.</summary>
+    public static bool Updates(string method) => method == nameof(ICorDebugModule2.TryApplyChanges);
 
     /// <summary>Whether a call lets the program run or writes to it, after which nothing it said while stopped holds.</summary>
     public static bool Changes(string method) =>

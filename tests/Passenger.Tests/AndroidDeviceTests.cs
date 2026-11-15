@@ -1,8 +1,10 @@
 using Avalonia.Headless.XUnit;
 using Passenger.App;
 using Passenger.App.Debugging;
+using Passenger.App.Editors;
 using Passenger.App.Run.Devices;
 using Passenger.Core;
+using Passenger.Editor;
 using Passenger.Tests.Debugging.Helpers;
 using Passenger.Text;
 using Passenger.Workspace;
@@ -14,9 +16,9 @@ namespace Passenger.Tests;
 /// and starts it there, its log in the Run window, and Stop ends it on the emulator; Debug stops at a breakpoint in its
 /// OnCreate through Passenger's relay in the app, its locals shown, and Stop ends it; Run and Debug with Hot Reload take
 /// an edit of its code through the relay, its update handler called after it, and under Debug a method the edit added is
-/// evaluated. The emulator is the one ANDROID_SERIAL names where several run, and every adb call names it. Skips, saying
-/// why, without the Android workload, its SDK and Java, an emulator or the relays. Debugged through the window, so run
-/// alone.</summary>
+/// evaluated and a breakpoint on a line the edit changed stops the edited code. The emulator is the one ANDROID_SERIAL
+/// names where several run, and every adb call names it. Skips, saying why, without the Android workload, its SDK and
+/// Java, an emulator or the relays. Debugged through the window, so run alone.</summary>
 [Collection(Alone.Name)]
 public sealed class AndroidDeviceTests
 {
@@ -160,6 +162,65 @@ public sealed class AndroidDeviceTests
             window.Close();
         }
     }
+
+    /// <summary>Debug with Hot Reload on the emulator, a breakpoint bound in Ticked as built, takes an edit of Ticked's line as
+    /// OnCreate's breakpoint holds the app before its timer starts: the breakpoint binds again in Ticked's new code, so once
+    /// the app goes on it stops there as the timer calls the edited code, which then logs what the edit made it say.</summary>
+    [AvaloniaFact]
+    public void An_android_app_debugged_with_hot_reload_on_an_emulator_stops_at_a_breakpoint_on_a_line_an_edit_changed()
+    {
+        (string folder, string project, DeviceTarget target, AndroidTools tools) = Prepared();
+        MainWindow window = Ui.OpenFolder(folder);
+        window.ApplySettings(window.Settings with { HotReload = true });
+        try
+        {
+            Choose(window, project, target);
+            window.OpenFile(Path.Combine(PathNames.Canonical(folder), "MainActivity.cs"));
+            Ui.Settle();
+            CodeEditor editor = window.EditorArea.CodeEditor;
+            editor.GoTo(new TextPosition(10, 8));
+            Ui.Run(window, AppActions.ToggleBreakpoint);
+            editor.GoTo(new TextPosition(TickedLine, 8));
+            Ui.Run(window, AppActions.ToggleBreakpoint);
+            Ui.Launched(window, window.DebugAsync(), "the debug session's start on the emulator with Hot Reload", Slow);
+            Ui.WaitFor(() => window.Debugger.Session?.State == DebugState.Paused && Shown(window, "answer") is not null
+                && editor.LineMarks.Contains(new LineMark(TickedLine, LineMarkKind.BreakpointBound)),
+                () => $"the stop at the breakpoint in OnCreate, Ticked's breakpoint bound; the debugger is {window.Debugger.Session?.State.ToString() ?? "not debugging"}, "
+                    + $"marks {string.Join(", ", editor.LineMarks)}: {Ui.Said(window)}\n{Console(window)}", Slow);
+
+            Typing.Replace(window, "\"Ticked as built\"", "\"Ticked after Hot Reload\"");
+            Ui.Run(window, AppActions.ApplyHotReloadChanges);
+            Ui.WaitFor(() => window.Debugger.LastApplied is not null, () => $"Hot Reload to say what it applied: {Ui.Said(window)}", Slow);
+            Assert.True(window.Debugger.LastApplied!.Result == HotReloadResult.Applied,
+                $"The app on the emulator did not take the edit: {window.Debugger.LastApplied.Said}\n{Console(window)}");
+
+            Ui.Run(window, AppActions.Resume);
+            Ui.WaitFor(() => window.Debugger.Session?.State == DebugState.Paused && editor.LineMarks.Contains(new LineMark(TickedLine, LineMarkKind.ExecutionPoint)),
+                () => $"the stop at the breakpoint on Ticked's edited line as the timer calls its new code; the debugger is "
+                    + $"{window.Debugger.Session?.State.ToString() ?? "not debugging"}, marks {string.Join(", ", editor.LineMarks)}: {Ui.Said(window)}\n{Console(window)}",
+                TimeSpan.FromMinutes(1));
+            editor.GoTo(new TextPosition(TickedLine, 8));
+            Ui.Run(window, AppActions.ToggleBreakpoint);
+            Ui.Run(window, AppActions.Resume);
+            Ui.WaitFor(() => Console(window).Contains("Ticked after Hot Reload", StringComparison.Ordinal),
+                () => $"the edited code the app stopped in to log what the edit made it say: {Ui.Said(window)}\n{Console(window)}", TimeSpan.FromMinutes(1));
+            Assert.False(Console(window).Contains("Ticked as built", StringComparison.Ordinal), $"Ticked's code as built ran after the edit:\n{Console(window)}");
+
+            string serial = AndroidSerials.Of(window, target);
+            Ui.Run(window, AppActions.Stop);
+            Ui.WaitFor(() => !window.Debugger.IsDebugging, "the debug session to end once stopped", TimeSpan.FromMinutes(1));
+            Ui.WaitFor(() => Pid(tools, serial).Length == 0, () => $"the debugged app to end on the emulator once stopped; it runs as {Pid(tools, serial)}", TimeSpan.FromSeconds(30));
+            Ui.WaitFor(() => Left(tools, serial).Length == 0, () => $"the debugging's port and debugged app to be let go on the emulator; it still has {Left(tools, serial)}",
+                TimeSpan.FromSeconds(30));
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>Ticked's line in MainActivity.cs, counted from 0, which the Hot Reload tests edit.</summary>
+    private const int TickedLine = 25;
 
     /// <summary>A debugged app ended on the emulator from outside its debugger, as a crash or another program's force-stop
     /// ends it, ends its session here and leaves nothing of its debugging there: the relay's port forward, the relay, the

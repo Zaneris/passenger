@@ -14,8 +14,9 @@ namespace Passenger.UnitTests.Debugger;
 
 /// <summary>The engine's hold on an app's objects through the relay: each object let go in the app once the engine holds
 /// none of it, the objects the app's debugger keeps anyway held for the session, what an object said asked of the app
-/// once, for as long as it holds, the metadata an update takes to be there made in the app first, and the update applied
-/// to the host's copy of the module's metadata once the app took it.</summary>
+/// once, for as long as it holds (a method's function until an update makes its next version), the metadata an update
+/// takes to be there made in the app first, and the update applied to the host's copy of the module's metadata once the
+/// app took it.</summary>
 public class RelayReferencesTests
 {
     [Fact]
@@ -125,6 +126,35 @@ public class RelayReferencesTests
         Assert.True(made >= 0 && applied > made, $"The app's debugger was not asked for the module's metadata before the update, which its ApplyChanges takes to hold: "
             + string.Join(", ", app.Calls.Select(c => $"0x{c.Object:x} slot {c.Slot}")));
         Assert.True(app.Released.Count == 1, $"The importer the app's debugger handed back was not let go, or more was: {string.Join(", ", app.Released)}");
+    }
+
+    [Fact]
+    public void A_function_found_by_its_token_is_asked_of_the_app_again_after_an_update_and_a_class_is_not()
+    {
+        App app = new();
+        RelaySession session = new(app, new DeviceModules(null), null);
+        nint block = session.Take(new RemotePointer(0x6000, 0x6000), RemoteInterfaces.Of(typeof(ICorDebugModule)));
+        ICorDebugModule module = (ICorDebugModule)new StrategyBasedComWrappers().GetOrCreateObjectForComInstance(block, CreateObjectFlags.UniqueInstance);
+        mdMethodDef method = new(0x06000001u);
+        mdTypeDef type = new(0x02000002u);
+        uint functionSlot = RelaySession.SlotOf(typeof(ICorDebugModule), nameof(ICorDebugModule.TryGetFunctionFromToken));
+        uint classSlot = RelaySession.SlotOf(typeof(ICorDebugModule), nameof(ICorDebugModule.TryGetClassFromToken));
+        int Asked(uint slot) => app.Calls.Count(c => c == (0x6000ul, slot));
+        Assert.Equal(0, module.TryGetFunctionFromToken(method, out ICorDebugFunction built));
+        Assert.Equal(0, module.TryGetClassFromToken(type, out ICorDebugClass _));
+        session.EndStop();
+        Assert.Equal(0, module.TryGetFunctionFromToken(method, out ICorDebugFunction stillBuilt));
+        Assert.True(Asked(functionSlot) == 1 && ReferenceEquals(built, stillBuilt), $"A method's function was asked of the app {Asked(functionSlot)} times before any update, where it holds until one");
+
+        Assert.Equal(0, ((ICorDebugModule2)module).TryApplyChanges(2, [1, 2], 1, [3]));
+
+        Assert.Equal(0, module.TryGetFunctionFromToken(method, out ICorDebugFunction updated));
+        Assert.True(Asked(functionSlot) == 2 && !ReferenceEquals(built, updated), "After an update the method's function was answered as the app gave it before, "
+            + "its old version, so a breakpoint bound in it after the update sits in code that no longer runs");
+        Assert.Equal(0, module.TryGetFunctionFromToken(method, out ICorDebugFunction stillUpdated));
+        Assert.True(Asked(functionSlot) == 2 && ReferenceEquals(updated, stillUpdated), $"The updated method's function was asked of the app {Asked(functionSlot)} times, where it holds until the next update");
+        Assert.Equal(0, module.TryGetClassFromToken(type, out ICorDebugClass _));
+        Assert.True(Asked(classSlot) == 1, "A class, which an update leaves the same object, was asked of the app again after it");
     }
 
     [Fact]

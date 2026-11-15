@@ -65,7 +65,7 @@ public class RelayPlansTests
     [Fact]
     public void Every_answer_kept_names_a_method_of_its_interface_that_takes_only_numbers()
     {
-        string[] wrong = [.. RelayAnswers.ForTheObject.Concat(RelayAnswers.ForTheStop)
+        string[] wrong = [.. RelayAnswers.ForTheObject.Concat(RelayAnswers.ForTheCode).Concat(RelayAnswers.ForTheStop)
             .SelectMany(each => each.Value.Select(method => (Plan: RemoteInterfaces.Of(each.Key), Method: method)))
             .Where(each => each.Plan.Methods.FirstOrDefault(m => m.Name == each.Method) is not { } method || !RelaySession.Rememberable(method))
             .Select(each => $"{each.Plan.Type.Name}.{each.Method}")];
