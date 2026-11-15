@@ -311,6 +311,23 @@ public sealed class MauiXamlTests : IClassFixture<MauiXamlTests.Gallery>
         window.Close();
     }
 
+    /// <summary>An expression nested past what a parser is given, here conditional accesses that a parser reads ahead
+    /// through, each doubling its time, is read by the server as nothing: completion where its name starts offers at once
+    /// the markup extensions the name may still become, where the server would parse it for days and offer nothing.</summary>
+    [AvaloniaFact]
+    public void Completion_in_an_expression_nested_past_what_a_parser_is_given_offers_what_its_name_may_become()
+    {
+        MainWindow window = app.Open(app.PathOf("PeoplePage.xaml"));
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        string deep = string.Concat(Enumerable.Repeat("Owner?[", 60)) + "0" + new string(']', 60);
+        Replace(editor, "Title=\"{Binding Greeting}\"", $"Title=\"{{{deep}}}\"");
+        Ui.PlaceAfter(editor, "Title=\"{");
+        Ui.Run(window, AppActions.Complete);
+        Ui.WaitFor(() => window.Assist.CompletionLabels.Contains("StaticResource"),
+            () => $"the markup extensions offered where the nested expression's name starts: {string.Join(", ", window.Assist.CompletionLabels.Take(30))}");
+        window.Close();
+    }
+
     /// <summary>MAUI's source generator runs over the page as it is typed, before any build: its error for an expression
     /// naming what neither the page nor its x:DataType has is marked on the expression, and C#'s for a member a step's
     /// type lacks on that member's name, the expression compiled as the generator writes it; each goes once fixed.</summary>

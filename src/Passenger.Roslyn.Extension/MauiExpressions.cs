@@ -9,6 +9,7 @@ using Microsoft.CodeAnalysis.Extensions;
 using Microsoft.CodeAnalysis.FindSymbols;
 using Microsoft.CodeAnalysis.Text;
 using Passenger.Core;
+using Passenger.Languages.CSharp;
 using Passenger.Xaml.Dialects;
 
 namespace Passenger.Roslyn.Extension;
@@ -132,13 +133,15 @@ public sealed class MauiExpressionUses : IExtensionWorkspaceMessageHandler<MauiU
 
 /// <summary>A MAUI XAML file checked as the editor has it, before any build: MAUI's source generator run again over it
 /// for its own diagnostics of the file, and each of its C# expressions compiled as the generator writes it, for the
-/// errors C# finds there, placed in the expression.</summary>
+/// errors C# finds there, placed in the expression. The generator writes each expression into the code it makes, which
+/// the server parses unchecked, so a file with one nested too deeply to read is not checked.</summary>
 public sealed class MauiXamlChecks : IExtensionWorkspaceMessageHandler<MauiChecksAsked, MauiChecksFound>
 {
     public async Task<MauiChecksFound> ExecuteAsync(MauiChecksAsked message, ExtensionWorkspaceMessageContext context, CancellationToken cancellationToken)
     {
         Solution solution = context.Solution;
-        if (SyntaxReads.DocumentIdsOf(solution, message.Path).FirstOrDefault(id => solution.GetAdditionalDocument(id) is not null) is not { } id)
+        if (SyntaxReads.DocumentIdsOf(solution, message.Path).FirstOrDefault(id => solution.GetAdditionalDocument(id) is not null) is not { } id
+            || message.Expressions.Any(MauiExpressionDocument.TooDeep))
         {
             return new MauiChecksFound([]);
         }
@@ -218,12 +221,16 @@ internal sealed class MauiExpressionDocument
         public int CodeAt(int position) => CodeOf[Math.Clamp(position - Start, 0, CodeOf.Length - 1)];
     }
 
+    /// <summary>Whether an expression's code is nested too deeply for a parser to be given it.</summary>
+    public static bool TooDeep(MauiExpression expression) =>
+        MauiExpressionCode.Of(expression.Value, expression.Types) is { } code && CodeBrackets.Expression(code.Code) is null;
+
     /// <summary>The project the server holds a XAML file in, as one of its additional files; null for none.</summary>
     public static Project? ProjectOf(Solution solution, string path) =>
         SyntaxReads.DocumentIdsOf(solution, path).FirstOrDefault(id => solution.GetAdditionalDocument(id) is not null) is { } id ? solution.GetProject(id.ProjectId) : null;
 
     /// <summary>Where a name being written at a place of the code starts, where MAUI may bind it to the data type: not
-    /// after a dot, in a string or past a name's end; null elsewhere.</summary>
+    /// after a dot, in a string or past a name's end; null elsewhere, and in code nested too deeply to read.</summary>
     public static int? BoundStart(string code, int at)
     {
         int start = Math.Clamp(at, 0, code.Length);
@@ -236,7 +243,7 @@ internal sealed class MauiExpressionDocument
         {
             before--;
         }
-        if ((before >= 0 && code[before] == '.' && before > 0) || InString(code, start))
+        if ((before >= 0 && code[before] == '.' && before > 0) || CodeBrackets.Expression(code) is not { } parsed || InString(parsed, start))
         {
             return null;
         }
@@ -244,9 +251,8 @@ internal sealed class MauiExpressionDocument
     }
 
     /// <summary>Whether a place of the code is inside a string's text, not an interpolation's hole.</summary>
-    private static bool InString(string code, int at)
+    private static bool InString(ExpressionSyntax parsed, int at)
     {
-        ExpressionSyntax parsed = DeepText.Read(code.Length, () => SyntaxFactory.ParseExpression(code));
         if (at <= 0 || at - 1 >= parsed.FullSpan.End)
         {
             return false;
@@ -269,7 +275,7 @@ internal sealed class MauiExpressionDocument
         for (int i = 0; i < expressions.Count; i++)
         {
             MauiExpression expression = expressions[i];
-            if (MauiExpressionCode.Of(expression.Value, expression.Types) is not { } code || DeepText.TooDeep(code.Code, csharp: true))
+            if (MauiExpressionCode.Of(expression.Value, expression.Types) is not { } code || CodeBrackets.Expression(code.Code) is not { } parsed)
             {
                 continue;
             }
@@ -288,7 +294,7 @@ internal sealed class MauiExpressionDocument
             }
             text.Append(partOfRoot ? $"partial class {root!.Name} {{\n" : "internal static class __PassengerXaml {\n");
             text.Append(partOfRoot ? "private void " : "private static void ").Append("__PassengerExpression").Append(i.ToString(CultureInfo.InvariantCulture)).Append("() {\n");
-            string chars = Chars(code.Code, compilation, data, root);
+            string chars = Chars(code.Code, parsed, compilation, data, root);
             (string written, int[] codeOf, int[] writtenOf) = owner is not null || data is null
                 ? (chars, [.. Enumerable.Range(0, chars.Length + 1)], [.. Enumerable.Range(0, chars.Length + 1)])
                 : Qualified(chars, data, i == 0 ? bound : null);
@@ -322,9 +328,8 @@ internal sealed class MauiExpressionDocument
     /// <summary>The code with each one-character string given as a method's argument where the parameter is a char written as
     /// a char, as the generator writes it: the method found by its name and argument count on the data type, the page, then
     /// <c>string</c>. A character whose char is written longer than its string is left a string.</summary>
-    private static string Chars(string code, Compilation compilation, ITypeSymbol? data, ITypeSymbol? root)
+    private static string Chars(string code, ExpressionSyntax parsed, Compilation compilation, ITypeSymbol? data, ITypeSymbol? root)
     {
-        ExpressionSyntax parsed = DeepText.Read(code.Length, () => SyntaxFactory.ParseExpression(code));
         char[] chars = code.ToCharArray();
         foreach (LiteralExpressionSyntax literal in parsed.DescendantNodesAndSelf().OfType<LiteralExpressionSyntax>())
         {
@@ -385,8 +390,7 @@ internal sealed class MauiExpressionDocument
         }
         string read = code[body..];
         HashSet<int> qualified = [];
-        ExpressionSyntax parsed = DeepText.Read(read.Length, () => SyntaxFactory.ParseExpression(read));
-        foreach (IdentifierNameSyntax name in parsed.DescendantNodesAndSelf().OfType<IdentifierNameSyntax>())
+        foreach (IdentifierNameSyntax name in CodeBrackets.Expression(read)?.DescendantNodesAndSelf().OfType<IdentifierNameSyntax>() ?? [])
         {
             string named = name.Identifier.ValueText;
             if (name.IsMissing || named.StartsWith("__", StringComparison.Ordinal) || IsMemberName(name) || IsParameter(name, named) || !Has(data, named))

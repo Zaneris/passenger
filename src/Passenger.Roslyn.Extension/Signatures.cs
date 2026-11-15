@@ -716,7 +716,8 @@ internal static class Signatures
     private static ParameterSyntax Parse(string modifier, string type, string name, string defaultValue)
     {
         string text = $"({Normalized(modifier)} {type.Trim()} {name}{(defaultValue.Trim().Length > 0 ? " = " + defaultValue.Trim() : string.Empty)})";
-        return DeepText.Read(text.Length, () => SyntaxFactory.ParseParameterList(text).Parameters[0]);
+        // The type and the value were each read within what a parser is given; the list's brackets add a level to them.
+        return (CodeBrackets.ParameterList(text) ?? throw new InvalidOperationException("A parameter is nested too deeply to read")).Parameters[0];
     }
 
     /// <summary>A list's commas: those it had, then new ones followed by a space.</summary>

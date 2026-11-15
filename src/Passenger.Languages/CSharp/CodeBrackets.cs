@@ -37,6 +37,10 @@ internal static class CodeBrackets
     /// <summary>A text read as a type's name on its own; null for one nested too deeply for the parser.</summary>
     public static TypeSyntax? TypeName(string text) => Read(text, () => SyntaxFactory.ParseTypeName(text));
 
+    /// <summary>A text read as a parameter list on its own, its brackets written; null for one nested too deeply for the
+    /// parser.</summary>
+    public static ParameterListSyntax? ParameterList(string text) => Read(text, () => SyntaxFactory.ParseParameterList(text));
+
     /// <summary>Whether a text reads as a type's name.</summary>
     public static bool ReadsAsType(string text) => TypeName(text) is { ContainsDiagnostics: false };
 
