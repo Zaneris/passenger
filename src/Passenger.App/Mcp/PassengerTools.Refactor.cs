@@ -597,7 +597,7 @@ public sealed partial class PassengerTools
             }
             if (document.IsReadOnly)
             {
-                left.Add($"{Relative(document.Path)}: it is read-only");
+                left.Add(Refusals.ReadOnly(Relative(document.Path)));
                 return;
             }
             // Its text's version says whether the tidy changed it, never the text made into a string twice.
