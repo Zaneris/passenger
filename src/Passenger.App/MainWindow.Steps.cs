@@ -37,20 +37,18 @@ public partial class MainWindow
                     WantSteps();
                 };
             }
-            else if (IsFeature(document.Path))
+            else if (Bdd.FeatureChecks.IsFeature(document.Path))
             {
                 WantSteps(opening: true);
             }
         };
     }
 
-    private static bool IsFeature(string path) => PathNames.HasExtension(path, [".feature"]);
-
     /// <summary>A read is due and someone looks: a .feature file open (<paramref name="opening"/> one now, which the open
     /// files may not list yet), or an agent's or a person's ask.</summary>
     private void WantSteps(bool opening = false)
     {
-        if (ReadsSteps && session.Steps.Wants && (opening || Editors.Documents.Any(d => IsFeature(d.Path))))
+        if (ReadsSteps && session.Steps.Wants && (opening || Editors.Documents.Any(d => Bdd.FeatureChecks.IsFeature(d.Path))))
         {
             stepsLater?.Restart();
         }
