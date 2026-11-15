@@ -18,7 +18,6 @@ public sealed class CSharpHighlighter : IHighlighter, IBraceMatcher, IFoldFinder
 {
     private readonly TextDocument document;
     private CSharpParseOptions options;
-    private readonly SynchronizationContext? ui = SynchronizationContext.Current;
     private readonly List<(int Version, IReadOnlyList<TextEdit> Edits)> sinceTree = [];
     private SnapshotText text;
     private SyntaxTree? tree;
@@ -35,6 +34,9 @@ public sealed class CSharpHighlighter : IHighlighter, IBraceMatcher, IFoldFinder
     private int parsingVersion = -1;
     private bool parsing;
     private bool disposed;
+
+    /// <summary>The parse under way's hold on the IDE's quiet, let go as it lands or as the highlighter is let go.</summary>
+    private IDisposable? parseHold;
 
     /// <summary>The parse under way, which a caller asking for the syntax before the first has landed waits for.</summary>
     private Task<(SyntaxTree Tree, FoldRegions Folds, Dictionary<int, (int Length, SyntaxSpan[] Spans)> Lines)>? running;
@@ -442,6 +444,8 @@ public sealed class CSharpHighlighter : IHighlighter, IBraceMatcher, IFoldFinder
     {
         disposed = true;
         document.Changed -= OnChanged;
+        // What a parse under way finds lands nowhere now, so nothing waits for it.
+        parseHold?.Dispose();
     }
 
     private void OnChanged(object? sender, DocumentChangedEventArgs e)
@@ -474,8 +478,9 @@ public sealed class CSharpHighlighter : IHighlighter, IBraceMatcher, IFoldFinder
         parsingVersion = parsedVersion;
         (int First, int Last)[] warm = [.. asked];
         Task? held = HeldParses;
-        // Held from here, the parse's own start holding nothing, until what it parsed lands on the UI thread.
-        BackgroundWork.Begin();
+        SynchronizationContext? landing = SynchronizationContext.Current;
+        // Held from here, the parse's own start holding nothing, until what it parsed lands on the UI thread that asked.
+        IDisposable hold = parseHold = BackgroundWork.Scope();
         Task<(SyntaxTree Tree, FoldRegions Folds, Dictionary<int, (int Length, SyntaxSpan[] Spans)> Lines)> parse = BackgroundWork.Unheld(async () =>
         {
             if (held is not null)
@@ -492,7 +497,7 @@ public sealed class CSharpHighlighter : IHighlighter, IBraceMatcher, IFoldFinder
             return (Tree: parsed, Folds: folds, Lines: read);
         });
         running = parse;
-        UnawaitedWork.Observe(parse.ContinueWith(done => OnUi(() =>
+        UnawaitedWork.Observe(parse.ContinueWith(done => OnUi(landing, () =>
         {
             try
             {
@@ -536,7 +541,7 @@ public sealed class CSharpHighlighter : IHighlighter, IBraceMatcher, IFoldFinder
             }
             finally
             {
-                BackgroundWork.End();
+                hold.Dispose();
             }
         }), TaskScheduler.Default));
     }
@@ -604,15 +609,16 @@ public sealed class CSharpHighlighter : IHighlighter, IBraceMatcher, IFoldFinder
         return basis is null ? CSharpParsing.Parse(text, options) : CSharpParsing.Changed(basis, text);
     }
 
-    private void OnUi(Action action)
+    /// <summary>Runs work where a parse was asked for: on the UI thread that asked, else at once.</summary>
+    private static void OnUi(SynchronizationContext? landing, Action action)
     {
-        if (ui is null)
+        if (landing is null)
         {
             action();
         }
         else
         {
-            ui.Post(_ => action(), null);
+            landing.Post(_ => action(), null);
         }
     }
 

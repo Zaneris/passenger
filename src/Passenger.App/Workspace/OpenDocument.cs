@@ -788,7 +788,7 @@ public sealed class OpenDocument : Observable
     }
 
     /// <summary>Lets go of the file's asset (one still decoding as it lands), colours and folds after its last view or hold
-    /// closes.</summary>
+    /// closes: the language server's colours and the parse beneath them, a parse under way among them.</summary>
     public void Close()
     {
         closed = true;
@@ -796,6 +796,10 @@ public sealed class OpenDocument : Observable
         Tool?.LetGo();
         Asset?.Dispose();
         (Highlighter as IDisposable)?.Dispose();
+        if (!ReferenceEquals(parser, Highlighter))
+        {
+            (parser as IDisposable)?.Dispose();
+        }
         (finder as FoldScan)?.Dispose();
     }
 

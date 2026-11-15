@@ -26,7 +26,11 @@ public partial class MainWindow
 
     private void AddShutdown()
     {
-        Closed += (_, _) => EndChildren();
+        Closed += (_, _) =>
+        {
+            EndChildren();
+            Editors.LetGoOfFiles();
+        };
         actions!.Add(new IdeAction(AppActions.CloseSolution, "Close Solution", "IDE", c => CloseSolution(asks: !c.ByAgent))
         {
             WhyNot = c => Folder is null ? Refusals.NoFolder : c.ByAgent ? WhyNotLeave(ClosingSolution) : null,

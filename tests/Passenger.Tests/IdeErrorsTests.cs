@@ -452,6 +452,40 @@ public sealed class IdeErrorsTests : IDisposable
         Assert.True(Core.BackgroundWork.Pending == 0, $"{Core.BackgroundWork.Pending} pieces of the failed test's work were still held for the next test to wait out");
     }
 
+    /// <summary>A window closed while its C# file's parse after a key has yet to land lets go of that parse with the file, as
+    /// nothing draws it again, so a window opened after it is quiet at once rather than waiting for good on its colours.</summary>
+    [AvaloniaFact]
+    public void A_window_closed_while_a_C_sharp_files_parse_after_a_key_is_held_leaves_the_next_window_quiet()
+    {
+        File.WriteAllText(Path.Combine(folder, "Program.cs"), "class Program\n{\n}\n");
+        TaskCompletionSource parse = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        try
+        {
+            window.OpenFile("Program.cs");
+            Ui.Settle();
+            Languages.CSharp.CSharpHighlighter syntax = window.EditorArea.Active!.Syntax!;
+            int parses = syntax.Worked.Parses;
+            window.EditorArea.CodeEditor.Focus();
+            Languages.CSharp.CSharpHighlighter.HeldParses = parse.Task;
+            window.KeyTextInput("x");
+            Languages.CSharp.CSharpHighlighter.HeldParses = null;
+            window.Close();
+
+            MainWindow next = new() { Width = 1200, Height = 800, StartsLanguageServer = false };
+            next.Show();
+            Assert.True(Ui.Quiet(TimeSpan.FromSeconds(90)),
+                $"The parse under way as the window closed still held the IDE's quiet, so every window after it waits for good on colours nothing draws:\n{Ui.Busy()}");
+            Assert.True(syntax.Worked.Parses == parses, "The key's parse ran though it was held, so the window closed with no parse under way to let go of");
+            next.Close();
+        }
+        finally
+        {
+            Languages.CSharp.CSharpHighlighter.HeldParses = null;
+            parse.TrySetResult();
+        }
+    }
+
     /// <summary>A window test that closes its own window, as most do, is over only once what that window started has ended,
     /// as one it left open is: here a language server that answers nothing, which the window's end kills at its limit. On
     /// Windows a program still ending holds the DLLs it loaded, which the next test's reset of a shared project deletes.</summary>

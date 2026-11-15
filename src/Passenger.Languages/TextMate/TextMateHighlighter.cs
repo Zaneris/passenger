@@ -36,7 +36,6 @@ public sealed partial class TextMateHighlighter : IHighlighter, IBraceMatcher, I
 
     private readonly TextDocument document;
     private readonly Grammar grammar;
-    private readonly SynchronizationContext? ui = SynchronizationContext.Current;
 
     /// <summary>The edits made since <see cref="tableText"/>, with the lines each changed.</summary>
     private readonly List<Batch> since = [];
@@ -45,6 +44,9 @@ public sealed partial class TextMateHighlighter : IHighlighter, IBraceMatcher, I
     private int version;
     private bool running;
     private bool disposed;
+
+    /// <summary>The pass under way's hold on the IDE's quiet, let go as it lands or as the highlighter is let go.</summary>
+    private IDisposable? passHold;
     private long linesRead;
     private long linesOutOfTime;
     private long longLinesRead;
@@ -183,6 +185,8 @@ public sealed partial class TextMateHighlighter : IHighlighter, IBraceMatcher, I
     {
         disposed = true;
         document.Changed -= OnChanged;
+        // A pass under way lands on nothing now, so nothing waits for it.
+        passHold?.Dispose();
     }
 
     private void OnChanged(object? sender, DocumentChangedEventArgs e)
@@ -213,9 +217,10 @@ public sealed partial class TextMateHighlighter : IHighlighter, IBraceMatcher, I
             first = Math.Min(first, batch.First);
             tail = Math.Min(tail, batch.Tail);
         }
-        // Held from here, the pass's own start holding nothing, until what it coloured lands on the UI thread.
-        BackgroundWork.Begin();
-        UnawaitedWork.Observe(BackgroundWork.Unheld(() => Pass(old, text, first, tail, passVersion)).ContinueWith(done => OnUi(() =>
+        SynchronizationContext? landing = SynchronizationContext.Current;
+        // Held from here, the pass's own start holding nothing, until what it coloured lands on the UI thread that asked.
+        IDisposable hold = passHold = BackgroundWork.Scope();
+        UnawaitedWork.Observe(BackgroundWork.Unheld(() => Pass(old, text, first, tail, passVersion, landing)).ContinueWith(done => OnUi(landing, () =>
         {
             try
             {
@@ -235,7 +240,7 @@ public sealed partial class TextMateHighlighter : IHighlighter, IBraceMatcher, I
             }
             finally
             {
-                BackgroundWork.End();
+                hold.Dispose();
             }
         }), TaskScheduler.Default));
     }
@@ -243,7 +248,7 @@ public sealed partial class TextMateHighlighter : IHighlighter, IBraceMatcher, I
     /// <summary>Reads the lines of <paramref name="text"/> from <paramref name="first"/> on, with the state the line above
     /// ended in, until a line ends in the state its old line did with only unchanged lines after it (the last
     /// <paramref name="tail"/> lines are those of <paramref name="old"/>'s text), and takes the rest from the old table.</summary>
-    private (LineTable Lines, (int From, int To)? Read) Pass(LineTable? old, TextSnapshot text, int first, int tail, int passVersion)
+    private (LineTable Lines, (int From, int To)? Read) Pass(LineTable? old, TextSnapshot text, int first, int tail, int passVersion, SynchronizationContext? landing)
     {
         long began = Stopwatch.GetTimestamp();
         Tokenizer rules = grammar.Rules;
@@ -308,7 +313,7 @@ public sealed partial class TextMateHighlighter : IHighlighter, IBraceMatcher, I
                 partial.AddRange(soFar, 0, soFar.Count);
                 Rest(partial, line);
                 LineTable progress = partial.Build(line);
-                OnUi(() => Show(progress, text, passVersion, null));
+                OnUi(landing, () => Show(progress, text, passVersion, null));
                 shown = Stopwatch.GetTimestamp();
             }
         }
@@ -446,15 +451,16 @@ public sealed partial class TextMateHighlighter : IHighlighter, IBraceMatcher, I
         return before;
     }
 
-    private void OnUi(Action action)
+    /// <summary>Runs work where a pass was asked for: on the UI thread that asked, else at once.</summary>
+    private static void OnUi(SynchronizationContext? landing, Action action)
     {
-        if (ui is null)
+        if (landing is null)
         {
             action();
         }
         else
         {
-            ui.Post(_ => action(), null);
+            landing.Post(_ => action(), null);
         }
     }
 

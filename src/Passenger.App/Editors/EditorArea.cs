@@ -1223,6 +1223,17 @@ public sealed partial class EditorArea : UserControl
         return true;
     }
 
+    /// <summary>Its window has closed: each open file, held ones too, lets go of its colours and folds as a closed file does
+    /// (<see cref="OpenDocument.Close"/>), a parse under way among them, as nothing draws them again. The window's close
+    /// saved and kept them first, so nothing else is done to them.</summary>
+    public void LetGoOfFiles()
+    {
+        foreach (OpenDocument document in documents)
+        {
+            document.Close();
+        }
+    }
+
     /// <summary>Whether a group's window of editors is split, so Unsplit has something to join.</summary>
     public bool IsSplit(EditorGroup group) => (FrameOf(group)?.Groups.Count() ?? 0) > 1;
 
