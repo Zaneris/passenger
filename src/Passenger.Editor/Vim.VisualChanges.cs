@@ -111,7 +111,7 @@ public sealed partial class Vim
             }
             if (op is "p" or "P")
             {
-                return PutOver(acting, op == "P", text, stretches, carets, block, view, top, bottom);
+                return PutOver(acting, op == "P", text, stretches, carets, block, view, top, block ? text.GetLineFromOffset(taken[0].Cursor) : bottom);
             }
             return Act(acting, basic, stretches, text, carets, view, block && !lines);
         }
@@ -449,9 +449,10 @@ public sealed partial class Vim
     }
 
     /// <summary>p and P over a visual stretch: the register's text in place of what is shown, which p keeps in the
-    /// unnamed register and P doesn't; whole lines put over characters go on lines of their own. From an empty register
-    /// the stretch is deleted alone, as a d into the unnamed register (for P into none), which . makes again.</summary>
-    private VimResult PutOver(Command command, bool keep, TextSnapshot text, List<Stretch> stretches, SelectionSet carets, bool block, IVimView view, int top, int bottom)
+    /// unnamed register and P doesn't; whole lines put over characters go on lines of their own, over a block below the
+    /// line its cursor stands on (<paramref name="below"/>). From an empty register the stretch is deleted alone, as a d
+    /// into the unnamed register (for P into none), which . makes again.</summary>
+    private VimResult PutOver(Command command, bool keep, TextSnapshot text, List<Stretch> stretches, SelectionSet carets, bool block, IVimView view, int top, int below)
     {
         if (VimRegisters.IsClipboard(command.Register))
         {
@@ -473,7 +474,7 @@ public sealed partial class Vim
             // P over a block whose top line's part ran to that line's end, past text it leaves, puts the lines below that line.
             Stretch first = stretches[0];
             bool belowTop = keep && first.First == top && first.End > first.Start && first.End == text.GetLine(top).End && first.Start > text.GetLine(top).Start;
-            return PutLinesBy(value, keep, keep && !belowTop, text, stretches, top, belowTop ? top : bottom, eol, replaced, times);
+            return PutLinesBy(value, keep, keep && !belowTop, text, stretches, top, belowTop ? top : below, eol, replaced, times);
         }
         if (block && value.Blockwise)
         {

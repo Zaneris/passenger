@@ -366,7 +366,10 @@ public sealed partial class Vim
             case "|":
                 return new VimTarget(VimMotions.OffsetAtColumn(text, text.GetLineFromOffset(caret), n - 1, view.Indent.TabWidth), VimMotionKind.Exclusive);
             case "w" or "W":
-                return VimMotions.WordStart(text, caret, n, command.Name == "W", operating);
+                // Under an operator, w from an empty last line takes nothing rather than fail.
+                return VimMotions.WordStart(text, caret, n, command.Name == "W", operating)
+                    ?? (operating && VimMotions.LineOf(text, caret) is { Length: 0 } empty && empty.Line == VimMotions.LastLine(text, breakEnds)
+                        ? new VimTarget(caret, VimMotionKind.Exclusive) : null);
             case "b" or "B":
                 return VimMotions.WordBack(text, caret, n, command.Name == "B");
             case "e" or "E":
@@ -472,9 +475,10 @@ public sealed partial class Vim
         return new VimResult(true, moved);
     }
 
-    /// <summary>The text an operator takes at one caret, from a motion, a text object or the operator doubled, and where a
-    /// yank or a change of case over whole lines leaves the caret; null where the motion fails or there is no such object.</summary>
-    private (VimSpan Span, int Landing)? SpanOf(Command command, string op, TextSnapshot text, int caret, IVimView view)
+    /// <summary>The text an operator takes at one caret, from a motion, a text object or the operator doubled, where a
+    /// yank or a change of case over whole lines leaves the caret, and whether it takes the character it ends on (an
+    /// inclusive motion, or a word object); null where the motion fails or there is no such object.</summary>
+    private (VimSpan Span, int Landing, bool Inclusive)? SpanOf(Command command, string op, TextSnapshot text, int caret, IVimView view)
     {
         ranOutAt = null;
         int n = Math.Max(command.Count, 1);
@@ -489,7 +493,7 @@ public sealed partial class Vim
             int last = (int)Math.Min(first + (long)n - 1, VimMotions.LastLine(text, breakEnds));
             // A yank leaves the caret; a change of case over one line goes to its first non-blank, as Vim's do.
             int landing = n == 1 && op != "y" ? Math.Min(caret, VimMotions.FirstNonBlank(text, first, breakEnds)) : caret;
-            return (new VimSpan(text.GetLineStart(first), text.GetLineStart(last), true), landing);
+            return (new VimSpan(text.GetLineStart(first), text.GetLineStart(last), true), landing, false);
         }
         if (command.Name is "i" or "a")
         {
@@ -499,7 +503,7 @@ public sealed partial class Vim
                 return null;
             }
             VimSpan taken = command.Argument == "s" ? VimTextObjects.EndingInFirstColumn(text, found) : found;
-            return (taken, taken.Start);
+            return (taken, taken.Start, command.Argument is "w" or "W");
         }
         if (op == "c" && command.Name is "w" or "W" && caret < text.Length && !char.IsWhiteSpace(text[caret]))
         {
@@ -514,7 +518,7 @@ public sealed partial class Vim
                     end = VimMotions.WordEnd(text, end, 1, big, breakEnds)?.Offset ?? end;
                 }
             }
-            return (new VimSpan(caret, TextNavigation.NextGrapheme(text, end), false), caret);
+            return (new VimSpan(caret, TextNavigation.NextGrapheme(text, end), false), caret, false);
         }
         if (Target(command, text, caret, operating: true, view) is not { } target)
         {
@@ -526,7 +530,7 @@ public sealed partial class Vim
             int to = Math.Max(text.GetLineFromOffset(caret), text.GetLineFromOffset(target.Offset));
             // A yank over _, which never leaves the caret's line, leaves the caret where it was.
             int landing = command.Name == "_" && op == "y" ? caret : Math.Min(caret, target.Offset);
-            return (new VimSpan(text.GetLineStart(from), text.GetLineStart(to), true), landing);
+            return (new VimSpan(text.GetLineStart(from), text.GetLineStart(to), true), landing, false);
         }
         int start = Math.Min(caret, target.Offset);
         int stop = Math.Max(caret, target.Offset);
@@ -541,10 +545,11 @@ public sealed partial class Vim
             // An exclusive motion ending at a line's start ends at the line before; from the indent, it takes whole lines.
             if (VimMotions.InIndent(text, start))
             {
-                return (new VimSpan(text.GetLineStart(startLine), text.GetLineStart(stopLine - 1), true), start);
+                return (new VimSpan(text.GetLineStart(startLine), text.GetLineStart(stopLine - 1), true), start, false);
             }
             stop = text.GetLine(stopLine - 1).End;
         }
-        return (new VimSpan(start, stop, false), start);
+        // ( and ) are exclusive, though stretched to take the text's last character.
+        return (new VimSpan(start, stop, false), start, target.Kind == VimMotionKind.Inclusive && command.Name is not ("(" or ")"));
     }
 }

@@ -12,7 +12,7 @@ public sealed partial class Vim
 
     /// <summary>One caret's stretch for an operator: the text from <see cref="Start"/> to <see cref="End"/>, or the lines
     /// <see cref="First"/> to <see cref="Last"/> when <see cref="Lines"/>.</summary>
-    private readonly record struct Stretch(int Start, int End, bool Lines, int First, int Last, int Caret, int Landing = 0);
+    private readonly record struct Stretch(int Start, int End, bool Lines, int First, int Last, int Caret, int Landing = 0, bool Inclusive = false);
 
     private VimResult Operate(Command command, string op, TextSnapshot text, SelectionSet selections, IVimView view)
     {
@@ -20,14 +20,14 @@ public sealed partial class Vim
         List<Selection> ranOut = [];
         foreach (Selection s in selections.Items)
         {
-            if (SpanOf(command, op, text, s.Caret, view) is not ({ } span, int landing))
+            if (SpanOf(command, op, text, s.Caret, view) is not ({ } span, int landing, bool inclusive))
             {
                 ranOut.Add(Selection.At(ranOutAt ?? s.Caret));
                 continue;
             }
             Stretch stretch = span.Linewise
                 ? Whole(text, text.GetLineFromOffset(span.Start), text.GetLineFromOffset(span.End), s.Caret) with { Landing = landing }
-                : new Stretch(span.Start, span.End, false, text.GetLineFromOffset(span.Start), text.GetLineFromOffset(span.End), s.Caret, landing);
+                : new Stretch(span.Start, span.End, false, text.GetLineFromOffset(span.Start), text.GetLineFromOffset(span.End), s.Caret, landing, inclusive);
             if (op is "g~" or "gu" or "gU" && !stretch.Lines && stretch.End == stretch.Start && stretch.Start == text.GetLineStart(stretch.First)
                 && text.GetLine(stretch.First).Length > 0)
             {
@@ -71,7 +71,9 @@ public sealed partial class Vim
             "gq" or "gw" => Wrap(op == "gw", text, selections, stretches, view),
             _ => Case(command, op, text, selections, stretches, view),
         };
-        bool empty = stretches.All(t => !t.Lines && t.End == t.Start);
+        // Nothing taken (anything from a text of one empty line) leaves them, but a change of an empty line's place empties one.
+        bool empty = (VimMotions.LastLine(text, breakEnds) == 0 && text.GetLine(0).Length == 0)
+            || stretches.All(t => !t.Lines && t.End == t.Start && !(op == "c" && t.Inclusive && VimMotions.LineOf(text, t.Start).Length == 0));
         if (op is "d" or "c" && !empty)
         {
             Registers.Delete(command.Register, taken, Jumps.Contains(command.Name));

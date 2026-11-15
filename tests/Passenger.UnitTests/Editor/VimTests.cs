@@ -1814,6 +1814,55 @@ public class VimTests
     public void A_blocks_shift_counts_its_blanks_by_columns(string before, string keys, string after) =>
         Assert.Equal(after, Run(before, keys));
 
+    /// <summary>iw in visual mode on an empty last line reaches back: the line above's last place first, its cursor
+    /// there, then a word further back for each more, as Vim's does.</summary>
+    [Theory]
+    [InlineData("one\ntwo\n|x", "xviw<Esc>", "one\ntw|o\n")]
+    [InlineData("one\ntwo\n|x", "xviwo<Esc>", "one\ntwo\n|")]
+    [InlineData("one\ntwo\n|x", "xv2iwd", "one\n|")]
+    [InlineData("one\ntwo\n|x", "xv3iw<Esc>", "|one\ntwo\n")]
+    [InlineData("one\ntwo\n|x", "xviwiwd", "one\n|")]
+    [InlineData("one   \n|x", "xv2iwd", "on|e")]
+    [InlineData("one\n  \n|x", "xv2iw<Esc>", "one\n|  \n")]
+    [InlineData("foo\n\n  // comment here\ne|nd", "S<Esc>viw$p", "foo\n\n  // comment here\n|end\n")]
+    public void Visual_iw_on_an_empty_last_line_reaches_back_a_word_at_a_time(string before, string keys, string after) =>
+        Assert.Equal(after, Run(before, keys));
+
+    /// <summary>An operator from an empty line fills the registers as Vim's does: w from an empty last line takes
+    /// nothing, cw changing and yw yanking it; a change by an inclusive motion or iw leaves its register empty; and an
+    /// operator over a text of one empty line leaves the registers as they were.</summary>
+    [Theory]
+    [InlineData("a|b\nx", "xjxcw7<Esc>p", "a\n7|x")]
+    [InlineData("a|b\nx", "xjxc2w7<Esc>", "a\n|7")]
+    [InlineData("a|b", "xddcw7<Esc>p", "7\n|a")]
+    [InlineData("a|b\nx", "xjxywP", "a\n|")]
+    [InlineData("a|b", "xddywP", "|")]
+    [InlineData("a b| c d e f\ng h i j k l\nm n o p q r", "2djcw7<Esc>", "|7")]
+    [InlineData("a|b\nx", "xjxce7<Esc>p", "a\n|7")]
+    [InlineData("a|b\nx", "xjxc$7<Esc>p", "a\n|7")]
+    [InlineData("a|b\nx", "xjxcl7<Esc>p", "a\n7|x")]
+    [InlineData("a|b\nx", "xjxc)7<Esc>p", "a\n7|x")]
+    [InlineData("a|b\nx\nc d", "xjxciw7<Esc>p", "a\n|7\nc d")]
+    [InlineData("a|b\nx\nc d", "xjxC7<Esc>p", "a\n|7\nc d")]
+    [InlineData("a|b\nx", "xjxD\"-p", "a\n|x")]
+    [InlineData("a|b", "xddddp", "\n|a")]
+    [InlineData("a|b", "xddS7<Esc>p", "7\n|a")]
+    [InlineData("a|b", "xddC7<Esc>p", "7\n|a")]
+    [InlineData("a|b", "xdddGp", "\n|a")]
+    public void An_operator_from_an_empty_line_fills_the_registers_as_vims_does(string before, string keys, string after) =>
+        Assert.Equal(after, Run(before, keys));
+
+    /// <summary>Whole lines put over a block go below the line its cursor stands on with p, above its top with P.</summary>
+    [Theory]
+    [InlineData("|aaa\nbbb\nccc\nddd\neee", "yy<C-v>jop", "aa\n|aaa\nbb\nccc\nddd\neee")]
+    [InlineData("|aaa\nbbb\nccc\nddd\neee", "yy<C-v>jp", "aa\nbb\n|aaa\nccc\nddd\neee")]
+    [InlineData("aaa\nbbb\nc|cc\nddd\neee", "yy<C-v>kp", "aaa\nbb\n|ccc\ncc\nddd\neee")]
+    [InlineData("aaa\nbbb\nc|cc\nddd\neee", "yj<C-v>kl2p", "aaa\nb\n|ccc\nddd\nccc\nddd\nc\nddd\neee")]
+    [InlineData("aaa\nbbb\nc|cc\nddd\neee", "yy<C-v>kP", "aaa\n|ccc\nbb\ncc\nddd\neee")]
+    [InlineData("def f(x):\n    return x + 1\n\n\nclass A:\n   | pass", "V$d<C-v>hkp", "def f(x):\n    return x + 1\n\n\n    |pass\nlass A:")]
+    public void Lines_put_over_a_block_go_below_its_cursors_line(string before, string keys, string after) =>
+        Assert.Equal(after, Run(before, keys));
+
     [Fact]
     public void A_huge_count_ends_at_the_texts_edge()
     {

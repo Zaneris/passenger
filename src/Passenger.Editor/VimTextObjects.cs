@@ -146,11 +146,9 @@ public static class VimTextObjects
         ranOut = caret;
         LineSpan line = VimMotions.LineOf(text, caret);
         bool empty = line.Length == 0;
-        if (inner && empty && line.Line > 0 && NextPlace(text, caret, breakEnds) is null)
+        if (inner && EmptyLastLineReach(text, caret, breakEnds) is { } from)
         {
             // On an empty last line, iw reaches back to the line above's last place; with a count, to nothing.
-            LineSpan above = text.GetLine(line.Line - 1);
-            int from = above.Length == 0 ? above.Start : VimMotions.StepBack(text, above.End);
             return n == 1 ? (from, caret, false) : (caret, caret, false);
         }
         int start = empty ? caret : Run(text, caret, bigWord).Start;
@@ -228,6 +226,18 @@ public static class VimTextObjects
             start = white > line.Start ? white : start;
         }
         return (start, end, false);
+    }
+
+    /// <summary>Where iw reaches back to from an empty last line below another: the line above's last place; null elsewhere.</summary>
+    public static int? EmptyLastLineReach(TextSnapshot text, int caret, bool breakEnds)
+    {
+        LineSpan line = VimMotions.LineOf(text, caret);
+        if (line.Length > 0 || line.Line == 0 || NextPlace(text, caret, breakEnds) is not null)
+        {
+            return null;
+        }
+        LineSpan above = text.GetLine(line.Line - 1);
+        return above.Length == 0 ? above.Start : VimMotions.StepBack(text, above.End);
     }
 
     /// <summary>iw, aw, iW and aW carrying a longer visual stretch's cursor on, forward or <paramref name="back"/>, as

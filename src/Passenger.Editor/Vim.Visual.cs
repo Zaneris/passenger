@@ -663,8 +663,14 @@ public sealed partial class Vim
     {
         if (r.Anchor == r.Cursor)
         {
+            int at = Settled(text, r.Cursor, breakEnds);
+            if (inner && VimTextObjects.EmptyLastLineReach(text, at, breakEnds) is { } above)
+            {
+                // On an empty last line the words go back: the line above's last place, then a word further back for each more.
+                return new Region(at, n == 1 ? above : VimTextObjects.WordsCarried(text, above, back: true, n - 1, inner, bigWord, breakEnds, lines: false).To);
+            }
             // A count the text cuts short takes as many as there are.
-            return VimTextObjects.WordsShown(text, Settled(text, r.Cursor, breakEnds), n, inner, bigWord, breakEnds) is { } shown
+            return VimTextObjects.WordsShown(text, at, n, inner, bigWord, breakEnds) is { } shown
                 ? new Region(shown.Start, shown.End)
                 : null;
         }
