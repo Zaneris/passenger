@@ -26,6 +26,8 @@
     <!-- Passenger.Core's paths, a project's own folders and the names it reads them by, its reader of JSON lines, its
          pooled buffer and MSBuild's names, compiled in since its net11.0 is past the host's. -->
     <Compile Include="../Passenger.Core/PathNames.cs" Link="PathNames.cs" />
+    <!-- The Windows calls PathNames makes, declared once. -->
+    <Compile Include="../Passenger.Core/Kernel32.cs" Link="Kernel32.cs" />
     <Compile Include="../Passenger.Core/PathComparer.cs" Link="PathComparer.cs" />
     <Compile Include="../Passenger.Core/ProjectFolders.cs" Link="ProjectFolders.cs" />
     <Compile Include="../Passenger.Core/FolderNames.cs" Link="FolderNames.cs" />

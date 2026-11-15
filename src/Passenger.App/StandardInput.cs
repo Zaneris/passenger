@@ -10,12 +10,6 @@ namespace Passenger.App;
 /// inherits, and the standard input becomes the null device, whose end a program started reads at once.</summary>
 internal static partial class StandardInput
 {
-    /// <summary>STD_INPUT_HANDLE.</summary>
-    private const int InputHandle = -10;
-
-    /// <summary>HANDLE_FLAG_INHERIT.</summary>
-    private const uint Inherited = 1;
-
     /// <summary>DUPLICATE_SAME_ACCESS.</summary>
     private const uint SameAccess = 2;
 
@@ -47,21 +41,22 @@ internal static partial class StandardInput
         return given;
     }
 
+    [System.Runtime.Versioning.SupportedOSPlatform("windows")]
     private static SafeFileHandle? TakeOnWindows()
     {
         SafeFileHandle? given = null;
-        nint handle = GetStdHandle(InputHandle);
+        nint handle = Kernel32.GetStdHandle(Kernel32.StandardInput);
         if (handle is not (0 or -1))
         {
             // The handle given stays open, but no program started inherits it.
-            SetHandleInformation(handle, Inherited, 0);
+            Kernel32.SetHandleInformation(handle, Kernel32.Inherited, 0);
             if (DuplicateHandle(GetCurrentProcess(), handle, GetCurrentProcess(), out nint copy, 0, false, SameAccess))
             {
                 given = new SafeFileHandle(copy, ownsHandle: true);
             }
         }
         nothing = File.OpenHandle("NUL", FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
-        if (!SetHandleInformation(nothing.DangerousGetHandle(), Inherited, Inherited) || !SetStdHandle(InputHandle, nothing.DangerousGetHandle()))
+        if (!Kernel32.SetHandleInformation(nothing.DangerousGetHandle(), Kernel32.Inherited, Kernel32.Inherited) || !Kernel32.SetStdHandle(Kernel32.StandardInput, nothing.DangerousGetHandle()))
         {
             Unmade();
         }
@@ -70,17 +65,6 @@ internal static partial class StandardInput
 
     private static void Unmade() =>
         IdeErrors.Write($"The standard input could not be made the null device (error {Marshal.GetLastPInvokeError()}): a program started may read what was given there");
-
-    [LibraryImport("kernel32.dll", SetLastError = true)]
-    private static partial nint GetStdHandle(int which);
-
-    [LibraryImport("kernel32.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static partial bool SetStdHandle(int which, nint handle);
-
-    [LibraryImport("kernel32.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static partial bool SetHandleInformation(nint handle, uint mask, uint flags);
 
     [LibraryImport("kernel32.dll")]
     private static partial nint GetCurrentProcess();

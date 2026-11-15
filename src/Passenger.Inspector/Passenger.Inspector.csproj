@@ -55,6 +55,8 @@
     <Compile Include="../Passenger.Core/PrimitiveTypes.cs" Link="PrimitiveTypes.cs" />
     <!-- A XAML file's path compared with where the app's build recorded it, as the rest of Passenger compares paths. -->
     <Compile Include="../Passenger.Core/PathNames.cs" Link="PathNames.cs" />
+    <!-- The Windows calls PathNames makes, declared once. -->
+    <Compile Include="../Passenger.Core/Kernel32.cs" Link="Kernel32.cs" />
     <Compile Include="../Passenger.Core/PathComparer.cs" Link="PathComparer.cs" />
     <!-- A socket's path checked against what a Unix socket's address holds, as Passenger checks the paths it makes. -->
     <Compile Include="../Passenger.Core/SocketFolders.Limit.cs" Link="SocketFolders.Limit.cs" />

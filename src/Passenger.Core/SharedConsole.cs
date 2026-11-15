@@ -19,10 +19,6 @@ public static unsafe partial class SharedConsole
     private const uint CtrlC = 0;
     private const uint CtrlBreak = 1;
 
-    private const int StandardInput = -10;
-    private const int StandardOutput = -11;
-    private const int StandardError = -12;
-
     /// <summary>How long the holder of a console being made has to write its first words, the console then made.</summary>
     private static readonly TimeSpan MakeLimit = TimeSpan.FromSeconds(10);
 
@@ -51,9 +47,9 @@ public static unsafe partial class SharedConsole
     /// once it has written, then ended. The process's standard handles stay as they were. False where none could be made.</summary>
     private static bool Make()
     {
-        nint input = GetStdHandle(StandardInput);
-        nint output = GetStdHandle(StandardOutput);
-        nint error = GetStdHandle(StandardError);
+        nint input = Kernel32.GetStdHandle(Kernel32.StandardInput);
+        nint output = Kernel32.GetStdHandle(Kernel32.StandardOutput);
+        nint error = Kernel32.GetStdHandle(Kernel32.StandardError);
         ProcessStartInfo start = new(Path.Combine(Environment.SystemDirectory, "cmd.exe"), ["/d", "/c", "pause"])
         {
             UseShellExecute = false,
@@ -85,9 +81,9 @@ public static unsafe partial class SharedConsole
         finally
         {
             End(holder);
-            SetStdHandle(StandardInput, input);
-            SetStdHandle(StandardOutput, output);
-            SetStdHandle(StandardError, error);
+            Kernel32.SetStdHandle(Kernel32.StandardInput, input);
+            Kernel32.SetStdHandle(Kernel32.StandardOutput, output);
+            Kernel32.SetStdHandle(Kernel32.StandardError, error);
         }
         if (unmade is not null)
         {
@@ -131,11 +127,4 @@ public static unsafe partial class SharedConsole
     [LibraryImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static partial bool SetConsoleCtrlHandler(delegate* unmanaged<uint, int> handler, [MarshalAs(UnmanagedType.Bool)] bool add);
-
-    [LibraryImport("kernel32.dll", SetLastError = true)]
-    private static partial nint GetStdHandle(int which);
-
-    [LibraryImport("kernel32.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static partial bool SetStdHandle(int which, nint handle);
 }

@@ -1,5 +1,4 @@
 using System.Runtime.InteropServices;
-using System.Runtime.Versioning;
 using Microsoft.Win32.SafeHandles;
 using Passenger.Core;
 
@@ -8,7 +7,7 @@ namespace Passenger.Text;
 /// <summary>Why a file cannot be renamed in its folder now, found without renaming it, so a change that renames one (a
 /// type's rename with its file) is refused before it changes anything: on Windows another program holding it open without
 /// letting it be renamed, which a save's replace of it needs too; elsewhere a folder this process may not write in.</summary>
-public static partial class Unmovable
+public static class Unmovable
 {
     private const uint DeleteAccess = 0x00010000;
     private const uint BackupSemantics = 0x02000000;
@@ -24,7 +23,7 @@ public static partial class Unmovable
         string name = Path.GetFileName(path);
         if (OperatingSystem.IsWindows())
         {
-            using SafeFileHandle handle = CreateFile(path, DeleteAccess, FileShare.ReadWrite | FileShare.Delete, IntPtr.Zero, FileMode.Open, BackupSemantics, IntPtr.Zero);
+            using SafeFileHandle handle = Kernel32.CreateFile(path, DeleteAccess, FileShare.ReadWrite | FileShare.Delete, IntPtr.Zero, FileMode.Open, BackupSemantics, IntPtr.Zero);
             return handle.IsInvalid ? Marshal.GetLastPInvokeError() switch
             {
                 SharingViolation => $"{name} is open in another program, which keeps it from being renamed",
@@ -39,8 +38,4 @@ public static partial class Unmovable
             _ => null,
         };
     }
-
-    [SupportedOSPlatform("windows")]
-    [LibraryImport("kernel32.dll", EntryPoint = "CreateFileW", SetLastError = true, StringMarshalling = StringMarshalling.Utf16)]
-    private static partial SafeFileHandle CreateFile(string name, uint access, FileShare share, IntPtr security, FileMode mode, uint flags, IntPtr template);
 }

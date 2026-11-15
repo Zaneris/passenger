@@ -121,7 +121,7 @@ public static partial class AtomicFile
     [SupportedOSPlatform("windows")]
     private static unsafe bool RenamedOver(string temporary, string target)
     {
-        using SafeFileHandle file = PathNames.CreateFile(PathNames.Openable(Path.GetFullPath(temporary)), DeleteAccess, FileShare.ReadWrite | FileShare.Delete,
+        using SafeFileHandle file = Kernel32.CreateFile(PathNames.Openable(Path.GetFullPath(temporary)), DeleteAccess, FileShare.ReadWrite | FileShare.Delete,
             IntPtr.Zero, FileMode.Open, 0, IntPtr.Zero);
         if (file.IsInvalid)
         {

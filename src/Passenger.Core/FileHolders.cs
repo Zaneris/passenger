@@ -35,7 +35,7 @@ public static partial class FileHolders
         {
             return [];
         }
-        using SafeFileHandle handle = CreateFile(path, ReadAttributes, FileShare.ReadWrite | FileShare.Delete, IntPtr.Zero, FileMode.Open, BackupSemantics, IntPtr.Zero);
+        using SafeFileHandle handle = Kernel32.CreateFile(path, ReadAttributes, FileShare.ReadWrite | FileShare.Delete, IntPtr.Zero, FileMode.Open, BackupSemantics, IntPtr.Zero);
         if (handle.IsInvalid)
         {
             return [];
@@ -180,10 +180,6 @@ public static partial class FileHolders
         public nint Status;
         public nint Information;
     }
-
-    [SupportedOSPlatform("windows")]
-    [LibraryImport("kernel32.dll", EntryPoint = "CreateFileW", SetLastError = true, StringMarshalling = StringMarshalling.Utf16)]
-    private static partial SafeFileHandle CreateFile(string name, uint access, FileShare share, IntPtr security, FileMode mode, uint flags, IntPtr template);
 
     [SupportedOSPlatform("windows")]
     [LibraryImport("ntdll.dll", EntryPoint = "NtQueryInformationFile")]

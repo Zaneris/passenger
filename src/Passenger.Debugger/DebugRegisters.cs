@@ -1,5 +1,6 @@
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
+using Passenger.Core;
 using Passenger.Debugger.Interop;
 
 namespace Passenger.Debugger;
@@ -95,12 +96,12 @@ internal static unsafe partial class DebugRegisters
                 }
                 finally
                 {
-                    ResumeThread(thread);
+                    Kernel32.ResumeThread(thread);
                 }
             }
             finally
             {
-                CloseHandle(thread);
+                Kernel32.CloseHandle(thread);
             }
         }
         finally
@@ -143,17 +144,10 @@ internal static unsafe partial class DebugRegisters
     private static partial uint SuspendThread(nint thread);
 
     [LibraryImport("kernel32", SetLastError = true)]
-    private static partial uint ResumeThread(nint thread);
-
-    [LibraryImport("kernel32", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static partial bool GetThreadContext(nint thread, nint context);
 
     [LibraryImport("kernel32", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static partial bool SetThreadContext(nint thread, nint context);
-
-    [LibraryImport("kernel32", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static partial bool CloseHandle(nint handle);
 }

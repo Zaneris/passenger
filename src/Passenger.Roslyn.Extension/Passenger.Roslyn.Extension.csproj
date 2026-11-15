@@ -17,6 +17,8 @@
     <!-- Paths compared, Razor files named and names listed in words as the rest of Passenger does, compiled in since
          Passenger.Core's net11.0 is past the server's. -->
     <Compile Include="../Passenger.Core/PathNames.cs" Link="PathNames.cs" />
+    <!-- The Windows calls PathNames makes, declared once. -->
+    <Compile Include="../Passenger.Core/Kernel32.cs" Link="Kernel32.cs" />
     <Compile Include="../Passenger.Core/PathComparer.cs" Link="PathComparer.cs" />
     <Compile Include="../Passenger.Core/RazorFiles.cs" Link="RazorFiles.cs" />
     <Compile Include="../Passenger.Core/Plural.cs" Link="Plural.cs" />

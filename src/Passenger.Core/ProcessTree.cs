@@ -14,14 +14,8 @@ namespace Passenger.Core;
 [SupportedOSPlatform("windows")]
 internal static partial class ProcessTree
 {
-    private const uint Terminate = 0x0001;
-    private const uint QueryLimitedInformation = 0x1000;
-    private const uint Synchronize = 0x100000;
-
     /// <summary>TH32CS_SNAPPROCESS.</summary>
     private const uint SnapProcesses = 0x2;
-
-    private const int ProcessBasicInformation = 0;
 
     /// <summary>The exit code a process ended here is given, as .NET's own kill gives it.</summary>
     private const int Killed = -1;
@@ -37,7 +31,7 @@ internal static partial class ProcessTree
     {
         Deadline waited = Deadline.In(Waits.Of(EndingWait));
         _ = TerminateProcess(root, Killed);
-        if (!Began(root, out long began))
+        if (Kernel32.BeganAt(root) is not { } began)
         {
             return;
         }
@@ -58,7 +52,7 @@ internal static partial class ProcessTree
                     {
                         continue;
                     }
-                    if (ParentOf(opened) != parent || !Began(opened, out long childBegan) || childBegan < parentBegan)
+                    if (Kernel32.BeganUnder(opened, parent, parentBegan) is not { } childBegan)
                     {
                         // The id is now another process's, or the parent's id named an earlier process.
                         opened.Dispose();
@@ -90,14 +84,14 @@ internal static partial class ProcessTree
     private static SafeProcessHandle? Opened(int id, out bool endable)
     {
         endable = true;
-        SafeProcessHandle opened = OpenProcess(Terminate | QueryLimitedInformation | Synchronize, false, (uint)id);
+        SafeProcessHandle opened = Kernel32.OpenProcess(Kernel32.ProcessTerminate | Kernel32.ProcessQueryLimitedInformation | Kernel32.Synchronize, false, (uint)id);
         if (!opened.IsInvalid)
         {
             return opened;
         }
         opened.Dispose();
         endable = false;
-        opened = OpenProcess(QueryLimitedInformation, false, (uint)id);
+        opened = Kernel32.OpenProcess(Kernel32.ProcessQueryLimitedInformation, false, (uint)id);
         if (!opened.IsInvalid)
         {
             return opened;
@@ -111,7 +105,7 @@ internal static partial class ProcessTree
     {
         foreach (SafeProcessHandle process in ending)
         {
-            _ = WaitForSingleObject(process, (uint)Math.Ceiling(waited.Left.TotalMilliseconds));
+            _ = Kernel32.WaitForSingleObject(process, (uint)Math.Ceiling(waited.Left.TotalMilliseconds));
         }
     }
 
@@ -131,19 +125,6 @@ internal static partial class ProcessTree
         }
         return listed;
     }
-
-    /// <summary>The id a process names as its parent's, from PROCESS_BASIC_INFORMATION, six pointer-sized fields with that
-    /// id last; null when Windows will not say.</summary>
-    private static unsafe int? ParentOf(SafeProcessHandle process)
-    {
-        nint* information = stackalloc nint[6];
-        uint returned = 0;
-        return NtQueryInformationProcess(process, ProcessBasicInformation, (byte*)information, (uint)(6 * sizeof(nint)), &returned) == 0
-            ? (int)information[5]
-            : null;
-    }
-
-    private static bool Began(SafeProcessHandle process, out long began) => GetProcessTimes(process, out began, out _, out _, out _);
 
     /// <summary>PROCESSENTRY32W.</summary>
     [StructLayout(LayoutKind.Sequential)]
@@ -172,20 +153,7 @@ internal static partial class ProcessTree
     [return: MarshalAs(UnmanagedType.Bool)]
     private static unsafe partial bool Process32Next(SafeFileHandle snapshot, ProcessEntry* entry);
 
-    [LibraryImport("kernel32.dll", EntryPoint = "OpenProcess", SetLastError = true)]
-    private static partial SafeProcessHandle OpenProcess(uint access, [MarshalAs(UnmanagedType.Bool)] bool inherit, uint id);
-
-    [LibraryImport("kernel32.dll", EntryPoint = "WaitForSingleObject")]
-    private static partial uint WaitForSingleObject(SafeProcessHandle process, uint milliseconds);
-
     [LibraryImport("kernel32.dll", EntryPoint = "TerminateProcess")]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static partial bool TerminateProcess(SafeProcessHandle process, int exitCode);
-
-    [LibraryImport("kernel32.dll", EntryPoint = "GetProcessTimes")]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static partial bool GetProcessTimes(SafeProcessHandle process, out long creation, out long exit, out long kernel, out long user);
-
-    [LibraryImport("ntdll.dll", EntryPoint = "NtQueryInformationProcess")]
-    private static unsafe partial int NtQueryInformationProcess(SafeProcessHandle process, int kind, byte* information, uint length, uint* returned);
 }

@@ -311,9 +311,10 @@ public static partial class PathNames
     /// <summary>Windows' own name for a file or folder, asked of a handle opened for nothing but that (any other program
     /// may still read, write or delete it meanwhile). The name comes as \\?\C:\... or \\?\UNC\server\share\..., which
     /// .NET and every tool spell without the prefix.</summary>
+    [System.Runtime.Versioning.SupportedOSPlatform("windows")]
     private static unsafe string? FinalPath(string path)
     {
-        using SafeFileHandle handle = CreateFile(Openable(path), 0, FileShare.ReadWrite | FileShare.Delete, IntPtr.Zero, FileMode.Open, BackupSemantics, IntPtr.Zero);
+        using SafeFileHandle handle = Kernel32.CreateFile(Openable(path), 0, FileShare.ReadWrite | FileShare.Delete, IntPtr.Zero, FileMode.Open, BackupSemantics, IntPtr.Zero);
         if (handle.IsInvalid)
         {
             return null;
@@ -358,24 +359,17 @@ public static partial class PathNames
             nint told = PathConf(folder, CaseSensitive);
             return told >= 0 ? told == 0 : Marshal.GetLastPInvokeError() is NoEntry or NotFolder ? null : true;
         }
-        using SafeFileHandle handle = CreateFile(Openable(folder), ReadAttributes, FileShare.ReadWrite | FileShare.Delete, IntPtr.Zero, FileMode.Open, BackupSemantics, IntPtr.Zero);
+        using SafeFileHandle handle = Kernel32.CreateFile(Openable(folder), ReadAttributes, FileShare.ReadWrite | FileShare.Delete, IntPtr.Zero, FileMode.Open, BackupSemantics, IntPtr.Zero);
         if (handle.IsInvalid)
         {
             return Marshal.GetLastPInvokeError() is FileNotFound or PathNotFound ? null : true;
         }
         uint flags = 0;
-        return !GetFileInformationByHandleEx(handle, CaseSensitiveInfo, &flags, sizeof(uint)) || (flags & CaseSensitiveFolder) == 0;
+        return !Kernel32.GetFileInformationByHandleEx(handle, CaseSensitiveInfo, &flags, sizeof(uint)) || (flags & CaseSensitiveFolder) == 0;
     }
-
-    [LibraryImport("kernel32.dll", EntryPoint = "CreateFileW", SetLastError = true, StringMarshalling = StringMarshalling.Utf16)]
-    internal static partial SafeFileHandle CreateFile(string name, uint access, FileShare share, IntPtr security, FileMode mode, uint flags, IntPtr template);
 
     [LibraryImport("kernel32.dll", EntryPoint = "GetFinalPathNameByHandleW", SetLastError = true)]
     private static unsafe partial uint GetFinalPathNameByHandle(SafeFileHandle file, char* buffer, uint length, uint flags);
-
-    [LibraryImport("kernel32.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static unsafe partial bool GetFileInformationByHandleEx(SafeFileHandle file, int kind, uint* information, uint size);
 
     [LibraryImport("libc", EntryPoint = "pathconf", SetLastError = true, StringMarshalling = StringMarshalling.Utf8)]
     private static partial nint PathConf(string path, int name);

@@ -155,8 +155,8 @@ public static partial class DotnetProcesses
         if (OperatingSystem.IsWindows())
         {
             // .NET's HasExited takes a process Windows will not open for one that has ended.
-            using SafeProcessHandle process = OpenProcess(ProcessQueryLimitedInformation | Synchronize, false, (uint)id);
-            return process.IsInvalid ? Marshal.GetLastPInvokeError() == AccessDenied : WaitForSingleObject(process, 0) == WaitTimeout;
+            using SafeProcessHandle process = Kernel32.OpenProcess(Kernel32.ProcessQueryLimitedInformation | Kernel32.Synchronize, false, (uint)id);
+            return process.IsInvalid ? Marshal.GetLastPInvokeError() == AccessDenied : Kernel32.WaitForSingleObject(process, 0) == WaitTimeout;
         }
         try
         {
@@ -327,7 +327,7 @@ public static partial class DotnetProcesses
         const uint ProcessVmRead = 0x0010;
         // MiniDumpWithPrivateReadWriteMemory, DataSegs, HandleData, UnloadedModules, FullMemoryInfo, ThreadInfo, TokenInformation.
         const uint WithHeap = 0x200 | 0x1 | 0x4 | 0x20 | 0x800 | 0x1000 | 0x40000;
-        using SafeProcessHandle process = OpenProcess(ProcessQueryInformation | ProcessVmRead, false, (uint)id);
+        using SafeProcessHandle process = Kernel32.OpenProcess(ProcessQueryInformation | ProcessVmRead, false, (uint)id);
         if (process.IsInvalid)
         {
             throw new System.ComponentModel.Win32Exception(Marshal.GetLastPInvokeError());
@@ -633,37 +633,25 @@ public static partial class DotnetProcesses
 
     // Windows: the process opened for limited queries, which a process of another user allows unless it is protected.
 
-    private const uint ProcessQueryLimitedInformation = 0x1000;
-    private const uint Synchronize = 0x100000;
     private const uint TokenQuery = 0x0008;
     private const int AccessDenied = 5;
     private const uint WaitTimeout = 0x102;
-    private const int ProcessBasicInformation = 0;
     private const int ProcessCommandLineInformation = 60;
 
-    /// <summary>A process's parent from its PROCESS_BASIC_INFORMATION, six pointer-sized fields with the parent's id last.</summary>
-    private static unsafe int? ParentWindows(int id)
+    /// <summary>A process's parent, where it began no later than the process (<see cref="Kernel32.BeganUnder"/>).</summary>
+    private static int? ParentWindows(int id)
     {
         if (!OperatingSystem.IsWindows())
         {
             return null;
         }
-        using SafeProcessHandle process = OpenProcess(ProcessQueryLimitedInformation, false, (uint)id);
-        if (process.IsInvalid)
+        using SafeProcessHandle process = Kernel32.OpenProcess(Kernel32.ProcessQueryLimitedInformation, false, (uint)id);
+        if (process.IsInvalid || Kernel32.ParentOf(process) is not { } parent)
         {
             return null;
         }
-        nint* information = stackalloc nint[6];
-        uint returned = 0;
-        if (NtQueryInformationProcess(process, ProcessBasicInformation, (byte*)information, (uint)(6 * sizeof(nint)), &returned) != 0)
-        {
-            return null;
-        }
-        int parent = (int)information[5];
-        // Windows keeps a gone parent's id, which a later process may have been given: one that began after this is not its parent.
-        using SafeProcessHandle above = OpenProcess(ProcessQueryLimitedInformation, false, (uint)parent);
-        return !above.IsInvalid && GetProcessTimes(above, out long began, out _, out _, out _) && GetProcessTimes(process, out long start, out _, out _, out _)
-            && began <= start ? parent : null;
+        using SafeProcessHandle above = Kernel32.OpenProcess(Kernel32.ProcessQueryLimitedInformation, false, (uint)parent);
+        return !above.IsInvalid && Kernel32.BeganAt(above) is { } began && Kernel32.BeganUnder(process, parent, began) is not null ? parent : null;
     }
 
     private static DotnetProcess? ReadWindows(int id)
@@ -672,7 +660,7 @@ public static partial class DotnetProcesses
         {
             return null;
         }
-        using SafeProcessHandle process = OpenProcess(ProcessQueryLimitedInformation, false, (uint)id);
+        using SafeProcessHandle process = Kernel32.OpenProcess(Kernel32.ProcessQueryLimitedInformation, false, (uint)id);
         if (process.IsInvalid)
         {
             // Protected, or another user's the system will not describe: listed by its id, as the debugger may still be let in.
@@ -692,10 +680,11 @@ public static partial class DotnetProcesses
 
     /// <summary>The command line as the program was given it (NtQueryInformationProcess, Windows 8.1 on): a UNICODE_STRING
     /// pointing into the buffer after it.</summary>
+    [System.Runtime.Versioning.SupportedOSPlatform("windows")]
     private static unsafe string? WindowsCommandLine(SafeProcessHandle process)
     {
         uint needed = 0;
-        _ = NtQueryInformationProcess(process, ProcessCommandLineInformation, null, 0, &needed);
+        _ = Kernel32.NtQueryInformationProcess(process, ProcessCommandLineInformation, null, 0, &needed);
         if (needed == 0)
         {
             return null;
@@ -703,7 +692,7 @@ public static partial class DotnetProcesses
         byte[] buffer = new byte[needed];
         fixed (byte* into = buffer)
         {
-            if (NtQueryInformationProcess(process, ProcessCommandLineInformation, into, needed, &needed) != 0)
+            if (Kernel32.NtQueryInformationProcess(process, ProcessCommandLineInformation, into, needed, &needed) != 0)
             {
                 return null;
             }
@@ -741,12 +730,6 @@ public static partial class DotnetProcesses
     /// user's files allow); null on Windows.</summary>
     public static string? UserAndGroup => OperatingSystem.IsWindows() ? null : $"{Libc.EffectiveUserId()}:{GetEffectiveGroupId()}";
 
-    [LibraryImport("kernel32.dll", EntryPoint = "OpenProcess", SetLastError = true)]
-    private static partial SafeProcessHandle OpenProcess(uint access, [MarshalAs(UnmanagedType.Bool)] bool inherit, uint id);
-
-    [LibraryImport("kernel32.dll", EntryPoint = "WaitForSingleObject")]
-    private static partial uint WaitForSingleObject(SafeProcessHandle handle, uint milliseconds);
-
     [LibraryImport("dbghelp.dll", EntryPoint = "MiniDumpWriteDump", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static partial bool MiniDumpWriteDump(SafeProcessHandle process, uint id, SafeFileHandle file, uint type, IntPtr exception, IntPtr stream, IntPtr callback);
@@ -754,13 +737,6 @@ public static partial class DotnetProcesses
     [LibraryImport("kernel32.dll", EntryPoint = "QueryFullProcessImageNameW")]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static unsafe partial bool QueryFullProcessImageName(SafeProcessHandle process, uint flags, char* name, uint* size);
-
-    [LibraryImport("kernel32.dll", EntryPoint = "GetProcessTimes")]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static partial bool GetProcessTimes(SafeProcessHandle process, out long creation, out long exit, out long kernel, out long user);
-
-    [LibraryImport("ntdll.dll", EntryPoint = "NtQueryInformationProcess")]
-    private static unsafe partial int NtQueryInformationProcess(SafeProcessHandle process, int kind, byte* information, uint length, uint* returned);
 
     [LibraryImport("advapi32.dll", EntryPoint = "OpenProcessToken")]
     [return: MarshalAs(UnmanagedType.Bool)]

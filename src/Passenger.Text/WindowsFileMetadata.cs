@@ -3,6 +3,7 @@ using System.Runtime.Versioning;
 using System.Security.AccessControl;
 using System.Security.Principal;
 using Microsoft.Win32.SafeHandles;
+using Passenger.Core;
 
 namespace Passenger.Text;
 
@@ -35,7 +36,7 @@ internal static partial class WindowsFileMetadata
     /// but its creation date, which is given to the temporary file then; false when any of it could not be read.</summary>
     public static bool MoveKeeps(string target, string temporary)
     {
-        using SafeFileHandle handle = CreateFile(target, ReadControl | ReadAttributes, FileShare.ReadWrite | FileShare.Delete, IntPtr.Zero, FileMode.Open, 0, IntPtr.Zero);
+        using SafeFileHandle handle = Kernel32.CreateFile(target, ReadControl | ReadAttributes, FileShare.ReadWrite | FileShare.Delete, IntPtr.Zero, FileMode.Open, 0, IntPtr.Zero);
         if (handle.IsInvalid || !GetFileInformationByHandle(handle, out FileInformation information) || information.Links != 1)
         {
             return false;
@@ -54,7 +55,7 @@ internal static partial class WindowsFileMetadata
     {
         // FILE_STREAM_INFO: the next entry's offset, the name's length in bytes, two sizes, then the name.
         byte* streams = stackalloc byte[128];
-        if (!GetFileInformationByHandleEx(handle, FileStreamInfo, streams, 128))
+        if (!Kernel32.GetFileInformationByHandleEx(handle, FileStreamInfo, streams, 128))
         {
             return false;
         }
@@ -78,7 +79,7 @@ internal static partial class WindowsFileMetadata
         {
             return true;
         }
-        using SafeFileHandle made = CreateFile(temporary, ReadControl, FileShare.ReadWrite | FileShare.Delete, IntPtr.Zero, FileMode.Open, 0, IntPtr.Zero);
+        using SafeFileHandle made = Kernel32.CreateFile(temporary, ReadControl, FileShare.ReadWrite | FileShare.Delete, IntPtr.Zero, FileMode.Open, 0, IntPtr.Zero);
         return !made.IsInvalid && Security(made)?.DiscretionaryAcl is { } given && Binary(given).AsSpan().SequenceEqual(Binary(access));
     }
 
@@ -122,16 +123,9 @@ internal static partial class WindowsFileMetadata
         public uint IndexLow;
     }
 
-    [LibraryImport("kernel32.dll", EntryPoint = "CreateFileW", SetLastError = true, StringMarshalling = StringMarshalling.Utf16)]
-    private static partial SafeFileHandle CreateFile(string name, uint access, FileShare share, IntPtr security, FileMode mode, uint flags, IntPtr template);
-
     [LibraryImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static partial bool GetFileInformationByHandle(SafeFileHandle file, out FileInformation information);
-
-    [LibraryImport("kernel32.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static unsafe partial bool GetFileInformationByHandleEx(SafeFileHandle file, int kind, byte* information, uint size);
 
     [LibraryImport("advapi32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]

@@ -1,0 +1,90 @@
+using System.Runtime.InteropServices;
+using System.Runtime.Versioning;
+using Microsoft.Win32.SafeHandles;
+
+namespace Passenger.Core;
+
+/// <summary>Windows' calls that more than one place makes, each declared once (kernel32's, and ntdll's beneath it), and
+/// what a process says of itself through them. Those that set the last error say it through
+/// <see cref="Marshal.GetLastPInvokeError"/>.</summary>
+[SupportedOSPlatform("windows")]
+public static partial class Kernel32
+{
+    /// <summary>OpenProcess's PROCESS_TERMINATE.</summary>
+    public const uint ProcessTerminate = 0x0001;
+
+    /// <summary>OpenProcess's PROCESS_QUERY_LIMITED_INFORMATION, which a process of another user allows unless it is protected.</summary>
+    public const uint ProcessQueryLimitedInformation = 0x1000;
+
+    /// <summary>OpenProcess's SYNCHRONIZE, to wait for the process.</summary>
+    public const uint Synchronize = 0x100000;
+
+    /// <summary>GetStdHandle's and SetStdHandle's STD_INPUT_HANDLE, STD_OUTPUT_HANDLE and STD_ERROR_HANDLE.</summary>
+    public const int StandardInput = -10;
+    public const int StandardOutput = -11;
+    public const int StandardError = -12;
+
+    /// <summary>SetHandleInformation's HANDLE_FLAG_INHERIT: a handle a program started inherits.</summary>
+    public const uint Inherited = 1;
+
+    /// <summary>NtQueryInformationProcess's ProcessBasicInformation.</summary>
+    private const int ProcessBasicInformation = 0;
+
+    /// <summary>The id a process names as its parent's, from PROCESS_BASIC_INFORMATION, six pointer-sized fields with that
+    /// id last; null when Windows will not say.</summary>
+    public static unsafe int? ParentOf(SafeProcessHandle process)
+    {
+        nint* information = stackalloc nint[6];
+        uint returned = 0;
+        return NtQueryInformationProcess(process, ProcessBasicInformation, (byte*)information, (uint)(6 * sizeof(nint)), &returned) == 0
+            ? (int)information[5]
+            : null;
+    }
+
+    /// <summary>When a process began, as a FILETIME; null when Windows will not say.</summary>
+    public static long? BeganAt(SafeProcessHandle process) => GetProcessTimes(process, out long began, out _, out _, out _) ? began : null;
+
+    /// <summary>When a process began, where it names <paramref name="parent"/>, which began at <paramref name="parentBegan"/>,
+    /// as its parent and began no earlier: Windows keeps a gone parent's id, which a later process may be given. Null where
+    /// it names another, began first, or Windows will not say.</summary>
+    public static long? BeganUnder(SafeProcessHandle process, int parent, long parentBegan) =>
+        ParentOf(process) == parent && BeganAt(process) is { } began && began >= parentBegan ? began : null;
+
+    [LibraryImport("kernel32.dll", EntryPoint = "OpenProcess", SetLastError = true)]
+    public static partial SafeProcessHandle OpenProcess(uint access, [MarshalAs(UnmanagedType.Bool)] bool inherit, uint id);
+
+    [LibraryImport("kernel32.dll", EntryPoint = "WaitForSingleObject")]
+    public static partial uint WaitForSingleObject(SafeProcessHandle process, uint milliseconds);
+
+    [LibraryImport("kernel32.dll", EntryPoint = "GetProcessTimes")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool GetProcessTimes(SafeProcessHandle process, out long creation, out long exit, out long kernel, out long user);
+
+    [LibraryImport("ntdll.dll", EntryPoint = "NtQueryInformationProcess")]
+    public static unsafe partial int NtQueryInformationProcess(SafeProcessHandle process, int kind, byte* information, uint length, uint* returned);
+
+    [LibraryImport("kernel32.dll", EntryPoint = "ResumeThread", SetLastError = true)]
+    public static partial uint ResumeThread(nint thread);
+
+    [LibraryImport("kernel32.dll", EntryPoint = "CloseHandle", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static partial bool CloseHandle(nint handle);
+
+    [LibraryImport("kernel32.dll", EntryPoint = "GetStdHandle", SetLastError = true)]
+    public static partial nint GetStdHandle(int which);
+
+    [LibraryImport("kernel32.dll", EntryPoint = "SetStdHandle", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static partial bool SetStdHandle(int which, nint handle);
+
+    [LibraryImport("kernel32.dll", EntryPoint = "SetHandleInformation", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static partial bool SetHandleInformation(nint handle, uint mask, uint flags);
+
+    [LibraryImport("kernel32.dll", EntryPoint = "CreateFileW", SetLastError = true, StringMarshalling = StringMarshalling.Utf16)]
+    public static partial SafeFileHandle CreateFile(string name, uint access, FileShare share, IntPtr security, FileMode mode, uint flags, IntPtr template);
+
+    [LibraryImport("kernel32.dll", EntryPoint = "GetFileInformationByHandleEx", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static unsafe partial bool GetFileInformationByHandleEx(SafeFileHandle file, int kind, void* information, uint size);
+}

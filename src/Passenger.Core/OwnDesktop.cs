@@ -78,7 +78,7 @@ public static partial class OwnDesktop
                 }
                 foreach (nint handle in theirs)
                 {
-                    CloseHandle(handle);
+                    Kernel32.CloseHandle(handle);
                 }
                 theirs.Clear();
                 return Taken(start, started, desktop, suspended, input, output, error);
@@ -96,7 +96,7 @@ public static partial class OwnDesktop
         {
             foreach (nint handle in ours)
             {
-                CloseHandle(handle);
+                Kernel32.CloseHandle(handle);
             }
             CloseDesktop(desktop);
             throw;
@@ -105,7 +105,7 @@ public static partial class OwnDesktop
         {
             foreach (nint handle in theirs)
             {
-                CloseHandle(handle);
+                Kernel32.CloseHandle(handle);
             }
             Marshal.FreeHGlobal(desktopName);
             Marshal.FreeHGlobal(commandLine);
@@ -137,8 +137,8 @@ public static partial class OwnDesktop
         {
             if (Interlocked.Exchange(ref thread, 0) is var held and not 0)
             {
-                _ = ResumeThread(held);
-                CloseHandle(held);
+                _ = Kernel32.ResumeThread(held);
+                Kernel32.CloseHandle(held);
             }
         };
         if (!suspended)
@@ -286,13 +286,6 @@ public static partial class OwnDesktop
     [return: MarshalAs(UnmanagedType.Bool)]
     private static partial bool CreateProcessW(string? application, nint commandLine, nint processSecurity, nint threadSecurity,
         [MarshalAs(UnmanagedType.Bool)] bool inherit, uint flags, nint environment, string? folder, ref StartupInfoEx startup, out ProcessInformation started);
-
-    [LibraryImport("kernel32.dll", SetLastError = true)]
-    private static partial uint ResumeThread(nint thread);
-
-    [LibraryImport("kernel32.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static partial bool CloseHandle(nint handle);
 }
 
 /// <summary>A program started on a desktop of its own (<see cref="OwnDesktop"/>): its process, its streams (null for one its
