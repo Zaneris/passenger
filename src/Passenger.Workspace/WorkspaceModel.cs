@@ -29,6 +29,10 @@ public sealed record WorkspaceModel(string Folder, SolutionModel? Solution, IRea
     /// null for any other workspace.</summary>
     public UnreadSolution? Unread { get; init; }
 
+    /// <summary>The solution file it was read from and the filter it was read through, each stamped just before it was read:
+    /// one whose stamp no longer holds was written since.</summary>
+    public IReadOnlyList<Stamp> ReadFrom { get; init; } = [];
+
     /// <summary>The build configuration and platform chosen for its builds, evaluations and runs; null for what MSBuild takes
     /// when given none, which nothing is given for.</summary>
     public BuildChoice? Build { get; init; }
@@ -158,14 +162,23 @@ public sealed record WorkspaceModel(string Folder, SolutionModel? Solution, IRea
             return new WorkspaceModel(folder, null, [ProjectModel.Unevaluated(named)]) { ProjectFile = named };
         }
         string? path = named is not null && IsSolution(named) && File.Exists(named) ? named : SolutionModel.Find(folder);
+        List<Stamp> stamped = path is null ? [] : [Stamps.File(path)];
         SolutionFilter? filter = path is not null && SolutionFilter.Is(path) ? SolutionFilter.Read(path) : null;
         if (path is not null && SolutionFilter.Is(path))
         {
             path = filter?.Solution;
+            if (path is not null)
+            {
+                stamped.Add(Stamps.File(path));
+            }
         }
         // A Docker Compose project is read as XML for its run configurations, a shared project for its files: neither loads.
         return path is not null && SolutionModel.Load(path, out unread) is { } solution
-            ? new WorkspaceModel(folder, solution, [.. solution.Projects.Where(p => !IsComposeProject(p.Path) && !Workspace.SharedProjects.Is(p.Path))]) { Filter = filter }
+            ? new WorkspaceModel(folder, solution, [.. solution.Projects.Where(p => !IsComposeProject(p.Path) && !Workspace.SharedProjects.Is(p.Path))])
+            {
+                Filter = filter,
+                ReadFrom = stamped,
+            }
             : null;
     }
 

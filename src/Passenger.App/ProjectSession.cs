@@ -1142,20 +1142,37 @@ public sealed class ProjectSession : IAsyncDisposable
         }
     }
 
-    /// <summary>Done once the projects stand as written: a project's file, or a file one imports, written a moment ago, before
-    /// the folder's watcher may have heard of it (an agent's edit, the save a start makes), is evaluated now and its evaluation
-    /// waited for, <paramref name="waiting"/> told while it is; at once where none was.</summary>
+    /// <summary>Done once the projects stand as written, written a moment ago before the folder's watcher may have heard (an
+    /// agent's edit, the save a start or a build makes): the solution, or the filter it is read through, is read again; else
+    /// a project's file, a file one imports, or an import come where a project's wildcards look, has its projects evaluated
+    /// now; either waited for, <paramref name="waiting"/> told while it is; at once where nothing was.</summary>
     public async Task ProjectsAsWrittenAsync(Action<string?>? waiting, CancellationToken cancel)
     {
         UiThread.Check();
-        if (IsEnded || !await Models.ReadWrittenNowAsync(WorkspaceEdits.Catching) || IsEnded)
+        if (IsEnded || Workspace is not { } before)
         {
             return;
         }
-        Evaluate();
+        Task<bool> solution = ProjectModels.WrittenNowAsync(before.ReadFrom, WorkspaceEdits.Catching);
+        bool projects = await Models.ReadWrittenNowAsync(WorkspaceEdits.Catching);
+        // Unless the watcher heard of it meanwhile and read it again.
+        bool reread = await solution && ReferenceEquals(Workspace?.ReadFrom, before.ReadFrom);
+        if (IsEnded || !reread && !projects)
+        {
+            return;
+        }
+        if (reread)
+        {
+            ReadAgain();
+        }
+        else
+        {
+            Evaluate();
+        }
         waiting?.Invoke($"Waiting for {Folder ?? "the folder"}'s projects to be read");
         try
         {
+            await WorkspaceRead.WaitAsync(cancel);
             await Models.Idle.WaitAsync(cancel);
         }
         finally

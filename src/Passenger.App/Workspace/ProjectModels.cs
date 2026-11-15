@@ -216,8 +216,9 @@ public sealed class ProjectModels
     }
 
     /// <summary>Whether a file under the folder that an evaluation known read was written since, <paramref name="within"/>
-    /// ago at most (by an agent's own file tool, or saved, before the folder's watcher may have heard): its project is to be
-    /// evaluated again. Looked at off the window's thread.</summary>
+    /// ago at most (by an agent's own file tool, or saved, before the folder's watcher may have heard), or an import (a .props
+    /// or .targets) came in a folder an evaluation's wildcards walked, which a project may import once it is there: its
+    /// project is to be evaluated again. Looked at off the window's thread.</summary>
     public Task<bool> ReadWrittenNowAsync(TimeSpan within)
     {
         UiThread.Check();
@@ -226,8 +227,37 @@ public sealed class ProjectModels
             return Task.FromResult(false);
         }
         List<Stamp> read = [.. known.Values.SelectMany(e => e.Inputs).Where(i => !i.Folder && !i.Presence && PathNames.IsUnder(i.Path, under)).Distinct()];
+        List<Stamp> walked = [.. known.Values.SelectMany(e => e.Folders).Where(f => PathNames.Within(f.Path, under)).Distinct()];
         DateTime since = DateTime.UtcNow - within;
-        return read.Count == 0 ? Task.FromResult(false) : BackgroundWork.Run(() => read.Any(i => !Stamps.Holds(i) && WrittenSince(i.Path, since)));
+        return read.Count == 0 && walked.Count == 0 ? Task.FromResult(false)
+            : BackgroundWork.Run(() => read.Any(i => Written(i, since)) || walked.Any(f => Written(f, since) && ImportCame(f.Path, since)));
+    }
+
+    /// <summary>Whether any of these files, stamped as they were read (a solution), was written since, <paramref name="within"/>
+    /// ago at most, and stands otherwise now. Looked at off the window's thread.</summary>
+    public static Task<bool> WrittenNowAsync(IReadOnlyList<Stamp> read, TimeSpan within)
+    {
+        DateTime since = DateTime.UtcNow - within;
+        return read.Count == 0 ? Task.FromResult(false) : BackgroundWork.Run(() => read.Any(i => Written(i, since)));
+    }
+
+    /// <summary>Whether what was stamped was written since and stands otherwise now, its time looked at first, as it costs
+    /// less than a folder's names.</summary>
+    private static bool Written(Stamp stamp, DateTime since) => WrittenSince(stamp.Path, since) && !Stamps.Holds(stamp);
+
+    private static readonly string[] Imports = [".props", ".targets"];
+
+    /// <summary>Whether a .props or .targets file in a folder was written since.</summary>
+    private static bool ImportCame(string folder, DateTime since)
+    {
+        try
+        {
+            return new DirectoryInfo(folder).EnumerateFiles().Any(f => PathNames.HasExtension(f.Name, Imports) && f.LastWriteTimeUtc >= since);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
     }
 
     private static bool WrittenSince(string path, DateTime since)

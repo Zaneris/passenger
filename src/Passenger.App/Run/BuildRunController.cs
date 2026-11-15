@@ -421,24 +421,37 @@ public sealed partial class BuildRunController
             // It would compile the text on disk, not what the editor shows.
             FinishBuild(new BuildOutcome(BuildStatus.NotStarted, unsaved));
         }
-        else if (FileText.Landings().Count == 0)
-        {
-            BuildNext(first: true);
-        }
         else
         {
-            IdeErrors.Observe(BuildLandedAsync());
+            IdeErrors.Observe(BuildAsSavedAsync());
         }
     }
 
     /// <summary>Starts the build once the saves still landing have (<see cref="EditorArea.LandedAsync"/>), so it compiles what
-    /// was saved: one that never lands, or a stop meanwhile, ends the build unstarted, saying why.</summary>
-    private async Task BuildLandedAsync()
+    /// was saved, and the projects stand as saved (<see cref="ProjectSession.ProjectsAsWrittenAsync"/>), so what it is given
+    /// and checks by them (Windows targeting, a project's frameworks) is as written: one that never lands, or a stop
+    /// meanwhile, ends the build unstarted, saying why.</summary>
+    private async Task BuildAsSavedAsync()
     {
         Working? work = buildWork;
-        if (await EditorArea.LandedAsync(work, work?.Stopping ?? CancellationToken.None) is { } unsaved)
+        CancellationToken stopping = work?.Stopping ?? CancellationToken.None;
+        string stage = work?.Stage ?? string.Empty;
+        if (FileText.Landings().Count > 0 && await EditorArea.LandedAsync(work, stopping) is { } unsaved)
         {
             FinishBuild(work is { IsStopped: true } ? new BuildOutcome(BuildStatus.Stopped, "Build stopped") : new BuildOutcome(BuildStatus.NotStarted, unsaved));
+            return;
+        }
+        try
+        {
+            await session.ProjectsAsWrittenAsync(said => work?.Say(said ?? stage), stopping);
+        }
+        catch (OperationCanceledException) when (stopping.IsCancellationRequested)
+        {
+            // Said below, as a stop while the projects' files were looked at is.
+        }
+        if (work is { IsStopped: true })
+        {
+            FinishBuild(new BuildOutcome(BuildStatus.Stopped, "Build stopped"));
         }
         else if (session.IsEnded)
         {

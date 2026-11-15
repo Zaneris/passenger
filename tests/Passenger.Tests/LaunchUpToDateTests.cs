@@ -14,8 +14,8 @@ namespace Passenger.Tests;
 /// project file, a .props it imports, a project it references, the version of a package it references, the version
 /// global.json gives an SDK it imports) is built first, the program then running what changed, its frameworks typed in
 /// another order and not saved the one now first. A person's Build that succeeded, of the solution or of the project, is
-/// its last build; one that failed leaves none. EF Core's two versions come from the run's local feed, the SDK's from the
-/// folder's own.</summary>
+/// its last build, a framework typed into its frameworks and not saved built too; one that failed leaves none. EF Core's
+/// two versions come from the run's local feed, the SDK's from the folder's own.</summary>
 public sealed class LaunchUpToDateTests
 {
     /// <summary>The longest a build and a run of the app take on a developer's machine, scaled by the run.</summary>
@@ -242,6 +242,39 @@ public sealed class LaunchUpToDateTests
             string text = window.EditorArea.Active!.Text.Snapshot.ToString();
             window.EditorArea.CodeEditor.ApplyEdits([new TextEdit(text.IndexOf($"{older};{Newer}", StringComparison.Ordinal), $"{older};{Newer}".Length, $"{Newer};{older}")]);
             Ran(window, builds, built: true, Newer, "a run right after the frameworks were typed in another order");
+        }
+        finally
+        {
+            ChildProcesses.Started -= started;
+            window.Close();
+        }
+    }
+
+    /// <summary>Build right after a framework was typed into the app's frameworks, not saved, builds the app for each of them
+    /// and keeps each as a launch builds it: Run right after starts no build, the Build window saying the app is up to date,
+    /// and runs the framework typed, where Build read the project as it stood before its save and Run built it again.</summary>
+    [AvaloniaFact]
+    public void A_build_right_after_a_framework_was_typed_into_its_projects_frameworks_leaves_the_framework_typed_up_to_date()
+    {
+        const string Newer = "net11.0";
+        string older = TestProjects.Framework;
+        string folder = WriteSolution(appFrameworks: older);
+        TestFolders.Write(folder, "App/Program.cs",
+            $"#if NET11_0_OR_GREATER\nSystem.Console.WriteLine(\"said: {Newer}\");\n#else\nSystem.Console.WriteLine(\"said: {older}\");\n#endif\n");
+        List<string> builds = [];
+        EventHandler<ChildStart> started = Counting(builds);
+        ChildProcesses.Started += started;
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        try
+        {
+            Ui.WaitFor(() => window.Configurations.Any(c => c.Name == "App"), "App's run configuration");
+            Assert.True(window.SelectConfiguration("App"));
+            window.OpenFile(Path.Combine(folder, "App", "App.csproj"));
+            Ui.Settle();
+            string text = window.EditorArea.Active!.Text.Snapshot.ToString();
+            window.EditorArea.CodeEditor.ApplyEdits([new TextEdit(text.IndexOf($"<TargetFrameworks>{older}", StringComparison.Ordinal) + "<TargetFrameworks>".Length, 0, $"{Newer};")]);
+            Built(window, AppActions.Build, succeeds: true, $"Build Solution right after {Newer} was typed into App's frameworks");
+            Ran(window, builds, built: false, Newer, $"a run right after Build Solution built {Newer} too");
         }
         finally
         {

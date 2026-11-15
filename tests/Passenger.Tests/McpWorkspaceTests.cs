@@ -9,8 +9,8 @@ namespace Passenger.Tests;
 
 /// <summary>What an agent's own Passenger (<c>--mcp</c>) knows of its folder: workspace calls an Android app, which .NET for
 /// Android evaluates as a Library, the Exe it runs as, and a library stays a Library; a file made while the folder's
-/// watcher heard nothing is found at the agent's next call; and a project's frameworks the agent just edited are what the
-/// next call answers from.</summary>
+/// watcher heard nothing is found at the agent's next call; and a project's frameworks the agent just edited, and a project
+/// it just added to the solution, are what the next call answers from.</summary>
 [Collection(Beside.Name)]
 public sealed class McpWorkspaceTests : McpRig
 {
@@ -98,6 +98,58 @@ public sealed class McpWorkspaceTests : McpRig
         }
         Assert.True(stale.Count == 0, string.Join('\n', stale));
     }
+
+    /// <summary>An agent's edit adding a project to the solution, which the folder's watcher never hears, is what its next
+    /// call answers from: workspace lists the project added, where it listed the solution's projects as they stood before
+    /// until the watcher heard of the write.</summary>
+    [Fact]
+    public async Task Workspace_right_after_an_edit_adding_a_project_to_the_solution_lists_it()
+    {
+        string folder = PathNames.Canonical(TestFolders.Create("mcp-solution-"));
+        DeleteAtEnd(folder);
+        TestFolders.Write(folder, "App/App.csproj", TestProjects.Console());
+        TestFolders.Write(folder, "App/Program.cs", "System.Console.WriteLine(\"app\");\n");
+        TestFolders.Write(folder, "Lib/Lib.csproj", TestProjects.Library());
+        TestFolders.Write(folder, "Lib/Greeting.cs", "namespace Lib;\n\npublic static class Greeting\n{\n}\n");
+        TestFolders.Write(folder, "Shop.slnx", "<Solution>\n  <Project Path=\"App/App.csproj\" />\n</Solution>\n");
+        await using McpClient client = await Start(["--mcp", folder], environment: new() { [WatchedTree.UnheardVariable] = "Shop.slnx" }, languageServer: false);
+        Assert.Equal(["App"], Names(await Call(client, McpTools.Workspace)));
+
+        string said = Text(await Call(client, McpTools.Edit, new()
+        {
+            ["path"] = "Shop.slnx",
+            ["oldText"] = "  <Project Path=\"App/App.csproj\" />",
+            ["newText"] = "  <Project Path=\"App/App.csproj\" />\n  <Project Path=\"Lib/Lib.csproj\" />",
+        }));
+        Assert.True(said.StartsWith("Changed Shop.slnx", StringComparison.Ordinal) && said.Contains(", saved:", StringComparison.Ordinal),
+            $"The edit adding Lib to the solution answered: {said}");
+        string[] listed = Names(await Call(client, McpTools.Workspace));
+        Assert.True(listed.SequenceEqual(["App", "Lib"]),
+            $"workspace right after the edit adding Lib to the solution listed [{string.Join(", ", listed)}], as the solution stood before it");
+    }
+
+    /// <summary>An import made beside a project by the agent's own shell, which the folder's watcher never hears, is what its
+    /// next call answers from: workspace lists the framework the import gives the project, where it listed the one before
+    /// until the watcher heard of the import.</summary>
+    [Fact]
+    public async Task Workspace_right_after_an_import_was_made_beside_a_project_lists_what_the_import_gives_it()
+    {
+        const string Newer = "net11.0";
+        string folder = PathNames.Canonical(TestFolders.Create("mcp-import-"));
+        DeleteAtEnd(folder);
+        TestFolders.Write(folder, "App.csproj", TestProjects.Console().With("  <Import Project=\"Local.props\" Condition=\"Exists('Local.props')\" />\n"));
+        TestFolders.Write(folder, "Program.cs", "System.Console.WriteLine(\"app\");\n");
+        await using McpClient client = await Start(["--mcp", folder], environment: new() { [WatchedTree.UnheardVariable] = "Local.props" }, languageServer: false);
+        await ListedAsync(client, TestProjects.Framework, "as the folder opened");
+
+        TestFolders.Write(folder, "Local.props", $"<Project>\n  <PropertyGroup>\n    <TargetFramework>{Newer}</TargetFramework>\n  </PropertyGroup>\n</Project>\n");
+        string listed = Frameworks(await Call(client, McpTools.Workspace));
+        Assert.True(listed == Newer, $"workspace right after Local.props was made, giving App {Newer}, listed App's frameworks as {listed}, as they stood before it");
+    }
+
+    /// <summary>The names of the projects workspace lists, in order.</summary>
+    private static string[] Names(JsonElement workspace) =>
+        [.. workspace.GetProperty("projects").EnumerateArray().Select(p => p.GetProperty("name").GetString()!).Order(StringComparer.Ordinal)];
 
     /// <summary>The agent's edit of App.csproj's frameworks, saved.</summary>
     private async Task EditFrameworks(McpClient client, string from, string to)
