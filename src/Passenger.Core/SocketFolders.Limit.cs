@@ -3,7 +3,8 @@ using System.Text;
 namespace Passenger.Core;
 
 /// <summary>How long a Unix socket's path may be: what its address holds (104 bytes on macOS, 108 elsewhere), its ending NUL
-/// among them. Apart from the rest, so the inspectors, which make no socket folder, check a path the same way.</summary>
+/// among them. Apart from the rest, so the inspectors and the Hot Reload hook, which make no socket folder, check a path
+/// the same way.</summary>
 public static partial class SocketFolders
 {
     /// <summary>The bytes a Unix socket's address holds for its path, its ending NUL among them.</summary>

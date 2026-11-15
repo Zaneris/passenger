@@ -1,6 +1,7 @@
 using System.Reflection;
 using System.Windows;
 using System.Windows.Threading;
+using Passenger.Core;
 
 namespace Passenger.Inspector.Wpf;
 
@@ -28,9 +29,9 @@ public static class Agent
     /// dispatcher shut down meanwhile, which then was not the app's.</summary>
     private static bool WaitForWindow(Dispatcher dispatcher, Inspector inspector)
     {
-        DateTime until = DateTime.UtcNow + FirstWindow;
+        Deadline until = Deadline.In(FirstWindow);
         Task<int>? asked = null;
-        while (DateTime.UtcNow < until)
+        while (!until.Passed)
         {
             if (dispatcher.HasShutdownStarted)
             {

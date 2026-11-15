@@ -1,5 +1,6 @@
 using System.Runtime.InteropServices;
 using System.Text;
+using Passenger.Core;
 
 namespace Passenger.UpdateHandlers;
 
@@ -72,16 +73,16 @@ internal sealed unsafe partial class Connection : IDisposable
     }
 
     /// <summary>A sockaddr_un naming <paramref name="path"/> in UTF-8, as .NET's own Unix endpoint names it: on macOS a length
-    /// and a family byte then 104 bytes of path, elsewhere a two-byte family then 108; null for a path too long for it.</summary>
+    /// and a family byte then 104 bytes of path, elsewhere a two-byte family then 108; null for a path that does not fit
+    /// (<see cref="SocketFolders.Fits"/>).</summary>
     private static byte[]? Address(string path)
     {
-        int room = OperatingSystem.IsMacOS() ? 104 : 108;
-        byte[] name = Encoding.UTF8.GetBytes(path);
-        if (name.Length >= room)
+        if (!SocketFolders.Fits(path))
         {
             return null;
         }
-        byte[] address = new byte[2 + room];
+        byte[] name = Encoding.UTF8.GetBytes(path);
+        byte[] address = new byte[2 + SocketFolders.PathLimit];
         if (OperatingSystem.IsMacOS())
         {
             address[0] = (byte)address.Length;

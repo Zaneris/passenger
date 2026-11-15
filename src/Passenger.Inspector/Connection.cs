@@ -116,8 +116,8 @@ internal sealed class Connection : IDisposable
         {
             listener.Bind(new UnixDomainSocketEndPoint("\0" + name));
             listener.Listen(1);
-            long until = Environment.TickCount64 + (long)AcceptLimit.TotalMilliseconds;
-            while (Environment.TickCount64 < until)
+            Deadline until = Deadline.In(AcceptLimit);
+            while (!until.Passed)
             {
                 if (!listener.Poll(TimeSpan.FromMilliseconds(250), SelectMode.SelectRead))
                 {

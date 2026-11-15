@@ -1495,9 +1495,9 @@ public partial class ManagedDebugger
     /// releases the runtime's objects) under it.</summary>
     private void ShutDown(ICorDebug corDebug)
     {
-        DateTime until = DateTime.UtcNow + TimeSpan.FromSeconds(5);
+        Deadline until = Deadline.In(TimeSpan.FromSeconds(5));
         int result;
-        while ((result = corDebug.TryTerminate()) == Cor.CORDBG_E_ILLEGAL_SHUTDOWN_ORDER && DateTime.UtcNow < until)
+        while ((result = corDebug.TryTerminate()) == Cor.CORDBG_E_ILLEGAL_SHUTDOWN_ORDER && !until.Passed)
         {
             Thread.Sleep(20);
         }

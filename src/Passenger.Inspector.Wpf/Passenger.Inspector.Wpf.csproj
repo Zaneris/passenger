@@ -53,6 +53,8 @@
     <Compile Include="../Passenger.Core/PathComparer.cs" Link="PathComparer.cs" />
     <!-- A socket's path checked against what a Unix socket's address holds, as Passenger checks the paths it makes. -->
     <Compile Include="../Passenger.Core/SocketFolders.Limit.cs" Link="SocketFolders.Limit.cs" />
+    <!-- A wait's limit on the clock that stops while the machine sleeps, as Passenger's own waits keep one. -->
+    <Compile Include="../Passenger.Core/Deadline.cs" Link="Deadline.cs" />
     <!-- A property breakpoint's hit count is kept here, where its changes are seen, in the debugger's own words. -->
     <Compile Include="../Passenger.Dap/HitCondition.cs" Link="HitCondition.cs" />
   </ItemGroup>

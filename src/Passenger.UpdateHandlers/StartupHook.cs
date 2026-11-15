@@ -11,9 +11,9 @@ using Passenger.UpdateHandlers;
 /// thread waits only to start, and a socket that cannot be reached leaves the program as it would run without the hook.</summary>
 internal static class StartupHook
 {
-    /// <summary>The longest Main waits for the thread to reach its first read, in milliseconds of the clock, the time a
-    /// debugger holds the program counted too: past it the program goes on, the thread reaching its read on its own.</summary>
-    private const long StartLimitMilliseconds = 2000;
+    /// <summary>The longest Main waits for the thread to reach its first read, the time a debugger holds the program counted
+    /// too: past it the program goes on, the thread reaching its read on its own.</summary>
+    private static readonly TimeSpan StartLimit = TimeSpan.FromSeconds(2);
 
     /// <summary>The longest line read: each carries one type or ends a batch, and a longer one is passed over.</summary>
     private const int LongestLine = 256;
@@ -33,9 +33,9 @@ internal static class StartupHook
         }
         Thread listening = new(() => Serve(connection)) { IsBackground = true, Name = Wire.ThreadName };
         listening.UnsafeStart();
-        long until = Environment.TickCount64 + StartLimitMilliseconds;
+        Deadline until = Deadline.In(StartLimit);
         SpinWait waiting = default;
-        while (!Volatile.Read(ref reading) && Environment.TickCount64 < until)
+        while (!Volatile.Read(ref reading) && !until.Passed)
         {
             // Never Sleep(1), whose least on Windows is the clock's tick: the thread is a moment from its read.
             waiting.SpinOnce(sleep1Threshold: -1);
