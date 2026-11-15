@@ -451,7 +451,7 @@ public sealed class AssemblyTypes
                 HandleKind.MethodDefinition => DefinitionName(reader.GetMethodDefinition((MethodDefinitionHandle)attribute.Constructor).GetDeclaringType()),
                 _ => null,
             };
-            if (typeName is null || !Wanted.Contains(typeName[(typeName.LastIndexOfAny(['.', '+']) + 1)..]))
+            if (typeName is null || !Wanted.Contains(TypeNames.Short(typeName)))
             {
                 continue;
             }

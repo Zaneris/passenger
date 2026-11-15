@@ -2,6 +2,7 @@ using System.Text.RegularExpressions;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Passenger.Core;
 using Passenger.Languages.CSharp;
 using Passenger.Workspace;
 
@@ -32,7 +33,7 @@ public static partial class GoDotTests
         {
             int dot = fullName.LastIndexOf('.');
             string type = fullName[..dot];
-            return new Named(type[(type.LastIndexOfAny(['.', '+']) + 1)..], fullName[(dot + 1)..]);
+            return new Named(TypeNames.Short(type), fullName[(dot + 1)..]);
         }
 
         /// <summary>How GoDotTest's output names it ("SpinnerTest::Spins").</summary>

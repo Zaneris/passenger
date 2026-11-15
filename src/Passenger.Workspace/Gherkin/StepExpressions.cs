@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text;
 using System.Text.RegularExpressions;
 using CucumberExpressions;
+using Passenger.Core;
 using Passenger.Text;
 
 namespace Passenger.Workspace.Gherkin;
@@ -175,7 +176,7 @@ public sealed class ReqnrollParameterTypes : IParameterTypeRegistry
         }
         foreach (StepTransformation transformation in transformations)
         {
-            string shortType = transformation.ReturnType[(transformation.ReturnType.LastIndexOfAny(['.', '+']) + 1)..];
+            string shortType = TypeNames.Short(transformation.ReturnType);
             bool builtIn = BuiltIns.Any(b => b.Type == transformation.ReturnType) || transformation.ReturnType == "System.String";
             string name = !builtIn && (transformation.Name is null || transformation.Name == shortType) ? transformation.ReturnType : transformation.Name ?? shortType;
             all.Add((name, transformation.ReturnType, RegexOf(transformation), true));

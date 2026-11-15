@@ -3,6 +3,7 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Text;
+using Passenger.Core;
 using Passenger.Languages.CSharp;
 using Passenger.Text;
 using Passenger.Xaml.Dialects;

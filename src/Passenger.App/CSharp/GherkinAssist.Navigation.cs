@@ -82,7 +82,7 @@ internal sealed partial class GherkinAssist
         StepHook[] found = [.. hooks.Where(h => h.MethodPlace is not null)];
         return new Declared([.. found.Select(h => BddSource.PlaceOf(h.MethodPlace)!)], "No hook runs for this")
         {
-            Names = [.. found.Select(h => (string?)$"[{h.Kind}] {h.ShortType}.{h.Method}")],
+            Names = [.. found.Select(h => (string?)$"[{h.Kind}] {TypeNames.Short(h.Type)}.{h.Method}")],
             Title = "Hooks",
         };
     }

@@ -1,3 +1,5 @@
+using Passenger.Core;
+
 namespace Passenger.Workspace.Gherkin;
 
 /// <summary>What a step definition's attribute binds: Given, When or Then steps, or every kind
@@ -15,9 +17,6 @@ public enum BindingKind
 public sealed record StepParameter(string Name, string Type, IReadOnlyList<string>? Members = null)
 {
     public bool IsEnum => Members is not null;
-
-    /// <summary>The type's name without its namespace ("Int32"), as Reqnroll names a parameter type.</summary>
-    public string ShortType => Type[(Type.LastIndexOfAny(['.', '+']) + 1)..];
 }
 
 /// <summary>A <c>[Scope]</c>: the tag (with or without its @), feature title and scenario title a step's context must all
@@ -63,11 +62,8 @@ public sealed record StepBinding(BindingKind Kind, string? Expression, string Me
     /// <summary>Its method's documentation comment's summary, as words; null for none.</summary>
     public string? Summary { get; init; }
 
-    /// <summary>Its type's name without its namespace.</summary>
-    public string ShortType => Type[(Type.LastIndexOfAny(['.', '+']) + 1)..];
-
-    /// <summary>How it is shown: <c>CalculatorSteps.GivenTheFirstNumberIs(int)</c>.</summary>
-    public string Shown => $"{ShortType}.{Method}({string.Join(", ", Parameters.Select(p => p.ShortType))})";
+    /// <summary>How it is shown: <c>CalculatorSteps.GivenTheFirstNumberIs(Int32)</c>.</summary>
+    public string Shown => $"{TypeNames.Short(Type)}.{Method}({string.Join(", ", Parameters.Select(p => TypeNames.Short(p.Type)))})";
 
     public bool Binds(StepKind kind) => Kind == BindingKind.StepDefinition || (int)Kind == (int)kind;
 
@@ -91,8 +87,6 @@ public sealed record StepHook(string Kind, string Method, string Type, IReadOnly
     public BindingPlace? MethodPlace { get; init; }
 
     public string? Project { get; init; }
-
-    public string ShortType => Type[(Type.LastIndexOfAny(['.', '+']) + 1)..];
 }
 
 /// <summary>Where a step runs: its feature's and scenario's titles and every tag it takes (its feature's, rule's, scenario's

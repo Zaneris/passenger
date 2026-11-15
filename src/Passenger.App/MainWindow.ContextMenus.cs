@@ -5,6 +5,7 @@ using Avalonia.LogicalTree;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Passenger.App.Debugging;
+using Passenger.Core;
 using Passenger.Editor;
 using E = Passenger.Editor.EditorActions;
 using A = Passenger.App.AppActions;
@@ -63,7 +64,7 @@ public partial class MainWindow
         }
         if (TestAt(active, editor.CaretPosition.Line) is { } test)
         {
-            string name = test.Method ?? test.Type[(test.Type.LastIndexOfAny(['.', '+']) + 1)..];
+            string name = test.Method ?? TypeNames.Short(test.Type);
             items.Add(new Separator());
             items.Add(Command($"Run '{name}'", () => RunTestsAt(test, active.Path, debug: false)));
             items.Add(Command($"Debug '{name}'", () => RunTestsAt(test, active.Path, debug: true)));

@@ -1,4 +1,5 @@
 using Microsoft.CodeAnalysis.CSharp;
+using Passenger.Core;
 
 namespace Passenger.Xaml.Metadata;
 

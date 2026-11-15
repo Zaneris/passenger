@@ -70,7 +70,7 @@ internal sealed partial class GherkinAssist
             .GroupBy(b => (b.Type, b.MethodPlace!.Path)).OrderByDescending(g => g.Count()).Select(g => g.First()).FirstOrDefault();
         if (most is not null)
         {
-            return new Target(most.MethodPlace!.Path, most.ShortType, null);
+            return new Target(most.MethodPlace!.Path, TypeNames.Short(most.Type), null);
         }
         string root = folder ?? System.IO.Path.GetDirectoryName(feature)!;
         string into = Directory.Exists(System.IO.Path.Combine(root, "StepDefinitions")) ? System.IO.Path.Combine(root, "StepDefinitions") : root;
@@ -93,7 +93,7 @@ internal sealed partial class GherkinAssist
     {
         ProjectSteps project = analysis.Steps!;
         CultureInfo culture = ProjectSteps.CultureOf(analysis.Config.BindingCultureOf(analysis.Reading));
-        List<string> taken = [.. project.Bindings.Where(b => b.ShortType == target.Class).Select(b => b.Method)];
+        List<string> taken = [.. project.Bindings.Where(b => TypeNames.Short(b.Type) == target.Class).Select(b => b.Method)];
         List<StepSnippet> snippets = [];
         foreach (FeatureStep step in steps)
         {

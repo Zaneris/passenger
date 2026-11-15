@@ -25,10 +25,9 @@ public sealed record TypeRef(string Name, IReadOnlyList<TypeRef> Arguments, bool
         get
         {
             string name = Name;
-            int dot = name.LastIndexOfAny(['.', '+']);
-            if (dot >= 0 && Scope is null)
+            if (Scope is null)
             {
-                name = name[(dot + 1)..];
+                name = TypeNames.Short(name);
             }
             int tick = name.IndexOf('`');
             if (tick >= 0)
@@ -230,13 +229,3 @@ public sealed record ClrTypeDetails(TypeRef? Base, IReadOnlyList<TypeRef> Interf
 /// <summary>Where a type comes from: an assembly by its name and file, and for the project's own source the place it is
 /// declared.</summary>
 public sealed record TypeOrigin(string AssemblyName, string? AssemblyPath, SourcePlace? Place);
-
-/// <summary>C#'s keywords for the types they name (<see cref="PrimitiveTypes"/>).</summary>
-public static class TypeNames
-{
-    /// <summary>The full name a C# keyword names, or null.</summary>
-    public static string? FromKeyword(string keyword) => PrimitiveTypes.OfKeyword(keyword)?.SystemName;
-
-    /// <summary>The C# keyword for a full name, or null.</summary>
-    public static string? Keyword(string fullName) => PrimitiveTypes.Named(fullName)?.Keyword;
-}

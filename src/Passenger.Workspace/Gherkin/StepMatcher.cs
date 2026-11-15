@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Globalization;
 using System.Text.RegularExpressions;
+using Passenger.Core;
 
 namespace Passenger.Workspace.Gherkin;
 
@@ -128,7 +129,7 @@ public sealed class StepMatcher
             }
             if (captured.Select((g, i) => (g, i)).FirstOrDefault(c => !Converts(c.g.Value, binding.Parameters[c.i])) is { g: not null } wrong)
             {
-                refused.Add($"{binding.Shown} cannot take \"{wrong.g.Value}\" as {binding.Parameters[wrong.i].ShortType}");
+                refused.Add($"{binding.Shown} cannot take \"{wrong.g.Value}\" as {TypeNames.Short(binding.Parameters[wrong.i].Type)}");
                 continue;
             }
             if (Fit(binding, context) is not { } fit)

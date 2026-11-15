@@ -206,7 +206,7 @@ public static partial class BindingErrors
     }
 
     /// <summary>A type as Avalonia names it, without its namespace.</summary>
-    private static string Short(string? type) => type is null ? "its source" : type[(type.LastIndexOfAny(['.', '+']) + 1)..];
+    private static string Short(string? type) => type is null ? "its source" : TypeNames.Short(type);
 
     /// <summary>An attribute of a start tag and its value, in either quotes.</summary>
     [GeneratedRegex(@"(?<name>[\w:.]+)\s*=\s*(?:""(?<value>[^""]*)""|'(?<value>[^']*)')")]

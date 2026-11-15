@@ -36,7 +36,7 @@ public static partial class StepSamples
     }
 
     /// <summary>A type as a C# programmer writes it: its keyword where it has one ("int"), else its name.</summary>
-    public static string TypeWords(string type) => PrimitiveTypes.Named(type)?.Keyword ?? type[(type.LastIndexOfAny(['.', '+']) + 1)..];
+    public static string TypeWords(string type) => TypeNames.Keyword(type) ?? TypeNames.Short(type);
 
     private static StepSample FromCucumber(string expression)
     {

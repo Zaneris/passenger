@@ -206,7 +206,7 @@ public partial class MainWindow
         {
             return;
         }
-        string name = chosen.Method ?? chosen.Type[(chosen.Type.LastIndexOfAny(['.', '+']) + 1)..];
+        string name = chosen.Method ?? TypeNames.Short(chosen.Type);
         MenuFlyout menu = new();
         MenuItem run = new() { Header = $"Run '{name}'" };
         run.Click += (_, _) => RunTestsAt(chosen, document.Path, debug: false);
