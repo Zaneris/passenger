@@ -625,6 +625,42 @@ public sealed class FolderWatchTests : IDisposable
         window.Close();
     }
 
+    /// <summary>A file made in a new folder and one deleted while the watchers heard nothing, as changes the system dropped
+    /// without a word, are found once the watcher is asked to look again: the folders whose stamp moved are listed against
+    /// its record, and what came or went there is handed over, the whole folder never read again. Its watchers stop while
+    /// the files change, so the changes are lost as a dropped event loses them.</summary>
+    [AvaloniaTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Files_made_and_deleted_unheard_are_found_once_the_watcher_looks_again(bool eachFolder)
+    {
+        Write("One.cs", "class One { }\n");
+        Write("Old/Gone.cs", "class Gone { }\n");
+        MainWindow window = Open(eachFolder ? FolderWatching.Inotify : FolderWatching.WholeTree, languageServer: false);
+        Ui.WaitFor(() => window.FileIndex.Files.Contains(Path.Combine("Old", "Gone.cs")), "the folder's files in Go to File");
+        bool lost = false;
+        window.FolderWatcher!.Changed += (_, changes) => lost |= changes.Lost;
+        List<FileSystemWatcher> watchers = [.. window.FolderWatcher.Watches.Values];
+        watchers.ForEach(w => w.EnableRaisingEvents = false);
+        try
+        {
+            File.Delete(Path.Combine(folder, "Old", "Gone.cs"));
+            Write("Fresh/Fresh.cs", "class Fresh { }\n");
+
+            window.FolderWatcher.LookAgain();
+            Ui.WaitFor(() => window.FileIndex.Files.Contains(Path.Combine("Fresh", "Fresh.cs")) && !window.FileIndex.Files.Contains(Path.Combine("Old", "Gone.cs")),
+                () => $"Go to File to gain the file made and lose the one deleted unheard once the watcher looked again (it lists {string.Join(", ", window.FileIndex.Files)})");
+            Ui.WaitFor(() => window.ExplorerView.Tree.Rows.Any(r => r.Name == "Fresh"),
+                () => $"the folder made unheard in the Explorer (it shows {string.Join(", ", window.ExplorerView.Tree.Rows.Select(r => r.Name))})");
+            Assert.False(lost, "The folder's watcher read the whole folder again as it looked again, rather than the folders whose stamp moved");
+        }
+        finally
+        {
+            watchers.ForEach(w => w.EnableRaisingEvents = true);
+        }
+        window.Close();
+    }
+
     /// <summary>A file made, which Go to File lists, then deleted unheard, as a burst on a busy machine drops the deletion's
     /// event: the folder's watcher took the file into its record as it handed it over, so the listing after the burst
     /// finds it gone, and Go to File lets it go. A batch's hand-over, looking at what came or went in it on disk, needs

@@ -725,14 +725,57 @@ public abstract class WatchedTree : IDisposable
             Lose();
             return;
         }
-        HashSet<string> listing = new(folders.Where(record.ContainsKey), StringComparer.Ordinal);
+        HashSet<string> listing = StampsMoved();
+        listing.UnionWith(folders.Where(record.ContainsKey));
+        if (ListAgain(listing, since, heard) is not { } found)
+        {
+            Lose();
+            return;
+        }
+        IdeErrors.Write($"{Shown} listed {Plural.Of(listing.Count, "folder")} again after a burst of changes at risk of some lost unsaid: "
+            + $"{Plural.Of(found.Found, "change")} found, {found.Unheard} at a path neither heard nor found in its last moments ({Plural.Of(heard.Count, "path")})");
+    }
+
+    /// <summary>Lists again, after the changes already asked for, each recorded folder whose stamp moved since it was listed:
+    /// a name come or gone that the system dropped without a word (macOS's watcher passes over its word that it did) is
+    /// found against the record and handed over. A file written in place, which moves no folder's stamp, is left to its own
+    /// change.</summary>
+    public void LookAgain() => Follow(() =>
+    {
+        if (recordedAt is null || IsDisposed || StampsMoved() is not { Count: > 0 } listing)
+        {
+            return;
+        }
+        if (ListAgain(listing, since: null, new Dictionary<string, DateTime>(StringComparer.Ordinal)) is not { } found)
+        {
+            Lose();
+            return;
+        }
+        if (found.Found > 0)
+        {
+            IdeErrors.Write($"{Shown} found {Plural.Of(found.Found, "change")} it never heard, looking again at {Plural.Of(listing.Count, "folder")} whose stamp moved");
+        }
+    });
+
+    /// <summary>The recorded folders whose stamp moved since they were listed.</summary>
+    private HashSet<string> StampsMoved()
+    {
+        HashSet<string> moved = new(StringComparer.Ordinal);
         foreach ((string at, Listed listed) in record)
         {
             if (Directory.GetLastWriteTimeUtc(at) != listed.Stamp)
             {
-                listing.Add(at);
+                moved.Add(at);
             }
         }
+        return moved;
+    }
+
+    /// <summary>Lists recorded folders again against the record, taking in each name come or gone and, from <paramref
+    /// name="since"/> when given, each file written then and not heard of after it: how many changes were found, and how many
+    /// of those at a path not heard; null past the record's limit, where changes are taken for lost.</summary>
+    private (int Found, int Unheard)? ListAgain(HashSet<string> listing, DateTime? since, Dictionary<string, DateTime> heard)
+    {
         int read = 0;
         int found = 0;
         int unheard = 0;
@@ -743,7 +786,7 @@ public abstract class WatchedTree : IDisposable
             {
                 continue;
             }
-            if (Listing(at, written: true) is not { } now)
+            if (Listing(at, written: since is not null) is not { } now)
             {
                 if (at == Top && !Directory.Exists(at))
                 {
@@ -754,8 +797,7 @@ public abstract class WatchedTree : IDisposable
             read += now.Entries.Count;
             if (read > RecordLimit)
             {
-                Lose();
-                return;
+                return null;
             }
             List<Entry> entries = Recorded(at, now.Entries);
             HashSet<string> names = new(entries.Select(e => e.Name), StringComparer.Ordinal);
@@ -777,14 +819,13 @@ public abstract class WatchedTree : IDisposable
                         WatchFrom(path, file => Find(file, created: true));
                     }
                 }
-                else if (!entry.Folder && entry.Written >= since && !(heard.TryGetValue(PathNames.Canonical(path), out DateTime last) && last >= entry.Written))
+                else if (!entry.Folder && since is { } from && entry.Written >= from && !(heard.TryGetValue(PathNames.Canonical(path), out DateTime last) && last >= entry.Written))
                 {
                     Find(path, created: false);
                 }
             }
         }
-        IdeErrors.Write($"{Shown} listed {Plural.Of(listing.Count, "folder")} again after a burst of changes at risk of some lost unsaid: "
-            + $"{Plural.Of(found, "change")} found, {unheard} at a path neither heard nor found in its last moments ({Plural.Of(heard.Count, "path")})");
+        return (found, unheard);
 
         void Find(string path, bool created)
         {
