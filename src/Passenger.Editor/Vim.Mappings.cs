@@ -13,7 +13,7 @@ public sealed partial class Vim
 
     /// <summary>A key through the mappings: null to take it as it is; held while more keys may make a mapping; else the
     /// keys it came to, for the editor to press in turn.</summary>
-    private VimResult? Mapped(string key)
+    private VimResult? Mapped([IdentifierOf(typeof(VimKeys))] string key)
     {
         VimMapModes mode = MapMode();
         if (typedAhead.Count == 0 && (mode == VimMapModes.None || !Registers.Mappings.Maps(mode)))

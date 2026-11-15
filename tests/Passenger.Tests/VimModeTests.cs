@@ -381,8 +381,9 @@ public sealed class VimModeTests : IDisposable
         }
     }
 
-    /// <summary>q records the keys typed, insert mode's typing too, into a register, the status bar saying so, and @
-    /// presses them again, @@ the last again, each change one step of undo.</summary>
+    /// <summary>q records the keys typed, insert mode's typing too (a '&lt;' as much as any), into a register, the
+    /// status bar saying so, and @ presses them again, @@ the last again, each change one step of undo; :normal's keys
+    /// type as a macro's do.</summary>
     [AvaloniaFact]
     public void A_macro_recorded_with_q_is_pressed_again_by_at()
     {
@@ -393,15 +394,17 @@ public sealed class VimModeTests : IDisposable
             Ui.Settle();
             Keys(window, "qa");
             Assert.Equal("NORMAL recording @a", Status(window).Mode);
-            Keys(window, "A!<Esc>j");
+            Keys(window, "A<!<Esc>j");
             Keys(window, "q");
-            Assert.Equal(("one!\ntwo\nthree\nfour\n", "NORMAL"), (Text(editor), Status(window).Mode));
+            Assert.Equal(("one<!\ntwo\nthree\nfour\n", "NORMAL"), (Text(editor), Status(window).Mode));
             Keys(window, "@a");
-            Assert.Equal("one!\ntwo!\nthree\nfour\n", Text(editor));
+            Assert.True(Text(editor) == "one<!\ntwo<!\nthree\nfour\n", $"@a left \"{Text(editor)}\", typing less of what was recorded");
             Keys(window, "2@@");
-            Assert.Equal("one!\ntwo!\nthree!\nfour!\n", Text(editor));
+            Assert.Equal("one<!\ntwo<!\nthree<!\nfour<!\n", Text(editor));
             Keys(window, "u");
-            Ui.WaitFor(() => Text(editor) == "one!\ntwo!\nthree!\nfour\n", () => $"u after a macro left \"{Text(editor)}\"");
+            Ui.WaitFor(() => Text(editor) == "one<!\ntwo<!\nthree<!\nfour\n", () => $"u after a macro left \"{Text(editor)}\"");
+            Keys(window, ":4normal A<x<CR>");
+            Assert.True(Text(editor) == "one<!\ntwo<!\nthree<!\nfour<x\n", $":4normal A<x left \"{Text(editor)}\", typing less of what it named");
         }
         finally
         {
@@ -966,7 +969,7 @@ public sealed class VimModeTests : IDisposable
             Ui.Press(window, "control V");
             Assert.Equal("VISUAL BLOCK", Status(window).Mode);
             Ui.Press(window, "ESCAPE");
-            window.ApplySettings(window.Settings with { VimKeysToKeymap = "<C-v>" });
+            window.ApplySettings(window.Settings with { VimKeysToKeymap = VimKeys.CtrlV });
             Ui.Settle();
             Ui.Press(window, "control V");
             Assert.Equal("NORMAL", Status(window).Mode);

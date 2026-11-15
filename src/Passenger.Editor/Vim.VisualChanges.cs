@@ -29,7 +29,7 @@ public sealed partial class Vim
         List<Region> taken = regions;
         Mode = VimMode.Normal;
         shownVisual = null;
-        if (op is "x" or "<Del>")
+        if (op is "x" or VimKeys.Delete)
         {
             op = "d";
         }

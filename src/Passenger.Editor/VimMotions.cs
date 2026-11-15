@@ -689,12 +689,4 @@ public static class VimMotions
         return p;
     }
 
-    /// <summary>The text of a key that a find or a replace takes: a character, or a named key's own.</summary>
-    public static string? Typed(string key) => key switch
-    {
-        "<Tab>" => "\t",
-        "<Space>" => " ",
-        _ when key.Length == 1 || (key.Length == 2 && char.IsSurrogatePair(key[0], key[1])) => key,
-        _ => null,
-    };
 }

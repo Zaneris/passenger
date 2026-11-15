@@ -118,25 +118,25 @@ public sealed partial class Vim
         return VimResult.Held;
     }
 
-    private VimResult PressCommandLine(string key, TextSnapshot text, SelectionSet selections, IVimView view)
+    private VimResult PressCommandLine([IdentifierOf(typeof(VimKeys))] string key, TextSnapshot text, SelectionSet selections, IVimView view)
     {
         (char prompt, StringBuilder typed, List<string> keys, int back) = commandLine!.Value;
         List<string> history = prompt == ':' ? commandHistory : searchHistory;
         switch (key)
         {
-            case Escape:
+            case VimKeys.Escape:
                 commandLine = null;
                 return VimResult.Held;
-            case "<BS>" when typed.Length == 0:
+            case VimKeys.Backspace when typed.Length == 0:
                 commandLine = null;
                 return VimResult.Held;
-            case "<BS>":
+            case VimKeys.Backspace:
                 typed.Length -= typed.Length > 1 && char.IsLowSurrogate(typed[^1]) ? 2 : 1;
                 return VimResult.Held;
-            case "<C-u>":
+            case VimKeys.CtrlU:
                 typed.Clear();
                 return VimResult.Held;
-            case "<C-w>":
+            case VimKeys.CtrlW:
                 int end = typed.Length;
                 while (end > 0 && typed[end - 1] == ' ')
                 {
@@ -148,12 +148,12 @@ public sealed partial class Vim
                 }
                 typed.Length = end;
                 return VimResult.Held;
-            case "<Up>" or "<Down>":
-                int at = Math.Clamp(back + (key == "<Up>" ? 1 : -1), 0, history.Count);
+            case VimKeys.Up or VimKeys.Down:
+                int at = Math.Clamp(back + (key == VimKeys.Up ? 1 : -1), 0, history.Count);
                 typed.Clear().Append(at == 0 ? string.Empty : history[^at]);
                 commandLine = (prompt, typed, keys, at);
                 return VimResult.Held;
-            case "<CR>":
+            case VimKeys.Enter:
                 commandLine = null;
                 string line = typed.ToString();
                 if (line.Length > 0 && (history.Count == 0 || history[^1] != line))
@@ -162,9 +162,9 @@ public sealed partial class Vim
                 }
                 return prompt == ':' ? Ex(line, text, selections, view) : SearchTyped(prompt, line, keys, text, selections, view);
         }
-        if (key.Length == 1 || (key.Length == 2 && char.IsSurrogatePair(key[0], key[1])) || key == "<Tab>")
+        if (VimKeys.Typed(key) is { } character)
         {
-            typed.Append(key == "<Tab>" ? "\t" : key);
+            typed.Append(character);
         }
         return VimResult.Held;
     }

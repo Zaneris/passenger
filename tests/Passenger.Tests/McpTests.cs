@@ -1142,7 +1142,7 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         DeleteAtEnd(folder);
         await using McpClient client = await Start(["--mcp", folder], languageServer: false);
         JsonElement listed = (await Call(client, McpTools.Settings)).GetProperty("settings").EnumerateArray().Single(s => s.GetProperty("name").GetString() == "vimKeysToKeymap");
-        Assert.True(listed.GetProperty("choices").EnumerateArray().Select(c => c.GetString()).SequenceEqual(["<C-r>", "<C-v>", "<C-o>", "<C-i>"]),
+        Assert.True(listed.GetProperty("choices").EnumerateArray().Select(c => c.GetString()).SequenceEqual([VimKeys.CtrlR, VimKeys.CtrlV, VimKeys.CtrlO, VimKeys.CtrlI]),
             $"settings listed Vim mode's Ctrl keys as: {listed.GetRawText()}");
         Assert.True(listed.GetProperty("note").GetString()!.Contains("<C-v> (Vim mode: Visual block mode; keymap: ", StringComparison.Ordinal),
             $"settings said nothing of what each Ctrl key does on either side: {listed.GetRawText()}");

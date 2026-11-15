@@ -23,7 +23,7 @@ public sealed partial class Vim
     /// made in visual mode how much it took.</summary>
     private sealed record ChangeMade(IReadOnlyList<string> Keys, int Count, string Inserted, VisualExtent? Visual = null);
 
-    private static readonly HashSet<string> VisualOperators = ["d", "x", "<Del>", "X", "D", "c", "s", "C", "S", "R", "y", "Y", ">", "<", "=", "~", "u", "U", "J", "p", "P", "I", "A"];
+    private static readonly HashSet<string> VisualOperators = ["d", "x", VimKeys.Delete, "X", "D", "c", "s", "C", "S", "R", "y", "Y", ">", "<", "=", "~", "u", "U", "J", "p", "P", "I", "A"];
 
     /// <summary>The stretches of visual mode, one per caret; a block's only one, its corners.</summary>
     private List<Region> regions = [];
@@ -242,13 +242,13 @@ public sealed partial class Vim
         return start < 0 ? null : (start, end);
     }
 
-    private VimResult PressVisual(string key, TextSnapshot text, SelectionSet selections, IVimView view)
+    private VimResult PressVisual([IdentifierOf(typeof(VimKeys))] string key, TextSnapshot text, SelectionSet selections, IVimView view)
     {
         if (shownVisual is null || !shownVisual.SameAs(selections))
         {
             Derive(text, selections);
         }
-        if (key == Escape)
+        if (key == VimKeys.Escape)
         {
             pending.Clear();
             return LeaveVisual(text, view);
@@ -296,7 +296,7 @@ public sealed partial class Vim
         pending.Clear();
         switch (first)
         {
-            case "v" or "V" or "<C-v>":
+            case "v" or "V" or VimKeys.CtrlV:
                 VimMode to = first switch { "v" => VimMode.Visual, "V" => VimMode.VisualLine, _ => VimMode.VisualBlock };
                 return to == Mode ? LeaveVisual(text, view) : SwitchVisual(to, text, view);
             case "o":
@@ -317,7 +317,7 @@ public sealed partial class Vim
             case "i" or "a":
                 return VisualObject(text, second, first == "i", n, view);
             case "r":
-                if ((second == "<CR>" ? "\n" : VimMotions.Typed(second)) is not { } with)
+                if (VimKeys.Typed(second, enterBreaks: true) is not { } with)
                 {
                     return VimResult.Held;
                 }

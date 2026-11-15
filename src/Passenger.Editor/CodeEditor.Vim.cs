@@ -183,7 +183,7 @@ public sealed partial class CodeEditor
         int over = inputMethod?.TakeCommandLineChoice() ?? -1;
         while (over >= 0 && vim?.CommandLine is { } line && line.Length - 1 > over)
         {
-            FollowVim(vim.Press("<BS>", document.Snapshot, selections, VimView), vim.Mode);
+            FollowVim(vim.Press(VimKeys.Backspace, document.Snapshot, selections, VimView), vim.Mode);
         }
         foreach (System.Text.Rune rune in typed.EnumerateRunes())
         {
@@ -205,7 +205,7 @@ public sealed partial class CodeEditor
         {
             return false;
         }
-        FollowVim(vim.Press(Vim.Escape, document.Snapshot, selections, VimView), VimMode.Insert);
+        FollowVim(vim.Press(VimKeys.Escape, document.Snapshot, selections, VimView), VimMode.Insert);
         return true;
     }
 
@@ -371,12 +371,12 @@ public sealed partial class CodeEditor
             }
             if (!result.Taken && vim.Mode == VimMode.Insert)
             {
-                string? action = key switch { "<CR>" => EditorActions.NewLine, "<BS>" => EditorActions.Backspace, "<Tab>" => EditorActions.Indent, _ => null };
+                string? action = key switch { VimKeys.Enter => EditorActions.NewLine, VimKeys.Backspace => EditorActions.Backspace, VimKeys.Tab => EditorActions.Indent, _ => null };
                 if (action is not null)
                 {
                     TryExecute(action);
                 }
-                else if (key.Length <= 2 && !key.StartsWith('<'))
+                else if (VimKeys.IsTyped(key))
                 {
                     Type(key);
                 }
@@ -408,22 +408,22 @@ public sealed partial class CodeEditor
         KeyModifiers held = e.KeyModifiers & ~KeyModifiers.Shift;
         return held switch
         {
-            KeyModifiers.None when e.Key == Key.Escape => Vim.Escape,
+            KeyModifiers.None when e.Key == Key.Escape => VimKeys.Escape,
             // Named so normal mode takes them: on to the keymap they would type a line break or a tab, or delete.
-            KeyModifiers.None when e.Key == Key.Back => "<BS>",
-            KeyModifiers.None when e.Key == Key.Enter => "<CR>",
-            KeyModifiers.None when e.Key == Key.Delete => "<Del>",
-            KeyModifiers.None when e.Key == Key.Tab => "<Tab>",
-            KeyModifiers.Control when e.Key == Key.R => "<C-r>",
-            KeyModifiers.Control when e.Key == Key.V => "<C-v>",
-            KeyModifiers.Control when e.Key == Key.O => "<C-o>",
-            KeyModifiers.Control when e.Key == Key.I => "<C-i>",
-            KeyModifiers.Control when e.Key == Key.U => "<C-u>",
-            KeyModifiers.Control when e.Key == Key.W => "<C-w>",
+            KeyModifiers.None when e.Key == Key.Back => VimKeys.Backspace,
+            KeyModifiers.None when e.Key == Key.Enter => VimKeys.Enter,
+            KeyModifiers.None when e.Key == Key.Delete => VimKeys.Delete,
+            KeyModifiers.None when e.Key == Key.Tab => VimKeys.Tab,
+            KeyModifiers.Control when e.Key == Key.R => VimKeys.CtrlR,
+            KeyModifiers.Control when e.Key == Key.V => VimKeys.CtrlV,
+            KeyModifiers.Control when e.Key == Key.O => VimKeys.CtrlO,
+            KeyModifiers.Control when e.Key == Key.I => VimKeys.CtrlI,
+            KeyModifiers.Control when e.Key == Key.U => VimKeys.CtrlU,
+            KeyModifiers.Control when e.Key == Key.W => VimKeys.CtrlW,
             // Any other Ctrl and a letter by its name, which a mapping may take and Vim mode otherwise leaves to the keymap.
-            KeyModifiers.Control when e.Key is >= Key.A and <= Key.Z => $"<C-{(char)('a' + (e.Key - Key.A))}>",
-            KeyModifiers.None when e.Key == Key.Up => "<Up>",
-            KeyModifiers.None when e.Key == Key.Down => "<Down>",
+            KeyModifiers.Control when e.Key is >= Key.A and <= Key.Z => VimKeys.Ctrl((char)('a' + (e.Key - Key.A))),
+            KeyModifiers.None when e.Key == Key.Up => VimKeys.Up,
+            KeyModifiers.None when e.Key == Key.Down => VimKeys.Down,
             KeyModifiers.None when e.KeySymbol is { Length: 1 } typed && !char.IsControl(typed[0]) => typed,
             _ when KeymapDispatcher.IsAltGrTyping(e) && e.KeySymbol is { Length: 1 } typed => typed,
             // A press whose platform gives no symbol: letters and digits by their key, as punctuation's differs by layout.
@@ -431,7 +431,7 @@ public sealed partial class CodeEditor
                 ((char)((e.KeyModifiers.HasFlag(KeyModifiers.Shift) ? 'A' : 'a') + (e.Key - Key.A))).ToString(),
             KeyModifiers.None when e.KeySymbol is null && e.Key is >= Key.D0 and <= Key.D9 && !e.KeyModifiers.HasFlag(KeyModifiers.Shift) =>
                 ((char)('0' + (e.Key - Key.D0))).ToString(),
-            _ => "<Other>",
+            _ => VimKeys.Other,
         };
     }
 

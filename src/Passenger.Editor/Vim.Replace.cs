@@ -36,9 +36,9 @@ public sealed partial class Vim
 
     /// <summary>A key in replace mode: a character typed over the one at each caret (or added at a line's end), Enter a
     /// line break added, Backspace putting back what the last key typed over, Escape back to normal mode.</summary>
-    private VimResult PressReplace(string key, TextSnapshot text, SelectionSet selections, IVimView view)
+    private VimResult PressReplace([IdentifierOf(typeof(VimKeys))] string key, TextSnapshot text, SelectionSet selections, IVimView view)
     {
-        if (key == Escape)
+        if (key == VimKeys.Escape)
         {
             return LeaveReplace(text, selections, view);
         }
@@ -46,7 +46,7 @@ public sealed partial class Vim
         {
             replaced = [.. selections.Items.Select(_ => new List<string>())];
         }
-        if (key == "<BS>")
+        if (key == VimKeys.Backspace)
         {
             if (replacing is { } session && session.Typed.Length > 0)
             {
@@ -54,15 +54,9 @@ public sealed partial class Vim
             }
             return TakeBack(text, selections);
         }
-        string? typed = key switch
+        if (VimKeys.Typed(key, enterBreaks: true) is not { } typed)
         {
-            "<CR>" => "\n",
-            "<Tab>" => "\t",
-            _ => key.Length == 1 || (key.Length == 2 && char.IsSurrogatePair(key[0], key[1])) ? key : null,
-        };
-        if (typed is null)
-        {
-            return key == "<Del>" ? VimResult.Held : VimResult.Left;
+            return key == VimKeys.Delete ? VimResult.Held : VimResult.Left;
         }
         replacing?.Typed.Append(typed);
         return TypeOver(text, selections, typed, view);
@@ -198,14 +192,14 @@ public sealed partial class Vim
             return VimResult.Held;
         }
         lastPlayed = played;
-        List<string> keys = KeysOf(macro.Text);
+        List<string> keys = VimKeys.Pressed(macro.Text);
         int times = Math.Clamp(command.Count, 1, Math.Max(1, MostReplayed / Math.Max(1, keys.Count)));
         return new VimResult(true) { Replay = [.. Enumerable.Repeat(keys, times).SelectMany(k => k)] };
     }
 
     /// <summary>The key just pressed recorded, while q records; the q ending it ends the recording instead, keeping
     /// what was recorded in its register.</summary>
-    private bool Recorded(string key)
+    private bool Recorded([IdentifierOf(typeof(VimKeys))] string key)
     {
         if (recording is not { } r)
         {
@@ -213,56 +207,14 @@ public sealed partial class Vim
         }
         if (key == "q" && Mode == VimMode.Normal && pending.Count == 0 && commandLine is null)
         {
-            Registers.Record(r.Register, TextOf(r.Keys));
+            Registers.Record(r.Register, VimKeys.Recorded(r.Keys));
             recording = null;
             return true;
         }
-        if (key is not ("<Other>" or "<Up>" or "<Down>"))
+        if (key is not (VimKeys.Other or VimKeys.Up or VimKeys.Down))
         {
             r.Keys.Add(key);
         }
         return false;
-    }
-
-    /// <summary>Keys in Vim's notation as a register keeps them, named keys as the control characters Vim writes.</summary>
-    private static string TextOf(IEnumerable<string> keys)
-    {
-        StringBuilder text = new();
-        foreach (string key in keys)
-        {
-            text.Append(key switch
-            {
-                Escape => "\u001b",
-                "<CR>" => "\r",
-                "<BS>" => "\b",
-                "<Tab>" => "\t",
-                "<Del>" => "\u007f",
-                ['<', 'C', '-', >= 'a' and <= 'z', '>'] => ((char)(key[3] - 'a' + 1)).ToString(),
-                _ => key,
-            });
-        }
-        return text.ToString();
-    }
-
-    /// <summary>A register's text as the keys it presses: its control characters the named keys, a line break Enter.</summary>
-    private static List<string> KeysOf(string text)
-    {
-        List<string> keys = [];
-        for (int i = 0; i < text.Length; i++)
-        {
-            char c = text[i];
-            keys.Add(c switch
-            {
-                '\u001b' => Escape,
-                '\r' or '\n' => "<CR>",
-                '\b' => "<BS>",
-                '\t' => "<Tab>",
-                '\u007f' => "<Del>",
-                >= '\u0001' and <= '\u001a' => $"<C-{(char)('a' + c - 1)}>",
-                _ when char.IsHighSurrogate(c) && i + 1 < text.Length && char.IsLowSurrogate(text[i + 1]) => text.Substring(i++, 2),
-                _ => c.ToString(),
-            });
-        }
-        return keys;
     }
 }

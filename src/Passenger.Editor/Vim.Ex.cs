@@ -651,26 +651,22 @@ public sealed partial class Vim
         {
             return VimResult.Held;
         }
-        List<string> pressed = KeysOf(keys);
+        List<string> pressed = VimKeys.Pressed(keys);
         IReadOnlyList<int> each = lines ?? (range is { } r ? [.. Enumerable.Range(r.First, r.Last - r.First + 1)] : []);
         if (each.Count == 0)
         {
-            return new VimResult(true) { Replay = [.. pressed, Escape] };
+            return new VimResult(true) { Replay = [.. pressed, VimKeys.Escape] };
         }
         List<string> replay = [];
         int last = VimMotions.LastLine(text, breakEnds);
         foreach (int line in each)
         {
-            replay.Add(GoKey + (last - line).ToString(CultureInfo.InvariantCulture));
+            replay.Add(VimKeys.Go + (last - line).ToString(CultureInfo.InvariantCulture));
             replay.AddRange(pressed);
-            replay.Add(Escape);
+            replay.Add(VimKeys.Escape);
         }
         return new VimResult(true, selections) { Replay = replay };
     }
-
-    /// <summary>A key only a replay presses: the caret to a line's start, the number after it counting lines up from the
-    /// text's last, no jump.</summary>
-    private const string GoKey = "<Go>";
 
     /// <summary>:set: each option named turned on (name), off (noname), round (invname, name!) or said (name?); with none,
     /// those that differ from their defaults said.</summary>

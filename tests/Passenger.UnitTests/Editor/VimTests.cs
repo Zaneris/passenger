@@ -714,7 +714,7 @@ public class VimTests
         Assert.Equal(after, Run(before, keys));
 
     [Theory]
-    [InlineData("ab|cd\nefgh\nijkl", "<C-v>", "ab«c|d\nefgh\nijkl")]
+    [InlineData("ab|cd\nefgh\nijkl", VimKeys.CtrlV, "ab«c|d\nefgh\nijkl")]
     [InlineData("ab|cd\nefgh\nijkl", "<C-v>jl", "ab«cd|\nef«gh|\nijkl")]
     [InlineData("ab|cd\nefgh\nijkl", "<C-v>jh", "a|bc»d\ne|fg»h\nijkl")]
     [InlineData("ab|cd\nefgh\nijkl", "<C-v>j$", "ab«cd|\nef«gh|\nijkl")]
@@ -931,7 +931,7 @@ public class VimTests
     [InlineData(":x<CR>", VimRequestKind.SaveAndClose, null)]
     [InlineData(":wa<CR>", VimRequestKind.SaveAll, null)]
     [InlineData(":e src/Other.cs<CR>", VimRequestKind.Open, "src/Other.cs")]
-    [InlineData("<C-o>", VimRequestKind.Older, null)]
+    [InlineData(VimKeys.CtrlO, VimRequestKind.Older, null)]
     [InlineData("<Tab>", VimRequestKind.Newer, null)]
     public void Saving_closing_opening_and_the_ides_places_are_asked_of_the_host(string keys, VimRequestKind kind, string? path)
     {
@@ -1016,7 +1016,7 @@ public class VimTests
         Assert.True(vim.Press("2", text, carets).Taken);
         Assert.True(vim.Press("d", text, carets).Taken);
         Assert.Equal("2d", vim.Pending);
-        Assert.True(vim.Press("<Esc>", text, carets).Taken);
+        Assert.True(vim.Press(VimKeys.Escape, text, carets).Taken);
         Assert.Equal(string.Empty, vim.Pending);
     }
 
@@ -1026,7 +1026,7 @@ public class VimTests
         Vim vim = new();
         (TextSnapshot text, SelectionSet carets) = Marked.Parse("a|b");
         Assert.False(vim.Press("<D-s>", text, carets).Taken);
-        Assert.False(vim.Press("<Esc>", text, carets).Taken);
+        Assert.False(vim.Press(VimKeys.Escape, text, carets).Taken);
         Assert.True(vim.Press("Q", text, carets).Taken);
         vim.Press("i", text, carets);
         Assert.False(vim.Press("x", text, carets).Taken);
@@ -1035,7 +1035,7 @@ public class VimTests
     [Theory]
     [InlineData("u", EditorActions.Undo, 1)]
     [InlineData("3u", EditorActions.Undo, 3)]
-    [InlineData("<C-r>", EditorActions.Redo, 1)]
+    [InlineData(VimKeys.CtrlR, EditorActions.Redo, 1)]
     public void Undo_and_redo_run_the_editors_own_actions(string keys, string action, int repeat)
     {
         Vim vim = new();
@@ -1337,7 +1337,7 @@ public class VimTests
         (TextSnapshot text, SelectionSet carets) = Marked.Parse("|ab");
         Vim vim = new();
         Press(vim, "qa<C-o>q", text, carets);
-        Assert.Equal(["<C-o>"], Press(vim, "@a", text, carets).Replay);
+        Assert.Equal([VimKeys.CtrlO], Press(vim, "@a", text, carets).Replay);
     }
 
     /// <summary>The words a read-only text's refusals say in these tests.</summary>
@@ -1380,7 +1380,7 @@ public class VimTests
         Assert.True(refused is { Taken: true, Edits: null, Message: ReadOnlyWords, MessageIsError: true }, $"x on a read-only text came to {refused}");
         Assert.Equal(EditorActions.Undo, vim.Press("u", text, carets).Action);
         Assert.Null(vim.Press("u", text, carets, readOnly).Action);
-        Assert.Null(vim.Press("<C-r>", text, carets, readOnly).Action);
+        Assert.Null(vim.Press(VimKeys.CtrlR, text, carets, readOnly).Action);
         // A change made where the text took it is refused again by . where it refuses.
         Assert.NotNull(vim.Press("x", text, carets).Edits);
         Assert.Equal(ReadOnlyWords, vim.Press(".", text, carets, readOnly).Message);
@@ -1831,7 +1831,7 @@ public class VimTests
                 }
                 continue;
             }
-            if (stopAtFailure && ReferenceEquals(result, VimResult.Held) && vim.Pending.Length == 0 && vim.Mode == VimMode.Normal && key != Vim.Escape)
+            if (stopAtFailure && ReferenceEquals(result, VimResult.Held) && vim.Pending.Length == 0 && vim.Mode == VimMode.Normal && key != VimKeys.Escape)
             {
                 // A command that fails ends the keys, as Vim's beep flushes what was typed ahead.
                 break;
@@ -1840,9 +1840,9 @@ public class VimTests
             {
                 EditPlan? typed = key switch
                 {
-                    "<CR>" => TextEditing.NewLine(text, carets, "\n", new IndentOptions()),
-                    "<BS>" => TextEditing.Backspace(text, carets, new IndentOptions()),
-                    "<Tab>" => TextEditing.Insert(text, carets, "\t"),
+                    VimKeys.Enter => TextEditing.NewLine(text, carets, "\n", new IndentOptions()),
+                    VimKeys.Backspace => TextEditing.Backspace(text, carets, new IndentOptions()),
+                    VimKeys.Tab => TextEditing.Insert(text, carets, "\t"),
                     _ => TextEditing.Insert(text, carets, key),
                 };
                 if (typed is not null)
@@ -1873,7 +1873,8 @@ public class VimTests
     /// <summary>The keys of Vim's notation one by one: a named key ("&lt;Esc&gt;") whole, any other character alone.</summary>
     public static IEnumerable<string> Keys(string keys)
     {
-        string[] named = ["<Esc>", "<CR>", "<BS>", "<Tab>", "<Del>", "<C-r>", "<C-v>", "<C-o>", "<C-i>", "<C-u>", "<C-w>", "<Up>", "<Down>", "<D-s>", Waited];
+        string[] named = [VimKeys.Escape, VimKeys.Enter, VimKeys.Backspace, VimKeys.Tab, VimKeys.Delete, VimKeys.CtrlR, VimKeys.CtrlV, VimKeys.CtrlO, VimKeys.CtrlI,
+            VimKeys.CtrlU, VimKeys.CtrlW, VimKeys.Up, VimKeys.Down, "<D-s>", Waited];
         for (int i = 0; i < keys.Length; i++)
         {
             string? name = keys[i] == '<' ? Array.Find(named, n => string.CompareOrdinal(keys, i, n, 0, n.Length) == 0) : null;

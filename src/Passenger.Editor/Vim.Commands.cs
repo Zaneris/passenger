@@ -8,14 +8,14 @@ public sealed partial class Vim
 {
     /// <summary>A command read whole: its keys after the count (for . to make again), the counts multiplied (0 for none
     /// typed), the register named, the operator if any, and the motion, object or command with the key it takes.</summary>
-    private sealed record Command(IReadOnlyList<string> Keys, int Count, char? Register, string? Operator, string Name, string? Argument);
+    private sealed record Command(IReadOnlyList<string> Keys, int Count, char? Register, string? Operator, [property: IdentifierOf(typeof(VimKeys))] string Name, string? Argument);
 
     private static readonly HashSet<string> SingleMotions =
-        ["h", "l", "j", "k", "0", "^", "$", "|", "w", "W", "b", "B", "e", "E", "G", ";", ",", "%", "{", "}", "(", ")", "H", "M", "L", "<BS>", "<CR>", " ", "+", "-", "_", "n", "N", "*", "#"];
+        ["h", "l", "j", "k", "0", "^", "$", "|", "w", "W", "b", "B", "e", "E", "G", ";", ",", "%", "{", "}", "(", ")", "H", "M", "L", VimKeys.Backspace, VimKeys.Enter, " ", "+", "-", "_", "n", "N", "*", "#"];
 
     private static readonly HashSet<string> GMotions = ["g", "e", "E", "j", "k", "_", "*", "#"];
 
-    private static readonly HashSet<string> Simple = ["x", "X", "s", "S", "C", "D", "Y", "J", "~", "i", "a", "I", "A", "o", "O", "u", "p", "P", ".", "v", "V", "<C-v>", "R", "<C-o>", "<C-i>", "<Tab>"];
+    private static readonly HashSet<string> Simple = ["x", "X", "s", "S", "C", "D", "Y", "J", "~", "i", "a", "I", "A", "o", "O", "u", "p", "P", ".", "v", "V", VimKeys.CtrlV, "R", VimKeys.CtrlO, VimKeys.CtrlI, VimKeys.Tab];
 
     /// <summary>The commands that change the text, or begin insert or replace mode, without an operator: refused alone where the
     /// text refuses changes (x and its kind are operators' and refused by the operator).</summary>
@@ -119,7 +119,7 @@ public sealed partial class Vim
                     incomplete = true;
                     return null;
                 }
-                (name, argument, used) = (first, keys[i + 1] == "<CR>" ? "\n" : VimMotions.Typed(keys[i + 1]), 2);
+                (name, argument, used) = (first, VimKeys.Typed(keys[i + 1], enterBreaks: true), 2);
                 if (argument is null)
                 {
                     return null;
@@ -193,7 +193,7 @@ public sealed partial class Vim
             {
                 return keys[at + 1].Length == 1 ? (key, keys[at + 1], 2) : (null, null, 0);
             }
-            return VimMotions.Typed(keys[at + 1]) is { } typed ? (key, typed, 2) : (null, null, 0);
+            return VimKeys.Typed(keys[at + 1]) is { } typed ? (key, typed, 2) : (null, null, 0);
         }
         return (null, null, 0);
     }
@@ -221,7 +221,7 @@ public sealed partial class Vim
                 return EnterVisual(VimMode.Visual, command.Count, text, selections, view);
             case "V":
                 return EnterVisual(VimMode.VisualLine, command.Count, text, selections, view);
-            case "<C-v>":
+            case VimKeys.CtrlV:
                 return EnterVisual(VimMode.VisualBlock, command.Count, text, selections, view);
             case "gv":
                 return Reselect(text, view);
@@ -235,9 +235,9 @@ public sealed partial class Vim
                 return Macro(command);
             case "m":
                 return SetMark(command, selections, view);
-            case "<C-o>":
+            case VimKeys.CtrlO:
                 return Asked(VimRequestKind.Older) with { Request = new VimRequest(VimRequestKind.Older, Count: n) };
-            case "<C-i>" or "<Tab>":
+            case VimKeys.CtrlI or VimKeys.Tab:
                 return Asked(VimRequestKind.Newer) with { Request = new VimRequest(VimRequestKind.Newer, Count: n) };
             case "j" or "k" or "gj" or "gk" when command.Operator is null:
                 return Vertically(text, selections, command.Name is "j" or "gj" ? n : -n, command.Name.StartsWith('g'), view);
@@ -351,7 +351,7 @@ public sealed partial class Vim
             case "h":
                 // Under an operator, h at the line's start and l at its end take nothing rather than fail.
                 return VimMotions.Left(text, caret, n, crossing: false) ?? (operating ? new VimTarget(caret, VimMotionKind.Exclusive) : null);
-            case "<BS>":
+            case VimKeys.Backspace:
                 return VimMotions.Left(text, caret, n, crossing: true);
             case "l":
                 return VimMotions.Right(text, caret, n, crossing: false, operating, breakEnds) ?? (operating ? new VimTarget(caret, VimMotionKind.Exclusive) : null);
@@ -384,8 +384,8 @@ public sealed partial class Vim
                 return Line(text, count == 0 ? 0 : Math.Min(count - 1, VimMotions.LastLine(text, breakEnds)));
             case "G":
                 return Line(text, count == 0 ? VimMotions.LastLine(text, breakEnds) : Math.Min(count - 1, VimMotions.LastLine(text, breakEnds)));
-            case "j" or "k" or "+" or "-" or "<CR>" or "_":
-                long lines = command.Name switch { "j" or "+" or "<CR>" => n, "_" => n - 1, _ => -n };
+            case "j" or "k" or "+" or "-" or VimKeys.Enter or "_":
+                long lines = command.Name switch { "j" or "+" or VimKeys.Enter => n, "_" => n - 1, _ => -n };
                 if (VimMotions.LinesAway(text, caret, lines, breakEnds) is not { } line)
                 {
                     return null;

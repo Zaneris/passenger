@@ -214,7 +214,9 @@ public sealed class VimKeysSetting(string property, Func<AppSettings, string> ge
     public IReadOnlySet<string> Given(AppSettings settings) => Named(get(settings)).Where(Keys.Contains).ToHashSet(StringComparer.Ordinal);
 
     /// <summary>What a person presses for a key it gives: Ctrl and the key's letter.</summary>
-    public static Keystroke StrokeOf(string key) => new(Avalonia.Input.Key.A + (key[3] - 'a'), Avalonia.Input.KeyModifiers.Control);
+    public static Keystroke StrokeOf(string key) =>
+        VimKeys.CtrlLetter(key) is { } letter ? new(Avalonia.Input.Key.A + (letter - 'a'), Avalonia.Input.KeyModifiers.Control)
+            : throw new ArgumentException($"{key} is no Ctrl key of Vim mode's", nameof(key));
 
     public override Control Editor(AppSettings now, Action<Func<AppSettings, AppSettings>> change) => Box(now, change, _ => null);
 

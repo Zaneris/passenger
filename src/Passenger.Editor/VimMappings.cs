@@ -1,4 +1,3 @@
-using System.Globalization;
 
 namespace Passenger.Editor;
 
@@ -145,7 +144,7 @@ public sealed class VimMappings
             value = value[1..^1];
         }
         value = value.Replace("\\<", "<", StringComparison.Ordinal).Replace("\\\\", "\\", StringComparison.Ordinal);
-        List<string> keys = KeysOf(value, leader);
+        List<string> keys = VimKeys.Written(value, leader);
         if (keys.Count != 1)
         {
             return $"mapleader is one key, not {value}";
@@ -210,7 +209,7 @@ public sealed class VimMappings
         {
             split++;
         }
-        List<string> keys = KeysOf(rest[..split], leader);
+        List<string> keys = VimKeys.Written(rest[..split], leader);
         if (keys.Count == 0)
         {
             return "a mapping names the keys it takes";
@@ -230,69 +229,7 @@ public sealed class VimMappings
             return "<Plug> and <SID> name a plugin's or script's functions, which Vim mode has none of";
         }
         mappings.RemoveAll(m => m.Keys.SequenceEqual(keys) && m.Modes == modes);
-        mappings.Add(new VimMapping(modes, keys, to.Equals("<Nop>", StringComparison.OrdinalIgnoreCase) ? [] : KeysOf(to, leader), remaps));
-        return null;
-    }
-
-    /// <summary>Keys written in Vim's notation as Vim mode names keys: a named key (&lt;CR&gt;, &lt;C-x&gt;) whole, any
-    /// other character alone, &lt;leader&gt; the leader.</summary>
-    public static List<string> KeysOf(string written, string leader = "\\")
-    {
-        List<string> keys = [];
-        for (int i = 0; i < written.Length; i++)
-        {
-            if (written[i] == '<' && written.IndexOf('>', i + 1) is int close and > 0 && Named(written[(i + 1)..close], leader) is { } named)
-            {
-                keys.Add(named);
-                i = close;
-                continue;
-            }
-            if (char.IsHighSurrogate(written[i]) && i + 1 < written.Length)
-            {
-                keys.Add(written.Substring(i, 2));
-                i++;
-                continue;
-            }
-            keys.Add(written[i].ToString());
-        }
-        return keys;
-    }
-
-    /// <summary>A key's name between &lt; and &gt; as Vim mode names it; null for a name it does not know.</summary>
-    private static string? Named(string name, string leader)
-    {
-        string lower = name.ToLowerInvariant();
-        switch (lower)
-        {
-            case "cr" or "enter" or "return":
-                return "<CR>";
-            case "esc":
-                return Vim.Escape;
-            case "bs":
-                return "<BS>";
-            case "tab":
-                return "<Tab>";
-            case "del":
-                return "<Del>";
-            case "space":
-                return " ";
-            case "lt":
-                return "<";
-            case "bar":
-                return "|";
-            case "bslash":
-                return "\\";
-            case "leader":
-                return leader;
-            case "up":
-                return "<Up>";
-            case "down":
-                return "<Down>";
-        }
-        if (lower.Length == 3 && lower[0] == 'c' && lower[1] == '-' && char.IsAsciiLetter(lower[2]))
-        {
-            return string.Create(CultureInfo.InvariantCulture, $"<C-{lower[2]}>");
-        }
+        mappings.Add(new VimMapping(modes, keys, to.Equals("<Nop>", StringComparison.OrdinalIgnoreCase) ? [] : VimKeys.Written(to, leader), remaps));
         return null;
     }
 }

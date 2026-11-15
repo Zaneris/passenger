@@ -54,13 +54,10 @@ public sealed record VimResult(bool Taken, SelectionSet? Selections = null, IRea
 /// the keymap, so the IDE's own keys keep working.</summary>
 public sealed partial class Vim(VimRegisters registers)
 {
-    /// <summary>Escape in Vim's notation.</summary>
-    public const string Escape = "<Esc>";
-
     /// <summary>The keys with Ctrl normal and visual mode take, and what each does there, which Settings may give to the
     /// keymap instead.</summary>
     public static readonly IReadOnlyList<(string Key, string Does)> CtrlKeys =
-        [("<C-r>", "Redo"), ("<C-v>", "Visual block mode"), ("<C-o>", "Back to the place before"), ("<C-i>", "On to the place after")];
+        [(VimKeys.CtrlR, "Redo"), (VimKeys.CtrlV, "Visual block mode"), (VimKeys.CtrlO, "Back to the place before"), (VimKeys.CtrlI, "On to the place after")];
 
     /// <summary>The most undos or redos a count asks for at once: the window queues each apart.</summary>
     private const int MostRepeated = 1000;
@@ -118,7 +115,7 @@ public sealed partial class Vim(VimRegisters registers)
     /// <summary>Set while the host presses a macro's or :normal's keys, which q records none of.</summary>
     public bool Playing { get; set; }
 
-    public VimResult Press(string key, TextSnapshot text, SelectionSet selections, IVimView? view = null)
+    public VimResult Press([IdentifierOf(typeof(VimKeys))] string key, TextSnapshot text, SelectionSet selections, IVimView? view = null)
     {
         view ??= PlainView;
         breakEnds = view.KeepsFinalLineBreak;
@@ -131,7 +128,7 @@ public sealed partial class Vim(VimRegisters registers)
         {
             unmappedLeft--;
         }
-        if (!replaying && !unmapped && !key.StartsWith(GoKey, StringComparison.Ordinal) && Mapped(key) is { } mapped)
+        if (!replaying && !unmapped && !key.StartsWith(VimKeys.Go, StringComparison.Ordinal) && Mapped(key) is { } mapped)
         {
             return mapped;
         }
@@ -139,7 +136,7 @@ public sealed partial class Vim(VimRegisters registers)
         {
             return PressCommandLine(key, text, selections, view);
         }
-        if (key.StartsWith(GoKey, StringComparison.Ordinal) && int.TryParse(key.AsSpan(GoKey.Length), System.Globalization.CultureInfo.InvariantCulture, out int goLine))
+        if (key.StartsWith(VimKeys.Go, StringComparison.Ordinal) && int.TryParse(key.AsSpan(VimKeys.Go.Length), System.Globalization.CultureInfo.InvariantCulture, out int goLine))
         {
             Mode = VimMode.Normal;
             pending.Clear();
@@ -149,7 +146,7 @@ public sealed partial class Vim(VimRegisters registers)
     }
 
     /// <summary>A key in any mode but the command line's.</summary>
-    private VimResult Take(string key, TextSnapshot text, SelectionSet selections, IVimView view)
+    private VimResult Take([IdentifierOf(typeof(VimKeys))] string key, TextSnapshot text, SelectionSet selections, IVimView view)
     {
         if (Mode == VimMode.Replace)
         {
@@ -157,25 +154,25 @@ public sealed partial class Vim(VimRegisters registers)
         }
         if (Mode == VimMode.Insert)
         {
-            return key == Escape ? LeaveInsert(text, selections, view) : VimResult.Left;
+            return key == VimKeys.Escape ? LeaveInsert(text, selections, view) : VimResult.Left;
         }
         if (IsVisual(Mode))
         {
             return PressVisual(key, text, selections, view);
         }
-        if (key == Escape)
+        if (key == VimKeys.Escape)
         {
             bool waiting = pending.Count > 0;
             pending.Clear();
             return waiting ? VimResult.Held : VimResult.Left;
         }
-        if (key == "<C-r>")
+        if (key == VimKeys.CtrlR)
         {
             int redo = CountOnly();
             pending.Clear();
             return view.Refuses is { } why ? Refused(why) : new VimResult(true, Action: EditorActions.Redo, Repeat: Math.Clamp(redo, 1, MostRepeated));
         }
-        if (key == "<Del>" && pending.Count > 0)
+        if (key == VimKeys.Delete && pending.Count > 0)
         {
             // Delete after a count takes back the count's last digit, as Vim does.
             bool counting = pending.All(k => k.Length == 1 && char.IsAsciiDigit(k[0]));
@@ -198,7 +195,7 @@ public sealed partial class Vim(VimRegisters registers)
         {
             return OpenCommandLine(key[0], string.Empty);
         }
-        pending.Add(key == "<Del>" ? "x" : key);
+        pending.Add(key == VimKeys.Delete ? "x" : key);
         Command? command = Parse(pending, out bool incomplete);
         if (incomplete)
         {
@@ -265,7 +262,7 @@ public sealed partial class Vim(VimRegisters registers)
     }
 
     private static bool IsVimKey(string key) =>
-        key.Length == 1 || (key.Length == 2 && char.IsSurrogatePair(key[0], key[1])) || key is "<BS>" or "<CR>" or "<Del>" or "<Tab>" or "<C-v>" or "<C-o>" or "<C-i>";
+        VimKeys.IsTyped(key) || key is VimKeys.Backspace or VimKeys.Enter or VimKeys.Delete or VimKeys.Tab or VimKeys.CtrlV or VimKeys.CtrlO or VimKeys.CtrlI;
 
     /// <summary>The count typed so far where nothing else is, 0 with none.</summary>
     private int CountOnly()
@@ -432,11 +429,11 @@ public sealed partial class Vim(VimRegisters registers)
             }
             if (Mode == VimMode.Replace)
             {
-                foreach (string over in KeysOf(change.Inserted))
+                foreach (string over in VimKeys.Pressed(change.Inserted))
                 {
                     Follow(Press(over, text, carets, view));
                 }
-                Follow(Press(Escape, text, carets, view));
+                Follow(Press(VimKeys.Escape, text, carets, view));
             }
             if (Mode == VimMode.Insert)
             {
