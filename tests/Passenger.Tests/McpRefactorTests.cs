@@ -122,7 +122,7 @@ public sealed class McpRefactorTests : McpRig, IClassFixture<RestoredFolders>
             Assert.True(both.IsError == true && Text(both).Contains("one at a time", StringComparison.Ordinal), $"A move to a file and a namespace at once answered: {Text(both)}");
 
             UndoInSolutionView(window, "Shapes.cs");
-            Assert.Equal("Undo Move to Another File? It changes Shapes.cs and Circle.cs.", asked[^1]);
+            Assert.Equal("Undo Move to Another File? It changes Shapes.cs, and deletes Circle.cs.", asked[^1]);
             Assert.False(File.Exists(PathOf("Circle.cs")), "Undo left the file Move to Another File made");
             Assert.Equal(Shapes, window.EditorArea.Documents.First(d => d.Name == "Shapes.cs").Text.Snapshot.ToString());
         }

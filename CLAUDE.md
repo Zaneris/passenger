@@ -211,7 +211,7 @@ Projects in `src/`; `find_symbol` finds the rest from the names here. A pointer'
   by halving `Sorted`, never a loop of your own; a primitive `PrimitiveTypes`; an SDK into an installation
   `DotnetMerge`; a path in a project file `ItemPaths`; what a Mac program links `MachOFile`; whether this process runs translated `Dotnet.Translated`, a program's processors
   `ProgramProcessors`; work any thread asks for by
-  key (a download), begun once however many ask, an ask that stops waiting never letting it go, `SharedWork`.
+  key (a download), begun once however many ask, an ask that stops waiting never letting it go, `SharedWork`; requests to a peer answered by number `PendingRequests` (one asked after its end fails at once), never a table of one's own.
 - `Passenger.Text`: the rope, `TextDocument`, editing commands as pure functions to an `EditPlan`, `FileText`; an XML
   value through `XmlEntities`, never `SecurityElement.Escape` or a hand Replace; a place in the text held by an anchor
   (`AnchorAt`), never your own `TextEditing.Map*`; an end tag typed over by hand `EndTagTyping`, never a caret jump.
@@ -452,7 +452,7 @@ a new name, and `just site-shots` retakes its images.
   it only once its projects loaded again without it (`ProjectMethods.Deleted`): told first, it reads the missing file, a
   second each, before any answer needing the compilation (dotnet/roslyn#86236). A reload adds new files before it drops
   those gone, and the solution finds a path's documents ignoring case: a file renamed in letter case alone loads first
-  without it (`Recased`), and a document found by path is checked with `PathNames.Same`.
+  without it (`Recased`), and a document found by path through `SyntaxReads.DocumentIdsOf`, which checks it with `PathNames.Same`.
 - **Roslyn's server reruns a project's generators 1.5 s after a load changes its analyzers**, answering for their code as
   made before until then: whether the queued runs have run is asked of the extension (`RoslynSession.GeneratorsRunAsync`; a load takes a design-time build's documents by their paths, keeping what it read of one the build wrote again, the generated .editorconfig a generator reads and the global usings, until it hears of it, so that answer names those of each project's intermediate output folder it holds otherwise than the disk, waited for until none, `CSharpService.GeneratorsReadAsync`),
   never read from a diagnostics refresh, which comes 2 s after a batch's first change and so may be of changes before the

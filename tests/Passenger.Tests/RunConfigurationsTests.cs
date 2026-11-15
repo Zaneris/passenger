@@ -670,7 +670,7 @@ public sealed class RunConfigurationsTests : IClassFixture<RestoredFolders>, IDi
             Ui.Settle();
             Ui.ClickRow(window, window.ExplorerView.Tree.Rows.First(r => r.Name.StartsWith("Hello", StringComparison.Ordinal)));
             Ui.Run(window, Passenger.Editor.EditorActions.Undo);
-            Assert.Equal(["Undo Save Greeting as a Launch Profile? It changes launchSettings.json, the Properties folder and the run configuration Greeting."], asked);
+            Assert.Equal(["Undo Save Greeting as a Launch Profile? It changes the Properties folder and the run configuration Greeting, and deletes launchSettings.json."], asked);
             Assert.False(File.Exists(settingsFile) || Directory.Exists(properties), "Undo left launchSettings.json or the Properties folder made for it");
             Assert.Equal(["Hello", "Greeting"], Names(window));
             Assert.True(window.Configuration is { Name: "Greeting", Generated: false, BuildBeforeLaunch: false },
