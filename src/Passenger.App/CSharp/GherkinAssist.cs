@@ -13,8 +13,8 @@ namespace Passenger.App.CSharp;
 /// tags after an @; the hover card says which definition binds a step, or why none does; Go to Declaration goes from a
 /// step to its definition (a list where several bind it) and from a scenario's or feature's header to the hooks that run
 /// for it; Find Usages goes from a step, or a step definition's method or expression in C#, to every step it binds in the
-/// features of the projects that see it.</summary>
-internal sealed partial class GherkinAssist(AssistContext context, CodeCompletion completion, CodeNavigation navigation) : LanguageAssist
+/// features of the projects that see it; Show Context Actions on a step none binds writes its definition.</summary>
+internal sealed partial class GherkinAssist(AssistContext context, CodeCompletion completion, CodeNavigation navigation, CodeActions actions) : LanguageAssist
 {
     /// <summary>What the window gives the editor's commands of its BDD; null while none is set.</summary>
     public Func<BddSource?>? Source { get; set; }

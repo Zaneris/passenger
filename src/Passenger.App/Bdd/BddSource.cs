@@ -92,4 +92,23 @@ internal sealed class BddSource(Func<ProjectSession> session, EditorArea editors
     /// <summary>A binding's method as a place to go to.</summary>
     public static LspLocation? PlaceOf(BindingPlace? place) => place is null ? null
         : new LspLocation(DocumentUris.FromPath(place.Path), new LspRange(new LspPosition(place.Line, place.Column), new LspPosition(place.Line, place.Column)));
+
+    /// <summary>The namespace a folder's code takes: its project's RootNamespace (else its name), then the folders below,
+    /// each name made a C# identifier.</summary>
+    public string NamespaceFor(string folder)
+    {
+        string full = PathNames.Canonical(folder);
+        ProjectModel? project = session().ProjectOf(Path.Combine(full, "_.cs"));
+        string root = project?.Property(Passenger.Host.CarriedProperties.RootNamespace) is { Length: > 0 } named ? named
+            : project is null ? Path.GetFileName(full) : Path.GetFileNameWithoutExtension(project.Path);
+        string below = project is null ? "." : Path.GetRelativePath(project.Folder, full);
+        IEnumerable<string> parts = [root, .. below == "." ? [] : below.Split(Path.DirectorySeparatorChar)];
+        return string.Join('.', parts.SelectMany(p => p.Split('.', StringSplitOptions.RemoveEmptyEntries)).Select(Identifier));
+
+        static string Identifier(string part)
+        {
+            string name = new([.. part.Select(c => char.IsLetterOrDigit(c) || c == '_' ? c : '_')]);
+            return char.IsDigit(name[0]) ? "_" + name : name;
+        }
+    }
 }

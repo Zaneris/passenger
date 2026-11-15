@@ -14,7 +14,7 @@ namespace Passenger.Tests;
 /// <summary>A Reqnroll solution's steps and their definitions as one thing (<see cref="ReqnrollProjects"/>): the bindings read
 /// from the code with no build, a project's own and those of the library it references; a step no definition binds marked,
 /// the hover card naming a step's definition, Go to Declaration from a step to it, Find Usages from it to its steps, and
-/// completion offering the steps of a step's kind.</summary>
+/// completion offering the steps of a step's kind, and a missing step's definition written by Show Context Actions.</summary>
 public sealed class BddTests : IClassFixture<RestoredFolders>, IDisposable
 {
     private readonly string folder;
@@ -134,6 +134,43 @@ public sealed class BddTests : IClassFixture<RestoredFolders>, IDisposable
         {
             window.Close();
         }
+    }
+
+    [AvaloniaFact]
+    public void Show_context_actions_on_a_step_none_binds_writes_its_definition_into_the_class_binding_the_features_steps()
+    {
+        MainWindow window = Open(out _);
+        try
+        {
+            OpenDocument feature = window.EditorArea.Active!;
+            Ui.WaitFor(() => feature.Markers.Any(m => m.Code == Passenger.App.Bdd.FeatureAnalysis.Undefined), "the step nobody wrote marked");
+            Ui.PlaceAfter(window.EditorArea.CodeEditor, "Given a step no");
+            Ui.Run(window, AppActions.QuickFix);
+            Choose(window, "Define step 'a step nobody wrote'");
+            Ui.WaitFor(() => window.EditorArea.Active?.Path == PathNames.Canonical(StepsFile), "the step definitions shown");
+            string written = window.EditorArea.Active!.Text.Snapshot.ToString();
+            Assert.Contains(
+                "    [Then(\"nothing is ever said\")]\n    public void ThenNothingIsEverSaid()\n    {\n    }\n\n" +
+                "    [Given(\"a step nobody wrote\")]\n    public void GivenAStepNobodyWrote()\n    {\n        throw new PendingStepException();\n    }\n}\n",
+                written, StringComparison.Ordinal);
+            Ui.WaitFor(() => feature.Markers.Count == 0, () => $"the step defined, its mark gone: {string.Join("; ", feature.Markers.Select(m => m.Message))}",
+                TimeSpan.FromMinutes(1));
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    private static void Choose(MainWindow window, string label)
+    {
+        Ui.WaitFor(() => window.Assist.Offered.Contains(label), () => $"'{label}' offered among {string.Join(", ", window.Assist.Offered)}");
+        int index = window.Assist.Offered.ToList().IndexOf(label);
+        for (int i = 0; i < index; i++)
+        {
+            Ui.Press(window, "DOWN");
+        }
+        Ui.Press(window, "ENTER");
     }
 
     /// <summary>The card shown with the pointer resting on some text of the editor's.</summary>
