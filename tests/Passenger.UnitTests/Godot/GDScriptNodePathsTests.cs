@@ -56,8 +56,9 @@ public class GDScriptNodePathsTests
         Assert.Equal([null, null, '\'', '"', '"', '"'], paths.Select(p => p.Quote));
     }
 
-    /// <summary>A new name is written as what holds the path writes it: a bare path takes a word and becomes a quoted one for any
-    /// other, a string escapes for its quote, and a raw string that can't say it says so.</summary>
+    /// <summary>A new name is written as what holds the path writes it: a bare path takes an identifier as Godot reads one (marks
+    /// and a joiner in it) and becomes a quoted one for any other, a string escapes for its quote, and a raw string that
+    /// can't say it says so.</summary>
     [Fact]
     public void A_new_name_is_written_as_what_holds_the_path_writes_it()
     {
@@ -72,6 +73,8 @@ public class GDScriptNodePathsTests
         }
         Assert.Equal("$Hud/Points", Renamed("$Hud/Score", "Points"));
         Assert.Equal("%Points", Renamed("%Score", "Points"));
+        Assert.Equal("$Hud/नमस्ते", Renamed("$Hud/Score", "नमस्ते"));
+        Assert.Equal("%a\u200Cb", Renamed("%Score", "a\u200Cb"));
         Assert.Equal("$\"Hud/My Points\"", Renamed("$Hud/Score", "My Points"));
         Assert.Equal("$\"%My Points\"", Renamed("%Score", "My Points"));
         Assert.Equal("get_node(\"Hud/A\\\\B\")", Renamed("get_node(\"Hud/Score\")", "A\\B"));

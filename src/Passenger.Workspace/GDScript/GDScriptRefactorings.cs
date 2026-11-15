@@ -64,7 +64,7 @@ public static partial class GDScriptRefactorings
 
     /// <summary>Why a name cannot be one GDScript declares; null where it can.</summary>
     public static string? WhyNotName(string name) =>
-        name.Length == 0 || !(char.IsLetter(name[0]) || name[0] == '_') || !name.All(c => char.IsLetterOrDigit(c) || c == '_') ? $"'{name}' is not a GDScript name"
+        !GDScriptTokenizer.IsIdentifier(name) ? $"'{name}' is not a GDScript name"
         : Keywords.Contains(name) ? $"'{name}' is a GDScript keyword"
         : null;
 

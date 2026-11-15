@@ -105,6 +105,20 @@ public class GDScriptRefactoringsTests
         Assert.Contains("the inner class Sub declares a 'bump' too", GDScriptRefactorings.Rename(scripts, At("bump() -> int:\n\t\tcount"), "poke").Refused);
     }
 
+    /// <summary>A new name is one GDScript declares as Godot's tokenizer reads one: a rename to a name holding marks
+    /// (नमस्ते's virama and vowel sign) or a joiner goes through, and one holding a letter Godot reads in no name (U+2E2F)
+    /// is refused.</summary>
+    [Fact]
+    public void A_rename_takes_a_name_godot_reads_whole_and_refuses_one_it_reads_as_none()
+    {
+        const string Text = "extends Node\n\n\nfunc greet() -> void:\n\tpass\n\n\nfunc _ready() -> void:\n\tgreet()\n";
+        IReadOnlyList<GDScriptRead> scripts = Read(("res://main.gd", Text));
+        GDScriptTarget greet = GDScriptRefactorings.MemberAt(scripts, scripts[0], Text.IndexOf("greet", StringComparison.Ordinal))!;
+        Assert.Contains("\tनमस्ते()\n", After(GDScriptRefactorings.Rename(scripts, greet, "नमस्ते"), "res://main.gd", Text));
+        Assert.Contains("\ta‌b()\n", After(GDScriptRefactorings.Rename(scripts, greet, "a‌b"), "res://main.gd", Text));
+        Assert.Equal("'aⸯ' is not a GDScript name", GDScriptRefactorings.Rename(scripts, greet, "aⸯ").Refused);
+    }
+
     [Fact]
     public void A_callables_own_call_names_no_method_so_a_rename_goes_on_but_an_objects_call_by_a_name_read_at_run_time_refuses_it()
     {

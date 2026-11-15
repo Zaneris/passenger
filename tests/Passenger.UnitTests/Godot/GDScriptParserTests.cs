@@ -72,6 +72,34 @@ public class GDScriptParserTests
         Assert.True(errors.Any(e => e.Message == expected), $"Godot says \"{expected}\", the parser said: {string.Join(" | ", errors.Select(e => e.Message))}");
     }
 
+    /// <summary>An identifier is read by Unicode's XID tables, as Godot's tokenizer reads it: a zero-width non-joiner or
+    /// joiner between letters (U+200C, U+200D) and a middle dot (U+00B7, as Catalan's l·l writes) carry a name on, and a
+    /// mark carries one past the first plane.</summary>
+    [Theory]
+    [InlineData("a‌b")]
+    [InlineData("a‍b")]
+    [InlineData("col·lega")]
+    [InlineData("\U0002000B́")]
+    public void A_joiner_or_a_middle_dot_carries_a_name_on_as_godots_tokenizer_reads_it(string name)
+    {
+        GDScriptTree tree = GDScriptTree.Parse($"var {name} = 1\n");
+        Assert.True(tree.Errors.Count == 0, $"var {name} is one name to Godot, the parser said: {string.Join(" | ", tree.Errors.Select(e => e.Message))}");
+        Assert.Equal(name, NameOf(Assert.Single(tree.Members).Node));
+        Assert.True(GDScriptTokenizer.IsIdentifier(name), $"{name} is no identifier to the tokenizer's rule: completion and rename would cut it");
+    }
+
+    /// <summary>A letter of Pattern_Syntax (U+2E2F, a modifier letter Unicode keeps out of identifiers) is in no name, as
+    /// Godot's tokenizer reads it: after a name it is an invalid character, and alone it starts none.</summary>
+    [Fact]
+    public void A_pattern_syntax_letter_is_in_no_name_as_godots_tokenizer_reads_it()
+    {
+        IReadOnlyList<GDScriptError> errors = GDScriptTree.Parse("var aⸯ = 1\n").Errors;
+        Assert.True(errors.Any(e => e.Message == "Invalid character \"ⸯ\" (U+2E2F)."),
+            $"Godot says \"Invalid character \"ⸯ\" (U+2E2F).\", the parser said: {string.Join(" | ", errors.Select(e => e.Message))}");
+        Assert.False(GDScriptTokenizer.IsIdentifier("aⸯ"), "aⸯ read as one name, which Godot refuses");
+        Assert.Equal(0, GDScriptTokenizer.IdentifierStart("ⸯ", 0));
+    }
+
     [Fact]
     public void A_parse_recovers_after_an_error_so_the_members_after_it_are_still_read()
     {

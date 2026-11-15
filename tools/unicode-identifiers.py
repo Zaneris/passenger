@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """Writes src/Passenger.Workspace/GDScript/UnicodeIdentifiers.cs from Unicode's security and character data.
 
-What Godot's spoof check of an identifier reads (ICU's uspoof_check, through TextServerAdvanced::spoof_check): the
+The characters a GDScript identifier starts with (XID_Start and '_') and goes on with (XID_Continue), as Godot's tokenizer
+reads them from the tables its char_range is written from (DerivedCoreProperties.txt, Unicode 17.0.0 in Godot 4.7). What
+Godot's spoof check of an identifier reads (ICU's uspoof_check, through TextServerAdvanced::spoof_check): the
 characters an identifier may have (Identifier_Status Allowed, ICU's recommended and inclusion sets), each one's augmented
 script set (Script_Extensions, Han's, Hiragana's, Katakana's, Hangul's and Bopomofo's augmented as UTS #39 section 5.1
 says, Common and Inherited every script), the characters whose combining class is neither 0 nor 230, which a hidden dot
@@ -25,6 +27,7 @@ FILES = {
     "PropertyValueAliases.txt": f"https://www.unicode.org/Public/{VERSION}/ucd/PropertyValueAliases.txt",
     "UnicodeData.txt": f"https://www.unicode.org/Public/{VERSION}/ucd/UnicodeData.txt",
     "PropList.txt": f"https://www.unicode.org/Public/{VERSION}/ucd/PropList.txt",
+    "DerivedCoreProperties.txt": f"https://www.unicode.org/Public/{VERSION}/ucd/DerivedCoreProperties.txt",
 }
 
 OUT = os.path.join(unicode.ROOT, "src", "Passenger.Workspace", "GDScript", "UnicodeIdentifiers.cs")
@@ -89,6 +92,13 @@ def main():
         if target and target[-1] != source and target[-1] in base:
             leads.add(source)
 
+    starts = {0x5F: 1}
+    continues = {}
+    for fields in rows(fetch("DerivedCoreProperties.txt", cache)):
+        if fields[1] in ("XID_Start", "XID_Continue"):
+            for point in points(fields[0]):
+                (starts if fields[1] == "XID_Start" else continues)[point] = 1
+
     def table(name, numbers, width=12):
         lines = []
         for i in range(0, len(numbers), width):
@@ -97,12 +107,15 @@ def main():
 
     flat_allowed = [n for run in allowed_runs for n in run]
     flat_combining = [n for run in combining_runs for n in run[:2]]
+    flat_starts = [n for run in ranges(starts) for n in run[:2]]
+    flat_continues = [n for run in ranges(continues) for n in run[:2]]
     with open(OUT, "w", encoding="utf-8", newline="\n") as out:
         out.write("// Written by tools/unicode-identifiers.py from Unicode " + VERSION + "'s security and character data: do not edit.\n")
         out.write("namespace Passenger.Workspace.GDScript;\n\n")
-        out.write("/// <summary>What an identifier's spoof check reads of Unicode " + VERSION + " (<see cref=\"IdentifierSpoofing\"/>): the characters\n")
-        out.write("/// allowed, each run's augmented script set, the combining marks a hidden dot looks past, and the characters a dot\n")
-        out.write("/// above hides on.</summary>\n")
+        out.write("/// <summary>What an identifier is read by of Unicode " + VERSION + ": the characters it starts and goes on with\n")
+        out.write("/// (<see cref=\"GDScriptTokenizer.IdentifierWidth\"/>), and what its spoof check reads (<see cref=\"IdentifierSpoofing\"/>),\n")
+        out.write("/// the characters allowed, each run's augmented script set, the combining marks a hidden dot looks past, and the\n")
+        out.write("/// characters a dot above hides on.</summary>\n")
         out.write("internal static partial class UnicodeIdentifiers\n{\n")
         out.write("    /// <summary>Each allowed run's script set by index, the first (empty) every script.</summary>\n")
         out.write("    private static readonly string[] ScriptSets =\n    [\n")
@@ -115,6 +128,10 @@ def main():
         out.write(table("CombiningRuns", flat_combining))
         out.write("\n    /// <summary>The characters a combining dot above is hidden on, in order.</summary>\n")
         out.write(table("DotLeads", sorted(leads)))
+        out.write("\n    /// <summary>The runs of characters an identifier starts with, XID_Start's and '_': first and last, in order.</summary>\n")
+        out.write(table("StartRuns", flat_starts))
+        out.write("\n    /// <summary>The runs of characters an identifier goes on with, XID_Continue's: first and last, in order.</summary>\n")
+        out.write(table("ContinueRuns", flat_continues))
         out.write("}\n")
 
 

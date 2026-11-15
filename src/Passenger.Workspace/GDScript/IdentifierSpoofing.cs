@@ -137,10 +137,19 @@ internal static partial class UnicodeIdentifiers
     }
 
     /// <summary>Whether a character's combining class is neither 0 nor 230.</summary>
-    public static bool OtherCombining(int point)
+    public static bool OtherCombining(int point) => InRuns(CombiningRuns, point);
+
+    /// <summary>Whether an identifier may start with a character: XID_Start's, or '_'.</summary>
+    public static bool Starts(int point) => InRuns(StartRuns, point);
+
+    /// <summary>Whether an identifier may go on with a character: XID_Continue's.</summary>
+    public static bool Continues(int point) => InRuns(ContinueRuns, point);
+
+    /// <summary>Whether a character is in one of a table's runs, each its first and last.</summary>
+    private static bool InRuns(int[] runs, int point)
     {
-        int run = Sorted.FirstAfter(CombiningRuns.Length / 2, CombiningRuns, static (runs, i) => runs[i * 2], point) - 1;
-        return run >= 0 && CombiningRuns[(run * 2) + 1] >= point;
+        int run = Sorted.FirstAfter(runs.Length / 2, runs, static (table, i) => table[i * 2], point) - 1;
+        return run >= 0 && runs[(run * 2) + 1] >= point;
     }
 
     /// <summary>Whether a combining dot above is hidden on a character.</summary>

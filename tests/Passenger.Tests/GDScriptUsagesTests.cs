@@ -66,6 +66,40 @@ public sealed class GDScriptUsagesTests
         }
     }
 
+    /// <summary>A name Godot reads whole is read whole where the caret stands in it: Find Usages of a function named with marks
+    /// (नमस्ते's virama and vowel sign) lists the scene's connection to it beside its calls, and a local holding a middle dot
+    /// (U+00B7) is named whole in the Find window.</summary>
+    [AvaloniaFact]
+    public void Find_usages_reads_a_name_holding_marks_or_a_middle_dot_whole()
+    {
+        const string Name = "नमस्ते";
+        TestFolders.Write(folder, "player.gd", Player.Replace("hit", Name, StringComparison.Ordinal).Replace("total", "col\u00B7lega", StringComparison.Ordinal));
+        TestFolders.Write(folder, "enemy.gd", Enemy.Replace("hit", Name, StringComparison.Ordinal));
+        TestFolders.Write(folder, "main.tscn", Scene.Replace("method=\"hit\"", $"method=\"{Name}\"", StringComparison.Ordinal));
+        (MainWindow window, TaskCompletionSource release) = Open();
+        try
+        {
+            CodeEditor editor = window.EditorArea.CodeEditor;
+            FindView find = window.Find;
+            Ui.PlaceAfter(editor, "func न");
+            Ui.Run(window, AppActions.FindUsages, settle: false);
+            string[] expected = [$"func {Name}(target, amount = 1):", $"{Name}(\"self\")", $"player.{Name}(\"enemy\", 5)", $"player.call(\"{Name}\", \"far\")",
+                $"[connection signal=\"hurt\" from=\"Player\" to=\"Player\" method=\"{Name}\"]"];
+            bool listed = Ui.Pumped(() => find.Shown == $"Usages of {Name}" && expected.All(e => Usages(find).Contains(e)), TimeSpan.FromSeconds(60));
+            Assert.True(listed, $"{Name}'s usages in both scripts, its string and the scene's connection under its whole name; the Find window shows {find.Shown}: {string.Join(" | ", Usages(find))} ({window.Status})");
+
+            Ui.PlaceAfter(editor, "var col");
+            Ui.Run(window, AppActions.FindUsages, settle: false);
+            listed = Ui.Pumped(() => find.Shown == "Usages of col\u00B7lega" && Usages(find).SequenceEqual(["var col\u00B7lega = 2 + 3", "print(col\u00B7lega * 2)"]), TimeSpan.FromSeconds(30));
+            Assert.True(listed, $"col\u00B7lega's usages under its whole name; the Find window shows {find.Shown}: {string.Join(" | ", Usages(find))}");
+        }
+        finally
+        {
+            window.Close();
+            release.SetResult();
+        }
+    }
+
     /// <summary>Rename of the function takes its calls in the other script, by name and by its string, and the scene's
     /// connection with it, as one command one Undo takes back; a local's rename stays in its function.</summary>
     [AvaloniaFact]

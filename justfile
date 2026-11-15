@@ -165,7 +165,8 @@ notices:
 unicode-widths:
     python3 -I tools/unicode-widths.py
 
-# Rewrite the tables a GDScript identifier's spoof check reads from Unicode's security and character data (tools/unicode-identifiers.py).
+# Rewrite the tables a GDScript identifier is read by, its characters and its spoof check, from Unicode's security and
+# character data (tools/unicode-identifiers.py).
 unicode-identifiers:
     python3 -I tools/unicode-identifiers.py
 

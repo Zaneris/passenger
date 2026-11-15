@@ -54,13 +54,23 @@ internal sealed partial class GDScriptAssist(AssistContext context, CodeCompleti
     }
 
     /// <summary>Where the name that ends at an offset of a script starts, read back by Godot's identifier rule.</summary>
-    private static int NameStart(TextSnapshot text, int end)
+    internal static int NameStart(TextSnapshot text, int end)
     {
         while (end > 0 && GDScriptTokenizer.IdentifierWidthBefore(text[end - 1], end > 1 ? text[end - 2] : '\0') is > 0 and int width)
         {
             end -= width;
         }
         return end;
+    }
+
+    /// <summary>Where the name that goes on from an offset of a script ends, read on by Godot's identifier rule.</summary>
+    internal static int NameEnd(TextSnapshot text, int start)
+    {
+        while (start < text.Length && GDScriptTokenizer.IdentifierWidth(text[start], start + 1 < text.Length ? text[start + 1] : '\0', start: false) is > 0 and int width)
+        {
+            start += width;
+        }
+        return start;
     }
 
     internal static CompletionItem ItemOf(GodotCSharpMember member) => new()
@@ -401,7 +411,9 @@ internal sealed partial class GDScriptAssist(AssistContext context, CodeCompleti
             return true;
         }
         TextSnapshot text = shown.Text.Snapshot;
-        string name = text.GetText(TextNavigation.WordAt(text, Math.Min(asked.MapOffset(offset), text.Length)));
+        int at = Math.Min(asked.MapOffset(offset), text.Length);
+        int start = NameStart(text, at);
+        string name = text.GetText(start, NameEnd(text, at) - start);
         string? note = unsure.Count == 0 ? null
             : $"{Plural.Of(unsure.Count, "place")} may use it where Passenger can't see whose member is read: {GDScriptRefactorings.Places(unsure)}";
         context.ShowUsages($"Usages of {(name.Length > 0 ? name : "symbol")}", places, inPopup ? asked.MapOffset(offset) : null, note);

@@ -8,14 +8,14 @@ namespace Passenger.Workspace.GDScript;
 public sealed record GDScriptNodePath(string Path, int Start, int End, int CharsStart, int CharsEnd, bool Plain, char? Quote, bool Raw)
 {
     /// <summary>The edits writing a name over some of its path's names (each its place in <see cref="Path"/>), as what holds them
-    /// writes it: a bare path taking only a word, one that can't hold the name written anew as a quoted <c>$"…"</c>; a string
+    /// writes it: a bare path taking only an identifier, one that can't hold the name written anew as a quoted <c>$"…"</c>; a string
     /// escaped for its quote; null for a string that can't say it (<see cref="GodotScriptStrings.Written"/>).</summary>
     public IReadOnlyList<TextEdit>? Renamed(IReadOnlyList<(int Start, int End)> names, string name)
     {
         string whole = Enumerable.Reverse(names).Aggregate(Path, (said, at) => said[..at.Start] + name + said[at.End..]);
         if (Quote is not { } quote)
         {
-            return IsWord(name) && Plain ? [.. names.Select(at => new TextEdit(CharsStart + at.Start, at.End - at.Start, name))]
+            return GDScriptTokenizer.IsIdentifier(name) && Plain ? [.. names.Select(at => new TextEdit(CharsStart + at.Start, at.End - at.Start, name))]
                 : [new TextEdit(Start, End - Start, $"$\"{GodotScriptStrings.Written(whole, '"', false)}\"")];
         }
         if (GodotScriptStrings.Written(name, quote, Raw) is not { } written)
@@ -26,7 +26,6 @@ public sealed record GDScriptNodePath(string Path, int Start, int End, int Chars
             : GodotScriptStrings.Written(whole, quote, Raw) is { } anew ? [new TextEdit(CharsStart, CharsEnd - CharsStart, anew)] : null;
     }
 
-    private static bool IsWord(string name) => name.Length > 0 && !char.IsDigit(name[0]) && name.All(c => char.IsLetterOrDigit(c) || c == '_');
 }
 
 /// <summary>The node paths a GDScript writes, as Godot's parser reads them: a <c>$Path</c> or <c>%Unique</c>, or a string or

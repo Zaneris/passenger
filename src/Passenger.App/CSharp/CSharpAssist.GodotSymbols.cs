@@ -264,16 +264,9 @@ internal sealed partial class CSharpAssist
         GodotScriptNamedWithCallsAsync(OpenDocument document, int offset)
     {
         TextSnapshot text = document.Text.Snapshot;
-        int start = Math.Clamp(offset, 0, text.Length);
-        int end = start;
-        while (start > 0 && AssistContext.IsIdentifierChar(text[start - 1]))
-        {
-            start--;
-        }
-        while (end < text.Length && AssistContext.IsIdentifierChar(text[end]))
-        {
-            end++;
-        }
+        int at = Math.Clamp(offset, 0, text.Length);
+        int start = GDScriptAssist.NameStart(text, at);
+        int end = GDScriptAssist.NameEnd(text, at);
         if (end == start || context.GodotOf(document.Path) is not ({ } index, { } folder))
         {
             return null;

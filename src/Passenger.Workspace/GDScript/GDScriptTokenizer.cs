@@ -179,21 +179,17 @@ public sealed class GDScriptTokenizer
 
     /// <summary>How many characters an identifier's character takes where one stands, given the character after it for a pair
     /// past the first plane: 0 where it is none (none to start one, with <paramref name="start"/>), 2 for a pair. Godot's
-    /// rule: letters, letter numbers and '_' start one, and nonspacing and spacing marks, decimal digits and connector
-    /// punctuation carry it on.</summary>
+    /// rule, Unicode's: XID_Start's characters and '_' start one, and XID_Continue's carry it on, joiners and U+00B7 among
+    /// them, Pattern_Syntax's letters (U+2E2F) not (<see cref="UnicodeIdentifiers"/>).</summary>
     public static int IdentifierWidth(char c, char next, bool start)
     {
         if (c < 128)
         {
             return c is >= 'a' and <= 'z' or >= 'A' and <= 'Z' or '_' || !start && IsDigit(c) ? 1 : 0;
         }
-        int width = char.IsHighSurrogate(c) && char.IsLowSurrogate(next) ? 2 : 1;
-        UnicodeCategory category = width == 2 ? CharUnicodeInfo.GetUnicodeCategory(char.ConvertToUtf32(c, next)) : CharUnicodeInfo.GetUnicodeCategory(c);
-        bool letter = category is UnicodeCategory.UppercaseLetter or UnicodeCategory.LowercaseLetter or UnicodeCategory.TitlecaseLetter
-            or UnicodeCategory.ModifierLetter or UnicodeCategory.OtherLetter or UnicodeCategory.LetterNumber;
-        bool continuing = category is UnicodeCategory.NonSpacingMark or UnicodeCategory.SpacingCombiningMark or UnicodeCategory.DecimalDigitNumber
-            or UnicodeCategory.ConnectorPunctuation;
-        return letter || !start && continuing ? width : 0;
+        bool pair = char.IsHighSurrogate(c) && char.IsLowSurrogate(next);
+        int point = pair ? char.ConvertToUtf32(c, next) : c;
+        return (start ? UnicodeIdentifiers.Starts(point) : UnicodeIdentifiers.Continues(point)) ? (pair ? 2 : 1) : 0;
     }
 
     /// <summary>How many characters the identifier's character after its first that ends with a character takes, given the
@@ -204,6 +200,21 @@ public sealed class GDScriptTokenizer
     /// <summary>Whether a character read alone may stand in an identifier after its first: one that carries it on, or either
     /// half of a pair past the first plane, which only the pair decides.</summary>
     public static bool MayContinueIdentifier(char c) => char.IsSurrogate(c) || IdentifierWidth(c, '\0', start: false) > 0;
+
+    /// <summary>Whether a text is one identifier whole, as Godot's tokenizer reads one, whether or not it is a keyword.</summary>
+    public static bool IsIdentifier(string text)
+    {
+        int at = IdentifierStart(text, 0);
+        if (at == 0)
+        {
+            return false;
+        }
+        for (int width; (width = IdentifierContinue(text, at)) > 0;)
+        {
+            at += width;
+        }
+        return at == text.Length;
+    }
 
     private void AdvanceBy(int count)
     {
