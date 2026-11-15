@@ -1,3 +1,4 @@
+using Passenger.App.Workspace;
 using Passenger.Core;
 using Passenger.Editor;
 
@@ -10,43 +11,16 @@ internal sealed class VimMappingsFile : IDisposable
 {
     public const string FileName = "vimrc";
 
-    private readonly FileSystemWatcher? watcher;
-    private readonly Lock stamped = new();
+    private readonly WatchedFile watched;
     private bool disposed;
-
-    /// <summary>Whether the file was read once, under <see cref="stamped"/>.</summary>
-    private bool looked;
-
-    /// <summary>The file's last write and length as last read, under <see cref="stamped"/>; none before the first read.</summary>
-    private (DateTime Written, long Length)? seen;
 
     public VimMappingsFile(string folder)
     {
-        Path = System.IO.Path.Combine(folder, FileName);
-        try
-        {
-            Directory.CreateDirectory(folder);
-            watcher = new FileSystemWatcher(folder, FileName)
-            {
-                NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName | NotifyFilters.Size | NotifyFilters.CreationTime,
-            };
-            watcher.Changed += (_, _) => Look();
-            watcher.Created += (_, _) => Look();
-            watcher.Deleted += (_, _) => Look();
-            watcher.Renamed += (_, _) => Look();
-            watcher.Error += (_, _) => Look();
-            watcher.EnableRaisingEvents = true;
-        }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException or ArgumentException or PlatformNotSupportedException)
-        {
-            // Unwatched, a change is still read as a window comes in front.
-            IdeErrors.Write($"Vim mode: {Path} is not watched for changes ({error.Message})");
-            watcher?.Dispose();
-            watcher = null;
-        }
+        watched = new WatchedFile(System.IO.Path.Combine(folder, FileName), "Vim mode");
+        watched.Moved += ReadMoved;
     }
 
-    public string Path { get; }
+    public string Path => watched.Path;
 
     /// <summary>The file read, on the UI thread, each time it moved since it was last read.</summary>
     public event EventHandler<VimMappings>? Read;
@@ -57,29 +31,20 @@ internal sealed class VimMappingsFile : IDisposable
         UiThread.Check();
         if (!disposed)
         {
-            IdeErrors.Observe(BackgroundWork.Run(Look));
+            watched.LookAgain();
         }
     }
 
     public void Dispose()
     {
         disposed = true;
-        watcher?.Dispose();
+        watched.Dispose();
     }
 
-    /// <summary>On any thread: the file read and handed on where it moved since it was last read.</summary>
-    private void Look()
+    /// <summary>Off the UI thread: the file as it moved to read and handed on.</summary>
+    private void ReadMoved(FileStamp? now)
     {
-        (DateTime Written, long Length)? now = Stamp();
-        lock (stamped)
-        {
-            if (looked && now == seen)
-            {
-                return;
-            }
-            (looked, seen) = (true, now);
-        }
-        string text = string.Empty;
+        string text;
         try
         {
             text = now is null ? string.Empty : File.ReadAllText(Path);
@@ -87,10 +52,7 @@ internal sealed class VimMappingsFile : IDisposable
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
             // Being written: the write's own change reads it again.
-            lock (stamped)
-            {
-                looked = false;
-            }
+            watched.Unseen();
             return;
         }
         VimMappings mappings = VimMappings.Read(text);
@@ -101,11 +63,5 @@ internal sealed class VimMappingsFile : IDisposable
                 Read?.Invoke(this, mappings);
             }
         });
-    }
-
-    private (DateTime Written, long Length)? Stamp()
-    {
-        FileInfo file = new(Path);
-        return file.Exists ? (file.LastWriteTimeUtc, file.Length) : null;
     }
 }

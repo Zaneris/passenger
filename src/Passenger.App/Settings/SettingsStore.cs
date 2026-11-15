@@ -1,4 +1,5 @@
 using Passenger.App.State;
+using Passenger.App.Workspace;
 using Passenger.Core;
 
 namespace Passenger.App.Settings;
@@ -13,7 +14,9 @@ namespace Passenger.App.Settings;
 public sealed class SettingsStore : IDisposable
 {
     private readonly StateDocument<AppSettings>? document;
-    private readonly FileSystemWatcher? watcher;
+
+    /// <summary>settings.json watched for other Passengers' changes; null for a window's own settings.</summary>
+    private readonly WatchedFile? watched;
     private AppSettings value;
     private readonly List<SettingsPreview> previews = [];
 
@@ -22,52 +25,17 @@ public sealed class SettingsStore : IDisposable
     private bool inForce;
     private bool disposed;
 
-    private readonly Lock stamped = new();
-
-    /// <summary>settings.json's last write and length as this process last read it again or wrote it, under <see
-    /// cref="stamped"/>; none before the first time.</summary>
-    private (DateTime Written, long Length) read;
-
     private SettingsStore(StateDocument<AppSettings>? document, AppSettings? opening = null)
     {
         this.document = document;
         value = document?.Value ?? opening ?? new AppSettings();
-        if (document is not null)
-        {
-            document.Wrote += Saw;
-        }
-        if (document is null || Path.GetDirectoryName(document.Path) is not { } folder)
+        if (document is null)
         {
             return;
         }
-        try
-        {
-            Directory.CreateDirectory(folder);
-            watcher = new FileSystemWatcher(folder, Path.GetFileName(document.Path))
-            {
-                NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName | NotifyFilters.Size | NotifyFilters.CreationTime,
-            };
-            // Written by a temporary file moved over it, so a rename onto the name counts as well as a write.
-            watcher.Changed += (_, _) => Look();
-            watcher.Created += (_, _) => Look();
-            watcher.Renamed += (_, e) =>
-            {
-                if (string.Equals(e.Name, watcher.Filter, StringComparison.OrdinalIgnoreCase))
-                {
-                    Look();
-                }
-            };
-            // Overflowed, or failed: a change it lost is in the file.
-            watcher.Error += (_, _) => Look();
-            watcher.EnableRaisingEvents = true;
-        }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException or ArgumentException or PlatformNotSupportedException)
-        {
-            // Unwatched, another Passenger's change is still kept, and read the next time this one changes something.
-            IdeErrors.Write($"Settings: {document.Path} is not watched for other Passengers' changes ({error.Message})");
-            watcher?.Dispose();
-            watcher = null;
-        }
+        watched = new WatchedFile(document.Path, "Settings");
+        watched.Moved += _ => UiThread.Post(ReadAgain);
+        document.Wrote += Saw;
     }
 
     /// <summary>Settings kept in a state folder's settings.json.</summary>
@@ -127,7 +95,7 @@ public sealed class SettingsStore : IDisposable
     public bool IsKept => document is not null;
 
     /// <summary>The system's watcher of settings.json; null for a window's own settings, or a file that could not be watched.</summary>
-    public FileSystemWatcher? Watcher => watcher;
+    public FileSystemWatcher? Watcher => watched?.Watcher;
 
     /// <summary>The settings changed, by a window of this process or by another Passenger; raised once the process's
     /// share (theme, keymap, logs) is in force.</summary>
@@ -176,9 +144,9 @@ public sealed class SettingsStore : IDisposable
     public void LookAgain()
     {
         UiThread.Check();
-        if (document is not null && !disposed)
+        if (!disposed)
         {
-            IdeErrors.Observe(BackgroundWork.Run(Look));
+            watched?.LookAgain();
         }
     }
 
@@ -189,36 +157,11 @@ public sealed class SettingsStore : IDisposable
         {
             document.Wrote -= Saw;
         }
-        watcher?.Dispose();
+        watched?.Dispose();
     }
 
-    /// <summary>On any thread: settings.json read again on the UI thread if it moved since this process last read or wrote
-    /// it, the window's own writes no change.</summary>
-    private void Look()
-    {
-        if (document is null)
-        {
-            return;
-        }
-        (DateTime Written, long Length) now = Stamp(document.Path);
-        lock (stamped)
-        {
-            if (now == read)
-            {
-                return;
-            }
-        }
-        UiThread.Post(ReadAgain);
-    }
-
-    /// <summary>settings.json as this process last read or wrote it, on any thread.</summary>
-    private void Saw((DateTime Written, long Length) stamp)
-    {
-        lock (stamped)
-        {
-            read = stamp;
-        }
-    }
+    /// <summary>settings.json as this process just wrote it, on the writing thread: no change for a look to read again.</summary>
+    private void Saw(FileStamp stamp) => watched?.Saw(stamp);
 
     /// <summary>settings.json as it is on disk now, when another Passenger changed it.</summary>
     private void ReadAgain()
@@ -228,7 +171,7 @@ public sealed class SettingsStore : IDisposable
             return;
         }
         // Taken before the read, so a write after it moves the stamp past this.
-        Saw(Stamp(document.Path));
+        watched?.Saw(FileStamp.Of(document.Path));
         if (!document.Reread())
         {
             return;
@@ -314,13 +257,6 @@ public sealed class SettingsStore : IDisposable
             IdeLog.Traces = after.TraceProtocols;
         }
         IdeLog.Programs = after.LogEveryProgram;
-    }
-
-    /// <summary>A file's last write and length, or none while it is not there.</summary>
-    private static (DateTime Written, long Length) Stamp(string path)
-    {
-        FileInfo file = new(path);
-        return file.Exists ? (file.LastWriteTimeUtc, file.Length) : default;
     }
 
     private static bool SameShortcuts(Dictionary<string, string[]> one, Dictionary<string, string[]> other) =>

@@ -945,6 +945,43 @@ public sealed class SettingsTests : IDisposable
         }
     }
 
+    /// <summary>settings.json kept as a link into a dotfiles folder: another Passenger's change, written to the file the link
+    /// names, is followed each time the window comes in front, though no watcher of the state folder hears a write there
+    /// and the link itself stays as it was made.</summary>
+    [AvaloniaFact]
+    public void A_change_to_settings_json_kept_as_a_link_is_followed_each_time_the_window_comes_in_front()
+    {
+        string dotfiles = TestFolders.Create("dotfiles-");
+        MainWindow window = Open();
+        window.KeepSettings();
+        StateStore store = StateStore.Open(settings);
+        string file = Path.Combine(settings, StateStore.SettingsFile);
+        string kept = Path.Combine(dotfiles, StateStore.SettingsFile);
+        try
+        {
+            window.ApplySettings(window.Settings with { EditorFontSize = 15 });
+            store.Settings.Flush();
+            File.Move(file, kept);
+            TestFolders.Link(file, kept);
+            window.Activate();
+            Ui.Settle();
+
+            foreach (int size in (int[])[21, 19])
+            {
+                WrittenElsewhere(kept, size);
+                window.Activate();
+                Ui.WaitFor(() => window.EditorArea.CodeEditor.FontSize == size,
+                    () => $"the window come in front to follow another Passenger's change to the settings.json a link names, to {size} (its font is {window.EditorArea.CodeEditor.FontSize})");
+            }
+        }
+        finally
+        {
+            store.Release();
+            window.Close();
+            TestFolders.Delete(dotfiles);
+        }
+    }
+
     /// <summary>settings.json with the editor's font changed in place, its last write and length as they were: a change only a
     /// read of the file finds.</summary>
     private static void ChangedUnstamped(string file, int fontSize)

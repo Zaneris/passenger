@@ -599,6 +599,44 @@ public sealed class VimModeTests : IDisposable
         }
     }
 
+    /// <summary>A mappings file kept as a link (to a vimrc in a dotfiles folder) is read again each time the file it names
+    /// changes and the window comes in front, though no watcher of the state folder hears a write there and the link itself
+    /// stays as it was made.</summary>
+    [AvaloniaFact]
+    public void A_mappings_file_kept_as_a_link_is_read_again_as_the_file_it_names_changes()
+    {
+        string dotfiles = TestFolders.Create("vim-dotfiles-");
+        string kept = Path.Combine(dotfiles, "vimrc");
+        File.WriteAllText(kept, "nnoremap Q dd\n");
+        string state = Path.Combine(folder, "state");
+        Directory.CreateDirectory(state);
+        TestFolders.Link(Path.Combine(state, "vimrc"), kept);
+        (MainWindow window, CodeEditor editor) = Open("one\ntwo\nthree\n", state: state);
+        try
+        {
+            window.ApplySettings(window.Settings with { VimMode = true });
+            Ui.WaitFor(() => window.VimMappings.All.Count == 1, "the linked mappings file read as Vim mode came on");
+
+            string mapped = "nnoremap Q dd\n";
+            foreach (char key in "WE")
+            {
+                mapped += $"nnoremap {key} dd\n";
+                File.WriteAllText(kept, mapped);
+                window.Activate();
+                int count = mapped.Count(c => c == '\n');
+                Ui.WaitFor(() => window.VimMappings.All.Count == count,
+                    () => $"the window come in front to read again the vimrc a link names, mapping {count} keys (it maps {window.VimMappings.All.Count})");
+            }
+            Keys(window, "E");
+            Assert.Equal("two\nthree\n", Text(editor));
+        }
+        finally
+        {
+            window.Close();
+            TestFolders.Delete(dotfiles);
+        }
+    }
+
     /// <summary>A key that may begin a mapping waits timeoutlen (the mappings file's set line) for the rest, then means
     /// itself: with jk mapped in insert mode, j typed alone types j once the wait passes, and jk typed together leaves insert
     /// mode; with notimeout set, j waits for the next key however long that takes.</summary>

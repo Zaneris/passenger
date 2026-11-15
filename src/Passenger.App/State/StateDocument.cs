@@ -146,9 +146,9 @@ public sealed class StateDocument<T> where T : class, IStateDocument<T>, new()
     public void Flush() => Write(flushing: true);
 
     /// <summary>A change of this side's about to be put in the file's place, holding this side's value and nothing it has not
-    /// read: the written file's last write and length, by which a look at the file later knows it holds nothing new. Raised
-    /// on the writing thread, under the document's lock.</summary>
-    public event Action<(DateTime Written, long Length)>? Wrote;
+    /// read: the written file's stamp, by which a look at the file later knows it holds nothing new. Raised on the writing
+    /// thread, under the document's lock.</summary>
+    public event Action<FileStamp>? Wrote;
 
     /// <summary>Reads the file again, once a change still waiting is written: what another Passenger wrote since comes
     /// in. A change that could not be written, a file gone or one not reading leaves the value as it is (this is no first
@@ -753,8 +753,8 @@ internal static class StateFile
     /// <summary>Writes a document through a temporary file beside it, flushed to disk and moved over it, so a crash or
     /// a full disk leaves the old file whole; a symlink (settings.json kept in a dotfiles folder) is written through to
     /// its target, which keeps its permissions, rather than replaced by a file of its own. <paramref name="placing"/> is
-    /// told the written file's last write and length just before it is moved over the old one.</summary>
-    public static void Replace(string path, JsonObject document, Action<(DateTime Written, long Length)>? placing = null)
+    /// told the written file's stamp just before it is moved over the old one.</summary>
+    public static void Replace(string path, JsonObject document, Action<FileStamp>? placing = null)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         string target = AtomicFile.Target(path);
@@ -766,10 +766,9 @@ internal static class StateFile
         UnixFileMode? mode = !OperatingSystem.IsWindows() && File.Exists(target) ? File.GetUnixFileMode(target) : null;
         AtomicFile.Write(target, Encoding.UTF8.GetBytes(document.ToJsonString(Options) + "\n"), mode, AtomicFile.Temporary, (temporary, at) =>
         {
-            if (placing is not null)
+            if (placing is not null && FileStamp.Of(temporary) is { } written)
             {
-                FileInfo written = new(temporary);
-                placing((written.LastWriteTimeUtc, written.Length));
+                placing(written);
             }
             AtomicFile.Move(temporary, at);
         });
