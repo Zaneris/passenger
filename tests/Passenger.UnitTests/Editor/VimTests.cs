@@ -2078,6 +2078,18 @@ public class VimTests
     public void O_in_a_block_after_dollar_keeps_its_corner_past_the_lines_end(string before, string keys, string after) =>
         Assert.Equal(after, Run(before, keys));
 
+    /// <summary>Characters put over whole lines leave the cursor on the first non-blank of the line they make, as
+    /// Vim's do.</summary>
+    [Theory]
+    [InlineData("ab| cd\n  ef gh\nij kl\n\tmn", "y$jVp", "ab cd\n |cd\nij kl\n\tmn")]
+    [InlineData("ab| cd\n  ef gh\nij kl\n\tmn", "dawjVp", "ab\n |cd\nij kl\n\tmn")]
+    [InlineData("ab| cd\n  ef gh\nij kl\n\tmn", "y$jjjVkp", "ab cd\n  ef gh\n |cd")]
+    [InlineData("ab| cd\n  ef gh\nij kl\n\tmn", "y$jV2p", "ab cd\n |cd\n cd\nij kl\n\tmn")]
+    [InlineData("ab| cd\n  ef gh\nij kl\n\tmn", "vjyjVp", "ab cd\n |cd\n  e\nij kl\n\tmn")]
+    [InlineData("a|b cd\n  ef gh\nij kl\n\tmn", "vjy2jVp", "ab cd\n  ef gh\n|b cd\n  \n\tmn")]
+    public void Characters_put_over_lines_leave_the_cursor_on_the_first_non_blank(string before, string keys, string after) =>
+        Assert.Equal(after, Run(before, keys));
+
     [Fact]
     public void A_huge_count_ends_at_the_texts_edge()
     {

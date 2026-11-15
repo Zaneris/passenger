@@ -594,7 +594,7 @@ public sealed partial class Vim
         TextSnapshot after = text.Apply(edits);
         bool lines = value.Linewise || stretches[0].Lines;
         List<Selection> putCarets = [.. landed.Select(p => Selection.At(!lines ? Settled(after, p, breakEnds)
-            : value.Linewise ? VimMotions.FirstNonBlank(after, after.GetLineFromOffset(Math.Min(p, after.Length)), breakEnds) : after.GetLineStart(after.GetLineFromOffset(Math.Min(p, after.Length)))))];
+            : VimMotions.FirstNonBlank(after, after.GetLineFromOffset(Math.Min(p, after.Length)), breakEnds)))];
         if (!keep)
         {
             Registers.Delete(null, replaced, always: false);
