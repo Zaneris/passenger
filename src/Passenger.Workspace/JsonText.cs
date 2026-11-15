@@ -207,8 +207,8 @@ public static class JsonText
     {
         if (root.Members.FirstOrDefault() is { } first && !Layout.SameLine(text, root.Start, first.Start))
         {
-            string inner = Layout.IndentOf(text, first.Start);
-            string outer = Layout.IndentOf(text, root.Start);
+            string inner = TextNavigation.IndentOf(text, first.Start);
+            string outer = TextNavigation.IndentOf(text, root.Start);
             if (inner.Length > outer.Length && inner.StartsWith(outer, StringComparison.Ordinal))
             {
                 return inner[outer.Length..];
@@ -223,8 +223,8 @@ public static class JsonText
     {
         if (array.Items.FirstOrDefault() is { } first && !Layout.SameLine(text, array.Start, first.Start))
         {
-            string inner = Layout.IndentOf(text, first.Start);
-            string outer = Layout.IndentOf(text, array.Start);
+            string inner = TextNavigation.IndentOf(text, first.Start);
+            string outer = TextNavigation.IndentOf(text, array.Start);
             if (inner.Length > outer.Length && inner.StartsWith(outer, StringComparison.Ordinal))
             {
                 return inner[outer.Length..];
@@ -301,7 +301,7 @@ public static class JsonText
         {
             if (holder.Members.Count == 0 && SameLine(text, holder.Start, holder.Close))
             {
-                string outer = IndentOf(text, holder.Start);
+                string outer = TextNavigation.IndentOf(text, holder.Start);
                 return Replace(holder.Start + 1, holder.Close, $"{eol}{outer}{unit}{Quoted(name)}: {Laid(value, unit, eol, outer + unit)}{eol}{outer}");
             }
             return Insert(holder, name, Lined(holder) ? Laid(value, unit, eol, MemberIndent(holder)) : value.ToJsonString(Written));
@@ -315,7 +315,7 @@ public static class JsonText
             string written = item.ToJsonString(Written);
             if (array.Items.Count == 0)
             {
-                string outer = IndentOf(text, array.Start);
+                string outer = TextNavigation.IndentOf(text, array.Start);
                 return SameLine(text, array.Start, array.Close)
                     ? Replace(array.Start + 1, array.Close, $"{eol}{outer}{unit}{written}{eol}{outer}")
                     : Replace(array.Start + 1, array.Start + 1, $"{eol}{outer}{unit}{written}");
@@ -326,7 +326,7 @@ public static class JsonText
             string trailing = last.Comma >= 0 ? "," : string.Empty;
             return SameLine(text, array.Start, array.Items[0].Start)
                 ? Replace(after, after, $"{comma} {written}{trailing}")
-                : Replace(after, after, $"{comma}{eol}{IndentOf(text, last.Start)}{written}{trailing}");
+                : Replace(after, after, $"{comma}{eol}{TextNavigation.IndentOf(text, last.Start)}{written}{trailing}");
         }
 
         /// <summary>A member put after the object's last, on a line of its own indented as the others where they have
@@ -338,14 +338,14 @@ public static class JsonText
             {
                 return SameLine(text, holder.Start, holder.Close)
                     ? Replace(holder.Start + 1, holder.Close, $" {member} ")
-                    : Replace(holder.Start + 1, holder.Start + 1, $"{eol}{IndentOf(text, holder.Start)}{unit}{member}");
+                    : Replace(holder.Start + 1, holder.Start + 1, $"{eol}{TextNavigation.IndentOf(text, holder.Start)}{unit}{member}");
             }
             Member last = holder.Members[^1];
             int after = last.Comma >= 0 ? last.Comma + 1 : last.Value.End;
             string comma = last.Comma >= 0 ? string.Empty : ",";
             string trailing = last.Comma >= 0 ? "," : string.Empty;
             return Lined(holder)
-                ? Replace(after, after, $"{comma}{eol}{IndentOf(text, last.Start)}{member}{trailing}")
+                ? Replace(after, after, $"{comma}{eol}{TextNavigation.IndentOf(text, last.Start)}{member}{trailing}")
                 : Replace(after, after, $"{comma} {member}{trailing}");
         }
 
@@ -353,18 +353,18 @@ public static class JsonText
         public string Rewrite(Node item, JsonNode value) => Replace(item.Start, item.End, value.ToJsonString(Written));
 
         /// <summary>An array's item written in its place, laid out (<see cref="Laid"/>) from the line it stands on.</summary>
-        public string RewriteLaid(Node item, JsonNode value) => Replace(item.Start, item.End, Laid(value, unit, eol, IndentOf(text, item.Start)));
+        public string RewriteLaid(Node item, JsonNode value) => Replace(item.Start, item.End, Laid(value, unit, eol, TextNavigation.IndentOf(text, item.Start)));
 
         /// <summary>An item put after the array's last as <see cref="Append"/> puts one, laid out (<see cref="Laid"/>) from the
         /// line it is put on where it has a line of its own.</summary>
         public string AppendLaid(Node array, JsonNode item)
         {
             bool lined = array.Items.Count > 0 ? !SameLine(text, array.Start, array.Items[0].Start) : true;
-            string indent = array.Items.Count > 0 ? IndentOf(text, array.Items[^1].Start) : IndentOf(text, array.Start) + unit;
+            string indent = array.Items.Count > 0 ? TextNavigation.IndentOf(text, array.Items[^1].Start) : TextNavigation.IndentOf(text, array.Start) + unit;
             string written = lined ? Laid(item, unit, eol, indent) : item.ToJsonString(Written);
             if (array.Items.Count == 0)
             {
-                string outer = IndentOf(text, array.Start);
+                string outer = TextNavigation.IndentOf(text, array.Start);
                 return SameLine(text, array.Start, array.Close)
                     ? Replace(array.Start + 1, array.Close, $"{eol}{indent}{written}{eol}{outer}")
                     : Replace(array.Start + 1, array.Start + 1, $"{eol}{indent}{written}");
@@ -403,7 +403,7 @@ public static class JsonText
                 return Replace(before, end, string.Empty);
             }
             end = comma + 1;
-            int lineStart = LineStart(text, start);
+            int lineStart = TextNavigation.LineStart(text, start);
             if (text.AsSpan(lineStart, start - lineStart).IsWhiteSpace())
             {
                 int rest = end;
@@ -432,22 +432,9 @@ public static class JsonText
         private bool Lined(Node holder) => holder.Members.Count > 0 ? !SameLine(text, holder.Start, holder.Members[0].Start) : !SameLine(text, holder.Start, holder.Close);
 
         /// <summary>Where a member of an object stands: as its others do, else a level in from the object's line.</summary>
-        private string MemberIndent(Node holder) => holder.Members.Count > 0 ? IndentOf(text, holder.Members[^1].Start) : IndentOf(text, holder.Start) + unit;
+        private string MemberIndent(Node holder) => holder.Members.Count > 0 ? TextNavigation.IndentOf(text, holder.Members[^1].Start) : TextNavigation.IndentOf(text, holder.Start) + unit;
 
         public static bool SameLine(string text, int from, int to) => text.AsSpan(from, to - from).IndexOfAny('\r', '\n') < 0;
-
-        public static int LineStart(string text, int at)
-        {
-            int before = text.LastIndexOfAny(['\r', '\n'], Math.Max(0, at - 1));
-            return at == 0 || before < 0 ? 0 : before + 1;
-        }
-
-        /// <summary>The spaces and tabs a line begins with, the line of the character at an index.</summary>
-        public static string IndentOf(string text, int at)
-        {
-            int start = LineStart(text, at);
-            return text[start..TextNavigation.IndentEnd(text, start)];
-        }
 
         private static string Quoted(string name) => JsonSerializer.Serialize(name, Written);
     }

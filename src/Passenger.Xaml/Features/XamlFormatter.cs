@@ -42,7 +42,7 @@ public static class XamlFormatter
         IEnumerable<TextEdit> edits = writer.Edits.OrderBy(e => e.Start);
         if (within is { } range)
         {
-            int from = range.Start <= 0 ? 0 : text.LastIndexOf('\n', Math.Min(range.Start, text.Length) - 1) + 1;
+            int from = TextNavigation.LineStart(text, range.Start);
             int end = range.End >= text.Length ? text.Length : text.IndexOf('\n', range.End) is var feed and >= 0 ? feed : text.Length;
             edits = edits.Select(e => Clipped(text, e, from, end)).OfType<TextEdit>();
         }

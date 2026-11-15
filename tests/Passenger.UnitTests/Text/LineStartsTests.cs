@@ -46,6 +46,17 @@ public sealed class LineStartsTests
     }
 
     [Theory]
+    [InlineData("a\n    b", 6, "    ")]
+    [InlineData("\t x\r\n  y", 3, "\t ")]
+    [InlineData("  a\r\n\tb", 6, "\t")]
+    [InlineData("a\n", 2, "")]
+    public void A_lines_indentation_in_a_string_is_what_its_snapshot_gives_the_line(string text, int offset, string indent)
+    {
+        Assert.Equal(indent, TextNavigation.IndentOf(text, offset));
+        Assert.Equal(TextNavigation.IndentOf(TextSnapshot.From(text), offset), TextNavigation.IndentOf(text, offset));
+    }
+
+    [Theory]
     [InlineData("\nab", 0, 0)]
     [InlineData("ab\ncd", 2, 0)]
     [InlineData("ab\ncd", 3, 3)]

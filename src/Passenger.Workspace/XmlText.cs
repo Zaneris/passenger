@@ -95,13 +95,13 @@ internal sealed class XmlText
         }
         string indent = IndentIn(parent);
         int close = Text.LastIndexOf("</", end - 1, StringComparison.Ordinal);
-        int closeLine = Text.LastIndexOf('\n', Math.Max(0, close - 1)) + 1;
+        int closeLine = TextNavigation.LineStart(Text, close);
         if (closeLine <= open || Text[closeLine..close].Trim().Length > 0)
         {
             Splice(close, 0, ownLine ? NewLine + indent + element + NewLine : element);
             return;
         }
-        int previous = closeLine >= 2 ? Text.LastIndexOf('\n', closeLine - 2) + 1 : 0;
+        int previous = TextNavigation.LineStart(Text, closeLine - 1);
         bool spaced = previous > open && Text[previous..(closeLine - 1)].Trim().Length == 0;
         Splice(closeLine, 0, indent + element + NewLine + (spaced ? NewLine : string.Empty));
     }
@@ -266,7 +266,7 @@ internal sealed class XmlText
         {
             to += to < Text.Length && Text[to] == '\r' ? 1 : 0;
             to += to < Text.Length && Text[to] == '\n' ? 1 : 0;
-            int previous = from >= 2 ? Text.LastIndexOf('\n', from - 2) + 1 : -1;
+            int previous = from > 0 ? TextNavigation.LineStart(Text, from - 1) : -1;
             int blank = Text.IndexOf('\n', to);
             if (spaced && previous >= 0 && Text[previous..(from - 1)].Trim().Length == 0 && blank >= 0 && Text[to..blank].Trim().Length == 0)
             {

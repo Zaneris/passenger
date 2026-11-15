@@ -353,7 +353,7 @@ public static class ResourceFiles
             return text[..last.End] + newline + IndentOf(text, last.Start, "  ") + entry + text[last.End..];
         }
         string made = $"  <data name=\"{name}\" xml:space=\"preserve\">{newline}    <value>{written}</value>{newline}  </data>{newline}";
-        int lineStart = text.LastIndexOf('\n', Math.Max(0, rootEnd - 1)) + 1;
+        int lineStart = TextNavigation.LineStart(text, rootEnd);
         return text.AsSpan(lineStart, rootEnd - lineStart).IsWhiteSpace()
             ? text[..lineStart] + made + text[lineStart..]
             : text[..rootEnd] + newline + made + text[rootEnd..];
@@ -396,7 +396,7 @@ public static class ResourceFiles
             + $"{inner}<target state=\"translated\">{written}</target>{newline}{inner}{(note is { Length: > 0 } said ? $"<note>{XmlEntities.Encode(said)}</note>" : "<note />")}{newline}{outer}</trans-unit>";
         if (neighbour is not null)
         {
-            int lineStart = text.LastIndexOf('\n', Math.Max(0, neighbour.Start - 1)) + 1;
+            int lineStart = TextNavigation.LineStart(text, neighbour.Start);
             return text.AsSpan(lineStart, neighbour.Start - lineStart).IsWhiteSpace()
                 ? text[..lineStart] + made + newline + text[lineStart..]
                 : text[..neighbour.Start] + made.TrimStart() + newline + outer + text[neighbour.Start..];
@@ -409,7 +409,7 @@ public static class ResourceFiles
         {
             return null;
         }
-        int bodyLine = text.LastIndexOf('\n', Math.Max(0, bodyEnd - 1)) + 1;
+        int bodyLine = TextNavigation.LineStart(text, bodyEnd);
         return text.AsSpan(bodyLine, bodyEnd - bodyLine).IsWhiteSpace()
             ? text[..bodyLine] + made + newline + text[bodyLine..]
             : text[..bodyEnd] + newline + made + newline + text[bodyEnd..];
@@ -482,8 +482,8 @@ public static class ResourceFiles
             {
                 return null;
             }
-            int lineStart = text.LastIndexOf('\n', Math.Max(0, data.Start - 1)) + 1;
-            int lineEnd = text.IndexOf('\n', data.End) is var newline and >= 0 ? newline + 1 : text.Length;
+            int lineStart = TextNavigation.LineStart(text, data.Start);
+            int lineEnd = TextNavigation.NextLineStart(text, data.End);
             bool alone = text.AsSpan(lineStart, data.Start - lineStart).IsWhiteSpace() && text.AsSpan(data.End, lineEnd - data.End).IsWhiteSpace();
             cuts.Add(alone ? (lineStart, lineEnd) : (data.Start, data.End));
         }

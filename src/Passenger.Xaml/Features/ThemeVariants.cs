@@ -78,8 +78,7 @@ public static class ThemeVariants
                 XmlElement last = target.Children[^1];
                 return [new TextEdit(last.End, 0, $"\n{XamlRefactorings.LineIndent(text, last.Start)}{copy}")];
             }
-            int lineStart = text.LastIndexOf('\n', Math.Max(0, end - 1)) + 1;
-            return [new TextEdit(lineStart, 0, $"{indent}{copy}\n")];
+            return [new TextEdit(TextNavigation.LineStart(text, end), 0, $"{indent}{copy}\n")];
         }
         return [];
     }
