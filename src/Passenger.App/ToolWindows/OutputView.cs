@@ -18,7 +18,7 @@ namespace Passenger.App.ToolWindows;
 /// person types goes to the program's <see cref="Input"/> a line at a time, in the input colour. It keeps a cycle buffer of
 /// text, the oldest lines dropped past it. Its file locations, web addresses and the folder a publish landed in are links
 /// (<see cref="Links"/>).</summary>
-public sealed class OutputView : DockPanel
+public sealed class OutputView : DockPanel, IOwnKeys
 {
     /// <summary>The cycle buffer a console keeps by default: 1024 KB of text.</summary>
     public const int DefaultLimitKb = 1024;
@@ -671,32 +671,25 @@ public sealed class OutputView : DockPanel
     /// Ctrl+D (Rider's Send EOF, on every platform) ends the input, and Paste types the clipboard.</summary>
     private void OnKey(object? sender, KeyEventArgs e)
     {
-        if (input is null)
+        if (InputKey(e) is { } typed)
         {
-            return;
+            typed();
+            e.Handled = true;
         }
-        if (e.Key == Key.Enter && e.KeyModifiers is KeyModifiers.None or KeyModifiers.Shift)
-        {
-            SendLine();
-        }
-        else if (e.Key == Key.Back && e.KeyModifiers == KeyModifiers.None)
-        {
-            Backspace();
-        }
-        else if (e.Key == Key.D && e.KeyModifiers == KeyModifiers.Control)
-        {
-            EndInput();
-        }
-        else if (AppActions.Keymap().ActionFor(new Shortcut(Keystroke.From(e))) == EditorActions.Paste)
-        {
-            IdeErrors.Observe(PasteAsync());
-        }
-        else
-        {
-            return;
-        }
-        e.Handled = true;
     }
+
+    /// <summary>The keys the console takes for its program's input while its editor has the keys, ahead of the IDE's
+    /// keymap.</summary>
+    public bool TakesKey(KeyEventArgs e) => editor is { IsFocused: true } && InputKey(e) is not null;
+
+    /// <summary>What a key does to the program's input, null with none waiting or for a key it leaves to the keymap.</summary>
+    private Action? InputKey(KeyEventArgs e) =>
+        input is null ? null
+        : e.Key == Key.Enter && e.KeyModifiers is KeyModifiers.None or KeyModifiers.Shift ? SendLine
+        : e.Key == Key.Back && e.KeyModifiers == KeyModifiers.None ? Backspace
+        : e.Key == Key.D && e.KeyModifiers == KeyModifiers.Control ? EndInput
+        : AppActions.Keymap().ActionFor(new Shortcut(Keystroke.From(e))) == EditorActions.Paste ? () => IdeErrors.Observe(PasteAsync())
+        : null;
 
     /// <summary>Text typed at the end of the line being typed, the caret after it.</summary>
     private void Type(string typed)

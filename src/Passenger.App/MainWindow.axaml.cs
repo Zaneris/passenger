@@ -537,16 +537,31 @@ public partial class MainWindow : IdeWindow
         }
     }
 
-    /// <summary>The editor a window's editor actions go to while it has the keys: a side of a diff or a merge, or the
-    /// shown file's (the active group's, in this window or an editor window); none in a window whose keys are elsewhere.</summary>
+    /// <summary>The editor a window's editor actions go to while it has the keys: one there that is no file's (a side of a
+    /// diff or a merge, a console, a test's details, the usages' preview), or the shown file's (the active group's, in this
+    /// window or an editor window); none in a window whose keys are elsewhere.</summary>
     private CodeEditor? EditorWithKeys(TopLevel window, object? focused)
     {
-        if (focused is CodeEditor side && side != Editors.CodeEditor && (side.FindAncestorOfType<Vcs.DiffView>() is not null || side.FindAncestorOfType<Vcs.MergeView>() is not null))
+        if (focused is CodeEditor other && other != Editors.CodeEditor && !IsFilesEditor(other))
         {
-            return side;
+            return other;
         }
         CodeEditor shown = Editors.CodeEditor;
         return shown.IsFocused && TopLevel.GetTopLevel(shown) == window ? shown : null;
+    }
+
+    /// <summary>Whether an editor is a group's own, showing its files, which has the keys only while its group is the
+    /// active one.</summary>
+    private bool IsFilesEditor(CodeEditor editor)
+    {
+        foreach (EditorGroup group in Editors.Groups)
+        {
+            if (group.Editor == editor)
+            {
+                return true;
+            }
+        }
+        return false;
     }
 
     /// <summary>A key or a click in any of the IDE's windows: the person at work, which the idle save and Discord wait out.</summary>
