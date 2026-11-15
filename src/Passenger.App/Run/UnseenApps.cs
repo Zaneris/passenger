@@ -15,10 +15,6 @@ public static class UnseenApps
     /// launches outside the Terminal, whose tab starts what it runs itself.</summary>
     public static bool TakesOwnDesktop(LaunchPlan plan) => OperatingSystem.IsWindows() && plan.Console != ConsoleKind.Terminal && Hidden(plan) is not null;
 
-    /// <summary>The file of the Avalonia app a plan starts where nobody is to see it, which takes the inspector whichever
-    /// program the plan names; null for any other plan.</summary>
-    public static string? Inspected(LaunchPlan plan) => Hidden(plan) is { Called: DesktopPrograms.Avalonia, PastHooks: null } app ? app.File : null;
-
     /// <summary>Why a plan's program cannot run here where nobody sees it, its windows bound for the person's screen; null
     /// where it can (an Avalonia app headless, a desktop app on Windows on a desktop of its own), or where people see the
     /// window that runs it. Under <paramref name="watched"/> dotnet watch starts it, which no inspector goes through.</summary>
@@ -42,12 +38,9 @@ public static class UnseenApps
             + $"sees opens none there. {unseen}; a person's Passenger (--mcp-attach) runs it on their screen";
     }
 
-    /// <summary>What desktop app a plan starts where nobody is to see it, its apphost read as the assembly it runs; null for a
-    /// plan people see run, a Godot game's (whose launch hides it itself), or a program with no windows of its own.</summary>
+    /// <summary>What desktop app a plan starts where nobody is to see it (<see cref="LaunchPlan.DesktopApp"/>); null
+    /// for a plan people see run, a Godot game's (whose launch hides it itself), or a program with no windows of its own.</summary>
     private static DesktopProgram? Hidden(LaunchPlan plan) =>
         // An app on a device or an emulator opens its windows there, never on this machine's screen.
-        plan.Unseen && plan.Godot is null && plan.Device is null
-            ? DesktopPrograms.Started(plan.ByAppHost && plan.Built is { } assembly ? assembly : plan.Program, plan.Arguments, plan.WorkingDirectory, plan.Built, plan.Target,
-                plan.DesktopProject, plan.NamedProject)
-            : null;
+        plan.Unseen && plan.Godot is null && plan.Device is null ? plan.DesktopApp() : null;
 }

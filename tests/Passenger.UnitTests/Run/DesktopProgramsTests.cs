@@ -81,6 +81,23 @@ public sealed class DesktopProgramsTests : IDisposable
         Assert.True(found is { Called: DesktopPrograms.Avalonia, PastHooks: null } && found.File == built, $"A script starting the project's app read as {found}");
     }
 
+    /// <summary>A .NET program takes a hook given to the start out of whatever it starts in turn, so the project's own app
+    /// never has it.</summary>
+    [Fact]
+    public void A_dotnet_program_a_project_s_run_command_names_is_what_runs_never_the_project_s_own_app()
+    {
+        string built = Write("app/App.dll");
+        Write("app/Avalonia.Controls.dll");
+        string tool = Write("tool/Tool.dll");
+        Assert.True(DesktopPrograms.Started(Dotnet, [tool, "--size", "2"], root, built, built, null) is null,
+            "The assembly a run command's dotnet runs, of no UI framework, read as the project's own Avalonia app, so the inspector would go into it");
+        string host = Write("tool/Tool");
+        Write("tool/Tool.runtimeconfig.json", """{ "runtimeOptions": { "tfm": "net11.0", "framework": { "name": "Microsoft.NETCore.App", "version": "11.0.0" } } }""");
+        Assert.True(DesktopPrograms.Started(host, [], root, built, built, null) is null,
+            "The apphost a run command names, of no UI framework, read as the project's own Avalonia app, so the inspector would go into it");
+        Assert.Equal(built, DesktopPrograms.Started(Dotnet, [built], root, built, built, null)?.File);
+    }
+
     [Theory]
     [InlineData("run")]
     [InlineData("watch")]

@@ -244,37 +244,33 @@ public sealed class LiveApp : ILiveTreeSource, IDisposable
     /// <summary>The app said it could not tell more than it had said (<see cref="Untold"/>).</summary>
     public event EventHandler? UntoldChanged;
 
-    /// <summary>The live app for a plan whose program is an Avalonia app (<see cref="DesktopPrograms.AvaloniaAssembly"/>
-    /// beside its assembly), showing these renderer debug overlays from its first window, or, with <paramref name="wpf"/>, on
-    /// Windows with WPF (its assembly a WindowsDesktop app's that references WPF's); null for any other program (one taking
-    /// Avalonia.Base alone too), or when this build of Passenger carries no inspector for it. One whose socket could not be
-    /// made is refused, saying why, its plan still carrying the inspector, which lets the app run on without it.</summary>
+    /// <summary>The live app for a plan whose program on this machine takes an inspector (<see cref="Inspected"/>), or that runs
+    /// an Avalonia app on a device (<see cref="OnDevice"/>), showing these renderer debug overlays from its first window; null
+    /// for any other plan. One whose socket could not be made is refused, saying why, its plan carrying the inspector all the
+    /// same, which lets the app run on without it.</summary>
     public static LiveApp? For(LaunchPlan plan, IReadOnlyList<string>? overlays = null, bool wpf = true)
     {
         if (plan.Device is not null)
         {
             return OnDevice(plan, overlays ?? []);
         }
-        if ((UnseenApps.Inspected(plan) ?? plan.Built) is not { } built)
-        {
-            return null;
-        }
-        LiveAppKind kind;
-        if (DesktopPrograms.BesideAvalonia(built) && File.Exists(InspectorPath))
-        {
-            kind = LiveAppKind.Avalonia;
-        }
-        else if (wpf && OperatingSystem.IsWindows() && File.Exists(WpfInspectorPath) && IsWpf(built))
-        {
-            kind = LiveAppKind.Wpf;
-        }
-        else
+        if (Inspected(plan, wpf) is not { Kind: var kind })
         {
             return null;
         }
         (string socket, Socket? listener, string? problem) = Listen(plan.Name);
         return new LiveApp(plan.Name, socket, listener, plan, overlays ?? [], kind, problem);
     }
+
+    /// <summary>The program a plan's start hands a startup hook to, as it runs (<see cref="LaunchPlan.DesktopApp"/>), where it is
+    /// one this build of Passenger carries an inspector for: an Avalonia app (<see cref="DesktopPrograms.AvaloniaAssembly"/>
+    /// beside it), or, with <paramref name="wpf"/>, on Windows a WPF app (a WindowsDesktop app's assembly that references
+    /// WPF's); null for any other program, one taking Avalonia.Base alone too, or one its start goes past hooks for.</summary>
+    public static (string File, LiveAppKind Kind)? Inspected(LaunchPlan plan, bool wpf = true) =>
+        plan.DesktopApp() is not { PastHooks: null, File: var started } ? null
+        : DesktopPrograms.BesideAvalonia(started) && File.Exists(InspectorPath) ? (started, LiveAppKind.Avalonia)
+        : wpf && OperatingSystem.IsWindows() && File.Exists(WpfInspectorPath) && IsWpf(started) ? (started, LiveAppKind.Wpf)
+        : null;
 
     /// <summary>The live app for a plan that runs an app on a device whose build deployed Avalonia (its controls' assembly among
     /// the assemblies its Debug build deployed): its inspector, with the files it carries and its overlays, for the start to

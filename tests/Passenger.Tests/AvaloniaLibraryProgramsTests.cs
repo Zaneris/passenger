@@ -8,9 +8,11 @@ namespace Passenger.Tests;
 
 /// <summary>Console programs that use Avalonia's libraries and open none of its windows, run from the window as a person
 /// runs them: Shapes takes Avalonia.Base alone, as a library's tool or a test harness does; Sketch and Easel take the Avalonia
-/// package, Avalonia.Controls with it, and make no Application; and Gallery, an Avalonia project too, has its RunCommand
-/// run Shapes, so the inspector Gallery's build is given goes into a program it cannot serve. Each lives a second, Easel
-/// eight, long enough for anything of the inspector's to end it first, and ends with its own exit code.</summary>
+/// package, Avalonia.Controls with it, and make no Application. Gallery, an Avalonia project, has its RunCommand run Shapes,
+/// and Launcher, a project of no Avalonia, run Sketch: each start is judged by the program it runs. Frame, an Avalonia
+/// project, runs Shapes through a program of the system's, which may start Frame's own: the inspector its build is given
+/// goes into Shapes, which it cannot serve. Each lives a second, Easel eight, long enough for anything of the inspector's to
+/// end it first, and ends with its own exit code.</summary>
 public sealed partial class AvaloniaLibraryProgramsTests : IClassFixture<RestoredFolders>, IDisposable
 {
     private readonly string folder;
@@ -64,10 +66,20 @@ public sealed partial class AvaloniaLibraryProgramsTests : IClassFixture<Restore
                 "Shapes, which takes Avalonia.Base alone, was given the inspector, which has no Avalonia.Controls there to find an app's windows with");
 
             string sketch = RunToItsEnd(window, "Sketch");
-            Assert.True(Ran(sketch, "Sketch", 9), $"Sketch, which takes Avalonia.Controls and makes no Application, did not run to its own end with its own output:\n{sketch}");
+            Assert.True(Ran(sketch, "Sketch", 9) && sketch.Contains("Sketch ended, 2* wide, inspected", StringComparison.Ordinal),
+                $"Sketch, which takes Avalonia.Controls and makes no Application, did not run to its own end with its own output, the inspector in it:\n{sketch}");
 
             string gallery = RunToItsEnd(window, "Gallery");
-            Assert.True(Ran(gallery, "Shapes", 7), $"Shapes run by Gallery's RunCommand, given the inspector by Gallery's build, did not run to its own end with its own output:\n{gallery}");
+            Assert.True(Ran(gallery, "Shapes", 7), $"Shapes run by Gallery's RunCommand did not run to its own end with its own output:\n{gallery}");
+            Assert.True(window.Session.RunApp is null,
+                "Shapes run by Gallery's RunCommand was given the inspector for Gallery's own build, which the start never runs");
+
+            string launcher = RunToItsEnd(window, "Launcher");
+            Assert.True(Ran(launcher, "Sketch", 9) && launcher.Contains("Sketch ended, 2* wide, inspected", StringComparison.Ordinal) && window.Session.RunApp is not null,
+                $"Sketch run by the RunCommand of Launcher, a project of no Avalonia, was not given the inspector its program takes:\n{launcher}");
+
+            string frame = RunToItsEnd(window, "Frame");
+            Assert.True(Ran(frame, "Shapes", 7), $"Shapes run through a program of the system's by Frame's RunCommand did not run to its own end with its own output:\n{frame}");
             Assert.True(window.Session.RunApp?.Problem?.Contains("Avalonia.Controls", StringComparison.Ordinal) == true,
                 $"The inspector in Shapes did not say why it could not serve it, where the app tools and the Live Visual Tree would show it: {window.Session.RunApp?.Problem}");
         }
@@ -84,7 +96,7 @@ public sealed partial class AvaloniaLibraryProgramsTests : IClassFixture<Restore
         window.Show();
         window.OpenFolder(folder);
         Ui.Settle();
-        Ui.WaitFor(() => window.Configurations.Count(c => c.Name is "Shapes" or "Sketch" or "Easel" or "Gallery") == 4,
+        Ui.WaitFor(() => window.Configurations.Count(c => c.Name is "Shapes" or "Sketch" or "Easel" or "Gallery" or "Launcher" or "Frame") == 6,
             () => $"each project's configuration ({string.Join(", ", window.Configurations.Select(c => c.Name))})");
         return window;
     }
@@ -111,10 +123,10 @@ public sealed partial class AvaloniaLibraryProgramsTests : IClassFixture<Restore
     [GeneratedRegex(@"its logger taken (?<first>\d+) times in its first seconds, (?<later>\d+) times in the (?<ms>\d+) ms after")]
     private static partial Regex Looks();
 
-    /// <summary>The solution of the four projects, to restore.</summary>
+    /// <summary>The solution of the six projects, to restore.</summary>
     private static string Write(string made)
     {
-        TestFolders.Write(made, "Drawing.slnx", "<Solution>\n" + string.Concat(((string[])["Easel", "Gallery", "Shapes", "Sketch"])
+        TestFolders.Write(made, "Drawing.slnx", "<Solution>\n" + string.Concat(((string[])["Easel", "Frame", "Gallery", "Launcher", "Shapes", "Sketch"])
             .Select(project => $"  <Project Path=\"{project}/{project}.csproj\" />\n")) + "</Solution>\n");
         // Avalonia.Base from the package's own folder, as Passenger's inspector takes Avalonia's assemblies, nothing else of it.
         TestFolders.Write(made, "Shapes/Shapes.csproj", TestProjects.Console("<ImplicitUsings>enable</ImplicitUsings>").With($"""
@@ -136,13 +148,15 @@ public sealed partial class AvaloniaLibraryProgramsTests : IClassFixture<Restore
 
             """);
         TestFolders.Write(made, "Sketch/Sketch.csproj", TestProjects.Console("<ImplicitUsings>enable</ImplicitUsings>").With(AvaloniaApp.Packages("Avalonia")));
+        // The inspector takes Avalonia's logger before Main, where nothing of Sketch's own sets it.
         TestFolders.Write(made, "Sketch/Program.cs", """
             using Avalonia.Controls;
+            using Avalonia.Logging;
 
             Console.WriteLine("Sketch began");
             GridLength star = new(2, GridUnitType.Star);
             Thread.Sleep(1000);
-            Console.WriteLine($"Sketch ended, {star} wide");
+            Console.WriteLine($"Sketch ended, {star} wide, {(Logger.Sink is null ? "uninspected" : "inspected")}");
             return 9;
 
             """);
@@ -194,12 +208,24 @@ public sealed partial class AvaloniaLibraryProgramsTests : IClassFixture<Restore
             }
 
             """);
-        // Its RunCommand runs Shapes, which its reference builds first.
-        TestFolders.Write(made, "Gallery/Gallery.csproj", TestProjects.Console("<ImplicitUsings>enable</ImplicitUsings>",
-            "<RunCommand>dotnet</RunCommand>", "<RunArguments>\"$(MSBuildProjectDirectory)/../Shapes/bin/$(Configuration)/$(TargetFramework)/Shapes.dll\"</RunArguments>")
-            .With(AvaloniaApp.Packages("Avalonia")).With("  <ItemGroup>\n    <ProjectReference Include=\"../Shapes/Shapes.csproj\" ReferenceOutputAssembly=\"false\" />\n  </ItemGroup>\n"));
+        // Each RunCommand runs another project's program, which its reference builds first.
+        TestFolders.Write(made, "Gallery/Gallery.csproj", RunsOther("dotnet", "", "Shapes").With(AvaloniaApp.Packages("Avalonia")));
         TestFolders.Write(made, "Gallery/Program.cs", "Console.WriteLine(\"Gallery ran itself\");\n");
+        TestFolders.Write(made, "Launcher/Launcher.csproj", RunsOther("dotnet", "", "Sketch"));
+        TestFolders.Write(made, "Launcher/Program.cs", "Console.WriteLine(\"Launcher ran itself\");\n");
+        // The system's program runs .NET's own dotnet, whatever the PATH holds; cmd keeps the quotes of a line not starting with one.
+        (string system, string given) = OperatingSystem.IsWindows() ? ("cmd.exe", "/c call ") : ("/usr/bin/env", "");
+        string dotnet = $"\"$([MSBuild]::EnsureTrailingSlash('$(NetCoreRoot)'))dotnet{(OperatingSystem.IsWindows() ? ".exe" : "")}\" ";
+        TestFolders.Write(made, "Frame/Frame.csproj", RunsOther(system, given + dotnet, "Shapes").With(AvaloniaApp.Packages("Avalonia")));
+        TestFolders.Write(made, "Frame/Program.cs", "Console.WriteLine(\"Frame ran itself\");\n");
         // Restored by its real path, so a project the others reference is never restored under two spellings at once.
         return Path.Combine(PathNames.Canonical(made), "Drawing.slnx");
     }
+
+    /// <summary>A console project whose RunCommand, <paramref name="command"/> given <paramref name="given"/>, runs the program
+    /// of the project <paramref name="other"/>, which it references to build first.</summary>
+    private static string RunsOther(string command, string given, string other) =>
+        TestProjects.Console("<ImplicitUsings>enable</ImplicitUsings>", $"<RunCommand>{command}</RunCommand>",
+            $"<RunArguments>{given}\"$(MSBuildProjectDirectory)/../{other}/bin/$(Configuration)/$(TargetFramework)/{other}.dll\"</RunArguments>")
+        .With($"  <ItemGroup>\n    <ProjectReference Include=\"../{other}/{other}.csproj\" ReferenceOutputAssembly=\"false\" />\n  </ItemGroup>\n");
 }

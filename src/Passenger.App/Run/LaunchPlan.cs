@@ -243,6 +243,11 @@ public sealed partial record LaunchPlan
     /// first build makes it (dotnet watch's, for a run with Hot Reload).</summary>
     public bool WorksWhereBuilt => Built is { } file && System.IO.Path.GetDirectoryName(file) is { } output && PathNames.Same(output, WorkingDirectory);
 
+    /// <summary>The desktop app it starts, as <see cref="DesktopPrograms.Started"/> reads it, its apphost read as the assembly
+    /// it runs; null for a program of no UI framework known.</summary>
+    public DesktopProgram? DesktopApp() =>
+        DesktopPrograms.Started(ByAppHost && Built is { } assembly ? assembly : Program, Arguments, WorkingDirectory, Built, Target, DesktopProject, NamedProject);
+
     /// <summary>Works out what a configuration launches among the open folder's projects (of <paramref name="workspace"/>,
     /// whose solution's properties MSBuild is given), asking MSBuild, with no build, where the project builds, where and how
     /// dotnet run runs it, and any property its values name; a Passenger it launches keeps its state in its sandbox/, a Godot

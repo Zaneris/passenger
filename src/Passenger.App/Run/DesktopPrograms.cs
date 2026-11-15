@@ -188,10 +188,10 @@ public static class DesktopPrograms
     }
 
     /// <summary>The desktop app a start runs, or null for a start that runs none: <paramref name="program"/> with its
-    /// <paramref name="arguments"/> in <paramref name="folder"/>, read before the project's <paramref name="built"/> program
-    /// it may wrap; a <c>dotnet run</c> runs what its project builds, <paramref name="target"/>, or <paramref name="other"/>,
-    /// a project it names in that one's place. A file no build has made yet, and a project named, is what the project says
-    /// it is, <paramref name="declared"/>.</summary>
+    /// <paramref name="arguments"/> in <paramref name="folder"/>, read before the project's <paramref name="built"/> program a
+    /// script may wrap, where another .NET program is what runs; a <c>dotnet run</c> runs what its project builds,
+    /// <paramref name="target"/>, or <paramref name="other"/>, a project it names in that one's place. A file no build has
+    /// made yet, and a project named, is what the project says it is, <paramref name="declared"/>.</summary>
     public static DesktopProgram? Started(string program, IReadOnlyList<string> arguments, string folder, string? built, string? target, string? declared, string? other = null)
     {
         if (IsDotnet(program) && arguments is [("run" or "watch") and var command, ..])
@@ -200,9 +200,17 @@ public static class DesktopPrograms
                 ? new DesktopProgram(own, runs, $"dotnet {command} starts it without the inspector that puts it on Avalonia's headless platform, which a configuration naming no program gives it")
                 : null;
         }
-        if (Runs(program, arguments, folder) is { } file && Of(file) is { } called)
+        if (Runs(program, arguments, folder) is { } file)
         {
-            return new DesktopProgram(called, file, HooksOff(file));
+            if (Of(file) is { } called)
+            {
+                return new DesktopProgram(called, file, HooksOff(file));
+            }
+            // A .NET program (an assembly, an apphost) takes a hook given to the start out of whatever it starts in turn.
+            if ((built is null || !PathNames.Same(file, built)) && (IsDotnet(program) || RuntimeConfig.Read(file) is not null))
+            {
+                return null;
+            }
         }
         return built is not null && (Of(built) ?? declared) is { } wrapped ? new DesktopProgram(wrapped, built, HooksOff(built)) : null;
     }

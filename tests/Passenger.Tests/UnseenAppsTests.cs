@@ -31,7 +31,7 @@ public sealed class UnseenAppsTests : IDisposable
     public void A_person_s_window_starts_a_named_program_as_it_is()
     {
         LaunchPlan seen = Plan(Carrying("GtkSharp.dll", "Viewer")) with { Unseen = false };
-        Assert.True(seen.WhyNot("run") is null && !seen.OnOwnDesktop && UnseenApps.Inspected(seen) is null,
+        Assert.True(seen.WhyNot("run") is null && !seen.OnOwnDesktop && LiveApp.Inspected(seen) is null,
             $"A person's window would refuse or hide a program they asked to see: {seen.WhyNot("run")}");
     }
 
@@ -40,9 +40,9 @@ public sealed class UnseenAppsTests : IDisposable
     {
         string assembly = Carrying("Avalonia.Controls.dll", "App.dll");
         LaunchPlan named = Plan(Dotnet.Host()) with { Arguments = [assembly] };
-        Assert.Equal(assembly, UnseenApps.Inspected(named));
+        Assert.Equal((assembly, LiveAppKind.Avalonia), LiveApp.Inspected(named) ?? default);
         Assert.Null(named.WhyNot("run"));
-        Assert.Null(UnseenApps.Inspected(Plan(Carrying("Plain.dll", "Tool"))));
+        Assert.Null(LiveApp.Inspected(Plan(Carrying("Plain.dll", "Tool"))));
     }
 
     [Fact]
@@ -51,7 +51,7 @@ public sealed class UnseenAppsTests : IDisposable
         string target = Carrying("Avalonia.Controls.dll", "App.dll");
         LaunchPlan named = Plan(Dotnet.Host()) with { Arguments = ["run"], Target = target };
         KeptOff(named, DesktopPrograms.Avalonia);
-        Assert.Null(UnseenApps.Inspected(named));
+        Assert.Null(LiveApp.Inspected(named));
     }
 
     /// <summary>A console project's plan says nothing of what a <c>dotnet run --project OTHER</c> it names starts.</summary>
@@ -64,7 +64,7 @@ public sealed class UnseenAppsTests : IDisposable
             Arguments = ["run", "--project", other], Target = Carrying("Console.dll", "Tool.dll"), DesktopProject = "a GTK app", NamedProject = other,
         };
         KeptOff(named, "a GTK app");
-        Assert.Null(UnseenApps.Inspected(named));
+        Assert.Null(LiveApp.Inspected(named));
     }
 
     [Fact]
