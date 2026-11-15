@@ -1898,6 +1898,42 @@ public class VimTests
     public void Visual_append_after_a_block_lands_where_vims_does(string before, string keys, string after) =>
         Assert.Equal(after, Run(before, keys));
 
+    /// <summary>is takes a sentence or the white after it a count at a time and as both; a sentence ending its line takes
+    /// its line break, the white after it beginning on the next line, a line of blanks included; as with no white after
+    /// takes all the white before, over lines of blanks; and visual is goes on from the line after, as Vim's do.</summary>
+    [Theory]
+    [InlineData("|One two. Three four. Five six. Seven eight.", "2dis", "|Three four. Five six. Seven eight.")]
+    [InlineData("|One two. Three four. Five six. Seven eight.", "3dis", "| Five six. Seven eight.")]
+    [InlineData("|One two. Three four. Five six. Seven eight.", "4dis", "|Five six. Seven eight.")]
+    [InlineData("One two.| Three four. Five six. Seven eight.", "2dis", "One two.| Five six. Seven eight.")]
+    [InlineData("One two.| Three four. Five six. Seven eight.", "3dis", "One two.|Five six. Seven eight.")]
+    [InlineData("One two.| Three four. Five six. Seven eight.", "2das", "One two.| Seven eight.")]
+    [InlineData("One t|wo. Three four. Five six. Seven eight.", "c2is7<Esc>", "|7Three four. Five six. Seven eight.")]
+    [InlineData("One two.| Three four. Five six. Seven eight.", "y2isP", "One two. Three four|. Three four. Five six. Seven eight.")]
+    [InlineData("|One two.\nThree four.\nFive six.", "2dis", "|Three four.\nFive six.")]
+    [InlineData("|One two.\n   \nThree four.\nFive six.", "dis", "  | \nThree four.\nFive six.")]
+    [InlineData("|One two.\n   \nThree four.\nFive six.", "2dis", "|Three four.\nFive six.")]
+    [InlineData("|One two.\n\t\nThree four.\nFive six.", "dis", "|\t\nThree four.\nFive six.")]
+    [InlineData("One two.\n | \nThree four.\nFive six.", "dis", "One two.\n|Three four.\nFive six.")]
+    [InlineData("One two.\n | \nThree four.\nFive six.", "das", "One two.\n|Five six.")]
+    [InlineData("One two.\n | \nThree four.\nFive six.", "2das", "|One two.")]
+    [InlineData("One two.\n   \n|Three four.\nFive six.", "das", "One two.\n|Five six.")]
+    [InlineData("One two.\n   \n|Three four.\nFive six.", "2das", "|One two.")]
+    [InlineData("One two.  \n   \n|Three four.\nFive six.", "das", "One two|.\nFive six.")]
+    [InlineData("|One two.\n   Three four.\nFive six.", "dis", "   |Three four.\nFive six.")]
+    [InlineData("One two.\n|   Three four.\nFive six.", "dis", "One two.\n|Three four.\nFive six.")]
+    [InlineData("One two.\n|   Three four.\nFive six.", "vasd", "One two.\n|\nFive six.")]
+    [InlineData("One two.\n|   \nThree four.\nFive six.", "visd", "One two.\n|\nThree four.\nFive six.")]
+    [InlineData("Zero. One two.\n   \n  |Three four. Five.\nSix.", "2das", "Zero. One two.\n|Six.")]
+    [InlineData("x.\n  two Fi|ve.\n \n\nfour.", "g~is", "x.\n  |TWO fIVE.\n \n\nfour.")]
+    [InlineData("x.\n  two Fi|ve.\n \n\nfour.", "yisP", "x.\n  |two Five.\n  two Five.\n \n\nfour.")]
+    [InlineData("two Five| two.\n  Three yes!\none Three yes?", "visisd", "|Three yes!\none Three yes?")]
+    [InlineData("Three |Five.\n   \nyes.  \nfour.)", "visisd", "|\nyes.  \nfour.)")]
+    [InlineData("one x|.\"\n\t\none four.) Three two!", "vlisd", "one |x\none four.) Three two!")]
+    [InlineData("Three six.)\n  Three four x! |yes x yes?\nx?", "vasasd", "Three six.)\n  Three four x|!")]
+    public void Counted_sentence_objects_and_lines_of_blanks_between_take_what_vims_do(string before, string keys, string after) =>
+        Assert.Equal(after, Run(before, keys));
+
     [Fact]
     public void A_huge_count_ends_at_the_texts_edge()
     {

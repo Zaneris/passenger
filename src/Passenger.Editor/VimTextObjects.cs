@@ -315,7 +315,7 @@ public static class VimTextObjects
             }
             start = text.GetLineStart(runEnd);
         }
-        int end = start;
+        int sentence = start;
         bool onWhite = false;
         int bodyEnd = BodyEnd(text, start);
         if (caret >= bodyEnd)
@@ -323,28 +323,31 @@ public static class VimTextObjects
             onWhite = true;
             start = bodyEnd;
         }
+        int end = start;
+        int lastBody = bodyEnd;
+        bool white = onWhite;
         for (int i = 0; i < n; i++)
         {
-            int body = BodyEnd(text, end == start && !onWhite ? start : end);
-            int next = SentenceAfter(text, end);
-            if (onWhite)
+            // is takes a sentence or the white after it a count at a time, as takes both, from where the caret stands.
+            int next = SentenceAfter(text, sentence);
+            lastBody = BodyEnd(text, sentence);
+            end = inner ? (white ? next : lastBody) : onWhite ? BodyEnd(text, next) : next;
+            if (white || !inner)
             {
-                end = inner && i == 0 ? next : (i == 0 ? BodyEnd(text, next) : BodyEnd(text, SentenceAfter(text, end)));
-                if (!inner && i == 0)
-                {
-                    continue;
-                }
-                continue;
+                sentence = next;
             }
-            end = inner ? (i % 2 == 0 ? body : next) : next;
+            white = inner && !white;
         }
-        int bodyOfStart = BodyEnd(text, start);
-        if (!inner && !onWhite && (end == bodyOfStart || BreaksOnly(text, bodyOfStart, end)) && end == SentenceBodyLimit(text, end))
+        if (!inner && !onWhite && (end == lastBody || BreaksOnly(text, lastBody, end)) && end == SentenceBodyLimit(text, end))
         {
-            while (start > VimMotions.LineOf(text, start).Start && White(text[start - 1]))
+            // With no white after, the white before goes too, over lines of blanks up to the sentence before.
+            int back = start;
+            while (back > 0 && char.IsWhiteSpace(text[back - 1]) && !EmptyAt(text, back - 1))
             {
-                start--;
+                back--;
             }
+            LineSpan before = VimMotions.LineOf(text, back);
+            start = back == before.End && before.BreakLength > 0 && back < start ? Math.Min(before.EndIncludingBreak, start) : back;
         }
         end = Math.Max(start, end);
         LineSpan last = VimMotions.LineOf(text, end);
@@ -390,7 +393,8 @@ public static class VimTextObjects
         return next <= offset ? text.Length : next;
     }
 
-    /// <summary>Where a sentence's text ends, before the white that leads to the next one; an empty line's past its break.</summary>
+    /// <summary>Where a sentence's text ends, before the white that leads to the next one; an empty line's past its break,
+    /// and one ending its line past that line's break, the white after it beginning on the next line.</summary>
     private static int BodyEnd(TextSnapshot text, int start)
     {
         LineSpan line = VimMotions.LineOf(text, start);
@@ -398,12 +402,14 @@ public static class VimTextObjects
         {
             return line.EndIncludingBreak;
         }
-        int end = SentenceAfter(text, start);
+        int next = SentenceAfter(text, start);
+        int end = next;
         while (end > start && char.IsWhiteSpace(text[end - 1]))
         {
             end--;
         }
-        return end;
+        LineSpan last = VimMotions.LineOf(text, end);
+        return end == last.End && last.BreakLength > 0 && last.EndIncludingBreak <= next && last.EndIncludingBreak < text.Length ? last.EndIncludingBreak : end;
     }
 
     private static int SentenceBodyLimit(TextSnapshot text, int offset)

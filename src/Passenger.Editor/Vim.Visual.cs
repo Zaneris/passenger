@@ -709,6 +709,12 @@ public sealed partial class Vim
                 : null;
         }
         int after = CharEnd(text, r.Cursor);
+        LineSpan line = VimMotions.LineOf(text, after);
+        if (after == line.End && line.Length > 0 && line.BreakLength > 0 && line.EndIncludingBreak < text.Length)
+        {
+            // A sentence ending its line holds its line break: the next one is taken from the next line.
+            after = line.EndIncludingBreak;
+        }
         return after < text.Length && VimTextObjects.Of(text, after, "s", inner, n, breakEnds) is { } next && OwnLine(text, next).End > after
             ? r with { Cursor = VimMotions.StepBack(text, OwnLine(text, next).End) }
             : null;

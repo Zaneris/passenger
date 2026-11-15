@@ -502,8 +502,9 @@ public sealed partial class Vim
                 ranOutAt = command.Argument is "w" or "W" ? VimTextObjects.WordsRanOut(text, caret, n, command.Name == "i", command.Argument == "W", breakEnds) : null;
                 return null;
             }
+            // A sentence taken as whole lines still leaves a yank or a change of case where it began.
             VimSpan taken = command.Argument == "s" ? VimTextObjects.EndingInFirstColumn(text, found) : found;
-            return (taken, taken.Start, command.Argument is "w" or "W");
+            return (taken, found.Start, command.Argument is "w" or "W");
         }
         if (op == "c" && command.Name is "w" or "W" && caret < text.Length && !char.IsWhiteSpace(text[caret]))
         {
