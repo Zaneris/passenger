@@ -650,7 +650,7 @@ a new name, and `just site-shots` retakes its images.
   watched only through `WatchedTree`, never a bare `FileSystemWatcher` (#607, #609); a file watched alone (settings.json,
   vimrc) only through `WatchedFile`, a folder through `WatchedTree` (WatcherRulesTests refuses a `FileSystemWatcher` named
   elsewhere), each read again on its watcher's error and, through `LookAgain`, as a window comes in front (settings.json,
-  vimrc, `ProjectTemplates.LookAgain`).
+  vimrc, `ProjectTemplates.LookAgain`, the open folder's and Git's watchers through `MainWindow.AddLookingAgain`).
 - **macOS's "damaged" dialog** comes from reading or starting a Passenger.app whose seal no longer holds: a mounted disk
   image whose file was replaced (`just package-mac` ejects one first) or a bundle written into (#450). Tests never start
   a program inside an unsigned bundle, and a run's folder ends in `.noindex`, so Spotlight reads none of it.
