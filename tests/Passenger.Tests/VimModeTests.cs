@@ -765,6 +765,43 @@ public sealed class VimModeTests : IDisposable
         }
     }
 
+    /// <summary>:update inside a command line's run is part of its one change: :bufdo's :s then :update over two scripts
+    /// with Reformat on save on lays each out as it saves it, and one u takes back both files' substitution and layout.</summary>
+    [AvaloniaFact]
+    public void Update_inside_bufdo_lays_out_each_script_it_saves_within_its_one_command_of_undo()
+    {
+        const string Written = "extends Node\nvar x=1\n";
+        string one = Path.Combine(folder, "one.gd");
+        string two = TestFolders.Write(folder, "two.gd", Written);
+        (MainWindow window, _) = Open(Written, name: "one.gd");
+        try
+        {
+            window.OpenFile(two);
+            window.OpenFile(one);
+            List<string> asked = [];
+            window.Confirm = (_, question, _) =>
+            {
+                asked.Add(question);
+                return Task.FromResult(true);
+            };
+            window.ApplySettings(window.Settings with { VimMode = true, GDScriptFormatOnSave = true });
+            Ui.Settle();
+            Keys(window, ":bufdo %s/=1/=2/ | update<CR>");
+            Ui.WaitFor(() => File.ReadAllText(one).Contains("var x = 2", StringComparison.Ordinal) && File.ReadAllText(two).Contains("var x = 2", StringComparison.Ordinal),
+                () => $":bufdo's :update left one.gd \"{File.ReadAllText(one)}\" and two.gd \"{File.ReadAllText(two)}\" on disk, not each laid out and saved");
+            Keys(window, "u");
+            Ui.WaitFor(() => Shown(window, one) == Written && Shown(window, two) == Written,
+                () => $"u after :bufdo left one.gd \"{Shown(window, one)}\" and two.gd \"{Shown(window, two)}\", not both as they were before it");
+            Assert.Equal(["Undo :bufdo %s/=1/=2/ | update? It changes one.gd and two.gd."], asked);
+        }
+        finally
+        {
+            window.Close();
+        }
+
+        static string Shown(MainWindow window, string path) => window.EditorArea.Find(PathNames.Canonical(path))!.Text.Snapshot.ToString();
+    }
+
     /// <summary>:cdo runs its commands at each match Find in Files lists in the Find window, as Vim runs them at each entry
     /// of its quickfix list, as one command of the IDE's undo: :s and :update at each match in each file, u taking back
     /// both files; :cfdo runs its command once in each file at its first match and :cdo at every match, :normal x taking

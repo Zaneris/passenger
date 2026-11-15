@@ -73,7 +73,15 @@ public partial class MainWindow
         switch (request.Kind)
         {
             case VimRequestKind.Save:
-                Request(A.Save);
+                // :w and :update save as Save does, refusing where it would; a command line's run waits for the save.
+                if (actions!.WhyNot(A.Save, Context()) is { } saved)
+                {
+                    Say(saved, RefusalPlace(A.Save));
+                }
+                else
+                {
+                    VimWork(SaveExplicitly(all: false));
+                }
                 break;
             case VimRequestKind.SaveAll:
                 Request(A.SaveAll);
@@ -115,7 +123,7 @@ public partial class MainWindow
     }
 
     /// <summary>What the commands of the command line Vim mode is running started that the next waits for (= laying out
-    /// its lines, :x saving and closing its file); null while none runs.</summary>
+    /// its lines, :w saving its file, :x saving and closing it); null while none runs.</summary>
     private List<Task>? vimRunWork;
 
     /// <summary>Work a command of Vim mode's started: waited for before a command line's next command, so it is part of
