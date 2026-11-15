@@ -2184,6 +2184,20 @@ public class VimTests
     public void Words_taken_as_whole_lines_leave_a_yank_where_they_began(string before, string keys, string after) =>
         Assert.Equal(after, Run(before, keys));
 
+    /// <summary>A block put over characters takes their place as a block put before where they began, lines below padded
+    /// out to its column and added past the text's end, as Vim's does.</summary>
+    [Theory]
+    [InlineData("|abcdef\nghijkl\nmnopqr\nstuvwx\nyz", "<C-v>jlyGvp", "abcdef\nghijkl\nmnopqr\nstuvwx\n|abz\ngh")]
+    [InlineData("|abcdef\nghijkl\nmnopqr\nstuvwx\nyz", "<C-v>jlyGvkp", "abcdef\nghijkl\nmnopqr\n|abz\ngh")]
+    [InlineData("|abcdef\nghijkl\nmnopqr\nstuvwx\nyz", "<C-v>jlyGvklP", "abcdef\nghijkl\nmnopqr\ns|abz\n gh")]
+    [InlineData("|abcdef\nghijkl\nmnopqr\nstuvwx\nyz", "<C-v>jjy4Glvp", "abcdef\nghijkl\nmnopqr\ns|auvwx\nygz\n m")]
+    [InlineData("|abcdef\nghijkl\nmnopqr\nstuvwx\nyz", "<C-v>j$yjjllvjp", "abcdef\nghijkl\nmn|abcdefvwx\nyzghijkl")]
+    [InlineData("|abcdef\nghijkl\nmnopqr\nstuvwx\nyz", "<C-v>ly2G$vhp", "abcdef\nghij|ab\nmnopqr\nstuvwx\nyz")]
+    [InlineData("x = (a + (b * c)) - d;\ny = [e, f];\n|z = \"g (h) i\";", "2g~3l<C-v>kXvkp", "|y= [e, f];\nZ = \"G (h) i\";")]
+    [InlineData("abc\ndef\n|ghi", "<C-v>kXvp", "abc\n|df\nghi")]
+    public void A_block_put_over_characters_goes_in_as_a_block_where_they_began(string before, string keys, string after) =>
+        Assert.Equal(after, Run(before, keys));
+
     [Fact]
     public void A_huge_count_ends_at_the_texts_edge()
     {

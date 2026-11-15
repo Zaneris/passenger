@@ -530,9 +530,9 @@ public sealed partial class Vim
             bool belowTop = keep && first.First == top && first.End > first.Start && first.End == text.GetLine(top).End && first.Start > text.GetLine(top).Start;
             return PutLinesBy(value, keep, keep && !belowTop, text, stretches, top, belowTop ? top : below, eol, replaced, times);
         }
-        if (block && value.Blockwise)
+        if (value.Blockwise && (block || stretches.TrueForAll(s => !s.Lines)))
         {
-            // A block put over a block: the block deleted, the register's put in its place from its top left.
+            // A block put over a block or characters: what is shown deleted, the register's put in its place from its top left.
             List<TextEdit> deletes = [.. stretches.Where(t => t.End > t.Start).Select(t => new TextEdit(t.Start, t.End - t.Start, string.Empty))];
             int corner = stretches[0].Start;
             TextSnapshot cleared = text.Apply(deletes);
