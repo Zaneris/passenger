@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text;
 using System.Text.RegularExpressions;
+using Passenger.Core;
 using Passenger.Text;
 
 namespace Passenger.Editor;
@@ -523,7 +524,7 @@ public sealed partial class Vim
         }
         if (flags.Contains('n', StringComparison.Ordinal))
         {
-            return new VimResult(true, SelectionSet.Single(VimMotions.FirstNonBlank(text, caretLine, breakEnds))) { Message = $"{Plural(matched, "match", "matches")} on {Plural(changedLines.Count, "line", "lines")}", Highlight = SearchShown() };
+            return new VimResult(true, SelectionSet.Single(VimMotions.FirstNonBlank(text, caretLine, breakEnds))) { Message = $"{Plural.Of(matched, "match", "matches")} on {Plural.Of(changedLines.Count, "line")}", Highlight = SearchShown() };
         }
         TextSnapshot after = text.Apply(edits);
         int landing = TextEditing.MapOffset(text.GetLineStart(lastLine), edits, false);
@@ -531,11 +532,9 @@ public sealed partial class Vim
         // Lines a replacement split put the caret on the last of them, as Vim's does.
         landedLine = Math.Min(landedLine + edits.Where(e => text.GetLineFromOffset(e.Start) == lastLine).Sum(e => e.Text.Count(c => c == '\n')), VimMotions.LastLine(after, breakEnds));
         EditPlan plan = new(edits, SelectionSet.Single(VimMotions.FirstNonBlank(after, landedLine, breakEnds)), EditKind.Other);
-        string? said = changedLines.Count > 2 ? $"{Plural(matched, "substitution", "substitutions")} on {Plural(changedLines.Count, "line", "lines")}" : null;
+        string? said = changedLines.Count > 2 ? $"{Plural.Of(matched, "substitution")} on {Plural.Of(changedLines.Count, "line")}" : null;
         return new VimResult(true, Edits: [plan]) { Message = said, Highlight = SearchShown() };
     }
-
-    private static string Plural(int count, string one, string many) => $"{count} {(count == 1 ? one : many)}";
 
     /// <summary>The text from a line to the end with every break "\n", and where each line starts in it.</summary>
     private static (string Text, int[] Starts) LinesFrom(TextSnapshot text, int first)

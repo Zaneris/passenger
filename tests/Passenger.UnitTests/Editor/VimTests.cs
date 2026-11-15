@@ -960,6 +960,19 @@ public class VimTests
         Assert.Equal("3 substitutions on 3 lines", result.Message);
     }
 
+    /// <summary>:s says what it counted as Vim 9.1's does: with the n flag its matches and their lines, one of either
+    /// named alone, and without it its substitutions over more than two lines.</summary>
+    [Theory]
+    [InlineData(":%s/o/0/gn<CR>", "7 matches on 3 lines")]
+    [InlineData(":%s/one/1/n<CR>", "1 match on 1 line")]
+    [InlineData(":1s/o/0/gn<CR>", "2 matches on 1 line")]
+    [InlineData(":%s/w/W/g<CR>", "4 substitutions on 3 lines")]
+    public void Substitute_says_what_it_counted_as_vims_does(string keys, string said)
+    {
+        (TextSnapshot text, SelectionSet carets) = Marked.Parse("|one two\nfoo two\ntwo three two\nlast");
+        Assert.Equal(said, Press(new Vim(), keys, text, carets).Message);
+    }
+
     [Fact]
     public void A_repeated_change_is_edits_of_one_step_and_a_plain_change_one_edit()
     {
