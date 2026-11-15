@@ -287,35 +287,6 @@ public sealed class FindTests : IDisposable
         window.Close();
     }
 
-    /// <summary>Keys typed at the top of a file of 20,000 lines with the find bar open allocate on the UI thread under
-    /// twice what they do in one of 200, the match at the end moving with them and still counted; on every thread, the
-    /// search's own included, a key allocates under half the file's size, plain or as a regex over "\r\n" lines, with
-    /// soft wrap on or off, and the stripe's marks stand, the search finding the match where the key moved it.</summary>
-    [Gate]
-    [AvaloniaFact]
-    public void Typing_with_the_find_bar_open_costs_a_key_in_twenty_thousand_lines_about_what_it_does_in_two_hundred()
-    {
-        List<(string What, long Few, long Many, long All, long File, int Built)> measured = [];
-        foreach ((bool regex, string end, bool wrapped) in new[] { (false, "\n", false), (true, "\r\n", false), (false, "\n", true) })
-        {
-            string what = (regex ? "a regex over \"\\r\\n\" lines" : "plain text") + (wrapped ? " in wrapped lines" : string.Empty);
-            (long few, _, _, _) = KeyWithFindOpen(200, regex, end, wrapped);
-            (long many, long all, long file, int built) = KeyWithFindOpen(20_000, regex, end, wrapped);
-            TestContext.Current.TestOutputHelper?.WriteLine(
-                $"Finding {what}, a key allocated {few:N0} bytes above 200 lines, {many:N0} above 20,000 ({all:N0} on every thread, the file {file:N0}); the stripe's marks were worked out {built} times.");
-            measured.Add((what, few, many, all, file, built));
-        }
-        foreach ((string what, long few, long many, long all, long file, int built) in measured)
-        {
-            Assert.True(many < few * 2,
-                $"With the find bar open on {what} a key above 20,000 lines allocated {many / 1024:N0} KB on the UI thread, above 200 {few / 1024:N0} KB: the whole file was searched there");
-            Assert.True(all < file / 2,
-                $"With the find bar open on {what} a key above 20,000 lines allocated {all / 1024:N0} KB on every thread, its file {file / 1024:N0} KB: the search copied the file");
-            Assert.True(built == 0,
-                $"With the find bar open on {what} the stripe's marks were worked out {built} times for keys that moved no line: each search's landing set the match it carried again");
-        }
-    }
-
     /// <summary>Each key typed into the query over a file of 20,000 lines allocates on the UI thread what it does over one
     /// of 200, plain over "\n" lines and as a regex over "\r\n" ones: the search reads the text where it lies, or reads it
     /// as lines once for the keys typed over it.</summary>
@@ -377,6 +348,60 @@ public sealed class FindTests : IDisposable
         return text.Append("// the needle").Append(end).ToString();
     }
 
+    private (MainWindow Window, CodeEditor Editor) Open(string text) => Open(folder, text);
+
+    /// <summary>A window on <paramref name="folder"/> with Notes.txt open, written with <paramref name="text"/>, the caret at
+    /// its start.</summary>
+    internal static (MainWindow Window, CodeEditor Editor) Open(string folder, string text)
+    {
+        File.WriteAllText(Path.Combine(folder, "Notes.txt"), text);
+        MainWindow window = Ui.OpenFolder(folder);
+        window.OpenFile("Notes.txt");
+        Ui.Settle();
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        editor.Selections = SelectionSet.Single(0);
+        return (window, editor);
+    }
+}
+
+/// <summary>What a key typed with the find bar open costs, counted on every thread too: the class runs alone, as whatever a
+/// class beside the window tests allocates meanwhile would count as the search's.</summary>
+[Collection(Alone.Name)]
+public sealed class FindBytesTests : IDisposable
+{
+    private readonly string folder = TestFolders.Create("find-");
+
+    public void Dispose() => TestFolders.Delete(folder);
+
+    /// <summary>Keys typed at the top of a file of 20,000 lines with the find bar open allocate on the UI thread under
+    /// twice what they do in one of 200, the match at the end moving with them and still counted; on every thread, the
+    /// search's own included, a key allocates under half the file's size, plain or as a regex over "\r\n" lines, with
+    /// soft wrap on or off, and the stripe's marks stand, the search finding the match where the key moved it.</summary>
+    [Gate]
+    [AvaloniaFact]
+    public void Typing_with_the_find_bar_open_costs_a_key_in_twenty_thousand_lines_about_what_it_does_in_two_hundred()
+    {
+        List<(string What, long Few, long Many, long All, long File, int Built)> measured = [];
+        foreach ((bool regex, string end, bool wrapped) in new[] { (false, "\n", false), (true, "\r\n", false), (false, "\n", true) })
+        {
+            string what = (regex ? "a regex over \"\\r\\n\" lines" : "plain text") + (wrapped ? " in wrapped lines" : string.Empty);
+            (long few, _, _, _) = KeyWithFindOpen(200, regex, end, wrapped);
+            (long many, long all, long file, int built) = KeyWithFindOpen(20_000, regex, end, wrapped);
+            TestContext.Current.TestOutputHelper?.WriteLine(
+                $"Finding {what}, a key allocated {few:N0} bytes above 200 lines, {many:N0} above 20,000 ({all:N0} on every thread, the file {file:N0}); the stripe's marks were worked out {built} times.");
+            measured.Add((what, few, many, all, file, built));
+        }
+        foreach ((string what, long few, long many, long all, long file, int built) in measured)
+        {
+            Assert.True(many < few * 2,
+                $"With the find bar open on {what} a key above 20,000 lines allocated {many / 1024:N0} KB on the UI thread, above 200 {few / 1024:N0} KB: the whole file was searched there");
+            Assert.True(all < file / 2,
+                $"With the find bar open on {what} a key above 20,000 lines allocated {all / 1024:N0} KB on every thread, its file {file / 1024:N0} KB: the search copied the file");
+            Assert.True(built == 0,
+                $"With the find bar open on {what} the stripe's marks were worked out {built} times for keys that moved no line: each search's landing set the match it carried again");
+        }
+    }
+
     /// <summary>What a key typed at the top of a file of some lines, wrapped or not, with the find bar open on a word at its
     /// end, allocates on the UI thread, its search landing included; the least one allocated on every thread; the file's own
     /// bytes; and how many times the keys had the stripe's marks worked out.</summary>
@@ -388,7 +413,7 @@ public sealed class FindTests : IDisposable
             text.Append(System.Globalization.CultureInfo.InvariantCulture, $"line {i} of the notes{end}");
         }
         string notes = text.Append("the needle").Append(end).ToString();
-        (MainWindow window, CodeEditor editor) = Open(notes);
+        (MainWindow window, CodeEditor editor) = FindTests.Open(folder, notes);
         editor.Focus();
         if (!wrapped)
         {
@@ -423,16 +448,5 @@ public sealed class FindTests : IDisposable
         built = editor.StripeMarksBuilt - built;
         window.Close();
         return (bytes / Keys, least, notes.Length * sizeof(char), built);
-    }
-
-    private (MainWindow Window, CodeEditor Editor) Open(string text)
-    {
-        File.WriteAllText(Path.Combine(folder, "Notes.txt"), text);
-        MainWindow window = Ui.OpenFolder(folder);
-        window.OpenFile("Notes.txt");
-        Ui.Settle();
-        CodeEditor editor = window.EditorArea.CodeEditor;
-        editor.Selections = SelectionSet.Single(0);
-        return (window, editor);
     }
 }

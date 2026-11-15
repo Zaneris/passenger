@@ -2890,85 +2890,6 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
             : null;
     }
 
-    /// <summary>The server's completion list is read where its answer arrives, never on the UI thread: a list of
-    /// hundreds more items (a file with the usings a project's implicit ones bring, against one with none) costs the UI
-    /// thread, from the key to the list open, less than a third of what reading those items takes, counted rather than
-    /// timed. The window starts a server of its own: the class's warm server, once another test had it index the types
-    /// of namespaces not imported, lists them whole in both files, which leaves the two lists near enough alike.</summary>
-    [AvaloniaFact]
-    public void A_statements_completion_list_is_read_off_the_UI_thread()
-    {
-        string bare = project.PathOf("Bare.cs");
-        string used = project.PathOf("Used.cs");
-        MainWindow window = Ui.OpenFolder(project.Folder, autosaves: false);
-        window.OpenFile(bare);
-        Ui.Settle();
-        Assert.True(window.CSharpService?.IsReady, window.CSharpService?.State);
-        (int fewItems, long fewRead, long fewFrame) = StatementCompletion(window, bare);
-        (int manyItems, long manyRead, long manyFrame) = StatementCompletion(window, used);
-        TestContext.Current.TestOutputHelper?.WriteLine(
-            $"{fewItems} items: read in {fewRead / 1024} KB, opened from the key in {fewFrame / 1024} KB; {manyItems} items: {manyRead / 1024} KB, {manyFrame / 1024} KB");
-        Assert.True(manyItems > fewItems + 300, $"With the usings a statement's completion listed {manyItems} items, against {fewItems} without");
-        Assert.True(manyFrame - fewFrame < (manyRead - fewRead) / 3,
-            $"A list of {manyItems} items opened with {manyFrame / 1024} KB allocated on the UI thread from the key, against {fewFrame / 1024} KB for {fewItems} items: "
-            + $"a third or more of the {(manyRead - fewRead) / 1024} KB reading the extra items takes, so they were read there");
-        window.Close();
-    }
-
-    /// <summary>A statement's completion in a file: how many items it lists, what reading its answer allocates (the
-    /// same list asked for from the thread pool, the window's thread waiting), and what the UI thread allocates from the
-    /// key until the list is open, whichever of its frames the answer lands in; the least of three. Its later part is
-    /// held in each round until Escape: one joined before it leaves the popup, for the next round, rows to lay out again
-    /// (200 for 54), which the UI thread pays as though it read the items.</summary>
-    private static (int Items, long Read, long Frame) StatementCompletion(MainWindow window, string path)
-    {
-        window.OpenFile(path);
-        CodeEditor editor = window.EditorArea.CodeEditor;
-        Ui.PlaceAfter(editor, "        int total = 0;");
-        window.KeyTextInput(" ");
-        editor.Focus();
-        Ui.Settle();
-        Passenger.Lsp.LspDocument lsp = window.CSharpService!.For(window.EditorArea.Active!)!.Lsp!;
-        int caret = editor.Selections.Primary.Caret;
-        long read = long.MaxValue;
-        int items = 0;
-        for (int i = 0; i < 3; i++)
-        {
-            long before = GC.GetTotalAllocatedBytes(precise: true);
-            Passenger.Lsp.CompletionList? list = Ui.Idle(Waiting.Apart(() => lsp.CompletionAsync(caret, null)), "the statement's completion asked from the thread pool").List;
-            read = Math.Min(read, GC.GetTotalAllocatedBytes(precise: true) - before);
-            items = list?.Items.Count ?? 0;
-            if (list?.Later is { } later)
-            {
-                // Asked for as the list came: landed, it is no answer a round below would hold in place of its own.
-                Ui.Await(later, "the later part of the statement's completion asked from the thread pool");
-            }
-        }
-        Passenger.Lsp.LanguageServer server = window.CSharpService!.Session!.Server;
-        long frame = long.MaxValue;
-        for (int round = 0; round < 3; round++)
-        {
-            TaskCompletionSource released = new(TaskCreationOptions.RunContinuationsAsynchronously);
-            Task held = server.HoldNextAnswer(Passenger.Roslyn.Extension.ExtensionMethods.LaterCompletion, _ => true, released.Task);
-            try
-            {
-                long before = GC.GetAllocatedBytesForCurrentThread();
-                window.KeyTextInput("S");
-                Ui.Pumped(() => window.Assist.IsCompletionOpen, TimeSpan.FromSeconds(60));
-                frame = Math.Min(frame, GC.GetAllocatedBytesForCurrentThread() - before);
-                Assert.True(window.Assist.IsCompletionOpen, $"Completion never opened for a statement in {Path.GetFileName(path)}");
-                Ui.AwaitPumped(held, $"the later part of a statement's completion in {Path.GetFileName(path)}, come and held unanswered");
-                Ui.Press(window, "ESCAPE");
-                Ui.Press(window, "BACK_SPACE");
-            }
-            finally
-            {
-                released.TrySetResult();
-            }
-        }
-        return (items, read, frame);
-    }
-
     /// <summary>Typing on into an open completion list narrows it off the UI thread in the rows the list has: as each letter
     /// narrows a class's members, the controls on screen are the ones that showed it before; and a key into a list of four
     /// times the items costs the UI thread what it does in the shorter one, counted rather than timed. The lists differ in
@@ -3564,6 +3485,99 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         /// copy has, so no documentation shows for .NET's types.</summary>
         public bool ReferencePackDownloaded =>
             File.ReadAllText(PathOf("obj/project.assets.json")).Contains("\"name\": \"Microsoft.NETCore.App.Ref\"", StringComparison.Ordinal);
+    }
+}
+
+/// <summary>What reading the language server's completion costs, counted on every thread: the class runs alone, as whatever a
+/// class beside the window tests allocates meanwhile would count as the read's.</summary>
+[Collection(Alone.Name)]
+public sealed class CodeAssistBytesTests : IClassFixture<CodeAssistTests.Project>
+{
+    private readonly CodeAssistTests.Project project;
+
+    public CodeAssistBytesTests(CodeAssistTests.Project project)
+    {
+        this.project = project;
+        project.Reset();
+    }
+
+    /// <summary>The server's completion list is read where its answer arrives, never on the UI thread: a list of
+    /// hundreds more items (a file with the usings a project's implicit ones bring, against one with none) costs the UI
+    /// thread, from the key to the list open, less than a third of what reading those items takes, counted rather than
+    /// timed. The window starts a server of its own: a warm server, once a test had it index the types of namespaces not
+    /// imported, lists them whole in both files, which leaves the two lists near enough alike.</summary>
+    [AvaloniaFact]
+    public void A_statements_completion_list_is_read_off_the_UI_thread()
+    {
+        string bare = project.PathOf("Bare.cs");
+        string used = project.PathOf("Used.cs");
+        MainWindow window = Ui.OpenFolder(project.Folder, autosaves: false);
+        window.OpenFile(bare);
+        Ui.Settle();
+        Assert.True(window.CSharpService?.IsReady, window.CSharpService?.State);
+        (int fewItems, long fewRead, long fewFrame) = StatementCompletion(window, bare);
+        (int manyItems, long manyRead, long manyFrame) = StatementCompletion(window, used);
+        TestContext.Current.TestOutputHelper?.WriteLine(
+            $"{fewItems} items: read in {fewRead / 1024} KB, opened from the key in {fewFrame / 1024} KB; {manyItems} items: {manyRead / 1024} KB, {manyFrame / 1024} KB");
+        Assert.True(manyItems > fewItems + 300, $"With the usings a statement's completion listed {manyItems} items, against {fewItems} without");
+        Assert.True(manyFrame - fewFrame < (manyRead - fewRead) / 3,
+            $"A list of {manyItems} items opened with {manyFrame / 1024} KB allocated on the UI thread from the key, against {fewFrame / 1024} KB for {fewItems} items: "
+            + $"a third or more of the {(manyRead - fewRead) / 1024} KB reading the extra items takes, so they were read there");
+        window.Close();
+    }
+
+    /// <summary>A statement's completion in a file: how many items it lists, what reading its answer allocates (the
+    /// same list asked for from the thread pool, the window's thread waiting), and what the UI thread allocates from the
+    /// key until the list is open, whichever of its frames the answer lands in; the least of three. Its later part is
+    /// held in each round until Escape: one joined before it leaves the popup, for the next round, rows to lay out again
+    /// (200 for 54), which the UI thread pays as though it read the items.</summary>
+    private static (int Items, long Read, long Frame) StatementCompletion(MainWindow window, string path)
+    {
+        window.OpenFile(path);
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        Ui.PlaceAfter(editor, "        int total = 0;");
+        window.KeyTextInput(" ");
+        editor.Focus();
+        Ui.Settle();
+        Passenger.Lsp.LspDocument lsp = window.CSharpService!.For(window.EditorArea.Active!)!.Lsp!;
+        int caret = editor.Selections.Primary.Caret;
+        long read = long.MaxValue;
+        int items = 0;
+        for (int i = 0; i < 3; i++)
+        {
+            long before = GC.GetTotalAllocatedBytes(precise: true);
+            Passenger.Lsp.CompletionList? list = Ui.Idle(Waiting.Apart(() => lsp.CompletionAsync(caret, null)), "the statement's completion asked from the thread pool").List;
+            read = Math.Min(read, GC.GetTotalAllocatedBytes(precise: true) - before);
+            items = list?.Items.Count ?? 0;
+            if (list?.Later is { } later)
+            {
+                // Asked for as the list came: landed, it is no answer a round below would hold in place of its own.
+                Ui.Await(later, "the later part of the statement's completion asked from the thread pool");
+            }
+        }
+        Passenger.Lsp.LanguageServer server = window.CSharpService!.Session!.Server;
+        long frame = long.MaxValue;
+        for (int round = 0; round < 3; round++)
+        {
+            TaskCompletionSource released = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            Task held = server.HoldNextAnswer(Passenger.Roslyn.Extension.ExtensionMethods.LaterCompletion, _ => true, released.Task);
+            try
+            {
+                long before = GC.GetAllocatedBytesForCurrentThread();
+                window.KeyTextInput("S");
+                Ui.Pumped(() => window.Assist.IsCompletionOpen, TimeSpan.FromSeconds(60));
+                frame = Math.Min(frame, GC.GetAllocatedBytesForCurrentThread() - before);
+                Assert.True(window.Assist.IsCompletionOpen, $"Completion never opened for a statement in {Path.GetFileName(path)}");
+                Ui.AwaitPumped(held, $"the later part of a statement's completion in {Path.GetFileName(path)}, come and held unanswered");
+                Ui.Press(window, "ESCAPE");
+                Ui.Press(window, "BACK_SPACE");
+            }
+            finally
+            {
+                released.TrySetResult();
+            }
+        }
+        return (items, read, frame);
     }
 }
 
