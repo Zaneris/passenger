@@ -104,11 +104,13 @@ public sealed partial class BrowserRun : IAsyncDisposable
 
     /// <summary>What every browser Passenger starts is given beyond its debugging: no first-run pages or questions, its
     /// background networking, component and extension updates, sync, pings, metrics reports, domain reliability, Safe
-    /// Browsing's own checks and the features that ask Google's servers left off: as little of its own reaching out as its
-    /// flags turn off.</summary>
+    /// Browsing's own checks and the features that ask Google's servers left off, and the machine's updater never woken
+    /// (Chrome otherwise starts it 19 s after its own start, and every five hours after): as little of its own reaching
+    /// out as its flags turn off.</summary>
     public static readonly IReadOnlyList<string> Quiet =
     [
         "--no-first-run", "--no-default-browser-check", "--disable-search-engine-choice-screen", "--disable-background-networking", "--disable-component-update",
+        "--disable-updater-scheduler",
         "--disable-sync", "--no-pings", "--metrics-recording-only", "--disable-domain-reliability", "--disable-client-side-phishing-detection",
         "--disable-default-apps", "--disable-component-extensions-with-background-pages",
         "--disable-features=OptimizationHints,MediaRouter,Translate,AutofillServerCommunication,CertificateTransparencyComponentUpdater,InterestFeedContentSuggestions",

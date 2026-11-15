@@ -298,6 +298,55 @@ public sealed class BlazorBrowserDebuggingTests(StandInAppHost appHost) : IDispo
         Assert.True(elsewhere.Length == 0, $"The browser Passenger started for debugging connected beyond this machine: {string.Join(", ", elsewhere)}");
     }
 
+    /// <summary>The browser a standalone WebAssembly app is debugged in starts no updater while the app runs, past the 19 s
+    /// after its start at which Chrome begins its updater's work: no process it starts, nor any those start, is an updater,
+    /// and nothing it writes is an updater's.</summary>
+    [AvaloniaFact]
+    public void The_browser_a_page_is_debugged_in_starts_no_updater_as_it_runs()
+    {
+        SkipWithoutBrowser();
+        Make("blazorwasm", "Wasm");
+        using HeldPort port = new();
+        Profile(Path.Combine(folder, "Properties", "launchSettings.json"), port.Port);
+        Restore.Run(Path.Combine(folder, "Wasm.csproj"));
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        string tag = $"[{ChromiumBrowsers.Find(null)!.Name}] ";
+        int logged = Ui.Shared(IdeLog.PathOf(IdeLog.Debugger)).Length;
+        List<string> updaters = [];
+        try
+        {
+            Ui.WaitFor(() => window.Configurations.Any(c => c.Name == "Wasm: http"), () => $"Wasm's http configuration; the window has {string.Join(", ", window.Configurations.Select(c => c.Name))}",
+                TimeSpan.FromMinutes(2));
+            Assert.True(window.SelectConfiguration("Wasm: http"));
+            port.LetGo();
+            Ui.Launched(window, window.DebugAsync(), "Wasm to build and start in the browser", TimeSpan.FromMinutes(3));
+            int browser = 0;
+            Ui.WaitFor(() => (browser = DebuggingBrowser()) > 0, () => $"the browser to start ({Sessions(window)}; {Ui.Said(window)})", TimeSpan.FromMinutes(3));
+            for (int second = 0; second < 30; second++)
+            {
+                Ui.Hold(TimeSpan.FromSeconds(1), "the browser's run to go on past the moment Chrome wakes its updater");
+                updaters.AddRange(Under(browser).Select(DotnetProcesses.Describe).OfType<DotnetProcess>()
+                    .Where(p => p.Name.Contains("Updater", StringComparison.OrdinalIgnoreCase)).Select(p => $"{p.Id} {p.CommandLine}"));
+            }
+            Assert.True(DotnetProcesses.Runs(browser), $"The browser ended within the 30 s it was watched:\n{BrowserSaid()}");
+        }
+        finally
+        {
+            End(window);
+        }
+        Assert.True(updaters.Count == 0, $"The browser Passenger started for debugging started an updater: {string.Join("; ", updaters.Distinct())}");
+        string log = Ui.Shared(IdeLog.PathOf(IdeLog.Debugger));
+        string[] said = [.. log[Math.Min(logged, log.Length)..].Split('\n')
+            .Where(l => l.Contains(tag, StringComparison.Ordinal) && l.Contains("updater", StringComparison.OrdinalIgnoreCase))];
+        Assert.True(said.Length == 0, $"The browser Passenger started for debugging ran an updater, which wrote:\n{string.Join('\n', said.Take(6))}");
+
+        static IEnumerable<int> Under(int id) => DotnetProcesses.StartedBy(id).SelectMany(child => (int[])[child, .. Under(child)]);
+    }
+
+    /// <summary>The browser this process started for debugging, by its remote debugging switch; 0 while there is none.</summary>
+    private static int DebuggingBrowser() => DotnetProcesses.StartedBy(Environment.ProcessId)
+        .FirstOrDefault(id => DotnetProcesses.Describe(id)?.CommandLine.Contains("--remote-debugging-port=", StringComparison.Ordinal) == true);
+
     /// <summary>The addresses a browser's network log says it sent to: each TCP connect's attempt, and each UDP socket's
     /// that sent bytes (a UDP connect alone sends nothing: the browser's check that IPv6 has a route makes one). Read an
     /// event a line, as a browser ended before its log's close leaves its last line cut.</summary>
