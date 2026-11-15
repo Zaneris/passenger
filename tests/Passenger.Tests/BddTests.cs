@@ -189,6 +189,24 @@ public sealed class BddTests : IClassFixture<RestoredFolders>, IDisposable
         }
     }
 
+    [AvaloniaFact]
+    public void Find_unused_step_definitions_lists_the_definitions_no_step_binds()
+    {
+        MainWindow window = Open(out _);
+        try
+        {
+            Assert.True(window.Perform(AppActions.FindUnusedStepDefinitions));
+            Ui.WaitFor(() => window.Find.Rows.Any(r => r.Usage is not null), () => $"the unused step definitions in the Find window ({window.Status})");
+            Passenger.App.ToolWindows.Usage unused = Assert.Single(window.Find.Rows.Select(r => r.Usage).OfType<Passenger.App.ToolWindows.Usage>());
+            Assert.Equal(PathNames.Canonical(StepsFile), unused.Path);
+            Assert.Contains("ThenNothingIsEverSaid", unused.LineText, StringComparison.Ordinal);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     private static void Choose(MainWindow window, string label)
     {
         Ui.WaitFor(() => window.Assist.Offered.Contains(label), () => $"'{label}' offered among {string.Join(", ", window.Assist.Offered)}");

@@ -332,6 +332,9 @@ public static class Refusals
     /// <summary>Go to Declaration found nothing to go to where it was asked.</summary>
     public const string NoDeclaration = "Cannot find a declaration to go to";
 
+    /// <summary>No project of the folder is a Reqnroll or SpecFlow one whose bindings the C# server has read.</summary>
+    public const string NoReqnrollProject = "No Reqnroll or SpecFlow project's step definitions are read: open its .feature files, or wait for C# to load";
+
     /// <summary>Go to Declaration of an overload an unloaded project's source no longer declares, gone to by its name.</summary>
     public const string OverloadNotInSource = "This overload is not in the source, which has changed since its assembly was built: went to the declarations of that name";
 
