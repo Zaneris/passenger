@@ -582,8 +582,7 @@ public sealed class CodeAssist
             bool http = false, bool godot = false, bool shader = false, bool gdscript = false, bool gherkin = false) =>
             registry.Add(new IdeAction(id, title, "Code", run)
             {
-                // An .http file's requests, a Godot scene's paths, a shader's names and a feature's steps are each read with no
-                // language server.
+                // .http requests, Godot scenes' paths, shaders' names and features' steps are read with no language server.
                 WhyNot = action => http && this.context.Languages.Http.IsHttpFile(action.File) || godot && IsGodotScene(action.File)
                     || shader && action.File is { } file && Godot.GodotShaderMarks.IsShader(file.Path)
                     || gherkin && action.File is { } feature && Passenger.App.Bdd.FeatureChecks.IsFeature(feature.Path) ? null

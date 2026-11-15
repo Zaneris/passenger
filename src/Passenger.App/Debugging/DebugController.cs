@@ -2300,10 +2300,6 @@ public sealed class DebugController : IDisposable
         }
     }
 
-    /// <summary>Whether a hover at an offset of a file reads text a frame can see: in the frame's own file, inside the method
-    /// it stopped in with its lambdas and local functions (<see cref="MethodBounds"/>); anywhere in it where that can't be
-    /// told (no C# syntax, as Razor's; a decompiled frame's; a place in no method). A frame with no file sees decompiled
-    /// code alone.</summary>
     /// <summary>The parameter a .feature file's outline placeholder at an offset is in its scenario's test, named as Reqnroll's
     /// generator names it (its words joined, the first in lower case): a stop in an example shows its value; none elsewhere
     /// in a feature, whose words are no C#.</summary>
@@ -2328,6 +2324,10 @@ public sealed class DebugController : IDisposable
         return char.IsDigit(name[0]) ? null : name;
     }
 
+    /// <summary>Whether a hover at an offset of a file reads text a frame can see: in the frame's own file, inside the method
+    /// it stopped in with its lambdas and local functions (<see cref="MethodBounds"/>); anywhere in it where that can't be
+    /// told (no C# syntax, as Razor's; a decompiled frame's; a place in no method). A frame with no file sees decompiled
+    /// code alone.</summary>
     private async Task<bool> SeesAsync(DapStackFrame at, OpenDocument file, int offset)
     {
         if (at.Source?.Path is not { } source)
