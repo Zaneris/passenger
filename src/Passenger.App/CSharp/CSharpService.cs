@@ -123,8 +123,43 @@ public sealed partial class CSharpService : IAsyncDisposable
     public void Reload(IReadOnlyList<string> projects)
     {
         UiThread.Check();
+        if (reloadsHeld is { } hold && projects.Any(p => PathNames.Same(p, hold.Project)))
+        {
+            hold.Reached.TrySetResult();
+            projects = [.. projects.Where(p => !PathNames.Same(p, hold.Project))];
+        }
         session?.Reload(projects);
         Reloading(projects);
+    }
+
+    /// <summary>Holds back every load again the window asks of the server for a project until <paramref name="until"/> has
+    /// ended, then asks one, as a window slow to evaluate the project would, for a test: done once one is held back.</summary>
+    public Task HoldReloads(string project, Task until)
+    {
+        UiThread.Check();
+        TaskCompletionSource reached = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        reloadsHeld = (PathNames.Canonical(project), reached);
+        IdeErrors.Observe(ReloadOnceLetGoAsync(until));
+        return reached.Task;
+    }
+
+    /// <summary>The project a test holds back the loads again of (<see cref="HoldReloads"/>), done once one is.</summary>
+    private (string Project, TaskCompletionSource Reached)? reloadsHeld;
+
+    private async Task ReloadOnceLetGoAsync(Task until)
+    {
+        await until.Ended();
+        UiThread.Post(() =>
+        {
+            if (reloadsHeld is { } hold)
+            {
+                reloadsHeld = null;
+                if (hold.Reached.Task.IsCompleted)
+                {
+                    Reload([hold.Project]);
+                }
+            }
+        });
     }
 
     /// <summary>Has the server let go of projects the window no longer loads, so nothing it says comes from the text it read
@@ -241,17 +276,56 @@ public sealed partial class CSharpService : IAsyncDisposable
     public bool ReloadingRestored(string path)
     {
         UiThread.Check();
-        if (!reloadingRestored && !GeneratorsWaited())
+        if (!reloadingRestored && !RestoredStillToLoad() && !GeneratorsWaited())
         {
             return false;
         }
         return workspace is not { } opened || ProjectModel.Owning(ProjectsNow?.Invoke() ?? opened.Projects, path) is not { } project || !restoreFailedFor.Contains(project.Path);
     }
 
+    /// <summary>What an agent's question of a file waits for while <see cref="ReloadingRestored"/> holds, in words; null when
+    /// it waits for none of it.</summary>
+    public string? ReloadingWhat(string path)
+    {
+        UiThread.Check();
+        if (!ReloadingRestored(path))
+        {
+            return null;
+        }
+        if (RestoredStillToLoad())
+        {
+            return $"the C# language server to load {Path.GetFileNameWithoutExtension(restoredToLoad.First())} again with what its restore brought";
+        }
+        if (reloadingRestored)
+        {
+            return "the C# language server to load again the projects its restore brought packages to";
+        }
+        return "the C# language server's source generators to run again after its load";
+    }
+
     /// <summary>How long after a load the generators are waited for, with no extension to say when they have run.</summary>
     private static readonly TimeSpan GeneratorsRerun = TimeSpan.FromSeconds(5);
 
+    /// <summary>Whether a restore of a solution brought something to its projects, which load again with it in the batch
+    /// after: the restore names no project, so that batch's end ends the wait.</summary>
     private bool reloadingRestored;
+
+    /// <summary>The projects a restore of theirs brought something to that the server has not loaded since: it loads each
+    /// again once it hears of its assets, in a batch of its own after a batch of others' changes may have ended.</summary>
+    private readonly HashSet<string> restoredToLoad = new(PathNames.Comparer);
+
+    /// <summary>Whether a project of <see cref="restoredToLoad"/> loaded in the batch under way.</summary>
+    private bool restoredLoaded;
+
+    /// <summary>When the server last said how its loads and restores went: a project restored that it has not loaded
+    /// again once it has said nothing for <see cref="LoadsQuiet"/>, with no restore under way, it never will (its assets
+    /// written as they were).</summary>
+    private long loadSaid;
+
+    private static TimeSpan LoadsQuiet => Waits.Of(TimeSpan.FromSeconds(15));
+
+    /// <summary>Whether a project a restore brought something to is still to load again (<see cref="restoredToLoad"/>).</summary>
+    private bool RestoredStillToLoad() => restoredToLoad.Count > 0 && (restoringTheirs || Stopwatch.GetElapsedTime(loadSaid) < LoadsQuiet);
 
     /// <summary>When the projects a restore brought, or a project asked to load again, loaded again, and the server's answer
     /// once the source generators' runs queued by then have run; with no extension to ask, none, the server's next word
@@ -1033,10 +1107,11 @@ public sealed partial class CSharpService : IAsyncDisposable
         CancellationTokenSource cancel = new();
         starting = cancel;
         IsStopped = false;
-        reloadingRestored = restoreFailed = restoringTheirs = false;
+        reloadingRestored = restoreFailed = restoringTheirs = restoredLoaded = false;
         restoring.Clear();
         restoredNone.Clear();
         restoreFailedFor.Clear();
+        restoredToLoad.Clear();
         generatorsRun = null;
         hearingSaid = false;
         SetState("Starting C#…");
@@ -1646,9 +1721,12 @@ public sealed partial class CSharpService : IAsyncDisposable
         {
             return;
         }
+        loadSaid = Stopwatch.GetTimestamp();
         switch (report)
         {
             case { Kind: LoadReportKind.Problem or LoadReportKind.RestoreFailed, Problem: { } problem }:
+                // A load that met problems is a load all the same.
+                restoredLoaded |= report.Kind == LoadReportKind.Problem && restoredToLoad.Remove(problem.Project);
                 if (!batch.Any(p => PathNames.Same(p.Project, problem.Project)) || !loadProblems.ContainsKey(problem.Project))
                 {
                     loadProblems[problem.Project] = [];
@@ -1684,12 +1762,23 @@ public sealed partial class CSharpService : IAsyncDisposable
                 }
                 break;
             case { Kind: LoadReportKind.Restored }:
-                reloadingRestored = restoringTheirs && restoring.Any(r => !restoredNone.Contains(r));
+                foreach (string restored in restoringTheirs ? restoring.Where(r => !restoredNone.Contains(r)) : [])
+                {
+                    if (WorkspaceModel.IsSolution(restored))
+                    {
+                        reloadingRestored = true;
+                    }
+                    else if (!restoreFailedFor.Contains(restored))
+                    {
+                        restoredToLoad.Add(restored);
+                    }
+                }
                 restoringTheirs = false;
                 restoring.Clear();
                 restoredNone.Clear();
                 break;
             case { Kind: LoadReportKind.Loaded, Project: { } project }:
+                restoredLoaded |= restoredToLoad.Remove(project);
                 bool hadProblems = loadProblems.Remove(project);
                 // Taken out first: the files come under it are decided as a load that took it in decides them.
                 Reported(from, project);
@@ -1705,12 +1794,15 @@ public sealed partial class CSharpService : IAsyncDisposable
                 }
                 break;
             case { Kind: LoadReportKind.BatchEnded }:
-                if (reloadingRestored)
+                if (reloadingRestored || restoredLoaded)
                 {
                     WaitForGenerators();
-                    LetGoOfRefreshes();
+                    if (restoredToLoad.Count == 0)
+                    {
+                        LetGoOfRefreshes();
+                    }
                 }
-                reloadingRestored = false;
+                reloadingRestored = restoredLoaded = false;
                 restoreFailed = false;
                 if (batch.Count > batchSaid)
                 {

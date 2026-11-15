@@ -3079,8 +3079,25 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         {
             throw new InvalidOperationException(Refusals.TooDeep(Path.GetFileName(document.Path)));
         }
-        await Until(() => Session.CSharp is not { } csharp || csharp.IsStopped
-            || csharp.IsReady && !csharp.ReloadingRestored(document.Path) && !csharp.AwaitsRestore(document.Path) && csharp.For(document)?.Lsp is not null, ServerLimit, cancel);
+        string? reloading = null;
+        await Until(() =>
+        {
+            if (Session.CSharp is not { } csharp || csharp.IsStopped)
+            {
+                return true;
+            }
+            // The agent is told what a load after a restore, or its builds' writes, keep it waiting for.
+            if (csharp.IsReady && csharp.ReloadingWhat(document.Path) is var what && what != reloading)
+            {
+                reloading = what;
+                AgentCall.Say(what is null ? null : $"Waiting for {what}");
+            }
+            return csharp.IsReady && reloading is null && !csharp.AwaitsRestore(document.Path) && csharp.For(document)?.Lsp is not null;
+        }, ServerLimit, cancel);
+        if (reloading is not null)
+        {
+            AgentCall.Say(null);
+        }
         if (Session.CSharp is { IsStopped: true })
         {
             throw new InvalidOperationException(Refusals.CSharpStopped);

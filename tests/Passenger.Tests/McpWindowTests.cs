@@ -453,6 +453,73 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
         }
     }
 
+    /// <summary>Two projects each given a package once loaded, the first's change loaded and restored as the second's waits:
+    /// the server's next batch loads the second alone, before it hears of the first's restore (held back here), then
+    /// restores the second, which fails, no feed holding its package. An agent's definition of the class the first's
+    /// restore brought waits, saying so, for the first project's load again after its restore, never answering as of its
+    /// load before it because another project's load ended in between.</summary>
+    [AvaloniaFact]
+    public void An_agents_definition_of_what_a_restore_brought_waits_for_its_projects_load_again_though_another_projects_load_ends_first()
+    {
+        string folder = PathNames.Canonical(TestFolders.Create("mcp-restored-apart-"));
+        DeleteAtEnd(folder);
+        using StandInFeed feed = new();
+        feed.Add("Passenger.Sample", "1.0.0", new Dictionary<string, string>
+        {
+            ["build/Passenger.Sample.targets"] = "<Project>\n  <ItemGroup>\n    <Compile Include=\"$(MSBuildThisFileDirectory)Brought.cs\" />\n  </ItemGroup>\n</Project>\n",
+            ["build/Brought.cs"] = "namespace Sample;\n\npublic static class Brought\n{\n    public static string Say() => \"brought\";\n}\n",
+        });
+        TestFolders.Write(folder, "nuget.config", $"<configuration>\n  <packageSources>\n    <clear />\n    <add key=\"stand-in\" value=\"{feed.Index}\" protocolVersion=\"3\" allowInsecureConnections=\"true\" />\n"
+            + "  </packageSources>\n  <config>\n    <add key=\"globalPackagesFolder\" value=\"packages\" />\n  </config>\n</configuration>\n");
+        string uses = TestFolders.Write(folder, "Uses/Uses.csproj", TestProjects.Library());
+        TestFolders.Write(folder, "Uses/Caller.cs", "namespace Uses;\n\npublic static class Caller\n{\n    public static string Call() => Sample.Brought.Say();\n}\n");
+        string lacks = TestFolders.Write(folder, "Lacks/Lacks.csproj", TestProjects.Library());
+        MainWindow window = AgentsWindow(folder);
+        Ui.WaitFor(() => window.CSharpService is { IsReady: true }, () => $"the language server to load Uses and Lacks ({window.CSharpService?.State})", TimeSpan.FromMinutes(3));
+        McpClient client = Await(Waiting.Apart(() => Start(["--mcp-attach", ProcessId])), "the agent attaching");
+        TaskCompletionSource sampling = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource answering = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource telling = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource reloading = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        global::Passenger.App.CSharp.CSharpService csharp = window.CSharpService!;
+        try
+        {
+            // The server hears of Uses's files, and the window asks it to load Uses again, only once the definition waits.
+            string usesFolder = Path.GetDirectoryName(uses)!;
+            csharp.Session!.Server.WatchedFiles.HoldTelling(path => PathNames.IsUnder(path, usesFolder), telling.Task);
+            feed.Hold("Passenger.Sample", sampling.Task);
+            TestFolders.Write(folder, "Uses/Uses.csproj", TestProjects.Library().With("  <ItemGroup>\n    <PackageReference Include=\"Passenger.Sample\" Version=\"1.0.0\" />\n  </ItemGroup>\n"));
+            Ui.PumpUntil(() => feed.Requests.Any(r => r.Path.StartsWith("/flat/passenger.sample/", StringComparison.Ordinal)), "Uses's restore to ask the feed for its package", AgentLimit);
+            csharp.HoldReloads(uses, reloading.Task);
+            // Lacks's change waits in the server's queue as Uses's restore runs, so it loads in a batch of its own after it.
+            TestFolders.Write(folder, "Lacks/Lacks.csproj", TestProjects.Library().With("  <ItemGroup>\n    <PackageReference Include=\"Passenger.Missing\" Version=\"1.0.0\" />\n  </ItemGroup>\n"));
+            Ui.PumpUntil(() => csharp.Session.Server.WatchedFiles.ToldAt(lacks) is not null, "the server to be told Lacks.csproj changed as Uses's restore runs", AgentLimit);
+            feed.Hold("Passenger.Missing", answering.Task);
+            sampling.SetResult();
+            Ui.PumpUntil(() => feed.Requests.Any(r => r.Path.StartsWith("/flat/passenger.missing/", StringComparison.Ordinal)), "Lacks's restore to ask the feed for its package", AgentLimit);
+            Heard heard = new();
+            Task<CallToolResult> asked = Waiting.Apart(() => Result(client, McpTools.Definition, new() { ["path"] = "Uses/Caller.cs", ["line"] = 5, ["column"] = 43 }, heard: heard));
+            Ui.PumpUntil(() => heard.Told.Count > 0 || asked.IsCompleted, "the agent's definition to be under way", AgentLimit);
+            answering.SetResult();
+            Ui.PumpUntil(() => asked.IsCompleted || heard.Told.Any(t => t.Message?.Contains("to load Uses again with what its restore brought", StringComparison.Ordinal) == true),
+                "the agent's definition to wait for Uses to load again after its restore", AgentLimit);
+            telling.SetResult();
+            reloading.SetResult();
+            string said = Text(Ui.AwaitPumped(asked, "the agent's definition of Brought", AgentLimit));
+            Assert.True(said.Contains("/Brought.cs", StringComparison.Ordinal) || said.Contains($"{Path.DirectorySeparatorChar}Brought.cs", StringComparison.Ordinal),
+                $"definition of a class a restore brought, asked as another project's load ended between that restore and its project's load again, answered: {said}");
+        }
+        finally
+        {
+            sampling.TrySetResult();
+            answering.TrySetResult();
+            telling.TrySetResult();
+            reloading.TrySetResult();
+            Gone(client);
+            window.Close();
+        }
+    }
+
     /// <summary>An agent's question of an open file costs the person's window what it asks, not the file's size: the disk,
     /// which the agent's own file tools may have written, is looked at off the UI thread and the file read only once its
     /// length or time changed, so editor_text of one line of an open 20,000-line file allocates on the UI thread about what

@@ -116,7 +116,7 @@ public sealed class WatchedFiles
                 kept.Remove(change.Path);
             }
             server.Note($"Files watched for the server, registration {id}: {string.Join("; ", read.Select(w => w.Shown))}");
-            Send(waited, "heard before it registered them");
+            waited = Send(waited, "heard before it registered them");
         }
         Changed?.Invoke(this, EventArgs.Empty);
         Said(waited);
@@ -280,10 +280,44 @@ public sealed class WatchedFiles
                     server.Note($"Changes on disk no registration covered were let go past {KeptLimit} as the server loaded projects");
                 }
             }
-            Send(covered, null);
+            covered = Send(covered, null);
         }
         Said(covered);
         return covered.Count;
+    }
+
+    /// <summary>The changes a test holds back from the server (<see cref="HoldTelling"/>): which files, until what, those
+    /// held back so far, and what is done once one is; under the gate.</summary>
+    private (Func<string, bool> Which, Task Until, List<FileEvent> Kept, TaskCompletionSource Reached)? held;
+
+    /// <summary>Holds back from the server the changes to the files <paramref name="which"/> takes until <paramref name="until"/>
+    /// has ended, then tells it of them, as a watcher slow to hear them would, for a test: done once one is held back.</summary>
+    public Task HoldTelling(Func<string, bool> which, Task until)
+    {
+        TaskCompletionSource reached = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        lock (gate)
+        {
+            held = (which, until, [], reached);
+        }
+        UnawaitedWork.Observe(TellHeldAsync(until));
+        return reached.Task;
+    }
+
+    /// <summary>Tells the server of the changes held back once what they were held for has ended.</summary>
+    private async Task TellHeldAsync(Task until)
+    {
+        await until.Ended();
+        List<FileEvent> kept;
+        lock (gate)
+        {
+            if (held is not { } hold || hold.Until != until)
+            {
+                return;
+            }
+            held = null;
+            kept = Send(hold.Kept, "held back until now");
+        }
+        Said(kept);
     }
 
     /// <summary>Of changes about to be told (<see cref="Tell"/>), those where only a folder of assemblies watched whole
@@ -319,12 +353,18 @@ public sealed class WatchedFiles
     }
 
     /// <summary>The notification itself, under the gate, so what is told reaches the server in the order told; files gone
-    /// in one of their own to a server with Passenger's loader.</summary>
-    private void Send(List<FileEvent> changes, string? why)
+    /// in one of their own to a server with Passenger's loader. What it told, all but those a test holds back.</summary>
+    private List<FileEvent> Send(List<FileEvent> changes, string? why)
     {
+        if (held is { } hold && changes.Any(c => hold.Which(c.Path)))
+        {
+            hold.Kept.AddRange(changes.Where(c => hold.Which(c.Path)));
+            hold.Reached.TrySetResult();
+            changes = [.. changes.Where(c => !hold.Which(c.Path))];
+        }
         if (changes.Count == 0)
         {
-            return;
+            return changes;
         }
         if (told.Count + changes.Count > KeptLimit)
         {
@@ -348,6 +388,7 @@ public sealed class WatchedFiles
         }
         server.Note($"Told the server of {Plural.Of(changes.Count, "file")} changed on disk{(why is null ? string.Empty : ", " + why)}, {changes[0].Path} first"
             + (gone.Count > 0 ? $", {gone.Count} of them gone, taken once the projects holding them have let go of them" : string.Empty));
+        return changes;
     }
 
     private static object Notified(List<FileEvent> changes) =>
