@@ -82,6 +82,10 @@ public static class VimTextObjects
             : new VimSpan(start, before.Length == 0 ? before.Start : before.End, false);
     }
 
+    /// <summary>Where iw, aw, iW or aW as an operator takes them begins in the text, before whole lines are made of it.</summary>
+    public static int? WordsStart(TextSnapshot text, int caret, int n, bool inner, bool bigWord, bool breakEnds) =>
+        WordsWalked(text, caret, n, inner, bigWord, breakEnds, out _)?.Start;
+
     /// <summary>Where a count of words cut short by the text's end left off, where the walk stopped; null where the
     /// object is found.</summary>
     public static int? WordsRanOut(TextSnapshot text, int caret, int n, bool inner, bool bigWord, bool breakEnds) =>

@@ -2145,6 +2145,17 @@ public class VimTests
     public void Dot_after_a_visual_change_takes_as_many_cells_again_a_tab_counting_all_it_shows(string before, string keys, string after) =>
         Assert.Equal(after, Run(before, keys));
 
+    /// <summary>A count of words from a line's indent to a later line's start takes the lines whole, and a yank or a
+    /// change of case there leaves the caret where the words began, as Vim's does.</summary>
+    [Theory]
+    [InlineData("ab\n    |7\n\ncd", "2yiw", "ab\n    |7\n\ncd")]
+    [InlineData("ab\n    |7\n\ncd", "2g~iw", "ab\n    |7\n\ncd")]
+    [InlineData("ab\n    |7 \n\ncd", "3g~iw", "ab\n    |7 \n\ncd")]
+    [InlineData("ab\n    |7\n\ncd", "2yiwP", "ab\n    |7\n\n    7\n\ncd")]
+    [InlineData("ab\n    |7\n\ncd", "2diw", "ab\n|cd")]
+    public void Words_taken_as_whole_lines_leave_a_yank_where_they_began(string before, string keys, string after) =>
+        Assert.Equal(after, Run(before, keys));
+
     [Fact]
     public void A_huge_count_ends_at_the_texts_edge()
     {
