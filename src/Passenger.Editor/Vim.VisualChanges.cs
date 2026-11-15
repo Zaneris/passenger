@@ -150,8 +150,9 @@ public sealed partial class Vim
         return new Region(caret, VimMotions.ColumnOf(text, end.End, tab) <= extent.Columns ? end.End : VimMotions.OffsetAtColumn(text, line, extent.Columns, tab));
     }
 
-    /// <summary>The stretches of character or line regions, and a caret at each one's start (a line region's first line's).</summary>
-    private static (List<Stretch>, SelectionSet) RegionStretches(TextSnapshot text, List<Region> taken, bool lines)
+    /// <summary>The stretches of character or line regions, and a caret at each one's start (a line region's first line's).
+    /// A character stretch ending on the last line's end leaves the file's final line break, which joins no line.</summary>
+    private (List<Stretch>, SelectionSet) RegionStretches(TextSnapshot text, List<Region> taken, bool lines)
     {
         List<Stretch> stretches = [];
         List<Selection> carets = [];
@@ -166,7 +167,8 @@ public sealed partial class Vim
                 carets.Add(Selection.At(start));
                 continue;
             }
-            stretches.Add(new Stretch(r.Low, CharEnd(text, r.High), false, first, last, r.Low, r.Low));
+            int end = Math.Min(CharEnd(text, r.High), text.GetLine(VimMotions.LastLine(text, breakEnds)).End);
+            stretches.Add(new Stretch(r.Low, Math.Max(r.Low, end), false, first, last, r.Low, r.Low));
             carets.Add(Selection.At(r.Low));
         }
         return (stretches, SelectionSet.Create(carets, 0));

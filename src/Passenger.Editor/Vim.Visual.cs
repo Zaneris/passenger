@@ -7,7 +7,7 @@ namespace Passenger.Editor;
 public sealed partial class Vim
 {
     /// <summary>A visual stretch: where it began and where its cursor stands, both on a character, the cursor on its
-    /// line's end after $ or an l past the last character.</summary>
+    /// line's end after $, an l past the last character, or j or k onto a line too short for the column aimed for.</summary>
     private readonly record struct Region(int Anchor, int Cursor)
     {
         public int Low => Math.Min(Anchor, Cursor);
@@ -487,7 +487,8 @@ public sealed partial class Vim
                     aim = block ? (blockColumns.ToEnd ? int.MaxValue : visualAims[i] >= 0 ? visualAims[i] : blockColumns.Cursor)
                         : visualAims[i] >= 0 ? visualAims[i] : CaretColumn(text, cursor, tab);
                     moved = VimMotions.LinesAway(text, cursor, command.Name == "j" ? n : -n, breakEnds) is { } line
-                        ? aim == int.MaxValue ? LineEndOf(text, line) : VimMotions.OffsetAtColumn(text, line, aim, tab)
+                        ? aim == int.MaxValue || (!block && VimMotions.ColumnOf(text, text.GetLine(line).End, tab) <= aim) ? LineEndOf(text, line)
+                        : VimMotions.OffsetAtColumn(text, line, aim, tab)
                         : null;
                     break;
                 case "gj" or "gk":

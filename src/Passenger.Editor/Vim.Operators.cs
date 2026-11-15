@@ -150,7 +150,8 @@ public sealed partial class Vim
         List<TextEdit> edits = [.. merged.Where(s => s.End > s.Start).Select(s => new TextEdit(s.Start, s.End - s.Start, string.Empty))];
         if (edits.Count == 0)
         {
-            return new VimResult(true);
+            // Nothing to delete (a visual stretch over the file's final line break alone): the carets settle all the same.
+            return new VimResult(true, selections.With(c => Selection.At(Settled(text, c.Caret, breakEnds))));
         }
         TextSnapshot after = text.Apply(edits);
         SelectionSet carets = selections.With(c =>

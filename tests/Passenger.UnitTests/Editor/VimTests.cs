@@ -1360,7 +1360,7 @@ public class VimTests
     [InlineData("one |two.\n  baz qux", "2daw", "on|e\n  baz qux")]
     [InlineData("|one\n\ntwo three", "vjjiwd", "| three")]
     [InlineData("one\n\n|two three", "vkkawd", "|wo three")]
-    [InlineData("ab cd|\n", "viwiwd", "ab| ")]
+    [InlineData("ab cd|\n", "viwiwd", "ab| \n")]
     [InlineData("ab c|d", "vawawd", "a|b")]
     [InlineData("   |   \nab", "daw", "|")]
     [InlineData("ab   |   \ncd", "2daw", "ab      \nc|d")]
@@ -1413,6 +1413,29 @@ public class VimTests
     [InlineData("abcdef\nab|cdef", "VkJ", "abcdef| abcdef")]
     [InlineData("  abcdef\nab|cdef", "Vk>", "      |abcdef\n    abcdef")]
     public void Visual_inserts_and_operators_over_lines_land_where_vims_do(string before, string keys, string after) =>
+        Assert.Equal(after, Run(before, keys));
+
+    /// <summary>A visual cursor moved by j or k onto a line too short for the column aimed for stands on that line's end,
+    /// so the stretch takes its line break, as Vim's does; and a stretch reaching the last line's end leaves the final
+    /// line break of a file that keeps one, as there is no line after it to join.</summary>
+    [Theory]
+    [InlineData("ab\nabcd|ef", "vkd", "ab|f")]
+    [InlineData("ab\nab|cd", "vkd", "ab|d")]
+    [InlineData("ab\nabcd|ef", "vkhd", "a|f")]
+    [InlineData("abcd|ef\nab\nabcdef", "vjd", "abcd|abcdef")]
+    [InlineData("ab\nabcd ef|gh", "bvkp", "ab|fgh")]
+    [InlineData("ab\nabcd|ef", "vk~", "a|b\nABCDEf")]
+    [InlineData("ab\nabcd|ef", "vkIX<Esc>", "ab|X\nabcdef")]
+    [InlineData("ab\nabcd|ef", "vkcX<Esc>", "ab|Xf")]
+    [InlineData("one\nab|cd\n", "v$d", "one\na|b\n")]
+    [InlineData("one\nab|cd\n", "v$y$p", "one\nabcdc|d\n")]
+    [InlineData("one\nab|cd\n", "v$cX<Esc>", "one\nab|X\n")]
+    [InlineData("one\nab|cd\n", "kyyjv$p", "one\nab\n|one\n\n")]
+    [InlineData("one\n|\n", "kyyjvp", "one\n\n|one\n\n")]
+    [InlineData("ab|c\n\n", "jvlx", "abc\n|\n")]
+    [InlineData("ab|c\n\n", "jvwd", "abc\n|\n")]
+    [InlineData("ab|c\n", "vwx", "a|b\n")]
+    public void A_visual_stretch_takes_a_short_lines_break_but_never_the_files_final_one(string before, string keys, string after) =>
         Assert.Equal(after, Run(before, keys));
 
     [Fact]
