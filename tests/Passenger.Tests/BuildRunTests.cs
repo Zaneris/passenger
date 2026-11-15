@@ -933,11 +933,11 @@ public sealed class BuildRunTests : IClassFixture<RestoredFolders>, IDisposable
         window.Close();
     }
 
-    /// <summary>A build under dotnet test's environment, which sets MSBUILDENSURESTDOUTFORTASKPROCESSES, ends though a
-    /// node MSBuild started waits on to be reused (the test's own MSBuild, <see cref="OwnMSBuild"/>, has none idle).
-    /// Then, in a person's IDE's environment, after a build that left its nodes for the next, Stop pressed while each
-    /// project's build runs a step that goes on writing to its output folder until ended (as a code generator, a
-    /// bundler or tests in the build would) ends every step, and nothing more is written.</summary>
+    /// <summary>A build under dotnet test's environment, which sets MSBUILDENSURESTDOUTFORTASKPROCESSES, ends though a node
+    /// MSBuild started waits on to be reused (the test's own MSBuild, <see cref="OwnMSBuild"/>, has none idle). Then, in a
+    /// person's IDE's environment, after a build that left its nodes for the next, Stop pressed while each project's build
+    /// runs a step writing to its output folder until ended (as a code generator, a bundler or tests in the build would)
+    /// ends every step, and nothing more is written; each line names its step's shell, for a failure to say who wrote.</summary>
     [Gate]
     [AvaloniaFact]
     public void A_build_under_dotnet_tests_environment_ends_and_stopping_a_build_ends_its_steps_wherever_msbuild_ran_them_and_nothing_more_is_written_after()
@@ -967,8 +967,8 @@ public sealed class BuildRunTests : IClassFixture<RestoredFolders>, IDisposable
             Write("Directory.Build.targets", """
                 <Project>
                   <Target Name="Write" BeforeTargets="Build" Condition="'$(DesignTimeBuild)' != 'true'">
-                    <Exec Condition="'$(OS)' != 'Windows_NT'" Command="echo $$ &gt; step.pid; while true; do date &gt;&gt; '$(OutDir)written.txt'; sleep 0.2; done" />
-                    <Exec Condition="'$(OS)' == 'Windows_NT'" Command="powershell -NoProfile -Command &quot;Set-Content -Path step.pid -Value $PID; while ($true) { Add-Content -Path '$(OutDir)written.txt' -Value (Get-Date -Format o); Start-Sleep -Milliseconds 200 }&quot;" />
+                    <Exec Condition="'$(OS)' != 'Windows_NT'" Command="echo $$ &gt; step.pid; while true; do date +&quot;$$ %T&quot; &gt;&gt; '$(OutDir)written.txt'; sleep 0.2; done" />
+                    <Exec Condition="'$(OS)' == 'Windows_NT'" Command="powershell -NoProfile -Command &quot;Set-Content -Path step.pid -Value $PID; while ($true) { Add-Content -Path '$(OutDir)written.txt' -Value ([string]$PID + ' ' + (Get-Date -Format o)); Start-Sleep -Milliseconds 200 }&quot;" />
                   </Target>
                 </Project>
                 """);
@@ -982,8 +982,12 @@ public sealed class BuildRunTests : IClassFixture<RestoredFolders>, IDisposable
             Ui.PumpUntil(() => projects.Any(p => File.Exists(Path.Combine(Folder, "src", p, "bin", "Debug", TestProjects.Framework, "written.txt"))),
                 "a project's step to write into its output folder", TimeSpan.FromSeconds(60));
             steps.AddRange(projects.Select(p => Processes.ReadId(Path.Combine(Folder, "src", p, "step.pid"))).Where(id => id > 0).Select(OwnProcess.Of));
+            HashSet<int> groups = [];
+            string before = StepTree(command, groups);
+            DateTime stopped = DateTime.Now;
             window.Perform(AppActions.Stop);
             Ui.WaitFor(() => !window.IsBuilding, "the build to stop");
+            DateTime ended = DateTime.Now;
             Assert.Equal("Build stopped", window.Status);
 
             foreach (OwnProcess step in steps)
@@ -994,8 +998,35 @@ public sealed class BuildRunTests : IClassFixture<RestoredFolders>, IDisposable
             string[] written = [.. projects.Select(p => Path.Combine(Folder, "src", p, "bin", "Debug", TestProjects.Framework, "written.txt")).Where(File.Exists)];
             Assert.NotEmpty(written);
             long[] lengths = [.. written.Select(f => new FileInfo(f).Length)];
+            DateTime looked = DateTime.Now;
             Ui.Hold(TimeSpan.FromSeconds(2), "long enough for a build still running to write to its output folder again");
-            Assert.True(lengths.SequenceEqual(written.Select(f => new FileInfo(f).Length)), "After Stop, the build went on writing to its output folder");
+            if (!lengths.SequenceEqual(written.Select(f => new FileInfo(f).Length)))
+            {
+                string after = StepTree(command, groups);
+                List<string> said = [];
+                foreach ((string file, long length) in written.Zip(lengths))
+                {
+                    string[] lines = File.ReadAllText(file)[(int)length..].Split('\n', StringSplitOptions.RemoveEmptyEntries);
+                    if (lines.Length == 0)
+                    {
+                        continue;
+                    }
+                    foreach (int writer in lines.Select(l => int.TryParse(l.Split(' ')[0], out int id) ? id : 0).Where(id => id > 0).Distinct())
+                    {
+                        string known = steps.Any(s => s.Id == writer) ? "a step the test knew" : "a step the test never knew";
+                        said.Add($"{Path.GetRelativePath(Folder, file)}: {lines.Count(l => l.StartsWith($"{writer} ", StringComparison.Ordinal))} lines from the shell of "
+                            + $"{known}, {Processes.Describe(writer)} (a shell gone, what it had forked)");
+                        if (!steps.Any(s => s.Id == writer))
+                        {
+                            steps.Add(OwnProcess.Of(writer));
+                        }
+                    }
+                    said.Add($"  its lines after the look: {string.Join(" | ", lines)}");
+                }
+                Assert.Fail($"After Stop, the build went on writing to its output folder:\n{string.Join('\n', said)}\n"
+                    + $"Stop pressed at {stopped:HH:mm:ss.fff}, the build stopped at {ended:HH:mm:ss.fff}, its output looked at {looked:HH:mm:ss.fff}, now {DateTime.Now:HH:mm:ss.fff}; "
+                    + $"the steps the test knew: {string.Join(", ", steps.Select(s => s.Id))}; the build's command {command}.\nBefore Stop:\n{before}\nNow:\n{after}");
+            }
         }
         finally
         {
@@ -1203,6 +1234,37 @@ public sealed class BuildRunTests : IClassFixture<RestoredFolders>, IDisposable
         {
             TestFolders.Delete(app);
         }
+    }
+
+    /// <summary>A build's processes as ps lists them (id, parent, group, start and command line): its command's group, the
+    /// groups of the IDE's MSBuild worker nodes and those named before, and everything those started; none on Windows.</summary>
+    private static string StepTree(int command, HashSet<int> groups)
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return "";
+        }
+        List<(int Pid, int Parent, int Group, string Line)> all = [];
+        foreach (string line in Processes.Ps("-A", "-o", "pid=,ppid=,pgid=,lstart=,command="))
+        {
+            string[] words = line.Split(' ', 4, StringSplitOptions.RemoveEmptyEntries);
+            if (words.Length == 4 && int.TryParse(words[0], out int pid) && int.TryParse(words[1], out int parent) && int.TryParse(words[2], out int group))
+            {
+                all.Add((pid, parent, group, line));
+            }
+        }
+        string salt = $"passenger-{Environment.ProcessId}";
+        HashSet<int> nodes = [.. Processes.MSBuildNodes().Where(n => n.Value.Contains(salt, StringComparison.Ordinal)).Select(n => n.Key)];
+        groups.Add(command);
+        groups.UnionWith(all.Where(p => nodes.Contains(p.Pid)).Select(p => p.Group));
+        HashSet<int> shown = [.. all.Where(p => groups.Contains(p.Group) || nodes.Contains(p.Pid)).Select(p => p.Pid)];
+        for (int added = 1; added > 0;)
+        {
+            int[] more = [.. all.Where(p => !shown.Contains(p.Pid) && shown.Contains(p.Parent)).Select(p => p.Pid)];
+            shown.UnionWith(more);
+            added = more.Length;
+        }
+        return string.Join('\n', all.Where(p => shown.Contains(p.Pid)).Select(p => $"  {p.Line}"));
     }
 
     /// <summary>The dotnet command of the build just begun, once it has started: a build starts it once the project host

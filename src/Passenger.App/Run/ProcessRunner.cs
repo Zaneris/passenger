@@ -9,8 +9,9 @@ namespace Passenger.App.Run;
 /// <summary>A child process whose output and errors stream into a console as they arrive, through its sink: read off the
 /// UI thread, colour codes taken out, standard error in the error colour. A program run (not a build) reads what the
 /// person types into the console; a build's input is closed, so a step that reads ends rather than waits. Stopping kills
-/// the whole process tree. The console is the window's; a runner lets go of it when disposed, its folder left, and
-/// another folder's runner writes there.</summary>
+/// the whole process tree, and a runner of builds the MSBuild nodes its builds left with what they run (<see cref="Stop"/>).
+/// The console is the window's; a runner lets go of it when disposed, its folder left, and another folder's runner writes
+/// there.</summary>
 public sealed class ProcessRunner : IDisposable, IRunningProgram
 {
     /// <summary>The line each of the program's streams has begun and not yet ended, its output's and its errors'.</summary>
@@ -23,6 +24,17 @@ public sealed class ProcessRunner : IDisposable, IRunningProgram
     private Task reading = Task.CompletedTask;
     private Task? deferredStop;
 
+    /// <summary>What a runner of builds adds, on macOS and Linux, to the MSBuild handshake salt of each dotnet command it
+    /// starts, so that only its own later commands, which run one at a time, take up the nodes its commands leave in their
+    /// process groups; null for any other runner, and on Windows, where no group holds them.</summary>
+    private readonly string? ownNodes;
+
+    /// <summary>Each command a runner of builds has started, by id, whose process group may still hold the nodes it left
+    /// for the next and what they run for it: the groups Stop and the runner's end kill.</summary>
+    private readonly List<int> builds = [];
+
+    private static int runnersOfBuilds;
+
     /// <summary>The wait of a run whose process has yet to start, which Stop ends.</summary>
     private CancellationTokenSource? waiting;
 
@@ -31,10 +43,13 @@ public sealed class ProcessRunner : IDisposable, IRunningProgram
     private bool forking;
     private TaskCompletionSource<int> ended = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-    public ProcessRunner(OutputView console, bool takesInput = false)
+    /// <summary>A runner writing to its console; one that <paramref name="builds"/> keeps the MSBuild nodes of its dotnet
+    /// commands its own (<see cref="ownNodes"/>).</summary>
+    public ProcessRunner(OutputView console, bool takesInput = false, bool builds = false)
     {
         this.console = console;
         this.takesInput = takesInput;
+        ownNodes = builds && !OperatingSystem.IsWindows() ? $"-builds-{Interlocked.Increment(ref runnersOfBuilds)}" : null;
         console.Written += OnWritten;
     }
 
@@ -49,8 +64,25 @@ public sealed class ProcessRunner : IDisposable, IRunningProgram
         }
     }
 
-    /// <summary>Lets go of the console, its process stopped first: nothing more it reads is taken as its lines.</summary>
-    public void Dispose() => console.Written -= OnWritten;
+    /// <summary>Lets go of the console, its process stopped first: nothing more it reads is taken as its lines. The nodes its
+    /// builds left end, as no other command takes them up.</summary>
+    public void Dispose()
+    {
+        console.Written -= OnWritten;
+        EndBuilds();
+    }
+
+    /// <summary>Kills what is left in the groups of the commands a runner of builds started: the nodes they left for the
+    /// next and whatever those run, a step of the build Stop ends among them, which the node would otherwise end by
+    /// itself through a kill of the step's tree that passes over a child forked as it kills.</summary>
+    private void EndBuilds()
+    {
+        foreach (int build in builds)
+        {
+            ChildProcesses.KillLeft(build);
+        }
+        builds.Clear();
+    }
 
     /// <summary>A whole line of output, for whoever reads it (the build's error list, dotnet watch's words of a save); UI
     /// thread.</summary>
@@ -180,6 +212,10 @@ public sealed class ProcessRunner : IDisposable, IRunningProgram
         // Otherwise ChildProcesses closes it as the program starts.
         start.RedirectStandardInput = takesInput;
         ChildProcesses.WithVariables(start, environment);
+        if (ownNodes is not null && start.Environment.TryGetValue(MSBuildNames.NodeHandshakeSalt, out string? salt) && salt is not null)
+        {
+            start.Environment[MSBuildNames.NodeHandshakeSalt] = salt + ownNodes;
+        }
     }
 
     /// <summary>The process started once its wait is over, unless it was stopped meanwhile.</summary>
@@ -278,6 +314,11 @@ public sealed class ProcessRunner : IDisposable, IRunningProgram
     {
         process = started;
         running = true;
+        if (ownNodes is not null)
+        {
+            builds.RemoveAll(build => !ChildProcesses.Leaves(build));
+            builds.Add(started.Id);
+        }
         TaskCompletionSource<int> ending = waited ?? (ended = new(TaskCreationOptions.RunContinuationsAsynchronously));
         ConsoleInput? input = takesInput ? ProgramInput.Of(ChildProcesses.Input(started)) : null;
         if (input is not null)
@@ -383,7 +424,8 @@ public sealed class ProcessRunner : IDisposable, IRunningProgram
     }
 
     /// <summary>Ends the process and all it started, and on macOS and Linux what it left holding its output after it ended,
-    /// which the console would otherwise end only after its grace.</summary>
+    /// which the console would otherwise end only after its grace; a runner of builds also the nodes its builds left, in
+    /// which this one may run its steps.</summary>
     public void Stop()
     {
         UiThread.Check();
@@ -400,6 +442,7 @@ public sealed class ProcessRunner : IDisposable, IRunningProgram
         {
             WasStopped = true;
             ChildProcesses.Kill(started);
+            EndBuilds();
         }
     }
 

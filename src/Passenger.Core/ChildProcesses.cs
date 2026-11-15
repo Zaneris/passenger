@@ -883,6 +883,15 @@ public static class ChildProcesses
     /// elsewhere its process group already holds them.</summary>
     public static void HoldFamily(Process process) => Lifeline.HoldFamily(process);
 
+    /// <summary>Ends what is left of a child, by its id, as <see cref="Kill"/> ends it: on macOS and Linux its process
+    /// group, which holds what it started after it has ended (MSBuild's nodes a build left for the next, and what they run
+    /// for a later build); on Windows its held family (<see cref="HoldFamily"/>).</summary>
+    public static void KillLeft(int id) => Lifeline.KillGroup(id);
+
+    /// <summary>Whether something of a child, by its id, may still be left for <see cref="KillLeft"/> to end: its process
+    /// group still has a process, or its family is still held.</summary>
+    public static bool Leaves(int id) => Lifeline.Holds(id);
+
     /// <summary>Ends a child and everything it started, now, passing over what has ended: its tree on Windows
     /// (<see cref="ProcessTree"/>), whatever another thread does with the process meanwhile, and the whole of a family held
     /// (<see cref="HoldFamily"/>); on macOS and Linux its process group, which holds what it started and what it left

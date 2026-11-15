@@ -107,7 +107,7 @@ public sealed class ProjectSession : IAsyncDisposable
         Aspire.Inspected = app => Reloaded(app);
         AspireFiles = new AspireFiles(this);
         NodeFiles = new Web.NodeFiles(this);
-        Builder = new ProcessRunner(setup.Views.Build);
+        Builder = new ProcessRunner(setup.Views.Build, builds: true);
         Runner = new ProcessRunner(setup.Views.Run, takesInput: true);
         Tests = new TestController(setup.Views.TestTree, setup.BuildForTests, () => Projects, () => Workspace, line => setup.Views.Build.Append($"{line}\n"))
         {

@@ -21,6 +21,13 @@ internal static partial class Lifeline
     /// number the system has since given to another.</summary>
     private static readonly TimeSpan PruneEvery = TimeSpan.FromSeconds(10);
 
+    /// <summary>How often a killed group is killed again while a process is left in it (<see cref="KillGroup(int)"/>).</summary>
+    private static readonly TimeSpan KillAgainEvery = TimeSpan.FromMilliseconds(5);
+
+    /// <summary>How long a killed group is killed again at most: its processes and what they forked as it was killed are
+    /// gone long before, zombies their parents reap included.</summary>
+    private static readonly TimeSpan KillAgainFor = TimeSpan.FromSeconds(5);
+
     /// <summary>The watchdog: "+N" puts group N on its list and "-N" strikes it off; "!C" makes C the command it runs last,
     /// after every group still listed at the end of its input is killed. It writes nothing, and a terminal's hangup or
     /// interrupt is not its to obey.</summary>
@@ -154,7 +161,9 @@ internal static partial class Lifeline
         KillGroup(group);
     }
 
-    /// <summary><see cref="KillGroup(Process)"/> of a child by its id, read before anything let go of its process.</summary>
+    /// <summary><see cref="KillGroup(Process)"/> of a child by its id, read before anything let go of its process. The
+    /// system's kill of a group passes over a process forked into it at that moment, which then runs on; so a group that
+    /// had a process to kill is killed again, off the caller's thread, until the system says none is left in it.</summary>
     public static void KillGroup(int group)
     {
         if (OperatingSystem.IsWindows())
@@ -168,12 +177,38 @@ internal static partial class Lifeline
             job?.Dispose();
             return;
         }
+        if (Signalled(group))
+        {
+            UnawaitedWork.Observe(BackgroundWork.Run(() => KillAgainAsync(group)));
+        }
+    }
+
+    /// <summary>Whether a child's group is still listed (on Windows, its family still held): not yet found empty.</summary>
+    public static bool Holds(int group)
+    {
         lock (Gate)
         {
-            if (Groups.Contains(group))
-            {
-                Libc.Signal(-group, SigKill);
-            }
+            return OperatingSystem.IsWindows() ? Families.ContainsKey(group) : Groups.Contains(group);
+        }
+    }
+
+    /// <summary>Kills every process now in a group still listed: whether the system found one to kill.</summary>
+    private static bool Signalled(int group)
+    {
+        lock (Gate)
+        {
+            return Groups.Contains(group) && Libc.Signal(-group, SigKill) == 0;
+        }
+    }
+
+    /// <summary>Kills a group again until it has no process left, or <see cref="KillAgainFor"/> has passed: what a kill
+    /// passed over is in the group by the next.</summary>
+    private static async Task KillAgainAsync(int group)
+    {
+        Deadline until = Deadline.In(KillAgainFor);
+        while (Signalled(group) && !until.Passed)
+        {
+            await Task.Delay(KillAgainEvery).ConfigureAwait(false);
         }
     }
 
