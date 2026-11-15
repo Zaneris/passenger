@@ -402,7 +402,7 @@ internal sealed partial class GDScriptAssist
             bool unique = path.StartsWith('%');
             string bare = unique ? path[1..] : path;
             string label = (unique ? "%" : "$") + bare;
-            string insert = bare.All(c => AssistContext.IsIdentifierChar(c) || c == '/') ? label : $"{label[0]}\"{bare}\"";
+            string insert = OfNames(bare, slashes: true) ? label : $"{label[0]}\"{bare}\"";
             items.Add(Item(label, CompletionItemKind.Field, detail, " ", new OfWords($"{label}: {detail}"), insert, 0, Replacing.Path));
         }
         return new Listed(at.Start, items, PathCharacters);
@@ -588,22 +588,41 @@ internal sealed partial class GDScriptAssist
         }
         string? member = null;
         int dot = receiver.LastIndexOf('.');
-        if (dot > 0 && receiver[(dot + 1)..].All(AssistContext.IsIdentifierChar) && !receiver.EndsWith(')'))
+        if (dot > 0 && OfNames(receiver[(dot + 1)..], slashes: false) && !receiver.EndsWith(')'))
         {
             member = receiver[(dot + 1)..];
             receiver = receiver[..dot];
         }
-        Match path = Regex.Match(receiver, @"^(?:\$""(?<path>[^""]*)""|\$(?<path>[\w/]+)|%(?<unique>\w+)|get_node(?:_or_null)?\(\s*[""'](?<path>[^""']*)[""']\s*\))$", RegexOptions.CultureInvariant);
+        if (receiver.Length > 1 && receiver[0] is '$' or '%' && OfNames(receiver[1..], slashes: receiver[0] == '$'))
+        {
+            return (receiver[0] == '%' ? receiver : receiver[1..], null, member);
+        }
+        Match path = Regex.Match(receiver, @"^(?:\$""(?<path>[^""]*)""|get_node(?:_or_null)?\(\s*[""'](?<path>[^""']*)[""']\s*\))$", RegexOptions.CultureInvariant);
         if (path.Success)
         {
-            return (path.Groups["unique"].Success ? "%" + path.Groups["unique"].Value : path.Groups["path"].Value, null, member);
+            return (path.Groups["path"].Value, null, member);
         }
-        if (receiver.All(AssistContext.IsIdentifierChar) && typed.Tree.Members.Select(m => m.Node).OfType<GDScriptVariable>()
+        if (OfNames(receiver, slashes: false) && typed.Tree.Members.Select(m => m.Node).OfType<GDScriptVariable>()
             .Any(v => v.Identifier?.Name == receiver && v.Annotations.Any(a => a.Name.StartsWith("@export", StringComparison.Ordinal))))
         {
             return (null, receiver, member);
         }
         return (null, null, member);
+    }
+
+    /// <summary>Whether a text is all a name's characters by Godot's identifier rule, and '/' too for a node's path.</summary>
+    private static bool OfNames(string text, bool slashes)
+    {
+        for (int at = 0; at < text.Length;)
+        {
+            int width = slashes && text[at] == '/' ? 1 : GDScriptTokenizer.IdentifierContinue(text, at);
+            if (width == 0)
+            {
+                return false;
+            }
+            at += width;
+        }
+        return true;
     }
 
     /// <summary>The type of what a call is made on, read where it is written before the call's name; null where nothing is

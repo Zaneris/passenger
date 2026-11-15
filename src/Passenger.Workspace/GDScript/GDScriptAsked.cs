@@ -69,95 +69,33 @@ public sealed record GDScriptAsked(GDScriptAskedKind Kind, int Start)
     public static GDScriptAsked At(string text, int caret)
     {
         caret = Math.Clamp(caret, 0, text.Length);
-        List<(char Mark, string? Call, int CallStart, int Argument, int At)> open = [];
-        string? lastWord = null;
-        int lastWordStart = 0;
-        bool wordLast = false;
-        int at = 0;
-        while (at < caret)
+        GDScriptScan scan = new(text);
+        while (scan.Next(caret))
         {
-            char c = text[at];
-            if (c == '#')
+            if (scan.Piece == GDScriptPiece.Comment && scan.End >= caret)
             {
-                int end = text.IndexOf('\n', at);
-                if (end < 0 || end >= caret)
+                return new GDScriptAsked(GDScriptAskedKind.None, caret);
+            }
+            if (scan.Piece == GDScriptPiece.String && caret >= scan.TextStart && caret <= scan.TextEnd)
+            {
+                return new GDScriptAsked(GDScriptAskedKind.String, scan.TextStart)
                 {
-                    return new GDScriptAsked(GDScriptAskedKind.None, caret);
-                }
-                at = end;
-                continue;
+                    End = scan.TextEnd,
+                    Call = CallOf(text, scan.Innermost),
+                    Argument = scan.Innermost is { Mark: '(' } && scan.BeginsArgument,
+                };
             }
-            if (c is '"' or '\'' || c is 'r' or '&' or '^' && at + 1 < text.Length && text[at + 1] is '"' or '\'' && !(at > 0 && IsWordChar(text[at - 1])))
-            {
-                int quote = c is '"' or '\'' ? at : at + 1;
-                (int start, int stop, int next) = GDScriptTokenizer.StringBounds(text, quote, c == 'r');
-                bool given = open.Count > 0 && open[^1].Mark == '(' && LastCodeBefore(text, at) is '(' or ',';
-                if (caret >= start && caret <= stop)
-                {
-                    return new GDScriptAsked(GDScriptAskedKind.String, start)
-                    {
-                        End = stop,
-                        Call = CallOf(text, open.Count > 0 ? open[^1] : null),
-                        Argument = given,
-                    };
-                }
-                at = next;
-                wordLast = false;
-                continue;
-            }
-            if (char.IsLetter(c) || c == '_')
-            {
-                int start = at;
-                while (at < text.Length && IsWordChar(text[at]))
-                {
-                    at++;
-                }
-                lastWord = text[start..at];
-                lastWordStart = start;
-                wordLast = true;
-                continue;
-            }
-            if (char.IsDigit(c))
-            {
-                while (at < text.Length && (IsWordChar(text[at]) || text[at] == '.' && at + 1 < text.Length && char.IsDigit(text[at + 1])))
-                {
-                    at++;
-                }
-                wordLast = false;
-                continue;
-            }
-            if (c is '(' or '[' or '{')
-            {
-                open.Add((c, c == '(' && wordLast ? lastWord : null, lastWordStart, 0, at));
-            }
-            else if (c is ')' or ']' or '}' && open.Count > 0)
-            {
-                open.RemoveAt(open.Count - 1);
-            }
-            else if (c == ',' && open.Count > 0)
-            {
-                open[^1] = open[^1] with { Argument = open[^1].Argument + 1 };
-            }
-            if (!char.IsWhiteSpace(c))
-            {
-                wordLast = false;
-            }
-            at++;
         }
-        GDScriptCallAt? call = CallOf(text, open.Count > 0 ? open[^1] : null);
-        int word = caret;
-        while (word > 0 && IsWordChar(text[word - 1]))
-        {
-            word--;
-        }
-        if (word < caret && char.IsDigit(text[word]))
+        GDScriptCallAt? call = CallOf(text, scan.Innermost);
+        int word = NameStart(text, caret);
+        if (word < caret && GDScriptTokenizer.IdentifierStart(text, word) == 0)
         {
             return new GDScriptAsked(GDScriptAskedKind.None, caret);
         }
         int path = word;
-        while (path > 0 && (IsWordChar(text[path - 1]) || text[path - 1] == '/'))
+        while (path > 0 && (text[path - 1] == '/' ? 1 : GDScriptTokenizer.IdentifierContinueBefore(text, path)) is > 0 and int width)
         {
-            path--;
+            path -= width;
         }
         if (path > 0 && (text[path - 1] == '$' || text[path - 1] == '%' && StartsOperand(text, path - 1)))
         {
@@ -170,7 +108,7 @@ public sealed record GDScriptAsked(GDScriptAskedKind Kind, int Start)
         }
         if (before == '.')
         {
-            return word >= 2 && char.IsDigit(text[word - 2]) && NumberEndsAt(text, word - 1)
+            return word >= 2 && char.IsAsciiDigit(text[word - 2]) && NumberEndsAt(text, word - 1)
                 ? new GDScriptAsked(GDScriptAskedKind.None, caret)
                 : new GDScriptAsked(GDScriptAskedKind.Member, word) { Call = call };
         }
@@ -180,11 +118,7 @@ public sealed record GDScriptAsked(GDScriptAskedKind Kind, int Start)
             gap--;
         }
         int previousEnd = gap;
-        int previousStart = previousEnd;
-        while (previousStart > 0 && IsWordChar(text[previousStart - 1]))
-        {
-            previousStart--;
-        }
+        int previousStart = NameStart(text, previousEnd);
         string previous = text[previousStart..previousEnd];
         char previousChar = gap > 0 ? text[gap - 1] : '\0';
         bool classLevel = ClassLevelAt(text, word);
@@ -192,7 +126,7 @@ public sealed record GDScriptAsked(GDScriptAskedKind Kind, int Start)
         {
             return new GDScriptAsked(GDScriptAskedKind.Type, word) { Returns = true, Call = call };
         }
-        if (TypeWords.Contains(previous) || previousChar == ':' && TypeColon(text, gap - 1, open.Count > 0 ? open[^1] : null))
+        if (TypeWords.Contains(previous) || previousChar == ':' && TypeColon(text, gap - 1, scan.Innermost))
         {
             return new GDScriptAsked(GDScriptAskedKind.Type, word) { Call = call };
         }
@@ -212,16 +146,14 @@ public sealed record GDScriptAsked(GDScriptAskedKind Kind, int Start)
     /// <summary>The annotations Godot takes where a caret is: a class's level's, else a statement's.</summary>
     public static IEnumerable<string> Annotations(bool classLevel) => GDScriptParser.AnnotationNames(classLevel);
 
-    private static bool IsWordChar(char c) => char.IsLetterOrDigit(c) || c == '_';
-
-    /// <summary>The last character before an offset that is not a space, on its line or the ones before.</summary>
-    private static char LastCodeBefore(string text, int at)
+    /// <summary>Where the run of a name's characters that ends at an offset starts, read back by Godot's identifier rule.</summary>
+    private static int NameStart(string text, int end)
     {
-        while (at > 0 && char.IsWhiteSpace(text[at - 1]))
+        while (end > 0 && GDScriptTokenizer.IdentifierContinueBefore(text, end) is > 0 and int width)
         {
-            at--;
+            end -= width;
         }
-        return at > 0 ? text[at - 1] : '\0';
+        return end;
     }
 
     /// <summary>Whether a <c>%</c> starts an operand (a unique node's name) rather than taking a remainder: nothing that
@@ -234,34 +166,30 @@ public sealed record GDScriptAsked(GDScriptAskedKind Kind, int Start)
             at--;
         }
         char before = at > 0 ? text[at - 1] : '\0';
-        return !(IsWordChar(before) || before is ')' or ']' or '}' or '"' or '\'');
+        return !(GDScriptTokenizer.IdentifierContinueBefore(text, at) > 0 || before is ')' or ']' or '}' or '"' or '\'');
     }
 
     /// <summary>Whether a '.' ends a number (<c>1.</c>) rather than a value's name.</summary>
     private static bool NumberEndsAt(string text, int dot)
     {
         int start = dot;
-        while (start > 0 && (IsWordChar(text[start - 1]) || text[start - 1] == '.'))
+        while (start > 0 && (text[start - 1] == '.' ? 1 : GDScriptTokenizer.IdentifierContinueBefore(text, start)) is > 0 and int width)
         {
-            start--;
+            start -= width;
         }
-        return char.IsDigit(text[start]);
+        return char.IsAsciiDigit(text[start]);
     }
 
     /// <summary>Whether a ':' gives a type: a variable's or constant's (<c>var speed:</c>), a function's or signal's
     /// parameter's, a typed loop variable's; not a dictionary's key's, a lambda's body's or a block's.</summary>
-    private static bool TypeColon(string text, int colon, (char Mark, string? Call, int CallStart, int Argument, int At)? open)
+    private static bool TypeColon(string text, int colon, GDScriptBracket? open)
     {
         int nameEnd = colon;
         while (nameEnd > 0 && text[nameEnd - 1] is ' ' or '\t')
         {
             nameEnd--;
         }
-        int nameStart = nameEnd;
-        while (nameStart > 0 && IsWordChar(text[nameStart - 1]))
-        {
-            nameStart--;
-        }
+        int nameStart = NameStart(text, nameEnd);
         if (nameStart == nameEnd)
         {
             return false;
@@ -282,12 +210,7 @@ public sealed record GDScriptAsked(GDScriptAskedKind Kind, int Start)
         {
             end--;
         }
-        int start = end;
-        while (start > 0 && IsWordChar(text[start - 1]))
-        {
-            start--;
-        }
-        return text[start..end];
+        return text[NameStart(text, end)..end];
     }
 
     /// <summary>Whether an offset is in a class's body rather than a function's: on a line not indented, or under an inner
@@ -316,7 +239,7 @@ public sealed record GDScriptAsked(GDScriptAskedKind Kind, int Start)
     }
 
     /// <summary>An open bracket as the call it opens: its function's name and receiver; null for no call's.</summary>
-    private static GDScriptCallAt? CallOf(string text, (char Mark, string? Call, int CallStart, int Argument, int At)? open)
+    private static GDScriptCallAt? CallOf(string text, GDScriptBracket? open)
     {
         if (open is not { Mark: '(', Call: { } name } bracket || name is "if" or "elif" or "while" or "for" or "match" or "return" or "and" or "or" or "not" or "in")
         {
@@ -338,9 +261,9 @@ public sealed record GDScriptAsked(GDScriptAskedKind Kind, int Start)
         while (at > 0)
         {
             char c = text[at - 1];
-            if (IsWordChar(c) || c is '/' or '$' or '%' or '.')
+            if ((c is '/' or '$' or '%' or '.' ? 1 : GDScriptTokenizer.IdentifierContinueBefore(text, at)) is > 0 and int width)
             {
-                at--;
+                at -= width;
             }
             else if (c is ')' or ']' && Opening(text, at - 1) is int opened and >= 0)
             {

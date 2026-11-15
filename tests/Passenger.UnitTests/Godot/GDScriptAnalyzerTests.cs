@@ -965,6 +965,35 @@ public class GDScriptAnalyzerTests
         Assert.True(GDScriptAsked.At(Text, inside) is { Kind: GDScriptAskedKind.String } within && within.End == inside + 2, "A caret inside the raw string read as outside it");
     }
 
+    /// <summary>A name is read as Godot's tokenizer reads one, its marks (नमस्ते's virama and vowel sign, घटना's spacing
+    /// vowel) carrying it on and a letter past the first plane one of it: completion narrows by and replaces the whole name,
+    /// and a call of it holds its arguments.</summary>
+    [Theory]
+    [InlineData("नमस्त")]
+    [InlineData("घटना")]
+    [InlineData("\U0002000B\U0002000B")]
+    public void A_name_holding_marks_or_a_letter_past_the_first_plane_is_read_from_its_first_letter(string name)
+    {
+        string typed = $"extends Node\n\nfunc f():\n\tprint({name}";
+        GDScriptAsked asked = GDScriptAsked.At(typed, typed.Length);
+        Assert.True(asked is { Kind: GDScriptAskedKind.Name } && asked.Start == typed.Length - name.Length,
+            $"{name} typed is narrowed by and replaced from {typed[asked.Start..]} ({asked.Kind}), not the whole name");
+        string called = $"extends Node\n\nfunc {name}(a, b):\n\tpass\n\nfunc f():\n\t{name}(1, ";
+        GDScriptCallAt? call = GDScriptAsked.At(called, called.Length).Call;
+        Assert.True(call is { Argument: 1 } && call.Name == name, $"The call of {name} read as {call?.Name ?? "none"} at argument {call?.Argument}: its parameters go unshown");
+    }
+
+    /// <summary>A comment between a call's parenthesis and a string leaves the string given straight to the call, as the
+    /// strings Godot's calls take are read (<see cref="Passenger.Workspace.GodotScriptStrings"/>).</summary>
+    [Fact]
+    public void A_string_after_a_comment_in_a_calls_parentheses_is_given_to_the_call()
+    {
+        const string Text = "extends Node\n\nfunc f():\n\tInput.is_action_pressed( # the jump\n\t\t\"ju";
+        GDScriptAsked asked = GDScriptAsked.At(Text, Text.Length);
+        Assert.True(asked is { Kind: GDScriptAskedKind.String, Argument: true, Call.Name: "is_action_pressed" },
+            $"The string after the comment read as {asked.Kind}, given {asked.Argument} to {asked.Call?.Name ?? "no call"}: the input actions go unoffered");
+    }
+
     /// <summary>An enum's value finds the values before it by their names, a named enum's too, and neither itself, those after it
     /// nor its enum, whatever the class calls the same: what's listed compiled at each under Godot 4.7.2 and what's left out didn't.</summary>
     [Theory]

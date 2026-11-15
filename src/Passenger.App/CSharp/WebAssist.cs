@@ -7,6 +7,7 @@ using Passenger.Core;
 using Passenger.Lsp;
 using Passenger.Text;
 using Passenger.Workspace;
+using Passenger.Workspace.GDScript;
 using Passenger.Xaml.Features;
 
 namespace Passenger.App.CSharp;
@@ -213,13 +214,14 @@ internal sealed partial class WebAssist(AssistContext context, PopupPlacement po
 
     /// <summary>A character of a web language's name beyond an identifier's: CSS's and HTML's '-' (background-color,
     /// --accent, data-id), JavaScript's '$', a Dockerfile's flags' '-' (--from), YAML's keys' and names' '-' and '.'
-    /// (x-common, my-api), none of GDScript's, and in JSON the quotes a property's name is written in.</summary>
+    /// (x-common, my-api), GDScript's by Godot's identifier rule (a mark carrying a name on), and in JSON the quotes a
+    /// property's name is written in.</summary>
     public static bool IsWebWordChar(WebDocument web, char c) => web.Kind switch
     {
         WebServerKind.Css or WebServerKind.Html or WebServerKind.Dockerfile => c == '-',
         WebServerKind.TypeScript => c == '$',
         WebServerKind.Yaml => c is '-' or '.',
-        WebServerKind.GDScript => false,
+        WebServerKind.GDScript => GDScriptTokenizer.MayContinueIdentifier(c),
         _ => c is '"' or '-' or '.' or '@' or '/',
     };
 

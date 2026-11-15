@@ -33,104 +33,26 @@ public static class GodotScriptStrings
     public static IReadOnlyList<GodotScriptToken> Read(string text)
     {
         List<GodotScriptToken> tokens = [];
-        // Each open bracket: the call it opens (null for an array, a dictionary or a group), the argument it is at and what the call is made on.
-        List<(string? Call, int Argument, string? Receiver)> open = [];
-        string? lastWord = null;
-        string? lastReceiver = null;
-        string dotted = string.Empty;
-        bool lastDotted = false;
-        bool wordLast = false;
-        char before = '\0';
-        int at = 0;
-        while (at < text.Length)
+        GDScriptScan scan = new(text, says: true);
+        while (scan.Next())
         {
-            char c = text[at];
-            if (c == '#')
+            if (scan.Piece == GDScriptPiece.String)
             {
-                at = text.IndexOf('\n', at) is var end and >= 0 ? end : text.Length;
-                continue;
-            }
-            if (c is '"' or '\'' || c is 'r' or '&' or '^' && at + 1 < text.Length && text[at + 1] is '"' or '\'' && !(c == 'r' && at > 0 && IsWordChar(text[at - 1])))
-            {
-                bool raw = c == 'r';
-                int quote = c is '"' or '\'' ? at : at + 1;
-                (string said, int start, int stop, int next) = GDScriptTokenizer.ReadString(text, quote, raw);
-                (string? call, int argument, string? receiver) = open.Count > 0 ? open[^1] : (null, 0, null);
-                bool opens = before is '(' or ',' || wordLast && lastWord == "else";
-                tokens.Add(new GodotScriptToken(false, said, start, stop, stop - start == said.Length, call, argument, false)
+                GDScriptBracket bracket = scan.Innermost ?? default;
+                bool opens = scan.BeginsArgument || scan.WordBefore == "else";
+                tokens.Add(new GodotScriptToken(false, scan.Said, scan.TextStart, scan.TextEnd, scan.TextEnd - scan.TextStart == scan.Said.Length, bracket.Call, bracket.Argument, false)
                 {
-                    Receiver = receiver,
-                    Whole = opens && Closes(text, next),
-                    Quote = text[quote],
-                    Raw = raw,
-                    Extends = wordLast && lastWord == "extends",
+                    Receiver = bracket.Receiver,
+                    Whole = opens && Closes(text, scan.End),
+                    Quote = text[scan.Quote],
+                    Raw = scan.Raw,
+                    Extends = scan.WordBefore == "extends",
                 });
-                at = next;
-                wordLast = false;
-                before = '"';
-                continue;
             }
-            if (c == '$' && at + 1 < text.Length && text[at + 1] is not ('"' or '\''))
+            else if (scan.Piece == GDScriptPiece.Word)
             {
-                // A node's path written bare holds names of nodes, no word of the code's.
-                at++;
-                while (at < text.Length && (IsWordChar(text[at]) || text[at] is '/' or '%'))
-                {
-                    at++;
-                }
-                wordLast = false;
-                before = 'a';
-                continue;
+                tokens.Add(new GodotScriptToken(true, scan.Word, scan.Start, scan.End, true, null, 0, scan.AfterDot));
             }
-            if (char.IsLetter(c) || c == '_')
-            {
-                int start = at;
-                while (at < text.Length && IsWordChar(text[at]))
-                {
-                    at++;
-                }
-                string word = text[start..at];
-                lastDotted = before == '.';
-                tokens.Add(new GodotScriptToken(true, word, start, at, true, null, 0, lastDotted));
-                lastReceiver = lastDotted ? dotted : null;
-                lastWord = word;
-                wordLast = true;
-                before = 'a';
-                continue;
-            }
-            if (char.IsDigit(c))
-            {
-                while (at < text.Length && (IsWordChar(text[at]) || text[at] == '.'))
-                {
-                    at++;
-                }
-                wordLast = false;
-                before = '0';
-                continue;
-            }
-            if (c is '(' or '[' or '{')
-            {
-                bool called = c == '(' && wordLast;
-                open.Add((called ? lastWord : null, 0, called ? lastReceiver : null));
-            }
-            else if (c is ')' or ']' or '}' && open.Count > 0)
-            {
-                open.RemoveAt(open.Count - 1);
-            }
-            else if (c == ',' && open.Count > 0)
-            {
-                open[^1] = open[^1] with { Argument = open[^1].Argument + 1 };
-            }
-            else if (c == '.')
-            {
-                dotted = wordLast && !lastDotted ? lastWord! : string.Empty;
-            }
-            if (!char.IsWhiteSpace(c))
-            {
-                wordLast = false;
-                before = c;
-            }
-            at++;
         }
         return tokens;
     }
@@ -160,11 +82,9 @@ public static class GodotScriptStrings
             }
             else
             {
-                return c is ')' or ',' || string.CompareOrdinal(text, at, "if", 0, 2) == 0 && (at + 2 >= text.Length || !IsWordChar(text[at + 2]));
+                return c is ')' or ',' || string.CompareOrdinal(text, at, "if", 0, 2) == 0 && GDScriptTokenizer.IdentifierContinue(text, at + 2) == 0;
             }
         }
         return false;
     }
-
-    private static bool IsWordChar(char c) => char.IsLetterOrDigit(c) || c == '_';
 }

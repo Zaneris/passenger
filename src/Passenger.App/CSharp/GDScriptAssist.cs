@@ -34,21 +34,33 @@ internal sealed partial class GDScriptAssist(AssistContext context, CodeCompleti
             return false;
         }
         char last = text[^1];
-        int caret = context.Caret;
+        int caret = Math.Min(context.Caret, shown.Text.Snapshot.Length);
         TextSnapshot snapshot = shown.Text.Snapshot;
-        char before = caret >= 2 && caret - 2 < snapshot.Length ? snapshot[caret - 2] : '\0';
+        int name = NameStart(snapshot, caret);
+        char before = name > 0 ? snapshot[name - 1] : '\0';
         // A member's dot, a name's first letter, an annotation's @, a node path's $, % or /, and a string's quote.
         if (last is '.' or '@' or '$' or '%' or '/' or '"' or '\'')
         {
             IdeErrors.Observe(completion.Start(last.ToString()));
         }
-        else if (AssistContext.IsIdentifierChar(last) && !char.IsDigit(last) && context.WordStart(caret) == caret - 1 && before is not ('$' or '%' or '@'))
+        else if (name < caret && GDScriptTokenizer.IdentifierWidth(snapshot[name], name + 1 < caret ? snapshot[name + 1] : '\0', start: true) == caret - name
+            && before is not ('$' or '%' or '@'))
         {
             IdeErrors.Observe(completion.Start(null));
         }
         // A call's signature after its bracket or comma; gone after its closing bracket.
         parameters.AfterTyped(last);
         return true;
+    }
+
+    /// <summary>Where the name that ends at an offset of a script starts, read back by Godot's identifier rule.</summary>
+    private static int NameStart(TextSnapshot text, int end)
+    {
+        while (end > 0 && GDScriptTokenizer.IdentifierWidthBefore(text[end - 1], end > 1 ? text[end - 2] : '\0') is > 0 and int width)
+        {
+            end -= width;
+        }
+        return end;
     }
 
     internal static CompletionItem ItemOf(GodotCSharpMember member) => new()
@@ -125,12 +137,12 @@ internal sealed partial class GDScriptAssist(AssistContext context, CodeCompleti
         Replacing replaces = made?.Replaces ?? Replacing.Name;
         while (end < text.Length && (replaces switch
         {
-            Replacing.String => text[end] is not ('"' or '\'' or '\n'),
-            Replacing.Path => AssistContext.IsIdentifierChar(text[end]) || text[end] == '/',
-            _ => AssistContext.IsIdentifierChar(text[end]),
-        }))
+            Replacing.String => text[end] is not ('"' or '\'' or '\n') ? 1 : 0,
+            Replacing.Path when text[end] == '/' => 1,
+            _ => GDScriptTokenizer.IdentifierWidth(text[end], end + 1 < text.Length ? text[end + 1] : '\0', start: false),
+        }) is > 0 and int width)
         {
-            end++;
+            end += width;
         }
         // A call's parentheses written after the name already are its own.
         if (insert.EndsWith("()", StringComparison.Ordinal) && end < text.Length && text[end] == '(')

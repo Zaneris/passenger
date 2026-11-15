@@ -558,6 +558,41 @@ public sealed class GDScriptCompletionTests
         }
     }
 
+    /// <summary>A name holding marks (नमस्ते's virama and vowel sign), one name to Godot, is narrowed by and replaced whole:
+    /// a list asked for after it is typed, and one opened by its first letter that its marks typed on narrow.</summary>
+    [AvaloniaFact]
+    public void A_name_holding_marks_is_narrowed_by_and_replaced_whole()
+    {
+        (MainWindow window, OpenDocument document, TaskCompletionSource release) = Open();
+        try
+        {
+            CodeEditor editor = window.EditorArea.CodeEditor;
+            NewLineAfter(window, editor, "var counter := 0");
+            window.KeyTextInput("var नमस्ते := 1");
+            NewLineAfter(window, editor, "\tcounter += 1");
+            window.KeyTextInput("नमस्त");
+            Ui.Press(window, "control SPACE", settle: false);
+            First(window, "नमस्ते", "नमस्ते for नमस्त asked for after it was typed");
+            Assert.Equal("नमस्त", window.Assist.CompletionNarrowedBy);
+            Ui.Press(window, "ENTER", settle: false);
+            bool whole = Ui.Pumped(() => document.Text.Snapshot.ToString().Contains("\tcounter += 1\n\tनमस्ते\n", StringComparison.Ordinal), TimeSpan.FromSeconds(10));
+            Assert.True(whole, $"नमस्ते was not put in place of नमस्त whole: the line reads {editor.Document.Snapshot.GetLineText(editor.CaretPosition.Line)}");
+
+            Ui.Press(window, "ENTER", settle: false);
+            TypeName(window, "नमस्त");
+            First(window, "नमस्ते", "नमस्ते in the list its first letter opened, narrowed through its virama");
+            Assert.Equal("नमस्त", window.Assist.CompletionNarrowedBy);
+            Ui.Press(window, "ENTER", settle: false);
+            whole = Ui.Pumped(() => document.Text.Snapshot.ToString().Contains("\tनमस्ते\n\tनमस्ते\n", StringComparison.Ordinal), TimeSpan.FromSeconds(10));
+            Assert.True(whole, $"नमस्ते was not put in place of what was typed: the line reads {editor.Document.Snapshot.GetLineText(editor.CaretPosition.Line)}");
+        }
+        finally
+        {
+            window.Close();
+            release.SetResult();
+        }
+    }
+
     /// <summary>The engine's utility functions, built-in types, classes, singletons and global constants complete beside the
     /// script's own names, and a function goes in with its call's parentheses, the caret inside them where it takes arguments.</summary>
     [AvaloniaFact]

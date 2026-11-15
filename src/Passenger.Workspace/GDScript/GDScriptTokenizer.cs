@@ -166,31 +166,44 @@ public sealed class GDScriptTokenizer
 
     private static bool IsBinaryDigit(char c) => c is '0' or '1';
 
-    /// <summary>How many characters an identifier's first character takes at an offset: 0 where none starts there, 2 for
-    /// one outside the Basic Multilingual Plane.</summary>
-    private int IdentifierStart(int at) => IdentifierChar(at, start: true);
+    /// <summary>How many characters of a text an identifier's first character takes at an offset, as Godot reads one: 0
+    /// where none starts there, 2 for one past the first plane (<see cref="IdentifierWidth"/>).</summary>
+    public static int IdentifierStart(string text, int at) => at < text.Length ? IdentifierWidth(text[at], at + 1 < text.Length ? text[at + 1] : '\0', start: true) : 0;
 
-    private int IdentifierContinue(int at) => IdentifierChar(at, start: false);
+    /// <summary>How many characters of a text an identifier's character after its first takes at an offset: 0 where none is.</summary>
+    public static int IdentifierContinue(string text, int at) => at < text.Length ? IdentifierWidth(text[at], at + 1 < text.Length ? text[at + 1] : '\0', start: false) : 0;
 
-    private int IdentifierChar(int at, bool start)
+    /// <summary>How many characters of a text the identifier's character after its first that ends at an offset takes: 0
+    /// where none ends there.</summary>
+    public static int IdentifierContinueBefore(string text, int at) => at > 0 ? IdentifierWidthBefore(text[at - 1], at > 1 ? text[at - 2] : '\0') : 0;
+
+    /// <summary>How many characters an identifier's character takes where one stands, given the character after it for a pair
+    /// past the first plane: 0 where it is none (none to start one, with <paramref name="start"/>), 2 for a pair. Godot's
+    /// rule: letters, letter numbers and '_' start one, and nonspacing and spacing marks, decimal digits and connector
+    /// punctuation carry it on.</summary>
+    public static int IdentifierWidth(char c, char next, bool start)
     {
-        if (at >= length)
-        {
-            return 0;
-        }
-        char c = text[at];
         if (c < 128)
         {
             return c is >= 'a' and <= 'z' or >= 'A' and <= 'Z' or '_' || !start && IsDigit(c) ? 1 : 0;
         }
-        int width = char.IsHighSurrogate(c) && at + 1 < length && char.IsLowSurrogate(text[at + 1]) ? 2 : 1;
-        UnicodeCategory category = width == 2 ? CharUnicodeInfo.GetUnicodeCategory(char.ConvertToUtf32(c, text[at + 1])) : CharUnicodeInfo.GetUnicodeCategory(c);
+        int width = char.IsHighSurrogate(c) && char.IsLowSurrogate(next) ? 2 : 1;
+        UnicodeCategory category = width == 2 ? CharUnicodeInfo.GetUnicodeCategory(char.ConvertToUtf32(c, next)) : CharUnicodeInfo.GetUnicodeCategory(c);
         bool letter = category is UnicodeCategory.UppercaseLetter or UnicodeCategory.LowercaseLetter or UnicodeCategory.TitlecaseLetter
             or UnicodeCategory.ModifierLetter or UnicodeCategory.OtherLetter or UnicodeCategory.LetterNumber;
         bool continuing = category is UnicodeCategory.NonSpacingMark or UnicodeCategory.SpacingCombiningMark or UnicodeCategory.DecimalDigitNumber
             or UnicodeCategory.ConnectorPunctuation;
         return letter || !start && continuing ? width : 0;
     }
+
+    /// <summary>How many characters the identifier's character after its first that ends with a character takes, given the
+    /// one before it for a pair past the first plane: 0 where it is none, 2 for a pair.</summary>
+    public static int IdentifierWidthBefore(char last, char before) =>
+        char.IsLowSurrogate(last) && char.IsHighSurrogate(before) ? IdentifierWidth(before, last, start: false) : IdentifierWidth(last, '\0', start: false);
+
+    /// <summary>Whether a character read alone may stand in an identifier after its first: one that carries it on, or either
+    /// half of a pair past the first plane, which only the pair decides.</summary>
+    public static bool MayContinueIdentifier(char c) => char.IsSurrogate(c) || IdentifierWidth(c, '\0', start: false) > 0;
 
     private void AdvanceBy(int count)
     {
@@ -202,7 +215,7 @@ public sealed class GDScriptTokenizer
 
     private GDScriptToken Annotation()
     {
-        if (IdentifierStart(position) is > 0 and int first)
+        if (IdentifierStart(text, position) is > 0 and int first)
         {
             AdvanceBy(first);
         }
@@ -210,7 +223,7 @@ public sealed class GDScriptTokenizer
         {
             PushError("Expected annotation identifier after \"@\".");
         }
-        for (int width; (width = IdentifierContinue(position)) > 0;)
+        for (int width; (width = IdentifierContinue(text, position)) > 0;)
         {
             AdvanceBy(width);
         }
@@ -228,7 +241,7 @@ public sealed class GDScriptTokenizer
     private GDScriptToken PotentialIdentifier()
     {
         bool ascii = text[position - 1] < 128;
-        for (int width; (width = IdentifierContinue(position)) > 0;)
+        for (int width; (width = IdentifierContinue(text, position)) > 0;)
         {
             ascii = ascii && width == 1 && text[position] < 128;
             AdvanceBy(width);
@@ -407,7 +420,7 @@ public sealed class GDScriptTokenizer
         {
             PushError(ErrorAt("Cannot use a decimal point twice in a number.", position, position + 1));
         }
-        else if (IdentifierContinue(position) > 0)
+        else if (IdentifierContinue(text, position) > 0)
         {
             PushError("Invalid numeric notation.");
         }
@@ -1019,7 +1032,7 @@ public sealed class GDScriptTokenizer
         {
             return String();
         }
-        if (IdentifierStart(position - 1) is > 0 and int width)
+        if (IdentifierStart(text, position - 1) is > 0 and int width)
         {
             AdvanceBy(width - 1);
             return PotentialIdentifier();

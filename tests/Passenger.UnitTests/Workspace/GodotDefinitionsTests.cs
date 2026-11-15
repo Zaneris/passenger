@@ -532,6 +532,23 @@ public class GodotDefinitionsTests
         Assert.Single(scenes.Defined.Autoloads.Single(a => a.Name == "Plain").Places);
     }
 
+    /// <summary>A name Godot takes as one holding marks (an autoload named नमस्ते, which Godot's editor allows, and an input
+    /// event घटना) is read by its whole word: the autoload's use is its place, and the event takes the action's name for sure.</summary>
+    [Fact]
+    public void An_autoload_and_an_input_event_named_with_marks_are_read_by_their_whole_words()
+    {
+        const string project = "config_version=5\n\n[autoload]\n\nनमस्ते=\"*res://globals.gd\"\n\n[input]\n\njump={\n\"deadzone\": 0.5,\n\"events\": []\n}\n";
+        const string uses = "extends Node\n\n\nfunc go(घटना: InputEvent):\n\tनमस्ते.score += 1\n\tघटना.is_action(\"jump\")\n";
+        Dictionary<string, string> texts = new(StringComparer.Ordinal) { ["res://project.godot"] = project, ["res://uses.gd"] = uses };
+        GodotScenes scenes = new("/game", new Dictionary<string, GodotFile>(), texts: texts);
+        string[] lines = uses.Split('\n');
+        string Line(GodotPlace place) => lines[uses[..place.Start].Count(c => c == '\n')].Trim();
+        GodotDefined autoload = scenes.Defined.Autoloads.Single();
+        Assert.Equal(["नमस्ते.score += 1"], autoload.Places.Where(p => !p.Defines).Select(Line));
+        GodotDefined jump = scenes.Defined.Actions.Single();
+        Assert.Equal([("घटना.is_action(\"jump\")", false)], jump.Places.Where(p => p.Res == "res://uses.gd").Select(p => (Line(p), p.Unsure)));
+    }
+
     /// <summary>A name is written for each string it goes in: a quote like the string's own escaped, one a raw string can't say
     /// told as none, and project.godot's key as it is.</summary>
     [Fact]

@@ -41,6 +41,19 @@ public class GodotScriptStringsTests
         Assert.DoesNotContain(tokens, t => t.Text is "tr" or "no");
     }
 
+    /// <summary>A word is a name as Godot's tokenizer reads one, its marks (नमस्ते's virama and vowel sign, घटना's spacing
+    /// vowel) carrying it on and a letter past the first plane one of it, so a call of such a name, or made on one, tells its
+    /// strings.</summary>
+    [Fact]
+    public void A_word_holding_marks_or_a_letter_past_the_first_plane_is_one_word()
+    {
+        const string text = "func नमस्ते(a):\n\tनमस्ते(\"x\")\n\tघटना.is_action(\"jump\")\n\t\U0002000B\U0002000B.go(\"y\")\n";
+        IReadOnlyList<GodotScriptToken> tokens = GodotScriptStrings.Read(text);
+        Assert.Equal(["func", "नमस्ते", "a", "नमस्ते", "घटना", "is_action", "\U0002000B\U0002000B", "go"], tokens.Where(t => t.Word).Select(t => t.Text));
+        Assert.Equal([("x", "नमस्ते", null), ("jump", "is_action", "घटना"), ("y", "go", "\U0002000B\U0002000B")],
+            tokens.Where(t => !t.Word).Select(t => (t.Text, t.Call, t.Receiver)));
+    }
+
     /// <summary>Every escape Godot's tokenizer reads, a code point past the first plane and a surrogate pair among them, so an
     /// action written with one is the action it names; one Godot refuses says nothing, and a raw string's backslash before
     /// another keeps both and closes no string.</summary>
