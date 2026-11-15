@@ -73,7 +73,7 @@ public sealed partial class Vim
                 : starts.With(c => Selection.At(Settled(text, c.Caret, breakEnds))));
         }
         (List<Stretch> stretches, SelectionSet carets) = block && !lines
-            ? BlockStretches(text, top, bottom, left, right, tab, perLine: basic == "c")
+            ? BlockStretches(text, top, bottom, left, right, tab, perLine: basic == "c", lineEnds: basic == "c" || op == ">")
             : RegionStretches(text, taken, lines);
         if (lines && !block && basic is "y" or "g~" or "gu" or "gU")
         {
@@ -97,7 +97,7 @@ public sealed partial class Vim
         if (op is ">" or "<")
         {
             Remember(acting);
-            return block ? ShiftBlock(text, stretches, Math.Max(command.Count, 1), op == ">", view) : Shift(text, carets, stretches, op == ">", view, Math.Max(command.Count, 1));
+            return block ? ShiftBlock(text, stretches, Math.Max(command.Count, 1), op == ">", view, VimMotions.OffsetAtColumn(text, top, left, tab)) : Shift(text, carets, stretches, op == ">", view, Math.Max(command.Count, 1));
         }
         if (op == "r")
         {
@@ -174,9 +174,10 @@ public sealed partial class Vim
         return (stretches, SelectionSet.Create(carets, 0));
     }
 
-    /// <summary>A block's part of each line from <paramref name="top"/> to <paramref name="bottom"/> that reaches it, and
-    /// a caret at its top left, or one at each line's part (<paramref name="perLine"/>) for a change typed on every line.</summary>
-    private (List<Stretch>, SelectionSet) BlockStretches(TextSnapshot text, int top, int bottom, int left, int right, int tab, bool perLine)
+    /// <summary>A block's part of each line from <paramref name="top"/> to <paramref name="bottom"/> that reaches it (with
+    /// <paramref name="lineEnds"/>, an empty part at the end of a line ending where it begins), and a caret at its top
+    /// left, or one at each line's part (<paramref name="perLine"/>) for a change typed on every line.</summary>
+    private (List<Stretch>, SelectionSet) BlockStretches(TextSnapshot text, int top, int bottom, int left, int right, int tab, bool perLine, bool lineEnds = false)
     {
         List<Stretch> stretches = [];
         List<Selection> carets = [];
@@ -185,11 +186,14 @@ public sealed partial class Vim
             if (BlockPiece(text, line, left, right, tab) is not { } piece)
             {
                 LineSpan span = text.GetLine(line);
-                if (perLine && VimMotions.ColumnOf(text, span.End, tab) == left)
+                if (lineEnds && (perLine || span.Length > 0) && VimMotions.ColumnOf(text, span.End, tab) == left)
                 {
-                    // A line ending just where the block begins takes what a change types there, at its end.
+                    // A line ending just where the block begins takes what a change types or a shift adds there, at its end.
                     stretches.Add(new Stretch(span.End, span.End, false, line, line, span.End, span.End));
-                    carets.Add(Selection.At(span.End));
+                    if (perLine)
+                    {
+                        carets.Add(Selection.At(span.End));
+                    }
                 }
                 continue;
             }
@@ -321,7 +325,7 @@ public sealed partial class Vim
     }
 
     /// <summary>A block's &gt; and &lt;: blanks added at its left edge on each line, or taken from there.</summary>
-    private VimResult ShiftBlock(TextSnapshot text, List<Stretch> stretches, int times, bool right, IVimView view)
+    private VimResult ShiftBlock(TextSnapshot text, List<Stretch> stretches, int times, bool right, IVimView view, int corner)
     {
         int width = view.Indent.Size * times;
         List<TextEdit> edits = [];
@@ -343,14 +347,14 @@ public sealed partial class Vim
                 edits.Add(new TextEdit(s.Start, end - s.Start, string.Empty));
             }
         }
-        int first = stretches.Min(s => s.Start);
-        SelectionSet caret = SelectionSet.Single(first);
+        // The caret goes to the block's top left, where the top line reaches it.
+        SelectionSet caret = SelectionSet.Single(Settled(text, corner, breakEnds));
         if (edits.Count == 0)
         {
             return new VimResult(true, caret);
         }
         TextSnapshot after = text.Apply(edits);
-        return new VimResult(true, Edits: [new EditPlan(edits, SelectionSet.Single(Settled(after, TextEditing.MapOffset(first, edits, false), breakEnds)), EditKind.Other)]);
+        return new VimResult(true, Edits: [new EditPlan(edits, SelectionSet.Single(Settled(after, TextEditing.MapOffset(corner, edits, false), breakEnds)), EditKind.Other)]);
     }
 
     /// <summary>p and P over a visual stretch: the register's text in place of what is shown, which p keeps in the

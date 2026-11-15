@@ -1560,6 +1560,21 @@ public class VimTests
     public void Counts_of_word_objects_walk_over_empty_lines_and_line_ends_as_vims_do(string before, string keys, string after) =>
         Assert.Equal(after, Run(before, keys));
 
+    /// <summary>A block shifted right adds its white on each line it reaches and at the end of a line ending just where
+    /// it begins, but never on an empty line, and leaves the caret at its top left, as Vim's does.</summary>
+    [Theory]
+    [InlineData("ab|cdef\nab\nabcdef", "<C-v>j>", "ab|    cdef\nab    \nabcdef")]
+    [InlineData("ab|cdef\nab\nabcdef", "<C-v>jj>", "ab|    cdef\nab    \nab    cdef")]
+    [InlineData("ab|cdef\nab\nabcdef", "<C-v>j2>", "ab|        cdef\nab        \nabcdef")]
+    [InlineData("abc|def\nab\nabcdef", "<C-v>jj>", "abc|    def\nab\nabc    def")]
+    [InlineData("|abcdef\n\nabcdef", "<C-v>jj>", "|    abcdef\n\n    abcdef")]
+    [InlineData("  ab|cdef\n  ab\n  abcdef", "<C-v>j$>", "  ab|    cdef\n  ab    \n  abcdef")]
+    [InlineData("one two three\n|four five six\n\nseven eight", "C<Esc><C-v>ej>", "one two three\n|\n\n    seven eight")]
+    [InlineData("foo_bar\n\n  /|/ comment here\nend", "<C-v>j>", "foo_bar\n\n  /|    / comment here\nend    ")]
+    [InlineData("ab|cdef\nab\nabcdef", "<C-v>j<", "ab|cdef\nab\nabcdef")]
+    public void A_block_shifted_right_pads_a_line_ending_where_it_begins(string before, string keys, string after) =>
+        Assert.Equal(after, Run(before, keys));
+
     [Fact]
     public void A_huge_count_ends_at_the_texts_edge()
     {
