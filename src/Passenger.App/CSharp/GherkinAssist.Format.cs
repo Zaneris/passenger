@@ -16,7 +16,7 @@ internal sealed partial class GherkinAssist
     {
         if (document.IsReadOnly)
         {
-            return new CodeActions.Reformatted(false, false, $"{what} was not applied: {Refusals.ReadOnly(document.Name)}");
+            return CodeActions.Reformatted.Refused(what, Refusals.ReadOnly(document.Name));
         }
         using ChangeTracker asked = new(document.Text);
         TextSnapshot snapshot = asked.Snapshot;
@@ -29,16 +29,7 @@ internal sealed partial class GherkinAssist
             GherkinFormatOptions options = GherkinFormatOptions.Of(key => config[key], indent.UseTabs ? "\t" : new string(' ', indent.Size));
             return LineEdits(snapshot, GherkinFormatter.Format(snapshot.ToString(), options, language), within);
         });
-        if (edits.Count == 0 || !context.Editors.Documents.Contains(document))
-        {
-            return new CodeActions.Reformatted(true, false, "Already formatted");
-        }
-        if (asked.Map(edits) is not { } mapped)
-        {
-            return new CodeActions.Reformatted(false, false, $"{what} was not applied: the text it changes was edited meanwhile");
-        }
-        WorkspaceEdits.ApplyTo(context.Editors, document, mapped);
-        return new CodeActions.Reformatted(true, true, "Reformatted");
+        return CodeActions.Reformatted.Apply(context.Editors, document, asked, edits, what);
     }
 
     /// <summary>The lines of a text that differ in its laid-out text (which keeps its lines), each replaced whole but its

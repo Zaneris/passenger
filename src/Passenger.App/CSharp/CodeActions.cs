@@ -887,7 +887,28 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
 
     /// <summary>What Reformat Code came to: whether it was applied, whether it changed the text (not when the file was
     /// formatted already), and what to say of it, or why it was not applied.</summary>
-    internal sealed record Reformatted(bool Applied, bool Changed, string Said);
+    internal sealed record Reformatted(bool Applied, bool Changed, string Said)
+    {
+        /// <summary>A reformat not applied, saying why.</summary>
+        public static Reformatted Refused(string what, string why) => new(false, false, $"{what} was not applied: {why}");
+
+        /// <summary>A reformat's edits, in the offsets of the text as <paramref name="asked"/> began, carried onto the open
+        /// file as it is now and applied as one undoable edit; refused where the code one changes was edited meanwhile, and
+        /// no change where there are none or the file has closed.</summary>
+        public static Reformatted Apply(EditorArea editors, OpenDocument document, ChangeTracker asked, IReadOnlyList<TextEdit> edits, string what)
+        {
+            if (edits.Count == 0 || !editors.Documents.Contains(document))
+            {
+                return new(true, false, "Already formatted");
+            }
+            if (asked.Map(edits) is not { } mapped)
+            {
+                return Refused(what, "the code it changes was edited meanwhile");
+            }
+            WorkspaceEdits.ApplyTo(editors, document, mapped);
+            return new(true, true, "Reformatted");
+        }
+    }
 
     /// <summary>Reformat Code on a file, the window's and an agent's alike, as one undoable edit, only <paramref name="within"/>
     /// when given: XAML by Passenger's own layout, a web language by its project's Prettier where it formats it on Reformat
@@ -933,17 +954,9 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
             // Only the selection's own lines are laid out: the line after it keeps its indentation.
             laid.RemoveAll(e => e.Start >= kept.End);
         }
-        if (asked.Map(laid) is not { } edits)
-        {
-            return new Reformatted(false, false, $"{what} was not applied: the code it changes was edited meanwhile");
-        }
-        if (edits.Count > 0)
-        {
-            WorkspaceEdits.ApplyTo(context.Editors, document, edits);
-        }
         // The server's edits that come to nothing in the file's line breaks and indentation are no reformat.
-        string said = edits.Count == 0 ? "Already formatted" : "Reformatted";
-        return new Reformatted(true, edits.Count > 0, within is not null && whole ? $"{said} the whole file: its language server formats no selection" : said);
+        Reformatted done = Reformatted.Apply(context.Editors, document, asked, laid, what);
+        return done.Applied && within is not null && whole ? done with { Said = $"{done.Said} the whole file: its language server formats no selection" } : done;
     }
 
     /// <summary>The selection a file's reformatting keeps to: the editor's, when it shows the file and something is selected.</summary>

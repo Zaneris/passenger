@@ -254,7 +254,7 @@ internal sealed partial class GDScriptAssist(AssistContext context, CodeCompleti
     {
         if (document.IsReadOnly)
         {
-            return new CodeActions.Reformatted(false, false, $"{what} was not applied: {Refusals.ReadOnly(document.Name)}");
+            return CodeActions.Reformatted.Refused(what, Refusals.ReadOnly(document.Name));
         }
         using ChangeTracker asked = new(document.Text);
         TextSnapshot snapshot = asked.Snapshot;
@@ -271,7 +271,7 @@ internal sealed partial class GDScriptAssist(AssistContext context, CodeCompleti
         });
         if (formatted.Refused is { } why)
         {
-            return new CodeActions.Reformatted(false, false, $"{what} was not applied: {why}");
+            return CodeActions.Reformatted.Refused(what, why);
         }
         IEnumerable<TextEdit> kept = formatted.Edits;
         if (within is { } range)
@@ -285,18 +285,9 @@ internal sealed partial class GDScriptAssist(AssistContext context, CodeCompleti
         if (within is not null && fitted.Count > 0
             && await BackgroundWork.Run(() => GDScriptFormatter.Differs(snapshot.ToString(), snapshot.Apply(fitted).ToString())) is { } partly)
         {
-            return new CodeActions.Reformatted(false, false, $"{what} was not applied: laying out only the selection would change what the script says ({partly}); reformat the whole file");
+            return CodeActions.Reformatted.Refused(what, $"laying out only the selection would change what the script says ({partly}); reformat the whole file");
         }
-        if (fitted.Count == 0 || !context.Editors.Documents.Contains(document))
-        {
-            return new CodeActions.Reformatted(true, false, "Already formatted");
-        }
-        if (asked.Map(fitted) is not { } edits)
-        {
-            return new CodeActions.Reformatted(false, false, $"{what} was not applied: the code it changes was edited meanwhile");
-        }
-        WorkspaceEdits.ApplyTo(context.Editors, document, edits);
-        return new CodeActions.Reformatted(true, true, "Reformatted");
+        return CodeActions.Reformatted.Apply(context.Editors, document, asked, fitted, what);
     }
 
     /// <summary>A script's top-level parts put in the style guide's Code order (<see cref="GDScriptFormatter.OrderParts"/>) off

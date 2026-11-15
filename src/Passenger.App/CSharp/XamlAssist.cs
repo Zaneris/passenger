@@ -1039,20 +1039,9 @@ internal sealed partial class XamlAssist : LanguageAssist
     {
         using ChangeTracker asked = new(document.Text);
         XamlFormatted formatted = await FormatXamlAsync(document, XamlFormat, within);
-        if (formatted.Problem is { } problem)
-        {
-            return new CodeActions.Reformatted(false, false, $"{what} was not applied: {problem}");
-        }
-        if (formatted.Edits.Count == 0 || !context.Editors.Documents.Contains(document))
-        {
-            return new CodeActions.Reformatted(true, false, "Already formatted");
-        }
-        if (asked.Map(formatted.Edits) is not { } edits)
-        {
-            return new CodeActions.Reformatted(false, false, $"{what} was not applied: the code it changes was edited meanwhile");
-        }
-        WorkspaceEdits.ApplyTo(context.Editors, document, edits);
-        return new CodeActions.Reformatted(true, true, "Reformatted");
+        return formatted.Problem is { } problem
+            ? CodeActions.Reformatted.Refused(what, problem)
+            : CodeActions.Reformatted.Apply(context.Editors, document, asked, formatted.Edits, what);
     }
 
     /// <summary>The localized string a XAML file reads at an offset (an <c>{x:Static}</c> of a generated class's property), and its
