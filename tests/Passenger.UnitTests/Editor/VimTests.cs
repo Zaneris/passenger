@@ -1934,6 +1934,25 @@ public class VimTests
     public void Counted_sentence_objects_and_lines_of_blanks_between_take_what_vims_do(string before, string keys, string after) =>
         Assert.Equal(after, Run(before, keys));
 
+    /// <summary>A command that can't act (. with nothing to repeat, a put with nothing in its register, ~ or r with no
+    /// character, h, l, f, t, ;, , or * with nowhere to go) keeps the column j and k aim for, where x, D or a search
+    /// that finds nothing sets it afresh, as Vim's do.</summary>
+    [Theory]
+    [InlineData("abcd|ef\n\nabcdefgh", "j.j", "abcdef\n\nabcd|efgh")]
+    [InlineData("abcd|ef\n\nabcdefgh", "jpj", "abcdef\n\nabcd|efgh")]
+    [InlineData("abcd|ef\n\nabcdefgh", "j~j", "abcdef\n\nabcd|efgh")]
+    [InlineData("abcd|ef\n\nabcdefgh", "jrxj", "abcdef\n\nabcd|efgh")]
+    [InlineData("abcd|ef\n\nabcdefgh", "jhj", "abcdef\n\nabcd|efgh")]
+    [InlineData("abcd|ef\nab\nabcdefgh", "jlj", "abcdef\nab\nabcd|efgh")]
+    [InlineData("abcd|ef\n\nabcdefgh", "jfxj", "abcdef\n\nabcd|efgh")]
+    [InlineData("abcd|ef\nab\nabcdefgh", "j,j", "abcdef\nab\nabcd|efgh")]
+    [InlineData("abcd|ef\n\nabcdefgh", "j*j", "abcdef\n\nabcd|efgh")]
+    [InlineData("abcd|ef\n\nabcdefgh", "jxj", "abcdef\n\n|abcdefgh")]
+    [InlineData("abcd|ef\n\nabcdefgh", "jDj", "abcdef\n\n|abcdefgh")]
+    [InlineData("abcd|ef\n\nabcdefgh", "j/zzz<CR>j", "abcdef\n\n|abcdefgh")]
+    public void A_command_that_cannot_act_keeps_the_column_j_and_k_aim_for(string before, string keys, string after) =>
+        Assert.Equal(after, Run(before, keys));
+
     [Fact]
     public void A_huge_count_ends_at_the_texts_edge()
     {

@@ -204,7 +204,14 @@ public sealed partial class Vim(VimRegisters registers)
         pending.Clear();
         searchSaid = null;
         // A command Vim mode doesn't know is swallowed whole, so its keys never type into the text.
+        SelectionSet? aimedFor = wantedFor;
         VimResult result = command is null ? VimResult.Held : Run(command, text, selections, view);
+        if (command is { Operator: null, Name: "." or "p" or "P" or "~" or "r" or "h" or "l" or "f" or "F" or "t" or "T" or ";" or "," or "*" or "#" }
+            && (ReferenceEquals(result, VimResult.Held) || result is { Edits: null, Selections: null, ReadsClipboard: false }))
+        {
+            // One that can't act (nothing to repeat or put, no character, nowhere to go) keeps the column j and k aim for.
+            wantedFor = aimedFor;
+        }
         return Told(result, command?.Name);
     }
 
