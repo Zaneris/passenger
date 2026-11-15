@@ -77,7 +77,9 @@ public class InterpreterTests(ITestOutputHelper testOutputHelper)
     [Fact]
     public async Task A_large_lambda_evaluates_as_a_small_one_does_and_an_expression_that_loops_without_end_is_stopped()
     {
-        await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
+        // The first lambda loads the debugger's own code into the program, which a loaded machine may take most of the
+        // run's short limit over.
+        await using DebugSession host = DebugSession.ForLaunch(testOutputHelper, environment: DebugSession.ScaledEvaluations);
         await host
             .InitializeAsync()
             .LaunchAsync(Debuggees.Program("DebuggableConsoleApp"), stopAtEntry: false, justMyCode: true)
@@ -87,7 +89,6 @@ public class InterpreterTests(ITestOutputHelper testOutputHelper)
         StoppedEvent stop = await host.WaitForStoppedEvent();
         int frame = (await host.TopFrameAsync(stop.ThreadId!.Value)).Id;
 
-        // The first lambda also loads the debugger's own code into the program.
         Assert.Equal("3", (await Evaluate(host, frame, "_intList.Where(x => x > 2).Count()")).Value);
         Assert.Equal("2", (await Evaluate(host, frame, "_intList.Where(x => x > myInt).Count()")).Value);
         // A 32 K character string makes the assembly the lambda compiles to 64 KB larger.

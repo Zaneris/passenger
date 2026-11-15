@@ -1715,3 +1715,8 @@ The one-off report-lane failures of the 0.3.0 PR's CI run 41847036147 (#1268):
   holds the server's hearing of Uses's files and the window's asking it to load Uses again (`WatchedFiles.HoldTelling`,
   `CSharpService.HoldReloads`) and failed with CI's words before (#1640).
 
+- `InterpreterTests`' `A_large_lambda_evaluates_as_a_small_one_does_and_an_expression_that_loops_without_end_is_stopped`,
+  the report lane on CI's Windows x64 runner (43662781888): "The expression took too long to evaluate: it was stopped after
+  3 s" for the first lambda, the debugger's own code loading into the program (`Assembly.Load` of its bytes) taking 3.66 s
+  of it. **The test's limit**, as `EvalTests`' LINQ watch's: the run's 3 s is a developer machine's time, and a cold first
+  lambda needs it scaled. Both sessions now take `DebugSession.ScaledEvaluations` (the run's limit times `TimeScale`).

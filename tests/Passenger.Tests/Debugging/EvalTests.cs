@@ -540,10 +540,7 @@ public class EvalTests(ITestOutputHelper testOutputHelper)
     {
         // At the entry of a program that has loaded no System.Linq, which the expression loads: the run's short limit, scaled
         // for this session alone, as a loaded machine's first LINQ call may take most of it.
-        await using DebugSession host = DebugSession.ForLaunch(testOutputHelper, environment: new Dictionary<string, string>
-        {
-            [Passenger.Dap.AdapterEnvironment.EvaluationTimeoutVariable] = ((int)(3000 * TestRun.TimeScale)).ToString(System.Globalization.CultureInfo.InvariantCulture),
-        });
+        await using DebugSession host = DebugSession.ForLaunch(testOutputHelper, environment: DebugSession.ScaledEvaluations);
         await host
             .InitializeAsync()
             .LaunchAsync(Debuggees.Program("TopLevelStatementsConsoleApp"), stopAtEntry: true, justMyCode: true)

@@ -105,6 +105,15 @@ public sealed class DebugSession : IAsyncDisposable
     public static DebugSession ForLaunch(ITestOutputHelper output, string? symbolCache = null, IReadOnlyDictionary<string, string>? environment = null) =>
         new(output, null, terminateDebuggee: true, symbolCache, environment);
 
+    /// <summary>An adapter's environment giving it the run's evaluation limit scaled for the machine, for a session whose
+    /// first evaluation pays a cold cost (a library loading, or the debugger's own code loaded into the program) that a
+    /// loaded machine may take most of the run's short limit over.</summary>
+    public static IReadOnlyDictionary<string, string> ScaledEvaluations => new Dictionary<string, string>
+    {
+        [AdapterEnvironment.EvaluationTimeoutVariable] = ((int)(AdapterEnvironment.EvaluationTimeout.TotalMilliseconds * TestRun.TimeScale))
+            .ToString(System.Globalization.CultureInfo.InvariantCulture),
+    };
+
     /// <summary>Kills the adapter and the program it launched, as a crash or the IDE's own kill of an adapter that never
     /// answered a disconnect does.</summary>
     public void Kill()
