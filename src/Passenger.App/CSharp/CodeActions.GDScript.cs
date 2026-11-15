@@ -448,7 +448,7 @@ internal sealed partial class CodeActions
     /// <summary>A selection taken to the whole lines it touches, as Extract Function takes statements.</summary>
     private static TextRange Lines(string text, TextRange selection)
     {
-        int start = selection.Start <= 0 ? 0 : text.LastIndexOf('\n', selection.Start - 1) + 1;
+        int start = TextNavigation.LineStart(text, selection.Start);
         int end = selection.End;
         if (end > start && end <= text.Length && (end == text.Length || text[end - 1] == '\n'))
         {

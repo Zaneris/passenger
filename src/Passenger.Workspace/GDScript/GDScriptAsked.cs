@@ -1,3 +1,5 @@
+using Passenger.Text;
+
 namespace Passenger.Workspace.GDScript;
 
 /// <summary>What a GDScript's caret is at, as completion reads it.</summary>
@@ -202,7 +204,7 @@ public sealed record GDScriptAsked(GDScriptAskedKind Kind, int Start)
         {
             return new GDScriptAsked(GDScriptAskedKind.None, word);
         }
-        int lineStart = word > 0 ? text.LastIndexOf('\n', word - 1) + 1 : 0;
+        int lineStart = TextNavigation.LineStart(text, word);
         bool statementStart = text.AsSpan(lineStart, word - lineStart).IsWhiteSpace() || previous == "static" && text.AsSpan(lineStart, previousStart - lineStart).IsWhiteSpace();
         return new GDScriptAsked(GDScriptAskedKind.Name, word) { ClassLevel = classLevel, StatementStart = statementStart, Call = call };
     }
@@ -292,16 +294,16 @@ public sealed record GDScriptAsked(GDScriptAskedKind Kind, int Start)
     /// class's header line before any less indented line.</summary>
     private static bool ClassLevelAt(string text, int offset)
     {
-        int lineStart = offset > 0 ? text.LastIndexOf('\n', offset - 1) + 1 : 0;
-        int indent = Indent(text, lineStart);
+        int lineStart = TextNavigation.LineStart(text, offset);
+        int indent = TextNavigation.IndentEnd(text, lineStart) - lineStart;
         if (indent == 0)
         {
             return true;
         }
         for (int above = lineStart - 1; above > 0;)
         {
-            int start = text.LastIndexOf('\n', above - 1) + 1;
-            int width = Indent(text, start);
+            int start = TextNavigation.LineStart(text, above);
+            int width = TextNavigation.IndentEnd(text, start) - start;
             ReadOnlySpan<char> code = text.AsSpan(start + width, above - start - width).Trim();
             above = start - 1;
             if (code.IsEmpty || code[0] == '#' || width >= indent)
@@ -311,16 +313,6 @@ public sealed record GDScriptAsked(GDScriptAskedKind Kind, int Start)
             return code.StartsWith("class ") || code.StartsWith("class\t");
         }
         return true;
-    }
-
-    internal static int Indent(string text, int lineStart)
-    {
-        int at = lineStart;
-        while (at < text.Length && text[at] is ' ' or '\t')
-        {
-            at++;
-        }
-        return at - lineStart;
     }
 
     /// <summary>An open bracket as the call it opens: its function's name and receiver; null for no call's.</summary>

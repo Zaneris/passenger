@@ -45,17 +45,17 @@ public static partial class GDScriptFormatter
         }
         // Each member's block: its lines and the comment lines just above it.
         List<(GDScriptMember Member, int Start, int End, int Group, int Index)> blocks = [];
-        int floor = LineStartOf(text, tree.Members[0].Offset + FirstOf(tree.Members[0].Node));
+        int floor = TextNavigation.LineStart(text, tree.Members[0].Offset + FirstOf(tree.Members[0].Node));
         for (int i = 0; i < tree.Members.Count; i++)
         {
             GDScriptMember member = tree.Members[i];
-            int start = LineStartOf(text, member.Offset + FirstOf(member.Node));
+            int start = TextNavigation.LineStart(text, member.Offset + FirstOf(member.Node));
             int floorHere = i == 0 ? FloorOfPreamble(text, tree) : blocks[^1].End;
-            while (start > floorHere && LineStartOf(text, start - 1) is int above && above >= floorHere && text[above..start].TrimStart().StartsWith('#'))
+            while (start > floorHere && TextNavigation.LineStart(text, start - 1) is int above && above >= floorHere && text[above..start].TrimStart().StartsWith('#'))
             {
                 start = above;
             }
-            int end = NextLineOf(text, Math.Max(member.Start, member.End - 1));
+            int end = TextNavigation.NextLineStart(text, Math.Max(member.Start, member.End - 1));
             if (i == 0)
             {
                 floor = start;
@@ -72,7 +72,7 @@ public static partial class GDScriptFormatter
             // Comments a blank line parts from the member after them go with it too.
             if (i > 0 && gap.Trim().Length > 0)
             {
-                start = LineStartOf(text, blocks[^1].End + (gap.Length - gap.TrimStart().Length));
+                start = TextNavigation.LineStart(text, blocks[^1].End + (gap.Length - gap.TrimStart().Length));
             }
             blocks.Add((member, start, end, GroupOf(member.Node), i));
         }
@@ -120,7 +120,7 @@ public static partial class GDScriptFormatter
     }
 
     /// <summary>Where the preamble (annotations, class_name, extends, the class's doc comment) ends: the end of its last line.</summary>
-    private static int FloorOfPreamble(string text, GDScriptTree tree) => tree.Class.End > 0 ? NextLineOf(text, Math.Min(text.Length, tree.Class.End)) : 0;
+    private static int FloorOfPreamble(string text, GDScriptTree tree) => tree.Class.End > 0 ? TextNavigation.NextLineStart(text, Math.Min(text.Length, tree.Class.End)) : 0;
 
     /// <summary>The guide's Code order's place of a member: signals, enums, constants, static variables, exported, regular
     /// and @onready variables, _static_init, static functions, Godot's virtuals from _init to _physics_process then the
@@ -220,13 +220,5 @@ public static partial class GDScriptFormatter
         List<string> CommentsOf(string text) => [.. text.Split('\n').Select(l => l.IndexOf('#', StringComparison.Ordinal) is >= 0 and int hash ? l[hash..].TrimEnd() : null)
             .OfType<string>().Order(StringComparer.Ordinal)];
         return CommentsOf(was).SequenceEqual(CommentsOf(now)) ? null : "its comments";
-    }
-
-    private static int LineStartOf(string text, int offset) => offset <= 0 ? 0 : text.LastIndexOf('\n', Math.Min(offset, text.Length) - 1) + 1;
-
-    private static int NextLineOf(string text, int offset)
-    {
-        int newline = text.IndexOf('\n', Math.Min(offset, text.Length));
-        return newline < 0 ? text.Length : newline + 1;
     }
 }

@@ -183,7 +183,7 @@ public sealed class GDScriptAnalysis
         {
             return read;
         }
-        int lineStart = offset > 0 ? text.LastIndexOf('\n', offset - 1) + 1 : 0;
+        int lineStart = TextNavigation.LineStart(text, offset);
         ReadOnlySpan<char> before = text.AsSpan(lineStart, offset - lineStart).TrimStart();
         return before.StartsWith("const ") && before.Contains('=') ? GDScriptConstantPlace.Value : read;
     }
@@ -212,13 +212,13 @@ public sealed class GDScriptAnalysis
             return default;
         }
         int relative = offset - within.Offset;
-        int lineStart = offset > 0 ? Tree.Text.LastIndexOf('\n', offset - 1) + 1 : 0;
-        int column = GDScriptAsked.Indent(Tree.Text, lineStart);
+        int lineStart = TextNavigation.LineStart(Tree.Text, offset);
+        int column = TextNavigation.IndentEnd(Tree.Text, lineStart) - lineStart;
         bool byIndent = lineStart + column >= offset;
         int IndentOf(GDScriptNode node)
         {
-            int at = within.Offset + node.Start;
-            return GDScriptAsked.Indent(Tree.Text, at > 0 ? Tree.Text.LastIndexOf('\n', at - 1) + 1 : 0);
+            int line = TextNavigation.LineStart(Tree.Text, within.Offset + node.Start);
+            return TextNavigation.IndentEnd(Tree.Text, line) - line;
         }
         GDScriptClass? @class = null;
         GDScriptSuite? block = null;

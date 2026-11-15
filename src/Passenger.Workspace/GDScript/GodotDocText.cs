@@ -1,4 +1,5 @@
 using System.Text;
+using Passenger.Text;
 
 namespace Passenger.Workspace.GDScript;
 
@@ -126,13 +127,13 @@ public static partial class GodotDocText
     /// (<c>@tutorial</c>); null for none.</summary>
     public static string? CommentAbove(string text, int declared)
     {
-        int lineStart = declared > 0 ? text.LastIndexOf('\n', Math.Min(declared, text.Length) - 1) + 1 : 0;
-        int lineEnd = text.IndexOf('\n', lineStart) is var end and >= 0 ? end : text.Length;
+        int lineStart = TextNavigation.LineStart(text, declared);
+        int lineEnd = TextNavigation.LineEnd(text, lineStart);
         List<string> lines = [];
         for (int above = lineStart; above > 0;)
         {
             int previousEnd = above - 1;
-            int previousStart = previousEnd > 0 ? text.LastIndexOf('\n', previousEnd - 1) + 1 : 0;
+            int previousStart = TextNavigation.LineStart(text, previousEnd);
             string line = text[previousStart..previousEnd].Trim();
             above = previousStart;
             if (line.StartsWith("##", StringComparison.Ordinal))

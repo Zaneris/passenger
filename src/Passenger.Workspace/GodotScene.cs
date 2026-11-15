@@ -223,7 +223,7 @@ public sealed class GodotFile
         {
             if (text[at] == ';')
             {
-                at = LineEnd(text, at);
+                at = TextNavigation.NextLineStart(text, at);
                 continue;
             }
             if (text[at] != '[')
@@ -243,7 +243,7 @@ public sealed class GodotFile
             {
                 if (text[at] == ';')
                 {
-                    at = LineEnd(text, at);
+                    at = TextNavigation.NextLineStart(text, at);
                     continue;
                 }
                 at = Entry(text, at, inTag: false, out GodotEntry? property);
@@ -412,7 +412,7 @@ public sealed class GodotFile
         at = SkipSpaces(text, at);
         if (at >= text.Length || text[at] != '=')
         {
-            return inTag ? at : LineEnd(text, at);
+            return inTag ? at : TextNavigation.NextLineStart(text, at);
         }
         int valueStart = SkipSpaces(text, at + 1);
         int end = ValueEnd(text, valueStart, inTag);
@@ -581,12 +581,6 @@ public sealed class GodotFile
             at++;
         }
         return (value.ToString(), at, Math.Min(at + 1, text.Length));
-    }
-
-    private static int LineEnd(string text, int at)
-    {
-        int end = text.IndexOf('\n', at);
-        return end < 0 ? text.Length : end + 1;
     }
 
     private static int SkipBlank(string text, int at)

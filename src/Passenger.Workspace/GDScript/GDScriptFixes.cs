@@ -155,7 +155,7 @@ public static class GDScriptFixes
                 GDScriptType returns = analysis.ReturnOf(function);
                 string value = Default(returns);
                 int first = member.Offset + body.Statements[0].Start;
-                int lineStart = text.LastIndexOf('\n', Math.Max(0, first - 1)) + 1;
+                int lineStart = TextNavigation.LineStart(text, first);
                 string indent = text[lineStart..first];
                 if (indent.Trim().Length > 0)
                 {

@@ -3,7 +3,8 @@ using Passenger.Text;
 namespace Passenger.UnitTests.Text;
 
 /// <summary>A string's lines start where a document of it starts them, an offset's line counting from zero; a line's
-/// indentation ends at its first character that is no space or tab.</summary>
+/// indentation ends at its first character that is no space or tab, and its end and the next line's start are read as
+/// its start is.</summary>
 public sealed class LineStartsTests
 {
     [Theory]
@@ -50,8 +51,37 @@ public sealed class LineStartsTests
     [InlineData("ab\ncd", 3, 3)]
     [InlineData("ab\ncd", 5, 3)]
     [InlineData("ab\r\ncd", 3, 0)]
+    [InlineData("ab\ncd", 9, 3)]
+    [InlineData("", 2, 0)]
     public void A_line_of_a_string_starts_after_the_line_feed_before_it(string text, int offset, int start)
     {
         Assert.Equal(start, TextNavigation.LineStart(text, offset));
+    }
+
+    /// <summary>A line ends before its '\n' and a '\r' just before that, never before the offset asked from; a lone '\r'
+    /// breaks no line, as <see cref="TextNavigation.LineStart(string, int)"/> reads them.</summary>
+    [Theory]
+    [InlineData("ab\ncd", 0, 2)]
+    [InlineData("ab\r\ncd", 1, 2)]
+    [InlineData("ab\r\ncd", 2, 2)]
+    [InlineData("ab\r\ncd", 3, 3)]
+    [InlineData("ab\ncd", 4, 5)]
+    [InlineData("a\rb", 0, 3)]
+    [InlineData("ab", 5, 2)]
+    public void A_line_of_a_string_ends_before_its_line_break(string text, int offset, int end)
+    {
+        Assert.Equal(end, TextNavigation.LineEnd(text, offset));
+    }
+
+    [Theory]
+    [InlineData("ab\ncd", 0, 3)]
+    [InlineData("ab\r\ncd", 1, 4)]
+    [InlineData("ab\ncd", 2, 3)]
+    [InlineData("ab\ncd", 3, 5)]
+    [InlineData("ab\n", 3, 3)]
+    [InlineData("ab", 9, 2)]
+    public void The_next_line_of_a_string_starts_past_the_line_feed_ending_the_offsets(string text, int offset, int next)
+    {
+        Assert.Equal(next, TextNavigation.NextLineStart(text, offset));
     }
 }

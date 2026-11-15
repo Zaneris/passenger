@@ -1,4 +1,5 @@
 using Passenger.App.LiveTree;
+using Passenger.Text;
 using Passenger.Workspace;
 using Passenger.Workspace.GDScript;
 using Passenger.Xaml.Features;
@@ -130,8 +131,8 @@ public sealed class GodotSceneValues(string path, string node, string name, stri
                 Show(shown);
                 return;
             }
-            int from = LineStart(text, entry.KeyStart);
-            int to = NextLine(text, entry.Value.End);
+            int from = TextNavigation.LineStart(text, entry.KeyStart);
+            int to = TextNavigation.NextLineStart(text, entry.Value.End);
             edits = [new Passenger.Text.TextEdit(from, to - from, string.Empty)];
         }
         else if (entry is not null)
@@ -148,8 +149,8 @@ public sealed class GodotSceneValues(string path, string node, string name, stri
             // Where Godot's save puts it: before the first line the node writes that Godot saves after it.
             int rank = shown.Rank;
             GodotEntry? after = section.Properties.FirstOrDefault(p => RankOf(p.Key) > rank);
-            int at = after is not null ? LineStart(text, after.KeyStart)
-                : NextLine(text, section.Properties.Count > 0 ? Math.Max(section.End, section.Properties[^1].Value.End) : section.End);
+            int at = after is not null ? TextNavigation.LineStart(text, after.KeyStart)
+                : TextNavigation.NextLineStart(text, section.Properties.Count > 0 ? Math.Max(section.End, section.Properties[^1].Value.End) : section.End);
             string line = $"{property} = {written}{lineEnding}";
             edits = [new Passenger.Text.TextEdit(at, 0, at == text.Length && at > 0 && text[^1] != '\n' ? lineEnding + line : line)];
         }
@@ -169,11 +170,6 @@ public sealed class GodotSceneValues(string path, string node, string name, stri
 
     /// <summary>The script's place in Godot's save of a node: after every property of its engine class, before its exports.</summary>
     private const int ScriptRank = 1 << 24;
-
-    private static int LineStart(string text, int offset) => text.LastIndexOf('\n', Math.Max(0, offset - 1)) + 1;
-
-    /// <summary>Where the line after the one holding an offset begins (the text's end on its last line).</summary>
-    private static int NextLine(string text, int offset) => text.IndexOf('\n', Math.Min(offset, text.Length)) is var end and >= 0 ? end + 1 : text.Length;
 
     /// <summary>The scene's text read again (an edit of it, an Undo): the rows show what it holds now.</summary>
     public void ReadAgain()

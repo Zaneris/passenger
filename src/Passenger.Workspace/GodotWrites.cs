@@ -1,3 +1,5 @@
+using Passenger.Text;
+
 namespace Passenger.Workspace;
 
 /// <summary>What a Godot project's text files say written as Godot's editor writes it: a setting of project.godot (an input
@@ -138,11 +140,7 @@ public static class GodotWrites
         {
             return sectionEnd < text.Length ? text[..found.Start] + text[sectionEnd..] : text[..found.Start].TrimEnd('\r', '\n') + NewlineOf(text);
         }
-        int start = set.KeyStart == 0 ? 0 : text.LastIndexOf('\n', set.KeyStart - 1) + 1;
-        int end = LineEnd(text, set.Value.End);
-        end += end < text.Length && text[end] == '\r' ? 1 : 0;
-        end += end < text.Length && text[end] == '\n' ? 1 : 0;
-        return text[..start] + text[end..];
+        return text[..TextNavigation.LineStart(text, set.KeyStart)] + text[TextNavigation.NextLineStart(text, set.Value.End)..];
     }
 
     /// <summary>Whether a section holds anything beside its tag and entries before <paramref name="end"/>: a person's comment.</summary>
@@ -260,14 +258,7 @@ public static class GodotWrites
 
     /// <summary>The line a node's header becomes once a group is given to it (<see cref="WithGroup"/>); null where it is not given.</summary>
     public static string? GroupLine(string text, int section, string group) =>
-        WithGroup(text, section, group) is { } made ? made[section..LineEnd(made, section)] : null;
-
-    private static int LineEnd(string text, int at)
-    {
-        int end = text.IndexOf('\n', at);
-        end = end < 0 ? text.Length : end;
-        return end > at && text[end - 1] == '\r' ? end - 1 : end;
-    }
+        WithGroup(text, section, group) is { } made ? made[section..TextNavigation.LineEnd(made, section)] : null;
 
     /// <summary>A GDScript with a function made last, two blank lines before it as Godot's style has them, its body
     /// <c>pass</c> indented as the script's first indented line is (a tab where none is).</summary>

@@ -247,8 +247,22 @@ public static class TextNavigation
         return i;
     }
 
-    /// <summary>Where the line of a string holding an offset starts, lines broken at each '\n'.</summary>
-    public static int LineStart(string text, int offset) => offset <= 0 ? 0 : text.LastIndexOf('\n', offset - 1) + 1;
+    /// <summary>Where the line of a string holding an offset starts, lines broken at each '\n'; an offset past the text's
+    /// end is on its last line.</summary>
+    public static int LineStart(string text, int offset) => offset <= 0 ? 0 : text.LastIndexOf('\n', Math.Min(offset, text.Length) - 1) + 1;
+
+    /// <summary>Where the line of a string holding an offset ends, before its '\n' and a '\r' just before that, never before
+    /// the offset; the text's end on its last line.</summary>
+    public static int LineEnd(string text, int offset)
+    {
+        offset = Math.Clamp(offset, 0, text.Length);
+        int end = text.IndexOf('\n', offset);
+        end = end < 0 ? text.Length : end;
+        return end > offset && text[end - 1] == '\r' ? end - 1 : end;
+    }
+
+    /// <summary>Where the line after the one of a string holding an offset starts, past its '\n'; the text's end on its last line.</summary>
+    public static int NextLineStart(string text, int offset) => text.IndexOf('\n', Math.Clamp(offset, 0, text.Length)) is var end and >= 0 ? end + 1 : text.Length;
 
     /// <summary>Where the run of whitespace ending at <paramref name="offset"/> on a line begins, read no further back
     /// than it goes.</summary>
