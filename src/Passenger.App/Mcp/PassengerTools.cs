@@ -59,7 +59,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         "before that column's character. Returns the workspace.")]
     public Task<Workspace> Open(string path, int? line = null, int? column = null, CancellationToken cancel = default) => OnUi(cancel, async () =>
     {
-        string full = Resolve(path);
+        string full = Named(path);
         // Opened once what another folder ran has ended.
         if (Directory.Exists(full) || (File.Exists(full) && WorkspaceModel.Opens(full) && line is null))
         {
@@ -93,7 +93,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             {
                 await window.OpenFolder(Path.GetDirectoryName(full)!, connection).WaitAsync(cancel);
             }
-            // Its disk's text taken first, as every tool naming a file does, then shown.
+            // Its disk's text taken first, as every tool naming a file does (refused where the agent may not read it), then shown.
             OpenDocument document = await DocumentAsync(full, cancel);
             // On a person's window, the file they have shown keeps their caret, and another comes behind it.
             bool theirs = Beside && Editors.Active == document;
@@ -1507,10 +1507,12 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             throw new ArgumentException($"{preset} is a Godot export preset: omit publish, a .NET project's");
         }
         string? game = preset is null ? null : window.GodotExportFolder() ?? throw new InvalidOperationException(Refusals.NoGodotProject);
+        // An export the agent places is written where it may change files.
+        string? exported = game is null || exportPath is null ? null : Resolve(global::Passenger.Workspace.GodotResPaths.Globalized(game, exportPath), changes: true);
         ProjectModel? published = publish is null ? null : Project(publish);
         AgentCall.Follow(window.Actions.Work, published is null && game is null ? AppActions.Build : AppActions.Publish);
         // The build, publish or export goes on without an agent that gives up on it, shown in the Build or Run window.
-        BuildOutcome built = await (game is not null ? Builds.ExportGodotAsync(new GodotExportRequest(game, preset!, debug, exportPath))
+        BuildOutcome built = await (game is not null ? Builds.ExportGodotAsync(new GodotExportRequest(game, preset!, debug, exported))
             : published is null ? Builds.BuildAsync(BuildCause.Explicit, CancellationToken.None)
             : Builds.PublishAsync(new PublishRequest(published.Path, profile ?? Session.Publishing.ProfileOf(published.Path)))).WaitAsync(cancel);
         // So the code tools the agent calls next know what it built.
@@ -2123,13 +2125,18 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             return ExceptionBreakpoints();
         }
         (string full, int at) = LinePlace(path, line);
-        TextSnapshot text = (Editors.Find(full) is { HoldsText: true } open ? open.Text.Snapshot : await BackgroundWork.Run(() => Passenger.App.Editors.EditorArea.Read(full)))
-            ?? throw new ArgumentException(File.Exists(full) ? $"{Relative(full)} has no text to set a breakpoint in" : $"No file {Relative(full)} is here to set a breakpoint in");
-        LineIn(text, full, at + 1);
+        // A file the agent may not read is told nothing of, there or not: its breakpoint is set as named, for the debugger to place.
+        bool readable = Reaches(full, changes: false);
+        if (readable)
+        {
+            TextSnapshot text = (Editors.Find(full) is { HoldsText: true } open ? open.Text.Snapshot : await BackgroundWork.Run(() => Passenger.App.Editors.EditorArea.Read(full)))
+                ?? throw new ArgumentException(File.Exists(full) ? $"{Relative(full)} has no text to set a breakpoint in" : $"No file {Relative(full)} is here to set a breakpoint in");
+            LineIn(text, full, at + 1);
+        }
         LineBreakpoint set = column is int inside ? (await LambdaBreakpointAsync(full, at, inside, set: true))! : store.Set(full, at, attribute is { Length: > 0 } ? attribute : null);
         store.Update(set, enabled: true, suspend, condition, hitCondition, logMessage);
         await InTheProgram(cancel);
-        Passenger.Languages.CSharp.ParsedText? parsed = Session.Debug.IsDebugging ? null : await LambdaBreakpoints.ParsedAsync(Editors, full);
+        Passenger.Languages.CSharp.ParsedText? parsed = Session.Debug.IsDebugging || !readable ? null : await LambdaBreakpoints.ParsedAsync(Editors, full);
         // An open file's parse only as its text stands: its lines may have moved since.
         if (parsed is not null && Editors.Find(full) is { HoldsText: true } shown && !ReferenceEquals(parsed.Text, shown.Text.Snapshot))
         {
@@ -2197,9 +2204,13 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
 
     /// <summary>The breakpoint inside the C# lambda holding a column (from one) of a line (from zero), set if
     /// <paramref name="set"/> says to, else null with none there; refused where no lambda written after the line's code
-    /// begins holds that column.</summary>
+    /// begins holds that column, and in a file the agent may not read.</summary>
     private async Task<LineBreakpoint?> LambdaBreakpointAsync(string path, int line, int column, bool set)
     {
+        if (!Reaches(path, changes: false))
+        {
+            throw new InvalidOperationException(Refusals.OutOfReach(path, Session.Folder, changes: false));
+        }
         Passenger.Languages.CSharp.ParsedText parsed = await LambdaBreakpoints.ParsedAsync(Editors, path)
             ?? throw new ArgumentException($"A column names a lambda's breakpoint in a C# file, which {Relative(path)} is not");
         if (line >= parsed.Text.LineCount)
@@ -2639,7 +2650,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         (path, line) switch
         {
             (null, null) => Resume(s => s.ContinueAsync(), waitSeconds, session, cancel),
-            ({ } file, int to) => Resume(debugged => debugged.RunToCursorAsync(Resolve(file), to - 1), waitSeconds, session, cancel),
+            ({ } file, int to) => Resume(debugged => debugged.RunToCursorAsync(Named(file), to - 1), waitSeconds, session, cancel),
             _ => throw new ModelContextProtocol.McpException("Run to a line takes both path and line"),
         };
 
@@ -2670,7 +2681,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         DebugSession paused = await Paused(session, choose: true);
         // The move's own stop, whichever comes first, it or the answer: an earlier move's stop has the same reason.
         int before = paused.Stops;
-        if (await Session.Debug.SetNextStatementAsync(paused, Resolve(path), line - 1) is { } problem)
+        if (await Session.Debug.SetNextStatementAsync(paused, Named(path), line - 1) is { } problem)
         {
             throw new InvalidOperationException(problem);
         }
@@ -3343,7 +3354,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
 
     /// <summary>A line breakpoint's file and line from zero, as an agent names them.</summary>
     private (string Path, int Line) LinePlace(string? path, int? line) => path is { Length: > 0 } && line is int at
-        ? (Resolve(path), at - 1)
+        ? (Named(path), at - 1)
         : throw new InvalidOperationException("Name a path and a line for a line breakpoint, or an exception type for an exception breakpoint");
 
     /// <summary>A C# file no tab shows, whose marks the server's refresh or its opening left unpulled, pulled now, so the
@@ -3946,9 +3957,30 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             ? $"{Relative(unread.Path)}:{at.Line + 1}:{at.Column + 1}: {unread.Why}"
             : $"{Relative(unread.Path)}: {unread.Why}";
 
-    /// <summary>A path an agent gave, from the open folder unless rooted, as the IDE names it (in any letter case).</summary>
-    private string Resolve(string path) =>
-        PathNames.Canonical(Path.IsPathRooted(path) || Session.Folder is not { } folder ? path : Path.Combine(folder, path));
+    /// <summary>A path an agent gave (<see cref="Named"/>), refused in the one sentence where the agent may not read it, or
+    /// with <paramref name="changes"/> change it (<see cref="AgentReach"/>): every path a tool takes but those
+    /// <see cref="Named"/> lists.</summary>
+    private string Resolve(string path, bool changes = false)
+    {
+        string full = Named(path);
+        return Reaches(full, changes) ? full : throw new InvalidOperationException(Refusals.OutOfReach(full, Session.Folder, changes));
+    }
+
+    /// <summary>Whether the agent may read a file or folder (a canonical path), or with <paramref name="changes"/> change it,
+    /// as the window's folder and the folders its trusted solution reaches stand (<see cref="AgentReach"/>).</summary>
+    private bool Reaches(string full, bool changes) =>
+        changes ? AgentReach.Changes(full, Session.Folder, Session.Reached) : AgentReach.Reads(full, Session.Folder, Session.Reached);
+
+    /// <summary>A path an agent gave, from the open folder unless rooted, as the IDE names it (in any letter case), wherever
+    /// it is: taken so only by open for a folder or solution, the workspace the agent chooses, and as a place in a debugged
+    /// program's code, which may be built anywhere and none of whose text the debugger's tools answer. One whose asking would
+    /// reach another machine or open a device is refused unasked (<see cref="FoundPaths"/>).</summary>
+    private string Named(string path)
+    {
+        string given = Path.IsPathRooted(path) || Session.Folder is not { } folder ? path : Path.Combine(folder, path);
+        return FoundPaths.Askable(given, Session.Folder is { } open ? [open] : []) ? PathNames.Canonical(given)
+            : throw new InvalidOperationException(Refusals.NeverAsked(given));
+    }
 
     private string Relative(string path) => Relative(Session.Folder, path);
 

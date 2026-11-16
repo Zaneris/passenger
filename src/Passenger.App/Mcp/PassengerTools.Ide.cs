@@ -252,7 +252,7 @@ public sealed partial class PassengerTools
         (SearchQuery query, SearchScope chosen) = Search(text, matchCase, wholeWords, regex, scope, project, directory, recursive, mask);
         // Looked at every 50 ms: an index cleared as its folder closes, or another folder's, says nothing to this wait.
         await Until(() => !Session.Index.IsWalking, IndexLimit, cancel);
-        FilesFound searched = await window.FindInFilesAsync(query, chosen, cancel);
+        (FilesFound searched, _) = Reached(await window.FindInFilesAsync(query, chosen, cancel), changes: false);
         IReadOnlyList<SearchMatch> found = searched.Matches;
         FindInFilesResult result = new(found.Count, found.Count >= FileSearch.MostMatches, [], searched.Stopped.Count == 0 ? null : [.. searched.Stopped.Select(Relative)]);
         List<Place> asked = [.. found.Take(Math.Clamp(limit, 1, FileSearch.MostMatches)).Select(m => new Place(Relative(m.Path), m.Line + 1, m.Column + 1, AgentAnswers.Line(m.LineText, m.Column + 1)))];
@@ -283,11 +283,13 @@ public sealed partial class PassengerTools
         // Looked at every 50 ms: an index cleared as its folder closes, or another folder's, says nothing to this wait.
         await Until(() => !Session.Index.IsWalking, IndexLimit, cancel);
         (FilesFound? every, string? why) = await window.FindEveryMatchAsync(query, chosen, cancel);
-        FilesFound searched = every ?? throw new InvalidOperationException(why);
+        (FilesFound searched, IReadOnlyList<string> unreached) = Reached(every ?? throw new InvalidOperationException(why), changes: true);
         IReadOnlyList<SearchMatch> found = searched.Matches;
+        string? outside = unreached.Count == 0 ? null : $"not replaced: {string.Join("; ", unreached.Select(p => Refusals.OutOfReach(p, Session.Folder, changes: true)))}";
         if (found.Count == 0)
         {
-            return searched.StoppedIn(Relative) is { } stopped ? $"Nothing was replaced: {stopped}" : "Nothing matches, so nothing was replaced";
+            return searched.StoppedIn(Relative) is { } stopped ? $"Nothing was replaced: {stopped}"
+                : outside is not null ? $"Nothing was replaced: {outside}" : "Nothing matches, so nothing was replaced";
         }
         List<string> files = [.. searched.Replaceable.Select(m => m.Path).Distinct()];
         if (await Editors.ClearAsync(files) is { } held)
@@ -295,7 +297,7 @@ public sealed partial class PassengerTools
             throw new InvalidOperationException(held);
         }
         FilesReplaced done = await window.ReplaceInFilesAsync(query, replacement, searched);
-        List<string> said = [.. done.Converted];
+        List<string> said = [.. done.Converted, .. outside is null ? [] : new[] { outside }];
         // The open files' saves are the replace's, in its change set; what the person saves meanwhile stays theirs.
         using (done.Named?.Own())
         {
@@ -424,6 +426,20 @@ public sealed partial class PassengerTools
     private const int MostEditLines = 40;
 
     private static string Shorter(string text) => text.Length > 120 ? text[..120] + "…" : text;
+
+    /// <summary>A search's matches in the files the agent may read, or with <paramref name="changes"/> change (<see
+    /// cref="AgentReach"/>), and the files left out: one the person has open outside the folder, or one a link
+    /// in it leads out to, is none of the agent's.</summary>
+    private (FilesFound Kept, IReadOnlyList<string> LeftOut) Reached(FilesFound searched, bool changes)
+    {
+        List<string> left = [.. searched.Matches.Select(m => m.Path).Concat(searched.Stopped).Distinct(StringComparer.Ordinal).Where(p => !Reaches(p, changes))];
+        return left.Count == 0 ? (searched, left) : (searched with
+        {
+            Matches = [.. searched.Matches.Where(m => !left.Contains(m.Path))],
+            Stopped = [.. searched.Stopped.Where(p => !left.Contains(p))],
+            Outside = [.. searched.Outside.Where(p => !left.Contains(p))],
+        }, left);
+    }
 
     /// <summary>Find in Files' query and scope as an agent names them, refused as the popup refuses them.</summary>
     private (SearchQuery Query, SearchScope Scope) Search(string text, bool matchCase, bool wholeWords, bool regex, string scope, string? project, string? directory,

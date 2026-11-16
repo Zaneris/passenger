@@ -480,6 +480,21 @@ public static class Refusals
     /// saves.</summary>
     public static string ReadOnly(string name) => $"{name} is read-only";
 
+    /// <summary>A path an agent named that its tools may not reach (<see cref="Mcp.AgentReach"/>): outside the open folder
+    /// and the projects its trusted solution names beside it, and to read, outside the files made or installed to be read
+    /// too; <paramref name="changes"/> for one it would change.</summary>
+    public static string OutOfReach(string path, string? folder, bool changes) =>
+        $"{path} is outside {(folder is null ? "any open folder" : $"the open folder {folder}")}: an agent's tools {(changes ? "change" : "read and change")} "
+        + "only the folder's files and, where it is trusted, those of the projects its solution names beside it"
+        + (changes ? string.Empty
+            : ", and read outside them only what Go to Declaration leads to: the packages its projects restore, the SDK's MSBuild files, "
+            + "and the copies Passenger makes to be read (a source generator's code, a library's decompiled or linked source)");
+
+    /// <summary>A path an agent named that is never asked of the disk (<see cref="FoundPaths"/>), as asking would reach
+    /// another machine, open a device or mount a folder.</summary>
+    public static string NeverAsked(string path) =>
+        $"{path} is never asked of the disk: it names another machine's share, a device or a folder mounted from another machine, or is no path";
+
     /// <summary>A console's or a test's output, which only its program writes; a line typed at its end goes to a program
     /// reading its input.</summary>
     public const string OutputReadOnly = "The output is read-only";

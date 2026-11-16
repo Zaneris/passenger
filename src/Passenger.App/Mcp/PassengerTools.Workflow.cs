@@ -150,7 +150,7 @@ public sealed partial class PassengerTools
         await vcs.RefreshAsync();
         List<FileChange> chosen = paths is null
             ? lines is { Count: > 0 } ? [] : [.. vcs.Changes.Where(c => c.Kind is not ChangeKind.Unversioned && c.Uncommittable is null)]
-            : [.. paths.Select(Resolve).Select(p => vcs.Changes.FirstOrDefault(c => c.Path == p) ?? throw new ArgumentException($"{Relative(p)} has no changes to commit"))];
+            : [.. paths.Select(given => Resolve(given)).Select(p => vcs.Changes.FirstOrDefault(c => c.Path == p) ?? throw new ArgumentException($"{Relative(p)} has no changes to commit"))];
         Dictionary<string, PartialCommit> partial = new(PathNames.Comparer);
         List<string> left = [];
         foreach ((string given, string ranges) in lines ?? [])
@@ -925,22 +925,32 @@ public sealed partial class PassengerTools
         return problem is null ? shell : throw new InvalidOperationException(problem);
     }
 
+    /// <summary>One of the folder's projects, by its name, else by its path.</summary>
     private ProjectModel Project(string project)
     {
         IReadOnlyList<ProjectModel> projects = Session.Projects;
+        if (projects.FirstOrDefault(p => p.Name.Equals(project, StringComparison.OrdinalIgnoreCase)) is { } named)
+        {
+            return named;
+        }
         string full = Resolve(project);
-        return projects.FirstOrDefault(p => p.Path == full || p.Name.Equals(project, StringComparison.OrdinalIgnoreCase))
+        return projects.FirstOrDefault(p => p.Path == full)
             ?? throw new ArgumentException($"No project {project}; the folder has {string.Join(", ", projects.Select(p => p.Name))}");
     }
 
     /// <summary>The project file find_in_files' project scope names: one of the folder's projects, else one of the solution's
-    /// shared projects, by its path or name.</summary>
+    /// shared projects, by its name, else by its path.</summary>
     private string SearchedProject(string project)
     {
-        string full = Resolve(project);
         IReadOnlyList<string> shared = Session.Workspace?.SharedProjects ?? [];
-        return Session.Projects.FirstOrDefault(p => p.Path == full || p.Name.Equals(project, StringComparison.OrdinalIgnoreCase))?.Path
-            ?? shared.FirstOrDefault(p => p == full || Path.GetFileNameWithoutExtension(p).Equals(project, StringComparison.OrdinalIgnoreCase))
+        if ((Session.Projects.FirstOrDefault(p => p.Name.Equals(project, StringComparison.OrdinalIgnoreCase))?.Path
+            ?? shared.FirstOrDefault(p => Path.GetFileNameWithoutExtension(p).Equals(project, StringComparison.OrdinalIgnoreCase))) is { } named)
+        {
+            return named;
+        }
+        string full = Resolve(project);
+        return Session.Projects.FirstOrDefault(p => p.Path == full)?.Path
+            ?? shared.FirstOrDefault(p => p == full)
             ?? throw new ArgumentException($"No project {project}; the folder has {string.Join(", ", [.. Session.Projects.Select(p => p.Name), .. shared.Select(Path.GetFileNameWithoutExtension)])}");
     }
 }

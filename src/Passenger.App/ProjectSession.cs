@@ -291,13 +291,20 @@ public sealed class ProjectSession : IAsyncDisposable
     /// <summary>The folder came to be trusted, and what the session held back began.</summary>
     public event EventHandler? TrustChanged;
 
+    /// <summary>The folders a trusted folder's solution reaches outside it, its projects' beside it: trusted with it while
+    /// it is open (<see cref="WorkspaceTrust.Lend"/>), and an agent's to work in as the folder is (<see cref="Mcp.AgentReach"/>).
+    /// None while the folder is not trusted.</summary>
+    public IReadOnlyList<string> Reached => Trusted && Folder is { } open
+        ? [.. (workspace?.Projects ?? []).Select(p => p.Folder).Where(f => !PathNames.Within(f, open)).Distinct(PathNames.Comparer)]
+        : [];
+
     /// <summary>A trusted folder's projects outside it (a solution's beside it) are trusted with it while it is open, so what
     /// works on them (a run, a migration) runs as it does for those inside.</summary>
     private void LendTrust()
     {
-        if (Trusted && Folder is { } open)
+        if (Trusted && Folder is not null)
         {
-            WorkspaceTrust.Lend(this, (workspace?.Projects ?? []).Select(p => p.Folder).Where(f => !PathNames.Within(f, open)));
+            WorkspaceTrust.Lend(this, Reached);
         }
     }
 
