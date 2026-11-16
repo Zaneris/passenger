@@ -237,6 +237,69 @@ public sealed class ChatTests
     }
 
     [AvaloniaFact]
+    public void The_agents_settings_are_pickers_under_the_box_and_choosing_one_sets_it()
+    {
+        MainWindow window = Connected(out StandInAgent agent);
+        Ui.WaitFor(() => window.Chat.Settings.Count == 3, "the three pickers");
+
+        Assert.Equal(["mode", "model", "effort"], window.Chat.Settings.Keys);
+        Assert.Equal("Accept edits", Chosen(window.Chat.Settings["mode"]));
+        Assert.Equal("Opus 5.5", Chosen(window.Chat.Settings["model"]));
+
+        window.Chat.Settings["model"].SelectedIndex = 1;
+        Ui.WaitFor(() => agent.Model == "sonnet", "the model set");
+        Ui.Settle();
+        Assert.Equal("Sonnet 5.5", Chosen(window.Chat.Settings["model"]));
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Shift_Tab_in_the_box_moves_to_the_agents_next_mode()
+    {
+        MainWindow window = Connected(out StandInAgent agent);
+        Ui.WaitFor(() => window.Chat.Settings.ContainsKey("mode"), "the mode picker");
+
+        Ui.Click(window.Chat.Input);
+        Ui.Press(window, "shift TAB");
+        Ui.WaitFor(() => agent.Mode == "plan", () => $"the next mode set, where it is {agent.Mode}");
+        Ui.Settle();
+        Assert.Equal("Plan", Chosen(window.Chat.Settings["mode"]));
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void A_slash_lists_the_agents_commands_and_Enter_writes_the_chosen_one()
+    {
+        MainWindow window = Connected(out StandInAgent agent);
+        Ui.WaitFor(() => window.Chat.Commands.Commands.Count == 3, "the agent's commands");
+
+        Ui.Click(window.Chat.Input);
+        window.Chat.Input.Text = "/co";
+        window.Chat.Input.CaretIndex = 3;
+        Ui.Settle();
+        Assert.True(window.Chat.Commands.IsOpen);
+        Assert.Equal(["code-review", "compact"], window.Chat.Commands.Shown);
+
+        Ui.Press(window, "DOWN");
+        Ui.Press(window, "ENTER");
+        Assert.Equal("/compact ", window.Chat.Input.Text);
+        Assert.False(window.Chat.Commands.IsOpen);
+        Assert.Empty(agent.Prompts);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void The_header_says_the_account_and_the_plans_use_and_the_box_the_context_used()
+    {
+        MainWindow window = Connected(out _);
+        Ui.WaitFor(() => window.Chat.Account.Contains("week", StringComparison.Ordinal), () => $"the plan's use, where the header says {window.Chat.Account}");
+
+        Assert.Equal("Claude Pro · 5h 30% · week 4%", window.Chat.Account);
+        Assert.Equal("4% context", window.Chat.ContextUsed);
+        window.Close();
+    }
+
+    [AvaloniaFact]
     public void A_reply_shows_as_Markdown_once_whole()
     {
         MainWindow window = Connected(out StandInAgent agent);
@@ -328,6 +391,8 @@ public sealed class ChatTests
     private static Button InReview(MainWindow window, string content) =>
         window.Chat.Review.GetVisualDescendants().OfType<Button>().First(b => Equals(b.Content, content));
 
+    private static string? Chosen(ComboBox picker) => (picker.SelectedItem as ComboBoxItem)?.Content as string;
+
     private static void Send(MainWindow window, string text)
     {
         window.Chat.Input.Text = text;
@@ -364,6 +429,9 @@ public sealed class ChatTests
 
         /// <summary>The mode the session was set to.</summary>
         public string? Mode { get; private set; }
+
+        /// <summary>The model the session was set to.</summary>
+        public string Model { get; private set; } = "opus";
 
         /// <summary>Whether the turn was cancelled.</summary>
         public bool Cancelled { get; private set; }
@@ -403,7 +471,23 @@ public sealed class ChatTests
                         break;
                     case "session/new":
                         SessionFolder = parameters?["cwd"]?.GetValue<string>();
-                        await Answer(writer, id, """{"sessionId":"sess_1","modes":{"currentModeId":"auto","availableModes":[{"id":"default","name":"Manual"},{"id":"acceptEdits","name":"Accept edits"},{"id":"auto","name":"Auto"}]}}""");
+                        await Answer(writer, id, """{"sessionId":"sess_1","modes":{"currentModeId":"auto","availableModes":[{"id":"default","name":"Manual"},{"id":"acceptEdits","name":"Accept edits"},{"id":"plan","name":"Plan"}]},"configOptions":""" + Config() + "}");
+                        await writer.WriteLineAsync("""{"jsonrpc":"2.0","method":"auth/status_update","params":{"state":"authenticated","accounts":[{"label":"Claude Pro","active":true,"email":"person@example.com"}]}}""");
+                        await Update(writer, """{"sessionUpdate":"available_commands_update","availableCommands":[{"name":"code-review","description":"Review the current diff"},{"name":"compact","description":"Clear the conversation but keep a summary"},{"name":"init","description":"Write a CLAUDE.md"}]}""");
+                        await Update(writer, """{"sessionUpdate":"usage_update","used":40000,"size":1000000,"_meta":{"_claude/rateLimit":{"unifiedWindows":{"five_hour":{"utilization":0.3,"resetsAt":1794848400},"seven_day":{"utilization":0.04,"resetsAt":1795428000}}}}}""");
+                        break;
+                    case "session/set_config_option":
+                        string setting = parameters?["configId"]?.GetValue<string>() ?? string.Empty;
+                        string chosen = parameters?["value"]?.GetValue<string>() ?? string.Empty;
+                        if (setting == "mode")
+                        {
+                            Mode = chosen;
+                        }
+                        else if (setting == "model")
+                        {
+                            Model = chosen;
+                        }
+                        await Answer(writer, id, """{"configOptions":""" + Config() + "}");
                         break;
                     case "session/set_mode":
                         Mode = parameters?["modeId"]?.GetValue<string>();
@@ -494,6 +578,10 @@ public sealed class ChatTests
             await File.WriteAllTextAsync(path, text);
             await Update(writer, $$$"""{"toolCallId":"{{{call}}}","sessionUpdate":"tool_call_update","status":"completed"}""");
         }
+
+        /// <summary>Its settings as the Claude adapter lists them, cut to a few choices, at their values now.</summary>
+        private string Config() =>
+            $$$"""[{"id":"mode","name":"Mode","category":"mode","type":"select","currentValue":"{{{Mode ?? "auto"}}}","options":[{"value":"default","name":"Manual"},{"value":"acceptEdits","name":"Accept edits"},{"value":"plan","name":"Plan"}]},{"id":"model","name":"Model","category":"model","type":"select","currentValue":"{{{Model}}}","options":[{"value":"opus","name":"Opus 5.5"},{"value":"sonnet","name":"Sonnet 5.5"}]},{"id":"effort","name":"Effort","category":"thought_level","type":"select","currentValue":"high","options":[{"value":"low","name":"Low"},{"value":"high","name":"High"}]}]""";
 
         private static Task Say(StreamWriter writer, string text) =>
             Update(writer, """{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":""" + JsonValue.Create(text).ToJsonString() + "}}");

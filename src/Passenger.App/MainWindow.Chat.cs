@@ -48,6 +48,12 @@ public partial class MainWindow
                 view.CancelQuestions();
                 chatTurn?.Cancel();
             };
+            view.ConfigChosen += (_, chosen) =>
+            {
+                Task setting = SetChatConfigAsync(view, chosen.Id, chosen.Value);
+                BackgroundWork.Track(setting);
+                IdeErrors.Observe(setting);
+            };
             view.Review.KeepRequested += (_, files) =>
             {
                 foreach (ReviewedFile file in files)
@@ -103,7 +109,11 @@ public partial class MainWindow
             Follow(agent, view);
             AgentInfo info = await agent.Session.InitializeAsync();
             await agent.Session.NewSessionAsync(folder);
-            if (agent.Session.Modes.Any(mode => mode.Id == ChatAgent.ReviewMode))
+            if (agent.Session.Config.Any(option => option.Id == "mode" && option.Choices.Any(choice => choice.Value == ChatAgent.ReviewMode)))
+            {
+                await agent.Session.SetConfigAsync("mode", ChatAgent.ReviewMode);
+            }
+            else if (agent.Session.Modes.Any(mode => mode.Id == ChatAgent.ReviewMode))
             {
                 await agent.Session.SetModeAsync(ChatAgent.ReviewMode);
             }
@@ -113,12 +123,32 @@ public partial class MainWindow
             }
             string name = info.Title ?? info.Name;
             view.Connected(name, $"{name}{(info.Version is { } version ? " " + version : "")}");
+            view.ShowConfig(agent.Session.Config);
         }
         catch (Exception error) when (error is AcpError or Win32Exception or IOException or InvalidOperationException)
         {
             EndChatAgent();
             view.Say($"Could not start the agent: {error.Message}", error: true, offerConnect: true);
         }
+    }
+
+    /// <summary>Sets one of the agent's settings the person chose (mode, model, effort); the pickers show what the agent
+    /// answers it now is, which puts a refused choice back.</summary>
+    private async Task SetChatConfigAsync(ChatView view, string id, string value)
+    {
+        if (chatAgent is not { } agent)
+        {
+            return;
+        }
+        try
+        {
+            await agent.Session.SetConfigAsync(id, value);
+        }
+        catch (AcpError error)
+        {
+            status.Text = $"The agent did not take that {id}: {error.Message}";
+        }
+        view.ShowConfig(agent.Session.Config);
     }
 
     /// <summary>Sends the person's message and shows the reply as it streams, until the agent ends its turn.</summary>
@@ -162,6 +192,10 @@ public partial class MainWindow
     private void Follow(ChatAgent agent, ChatView view)
     {
         agent.Session.TextReceived += chunk => OnWindowThread(() => view.Streamed(chunk.Text));
+        agent.Session.ConfigChanged += config => OnWindowThread(() => view.ShowConfig(config));
+        agent.Session.CommandsChanged += commands => OnWindowThread(() => view.ShowCommands(commands));
+        agent.Session.AccountChanged += account => OnWindowThread(() => view.ShowAccount(account));
+        agent.Session.UsageUpdated += usage => OnWindowThread(() => view.ShowUsage(usage));
         agent.Session.ToolCallChanged += call =>
         {
             (string[] paths, bool done) = Reviewed(call);

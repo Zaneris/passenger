@@ -181,4 +181,58 @@ public sealed class AcpSessionTests
         AcpError error = await Assert.ThrowsAsync<AcpError>(() => turn.WaitAsync(Patience, Stop));
         Assert.Equal(AcpError.ConnectionClosed, error.Code);
     }
+
+    [Fact]
+    public async Task Settings_come_with_the_session_and_a_set_one_takes_the_agents_answer()
+    {
+        await using StandInAgent agent = new();
+        Task<AgentInfo> initialized = agent.Session.InitializeAsync(Stop);
+        await agent.AnswerAsync("initialize", """{"protocolVersion":1,"agentInfo":{"name":"claude-agent-acp"}}""");
+        await initialized.WaitAsync(Patience, Stop);
+        Task<string> created = agent.Session.NewSessionAsync("/work", Stop);
+        // As the Claude adapter answered, its options cut to two of each.
+        await agent.AnswerAsync("session/new", """{"sessionId":"sess_1","configOptions":[{"id":"mode","name":"Mode","category":"mode","type":"select","currentValue":"auto","options":[{"value":"default","name":"Manual","description":"Always ask before making changes"},{"value":"acceptEdits","name":"Accept edits"}]},{"id":"model","name":"Model","category":"model","type":"select","currentValue":"opus","options":[{"value":"opus","name":"Opus 5.5"},{"value":"sonnet","name":"Sonnet 5.5"}]}]}""");
+        await created.WaitAsync(Patience, Stop);
+
+        Assert.Equal(["mode", "model"], agent.Session.Config.Select(option => option.Id));
+        Assert.Equal("auto", agent.Session.CurrentModeId);
+        Assert.Equal("Always ask before making changes", agent.Session.Config[0].Choices[0].Description);
+
+        Task set = agent.Session.SetConfigAsync("model", "sonnet", Stop);
+        JsonNode request = await agent.AnswerAsync("session/set_config_option", """{"configOptions":[{"id":"model","name":"Model","type":"select","currentValue":"sonnet","options":[{"value":"opus","name":"Opus 5.5"},{"value":"sonnet","name":"Sonnet 5.5"}]}]}""");
+        await set.WaitAsync(Patience, Stop);
+
+        Assert.Equal("model", request["params"]!["configId"]!.GetValue<string>());
+        Assert.Equal("sonnet", request["params"]!["value"]!.GetValue<string>());
+        Assert.Equal("sonnet", agent.Session.Config.Single().Current);
+    }
+
+    [Fact]
+    public async Task The_agents_commands_its_account_and_its_plans_usage_are_read()
+    {
+        await using StandInAgent agent = new();
+        await agent.StartSessionAsync();
+        TaskCompletionSource<IReadOnlyList<AgentCommand>> commands = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource<AccountStatus> account = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource<UsageUpdated> usage = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        agent.Session.CommandsChanged += told => commands.TrySetResult(told);
+        agent.Session.AccountChanged += told => account.TrySetResult(told);
+        agent.Session.UsageUpdated += told => usage.TrySetResult(told);
+
+        // Lines as the Claude adapter sent them in a real run.
+        await agent.SendAsync("""{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"sess_1","update":{"sessionUpdate":"available_commands_update","availableCommands":[{"name":"code-review","description":"Review the current diff","input":{"hint":"<effort> <target>"}},{"name":"compact","description":"Clear the conversation but keep a summary"}]}}}""");
+        await agent.SendAsync("""{"jsonrpc":"2.0","method":"auth/status_update","params":{"state":"authenticated","accounts":[{"label":"Claude Pro","active":true,"email":"person@example.com","organization":"Org"}]}}""");
+        await agent.SendAsync("""{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"sess_1","update":{"sessionUpdate":"usage_update","used":38477,"size":1000000,"_meta":{"_claude/rateLimit":{"status":"allowed","unifiedWindows":{"five_hour":{"utilization":0.3,"resetsAt":1794848400,"status":"allowed"},"seven_day":{"utilization":0.04,"resetsAt":1795428000,"status":"allowed"}}}}}}}""");
+
+        IReadOnlyList<AgentCommand> offered = await commands.Task.WaitAsync(Patience, Stop);
+        Assert.Equal(["code-review", "compact"], offered.Select(command => command.Name));
+        Assert.Equal("<effort> <target>", offered[0].Hint);
+        AccountStatus signedIn = await account.Task.WaitAsync(Patience, Stop);
+        Assert.Equal("authenticated", signedIn.State);
+        Assert.Equal(("Claude Pro", "person@example.com", true), (signedIn.Accounts[0].Label, signedIn.Accounts[0].Email, signedIn.Accounts[0].Active));
+        UsageUpdated used = await usage.Task.WaitAsync(Patience, Stop);
+        Assert.Equal((38477, 1000000), (used.Used, used.Size));
+        Assert.Equal([("five_hour", 0.3), ("seven_day", 0.04)], used.Windows.Select(window => (window.Name, window.Used)));
+        Assert.Equal(DateTimeOffset.FromUnixTimeSeconds(1794848400), used.Windows[0].Resets);
+    }
 }

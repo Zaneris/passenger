@@ -32,8 +32,31 @@ public sealed record ToolCall(
 /// Claude adapter's Write does) a whole file replaced, so read the file to show what it was.</summary>
 public sealed record FileDiff(string Path, string? OldText, string NewText);
 
-/// <summary>How much of the agent's context the session has used.</summary>
-public sealed record UsageUpdated(long Used, long Size);
+/// <summary>How much of the agent's context the session has used, and of the person's plan where the agent says
+/// (Claude Code's five-hour and weekly windows).</summary>
+public sealed record UsageUpdated(long Used, long Size, IReadOnlyList<UsageWindow> Windows);
+
+/// <summary>One of the plan's usage windows: its name ("five_hour", "seven_day"), how much is used from 0 to 1, and
+/// when it starts afresh.</summary>
+public sealed record UsageWindow(string Name, double Used, DateTimeOffset? Resets);
+
+/// <summary>A setting of the session the agent offers (mode, model, effort…), its current value among its choices.</summary>
+public sealed record ConfigOption(string Id, string Name, string? Description, string? Category, string Current, IReadOnlyList<ConfigChoice> Choices);
+
+/// <summary>One choice of a setting: the value the agent takes, and its name and description for the person.</summary>
+public sealed record ConfigChoice(string Value, string Name, string? Description);
+
+/// <summary>A slash command or skill the agent offers ("code-review"), what it does, and what it takes after its name.</summary>
+public sealed record AgentCommand(string Name, string? Description, string? Hint);
+
+/// <summary>Who the agent is signed in as: its state ("authenticated") and its accounts, the active one first.</summary>
+public sealed record AccountStatus(string State, IReadOnlyList<AgentAccount> Accounts);
+
+/// <summary>An account the agent can use: its label ("Claude Pro"), email, and whether it is the one in use.</summary>
+public sealed record AgentAccount(string Label, string? Email, bool Active);
+
+/// <summary>A past conversation of the agent's in a folder, to resume.</summary>
+public sealed record PastSession(string Id, string? Title, DateTimeOffset? Updated);
 
 /// <summary>The agent asks before a risky action. The answer is one option's id, or null for cancelled.</summary>
 public sealed record PermissionRequest(ToolCall ToolCall, IReadOnlyList<PermissionOption> Options);

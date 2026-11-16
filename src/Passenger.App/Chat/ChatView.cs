@@ -43,7 +43,18 @@ public sealed class ChatView : DockPanel
     };
 
     private readonly StackPanel idle;
-    private readonly TextBlock agent = new() { Classes = { StyleClasses.Muted }, Margin = new Thickness(12, 8), TextTrimming = TextTrimming.CharacterEllipsis };
+    private readonly TextBlock agent = new() { Classes = { StyleClasses.Muted }, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center };
+    private readonly TextBlock account = new() { Classes = { StyleClasses.Muted }, FontSize = 11, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0) };
+    private readonly DockPanel header = new() { Margin = new Thickness(12, 8), IsVisible = false };
+    private readonly WrapPanel pickers = new() { Orientation = Orientation.Horizontal };
+    private readonly Dictionary<string, ComboBox> settings = new(StringComparer.Ordinal);
+    private readonly TextBlock context = new() { Classes = { StyleClasses.Muted }, FontSize = 11, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0) };
+    private readonly CommandMenu menu;
+    private IReadOnlyList<ConfigOption> config = [];
+    private bool showingConfig;
+    private string? signedIn;
+    private string signedInTip = string.Empty;
+    private IReadOnlyList<UsageWindow> windows = [];
     private readonly StackPanel messages = new() { Spacing = 14 };
     private readonly StackPanel empty;
     private readonly TextBlock doing = new() { Classes = { StyleClasses.Muted }, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
@@ -59,7 +70,7 @@ public sealed class ChatView : DockPanel
 
     private readonly Button send = new() { Content = "Send", Classes = { StyleClasses.Primary }, VerticalAlignment = VerticalAlignment.Bottom };
     private readonly Button stop = new() { Content = "Stop", IsVisible = false, VerticalAlignment = VerticalAlignment.Bottom };
-    private readonly DockPanel composer;
+    private readonly StackPanel composer;
     private readonly List<Part> parts = [];
     private readonly Dictionary<string, ToolLine> tools = [];
     private readonly List<ApprovalCard> asking = [];
@@ -72,13 +83,23 @@ public sealed class ChatView : DockPanel
         connect.Click += (_, _) => ConnectRequested?.Invoke(this, EventArgs.Empty);
         send.Click += (_, _) => Send();
         stop.Click += (_, _) => StopRequested?.Invoke(this, EventArgs.Empty);
-        // Tunnelled, so Enter sends before the box takes it as a new line; Shift+Enter is left to the box.
+        menu = new CommandMenu(input);
+        // Tunnelled, so the list, Enter (send) and Shift+Tab (next mode) come before the box takes the key.
         input.AddHandler(KeyDownEvent, (_, e) =>
         {
-            if (e.Key == Key.Enter && e.KeyModifiers == KeyModifiers.None)
+            if (menu.Press(e))
+            {
+                e.Handled = true;
+            }
+            else if (e.Key == Key.Enter && e.KeyModifiers == KeyModifiers.None)
             {
                 e.Handled = true;
                 Send();
+            }
+            else if (e.Key == Key.Tab && e.KeyModifiers == KeyModifiers.Shift && NextMode() is { } next)
+            {
+                e.Handled = true;
+                ConfigChosen?.Invoke(this, ("mode", next));
             }
         }, RoutingStrategies.Tunnel);
 
@@ -99,15 +120,22 @@ public sealed class ChatView : DockPanel
         DockPanel buttons = new() { Margin = new Thickness(8, 0, 0, 0) };
         buttons.Children.Add(send);
         buttons.Children.Add(stop);
-        composer = new DockPanel { Margin = new Thickness(12, 8, 12, 12), IsVisible = false };
+        DockPanel writing = new();
         SetDock(buttons, Dock.Right);
-        composer.Children.Add(buttons);
-        composer.Children.Add(input);
-        agent.IsVisible = false;
-        SetDock(agent, Dock.Top);
+        writing.Children.Add(buttons);
+        writing.Children.Add(input);
+        DockPanel below = new();
+        SetDock(context, Dock.Right);
+        below.Children.Add(context);
+        below.Children.Add(pickers);
+        composer = new StackPanel { Spacing = 6, Margin = new Thickness(12, 8, 12, 12), IsVisible = false, Children = { writing, below, menu.Popup } };
+        SetDock(account, Dock.Right);
+        header.Children.Add(account);
+        header.Children.Add(agent);
+        SetDock(header, Dock.Top);
         SetDock(composer, Dock.Bottom);
         SetDock(Review, Dock.Bottom);
-        Children.Add(agent);
+        Children.Add(header);
         Children.Add(composer);
         Children.Add(Review);
         Children.Add(new Panel { Children = { idle, conversation } });
@@ -115,6 +143,21 @@ public sealed class ChatView : DockPanel
 
     /// <summary>Connect was pressed.</summary>
     public event EventHandler? ConnectRequested;
+
+    /// <summary>A setting was chosen: its id ("mode", "model", "effort") and the value chosen.</summary>
+    public event EventHandler<(string Id, string Value)>? ConfigChosen;
+
+    /// <summary>The slash command list over the box.</summary>
+    public CommandMenu Commands => menu;
+
+    /// <summary>What the header says of the account and the plan's use: "Claude Pro · 5h 30% · week 4%".</summary>
+    public string Account => account.Text ?? string.Empty;
+
+    /// <summary>What it says of the context used: "4% context".</summary>
+    public string ContextUsed => context.Text ?? string.Empty;
+
+    /// <summary>The pickers of the agent's settings, by setting id.</summary>
+    public IReadOnlyDictionary<string, ComboBox> Settings => settings;
 
     /// <summary>An edit's diff was asked for from its line, by its tool call's id.</summary>
     public event EventHandler<string>? EditDiffRequested;
@@ -163,7 +206,7 @@ public sealed class ChatView : DockPanel
         said.Classes.Set(StyleClasses.Error, error);
         connect.IsVisible = offerConnect;
         idle.IsVisible = true;
-        agent.IsVisible = conversation.IsVisible = composer.IsVisible = false;
+        header.IsVisible = conversation.IsVisible = composer.IsVisible = false;
     }
 
     /// <summary>Shows the conversation with the agent <paramref name="name"/> (its version after it, as <paramref name="described"/>).</summary>
@@ -171,9 +214,10 @@ public sealed class ChatView : DockPanel
     {
         agentName = name;
         said.Text = $"Connected to {described}";
-        agent.Text = said.Text;
+        agent.Text = described;
+        ToolTip.SetTip(agent, said.Text);
         idle.IsVisible = false;
-        agent.IsVisible = conversation.IsVisible = composer.IsVisible = true;
+        header.IsVisible = conversation.IsVisible = composer.IsVisible = true;
         empty.IsVisible = messages.Children.Count == 0;
         input.Focus();
     }
@@ -239,6 +283,104 @@ public sealed class ChatView : DockPanel
             doing.Text = call.Status is "pending" or "in_progress" ? line.Title : "Thinking…";
         }
         ToEnd();
+    }
+
+    /// <summary>The agent's settings it lets the person choose, each a picker under the box (mode, model, effort, in
+    /// that order where the agent has them), set to its current value; choosing one tells <see cref="ConfigChosen"/>.</summary>
+    public void ShowConfig(IReadOnlyList<ConfigOption> options)
+    {
+        config = options;
+        showingConfig = true;
+        try
+        {
+            foreach (string id in new[] { "mode", "model", "effort" })
+            {
+                if (options.FirstOrDefault(option => option.Id == id) is not { Choices.Count: > 0 } option)
+                {
+                    continue;
+                }
+                if (!settings.TryGetValue(id, out ComboBox? picker))
+                {
+                    picker = new ComboBox { FontSize = 12, Margin = new Thickness(0, 0, 6, 0), MaxWidth = 170 };
+                    picker.SelectionChanged += (_, _) =>
+                    {
+                        if (!showingConfig && picker.SelectedItem is ComboBoxItem { Tag: string value })
+                        {
+                            ConfigChosen?.Invoke(this, (id, value));
+                        }
+                    };
+                    settings[id] = picker;
+                    pickers.Children.Add(picker);
+                }
+                picker.ItemsSource = option.Choices.Select(choice => new ComboBoxItem
+                {
+                    Content = choice.Name,
+                    Tag = choice.Value,
+                    [ToolTip.TipProperty] = choice.Description,
+                }).ToList();
+                picker.SelectedIndex = option.Choices.ToList().FindIndex(choice => choice.Value == option.Current);
+                ToolTip.SetTip(picker, id == "mode" ? $"{option.Name} (Shift+Tab moves to the next)" : option.Name);
+            }
+        }
+        finally
+        {
+            showingConfig = false;
+        }
+    }
+
+    /// <summary>The slash commands and skills the agent offers, for the list "/" opens.</summary>
+    public void ShowCommands(IReadOnlyList<AgentCommand> commands) => menu.Commands = commands;
+
+    /// <summary>Who the agent is signed in as, in the header: its plan, and its email in the tip with how to switch.</summary>
+    public void ShowAccount(AccountStatus status)
+    {
+        AgentAccount? active = status.Accounts.FirstOrDefault(each => each.Active) ?? status.Accounts.FirstOrDefault();
+        signedIn = active is null ? status.State : active.Label;
+        signedInTip = active is null
+            ? $"The agent says it is {status.State}"
+            : $"Signed in as {active.Email ?? active.Label} ({active.Label}), in the agent's own login.\nTo use another account, run claude /login in a terminal, then connect again.";
+        ShowPlan();
+    }
+
+    /// <summary>How much of the context the session has used, under the box, and of the plan's windows, in the header.</summary>
+    public void ShowUsage(UsageUpdated usage)
+    {
+        if (usage.Size > 0)
+        {
+            context.Text = $"{Math.Round(100.0 * usage.Used / usage.Size)}% context";
+            ToolTip.SetTip(context, $"{usage.Used:N0} of {usage.Size:N0} tokens of the conversation's context");
+        }
+        windows = usage.Windows;
+        ShowPlan();
+    }
+
+    /// <summary>The header's account and plan use, its tip who is signed in and when each window starts afresh.</summary>
+    private void ShowPlan()
+    {
+        List<string> said = signedIn is null ? [] : [signedIn];
+        said.AddRange(windows.Select(window => $"{Window(window.Name)} {Math.Round(window.Used * 100)}%"));
+        account.Text = string.Join(" · ", said);
+        string resets = string.Join("\n", windows.Where(window => window.Resets is not null)
+            .Select(window => $"{Window(window.Name)}: {Math.Round(window.Used * 100)}% used, starts afresh {window.Resets!.Value.ToLocalTime():ddd HH:mm}"));
+        ToolTip.SetTip(account, $"{signedInTip}\n{resets}".Trim());
+
+        static string Window(string name) => name switch
+        {
+            "five_hour" => "5h",
+            "seven_day" => "week",
+            _ => name.Replace('_', ' '),
+        };
+    }
+
+    /// <summary>The agent's mode after the current one, round to the first, as Shift+Tab moves.</summary>
+    private string? NextMode()
+    {
+        if (config.FirstOrDefault(option => option.Id == "mode") is not { Choices.Count: > 1 } mode)
+        {
+            return null;
+        }
+        int at = mode.Choices.ToList().FindIndex(choice => choice.Value == mode.Current);
+        return mode.Choices[(at + 1) % mode.Choices.Count].Value;
     }
 
     /// <summary>What an edit's tool call added and removed, on its line.</summary>

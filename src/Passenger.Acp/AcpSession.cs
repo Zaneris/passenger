@@ -43,6 +43,18 @@ public sealed class AcpSession : IAsyncDisposable
 
     public event Action<UsageUpdated>? UsageUpdated;
 
+    /// <summary>The session's settings changed (mode, model, effort…), all of them given.</summary>
+    public event Action<IReadOnlyList<ConfigOption>>? ConfigChanged;
+
+    /// <summary>The slash commands and skills the agent offers, all of them given.</summary>
+    public event Action<IReadOnlyList<AgentCommand>>? CommandsChanged;
+
+    /// <summary>Who the agent is signed in as.</summary>
+    public event Action<AccountStatus>? AccountChanged;
+
+    /// <summary>The session's settings as last told.</summary>
+    public IReadOnlyList<ConfigOption> Config { get; private set; } = [];
+
     /// <summary>Any update this class does not turn into a type yet, by its sessionUpdate kind, for a log.</summary>
     public event Action<string, JsonNode>? OtherUpdate;
 
@@ -94,7 +106,35 @@ public sealed class AcpSession : IAsyncDisposable
         }
 
         Modes = available;
+        TakeConfig(result["configOptions"]);
         return SessionId;
+    }
+
+    /// <summary>Sets one of the session's settings (mode, model, effort…) to one of its choices.</summary>
+    public async Task SetConfigAsync(string configId, string value, CancellationToken cancel = default)
+    {
+        JsonNode result = await connection.RequestAsync("session/set_config_option", new JsonObject
+        {
+            ["sessionId"] = RequireSession(),
+            ["configId"] = configId,
+            ["value"] = value,
+        }, cancel);
+        TakeConfig(result["configOptions"]);
+    }
+
+    /// <summary>The agent's past conversations in <paramref name="folder"/>, the latest first as the agent lists them.</summary>
+    public async Task<IReadOnlyList<PastSession>> ListSessionsAsync(string folder, CancellationToken cancel = default)
+    {
+        JsonNode result = await connection.RequestAsync("session/list", new JsonObject { ["cwd"] = folder }, cancel);
+        List<PastSession> sessions = [];
+        foreach (JsonNode? session in result["sessions"] as JsonArray ?? [])
+        {
+            if (Text(session?["sessionId"]) is string id)
+            {
+                sessions.Add(new PastSession(id, Text(session?["title"]), When(session?["updatedAt"])));
+            }
+        }
+        return sessions;
     }
 
     public async Task SetModeAsync(string modeId, CancellationToken cancel = default)
@@ -131,6 +171,16 @@ public sealed class AcpSession : IAsyncDisposable
 
     private void OnNotification(string method, JsonNode? parameters)
     {
+        if (method == "auth/status_update")
+        {
+            List<AgentAccount> accounts = [];
+            foreach (JsonNode? account in parameters?["accounts"] as JsonArray ?? [])
+            {
+                accounts.Add(new AgentAccount(Text(account?["label"]) ?? "Account", Text(account?["email"]), account?["active"] is JsonValue active && active.TryGetValue(out bool on) && on));
+            }
+            AccountChanged?.Invoke(new AccountStatus(Text(parameters?["state"]) ?? "unknown", [.. accounts.OrderByDescending(account => account.Active)]));
+            return;
+        }
         if (method != "session/update" || parameters?["update"] is not JsonObject update)
         {
             return;
@@ -158,7 +208,21 @@ public sealed class AcpSession : IAsyncDisposable
 
                 break;
             case "usage_update":
-                UsageUpdated?.Invoke(new UsageUpdated(Number(update["used"]), Number(update["size"])));
+                UsageUpdated?.Invoke(new UsageUpdated(Number(update["used"]), Number(update["size"]), Windows(update["_meta"]?["_claude/rateLimit"]?["unifiedWindows"])));
+                break;
+            case "config_option_update":
+                TakeConfig(update["configOptions"]);
+                break;
+            case "available_commands_update":
+                List<AgentCommand> commands = [];
+                foreach (JsonNode? command in update["availableCommands"] as JsonArray ?? [])
+                {
+                    if (Text(command?["name"]) is string name)
+                    {
+                        commands.Add(new AgentCommand(name, Text(command?["description"]), Text(command?["input"]?["hint"])));
+                    }
+                }
+                CommandsChanged?.Invoke(commands);
                 break;
             case "current_mode_update":
                 CurrentModeId = Text(update["currentModeId"]) ?? CurrentModeId;
@@ -290,6 +354,56 @@ public sealed class AcpSession : IAsyncDisposable
 
         return plan;
     }
+
+    /// <summary>Takes the settings an answer or update lists, all of them, where it lists any.</summary>
+    private void TakeConfig(JsonNode? options)
+    {
+        if (options is not JsonArray list)
+        {
+            return;
+        }
+        List<ConfigOption> config = [];
+        foreach (JsonNode? option in list)
+        {
+            if (Text(option?["id"]) is not string id)
+            {
+                continue;
+            }
+            List<ConfigChoice> choices = [];
+            foreach (JsonNode? choice in option?["options"] as JsonArray ?? [])
+            {
+                if (Text(choice?["value"]) is string value)
+                {
+                    choices.Add(new ConfigChoice(value, Text(choice?["name"]) ?? value, Text(choice?["description"])));
+                }
+            }
+            config.Add(new ConfigOption(id, Text(option?["name"]) ?? id, Text(option?["description"]), Text(option?["category"]), Text(option?["currentValue"]) ?? string.Empty, choices));
+        }
+        Config = config;
+        if (config.FirstOrDefault(option => option.Id == "mode") is { } mode)
+        {
+            CurrentModeId = mode.Current;
+        }
+        ConfigChanged?.Invoke(config);
+    }
+
+    /// <summary>The plan's usage windows as Claude Code tells them in its usage updates; none from an agent that does not.</summary>
+    private static List<UsageWindow> Windows(JsonNode? windows)
+    {
+        List<UsageWindow> read = [];
+        foreach ((string name, JsonNode? window) in windows as JsonObject ?? [])
+        {
+            if (window?["utilization"] is JsonValue used && used.TryGetValue(out double share))
+            {
+                DateTimeOffset? resets = window["resetsAt"] is JsonValue at && at.TryGetValue(out long seconds) ? DateTimeOffset.FromUnixTimeSeconds(seconds) : null;
+                read.Add(new UsageWindow(name, share, resets));
+            }
+        }
+        return read;
+    }
+
+    private static DateTimeOffset? When(JsonNode? node) =>
+        Text(node) is string text && DateTimeOffset.TryParse(text, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out DateTimeOffset at) ? at : null;
 
     private static ToolCall EmptyCall(string id)
     {
