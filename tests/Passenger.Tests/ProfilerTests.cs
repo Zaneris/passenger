@@ -549,6 +549,71 @@ public sealed class ProfilerTests : IClassFixture<ProfilerTests.Waits>, IDisposa
         static int Bars(CallNode node) => 1 + node.Ordered.Sum(Bars);
     }
 
+    /// <summary>A profiled program that crashes as it starts ends its run as it ends, whatever of its trace was written
+    /// before the crash: the status bar says it ended before its trace was whole, the profiler window shows the run over,
+    /// with no Get Snapshot or Kill, and no IDE error is caught. Its trace cut anywhere past its header, down to none of
+    /// its events (where TraceEvent's index of it holds none), opens saying it was cut short, and within its header is no
+    /// snapshot.</summary>
+    [AvaloniaFact]
+    public void A_profiled_program_that_crashes_at_once_ends_its_run_saying_its_trace_was_cut_short()
+    {
+        string project = Project("Crashes", "throw new InvalidOperationException(\"crashed at once\");\n");
+        MainWindow window = Ui.OpenFolder(project);
+        string Said() => window.Status ?? string.Empty;
+        try
+        {
+            Ui.Launched(window, window.ProfileAsync(), "the build and the start", TimeSpan.FromMinutes(3));
+            Passenger.App.Profiling.ProfilerView view = window.ProfilerView;
+            Ui.WaitFor(() => Said().StartsWith("Crashes ended before its trace was whole", StringComparison.Ordinal),
+                () => $"the status bar to say the program ended before its trace was whole, where it says {window.Status} and the profiler window {view.Status}", TimeSpan.FromMinutes(1));
+            Assert.False(view.IsFollowing, $"The profiler window goes on following a run whose program crashed: {view.Status}");
+            Assert.False(view.CanKill, "The profiler window offers Kill for a program that crashed");
+            Assert.True(view.Status.Contains("cut short", StringComparison.Ordinal) || view.Status.StartsWith("Crashes ended before its trace was whole", StringComparison.Ordinal),
+                $"The profiler window does not say the run's trace was cut short: {view.Status}");
+            Assert.True(Shows(window.BottomPanel.Run, "crashed at once"), "The Run console does not show the exception the program crashed with");
+            Assert.True(IdeErrors.Errors.Count == 0, $"The crashed program's trace reached IDE Internal Errors: {string.Join("; ", IdeErrors.Errors.Select(e => e.Message))}");
+
+            string trace = Directory.GetFiles(window.SnapshotFolder, "Crashes-*.nettrace").Single();
+            byte[] written = File.ReadAllBytes(trace);
+            string cut = Path.Combine(folder, "cut.nettrace");
+            IEnumerable<int> lengths = Enumerable.Range(1, 40).Select(i => i * 8).Concat(Enumerable.Range(1, 20).Select(i => written.Length * i / 21)).Where(l => l < written.Length);
+            foreach (int length in lengths.Distinct())
+            {
+                File.WriteAllBytes(cut, written[..length]);
+                Snapshot? opened = Ui.Await(window.OpenSnapshotAsync(cut), $"the trace cut at {length} bytes to open");
+                if (HeaderWhole(cut))
+                {
+                    Assert.True(opened is { CutShort: not null } && Said().Contains("its trace cut short", StringComparison.Ordinal),
+                        $"The trace cut at {length} of its {written.Length} bytes, past its header, did not open saying it was cut short: {Said()}");
+                }
+                else
+                {
+                    Assert.True(opened is null && Said().StartsWith("cut.nettrace is not a snapshot Passenger can read: ", StringComparison.Ordinal),
+                        $"The trace cut at {length} of its {written.Length} bytes, within its header, was not refused as no snapshot: {Said()}");
+                }
+                Assert.True(IdeErrors.Errors.Count == 0, $"The trace cut at {length} of its {written.Length} bytes reached IDE Internal Errors: {string.Join("; ", IdeErrors.Errors.Select(e => e.Message))}");
+            }
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>Whether TraceEvent's EventPipe reader takes a trace's header, all it reads before the trace's events.</summary>
+    private static bool HeaderWhole(string trace)
+    {
+        try
+        {
+            using Microsoft.Diagnostics.Tracing.EventPipeEventSource source = new(trace);
+            return true;
+        }
+        catch (FormatException)
+        {
+            return false;
+        }
+    }
+
     /// <summary>A profiled program that has not reached the profiler (its diagnostics off, so it never comes to the
     /// profiler's port): Profile pressed again starts no second program; Kill ends it at once; a configuration whose working
     /// folder is gone, and one that ends before it reaches the profiler, are said to in the profiler window; and Close

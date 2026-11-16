@@ -643,6 +643,7 @@ public sealed partial class PassengerTools
             heap)
         {
             HeapNote = heapNote,
+            CutShort = snapshot.CutShort is null ? null : read.Message,
             Frames = snapshot.Place is { } elsewhere && Passenger.Profiler.UiFrames.RanAvalonia(snapshot.HotSpots)
                 ? new UiFramesInfo(0, 0, 0, 0, 0, []) { Why = Profiling.FramesView.InContainer(elsewhere.Where) }
                 : UiFramesOf(snapshot.UiFrames, Math.Clamp(top, 1, 200), inspected),
@@ -980,6 +981,10 @@ public sealed record ProfileInfo(double DurationMs, int Samples, int Threads, IR
     /// <summary>Why there is no heap when a memory snapshot was asked for, what taking it put into the program's output, or
     /// what a snapshot read from the runtime's own heap dump lacks.</summary>
     public string? HeapNote { get; init; }
+
+    /// <summary>That the program's trace stops short of the run's end (its program ended before its session did: crashed or
+    /// killed), what it holds coming before; null for a whole trace.</summary>
+    public string? CutShort { get; init; }
 
     /// <summary>What the program said it needs a terminal for, and how to give it one; null where it said nothing of one.</summary>
     public string? NeedsTerminal { get; init; }

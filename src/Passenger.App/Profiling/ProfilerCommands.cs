@@ -487,9 +487,12 @@ public sealed class ProfilerCommands
     }
 
     /// <summary>What the status says of a snapshot read: what it holds, and that it is kept among the Snapshots page's, which
-    /// names their folder, deep in Passenger's state, with a button that shows it.</summary>
-    public static string SnapshotSaid(string name, Snapshot snapshot) => snapshot.FramesAlone
+    /// names their folder, deep in Passenger's state, with a button that shows it. One whose trace was cut short says so,
+    /// as its program's end where the program has <paramref name="ended"/>.</summary>
+    public static string SnapshotSaid(string name, Snapshot snapshot, bool ended = false) => snapshot.FramesAlone
         ? $"Snapshot of {name}: {Plural.Of(snapshot.GameFrames.Count, "frame")} as Godot's profiler measured them, no samples (GDScript alone), kept on the Performance Profiler's Snapshots page"
+        : snapshot.CutShort is { } cut
+        ? $"{(ended ? $"{name} ended before its trace was whole" : $"The trace of {name} was cut short ({cut.TrimEnd('.')})")}: its snapshot holds what was written before, {snapshot.Samples:N0} samples, kept on the Performance Profiler's Snapshots page"
         : $"Snapshot of {name}: {snapshot.Samples:N0} samples, kept on the Performance Profiler's Snapshots page";
 
     /// <summary>What Profile says of a Godot game of GDScript alone it runs, whose run is Godot's own frames.</summary>
@@ -967,7 +970,7 @@ public sealed class ProfilerCommands
         {
             // Held by the scope, and back on no thread of the window's, which may be gone by then.
             Snapshot snapshot = await BackgroundWork.Unheld(() => run.StopAsync()).ConfigureAwait(false);
-            string read = SnapshotSaid(name, snapshot);
+            string read = SnapshotSaid(name, snapshot, Ended(run));
             if (closing.IsCancellationRequested)
             {
                 // Its folder was left as it was read: it is that folder's to list when it opens again.
@@ -998,9 +1001,11 @@ public sealed class ProfilerCommands
             }
             return new SnapshotRead(snapshot, read);
         }
-        catch (Exception error) when (error is IOException or InvalidOperationException or TimeoutException)
+        catch (Exception error) when (error is InvalidOperationException or TimeoutException || TraceFailures.Of(error))
         {
-            string unread = $"The snapshot could not be read: {error.Message}";
+            string unread = TraceFailures.Broken(error) && Ended(run)
+                ? $"{name} ended before its trace was whole, so it has no snapshot: {error.Message}"
+                : $"The snapshot could not be read: {error.Message}";
             if (!closing.IsCancellationRequested)
             {
                 try
@@ -1047,6 +1052,9 @@ public sealed class ProfilerCommands
             }
         }
     }
+
+    /// <summary>Whether a run's program, on this machine, has ended: a trace cut short is then its end's doing.</summary>
+    private static bool Ended(ProfilingSession run) => run.Place is null && run.HasExited;
 
     /// <summary>Get Memory Snapshot: the running program's heap, listed on the Memory page with the run's earlier ones to
     /// compare it with; the run goes on. One given up (<paramref name="cancel"/>) is said so.</summary>
@@ -1147,10 +1155,10 @@ public sealed class ProfilerCommands
             shownProcess = null;
             Show(snapshot, Path.GetFileNameWithoutExtension(path));
             ShowKill();
-            parts.Say($"{Path.GetFileName(path)}: {snapshot.Samples:N0} samples");
+            parts.Say($"{Path.GetFileName(path)}: {snapshot.Samples:N0} samples{(snapshot.CutShort is { } cut ? $", its trace cut short ({cut.TrimEnd('.')})" : string.Empty)}");
             return snapshot;
         }
-        catch (Exception error) when (error is IOException or InvalidOperationException or UnauthorizedAccessException or FormatException)
+        catch (Exception error) when (error is InvalidOperationException || TraceFailures.Of(error))
         {
             parts.Say($"{Path.GetFileName(path)} is not a snapshot Passenger can read: {error.Message}");
             return null;

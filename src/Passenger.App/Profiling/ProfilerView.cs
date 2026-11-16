@@ -492,7 +492,7 @@ public sealed class ProfilerView : DockPanel
         status.Text = snapshot.FramesAlone
             ? $"{snapshotName}: {Durations.Said(snapshot.Duration)}, {Plural.Of(snapshot.GameFrames.Count, "frame")} as Godot's profiler measured them; no samples, as a game of GDScript alone runs no .NET code"
             : ReferenceEquals(whole, snapshot)
-            ? $"{snapshotName}: {Durations.Said(snapshot.Duration)}, {Plural.Of(snapshot.Threads.Count, "thread")}, {snapshot.Samples:N0} samples"
+            ? $"{snapshotName}: {Durations.Said(snapshot.Duration)}, {Plural.Of(snapshot.Threads.Count, "thread")}, {snapshot.Samples:N0} samples{(snapshot.CutShort is null ? string.Empty : ", its trace cut short")}"
             : $"{snapshotName}: {snapshot.StartMs - whole.StartMs:N0} to {snapshot.EndMs - whole.StartMs:N0} ms of {whole.Duration.TotalMilliseconds:N0}, {snapshot.Samples:N0} samples";
         foreach (ToggleButton page in pages)
         {

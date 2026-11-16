@@ -232,6 +232,13 @@ public sealed class Snapshot
 
     private bool framesAlone;
 
+    /// <summary>Why the run's trace stops short of its end, as its reading found it, or null for a whole trace: one whose
+    /// program ended before its session did (crashed, or killed) holds only what was written before, and lacks the end a
+    /// stopped session writes.</summary>
+    public string? CutShort => Whole.cutShort;
+
+    private string? cutShort;
+
     /// <summary>A Godot game's frames in the stretch, in order, as Godot's own profiler measured them; none for any other program.</summary>
     public IReadOnlyList<GameFrame> GameFrames { get; }
 
@@ -566,13 +573,15 @@ public sealed class Snapshot
     /// <summary>Reads a .nettrace file EventPipe wrote: the samples' stacks, with the methods named from the run's own
     /// method load events, the allocation ticks, the collections and an Avalonia app's frames. Each stack is named once (the
     /// trace numbers its own), kept once however many samples caught it, and a thread's samples in a row at one stack become
-    /// one run.</summary>
+    /// one run. A trace cut short holds what was written before its break (<see cref="CutShort"/>); one TraceEvent cannot
+    /// read at all throws what <see cref="TraceFailures.Of"/> names.</summary>
     public static Snapshot Read(string nettrace)
     {
         if (new FileInfo(nettrace).Length == 0)
         {
             return OfFrames(nettrace);
         }
+        string? cutShort = CutShortIn(nettrace);
         // Each read's index of its own, never beside the trace: a folder it cannot write, or another read of it, is no matter.
         string etlx = TraceLog.CreateFromEventPipeDataFile(nettrace, Path.Combine(Path.GetTempPath(), $"passenger-{Guid.NewGuid():N}.etlx"),
             new TraceLogOptions { ContinueOnError = true });
@@ -594,7 +603,9 @@ public sealed class Snapshot
             Profiler.UiFrames.Reader uiFrames = new();
             (int Number, int Generation, string Reason, double At)? collecting = null;
             double? suspended = null;
-            foreach (TraceEvent data in log.Events)
+            // An index of no events is never walked: TraceEvent reads on past its end, making events up as it goes.
+            IEnumerable<TraceEvent> events = log.EventCount == 0 ? [] : log.Events;
+            foreach (TraceEvent data in events)
             {
                 if (data.ProviderName == RuntimeProvider)
                 {
@@ -658,7 +669,7 @@ public sealed class Snapshot
             IEnumerable<double> ends = kept.Select(t => t.Runs.Max(r => r.ToMs)).Concat(drawn.Select(f => f.EndMs)).Concat(played.Select(f => f.EndMs)).Concat(marks);
             double first = starts.DefaultIfEmpty(0).Min();
             double end = ends.DefaultIfEmpty(0).Max();
-            return new Snapshot(kept, stacks, names.Named, names.Codes, threads, ticks, collections, drawn, game, first, end, nettrace, null);
+            return new Snapshot(kept, stacks, names.Named, names.Codes, threads, ticks, collections, drawn, game, first, end, nettrace, null) { cutShort = cutShort };
 
             // The event's stack as a number into the table, each the trace numbers named once and each distinct one kept once.
             int Stack(TraceEvent data)
@@ -692,6 +703,23 @@ public sealed class Snapshot
             catch (IOException)
             {
             }
+        }
+    }
+
+    /// <summary>Why a trace stops short of its end, read through once with nothing listening, or null for a whole one:
+    /// TraceEvent's index of it holds what came before the break and says nothing of one. A trace cut short within its
+    /// header is left to the index's reading, which throws for it.</summary>
+    private static string? CutShortIn(string nettrace)
+    {
+        try
+        {
+            using EventPipeEventSource source = new(nettrace);
+            source.Process();
+            return null;
+        }
+        catch (Exception broken) when (TraceFailures.Broken(broken))
+        {
+            return broken.Message;
         }
     }
 
