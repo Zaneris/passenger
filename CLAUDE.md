@@ -702,7 +702,7 @@ a new name, and `just site-shots` retakes its images.
 - **Avalonia's headless `KeyTextInput` and `KeyPress` run the window's queued work before the key**, so a count taken around one includes what came due before it: count from the key's change.
 - **Avalonia 12.1 counts a run of clicks per button**: a press of another button starts a new run (`ClickCount` 1); a
   control with no background is no pointer target.
-- **Avalonia 12's ListBox takes Enter before a bubbling `KeyDown`** on the list: a list's Enter is heard in the tunnel (#1802).
+- **Avalonia 12's ListBox takes Enter and Space before a bubbling `KeyDown`** on the list: a list's keys and double click go only through `ListKeys.Act` (`ListActs`, its `Enter` where a stray double click must not do it; `TreeKeys.Attach` for a tree), held by UiRulesTests.
 - **Avalonia 12's ListBox re-points its keys' row by the chosen row's new index before moving rows**, so a focused row
   loses the keys when rows come above it, and moves a Shift range's anchor only with its first chosen row: every tree
   goes through `TreeKeys.Attach`.
@@ -856,7 +856,7 @@ to the window's tests.
   `Passenger.Separator`, `Passenger.Divider`; `MenuChoice` (`Holding`); `ListMenus.PlaceForKeys`; `ToolTabs.Tab`;
   `PopupFrame` (`Framed`), `popupTitle`; a popup placed through `PopupPlacement.Place` (laid out first), a card beside a list narrowed by `InfoCard.Within`; `ListRow.Height` (24); `TextBlock.emptyText`, `EmptyState`;
   `ToolButtons.Of`/`Toggle` (never focusable), `Tip` (an icon's tip and its accessible name), `Grey` (greyed, its tip saying why); `ColumnTitles.Of`/`Row`/`Ruled` (a table edited in place an `EditableTable`); a form's label rows `FormRows` (`Of`, `Scope`; a `BrowseRow`'s field is the one named); `ToolBars.OverEditor`; `Banner`; `CheckRows`;
-  `MutedText`; `ListKeys.Move`; `Plural.Of`/`Listed`/`Either` (a choice); `Border.kindBadge`/`tag`/`box` (never a literal radius);
+  `MutedText`; `ListKeys.Move`, `ListKeys.Act`; `Plural.Of`/`Listed`/`Either` (a choice); `Border.kindBadge`/`tag`/`box` (never a literal radius);
   `RunRows`; `ShrinkingRow.KeepsWidth` (a row's version and tags kept whole, its name cut first); `ChangedFileRow` (`Show` of a `FileChange`, every list of changed files); `DetailsTables`; `MergedLog` (`OutputView.Find`); `ZoomedPicture`; `ToolWindow.ExpandAll`/`CollapseAll`;
   `ToolWindows.FilterBox`; `FilterMenu` (a list's Sort and Filter, placed in its search); `DropDownSearch` (every ComboBox's search, never per control); `ToolFlow`; `PaneSplit` (a tool window's two panes and an editor's own pane, `EditorGroup.Side`); `ToolColumn`; `ControlThemes.axaml`; `FocusRing`; `AppIcon`;
   `ReusedRows` (`Use`, `Showing`); `RowIcon` and `RowGlyphs`, drawn as `PathIcon` draws for a fraction of its cost,
