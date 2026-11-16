@@ -1046,6 +1046,47 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         window.Close();
     }
 
+    /// <summary>Settings' Reformat on save: File, Save lays the changed file out as Reformat Code does before writing it, and
+    /// one Undo takes the layout back; a language server that does not answer in time leaves the file saved as typed,
+    /// saying why; turned off, the file is saved as typed.</summary>
+    [AvaloniaFact]
+    public void Reformat_on_save_lays_a_file_out_before_writing_it_as_one_step_of_undo_and_without_the_server_or_turned_off_saves_it_as_typed()
+    {
+        const string Laid = "using System.Text;\nusing System;\nusing System.Collections.Generic;\n\nstatic class Messy\n{\n    public static int Count()\n    {\n"
+            + "        List<string> names = [];\n        Console.WriteLine(names.Count);\n        int extra = names.Count;\n        return names.Count;\n    }\n}\n";
+        MainWindow window = project.Open("Messy.cs");
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        OpenDocument document = window.EditorArea.Active!;
+        string path = project.PathOf("Messy.cs");
+        window.ApplySettings(window.Settings with { ReformatOnSave = true });
+        editor.ApplyEdits([new TextEdit(editor.Document.Snapshot.ToString().IndexOf("      return", StringComparison.Ordinal), 0, "        int  extra=names.Count;\n")]);
+        string typed = editor.Document.Snapshot.ToString();
+        Ui.Run(window, AppActions.Save);
+        Ui.WaitFor(() => !document.IsModified, "Messy.cs saved");
+        Assert.True(File.ReadAllText(path) == Laid, $"Save with Reformat on save on did not write the file laid out:\n{File.ReadAllText(path)}");
+        Ui.Run(window, EditorActions.Undo);
+        Assert.True(editor.Document.Snapshot.ToString() == typed, $"One Undo did not take the save's layout back:\n{editor.Document.Snapshot}");
+
+        // The server held from answering: the save goes on with the text as typed once the save's limit has passed.
+        TaskCompletionSource released = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        Task held = window.CSharpService!.Session!.Server.HoldNext(Passenger.Lsp.LspMethods.Formatting, _ => true, released.Task);
+        Ui.Run(window, AppActions.Save, settle: false);
+        Ui.PumpUntil(() => !document.IsModified, "Messy.cs saved with no answer from its language server", TimeSpan.FromMinutes(1));
+        released.SetResult();
+        Assert.True(held.IsCompleted, "The save did not ask the language server for its layout");
+        Assert.True(File.ReadAllText(path) == typed, $"A save the server gave no layout in time did not write the file as typed:\n{File.ReadAllText(path)}");
+        Assert.True(window.Status?.StartsWith("Reformat on save was not applied to Messy.cs: its language server did not answer within", StringComparison.Ordinal) == true,
+            $"The status bar did not say why the file was saved as typed: {window.Status}");
+
+        window.ApplySettings(window.Settings with { ReformatOnSave = false });
+        editor.ApplyEdits([new TextEdit(editor.Document.Snapshot.ToString().IndexOf("      return", StringComparison.Ordinal), 0, "        int  more=1;\n")]);
+        string kept = editor.Document.Snapshot.ToString();
+        Ui.Run(window, AppActions.Save);
+        Ui.WaitFor(() => !document.IsModified, "Messy.cs saved again");
+        Assert.True(File.ReadAllText(path) == kept, $"Save with Reformat on save off did not write the file as typed:\n{File.ReadAllText(path)}");
+        window.Close();
+    }
+
     [AvaloniaFact]
     public void A_letter_deleted_inside_a_name_the_server_coloured_leaves_its_colour_on_the_name_left_until_the_server_answers()
     {

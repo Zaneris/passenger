@@ -676,12 +676,17 @@ public sealed class CodeAssist
     /// <summary>A XAML project was read anew: a list made from it as it was is asked again (<see cref="XamlAssist.ProjectRead"/>).</summary>
     internal void XamlProjectRead(XamlProject project) => context.Languages.Xaml.ProjectRead(project);
 
+    /// <summary>Settings' Reformat on save, for every file a language's own on-save formatting leaves.</summary>
+    public bool ReformatsOnSave { get; set; }
+
     /// <summary>What a save does first to a changed file, as Settings ask: <c>eslint --fix</c>, then Prettier, or a
-    /// GDScript's Reformat on save. Each its own undoable edit.</summary>
-    public async Task BeforeSave(OpenDocument document)
+    /// GDScript's Reformat on save, else Reformat on save's Reformat Code, so one formatter at most lays it out. Each its
+    /// own undoable edit. Why Reformat on save left the file as it was, or null.</summary>
+    public async Task<string?> BeforeSave(OpenDocument document)
     {
-        await context.Languages.Web.BeforeSave(document);
-        await context.Languages.GDScript.BeforeSave(document);
+        bool prettier = await context.Languages.Web.BeforeSave(document);
+        bool script = await context.Languages.GDScript.BeforeSave(document);
+        return ReformatsOnSave && !prettier && !script ? await actions.ReformatOnSaveAsync(document) : null;
     }
 
     /// <summary>A service's or an AppHost's Aspire fixes on an offset's line (<see cref="CSharpAssist.AspireFixes"/>).</summary>

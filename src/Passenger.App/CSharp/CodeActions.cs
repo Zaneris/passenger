@@ -889,8 +889,11 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
     /// formatted already), and what to say of it, or why it was not applied.</summary>
     internal sealed record Reformatted(bool Applied, bool Changed, string Said)
     {
+        /// <summary>Why a reformat refused was not applied, as <see cref="Refused"/> was told; null where it says so otherwise.</summary>
+        public string? Why { get; init; }
+
         /// <summary>A reformat not applied, saying why.</summary>
-        public static Reformatted Refused(string what, string why) => new(false, false, $"{what} was not applied: {why}");
+        public static Reformatted Refused(string what, string why) => new(false, false, $"{what} was not applied: {why}") { Why = why };
 
         /// <summary>A reformat of a file shown read-only, refused whatever its formatter would make of it; null for a file
         /// that takes one.</summary>
@@ -923,7 +926,7 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
     /// when given: XAML by Passenger's own layout, a web language by its project's Prettier where it formats it on Reformat
     /// Code, else the language <paramref name="server"/> gives, asked for only then; a read-only file refused before any is
     /// asked. Null with no server to ask, or once the file has closed.</summary>
-    internal async Task<Reformatted?> ReformatAsync(OpenDocument document, TextRange? within, Func<LspDocument?> server)
+    internal async Task<Reformatted?> ReformatAsync(OpenDocument document, TextRange? within, Func<LspDocument?> server, CancellationToken cancel = default)
     {
         if (Reformatted.ReadOnly(document, "Reformat Code") is { } refused)
         {
@@ -934,7 +937,49 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
         {
             return done;
         }
-        return server() is { } lsp ? await ServerFormatAsync(lsp, document, "Reformat Code", within) : null;
+        return server() is { } lsp ? await ServerFormatAsync(lsp, document, "Reformat Code", within, cancel) : null;
+    }
+
+    /// <summary>How long a save waits for a language server's layout before it goes on without it.</summary>
+    private static readonly TimeSpan SaveLimit = TimeSpan.FromSeconds(3);
+
+    /// <summary>Reformat on save: a changed file laid out whole as Reformat Code lays it out, as one undoable edit, its
+    /// language server given <see cref="SaveLimit"/> to answer. Null once done, or where nothing lays the file out; else
+    /// why it was left as it was, in the status bar's words, the save going on regardless.</summary>
+    internal async Task<string?> ReformatOnSaveAsync(OpenDocument document)
+    {
+        const string what = "Reformat on save";
+        string? unready = null;
+        LspDocument? ServerOf()
+        {
+            IServerDocument? served = context.ServerOf(document);
+            if (served is { Lsp: null })
+            {
+                unready = context.WebOf(document) is not null && context.Web?.Invoke() is { } web ? web.Unready(what, document)
+                    : context.CSharp?.Unready(what);
+            }
+            return served?.Lsp;
+        }
+        using CancellationTokenSource limit = new();
+        limit.CancelAfter(Waits.Of(SaveLimit));
+        try
+        {
+            return await ReformatAsync(document, null, ServerOf, limit.Token) switch
+            {
+                null => unready,
+                { Applied: true } => null,
+                { Why: { } why } => $"{what} was not applied to {document.Name}: {why}",
+                { } refused => refused.Said,
+            };
+        }
+        catch (OperationCanceledException) when (limit.IsCancellationRequested)
+        {
+            return $"{what} was not applied to {document.Name}: its language server did not answer within {Durations.Said(Waits.Of(SaveLimit))}";
+        }
+        catch (LanguageServerFailed failed)
+        {
+            return $"{what} failed: {failed.Reason}";
+        }
     }
 
     /// <summary>A selection ending at a line's start, as one of whole lines does, kept to the lines before it: the line it
@@ -950,13 +995,13 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
     /// <summary>The language server's formatting of a file, or of <paramref name="within"/> where the server formats a
     /// range (else the whole file, said), carried through what was typed as it worked, applied; null once the file has
     /// closed.</summary>
-    private async Task<Reformatted?> ServerFormatAsync(LspDocument lsp, OpenDocument document, string what, TextRange? within = null)
+    private async Task<Reformatted?> ServerFormatAsync(LspDocument lsp, OpenDocument document, string what, TextRange? within = null, CancellationToken cancel = default)
     {
         using ChangeTracker asked = new(document.Text);
         bool whole = within is null || !lsp.FormatsRanges;
         IReadOnlyList<LspTextEdit> answer = within is { } range && !whole
-            ? await lsp.FormatAsync(range, document.Indentation.Options, document.Conventions)
-            : await lsp.FormatAsync(document.Indentation.Options, document.Conventions);
+            ? await lsp.FormatAsync(range, document.Indentation.Options, document.Conventions, cancel)
+            : await lsp.FormatAsync(document.Indentation.Options, document.Conventions, cancel);
         if (!context.Editors.Documents.Contains(document))
         {
             return null;

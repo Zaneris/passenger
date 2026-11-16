@@ -332,6 +332,7 @@ public sealed partial class SettingsDialog : IdeWindow
         Add(Declared.SoftWrapIndent);
         Add(Declared.ShowWhitespaces);
         Add(Declared.WheelZoom);
+        Add(Declared.ReformatOnSave);
 
         Add(Declared.FoldFileHeader);
         Add(Declared.FoldImports);

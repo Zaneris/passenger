@@ -167,6 +167,12 @@ public static class Declared
         new(D.EditorPage, OperatingSystem.IsMacOS() ? "Change font size with Command+Mouse Wheel" : "Change font size with Ctrl+Mouse Wheel",
             "zoom font size mouse wheel scroll ctrl control command cmd"));
 
+    public static readonly ToggleSetting ReformatOnSave = new(s => s.ReformatOnSave, (s, v) => s with { ReformatOnSave = v },
+        new(D.EditorPage, "Reformat on save", "save actions on save format on save reformat code formatting layout c# xaml",
+            "File, Save and Save All reformat each changed file first, as Reformat Code does, as one undoable edit; autosave never "
+            + "does. A file Prettier's Run on save covers is Prettier's alone, and GDScript's own Reformat on save (Code Style: "
+            + "GDScript) turns this on for scripts alone."));
+
     public static readonly ToggleSetting FoldFileHeader = new(s => s.FoldFileHeader, (s, v) => s with { FoldFileHeader = v },
         new(D.CodeFoldingPage, "File header", $"{D.FoldingWords} comments licence license copyright top",
             "Fold by default: what folds as a file opens. A file keeps the folds it was closed with, after a restart too."));

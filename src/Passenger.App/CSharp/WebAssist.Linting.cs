@@ -146,21 +146,23 @@ internal sealed partial class WebAssist
     }
 
     /// <summary>What a save does first to a changed file, as Settings ask: <c>eslint --fix</c>, then Prettier. Each its
-    /// own undoable edit.</summary>
-    public async Task BeforeSave(OpenDocument document)
+    /// own undoable edit. Whether the file is Prettier's to lay out on a save, whatever it made of it.</summary>
+    public async Task<bool> BeforeSave(OpenDocument document)
     {
         if (context.Web?.Invoke() is not { } web || document.IsReadOnly)
         {
-            return;
+            return false;
         }
         if (LintOf(document) is { } lint && web.Eslint.FixesOnSave)
         {
             await FixAll(document, lint, "Run eslint --fix on save");
         }
-        if (web.Prettier.OnSave(document.Path))
+        if (!web.Prettier.OnSave(document.Path))
         {
-            await Prettify(web, document, "Prettier on save");
+            return false;
         }
+        await Prettify(web, document, "Prettier on save");
+        return true;
     }
 
     /// <summary>What came of handing a file to Prettier.</summary>

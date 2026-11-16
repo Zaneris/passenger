@@ -237,14 +237,18 @@ internal sealed partial class GDScriptAssist(AssistContext context, CodeCompleti
         GodotScriptTypes.IsScript(document.Path) ? ReformatAsync(document, within, "Reformat Code") : Task.FromResult<CodeActions.Reformatted?>(null);
 
     /// <summary>What a save does first to a changed script, as Settings ask: Reformat Code's layout, one undoable edit,
-    /// saying only why it was not applied.</summary>
-    public async Task BeforeSave(OpenDocument document)
+    /// saying only why it was not applied. Whether the file was a script this took.</summary>
+    public async Task<bool> BeforeSave(OpenDocument document)
     {
-        if (FormatsOnSave && GodotScriptTypes.IsScript(document.Path) && !document.IsReadOnly
-            && await ReformatAsync(document, null, "Reformat on save") is { Applied: false } refused)
+        if (!FormatsOnSave || !GodotScriptTypes.IsScript(document.Path) || document.IsReadOnly)
+        {
+            return false;
+        }
+        if (await ReformatAsync(document, null, "Reformat on save") is { Applied: false } refused)
         {
             context.Say(refused.Said);
         }
+        return true;
     }
 
     /// <summary>A script laid out by Godot's style guide as one undoable edit, by <see cref="Format"/> with the file's

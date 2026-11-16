@@ -191,6 +191,7 @@ public partial class MainWindow
         assist.CompletionParentheses = next.CompletionParentheses;
         assist.XamlFormat = next.XamlFormat;
         assist.GDScriptFormat = (next.GDScriptFormat, next.GDScriptFormatOnSave);
+        assist.ReformatsOnSave = next.ReformatOnSave;
         if (terminal is { } panel)
         {
             FollowTerminalSettings(panel, next, before);

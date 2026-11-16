@@ -130,8 +130,9 @@ public partial class MainWindow
     }
 
     /// <summary>File, Save (the file shown as it is pressed) or Save All: each changed file first gets what Settings
-    /// ask of a save (Run eslint --fix on save, then Prettier's Run on save, or a GDScript's Reformat on save), which an
-    /// explicit save runs and autosave never does, each one undoable edit. The files are saved whatever came of those.</summary>
+    /// ask of a save (Run eslint --fix on save, then Prettier's Run on save, or a GDScript's Reformat on save, else
+    /// Reformat on save), which an explicit save runs and autosave never does, each one undoable edit. The files are saved
+    /// whatever came of those, a file Reformat on save left as it was said once.</summary>
     private async Task SaveExplicitly(bool all)
     {
         OpenDocument? pressed = all ? null : Editors.Active?.Saves;
@@ -143,6 +144,7 @@ public partial class MainWindow
             status.Text = held;
             saving.RemoveAll(d => Editors.HeldElsewhere(d.Path) is not null);
         }
+        List<string> unformatted = [];
         BackgroundWork.Begin();
         try
         {
@@ -150,13 +152,20 @@ public partial class MainWindow
             {
                 try
                 {
-                    await assist.BeforeSave(document);
+                    if (await assist.BeforeSave(document) is { } why)
+                    {
+                        unformatted.Add(why);
+                    }
                 }
                 catch (Exception error)
                 {
                     // The save goes on without what failed, which IDE Internal Errors shows.
                     IdeErrors.Report(error);
                 }
+            }
+            if (unformatted.Count > 0)
+            {
+                status.Text = unformatted.Count == 1 ? unformatted[0] : $"{unformatted[0]} (and {Plural.Of(unformatted.Count - 1, "more file")})";
             }
             if (all && held is null)
             {

@@ -130,6 +130,11 @@ public sealed record AppSettings : IStateDocument<AppSettings>
     /// <summary>"Change font size with Ctrl+Mouse Wheel" (Command on macOS): off at first, so the wheel only
     /// scrolls.</summary>
     public bool WheelZoom { get; init; }
+
+    /// <summary>"Reformat on save": a save (File, Save All) first reformats each changed file as Reformat Code does, but one
+    /// a language's own on-save formatting takes (Prettier's Run on save, GDScript's Reformat on save).</summary>
+    public bool ReformatOnSave { get; init; }
+
     public double TerminalFontSize { get; init; } = 13;
     /// <summary>The terminal's own font by its family's name, or null for the code font in force.</summary>
     public string? TerminalFontFamily { get; init; }
