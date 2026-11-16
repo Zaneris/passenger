@@ -21,9 +21,8 @@ public static class CrashFile
         string path = PathOf;
         try
         {
-            Directory.CreateDirectory(IdeLog.Folder);
-            string text = CrashText.Of(thrown, DateTime.Now, Environment.ProcessId, $"{Product.Version} ({Product.Commit ?? "no commit"})");
-            AtomicFile.Write(path, System.Text.Encoding.UTF8.GetBytes(text));
+            Containers.OwnFiles.Made(IdeLog.Folder);
+            Containers.OwnFiles.Write(path, CrashText.Of(thrown, DateTime.Now, Environment.ProcessId, $"{Product.Version} ({Product.Commit ?? "no commit"})"));
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {

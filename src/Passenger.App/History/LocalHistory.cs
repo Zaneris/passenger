@@ -600,6 +600,16 @@ public sealed class LocalHistory
 
     private void Load()
     {
+        try
+        {
+            // Its copies of the folder's files (a .env, appsettings) are the person's alone, a store an earlier Passenger made put right.
+            Containers.OwnFiles.Made(Root);
+            Containers.OwnFiles.Tree(Root);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            IdeErrors.Write($"Local History of {Folder} could not be made the person's alone: {error.Message}");
+        }
         using (Hold())
         {
             TakeLog();
@@ -1085,7 +1095,7 @@ public sealed class LocalHistory
         {
             return;
         }
-        Directory.CreateDirectory(Root);
+        Containers.OwnFiles.Made(Root);
         using FileStream holding = HoldToChange();
         bool caughtUp = TryTakeLog();
         List<HistoryEvent> taken = [];
@@ -1108,7 +1118,7 @@ public sealed class LocalHistory
         {
             lines.Append(Line(kept)).Append('\n');
         }
-        using (FileStream appending = new(log, FileMode.Append, FileAccess.Write, FileShare.Read))
+        using (FileStream appending = Containers.OwnFiles.Append(log, FileShare.Read))
         {
             appending.Write(Encoding.UTF8.GetBytes(lines.ToString()));
             if (caughtUp)
@@ -1239,7 +1249,7 @@ public sealed class LocalHistory
                 changed = true;
             }
             List<string> lines = [.. left];
-            AtomicFile.Write(log, Encoding.UTF8.GetBytes(string.Concat(lines.Select(line => line + "\n"))));
+            Containers.OwnFiles.Write(log, Encoding.UTF8.GetBytes(string.Concat(lines.Select(line => line + "\n"))));
             readTo = lines.Count == 0 ? 0 : new FileInfo(log).Length;
             readLine = lines.Count == 0 ? [] : Encoding.UTF8.GetBytes(lines[^1] + "\n");
             unread.Clear();
@@ -1322,13 +1332,13 @@ public sealed class LocalHistory
                 }
             }
         }
-        Directory.CreateDirectory(Path.GetDirectoryName(file)!);
+        Containers.OwnFiles.Made(Path.GetDirectoryName(file)!);
         using MemoryStream compressed = new();
         using (BrotliStream brotli = new(compressed, CompressionLevel.Fastest, leaveOpen: true))
         {
             brotli.Write(bytes);
         }
-        AtomicFile.Write(file, compressed.GetBuffer().AsSpan(0, (int)compressed.Length));
+        Containers.OwnFiles.Write(file, compressed.GetBuffer().AsSpan(0, (int)compressed.Length));
         return hash;
     }
 

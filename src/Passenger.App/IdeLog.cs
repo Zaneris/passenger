@@ -214,7 +214,7 @@ public static partial class IdeLog
         FileStream? file = null;
         try
         {
-            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            Containers.OwnFiles.Made(Path.GetDirectoryName(path)!);
             file = Open(path);
             long length = file.Length;
             foreach (LogLine line in lines)
@@ -251,7 +251,7 @@ public static partial class IdeLog
     /// <summary>Whether a log that could not be moved aside to rotate has grown by less than a tenth of the limit since.</summary>
     private static bool WaitsToRotate(string path, long length) => Unmoved.TryGetValue(path, out long held) && length < held + Limit / 10;
 
-    private static FileStream Open(string path) => new(path, FileMode.Append, FileAccess.Write, FileShare.ReadWrite | FileShare.Delete);
+    private static FileStream Open(string path) => Containers.OwnFiles.Append(path, FileShare.ReadWrite | FileShare.Delete);
 
     /// <summary>Rotates a log: the oldest goes, each moves up one, and the log becomes <c>passenger.1.log</c>. The log
     /// is moved aside first, so one that cannot be (Windows, a reader not sharing deletion) leaves the rotated ones as

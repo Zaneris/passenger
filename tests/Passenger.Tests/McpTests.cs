@@ -1233,6 +1233,62 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         }
     }
 
+    /// <summary>A Passenger makes the state it keeps the person's alone as it starts, where an earlier one left it open to
+    /// every user: the state folder and its logs 0700, a log written before 0600, the folder's Local History store 0700
+    /// with each folder and file it held put right, and the version of a .env it keeps from then on 0600.</summary>
+    [Fact]
+    public async Task The_state_its_logs_and_local_history_are_made_the_persons_alone_as_passenger_starts()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            Assert.Skip("Windows keeps the state under the person's profile, theirs alone already, and has no file modes");
+            return;
+        }
+        const UnixFileMode Folder = UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute;
+        const UnixFileMode File = UnixFileMode.UserRead | UnixFileMode.UserWrite;
+        const UnixFileMode Others = UnixFileMode.GroupRead | UnixFileMode.OtherRead;
+        string folder = PathNames.Canonical(TestFolders.Create("mcp-own-state-"));
+        DeleteAtEnd(folder);
+        System.IO.File.WriteAllText(Path.Combine(folder, ".env"), "SHOP_API_TOKEN=tok-before\n");
+        string state = PathNames.Canonical(OwnState);
+        string logs = Path.Combine(state, "logs");
+        string history = Path.Combine(global::Passenger.App.State.ProjectState.FolderOf(state, folder), "localHistory");
+        string earlier = Path.Combine(history, "blobs", "ab", new string('c', 30));
+        Directory.CreateDirectory(logs);
+        Directory.CreateDirectory(Path.GetDirectoryName(earlier)!);
+        System.IO.File.WriteAllText(Path.Combine(logs, "passenger.1.log"), "an earlier start's log\n");
+        System.IO.File.WriteAllText(earlier, "an earlier version\n");
+        foreach (string made in (string[])[state, logs, history, Path.GetDirectoryName(earlier)!])
+        {
+            System.IO.File.SetUnixFileMode(made, Folder | Others | UnixFileMode.GroupExecute | UnixFileMode.OtherExecute);
+        }
+        foreach (string written in (string[])[Path.Combine(logs, "passenger.1.log"), earlier])
+        {
+            System.IO.File.SetUnixFileMode(written, File | Others);
+        }
+
+        await using McpClient client = await Start(["--mcp", folder], languageServer: false);
+        await Call(client, McpTools.Edit, new() { ["path"] = ".env", ["oldText"] = "tok-before", ["newText"] = "tok-after" });
+        string blobs = Path.Combine(history, "blobs");
+        // A version is written beside its place first, under a name of its own ending in .tmp.
+        IEnumerable<string> Kept() => Directory.EnumerateFiles(blobs, "*", SearchOption.AllDirectories).Where(f => f != earlier && !f.EndsWith(AtomicFile.Temporary, StringComparison.Ordinal));
+        Assert.True(await Waiting.UntilAsync(() => Kept().Any(), TimeSpan.FromSeconds(30), Cancel), "Local History kept no version of the .env the agent edited");
+        string kept = Kept().First();
+        Assert.True(await Waiting.UntilAsync(() => System.IO.File.Exists(Path.Combine(logs, "passenger.log")), TimeSpan.FromSeconds(30), Cancel), "The Passenger wrote no log");
+        List<string> open = [];
+        foreach ((string path, UnixFileMode own) in (ReadOnlySpan<(string, UnixFileMode)>)[(state, Folder), (logs, Folder), (history, Folder), (blobs, Folder),
+            (Path.GetDirectoryName(earlier)!, Folder), (Path.GetDirectoryName(kept)!, Folder), (Path.Combine(logs, "passenger.1.log"), File),
+            (Path.Combine(logs, "passenger.log"), File), (earlier, File), (kept, File), (Path.Combine(history, "changes.log"), File)])
+        {
+            UnixFileMode mode = System.IO.File.GetUnixFileMode(path);
+            if (mode != own)
+            {
+                open.Add($"{path} ({mode})");
+            }
+        }
+        Assert.True(open.Count == 0, $"The state is not the person's alone: {string.Join("; ", open)}");
+    }
+
     /// <summary>settings names the fonts an agent may give the editor briefly, the carried one, and the window's, the carried
     /// Inter and the system's own, each saying how many installed families it left out and that settings_set takes any by
     /// its name; settings_set takes one and refuses a family that is not installed, as Settings does, nothing changed.</summary>

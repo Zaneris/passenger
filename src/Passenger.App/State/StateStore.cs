@@ -64,6 +64,22 @@ public sealed class StateStore
     /// <summary>The folder: PASSENGER_SETTINGS names it, else the user's local application data.</summary>
     public static string DefaultRoot => Named ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Passenger");
 
+    /// <summary>The state folder made the person's alone as Passenger starts (<see cref="Containers.OwnFiles.Folder"/>, one an
+    /// earlier Passenger made put right), its logs with all they hold (<see cref="Containers.OwnFiles.Tree"/>): Local History
+    /// in it keeps copies of a folder's files, .env and appsettings among them, and the logs what programs said.</summary>
+    public static void Own()
+    {
+        try
+        {
+            Containers.OwnFiles.Folder(DefaultRoot);
+            Containers.OwnFiles.Tree(IdeLog.Folder);
+        }
+        catch (Exception refused) when (refused is IOException or UnauthorizedAccessException)
+        {
+            Console.Error.WriteLine($"passenger: the state folder {DefaultRoot} could not be made the person's alone: {refused.Message}");
+        }
+    }
+
     /// <summary>The folder PASSENGER_SETTINGS names, or null where it names none.</summary>
     public static string? Named => Environment.GetEnvironmentVariable(Variable) is { Length: > 0 } folder ? folder : null;
 

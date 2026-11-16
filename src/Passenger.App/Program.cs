@@ -84,6 +84,11 @@ internal static class Program
             input?.Dispose();
             return 0;
         }
+        // A screenshot's state is a folder of its own, made so (Apart), unless PASSENGER_SETTINGS names one.
+        if (options.Screenshot is null || State.StateStore.Named is not null)
+        {
+            State.StateStore.Own();
+        }
         Core.ShellEnvironment.Load();
         if (options.Mcp != McpMode.Attach && options.Screenshot is null)
         {
