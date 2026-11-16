@@ -64,8 +64,8 @@ public sealed partial class CSharpService
     /// <summary>The C# files of the folder's projects the server may not hold in their projects yet that <paramref
     /// name="counted"/> names by path and project (null: all), with <paramref name="looking"/> those written a moment ago the
     /// watcher may not have heard (an agent's), waited for up to <paramref name="within"/>: none once each is held or left
-    /// out, else the rest; none from a server not loaded or without Passenger's extension. At once, on the thread, when none
-    /// is waited for or looked for; <paramref name="waiting"/> is told the first waited for, and null once a wait is over.</summary>
+    /// out, else the rest, first come first; none from a server not loaded or without Passenger's extension. At once, on the
+    /// thread, when none is waited for or looked for; <paramref name="waiting"/> is told the first come, null once it is over.</summary>
     public async Task<IReadOnlyList<(string Path, string Project)>> UnplacedAsync(TimeSpan within, bool looking, Func<string, string, bool>? counted, Action<string?>? waiting,
         CancellationToken cancel)
     {
@@ -124,7 +124,9 @@ public sealed partial class CSharpService
                 {
                     ConnectLoaded(running);
                 }
-                List<(string Path, string Project)> left = [.. asked.Where(p => arriving.TryGetValue(p, out Arrival? a) && Counts(p, a.Project)).Select(p => (p, arriving[p].Project))];
+                // First come first: the table keeps a new one in a place an earlier one left.
+                List<(string Path, string Project)> left = [.. asked.Where(p => arriving.TryGetValue(p, out Arrival? a) && Counts(p, a.Project))
+                    .OrderBy(p => arriving[p].Heard).Select(p => (p, arriving[p].Project))];
                 TimeSpan spent = Stopwatch.GetElapsedTime(began);
                 if (left.Count == 0 || spent >= within)
                 {

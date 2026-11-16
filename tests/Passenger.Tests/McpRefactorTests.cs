@@ -1038,8 +1038,9 @@ public sealed class McpRefactorTests : McpRig, IClassFixture<RestoredFolders>
 
     /// <summary>App references Lib, and a caller of Lib's method is written into App while App's design-time build is
     /// held, so the language server cannot take it in: usages of the method answer at once, saying they went without the
-    /// caller, where they waited for App and refused; a rename of it waits for App, which loads once its build is let go,
-    /// and renames the caller there too.</summary>
+    /// caller, where they waited for App and refused; a rename of it waits for App, naming the caller, the first to come,
+    /// though two new files of Lib's were waited for and let go together before, and renames the caller there too once
+    /// App's build is let go.</summary>
     [Fact]
     public async Task Usages_answer_at_once_without_a_file_another_project_has_yet_to_load_and_a_rename_waits_for_it()
     {
@@ -1064,6 +1065,10 @@ public sealed class McpRefactorTests : McpRig, IClassFixture<RestoredFolders>
         await using McpClient client = await Start(["--mcp", folder]);
         // The projects loaded first, so the file written next comes after.
         await Call(client, McpTools.Diagnostics, new() { ["path"] = "Lib/Shape.cs" });
+        // Waits let go of before the caller comes, as for an agent's files written earlier.
+        TestFolders.Write(folder, "Lib/Circle.cs", "namespace Lib;\n\npublic static class Circle\n{\n}\n");
+        TestFolders.Write(folder, "Lib/Square.cs", "namespace Lib;\n\npublic static class Square\n{\n}\n");
+        await Call(client, McpTools.Diagnostics, new() { ["path"] = "Lib/Circle.cs" });
 
         TestFolders.Write(folder, "App/hold", string.Empty);
         const string Caller = "namespace App;\n\npublic static class Caller\n{\n    public static int Call() => Lib.Shape.Make();\n}\n";
@@ -1089,7 +1094,7 @@ public sealed class McpRefactorTests : McpRig, IClassFixture<RestoredFolders>
             $"The rename did not say it waited for App to load its new caller: {status}");
         if (renaming.IsCompleted)
         {
-            Assert.Fail($"The rename did not wait for App, whose build was held, to load its new caller: {Text(await renaming)}");
+            Assert.Fail($"The rename did not wait for App, whose build was held, to load its new caller ({status}): {Text(await renaming)}");
         }
         TestFolders.Write(folder, "App/released", string.Empty);
         CallToolResult renamed = await renaming;
