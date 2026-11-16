@@ -1628,6 +1628,34 @@ public sealed class TerminalTests
         }
     }
 
+    /// <summary>Block elements fill the share of their cells they stand for, edge to edge: a bar of full blocks is one
+    /// colour from its first cell's top to its last cell's foot, never seamed between cells or short of the row's height as
+    /// the font's glyphs leave it, an upper half fills only its cell's top and a right half only its right.</summary>
+    [AvaloniaFact]
+    public void A_bar_of_block_elements_fills_its_cells_edge_to_edge_and_a_half_block_its_half()
+    {
+        (MainWindow window, TerminalSession shell) = Open(TestFolders.Create("terminal-"));
+        TerminalView view = window.TerminalPanel.View;
+        RunCase(window, "blocks");
+        long line = WaitForLine(shell, "██████ ▀▀▐", "the program's blocks");
+        WaitForPromptBelow(window, shell, "██████ ▀▀▐");
+        double width = view.PointOf(line, 1).X - view.PointOf(line, 0).X;
+        double height = view.PointOf(line + 1, 0).Y - view.PointOf(line, 0).Y;
+        Color background = ((ISolidColorBrush)view.FindResource(window.ActualThemeVariant, TokenKeys.Terminal_Background)!).Color;
+        Color At(int column, double across, double down) =>
+            Ui.Pixel(window, view.TranslatePoint(view.PointOf(line, column) + new Point(across * width, down * height), window)!.Value);
+        Color bar = At(2, 0, 0);
+        Assert.NotEqual(background, bar);
+        for (int column = 1; column < 6; column++)
+        {
+            Assert.True(At(column, -0.5, 0) == bar, $"The bar is seamed between its cells {column - 1} and {column}: {At(column, -0.5, 0)} there, {bar} in them");
+        }
+        Assert.True((At(3, 0, -0.45), At(3, 0, 0.45)) == (bar, bar), $"A full block falls short of its row's top or foot: {At(3, 0, -0.45)} and {At(3, 0, 0.45)}, {bar} between");
+        Assert.True((At(7, 0, -0.3), At(7, 0, 0.3)) == (bar, background), $"An upper half block does not fill its cell's top alone: {At(7, 0, -0.3)} above, {At(7, 0, 0.3)} below");
+        Assert.True((At(9, -0.3, 0), At(9, 0.3, 0)) == (background, bar), $"A right half block does not fill its cell's right alone: {At(9, -0.3, 0)} left, {At(9, 0.3, 0)} right");
+        window.Close();
+    }
+
     /// <summary>A window over a folder of its own holding TerminalConsoleApp, restored, its configuration Keys running the
     /// program in the terminal with these arguments; without the C# language server, which a run asks nothing of.</summary>
     private static MainWindow RunWindow(string folder, string arguments)

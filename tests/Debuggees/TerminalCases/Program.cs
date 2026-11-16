@@ -248,6 +248,10 @@ switch (args)
             + " esc \e]8;;file:///%5C%5Cotherhost%5Cshare%5Cz\e\\path\e]8;;\e\\"
             + $" here \e]8;;{new Uri(there).AbsoluteUri}\e\\notes\e]8;;\e\\ gone \e]8;;{new Uri(missing).AbsoluteUri}\e\\lost\e]8;;\e\\\r\n");
         break;
+    case ["blocks"]:
+        // A bar of full blocks, as Spectre.Console's charts draw, then upper halves and a right half.
+        Write("██████ ▀▀▐\r\n");
+        break;
     case ["variables", .. string[] names]:
         // Each of these variables the program has, as env lists it, then a line saying they are listed.
         Write(string.Concat(names.Where(name => Environment.GetEnvironmentVariable(name) is not null)

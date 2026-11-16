@@ -98,7 +98,7 @@ public sealed partial class TerminalView
         {
             if (part.Fill is { } fill)
             {
-                context.FillRectangle(fill, new Rect(part.Area.X, y, part.Area.Width, part.Area.Height));
+                context.FillRectangle(fill, new Rect(part.Area.X, y + part.Area.Y, part.Area.Width, part.Area.Height));
             }
             if (part.Text is null)
             {
@@ -169,10 +169,23 @@ public sealed partial class TerminalView
             bool chosen = drawn.IsChosen(column);
             bool isLink = Linked(column);
             int end = column + 1;
+            if (IsBlock(line, column))
+            {
+                // A run of one element filling its cells' width is one rectangle, with no seam between them.
+                while (BlockElements.Spans(head.Rune) && end < cells.Length && cells[end].Rune == head.Rune && IsBlock(line, end) && cells[end].Style == head.Style
+                    && drawn.IsChosen(end) == chosen)
+                {
+                    end++;
+                }
+                ShapeBlocks(drawn, line, column, end, chosen);
+                column = end;
+                continue;
+            }
             bool alone = !InRun(line, column);
             if (!alone)
             {
-                while (end < cells.Length && InRun(line, end) && cells[end].Style == head.Style && drawn.IsChosen(end) == chosen && Linked(end) == isLink)
+                while (end < cells.Length && InRun(line, end) && !IsBlock(line, end) && cells[end].Style == head.Style && drawn.IsChosen(end) == chosen
+                    && Linked(end) == isLink)
                 {
                     end++;
                 }
@@ -213,6 +226,40 @@ public sealed partial class TerminalView
         Span<char> scratch = stackalloc char[2];
         ReadOnlySpan<char> before = line.TextOf(last, scratch);
         return before is [.., '\u200D'] || (cell.Rune is >= 0x1F3FB and <= 0x1F3FF && new Avalonia.Media.TextFormatting.Unicode.Codepoint((uint)line.Cells[last].Rune).IsEmoji);
+    }
+
+    /// <summary>Whether a line's cell is a block element alone, drawn as the share of its cell it fills.</summary>
+    private static bool IsBlock(TerminalLine line, int column) =>
+        line.Cells[column] is { Width: 1 } cell && BlockElements.Of(cell.Rune).Length > 0 && line.IsOneCodePoint(column);
+
+    /// <summary>A run of one block element, a cell long unless the element spans its cell's width: its share filled in the
+    /// text's colour over the cells' background.</summary>
+    private void ShapeBlocks(Drawn drawn, TerminalLine line, int from, int to, bool chosen)
+    {
+        Cell head = line.Cells[from];
+        CellStyle style = head.Style;
+        bool inverse = style.Flags.HasFlag(CellFlags.Inverse);
+        IBrush fore = Colour(style.Fore, foreground);
+        IBrush back = Colour(style.Back, background);
+        if (inverse)
+        {
+            (fore, back) = (back, fore);
+        }
+        double x = Pad + (from * cellWidth);
+        Rect area = new(x, 0, (to - from) * cellWidth, cellHeight);
+        IBrush? fill = chosen ? selection : style.Back != CellStyle.Default || inverse ? back : null;
+        if (fill is not null)
+        {
+            drawn.Parts.Add(new Part(area, fill));
+        }
+        if (style.Flags.HasFlag(CellFlags.Hidden))
+        {
+            return;
+        }
+        foreach (Rect share in BlockElements.Of(head.Rune))
+        {
+            drawn.Parts.Add(new Part(new Rect(x + (share.X * area.Width), share.Y * cellHeight, share.Width * area.Width, share.Height * cellHeight), fore));
+        }
     }
 
     private bool Linked(int column)
