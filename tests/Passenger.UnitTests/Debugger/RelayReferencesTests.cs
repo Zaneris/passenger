@@ -2,6 +2,7 @@ using System.Buffers.Binary;
 using System.Collections.Concurrent;
 using System.Collections.Immutable;
 using System.Reflection.Metadata;
+using System.Reflection.PortableExecutable;
 using System.Runtime.InteropServices;
 using System.Runtime.InteropServices.Marshalling;
 using System.Text;
@@ -10,6 +11,7 @@ using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.Emit;
 using Passenger.Debugger;
 using Passenger.Debugger.Interop;
+using Passenger.Debugger.Interop.Extensions;
 using Passenger.Debugger.Relay;
 
 namespace Passenger.UnitTests.Debugger;
@@ -18,8 +20,9 @@ namespace Passenger.UnitTests.Debugger;
 /// none of it, the objects the app's debugger keeps anyway held for the session, what an object said asked of the app
 /// once, for as long as it holds (a method's function until an update makes its next version, a value's size for good, its
 /// bytes read and written at that size alone), the metadata an update takes to be there made in the app first, the update
-/// applied to the host's copy of the module's metadata once the app took it, and a callback read as the relay sends one or
-/// not at all.</summary>
+/// applied to the host's copy of the module's metadata once the app took it, a module's metadata read from the app's
+/// memory opened on the host only as a module's metadata is laid out, and a callback read as the relay sends one or not at
+/// all.</summary>
 public class RelayReferencesTests
 {
     [Fact]
@@ -215,6 +218,56 @@ public class RelayReferencesTests
             session.Take(new RemotePointer(0x7000, 0x7000), RemoteInterfaces.Of(typeof(ICorDebugGenericValue))), CreateObjectFlags.UniqueInstance);
 
     [Fact]
+    public void A_modules_metadata_read_from_the_apps_memory_is_opened_on_the_host()
+    {
+        (byte[] image, Guid mvid) = Plugin();
+        App app = new() { ModuleName = "/data/user/0/com.shop/files/plugins/Plugin.dll", Image = image };
+        ICorDebugModule module = Module(new RelaySession(app, new DeviceModules(null), null));
+        Guid import = typeof(IMetaDataImport).GUID;
+        int opened = module.TryGetMetaDataInterface(ref import, out object? importer);
+        Assert.True(opened == 0 && importer is IMetaDataImport metadata && metadata.ScopeProps.pmvid == mvid,
+            $"The metadata of a module the host has no copy of was not opened from the app's memory (0x{opened:X8}), so nothing is read of its types");
+    }
+
+    [Fact]
+    public void A_modules_metadata_the_app_sends_malformed_is_refused_once_and_the_session_goes_on()
+    {
+        (byte[] image, _) = Plugin();
+        int guids = image.AsSpan().IndexOf("#GUID\0\0\0"u8);
+        "#JTD\0\0\0\0"u8.CopyTo(image.AsSpan(guids));
+        App app = new() { ModuleName = "/data/user/0/com.shop/files/plugins/Plugin.dll", Image = image };
+        List<string> said = [];
+        RelaySession session = new(app, new DeviceModules(null), said.Add);
+        ICorDebugModule module = Module(session);
+        Guid import = typeof(IMetaDataImport).GUID;
+        int first = module.TryGetMetaDataInterface(ref import, out object? _);
+        int reads = app.Reads;
+        int again = module.TryGetMetaDataInterface(ref import, out object? _);
+        Assert.True(first < 0 && again == first, $"Metadata whose tables the host's reader would lay out past its end was opened: 0x{first:X8}, then 0x{again:X8}");
+        Assert.True(app.Reads == reads && said.Count(each => each.Contains("is not opened", StringComparison.Ordinal)) == 1,
+            $"The refused module's memory was read again ({app.Reads - reads} reads) or its refusal said other than once: {string.Join(" | ", said)}");
+        ICorDebugGenericValue value = GenericValue(session);
+        Assert.True(app.BrokenBy is null && value.TryGetType(out _) == 0, $"The session did not go on past the refused module: {app.BrokenBy}");
+    }
+
+    private static ICorDebugModule Module(RelaySession session) =>
+        (ICorDebugModule)new StrategyBasedComWrappers().GetOrCreateObjectForComInstance(
+            session.Take(new RemotePointer(App.ModuleAt, App.ModuleAt), RemoteInterfaces.Of(typeof(ICorDebugModule))), CreateObjectFlags.UniqueInstance);
+
+    /// <summary>A module's image as a compiler writes it, which an app may load from bytes, and its id.</summary>
+    private static (byte[] Image, Guid Mvid) Plugin()
+    {
+        CSharpCompilation compilation = CSharpCompilation.Create("Plugin", [CSharpSyntaxTree.ParseText("public static class Discounts { public static int Off(int price) => price / 10; }")],
+            [MetadataReference.CreateFromFile(typeof(object).Assembly.Location)], new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+        using MemoryStream image = new();
+        Assert.True(compilation.Emit(image).Success, "The module did not build");
+        byte[] bytes = image.ToArray();
+        using PEReader pe = new(ImmutableArray.Create(bytes));
+        MetadataReader reader = pe.GetMetadataReader();
+        return (bytes, reader.GetGuid(reader.GetModuleDefinition().Mvid));
+    }
+
+    [Fact]
     public void A_callback_read_as_the_relay_sends_it_is_handed_on_and_one_running_past_its_frame_ends_the_session()
     {
         App app = new();
@@ -331,12 +384,23 @@ public class RelayReferencesTests
     }
 
     /// <summary>An app's debugger as the relay carries it: every call answered by its arguments' kinds, a frame
-    /// enumerator's Next with <see cref="Frames"/> frames, a module's name <see cref="ModuleName"/>, every call's object and
-    /// slot, the bytes sent and every release heard.</summary>
+    /// enumerator's Next with <see cref="Frames"/> frames, a module's name <see cref="ModuleName"/>, the module at
+    /// <see cref="ModuleAt"/> loaded from <see cref="Image"/> where one is given, every call's object and slot, the bytes
+    /// sent and every release heard.</summary>
     private sealed class App : IRelayLink
     {
+        /// <summary>The module the tests take, and where its image lies in the app's memory.</summary>
+        public const ulong ModuleAt = 0x6000;
+        private const ulong ImageAt = 0x7F000000;
+
         private readonly ConcurrentQueue<uint> _asked = new();
         private ulong _next = 0x10000;
+
+        /// <summary>The image of the module at <see cref="ModuleAt"/>, loaded from bytes; null where it has none.</summary>
+        public byte[]? Image { get; init; }
+
+        /// <summary>How many reads of the app's memory came.</summary>
+        public int Reads { get; private set; }
 
         /// <summary>The bytes of each argument sent to the app but a QueryInterface's interface id, in order.</summary>
         public List<byte[]> Sent { get; } = [];
@@ -372,6 +436,10 @@ public class RelayReferencesTests
             if (slot != 0)
             {
                 Sent.AddRange(args.Where(arg => arg.Kind == RelayArgKind.In).Select(arg => arg.Bytes!));
+            }
+            if (Image is { } image && Loaded(obj, slot, args, image) is { } loaded)
+            {
+                return loaded;
             }
             if (slot == 0)
             {
@@ -410,6 +478,35 @@ public class RelayReferencesTests
                 }
             }
             return new RelayReply(0, outs, objects);
+        }
+
+        /// <summary>What the module loaded from <paramref name="image"/> and its process answer: it is no dynamic module, lies
+        /// at <see cref="ImageAt"/> and is as long as its image, of which the process reads what lies within; null for any
+        /// other call.</summary>
+        private RelayReply? Loaded(ulong obj, uint slot, IReadOnlyList<RelayArg> args, byte[] image)
+        {
+            if (obj == ModuleAt && slot == RelaySession.SlotOf(typeof(ICorDebugModule), nameof(ICorDebugModule.TryIsDynamic)))
+            {
+                return new RelayReply(0, [new byte[4]], []);
+            }
+            if (obj == ModuleAt && slot == RelaySession.SlotOf(typeof(ICorDebugModule), nameof(ICorDebugModule.TryGetBaseAddress)))
+            {
+                return new RelayReply(0, [BitConverter.GetBytes(ImageAt)], []);
+            }
+            if (obj == ModuleAt && slot == RelaySession.SlotOf(typeof(ICorDebugModule), nameof(ICorDebugModule.TryGetSize)))
+            {
+                return new RelayReply(0, [BitConverter.GetBytes(image.Length)], []);
+            }
+            if (obj != ModuleAt && slot == RelaySession.SlotOf(typeof(ICorDebugProcess), nameof(ICorDebugProcess.TryReadMemory)) && args.Count == 4)
+            {
+                Reads++;
+                ulong at = args[0].Value - ImageAt;
+                int count = (int)args[1].Value;
+                return args[0].Value >= ImageAt && at + (ulong)count <= (ulong)image.Length
+                    ? new RelayReply(0, [image.AsSpan((int)at, count).ToArray(), BitConverter.GetBytes((ulong)count)], [])
+                    : new RelayReply(unchecked((int)0x80004005), [new byte[count], new byte[8]], []);
+            }
+            return null;
         }
 
         public void Release(ulong pointer)

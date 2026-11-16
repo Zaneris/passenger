@@ -17,6 +17,10 @@ internal sealed unsafe partial class RelaySession
     private const int E_NOTIMPL = unchecked((int)0x80004001);
     private const int E_FAIL = unchecked((int)0x80004005);
     private const int E_INVALIDARG = unchecked((int)0x80070057);
+
+    /// <summary>The runtime's own answer for metadata it will not read.</summary>
+    private const int CLDB_E_FILE_CORRUPT = unchecked((int)0x8013110E);
+
     private const int EnumBatch = 32;
 
     private readonly IRelayLink _link;

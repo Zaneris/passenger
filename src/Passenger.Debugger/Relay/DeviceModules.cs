@@ -17,6 +17,10 @@ internal sealed unsafe class DeviceModules
     /// <summary>ofCopyMemory: a scope opened on memory keeps a copy of its own.</summary>
     private const uint CopyMemory = 0x2;
 
+    /// <summary>Zeros kept past metadata from an app's memory, more than a table's row or a stream's header holds, so a read
+    /// that runs past the metadata's end by one of them reads these and nothing of the process's.</summary>
+    private const int ZerosPast = 256;
+
     /// <summary>IMetaDataEmit::ApplyEditAndContinue's slot: cor.h's 44th method of the interface, after IUnknown's three.</summary>
     private const int ApplyEditAndContinueSlot = 3 + 43;
 
@@ -68,7 +72,7 @@ internal sealed unsafe class DeviceModules
     }
 
     /// <summary>A scope over metadata read out of the app's memory, kept for the session as a file's is (the evaluator's
-    /// metadata blocks point into it).</summary>
+    /// metadata blocks point into it); <paramref name="metadata"/> has passed <see cref="DeviceMetadata.Refused"/>.</summary>
     public int OpenMetadataInMemory(ulong module, byte[] metadata, Guid* iid, nint* result)
     {
         string key = KeyOf(null, module);
@@ -82,7 +86,7 @@ internal sealed unsafe class DeviceModules
                     *result = 0;
                     return made;
                 }
-                nint copy = (nint)NativeMemory.Alloc((nuint)metadata.Length);
+                nint copy = (nint)NativeMemory.AllocZeroed((nuint)metadata.Length + ZerosPast);
                 metadata.CopyTo(new Span<byte>((void*)copy, metadata.Length));
                 nint* vtable = *(nint**)_dispenser;
                 Guid import = s_importInterface;

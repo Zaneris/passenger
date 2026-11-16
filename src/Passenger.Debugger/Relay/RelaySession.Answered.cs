@@ -11,6 +11,9 @@ internal sealed unsafe partial class RelaySession
     private readonly ConcurrentDictionary<ulong, string?> _moduleFiles = new();
     private readonly ConcurrentDictionary<nint, StandIn> _moduleOfScope = new();
 
+    /// <summary>The modules whose metadata from the app's memory was refused, answered at once from then on.</summary>
+    private readonly ConcurrentDictionary<ulong, bool> _metadataRefused = new();
+
     /// <summary>The engine's callbacks, which stay in the IDE; a module's name, place and metadata, read on the host; a
     /// value's size, kept, and a generic value's bytes, as many as that size; a thread's or a stack walk's context, as many
     /// bytes as asked. A call with any other argument no plan can size is refused rather than sent.</summary>
@@ -233,10 +236,15 @@ internal sealed unsafe partial class RelaySession
 
     /// <summary>The metadata of a module the host has no copy of (loaded from bytes, or from somewhere the build did not
     /// put it), read out of its image in the app's memory and opened on the host, so no metadata pointer of the app's
-    /// reaches the engine. A dynamic module has no image to read.</summary>
+    /// reaches the engine. A dynamic module has no image to read; one whose metadata is not laid out as a module's
+    /// (<see cref="DeviceMetadata"/>) is refused, said once, and answered as corrupt from then on.</summary>
     private int MetadataFromApp(StandIn module, Guid* iid, nint* result)
     {
         *result = 0;
+        if (_metadataRefused.ContainsKey(module.Owner.Identity))
+        {
+            return CLDB_E_FILE_CORRUPT;
+        }
         uint isDynamic = SlotOf(typeof(ICorDebugModule), nameof(ICorDebugModule.TryIsDynamic));
         RelayReply dynamic = _link.Call(module.Pointer, isDynamic, [RelayArg.Out(4)]);
         if (dynamic.Hr < 0 || BinaryPrimitives.ReadInt32LittleEndian(dynamic.Outs[0]) != 0)
@@ -260,6 +268,12 @@ internal sealed unsafe partial class RelaySession
             {
                 _log?.Invoke($"No metadata found in the module's image at 0x{image:x} ({length} bytes)");
                 return E_FAIL;
+            }
+            if (DeviceMetadata.Refused(metadata) is { } why)
+            {
+                _metadataRefused[module.Owner.Identity] = true;
+                _log?.Invoke($"The metadata of the module at 0x{image:x} is not opened, so nothing is read of its types: {why}");
+                return CLDB_E_FILE_CORRUPT;
             }
             return _modules.OpenMetadataInMemory(module.Owner.Identity, metadata, iid, result);
         }
