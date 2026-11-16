@@ -176,6 +176,19 @@ public sealed class StepMatcherTests
     }
 
     [Fact]
+    public void An_outlines_step_with_placeholders_carries_no_arguments_however_many_example_rows_it_has()
+    {
+        StepMatcher matcher = Matcher(Binding(BindingKind.Given, "the first number is {int}", "GivenTheFirstNumberIs", P("number", Int)));
+        FeatureReading one = FeatureReading.Read(
+            "Feature: F\n\nScenario Outline: O\n  Given the first number is <a>\n\nExamples:\n  | a |\n  | 12345 |\n", "en");
+        FeatureReading two = FeatureReading.Read(
+            "Feature: F\n\nScenario Outline: O\n  Given the first number is <a>\n\nExamples:\n  | a |\n  | 12345 |\n  | 6 |\n", "en");
+
+        Assert.Empty(Assert.Single(matcher.Match(one.Steps[0], one).Bindings).Arguments);
+        Assert.Empty(Assert.Single(matcher.Match(two.Steps[0], two).Bindings).Arguments);
+    }
+
+    [Fact]
     public void A_steps_context_takes_its_examples_tags()
     {
         FeatureReading reading = FeatureReading.Read(

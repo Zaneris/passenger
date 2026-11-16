@@ -82,7 +82,9 @@ public sealed class StepMatcher
         {
             runs.Add(Match(step.Kind, text, step.DocString is not null, step.Table is not null, context));
         }
-        if (runs.Count == 1)
+        // Runs of one text (a background's, an outline's step with no placeholder) give their arguments where they are.
+        bool alike = step.Placeholders.Count == 0;
+        if (runs.Count == 1 && alike)
         {
             return runs[0];
         }
@@ -94,8 +96,6 @@ public sealed class StepMatcher
         {
             return ambiguous with { Bindings = [.. ambiguous.Bindings.Select(b => b with { Arguments = [] })] };
         }
-        // Runs of one text (a background's, an outline's step with no placeholder) give their arguments where they are.
-        bool alike = step.Placeholders.Count == 0;
         List<BoundStep> bound = [];
         foreach (BoundStep each in runs.SelectMany(r => r.Bindings).Where(each => !bound.Any(b => b.Binding.SameAs(each.Binding))))
         {
