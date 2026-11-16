@@ -30,6 +30,14 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 
 ## 2026-11-15
 
+- `SelfDebuggingTests`' `Passenger_opened_on_its_repository_debugs_itself_on_a_state_of_its_own_stopping_stepping_and_evaluating_in_its_ui_code`,
+  CI 43770890675 (Linux shard 1 of the report lane): "Building Passenger rewrote the checkout's restore of 30 projects …
+  read "/home/runner/.nuget/NuGet/NuGet.Config" and now reads "/tmp/passenger-run-…/home/.nuget/NuGet/NuGet.Config"".
+  **The test waited wrong**: it gave the person's NuGet settings back only until the window said it was building, and
+  since #1741 (af21d18be) a build takes its first step only once its saves have landed and its projects are read as
+  written, so the build's process took the run's own NuGet home, a moment after the settings went back. The test now
+  holds the person's settings until the build's process runs (`window.Builder.IsRunning`), where its environment is
+  taken (0a185a07a).
 - `TerminalTests`' `Scrolled_back_the_terminal_holds_its_place_as_output_arrives`, this Mac in a run of the three terminal
   classes in one process (#1744): "seven notches of the wheel scrolled 22 lines back, not 21". **The test waited wrong**: it
   typed its second command (`./cases wait …`) as soon as the first program's line 300 showed, then waited only for an
