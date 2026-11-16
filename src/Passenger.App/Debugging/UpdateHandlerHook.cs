@@ -122,11 +122,11 @@ public sealed class UpdateHandlerHook : IDisposable
         plan.RunsOn is { } framework && Listen(framework, plan.Name, plan.Environment) is ({ } hook, _) ? hook : null;
 
     /// <summary>The variables that load the hook of this machine's socket in a program of <paramref name="environment"/>: its
-    /// socket, and the hook first among the startup hooks the environment names.</summary>
-    public IReadOnlyDictionary<string, string> Over(IReadOnlyDictionary<string, string> environment) => new Dictionary<string, string>
+    /// socket, and the hook, as <paramref name="hook"/> names its copy, first among the startup hooks the environment names.</summary>
+    public IReadOnlyDictionary<string, string> Over(IReadOnlyDictionary<string, string> environment, string hook) => new Dictionary<string, string>
     {
         [Wire.SocketVariable] = SocketPath ?? string.Empty,
-        [RuntimeVariables.StartupHooks] = StartupHooks.First(environment, HookPath),
+        [RuntimeVariables.StartupHooks] = StartupHooks.First(environment, hook),
     };
 
     /// <summary>Whether the hook loads in a program on <paramref name="framework"/>: one on .NET 8 or later, the hook carried.</summary>

@@ -130,10 +130,10 @@ public sealed partial class BuildRunController
             System.Diagnostics.ProcessStartInfo start = plan.Start();
             start.RedirectStandardOutput = true;
             start.RedirectStandardError = true;
-            if (app is SimulatorApp)
+            if (app is SimulatorApp simulator)
             {
                 // A simulator's app takes its variables from simctl's launch: the inspector's, the relay's and the hook's.
-                foreach ((string name, string value) in SimulatorApp.Given(SimulatorApp.Variables(plan.Environment, inspected?.Device, relay, handlers)))
+                foreach ((string name, string value) in SimulatorApp.Given(simulator.Variables(plan.Environment, inspected?.Device, relay, handlers)))
                 {
                     start.Environment[name] = value;
                 }

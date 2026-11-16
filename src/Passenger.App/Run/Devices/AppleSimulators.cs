@@ -101,9 +101,17 @@ public static class AppleSimulators
         try
         {
             ChildResult installed = await SimctlAsync(tools.Simctl, ["install", udid, bundle], cancel);
-            return installed.Succeeded
-                ? (new SimulatorApp(udid, tools.Simctl, identifier, bundle, read.Property(MSBuildNames.RuntimeIdentifier) ?? string.Empty), null)
-                : (null, installed.Said);
+            if (!installed.Succeeded)
+            {
+                return (null, installed.Said);
+            }
+            ChildResult data = await SimctlAsync(tools.Simctl, ["get_app_container", udid, identifier, "data"], cancel);
+            return data.Succeeded && data.Output.Trim() is { Length: > 0 } container
+                ? (new SimulatorApp(udid, tools.Simctl, identifier, bundle, read.Property(MSBuildNames.RuntimeIdentifier) ?? string.Empty)
+                {
+                    Carried = Path.Combine(container, "tmp", "passenger"),
+                }, null)
+                : (null, $"simctl did not say where its data container is: {data.Said}");
         }
         catch (TimeoutException)
         {

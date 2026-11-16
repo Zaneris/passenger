@@ -300,11 +300,14 @@ public sealed class LiveApp : ILiveTreeSource, IDisposable
         }
         string socket = $"passenger-inspector-{Convert.ToHexString(System.Security.Cryptography.RandomNumberGenerator.GetBytes(4)).ToLowerInvariant()}";
         string token = Convert.ToHexString(System.Security.Cryptography.RandomNumberGenerator.GetBytes(16));
-        // The hook first: its folder's other assemblies are what it carries (Avalonia's XAML Hot Reload compiler, its headless platform).
-        string[] files = [inspector, .. Directory.EnumerateFiles(Path.GetDirectoryName(inspector)!, "*.dll").Where(f => !PathNames.Same(f, inspector)).Order(StringComparer.Ordinal)];
         return new LiveApp(plan.Name, $"{Wire.Listens}{socket}", null, plan, kind == LiveAppKind.Avalonia ? overlays : [], kind,
-            device: new Run.Devices.DeviceInspector(socket, token, files, More(kind, plan, overlays)));
+            device: new Run.Devices.DeviceInspector(socket, token, Carried(inspector), More(kind, plan, overlays)));
     }
+
+    /// <summary>The files a start carries into an app on a device for an inspector: the hook first, then its folder's other
+    /// assemblies, which it carries (Avalonia's XAML Hot Reload compiler, its headless platform).</summary>
+    private static string[] Carried(string inspector) =>
+        [inspector, .. Directory.EnumerateFiles(Path.GetDirectoryName(inspector)!, "*.dll").Where(f => !PathNames.Same(f, inspector)).Order(StringComparer.Ordinal)];
 
     /// <summary>The live app for a plan that runs an app on an iOS simulator whose built bundle carries Avalonia or .NET MAUI: the
     /// framework's inspector loaded from where Passenger carries it, listening on a loopback port of its own (the simulator's
@@ -324,7 +327,7 @@ public sealed class LiveApp : ILiveTreeSource, IDisposable
         string listens = port.ToString(System.Globalization.CultureInfo.InvariantCulture);
         string token = Convert.ToHexString(System.Security.Cryptography.RandomNumberGenerator.GetBytes(16));
         return new LiveApp(plan.Name, $"{Wire.Listens}{listens}", null, plan, kind == LiveAppKind.Avalonia ? overlays : [], kind,
-            device: new Run.Devices.DeviceInspector(listens, token, [inspector], More(kind, plan, overlays)));
+            device: new Run.Devices.DeviceInspector(listens, token, Carried(inspector), More(kind, plan, overlays)));
     }
 
     /// <summary>The variables an app on a device takes for its inspector beyond its hook, socket and token: MAUI's record of

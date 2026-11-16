@@ -4,11 +4,16 @@ namespace Passenger.App.Run.Devices;
 
 /// <summary>An app installed on an iOS simulator, as its build says it starts: the simulator's UDID, the simctl of the Xcode
 /// its workload builds with, the app's bundle identifier, the built bundle (whose assemblies, each beside its PDB, are those
-/// the app loads) and the runtime identifier it was built for. A simulator's app is a process of this Mac that reads this
-/// Mac's files: what a start gives it goes in its environment as simctl passes it on (<see cref="Given"/>), the relay and
-/// the inspector loaded from where Passenger carries them, so nothing is put in the app and its end only ends it.</summary>
+/// the app loads) and the runtime identifier it was built for. A simulator's app is a process of this Mac: what a start
+/// gives it goes in its environment as simctl passes it on (<see cref="Given"/>), what it loads of Passenger's copied into
+/// its own data container first (<see cref="Carried"/>).</summary>
 public sealed partial record SimulatorApp(string Udid, string Simctl, string Package, string Bundle, string RuntimeIdentifier)
 {
+    /// <summary>Where a start puts what the app loads of Passenger's (the relay, the inspector, the update handlers' hook): a
+    /// folder of the app's own data container, which it reads wherever Passenger is, where a folder macOS keeps private
+    /// (Documents, Desktop) refuses it.</summary>
+    public string Carried { get; init; } = string.Empty;
+
     /// <summary>What begins a variable simctl gives the app it launches, the rest of its name the app's variable.</summary>
     public const string ChildPrefix = "SIMCTL_CHILD_";
 

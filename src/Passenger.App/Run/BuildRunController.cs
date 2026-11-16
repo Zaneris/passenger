@@ -1333,10 +1333,10 @@ public sealed partial class BuildRunController
                     (handlers, variables) = (hook, new Dictionary<string, string>(hooked.Environment));
                 }
             }
-            if (plan.Device?.App is Devices.SimulatorApp)
+            if (plan.Device?.App is Devices.SimulatorApp simulator)
             {
                 // A simulator's app takes its variables from simctl's launch: the inspector's, the relay's and the hook's with the plan's.
-                variables = Devices.SimulatorApp.Given(Devices.SimulatorApp.Variables(variables, inspected?.Device, relay, handlers));
+                variables = Devices.SimulatorApp.Given(simulator.Variables(variables, inspected?.Device, relay, handlers));
             }
             if (plan.Console == ConsoleKind.Terminal)
             {

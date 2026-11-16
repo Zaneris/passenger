@@ -14,10 +14,10 @@ namespace Passenger.Tests;
 /// <summary>The app <c>dotnet new maui</c> makes, its iOS head run and debugged on an iOS simulator chosen beside its run
 /// configuration, as the iOS workload lists them: Run builds it for the simulator, boots one that is shut down with no window,
 /// installs and starts the app there, its output in the Run window and its MAUI inspector's tree the app's; with Hot Reload
-/// an edit lands through Passenger's relay in it and its update handler is called; Debug stops at a breakpoint in its main
-/// page, steps, shows and evaluates, and takes an edit there; Stop ends the app, and a simulator the window booted is shut
-/// down as the window closes. Skips, saying why, off a Mac, without MAUI's and iOS's workloads, Xcode or an iPhone
-/// simulator, or the simulator's relay. Debugged through the window, so alone.</summary>
+/// an edit lands through Passenger's relay, carried into the app's data container, and its update handler is called; Debug
+/// stops in its main page, steps, shows, evaluates and takes an edit; Stop ends the app and takes out what was carried, and
+/// a simulator the window booted is shut down as it closes. Skips, saying why, off a Mac, without MAUI's and iOS's workloads,
+/// Xcode or an iPhone simulator, or the simulator's relay. Debugged through the window, so alone.</summary>
 [Collection(Alone.Name)]
 public sealed class MauiSimulatorTests
 {
@@ -46,6 +46,7 @@ public sealed class MauiSimulatorTests
             Assert.Contains(AppTree.Walk(tree.Roots), e => e.Element is { Type: "Button", Name: "CounterBtn" });
             string? started = SimulatorStart(window.BottomPanel.Run.Document.Snapshot, window);
             Assert.True(started is not null, $"simctl did not say the app's process in the Run window:\n{Output(window)}");
+            string carried = Carried(window);
 
             window.OpenFile(Path.Combine(PathNames.Canonical(Path.GetDirectoryName(project)!), "MainPage.xaml.cs"));
             Typing.Replace(window, "$\"Clicked {count} time\"", "$\"Tapped {count} time\"");
@@ -59,6 +60,7 @@ public sealed class MauiSimulatorTests
             Ui.WaitFor(() => window.Runner.Ended.IsCompleted, "the run to end once stopped");
             Ui.WaitFor(() => window.Debugger.Running.Count == 0, "the quiet session to end with the app");
             Ui.WaitFor(() => !Runs(started!), () => $"the app to end on the simulator once stopped; process {started} still runs", TimeSpan.FromSeconds(30));
+            Ui.WaitFor(() => !Directory.Exists(carried), () => $"what the run carried into the app to be taken out once stopped; {carried} is still there", TimeSpan.FromSeconds(30));
         }
         finally
         {
@@ -88,6 +90,7 @@ public sealed class MauiSimulatorTests
                     + $"{Ui.Said(window)}\n{Console(window)}", Slow);
             Assert.Contains("Content = (null)", Shown(window, "this"), StringComparison.Ordinal);
             string? started = SimulatorStart(window.BottomPanel.Debug.Console.Document.Snapshot, window);
+            string carried = Carried(window);
 
             Ui.Run(window, AppActions.StepOver);
             Ui.WaitFor(() => window.Debugger.Session?.State == DebugState.Paused && Shown(window, "this") is { } shown && shown.Contains("ScrollView", StringComparison.Ordinal),
@@ -114,6 +117,7 @@ public sealed class MauiSimulatorTests
             Ui.WaitFor(() => !window.Debugger.IsDebugging, "the debug session to end once stopped", TimeSpan.FromMinutes(1));
             Assert.True(started is not null, $"simctl did not say the app's process in the Debug console:\n{Console(window)}");
             Ui.WaitFor(() => !Runs(started!), () => $"the debugged app to end on the simulator once stopped; process {started} still runs", TimeSpan.FromSeconds(30));
+            Ui.WaitFor(() => !Directory.Exists(carried), () => $"what the session carried into the app to be taken out once stopped; {carried} is still there", TimeSpan.FromSeconds(30));
         }
         finally
         {
@@ -185,6 +189,15 @@ public sealed class MauiSimulatorTests
     /// <summary>The app's process as simctl said it launched it, in a console's text; null until it has.</summary>
     private static string? SimulatorStart(TextSnapshot shown, MainWindow window) =>
         (window.Session.RunPlan?.Device?.App ?? window.Debugger.Tabs.Select(t => t.Plan?.Device?.App).LastOrDefault(a => a is not null))?.StartedIn(shown);
+
+    /// <summary>Where the start carried what the app loads of Passenger's in its data container, which it has there now.</summary>
+    private static string Carried(MainWindow window)
+    {
+        SimulatorApp app = (window.Session.RunPlan?.Device?.App ?? window.Debugger.Tabs.Select(t => t.Plan?.Device?.App).LastOrDefault(a => a is not null)) as SimulatorApp
+            ?? throw new InvalidOperationException("The start named no app on a simulator");
+        Assert.True(File.Exists(Path.Combine(app.Carried, SimulatorApp.RelayFile)), $"The relay was not carried into the app's data container ({app.Carried}), where the app reads it");
+        return app.Carried;
+    }
 
     /// <summary>Whether a process of this Mac (a simulator's app is one) still runs.</summary>
     private static bool Runs(string process) =>
