@@ -15,6 +15,7 @@ public sealed class FeatureAnalysis
     public const string Undefined = "undefined-step";
     public const string Ambiguous = "ambiguous-step";
     public const string Syntax = "gherkin";
+    public const string CodeBehind = "code-behind";
 
     private FeatureAnalysis(int version, TextSnapshot text, FeatureReading reading, ReqnrollConfig config, ProjectSteps? steps)
     {
@@ -96,7 +97,7 @@ public sealed class FeatureAnalysis
             string written = Text.GetLineText(line).TrimEnd('\r');
             int start = Math.Min(error.Column, written.Length);
             int length = Math.Max(written.TrimEnd().Length - start, 0);
-            marks.Add(Marker.Coded(new TextRange(OffsetOf(line, start), Math.Max(length, 1)), MarkerKind.Error, Syntax, error.Message));
+            marks.Add(Marker.Coded(new TextRange(OffsetOf(line, start), Math.Max(length, 1)), MarkerKind.Error, error.ByGenerator ? CodeBehind : Syntax, error.Message));
         }
         foreach ((FeatureStep step, StepMatch match) in Matches)
         {

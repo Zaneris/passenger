@@ -77,8 +77,13 @@ public sealed record FeaturePlaceholder(int Column, string Name)
 /// <summary>Lines that fold together, the first staying shown.</summary>
 public readonly record struct FeatureFold(int FirstLine, int LastLine);
 
-/// <summary>A mistake Gherkin's reader found, where it found it.</summary>
-public sealed record FeatureError(int Line, int Column, string Message);
+/// <summary>A mistake in a feature, where it is: one Gherkin's reader found, or one Reqnroll's code-behind generator refuses a
+/// feature for that Gherkin reads.</summary>
+public sealed record FeatureError(int Line, int Column, string Message)
+{
+    /// <summary>Whether it is the generator's (<see cref="GeneratorChecks"/>) rather than the reader's.</summary>
+    public bool ByGenerator { get; init; }
+}
 
 /// <summary>A titled part: the feature, a rule, an outline's examples.</summary>
 public sealed class FeatureHeader(string keyword, string title, int line, int column, IReadOnlyList<FeatureTag> tags)
@@ -182,7 +187,8 @@ public sealed class FeatureStep(int line, int column, string keyword, StepKeywor
 
 /// <summary>A .feature file as Cucumber's Gherkin reader reads it, kept whole where it finds mistakes so the editor still
 /// knows every step: each line matched as the reader matches it, the parts and steps built from those lines, and the
-/// reader's own mistakes beside them. Lines and columns count from zero.</summary>
+/// reader's own mistakes beside them, or where it finds none, what Reqnroll's generator refuses. Lines and columns count
+/// from zero.</summary>
 public sealed partial class FeatureReading
 {
     private FeatureReading(GherkinDialect dialect) => Dialect = dialect;
@@ -554,7 +560,8 @@ public sealed partial class FeatureReading
         return end;
     }
 
-    /// <summary>The mistakes Gherkin's own parser finds, all of them rather than the first.</summary>
+    /// <summary>The mistakes Gherkin's own parser finds, all of them rather than the first; where it finds none, those
+    /// Reqnroll's generator refuses the feature for.</summary>
     private void Check(string text, string language)
     {
         Parser parser = new() { StopAtFirstError = false };
@@ -574,6 +581,10 @@ public sealed partial class FeatureReading
         catch (ParserException error)
         {
             Add(error);
+        }
+        if (Errors.Count == 0)
+        {
+            Errors.AddRange(GeneratorChecks.Of(this));
         }
     }
 

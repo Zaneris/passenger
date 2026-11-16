@@ -552,7 +552,10 @@ anchored to the whole step) and `Reqnroll/Bindings/StepDefinitionRegexCalculator
 `GherkinDialects.cs` beside them holds `ReqnrollProvider`, a port of `Reqnroll/Parser/ReqnrollGherkinDialectProvider.cs` at
 the same commit: a `# language:` naming a region Gherkin lacks read in its language's keywords under the name written.
 `FeatureReading.cs` beside them tells a scenario an outline as `Reqnroll.Parser/ReqnrollGherkinParser.cs`'s
-`CreateScenario` builds one at the same commit: wherever it has examples, whatever its keyword.
+`CreateScenario` builds one at the same commit: wherever it has examples, whatever its keyword. `GeneratorChecks.cs`
+beside them refuses a feature Gherkin reads as that file's `CheckSemanticErrors` does at the same commit, by its four
+checks in `Reqnroll.Parser/SemanticValidators/` (`DuplicateScenariosValidator.cs`, `DuplicateExamplesValidator.cs`,
+`MissingExamplesValidator.cs` and `DuplicateExamplesColumnHeadersValidator.cs`), in their words at the places they name.
 
 ```
 BSD 3-Clause License

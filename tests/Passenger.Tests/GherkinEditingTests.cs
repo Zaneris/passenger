@@ -13,7 +13,8 @@ namespace Passenger.Tests;
 /// Gherkin's reading of it (descriptions, placeholders, an examples table's header),
 /// folded by Gherkin's own reading of it (the feature, each scenario, its examples and doc strings), outlined in Structure
 /// and commented with a <c>#</c>, laid out by Reformat Code and its tables aligned as a bar or Enter is typed, read in the
-/// language its <c># language:</c> line names as each key of it is typed, all with no project or language server.</summary>
+/// language its <c># language:</c> line names as each key of it is typed, and marked where Reqnroll's code-behind generator
+/// would refuse it as it is typed, all with no project or language server.</summary>
 public sealed class GherkinEditingTests : FileColoursFolder
 {
     private const string Feature =
@@ -191,5 +192,33 @@ public sealed class GherkinEditingTests : FileColoursFolder
         window.Close();
 
         (int, int)[] Folds() => [.. document.FoldRegions.Select(r => (document.Text.Snapshot.GetLineFromOffset(r.Start), document.Text.Snapshot.GetLineFromOffset(r.End)))];
+    }
+
+    [AvaloniaFact]
+    public void An_outlines_examples_typed_with_no_row_are_marked_at_the_outline_as_the_generator_refuses_them_until_a_row_is_typed()
+    {
+        MainWindow window = Window();
+        CodeEditor editor = Open(window, "Outline.feature", "Feature: Calculator\n\n  Scenario Outline: Add numbers\n    Given the first number is <a>\n    Then the result should be <sum>\n");
+        OpenDocument document = window.EditorArea.Active!;
+        int outline = document.Text.Snapshot.ToString().IndexOf("Scenario Outline", StringComparison.Ordinal);
+        Ui.WaitFor(() => KindOf(editor, "<a>") == TokenKind.Number, "the feature read");
+        Assert.True(document.Markers.Count == 0, $"An outline with no examples runs as a scenario, refused nothing: {Marks()}");
+
+        Ui.PlaceAfter(editor, "<sum>");
+        editor.Focus();
+        Ui.Press(window, "ENTER");
+        window.KeyTextInput("Examples:");
+        Ui.Press(window, "ENTER");
+        window.KeyTextInput("| a | sum |");
+        Ui.WaitFor(() => document.Markers.Any(m => m.Range.Start == outline && m.Kind == MarkerKind.Error && m.Code == Passenger.App.Bdd.FeatureAnalysis.CodeBehind
+                && m.Said == "Scenario Outline 'Add numbers' has no examples defined"),
+            () => $"the examples with no row marked at the outline, as the generator refuses them: {Marks()} in {editor.Document.Snapshot}");
+
+        Ui.Press(window, "ENTER");
+        window.KeyTextInput("| 1 | 1 |");
+        Ui.WaitFor(() => document.Markers.Count == 0, () => $"the mark gone once the examples have a row: {Marks()} in {editor.Document.Snapshot}");
+        window.Close();
+
+        string Marks() => string.Join("; ", document.Markers.Select(m => $"{m.Range.Start} {m.Message}"));
     }
 }
