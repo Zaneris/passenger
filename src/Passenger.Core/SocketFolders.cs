@@ -17,24 +17,7 @@ public static partial class SocketFolders
     /// <summary>A state folder's socket folder made the user's alone (mode 0700), or an <see cref="IOException"/> saying why
     /// not: a link, or one another user made first (on Linux's shared /tmp), whose mode only its owner may set, is never
     /// listened or connected in.</summary>
-    public static string Own(string state)
-    {
-        string folder = For(state);
-        if (OperatingSystem.IsWindows())
-        {
-            // The user's temporary folder, under their profile, is theirs alone already.
-            Directory.CreateDirectory(folder);
-            return folder;
-        }
-        const UnixFileMode Owner = UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute;
-        Directory.CreateDirectory(folder, Owner);
-        if (new DirectoryInfo(folder).LinkTarget is not null)
-        {
-            throw new IOException($"{folder} is a link, not a folder of the user's own");
-        }
-        File.SetUnixFileMode(folder, Owner);
-        return folder;
-    }
+    public static string Own(string state) => UserTemporary.Own(For(state));
 
     /// <summary>A state folder's socket folder when it is there and the user's own, else null.</summary>
     public static string? Found(string state)

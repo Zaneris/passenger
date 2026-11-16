@@ -37,7 +37,8 @@ public sealed class HomeDotnetTests(LinkedDotnetTests.Linked linked) : McpRig, I
 
     /// <summary>A folder whose global.json asks for the SDK only the home's .dotnet holds, while DOTNET_ROOT names another
     /// installation found first: its terminal's login shell (zsh or bash), whose startup files may put the system's .NET
-    /// first (macOS's path_helper), runs the home's dotnet, at the version asked, and names it as DOTNET_ROOT.</summary>
+    /// first (macOS's path_helper), runs the home's dotnet, at the version asked, and names it as DOTNET_ROOT; the folder
+    /// first on its PATH is the installation's own where it holds .NET's layout alone, else one holding that dotnet alone.</summary>
     [Theory]
     [InlineData("zsh")]
     [InlineData("bash")]
@@ -55,9 +56,17 @@ public sealed class HomeDotnetTests(LinkedDotnetTests.Linked linked) : McpRig, I
         try
         {
             await using McpClient client = await Start(["--mcp", folder], environment: Apart(home, other, $"/bin/{shell}"), languageServer: false);
-            string answer = Text(await Call(client, McpTools.TerminalRun, new() { ["command"] = "echo \"root=$DOTNET_ROOT\"; dotnet --version", ["waitSeconds"] = 60 }));
-            Assert.True(answer.Contains($"root={installation}", StringComparison.Ordinal) && answer.Split('\n').Any(line => line.Trim() == sdk),
+            string answer = Text(await Call(client, McpTools.TerminalRun, new()
+            {
+                ["command"] = "echo \"root=$DOTNET_ROOT\"; dotnet --version; echo \"first=${PATH%%:*}\"; printf 'held=%s\\n' \"$(ls -A \"${PATH%%:*}\" | tr '\\n' ' ')\"",
+                ["waitSeconds"] = 60,
+            }));
+            string[] lines = answer.Split('\n', StringSplitOptions.TrimEntries);
+            Assert.True(lines.Contains($"root={installation}") && lines.Any(line => line == sdk),
                 $"In a folder whose global.json asks for the SDK {sdk}, which only {home}/.dotnet holds, the terminal's {shell} ran another dotnet, DOTNET_ROOT naming {other} first:\n{answer}");
+            Assert.True(Dotnet.HoldsLayoutAlone(installation) ? lines.Contains($"first={installation}")
+                    : !lines.Contains($"first={installation}") && lines.Contains($"held={Dotnet.HostName}"),
+                $"The folder first on the terminal's PATH is not {installation}, which holds .NET's layout alone, or holds more than its dotnet where the installation holds more than .NET's layout, so {shell} would run its other programs in place of the system's:\n{answer}");
         }
         finally
         {
@@ -73,6 +82,26 @@ public sealed class HomeDotnetTests(LinkedDotnetTests.Linked linked) : McpRig, I
         string[] system = ["/usr/local/share/dotnet", "/usr/share/dotnet", "/usr/lib/dotnet", "/opt/homebrew/opt/dotnet/libexec", "/usr/local/opt/dotnet/libexec"];
         HashSet<string> elsewhere = [.. system.Where(root => Directory.Exists(root) && !PathNames.Same(root, installation)).SelectMany(root => DotnetInstallation.Read(root).Sdks)];
         return DotnetInstallation.Read(installation).Sdks.FirstOrDefault(sdk => !elsewhere.Contains(sdk));
+    }
+
+    /// <summary>The folder that lends a terminal its folder's .NET installation runs that installation's dotnet with the
+    /// arguments given, on every system: through its link on macOS and Linux, through its dotnet.cmd on Windows.</summary>
+    [Fact]
+    public async Task The_folder_lending_a_terminal_its_dotnet_runs_the_installations_dotnet_with_the_arguments_given()
+    {
+        string installation = Dotnet.Root();
+        string sdk = DotnetInstallation.Read(installation).NewestSdk ?? throw new InvalidOperationException($"The tests' .NET in {installation} has no SDK");
+        string folder = Dotnet.HostAlone(installation, TestRun.Settings);
+        DeleteAtEnd(folder);
+        string at = PathNames.Canonical(TestFolders.Create("host-alone-"));
+        DeleteAtEnd(at);
+        string program = Path.Combine(folder, OperatingSystem.IsWindows() ? Dotnet.HostCommand : Dotnet.HostName);
+        ChildResult listed = await ChildProcesses.RunAsync(ChildProcesses.Command(program, ["--list-sdks"], at), limit: TimeSpan.FromMinutes(1).Scaled(),
+            cancel: TestContext.Current.CancellationToken);
+        string sdks = Path.Combine(installation, "sdk");
+        Assert.True(listed.Succeeded && listed.Output.Split('\n', StringSplitOptions.TrimEntries)
+                .Any(line => line.StartsWith($"{sdk} [", StringComparison.Ordinal) && line.EndsWith(']') && PathNames.Same(line[(sdk.Length + 2)..^1], sdks)),
+            $"{program} --list-sdks did not list {installation}'s SDK {sdk}, so a terminal given the folder would run no dotnet of the installation's: exit {listed.ExitCode}\n{listed.Output}{listed.Error}");
     }
 
     /// <summary>A folder the installation found first serves (its global.json asks for that one's SDK) keeps its terminal's
@@ -91,7 +120,7 @@ public sealed class HomeDotnetTests(LinkedDotnetTests.Linked linked) : McpRig, I
             Dictionary<string, string?> environment = Apart(home, other, "/bin/sh");
             await using McpClient client = await Start(["--mcp", folder], environment: environment, languageServer: false);
             await Call(client, McpTools.SettingsSet, new() { ["changes"] = new Dictionary<string, object> { ["terminalShell"] = "/bin/sh" } });
-            string answer = Text(await Call(client, McpTools.TerminalRun, new() { ["command"] = $"echo \"path=$PATH root=$DOTNET_ROOT\"; env | grep -c -e '^{FirstOnPath.FolderVariable}=' -e '^{FirstOnPath.AgainVariable}=' -e '^{FirstOnPath.ZdotdirVariable}='", ["waitSeconds"] = 30 }));
+            string answer = Text(await Call(client, McpTools.TerminalRun, new() { ["command"] = $"echo \"path=$PATH root=$DOTNET_ROOT\"; env | grep -c -e '^{FirstOnPath.FolderVariable}=' -e '^{FirstOnPath.ValueVariable}=' -e '^{FirstOnPath.AgainVariable}=' -e '^{FirstOnPath.ZdotdirVariable}='", ["waitSeconds"] = 30 }));
             string[] lines = answer.Split('\n', StringSplitOptions.TrimEntries);
             Assert.True(lines.Contains($"path={environment["PATH"]} root={other}") && lines.Contains("0"),
                 $"With no global.json, which the installation {other} found first serves, the terminal's environment was changed:\n{answer}");
@@ -104,7 +133,8 @@ public sealed class HomeDotnetTests(LinkedDotnetTests.Linked linked) : McpRig, I
 
     /// <summary>A folder whose global.json's sdk paths name an installation of its own beside its projects, as a build
     /// script's install puts one, while every installation found lacks the SDK it asks for: an agent's Passenger loads its
-    /// project with that SDK and builds it there.</summary>
+    /// project with that SDK and builds it there, and its terminal runs that installation's dotnet but never the git put
+    /// beside it.</summary>
     [Fact]
     public async Task A_folder_whose_global_json_paths_name_an_installation_of_its_own_loads_and_builds_with_it()
     {
@@ -129,6 +159,12 @@ public sealed class HomeDotnetTests(LinkedDotnetTests.Linked linked) : McpRig, I
             }
         }
         Directory.CreateSymbolicLink(Path.Combine(Directory.CreateDirectory(Path.Combine(own, "sdk")).FullName, sdk), Path.Combine(installation, "sdk", sdk));
+        string planted = Path.Combine(own, "git");
+        File.WriteAllText(planted, "#!/bin/sh\necho planted\n");
+        if (!OperatingSystem.IsWindows())
+        {
+            File.SetUnixFileMode(planted, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        }
         File.WriteAllText(Path.Combine(folder, "global.json"), $$"""{ "sdk": { "version": "{{sdk}}", "rollForward": "disable", "paths": [ ".dotnet" ] } }""");
         string framework = $"net{sdk.Split('.')[0]}.0";
         File.WriteAllText(Path.Combine(folder, "Lib.csproj"), TestProjects.Library().Replace($"<TargetFramework>{TestProjects.Framework}<", $"<TargetFramework>{framework}<", StringComparison.Ordinal));
@@ -142,6 +178,12 @@ public sealed class HomeDotnetTests(LinkedDotnetTests.Linked linked) : McpRig, I
         JsonElement built = await Call(client, McpTools.Build);
         Assert.True(built.GetProperty("succeeded").GetBoolean() && File.Exists(Path.Combine(folder, "bin", "Debug", framework, "Lib.dll")),
             $"With the SDK {sdk} in the .dotnet global.json's paths name alone, the project did not build there: {built}");
+
+        await Call(client, McpTools.SettingsSet, new() { ["changes"] = new Dictionary<string, object> { ["terminalShell"] = "/bin/sh" } });
+        string answer = Text(await Call(client, McpTools.TerminalRun, new() { ["command"] = "command -v git; dotnet --version", ["waitSeconds"] = 60 }));
+        string[] lines = answer.Split('\n', StringSplitOptions.TrimEntries);
+        Assert.True(lines.Contains(sdk) && !lines.Contains(planted),
+            $"The terminal of a folder whose global.json's paths name {own} ran another dotnet than its SDK {sdk}, or the git beside that dotnet in place of the system's:\n{answer}");
     }
 
     /// <summary>A folder whose global.json's sdk paths name no folder holding the SDK it asks for, and whose errorMessage

@@ -35,6 +35,33 @@ public static partial class UserTemporary
         return Path.Combine(Folder(), kind is null ? $"passenger-{hash}" : $"passenger-{hash}-{kind}");
     }
 
+    /// <summary><paramref name="folder"/> made the user's alone (mode 0700), or an <see cref="IOException"/> saying why not:
+    /// a link, or one another user made first (on Linux's shared /tmp), whose mode only its owner may set. On Windows the
+    /// user's temporary folder, under their profile, is theirs alone already.</summary>
+    public static string Own(string folder)
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            Directory.CreateDirectory(folder);
+            return folder;
+        }
+        const UnixFileMode Owner = UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute;
+        try
+        {
+            Directory.CreateDirectory(folder, Owner);
+            if (new DirectoryInfo(folder).LinkTarget is not null)
+            {
+                throw new IOException($"{folder} is a link, not a folder of the user's own");
+            }
+            File.SetUnixFileMode(folder, Owner);
+        }
+        catch (UnauthorizedAccessException another)
+        {
+            throw new IOException($"{folder} is another user's, or in one, not a folder of the user's own", another);
+        }
+        return folder;
+    }
+
     private static unsafe string? DarwinUserTemp()
     {
         const int DarwinUserTempDir = 65537;

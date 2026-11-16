@@ -4,18 +4,23 @@ using Passenger.Core;
 
 namespace Passenger.Terminal;
 
-/// <summary>A folder a shell finds programs in before any other, named by a variable too (DOTNET_ROOT for a .NET
-/// installation): given in the shell's environment, and given again once its startup files have run, as they may put other
-/// folders first (a macOS login shell's path_helper puts the system's own first) or name another. zsh takes it again
-/// before its first prompt through Passenger's .zshenv in <see cref="ZshStartup"/>, which reads the person's own first,
-/// bash through PROMPT_COMMAND; any other shell has the environment alone.</summary>
-public sealed record FirstOnPath(string Folder, string Variable, string ZshStartup)
+/// <summary>A folder a shell finds programs in before any other, with a variable it goes with (DOTNET_ROOT naming the .NET
+/// installation whose dotnet the folder lends, <see cref="Dotnet.PathFolder"/>): given in the shell's environment, and
+/// given again once its startup files have run, as they may put other folders first (a macOS login shell's path_helper puts
+/// the system's own first) or name another. zsh takes them again before its first prompt through Passenger's .zshenv in
+/// <see cref="ZshStartup"/>, which reads the person's own first, bash through PROMPT_COMMAND; any other shell has the
+/// environment alone.</summary>
+public sealed record FirstOnPath(string Folder, string Variable, string Value, string ZshStartup)
 {
     /// <summary>The folder, for what gives it again after the startup files.</summary>
     [IdentifierHome]
     public const string FolderVariable = "PASSENGER_FIRST_ON_PATH";
 
-    /// <summary>What gives it again, run once at the first prompt.</summary>
+    /// <summary>The variable's value, for what gives it again after the startup files.</summary>
+    [IdentifierHome]
+    public const string ValueVariable = "PASSENGER_FIRST_VALUE";
+
+    /// <summary>What gives them again, run once at the first prompt.</summary>
     [IdentifierHome]
     public const string AgainVariable = "PASSENGER_FIRST_AGAIN";
 
@@ -23,8 +28,8 @@ public sealed record FirstOnPath(string Folder, string Variable, string ZshStart
     [IdentifierHome]
     public const string ZdotdirVariable = "PASSENGER_ZDOTDIR";
 
-    /// <summary>The folder put first on the PATH and named by the variable, every other place of it on the PATH left out,
-    /// in sh's words (bash's and zsh's too); bash's PROMPT_COMMAND then loses what ran it, or goes where nothing else is in it.</summary>
+    /// <summary>The folder put first on the PATH, every other place of it on the PATH left out, and the variable given its
+    /// value, in sh's words (bash's and zsh's too); bash's PROMPT_COMMAND then loses what ran it, or goes where nothing else is in it.</summary>
     private string Again => $$"""
         if [ -n "${{{FolderVariable}}+x}" ]; then
         __passenger_rest=${PATH:+$PATH:}
@@ -34,8 +39,8 @@ public sealed record FirstOnPath(string Folder, string Variable, string ZshStart
         __passenger_rest=${__passenger_rest#*:}
         [ "$__passenger_at" = "${{FolderVariable}}" ] || PATH=$PATH:$__passenger_at
         done
-        export PATH {{Variable}}="${{FolderVariable}}"
-        unset __passenger_rest __passenger_at {{FolderVariable}}
+        export PATH {{Variable}}="${{ValueVariable}}"
+        unset __passenger_rest __passenger_at {{FolderVariable}} {{ValueVariable}}
         fi
         if [ -n "${BASH_VERSION-}" ]; then
         PROMPT_COMMAND=${PROMPT_COMMAND#'{{BashPrompt}}'}
@@ -80,8 +85,8 @@ public sealed record FirstOnPath(string Folder, string Variable, string ZshStart
     }
 
     /// <summary>Sets it over the environment a shell (the program named) starts with, given what the process has
-    /// (<paramref name="inherited"/>): the folder first on the PATH, once, and the variable naming it; for zsh and bash, what
-    /// gives both again after their startup files.</summary>
+    /// (<paramref name="inherited"/>): the folder first on the PATH, once, and the variable given its value; for zsh and
+    /// bash, what gives both again after their startup files.</summary>
     public void Give(string shell, IDictionary<string, string> environment, IReadOnlyDictionary<string, string> inherited)
     {
         StringComparison names = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
@@ -89,13 +94,14 @@ public sealed record FirstOnPath(string Folder, string Variable, string ZshStart
         string pathName = inherited.Keys.FirstOrDefault(name => name.Equals("PATH", names)) ?? "PATH";
         string path = environment.TryGetValue(pathName, out string? given) ? given : inherited.GetValueOrDefault(pathName, string.Empty);
         environment[pathName] = Programs.FirstOnPath(path, Folder);
-        environment[Variable] = Folder;
+        environment[Variable] = Value;
         ShellKind kind = ShellKinds.Of(shell);
         if (kind is not (ShellKind.Zsh or ShellKind.Bash) || OperatingSystem.IsWindows())
         {
             return;
         }
         environment[FolderVariable] = Folder;
+        environment[ValueVariable] = Value;
         environment[AgainVariable] = Again;
         if (kind == ShellKind.Zsh)
         {

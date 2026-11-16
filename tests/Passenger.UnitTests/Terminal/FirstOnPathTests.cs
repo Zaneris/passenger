@@ -3,16 +3,19 @@ using Passenger.Terminal;
 
 namespace Passenger.UnitTests.Terminal;
 
-/// <summary>A folder a shell is to find programs in first (the .NET installation a folder's projects take): put first on
-/// the PATH it inherits, once, and named by its variable; zsh and bash given what puts it first again after their startup
-/// files, each keeping what the person had (zsh's ZDOTDIR, bash's PROMPT_COMMAND); any other shell the environment alone.</summary>
+/// <summary>A folder a shell is to find programs in first (one lending the dotnet of the .NET installation a folder's projects
+/// take): put first on the PATH it inherits, once, and its variable given the installation; zsh and bash given what puts
+/// both again after their startup files, each keeping what the person had (zsh's ZDOTDIR, bash's PROMPT_COMMAND); any other
+/// shell the environment alone.</summary>
 public class FirstOnPathTests
 {
     private static readonly char Separator = Path.PathSeparator;
 
     private static readonly string Folder = Path.Combine(Path.GetTempPath(), "dotnet-of-the-folder");
 
-    private static readonly FirstOnPath First = new(Folder, RuntimeVariables.Root, Path.Combine(Path.GetTempPath(), "zsh-startup"));
+    private static readonly string Installation = Path.Combine(Path.GetTempPath(), "installation-of-the-folder");
+
+    private static readonly FirstOnPath First = new(Folder, RuntimeVariables.Root, Installation, Path.Combine(Path.GetTempPath(), "zsh-startup"));
 
     private static Dictionary<string, string> Inherited(params (string Name, string Value)[] more)
     {
@@ -25,12 +28,14 @@ public class FirstOnPathTests
     }
 
     [Fact]
-    public void Any_shell_finds_the_folder_first_on_the_path_once_and_has_it_as_its_variable()
+    public void Any_shell_finds_the_folder_first_on_the_path_once_and_has_the_installation_as_its_variable()
     {
         Dictionary<string, string> environment = [];
         First.Give("/bin/sh", environment, Inherited());
-        Assert.True(environment.GetValueOrDefault("PATH") == string.Join(Separator, Folder, "/usr/bin", "/bin") && environment.GetValueOrDefault(RuntimeVariables.Root) == Folder,
-            $"sh would run another installation's dotnet: PATH {environment.GetValueOrDefault("PATH")}, DOTNET_ROOT {environment.GetValueOrDefault(RuntimeVariables.Root)}");
+        Assert.True(environment.GetValueOrDefault("PATH") == string.Join(Separator, Folder, "/usr/bin", "/bin"),
+            $"sh would run another installation's dotnet: PATH {environment.GetValueOrDefault("PATH")}");
+        Assert.True(environment.GetValueOrDefault(RuntimeVariables.Root) == Installation,
+            $"sh's DOTNET_ROOT is {environment.GetValueOrDefault(RuntimeVariables.Root)}, not the installation {Installation}, so an app it starts finds no runtime");
         Assert.True(environment.Count == 2, $"A shell that reads nothing of Passenger's after its startup files was given more: {string.Join(", ", environment.Keys)}");
     }
 
@@ -50,8 +55,9 @@ public class FirstOnPathTests
         First.Give("/bin/zsh", environment, Inherited(("ZDOTDIR", "/home/me/.config/zsh")));
         Assert.True(environment.GetValueOrDefault("ZDOTDIR") == First.ZshStartup && environment.GetValueOrDefault(FirstOnPath.ZdotdirVariable) == "/home/me/.config/zsh",
             $"zsh would read the person's startup files from {environment.GetValueOrDefault(FirstOnPath.ZdotdirVariable)}, Passenger's from {environment.GetValueOrDefault("ZDOTDIR")}");
-        Assert.True(environment.GetValueOrDefault(FirstOnPath.FolderVariable) == Folder && environment.GetValueOrDefault(FirstOnPath.AgainVariable) is { Length: > 0 },
-            "zsh's first prompt is given nothing to put the folder first again with");
+        Assert.True(environment.GetValueOrDefault(FirstOnPath.FolderVariable) == Folder && environment.GetValueOrDefault(FirstOnPath.ValueVariable) == Installation
+            && environment.GetValueOrDefault(FirstOnPath.AgainVariable) is { Length: > 0 },
+            "zsh's first prompt is given nothing to put the folder first and the installation as DOTNET_ROOT again with");
 
         Dictionary<string, string> homes = [];
         First.Give("/bin/zsh", homes, Inherited());
