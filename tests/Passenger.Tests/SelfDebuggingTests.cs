@@ -71,7 +71,8 @@ public sealed class SelfDebuggingTests : IDisposable
         using (TestRun.PersonsNuGet())
         {
             launched = window.DebugAsync($"\"{folder}\" --screenshot \"{picture}\" --key F10 --key F10 --wait 600000");
-            Ui.PumpUntil(() => window.IsBuilding || launched.IsCompleted, "Passenger's build to begin");
+            // A build begins its process only once saves have landed and the projects are read as written.
+            Ui.PumpUntil(() => window.Builder.IsRunning || launched.IsCompleted, "Passenger's build's process to start");
         }
         Ui.Launched(window, launched, "Passenger to build and start under its debugger", TimeSpan.FromMinutes(5));
         string[] rewritten = [.. restore.Where(r => !File.Exists(r.Key) || !File.ReadAllBytes(r.Key).AsSpan().SequenceEqual(r.Value))
