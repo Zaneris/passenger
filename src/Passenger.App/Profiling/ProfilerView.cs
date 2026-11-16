@@ -78,6 +78,11 @@ public sealed class ProfilerView : DockPanel
     private readonly TextBlock collectionsSummary;
     private readonly ListBox collections;
     private readonly DockPanel garbage;
+    private readonly Banner offer = new();
+    private readonly Button offerLink;
+
+    /// <summary>The console whose offer the window shows over its run, while it shows one.</summary>
+    private OutputView? offering;
     private readonly MemoryView memory;
     private readonly FramesView frames;
     private readonly GameFramesView game;
@@ -207,6 +212,8 @@ public sealed class ProfilerView : DockPanel
         bar.Children.Add(left);
         Border top = ToolBars.Top(bar);
         Children.Add(top);
+        offerLink = offer.Link(null, () => offering?.TakeOffer());
+        Children.Add(offer);
         timeline = new Timeline();
         timeline.Chosen += (_, stretch) => IdeErrors.Observe(ChooseAsync(stretch));
         timelineBand = new Border { [DockProperty] = Dock.Top, BorderThickness = new Thickness(0, 0, 0, 1), Child = timeline, IsVisible = false, Padding = new Thickness(0, 4) };
@@ -337,6 +344,43 @@ public sealed class ProfilerView : DockPanel
     public FlameGraph Flame => flame;
 
     public string Status => status.Text ?? string.Empty;
+
+    /// <summary>Offers over the run what a console offers of its program (a terminal, for one needing it), until that
+    /// console's offer goes.</summary>
+    public void Offer(OutputView console)
+    {
+        if (offering != console)
+        {
+            LetGoOfOffer();
+            offering = console;
+            console.OfferChanged += ShowOffer;
+        }
+        ShowOffer(console, EventArgs.Empty);
+    }
+
+    private void LetGoOfOffer()
+    {
+        if (offering is not null)
+        {
+            offering.OfferChanged -= ShowOffer;
+            offering = null;
+        }
+    }
+
+    /// <summary>What the window offers over its run, null while it offers nothing.</summary>
+    public string? Offered => offer.Said;
+
+    private void ShowOffer(object? sender, EventArgs e)
+    {
+        if (offering?.Offered is not { } said)
+        {
+            LetGoOfOffer();
+            offer.Say(null);
+            return;
+        }
+        offerLink.Content = offering.OfferLink;
+        offer.Say(said);
+    }
 
     /// <summary>A run is starting, its program not yet at the profiler: Kill ends it, and nothing is recorded to snapshot.</summary>
     public void Starting(string name)

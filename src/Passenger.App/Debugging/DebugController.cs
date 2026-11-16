@@ -73,6 +73,10 @@ public sealed class DebugController : IDisposable
     /// reading ended without, given up for what came next.</summary>
     public event EventHandler? StopRead;
 
+    /// <summary>The exception a tab's program stopped at, as the debugger describes it, read as the stop is shown and before
+    /// <see cref="StopRead"/>.</summary>
+    public event EventHandler<ThrownStop>? ExceptionRead;
+
     /// <summary>Whether the stop the session is paused at now has been read as far as it will be (<see cref="StopRead"/>).</summary>
     public bool HasRead(DebugSession session) => Session == session && Stop is not null || read is ({ } of, int stop) && of == session && stop == session.Stops;
 
@@ -2735,9 +2739,10 @@ public sealed class DebugController : IDisposable
         }
         if (session.StopReason == StopReasons.Exception)
         {
+            ExceptionInfoResponse? info = null;
             try
             {
-                ExceptionInfoResponse info = await session.ExceptionInfoAsync(thread);
+                info = await session.ExceptionInfoAsync(thread);
                 IReadOnlyList<DapStackFrame> stack = await session.StackTraceAsync(thread);
                 DapStackFrame? thrown = stack.FirstOrDefault(f => f.Source?.Path is not null);
                 stopException = (Describe(info), thrown?.Id ?? -1);
@@ -2749,6 +2754,10 @@ public sealed class DebugController : IDisposable
             if (stop != shown)
             {
                 return;
+            }
+            if (info is not null && TabOf(session) is { } stopped)
+            {
+                ExceptionRead?.Invoke(this, new ThrownStop(stopped, info));
             }
         }
         try
@@ -3403,6 +3412,9 @@ public sealed record DataWatchOffer(string Title, string? WhyNot)
     public const string Set = "Set Data Breakpoint";
     public const string Remove = "Remove Data Breakpoint";
 }
+
+/// <summary>An exception a tab's program stopped at, as the debugger describes it.</summary>
+public sealed record ThrownStop(DebugTab Tab, ExceptionInfoResponse Exception);
 
 /// <summary>How long a stop took to show: from the continue or step that came to it (as the status bar names it), when the
 /// person asked for one, and from the stop to its frames and to its locals shown.</summary>

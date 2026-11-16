@@ -214,24 +214,40 @@ public sealed class OutputView : DockPanel, IOwnKeys
     public void ShowOffer(string? said, string link = "", Action? make = null)
     {
         UiThread.Check();
+        string? before = Offered;
         offered = make;
         if (said is null || make is null)
         {
             offer?.Say(null);
-            return;
         }
-        if (offer is null || offerLink is null)
+        else
         {
-            offer = new Banner();
-            offerLink = offer.Link(link, () => offered?.Invoke());
-            Children.Insert(Children.IndexOf(body), offer);
+            if (offer is null || offerLink is null)
+            {
+                offer = new Banner();
+                offerLink = offer.Link(link, TakeOffer);
+                Children.Insert(Children.IndexOf(body), offer);
+            }
+            offerLink.Content = link;
+            offer.Say(said);
         }
-        offerLink.Content = link;
-        offer.Say(said);
+        if (before != Offered || said is not null)
+        {
+            OfferChanged?.Invoke(this, EventArgs.Empty);
+        }
     }
 
     /// <summary>What the offer over the console says, null while it shows none.</summary>
     public string? Offered => offer?.Said;
+
+    /// <summary>What the offer's link says, while there is one.</summary>
+    public string? OfferLink => Offered is null ? null : offerLink?.Content as string;
+
+    /// <summary>The offer over the console shown, changed or taken away.</summary>
+    public event EventHandler? OfferChanged;
+
+    /// <summary>Makes the change the console offers, as its link does.</summary>
+    public void TakeOffer() => offered?.Invoke();
 
     /// <summary>A program's text as it reached the console, its colour codes gone, a batch at a time, with the stretches
     /// of it each of its streams wrote.</summary>

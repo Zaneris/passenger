@@ -179,6 +179,7 @@ public sealed partial class BuildRunController
         // A Debug tab that comes or goes brings its app's failed bindings to Problems, or takes them away.
         session.InspectedChanged += (_, _) => ShowBindings();
         session.GameStarted += (_, game) => FollowGame(game);
+        session.Debug.ExceptionRead += (_, stopped) => HearThrown(stopped);
         session.Builder.Line += (_, line) =>
         {
             (Problem? next, bool continued) = BuildOutput.Next(reading, line, builtPaths);

@@ -1,4 +1,5 @@
 using System.Text;
+using Passenger.Dap;
 
 namespace Passenger.App.Run;
 
@@ -6,7 +7,8 @@ namespace Passenger.App.Run;
 /// one the program wrote itself, or an inner one): Console.ReadKey's and Console.KeyAvailable's refusals of input that is
 /// no terminal's, an IOException thrown by the console's own calls (Windows' on a handle that is no console's), and
 /// Spectre.Console's refusals to prompt or read where its terminal is not interactive. Each of the program's two streams
-/// is read apart, a line at a time as it comes in pieces; the first need heard is kept.</summary>
+/// is read apart, a line at a time as it comes in pieces; the first need heard is kept. An exception a debugger stopped at
+/// is read the same way, as .NET would write it.</summary>
 public sealed class TerminalNeeds
 {
     /// <summary>The most of a line read: an exception's line is short, and a longer line's rest is passed over.</summary>
@@ -55,6 +57,33 @@ public sealed class TerminalNeeds
             text = text[(end + 1)..];
         }
         return Need is not null;
+    }
+
+    /// <summary>The call an exception a debugger stopped at says the program needs a terminal for, read as .NET writes the
+    /// exception (its type and message, each inner one's, then its frames); null for any other.</summary>
+    public static string? Thrown(DapExceptionDetails thrown)
+    {
+        StringBuilder written = new();
+        Write(written, thrown, depth: 0);
+        TerminalNeeds needs = new();
+        needs.Hear(written.Append('\n').ToString(), error: true);
+        return needs.Need;
+    }
+
+    /// <summary>An exception as its ToString writes it, its inner exception's within it, as deep as reason allows.</summary>
+    private static void Write(StringBuilder written, DapExceptionDetails thrown, int depth)
+    {
+        written.Append(thrown.FullTypeName ?? thrown.TypeName).Append(": ").Append(thrown.Message);
+        if (depth < 10 && thrown.InnerException is [{ } inner, ..])
+        {
+            written.Append("\n ---> ");
+            Write(written, inner, depth + 1);
+            written.Append("\n   --- End of inner exception stack trace ---");
+        }
+        if (thrown.StackTrace is { Length: > 0 } trace)
+        {
+            written.Append('\n').Append(trace);
+        }
     }
 
     /// <summary>A whole line of one stream: an exception's line names a need, or one its frames decide (<see cref="Waiting"/>);

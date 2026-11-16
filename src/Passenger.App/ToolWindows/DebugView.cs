@@ -25,7 +25,7 @@ public sealed class DebugView : DockPanel, IOwnKeys
     private readonly ListBox frames;
     private readonly VariablesList variables;
     private readonly TextBox evaluate;
-    private readonly Panel debugger;
+    private readonly DockPanel debugger;
     private readonly ToggleButton debuggerTab;
     private readonly ToggleButton consoleTab;
     private readonly ToggleButton telemetryTab;
@@ -33,6 +33,8 @@ public sealed class DebugView : DockPanel, IOwnKeys
     private readonly Dictionary<string, Button> tools = [];
     private readonly ToggleButton mute;
     private readonly TextBlock placeholder;
+    private readonly Banner offer = new();
+    private readonly Button offerLink;
     private readonly DockPanel consolePane;
     private bool showingFrames;
 
@@ -116,7 +118,9 @@ public sealed class DebugView : DockPanel, IOwnKeys
         PaneSplit split = new(framesPane, variablesPane, "*,1,2*");
         placeholder = new TextBlock { Classes = { StyleClasses.EmptyText } };
         ActionTips.SetWords(placeholder, AppActions.Debug, keys => keys is null ? "Not debugging." : $"Not debugging. Debug starts with {keys}.");
-        debugger = new Panel { Children = { split, placeholder } };
+        // Over the frames and values, what the chosen program's console offers: a terminal, for one stopped needing it.
+        offerLink = offer.Link(null, () => model.Console.TakeOffer());
+        debugger = new DockPanel { Children = { offer, new Panel { Children = { split, placeholder } } } };
 
         debuggerTab = new ToggleButton { Content = "Debugger", Classes = { StyleClasses.PanelTab }, IsChecked = true };
         consoleTab = new ToggleButton { Content = "Console", Classes = { StyleClasses.PanelTab } };
@@ -172,6 +176,7 @@ public sealed class DebugView : DockPanel, IOwnKeys
         model.ToolsChanged += (_, _) => ShowTools();
         model.FramesShown += (_, _) => ShowChosen();
         model.TabShown += (_, _) => ShowTab();
+        model.OfferChanged += (_, _) => ShowOffer();
         model.EvaluateFocused += (_, _) => FocusEvaluate();
         model.PlacesMoved += (_, _) => ShowPlacesAgain();
         ShowTools();
@@ -278,7 +283,18 @@ public sealed class DebugView : DockPanel, IOwnKeys
         debugger.IsVisible = !console && !records;
         consolePane.IsVisible = console;
         telemetry.IsVisible = records;
+        ShowOffer();
     }
+
+    /// <summary>What the chosen program's console offers, over the Debugger tab too.</summary>
+    private void ShowOffer()
+    {
+        offerLink.Content = model.Console.OfferLink;
+        offer.Say(model.Console.Offered);
+    }
+
+    /// <summary>What the Debugger tab offers over its frames and values, null while it offers nothing.</summary>
+    public string? Offered => offer.Said;
 
     /// <summary>The chosen program's Telemetry, the Telemetry tab's.</summary>
     public TelemetryPane Telemetry => telemetry;

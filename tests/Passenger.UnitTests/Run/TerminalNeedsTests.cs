@@ -1,4 +1,5 @@
 using Passenger.App.Run;
+using Passenger.Dap;
 
 namespace Passenger.UnitTests.Run;
 
@@ -88,6 +89,54 @@ public class TerminalNeedsTests
         needs.Hear("tick\n", error: false);
         needs.Hear("   at System.Console.Clear()\n   at Program.<Main>$(String[] args)\n", error: true);
         Assert.Equal("Console.Clear", needs.Need);
+    }
+
+    [Fact]
+    public void An_exception_a_debugger_stopped_at_is_read_as_dotnet_writes_it_its_inner_and_its_frames_among_it()
+    {
+        DapExceptionDetails readKey = new()
+        {
+            TypeName = "InvalidOperationException",
+            FullTypeName = "System.InvalidOperationException",
+            Message = "Cannot read keys when either application does not have a console or when console input has been redirected. Try Console.Read.",
+            StackTrace = "   at System.ConsolePal.ReadKey(Boolean intercept)\n   at Program.<Main>$(String[] args) in /src/Keys/Program.cs:line 2",
+        };
+        Assert.Equal("Console.ReadKey", TerminalNeeds.Thrown(readKey));
+
+        // Windows' console call on a handle that is no console's, its frames the stop's, and inside another exception.
+        DapExceptionDetails clear = new()
+        {
+            TypeName = "IOException",
+            FullTypeName = "System.IO.IOException",
+            Message = "The handle is invalid.",
+            StackTrace = "   at System.ConsolePal.GetBufferInfo(Boolean throwOnNoConsole, Boolean& succeeded)\r\n   at System.ConsolePal.Clear()\r\n   at System.Console.Clear()\r\n   at Program.<Main>$(String[] args)",
+        };
+        Assert.Equal("Console.Clear", TerminalNeeds.Thrown(clear));
+        Assert.Equal("Console.Clear", TerminalNeeds.Thrown(new DapExceptionDetails
+        {
+            TypeName = "AggregateException",
+            FullTypeName = "System.AggregateException",
+            Message = "One or more errors occurred. (The handle is invalid.)",
+            InnerException = [clear],
+        }));
+    }
+
+    [Fact]
+    public void An_exception_a_debugger_stopped_at_for_anything_else_needs_no_terminal()
+    {
+        Assert.Null(TerminalNeeds.Thrown(new DapExceptionDetails
+        {
+            TypeName = "IOException",
+            FullTypeName = "System.IO.IOException",
+            Message = "Broken pipe",
+            StackTrace = "   at System.ConsolePal.UnixConsoleStream.Write(ReadOnlySpan`1 buffer)\n   at Program.<Main>$(String[] args)",
+        }));
+        // The words alone, of a type the program made, are no refusal of the runtime's.
+        Assert.Null(TerminalNeeds.Thrown(new DapExceptionDetails
+        {
+            TypeName = "Refused",
+            Message = "Cannot read keys when either application does not have a console or when console input has been redirected. Try Console.Read.",
+        }));
     }
 
     [Fact]

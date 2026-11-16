@@ -1540,7 +1540,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         [Description("Under dotnet watch (Settings' choice by default), where hot_reload or a save applies edits")] bool? hotReload = null,
         string? resource = null,
         [Description("Collect its logs and traces from now on (false stops), as Edit Configurations' box does; telemetry reads them")] bool? telemetry = null,
-        [Description("Run it in a Terminal tab from now on (false: the Run window), as Edit Configurations' Use external console")] bool? terminal = null,
+        bool? terminal = null,
         CancellationToken cancel = default) => OnUi(cancel, async () =>
     {
         if (resource is not null)
@@ -1553,10 +1553,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             {
                 throw new ArgumentException("An AppHost's resource sends its logs and traces to the AppHost's own dashboard; omit telemetry");
             }
-            if (terminal is not null)
-            {
-                throw new ArgumentException("An AppHost's resource writes to the AppHost's console; omit terminal");
-            }
+            NoTerminalFor(terminal);
             if (await ComposeTargetAsync(resource, configuration, starts: true, cancel) is { } service)
             {
                 return arguments is null ? await RunComposeServiceAsync(service, waitSeconds, cancel)
@@ -1578,14 +1575,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             return arguments is null && telemetry is null && terminal is null ? await RunProjectsAsync(name, hotReload, waitSeconds, choice, cancel)
                 : throw new ArgumentException($"{name} starts each of its projects as its own configuration does: omit arguments, telemetry and terminal, or run that configuration");
         }
-        if (terminal is { } inTerminal)
-        {
-            if (Session.Configurations.Chosen is { } elsewhere && (elsewhere.IsContainer || elsewhere.IsScript || Session.Aspire.IsAspire(elsewhere)))
-            {
-                throw new ArgumentException($"{name} runs {(elsewhere.IsContainer ? "containers" : elsewhere.IsScript ? "a package.json script" : "an AppHost")}, whose console is its own; omit terminal");
-            }
-            Session.Configurations.UseConsole(name, inTerminal ? ConsoleKind.Terminal : ConsoleKind.Internal);
-        }
+        UseTerminal(name, terminal);
         if (telemetry is { } collect)
         {
             if (Session.Configurations.Chosen is { } collecting && Session.Aspire.IsAspire(collecting))
@@ -1661,6 +1651,30 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         }
         return new RunResult(code is null, code, status, output);
     });
+
+    /// <summary>terminal, as run and debug_start take it: the chosen configuration's program started in a Terminal tab from now
+    /// on, or in the Run and Debug windows' consoles, as Edit Configurations keeps its Use external console.</summary>
+    private void UseTerminal(string name, bool? terminal)
+    {
+        if (terminal is not { } inTerminal)
+        {
+            return;
+        }
+        if (Session.Configurations.Chosen is { } elsewhere && (elsewhere.IsContainer || elsewhere.IsScript || Session.Aspire.IsAspire(elsewhere)))
+        {
+            throw new ArgumentException($"{name} runs {(elsewhere.IsContainer ? "containers" : elsewhere.IsScript ? "a package.json script" : "an AppHost")}, whose console is its own; omit terminal");
+        }
+        Session.Configurations.UseConsole(name, inTerminal ? ConsoleKind.Terminal : ConsoleKind.Internal);
+    }
+
+    /// <summary>terminal refused with resource: an AppHost's resource or a compose service writes to its run's own console.</summary>
+    private static void NoTerminalFor(bool? terminal)
+    {
+        if (terminal is not null)
+        {
+            throw new ArgumentException("A resource writes to its AppHost's or its compose run's console; omit terminal");
+        }
+    }
 
     /// <summary>run of a multi-project configuration: its projects started, then each waited for until it ends or its host
     /// starts, within the wait; how each stands, and each one's last lines under its name.</summary>
@@ -2271,10 +2285,11 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
     public Task<DebugSnapshot> DebugStart(
         string? configuration = null,
         string? arguments = null,
-        int waitSeconds = 60, string? resource = null, CancellationToken cancel = default) => OnUi(cancel, async () =>
+        int waitSeconds = 60, string? resource = null, bool? terminal = null, CancellationToken cancel = default) => OnUi(cancel, async () =>
     {
         if (resource is not null)
         {
+            NoTerminalFor(terminal);
             if (await ComposeTargetAsync(resource, configuration, starts: true, cancel) is { } service)
             {
                 return arguments is null ? await DebugComposeServiceAsync(service, attach: false, waitSeconds, cancel)
@@ -2285,10 +2300,11 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         using Choosing choice = Choose(configuration);
         AgentCall.Follow(window.Actions.Work, AppActions.Debug, AppActions.Build);
         bool several = Session.Configurations.Chosen is { IsMultiple: true };
-        if (several && arguments is not null)
+        if (several && (arguments is not null || terminal is not null))
         {
-            throw new ArgumentException($"{Session.Configurations.Chosen!.Name} starts each of its projects as its own configuration does: omit arguments, or debug that configuration");
+            throw new ArgumentException($"{Session.Configurations.Chosen!.Name} starts each of its projects as its own configuration does: omit arguments and terminal, or debug that configuration");
         }
+        UseTerminal(Session.Configurations.Chosen?.Name ?? string.Empty, terminal);
         string? started = null;
         using (LaunchBuild built = new(Builds))
         {
@@ -3081,6 +3097,11 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
     {
         DebugController debugger = Session.Debug;
         string? summary = session is null ? debugger.Summary : debugger.SummaryOf(session);
+        // A program that said it needs a terminal, as the Debug window offers one.
+        if ((session is null ? debugger.Chosen : debugger.TabOf(session)) is { } tab && Builds.DebugNeedOf(tab) is { } need)
+        {
+            summary += $". {need.Said}: {McpTools.DebugStart} with terminal true debugs it in a Terminal tab";
+        }
         if (session is null || session.State == DebugState.Ended)
         {
             return new DebugSnapshot(null, null, null, [], [], session?.ExitCode, summary);

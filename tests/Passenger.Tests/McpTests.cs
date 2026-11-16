@@ -742,6 +742,34 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
             $"The configuration did not keep running in the terminal: {again}");
     }
 
+    /// <summary>An agent's profile of a program reading a key, which refuses the Run window's pipe, answers that it needs a
+    /// terminal and how to give it one, and its debug_start stops at the exception and answers so there; debug_start with
+    /// terminal true then debugs it in a Terminal tab, where it reads the key the agent types there with debug_input.</summary>
+    [Fact]
+    public async Task An_agents_debug_start_of_a_program_needing_a_terminal_says_so_at_its_stop_and_terminal_true_debugs_it_in_one()
+    {
+        await TakeFolderAsync();
+        Write("Program.cs", "Console.WriteLine(\"key?\");\nConsoleKeyInfo key = Console.ReadKey(intercept: true);\nConsole.WriteLine($\"key {key.KeyChar}\");\n");
+        await using McpClient client = await Start(["--mcp", Folder], languageServer: false);
+        JsonElement profiled = await Call(client, McpTools.Profile);
+        Assert.True(profiled.TryGetProperty("needsTerminal", out JsonElement need) && need.GetString() ==
+            $"Sum needs a terminal for Console.ReadKey: the Run window gives it pipes: {McpTools.Run} with terminal true runs it in a Terminal tab, where {McpTools.Profile} with attach profiles it",
+            $"The profile of a program refusing the Run window's pipe did not say it needs a terminal: {profiled}");
+
+        JsonElement stopped = await Call(client, McpTools.DebugStart, new() { ["waitSeconds"] = 60 });
+        Assert.True(stopped.GetProperty("state").GetString() == "paused" && stopped.GetProperty("status").GetString()?.EndsWith(
+            $". Sum needs a terminal for Console.ReadKey: the Debug window gives it pipes: {McpTools.DebugStart} with terminal true debugs it in a Terminal tab", StringComparison.Ordinal) == true,
+            $"The stop of a program refusing the Debug window's pipe did not say it needs a terminal: {stopped}");
+
+        JsonElement inTerminal = await Call(client, McpTools.DebugStart, new() { ["terminal"] = true, ["waitSeconds"] = 5 });
+        Assert.True(inTerminal.GetProperty("state").GetString() == "running", $"The program did not wait for a key in the terminal: {inTerminal}");
+        string typed = Text(await Result(client, McpTools.DebugInput, new() { ["text"] = "q", ["newline"] = false }));
+        string shown = string.Empty;
+        Assert.True(await Waiting.UntilAsync(async () => (shown = (await Call(client, McpTools.Output, new() { ["of"] = "debug" })).GetString() ?? string.Empty).Contains("key q", StringComparison.Ordinal),
+            TimeSpan.FromSeconds(30), Cancel, TimeSpan.FromMilliseconds(100)), $"The program debugged in the terminal did not read the key typed there ({typed}): {shown}");
+        Assert.StartsWith("Sum, debugged", shown, StringComparison.Ordinal);
+    }
+
     /// <summary>A run refused for a reason of its own (here a launch profile's command named RetryFailed, which Passenger does
     /// not run) is answered with that reason alone, though the last build's errors are still in Problems; a run refused for
     /// the build it ran failing still names them.</summary>

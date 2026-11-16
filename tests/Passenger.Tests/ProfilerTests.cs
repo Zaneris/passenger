@@ -868,6 +868,37 @@ public sealed class ProfilerTests : IClassFixture<ProfilerTests.Waits>, IDisposa
         }
     }
 
+    /// <summary>A profiled program that needs a terminal (Console.ReadKey refusing the Run window's pipe) has the Profiler
+    /// window and the Run window it writes to say so, read from the exception .NET writes there, with Run in the Terminal,
+    /// which runs it in a tab of the Terminal window, where Attach Profiler reaches it, the offer then gone.</summary>
+    [AvaloniaFact]
+    public void A_profiled_program_needing_a_terminal_is_offered_one_in_the_Run_window()
+    {
+        string project = Project("Keys", "Console.WriteLine(\"key?\");\nConsoleKeyInfo key = Console.ReadKey(intercept: true);\nConsole.WriteLine($\"key {key.KeyChar}\");\n");
+        MainWindow window = Ui.OpenFolder(project, languageServer: false);
+        Passenger.App.ToolWindows.OutputView run = window.BottomPanel.Run;
+        try
+        {
+            Ui.Launched(window, window.ProfileAsync(), "the profiled run", TimeSpan.FromMinutes(3));
+            Ui.WaitFor(() => window.Session.Profiled is null, () => $"the profiled program to end; the Run window shows:\n{run.Document.Snapshot}", TimeSpan.FromMinutes(2));
+            const string said = "Keys needs a terminal for Console.ReadKey: the Run window gives it pipes";
+            Assert.True(run.Offered == said && window.ProfilerView.Offered == said,
+                $"The profiled program is not offered a terminal, the Profiler window saying {window.ProfilerView.Offered ?? "nothing"} and the Run window {run.Offered ?? "nothing"}, where it shows:\n{run.Document.Snapshot}");
+
+            Ui.ClickButton(window.ProfilerView, "Run in the Terminal");
+            Ui.WaitFor(() => window.RunInTerminal is { IsRunning: true }, () => $"the program to run in the terminal: {Ui.Said(window)}", TimeSpan.FromMinutes(2));
+            Assert.Equal(Passenger.App.Run.ConsoleKind.Terminal, window.Configuration?.Console);
+            Assert.True(window.ProfilerView.Offered is null && run.Offered is null, $"The offer taken is still made: {window.ProfilerView.Offered ?? run.Offered}");
+            Assert.Null(window.Actions.WhyNot(AppActions.AttachProfiler, window.Actions.Context()));
+        }
+        finally
+        {
+            Ui.Run(window, AppActions.Stop);
+            Ui.WaitFor(() => window.RunInTerminal is not { IsRunning: true }, "the program in the terminal to stop");
+            window.Close();
+        }
+    }
+
     /// <summary>Attach Profiler where its snapshot cannot be written says so and leaves the program as it was, running and
     /// recorded by nothing: the recording it began there ended (EventPipe released), which the program's frames provider
     /// hears as turned off. Once a snapshot can be written, Attach Profiler records it.</summary>

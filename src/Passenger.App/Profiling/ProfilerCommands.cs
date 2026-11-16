@@ -324,6 +324,7 @@ public sealed class ProfilerCommands
             {
                 run.Append($"{note}\n");
             }
+            builds.HearProfiled(run, chosen.Name);
             builds.ShowInRun(dashboard);
             ConsoleSink console = run.Sink;
             ProfilingSession running;

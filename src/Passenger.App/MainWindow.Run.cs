@@ -500,12 +500,16 @@ public partial class MainWindow
     private void RunSelected() => IdeErrors.Observe(RunAsync());
 
     /// <summary>A program run with the Run window's console, or a Debug tab's, said it needs a terminal: that console offers,
-    /// over what it wrote, to start it again in one.</summary>
+    /// over what it wrote, to start it again in one, as the Profiler window does over its run for a program Profile started.</summary>
     private void OfferTerminal(TerminalNeed need, ToolWindows.OutputView console)
     {
         UiThread.Check();
         string start = need.Debugged ? AppActions.DebugInTerminal : AppActions.RunInTerminal;
         console.ShowOffer(need.Said, actions![start]!.Title, () => Request(start));
+        if (need.Profiled)
+        {
+            ProfilerView.Offer(console);
+        }
     }
 
     /// <summary>Run or Debug in the Terminal: the configuration whose program said it needs a terminal set to run in one,

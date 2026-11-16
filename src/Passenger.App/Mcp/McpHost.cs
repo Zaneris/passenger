@@ -58,7 +58,8 @@ public static partial class McpHost
         "configuration (the chosen one by default); arguments, a command line in place of its own; waitSeconds, how long a call " +
         "waits for the program to stop, end or show its UI; session, a debugged program as debug_state's sessions name it (by " +
         "default the one paused, else the only one); resource, an Aspire resource (name or AppHostPath::name) or a compose " +
-        "service of the run, as workspace lists them; symbol, in place of path, line and column, a C# symbol of the solution's " +
+        "service of the run, as workspace lists them; terminal, true to start it in a Terminal tab from now on (false: the Run " +
+        "and Debug windows), as Edit Configurations' Use external console; symbol, in place of path, line and column, a C# symbol of the solution's " +
         "own code by name: Name, Type.Member or Namespace.Type, an overload as Member(string, int), or its documentation id " +
         "(M:Namespace.Type.Member(System.String)); within, a folder or file whose places alone usages or hierarchy lists; from, the line " +
         "editor_text, outline, a file's diagnostics or its local_history reads on from. An answer that would run past 40,000 characters keeps what comes first " +

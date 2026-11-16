@@ -647,6 +647,9 @@ public sealed partial class PassengerTools
                 ? new UiFramesInfo(0, 0, 0, 0, 0, []) { Why = Profiling.FramesView.InContainer(elsewhere.Where) }
                 : UiFramesOf(snapshot.UiFrames, Math.Clamp(top, 1, 200), inspected),
             Godot = GameFramesOf(snapshot, Math.Clamp(top, 1, 200)),
+            // A program Profile started that said it needs a terminal, as the Profiler window offers one.
+            NeedsTerminal = Builds.RunNeed is { Profiled: true } need && !attach
+                ? $"{need.Said}: {McpTools.Run} with terminal true runs it in a Terminal tab, where {McpTools.Profile} with attach profiles it" : null,
         };
 
         ProfileFrame Frame(string method, int total, int self) =>
@@ -977,6 +980,9 @@ public sealed record ProfileInfo(double DurationMs, int Samples, int Threads, IR
     /// <summary>Why there is no heap when a memory snapshot was asked for, what taking it put into the program's output, or
     /// what a snapshot read from the runtime's own heap dump lacks.</summary>
     public string? HeapNote { get; init; }
+
+    /// <summary>What the program said it needs a terminal for, and how to give it one; null where it said nothing of one.</summary>
+    public string? NeedsTerminal { get; init; }
 
     /// <summary>An Avalonia app's frames, as the Frames page shows them; null for any other program.</summary>
     public UiFramesInfo? Frames { get; init; }
