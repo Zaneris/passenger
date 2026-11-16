@@ -19,6 +19,7 @@ public sealed class FeatureAnalysis
     public const string Column = "table-column";
     public const string Syntax = "gherkin";
     public const string CodeBehind = "code-behind";
+    public const string Language = "feature-language";
 
     private FeatureAnalysis(int version, TextSnapshot text, FeatureReading reading, ReqnrollConfig config, ProjectSteps? steps)
     {
@@ -100,7 +101,13 @@ public sealed class FeatureAnalysis
             string written = Text.GetLineText(line).TrimEnd('\r');
             int start = Math.Min(error.Column, written.Length);
             int length = Math.Max(written.TrimEnd().Length - start, 0);
-            marks.Add(Marker.Coded(new TextRange(OffsetOf(line, start), Math.Max(length, 1)), MarkerKind.Error, error.ByGenerator ? CodeBehind : Syntax, error.Message));
+            (string code, string message) = error switch
+            {
+                { NoFeature: true } => (Language, Config.NoFeatureWhy(Reading)),
+                { ByGenerator: true } => (CodeBehind, error.Message),
+                _ => (Syntax, error.Message),
+            };
+            marks.Add(Marker.Coded(new TextRange(OffsetOf(line, start), Math.Max(length, 1)), MarkerKind.Error, code, message));
         }
         foreach ((FeatureStep step, StepMatch match) in Matches)
         {

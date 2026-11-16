@@ -31,6 +31,27 @@ public sealed record ReqnrollConfig(string? FeatureLanguage, string? BindingCult
     /// <summary>The feature language Reqnroll takes where its configuration names none.</summary>
     public const string DefaultFeatureLanguage = "en-US";
 
+    /// <summary>Why a file's reading, in this configuration's language or the one its <c># language:</c> line names, found no
+    /// feature (<see cref="FeatureError.NoFeature"/>), as Reqnroll's generator refuses it: the language and whence, the words
+    /// a feature begins with there, and how a file is read in the language it is written in.</summary>
+    public string NoFeatureWhy(FeatureReading reading)
+    {
+        string reader = IsSpecFlow ? "SpecFlow" : "Reqnroll";
+        string file = IsSpecFlow ? SpecFlowFile : ReqnrollFile;
+        string begins = $"where a feature begins with {Plural.Either([.. reading.Dialect.FeatureKeywords.Select(k => $"{k}:")])}, and finds none";
+        const string Codes = "as # language: en names English and # language: de German";
+        if (reading.NamesItsLanguage)
+        {
+            return $"{reader} reads this file in {reading.Dialect.Language}, as its # language: line names, {begins}: "
+                + $"name the language it is written in on that line, {Codes}";
+        }
+        string whence = FeatureLanguage is { } named ? $"{named}, the language.feature of its project's {file}"
+            : Written ? $"{DefaultFeatureLanguage}, as its project's {file} names no language.feature"
+            : $"{DefaultFeatureLanguage}, as its project has no {file} naming a language.feature";
+        return $"{reader} reads this file in {whence}, {begins}: name the language it is written in on its first line, {Codes}, "
+            + $"or the language the project's features are written in as language.feature in its {file}";
+    }
+
     /// <summary>How a project's missing step is written: as its file says, else as its framework writes one by default
     /// (Reqnroll a Cucumber Expression, SpecFlow a regular expression).</summary>
     public SkeletonStyle SkeletonFor(bool specFlow) => Written ? Skeleton : specFlow ? SkeletonStyle.Regex : SkeletonStyle.CucumberExpression;

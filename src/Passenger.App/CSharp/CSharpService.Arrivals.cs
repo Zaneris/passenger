@@ -378,7 +378,12 @@ public sealed partial class CSharpService
 
     /// <summary>Whether the server's last load of a project failed (<see cref="ProjectLoadProblem.FailedLoad"/>): it took in
     /// none of the files come under it, and none until a load of it succeeds.</summary>
-    private bool LoadFailed(string project) => loadProblems.TryGetValue(project, out List<ProjectLoadProblem>? met) && met.Any(p => p.FailedLoad);
+    private bool LoadFailed(string project) => FailedLoadOf(project) is not null;
+
+    /// <summary>The first error of the server's last load of a project where that load failed, taking in nothing of it
+    /// (<see cref="ProjectLoadProblem.FailedLoad"/>); null where it loaded.</summary>
+    public ProjectLoadProblem? FailedLoadOf(string project) =>
+        loadProblems.TryGetValue(project, out List<ProjectLoadProblem>? met) ? met.FirstOrDefault(p => p.FailedLoad) : null;
 
     /// <summary>Projects a loaded server fed by the window is asked to load again: what it says of them is of their load before
     /// until it has, so each is waited for by its own file as a file come under it is, since now, until a load of it asked

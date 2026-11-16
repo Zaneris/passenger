@@ -373,8 +373,27 @@ internal static class DesignTimeBuilds
 
         public void Initialize(IEventSource eventSource)
         {
-            eventSource.ErrorRaised += (_, e) => Add(e.BuildEventContext, new BuildDiagnostic(true, e.Message ?? string.Empty, e.ProjectFile ?? string.Empty));
-            eventSource.WarningRaised += (_, e) => Add(e.BuildEventContext, new BuildDiagnostic(false, e.Message ?? string.Empty, e.ProjectFile ?? string.Empty));
+            eventSource.ErrorRaised += (_, e) =>
+                Add(e.BuildEventContext, new BuildDiagnostic(true, Placed(e.Message, e.File, e.LineNumber, e.ColumnNumber, e.ProjectFile), e.ProjectFile ?? string.Empty));
+            eventSource.WarningRaised += (_, e) =>
+                Add(e.BuildEventContext, new BuildDiagnostic(false, Placed(e.Message, e.File, e.LineNumber, e.ColumnNumber, e.ProjectFile), e.ProjectFile ?? string.Empty));
+        }
+
+        /// <summary>A message about a file of the project's own other than its project file (a .feature a generator read)
+        /// begun with that file from the project's folder and its place, as MSBuild writes one: "Features/A.feature(2,1): ".</summary>
+        private static string Placed(string? message, string? file, int line, int column, string? project)
+        {
+            if (string.IsNullOrEmpty(file) || Path.GetDirectoryName(project) is not { Length: > 0 } folder)
+            {
+                return message ?? string.Empty;
+            }
+            string full = Path.GetFullPath(file, folder);
+            if (PathNames.Same(full, project!) || !PathNames.IsUnder(full, folder))
+            {
+                return message ?? string.Empty;
+            }
+            string place = line <= 0 ? string.Empty : column <= 0 ? $"({line})" : $"({line},{column})";
+            return $"{PathNames.Shown(full, folder)}{place}: {message}";
         }
 
         private void Add(BuildEventContext? context, BuildDiagnostic diagnostic)

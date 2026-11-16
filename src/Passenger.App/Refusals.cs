@@ -343,8 +343,15 @@ public static class Refusals
     /// <summary>A feature's diagnostics with no step definitions read to match its steps against: the C# language server,
     /// which reads them, runs and did not answer for them (<paramref name="serverRuns"/>), or runs for no folder.</summary>
     public static string StepsUnmatched(bool serverRuns) =>
-        $"No step definitions were read to match its steps against ({(serverRuns ? "the C# language server did not answer for them" : CSharpNotRunning)}): "
-        + "no step is marked undefined, nor an argument its definition cannot take";
+        StepsUnmatchedFor(serverRuns ? "the C# language server did not answer for them" : CSharpNotRunning);
+
+    /// <summary>A feature's diagnostics where its project's last load failed with an error (<paramref name="loadError"/>), so
+    /// the C# language server, which reads the step definitions, holds none of the project's.</summary>
+    public static string StepsUnmatched(string project, string loadError) =>
+        StepsUnmatchedFor($"the C# language server took in nothing of {project}, whose load failed: {loadError}");
+
+    private static string StepsUnmatchedFor(string why) =>
+        $"No step definitions were read to match its steps against ({why}): no step is marked undefined, nor an argument its definition cannot take";
 
     /// <summary>A step's phrase asked to be written where the editor shows no .feature file.</summary>
     public const string NoFeature = "The editor shows no .feature file: open the feature to write the step into";

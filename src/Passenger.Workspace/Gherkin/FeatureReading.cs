@@ -83,6 +83,11 @@ public sealed record FeatureError(int Line, int Column, string Message)
 {
     /// <summary>Whether it is the generator's (<see cref="GeneratorChecks"/>) rather than the reader's.</summary>
     public bool ByGenerator { get; init; }
+
+    /// <summary>Whether it is the reader's finding no line beginning a feature in the language it read the file in, at the
+    /// first line it refused, which stands for every refusal that follows from it; its words the configuration's
+    /// (<see cref="ReqnrollConfig.NoFeatureWhy"/>), its <see cref="Message"/> the reader's own.</summary>
+    public bool NoFeature { get; init; }
 }
 
 /// <summary>A titled part: the feature, a rule, an outline's examples.</summary>
@@ -565,13 +570,15 @@ public sealed partial class FeatureReading
         return end;
     }
 
-    /// <summary>The mistakes Gherkin's own parser finds, all of them rather than the first; where it finds none, those
-    /// Reqnroll's generator refuses the feature for.</summary>
+    /// <summary>The mistakes Gherkin's own parser finds, all of them rather than the first, the lines it refuses in a file
+    /// where it finds no feature said once (<see cref="FeatureError.NoFeature"/>); where it finds none, those Reqnroll's
+    /// generator refuses the feature for.</summary>
     private void Check(string text, string language)
     {
         Parser parser = new() { StopAtFirstError = false };
         // Its reader breaks lines at a lone '\r' too, where the editor and this reading do not: read as a space, its places are theirs.
         string read = LoneReturn().Replace(text, " ");
+        List<FeatureError> refused = [];
         try
         {
             parser.Parse(new TokenScanner(new StringReader(read)), new TokenMatcher(new GherkinDialects.ReqnrollProvider(language)));
@@ -580,12 +587,17 @@ public sealed partial class FeatureReading
         {
             foreach (ParserException error in composite.Errors)
             {
-                Add(error);
+                Add(error, refused);
             }
         }
         catch (ParserException error)
         {
-            Add(error);
+            Add(error, refused);
+        }
+        if (Feature is null && refused.Count > 0)
+        {
+            Errors[Errors.FindIndex(e => ReferenceEquals(e, refused[0]))] = refused[0] with { NoFeature = true };
+            Errors.RemoveAll(e => refused.Skip(1).Any(r => ReferenceEquals(r, e)));
         }
         if (Errors.Count == 0)
         {
@@ -593,11 +605,17 @@ public sealed partial class FeatureReading
         }
     }
 
-    private void Add(ParserException error)
+    /// <summary>A mistake the parser found, one refusing a line or the file's end kept in <paramref name="refused"/> too.</summary>
+    private void Add(ParserException error, List<FeatureError> refused)
     {
         int line = Math.Max((error.Location?.Line ?? 1) - 1, 0);
         int column = Math.Max((error.Location?.Column ?? 1) - 1, 0);
-        Errors.Add(new FeatureError(line, column, ErrorPlace().Replace(error.Message, "")));
+        FeatureError found = new(line, column, ErrorPlace().Replace(error.Message, ""));
+        Errors.Add(found);
+        if (error is UnexpectedTokenException or UnexpectedEOFException)
+        {
+            refused.Add(found);
+        }
     }
 
     [GeneratedRegex("\r(?!\n)")]

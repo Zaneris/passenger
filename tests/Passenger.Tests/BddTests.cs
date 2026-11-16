@@ -209,6 +209,45 @@ public sealed class BddTests : IClassFixture<RestoredFolders>, IDisposable
         }
     }
 
+    /// <summary>A project configured to read its features in Austrian German, whose feature is written in English with no
+    /// <c># language:</c> line: Reqnroll's generator reads it in German, finds no feature and fails the project's load, so the
+    /// load's problem names the file and says why, in the status bar and Problems as the load ends, and the feature is marked
+    /// where it was to begin, saying the language it is read in, whence, and how a file is read in its own.</summary>
+    [AvaloniaFact]
+    public void A_feature_written_in_another_language_than_its_projects_is_marked_saying_so_and_the_projects_load_problem_names_it()
+    {
+        TestFolders.Write(folder, "Calc.Specs/reqnroll.json", "{\n  \"language\": { \"feature\": \"de-AT\" },\n  \"bindingAssemblies\": [ { \"assembly\": \"Calc.Steps\" } ]\n}\n");
+        const string Why = "Reqnroll reads this file in de-AT, the language.feature of its project's reqnroll.json, where a feature begins with Funktionalität: or "
+            + "Funktion:, and finds none: name the language it is written in on its first line, as # language: en names English and # language: de German, "
+            + "or the language the project's features are written in as language.feature in its reqnroll.json";
+        string load = $"{Path.Combine("Features", "Calculator.feature")}(2,1): {Why}";
+        MainWindow window = Ui.OpenFolder(folder);
+        try
+        {
+            Passenger.App.ToolWindows.ProblemsModel problems = window.BottomPanel.Problems;
+            Ui.WaitFor(() => problems.ToolsetProblems.Count > 0 && window.Status is { Length: > 0 },
+                () => $"the load's problem said ({window.Status}; {window.CSharpService?.State})", TimeSpan.FromMinutes(3));
+            Assert.True(window.Status == $"Error while loading {Path.Combine("Calc.Specs", "Calc.Specs.csproj")}: {load}" && window.StatusSeverity == Passenger.App.Run.ProblemSeverity.Error,
+                $"The status bar says \"{window.Status}\" ({window.StatusSeverity}) as the load ends, not that Calc.Specs did not load as its feature reads as no feature in de-AT");
+            Passenger.App.Run.Problem failed = Assert.Single(problems.ToolsetProblems);
+            Assert.True(failed is { Severity: Passenger.App.Run.ProblemSeverity.Error, Project: "Calc.Specs" } && failed.Message == load,
+                $"Problems lists the load's failure as {failed.Severity} \"{failed.Message}\" under {failed.Project}, not once naming the feature and why");
+
+            Assert.Null(window.OpenFile(FeatureFile));
+            OpenDocument feature = window.EditorArea.Active!;
+            Ui.WaitFor(() => feature.Markers.Any(m => m.Code == FeatureAnalysis.Language),
+                () => $"the English feature marked as read in German: {string.Join("; ", feature.Markers.Select(m => m.Message))}");
+            Marker marked = Assert.Single(feature.Markers);
+            Assert.True(marked.Kind == MarkerKind.Error && marked.Said == Why,
+                $"The feature is marked {marked.Kind} \"{marked.Said}\", not saying it is read in de-AT, finds no feature and how its own language is named");
+            Assert.Equal("Feature: Calculator", feature.Text.Snapshot.GetText(marked.Range.Start, marked.Range.Length));
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     private static void Choose(MainWindow window, string label)
     {
         Ui.WaitFor(() => window.Assist.Offered.Contains(label), () => $"'{label}' offered among {string.Join(", ", window.Assist.Offered)}");

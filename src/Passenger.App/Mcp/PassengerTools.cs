@@ -316,7 +316,8 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
 
     /// <summary>Waits until a feature's marks are of its steps matched against the step definitions as the code stands: the
     /// C# language server settled on the folder, as every C# question waits for it (refused saying so while it still loads),
-    /// the bindings read and the file read against them. Null once they are; else why its steps are matched against none.</summary>
+    /// the bindings read and the file read against them. Null once they are; else why its steps are matched against none,
+    /// its project's failed load among them, the server then holding none of the project's definitions.</summary>
     private async Task<string?> FeatureMatchedAsync(OpenDocument feature, CancellationToken cancel)
     {
         if (Session.CSharp is null)
@@ -329,8 +330,11 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         {
             return Refusals.StepsUnmatched(serverRuns: Session.CSharp is { IsReady: true });
         }
-        await Session.Features.CurrentAsync(feature);
-        return null;
+        Bdd.FeatureAnalysis? read = await Session.Features.CurrentAsync(feature);
+        // A file read with no step (one its reader finds no feature in) has none to match.
+        return read is { Reading.Steps.Count: > 0 } && Session.ProjectOf(feature.Path)?.Path is { } project && Session.CSharp?.FailedLoadOf(project) is { } failed
+            ? Refusals.StepsUnmatched(Relative(project), failed.Message)
+            : null;
     }
 
     /// <summary>Waits, within <see cref="MarkersLimit"/>, for a file's own checks of its text as it stands (<see

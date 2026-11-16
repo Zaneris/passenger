@@ -160,6 +160,27 @@ public sealed class FeatureReadingTests
         Assert.NotEmpty(reading.Errors);
     }
 
+    /// <summary>A file written in English read in its project's German, as Reqnroll's generator reads it: the reader refuses
+    /// every line from the one a feature was to begin on and the file's end, which is said once, where it refused first.</summary>
+    [Fact]
+    public void A_file_its_reader_finds_no_feature_in_is_one_mistake_where_the_feature_was_to_begin()
+    {
+        FeatureReading reading = FeatureReading.Read(Calculator, "de-AT");
+
+        Assert.Null(reading.Feature);
+        FeatureError none = Assert.Single(reading.Errors);
+        Assert.Equal((1, 0, true, false), (none.Line, none.Column, none.NoFeature, none.ByGenerator));
+        Assert.Equal("de", reading.Dialect.Language);
+        Assert.Equal(["Funktionalität", "Funktion"], reading.Dialect.FeatureKeywords);
+        Assert.StartsWith("expected: #TagLine, #FeatureLine, #Comment, #Empty, got 'Feature: Calculator'", none.Message, StringComparison.Ordinal);
+
+        FeatureReading unknown = FeatureReading.Read("# language: xx\nFunktionalität: F\n\nSzenario: S\n  Angenommen eins\n", "en");
+        Assert.Equal([(0, false, "Language not supported: xx"), (1, true, "expected: #EOF, #Language, #TagLine, #FeatureLine, #Comment, #Empty, got 'Funktionalität: F'")],
+            unknown.Errors.Select(e => (e.Line, e.NoFeature, e.Message)));
+        Assert.Equal(1, Assert.Single(FeatureReading.Read("@tagged\n", "en").Errors, e => e.NoFeature).Line);
+        Assert.DoesNotContain(FeatureReading.Read("Feature: F\nScenario: S\n  Given one\n  Banana\n", "en").Errors, e => e.NoFeature);
+    }
+
     [Fact]
     public void A_rules_scenarios_take_its_tags_and_name_it()
     {

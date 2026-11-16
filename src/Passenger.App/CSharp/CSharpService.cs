@@ -1715,8 +1715,9 @@ public sealed partial class CSharpService : IAsyncDisposable
                 long at = Stopwatch.GetTimestamp();
                 UiThread.Post(() => unsaid ??= (message.Message, at));
             }
-            if (LoadReport.Read(message.Message) is { } report)
+            if (LoadReport.Read(message.Message) is { } read)
             {
+                LoadReport report = read.Problem is { } problem ? read with { Problem = Bdd.FeatureLoadProblems.Said(problem) } : read;
                 string? unwritable = report.Problem is { Severity: ProblemSeverity.Error } error ? FolderAccess.Unwritable(error, folder) : null;
                 UiThread.Post(() => OnLoadReport(server, unwritable is null ? report
                     : report with { Problem = report.Problem! with { Message = Unwritable(unwritable, report.Problem.Message) } }));

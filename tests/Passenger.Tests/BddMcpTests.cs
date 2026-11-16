@@ -70,6 +70,38 @@ public sealed class BddMcpTests(RestoredFolders folders) : McpRig, IClassFixture
             $"diagnostics, an agent's first call, is to list the too large number and the step nobody wrote: {said}");
     }
 
+    /// <summary>An agent's diagnostics where the project reads its features in Austrian German and one is written in English
+    /// with no language line, failing the project's load: that feature's finding says the language it is read in and how its
+    /// own is named, a German feature beside it says its steps are matched to no definitions as the load failed, never an
+    /// empty list, and the folder's toolset names the feature.</summary>
+    [Fact]
+    public async Task An_agents_diagnostics_say_a_feature_is_read_in_its_projects_language_and_finds_no_feature_and_what_that_leaves_unmatched()
+    {
+        string folder = PathNames.Canonical(await folders.TakeAsync("bddmcp-", made => ReqnrollProjects.Write(made)));
+        DeleteAtEnd(folder);
+        TestFolders.Write(folder, "Calc.Specs/reqnroll.json", "{\n  \"language\": { \"feature\": \"de-AT\" },\n  \"bindingAssemblies\": [ { \"assembly\": \"Calc.Steps\" } ]\n}\n");
+        string laden = Path.Combine("Calc.Specs", "Features", "Laden.feature");
+        TestFolders.Write(folder, laden, "Funktionalität: Laden\n\nSzenario: Öffnen\n  Angenommen a step nobody wrote\n");
+        McpClient client = await Start(["--mcp", folder]);
+
+        JsonElement[] found = [.. (await Call(client, McpTools.Diagnostics, new() { ["path"] = Feature })).EnumerateArray()];
+        JsonElement none = Assert.Single(found);
+        Assert.True((none.GetProperty("code").GetString(), none.GetProperty("severity").GetString(), none.GetProperty("line").GetInt32(), none.GetProperty("column").GetInt32())
+            == (FeatureAnalysis.Language, "error", 2, 1), $"diagnostics is to list the English feature read in German once, where it was to begin: {none}");
+        string why = none.GetProperty("message").GetString()!;
+        Assert.StartsWith("Reqnroll reads this file in de-AT, the language.feature of its project's reqnroll.json, where a feature begins with Funktionalität:", why, StringComparison.Ordinal);
+
+        JsonElement unmatched = Assert.Single((await Call(client, McpTools.Diagnostics, new() { ["path"] = laden })).EnumerateArray());
+        string said = unmatched.GetProperty("message").GetString()!;
+        Assert.True(unmatched.GetProperty("severity").GetString() == "info"
+            && said.StartsWith($"No step definitions were read to match its steps against (the C# language server took in nothing of {Path.Combine("Calc.Specs", "Calc.Specs.csproj")}, whose load failed: ", StringComparison.Ordinal)
+            && said.Contains(why, StringComparison.Ordinal),
+            $"diagnostics of the German feature is to say its steps are matched to no definitions as its project's load failed, and why: {unmatched}");
+
+        JsonElement toolset = Assert.Single((await Call(client, McpTools.Diagnostics, new())).GetProperty("toolset").EnumerateArray());
+        Assert.Equal($"{Path.Combine("Features", "Calculator.feature")}(2,1): {why}", toolset.GetProperty("message").GetString());
+    }
+
     [Fact]
     public async Task An_agents_run_of_a_scenario_answers_its_failing_step_with_its_definition_and_arguments_and_runs_green_once_the_definition_is_fixed()
     {

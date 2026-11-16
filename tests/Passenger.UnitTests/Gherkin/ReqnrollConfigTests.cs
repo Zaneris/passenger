@@ -94,6 +94,46 @@ public sealed class ReqnrollConfigTests
         Assert.Equal(culture, ProjectSteps.CultureOf(config.BindingCultureOf(reading)).Name);
     }
 
+    /// <summary>Why a file reads as no feature, as Reqnroll's generator reads it: in the language its project's configuration
+    /// names (as written, read in its language's words where Gherkin lacks its region), its own language line's, or Reqnroll's
+    /// default, with the words a feature begins with there and how the file is read in the language it is written in.</summary>
+    [Fact]
+    public void A_file_read_as_no_feature_says_the_language_it_is_read_in_whence_its_feature_words_and_how_to_name_its_own()
+    {
+        const string English = "@calc\nFeature: Calculator\n\nScenario: S\n  Given one\n";
+        const string Naming = "name the language it is written in on its first line, as # language: en names English and # language: de German, or the language "
+            + "the project's features are written in as language.feature in its ";
+
+        ReqnrollConfig austrian = ReqnrollConfig.Parse("""{ "language": { "feature": "de-AT" } }""", specFlow: false) with { Written = true };
+        Assert.Equal("Reqnroll reads this file in de-AT, the language.feature of its project's reqnroll.json, where a feature begins with Funktionalität: or Funktion:, "
+            + "and finds none: " + Naming + "reqnroll.json", austrian.NoFeatureWhy(Unread(English, austrian)));
+
+        ReqnrollConfig quiet = ReqnrollConfig.Parse("""{ "bindingAssemblies": [] }""", specFlow: false) with { Written = true };
+        Assert.Equal("Reqnroll reads this file in en-US, as its project's reqnroll.json names no language.feature, where a feature begins with Feature:, Business Need: "
+            + "or Ability:, and finds none: " + Naming + "reqnroll.json", quiet.NoFeatureWhy(Unread("Funktionalität: Laden\n", quiet)));
+
+        ReqnrollConfig none = ReqnrollConfig.Parse("{}", specFlow: false);
+        Assert.StartsWith("Reqnroll reads this file in en-US, as its project has no reqnroll.json naming a language.feature, where",
+            none.NoFeatureWhy(Unread("Funktionalität: Laden\n", none)), StringComparison.Ordinal);
+
+        ReqnrollConfig specFlow = ReqnrollConfig.Parse("""{ "language": { "feature": "fr-FR" } }""", specFlow: true) with { Written = true };
+        Assert.StartsWith("SpecFlow reads this file in fr-FR, the language.feature of its project's specflow.json, where a feature begins with Fonctionnalité:",
+            specFlow.NoFeatureWhy(Unread(English, specFlow)), StringComparison.Ordinal);
+        Assert.EndsWith("as language.feature in its specflow.json", specFlow.NoFeatureWhy(Unread(English, specFlow)), StringComparison.Ordinal);
+
+        Assert.Equal("Reqnroll reads this file in de, as its # language: line names, where a feature begins with Funktionalität: or Funktion:, and finds none: "
+            + "name the language it is written in on that line, as # language: en names English and # language: de German",
+            quiet.NoFeatureWhy(Unread("# language: de\n" + English, quiet)));
+    }
+
+    /// <summary>A file's text read as its project's configuration has it read, its reader finding no feature in it.</summary>
+    private static FeatureReading Unread(string text, ReqnrollConfig config)
+    {
+        FeatureReading reading = FeatureReading.Read(text, GherkinDialects.Default(config.FeatureLanguage));
+        Assert.Contains(reading.Errors, e => e.NoFeature);
+        return reading;
+    }
+
     [Fact]
     public void SpecFlows_file_names_its_cultures_as_reqnrolls_does()
     {
