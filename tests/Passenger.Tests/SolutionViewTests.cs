@@ -867,6 +867,32 @@ public sealed class SolutionViewTests : IDisposable
         window.Close();
     }
 
+    /// <summary>A double click on a folder's chevron is two clicks on it, opening and closing the folder, and never opens the
+    /// file chosen before, which the list's double click would (#1782).</summary>
+    [AvaloniaFact]
+    public void A_double_click_on_a_folders_chevron_opens_and_closes_it_and_never_opens_the_file_chosen()
+    {
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        ExplorerView explorer = window.ExplorerView;
+        ExplorerNode order = Show(window, Path.Combine(folder, "Shop.App", "Models", "Order.cs"));
+        ExplorerNode catalog = Show(window, Path.Combine(folder, "Shop.Core", "Catalog"));
+        if (catalog.IsExpanded)
+        {
+            explorer.Tree.Toggle(catalog);
+            Ui.Settle();
+        }
+        Ui.ClickRow(window, order);
+        Assert.Empty(window.EditorArea.Documents);
+
+        Ui.DoubleClick(Ui.Row(explorer, catalog).GetVisualDescendants().OfType<RowGlyphs>().Single(), new Point(9, ListRow.Height / 2));
+        Assert.True(window.EditorArea.Documents.Count == 0,
+            $"A double click on Catalog's chevron opened [{string.Join(", ", window.EditorArea.Documents.Select(d => Path.GetFileName(d.Path)))}], the file chosen before");
+        Assert.False(catalog.IsExpanded, "A double click on Catalog's chevron, two clicks on it, left it open");
+        Assert.True(explorer.SelectedNodes is [{ } still] && still == order,
+            $"A double click on Catalog's chevron chose [{string.Join(", ", explorer.SelectedNodes.Select(n => n.Name))}], where Order.cs was chosen");
+        window.Close();
+    }
+
     /// <summary>A folder opened and closed by its chevron above the file chosen leaves the view where it was, the folder
     /// where the person clicked and the file pushed out of sight and back (#712); a row chosen by a key, or a file opened
     /// while the Explorer was closed, still comes into view.</summary>

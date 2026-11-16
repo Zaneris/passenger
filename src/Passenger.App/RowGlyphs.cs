@@ -32,9 +32,11 @@ public sealed class RowGlyphs : Control
     {
         ActualThemeVariantChanged += (_, _) => InvalidateVisual();
         ResourcesChanged += (_, _) => InvalidateVisual();
+        DoubleTapped += (_, e) => e.Handled |= OnChevron(e.GetPosition(this));
     }
 
-    /// <summary>A press on the chevron's column of a row that has one.</summary>
+    /// <summary>A press on the chevron's column of a row that has one. A double press there is two such presses alone, never
+    /// the list's double click, which acts on the row chosen.</summary>
     public event EventHandler<PointerPressedEventArgs>? ChevronPressed;
 
     public bool HasChevron
@@ -66,11 +68,13 @@ public sealed class RowGlyphs : Control
     protected override void OnPointerPressed(PointerPressedEventArgs e)
     {
         base.OnPointerPressed(e);
-        if (HasChevron && e.GetPosition(this).X < Column)
+        if (OnChevron(e.GetPosition(this)))
         {
             ChevronPressed?.Invoke(this, e);
         }
     }
+
+    private bool OnChevron(Point at) => HasChevron && at.X < Column;
 
     public override void Render(DrawingContext context)
     {
