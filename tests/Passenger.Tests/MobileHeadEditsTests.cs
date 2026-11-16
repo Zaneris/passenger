@@ -235,9 +235,10 @@ public sealed partial class MobileHeadEditsTests
             Ui.WaitFor(() => window.MobileWant.Trimmed.Any(h => h.Name == "Cat"), () => $"Cat's Debug build to be found trimmed: {Ui.Said(window)}", Slow);
             {
                 Assert.True(window.Perform(AppActions.KeepAssembliesWhole), $"Keep .NET's Assemblies Whole in Debug was refused: {window.Status}");
-                Ui.WaitFor(() => window.Actions.Work.Of(AppActions.KeepAssembliesWhole) is null && File.ReadAllText(project).Contains("'Debug'\">None</MtouchLink>", StringComparison.Ordinal),
-                    () => $"the Debug build to be kept whole: {Ui.Said(window)}\n{File.ReadAllText(project)}", Slow);
+                Ui.WaitFor(() => window.Actions.Work.Of(AppActions.KeepAssembliesWhole) is null,
+                    () => $"Keep .NET's Assemblies Whole in Debug to end: {Ui.Said(window)}", TimeSpan.FromMinutes(2));
                 Assert.Equal(MobileHeads.Whole("Cat"), window.Status);
+                Assert.Contains("'Debug'\">None</MtouchLink>", File.ReadAllText(project), StringComparison.Ordinal);
             }
             string edited = File.ReadAllText(plist);
             Assert.Contains("<key>LSMinimumSystemVersion</key>\n    <string>14.0</string>", edited, StringComparison.Ordinal);

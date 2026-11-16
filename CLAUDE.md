@@ -87,7 +87,7 @@ tests run with a 4 MB `System.GC.Gen0MaxBudget`, so a young collection fits a 14
   `tools/Passenger.Notices/Licenses`, a package inside Roslyn's server in its table. MIT first. The owner's exceptions:
   Visual Studio Telemetry and Utilities.Internal inside Roslyn's server (Razor needs them), and the TextMate bundle
   licence.
-- **Every program Passenger starts goes through `ChildProcesses`**, so none outlives the IDE (`Lifeline`): `Command`,
+- **Every program Passenger starts goes through `ChildProcesses`**, so none outlives the IDE (`Lifeline`, its watchdog outside Passenger's process tree, so a tree kill leaves it to end what the system started for Passenger, a Catalyst or simulator app adopted once found; `ChildProcesses.WatchdogOf`): `Command`,
   `DotnetCommand`, `HelperCommand` (Passenger's helpers on Passenger's runtime, never the machine's), `ConservingMemory`
   for Roslyn's server and the project host but never the debug adapter, whose program would inherit it, `DotnetQuestion`
   for the .NET CLI's questions (no telemetry, so it lets go of its folder), `Kill` for it and all it started (a group killed again until empty: a kill passes over a process forked as it kills); a .cmd or .bat runs through cmd.exe there and in the Terminal (`WindowsCommandLine.ThroughCmd`), never a cmd.exe line of a caller's own. Give each
