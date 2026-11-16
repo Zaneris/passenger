@@ -28,6 +28,18 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
   - Outside the code: 7 (the runner, GitHub, xunit, Rosetta).
   - Unlabelled: 7.
 
+## 2026-11-16
+
+- `McpRefactorTests`' `Usages_answer_at_once_without_a_file_another_project_has_yet_to_load_and_a_rename_waits_for_it`,
+  CI 43797752504 (macOS report shard 2): "Rename was not applied: App is not loaded again yet … after 20 s". **An order in
+  the IDE**: the rename waits both for App's new caller and for App's load again (App evaluated again as files came into
+  its folder), and said the first of `UnplacedAsync`'s, which followed the `arriving` dictionary, where an add takes the
+  slot last freed: after two waits let go together the next two came out swapped, so it said "load App.csproj again", and
+  the test lets App's held build go only once Caller.cs is named, so the rename ran out. Not #1768 or #1763: the same at
+  c3543667c^. Shown by logging the wait's order: 4 of 4 with two of Lib's files taken in first, 2 of 5 with both project
+  files written. The waits are now ordered by when each came (`Arrival.Heard`), and the test lets two of Lib's files go
+  together first; 20 of 20 under load on the Mac (65d1a2118, #1771).
+
 ## 2026-11-15
 
 - `TerminalTests`' `A_program_receives_the_mouse_release_when_Shift_changes_after_the_press`, CI 43778696623 (macOS shard 2 of
