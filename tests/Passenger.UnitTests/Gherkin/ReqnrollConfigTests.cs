@@ -62,12 +62,44 @@ public sealed class ReqnrollConfigTests
         Assert.Equal(SkeletonStyle.AsyncRegex, ReqnrollConfig.Parse("""{ "trace": { "stepDefinitionSkeletonStyle": "AsyncRegexAttribute" } }""", false) with { Written = true } is var said ? said.SkeletonFor(specFlow: false) : default);
     }
 
-    [Fact]
-    public void A_features_arguments_are_converted_in_its_own_language_unless_a_binding_culture_is_named()
+    /// <summary>The culture a feature's steps' arguments are converted in, for each shape of configuration and each way a
+    /// feature names its language, as Reqnroll 3.3.4 itself answered when asked (its JsonConfigurationLoader reading the
+    /// configuration, Gherkin's reader with Reqnroll's dialect provider the feature, its FeatureInfo taking the language its
+    /// generator writes, and FeatureContext's binding culture from them): the binding culture named, else the feature's own
+    /// language line's, else the project's feature language as written, else en-US.</summary>
+    [Theory]
+    [InlineData("{}", "Feature: F", "en-US")]
+    [InlineData("{}", "# language: de\nFunktionalität: F", "de")]
+    [InlineData("{}", "# language: de-AT\nFunktionalität: F", "de-AT")]
+    [InlineData("{}", "# language: en-au\nPretty much: F", "en-AU")]
+    [InlineData("""{ "language": { "feature": "de-AT" } }""", "Funktionalität: F", "de-AT")]
+    [InlineData("""{ "language": { "feature": "de-AT" } }""", "# language: de\nFunktionalität: F", "de")]
+    [InlineData("""{ "language": { "feature": "de-AT" } }""", "# language: de-CH\nFunktionalität: F", "de-CH")]
+    [InlineData("""{ "language": { "feature": "de-AT" } }""", "# language: en\nFeature: F", "en")]
+    [InlineData("""{ "language": { "feature": "de" } }""", "Funktionalität: F", "de")]
+    [InlineData("""{ "language": { "feature": "en-GB" } }""", "Feature: F", "en-GB")]
+    [InlineData("""{ "language": { "feature": "" } }""", "Feature: F", "en-US")]
+    [InlineData("""{ "language": { "binding": "fr-FR" } }""", "# language: de\nFunktionalität: F", "fr-FR")]
+    [InlineData("""{ "language": { "feature": "de-AT", "binding": "en-GB" } }""", "Funktionalität: F", "en-GB")]
+    [InlineData("""{ "language": { "feature": "de-AT" }, "bindingCulture": { "name": "nl-NL" } }""", "# language: en\nFeature: F", "nl-NL")]
+    [InlineData("""{ "language": { "binding": "en-GB" }, "bindingCulture": { "name": "nl-NL" } }""", "Feature: F", "nl-NL")]
+    [InlineData("""{ "bindingCulture": { "name": "" } }""", "Feature: F", "en-US")]
+    [InlineData("""{ "bindingCulture": { "name": "" } }""", "# language: fr\nFonctionnalité: F", "fr")]
+    public void A_features_arguments_are_converted_in_the_culture_reqnrolls_runtime_takes(string json, string feature, string culture)
     {
-        FeatureReading german = FeatureReading.Read("# language: de\nFunktionalität: F\n", "en");
+        ReqnrollConfig config = ReqnrollConfig.Parse(json, specFlow: false);
+        FeatureReading reading = FeatureReading.Read(feature + "\n", GherkinDialects.Default(config.FeatureLanguage));
 
-        Assert.Equal("de", ReqnrollConfig.Parse("{}", specFlow: false).BindingCultureOf(german));
-        Assert.Equal("en-US", ReqnrollConfig.Parse("""{ "language": { "binding": "en-US" } }""", specFlow: false).BindingCultureOf(german));
+        Assert.Empty(reading.Errors);
+        Assert.Equal(culture, ProjectSteps.CultureOf(config.BindingCultureOf(reading)).Name);
+    }
+
+    [Fact]
+    public void SpecFlows_file_names_its_cultures_as_reqnrolls_does()
+    {
+        ReqnrollConfig config = ReqnrollConfig.Parse("""{ "language": { "feature": "de-AT" }, "bindingCulture": { "name": " " } }""", specFlow: true);
+
+        Assert.Equal<(string?, string?)>(("de-AT", null), (config.FeatureLanguage, config.BindingCulture));
+        Assert.Equal("de-AT", config.BindingCultureOf(FeatureReading.Read("Funktionalität: F\n", GherkinDialects.Default(config.FeatureLanguage))));
     }
 }

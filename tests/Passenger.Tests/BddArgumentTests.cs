@@ -91,7 +91,7 @@ public sealed class BddArgumentTests : IClassFixture<RestoredFolders>, IDisposab
 
             Marker date = MarkOn(feature, "31/01/2024");
             Assert.Equal((MarkerKind.Error, FeatureAnalysis.Argument), (date.Kind, date.Code));
-            Assert.Contains("ShopSteps.GivenOpens(DateTime) takes day as a date (as en writes one, like 1/31/2024), which \"31/01/2024\" is not",
+            Assert.Contains("ShopSteps.GivenOpens(DateTime) takes day as a date (as en-US writes one, like 1/31/2024), which \"31/01/2024\" is not",
                 date.Message, StringComparison.Ordinal);
 
             Marker colour = MarkOn(feature, "Purple");
@@ -108,6 +108,40 @@ public sealed class BddArgumentTests : IClassFixture<RestoredFolders>, IDisposab
             Assert.Contains("CreateSet<Book> sets no member from \"Pagez\", so it is passed over: Book has Title and Pages", column.Message, StringComparison.Ordinal);
 
             Assert.True(feature.Markers.Count == 5, $"Only the five refused were to be marked, and a run takes the rest: {Said(feature)}");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>A date in a project whose features are written in Austrian German is read as Reqnroll's run converts it, in
+    /// de-AT, its configured feature language, where January is Jänner: "31. Jänner 2024" is taken, and "31. Januar 2024",
+    /// which German as Germany writes it takes, is marked saying the culture it is read in.</summary>
+    [AvaloniaFact]
+    public void A_date_in_a_project_whose_features_are_in_austrian_german_is_read_as_its_run_converts_it()
+    {
+        TestFolders.Write(folder, "Calc.Specs/reqnroll.json",
+            "{\n  \"language\": { \"feature\": \"de-AT\" },\n  \"bindingAssemblies\": [ { \"assembly\": \"Calc.Steps\" } ]\n}\n");
+        // Read as German, the English features would fail the project's load.
+        TestFolders.Write(folder, "Calc.Specs/Features/Calculator.feature", "# language: en\n" + ReqnrollProjects.Feature);
+        TestFolders.Write(folder, "Calc.Specs/Features/Shop.feature", "# language: en\n" + Feature);
+        TestFolders.Write(folder, "Calc.Specs/Features/Laden.feature",
+            "Funktionalität: Laden\n\nSzenario: Öffnen\n  Angenommen the shop opens on 31. Jänner 2024\n  Und the shop opens on 31. Januar 2024\n");
+        MainWindow window = Ui.OpenFolder(folder);
+        try
+        {
+            Assert.Null(window.OpenFile(Path.Combine(folder, "Calc.Specs", "Features", "Laden.feature")));
+            OpenDocument feature = window.EditorArea.Active!;
+            Ui.WaitFor(() => feature.Markers.Count >= 1, () => $"the date de-AT does not read marked: {Said(feature)} "
+                + $"(Calc.Specs' bindings: {window.Session.Steps.For(Path.Combine(folder, "Calc.Specs", "Calc.Specs.csproj"))?.Bindings.Count.ToString() ?? "none"}; {window.Status})",
+                TimeSpan.FromMinutes(3));
+
+            Marker januar = Assert.Single(feature.Markers);
+            Assert.Equal(MarkOn(feature, "31. Januar 2024"), januar);
+            Assert.Equal((MarkerKind.Error, FeatureAnalysis.Argument), (januar.Kind, januar.Code));
+            Assert.Contains("ShopSteps.GivenOpens(DateTime) takes day as a date (as de-AT writes one, like 31.01.2024), which \"31. Januar 2024\" is not",
+                januar.Message, StringComparison.Ordinal);
         }
         finally
         {

@@ -25,7 +25,7 @@ public sealed class ProjectSteps(string project, bool specFlow, IReadOnlyList<St
     /// language, as Reqnroll takes it), made once for each; for any thread.</summary>
     public StepMatcher Matcher(string? culture)
     {
-        string name = culture ?? DefaultCulture;
+        string name = culture ?? ReqnrollConfig.DefaultFeatureLanguage;
         lock (made)
         {
             if (!matchers.TryGetValue(name, out StepMatcher? matcher))
@@ -36,15 +36,12 @@ public sealed class ProjectSteps(string project, bool specFlow, IReadOnlyList<St
         }
     }
 
-    /// <summary>The culture Reqnroll converts arguments in where nothing names one.</summary>
-    private const string DefaultCulture = "en-US";
-
     /// <summary>A binding culture by its name (en-US where none is named), the invariant culture for one .NET does not know.</summary>
     public static CultureInfo CultureOf(string? name)
     {
         try
         {
-            return CultureInfo.GetCultureInfo(name ?? DefaultCulture);
+            return CultureInfo.GetCultureInfo(name ?? ReqnrollConfig.DefaultFeatureLanguage);
         }
         catch (CultureNotFoundException)
         {

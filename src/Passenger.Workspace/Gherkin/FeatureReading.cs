@@ -195,6 +195,10 @@ public sealed partial class FeatureReading
 
     public GherkinDialect Dialect { get; private set; }
 
+    /// <summary>Whether a <c># language:</c> line named the file's language, its <see cref="Dialect"/> then the one it names,
+    /// rather than its project's.</summary>
+    public bool NamesItsLanguage { get; private set; }
+
     public FeatureHeader? Feature { get; private set; }
 
     public List<FeatureHeader> Rules { get; } = [];
@@ -315,6 +319,7 @@ public sealed partial class FeatureReading
         if (Feature is null && NamesLanguage(matcher, token))
         {
             Dialect = matcher.CurrentDialect;
+            NamesItsLanguage = true;
             return FeatureLineKind.Language;
         }
         if (matcher.Match_Comment(token))
