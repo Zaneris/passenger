@@ -30,6 +30,20 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 
 ## 2026-11-16
 
+- `ProblemsTests`' `A_file_changed_on_disk_while_a_pull_is_under_way_has_it_asked_again_of_the_solution_the_change_made`,
+  CI 43823406953 (Linux report shard 3): "Waited 180 s for the analysis to ask again once the key's own pull answered".
+  **The test waited wrong**: it held the next answer of the analysis's pulls from before its key, taking it that the key
+  lets go of the pull under way, but a key lets go only of a pull asked after the first round that has sent nothing: the
+  first round's pull, whose word that every source was analysed ends the round (and so the test's wait for Bad.cs's
+  error) while the server holds it open for the next change, or one that had sent reports, is answered by the server at
+  the key's change, and that answer was the one held. The words show it: the IDE stayed quiet for the 180 s, so the
+  analysis was neither in its first round nor waiting for the key's file pull, both background work, but waiting on a
+  pull nobody let go or answered. Not reproduced: the old test passed 9 of 9 beside the new one under load on the Ubuntu
+  VM and 24 of 24 on the Mac (11 after another window or a reload on the kept server), its round's pull answered at once,
+  the steps showing its reports sent up to 94 ms before that answer. The test now holds unsent, from the key's change on,
+  the next pull asked, the one after the key's own however the one under way ended, and its words give the analysis's
+  steps; 10 of 10 under load on the Ubuntu VM and 22 of 22 on the Mac, the held pull the one under way at the rewrite in
+  each run whose steps were kept (1c6509e5c, #1778).
 - `AssetPreviewTests`' `Invalid_empty_missing_unsupported_and_oversized_assets_fail_without_opening_binary_text`, CI
   43812589368 (Linux x64 report shard 4): "Assert.Empty() Failure … AssetPreview { Bitmap = null, … IsPending = True }"
   after an agent's open of huge.bmp was refused. **A race in the IDE**: `OpenDocument.Load` starts an asset's decode, and
