@@ -1044,7 +1044,7 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
         Assert.Equal(stopped.Id, (threads.SelectedItem as DapThread)?.Id);
         Assert.Equal(Debugging.Helpers.Debuggees.Line(Looping, "stop while the lock is held"), view.SelectedFrame?.Line);
         Assert.Equal("Every thread ran while locked.Value was evaluated, so the values read before it may have moved, and implicit evaluation stays off until the program runs on", view.Moved);
-        Banner said = window.DebugWindow.GetVisualDescendants().OfType<Banner>().Single();
+        Banner said = window.DebugWindow.GetVisualDescendants().OfType<Banner>().Single(b => b.IsEffectivelyVisible);
         Assert.Equal(view.Moved, said.Said);
 
         Ui.Click(said.GetVisualDescendants().OfType<Button>().Single(b => Equals(b.Content, Passenger.App.ToolWindows.DebugView.ReadAgain)));

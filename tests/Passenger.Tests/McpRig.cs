@@ -619,9 +619,10 @@ public abstract class McpRig : IDisposable
 
     protected static string Text(CallToolResult result) => string.Concat(result.Content.OfType<TextContentBlock>().Select(t => t.Text));
 
-    /// <summary>usages' places, each file's "line:column text" read apart, in the answer's order.</summary>
+    /// <summary>usages' places listed, each file's "line:column text" read apart, in the answer's order; a file only counted
+    /// (the answer held to its limit) lists none, read on through within.</summary>
     protected static IReadOnlyList<(string Path, int Line, int Column, string Text)> Used(JsonElement usages) =>
-        [.. usages.GetProperty("files").EnumerateArray().SelectMany(file => file.GetProperty("places").EnumerateArray().Select(place =>
+        [.. usages.GetProperty("files").EnumerateArray().Where(file => file.TryGetProperty("places", out _)).SelectMany(file => file.GetProperty("places").EnumerateArray().Select(place =>
         {
             string said = place.GetString()!;
             int space = said.IndexOf(' ', StringComparison.Ordinal);

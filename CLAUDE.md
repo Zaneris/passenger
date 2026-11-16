@@ -190,6 +190,7 @@ tests run with a 4 MB `System.GC.Gen0MaxBudget`, so a young collection fits a 14
   fails a copy). Work that takes a while holds a `Working` (`ActionWork.Begin`) from its first moment to its hand-over,
   saying each stage, honouring `Stopping`, and tells what it came to (`Working.Tell`), which `ide_action` answers;
   toolbar buttons bind with `ActionButtons.Bind`.
+- **An agent's paths are the open folder's** and, trusted, its solution's projects beside it (`ProjectSession.Reached`, the one list `WorkspaceTrust.Lend` takes): every tool's path goes through `PassengerTools.Resolve` (`AgentReach`, `Refusals.OutOfReach`), outside them only reading what Go to Declaration leads to; only `open`'s folder or solution and the debugger's places take any path (`Named`), never a share's (`FoundPaths`), a breakpoint outside reach telling nothing of its file; a setting naming a program is the person's (`AppSettings.NamingPrograms`); the consent question shows each argument whole (`AskedArguments`).
 - **An agent never takes the person's keys or brings a window forward** (`ActionRegistry.RunForAgent`,
   `DockHost.ShowBehind`); `AgentAsks` cancels an attached agent's focus moves and refuses its popups and modal dialogs
   (`Refusals.AsksThePerson`; a popup host asks `AgentAsks.Refused`); a file it opens comes in a tab behind.
