@@ -33,10 +33,6 @@ public sealed partial record MacCatalystApp(string Bundle, string Executable)
     /// where its sandbox keeps it there (<see cref="ContainerTemporary"/>), else one of Passenger's own.</summary>
     public string Carried { get; init; } = string.Empty;
 
-    /// <summary>The moment, on the wall clock as the system keeps a process's start, before the start opened the app: the
-    /// app's process is the one started since.</summary>
-    public DateTime Since { get; init; }
-
     /// <summary>The folder the opener makes for the pipes it hands the app its output through, a start's own, which the
     /// start's end takes out however the opener ended (<see cref="MacCatalystApps.Opener"/>).</summary>
     public string Pipes { get; init; } = string.Empty;
@@ -97,7 +93,7 @@ public sealed record MacCatalystLaunch(string Framework)
 /// it runs as one, its sandbox and all): <see cref="Opener"/> runs it, its output the opener's own, and lasts as long as it
 /// does. Where nobody sees the window that runs it, it opens hidden and never in front (<c>open -g -j</c>), its windows
 /// never on the person's screen, and passes over the windows it kept (<see cref="IgnoringKeptWindows"/>). LaunchServices
-/// starts it apart from Passenger, so it is found by its program once it runs and ends with its run.</summary>
+/// starts it apart from Passenger, so it is found by its start's own token once it runs and ends with its run.</summary>
 public static partial class MacCatalystApps
 {
     /// <summary>The program that opens the app: a shell running <see cref="Opener"/>.</summary>

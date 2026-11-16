@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.Globalization;
 using System.Runtime.InteropServices;
 using System.Security.Principal;
@@ -202,6 +203,32 @@ public static partial class DotnetProcesses
         {
             return null;
         }
+    }
+
+    /// <summary>A variable of the environment a process started with, as the system keeps it (KERN_PROCARGS2 on macOS, /proc
+    /// on Linux), which it gives for a process of the same user; null where the process has none, or it cannot be read (gone,
+    /// another user's, a program of the system's own, Windows).</summary>
+    public static string? VariableOf(int id, string name)
+    {
+        IReadOnlyList<string> environment;
+        try
+        {
+            environment = OperatingSystem.IsMacOS() ? MacStarted(id).Environment
+                : OperatingSystem.IsLinux() ? File.ReadAllText($"/proc/{id}/environ").Split('\0', StringSplitOptions.RemoveEmptyEntries)
+                : [];
+        }
+        catch (Exception unread) when (unread is IOException or UnauthorizedAccessException)
+        {
+            return null;
+        }
+        foreach (string variable in environment)
+        {
+            if (variable.Length > name.Length && variable[name.Length] == '=' && variable.StartsWith(name, StringComparison.Ordinal))
+            {
+                return variable[(name.Length + 1)..];
+            }
+        }
+        return null;
     }
 
     /// <summary>Whether this <see cref="System.Diagnostics.Process"/> started its process: a zombie of its own is .NET's to
@@ -532,15 +559,16 @@ public static partial class DotnetProcesses
             return null;
         }
         uint uid = *(uint*)(info + BsdUidOffset);
-        IReadOnlyList<string> arguments = MacArguments(id);
+        IReadOnlyList<string> arguments = MacStarted(id).Arguments;
         string name = Libc.ExecutableOf(id) is { } path ? Path.GetFileName(path)
             : arguments.Count > 0 ? Path.GetFileName(arguments[0])
             : id.ToString(CultureInfo.InvariantCulture);
         return new DotnetProcess(id, name, Joined(arguments), UserName(uid), uid == Libc.EffectiveUserId());
     }
 
-    /// <summary>A process's arguments from KERN_PROCARGS2: its count, the executable's path, padding, then each argument.</summary>
-    private static unsafe IReadOnlyList<string> MacArguments(int id)
+    /// <summary>A process's arguments and environment as it started, from KERN_PROCARGS2 (<see cref="Started"/>); none where
+    /// the system gives none.</summary>
+    private static unsafe (IReadOnlyList<string> Arguments, IReadOnlyList<string> Environment) MacStarted(int id)
     {
         const int CtlKern = 1;
         const int KernArgMax = 8;
@@ -552,43 +580,65 @@ public static partial class DotnetProcesses
         nuint size = sizeof(int);
         if (SysCtl(query, 2, (byte*)&most, &size, null, 0) != 0 || most <= 0)
         {
-            return [];
+            return ([], []);
         }
-        byte[] buffer = new byte[most];
-        query[1] = KernProcArgs2;
-        query[2] = id;
-        size = (nuint)buffer.Length;
-        fixed (byte* into = buffer)
+        byte[] buffer = ArrayPool<byte>.Shared.Rent(most);
+        try
         {
-            if (SysCtl(query, 3, into, &size, null, 0) != 0 || size < sizeof(int))
+            query[1] = KernProcArgs2;
+            query[2] = id;
+            size = (nuint)most;
+            fixed (byte* into = buffer)
             {
-                return [];
+                if (SysCtl(query, 3, into, &size, null, 0) != 0)
+                {
+                    return ([], []);
+                }
             }
+            return Started(buffer.AsSpan(0, (int)size));
         }
-        int count = BitConverter.ToInt32(buffer, 0);
-        int at = sizeof(int);
-        int end = (int)size;
-        // The executable's path, then the padding after it.
-        while (at < end && buffer[at] != 0)
+        finally
         {
-            at++;
+            ArrayPool<byte>.Shared.Return(buffer);
         }
-        while (at < end && buffer[at] == 0)
+    }
+
+    /// <summary>KERN_PROCARGS2's record of how a process started: its count of arguments, the executable's path, padding,
+    /// each argument, then each variable of its environment up to an empty one, every string ending with a NUL. What it
+    /// holds, as far as it goes.</summary>
+    internal static (IReadOnlyList<string> Arguments, IReadOnlyList<string> Environment) Started(ReadOnlySpan<byte> record)
+    {
+        if (record.Length < sizeof(int))
+        {
+            return ([], []);
+        }
+        int count = BitConverter.ToInt32(record);
+        int at = sizeof(int);
+        // The executable's path, then the padding after it.
+        Next(record, ref at);
+        while (at < record.Length && record[at] == 0)
         {
             at++;
         }
         List<string> arguments = [];
-        while (arguments.Count < count && at < end)
+        while (arguments.Count < count && at < record.Length)
         {
-            int start = at;
-            while (at < end && buffer[at] != 0)
-            {
-                at++;
-            }
-            arguments.Add(Encoding.UTF8.GetString(buffer, start, at - start));
-            at++;
+            arguments.Add(Next(record, ref at));
         }
-        return arguments;
+        List<string> environment = [];
+        while (at < record.Length && record[at] != 0)
+        {
+            environment.Add(Next(record, ref at));
+        }
+        return (arguments, environment);
+
+        static string Next(ReadOnlySpan<byte> record, ref int at)
+        {
+            int length = record[at..].IndexOf((byte)0);
+            string text = Encoding.UTF8.GetString(record.Slice(at, length < 0 ? record.Length - at : length));
+            at = length < 0 ? record.Length : at + length + 1;
+            return text;
+        }
     }
 
     /// <summary>A user's name, or their number when the system names none.</summary>

@@ -19,9 +19,9 @@ namespace Passenger.Tests;
 /// Reload carries the inspector and the update handlers' hook in too, so its tree is the app's window, a tap reaches its
 /// button's centre, an edit lands and its update handler is called; built as the template has it, which trims them, Debug
 /// says they stay out, and stops in its main page, which its interpreter runs, steps, shows, evaluates and takes an edit.
-/// Stop ends the app and takes out what was carried; an agent's Passenger killed with its tree ends the app it opened too.
-/// Skips, saying why, off a Mac, without MAUI's and Mac Catalyst's workloads or Xcode, or the Mac Catalyst relay. Debugged
-/// through the window, so alone.</summary>
+/// Stop ends the app and takes out what was carried, its start's own instance alone where it is debugged and run at once;
+/// an agent's Passenger killed with its tree ends the app it opened too. Skips, saying why, off a Mac, without MAUI's and
+/// Mac Catalyst's workloads or Xcode, or the Mac Catalyst relay. Debugged through the window, so alone.</summary>
 [Collection(Alone.Name)]
 public sealed class MauiCatalystTests : McpRig
 {
@@ -144,6 +144,57 @@ public sealed class MauiCatalystTests : McpRig
             TestFolders.Delete(folder);
         }
     }
+
+    /// <summary>The same app debugged and run at once, each start opening an instance of its own: each is told from the other
+    /// by its start's own token, so the debugged one's end ends it alone and Run's runs on until its own Stop, and neither
+    /// leaves its opener's pipes behind, though each opener is killed.</summary>
+    [AvaloniaFact]
+    public void A_maui_apps_mac_catalyst_head_debugged_and_run_at_once_ends_each_instance_alone_with_its_own_start()
+    {
+        (string folder, _) = Prepared("maui-catalyst-both", whole: false);
+        MainWindow window = Ui.OpenFolder(folder);
+        window.ApplySettings(window.Settings with { HotReload = false });
+        try
+        {
+            Chosen(window);
+            Ui.Launched(window, window.DebugAsync(), "the Mac Catalyst head's build and its debugged opening", Slow);
+            MacCatalystApp? debugged = null;
+            Ui.WaitFor(() => window.Debugger.Session?.State == DebugState.Running
+                    && (debugged = window.Debugger.Tabs.Select(t => t.Plan?.MacCatalyst?.App).LastOrDefault(a => a is not null)) is { Process.Id: not null },
+                () => $"the debugged app to run and its start to find its process; the debugger is {window.Debugger.Session?.State.ToString() ?? "not debugging"}, "
+                    + $"the start found {debugged?.Process.Id?.ToString() ?? "no process"}: {Ui.Said(window)}\n{Console(window)}", Slow);
+            int first = debugged!.Process.Id!.Value;
+            Ui.Launched(window, window.RunAsync(), "Run's opening of a second instance while the first is debugged", Slow);
+            MacCatalystApp ran = Opened(window);
+            Ui.WaitFor(() => ran.Process.Id is not null, () => $"Run's start to find its own process: {Ui.Said(window)}\n{Output(window)}", TimeSpan.FromMinutes(1));
+            int second = ran.Process.Id!.Value;
+            Assert.True(first != second, $"Run's start took the debugged instance, process {first}, for its own");
+            Assert.True(Runs(debugged, first) && Runs(ran, second), $"Process {first} or {second} does not run {ran.Executable}");
+
+            Ui.Await(window.Debugger.StopAsync(window.Debugger.Tabs.First(t => t.IsLive)), "the debug session's stop", TimeSpan.FromMinutes(1));
+            Ui.WaitFor(() => !window.Debugger.IsDebugging, "the debug session to end once stopped", TimeSpan.FromMinutes(1));
+            Ui.WaitFor(() => !Runs(debugged, first) && !Directory.Exists(debugged.Pipes),
+                () => $"the debugged instance (process {first}) to end once its session stopped and its opener's pipes to be taken out "
+                    + $"({(Directory.Exists(debugged.Pipes) ? $"{debugged.Pipes} is still there" : "they are")})", TimeSpan.FromSeconds(30));
+            Ui.Hold(TimeSpan.FromSeconds(2), "for the debugged start's end, which has taken out its pipes, to have ended whatever it would");
+            Assert.True(Runs(ran, second), $"Run's instance (process {second}) ended with the debugged one's session, though nobody stopped it");
+            Assert.True(window.Runner.IsRunning && Directory.Exists(ran.Pipes), "Run's opener ended, or its pipes went, with the debugged one's session");
+
+            Ui.Run(window, AppActions.Stop);
+            Ui.WaitFor(() => window.Runner.Ended.IsCompleted, "the run to end once stopped");
+            Ui.WaitFor(() => !Runs(ran, second) && !Directory.Exists(ran.Pipes),
+                () => $"Run's instance (process {second}) to end once stopped and its opener's pipes to be taken out "
+                    + $"({(Directory.Exists(ran.Pipes) ? $"{ran.Pipes} is still there" : "they are")})", TimeSpan.FromSeconds(30));
+        }
+        finally
+        {
+            window.Close();
+            TestFolders.Delete(folder);
+        }
+    }
+
+    /// <summary>Whether process <paramref name="id"/> runs <paramref name="app"/>'s program.</summary>
+    private static bool Runs(MacCatalystApp app, int id) => Libc.ExecutableOf(id) is { } program && PathNames.Same(program, app.Executable);
 
     /// <summary>An agent's Passenger that ran the app is killed as a test runner kills a hung host, every process of its tree
     /// first, the deepest first, then itself: the app, which the system started apart from Passenger, still ends with it, as

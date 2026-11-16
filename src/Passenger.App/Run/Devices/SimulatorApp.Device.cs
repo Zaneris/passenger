@@ -71,10 +71,14 @@ public sealed partial record SimulatorApp : IDeviceApp
         }
     }
 
-    /// <summary>The variables a start gives the app over the plan's <paramref name="environment"/>: the inspector's, listening
-    /// on its port, the relay's and the update handlers' hook's, each loaded from <see cref="Carried"/> where the start has one.</summary>
+    /// <summary>The app's process this start launched, found by the start's own token and kept.</summary>
+    public AppProcess Process { get; init; } = new();
+
+    /// <summary>The variables a start gives the app over the plan's <paramref name="environment"/>: the start's token
+    /// (<see cref="Process"/>), and the inspector's, listening on its port, the relay's and the update handlers' hook's, each
+    /// loaded from <see cref="Carried"/> where the start has one.</summary>
     public Dictionary<string, string> Variables(IReadOnlyDictionary<string, string> environment, DeviceInspector? inspector, RelaySession? relay,
-        UpdateHandlerHook? handlers) => CarriedIn.Variables(Carried, environment, inspector, relay, handlers);
+        UpdateHandlerHook? handlers) => CarriedIn.Variables(Carried, Process, environment, inspector, relay, handlers);
 
     /// <summary>The app ended on its simulator where <paramref name="stop"/>, simctl's answer in the log where it could not
     /// (one already gone answers that it found nothing to end), then what a start carried in taken out. Never throws.</summary>
@@ -115,14 +119,14 @@ public sealed partial record SimulatorApp : IDeviceApp
         }
     }
 
-    /// <summary>The app's process, started since <paramref name="since"/> (the wall clock's, as the system keeps a process's
-    /// start), taken on once it runs, so it ends with Passenger as its children do, where an end of simctl's launch would
-    /// leave it running; its run ends it through simctl. Looked for until <paramref name="ended"/>. Never throws.</summary>
-    public async Task TakeOnAsync(DateTime since, Task ended)
+    /// <summary>The app's process this start launched (<see cref="Process"/>) taken on once it runs, so it ends with
+    /// Passenger as its children do, where an end of simctl's launch would leave it running; its run ends it through simctl.
+    /// Looked for until <paramref name="ended"/>. Never throws.</summary>
+    public async Task TakeOnAsync(Task ended)
     {
-        if (await MacCatalystApps.StartedAsync(Runs, since, ended, CancellationToken.None) is int id)
+        if (await Process.FindAsync(Runs, ended) is int id)
         {
-            ChildProcesses.Adopt(id, new System.Diagnostics.ProcessStartInfo(Libc.ExecutableOf(id) ?? Bundle));
+            Process.Adopt(Libc.ExecutableOf(id) ?? Bundle);
         }
     }
 

@@ -1344,8 +1344,6 @@ public sealed partial class BuildRunController
                 // A Mac Catalyst app takes the opener's environment, which the system hands it: the inspector's, the relay's and the hook's with the plan's.
                 variables = carried.Variables(variables, inspected?.Device, relay, handlers);
             }
-            // The wall clock's, as the system keeps a process's start: the app opened is the one started since.
-            DateTime opening = DateTime.UtcNow;
             if (plan.Console == ConsoleKind.Terminal)
             {
                 // The terminal's text is the program's own: its failed bindings are in Problems alone.
@@ -1372,7 +1370,7 @@ public sealed partial class BuildRunController
                 }
                 if (refused is null && session.InTerminal is { } apart)
                 {
-                    TakeOn(plan, opening, apart.Ended);
+                    TakeOn(plan, apart.Ended);
                 }
                 if (onDevice is not null)
                 {
@@ -1415,7 +1413,7 @@ public sealed partial class BuildRunController
                 : await session.Runner.StartAsync(plan.Start(), variables));
             if (notStarted is null)
             {
-                TakeOn(plan, opening, session.Runner.Ended);
+                TakeOn(plan, session.Runner.Ended);
                 parts.OpenBrowser(plan, session.Runner.Ended);
             }
             EndWith(inspected, notStarted is null ? session.Runner.Ended : Task.CompletedTask);
@@ -1450,17 +1448,17 @@ public sealed partial class BuildRunController
     }
 
     /// <summary>An app the system starts apart from what its run started (a Mac Catalyst app's opener, simctl's launch on a
-    /// simulator) found once it runs since <paramref name="since"/>, so it ends with Passenger, and a Mac Catalyst app with
-    /// its run as it <paramref name="ended"/>; a simulator's run ends its app through simctl.</summary>
-    private static void TakeOn(LaunchPlan plan, DateTime since, Task ended)
+    /// simulator) found once it runs by its start's own token, so it ends with Passenger, and a Mac Catalyst app with its run
+    /// as it <paramref name="ended"/>; a simulator's run ends its app through simctl.</summary>
+    private static void TakeOn(LaunchPlan plan, Task ended)
     {
         if (plan.MacCatalyst?.App is { } opened)
         {
-            IdeErrors.Observe(Devices.MacCatalystApps.EndWithAsync(opened, since, ended));
+            IdeErrors.Observe(Devices.MacCatalystApps.EndWithAsync(opened, ended));
         }
         else if (plan.Device?.App is Devices.SimulatorApp simulator)
         {
-            IdeErrors.Observe(simulator.TakeOnAsync(since, ended));
+            IdeErrors.Observe(simulator.TakeOnAsync(ended));
         }
     }
 

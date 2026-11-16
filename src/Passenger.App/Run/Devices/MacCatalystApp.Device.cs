@@ -18,7 +18,10 @@ public sealed partial record MacCatalystApp : IDeviceApp
 
     private string RelayCarried() => Path.Combine(AppContext.BaseDirectory, "debugger", "relay", RuntimeIdentifier, RelayFile);
 
-    /// <summary>The opener says nothing of the app's process, which is found by its program (<see cref="MacCatalystApps.StartedAsync"/>).</summary>
+    /// <summary>The app's process this start opened, found by the start's own token and kept to its end.</summary>
+    public AppProcess Process { get; init; } = new();
+
+    /// <summary>The opener says nothing of the app's process, which is found by the start's own token (<see cref="Process"/>).</summary>
     public string? StartedIn(Passenger.Text.TextSnapshot shown) => null;
 
     /// <summary>What the app loads of Passenger's (the inspector's files; the relay and the update handlers' hook where
@@ -60,14 +63,14 @@ public sealed partial record MacCatalystApp : IDeviceApp
     }
 
     /// <summary>The variables a start gives the app over the plan's <paramref name="environment"/>, through the opener, whose
-    /// environment the system hands the app: the inspector's, the relay's and the update handlers' hook's, each loaded from
-    /// <see cref="Carried"/> where the start has one.</summary>
+    /// environment the system hands the app: the start's token (<see cref="Process"/>), and the inspector's, the relay's and
+    /// the update handlers' hook's, each loaded from <see cref="Carried"/> where the start has one.</summary>
     public Dictionary<string, string> Variables(IReadOnlyDictionary<string, string> environment, DeviceInspector? inspector, RelaySession? relay,
-        UpdateHandlerHook? handlers) => CarriedIn.Variables(Carried, environment, inspector, relay, handlers);
+        UpdateHandlerHook? handlers) => CarriedIn.Variables(Carried, Process, environment, inspector, relay, handlers);
 
-    /// <summary>The app's process started since <see cref="Since"/> ended where <paramref name="stop"/>, then <see cref="Carried"/>
-    /// and the opener's <see cref="Pipes"/> taken out, whatever of them is there (the hook's socket is made before what is
-    /// copied in). Never throws.</summary>
+    /// <summary>The app's process this start opened ended where <paramref name="stop"/>, then <see cref="Carried"/> and the
+    /// opener's <see cref="Pipes"/> taken out, whatever of them is there (the hook's socket is made before what is copied
+    /// in). Never throws.</summary>
     public async Task EndAsync(DevicePut? put, bool stop)
     {
         if (stop)
@@ -76,10 +79,7 @@ public sealed partial record MacCatalystApp : IDeviceApp
             {
                 await held();
             }
-            if (MacCatalystApps.Find(Executable, Since) is int id)
-            {
-                ChildProcesses.KillLeft(id);
-            }
+            Process.End();
         }
         CarriedIn.TakeOut(Carried, Package);
         CarriedIn.TakeOut(Pipes, Package);

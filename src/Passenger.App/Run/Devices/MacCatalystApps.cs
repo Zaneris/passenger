@@ -1,5 +1,3 @@
-using System.Diagnostics;
-using System.Runtime.InteropServices;
 using Passenger.App.Workspace;
 using Passenger.Core;
 
@@ -58,8 +56,7 @@ public static partial class MacCatalystApps
         {
             return (null, $"Could not run {name}: Passenger has no folder of its own to carry its inspector into: {unowned.Message}");
         }
-        // The wall clock's, as the system keeps a process's start: the app's process is the one started since.
-        app = app with { Carried = into, Since = DateTime.UtcNow, Pipes = pipes };
+        app = app with { Carried = into, Pipes = pipes };
         IReadOnlyList<string> opening = Opening(app, plan.Unseen, [.. plan.OwnArguments]);
         return (plan with
         {
@@ -83,74 +80,17 @@ public static partial class MacCatalystApps
         return read.Succeeded && MacCatalystApp.Sandboxed(read.Output);
     }
 
-    /// <summary>How often a start looks for its app among the processes.</summary>
-    private static readonly TimeSpan Looking = TimeSpan.FromMilliseconds(100);
-
-    /// <summary>The process of <paramref name="app"/> started since <paramref name="since"/> (the wall clock's, as the system
-    /// keeps a process's start), looked for until it is found or its opener has <paramref name="ended"/>, then once more;
-    /// null where none is.</summary>
-    public static Task<int?> StartedAsync(MacCatalystApp app, DateTime since, Task ended, CancellationToken cancel = default) =>
-        StartedAsync(program => PathNames.Same(program, app.Executable), since, ended, cancel);
-
-    /// <summary>The process whose program <paramref name="runs"/> takes for an app's, started since <paramref name="since"/>,
-    /// looked for until it is found or what started it has <paramref name="ended"/>, then once more; null where none is.</summary>
-    internal static async Task<int?> StartedAsync(Func<string, bool> runs, DateTime since, Task ended, CancellationToken cancel)
+    /// <summary>The app's process this start opened (<see cref="AppProcess"/>) adopted once it runs, so it ends with
+    /// Passenger as its children do, and ended with its run: once its opener has <paramref name="ended"/> (the app ended, or
+    /// Stop ended the opener), whatever of it is left goes. Never throws.</summary>
+    public static async Task EndWithAsync(MacCatalystApp app, Task ended)
     {
-        while (true)
-        {
-            bool last = ended.IsCompleted;
-            if (Find(runs, since) is int found)
-            {
-                return found;
-            }
-            if (last)
-            {
-                return null;
-            }
-            await Task.WhenAny(ended, Task.Delay(Looking, cancel));
-            cancel.ThrowIfCancellationRequested();
-        }
-    }
-
-    /// <summary>The app's process adopted, so it ends with Passenger as its children do, and ended with its run: once its
-    /// opener has <paramref name="ended"/> (the app ended, or Stop ended the opener), whatever of it is left goes. Never throws.</summary>
-    public static async Task EndWithAsync(MacCatalystApp app, DateTime since, Task ended)
-    {
-        if (await StartedAsync(app, since, ended) is not int id)
+        if (await app.Process.FindAsync(program => PathNames.Same(program, app.Executable), ended) is null)
         {
             return;
         }
-        ChildProcesses.Adopt(id, new ProcessStartInfo(app.Executable));
+        app.Process.Adopt(app.Executable);
         await ended.Ended();
-        // Its id is another's once it has gone: only the app's own program is ended.
-        if (Libc.ExecutableOf(id) is { } running && PathNames.Same(running, app.Executable))
-        {
-            ChildProcesses.KillLeft(id);
-        }
+        app.Process.End();
     }
-
-    /// <summary>The first process running <paramref name="executable"/> that started at or after <paramref name="since"/>.</summary>
-    internal static int? Find(string executable, DateTime since) => Find(program => PathNames.Same(program, executable), since);
-
-    /// <summary>The first process whose program <paramref name="runs"/> takes that started at or after <paramref name="since"/>.</summary>
-    private static int? Find(Func<string, bool> runs, DateTime since)
-    {
-        int[] ids = new int[4096];
-        int count = ListAllProcesses(ids, ids.Length * sizeof(int));
-        // A second of leeway: the system keeps a process's start to the microsecond, the caller's moment may round.
-        DateTime from = since - TimeSpan.FromSeconds(1);
-        for (int i = 0; i < Math.Min(count, ids.Length); i++)
-        {
-            if (ids[i] > 0 && Libc.ExecutableOf(ids[i]) is { } program && runs(program)
-                && DotnetProcesses.StartedAt(ids[i]) is { } started && started >= from)
-            {
-                return ids[i];
-            }
-        }
-        return null;
-    }
-
-    /// <summary>proc_listallpids: the ids of every process, as many as fit; their count.</summary>
-    [LibraryImport("libc", EntryPoint = "proc_listallpids")]
-    private static partial int ListAllProcesses(int[] ids, int size);
 }

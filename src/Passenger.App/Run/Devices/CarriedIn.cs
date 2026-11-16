@@ -46,13 +46,13 @@ internal static class CarriedIn
         }
     }
 
-    /// <summary>The variables a start gives the app over the plan's <paramref name="environment"/>: the inspector's (its hook
-    /// loaded from <paramref name="folder"/>, first among the startup hooks), the relay's and the update handlers' hook's
-    /// (carried too, first again), each where the start has one.</summary>
-    public static Dictionary<string, string> Variables(string folder, IReadOnlyDictionary<string, string> environment, DeviceInspector? inspector, RelaySession? relay,
-        UpdateHandlerHook? handlers)
+    /// <summary>The variables a start gives the app over the plan's <paramref name="environment"/>: its token, by which its
+    /// <paramref name="process"/> is found, the inspector's (its hook loaded from <paramref name="folder"/>, first among the
+    /// startup hooks), the relay's and the update handlers' hook's (carried too, first again), each where the start has one.</summary>
+    public static Dictionary<string, string> Variables(string folder, AppProcess process, IReadOnlyDictionary<string, string> environment, DeviceInspector? inspector,
+        RelaySession? relay, UpdateHandlerHook? handlers)
     {
-        Dictionary<string, string> given = new(environment);
+        Dictionary<string, string> given = new(environment) { [AppProcess.Variable] = process.Token };
         if (inspector is not null)
         {
             Over(given, inspector.Variables(folder, [.. given]));
