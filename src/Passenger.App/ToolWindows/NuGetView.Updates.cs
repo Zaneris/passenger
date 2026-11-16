@@ -17,7 +17,7 @@ public sealed partial class NuGetView
 
     public bool CanUpdateAll => showsUpdates && !checkingUpdates && !updatingAll && !model.IsBusy && updateRows.Count > 0;
 
-    public string? UpdateAllWhyNot => CanUpdateAll ? null : model.IsBusy || updatingAll ? "A package change is under way"
+    public string? UpdateAllWhyNot => CanUpdateAll ? null : model.IsBusy || updatingAll ? Refusals.PackageChangeUnderWay
         : checkingUpdates ? "Checking for updates" : !showsUpdates ? "Open the Updates tab first" : "No updates available";
 
     public void ShowUpdates()

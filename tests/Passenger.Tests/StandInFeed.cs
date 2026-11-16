@@ -24,6 +24,10 @@ public sealed class StandInFeed : IDisposable, IAsyncDisposable
 
     private sealed record HeldPackage(string Id, Task Until);
 
+    /// <summary>When the VulnerabilityInfo resource's requests may be answered (<see cref="HoldAdvisories"/>); null while
+    /// they are answered at once.</summary>
+    private Task? advisoriesHeld;
+
     public StandInFeed(string? user = null, string? password = null)
     {
         Password = password;
@@ -90,6 +94,10 @@ public sealed class StandInFeed : IDisposable, IAsyncDisposable
     /// slow feed keeps a restore waiting on it.</summary>
     public void Hold(string id, Task until) => Volatile.Write(ref held, new HeldPackage(id.ToLowerInvariant(), until));
 
+    /// <summary>Answers every request of its VulnerabilityInfo resource only once <paramref name="until"/> has ended, as a
+    /// slow feed keeps the audit waiting on it.</summary>
+    public void HoldAdvisories(Task until) => Volatile.Write(ref advisoriesHeld, until);
+
     /// <summary>Takes these credentials from now on, in place of the ones it was made with.</summary>
     public void Accept(string user, string password) => Volatile.Write(ref accepted, Basic(user, password));
 
@@ -147,6 +155,10 @@ public sealed class StandInFeed : IDisposable, IAsyncDisposable
         if (Volatile.Read(ref held) is { } hold && exchange.Path.StartsWith($"/flat/{hold.Id}/", StringComparison.Ordinal))
         {
             await hold.Until;
+        }
+        if (Volatile.Read(ref advisoriesHeld) is { } advising && exchange.Path.StartsWith("/vulnerabilities/", StringComparison.Ordinal))
+        {
+            await advising;
         }
         (int status, string type, byte[] body) = authorized ? Route(exchange.Path) : (401, "text/plain", Encoding.UTF8.GetBytes("Who are you?"));
         await exchange.ReplyAsync(status, type, body, status == 401 ? "WWW-Authenticate: Basic realm=\"private\"\r\n" : string.Empty);

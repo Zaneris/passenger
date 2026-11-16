@@ -35,7 +35,7 @@ public sealed partial class FolderPackages
     {
         if (IsBusy || Commands is null)
         {
-            return new PackageUpdateResult(0, [], updates.Sum(u => u.Projects.Count), "A package change is under way or command history is unavailable");
+            return new PackageUpdateResult(0, [], updates.Sum(u => u.Projects.Count), $"{Refusals.PackageChangeUnderWay} or command history is unavailable");
         }
         IsBusy = true;
         changing = "Updating all NuGet packages…";

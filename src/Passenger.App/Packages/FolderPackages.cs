@@ -182,6 +182,13 @@ public sealed partial class FolderPackages
     /// <summary>The vulnerabilities as far as they are known: none until they are read, or when they could not be.</summary>
     public VulnerabilityData Known => audit is { IsCompletedSuccessfully: true } read ? read.Result : VulnerabilityData.None;
 
+    /// <summary>The audit as asked for since the sources were read (<see cref="Audit"/>), read or still being read; null
+    /// until something asks for it, which this never does.</summary>
+    public Task<VulnerabilityData>? AuditAsked => audit;
+
+    /// <summary>Whether the audit's feeds are still being asked for the known vulnerabilities, so no version is known safe.</summary>
+    public bool IsAuditing => audit is { IsCompleted: false };
+
     /// <summary>The packages the projects reference: by package, each project's reference for each of its frameworks.</summary>
     public Dictionary<string, Dictionary<string, IReadOnlyList<InstalledVersion>>> Installed()
     {

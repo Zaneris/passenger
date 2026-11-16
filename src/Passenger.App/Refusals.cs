@@ -603,4 +603,11 @@ public static class Refusals
 
     /// <summary>The project has no device chosen to run on, where the chooser lists none.</summary>
     public const string NoTargets = "No device, emulator or simulator is listed for this project: connect a device, or make an emulator with Android Studio's Device Manager";
+
+    /// <summary>A change of NuGet packages asked for while another of the folder's runs.</summary>
+    public const string PackageChangeUnderWay = "A package change is under way";
+
+    /// <summary>A NuGet package's Install, Update or Downgrade while the audit's feeds are still asked which versions have
+    /// known vulnerabilities, so the version put in might be one they name.</summary>
+    public const string VulnerabilitiesUnread = "The feeds have not yet said which versions have known vulnerabilities";
 }

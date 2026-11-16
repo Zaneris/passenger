@@ -1174,6 +1174,86 @@ public sealed class NuGetTests : IDisposable
             nuget.GetLogicalDescendants().OfType<Border>().Single(b => b.Name == word).GetLogicalDescendants().OfType<TextBlock>().Last().Text;
     }
 
+    /// <summary>A project built for two frameworks that references the package at the safe 1.0.1 in one and gets the
+    /// vulnerable, deprecated 1.0.0 through Passenger.Charts in the other has that 1.0.0 audited and its deprecation read:
+    /// the package's row is marked and tagged, the status counts it, the project's line shows both versions, its mark naming
+    /// the framework and what brings 1.0.0 in, and the details say the advisory and the version that fixes it, chosen.</summary>
+    [AvaloniaFact]
+    public void A_version_one_framework_gets_through_another_package_is_audited_though_the_project_references_it_in_another()
+    {
+        const string Charts = "Passenger.Charts";
+        const string Known = "Known security vulnerability in 1.0.0. It could be exploited in certain scenarios. See the advisories below for details.";
+        feed.Add(Charts, "1.0.0", (Id, "1.0.0"));
+        feed.Deprecate(Id, "1.0.0", ["CriticalBugs"], "Take 1.0.1.");
+        Project("Lib", $"{Restorable};{TestProjects.Framework}",
+            $"  <ItemGroup>\n    <PackageReference Include=\"{Charts}\" Version=\"1.0.0\" />\n  </ItemGroup>\n"
+            + $"  <ItemGroup Condition=\"'$(TargetFramework)' == '{Restorable}'\">\n    <PackageReference Include=\"{Id}\" Version=\"1.0.1\" />\n  </ItemGroup>\n");
+        // By its real path, as the window reads it: a restore through TMPDIR's /var link writes another assets file.
+        Restore.Run(Passenger.Core.PathNames.Canonical(lib));
+        MainWindow window = Open();
+        NuGetView nuget = window.NuGet;
+        ChoosePackage(nuget, Id);
+        Ui.WaitFor(() => nuget.Versions.Count == 3, () => $"{Id}'s versions: {nuget.Status}");
+        PackageRow row = nuget.Selected!;
+        Assert.True(row.IsVulnerable && row.Deprecated?.Version == "1.0.0" && nuget.Status == "2 packages installed, 1 vulnerable, 1 deprecated",
+            $"With {TestProjects.Framework}'s 1.0.0 brought in by {Charts}, {Id}'s row is {(row.IsVulnerable ? "marked" : "unmarked")}, "
+            + $"{(row.IsDeprecated ? $"tagged deprecated at {row.Deprecated?.Version}" : "untagged")}, and the status says \"{nuget.Status}\"");
+        Assert.True(ShownVersion(nuget, "Lib") == "1.0.1, 1.0.0", $"Lib's line shows {ShownVersion(nuget, "Lib")}, not {Restorable}'s 1.0.1 and {TestProjects.Framework}'s 1.0.0");
+        string? marked = Line(nuget, "Lib")!.Children.OfType<Panel>().SelectMany(p => p.Children).OfType<RowIcon>().Select(i => ToolTip.GetTip(i) as string).FirstOrDefault();
+        Assert.True(marked == $"Known security vulnerability in 1.0.0 for {TestProjects.Framework}, brought in by {Charts}: Moderate severity ({Advisory})",
+            $"Lib's line is marked \"{marked}\", not with {TestProjects.Framework}'s vulnerable 1.0.0 and what brings it in");
+
+        Border? said = nuget.GetLogicalDescendants().OfType<Border>().FirstOrDefault(b => b.Name == "Vulnerability");
+        string[] words = [.. said?.GetLogicalDescendants().OfType<TextBlock>().Select(t => t.Text).OfType<string>() ?? []];
+        Assert.True(words.Length > 0 && words[0] == Known && words[^1] == "Fixed in 1.0.1" && nuget.ChosenVersion == "1.0.1",
+            $"{Id}'s details say [{string.Join(" | ", words)}] with {nuget.ChosenVersion} chosen, not the advisory on 1.0.0 and 1.0.1, which fixes it");
+        window.Close();
+    }
+
+    /// <summary>While the audit's feed has not answered, no version is offered to put in as though it were known safe: App's
+    /// Install and Lib's Update are greyed, each saying why, Lib's Remove is not, the details say the feed is being asked,
+    /// and the window's own install is refused saying why; once the feed answers, Lib's 1.0.0 is marked, the 1.0.1 that
+    /// fixes it chosen, and Install and Update act again.</summary>
+    [AvaloniaFact]
+    public void While_the_audit_is_unanswered_install_and_update_are_greyed_saying_why_until_it_answers()
+    {
+        Project("Lib", TestProjects.Framework, $"<ItemGroup><PackageReference Include=\"{Id}\" Version=\"1.0.0\" /></ItemGroup>");
+        string app = File.ReadAllText(Path.Combine(folder, "App", "App.csproj"));
+        TaskCompletionSource answer = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        feed.HoldAdvisories(answer.Task);
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        window.Perform(AppActions.ShowNuGet);
+        NuGetView nuget = window.NuGet;
+        try
+        {
+            Ui.PumpUntil(() => nuget.Selected?.Id == Id && nuget.Versions.Count == 3 && Action(nuget, "App", "Install") is not null,
+                $"{Id} listed, chosen and its projects shown while the feed holds its advisories: {nuget.Status}");
+            Button install = Action(nuget, "App", "Install")!;
+            Button? update = Action(nuget, "Lib", "Update");
+            Assert.True(!install.IsEnabled && ToolTip.GetTip(install) as string == Refusals.VulnerabilitiesUnread,
+                $"With the audit unanswered, App's Install is {(install.IsEnabled ? "enabled" : "greyed")}, telling \"{ToolTip.GetTip(install)}\"");
+            Assert.True(update is { IsEnabled: false } && ToolTip.GetTip(update) as string == Refusals.VulnerabilitiesUnread,
+                $"With the audit unanswered, Lib's line offers [{string.Join(", ", Labels(nuget, "Lib"))}], its Update {(update?.IsEnabled == true ? "enabled" : "greyed")}");
+            Assert.True(Action(nuget, "Lib", "Remove") is { IsEnabled: true }, "Lib's Remove, which puts no version in, is greyed while the audit is unanswered");
+            TextBlock? asking = nuget.GetLogicalDescendants().OfType<TextBlock>().FirstOrDefault(t => t.Name == "Auditing");
+            Assert.True(asking is { IsEffectivelyVisible: true, Text: "Asking stand-in which versions have known vulnerabilities…" },
+                $"With the audit unanswered, {Id}'s details say \"{asking?.Text}\", not that the feed is being asked");
+            Assert.False(Ui.AwaitPumped(nuget.InstallAsync(Named(window, "App")), "the window's install asked meanwhile"), "The window's install ran with the audit unanswered");
+            Assert.True(nuget.Status == Refusals.VulnerabilitiesUnread && File.ReadAllText(Path.Combine(folder, "App", "App.csproj")) == app,
+                $"The window's install refused with the audit unanswered says \"{nuget.Status}\"");
+        }
+        finally
+        {
+            answer.TrySetResult();
+        }
+        Ui.WaitFor(() => nuget.Selected is { IsVulnerable: true } && Action(nuget, "App", "Install") is { IsEnabled: true },
+            () => $"{Id} marked vulnerable and App's Install enabled once the feed answered: {nuget.Status}");
+        Assert.True(nuget.ChosenVersion == "1.0.1" && Action(nuget, "Lib", "Update") is { IsEnabled: true },
+            $"Once the feed answered, the window offers {nuget.ChosenVersion} as [{string.Join(", ", Labels(nuget, "Lib"))}], not 1.0.1, which fixes Lib's 1.0.0, as an Update");
+        Assert.DoesNotContain(nuget.GetLogicalDescendants().OfType<TextBlock>(), t => t.Name == "Auditing");
+        window.Close();
+    }
+
     /// <summary>A tag of a package's row shown in the list, by its words.</summary>
     private static Rect Placed(Visual window, Visual control) => new(control.TranslatePoint(default, window)!.Value, control.Bounds.Size);
 

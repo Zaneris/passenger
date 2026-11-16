@@ -41,6 +41,10 @@ public sealed partial class NuGetView
     private ProjectsShown projectsShown;
     private PackageRow? projectsOf;
 
+    /// <summary>The buttons on the chosen package's lines, each with whether it puts the chosen version in (Install, Update,
+    /// Downgrade) and its tip while it can act.</summary>
+    private readonly List<(Button Button, bool PutsIn, string? Tip)> lineActions = [];
+
     /// <summary>The projects pane's Sort and Filter button and its menu.</summary>
     public FilterMenu ProjectFilters => projectFilters;
 
@@ -144,10 +148,18 @@ public sealed partial class NuGetView
     private static string? Newest(IReadOnlyList<InstalledVersion> at, IReadOnlyList<TransitiveUse> brought) =>
         at.Select(v => v.Version).OfType<string>().Concat(brought.Select(b => b.Version)).Order(VersionOrder.Instance).LastOrDefault();
 
-    /// <summary>The words on a project's line that gets the package only through others: its versions, and on hover what
-    /// brings it in and what Install does.</summary>
-    private static (string Shown, string Told) Brought(IReadOnlyList<TransitiveUse> uses, string? chosen) =>
-        (string.Join(", ", uses.Select(u => u.Version).Distinct(StringComparer.OrdinalIgnoreCase)),
-            string.Join("\n", uses.Select(u => $"{(uses.Count > 1 ? $"{u.Framework}: " : string.Empty)}{u.Version}, brought in by {string.Join(", ", u.BroughtBy)}"))
-            + (chosen is null ? string.Empty : $"\nInstall references {chosen} directly"));
+    /// <summary>The words on a project's line for its versions of the package: each once, those it references first, and on
+    /// hover each framework's (named where it has several), with the range given where it shows another version and what
+    /// brings in one it gets through others; nothing on hover where the line says it all.</summary>
+    private static (string Shown, string? Told) LineVersions(IReadOnlyList<InstalledVersion> at, IReadOnlyList<TransitiveUse> uses)
+    {
+        bool named = at.Count + uses.Count > 1;
+        string shown = string.Join(", ", at.Select(v => v.Shown ?? "installed").Concat(uses.Select(u => u.Version)).Distinct(StringComparer.OrdinalIgnoreCase));
+        bool ranged = at.Any(v => v.Given is { } given && given != v.Shown);
+        return (shown, named || ranged || uses.Count > 0
+            ? string.Join("\n", at.Select(v => (named ? $"{v.Framework}: " : string.Empty) + (v.Shown ?? "installed")
+                    + (v.Given is { } given && given != v.Shown ? $", given as {given}" : string.Empty))
+                .Concat(uses.Select(u => (named ? $"{u.Framework}: " : string.Empty) + $"{u.Version}, brought in by {string.Join(", ", u.BroughtBy)}")))
+            : null);
+    }
 }

@@ -23,8 +23,8 @@ public sealed record PackageRow(string Id, string Version, string Description, s
     /// <summary>The versions in force in the projects, each once.</summary>
     public IEnumerable<string> InstalledVersions => Installed.Values.SelectMany(v => v).Select(v => v.Version).OfType<string>().Distinct(StringComparer.OrdinalIgnoreCase);
 
-    /// <summary>By project, the versions a project referencing none of it gets through the packages and projects it does
-    /// reference, as its restore resolved them.</summary>
+    /// <summary>By project, the versions a project gets through the packages and projects it references, as its restore
+    /// resolved them, in each of its frameworks that references none of it.</summary>
     public IReadOnlyDictionary<string, IReadOnlyList<TransitiveUse>> Transitive { get; init; } = new Dictionary<string, IReadOnlyList<TransitiveUse>>();
 
     /// <summary>Whether projects get it only through others, none referencing it.</summary>
@@ -273,16 +273,22 @@ public sealed partial class NuGetView : DockPanel
         ToolTip.SetTip(status, outcome is null ? listed.Tip : string.Join("\n", new[] { outcome, words }.Where(w => w.Length > 0)));
     }
 
-    /// <summary>The projects' Install, Update, Downgrade and Remove, enabled only while no package change is under way.</summary>
+    /// <summary>The projects' Install, Update, Downgrade and Remove, each greyed while it can't act, its tip saying why
+    /// (<see cref="WhyNot"/>).</summary>
     private void EnableActions()
     {
         updateAll.IsEnabled = CanUpdateAll;
         ToolTip.SetTip(updateAll, $"Update all {updateRows.Count} packages across their projects, including results hidden by search");
-        foreach (Button button in ProjectLines.SelectMany(line => line.Children.OfType<Button>()))
+        foreach ((Button button, bool putsIn, string? tip) in lineActions)
         {
-            button.IsEnabled = !model.IsBusy;
+            ToolButtons.Grey(button, WhyNot(putsIn), tip);
         }
     }
+
+    /// <summary>Why a project's action can't run: another package change under way, or, for one that puts the chosen version
+    /// in, the audit's feeds not having said yet whether it is vulnerable; null where it can.</summary>
+    private string? WhyNot(bool putsIn) =>
+        model.IsBusy ? Refusals.PackageChangeUnderWay : putsIn && model.IsAuditing ? Refusals.VulnerabilitiesUnread : null;
 
     /// <summary>The chosen package's line per project, among its details; null while none is chosen.</summary>
     private StackPanel? ProjectsPanel => details.Children.OfType<StackPanel>().FirstOrDefault(p => p.Name == "projects");
@@ -578,11 +584,29 @@ public sealed partial class NuGetView : DockPanel
     /// <summary>The feeds that did not say whether a version the rows' projects have is deprecated.</summary>
     private IReadOnlyList<string> DeprecationsUnknown(IReadOnlyList<PackageRow> found) => model.DeprecationsUnknown(Asked(found));
 
-    /// <summary>A row with the projects that get its package through others, those referencing it aside.</summary>
-    private static PackageRow Brought(PackageRow row, Dictionary<string, Dictionary<string, IReadOnlyList<TransitiveUse>>> transitive) =>
-        transitive.TryGetValue(row.Id, out Dictionary<string, IReadOnlyList<TransitiveUse>>? byProject)
-            ? row with { Transitive = byProject.Where(p => !row.Installed.ContainsKey(p.Key)).ToDictionary(p => p.Key, p => p.Value, Passenger.Core.PathNames.Comparer) }
-            : row;
+    /// <summary>A row with the projects that get its package through others, each in the frameworks where it references
+    /// none of it: a project of several referencing it in one keeps the version another resolves, so that one is audited.</summary>
+    private static PackageRow Brought(PackageRow row, Dictionary<string, Dictionary<string, IReadOnlyList<TransitiveUse>>> transitive)
+    {
+        if (!transitive.TryGetValue(row.Id, out Dictionary<string, IReadOnlyList<TransitiveUse>>? byProject))
+        {
+            return row;
+        }
+        Dictionary<string, IReadOnlyList<TransitiveUse>> kept = new(Passenger.Core.PathNames.Comparer);
+        foreach ((string project, IReadOnlyList<TransitiveUse> uses) in byProject)
+        {
+            IReadOnlyList<InstalledVersion> at = row.Installed.GetValueOrDefault(project) ?? [];
+            if (uses.Where(u => !at.Any(v => Covers(v, u))).ToArray() is { Length: > 0 } left)
+            {
+                kept[project] = left;
+            }
+        }
+        return row with { Transitive = kept };
+
+        // A reference read with no framework (a project of one, or one not evaluated) stands for every framework's.
+        static bool Covers(InstalledVersion reference, TransitiveUse use) =>
+            reference.Framework is null || use.Framework is null || reference.Framework.Equals(use.Framework, StringComparison.OrdinalIgnoreCase);
+    }
 
     /// <summary>The status over the installed packages: how many, how many of them are transitive, how many have a known
     /// vulnerability, how many a deprecated version, and the feeds that did not say.</summary>
@@ -632,11 +656,19 @@ public sealed partial class NuGetView : DockPanel
         return string.Join("; ", said);
     }
 
-    /// <summary>Adds the chosen package to a project at the chosen version, or moves it there.</summary>
-    public async Task<bool> InstallAsync(ProjectModel project) =>
-        Selected is { } row && (ChosenVersion ?? row.Version) is { Length: > 0 } version
-        && (BeforeInstall is null || await BeforeInstall(project, row.Id, version, null, CancellationToken.None))
-        && Said(await model.InstallAsync(project, row.Id, version));
+    /// <summary>Adds the chosen package to a project at the chosen version, or moves it there; refused, saying why, while
+    /// the audit's feeds have not said yet which versions are vulnerable.</summary>
+    public async Task<bool> InstallAsync(ProjectModel project)
+    {
+        if (model.IsAuditing)
+        {
+            Hold(Refusals.VulnerabilitiesUnread);
+            return false;
+        }
+        return Selected is { } row && (ChosenVersion ?? row.Version) is { Length: > 0 } version
+            && (BeforeInstall is null || await BeforeInstall(project, row.Id, version, null, CancellationToken.None))
+            && Said(await model.InstallAsync(project, row.Id, version));
+    }
 
     /// <summary>Asked before the window's own Install or Update of a package in a project, with its id and version: whether
     /// it goes on as asked (false when the person cancelled, or it was made another way, as EF Core's packages moved
@@ -726,6 +758,7 @@ public sealed partial class NuGetView : DockPanel
         showing?.Cancel();
         CancellationTokenSource cancel = showing = new();
         details.Children.Clear();
+        lineActions.Clear();
         versions = [];
         if (Selected is not { } row)
         {
@@ -751,7 +784,7 @@ public sealed partial class NuGetView : DockPanel
         }
         versions = found;
         VulnerabilityData known = Known;
-        string? vulnerable = row.InstalledVersions.Where(v => known.Of(row.Id, v).Count > 0).OrderByDescending(v => v, VersionOrder.Instance).FirstOrDefault();
+        string? vulnerable = row.AuditedVersions.Where(v => known.Of(row.Id, v).Count > 0).OrderByDescending(v => v, VersionOrder.Instance).FirstOrDefault();
         string? fix = vulnerable is null ? null : known.FixedVersion(row.Id, vulnerable, versions);
         ChosenVersion = row.UpdateVersion ?? fix ?? versions.FirstOrDefault() ?? row.Version;
         ComboBox picker = new() { Name = "Versions", ItemsSource = versions, SelectedItem = ChosenVersion, MinWidth = 140 };
@@ -794,19 +827,23 @@ public sealed partial class NuGetView : DockPanel
             details.Children.Add(from);
         }
         details.Children.Add(vulnerabilities);
-        ShowVulnerable(row, vulnerabilities);
         details.Children.Add(deprecated);
-        ShowDeprecated(row, deprecated);
         details.Children.Add(new StackPanel { Name = "projects", Spacing = 4, Margin = new Thickness(0, 8, 0, 0) });
+        // Asked first, so the word on vulnerabilities and the projects' actions say the audit is still being read.
+        Task chosen = Task.WhenAll(ChosenVulnerabilityAsync(row, vulnerabilities, cancel), ChosenDeprecationAsync(row, deprecated, cancel));
+        ShowVulnerable(row, vulnerabilities);
+        ShowDeprecated(row, deprecated);
         ShowProjects(row);
-        await Task.WhenAll(ChosenVulnerabilityAsync(row, vulnerabilities, cancel), ChosenDeprecationAsync(row, deprecated, cancel));
+        await chosen;
     }
 
-    /// <summary>Reads, while the window is shown, the advisories the audit's feeds know, so the version chosen in the details
-    /// is said vulnerable once they are, unless another package or version was chosen meanwhile.</summary>
+    /// <summary>Reads, while the window is shown, the advisories the audit's feeds know, and waits for an audit asked already
+    /// either way: once it ends, the projects' actions it greyed act again, and the versions the details name are said
+    /// vulnerable as far as known, unless another package was chosen meanwhile.</summary>
     private async Task ChosenVulnerabilityAsync(PackageRow row, Panel said, CancellationTokenSource cancel)
     {
-        if (!IsShown || ChosenVersion is not { Length: > 0 } chosen || model.Audit() is not { IsCompleted: false } reading)
+        Task<VulnerabilityData>? asked = IsShown && ChosenVersion is { Length: > 0 } ? model.Audit() : model.AuditAsked;
+        if (asked is not { IsCompleted: false } reading)
         {
             return;
         }
@@ -816,22 +853,23 @@ public sealed partial class NuGetView : DockPanel
         }
         catch (Exception failed) when (FeedSet.IsFeedFailure(failed))
         {
-            // The audit unread, no version is said vulnerable.
-            return;
+            // The audit unread, no version is said vulnerable, and nothing waits for it any more.
         }
-        if (!cancel.IsCancellationRequested && Selected == row && ChosenVersion == chosen)
+        EnableActions();
+        if (!cancel.IsCancellationRequested && Selected == row)
         {
             ShowVulnerable(row, said);
         }
     }
 
-    /// <summary>The details' word on vulnerable versions: the newest a project has, and the version chosen to install or
-    /// move to, one word for both where the same advisories affect each.</summary>
+    /// <summary>The details' word on vulnerable versions: the newest a project has, referenced or brought in, and the
+    /// version chosen to install or move to, one word for both where the same advisories affect each; while the audit's
+    /// feeds are still asked, that they are.</summary>
     private void ShowVulnerable(PackageRow row, Panel said)
     {
         VulnerabilityData known = Known;
         List<(List<string> Versions, IReadOnlyList<Advisory> Advisories)> told = [];
-        if (row.InstalledVersions.Where(v => known.Of(row.Id, v).Count > 0).OrderByDescending(v => v, VersionOrder.Instance).FirstOrDefault() is { } held)
+        if (row.AuditedVersions.Where(v => known.Of(row.Id, v).Count > 0).OrderByDescending(v => v, VersionOrder.Instance).FirstOrDefault() is { } held)
         {
             told.Add(([held], known.Of(row.Id, held)));
         }
@@ -848,13 +886,20 @@ public sealed partial class NuGetView : DockPanel
             }
         }
         said.Children.Clear();
+        if (model.IsAuditing)
+        {
+            string[] feeds = [.. model.Sources.Audited.Select(f => f.Name)];
+            TextBlock asking = MutedText.Wrapped($"Asking {(feeds.Length > 0 ? Plural.Listed(feeds) : "the feeds")} which versions have known vulnerabilities…");
+            asking.Name = "Auditing";
+            said.Children.Add(asking);
+        }
         for (int i = 0; i < told.Count; i++)
         {
             // Versions the same advisories affect have the same least version above them that none affects.
             string newest = told[i].Versions.OrderByDescending(v => v, VersionOrder.Instance).First();
             said.Children.Add(Vulnerability(told[i].Advisories, told[i].Versions, known.FixedVersion(row.Id, newest, versions), first: i == 0));
         }
-        said.IsVisible = told.Count > 0;
+        said.IsVisible = said.Children.Count > 0;
     }
 
     /// <summary>Reads, while the window is shown, whether the version chosen in the details is deprecated, and says it once
@@ -1001,8 +1046,8 @@ public sealed partial class NuGetView : DockPanel
         Query = id;
     }
 
-    /// <summary>The chosen package's line per project as the pane's filters leave them: its version (a version brought in
-    /// by another package or project tagged so), a mark where it is vulnerable, a tag where it is deprecated, and Install,
+    /// <summary>The chosen package's line per project as the pane's filters leave them: its versions (one brought in by
+    /// another package or project tagged so), a mark where one is vulnerable, a tag where one is deprecated, and Install,
     /// Update, Downgrade or Remove.</summary>
     private void ShowProjects(PackageRow row)
     {
@@ -1012,6 +1057,7 @@ public sealed partial class NuGetView : DockPanel
         }
         projectsOf = row;
         panel.Children.Clear();
+        lineActions.Clear();
         // The one header goes with the chosen package's projects, from the last package's.
         (projectsHeader.Parent as Panel)?.Children.Remove(projectsHeader);
         panel.Children.Add(projectsHeader);
@@ -1021,23 +1067,26 @@ public sealed partial class NuGetView : DockPanel
         {
             bool has = at.Count > 0;
             InstalledVersion? vulnerable = at.FirstOrDefault(v => v.Version is { } known && Known.Of(row.Id, known).Count > 0);
-            TransitiveUse? broughtVulnerable = has ? null : brought.FirstOrDefault(b => Known.Of(row.Id, b.Version).Count > 0);
-            (string Shown, string Told)? through = !has && brought.Count > 0 ? Brought(brought, ChosenVersion) : null;
-            TextBlock version = new() { Text = through?.Shown ?? Shown(at), Width = 110, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
-            ToolTip.SetTip(version, through?.Told ?? Told(at));
+            TransitiveUse? broughtVulnerable = brought.FirstOrDefault(b => Known.Of(row.Id, b.Version).Count > 0);
+            (string Shown, string? Told) said = LineVersions(at, brought);
+            string? told = !has && brought.Count > 0 && ChosenVersion is { } putIn ? $"{said.Told}\nInstall references {putIn} directly" : said.Told;
+            TextBlock version = new() { Text = said.Shown, Width = 110, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
+            ToolTip.SetTip(version, told);
             version.Bind(TextBlock.ForegroundProperty, version.GetResourceObservable(vulnerable is not null || broughtVulnerable is not null ? TokenKeys.Warning : TokenKeys.TextMuted));
             // A slot of its own, so the buttons stand in one column whichever lines have the mark.
             Panel mark = new() { Width = 14, VerticalAlignment = VerticalAlignment.Center };
+            bool several = at.Count + brought.Count > 1;
             if (vulnerable is { Version: { } affected })
             {
                 Advisory gravest = Known.Of(row.Id, affected)[0];
-                string where = at.Count > 1 ? $" for {vulnerable.Framework}" : string.Empty;
+                string where = several && vulnerable.Framework is { } framework ? $" for {framework}" : string.Empty;
                 mark.Children.Add(Warning($"Known security vulnerability in {affected}{where}: {gravest.Severity} severity ({gravest.Address})"));
             }
             else if (broughtVulnerable is { } bad)
             {
                 Advisory gravest = Known.Of(row.Id, bad.Version)[0];
-                mark.Children.Add(Warning($"Known security vulnerability in {bad.Version}, brought in by {string.Join(", ", bad.BroughtBy)}: {gravest.Severity} severity ({gravest.Address})"));
+                string where = several && bad.Framework is { } framework ? $" for {framework}" : string.Empty;
+                mark.Children.Add(Warning($"Known security vulnerability in {bad.Version}{where}, brought in by {string.Join(", ", bad.BroughtBy)}: {gravest.Severity} severity ({gravest.Address})"));
             }
             TextBlock name = new() { Text = project.Name, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
             ToolFlow.SetFills(name, new ToolLayout.Fills(100, 220));
@@ -1048,29 +1097,27 @@ public sealed partial class NuGetView : DockPanel
             };
             if (!has)
             {
-                line.Children.Add(Action("Install", () => InstallAsync(project)));
+                line.Children.Add(Action("Install", putsIn: true, () => InstallAsync(project)));
             }
             else
             {
                 if (ChosenVersion is { } chosen && InstalledVersion.Move(chosen, at) is PackageMove move and not PackageMove.None)
                 {
-                    Button moving = Action(Moved(move, chosen, at), () => InstallAsync(project));
-                    ToolTip.SetTip(moving, move == PackageMove.UpdateAndDowngrade
+                    line.Children.Add(Action(Moved(move, chosen, at), putsIn: true, () => InstallAsync(project), move == PackageMove.UpdateAndDowngrade
                         ? $"Moves every framework to {chosen}: " + string.Join(", ", at.Where(v => v.Version is not null).Select(v => $"{v.Framework} from {v.Version}"))
-                        : null);
-                    line.Children.Add(moving);
+                        : null));
                 }
-                line.Children.Add(Action("Remove", () => RemoveAsync(project)));
+                line.Children.Add(Action("Remove", putsIn: false, () => RemoveAsync(project)));
             }
             // After the buttons, so they stand in one column whichever lines have the tags.
-            if (through is not null)
+            if (brought.Count > 0)
             {
                 Border tag = Tagged("transitive");
                 tag.Margin = new Thickness(0);
-                ToolTip.SetTip(tag, through.Value.Told);
+                ToolTip.SetTip(tag, told);
                 line.Children.Add(tag);
             }
-            if (DeprecatedOf(row.Id, has ? at.Select(v => v.Version).OfType<string>() : brought.Select(b => b.Version)) is { } deprecated)
+            if (DeprecatedOf(row.Id, at.Select(v => v.Version).OfType<string>().Concat(brought.Select(b => b.Version))) is { } deprecated)
             {
                 Border tag = Tagged("deprecated");
                 tag.Margin = new Thickness(0);
@@ -1091,25 +1138,14 @@ public sealed partial class NuGetView : DockPanel
             : $"Downgrade {string.Join(", ", lowered.Select(v => v.Framework ?? "it"))}";
     }
 
-    /// <summary>A project's versions of a package as its line says them: each once, in its frameworks' order.</summary>
-    private static string Shown(IReadOnlyList<InstalledVersion> at) =>
-        string.Join(", ", at.Select(v => v.Shown ?? "installed").Distinct(StringComparer.OrdinalIgnoreCase));
-
-    /// <summary>What a project's line tells of its versions on hover: each framework's, and the range the project gives
-    /// where it shows another version; null where the line says it all.</summary>
-    private static string? Told(IReadOnlyList<InstalledVersion> at)
+    /// <summary>A project's button, greyed while it can't act (<see cref="WhyNot"/>): <paramref name="putsIn"/> where it
+    /// puts the chosen version in, with <paramref name="tip"/> on hover while it can act.</summary>
+    private Button Action(string label, bool putsIn, Func<Task<bool>> run, string? tip = null)
     {
-        bool ranged = at.Any(v => v.Given is { } given && given != v.Shown);
-        return at.Count > 1 || ranged
-            ? string.Join("\n", at.Select(v => (at.Count > 1 ? $"{v.Framework}: " : string.Empty) + (v.Shown ?? "installed")
-                + (v.Given is { } given && given != v.Shown ? $", given as {given}" : string.Empty)))
-            : null;
-    }
-
-    private Button Action(string label, Func<Task<bool>> run)
-    {
-        Button button = new() { Content = label, IsEnabled = !model.IsBusy };
+        Button button = new() { Content = label };
+        ToolButtons.Grey(button, WhyNot(putsIn), tip);
         button.Click += (_, _) => IdeErrors.Observe(run());
+        lineActions.Add((button, putsIn, tip));
         return button;
     }
 
