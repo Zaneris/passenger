@@ -248,13 +248,18 @@ public partial class MainWindow
         {
             List<string> files = [.. heads.SelectMany(h => h.Files).Distinct(PathNames.Comparer)];
             string named = Plural.Listed([.. heads.Select(h => h.Name)]);
+            // A SceneDelegate the person made since the edits were read is theirs: it stays as it is.
+            List<string> kept = [];
             string? refused = await ChangeFileAsync($"Make the Mobile Edits of {named}", files, () =>
             {
                 foreach (HeadEdits head in heads)
                 {
                     foreach (ManifestEdit made in head.Manifests.Where(m => m is { SceneSdk: not null, Scenes: SceneDelegation.Maui, DelegateFile: not null }))
                     {
-                        _ = FileText.SaveNew(made.DelegateFile!, MobileHeads.DelegateText(made.Namespace));
+                        if (FileText.SaveNewOnly(made.DelegateFile!, MobileHeads.DelegateText(made.Namespace)) is null)
+                        {
+                            kept.Add(PathNames.Shown(made.DelegateFile!, Folder));
+                        }
                     }
                     foreach (string file in head.Files.Where(f => !head.Manifests.Any(m => m.DelegateFile is { } made && PathNames.Same(made, f))))
                     {
@@ -282,8 +287,10 @@ public partial class MainWindow
             AskMobile(again: true);
             await mobileAsking;
             IReadOnlyList<string> left = [.. MobileWant.Heads.Where(h => h.Makes && heads.Any(made => made.Name == h.Name)).Select(h => h.Name)];
-            return Came(left.Count == 0, left.Count == 0 ? $"The mobile edits of {named} are made"
-                : $"The mobile edits were made, but {Plural.Listed([.. left])} still {Plural.Agreeing(left.Count, "needs", "need")} what the banner says");
+            string madeSince = kept.Count == 0 ? string.Empty
+                : $"; {Plural.Listed([.. kept])}, made since the edits were read, {Plural.Agreeing(kept.Count, "is", "are")} kept as {Plural.Agreeing(kept.Count, "it was", "they were")}";
+            return Came(left.Count == 0, left.Count == 0 ? $"The mobile edits of {named} are made{madeSince}"
+                : $"The mobile edits were made, but {Plural.Listed([.. left])} still {Plural.Agreeing(left.Count, "needs", "need")} what the banner says{madeSince}");
 
             (bool, string) Came(bool made, string said)
             {

@@ -11,8 +11,8 @@ namespace Passenger.Tests;
 /// app for a scene manifest: the banner names each edit each head needs to build and run here, Make the Mobile Edits (or its
 /// fix on a line of the project) makes them as one command Undo takes back and Redo makes again, and the head then builds,
 /// restored from nuget.org. Avalonia's cross-platform app's iOS head and its Android head (built where the Android workload
-/// finds a JDK), a MAUI app made before its template gave its Apple heads scenes, and a Mac Catalyst app whose Info.plist
-/// names its least macOS and no scene manifest; a Mac Catalyst head whose Debug build trims .NET's own assemblies is kept out
+/// finds a JDK), a MAUI app made before its template gave its Apple heads scenes (a SceneDelegate made since the banner asked
+/// kept as it is), and a Mac Catalyst app whose Info.plist names its least macOS and no scene manifest; a Mac Catalyst head whose Debug build trims .NET's own assemblies is kept out
 /// of the banner and kept whole by its own action or fix. Each skips, saying why, off a Mac or without its workloads.</summary>
 public sealed partial class MobileHeadEditsTests
 {
@@ -118,27 +118,7 @@ public sealed partial class MobileHeadEditsTests
     [AvaloniaFact]
     public void A_maui_app_made_before_its_apple_heads_had_scenes_is_told_every_heads_edits_and_its_ios_and_catalyst_heads_build_once_made()
     {
-        SkipOffMac();
-        string folder = PathNames.Canonical(TestFolders.Create("maui-heads-edits"));
-        string app = Path.Combine(folder, "M10");
-        ChildResult made = Ui.AwaitPumped(Waiting.Apart(() => ChildProcesses.RunAsync(ChildProcesses.DotnetCommand(["new", "maui", "--framework", "net10.0", "--output", app,
-            "--name", "M10", "--no-restore"], folder), limit: TimeSpan.FromMinutes(6))), "dotnet new maui for .NET 10", Slow);
-        if (!made.Succeeded)
-        {
-            Assert.Skip($"This .NET makes no .NET 10 MAUI app, so it lacks MAUI's workload (dotnet workload install maui): {made.FirstLine}");
-        }
-        TestFolders.Write(folder, "nuget.config", TestRun.FromNuGetOrg);
-        // As MAUI's templates made an app before .NET 10: no scene manifest in its Apple heads' Info.plist, and no SceneDelegate.
-        foreach (string platform in (string[])["iOS", "MacCatalyst"])
-        {
-            string plist = Path.Combine(app, "Platforms", platform, "Info.plist");
-            string text = File.ReadAllText(plist);
-            string taken = SceneManifest().Replace(text, string.Empty, 1);
-            Assert.True(taken != text, $"The template's {platform} Info.plist no longer has a scene manifest:\n{text}");
-            File.WriteAllText(plist, taken);
-            File.Delete(Path.Combine(app, "Platforms", platform, "SceneDelegate.cs"));
-        }
-        string project = Path.Combine(app, "M10.csproj");
+        (string folder, string app, string project) = MauiBeforeScenes("maui-heads-edits");
         string projectMade = File.ReadAllText(project);
         MainWindow window = Opened(folder, project);
         try
@@ -184,6 +164,37 @@ public sealed partial class MobileHeadEditsTests
             }
             Builds(window, project, "net11.0-ios");
             Builds(window, project, "net11.0-maccatalyst");
+        }
+        finally
+        {
+            window.Close();
+            TestFolders.Delete(folder);
+        }
+    }
+
+    /// <summary>A SceneDelegate the person made after the banner asked for one to be written, before the edits are made:
+    /// Make the Mobile Edits keeps it as it is, writing the other head's, and says so.</summary>
+    [AvaloniaFact]
+    public void A_scene_delegate_made_since_the_banner_asked_is_kept_as_it_is_by_Make_the_Mobile_Edits_which_says_so()
+    {
+        (string folder, string app, string project) = MauiBeforeScenes("maui-scene-made-since");
+        MainWindow window = Opened(folder, project);
+        try
+        {
+            HeadEdits edits = Edits(window, "M10");
+            Assert.True(edits.Manifests.Count(m => m.DelegateFile is not null) == 2, $"The banner did not say a SceneDelegate is to be written for each Apple head: {edits.Said}");
+            string own = Path.Combine(app, "Platforms", "MacCatalyst", "SceneDelegate.cs");
+            const string Theirs = "using Foundation;\n\nnamespace M10;\n\n[Register(\"SceneDelegate\")]\npublic class SceneDelegate : MauiUISceneDelegate\n{\n    // Its own.\n}\n";
+            File.WriteAllText(own, Theirs);
+
+            Ui.ClickButton(window, "Make the Mobile Edits");
+            Ui.WaitFor(() => window.Actions.Work.Of(AppActions.MakeMobileEdits) is null, () => $"the edits to be made: {Ui.Said(window)}", Slow);
+            Assert.True(File.ReadAllText(own) == Theirs, $"The SceneDelegate made since the banner asked was written over:\n{File.ReadAllText(own)}");
+            Assert.Contains("public class SceneDelegate : MauiUISceneDelegate", File.ReadAllText(Path.Combine(app, "Platforms", "iOS", "SceneDelegate.cs")), StringComparison.Ordinal);
+            Assert.Contains("<string>__MAUI_DEFAULT_SCENE_CONFIGURATION__</string>", File.ReadAllText(Path.Combine(app, "Platforms", "MacCatalyst", "Info.plist")), StringComparison.Ordinal);
+            Assert.True(window.Status?.StartsWith("The mobile edits of M10 are made; ", StringComparison.Ordinal) == true
+                && window.Status.EndsWith("/MacCatalyst/SceneDelegate.cs, made since the edits were read, is kept as it was", StringComparison.Ordinal),
+                $"The status bar did not say the SceneDelegate made since was kept: {window.Status}");
         }
         finally
         {
@@ -251,6 +262,33 @@ public sealed partial class MobileHeadEditsTests
             window.Close();
             TestFolders.Delete(folder);
         }
+    }
+
+    /// <summary>MAUI's .NET 10 app as its templates made it before .NET 10, in a folder of its own: no scene manifest in its
+    /// Apple heads' Info.plist, and no SceneDelegate; skipped off a Mac or without MAUI's workload.</summary>
+    private static (string Folder, string App, string Project) MauiBeforeScenes(string name)
+    {
+        SkipOffMac();
+        string folder = PathNames.Canonical(TestFolders.Create(name));
+        string app = Path.Combine(folder, "M10");
+        ChildResult made = Ui.AwaitPumped(Waiting.Apart(() => ChildProcesses.RunAsync(ChildProcesses.DotnetCommand(["new", "maui", "--framework", "net10.0", "--output", app,
+            "--name", "M10", "--no-restore"], folder), limit: TimeSpan.FromMinutes(6))), "dotnet new maui for .NET 10", Slow);
+        if (!made.Succeeded)
+        {
+            TestFolders.Delete(folder);
+            Assert.Skip($"This .NET makes no .NET 10 MAUI app, so it lacks MAUI's workload (dotnet workload install maui): {made.FirstLine}");
+        }
+        TestFolders.Write(folder, "nuget.config", TestRun.FromNuGetOrg);
+        foreach (string platform in (string[])["iOS", "MacCatalyst"])
+        {
+            string plist = Path.Combine(app, "Platforms", platform, "Info.plist");
+            string text = File.ReadAllText(plist);
+            string taken = SceneManifest().Replace(text, string.Empty, 1);
+            Assert.True(taken != text, $"The template's {platform} Info.plist no longer has a scene manifest:\n{text}");
+            File.WriteAllText(plist, taken);
+            File.Delete(Path.Combine(app, "Platforms", platform, "SceneDelegate.cs"));
+        }
+        return (folder, app, Path.Combine(app, "M10.csproj"));
     }
 
     private static void SkipOffMac()

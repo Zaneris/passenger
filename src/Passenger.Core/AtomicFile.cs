@@ -117,6 +117,22 @@ public static partial class AtomicFile
         }
     }
 
+    /// <summary>Puts a written file where no file is yet, never over one: false, the written file deleted, where one is there,
+    /// however late another program made it.</summary>
+    public static bool MoveNew(string temporary, string target)
+    {
+        try
+        {
+            File.Move(temporary, target, overwrite: false);
+            return true;
+        }
+        catch (IOException) when (File.Exists(target) || new FileInfo(target).LinkTarget is not null)
+        {
+            Delete(temporary);
+            return false;
+        }
+    }
+
     /// <summary>Renames a file over another with POSIX semantics; false, nothing changed, where it did not.</summary>
     [SupportedOSPlatform("windows")]
     private static unsafe bool RenamedOver(string temporary, string target)

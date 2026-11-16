@@ -292,17 +292,53 @@ public sealed record FileText(string Text, Encoding Encoding, bool HasBom, bool 
         FileText written = unheld is null ? new FileText(text, encoding, bom, crBreaks) : new FileText(text, new UTF8Encoding(false), false, crBreaks);
         Writing?.Invoke(path);
         Write(path, Encoded(text, written.Encoding, written.HasBom, crBreaks), written.Encoding, makeFolder);
-        return (written, unheld is null ? null : $"{Path.GetFileName(path)} was saved as UTF-8: {FileEncoding.Of(encoding, bom).Name} cannot hold '{unheld}'");
+        return (written, Converted(path, encoding, bom, unheld));
     }
+
+    /// <summary>What a save says of a text its encoding could not hold, written as UTF-8; null where it held it all.</summary>
+    private static string? Converted(string path, Encoding encoding, bool bom, string? unheld) =>
+        unheld is null ? null : $"{Path.GetFileName(path)} was saved as UTF-8: {FileEncoding.Of(encoding, bom).Name} cannot hold '{unheld}'";
 
     /// <summary>Writes a file the IDE makes as its .editorconfig asks, as <see cref="Save"/> writes: each of the text's breaks
     /// as <c>end_of_line</c> says (else '\n'), in the encoding <c>charset</c> names (else UTF-8 without a BOM).</summary>
     public static (FileText Written, string? Converted) SaveNew(string path, string text)
     {
+        (string conventional, FileEncoding charset, bool crBreaks) = Conventional(path, text);
+        return Save(path, conventional, charset.Encoding, charset.Bom, crBreaks);
+    }
+
+    /// <summary>Writes a file the IDE makes, as <see cref="SaveNew"/> does, only where no file is there yet: one there
+    /// already, or made by another program while this one is written, is left as it is. What was written, or null where a
+    /// file was there.</summary>
+    public static (FileText Written, string? Converted)? SaveNewOnly(string path, string text)
+    {
+        if (File.Exists(path) || new FileInfo(path).LinkTarget is not null)
+        {
+            return null;
+        }
+        (string conventional, FileEncoding charset, bool crBreaks) = Conventional(path, text);
+        string? unheld = Unheld(charset.Encoding, conventional);
+        FileText written = unheld is null ? new FileText(conventional, charset.Encoding, charset.Bom, crBreaks) : new FileText(conventional, new UTF8Encoding(false), false, crBreaks);
+        byte[] bytes = Encoded(conventional, written.Encoding, written.HasBom, crBreaks);
+        Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);
+        bool placed = false;
+        Writing?.Invoke(path);
+        AtomicFile.Write(path, bytes, null, SaveSuffix, (temporary, at) => placed = AtomicFile.MoveNew(temporary, at));
+        if (!placed)
+        {
+            return null;
+        }
+        Wrote?.Invoke(path, null, bytes);
+        return (written, Converted(path, charset.Encoding, charset.Bom, unheld));
+    }
+
+    /// <summary>A new file's text, encoding and breaks as its .editorconfig asks: each break as <c>end_of_line</c> says (else
+    /// '\n'), in the encoding <c>charset</c> names (else UTF-8 without a BOM).</summary>
+    private static (string Text, FileEncoding Charset, bool CrBreaks) Conventional(string path, string text)
+    {
         EditorConfig conventions = EditorConfig.For(path);
-        FileEncoding charset = conventions.Charset ?? FileEncoding.Utf8;
         LineSeparator separator = conventions.EndOfLine ?? LineSeparator.LF;
-        return Save(path, LineEndings.In(text, separator.Held()), charset.Encoding, charset.Bom, separator == LineSeparator.CR);
+        return (LineEndings.In(text, separator.Held()), conventions.Charset ?? FileEncoding.Utf8, separator == LineSeparator.CR);
     }
 
     /// <summary>Writes a file's new text as the file was stored (<paramref name="had"/>), as <see cref="Save"/> writes: its

@@ -4,7 +4,8 @@ namespace Passenger.UnitTests.Core;
 
 /// <summary>A file that may be a symbolic link is written to the file it names: the link, made by a relative path as a
 /// dotfiles manager makes one, stays the link it was, and the file at the end of its links takes the bytes. A write lands
-/// over a file another program reads sharing its deletion; on Windows one sharing none refuses it, the file kept.</summary>
+/// over a file another program reads sharing its deletion; on Windows one sharing none refuses it, the file kept. A file
+/// written to be new takes its place only where none is, never over one made meanwhile.</summary>
 public sealed class AtomicFileTests : IDisposable
 {
     private readonly string root = PathNames.Canonical(Directory.CreateTempSubdirectory("passenger-unit-").FullName);
@@ -97,6 +98,22 @@ public sealed class AtomicFileTests : IDisposable
         Assert.Equal("old\n", File.ReadAllText(file));
         string[] beside = Directory.GetFiles(root);
         Assert.True(beside.Length == 1, $"The refused write left {string.Join(", ", beside)} beside the file");
+    }
+
+    [Fact]
+    public void A_file_written_to_be_new_takes_its_place_only_where_none_is_leaving_one_made_meanwhile_as_it_is()
+    {
+        string path = Path.Join(root, "SceneDelegate.cs");
+        string written = Write(Path.Join(root, "first" + AtomicFile.Temporary), "written\n");
+
+        Assert.True(AtomicFile.MoveNew(written, path), "A file written to be new did not take a place where no file was");
+        Assert.Equal("written\n", File.ReadAllText(path));
+        Assert.False(File.Exists(written));
+
+        string again = Write(Path.Join(root, "again" + AtomicFile.Temporary), "again\n");
+        Assert.False(AtomicFile.MoveNew(again, path), "A file written to be new took the place of one already there");
+        Assert.Equal("written\n", File.ReadAllText(path));
+        Assert.False(File.Exists(again), "The file written to be new was left beside the one it was refused over");
     }
 
     private static string Write(string path, string text)
