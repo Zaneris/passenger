@@ -336,6 +336,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         CodePlace at = await AskedAt(path, line, column, symbol, cancel);
         Served served = await Serve(at.Path, cancel);
         int offset = Offset(served.Document, at.Line, at.Column);
+        await ExpressionSettledAsync(served, offset, cancel);
         string said = await CardAsync(served.Document, offset, cancel);
         // A C# place on no symbol tells of the one its line declares.
         if (said.Length == 0 && served is ServerServed { Web: null } code)
@@ -362,6 +363,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         CodePlace at = await AskedAt(path, line, column, symbol, cancel);
         Served served = await Serve(at.Path, cancel);
         int offset = Offset(served.Document, at.Line, at.Column);
+        await ExpressionSettledAsync(served, offset, cancel);
         Declared? declared = await window.Assist.Languages.DeclaredAsync(served.Document, offset);
         // A C# place on no symbol goes from the one its line declares.
         if (declared is { Places.Count: 0, Page: null } && served is ServerServed { Web: null } code && await SymbolOffset(code, at.Line, at.Column, offset) is int named && named != offset)
@@ -450,7 +452,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         // A step definition's steps, which no language server knows, beside its C# uses.
         IReadOnlyList<LspLocation> steps = served.Document.Language == Languages.Language.CSharp
             && await window.Assist.Languages.Gherkin.AgentUsesAsync(served.Document, offset) is (_, { } bound) ? bound : [];
-        found = [.. found, .. await window.Assist.Languages.Xaml.CodeUsesAsync(named), .. DocumentUris.Besides(godot, found), .. steps];
+        found = [.. found, .. await window.Assist.Languages.Xaml.CodeUsesAsync(named, served.Document.Path), .. DocumentUris.Besides(godot, found), .. steps];
         // Answered now, saying which files that could use it the server has yet to take in.
         IReadOnlyList<(string Path, string Project)> untaken = server.Web is null && Session.CSharp is { } csharp ? await csharp.UntakenAsync(served.Document, offset, cancel) : [];
         // A project whose scripts no scene reaches lists none of its scenes, and says why.
@@ -3148,44 +3150,11 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         {
             throw new InvalidOperationException($"This is the C# language server's, which answers for C# and Razor files, not {LanguageOf(document)} ones such as {Path.GetFileName(document.Path)}");
         }
-        // Answers before the solution has loaded, or before what a restore as it loaded brought, are wrong; looked at every 50 ms.
         if (document.Syntax is { } syntax && (await syntax.CurrentAsync()).DeepAt is not null)
         {
             throw new InvalidOperationException(Refusals.TooDeep(Path.GetFileName(document.Path)));
         }
-        string? reloading = null;
-        bool settled = false;
-        await Until(() =>
-        {
-            if (Session.CSharp is not { } csharp || csharp.IsStopped)
-            {
-                return settled = true;
-            }
-            // The agent is told what a load after a restore, or its builds' writes, keep it waiting for.
-            if (csharp.IsReady && csharp.ReloadingWhat(document.Path) is var what && what != reloading)
-            {
-                reloading = what;
-                AgentCall.Say(what is null ? null : $"Waiting for {what}");
-            }
-            return settled = csharp.IsReady && reloading is null && !csharp.AwaitsRestore(document.Path) && csharp.For(document)?.Lsp is not null;
-        }, ServerLimit, cancel);
-        if (reloading is not null)
-        {
-            AgentCall.Say(null);
-        }
-        if (Session.CSharp is { IsStopped: true })
-        {
-            throw new InvalidOperationException(Refusals.CSharpStopped);
-        }
-        // Run out with the server still loading, or with what a restore brought still to come, its answer would be of the code before.
-        if (!settled && Session.CSharp is { IsReady: false } unready)
-        {
-            throw new TimeoutException(Refusals.StillLoading(ServerLimit, unready.State));
-        }
-        if (!settled && (reloading ?? (Session.CSharp?.AwaitsRestore(document.Path) == true ? $"the C# language server to restore {Session.ProjectOf(document.Path)?.Name}" : null)) is { } coming)
-        {
-            throw new TimeoutException(Refusals.StillComing(ServerLimit, coming));
-        }
+        await ServerSettledAsync(document.Path, csharp => csharp.For(document)?.Lsp is not null, cancel);
         if (!takenIn)
         {
             await TakenInAsync(path, cancel);
@@ -3198,6 +3167,46 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         return (document, Session.CSharp?.For(document)?.Lsp
             ?? throw new TimeoutException(Session.CSharp is { IsReady: false } loading ? Refusals.StillLoading(ServerLimit, loading.State)
                 : $"The language server has not loaded {Path.GetFileName(document.Path)} ({Session.CSharp?.State ?? "none"})"));
+    }
+
+    /// <summary>Waits until the C# language server answers for a file of the folder's as its projects stand, and <paramref name="held"/>
+    /// holds: answers before the solution has loaded, or before what a restore as it loaded brought (the projects' load
+    /// after it, their generators' run), are of the code before, so the agent is told what it waits for. Refused once the
+    /// server has stopped, and when the time is up with the load or what the restore brought still to come.</summary>
+    private async Task ServerSettledAsync(string path, Func<CSharpService, bool> held, CancellationToken cancel)
+    {
+        string? reloading = null;
+        bool settled = false;
+        // Looked at every 50 ms.
+        await Until(() =>
+        {
+            if (Session.CSharp is not { } csharp || csharp.IsStopped)
+            {
+                return settled = true;
+            }
+            if (csharp.IsReady && csharp.ReloadingWhat(path) is var what && what != reloading)
+            {
+                reloading = what;
+                AgentCall.Say(what is null ? null : $"Waiting for {what}");
+            }
+            return settled = csharp.IsReady && reloading is null && !csharp.AwaitsRestore(path) && held(csharp);
+        }, ServerLimit, cancel);
+        if (reloading is not null)
+        {
+            AgentCall.Say(null);
+        }
+        if (Session.CSharp is { IsStopped: true })
+        {
+            throw new InvalidOperationException(Refusals.CSharpStopped);
+        }
+        if (!settled && Session.CSharp is { IsReady: false } unready)
+        {
+            throw new TimeoutException(Refusals.StillLoading(ServerLimit, unready.State));
+        }
+        if (!settled && (reloading ?? (Session.CSharp?.AwaitsRestore(path) == true ? $"the C# language server to restore {Session.ProjectOf(path)?.Name}" : null)) is { } coming)
+        {
+            throw new TimeoutException(Refusals.StillComing(ServerLimit, coming));
+        }
     }
 
     /// <summary><see cref="Code"/>, or a source generator's code copied, as the document the server has now and only asked

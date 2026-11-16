@@ -102,6 +102,28 @@ public sealed class McpNavigationTests : McpRig, IClassFixture<RestoredFolders>
             $"definition of the element CounterBtn, read in {Read}, answered no place naming it: {answer.GetRawText()}");
     }
 
+    /// <summary>An agent's first question of a MAUI page's C# expression, asked as a folder never restored opens, waits as its
+    /// first C# question does, through the server's restore, the load after it and its generators' run: definition of the
+    /// element the expression reads answers its x:Name, from the field MAUI's generator makes, never nothing.</summary>
+    [Fact]
+    public async Task Definition_in_a_maui_expression_asked_first_waits_for_the_generators_code_and_answers_the_element()
+    {
+        string folder = MauiPage("mcp-maui-first-");
+        DeleteAtEnd(folder);
+        const string Read = "IsVisible=\"{CounterBtn.(Grid.Row) GT 0}\"";
+        string page = File.ReadAllText(Path.Combine(folder, "MainPage.xaml")).Replace("Text=\"Hello, World!\"", $"Text=\"Hello, World!\"\n                {Read}", StringComparison.Ordinal);
+        TestFolders.Write(folder, "MainPage.xaml", page);
+        string[] lines = page.Split('\n');
+        int line = Array.FindIndex(lines, l => l.Contains(Read, StringComparison.Ordinal));
+        int column = lines[line].IndexOf("CounterBtn", StringComparison.Ordinal) + "Coun".Length;
+        await using McpClient client = await Start(["--mcp", folder]);
+
+        JsonElement answer = await Call(client, McpTools.Definition, new() { ["path"] = "MainPage.xaml", ["line"] = line + 1, ["column"] = column + 1 });
+        int element = Array.FindIndex(lines, l => l.Contains("x:Name=\"CounterBtn\"", StringComparison.Ordinal));
+        Assert.True(answer.GetArrayLength() == 1 && answer[0].GetProperty("path").GetString() == "MainPage.xaml" && answer[0].GetProperty("line").GetInt32() == element + 1,
+            $"definition of CounterBtn in {Read}, asked as the folder opened, answered no place naming the element: {answer.GetRawText()}");
+    }
+
     /// <summary>An element a MAUI page's C# expressions read by its name (<c>label.(Grid.Row)</c>, the field MAUI's generator
     /// makes for it): usages from the name in an expression lists the element, each expression reading it and the
     /// code-behind's use, as from a code-behind's field, and none of the generator's own code; and rename from the element

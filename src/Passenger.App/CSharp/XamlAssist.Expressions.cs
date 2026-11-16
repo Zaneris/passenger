@@ -151,6 +151,11 @@ internal sealed partial class XamlAssist
         return new XamlTarget(XamlTargetKind.Member, symbol.Name) { Type = owner, Member = owner.Members.FirstOrDefault(m => m.Name == member) };
     }
 
+    /// <summary>The name of the page's own element an expression reads at a place, through the field MAUI's generator makes
+    /// for it; null at any other place.</summary>
+    internal async Task<string?> ExpressionElementAsync(XamlDocument xaml, int offset) =>
+        await ExpressionSymbolAsync(xaml, offset) is ({ } file, { } symbol) && NamedElementOf(file, symbol) is not null ? symbol.Name : null;
+
     /// <summary>Find Usages from a place in an expression: where the folder's C# and XAML use the symbol it names, as Find
     /// Usages finds them from its declaration. False outside an expression.</summary>
     private async Task<bool> ExpressionUsagesAsync(XamlDocument xaml, int offset, bool inPopup)

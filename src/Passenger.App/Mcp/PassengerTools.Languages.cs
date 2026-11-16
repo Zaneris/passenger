@@ -266,7 +266,7 @@ public sealed partial class PassengerTools
     {
         if (XamlExpressions.At(xaml.File, offset) is ({ } expression, _) && XamlExpressions.Is(xaml.File, expression.Attribute))
         {
-            await CodeBehindRead(cancel);
+            await ExpressionSettledAsync(xaml, offset, cancel);
             if (await window.Assist.Languages.Xaml.ExpressionUsesAsync(xaml.Xaml, offset) is { } read)
             {
                 return read.Uses.Count > 0 ? await Places(read.Uses, cancel) : read.None is { } none ? throw new InvalidOperationException(none) : [];
@@ -289,13 +289,26 @@ public sealed partial class PassengerTools
     /// through it, as a C# symbol's usages are, and before it has loaded none are.</summary>
     private Task CodeBehindRead(CancellationToken cancel) => When(() => Session.CSharp is not { } csharp || csharp.IsReady, ServerLimit, cancel, ServerState());
 
-    /// <summary>Rename in XAML: an element's name, in its file and where its code-behind uses its field; a type or member of
-    /// the folder's C# a name leads to, from its declaration (<see cref="XamlAssist.DeclaredRenameAsync"/>); saved.</summary>
+    /// <summary>Waits, for a place in a MAUI page's C# expression, until the C# language server answers for the page's code
+    /// as its projects stand (<see cref="ServerSettledAsync"/>), as the expression is answered from the code MAUI's
+    /// generator makes; at once anywhere else.</summary>
+    private Task ExpressionSettledAsync(Served served, int offset, CancellationToken cancel) =>
+        served is XamlServed xaml && XamlExpressions.At(xaml.File, offset) is ({ } expression, _) && XamlExpressions.Is(xaml.File, expression.Attribute)
+            ? ServerSettledAsync(xaml.Document.Path, _ => true, cancel) : Task.CompletedTask;
+
+    /// <summary>Rename in XAML: an element's name, from it or a MAUI expression reading it, in its file and where its
+    /// code-behind uses its field; a type or member of the folder's C# a name leads to, from its declaration
+    /// (<see cref="XamlAssist.DeclaredRenameAsync"/>); saved.</summary>
     private async Task<string> XamlRename(XamlServed xaml, int offset, string newName, bool renameFiles, Patience patience, CancellationToken cancel)
     {
         await CodeBehindRead(cancel);
+        await ExpressionSettledAsync(xaml, offset, cancel);
         // Read against the C# as it stands: the agent's own rename a moment before may have written it.
         await Session.Xaml.CurrentAsync();
+        if (await window.Assist.Languages.Xaml.ExpressionElementAsync(xaml.Xaml, offset) is { } read)
+        {
+            return await ElementRenamed(xaml, read, newName, patience, cancel);
+        }
         XamlFile file = await xaml.Xaml.FileAsync() ?? xaml.File;
         XamlSymbol? symbol = await BackgroundWork.Run(() => XamlNavigation.At(file, offset));
         if (symbol is { Named: null } && XamlAssist.DeclarationOf(symbol) is not null)
@@ -307,15 +320,18 @@ public sealed partial class PassengerTools
             return await SymbolRenamed(await window.Assist.Languages.Xaml.DeclaredRenameAsync(symbol, newName, renameFiles, patience)
                 ?? throw new InvalidOperationException(XamlAssist.XamlRenamesWhat), cancel);
         }
-        if (symbol is not { Named: { } named })
-        {
-            throw new InvalidOperationException($"{XamlAssist.XamlRenamesWhat}: put the place on one, or a use of it");
-        }
-        if (named.Value == newName)
+        return symbol is { Named: { } named } ? await ElementRenamed(xaml, named.Value, newName, patience, cancel)
+            : throw new InvalidOperationException($"{XamlAssist.XamlRenamesWhat}: put the place on one, or a use of it");
+    }
+
+    /// <summary>An element of a XAML file renamed (<see cref="XamlAssist.XamlRenameAsync"/>); saved.</summary>
+    private async Task<string> ElementRenamed(XamlServed xaml, string old, string newName, Patience patience, CancellationToken cancel)
+    {
+        if (old == newName)
         {
             return $"{newName} is its name already";
         }
-        if (await window.Assist.Languages.Xaml.XamlRenameAsync(xaml.Document.Path, named.Value, newName, patience) is not { } renamed)
+        if (await window.Assist.Languages.Xaml.XamlRenameAsync(xaml.Document.Path, old, newName, patience) is not { } renamed)
         {
             throw new InvalidOperationException($"{Path.GetFileName(xaml.Document.Path)} is no longer XAML Passenger reads");
         }
@@ -324,7 +340,7 @@ public sealed partial class PassengerTools
             throw new InvalidOperationException(refused);
         }
         await SaveLandedAsync(cancel);
-        return $"Renamed {named.Value} to {newName} in {Plural.Of(renamed.Files.Count, "file")}: {string.Join(", ", renamed.Files.Select(f => Relative(f.Path)))}";
+        return $"Renamed {old} to {newName} in {Plural.Of(renamed.Files.Count, "file")}: {string.Join(", ", renamed.Files.Select(f => Relative(f.Path)))}";
     }
 
     /// <summary>A XAML file's elements, indented, each with what names it (x:Class, x:Name, x:Key, a style's selector or

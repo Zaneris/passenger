@@ -497,6 +497,49 @@ public sealed class MauiXamlTests : IClassFixture<MauiXamlTests.Gallery>
         window.Close();
     }
 
+    /// <summary>A page's element its code-behind reads through the field MAUI's source generator makes for it: Go to
+    /// Declaration from the field lands on the element's name, never in the generator's code, and Find Usages from it lists
+    /// the element and the expressions that read it beside the C#.</summary>
+    [AvaloniaFact]
+    public void From_the_code_behind_an_elements_field_goes_to_the_element_and_its_usages_list_the_element_and_the_expressions_reading_it()
+    {
+        app.Rewrite("MainPage.xaml", Gallery.MainPage.Replace("Text=\"Hello, World!\"", $"Text=\"Hello, World!\"\n                {ReadsCounter}", StringComparison.Ordinal));
+        MainWindow window = app.Open(app.PathOf("MainPage.xaml.cs"));
+        Ui.PlaceAfter(window.EditorArea.CodeEditor, "CounterB");
+        Ui.Run(window, AppActions.GoToDeclaration);
+        Ui.Settle();
+        Assert.Equal("MainPage.xaml", window.EditorArea.Active?.Name);
+        Assert.Contains("x:Name=\"|CounterBtn\"", CaretLine(window.EditorArea.CodeEditor), StringComparison.Ordinal);
+
+        window.OpenFile(app.PathOf("MainPage.xaml.cs"));
+        Ui.Settle();
+        Ui.PlaceAfter(window.EditorArea.CodeEditor, "CounterB");
+        IReadOnlyList<string> found = FoundUsages(window);
+        Assert.Contains(found, u => u.StartsWith("MainPage.xaml:", StringComparison.Ordinal) && u.EndsWith(" x:Name=\"CounterBtn\"", StringComparison.Ordinal));
+        Assert.Contains(found, u => u.StartsWith("MainPage.xaml:", StringComparison.Ordinal) && u.EndsWith($" {ReadsCounter}", StringComparison.Ordinal));
+        window.Close();
+    }
+
+    /// <summary>Rename from an element's name where an expression reads it renames the element, every expression reading it
+    /// and the code-behind's uses, as Rename from its x:Name does.</summary>
+    [AvaloniaFact]
+    public void Rename_from_an_element_an_expression_reads_renames_it_its_reads_and_the_code_behinds_uses()
+    {
+        app.Rewrite("MainPage.xaml", Gallery.MainPage.Replace("Text=\"Hello, World!\"", $"Text=\"Hello, World!\"\n                {ReadsCounter}", StringComparison.Ordinal));
+        MainWindow window = app.Open(app.PathOf("MainPage.xaml"));
+        RenameInCode(window, "{CounterB", "Counter");
+        string page = window.EditorArea.Active!.Text.Snapshot.ToString();
+        Assert.True(page.Contains("x:Name=\"Counter\"", StringComparison.Ordinal) && page.Contains("{Counter.(Grid.Row) GT 0}", StringComparison.Ordinal)
+            && !page.Contains("CounterBtn", StringComparison.Ordinal), $"the element and its read in an expression not renamed: {page}");
+        string behind = app.PathOf("MainPage.xaml.cs");
+        Ui.WaitFor(() => File.ReadAllText(behind) is var code && code.Contains("Counter.Text", StringComparison.Ordinal) && !code.Contains("CounterBtn", StringComparison.Ordinal),
+            () => $"the code-behind's uses renamed with it: {File.ReadAllText(behind)}");
+        window.Close();
+    }
+
+    /// <summary>An expression reading the page's button through its name.</summary>
+    private const string ReadsCounter = "IsVisible=\"{CounterBtn.(Grid.Row) GT 0}\"";
+
     /// <summary>The card shown with the pointer resting on a name in some text of the editor's.</summary>
     private static string Hover(MainWindow window, CodeEditor editor, string text, string name)
     {

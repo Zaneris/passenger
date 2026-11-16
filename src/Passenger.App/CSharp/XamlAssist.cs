@@ -612,7 +612,7 @@ internal sealed partial class XamlAssist : LanguageAssist
         {
             LspDocument server = open is not null && context.CSharp?.For(open)?.Lsp is { } attached ? attached : shown = session.Open(declared.Path, new TextDocument(text.ToString()));
             int offset = server.OffsetOf(new LspPosition(declared.Line, declared.Column));
-            return [.. await server.ReferencesAsync(offset), .. await CodeUsesAsync(await server.SymbolAtAsync(offset))];
+            return [.. await server.ReferencesAsync(offset), .. await CodeUsesAsync(await server.SymbolAtAsync(offset), declared.Path)];
         }
         catch (LanguageServerFailed)
         {
@@ -624,17 +624,22 @@ internal sealed partial class XamlAssist : LanguageAssist
         }
     }
 
-    /// <summary>Where XAML uses the C# symbol at an offset of a C# file (<see cref="CodeUsesAsync(Roslyn.Extension.NamedSymbol?)"/>);
+    /// <summary>Where XAML uses the C# symbol at an offset of a C# file (<see cref="CodeUsesAsync(Roslyn.Extension.NamedSymbol?, string)"/>);
     /// none for any other file.</summary>
     internal async Task<IReadOnlyList<LspLocation>> CodeUsesAsync(OpenDocument document, LspDocument lsp, int offset) =>
-        document.Language == Languages.Language.CSharp ? await CodeUsesAsync(await lsp.SymbolAtAsync(offset)) : [];
+        document.Language == Languages.Language.CSharp ? await CodeUsesAsync(await lsp.SymbolAtAsync(offset), document.Path) : [];
 
     /// <summary>Where the XAML of the projects that can use it uses a C# symbol the server named, its declaration in the
     /// folder's code, as places for the Find window (<see cref="XamlService.UsesAsync"/>): a binding's path, a handler, a
-    /// type in a tag or a value, <c>x:Static</c>'s member, an attribute's property or event. None for a symbol XAML never
-    /// names, or with no XAML Passenger reads.</summary>
-    internal async Task<IReadOnlyList<LspLocation>> CodeUsesAsync(Roslyn.Extension.NamedSymbol? named)
+    /// type in a tag or a value, <c>x:Static</c>'s member, an attribute's property or event; a field generated for an
+    /// element, that element's name and reads (<see cref="ElementFieldUsesAsync"/>), its class's XAML found from
+    /// <paramref name="near"/>, a file of its project. None for a symbol XAML never names, or with no XAML Passenger reads.</summary>
+    internal async Task<IReadOnlyList<LspLocation>> CodeUsesAsync(Roslyn.Extension.NamedSymbol? named, string near)
     {
+        if (named is { Path: null, Id: { } field } && await ElementFieldUsesAsync(field, near) is { } element)
+        {
+            return element;
+        }
         if (named is not { Id: { } id, Path: { } declared, At: { } at } || context.Xaml?.Invoke() is not { } xaml || context.CSharp is not { } csharp
             || CodeSymbol.Of(id, new SourcePlace(PathNames.Canonical(declared), at.Line, at.Character)) is not { } symbol
             || csharp.ProjectsUsing(declared) is not { Count: > 0 } projects)
@@ -735,9 +740,8 @@ internal sealed partial class XamlAssist : LanguageAssist
     {
         if (!place.Uri.StartsWith("file:", StringComparison.OrdinalIgnoreCase))
         {
-            string file = Path.GetFileName(xamlPath);
-            return place.Uri.Contains(className + ".g.cs", StringComparison.Ordinal) || (DocumentUris.GeneratedName(place.Uri) is { } hint
-                && (hint.EndsWith(file + ".sg.cs", StringComparison.OrdinalIgnoreCase) || hint.EndsWith(file + ".xsg.cs", StringComparison.OrdinalIgnoreCase)));
+            return place.Uri.Contains(className + ".g.cs", StringComparison.Ordinal)
+                || (DocumentUris.GeneratedName(place.Uri) is { } hint && MadeByMaui(hint, Path.GetFileName(xamlPath)));
         }
         string path = DocumentUris.ToPath(place.Uri);
         string stem = Path.GetFileNameWithoutExtension(xamlPath);
@@ -748,9 +752,9 @@ internal sealed partial class XamlAssist : LanguageAssist
     /// <summary>What Rename in XAML renames, said where the caret is on none of it.</summary>
     internal const string XamlRenamesWhat = "Rename in XAML renames an element's name, or a type or member of the folder's C#";
 
-    /// <summary>Rename in XAML: an element's name, where the file names it or its expressions read it and where its
-    /// code-behind uses its field; a type or member of the folder's C# a name leads to, from its declaration
-    /// (<see cref="DeclaredRenameAsync"/>). One command undone whole.</summary>
+    /// <summary>Rename in XAML: an element's name, from it or an expression reading it, where the file names it or its
+    /// expressions read it and where its code-behind uses its field; a type or member of the folder's C# a name leads to,
+    /// from its declaration (<see cref="DeclaredRenameAsync"/>). One command undone whole.</summary>
     private async Task XamlRename(XamlDocument xaml)
     {
         int caret = Editor.Selections.Primary.Caret;
@@ -758,6 +762,12 @@ internal sealed partial class XamlAssist : LanguageAssist
         if (context.Xaml?.Invoke() is { } service)
         {
             await service.CurrentAsync();
+        }
+        if (await ExpressionElementAsync(xaml, caret) is { } read)
+        {
+            actions.AskRename(xaml.Document, context.WordStart(caret), read, async (_, name, patience) =>
+                await XamlRenameAsync(xaml.Document.Path, read, name, patience) ?? RefactorOutcome.Refused(Unread(xaml.Document.Path)));
+            return;
         }
         if (await XamlSymbolAt(xaml, caret, XamlRenamesWhat) is not { } found)
         {
@@ -984,8 +994,8 @@ internal sealed partial class XamlAssist : LanguageAssist
         return XamlNavigation.Describe(found.File, found.Symbol);
     }
 
-    /// <summary>A C# definition that lands in the field Avalonia's generator or WPF's MarkupCompile made for a named
-    /// element goes to the element's name in its XAML instead; null for any other.</summary>
+    /// <summary>A C# definition that lands in the field Avalonia's or MAUI's generator or WPF's MarkupCompile made for a
+    /// named element goes to the element's name in its XAML instead; null for any other.</summary>
     internal async Task<XamlTarget?> NamedElementOfAsync(OpenDocument document, IReadOnlyList<LspLocation> definitions, int offset)
     {
         foreach (LspLocation place in definitions)
@@ -995,10 +1005,15 @@ internal sealed partial class XamlAssist : LanguageAssist
             {
                 xaml = MarkupCompiled(DocumentUris.ToPath(place.Uri), place.Range.Start.Line);
             }
+            else if (GeneratedFile().Match(Uri.UnescapeDataString(place.Uri)) is { Success: true } generated)
+            {
+                xaml = context.Xaml?.Invoke() is { } service ? await service.ClassFileAsync(generated.Groups["class"].Value, document.Path) : null;
+            }
             else
             {
-                Match generated = GeneratedFile().Match(Uri.UnescapeDataString(place.Uri));
-                xaml = generated.Success && context.Xaml?.Invoke() is { } service ? await service.ClassFileAsync(generated.Groups["class"].Value, document.Path) : null;
+                // MAUI's generator names its files by the XAML's, so the class is the field's own.
+                xaml = DocumentUris.GeneratedName(place.Uri) is { } hint && MadeByMaui(hint, ".xaml") && await FieldOwnerAsync(document, offset) is { } owner
+                    && context.Xaml?.Invoke() is { } service ? await service.ClassFileAsync(owner, document.Path) : null;
             }
             string name = AssistContext.NameAt(document.Text.Snapshot, offset);
             if (xaml is not null && NameIn(context.ReadOpenOrDisk(xaml), name) is { } found)
@@ -1008,6 +1023,54 @@ internal sealed partial class XamlAssist : LanguageAssist
         }
         return null;
     }
+
+    /// <summary>The class whose field a C# file names at an offset, by the field's documentation id; null where no field is.</summary>
+    private async Task<string?> FieldOwnerAsync(OpenDocument document, int offset)
+    {
+        if (context.CSharp?.For(document)?.Lsp is not { } lsp)
+        {
+            return null;
+        }
+        try
+        {
+            return await lsp.SymbolAtAsync(offset) is { Id: { } id } ? FieldOwner(id) : null;
+        }
+        catch (LanguageServerFailed)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>The class a field's documentation id (<c>F:Namespace.Class.name</c>) names; null for any other id.</summary>
+    private static string? FieldOwner(string id)
+    {
+        int dot = id.LastIndexOf('.');
+        return id.StartsWith("F:", StringComparison.Ordinal) && dot > 2 ? id[2..dot] : null;
+    }
+
+    /// <summary>Where the XAML of a field's class names the element the field was made for, and where a MAUI page's
+    /// expressions read it (<see cref="ElementReadsAsync"/>), the class's XAML found from <paramref name="near"/>; the
+    /// field's C# uses are the server's to find. Null for a field made for no element.</summary>
+    private async Task<IReadOnlyList<LspLocation>?> ElementFieldUsesAsync(string id, string near)
+    {
+        if (FieldOwner(id) is not { } owner || context.Xaml?.Invoke() is not { } service || await service.ClassFileAsync(owner, near) is not { } path
+            || await service.FileAsync(path) is not { } file)
+        {
+            return null;
+        }
+        string name = id[(id.LastIndexOf('.') + 1)..];
+        if (!file.Tree.Elements.Select(XamlFile.NameAttribute).Any(a => a is { IsValueClosed: true } && a.Value == name))
+        {
+            return null;
+        }
+        return [.. XamlNavigation.NameUses(file, name).Select(r => Location(file.Path, r.Start, r.End)),
+            .. await ElementReadsAsync(file, name, ServerPlaces.TextOf(context.Editors, file.Path) ?? TextSnapshot.Empty)];
+    }
+
+    /// <summary>Whether a generated document's name is one MAUI's source generator gives the code it makes of a XAML file
+    /// whose name ends in <paramref name="xaml"/> (<c>File.xaml.sg.cs</c>, <c>File.xaml.xsg.cs</c>).</summary>
+    private static bool MadeByMaui(string hint, string xaml) =>
+        hint.EndsWith(xaml + ".sg.cs", StringComparison.OrdinalIgnoreCase) || hint.EndsWith(xaml + ".xsg.cs", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>The attribute naming the first element a XAML text names <paramref name="name"/>, however it is quoted or
     /// spaced, by <c>x:Name</c> under whatever prefix XAML's language has, or by <c>Name</c>; null for none.</summary>
