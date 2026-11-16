@@ -1449,6 +1449,8 @@ public sealed partial class Git
         signing ??= CommitSigning.AsConfigured;
         string[] relative = [.. paths.Select(Relative).Distinct()];
         string[] there = [.. relative.Where(StillThere)];
+        // What the index stages of the files before they are added, put back if the commit is not made; none before a first commit.
+        Dictionary<string, StagedEntry>? before = !merging && relative.Length > 0 && await StagedAsync() is ({ Succeeded: true }, var staged) ? staged : null;
         // No paths is an amend of the message alone: "add -A --" with none would add the whole tree.
         if (there.Length > 0)
         {
@@ -1465,7 +1467,7 @@ public sealed partial class Git
             GitResult removed = await OnFilesAsync(["rm", "--cached", "-r", "-q", "--ignore-unmatch"], gone);
             if (!removed.Succeeded)
             {
-                return removed;
+                return await PutBackAsync(removed, relative, before);
             }
         }
         string[] left = merging ? [.. (excluded ?? []).Select(Relative).Distinct().Except(relative)] : [];
@@ -1481,8 +1483,37 @@ public sealed partial class Git
         string[] commit = [.. signing.Before, "commit", "-F", file.Path, .. amend ? new[] { "--amend" } : [], .. signing.After];
         // --only with no paths amends the message alone, leaving out what else the index holds (an IDE rename, a git add).
         return merging ? await RunAsync(Root, commit, environment: signing.Environment, asker: asker)
-            : relative.Length > 0 ? await OnFilesAsync([.. commit, "--only"], relative, asker, signing.Environment)
+            : relative.Length > 0 ? await PutBackAsync(await OnFilesAsync([.. commit, "--only"], relative, asker, signing.Environment), relative, before)
             : await RunAsync(Root, [.. commit, .. amend ? new[] { "--only" } : []], environment: signing.Environment, asker: asker);
+    }
+
+    /// <summary>Where a commit of whole files failed (a hook refused it, its signing was refused), the index's entries for
+    /// them as they were before they were added: as the last commit has them, but those staged otherwise
+    /// (<paramref name="before"/>, read first), which take what was staged; a commit made, or one with nothing read
+    /// before it, as it came.</summary>
+    private async Task<GitResult> PutBackAsync(GitResult committed, IReadOnlyCollection<string> relative, IReadOnlyDictionary<string, StagedEntry>? before)
+    {
+        if (committed.Succeeded || before is null)
+        {
+            return committed;
+        }
+        GitResult put = await OnFilesAsync(["reset", "-q", "HEAD"], relative);
+        bool composed = await ComposesAsync();
+        string[] names = [.. relative.Select(r => GitForm(r, composed))];
+        StringBuilder staged = new();
+        foreach ((string name, StagedEntry entry) in before)
+        {
+            if (entry.Status != 'U' && names.Any(n => n.Length == 0 || name == n || name.StartsWith(n + "/", StringComparison.Ordinal)))
+            {
+                // A mode of zeros takes out what the last commit has and the index did not.
+                staged.Append(System.Globalization.CultureInfo.InvariantCulture, $"{entry.Index.Mode} {entry.Index.Blob}\t{name}\0");
+            }
+        }
+        if (put.Succeeded && staged.Length > 0)
+        {
+            put = await RunAsync(Root, ["update-index", "-z", "--index-info"], staged.ToString());
+        }
+        return put.Succeeded ? committed : committed with { Error = $"{committed.Error.TrimEnd()}\n{put.Message}" };
     }
 
     /// <summary>The files of <paramref name="moves"/> (each where it came from and where it is) that git would find no

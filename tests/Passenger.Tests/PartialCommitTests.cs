@@ -338,6 +338,42 @@ public sealed class PartialCommitTests : IDisposable
         }
     }
 
+    /// <summary>A commit of whole files that a hook refuses leaves the index as it was: a change of a chosen file only
+    /// staged, taken back out of the working tree since, is still staged, and the file's other changes are not.</summary>
+    [AvaloniaFact]
+    public void A_hook_rejecting_a_commit_of_whole_files_keeps_what_the_index_staged_of_them()
+    {
+        const string Staged = "one\nTWO\nthree\nfour\nfive\n";
+        File.WriteAllText(PathOf("Notes.txt"), Staged);
+        TestGit.Run(folder, "add", "Notes.txt");
+        File.WriteAllText(PathOf("Notes.txt"), After);
+        File.WriteAllText(PathOf("New.txt"), "new\n");
+        string hook = PathOf(".git/hooks/pre-commit");
+        File.WriteAllText(hook, "#!/bin/sh\nexit 1\n");
+        if (!OperatingSystem.IsWindows())
+        {
+            File.SetUnixFileMode(hook, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        }
+        MainWindow window = Ui.OpenFolder(folder);
+        try
+        {
+            Ui.Landed(() => window.Vcs.Changes.Count == 3, "the changes");
+            string head = TestGit.Run(folder, "rev-parse", "HEAD");
+            CommitResult result = Ui.Landed(window.Vcs.CommitAsync([.. window.Vcs.Changes.Where(c => c.Name is "Notes.txt" or "New.txt")], "Rejected", false, false),
+                "the rejected commit");
+            Assert.False(result.Succeeded);
+            Assert.Equal(head, TestGit.Run(folder, "rev-parse", "HEAD"));
+            Assert.True(TestGit.Run(folder, "show", ":Notes.txt") == Staged,
+                $"The refused commit did not leave the index as it was: it holds\n{TestGit.Run(folder, "show", ":Notes.txt")}");
+            Assert.Equal("New.txt\n", TestGit.Run(folder, "ls-files", "--others", "--exclude-standard"));
+            Assert.Equal(After, File.ReadAllText(PathOf("Notes.txt")));
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     [AvaloniaTheory]
     [InlineData(false)]
     [InlineData(true)]
