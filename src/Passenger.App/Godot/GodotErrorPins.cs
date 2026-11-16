@@ -160,17 +160,22 @@ public sealed class GodotErrorPins
         }
     }
 
-    /// <summary>An edit of an open file: the pins on a line whose text it changed come off, the rest follow their lines.</summary>
+    /// <summary>An edit of an open file: the pins on a line whose text it changed come off, the rest follow their lines. A file
+    /// with none costs a look at each pin's path, and a line still read is compared where it stands.</summary>
     public void Edited(string path, DocumentChangedEventArgs change)
     {
         bool moved = false;
-        foreach (GodotPin pin in In(path))
+        for (int i = pins.Count - 1; i >= 0; i--)
         {
-            string? was = LineOf(change.Before, pin.Line);
-            bool followed = pin.At.Follow();
-            if (LineOf(change.After, pin.Line) != was)
+            GodotPin pin = pins[i];
+            if (!Passenger.Core.PathNames.Same(pin.Path, path))
             {
-                pins.Remove(pin);
+                continue;
+            }
+            bool followed = pin.At.Follow();
+            if (!AnchoredLine.Reads(change.After, pin.Line, pin.LineText))
+            {
+                pins.RemoveAt(i);
                 pin.At.Detach();
                 moved = true;
                 continue;
@@ -180,16 +185,6 @@ public sealed class GodotErrorPins
         if (moved)
         {
             Changed?.Invoke(this, path);
-        }
-
-        static string? LineOf(TextSnapshot text, int line)
-        {
-            if (line >= text.LineCount)
-            {
-                return null;
-            }
-            LineSpan span = text.GetLine(line);
-            return text.GetText(span.Start, span.Length);
         }
     }
 

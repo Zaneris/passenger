@@ -77,4 +77,29 @@ public sealed class AnchoredLine(int line, int? column = null)
         (Line, Column) = (line, column);
         return true;
     }
+
+    /// <summary>The longest line compared on the stack.</summary>
+    private const int OnStack = 256;
+
+    /// <summary>Whether a text's line (from zero) reads as <paramref name="was"/>, compared where it stands: what an edit
+    /// checks of each line kept, at no cost of its own for a line no longer than <see cref="OnStack"/>.</summary>
+    public static bool Reads(TextSnapshot text, int line, string was)
+    {
+        if (line >= text.LineCount)
+        {
+            return false;
+        }
+        LineSpan span = text.GetLine(line);
+        if (span.Length != was.Length)
+        {
+            return false;
+        }
+        if (span.Length > OnStack)
+        {
+            return text.GetText(span.Start, span.Length) == was;
+        }
+        Span<char> read = stackalloc char[OnStack];
+        text.CopyTo(span.Start, read[..span.Length]);
+        return read[..span.Length].SequenceEqual(was);
+    }
 }
