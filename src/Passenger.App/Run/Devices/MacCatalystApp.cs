@@ -89,8 +89,8 @@ public sealed record MacCatalystLaunch(string Framework)
 /// <summary>A Mac Catalyst app run on this machine as the system opens an app (<c>open</c>, LaunchServices starting it, so
 /// it runs as one, its sandbox and all): <see cref="Opener"/> runs it, its output the opener's own, and lasts as long as it
 /// does. Where nobody sees the window that runs it, it opens hidden and never in front (<c>open -g -j</c>), its windows
-/// never on the person's screen. LaunchServices starts it apart from Passenger, so it is found by its program once it runs
-/// and ends with its run.</summary>
+/// never on the person's screen, and passes over the windows it kept (<see cref="IgnoringKeptWindows"/>). LaunchServices
+/// starts it apart from Passenger, so it is found by its program once it runs and ends with its run.</summary>
 public static partial class MacCatalystApps
 {
     /// <summary>The program that opens the app: a shell running <see cref="Opener"/>.</summary>
@@ -113,9 +113,14 @@ public static partial class MacCatalystApps
         exit "$s"
         """;
 
+    /// <summary>AppKit's argument that has an app open none of the windows it kept as it last ended. An app ended while it
+    /// reopened them asks, as it next opens, whether to reopen them, and opened hidden nobody sees the question, so its
+    /// windows never open; ended by Stop, an app nobody sees ends so every time.</summary>
+    public static readonly IReadOnlyList<string> IgnoringKeptWindows = ["-ApplePersistenceIgnoreState", "YES"];
+
     /// <summary>The shell's arguments that open <paramref name="app"/> afresh, a new instance however many run, with the
-    /// app's own <paramref name="arguments"/>; hidden and behind every window where <paramref name="unseen"/>. How many come
-    /// before the app's own is their count less the app's.</summary>
+    /// app's own <paramref name="arguments"/>; hidden and behind every window, opening none it kept, where
+    /// <paramref name="unseen"/>. How many come before the app's own is their count less the app's.</summary>
     public static IReadOnlyList<string> Opening(MacCatalystApp app, bool unseen, IReadOnlyList<string> arguments) =>
-        ["-c", Opener, "sh", "-n", "-W", .. unseen ? (string[])["-g", "-j"] : [], "-a", app.Bundle, "--args", .. arguments];
+        ["-c", Opener, "sh", "-n", "-W", .. unseen ? (string[])["-g", "-j"] : [], "-a", app.Bundle, "--args", .. unseen ? IgnoringKeptWindows : [], .. arguments];
 }

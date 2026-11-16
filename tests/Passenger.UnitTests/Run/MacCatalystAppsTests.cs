@@ -13,11 +13,19 @@ public class MacCatalystAppsTests
         "/src/Shop/bin/Debug/net11.0-maccatalyst/maccatalyst-arm64/Shop.app/Contents/MacOS/Shop");
 
     [Fact]
-    public void An_app_nobody_sees_opens_hidden_behind_every_window_with_its_own_arguments_after_opens()
+    public void An_app_nobody_sees_opens_hidden_behind_every_window_none_it_kept_reopened_with_its_own_arguments_after_opens()
     {
         IReadOnlyList<string> opening = MacCatalystApps.Opening(App, unseen: true, ["--verbose", "a b"]);
 
-        Assert.Equal(["-c", MacCatalystApps.Opener, "sh", "-n", "-W", "-g", "-j", "-a", App.Bundle, "--args", "--verbose", "a b"], opening);
+        Assert.Equal(["-c", MacCatalystApps.Opener, "sh", "-n", "-W", "-g", "-j", "-a", App.Bundle, "--args", "-ApplePersistenceIgnoreState", "YES", "--verbose", "a b"], opening);
+    }
+
+    [Fact]
+    public void An_app_a_person_sees_opens_in_front_as_it_last_ended_with_its_own_arguments_after_opens()
+    {
+        IReadOnlyList<string> opening = MacCatalystApps.Opening(App, unseen: false, ["--verbose"]);
+
+        Assert.Equal(["-c", MacCatalystApps.Opener, "sh", "-n", "-W", "-a", App.Bundle, "--args", "--verbose"], opening);
     }
 
     [Fact]
