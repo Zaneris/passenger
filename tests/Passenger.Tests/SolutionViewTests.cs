@@ -225,6 +225,88 @@ public sealed class SolutionViewTests : IDisposable
             .Order(StringComparer.Ordinal);
     }
 
+    /// <summary>A folder whose copy fails partway (a file in it cannot be read) leaves nothing of the copy behind and no
+    /// command to undo, saying why: pasted where nothing has its name, and pasted over a folder of its name, Replace agreed
+    /// to, which comes back out of the Trash as it was.</summary>
+    [AvaloniaFact]
+    public void A_folder_copy_that_fails_partway_takes_back_what_it_copied_and_puts_back_what_it_replaced()
+    {
+        const string Old = "namespace Shop.Core.Catalog.Lines;\n\npublic class Old\n{\n}\n";
+        string lines = Path.Combine(folder, "Shop.App", "Models", "Lines");
+        string catalog = Path.Combine(folder, "Shop.Core", "Catalog");
+        Write("Shop.App/Models/Lines/Held.cs", "namespace Shop.App.Models.Lines;\n\npublic class Held\n{\n}\n");
+        Write("Shop.App/Models/Lines/Total.cs", "namespace Shop.App.Models.Lines;\n\npublic class Total\n{\n}\n");
+        Write("Shop.Core/Catalog/Lines/Old.cs", Old);
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        window.Confirm = (_, _, _) => Task.FromResult(true);
+        using IDisposable unreadable = Unreadable(Path.Combine(lines, "Held.cs"));
+
+        Pasted(Row(window, NodeKind.Project, "Shop.Core"));
+        Assert.False(Directory.Exists(Path.Combine(folder, "Shop.Core", "Lines")), $"The copy that failed left what it had copied of Lines: {window.Status}");
+
+        Pasted(Show(window, catalog));
+        Assert.True(File.ReadAllText(Path.Combine(catalog, "Lines", "Old.cs")) == Old && Directory.EnumerateFiles(Path.Combine(catalog, "Lines")).Count() == 1,
+            $"The copy that failed did not put back the Lines it replaced, as it was: {window.Status}");
+        Assert.Empty(Directory.EnumerateFileSystemEntries(trash));
+        Assert.Null(window.EditorArea.Commands.ToUndo(null));
+        window.Close();
+
+        void Pasted(ExplorerNode into)
+        {
+            Ui.ClickRow(window, Show(window, lines));
+            Ui.Run(window, EditorActions.Copy);
+            Ui.ClickRow(window, into);
+            Ui.Run(window, EditorActions.Paste);
+            Ui.WaitFor(() => window.Status?.StartsWith("Lines could not be copied: ", StringComparison.Ordinal) == true, () => $"the paste to say Lines could not be copied: {window.Status}");
+        }
+    }
+
+    /// <summary>Two files of one name from two folders moved or copied into a third are refused before either goes, saying
+    /// which: the second would replace the first, which no Undo could bring back.</summary>
+    [AvaloniaFact]
+    public void Two_files_of_one_name_put_into_one_folder_are_refused_before_either_goes()
+    {
+        const string Kept = "namespace Shop.Core.Catalog;\n\npublic class Order\n{\n}\n";
+        string order = Path.Combine(folder, "Shop.App", "Models", "Order.cs");
+        string other = Path.Combine(folder, "Shop.Core", "Catalog", "Order.cs");
+        string lines = Path.Combine(folder, "Shop.App", "Models", "Lines");
+        Write("Shop.Core/Catalog/Order.cs", Kept);
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        List<string> asked = [];
+        window.Confirm = (title, _, _) =>
+        {
+            asked.Add(title);
+            return Task.FromResult(true);
+        };
+        foreach (bool copy in (bool[])[false, true])
+        {
+            Assert.Empty(Ui.Await(window.PutAsync([order, other], lines, copy), copy ? "the copy" : "the move"));
+            Assert.Equal($"Nothing was {(copy ? "copied" : "moved")}: Order.cs from Models and Order.cs from Catalog would each be Order.cs in Lines", window.Status);
+        }
+        Assert.Empty(asked);
+        Assert.True(File.ReadAllText(order) == Order && File.ReadAllText(other) == Kept && !File.Exists(Path.Combine(lines, "Order.cs")), "A refused put moved or copied a file");
+        Assert.Null(window.EditorArea.Commands.ToUndo(null));
+        window.Close();
+    }
+
+    /// <summary>A file a copy cannot read until disposed: its mode taken away on macOS and Linux, held open unshared on Windows.</summary>
+    private static IDisposable Unreadable(string path)
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.None);
+        }
+        UnixFileMode mode = File.GetUnixFileMode(path);
+        File.SetUnixFileMode(path, UnixFileMode.None);
+        return new Restored(() =>
+        {
+            if (!OperatingSystem.IsWindows())
+            {
+                File.SetUnixFileMode(path, mode);
+            }
+        });
+    }
+
     /// <summary>Every file of a folder of 400 chosen and cut allocates on the UI thread, for each file, under twice what every
     /// file of a folder of 40 does, each row dimmed and a file's dependent going with it.</summary>
     [Gate]

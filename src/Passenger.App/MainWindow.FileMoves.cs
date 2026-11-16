@@ -99,9 +99,9 @@ public partial class MainWindow
     }
 
     /// <summary>Moves or copies files and folders into a folder: what is there already stays put, a folder never goes
-    /// inside itself, a copy into its own folder is named by the person, and a name taken there is replaced (what had it
-    /// going to the Trash) only once they agree. A move or a copy, with what follows it and what it replaced, is one
-    /// command, which Undo takes back whole, a copy going to the Trash. The status bar says what went where and what could
+    /// inside itself, two of one name never go at all, a copy into its own folder is named by the person, and a name taken
+    /// there is replaced (to the Trash) only once they agree. A move or a copy, with what follows it and what it replaced, is
+    /// one command, which Undo takes back whole, a copy going to the Trash. The status bar says what went where and what could
     /// not; the last one put is chosen in the Explorer. Answers with where each went.</summary>
     public async Task<IReadOnlyList<string>> PutAsync(IReadOnlyList<string> paths, string into, bool copy)
     {
@@ -109,6 +109,16 @@ public partial class MainWindow
         // A file's dependents go with it, renamed as a copy's name asks; one chosen with its parent goes as the parent's.
         IReadOnlyDictionary<string, IReadOnlyList<string>> following = DependentsOf(paths);
         HashSet<string> dependents = [.. following.Values.SelectMany(d => d)];
+        // Two going where one name can be would leave the first replaced by the second, which no Undo could bring back.
+        StringComparer names = PathNames.NamesIn(into);
+        List<(string Source, string Name)> claims = [.. paths.Where(p => !dependents.Contains(p))
+            .SelectMany(p => following[p].Prepend(p).Select(f => (Source: f, Name: Path.GetFileName(f))))];
+        if (claims.GroupBy(c => c.Name, names).FirstOrDefault(g => g.Count() > 1) is { } clash)
+        {
+            status.Text = $"Nothing was {(copy ? "copied" : "moved")}: {Plural.Listed([.. clash.Select(c => $"{c.Name} from {Path.GetFileName(Path.GetDirectoryName(c.Source))}")])} would each be {clash.Key} in {Path.GetFileName(into)}";
+            return [];
+        }
+        HashSet<string> claimed = new(claims.Select(c => c.Name), names);
         // The folders moving elsewhere, whose projects' design-time builds a move waits for.
         List<string> elsewhere = [.. paths.Where(p => Directory.Exists(p) && !PathNames.Within(into, p) && !PathNames.Same(Path.Combine(into, Path.GetFileName(p)), p))];
         using IDisposable? releasing = copy ? null : await LetGoAsync(elsewhere,
@@ -136,7 +146,8 @@ public partial class MainWindow
             string target = Path.Combine(into, name);
             if (PathNames.Same(target, source))
             {
-                if (!copy || await AskNameAsync($"Duplicate {name}", name, other => Invalid(other) ?? Taken(into, other), BeforeExtension(source)) is not { } other)
+                if (!copy || await AskNameAsync($"Duplicate {name}", name, other => Invalid(other) ?? Taken(into, other)
+                    ?? (claimed.Contains(other) ? $"{other} is the name of another going there" : null), BeforeExtension(source)) is not { } other)
                 {
                     continue;
                 }
@@ -178,9 +189,12 @@ public partial class MainWindow
         {
             refused.Add($"{Path.GetFileName(unwritten)} could not follow the files {(copy ? "copied" : "moved")}: {notLanded.Message}");
         }
-        if (put.Count > 0)
+        if (came.Count > 0 || put.Count > 0)
         {
             CameOrWent([.. came, .. put]);
+        }
+        if (put.Count > 0)
+        {
             Explorer.Reveal(put[^1]);
             // The keys go with the choice to the row revealed, for the next Paste.
             Explorer.FocusRows();
@@ -192,11 +206,12 @@ public partial class MainWindow
 
     /// <summary>Moves or copies one file or folder to where it goes within the paste's command (<paramref name="recording"/>),
     /// replacing what has its name there once the person agrees (to the Trash, in the same command, whose Undo brings it
-    /// back), a move's ends gathered into <paramref name="came"/> and a copy kept for Undo to take to the Trash; null once
-    /// it is there, else why not ("" when they would not replace).</summary>
+    /// back), a move's ends gathered into <paramref name="came"/> and a copy kept for Undo to take to the Trash, one failing
+    /// partway taken back; null once it is there, else why not ("" when they would not replace).</summary>
     private async Task<string?> PutOneAsync(string source, string target, string into, bool copy, CommandHistory.Recording recording, List<string> came)
     {
         string name = Path.GetFileName(source);
+        bool replaced = false;
         if (!PathNames.Same(target, source) && (File.Exists(target) || Directory.Exists(target)))
         {
             if (!await Confirm("Files Already Exist", $"{Path.GetFileName(target)} with the same name already exists in '{Path.GetFileName(into)}'. Replace?", "Replace")
@@ -204,6 +219,7 @@ public partial class MainWindow
             {
                 return string.Empty;
             }
+            replaced = true;
         }
         if (!copy)
         {
@@ -211,10 +227,52 @@ public partial class MainWindow
         }
         if (CopyOnDisk(source, target) is { } uncopied)
         {
-            return $"{name} could not be copied: {uncopied}";
+            return await UncopiedAsync($"{name} could not be copied: {uncopied}", [target]);
         }
         await recording.CopiedAsync(target);
         return null;
+
+        // A copy that failed partway is taken back, and what it replaced put back; what could not be is left to the command's Undo.
+        async Task<string> UncopiedAsync(string why, IReadOnlyList<string> copies)
+        {
+            List<string> said = [why];
+            foreach (string copied in copies)
+            {
+                if (Unmade(copied) is { } left)
+                {
+                    await recording.CopiedAsync(copied);
+                    said.Add($"{Path.GetFileName(copied)} as far as it was copied could not be taken away ({left}), so Undo moves it to the Trash");
+                }
+            }
+            came.Add(target);
+            if (replaced && recording.PutBack(target) is { } kept)
+            {
+                said.Add(kept);
+            }
+            return string.Join("; ", said);
+        }
+    }
+
+    /// <summary>Deletes a copy the paste made a moment before, a folder with all it holds, its links as links: null once gone,
+    /// else why not.</summary>
+    private static string? Unmade(string copy)
+    {
+        try
+        {
+            if (Directory.Exists(copy) && new DirectoryInfo(copy).LinkTarget is null)
+            {
+                Directory.Delete(copy, recursive: true);
+            }
+            else if (File.Exists(copy) || new FileInfo(copy).LinkTarget is not null)
+            {
+                File.Delete(copy);
+            }
+            return null;
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            return error.Message;
+        }
     }
 
     /// <summary>The files nested under one in the Solution view, by its project's DependentUpon and, while nesting by

@@ -1152,6 +1152,23 @@ public sealed class CommandHistory
             }
         }
 
+        /// <summary>Moves back out of the Trash what the command moved there from a path now (<see cref="Deleted"/>), as Undo
+        /// would, which leaves the command: null once back, else why not, where it stays for Undo to bring back.</summary>
+        public string? PutBack(string path)
+        {
+            string began = Began(path);
+            if (deletions.FirstOrDefault(d => PathNames.Same(d.Path, began)) is not { } deleted)
+            {
+                return $"{Path.GetFileName(path)} was not moved to the Trash";
+            }
+            if (FromTrash(deleted) is { } refused)
+            {
+                return refused;
+            }
+            deletions.Remove(deleted);
+            return null;
+        }
+
         /// <summary>A file or folder the command made by copying another, at its path now, kept as each file in it was left
         /// (<see cref="MadeFolders.Stamps"/>, read off the window's thread), never its bytes: its Undo moves it to the Trash
         /// while it is as the copy left it, and its Redo moves it back from there.</summary>
