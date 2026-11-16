@@ -549,11 +549,54 @@ parameter types, a transformation's regular expression), `Reqnroll/Bindings/Rege
 anchored to the whole step) and `Reqnroll/Bindings/StepDefinitionRegexCalculator.cs` (a method named for its step).
 `StepMatcher.cs` beside it follows the matching rules of `Reqnroll/Infrastructure/StepDefinitionMatchService.cs` and
 `Reqnroll/Bindings/BindingScope.cs` at the same commit: the order of its checks and how a scope's fit is counted.
+`GherkinDialects.cs` beside them holds `ReqnrollProvider`, a port of `Reqnroll/Parser/ReqnrollGherkinDialectProvider.cs` at
+the same commit: a `# language:` naming a region Gherkin lacks read in its language's keywords under the name written.
 
 ```
 BSD 3-Clause License
 
 Copyright (c) 2024-2025, Reqnroll
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+
+1. Redistributions of source code must retain the above copyright notice, this
+   list of conditions and the following disclaimer.
+
+2. Redistributions in binary form must reproduce the above copyright notice,
+   this list of conditions and the following disclaimer in the documentation
+   and/or other materials provided with the distribution.
+
+3. Neither the name of the copyright holder nor the names of its
+   contributors may be used to endorse or promote products derived from
+   this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+```
+
+## Reqnroll for Visual Studio's table layout
+
+`src/Passenger.Workspace/Gherkin/GherkinFormatter.cs` keeps the text a table's row holds after its last bar after its
+aligned cells, trimmed and one cell padding from the bar, as `GetUnfinishedTableCell` and `FormatTable` of
+`Reqnroll.VisualStudio/Editor/Services/Formatting/GherkinDocumentFormatter.cs` keep it, from
+https://github.com/reqnroll/Reqnroll.VisualStudio at its tag v2026.1.477 (commit
+fb6134a5d5ebe8a98b681d7669a51f40c73e3ab6); `tests/Passenger.UnitTests/Gherkin/GherkinFormatterTests.cs` takes its rows
+for that from `Should_not_remove_unfinished_cells_when_formatting_table` in
+`Tests/Reqnroll.VisualStudio.Tests/Editor/Services/GherkinDocumentFormatterTests.cs` at the same commit.
+
+```
+BSD 3-Clause License
+
+Copyright (c) 2019-2024, Gaspar Nagy (Spec Solutions), Reqnroll
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
