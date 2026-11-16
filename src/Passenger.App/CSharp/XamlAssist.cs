@@ -655,7 +655,8 @@ internal sealed partial class XamlAssist : LanguageAssist
     }
 
     /// <summary>The edits the XAML of the projects that can use a C# symbol the server named takes as it is renamed to
-    /// <paramref name="name"/> (<see cref="XamlService.RenamesAsync"/>), each open file's in its text as the rename's request
+    /// <paramref name="name"/> (<see cref="XamlService.RenamesAsync"/>), a MAUI page's C# expressions reading it among them
+    /// (<see cref="XamlService.ExpressionUsesAsync"/>), each open file's in its text as the rename's request
     /// found it (<paramref name="asked"/>), by path; or why the rename cannot follow its uses. None for a symbol XAML never
     /// names, or with no XAML Passenger reads.</summary>
     internal async Task<(IReadOnlyList<(string Path, IReadOnlyList<LspTextEdit> Edits)> Files, string? Problem)> CodeRenameAsync(Roslyn.Extension.NamedSymbol? named,
@@ -673,13 +674,48 @@ internal sealed partial class XamlAssist : LanguageAssist
             held[document.Path] = tracker.Snapshot;
         }
         Func<string, TextSnapshot?> open = xaml.OpenSnapshots();
-        (IReadOnlyList<(string Path, TextSnapshot Text, IReadOnlyList<TextEdit> Edits)> files, string? problem) =
-            await xaml.RenamesAsync(projects, symbol, name, path => held.TryGetValue(path, out TextSnapshot? text) ? text : open(path));
-        return ([.. files.Select(f =>
+        TextSnapshot? Texts(string path) => held.TryGetValue(path, out TextSnapshot? text) ? text : open(path);
+        (IReadOnlyList<(string Path, TextSnapshot Text, IReadOnlyList<TextEdit> Edits)> files, string? problem) = await xaml.RenamesAsync(projects, symbol, name, Texts);
+        if (problem is not null)
         {
-            ServerLines lines = ServerLines.Of(f.Text);
-            return (f.Path, (IReadOnlyList<LspTextEdit>)[.. f.Edits.Select(e => new LspTextEdit(lines.RangeOf(new TextRange(e.Start, e.Length)), e.Text))]);
-        })], problem);
+            return ([], problem);
+        }
+        (IReadOnlyList<(string Path, TextSnapshot Text, IReadOnlyList<TextEdit> Edits)> reads, string? unfollowed) =
+            ExpressionRenames(await xaml.ExpressionUsesAsync(projects, symbol, id, Texts), named.Name, name);
+        if (unfollowed is not null)
+        {
+            return ([], unfollowed);
+        }
+        return ([.. files.Concat(reads).GroupBy(f => f.Path, PathNames.Comparer).Select(file =>
+        {
+            ServerLines lines = ServerLines.Of(file.First().Text);
+            IEnumerable<TextEdit> edits = file.SelectMany(f => f.Edits).DistinctBy(e => e.Start);
+            return (file.Key, (IReadOnlyList<LspTextEdit>)[.. edits.Select(e => new LspTextEdit(lines.RangeOf(new TextRange(e.Start, e.Length)), e.Text))]);
+        })], null);
+    }
+
+    /// <summary>The edits MAUI expressions take as a symbol they read is renamed from <paramref name="old"/> to
+    /// <paramref name="name"/>: each use's name as written, a prefixed type's after its prefix; or why a use written
+    /// otherwise cannot follow.</summary>
+    private static (IReadOnlyList<(string Path, TextSnapshot Text, IReadOnlyList<TextEdit> Edits)> Files, string? Problem) ExpressionRenames(
+        IReadOnlyList<(string Path, TextSnapshot Text, IReadOnlyList<TextRange> Uses)> reads, string old, string name)
+    {
+        List<(string, TextSnapshot, IReadOnlyList<TextEdit>)> files = [];
+        foreach ((string path, TextSnapshot text, IReadOnlyList<TextRange> uses) in reads)
+        {
+            List<TextEdit> edits = [];
+            foreach (TextRange use in uses)
+            {
+                string written = text.GetText(use);
+                if (!written.EndsWith(old, StringComparison.Ordinal))
+                {
+                    return ([], $"{Path.GetFileName(path)} writes {old} as {written} in an expression, which a rename cannot follow");
+                }
+                edits.Add(new TextEdit(use.End - old.Length, old.Length, name));
+            }
+            files.Add((path, text, edits));
+        }
+        return (files, null);
     }
 
     /// <summary>The code-behind's uses of the field Avalonia's generator or WPF's MarkupCompile makes for a named element:

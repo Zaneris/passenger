@@ -682,16 +682,17 @@ public sealed class XamlService : IDisposable
 
     /// <summary>Where the MAUI XAML of the projects that can use a C# symbol names it in one of its C# expressions, as the
     /// language server binds each expression the way MAUI's source generator writes it: the files whose expressions write
-    /// one of the symbol's names, asked of the server a file at a time. None with no server loaded.</summary>
+    /// one of the symbol's names, asked of the server a file at a time, each open file's in the text <paramref name="texts"/>
+    /// gives (a rename's request's), else as the editor has it now. None with no server loaded.</summary>
     public async Task<IReadOnlyList<(string Path, TextSnapshot Text, IReadOnlyList<TextRange> Uses)>> ExpressionUsesAsync(IEnumerable<string> projectFiles,
-        CodeSymbol symbol, string id)
+        CodeSymbol symbol, string id, Func<string, TextSnapshot?>? texts = null)
     {
         if (Server?.Invoke() is not { IsLoaded: true } server)
         {
             return [];
         }
         IReadOnlyList<XamlProject> read = await ReadAsync(projectFiles, symbol);
-        Func<string, TextSnapshot?> open = OpenSnapshots();
+        Func<string, TextSnapshot?> open = texts ?? OpenSnapshots();
         List<(string Path, TextSnapshot Text, IReadOnlyList<XamlExpression> Expressions)> written = await BackgroundWork.Run(() => ExpressionsNaming(read, symbol, open));
         List<(string, TextSnapshot, IReadOnlyList<TextRange>)> found = [];
         foreach ((string path, TextSnapshot text, IReadOnlyList<XamlExpression> expressions) in written)

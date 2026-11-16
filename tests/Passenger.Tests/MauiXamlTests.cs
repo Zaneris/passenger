@@ -537,6 +537,20 @@ public sealed class MauiXamlTests : IClassFixture<MauiXamlTests.Gallery>
         window.Close();
     }
 
+    /// <summary>C# Rename of a view model's property that a page's C# expression reads renames the read with it, so the
+    /// expression still names what it reads and the page still builds.</summary>
+    [AvaloniaFact]
+    public void Renaming_a_view_models_property_from_its_csharp_renames_the_expressions_reading_it()
+    {
+        app.Rewrite("PeoplePage.xaml", Gallery.People.Replace("Title=\"{Binding Greeting}\"", "Title=\"{vm:Helper.Shout(Greeting)}\"", StringComparison.Ordinal));
+        MainWindow window = app.Open(app.PathOf("ViewModels/MainViewModel.cs"));
+        RenameInCode(window, "public string Gree", "Welcome");
+        string page = app.PathOf("PeoplePage.xaml");
+        Ui.WaitFor(() => File.ReadAllText(page).Contains("Title=\"{vm:Helper.Shout(Welcome)}\"", StringComparison.Ordinal),
+            () => $"the expression reading Greeting renamed with it: {File.ReadAllText(page)}");
+        window.Close();
+    }
+
     /// <summary>An expression reading the page's button through its name.</summary>
     private const string ReadsCounter = "IsVisible=\"{CounterBtn.(Grid.Row) GT 0}\"";
 

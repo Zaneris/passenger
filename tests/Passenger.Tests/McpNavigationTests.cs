@@ -102,6 +102,27 @@ public sealed class McpNavigationTests : McpRig, IClassFixture<RestoredFolders>
             $"definition of the element CounterBtn, read in {Read}, answered no place naming it: {answer.GetRawText()}");
     }
 
+    /// <summary>An agent's rename of a method, then of its type, that a MAUI page's C# expression names through a XAML
+    /// prefix renames the expression with them, as their C# uses, so the page still names what it calls.</summary>
+    [Fact]
+    public async Task Renaming_a_method_and_its_type_a_maui_expression_names_renames_the_expression_with_them()
+    {
+        string folder = MauiPage("mcp-maui-renamed-");
+        DeleteAtEnd(folder);
+        TestFolders.Write(folder, "Helper.cs", "namespace MauiApp1;\n\npublic static class Helper\n{\n    public static string Shout(string text) => text.ToUpperInvariant();\n}\n");
+        string page = File.ReadAllText(Path.Combine(folder, "MainPage.xaml"))
+            .Replace("<ContentPage x:Class=\"MauiApp1.MainPage\">", "<ContentPage x:Class=\"MauiApp1.MainPage\" xmlns:local=\"clr-namespace:MauiApp1\">", StringComparison.Ordinal)
+            .Replace("Text=\"Hello, World!\"", "Text=\"{local:Helper.Shout('hello')}\"", StringComparison.Ordinal);
+        TestFolders.Write(folder, "MainPage.xaml", page);
+        await using McpClient client = await Start(["--mcp", folder]);
+
+        await Call(client, McpTools.Rename, new() { ["path"] = "Helper.cs", ["line"] = 5, ["column"] = 26, ["newName"] = "Yell" });
+        await Call(client, McpTools.Rename, new() { ["path"] = "Helper.cs", ["line"] = 3, ["column"] = 21, ["newName"] = "Speaker" });
+        string renamed = File.ReadAllText(Path.Combine(folder, "MainPage.xaml"));
+        Assert.True(renamed == page.Replace("{local:Helper.Shout(", "{local:Speaker.Yell(", StringComparison.Ordinal),
+            $"renaming Shout to Yell and Helper to Speaker left the expression naming them otherwise, or changed more: {renamed}");
+    }
+
     /// <summary>An agent's first question of a MAUI page's C# expression, asked as a folder never restored opens, waits as its
     /// first C# question does, through the server's restore, the load after it and its generators' run: definition of the
     /// element the expression reads answers its x:Name, from the field MAUI's generator makes, never nothing.</summary>
