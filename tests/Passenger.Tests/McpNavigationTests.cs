@@ -77,6 +77,31 @@ public sealed class McpNavigationTests : McpRig, IClassFixture<RestoredFolders>
             $"definition of a MAUI page's InitializeComponent answered no place in the generator's code with its text: {made.GetRawText()}");
     }
 
+    /// <summary>A MAUI page's C# expression reading an attached property from a named element (<c>CounterBtn.(Grid.Row)</c>),
+    /// which MAUI's generator writes as the getter's call (<c>Grid.GetRow(CounterBtn)</c>), the element's name after the
+    /// type's: definition from the element's name goes to the element, never to the type the call names first.</summary>
+    [Fact]
+    public async Task Definition_of_the_element_an_attached_propertys_read_names_in_a_maui_expression_goes_to_the_element()
+    {
+        string folder = MauiPage("mcp-maui-attached-");
+        DeleteAtEnd(folder);
+        const string Read = "IsVisible=\"{CounterBtn.(Grid.Row) GT 0}\"";
+        string page = File.ReadAllText(Path.Combine(folder, "MainPage.xaml")).Replace("Text=\"Hello, World!\"", $"Text=\"Hello, World!\"\n                {Read}", StringComparison.Ordinal);
+        TestFolders.Write(folder, "MainPage.xaml", page);
+        string[] lines = page.Split('\n');
+        int line = Array.FindIndex(lines, l => l.Contains(Read, StringComparison.Ordinal));
+        int column = lines[line].IndexOf("CounterBtn", StringComparison.Ordinal) + "Coun".Length;
+        await using McpClient client = await Start(["--mcp", folder]);
+
+        // Asked of the code-behind first, which waits for the load after the restore bringing MAUI's generator.
+        await Call(client, McpTools.Definition, new() { ["path"] = "MainPage.xaml.cs", ["line"] = 9, ["column"] = 9 });
+        JsonElement answer = await Call(client, McpTools.Definition, new() { ["path"] = "MainPage.xaml", ["line"] = line + 1, ["column"] = column + 1 });
+        int element = Array.FindIndex(lines, l => l.Contains("x:Name=\"CounterBtn\"", StringComparison.Ordinal));
+        Assert.True(answer.GetArrayLength() == 1 && answer[0].GetProperty("path").GetString() == "MainPage.xaml"
+            && answer[0].GetProperty("line").GetInt32() == element + 1 && answer[0].GetProperty("text").GetString() == "x:Name=\"CounterBtn\"",
+            $"definition of the element CounterBtn, read in {Read}, answered no place naming it: {answer.GetRawText()}");
+    }
+
     /// <summary>A MAUI page's folder whose language server, started ahead of the agent's window, loaded, restored and began
     /// loading again with MAUI's generator before the window took it up: the window's C# is ready only once it has heard
     /// what the server said meanwhile, its restore among it, so an agent's question asked as the window opens waits for the

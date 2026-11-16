@@ -19,19 +19,23 @@ public sealed class MauiExpressionCode
 {
     private static readonly (string Word, string Operator)[] Words = [("AND", "&&"), ("OR", "||"), ("LTE", "<="), ("GTE", ">="), ("LT", "<"), ("GT", ">")];
 
-    /// <summary>For each character of the code, and its end, where it is written in the value.</summary>
+    /// <summary>For each character of the code, and its end, where what it stands for starts in the value, and where that
+    /// ends. The code may take the value's parts in another order (an attached property's read), so neither is sorted.</summary>
     private readonly int[] written;
+    private readonly int[] writtenEnd;
 
-    private MauiExpressionCode(string code, int[] written)
+    private MauiExpressionCode(string code, int[] written, int[] writtenEnd)
     {
         Code = code;
         this.written = written;
+        this.writtenEnd = writtenEnd;
+        Start = written.Min();
     }
 
     public string Code { get; }
 
-    /// <summary>Where in the value the code starts.</summary>
-    public int Start => written[0];
+    /// <summary>Where in the value the code starts: the first place any of it is written.</summary>
+    public int Start { get; }
 
     /// <summary>Where in the value the code ends.</summary>
     public int End => written[^1];
@@ -39,9 +43,54 @@ public sealed class MauiExpressionCode
     /// <summary>Where in the value a place of the code is written.</summary>
     public int WrittenAt(int code) => written[Math.Clamp(code, 0, written.Length - 1)];
 
-    /// <summary>The place in the code a place in the value comes to: the first character written there or after it, else
-    /// the code's end.</summary>
-    public int CodeAt(int value) => Sorted.FirstAtOrAfter(written.AsSpan(0, written.Length - 1), value);
+    /// <summary>Where in the value a stretch of the code is written: from the first place any of its characters stands for
+    /// to the end of the last, however the code orders them; an empty stretch at its place.</summary>
+    public (int Start, int End) WrittenOver(int start, int end)
+    {
+        start = Math.Clamp(start, 0, written.Length - 1);
+        end = Math.Clamp(end, start, written.Length - 1);
+        if (end == start)
+        {
+            return (written[start], written[start]);
+        }
+        (int first, int last) = (written[start], writtenEnd[start]);
+        for (int k = start + 1; k < end; k++)
+        {
+            (first, last) = (Math.Min(first, written[k]), Math.Max(last, writtenEnd[k]));
+        }
+        return (first, last);
+    }
+
+    /// <summary>The place in the code a place in the value comes to: before the character written there, or after the one
+    /// written just before it; where the code takes those two apart, beside the one that is a name's, as a caret at a
+    /// name's edge is in the name. Else before the character written first after it, else the code's end.</summary>
+    public int CodeAt(int value)
+    {
+        // Looked through in turn: the code's places are in the value's order only where it reorders nothing.
+        int at = -1;
+        int after = -1;
+        int next = -1;
+        for (int c = 0; c < written.Length - 1; c++)
+        {
+            if (written[c] == value && at < 0)
+            {
+                at = c;
+            }
+            else if (writtenEnd[c] == value && written[c] < value)
+            {
+                after = c;
+            }
+            if (written[c] > value && (next < 0 || written[c] < written[next]))
+            {
+                next = c;
+            }
+        }
+        if (at >= 0 && (after < 0 || after + 1 == at || SyntaxFacts.IsIdentifierPartCharacter(Code[at]) || !SyntaxFacts.IsIdentifierPartCharacter(Code[after])))
+        {
+            return at;
+        }
+        return after >= 0 ? after + 1 : next >= 0 ? next : Code.Length;
+    }
 
     /// <summary>The code of a value that opens with a brace (a markup extension's or an expression's), as written between
     /// its quotes, a type named by its XAML prefix (<c>local:Helper</c>) written as <paramref name="types"/> names it in C#
@@ -83,13 +132,13 @@ public sealed class MauiExpressionCode
         {
             end--;
         }
-        Step body = new(text[start..end], [.. Enumerable.Range(start, end - start + 1)]);
+        Step body = new(text[start..end], [.. Enumerable.Range(start, end - start + 1)], [.. Enumerable.Range(start + 1, end - start), end]);
         Step operators = Operators(body.Text);
         Step ternaries = Ternaries(operators.Text);
         Step quoted = Quoted(ternaries.Text);
         Step prefixed = Prefixed(quoted.Text, types ?? new Dictionary<string, string>());
         Step code = Then(Then(Then(Then(Then(Then(decoded, body), operators), ternaries), quoted), prefixed), Attached(prefixed.Text));
-        return new MauiExpressionCode(code.Text, code.From);
+        return new MauiExpressionCode(code.Text, code.From, code.To);
     }
 
     /// <summary>The types a code names by a XAML prefix (<c>local:Helper</c>), outside its strings, but <c>x:</c>'s, as the
@@ -190,7 +239,7 @@ public sealed class MauiExpressionCode
                 // The type's own name keeps its place; what stands for the prefix is the prefix's.
                 int colon = text.IndexOf(':', i);
                 int own = named.LastIndexOf('.') + 1;
-                made.Put(named[..own], i);
+                made.Put(named[..own], i, colon + 1 - i);
                 for (int k = colon + 1; k < i + length; k++)
                 {
                     made.Put(text[k], k);
@@ -219,7 +268,7 @@ public sealed class MauiExpressionCode
                 {
                     made.Put(text[k], k);
                 }
-                made.Put(".Get", read.Dot);
+                made.Put(".Get", read.Dot, 1);
                 for (int k = read.Dot + 1; k < read.Close; k++)
                 {
                     made.Put(text[k], k);
@@ -349,24 +398,44 @@ public sealed class MauiExpressionCode
         return i;
     }
 
-    /// <summary>A step's text, and for each of its characters, and its end, where it came from in the text before it.</summary>
-    private sealed record Step(string Text, int[] From);
+    /// <summary>A step's text, and for each of its characters, and its end, where what it stands for starts and ends in the
+    /// text before it.</summary>
+    private sealed record Step(string Text, int[] From, int[] To);
 
     /// <summary>The second step's text placed in what the first came from.</summary>
-    private static Step Then(Step first, Step second) => new(second.Text, [.. second.From.Select(f => first.From[Math.Clamp(f, 0, first.From.Length - 1)])]);
+    private static Step Then(Step first, Step second)
+    {
+        int last = first.From.Length - 1;
+        int[] from = new int[second.From.Length];
+        int[] to = new int[second.From.Length];
+        for (int i = 0; i < from.Length; i++)
+        {
+            int start = Math.Clamp(second.From[i], 0, last);
+            from[i] = first.From[start];
+            to[i] = from[i];
+            for (int k = start; k < Math.Min(second.To[i], last); k++)
+            {
+                to[i] = Math.Max(to[i], first.To[k]);
+            }
+        }
+        return new Step(second.Text, from, to);
+    }
 
-    /// <summary>A text being made, each character with where it came from.</summary>
+    /// <summary>A text being made, each character with where what it stands for starts and ends in the text before.</summary>
     private sealed class Made
     {
         private readonly System.Text.StringBuilder text = new();
         private readonly List<int> from = [];
+        private readonly List<int> to = [];
 
-        public void Put(string put, int at)
+        /// <summary>Text standing for the <paramref name="length"/> characters at <paramref name="at"/>.</summary>
+        public void Put(string put, int at, int length)
         {
             text.Append(put);
             for (int i = 0; i < put.Length; i++)
             {
                 from.Add(at);
+                to.Add(at + length);
             }
         }
 
@@ -374,9 +443,18 @@ public sealed class MauiExpressionCode
         {
             text.Append(put);
             from.Add(at);
+            to.Add(at + 1);
         }
 
-        public Step Ended(int end) => new(text.ToString(), [.. from, end]);
+        /// <summary>A character standing for nothing written, placed at <paramref name="at"/>.</summary>
+        public void Inserted(char put, int at)
+        {
+            text.Append(put);
+            from.Add(at);
+            to.Add(at);
+        }
+
+        public Step Ended(int end) => new(text.ToString(), [.. from, end], [.. to, end]);
     }
 
     /// <summary>The value with its character references read.</summary>
@@ -388,7 +466,7 @@ public sealed class MauiExpressionCode
         {
             if (raw[i] == '&' && XmlEntities.ReferenceAt(raw, i, out int length) is { } named)
             {
-                made.Put(named, i);
+                made.Put(named, i, length);
                 i += length;
                 continue;
             }
@@ -418,7 +496,7 @@ public sealed class MauiExpressionCode
             }
             if (i > 0 && text[i - 1] == ' ' && WordAt(text, i) is { } word)
             {
-                made.Put(word.Operator, i);
+                made.Put(word.Operator, i, word.Word.Length);
                 i += word.Word.Length;
                 continue;
             }
@@ -543,12 +621,12 @@ public sealed class MauiExpressionCode
         }
         if (wrapped)
         {
-            made.Put('(', first);
+            made.Inserted('(', first);
         }
         Interpolations(text, first, last, made);
         if (wrapped)
         {
-            made.Put(')', last);
+            made.Inserted(')', last);
         }
         for (int k = last; k < to; k++)
         {
@@ -672,11 +750,11 @@ public sealed class MauiExpressionCode
             {
                 if (text[at] == '\\' && at + 1 < close - 1)
                 {
-                    made.Put(text[at + 1] == '\'' ? "'" : text.Substring(at, 2), at);
+                    made.Put(text[at + 1] == '\'' ? "'" : text.Substring(at, 2), at, 2);
                     at += 2;
                     continue;
                 }
-                made.Put(text[at] == '"' ? "\\\"" : text[at].ToString(), at);
+                made.Put(text[at] == '"' ? "\\\"" : text[at].ToString(), at, 1);
                 at++;
             }
             made.Put('"', close - 1);

@@ -5,6 +5,7 @@ using Passenger.Text;
 using Passenger.Xaml;
 using Passenger.Xaml.Features;
 using Passenger.Xaml.Metadata;
+using Passenger.Xaml.Syntax;
 
 namespace Passenger.App.CSharp;
 
@@ -95,6 +96,10 @@ internal sealed partial class XamlAssist
         {
             return (null, Refusals.NoDeclaration);
         }
+        if (NamedElementOf(file, symbol) is { } named)
+        {
+            return ((file.Path, PositionIn(file.Path, named.ValueRange.Start)), null);
+        }
         if (symbol is { Path: { } path, At: { } at })
         {
             string canonical = PathNames.Canonical(path);
@@ -106,6 +111,13 @@ internal sealed partial class XamlAssist
         }
         return (null, $"{symbol.Shown} is declared outside the folder's code");
     }
+
+    /// <summary>The name of the element the file names as a field the server named, one of the page's that MAUI's generator
+    /// made for it (declared in no file of the folder's); null for any other symbol.</summary>
+    private static XmlAttribute? NamedElementOf(XamlFile file, Roslyn.Extension.NamedSymbol symbol) =>
+        symbol is { Path: null, Id: { } id } && file.ClassName is { } page && id == $"F:{page}.{symbol.Name}"
+            ? file.Tree.Elements.Select(XamlFile.NameAttribute).FirstOrDefault(a => a is { IsValueClosed: true } && a.Value == symbol.Name)
+            : null;
 
     /// <summary>A library's type or member a symbol the server named is, found among the project's references by its
     /// documentation id; null for none.</summary>

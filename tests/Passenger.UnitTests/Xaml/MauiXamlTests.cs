@@ -132,6 +132,35 @@ public sealed class MauiXamlTests
         Assert.Equal("{this.(Grid.Row)}", "{" + MauiExpressionCode.Of("{this.(Grid.Row)}")!.Code.Replace("Grid.GetRow(this)", "this.(Grid.Row)", StringComparison.Ordinal) + "}");
     }
 
+    /// <summary>An attached property's read is written in another order than the value (<c>Grid.GetRow(label)</c>), so each
+    /// place of the value comes to its own in the code: in <c>label</c> to <c>label</c>, a caret at a name's edge into the
+    /// name, and the code's names cover the value's own, where reading the places as sorted took <c>label</c> for <c>Grid</c>
+    /// and a use of <c>label</c> for all of <c>label.(Grid.Row</c>.</summary>
+    [Fact]
+    public void Each_place_of_an_attached_propertys_read_comes_to_its_own_place_in_the_code_written_in_another_order()
+    {
+        const string Value = "{label.(Grid.Row)}";
+        MauiExpressionCode code = MauiExpressionCode.Of(Value)!;
+        Assert.Equal("Grid.GetRow(label)", code.Code);
+        Assert.Equal((1, Value.Length - 1), (code.Start, code.End));
+        int label = code.Code.IndexOf("label", StringComparison.Ordinal);
+        int grid = 0;
+        int row = code.Code.IndexOf("Row", StringComparison.Ordinal);
+        int[] expected =
+        [
+            label, label + 1, label + 2, label + 3, label + 4, label + 5, // label, and at its end
+            code.Code.IndexOf('(', StringComparison.Ordinal), // before the value's parenthesis, which the call's stands for
+            grid, grid + 1, grid + 2, grid + 3, grid + 4, // Grid, and its dot, which .Get stands for
+            row, row + 1, row + 2, row + 3, // Row, and at its end
+            code.Code.Length, // past the closing parenthesis
+        ];
+        Assert.Equal(expected, Enumerable.Range(1, expected.Length).Select(code.CodeAt).ToArray());
+        Assert.Equal((1, "{label".Length), code.WrittenOver(label, label + "label".Length));
+        Assert.Equal(("{label.(".Length, "{label.(Grid".Length), code.WrittenOver(grid, grid + "Grid".Length));
+        Assert.Equal(("{label.(Grid".Length, "{label.(Grid.Row".Length), code.WrittenOver(row - "Get".Length, row + "Row".Length));
+        Assert.Equal((1, Value.Length - 1), code.WrittenOver(0, code.Code.Length));
+    }
+
     /// <summary>A prefixed type's name and an attached property's element are read as MAUI's generator's patterns read them:
     /// an ASCII letter starts one and a mark carries it on (Café written with its accent apart), and a name starting past
     /// ASCII (名前), or a property's holding a mark, is left as written, as the generator leaves it.</summary>

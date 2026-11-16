@@ -117,7 +117,8 @@ public sealed class MauiExpressionUses : IExtensionWorkspaceMessageHandler<MauiU
                 if ((bound.Symbol is { } symbol ? [symbol] : bound.CandidateSymbols).Any(s => Named(s, message.Id)))
                 {
                     TextSpan span = name.Identifier.Span;
-                    uses.Add(new MauiUse(placed.Index, placed.Code.WrittenAt(placed.CodeAt(span.Start)), placed.Code.WrittenAt(placed.CodeAt(span.End))));
+                    (int start, int end) = placed.Code.WrittenOver(placed.CodeAt(span.Start), placed.CodeAt(span.End));
+                    uses.Add(new MauiUse(placed.Index, start, end));
                 }
             }
         }
@@ -175,8 +176,8 @@ public sealed class MauiXamlChecks : IExtensionWorkspaceMessageHandler<MauiCheck
                     continue;
                 }
                 TextSpan span = diagnostic.Location.SourceSpan;
-                checks.Add(new MauiCheck(placed.Index, null, placed.Code.WrittenAt(placed.CodeAt(span.Start)), placed.Code.WrittenAt(placed.CodeAt(Math.Min(span.End, placed.End))),
-                    true, diagnostic.Id, diagnostic.GetMessage(CultureInfo.InvariantCulture)));
+                (int start, int end) = placed.Code.WrittenOver(placed.CodeAt(span.Start), placed.CodeAt(Math.Min(span.End, placed.End)));
+                checks.Add(new MauiCheck(placed.Index, null, start, end, true, diagnostic.Id, diagnostic.GetMessage(CultureInfo.InvariantCulture)));
             }
         }
         return new MauiChecksFound(checks);
