@@ -20,6 +20,11 @@ public static class AdapterEnvironment
     [IdentifierHome]
     public const string LateYieldVariable = "PASSENGER_ENGINE_LATE_YIELD";
 
+    /// <summary>The variable naming a module, by its file's name, whose load the engine takes as the runtime's word that
+    /// its debugging of the program failed for good, as the runtime once said under load: a test's hold.</summary>
+    [IdentifierHome]
+    public const string FailAtModuleVariable = "PASSENGER_ENGINE_FAIL_AT_MODULE";
+
     /// <summary>How long an evaluation runs when nothing says otherwise.</summary>
     public static readonly TimeSpan DefaultEvaluationTimeout = TimeSpan.FromSeconds(5);
 
@@ -36,6 +41,9 @@ public static class AdapterEnvironment
         "1" => true,
         { } other => throw new FormatException($"{LateYieldVariable} is \"{other}\": it must be 1, or unset"),
     };
+
+    /// <summary>The module's file name <see cref="FailAtModuleVariable"/> gives, or null for none.</summary>
+    public static string? FailAtModule => Environment.GetEnvironmentVariable(FailAtModuleVariable) is { Length: > 0 } module ? module : null;
 
     /// <summary>The file <see cref="EngineLogVariable"/> names, or null when it names none.</summary>
     public static string? EngineLog => Environment.GetEnvironmentVariable(EngineLogVariable) is { Length: > 0 } file ? file : null;

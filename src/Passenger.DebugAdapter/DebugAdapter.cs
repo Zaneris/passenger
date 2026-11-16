@@ -295,7 +295,7 @@ public sealed class DebugAdapter
                 connection.SendEvent(DapEvents.Exited, new ExitedEvent(code));
             }
         };
-        debugger.OnTerminated += () => connection.SendEvent(DapEvents.Terminated, new TerminatedEvent());
+        debugger.OnTerminated += () => connection.SendEvent(DapEvents.Terminated, new TerminatedEvent(Failure: debugger.Failure));
         debugger.OnThreadStarted += threadId => connection.SendEvent(DapEvents.Thread, new ThreadEvent(EventReasons.Started, threadId));
         debugger.OnThreadExited += threadId => connection.SendEvent(DapEvents.Thread, new ThreadEvent(EventReasons.Exited, threadId));
         debugger.OnModuleLoaded += (id, name, path) => connection.SendEvent(DapEvents.Module, new ModuleEvent(EventReasons.New, new DapModule(id, name, path)));

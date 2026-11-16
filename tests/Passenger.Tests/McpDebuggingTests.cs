@@ -422,14 +422,7 @@ public sealed class McpDebuggingTests : McpRig, IClassFixture<RestoredFolders>
     [Fact]
     public async Task An_agents_debug_start_of_a_web_app_answers_once_it_serves_saying_where_it_listens()
     {
-        string folder = PathNames.Canonical(TestFolders.Create("mcp-web-"));
-        DeleteAtEnd(folder);
-        TestFolders.Write(folder, "Web.csproj", TestProjects.Web("<ImplicitUsings>enable</ImplicitUsings>"));
-        TestFolders.Write(folder, "Program.cs", "WebApplication app = WebApplication.Create(args);\napp.MapGet(\"/\", () => \"served\");\napp.Run();\n");
-        // Port 0: where it listens is the port the app took, which only its own words tell.
-        TestFolders.Write(folder, "Properties/launchSettings.json",
-            "{\n  \"profiles\": {\n    \"Serve\": { \"commandName\": \"Project\", \"applicationUrl\": \"http://127.0.0.1:0\" }\n  }\n}\n");
-        await Restore.RunAsync(Path.Combine(folder, "Web.csproj"));
+        string folder = await WebAppAsync();
         await using McpClient client = await Start(["--mcp", folder], languageServer: false);
         // Far longer than the app takes to start, which the answer is not to wait out.
         JsonElement started = await Call(client, McpTools.DebugStart, new() { ["configuration"] = "Web: Serve", ["waitSeconds"] = 600 });
@@ -440,6 +433,40 @@ public sealed class McpDebuggingTests : McpRig, IClassFixture<RestoredFolders>
             Assert.Equal("served", await http.GetStringAsync(new Uri(listening.Groups[1].Value), TestContext.Current.CancellationToken));
         }
         await Call(client, McpTools.Stop);
+    }
+
+    /// <summary>An agent's debug_start of a web app whose debugging the runtime gives up for good as it starts, as it once did
+    /// under load, holding the app where it stood, answers once the app is ended, saying its debugging failed and why,
+    /// rather than waiting out its whole time for an app that will never serve; its console says so too.</summary>
+    [Fact]
+    public async Task An_agents_debug_start_whose_debugging_the_runtime_gives_up_answers_that_it_failed_and_the_app_is_ended()
+    {
+        string folder = await WebAppAsync();
+        // The engine takes the load of the app's hosting as the runtime's word that its debugging failed.
+        await using McpClient client = await Start(["--mcp", folder],
+            environment: new() { [global::Passenger.Dap.AdapterEnvironment.FailAtModuleVariable] = "Microsoft.AspNetCore.Hosting.dll" }, languageServer: false);
+        // Far longer than the call's own limit: only the app's end can answer it.
+        JsonElement started = await Call(client, McpTools.DebugStart, new() { ["configuration"] = "Web: Serve", ["waitSeconds"] = 600 });
+        Assert.True(started.GetProperty("state").GetString() == "not debugging"
+            && started.GetProperty("status").GetString() == "Debugging Web: Serve ended: the runtime's debugging of the program failed (0x80004005), so it can be debugged no further",
+            $"debug_start of a web app whose debugging failed as it started answered: {started.GetRawText()}");
+        string console = (await Call(client, McpTools.Output, new() { ["of"] = "debug" })).GetString()!;
+        Assert.True(console.Contains("The runtime's debugging of the program failed (0x80004005): it can be debugged no further, so it is ended.", StringComparison.Ordinal),
+            $"The Debug console of a program whose debugging failed reads:\n{console}");
+    }
+
+    /// <summary>A web app that answers "served" at its root, restored, in a folder of the test's own; its launch profile Serve
+    /// listens at port 0, the port it took said only in its own words.</summary>
+    private async Task<string> WebAppAsync()
+    {
+        string folder = PathNames.Canonical(TestFolders.Create("mcp-web-"));
+        DeleteAtEnd(folder);
+        TestFolders.Write(folder, "Web.csproj", TestProjects.Web("<ImplicitUsings>enable</ImplicitUsings>"));
+        TestFolders.Write(folder, "Program.cs", "WebApplication app = WebApplication.Create(args);\napp.MapGet(\"/\", () => \"served\");\napp.Run();\n");
+        TestFolders.Write(folder, "Properties/launchSettings.json",
+            "{\n  \"profiles\": {\n    \"Serve\": { \"commandName\": \"Project\", \"applicationUrl\": \"http://127.0.0.1:0\" }\n  }\n}\n");
+        await Restore.RunAsync(Path.Combine(folder, "Web.csproj"));
+        return folder;
     }
 
     /// <summary>A call that takes a while tells an agent that asked for progress what it is doing as it goes (the run's

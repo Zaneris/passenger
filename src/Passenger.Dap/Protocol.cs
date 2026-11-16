@@ -504,7 +504,9 @@ public sealed record StoppedEvent
 
 public sealed record ExitedEvent(int ExitCode);
 
-public sealed record TerminatedEvent(bool? Restart = null);
+/// <summary>The debugging ended; this debugger's own <paramref name="Failure"/> says why where nothing the client did and
+/// no end of the program did it (the runtime's debugging of the program failed).</summary>
+public sealed record TerminatedEvent(bool? Restart = null, string? Failure = null);
 
 /// <summary>The program went on from a stop that no continue or step of the client's left.</summary>
 public sealed record ContinuedEvent(int ThreadId, bool? AllThreadsContinued = null);

@@ -345,7 +345,8 @@ public sealed class DebugSession
     /// and writes, and how it ended, which the adapter cannot tell of a program it did not start on macOS and Linux.</summary>
     public Run.TerminalRun? Terminal { get; private set; }
 
-    /// <summary>Why the session ended other than by the program ending or being stopped: the adapter crashed.</summary>
+    /// <summary>Why the session ended other than by the program ending or being stopped: the adapter crashed, or said the
+    /// runtime's debugging of the program failed.</summary>
     public string? Failure { get; private set; }
 
     /// <summary>Why the program ended with the place it ran in, when it did ("web-1 stopped": its container stopped, taking
@@ -1482,6 +1483,7 @@ public sealed class DebugSession
                 programEnded = true;
                 break;
             case DapEvents.Terminated:
+                Failure ??= body.Read<TerminatedEvent>().Failure;
                 programEnded = true;
                 IdeErrors.Observe(StopAsync());
                 break;

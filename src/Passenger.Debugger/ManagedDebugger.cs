@@ -92,6 +92,10 @@ public partial class ManagedDebugger
     private int _terminatedReported;
     private TaskCompletionSource _exitTold = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
+    /// <summary>Why the debugging ended other than by the program's end or the client's asking: the runtime's own debugging
+    /// of the program failed (<see cref="HandleDebuggerError"/>), after which it answers nothing; null until then.</summary>
+    public string? Failure { get; private set; }
+
     /// <summary>Tells the client its debugging has ended, once, after the program's end was told: for a launched program as
     /// its process ends, whatever became of the runtime's word of it, which mscordbi may lose tearing down.</summary>
     private void ReportTerminated()
@@ -447,7 +451,19 @@ public partial class ManagedDebugger
             {
                 return;
             }
-            _logger?.Invoke($"Event: {e.GetType().Name}{(DispatchThread(e) is int thread ? $" on thread {thread}" : "")}");
+            if (FailAtModule is { } failing && e is LoadModuleCorDebugManagedCallbackEventArgs load && _process is { } held
+                && string.Equals(Path.GetFileName(load.Module.Name), failing, StringComparison.OrdinalIgnoreCase))
+            {
+                _logger?.Invoke($"Held: the load of {failing} taken as the runtime's failure");
+                e = new DebuggerErrorCorDebugManagedCallbackEventArgs(held, HeldFailure, 0);
+            }
+            _logger?.Invoke($"Event: {e.GetType().Name}{(DispatchThread(e) is int thread ? $" on thread {thread}" : "")}"
+                + (e is DebuggerErrorCorDebugManagedCallbackEventArgs error ? $": 0x{error.ErrorHR:X8}, code {error.ErrorCode}" : ""));
+            if (Failure is not null && e is not (ExitProcessCorDebugManagedCallbackEventArgs or DebuggerErrorCorDebugManagedCallbackEventArgs))
+            {
+                // Its process answers nothing since its debugging failed: no continue, which would throw, is asked of it.
+                return;
+            }
             switch (e)
             {
                 case LogMessageCorDebugManagedCallbackEventArgs a: HandleLogMessage(sender, a); break;
@@ -467,6 +483,7 @@ public partial class ManagedDebugger
                 case DataBreakpointCorDebugManagedCallbackEventArgs a: await HandleDataBreakpoint(a).ConfigureAwait(false); break;
                 case FunctionRemapOpportunityCorDebugManagedCallbackEventArgs a: HandleFunctionRemapOpportunity(a); break;
                 case FunctionRemapCompleteCorDebugManagedCallbackEventArgs a: HandleFunctionRemapComplete(a); break;
+                case DebuggerErrorCorDebugManagedCallbackEventArgs a: await HandleDebuggerError(a).ConfigureAwait(false); break;
                 case EvalCompleteCorDebugManagedCallbackEventArgs or EvalExceptionCorDebugManagedCallbackEventArgs when IsAbandonedEvaluationsEnd(e): LetGoAbandonedEvaluation(e); break;
                 case EvalCompleteCorDebugManagedCallbackEventArgs or EvalExceptionCorDebugManagedCallbackEventArgs: break; // don't continue on these, as they are being used for expression evaluation
                 default:
@@ -718,6 +735,13 @@ public partial class ManagedDebugger
     /// unhandled, the thread running on, and handed over only as its step's end comes, as the runtime once handed both under
     /// load.</summary>
     public static bool LateYield { get; set; }
+
+    /// <summary>A test's hold: the load of the module of this file name is taken as the runtime's word that its debugging
+    /// of the program failed for good (<see cref="HandleDebuggerError"/>), as it once said under load.</summary>
+    public static string? FailAtModule { get; set; }
+
+    /// <summary>The failure <see cref="FailAtModule"/> stands in for the runtime's with: E_FAIL.</summary>
+    private const int HeldFailure = unchecked((int)0x80004005);
 
     /// <summary>The breakpoint <see cref="LateYield"/> holds back, and the one it is handing over, which is not held again.</summary>
     private BreakpointCorDebugManagedCallbackEventArgs? _heldYield;
@@ -1332,8 +1356,9 @@ public partial class ManagedDebugger
         {
             return; // A client may terminate, then disconnect, each of which ends the session here, which needs doing only once.
         }
-        // A process that has exited is the runtime's to tear down: nothing below may call into it.
-        bool exited = _exited.IsSet;
+        // An exited process is the runtime's to tear down, and a failed one answers nothing: nothing below may call into either.
+        bool failed = Failure is not null;
+        bool exited = _exited.IsSet || failed;
         // Only a let-go runs held threads off: an exited program's throw when asked their id, failing the disconnect.
         bool runsOff = letGo && !exited;
         // The threads the runtime holds inside its handling of a breakpoint or a step's end, run off it before the detach.
@@ -1474,8 +1499,9 @@ public partial class ManagedDebugger
                 _process.TryContinue(false);
             }
         }
-        else if (_corDebug is not null)
+        else if (_corDebug is not null && (!failed || _exited.IsSet))
         {
+            // One whose debugging failed is never neutered while its process lives, so it goes with the adapter.
             ShutDown(_corDebug);
         }
 

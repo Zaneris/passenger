@@ -1219,7 +1219,8 @@ public partial class ManagedDebugger
             await LetGoAsync(null).ConfigureAwait(false);
             return;
         }
-        if (_process is not null && !_exited.IsSet)
+        // One whose debugging failed answers nothing: a launched one was ended then, one attached to is left.
+        if (_process is not null && !_exited.IsSet && Failure is null)
         {
             // A running process cannot be terminated (CORDBG_E_PROCESS_NOT_SYNCHRONIZED): it is stopped first.
             if (_process.TryIsRunning(out bool isRunning) is Cor.S_OK && isRunning)

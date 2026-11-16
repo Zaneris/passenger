@@ -28,6 +28,33 @@ public partial class ManagedDebugger
         ReportTerminated();
     }
 
+    /// <summary>The runtime's debugging of the program failed for good (ICorDebug's DebuggerError): it answers nothing more,
+    /// no continue or detach among it, so the program never runs on from where the failure held it. The debugging ends
+    /// saying why, as the program's end would: one the session launched is ended, one attached to left as it is.</summary>
+    private async Task HandleDebuggerError(DebuggerErrorCorDebugManagedCallbackEventArgs error)
+    {
+        if (Failure is not null)
+        {
+            return;
+        }
+        string code = $"0x{error.ErrorHR:X8}{(error.ErrorCode == 0 ? "" : $", code {error.ErrorCode}")}";
+        Failure = $"the runtime's debugging of the program failed ({code}), so it can be debugged no further";
+        OnConsole?.Invoke($"The runtime's debugging of the program failed ({code}): it can be debugged no further, "
+            + (_launched ? "so it is ended.\n" : "and it is left as the failure left it, which may hold it.\n"));
+        if (_launch is { } launch)
+        {
+            // Its end, which the launch's wait hears, tells the client.
+            launch.Kill();
+            return;
+        }
+        if (_launched && _attachedId != 0)
+        {
+            EndHeld(_attachedId);
+        }
+        await ReportExitAsync(null).ConfigureAwait(false);
+        ReportTerminated();
+    }
+
     private void HandleThreadCreated(object? sender, CreateThreadCorDebugManagedCallbackEventArgs createThreadCorDebugManagedCallbackEventArgs)
     {
         ICorDebugThread corThread = createThreadCorDebugManagedCallbackEventArgs.Thread;
