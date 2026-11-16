@@ -1520,7 +1520,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         IReadOnlyList<Finding> problems = [.. built.Problems.Select(p => new Finding(
             p.Severity == ProblemSeverity.Error ? "error" : "warning", p.Code, p.Message, p.Path is { } at ? Relative(at) : p.Project, p.Position.Line + 1, p.Position.Column + 1))];
         BuildResult result = new(built.Succeeded, built.Message, problems.Count(p => p.Severity == "error"), problems.Count(p => p.Severity == "warning"), [],
-            built.Succeeded || built.Output.Count == 0 ? null : string.Join('\n', built.Output)) { Folder = built.Published, Image = built.Image };
+            built.Succeeded || built.Output.Count == 0 ? null : Masked(string.Join('\n', built.Output))) { Folder = built.Published, Image = built.Image };
         (IReadOnlyList<Finding>[] kept, int[] left) = AgentAnswers.Severest<Finding>([problems], p => Rank(p.Severity) ?? 2, 4, AgentAnswers.MostFindings, Size, Room(result));
         return result with
         {
@@ -1947,7 +1947,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             }
             stepsGiven += its.Count;
             failures.Add(new TestFailure(shown is null ? $"{test.Method}{(several ? $" ({test.Framework})" : string.Empty)}" : TestName(shown), place,
-                Testing.TestNode.FailuresOf([.. method], FailureOutputLines))
+                Masked(Testing.TestNode.FailuresOf([.. method], FailureOutputLines)))
             {
                 Steps = its.Count > 0 ? its : null,
             });
@@ -2028,7 +2028,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             : result.Message ?? (result.Outcome == Passenger.Workspace.Gherkin.StepOutcome.Failed ? test.Message : null);
         return step with
         {
-            Message = said,
+            Message = said is null ? null : Masked(said),
             Frames = result.Outcome == Passenger.Workspace.Gherkin.StepOutcome.Failed && OwnFrames(test.StackTrace) is { Count: > 0 } frames ? frames : null,
         };
     }
@@ -3141,7 +3141,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             try
             {
                 ExceptionInfoResponse info = await session.ExceptionInfoAsync(session.StoppedThread.Value);
-                exception = Describe(info.Details) ?? $"{info.ExceptionId}: {info.Description}";
+                exception = Masked(Describe(info.Details) ?? $"{info.ExceptionId}: {info.Description}");
             }
             catch (DapException error)
             {
@@ -3988,8 +3988,12 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         ? Path.GetRelativePath(folder, path)
         : path;
 
-    /// <summary>The last lines of a terminal's scrollback and screen, as a program in it left them.</summary>
-    private static string Tail(global::Passenger.Terminal.TerminalSession terminal, int lines)
+    /// <summary>What a program, a terminal, a build or a container said, as an agent's answer carries it: its secrets masked by
+    /// the one rule (<see cref="global::Passenger.App.Containers.ContainerSecrets.InSaid"/>), the open folder's .env among those it knows.</summary>
+    private string Masked(string said) => global::Passenger.App.Containers.ContainerSecrets.InSaid(said, Session.Folder);
+
+    /// <summary>The last lines of a terminal's scrollback and screen, as a program in it left them, masked.</summary>
+    private string Tail(global::Passenger.Terminal.TerminalSession terminal, int lines)
     {
         global::Passenger.Terminal.TerminalScreen screen = terminal.Screen;
         List<string> all = [.. screen.Scrollback.Select(l => l.Text()).Concat(screen.Lines.Select(l => l.Text()))];
@@ -3997,17 +4001,17 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         {
             all.RemoveAt(all.Count - 1);
         }
-        return string.Join('\n', all.Skip(Math.Max(0, all.Count - lines)));
+        return Masked(string.Join('\n', all.Skip(Math.Max(0, all.Count - lines))));
     }
 
     /// <summary>The last lines of what Run's program wrote, where it runs: its tab of the terminal, else the Run console.</summary>
     private string RunOutput(int lines) => Session.RunProgram is TerminalRun terminal ? Tail(terminal.Session, lines) : Tail(Session.Runner.Shown(), lines);
 
-    /// <summary>A console's last lines.</summary>
-    private static string Tail(TextSnapshot text, int lines)
+    /// <summary>A console's last lines, masked.</summary>
+    private string Tail(TextSnapshot text, int lines)
     {
         int first = Math.Max(0, text.LineCount - lines);
-        return text.GetText(text.GetLineStart(first), text.Length - text.GetLineStart(first));
+        return Masked(text.GetText(text.GetLineStart(first), text.Length - text.GetLineStart(first)));
     }
 
     /// <summary>Waits on the UI thread, letting it run, until something holds, the time is up, or the agent no longer

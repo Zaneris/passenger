@@ -249,14 +249,14 @@ public sealed partial class PassengerTools
         }
     }
 
-    /// <summary>A compose service's log, its last lines, as <c>compose logs</c> gives them without their prefix.</summary>
-    private static async Task<string> ComposeLogAsync(ContainerRun run, string service, int lines, CancellationToken cancel)
+    /// <summary>A compose service's log, its last lines, as <c>compose logs</c> gives them without their prefix, masked.</summary>
+    private async Task<string> ComposeLogAsync(ContainerRun run, string service, int lines, CancellationToken cancel)
     {
         IReadOnlyList<string> words = [.. run.Plan.Compose, "logs", "--no-color", "--no-log-prefix", "--tail",
             Math.Clamp(lines, 1, 10_000).ToString(CultureInfo.InvariantCulture), "--", service];
         // Not held: the agent's answer, which its call waits for; nothing drawn changes.
         ChildResult result = await BackgroundWork.Unheld(() => run.Engine.RunAsync(words, ContainerEngine.AskLimit, cancel), cancel);
-        return result.Succeeded ? result.Output.TrimEnd('\n')
+        return result.Succeeded ? Masked(result.Output.TrimEnd('\n'))
             : throw new InvalidOperationException($"{service}'s log could not be read: {ContainerEngine.Said(result)}");
     }
 

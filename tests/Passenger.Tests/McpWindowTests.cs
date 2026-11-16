@@ -287,8 +287,8 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
     }
 
     /// <summary>An agent in a person's window whose folder they opened without trusting is refused at once the tools that
-    /// would run its code, in the words the window greys its actions with, asking the person nothing; workspace says why,
-    /// and the agent cannot trust the folder itself.</summary>
+    /// would run its code, in the words the window greys its actions with, and a search of the feeds its nuget.config names,
+    /// asking the person nothing; workspace says why, and the agent cannot trust the folder itself.</summary>
     [AvaloniaFact]
     public void An_agent_in_a_window_whose_folder_is_not_trusted_is_refused_what_would_run_its_code_and_cannot_trust_it()
     {
@@ -308,6 +308,9 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
                 Assert.True(refused.IsError == true && Text(refused).Contains(Refusals.Untrusted, StringComparison.Ordinal),
                     $"{tool} in a window whose folder is not trusted answered: {Text(refused)}");
             }
+            CallToolResult search = Await(Waiting.Apart(() => Result(client, McpTools.NugetSearch, new() { ["query"] = "Serilog" })), McpTools.NugetSearch);
+            Assert.True(search.IsError == true && Text(search).Contains(Refusals.UntrustedFeeds, StringComparison.Ordinal),
+                $"{McpTools.NugetSearch} in a window whose folder is not trusted answered: {Text(search)}");
             JsonElement workspace = Await(Waiting.Apart(() => Call(client, McpTools.Workspace)), "the workspace");
             Assert.Equal(Refusals.Untrusted, workspace.GetProperty("trust").GetString());
 

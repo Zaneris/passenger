@@ -821,7 +821,7 @@ public sealed partial class PassengerTools
         (TerminalSession shell, SemaphoreSlim turn) = await TerminalTurnAsync(cancel);
         try
         {
-            return await TypedAsync(shell, command, waitSeconds, cancel);
+            return Masked(await TypedAsync(shell, command, waitSeconds, cancel));
         }
         finally
         {

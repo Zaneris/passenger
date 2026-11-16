@@ -55,7 +55,7 @@ public sealed partial class PassengerTools
             throw new InvalidOperationException($"{ContainerEngine.Words(words)} failed: {ContainerEngine.Said(result)}");
         }
         // A container's log is its output and its errors, which docker logs gives back on each of its own.
-        return row.Container is null ? result.Output : string.Join('\n', new[] { result.Output.TrimEnd('\n'), result.Error.TrimEnd('\n') }.Where(s => s.Length > 0));
+        return Masked(row.Container is null ? result.Output : string.Join('\n', new[] { result.Output.TrimEnd('\n'), result.Error.TrimEnd('\n') }.Where(s => s.Length > 0)));
     });
 
     [McpServerTool(Name = McpTools.ContainerExec, Title = "Run a command in a container", Destructive = true), Description(
@@ -71,7 +71,7 @@ public sealed partial class PassengerTools
         AgentCall.Say($"Running in {one.Name}: {command}");
         // Not held: the agent's answer, which its call waits for; nothing drawn changes.
         ChildResult result = await BackgroundWork.Unheld(() => engine.RunAsync(["exec", one.Id, "sh", "-c", command], TimeSpan.FromSeconds(Math.Clamp(waitSeconds, 1, 600)), cancel), cancel);
-        return new ContainerExec(result.ExitCode, result.Output, result.Error.Length > 0 ? result.Error : null);
+        return new ContainerExec(result.ExitCode, Masked(result.Output), result.Error.Length > 0 ? Masked(result.Error) : null);
     });
 
     // An AppHost resource's commands are this tool's too: a parameter costs every session's tool list less than a tool.

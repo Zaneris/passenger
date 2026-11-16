@@ -1199,6 +1199,40 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         Assert.Contains("gamma", (await Call(client, McpTools.TerminalRun, new() { ["command"] = "echo gamma" })).GetString()!, StringComparison.Ordinal);
     }
 
+    /// <summary>What a program and a terminal say reaches an agent with its secrets masked by the one rule: a password a
+    /// program writes and a token the folder's .env holds, in run's answer and output of run, and a password a command
+    /// echoes and that token, in terminal_run's answer and output of terminal, each shown as the mask, the rest as written.</summary>
+    [Fact]
+    public async Task What_a_program_and_a_terminal_say_reaches_an_agent_with_its_secrets_masked()
+    {
+        const string Password = "hunter2-from-the-program";
+        const string Token = "tok-from-the-env-file-0123";
+        const string Typed = "hunter3-typed-in-the-terminal";
+        await TakeFolderAsync();
+        Write(".env", $"SHOP_API_TOKEN={Token}\n");
+        Write("Program.cs", $"Console.WriteLine(\"connecting with Password={Password}\");\nConsole.WriteLine(\"the token is {Token}\");\n");
+        await using McpClient client = await Start(["--mcp", Folder], languageServer: false);
+        JsonElement ran = await Call(client, McpTools.Run, new() { ["waitSeconds"] = 60 });
+        string output = ran.GetProperty("output").GetString()!;
+        string console = (await Call(client, McpTools.Output, new() { ["of"] = "run" })).GetString()!;
+        foreach ((string what, string said) in (ReadOnlySpan<(string, string)>)[(McpTools.Run, output), ($"{McpTools.Output} of run", console)])
+        {
+            Assert.True(said.Contains($"connecting with Password={ContainerSecrets.Masked}\n", StringComparison.Ordinal)
+                && said.Contains($"the token is {ContainerSecrets.Masked}\n", StringComparison.Ordinal)
+                && !said.Contains(Password, StringComparison.Ordinal) && !said.Contains(Token, StringComparison.Ordinal),
+                $"{what} gave an agent the program's secrets: {said}");
+        }
+
+        string echoed = (await Call(client, McpTools.TerminalRun, new() { ["command"] = $"echo DB_PASSWORD={Typed} {Token}" })).GetString()!;
+        string screen = (await Call(client, McpTools.Output, new() { ["of"] = "terminal" })).GetString()!;
+        foreach ((string what, string said) in (ReadOnlySpan<(string, string)>)[(McpTools.TerminalRun, echoed), ($"{McpTools.Output} of terminal", screen)])
+        {
+            Assert.True(said.Contains($"DB_PASSWORD={ContainerSecrets.Masked}", StringComparison.Ordinal)
+                && !said.Contains(Typed, StringComparison.Ordinal) && !said.Contains(Token, StringComparison.Ordinal),
+                $"{what} gave an agent the terminal's secrets: {said}");
+        }
+    }
+
     /// <summary>settings names the fonts an agent may give the editor briefly, the carried one, and the window's, the carried
     /// Inter and the system's own, each saying how many installed families it left out and that settings_set takes any by
     /// its name; settings_set takes one and refuses a family that is not installed, as Settings does, nothing changed.</summary>

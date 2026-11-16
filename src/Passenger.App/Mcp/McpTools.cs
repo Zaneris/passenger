@@ -73,10 +73,19 @@ public static class McpTools
     public const string VcsStatus = "vcs_status";
     public const string Workspace = "workspace";
 
-    /// <summary>The tools that run the open folder's code (build it, run, debug, test or profile its programs, restore its
-    /// packages, apply Hot Reload to them), which a window whose folder is not trusted refuses (<see cref="Refusals.Untrusted"/>).</summary>
-    public static IReadOnlySet<string> RunCode { get; } = new HashSet<string>(StringComparer.Ordinal)
+    /// <summary>The tools a window whose folder is not trusted refuses, each with why: those that run the open folder's code
+    /// (build it, run, debug, test or profile its programs, restore its packages, apply Hot Reload to them,
+    /// <see cref="Refusals.Untrusted"/>), and nuget_search, which asks the feeds the folder's nuget.config names
+    /// (<see cref="Refusals.UntrustedFeeds"/>).</summary>
+    public static IReadOnlyDictionary<string, string> Untrusted { get; } = new Dictionary<string, string>(StringComparer.Ordinal)
     {
-        Build, Run, DebugStart, TestsRun, Profile, HotReload, NugetInstall,
+        [Build] = Refusals.Untrusted,
+        [Run] = Refusals.Untrusted,
+        [DebugStart] = Refusals.Untrusted,
+        [TestsRun] = Refusals.Untrusted,
+        [Profile] = Refusals.Untrusted,
+        [HotReload] = Refusals.Untrusted,
+        [NugetInstall] = Refusals.Untrusted,
+        [NugetSearch] = Refusals.UntrustedFeeds,
     };
 }
