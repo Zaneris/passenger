@@ -1050,7 +1050,7 @@ public sealed class OpenDocument : Observable
         {
             return;
         }
-        IReadOnlyList<TextEdit> edits = TextEditing.Saving(Text.Snapshot.ToString(), Selections, false, false, to.Held(), Text.LineEnding)?.Edits ?? [];
+        IReadOnlyList<TextEdit> edits = TextEditing.Saving(Text.Snapshot.ToString(), Selections, false, null, to.Held(), Text.LineEnding)?.Edits ?? [];
         Change(edits, Current with { Separator = to, SeparatorChosen = true }, write: true);
     }
 
@@ -1559,10 +1559,14 @@ public sealed class OpenDocument : Observable
         return true;
     }
 
-    /// <summary>Writes the file, first doing to its text what its .editorconfig asks of a save (trailing whitespace off
-    /// every line without one of <paramref name="carets"/>, a final line break, every break its <c>end_of_line</c>, as
-    /// one undoable step) and in its <c>charset</c>; a line separator or encoding the person chose stays. Its folder, once
-    /// another program moved or deleted it, is made again only when <paramref name="makeFolder"/> (the person's Save). A
+    /// <summary>Whether a save ends the file with a line break where no .editorconfig sets <c>insert_final_newline</c> for
+    /// it (Settings' Ensure a final line break on save).</summary>
+    public Func<bool>? EnsuresFinalLineBreak { get; set; }
+
+    /// <summary>Writes the file, first doing to its text what its .editorconfig asks of a save (trailing whitespace off every
+    /// line without one of <paramref name="carets"/>, a final line break or none, else <see cref="EnsuresFinalLineBreak"/>'s,
+    /// every break its <c>end_of_line</c>, as one undoable step) and in its <c>charset</c>; a line separator or encoding the
+    /// person chose stays. Its folder, moved or deleted elsewhere, is made again only when <paramref name="makeFolder"/>. A
     /// file with no changes is written only <paramref name="overDisk"/>; a read-only one never, refused with why.</summary>
     public void Save(SelectionSet? carets = null, bool makeFolder = false, bool overDisk = false)
     {
@@ -1592,7 +1596,8 @@ public sealed class OpenDocument : Observable
         string text = Text.Snapshot.ToString();
         SelectionSet kept = carets ?? Selections;
         LineSeparator? asked = separatorChosen ? null : Conventions.EndOfLine;
-        if (TextEditing.Saving(text, kept, Conventions.TrimTrailingWhitespace, Conventions.InsertFinalNewline, asked?.Held(), Text.LineEnding) is { } plan)
+        bool? finalLineBreak = Conventions.FinalNewline ?? (EnsuresFinalLineBreak?.Invoke() == true ? true : null);
+        if (TextEditing.Saving(text, kept, Conventions.TrimTrailingWhitespace, finalLineBreak, asked?.Held(), Text.LineEnding) is { } plan)
         {
             Text.BreakUndoGroup();
             Text.Edit(plan.Edits, kept, plan.Selections);

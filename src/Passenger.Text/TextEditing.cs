@@ -783,18 +783,20 @@ public static class TextEditing
     }
 
     /// <summary>What a save does to the text first, as .editorconfig asks: the spaces and tabs ending each line go, but
-    /// on a line with a caret (so a space just typed stays); the text ends with a line break; every break is
-    /// <paramref name="convertTo"/>. Null when there is nothing to do.</summary>
-    public static EditPlan? Saving(string text, SelectionSet selections, bool trimTrailing, bool finalNewline, string? convertTo, string eol)
+    /// on a line with a caret (so a space just typed stays); the text ends with a line break where
+    /// <paramref name="finalNewline"/> is true, and with none where it is false, every line break ending it gone with the
+    /// lines left empty by them; every break is <paramref name="convertTo"/>. Null when there is nothing to do.</summary>
+    public static EditPlan? Saving(string text, SelectionSet selections, bool trimTrailing, bool? finalNewline, string? convertTo, string eol)
     {
         List<TextEdit> edits = [];
         int[] carets = [.. selections.Items.Select(s => s.Caret).Order()];
+        int body = finalNewline == false ? Unbroken(text, carets, trimTrailing) : text.Length;
         int next = 0;
         int start = 0;
         while (trimTrailing || convertTo is not null)
         {
-            int feed = text.IndexOf('\n', start);
-            int end = feed < 0 ? text.Length : feed > start && text[feed - 1] == '\r' ? feed - 1 : feed;
+            int feed = start < body ? text.IndexOf('\n', start, body - start) : -1;
+            int end = feed < 0 ? body : feed > start && text[feed - 1] == '\r' ? feed - 1 : feed;
             while (next < carets.Length && carets[next] < start)
             {
                 next++;
@@ -818,11 +820,34 @@ public static class TextEditing
             }
             start = feed + 1;
         }
-        if (finalNewline && text.Length > 0 && text[^1] != '\n')
+        if (finalNewline == true && text.Length > 0 && text[^1] != '\n')
         {
             edits.Add(new TextEdit(text.Length, 0, convertTo ?? eol));
         }
+        else if (body < text.Length)
+        {
+            edits.Add(new TextEdit(body, text.Length - body, string.Empty));
+        }
         return edits.Count == 0 ? null : new EditPlan(edits, MapThrough(selections, edits), EditKind.Other);
+    }
+
+    /// <summary>Where the text ends once the line breaks ending it go, each with the line it ends where that line is empty,
+    /// or holds only spaces and tabs the save trims (<paramref name="trimTrailing"/>, no caret on it).</summary>
+    private static int Unbroken(string text, int[] carets, bool trimTrailing)
+    {
+        int body = text.Length;
+        while (body > 0)
+        {
+            int lineStart = TextNavigation.LineStart(text, body);
+            bool blank = lineStart == body || trimTrailing && text.AsSpan(lineStart, body - lineStart).TrimStart(" \t").IsEmpty
+                && !carets.Any(c => c >= lineStart && c <= body);
+            if (!blank || lineStart == 0)
+            {
+                break;
+            }
+            body = lineStart - 1 > 0 && text[lineStart - 2] == '\r' ? lineStart - 2 : lineStart - 1;
+        }
+        return body;
     }
 
     /// <summary>Join Lines: a caret joins its line with the next, a selection the lines it covers.

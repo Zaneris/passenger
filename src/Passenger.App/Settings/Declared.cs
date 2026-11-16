@@ -173,6 +173,11 @@ public static class Declared
             + "does. A file Prettier's Run on save covers is Prettier's alone, and GDScript's own Reformat on save (Code Style: "
             + "GDScript) turns this on for scripts alone."));
 
+    public static readonly ToggleSetting EnsureFinalLineBreak = new(s => s.EnsureFinalLineBreak, (s, v) => s with { EnsureFinalLineBreak = v },
+        new(D.EditorPage, "Ensure a final line break on save", "save actions on save final line break newline end of file eol editorconfig insert_final_newline",
+            "Every save, autosave too, ends a file with a line break. An .editorconfig's insert_final_newline says over this "
+            + "for the files it covers: false saves them with none."));
+
     public static readonly ToggleSetting FoldFileHeader = new(s => s.FoldFileHeader, (s, v) => s with { FoldFileHeader = v },
         new(D.CodeFoldingPage, "File header", $"{D.FoldingWords} comments licence license copyright top",
             "Fold by default: what folds as a file opens. A file keeps the folds it was closed with, after a restart too."));

@@ -437,6 +437,25 @@ public class EditingTests
         Assert.Equal("x\r\n", TextSnapshot.From("x").Apply(ended.Edits).ToString());
     }
 
+    /// <summary>A save asked for no final line break takes away every line break the text ends with, and the lines they
+    /// leave empty, those of spaces and tabs the save trims too, but never one holding a caret's spaces; a break kept
+    /// before them is made <c>convertTo</c>'s like any other.</summary>
+    [Theory]
+    [InlineData("kept\n\n|", false, null, "kept|")]
+    [InlineData("kept\r\n|", false, null, "kept|")]
+    [InlineData("|\n", false, null, "|")]
+    [InlineData("|a\n  \n\t\n", true, null, "|a")]
+    [InlineData("|a\n  \n\t\n", false, null, "|a\n  \n\t")]
+    [InlineData("a  \n  |\n\n", true, null, "a\n  |")]
+    [InlineData("a  \n|b\n", true, "\r\n", "a\r\n|b")]
+    [InlineData("|kept", true, "\n", null)]
+    public void Saving_with_no_final_line_break_takes_away_the_breaks_ending_the_text_and_the_blank_lines_they_end(
+        string before, bool trimTrailing, string? convertTo, string? after)
+    {
+        (TextSnapshot text, SelectionSet selections) = Marked.Parse(before);
+        Assert.Equal(after, Marked.After(text, TextEditing.Saving(text.ToString(), selections, trimTrailing, finalNewline: false, convertTo, eol: "\n")));
+    }
+
     [Theory]
     [InlineData("a|\n    b", "a |b")]
     [InlineData("a|\n\n   \nb", "a|\n   \nb")]

@@ -135,6 +135,10 @@ public sealed record AppSettings : IStateDocument<AppSettings>
     /// a language's own on-save formatting takes (Prettier's Run on save, GDScript's Reformat on save).</summary>
     public bool ReformatOnSave { get; init; }
 
+    /// <summary>"Ensure a final line break on save": every save, autosave too, ends a file with a line break where no
+    /// .editorconfig sets <c>insert_final_newline</c> for it.</summary>
+    public bool EnsureFinalLineBreak { get; init; }
+
     public double TerminalFontSize { get; init; } = 13;
     /// <summary>The terminal's own font by its family's name, or null for the code font in force.</summary>
     public string? TerminalFontFamily { get; init; }

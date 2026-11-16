@@ -160,6 +160,71 @@ public sealed class IndentationTests : IDisposable
         window.Close();
     }
 
+    /// <summary>Settings' Ensure a final line break on save: off, a file no .editorconfig speaks for is saved as typed; on, its
+    /// save ends it with a line break, autosave's too. An .editorconfig's insert_final_newline = false says over it either
+    /// way, the save taking away the line breaks the file ends with.</summary>
+    [AvaloniaFact]
+    public void Ensure_a_final_line_break_on_save_ends_a_file_with_one_but_where_its_editorconfig_says_none_and_off_saves_it_as_typed()
+    {
+        Write("Ended/.editorconfig", "root = true\n\n[*]\ninsert_final_newline = false\n");
+        Write("Ended/ended.txt", "kept\n\n");
+        Write("plain.txt", "plain");
+        Write("left.txt", "left");
+        string elsewhere = TestFolders.Create("final-break-");
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        try
+        {
+            Typed(window, "plain.txt", "plain", "!");
+            Assert.True(Saved("plain.txt") == "plain!", $"With the setting off, plain.txt was not saved as typed: {Shown(Saved("plain.txt"))}");
+            Typed(window, "Ended/ended.txt", "kept", "!");
+            Assert.True(Saved("Ended/ended.txt") == "kept!", $"insert_final_newline = false left line breaks ending the file: {Shown(Saved("Ended/ended.txt"))}");
+            Assert.Equal("kept!", Text(editor));
+
+            window.ApplySettings(window.Settings with { EnsureFinalLineBreak = true });
+            Typed(window, "plain.txt", "plain!", "?");
+            Assert.True(Saved("plain.txt") == "plain!?\n", $"With the setting on, plain.txt was not ended with a line break: {Shown(Saved("plain.txt"))}");
+            Typed(window, "Ended/ended.txt", "kept!", "\n");
+            Assert.True(Saved("Ended/ended.txt") == "kept!", $"The setting said over insert_final_newline = false: {Shown(Saved("Ended/ended.txt"))}");
+
+            // Autosave as the window opens another folder.
+            Assert.Null(window.OpenFile(Path.Combine(folder, "left.txt")));
+            Ui.Settle();
+            Ui.PlaceAfter(window.EditorArea.CodeEditor, "left");
+            window.KeyTextInput("!");
+            window.OpenFolder(elsewhere);
+            Ui.Settle();
+            Assert.True(Saved("left.txt") == "left!\n", $"Autosave did not end left.txt with a line break: {Shown(Saved("left.txt"))}");
+        }
+        finally
+        {
+            window.Close();
+            TestFolders.Delete(elsewhere);
+        }
+
+        // A file opened, the caret after some text, something typed or pressed there, then File, Save.
+        void Typed(MainWindow window, string file, string after, string typed)
+        {
+            Assert.Null(window.OpenFile(Path.Combine(folder, file)));
+            Ui.Settle();
+            Ui.PlaceAfter(window.EditorArea.CodeEditor, after);
+            if (typed == "\n")
+            {
+                Ui.Press(window, "ENTER");
+            }
+            else
+            {
+                window.KeyTextInput(typed);
+            }
+            Ui.Run(window, AppActions.Save);
+            Assert.False(window.EditorArea.Active!.IsModified, $"{file} was not saved");
+        }
+
+        string Saved(string file) => File.ReadAllText(Path.Combine(folder, file));
+
+        static string Shown(string text) => $"'{text.Replace("\n", "\\n", StringComparison.Ordinal)}'";
+    }
+
     [AvaloniaFact]
     public void An_editorconfig_written_or_deleted_on_disk_changes_how_the_open_file_indents()
     {

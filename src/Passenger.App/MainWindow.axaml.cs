@@ -191,6 +191,7 @@ public partial class MainWindow : IdeWindow
         Editors.OpenFailed += (_, problem) => status.Text = problem;
         Editors.Refused += (_, problem) => status.Text = problem;
         Editors.Opened += (_, document) => session.Attach(document);
+        Editors.Opened += (_, document) => document.EnsuresFinalLineBreak = () => settings.EnsureFinalLineBreak;
         Editors.Closed += (_, document) => session.Detach(document);
         Editors.ForEachEditor(editor => editor.ProblemsRequested += (_, _) => ShowToolWindow(ToolWindowIds.Problems));
         // A gesture's action at its press in a file's editor (Cmd+click's Go to Declaration), the keymap's as a key's is.
