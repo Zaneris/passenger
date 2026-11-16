@@ -486,7 +486,7 @@ a new name, and `just site-shots` retakes its images.
 - **Roslyn's server writes its MEF caches beside its DLLs**, so in a macOS bundle (a file added breaks the seal, #450)
   or a read-only folder it runs from a copy in `cache/roslyn/` (`RoslynServerFolder`); nothing a Passenger runs may
   write inside the app.
-- **The debugger's engine.** `EngineLock` is not re-entrant; a read of the stop waits behind continue, steps, pause and
+- **The debugger's engine.** The runtime's `DebuggerError` ends a session: its process answers nothing after it, so a launched program is ended and nothing more is asked of it (`ManagedDebugger.HandleDebuggerError`, `TerminatedEvent.Failure`; `PASSENGER_ENGINE_FAIL_AT_MODULE` holds it in a test). `EngineLock` is not re-entrant; a read of the stop waits behind continue, steps, pause and
   disconnect. Never leave `_stepper` set but inactive (async stepping reads it as a queued StepComplete). Under load the runtime may hand a stepping thread's breakpoints over only after it ran on past them, in one batch with its step's end: an async step's own breakpoint is told by the breakpoint, never by where its thread stands (`PASSENGER_ENGINE_LATE_YIELD` holds it so in a test). Abort an
   evaluation past its time only where the abort takes, never rudely (one left pending fires later inside a lock, #238).
   Before letting a program go, run it off patch and step stops (CET would fault it) and wait out abandoned evaluations.
