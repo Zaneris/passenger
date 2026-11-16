@@ -118,7 +118,8 @@ jobs:
       - name: Build the relays
         run: |
           tools/debug-relay.sh android apple
-          for part in android-arm64/libpassenger-debug.so android-x64/libpassenger-debug.so ios-arm64/libpassenger-debug.dylib iossimulator-arm64/libpassenger-debug.dylib; do
+          for part in android-arm64/libpassenger-debug.so android-x64/libpassenger-debug.so ios-arm64/libpassenger-debug.dylib iossimulator-arm64/libpassenger-debug.dylib \
+            maccatalyst-arm64/libpassenger-debug.dylib maccatalyst-x64/libpassenger-debug.dylib; do
             [ -s "artifacts/debug-relay/$part" ] || { echo "No $part" >&2; exit 1; }
           done
 
@@ -313,7 +314,7 @@ jobs:
             'No signing secrets: the installer is unsigned, and SmartScreen asks once (More info > Run anyway)'
           }
 
-      # The app carries Android's relays from artifacts/debug-relay under debugger/relay/<rid>/.
+      # The app carries the relays from artifacts/debug-relay under debugger/relay/<rid>/.
       - name: The debug relays
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:

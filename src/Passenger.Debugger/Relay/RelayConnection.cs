@@ -1,6 +1,7 @@
 using System.Buffers.Binary;
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.Net;
 using System.Net.Sockets;
 using Passenger.Core;
 
@@ -108,29 +109,43 @@ internal sealed class RelayConnection : IDisposable, IRelayLink
         reader.Start();
     }
 
-    /// <summary>Connects to a relay at host:port (adb forwards a local port to the app's socket), giving it
-    /// <paramref name="token"/>, waiting up to <paramref name="within"/> for the app to start listening.</summary>
+    /// <summary>Connects to a relay at host:port (adb forwards a local port to the app's socket), or at the Unix socket a
+    /// path names (a Mac Catalyst app's, in its container), giving it <paramref name="token"/>, waiting up to
+    /// <paramref name="within"/> for the app to start listening.</summary>
     public static RelayConnection Connect(string address, string? token, TimeSpan within, Action<string>? log)
     {
-        int colon = address.LastIndexOf(':');
-        string host = colon > 0 ? address[..colon] : "127.0.0.1";
-        int port = int.Parse(address[(colon + 1)..], System.Globalization.CultureInfo.InvariantCulture);
+        EndPoint at = EndPointOf(address);
         Deadline deadline = Deadline.In(within);
         while (true)
         {
-            Socket socket = new(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp) { NoDelay = true };
+            Socket socket = at is UnixDomainSocketEndPoint
+                ? new(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified)
+                : new(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp) { NoDelay = true };
             try
             {
-                socket.Connect(host, port);
+                socket.Connect(at);
                 return new RelayConnection(new NetworkStream(socket, ownsSocket: true), token, log);
             }
             catch (Exception notYet) when (notYet is SocketException or IOException && !deadline.Passed)
             {
-                // adb accepts the forward before the app listens, then closes it: the app is still starting.
+                // adb accepts the forward before the app listens, then closes it; a socket file is there only once it listens.
                 socket.Dispose();
                 Thread.Sleep(200);
             }
         }
+    }
+
+    /// <summary>Where a relay is reached: a Unix socket for a path, else host:port, a bare port being the loopback's.</summary>
+    internal static EndPoint EndPointOf(string address)
+    {
+        if (address.StartsWith('/'))
+        {
+            return new UnixDomainSocketEndPoint(address);
+        }
+        int colon = address.LastIndexOf(':');
+        string host = colon > 0 ? address[..colon] : "127.0.0.1";
+        int port = int.Parse(address[(colon + 1)..], System.Globalization.CultureInfo.InvariantCulture);
+        return IPAddress.TryParse(host, out IPAddress? ip) ? new IPEndPoint(ip, port) : new DnsEndPoint(host, port);
     }
 
     public RelayReply Call(ulong obj, uint slot, IReadOnlyList<RelayArg> args)

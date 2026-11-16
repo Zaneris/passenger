@@ -37,6 +37,7 @@ extern int accept(int, void *, void *);
 extern long read(int, void *, size_t);
 extern long write(int, const void *, size_t);
 extern int close(int);
+extern int unlink(const char *);
 struct pollfd { int fd; short events; short revents; };
 extern int poll(struct pollfd *, unsigned long, int);
 typedef long pthread_t;
@@ -408,8 +409,28 @@ static void attachLocally(void) {
 }
 
 #if defined(__APPLE__)
-// A simulator shares the Mac's network and usbmux reaches a device's ports: TCP on the loopback, PASSENGER_DEBUG_PORT.
+// A Mac Catalyst app's sandbox takes a listener only in its own container: a Unix socket at the path
+// PASSENGER_DEBUG_SOCKET names there, whatever a dead start left at it taken away first.
+static int listenAt(const char *path, char *said, size_t saidSize) {
+    struct { uint8_t len, family; char path[104]; } addr;
+    memset(&addr, 0, sizeof addr);
+    size_t n = strlen(path);
+    snprintf(said, saidSize, "%s", path);
+    if (n >= sizeof addr.path) return -1;
+    addr.len = sizeof addr;
+    addr.family = 1;  // AF_UNIX
+    memcpy(addr.path, path, n);
+    unlink(path);
+    int s = socket(1 /* AF_UNIX */, 1 /* SOCK_STREAM */, 0);
+    if (s < 0 || bind(s, &addr, sizeof addr) < 0 || listen(s, 1) < 0) { if (s >= 0) close(s); return -1; }
+    return s;
+}
+
+// The socket PASSENGER_DEBUG_SOCKET names where it is a path (a Mac Catalyst app's), else TCP on the loopback at
+// PASSENGER_DEBUG_PORT: a simulator shares the Mac's network and usbmux reaches a device's ports.
 static int listenSocket(char *said, size_t saidSize) {
+    const char *path = getenv("PASSENGER_DEBUG_SOCKET");
+    if (path && path[0] == '/') return listenAt(path, said, saidSize);
     const char *port = getenv("PASSENGER_DEBUG_PORT");
     int p = port ? atoi(port) : 5599;
     int s = socket(2 /* AF_INET */, 1 /* SOCK_STREAM */, 0);

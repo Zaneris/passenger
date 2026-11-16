@@ -2,7 +2,8 @@
 # Passenger's debug relay (src/Passenger.DebugRelay/relay.c), the native piece a Debug app on a device loads as its
 # runtime's profiler, built into artifacts/debug-relay/<rid>/, which the app carries under debugger/relay/<rid>/.
 # Android's with Apple's clang and two packs of .NET's Android workload (its SDK pack's linker, its CoreCLR runtime
-# pack's C runtime objects and stub libraries; no NDK, Android SDK or Java); iOS's with Xcode's SDKs. On macOS only.
+# pack's C runtime objects and stub libraries; no NDK, Android SDK or Java); iOS's and Mac Catalyst's with Xcode's SDKs.
+# On macOS only.
 #   tools/debug-relay.sh [android] [apple]
 set -e
 root=$(cd "$(dirname "$0")/.." && pwd)
@@ -26,7 +27,8 @@ for target in ${@:-android apple}; do
         rm "$out/android-$rid/relay.o"
       done ;;
     apple)
-      for t in iossimulator-arm64:arm64-apple-ios15.0-simulator:iphonesimulator ios-arm64:arm64-apple-ios15.0:iphoneos; do
+      for t in iossimulator-arm64:arm64-apple-ios15.0-simulator:iphonesimulator ios-arm64:arm64-apple-ios15.0:iphoneos \
+          maccatalyst-arm64:arm64-apple-ios15.0-macabi:macosx maccatalyst-x64:x86_64-apple-ios15.0-macabi:macosx; do
         rid=$(echo $t | cut -d: -f1); triple=$(echo $t | cut -d: -f2); sdk=$(echo $t | cut -d: -f3)
         mkdir -p "$out/$rid"
         xcrun --sdk $sdk clang -target $triple -isysroot "$(xcrun --sdk $sdk --show-sdk-path)" -O2 -Wall -Werror -fvisibility=hidden \

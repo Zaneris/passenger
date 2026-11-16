@@ -1,5 +1,7 @@
 using System.Buffers.Binary;
 using System.Collections.Concurrent;
+using System.Net;
+using System.Net.Sockets;
 using Passenger.Core;
 using Passenger.Debugger.Relay;
 
@@ -7,7 +9,8 @@ namespace Passenger.UnitTests.Debugger;
 
 /// <summary>The debugger's end of the relay in an app on a device: a call answered by the frame that names its number, and
 /// once the app has gone, every call failing, the one waiting and each made after it, as an app that died mid-call leaves
-/// a forward that still takes what is written.</summary>
+/// a forward that still takes what is written; a relay reached at a Unix socket's path (a Mac Catalyst app's, in its
+/// container) as at a port.</summary>
 public class RelayConnectionTests
 {
     private static readonly TimeSpan Patience = TimeSpan.FromSeconds(10);
@@ -35,6 +38,62 @@ public class RelayConnectionTests
         await Assert.ThrowsAsync<IOException>(() => Within(waiting, "A call waiting as the app's relay went away"));
         Assert.True(gone.Wait(Patience, TestContext.Current.CancellationToken), "The connection never said the relay had gone");
         await Assert.ThrowsAsync<IOException>(() => CallAsync(relay, "A call made after the app's relay went away"));
+    }
+
+    [Fact]
+    public async Task A_relay_listening_at_a_socket_path_is_reached_there_given_its_token_and_heard_saying_hello()
+    {
+        string folder = PathNames.Canonical(Directory.CreateTempSubdirectory("passenger-relay-").FullName);
+        try
+        {
+            string path = Path.Combine(folder, "r");
+            using Socket listener = new(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
+            listener.Bind(new UnixDomainSocketEndPoint(path));
+            listener.Listen(1);
+            Task<byte[]> heard = BackgroundWork.UnheldThread(() => Hello(listener));
+            using RelayConnection relay = await BackgroundWork.UnheldThread(() => RelayConnection.Connect(path, "abc", Patience, log: null))
+                .WaitAsync(Patience, TestContext.Current.CancellationToken);
+            byte[] token = await heard.WaitAsync(Patience, TestContext.Current.CancellationToken);
+            Assert.True(token.AsSpan().SequenceEqual((byte[])[8, 0, 0, 0, 0, 0, 0, 0, 4, (byte)'a', (byte)'b', (byte)'c']),
+                $"The relay at {path} was first told {Convert.ToHexString(token)}, not the session's token, so it would turn the debugger away");
+            Assert.True(relay.ProcessId == StandInRelay.ProcessId, $"The relay at {path} was heard naming process {relay.ProcessId}, not {StandInRelay.ProcessId}");
+        }
+        finally
+        {
+            Directory.Delete(folder, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void A_relays_address_is_a_unix_socket_for_a_path_and_the_loopbacks_port_for_host_and_port()
+    {
+        Assert.Equal(new UnixDomainSocketEndPoint("/Users/a/Library/Containers/com.x/Data/tmp/passenger/r"),
+            RelayConnection.EndPointOf("/Users/a/Library/Containers/com.x/Data/tmp/passenger/r"));
+        Assert.Equal(new IPEndPoint(IPAddress.Loopback, 5599), RelayConnection.EndPointOf("127.0.0.1:5599"));
+        Assert.Equal(new IPEndPoint(IPAddress.Loopback, 5600), RelayConnection.EndPointOf(":5600"));
+    }
+
+    /// <summary>The app's end of a relay at a socket: one client taken, its first frame read whole and the relay's hello
+    /// written; the frame read.</summary>
+    private static byte[] Hello(Socket listener)
+    {
+        using Socket client = listener.Accept();
+        byte[] said = new byte[12];
+        for (int at = 0; at < said.Length;)
+        {
+            int read = client.Receive(said, at, said.Length - at, SocketFlags.None);
+            if (read == 0)
+            {
+                break;
+            }
+            at += read;
+        }
+        byte[] hello = new byte[8 + 21];
+        BinaryPrimitives.WriteUInt32LittleEndian(hello, 4 + 21);
+        hello[8] = 0x80;
+        BinaryPrimitives.WriteUInt32LittleEndian(hello.AsSpan(9), StandInRelay.ProcessId);
+        client.Send(hello);
+        return said;
     }
 
     private static Task<RelayReply> CallAsync(RelayConnection relay, string what) => Within(Calling(relay), what);
