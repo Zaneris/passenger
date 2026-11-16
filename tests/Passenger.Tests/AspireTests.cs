@@ -820,6 +820,17 @@ public sealed class AspireTests : IClassFixture<AspireApp>, IDisposable
             Assert.Contains("SessionOperationFailed", Ui.Await(failed.Content.ReadAsStringAsync(), "the launch failure"), StringComparison.Ordinal);
             Assert.Equal(services, app.Services.Count);
             Assert.All(app.Services, running => Assert.True(Processes.IsRunning(running.ProcessId!.Value)));
+
+            // A startup hook from a folder another user may write, as one who had the token could ask for, starts nothing.
+            string elsewhere = Path.Join(Path.GetPathRoot(Path.GetFullPath(project.ApiProject)), "passenger-elsewhere", "hook.dll");
+            using HttpResponseMessage hooked = Send(quick, root, HttpMethod.Put, "/run_session?api-version=2024-03-03", endpoint.Token, "passenger-review-abcdefghijkl",
+                JsonSerializer.Serialize(new
+                {
+                    launch_configurations = new[] { new { type = "project", project_path = project.ApiProject, mode = "NoDebug", disable_launch_profile = true } },
+                    env = new[] { new { name = RuntimeVariables.StartupHooks, value = elsewhere } },
+                }));
+            Assert.Equal(HttpStatusCode.InternalServerError, hooked.StatusCode);
+            Assert.Equal(services, app.Services.Count);
             notifications.Abort();
         }
 

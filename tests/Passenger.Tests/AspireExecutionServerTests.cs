@@ -214,6 +214,36 @@ public sealed class AspireExecutionServerTests
         Assert.Equal("dotnet-isolated", Assert.Single(launch.Environment).Value);
     }
 
+    /// <summary>DCP connects to localhost, which it may try first as IPv6's loopback: the server holds its port there too,
+    /// so no other program can listen on it and be handed the token, and a request there is the server's.</summary>
+    [Fact]
+    public async Task The_servers_port_is_its_own_on_both_loopbacks_where_DCP_may_connect()
+    {
+        using (TcpListener probe = new(IPAddress.IPv6Loopback, 0))
+        {
+            try
+            {
+                probe.Start();
+            }
+            catch (SocketException none)
+            {
+                Assert.Skip($"This machine has no IPv6 loopback for another program to listen on: {none.SocketErrorCode}");
+            }
+        }
+        await using AspireExecutionServer server = await AspireExecutionServer.StartAsync(
+            (launch, _) => Task.FromResult(new AspireProjectSession(launch.SessionId, 7)), (_, _) => Task.CompletedTask, Cancel);
+        Assert.Equal($"localhost:{server.Port}", server.Environment[AspireVariables.DebugSessionPort]);
+
+        using TcpListener other = new(IPAddress.IPv6Loopback, server.Port);
+        SocketException taken = Assert.Throws<SocketException>(other.Start);
+        Assert.Equal(SocketError.AddressAlreadyInUse, taken.SocketErrorCode);
+        using TcpClient client = new(AddressFamily.InterNetworkV6);
+        await client.ConnectAsync(IPAddress.IPv6Loopback, server.Port, Cancel).AsTask().WaitAsync(Limit, Cancel);
+        using Wire wire = new(client);
+        await wire.Write(Head(server, "GET", "/info", ""));
+        Assert.Equal(200, await wire.Status());
+    }
+
     [Fact]
     public async Task Committed_201_survives_normal_HTTP_close_and_remains_instance_owned()
     {

@@ -38,6 +38,8 @@ public sealed class AspireExecutionServer : IAsyncDisposable
     private readonly Func<AspireProjectSession, CancellationToken, Task> stopSession;
     private readonly byte[] tokenHash;
     private readonly TcpListener listener = new(IPAddress.Loopback, 0);
+    /// <summary>The same port on IPv6's loopback (<see cref="Listen"/>), where the system has one.</summary>
+    private TcpListener? sixListener;
     private readonly Dictionary<AspireExecutionConnection, Task> connections = [];
     private Task accepting = Task.CompletedTask;
     private Task? disposal;
@@ -78,9 +80,8 @@ public sealed class AspireExecutionServer : IAsyncDisposable
         try
         {
             cancellationToken.ThrowIfCancellationRequested();
-            server.listener.Start();
-            server.Port = ((IPEndPoint)server.listener.LocalEndpoint).Port;
-            server.accepting = server.AcceptAsync();
+            server.Listen();
+            server.accepting = Task.WhenAll(server.AcceptAsync(server.listener), server.sixListener is { } six ? server.AcceptAsync(six) : Task.CompletedTask);
             return server;
         }
         catch
@@ -158,7 +159,45 @@ public sealed class AspireExecutionServer : IAsyncDisposable
         }
     }
 
-    private Task AcceptAsync() => Accepting.EachAsync(stop => listener.AcceptTcpClientAsync(stop), Take, listener.Stop, "Aspire's execution server", shutdown.Token);
+    /// <summary>Takes a port on both loopbacks: the orchestrator connects to localhost, which it may try first as IPv6's ::1,
+    /// where another program listening on the port would be handed the token. A port whose ::1 another program holds is given
+    /// up for the next; a system with no IPv6 loopback leaves no ::1 for any program.</summary>
+    private void Listen()
+    {
+        for (int tries = 1; ; tries++)
+        {
+            listener.Start();
+            Port = ((IPEndPoint)listener.LocalEndpoint).Port;
+            if (!Socket.OSSupportsIPv6)
+            {
+                return;
+            }
+            TcpListener six = new(IPAddress.IPv6Loopback, Port);
+            try
+            {
+                six.Start();
+                sixListener = six;
+                return;
+            }
+            catch (SocketException none) when (none.SocketErrorCode is SocketError.AddressNotAvailable or SocketError.AddressFamilyNotSupported)
+            {
+                six.Dispose();
+                return;
+            }
+            catch (SocketException taken) when (taken.SocketErrorCode == SocketError.AddressAlreadyInUse && tries < 16)
+            {
+                six.Dispose();
+                listener.Stop();
+            }
+            catch
+            {
+                six.Dispose();
+                throw;
+            }
+        }
+    }
+
+    private Task AcceptAsync(TcpListener on) => Accepting.EachAsync(stop => on.AcceptTcpClientAsync(stop), Take, on.Stop, "Aspire's execution server", shutdown.Token);
 
     private void Take(TcpClient client)
     {
@@ -749,6 +788,7 @@ public sealed class AspireExecutionServer : IAsyncDisposable
     {
         await shutdown.CancelAsync().ConfigureAwait(false);
         listener.Stop();
+        sixListener?.Stop();
         try
         {
             await accepting.ConfigureAwait(false);

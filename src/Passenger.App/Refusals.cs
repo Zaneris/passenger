@@ -634,6 +634,10 @@ public static class Refusals
         $"{project} is an Azure Functions app, which Azure Functions Core Tools' func runs, and none is on the PATH: install them "
         + "(https://learn.microsoft.com/azure/azure-functions/functions-run-local#install-the-azure-functions-core-tools)";
 
+    /// <summary>A service an AppHost's orchestrator asked to start with a variable loading code from where another user may
+    /// write (<see cref="LoadingVariables"/>), which it is not.</summary>
+    public static string LoadsOthersCode(string project, string why) => $"{project} was not started: {why}";
+
     /// <summary>Profile of a Functions app (its own project's, or an AppHost's), whose worker func starts and the profiler
     /// does not reach.</summary>
     public static string FunctionsUnprofiled(string service) =>

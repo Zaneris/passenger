@@ -944,13 +944,20 @@ public sealed partial class AspireController(ProjectSession workspace, string st
         }
         ProjectModel project = known ?? ProjectModel.Unevaluated(path);
         string? profileName = request.DisableLaunchProfile ? null : request.LaunchProfile ?? app.Configuration.LaunchProfile;
-        // The project and its launch profiles are read off the UI thread.
-        (bool exists, LaunchProfile? profile) = await BackgroundWork.Run(() => (File.Exists(path),
+        // What the request loads into the service is the person's own: in the run's folders, the home folder or the system's.
+        string[] own = [.. new[] { workspace.Folder, Path.GetDirectoryName(path), Path.GetDirectoryName(app.Configuration.Project) }.OfType<string>(), .. LoadingVariables.PersonsFolders()];
+        // The project, its launch profiles and the files the request loads are read off the UI thread.
+        (bool exists, LaunchProfile? profile, string? loads) = await BackgroundWork.Run(() => (File.Exists(path),
             request.Functions ? FunctionsProfile(LaunchProfile.Read(project), profileName)
-            : profileName is null ? null : LaunchProfile.Read(project).FirstOrDefault(candidate => candidate.Name == profileName)), cancellation);
+            : profileName is null ? null : LaunchProfile.Read(project).FirstOrDefault(candidate => candidate.Name == profileName),
+            LoadingVariables.WhyNot(request.Environment.Select(variable => (variable.Name, variable.Value)), own)), cancellation);
         if (!exists)
         {
             throw new LaunchException("DCP requested a project outside this workspace and its project references");
+        }
+        if (loads is not null)
+        {
+            throw new LaunchException(Refusals.LoadsOthersCode(project.Name, loads));
         }
         if (app.Stopping || workspace.IsEnded || disposed)
         {
