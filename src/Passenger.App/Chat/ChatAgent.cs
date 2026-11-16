@@ -1,0 +1,42 @@
+using System.Diagnostics;
+using Passenger.Acp;
+using Passenger.Core;
+
+namespace Passenger.App.Chat;
+
+/// <summary>A coding agent the Chat window talks to, and how it ends. The Claude adapter is started as a child of the
+/// IDE's, its own login Claude Code's, never Passenger's; a test gives a stand-in's session in its place.</summary>
+public sealed class ChatAgent(AcpSession session, Action end) : IAsyncDisposable
+{
+    /// <summary>The ACP adapter for Claude Code, run with npx as Zed and JetBrains run it.</summary>
+    public const string ClaudeAdapter = "@agentclientprotocol/claude-agent-acp";
+
+    public AcpSession Session { get; } = session;
+
+    /// <summary>Starts the Claude adapter in <paramref name="folder"/>; what the start throws (no npx found), this throws.</summary>
+    public static async Task<ChatAgent> StartClaudeAsync(string folder)
+    {
+        // npx is a .cmd script on Windows, which only cmd runs.
+        ProcessStartInfo start = OperatingSystem.IsWindows()
+            ? ChildProcesses.Command("cmd.exe", ["/d", "/c", "npx", "-y", ClaudeAdapter], folder)
+            : ChildProcesses.Command("npx", ["-y", ClaudeAdapter], folder);
+        start.RedirectStandardInput = true;
+        start.RedirectStandardOutput = true;
+        start.RedirectStandardError = true;
+        Process process = await ChildProcesses.StartAsync(start);
+        UnawaitedWork.Observe(ChildProcesses.Hear(process, errors: line => IdeErrors.Write($"Chat agent: {line}")));
+        AcpSession session = AcpSession.Over(ChildProcesses.OutputStream(process), ChildProcesses.Input(process).BaseStream);
+        return new ChatAgent(session, () =>
+        {
+            ChildProcesses.Kill(process);
+            process.Dispose();
+        });
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        // Ended first, so the session's read finds its stream closed rather than waiting on it.
+        end();
+        await Session.DisposeAsync();
+    }
+}

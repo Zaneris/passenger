@@ -1,0 +1,7 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- The Agent Client Protocol, the IDE's end: a coding agent's conversation over two streams, its updates and questions
+       as plain types. It starts no process and writes no file; the app hands it a started agent's streams. -->
+  <PropertyGroup>
+    <RootNamespace>Passenger.Acp</RootNamespace>
+  </PropertyGroup>
+</Project>

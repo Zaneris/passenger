@@ -567,9 +567,13 @@
           "Passenger.Vcs": "[0.3.0, )",
           "Passenger.Workspace": "[0.3.0, )",
           "Passenger.Xaml": "[0.3.0, )",
+          "Passenger.Acp": "[0.3.4, )",
           "Svg.Skia": "[5.1.1, )",
           "Velopack": "[1.2.161, )"
         }
+      },
+      "passenger.acp": {
+        "type": "Project"
       },
       "passenger.core": {
         "type": "Project",
