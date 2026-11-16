@@ -6,7 +6,8 @@ namespace Passenger.UnitTests.Gherkin;
 
 /// <summary>A step matched to its step definitions as Reqnroll's runtime matches it: Cucumber Expressions and regular
 /// expressions told apart as Reqnroll tells them, each matching the whole text, parameters counted and converted, scopes
-/// narrowing the choice, an outline's steps matched once per example.</summary>
+/// narrowing the choice, an outline's steps matched once per example; an argument a definition cannot take placed where it
+/// is written, saying what the definition takes.</summary>
 public sealed class StepMatcherTests
 {
     private const string Int = "System.Int32";
@@ -253,5 +254,124 @@ public sealed class StepMatcherTests
         StepBinding admin = Binding(BindingKind.Given, "I log in", "GivenILogIn") with { Scopes = [new StepScope("admin", null, null)] };
 
         Assert.Equal(MatchStatus.Defined, Matcher(admin).Match(reading.Steps[0], reading).Status);
+    }
+
+    [Fact]
+    public void A_definition_refused_only_an_argument_it_cannot_convert_binds_the_step_which_fails_at_that_argument()
+    {
+        StepMatcher matcher = Matcher(Binding(BindingKind.Given, "the date is (.*)", "GivenTheDate", P("when", "System.DateTime")));
+
+        StepMatch match = matcher.Match(StepKind.Given, "the date is 31/01/2024", false, false, new StepContext("F", "S", []));
+
+        Assert.Equal(MatchStatus.Defined, match.Status);
+        Assert.Equal("GivenTheDate", Assert.Single(match.Bindings).Binding.Method);
+        RefusedArgument refused = Assert.Single(match.Refused);
+        Assert.Equal((0, 12, 10, true), (refused.Line, refused.Column, refused.Length, refused.Fails));
+        Assert.Equal("CalculatorSteps.GivenTheDate(DateTime) takes when as a date (as the invariant culture writes one, like 01/31/2024), which \"31/01/2024\" is not",
+            refused.Why);
+        Assert.Empty(matcher.Match(StepKind.Given, "the date is 01/31/2024", false, false, new StepContext("F", "S", [])).Refused);
+    }
+
+    [Fact]
+    public void A_step_a_cucumber_expression_would_bind_but_for_an_argument_its_parameter_type_refuses_is_undefined_at_that_argument()
+    {
+        StepMatcher matcher = Matcher(
+            Binding(BindingKind.Given, "the first number is {int}", "GivenTheFirstNumberIs", P("number", Int)),
+            Binding(BindingKind.When, "I enter {string}", "WhenIEnter", P("value", Text)));
+
+        StepMatch two = Match(matcher, StepKind.Given, "the first number is two");
+        StepMatch unquoted = Match(matcher, StepKind.When, "I enter hello");
+
+        Assert.Equal(MatchStatus.Undefined, two.Status);
+        RefusedArgument refused = Assert.Single(two.Refused);
+        Assert.Equal((0, 20, 3, false), (refused.Line, refused.Column, refused.Length, refused.Fails));
+        Assert.Equal("No step definition binds \"the first number is two\": CalculatorSteps.GivenTheFirstNumberIs(Int32) would, but its {int} takes "
+            + "a whole number in digits, which \"two\" is not", refused.Why);
+        Assert.Contains("text in double or single quotes", Assert.Single(unquoted.Refused).Why, StringComparison.Ordinal);
+        Assert.Empty(Match(matcher, StepKind.Given, "something else entirely").Refused);
+    }
+
+    [Fact]
+    public void An_int_too_large_for_its_parameter_matches_the_expression_and_fails_converting()
+    {
+        StepMatcher matcher = Matcher(Binding(BindingKind.Given, "the first number is {int}", "GivenTheFirstNumberIs", P("number", Int)));
+
+        StepMatch match = Match(matcher, StepKind.Given, "the first number is 99999999999");
+
+        Assert.Equal(MatchStatus.Defined, match.Status);
+        Assert.Contains("a whole number (from -2147483648 to 2147483647), which \"99999999999\" is not", Assert.Single(match.Refused).Why, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void An_enum_and_a_transformation_refuse_what_reqnroll_refuses()
+    {
+        StepBinding color = Binding(BindingKind.Given, "the colour is (.*)", "GivenColour", new StepParameter("color", "Shop.Color", ["Red", "Green", "DarkBlue"]));
+        StepBinding money = Binding(BindingKind.Given, "a price of {money}", "GivenPrice", new StepParameter("price", "Shop.Money") { Unconverted = true });
+        StepMatcher matcher = new([color, money], [new StepTransformation("\\$(\\d+)", "money", "Shop.Money") { Parameters = ["System.String"] }], CultureInfo.InvariantCulture);
+
+        Assert.Empty(Match(matcher, StepKind.Given, "the colour is dark blue").Refused);
+        Assert.True(Assert.Single(Match(matcher, StepKind.Given, "the colour is Purple").Refused).Fails);
+        RefusedArgument twelve = Assert.Single(Match(matcher, StepKind.Given, "a price of twelve").Refused);
+        Assert.Contains("its {money} takes text matching (\\$(?:\\d+)), which \"twelve\" is not", twelve.Why, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Two_definitions_refused_only_their_arguments_leave_the_step_undefined_with_each_refusal()
+    {
+        StepMatcher matcher = Matcher(
+            Binding(BindingKind.Given, "the count is (.*)", "GivenCount", P("count", Int)),
+            Binding(BindingKind.Given, "the (.*) is (.*)", "GivenFlag", P("name", Text), P("flag", "System.Boolean")));
+
+        StepMatch match = Match(matcher, StepKind.Given, "the count is many");
+
+        Assert.Equal(MatchStatus.Undefined, match.Status);
+        Assert.Equal(2, match.Refused.Count);
+        Assert.All(match.Refused, r => Assert.True(r.Fails));
+    }
+
+    [Fact]
+    public void A_definition_that_fits_but_for_its_scope_leaves_the_step_undefined_with_no_argument_refused()
+    {
+        StepBinding scoped = Binding(BindingKind.Given, "the count is (.*)", "GivenCount", P("count", Text)) with { Scopes = [new StepScope("other", null, null)] };
+        StepMatcher matcher = Matcher(scoped, Binding(BindingKind.Given, "the count is (.*)", "GivenNumber", P("count", Int)));
+
+        StepMatch match = Match(matcher, StepKind.Given, "the count is many");
+
+        Assert.Equal(MatchStatus.Undefined, match.Status);
+        Assert.Empty(match.Refused);
+    }
+
+    [Fact]
+    public void An_expression_of_parameters_alone_nearly_binds_nothing()
+    {
+        StepMatcher matcher = Matcher(Binding(BindingKind.Given, "{int} {int}", "GivenTwo", P("a", Int), P("b", Int)));
+
+        Assert.Empty(Match(matcher, StepKind.Given, "a step nobody wrote").Refused);
+    }
+
+    [Fact]
+    public void An_outlines_argument_refused_for_one_example_is_placed_in_that_examples_cell()
+    {
+        FeatureReading reading = FeatureReading.Read(
+            "Feature: F\n\nScenario Outline: O\n  Given the date is <d> at noon\n\nExamples:\n  | d          |\n  | 01/31/2024 |\n  | 31/01/2024 |\n", "en");
+        StepMatcher matcher = Matcher(Binding(BindingKind.Given, "the date is (.*) at noon", "GivenTheDate", P("when", "System.DateTime")));
+
+        StepMatch match = matcher.Match(reading.Steps[0], reading);
+
+        Assert.Equal(MatchStatus.Defined, match.Status);
+        RefusedArgument refused = Assert.Single(match.Refused);
+        Assert.Equal((8, 4, 10), (refused.Line, refused.Column, refused.Length));
+    }
+
+    [Fact]
+    public void An_argument_across_a_placeholder_and_its_text_is_placed_over_both_in_the_step()
+    {
+        FeatureReading reading = FeatureReading.Read(
+            "Feature: F\n\nScenario Outline: O\n  Given the date is <d>/2024\n\nExamples:\n  | d     |\n  | 31/01 |\n", "en");
+        StepMatcher matcher = Matcher(Binding(BindingKind.Given, "the date is (.*)", "GivenTheDate", P("when", "System.DateTime")));
+
+        RefusedArgument refused = Assert.Single(matcher.Match(reading.Steps[0], reading).Refused);
+
+        Assert.Equal((3, 20, 8), (refused.Line, refused.Column, refused.Length));
     }
 }

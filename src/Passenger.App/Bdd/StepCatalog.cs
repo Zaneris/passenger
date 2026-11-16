@@ -64,7 +64,7 @@ public sealed class StepCatalog
     {
         StepDefinitionFound found = step.Definition;
         return new StepBinding(Enum.TryParse(found.Kind, out BindingKind kind) ? kind : BindingKind.StepDefinition, found.Expression, found.Method, found.Type,
-            [.. found.Parameters.Select(p => new StepParameter(p.Name, p.Type, p.Members))])
+            [.. found.Parameters.Select(p => new StepParameter(p.Name, p.Type, p.Members) { Nullable = p.Nullable, Underlying = p.Underlying, Unconverted = p.Unconverted })])
         {
             CucumberExpression = found.ExpressionType switch
             {
@@ -79,14 +79,24 @@ public sealed class StepCatalog
             ExpressionLength = found.ExpressionAt?.Length ?? 0,
             Project = step.DeclaredIn is { } declared ? PathNames.Canonical(declared) : null,
             Summary = found.Summary,
+            Tables = TablesOf(found.Tables),
         };
     }
+
+    private static TableRead[] TablesOf(IReadOnlyList<StepTableReadFound>? found) =>
+        [.. (found ?? []).Select(t => new TableRead(t.Parameter, t.Helper, t.Type, [.. t.Members.Select(m => new TableMember(m.Name, m.Property, m.Aliases))]))];
 
     private static StepHook Hook(StepHookFound found) =>
         new(found.Kind, found.Method, found.Type, [.. found.Scopes.Select(Scope)], found.Order) { MethodPlace = Place(found.MethodAt) };
 
     private static StepTransformation Transformation(StepTransformationFound found) =>
-        new(found.Regex, found.Name, found.ReturnType) { MethodPlace = Place(found.MethodAt) };
+        new(found.Regex, found.Name, found.ReturnType)
+        {
+            MethodPlace = Place(found.MethodAt),
+            Method = found.Method,
+            Parameters = found.Parameters ?? [],
+            Tables = TablesOf(found.Tables),
+        };
 
     private static StepScope Scope(StepScopeFound found) => new(found.Tag, found.Feature, found.Scenario);
 

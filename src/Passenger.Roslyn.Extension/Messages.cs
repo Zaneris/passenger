@@ -981,11 +981,32 @@ public sealed record StepPlace(
     [property: JsonPropertyName("at")] Place At,
     [property: JsonPropertyName("length")] int Length);
 
-/// <summary>A step definition's or hook's parameter: its name, its type's full metadata name, an enum's members.</summary>
+/// <summary>A step definition's or hook's parameter: its name, its type's full metadata name (a nullable value type's
+/// underlying type's, with <c>nullable</c> set), an enum's members and the integer type under them, and whether Reqnroll's
+/// converter makes none of its type from text (a class or struct of the solution's code with no type converter, which only a
+/// transformation makes).</summary>
 public sealed record StepParameterFound(
     [property: JsonPropertyName("name")] string Name,
     [property: JsonPropertyName("type")] string Type,
-    [property: JsonPropertyName("members")] IReadOnlyList<string>? Members = null);
+    [property: JsonPropertyName("members")] IReadOnlyList<string>? Members = null,
+    [property: JsonPropertyName("nullable")] bool Nullable = false,
+    [property: JsonPropertyName("underlying")] string? Underlying = null,
+    [property: JsonPropertyName("unconverted")] bool Unconverted = false);
+
+/// <summary>A member a table helper may set from a table's column: its name, whether it is a property (else a field), and
+/// the regular expressions of its <c>[TableAliases]</c>.</summary>
+public sealed record StepMemberFound(
+    [property: JsonPropertyName("name")] string Name,
+    [property: JsonPropertyName("property")] bool Property,
+    [property: JsonPropertyName("aliases")] IReadOnlyList<string> Aliases);
+
+/// <summary>A table a binding's code reads into a type through Reqnroll's table helpers (<c>CreateSet</c>,
+/// <c>CreateInstance</c>): the parameter it reads, the helper, the type and the members it may set.</summary>
+public sealed record StepTableReadFound(
+    [property: JsonPropertyName("parameter")] int Parameter,
+    [property: JsonPropertyName("helper")] string Helper,
+    [property: JsonPropertyName("type")] string Type,
+    [property: JsonPropertyName("members")] IReadOnlyList<StepMemberFound> Members);
 
 /// <summary>A <c>[Scope]</c>'s tag, feature title and scenario title, those given.</summary>
 public sealed record StepScopeFound(
@@ -1008,7 +1029,8 @@ public sealed record StepDefinitionFound(
     [property: JsonPropertyName("error")] string? Error,
     [property: JsonPropertyName("methodAt")] StepPlace? MethodAt,
     [property: JsonPropertyName("expressionAt")] StepPlace? ExpressionAt,
-    [property: JsonPropertyName("summary")] string? Summary = null);
+    [property: JsonPropertyName("summary")] string? Summary = null,
+    [property: JsonPropertyName("tables")] IReadOnlyList<StepTableReadFound>? Tables = null);
 
 /// <summary>A hook: its kind (its attribute's name: BeforeScenario), method, type, scopes (its tags among them) and order.</summary>
 public sealed record StepHookFound(
@@ -1019,12 +1041,17 @@ public sealed record StepHookFound(
     [property: JsonPropertyName("order")] int Order,
     [property: JsonPropertyName("methodAt")] StepPlace? MethodAt);
 
-/// <summary>A <c>[StepArgumentTransformation]</c>: its regular expression, name and return type's full metadata name.</summary>
+/// <summary>A <c>[StepArgumentTransformation]</c>: its regular expression, name and return type's full metadata name (a
+/// task's result's, a nullable value type's underlying type's with a <c>?</c>), its parameters' types, the tables its code
+/// reads, and its method as shown (<c>Transforms.ToMoney</c>).</summary>
 public sealed record StepTransformationFound(
     [property: JsonPropertyName("regex")] string? Regex,
     [property: JsonPropertyName("name")] string? Name,
     [property: JsonPropertyName("returnType")] string ReturnType,
-    [property: JsonPropertyName("methodAt")] StepPlace? MethodAt);
+    [property: JsonPropertyName("methodAt")] StepPlace? MethodAt,
+    [property: JsonPropertyName("parameters")] IReadOnlyList<string>? Parameters = null,
+    [property: JsonPropertyName("tables")] IReadOnlyList<StepTableReadFound>? Tables = null,
+    [property: JsonPropertyName("method")] string? Method = null);
 
 /// <summary>A Reqnroll or SpecFlow project's bindings: those its own code and the projects and binding assemblies it
 /// references declare, each with the project file it is written in.</summary>

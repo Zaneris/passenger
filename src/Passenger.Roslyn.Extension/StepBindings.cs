@@ -182,12 +182,14 @@ internal static class StepBindingReading
                     };
                     StepPlace? expressionAt = await LiteralPlaceAsync(attribute).ConfigureAwait(false);
                     Steps.Add(new ProjectStep(new StepDefinitionFound(StepKindOf(kind), expression, expressionType, method.Name, typeName,
-                        [.. method.Parameters.Select(ParameterOf)], scopes, ErrorOf(method, type), methodAt, expressionAt, SummaryOf(method, cancel)), project));
+                        [.. method.Parameters.Select(ParameterOf)], scopes, ErrorOf(method, type), methodAt, expressionAt, SummaryOf(method, cancel),
+                        await TablesReadAsync(method).ConfigureAwait(false)), project));
                 }
                 else if (Derives(kind, transformation))
                 {
                     string? regex = attribute.ConstructorArguments.FirstOrDefault().Value as string ?? Named(attribute, "Regex") as string;
-                    Transformations.Add(new StepTransformationFound(regex, Named(attribute, "Name") as string, FullName(method.ReturnType), methodAt));
+                    Transformations.Add(new StepTransformationFound(regex, Named(attribute, "Name") as string, ReturnedName(method.ReturnType), methodAt,
+                        [.. method.Parameters.Select(p => FullName(p.Type))], await TablesReadAsync(method).ConfigureAwait(false), $"{type.Name}.{method.Name}"));
                 }
                 else if (HookKind(kind) is { } hook)
                 {
@@ -328,11 +330,122 @@ internal static class StepBindingReading
 
         private static StepParameterFound ParameterOf(IParameterSymbol parameter)
         {
-            ITypeSymbol type = parameter.Type is INamedTypeSymbol { OriginalDefinition.SpecialType: SpecialType.System_Nullable_T } nullable ? nullable.TypeArguments[0] : parameter.Type;
+            ITypeSymbol? under = UnderNullable(parameter.Type);
+            ITypeSymbol type = under ?? parameter.Type;
             IReadOnlyList<string>? members = type.TypeKind == TypeKind.Enum
                 ? [.. type.GetMembers().OfType<IFieldSymbol>().Where(f => f.HasConstantValue).Select(f => f.Name)]
                 : null;
-            return new StepParameterFound(parameter.Name, FullName(type), members);
+            string? underlying = type is INamedTypeSymbol { EnumUnderlyingType: { } integer } ? FullName(integer) : null;
+            return new StepParameterFound(parameter.Name, FullName(type), members, under is not null, underlying, Unconverted(type));
+        }
+
+        /// <summary>A nullable value type's underlying type; null for any other type.</summary>
+        private static ITypeSymbol? UnderNullable(ITypeSymbol type) =>
+            type is INamedTypeSymbol { OriginalDefinition.SpecialType: SpecialType.System_Nullable_T } nullable ? nullable.TypeArguments[0] : null;
+
+        /// <summary>Whether Reqnroll's converter makes no value of a type from text, as no type converter it reads takes text and
+        /// <c>Convert.ChangeType</c> refuses it: a class or struct the solution's code declares (no generic one) with no
+        /// <c>[TypeConverter]</c> on it or a type it derives from.</summary>
+        private static bool Unconverted(ITypeSymbol type)
+        {
+            if (type is not INamedTypeSymbol { TypeKind: TypeKind.Class or TypeKind.Struct, IsGenericType: false, SpecialType: SpecialType.None } named
+                || !named.Locations.Any(l => l.IsInSource))
+            {
+                return false;
+            }
+            for (INamedTypeSymbol? at = named; at is not null; at = at.BaseType)
+            {
+                if (at.GetAttributes().Any(a => a.AttributeClass is { Name: "TypeConverterAttribute" } converter && converter.ContainingNamespace?.ToDisplayString() == "System.ComponentModel"))
+                {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        /// <summary>The name of the type a transformation makes, as Reqnroll reads its return type: a task's result's, a
+        /// nullable value type's underlying type's with a <c>?</c>.</summary>
+        private static string ReturnedName(ITypeSymbol returned)
+        {
+            if (returned is INamedTypeSymbol { IsGenericType: true, TypeArguments: [{ } result] } awaited
+                && awaited.OriginalDefinition.ToDisplayString() is "System.Threading.Tasks.Task<TResult>" or "System.Threading.Tasks.ValueTask<TResult>")
+            {
+                returned = result;
+            }
+            return UnderNullable(returned) is { } under ? FullName(under) + "?" : FullName(returned);
+        }
+
+        /// <summary>The tables a binding's code reads through Reqnroll's table helpers: each call of <c>CreateSet&lt;T&gt;</c> or
+        /// <c>CreateInstance&lt;T&gt;</c> on one of its parameters, with the members of T a column may set (its public properties
+        /// and fields, a base type's too).</summary>
+        private async Task<IReadOnlyList<StepTableReadFound>?> TablesReadAsync(IMethodSymbol method)
+        {
+            if (!method.Parameters.Any(p => IsTable(p.Type)))
+            {
+                return null;
+            }
+            List<StepTableReadFound> found = [];
+            foreach (SyntaxReference reference in method.DeclaringSyntaxReferences)
+            {
+                SyntaxNode declared = await reference.GetSyntaxAsync(cancel).ConfigureAwait(false);
+                if (ModelOf(declared.SyntaxTree) is not { } model)
+                {
+                    continue;
+                }
+                foreach (InvocationExpressionSyntax call in declared.DescendantNodes().OfType<InvocationExpressionSyntax>())
+                {
+                    if (model.GetSymbolInfo(call, cancel).Symbol is not IMethodSymbol { Name: "CreateSet" or "CreateInstance", TypeArguments: [INamedTypeSymbol made] } helper
+                        || (helper.ReducedFrom ?? helper).ContainingType is not { Name: "TableHelperExtensionMethods" } helpers
+                        || helpers.ContainingNamespace?.ToDisplayString() is not ("Reqnroll" or "TechTalk.SpecFlow.Assist" or "TechTalk.SpecFlow"))
+                    {
+                        continue;
+                    }
+                    ExpressionSyntax? table = helper.ReducedFrom is not null
+                        ? (call.Expression as MemberAccessExpressionSyntax)?.Expression
+                        : call.ArgumentList.Arguments.FirstOrDefault()?.Expression;
+                    if (table is null || model.GetSymbolInfo(table, cancel).Symbol is not IParameterSymbol read
+                        || !SymbolEqualityComparer.Default.Equals(read.ContainingSymbol, method))
+                    {
+                        continue;
+                    }
+                    found.Add(new StepTableReadFound(read.Ordinal, helper.Name, FullName(made), MembersOf(made)));
+                }
+            }
+            return found.Count > 0 ? found : null;
+        }
+
+        /// <summary>The members a table helper may set on a type: its public properties (no indexer) and fields, those of the
+        /// types it derives from too, each with its <c>[TableAliases]</c>.</summary>
+        private static List<StepMemberFound> MembersOf(INamedTypeSymbol type)
+        {
+            List<StepMemberFound> members = [];
+            for (INamedTypeSymbol? at = type; at is not null && at.SpecialType != SpecialType.System_Object; at = at.BaseType)
+            {
+                foreach (ISymbol member in at.GetMembers().Where(m => m.DeclaredAccessibility == Accessibility.Public && (ReferenceEquals(at, type) || !m.IsStatic)))
+                {
+                    if (member is IPropertySymbol { IsIndexer: false } or IFieldSymbol { IsImplicitlyDeclared: false } && !members.Any(m => m.Name == member.Name))
+                    {
+                        members.Add(new StepMemberFound(member.Name, member is IPropertySymbol, AliasesOf(member)));
+                    }
+                }
+            }
+            return members;
+        }
+
+        private static List<string> AliasesOf(ISymbol member) =>
+            [.. member.GetAttributes().Where(a => a.AttributeClass?.Name == "TableAliasesAttribute")
+                .SelectMany(a => a.ConstructorArguments).SelectMany(a => a.Kind == TypedConstantKind.Array ? a.Values : [a]).Select(v => v.Value).OfType<string>()];
+
+        private bool IsTable(ITypeSymbol type) => Derives(type as INamedTypeSymbol, compilation.GetTypeByMetadataName(ns + ".Table"));
+
+        /// <summary>The semantic model of a tree of the project's code or a project's it references; null for none.</summary>
+        private SemanticModel? ModelOf(SyntaxTree tree)
+        {
+            if (compilation.ContainsSyntaxTree(tree))
+            {
+                return compilation.GetSemanticModel(tree);
+            }
+            return compilation.References.OfType<CompilationReference>().Select(r => r.Compilation).FirstOrDefault(c => c.ContainsSyntaxTree(tree))?.GetSemanticModel(tree);
         }
 
         /// <summary>A type's full metadata name, a nested type's after a <c>+</c> ("Shop.Basket+Color").</summary>

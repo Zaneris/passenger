@@ -556,6 +556,12 @@ the same commit: a `# language:` naming a region Gherkin lacks read in its langu
 beside them refuses a feature Gherkin reads as that file's `CheckSemanticErrors` does at the same commit, by its four
 checks in `Reqnroll.Parser/SemanticValidators/` (`DuplicateScenariosValidator.cs`, `DuplicateExamplesValidator.cs`,
 `MissingExamplesValidator.cs` and `DuplicateExamplesColumnHeadersValidator.cs`), in their words at the places they name.
+`StepConversions.cs` beside them is a port of `Reqnroll/Bindings/StepArgumentTypeConverter.cs` at the same commit (which
+text a step definition's parameter takes: its transformations, an enum, a Guid as
+`Reqnroll/Assist/ValueRetrievers/GuidValueRetriever.cs` reads one, and .NET's own converters in the binding culture).
+`TableColumns.cs` beside them is a port of `Reqnroll/Assist/TEHelpers.cs` and `Reqnroll/Assist/TableExtensionMethods.cs`
+at the same commit (which of a table's names a member takes, a table read by its header or its first column), with
+`ToIdentifier` and its table of accented letters from `Reqnroll/Tracing/CodeFormattingExtensions.cs`.
 
 ```
 BSD 3-Clause License

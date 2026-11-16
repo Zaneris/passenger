@@ -60,6 +60,62 @@ public static partial class StepExpressions
         }
     }
 
+    /// <summary>A Cucumber Expression's regular expression with each parameter taking any text, and its parameters' types in
+    /// turn; null for a regular expression, a method's name, or an expression of parameters alone (which any step would
+    /// nearly match).</summary>
+    public static (Regex Regex, IParameterType[] Types)? LooseOf(StepBinding binding, ReqnrollParameterTypes types)
+    {
+        if (binding.Expression is not { } expression || !(binding.CucumberExpression ?? IsCucumberExpression(expression))
+            || string.IsNullOrWhiteSpace(ParameterPlaceholder().Replace(expression, "")))
+        {
+            return null;
+        }
+        try
+        {
+            LooseCucumberExpression made = new(expression, types);
+            return (new Regex(made.Regex.ToString(), made.Regex.Options, TextSearch.Apart), made.ParameterTypes);
+        }
+        catch (CucumberExpressionException)
+        {
+            return null;
+        }
+        catch (ArgumentException)
+        {
+            return null;
+        }
+        catch (InvalidOperationException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>What a Cucumber Expression's parameter type takes, in words, where it refuses a text as its argument; null
+    /// where it takes it.</summary>
+    public static string? ParameterRefusal(IParameterType type, string value)
+    {
+        bool quoted = type.Name == ParameterTypeConstants.StringParameterName;
+        string[] regexes = quoted ? ParameterTypeConstants.StringParameterRegexps : type.RegexStrings;
+        try
+        {
+            if (regexes.Any(r => Regex.IsMatch(value, $"^(?:{r})$", RegexOptions.None, TextSearch.Apart)))
+            {
+                return null;
+            }
+        }
+        catch (RegexMatchTimeoutException)
+        {
+            return null;
+        }
+        return regexes switch
+        {
+            _ when quoted => "text in double or single quotes",
+            [ParameterTypeConstants.IntParameterRegex] => "a whole number in digits",
+            [ParameterTypeConstants.WordParameterRegex] => "one word, with no spaces",
+            [{ } only] when only == ParameterTypeConstants.FloatParameterRegex => "a number in digits",
+            _ => $"text matching {string.Join(" or ", regexes)}",
+        };
+    }
+
     /// <summary>A regular expression's text made to match a whole step, as Reqnroll anchors one.</summary>
     public static string WholeText(string regex) => (regex.StartsWith('^') ? "" : "^") + regex + (regex.EndsWith('$') ? "" : "$");
 
@@ -131,6 +187,16 @@ public static partial class StepExpressions
 
     [GeneratedRegex(@"_+|(?<=[\d\p{L}])(?=\p{Lu})|(?<=\p{L})(?=\d)")]
     private static partial Regex WordBoundary();
+
+    /// <summary>A Cucumber Expression read with each parameter taking any text, one group each.</summary>
+    private sealed class LooseCucumberExpression(string expression, IParameterTypeRegistry types) : CucumberExpression(expression, types)
+    {
+        protected override string[] GetParameterTypeRegexps(string name, IParameterType parameterType, out bool shouldWrapWithCaptureGroup)
+        {
+            shouldWrapWithCaptureGroup = true;
+            return [".*"];
+        }
+    }
 
     /// <summary>Reqnroll's Cucumber Expression: <c>{string}</c> takes double or single quotes, each its own group.</summary>
     private sealed class ReqnrollCucumberExpression(string expression, IParameterTypeRegistry types) : CucumberExpression(expression, types)

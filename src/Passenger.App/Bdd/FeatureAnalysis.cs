@@ -9,11 +9,14 @@ namespace Passenger.App.Bdd;
 /// each step matched to its project's step definitions (none where the project is no Reqnroll project or its bindings are
 /// not read yet, so nothing is said undefined that is unknown), the marks those make, and the colours laid over the
 /// grammar's: every keyword in the file's language, descriptions, an examples table's header in bold, outline placeholders
-/// in a number's colour, as Reqnroll's editors show them, and the arguments a matched step gives its definition.</summary>
+/// in a number's colour, as Reqnroll's editors show them, and the arguments a matched step gives its definition. An
+/// argument its definition cannot convert and a table's column no member takes are marked where they are written.</summary>
 public sealed class FeatureAnalysis
 {
     public const string Undefined = "undefined-step";
     public const string Ambiguous = "ambiguous-step";
+    public const string Argument = "step-argument";
+    public const string Column = "table-column";
     public const string Syntax = "gherkin";
     public const string CodeBehind = "code-behind";
 
@@ -101,7 +104,17 @@ public sealed class FeatureAnalysis
         }
         foreach ((FeatureStep step, StepMatch match) in Matches)
         {
-            if (match.Status == MatchStatus.Undefined)
+            foreach (RefusedArgument refused in match.Refused)
+            {
+                marks.Add(Marker.Coded(RangeAt(refused.Line, refused.Column, refused.Length), refused.Fails ? MarkerKind.Error : MarkerKind.Warning,
+                    refused.Fails ? Argument : Undefined, refused.Why));
+            }
+            foreach ((FeatureRow row, FeatureCell cell, string why) in UnreadColumns(step, match))
+            {
+                marks.Add(Marker.Coded(RangeAt(row.Line, cell.Column, cell.Length), MarkerKind.Warning, Column, why));
+            }
+            // A step nearly bound is said undefined at the argument its definition refuses.
+            if (match.Status == MatchStatus.Undefined && !match.Refused.Any(r => !r.Fails && r.Line == step.Line))
             {
                 string why = match.Why is { } said ? $"\n{said}" : string.Empty;
                 marks.Add(Marker.Coded(WholeOf(step), MarkerKind.Warning, Undefined, $"No step definition binds this step{why}"));
@@ -113,6 +126,40 @@ public sealed class FeatureAnalysis
             }
         }
         return [.. marks.OrderBy(m => m.Range.Start)];
+    }
+
+    /// <summary>A range of the text from a line and column, at least one character long where the text has one.</summary>
+    private TextRange RangeAt(int line, int column, int length)
+    {
+        int start = OffsetOf(line, column);
+        return new TextRange(start, Math.Min(Math.Max(length, 1), Math.Max(Text.Length - start, 0)));
+    }
+
+    /// <summary>The names of a matched step's table its definition's table helpers set no member from (through a
+    /// transformation where the definition takes the table as another type), with why; those no read takes.</summary>
+    private IEnumerable<(FeatureRow Row, FeatureCell Cell, string Why)> UnreadColumns(FeatureStep step, StepMatch match)
+    {
+        if (step.Table is not { } table || Steps is null || match is not { Status: MatchStatus.Defined, Bindings: [{ Binding: { Parameters.Count: > 0 } binding }] })
+        {
+            return [];
+        }
+        int last = binding.Parameters.Count - 1;
+        StepParameter parameter = binding.Parameters[last];
+        TableRead[] reads = StepConversions.IsTable(parameter.Type)
+            ? [.. binding.Tables.Where(t => t.Parameter == last)]
+            : [.. StepConversions.MakersOf(parameter, Steps.Transformations).Where(t => t.Parameters.Count > 0 && StepConversions.IsTable(t.Parameters[0]))
+                .Take(1).SelectMany(t => t.Tables.Where(r => r.Parameter == 0))];
+        if (reads.Length == 0)
+        {
+            return [];
+        }
+        IEnumerable<(FeatureRow Row, FeatureCell Cell)> unread = TableColumns.Unread(table, reads[0]);
+        foreach (TableRead other in reads.Skip(1))
+        {
+            HashSet<FeatureCell> alsoUnread = [.. TableColumns.Unread(table, other).Select(u => u.Cell)];
+            unread = unread.Where(u => alsoUnread.Contains(u.Cell));
+        }
+        return [.. unread.Select(u => (u.Row, u.Cell, TableColumns.Why(reads[0], u.Cell.Value)))];
     }
 
     private SyntaxSpan[] ColoursOf()
