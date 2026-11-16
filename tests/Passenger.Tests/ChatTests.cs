@@ -300,6 +300,78 @@ public sealed class ChatTests
     }
 
     [AvaloniaFact]
+    public void A_plan_is_saved_to_the_folders_plans_and_Build_answers_the_agents_first_way_to_build()
+    {
+        MainWindow window = Reviewing(out StandInAgent agent, out string folder);
+        Send(window, "plan");
+        Ui.WaitFor(() => window.Chat.Questions.Any(), () => $"the plan's card, where the conversation is {Shown(window)}");
+
+        string plan = Path.Combine(folder, ".passenger", "plans", $"{DateTime.Now:yyyy-MM-dd}_add-a-math-class.plan.md");
+        Assert.True(File.Exists(plan), $"No plan at {plan}");
+        Assert.Equal(StandInAgent.Plan, File.ReadAllText(plan));
+        ApprovalCard card = window.Chat.Questions.Single();
+        Assert.Contains(card.GetVisualDescendants().OfType<TextBlock>(), text => text.Text == "Plan: Add a math class");
+
+        Ui.Click(InCard(card, "Build"));
+        Ui.WaitFor(() => !window.Chat.Busy, () => $"the turn ended, where the conversation is {Shown(window)}");
+
+        Assert.Equal("exit-plan-auto", agent.PlanAnswer);
+        Assert.Equal("Building", card.State);
+        Assert.Empty(agent.Steered);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void A_plan_edited_before_Build_is_sent_to_the_agent_as_it_is_now()
+    {
+        MainWindow window = Reviewing(out StandInAgent agent, out string folder);
+        Send(window, "plan");
+        Ui.WaitFor(() => window.Chat.Questions.Any(), "the plan's card");
+        string plan = Path.Combine(folder, ".passenger", "plans", $"{DateTime.Now:yyyy-MM-dd}_add-a-math-class.plan.md");
+        File.AppendAllText(plan, "3. Write the docs\n");
+
+        Ui.Click(InCard(window.Chat.Questions.Single(), "Build"));
+        Ui.WaitFor(() => !window.Chat.Busy, () => $"the turn ended, where the conversation is {Shown(window)}");
+
+        string steered = Assert.Single(agent.Steered);
+        Assert.Contains("3. Write the docs", steered, StringComparison.Ordinal);
+        Assert.Contains("add-a-math-class.plan.md", steered, StringComparison.Ordinal);
+        Assert.Equal(["steer", "answer"], agent.Order);
+        Assert.Contains(window.Chat.Conversation, part => part.Text.StartsWith("Sent your edited plan from", StringComparison.Ordinal));
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Open_plan_opens_the_plans_file_as_a_page_beside_its_Markdown()
+    {
+        MainWindow window = Reviewing(out StandInAgent agent, out string folder);
+        Send(window, "plan");
+        Ui.WaitFor(() => window.Chat.Questions.Any(), "the plan's card");
+
+        Ui.Click(window.Chat.Questions.Single().GetVisualDescendants().OfType<Button>().First(b => Equals(b.Content, "Open plan")));
+        Ui.Settle();
+
+        Assert.EndsWith("add-a-math-class.plan.md", window.EditorArea.Active?.Path, StringComparison.Ordinal);
+        Assert.True(window.EditorArea.ShowsMarkdownPreview);
+        Ui.Click(InCard(window.Chat.Questions.Single(), "No, keep planning"));
+        Ui.WaitFor(() => !window.Chat.Busy, "the turn ended");
+        Assert.Equal("reject", agent.PlanAnswer);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void The_agents_to_dos_are_pinned_above_the_box()
+    {
+        MainWindow window = Reviewing(out StandInAgent agent, out _);
+        Send(window, "plan");
+        Ui.WaitFor(() => window.Chat.Todos.IsVisible, "the to-dos");
+
+        Assert.Equal("To-dos 1/3", window.Chat.Todos.Count);
+        Assert.Equal(["completed", "in_progress", "pending"], window.Chat.Todos.Entries.Select(entry => entry.Status));
+        window.Close();
+    }
+
+    [AvaloniaFact]
     public void A_reply_shows_as_Markdown_once_whole()
     {
         MainWindow window = Connected(out StandInAgent agent);
@@ -436,6 +508,39 @@ public sealed class ChatTests
         /// <summary>Whether the turn was cancelled.</summary>
         public bool Cancelled { get; private set; }
 
+        /// <summary>The plan it asks to build, as the Claude adapter sends a plan's Markdown.</summary>
+        public const string Plan = "# Add a math class\n\n1. Write MathOperations.cs\n2. Add tests\n";
+
+        private readonly List<string> steered = [];
+        private readonly List<string> order = [];
+
+        /// <summary>The messages steered into its turn.</summary>
+        public IReadOnlyList<string> Steered
+        {
+            get
+            {
+                lock (steered)
+                {
+                    return [.. steered];
+                }
+            }
+        }
+
+        /// <summary>What came, in turn, of a steer and the plan's answer.</summary>
+        public IReadOnlyList<string> Order
+        {
+            get
+            {
+                lock (steered)
+                {
+                    return [.. order];
+                }
+            }
+        }
+
+        /// <summary>The answer to its plan: an option's id, or "cancelled".</summary>
+        public string? PlanAnswer { get; private set; }
+
         /// <summary>Waited on before it writes a file, by the file's path.</summary>
         public Func<string, Task> BeforeWrite { get; set; } = _ => Task.CompletedTask;
 
@@ -454,6 +559,18 @@ public sealed class ChatTests
         }
 
         private async Task AnswerAsync()
+        {
+            try
+            {
+                await AnsweringAsync();
+            }
+            catch (InvalidOperationException)
+            {
+                // The window ended the agent while it answered, as a closed connection ends a real one.
+            }
+        }
+
+        private async Task AnsweringAsync()
         {
             UTF8Encoding utf8 = new(encoderShouldEmitUTF8Identifier: false);
             using StreamReader reader = new(fromSession.Reader.AsStream(), utf8);
@@ -529,6 +646,15 @@ public sealed class ChatTests
                             await Answer(writer, id, """{"stopReason":"end_turn"}""");
                             break;
                         }
+                        if (text == "plan")
+                        {
+                            waiting = id;
+                            string content = JsonValue.Create(Plan).ToJsonString();
+                            await Update(writer, """{"sessionUpdate":"plan","entries":[{"content":"Read the code","priority":"high","status":"completed"},{"content":"Write MathOperations.cs","priority":"high","status":"in_progress"},{"content":"Add tests","priority":"medium","status":"pending"}]}""");
+                            await Update(writer, $$$"""{"toolCallId":"call_5","sessionUpdate":"tool_call","status":"pending","title":"Approve Plan","kind":"switch_mode","content":[{"type":"content","content":{"type":"text","text":{{{content}}}}}]}""");
+                            await writer.WriteLineAsync($$$"""{"jsonrpc":"2.0","id":"ask_plan","method":"session/request_permission","params":{"sessionId":"sess_1","toolCall":{"toolCallId":"call_5","title":"Ready to code?","kind":"switch_mode","content":[{"type":"content","content":{"type":"text","text":{{{content}}}}}]},"options":[{"optionId":"exit-plan-auto","name":"Yes, and use auto mode","kind":"allow_always"},{"optionId":"exit-plan-default","name":"Yes, manually approve edits","kind":"allow_once"},{"optionId":"reject","name":"No, keep planning","kind":"reject_once"}]}}""");
+                            break;
+                        }
                         if (text == "bold")
                         {
                             await Say(writer, "Use **this** one.");
@@ -545,6 +671,29 @@ public sealed class ChatTests
                         Cancelled = true;
                         await Answer(writer, waiting, """{"stopReason":"cancelled"}""");
                         waiting = null;
+                        break;
+                    case "_session/steering":
+                        lock (steered)
+                        {
+                            steered.Add(parameters?["prompt"]?[0]?["text"]?.GetValue<string>() ?? string.Empty);
+                            order.Add("steer");
+                        }
+                        await Answer(writer, id, """{"outcome":"injected"}""");
+                        break;
+                    case null when message["id"]?.ToJsonString() == "\"ask_plan\"":
+                        JsonNode? decided = message["result"]?["outcome"];
+                        lock (steered)
+                        {
+                            order.Add("answer");
+                        }
+                        PlanAnswer = decided?["outcome"]?.GetValue<string>() == "cancelled" ? "cancelled" : decided?["optionId"]?.GetValue<string>();
+                        if (waiting is not null)
+                        {
+                            await Update(writer, """{"toolCallId":"call_5","sessionUpdate":"tool_call_update","status":"completed","title":"Exited Plan Mode"}""");
+                            await Say(writer, PlanAnswer == "reject" ? "I'll keep planning." : "Building.");
+                            await Answer(writer, waiting, """{"stopReason":"end_turn"}""");
+                            waiting = null;
+                        }
                         break;
                     case null when message["id"]?.ToJsonString() == "\"ask_1\"":
                         JsonNode? outcome = message["result"]?["outcome"];
@@ -565,7 +714,7 @@ public sealed class ChatTests
         }
 
         /// <summary>Whether it has a question open, whose answer ends the turn rather than session/cancel.</summary>
-        private bool Asked => Prompts.LastOrDefault() == "write";
+        private bool Asked => Prompts.LastOrDefault() is "write" or "plan";
 
         /// <summary>An edit as the Claude adapter sends one in Accept edits mode: its call, then the file it names, then,
         /// once written, done.</summary>

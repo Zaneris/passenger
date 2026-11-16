@@ -44,7 +44,7 @@ public sealed class MarkdownPreview : ScrollViewer
         Classes.Add(StyleClasses.MarkdownPreview);
         Focusable = true;
         HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled;
-        links = new MarkdownPage(Follow) { LocalLinks = true, ImageFile = ImageFile, Load = LoadAsync };
+        links = new MarkdownPage(Follow) { LocalLinks = true, ImageFile = ImageFile, Load = LoadAsync, DrawsDiagrams = true };
         typing = new Debounce(Pause, RenderAsync);
         editor.ScrollChanged += (_, _) => FollowEditor();
     }

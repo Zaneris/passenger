@@ -129,15 +129,21 @@ public sealed class ChatView : DockPanel
         below.Children.Add(context);
         below.Children.Add(pickers);
         composer = new StackPanel { Spacing = 6, Margin = new Thickness(12, 8, 12, 12), IsVisible = false, Children = { writing, below, menu.Popup } };
+        Button plans = ToolButtons.Of(IconKeys.DocumentText, "Plans: the agent's plans in this folder", () => PlansRequested?.Invoke(this, PlansButton!));
+        PlansButton = plans;
+        SetDock(plans, Dock.Right);
         SetDock(account, Dock.Right);
+        header.Children.Add(plans);
         header.Children.Add(account);
         header.Children.Add(agent);
         SetDock(header, Dock.Top);
         SetDock(composer, Dock.Bottom);
         SetDock(Review, Dock.Bottom);
+        SetDock(Todos, Dock.Bottom);
         Children.Add(header);
         Children.Add(composer);
         Children.Add(Review);
+        Children.Add(Todos);
         Children.Add(new Panel { Children = { idle, conversation } });
     }
 
@@ -164,6 +170,18 @@ public sealed class ChatView : DockPanel
 
     /// <summary>The files the agent changed, waiting for review, above the box.</summary>
     public ReviewBar Review { get; } = new();
+
+    /// <summary>The agent's to-do list, above the review.</summary>
+    public TodoBar Todos { get; } = new();
+
+    /// <summary>The header's button that lists the plans.</summary>
+    public Button? PlansButton { get; private set; }
+
+    /// <summary>A plan's file was asked to be opened as a page, by its path.</summary>
+    public event EventHandler<string>? PlanRequested;
+
+    /// <summary>The list of the folder's plans was asked for, under the button given.</summary>
+    public event EventHandler<Button>? PlansRequested;
 
     /// <summary>The person sent a message, its text given.</summary>
     public event EventHandler<string>? SendRequested;
@@ -393,14 +411,15 @@ public sealed class ChatView : DockPanel
     }
 
     /// <summary>The agent's question as a card in its reply; the click, or Stop, answers it.</summary>
-    public Task<string?> Ask(PermissionRequest request, IReadOnlyList<ChatChange> changes)
+    public Task<string?> Ask(PermissionRequest request, IReadOnlyList<ChatChange> changes, ChatPlan? plan = null)
     {
         if (reply is null)
         {
             return Task.FromResult<string?>(null);
         }
         Close();
-        ApprovalCard card = new(request, changes, Browse);
+        ApprovalCard card = new(request, changes, Browse, plan);
+        card.PlanRequested += (_, path) => PlanRequested?.Invoke(this, path);
         reply.Children.Add(card);
         asking.Add(card);
         doing.Text = "Waiting for your answer";
@@ -425,6 +444,20 @@ public sealed class ChatView : DockPanel
         }
         reply = null;
         Working(false, null);
+        ToEnd();
+    }
+
+    /// <summary>A note in the agent's reply as it goes ("Sent your edited plan"), muted, or as an error.</summary>
+    public void Noted(string text, bool error = false)
+    {
+        if (reply is null)
+        {
+            return;
+        }
+        Close();
+        TextBlock body = new() { Classes = { error ? StyleClasses.Error : StyleClasses.Muted }, Text = text, TextWrapping = TextWrapping.Wrap };
+        reply.Children.Add(body);
+        parts.Add(new Part(string.Empty, new StringBuilder(text), body, null));
         ToEnd();
     }
 

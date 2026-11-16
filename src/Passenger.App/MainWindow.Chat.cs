@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.ComponentModel;
+using Avalonia.Controls;
 using Avalonia.Threading;
 using Passenger.Acp;
 using Passenger.App.Chat;
@@ -17,6 +18,7 @@ public partial class MainWindow
 {
     private readonly ChatReview chatReview = new();
     private readonly ConcurrentDictionary<string, string[]> chatEdits = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, (string Path, string Text)> chatPlans = new(StringComparer.Ordinal);
     private ChatAgent? chatAgent;
     private CancellationTokenSource? chatTurn;
 
@@ -48,6 +50,8 @@ public partial class MainWindow
                 view.CancelQuestions();
                 chatTurn?.Cancel();
             };
+            view.PlanRequested += (_, path) => OpenChatPlan(path);
+            view.PlansRequested += (_, button) => ShowChatPlans(button);
             view.ConfigChosen += (_, chosen) =>
             {
                 Task setting = SetChatConfigAsync(view, chosen.Id, chosen.Value);
@@ -196,8 +200,10 @@ public partial class MainWindow
         agent.Session.CommandsChanged += commands => OnWindowThread(() => view.ShowCommands(commands));
         agent.Session.AccountChanged += account => OnWindowThread(() => view.ShowAccount(account));
         agent.Session.UsageUpdated += usage => OnWindowThread(() => view.ShowUsage(usage));
+        agent.Session.PlanUpdated += plan => OnWindowThread(() => view.Todos.Show(plan.Entries));
         agent.Session.ToolCallChanged += call =>
         {
+            Planned(call);
             (string[] paths, bool done) = Reviewed(call);
             OnWindowThread(() =>
             {
@@ -214,10 +220,16 @@ public partial class MainWindow
         agent.Session.AskPermission = async (request, _) =>
         {
             Reviewed(request.ToolCall);
+            ChatPlan? plan = Planned(request.ToolCall);
             ChatChange[] changes = [.. request.ToolCall.Diffs.Select(diff => ChatChange.Of(diff.Path, diff.OldText, diff.NewText))];
             TaskCompletionSource<Task<string?>> shown = new(TaskCreationOptions.RunContinuationsAsynchronously);
-            OnWindowThread(() => shown.SetResult(view.Ask(request, changes)));
-            return await await shown.Task;
+            OnWindowThread(() => shown.SetResult(view.Ask(request, changes, plan)));
+            string? answer = await await shown.Task;
+            if (plan is not null && answer is not null && request.Options.Any(option => option.Id == answer && option.Kind.StartsWith("allow", StringComparison.Ordinal)))
+            {
+                await BuildEditedPlanAsync(agent, view, request.ToolCall.Id, plan);
+            }
+            return answer;
         };
         IdeErrors.Observe(agent.Session.Connection.Completion.ContinueWith(_ => OnWindowThread(() =>
         {
@@ -227,6 +239,101 @@ public partial class MainWindow
                 view.Say("The agent ended", error: true, offerConnect: true);
             }
         }), TaskScheduler.Default));
+    }
+
+    /// <summary>Writes a plan the agent asks to build to the folder's plans (<see cref="ChatPlans"/>), once a call, on the
+    /// agent's connection's thread: the call that leaves plan mode carries the plan's Markdown. The plan's card's file.</summary>
+    private ChatPlan? Planned(ToolCall call)
+    {
+        if (call.Kind != "switch_mode" || Folder is not { } root)
+        {
+            return null;
+        }
+        if (!chatPlans.TryGetValue(call.Id, out (string Path, string Text) saved))
+        {
+            if (call.Texts.FirstOrDefault(text => text.Trim().Length > 0) is not { } plan)
+            {
+                return null;
+            }
+            try
+            {
+                saved = (ChatPlans.Save(root, plan, DateTime.Now), plan);
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+            {
+                IdeErrors.Write($"Chat plan: {error.Message}");
+                return null;
+            }
+            chatPlans[call.Id] = saved;
+        }
+        return new ChatPlan(saved.Path, PathNames.Shown(saved.Path, root), ChatPlans.TitleOf(saved.Text));
+    }
+
+    /// <summary>Where the person changed a plan's file before Build, tells the agent to build their version: steered into
+    /// the turn, so it follows the answer that leaves plan mode, and said in the chat.</summary>
+    private async Task BuildEditedPlanAsync(ChatAgent agent, ChatView view, string callId, ChatPlan plan)
+    {
+        string now;
+        try
+        {
+            now = await File.ReadAllTextAsync(plan.Path);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            return;
+        }
+        if (!chatPlans.TryGetValue(callId, out (string Path, string Text) saved) || Normalized(now) == Normalized(saved.Text))
+        {
+            return;
+        }
+        try
+        {
+            await agent.Session.SteerAsync($"I edited the plan before approving it. Build it as it is now in {plan.Shown}:\n\n{now}");
+            OnWindowThread(() => view.Noted($"Sent your edited plan from {plan.Shown}"));
+        }
+        catch (AcpError error)
+        {
+            OnWindowThread(() => view.Noted($"Could not send your edited plan: {error.Message}", error: true));
+        }
+
+        static string Normalized(string text) => text.Replace("\r\n", "\n", StringComparison.Ordinal).Trim();
+    }
+
+    /// <summary>A plan's file as a page: open in the editor with the Markdown preview beside it, its diagrams drawn.</summary>
+    private void OpenChatPlan(string path)
+    {
+        if (OpenFile(path) is null && !Editors.ShowsMarkdownPreview)
+        {
+            ToggleMarkdownPreview();
+        }
+    }
+
+    /// <summary>The folder's plans under the Plans button, the newest first, each opening as a page.</summary>
+    private void ShowChatPlans(Button under)
+    {
+        MenuFlyout menu = new();
+        IReadOnlyList<string> plans = Folder is { } root ? ChatPlans.List(root) : [];
+        foreach (string path in plans)
+        {
+            string title;
+            try
+            {
+                title = ChatPlans.TitleOf(File.ReadAllText(path));
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+            {
+                title = Path.GetFileName(path);
+            }
+            MenuItem item = new() { Header = $"{title}  ·  {File.GetLastWriteTime(path):d MMM HH:mm}" };
+            ToolTip.SetTip(item, PathNames.Shown(path, Folder));
+            item.Click += (_, _) => OpenChatPlan(path);
+            menu.Items.Add(item);
+        }
+        if (plans.Count == 0)
+        {
+            menu.Items.Add(new MenuItem { Header = "No plans yet: ask in the agent's Plan mode", IsEnabled = false });
+        }
+        menu.ShowAt(under);
     }
 
     /// <summary>Takes the files an edit names for review before the agent writes them (it names them first), and their

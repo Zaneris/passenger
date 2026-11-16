@@ -122,6 +122,17 @@ public sealed class AcpSession : IAsyncDisposable
         TakeConfig(result["configOptions"]);
     }
 
+    /// <summary>Puts a message into the turn the agent is working on, rather than after it (ACP's steering, which the
+    /// Claude adapter offers): while the agent waits on a question, the message follows the question's answer.</summary>
+    public async Task SteerAsync(string text, CancellationToken cancel = default)
+    {
+        await connection.RequestAsync("_session/steering", new JsonObject
+        {
+            ["sessionId"] = RequireSession(),
+            ["prompt"] = new JsonArray(new JsonObject { ["type"] = "text", ["text"] = text }),
+        }, cancel);
+    }
+
     /// <summary>The agent's past conversations in <paramref name="folder"/>, the latest first as the agent lists them.</summary>
     public async Task<IReadOnlyList<PastSession>> ListSessionsAsync(string folder, CancellationToken cancel = default)
     {

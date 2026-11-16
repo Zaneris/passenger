@@ -28,6 +28,9 @@ internal sealed class MarkdownPage(Action<Uri> follow)
     /// <summary>A picture's decode, off the window's thread, null when it could not be read.</summary>
     public Func<string, Task<Bitmap?>>? Load { get; init; }
 
+    /// <summary>Whether its Mermaid blocks are drawn as diagrams (<see cref="MarkdownDiagram"/>): a file's preview.</summary>
+    public bool DrawsDiagrams { get; init; }
+
     /// <summary>What a link's target opens: a web address, or on a page of local links a relative one (a file beside it or
     /// a heading); null for anything else, which is drawn as its words.</summary>
     public Uri? LinkOf(string target)
