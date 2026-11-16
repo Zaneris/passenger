@@ -40,9 +40,10 @@ public sealed record GherkinFormatOptions(string Indent, bool IndentFeatureChild
 }
 
 /// <summary>A .feature file laid out (<see cref="GherkinFormatOptions"/>): each header, tag, step, table row and doc string
-/// at its level, each table's columns aligned, a doc string's lines kept as they stand within it, a comment at the level of
-/// what follows it, a step's keyword and text one space apart, descriptions and lines Gherkin reads as nothing left as
-/// written, every line's trailing whitespace gone but a doc string's own. Lines and their breaks stay where they are. Pure.</summary>
+/// at its level, each table's columns aligned (what a row holds after its last bar kept after its cells), a doc string's
+/// lines kept as they stand within it, a comment at the level of what follows it, a step's keyword and text one space
+/// apart, descriptions and lines Gherkin reads as nothing left as written, every line's trailing whitespace gone but a doc
+/// string's own. Lines and their breaks stay where they are. Pure.</summary>
 public static class GherkinFormatter
 {
     public static string Format(string text, GherkinFormatOptions options, string language)
@@ -147,12 +148,36 @@ public static class GherkinFormatter
                     bool right = options.RightAlignNumbers && decimal.TryParse(row.Cells[c].Value, NumberStyles.Number, CultureInfo.InvariantCulture, out _);
                     laidRow.Append(pad).Append(right ? cell.PadLeft(widths[c]) : cell.PadRight(widths[c])).Append(pad).Append('|');
                 }
+                if (Unfinished(row) is { Length: > 0 } unfinished)
+                {
+                    laidRow.Append(pad).Append(unfinished);
+                }
                 levels[row.Line] = level;
                 laid[row.Line] = laidRow.ToString();
             }
         }
 
         string Written(FeatureRow row, int cell) => lines[row.Line].TrimEnd('\r').Substring(row.Cells[cell].Column, row.Cells[cell].Length);
+
+        // What a row holds past the bar closing its last cell, which no cell reads, as written and trimmed.
+        string Unfinished(FeatureRow row)
+        {
+            string written = lines[row.Line].TrimEnd('\r');
+            int bars = 0;
+            for (int at = 0; at < written.Length; at++)
+            {
+                // A backslash with fewer than two characters after it escapes nothing, so a row's last "\|" closes its cell.
+                if (written[at] == '\\' && at + 2 < written.Length)
+                {
+                    at++;
+                }
+                else if (written[at] == '|' && ++bars > row.Cells.Count)
+                {
+                    return written[(at + 1)..].Trim();
+                }
+            }
+            return string.Empty;
+        }
 
         void DocString(FeatureDocString doc, int level)
         {

@@ -97,4 +97,31 @@ public sealed class GherkinFormatterTests
         Assert.Equal("Feature: F\r\nScenario: S\r\n    Given one\r\n        | a |\r\n",
             Format("Feature: F\r\nScenario: S\r\nGiven one\r\n|a|\r\n"));
     }
+
+    [Fact]
+    public void What_a_row_holds_after_its_last_bar_stays_after_its_aligned_cells()
+    {
+        Assert.Equal(
+            "Feature: F\nScenario: S\n    Given table\n" +
+            "        | name\n" +
+            "        | foo | bar\n" +
+            "        | foo | bar baz\n" +
+            "        |\n" +
+            "        | foo |\n" +
+            "        | foo | bar \\| baz\n" +
+            "        |   5 |   6 | 11\n" +
+            "        | foo | bar |\n" +
+            "\nScenario Outline: O\n    Given <a>\n\nExamples:\n    | a | sum\n    | 1 | 1 |\n",
+            Format(
+                "Feature: F\nScenario: S\nGiven table\n" +
+                "    | name\n" +
+                "    | foo |    bar  \n" +
+                "    | foo  |  bar baz  \n" +
+                "    |   \n" +
+                "    | foo   |    \n" +
+                "    | foo   | bar \\| baz\n" +
+                "    | 5 | 6 | 11\n" +
+                "    | foo   | bar |\n" +
+                "\nScenario Outline: O\nGiven <a>\n\nExamples:\n|a|sum\n|1|1|\n"));
+    }
 }
