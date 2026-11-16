@@ -508,6 +508,12 @@
     <Compile Include="../../src/Passenger.App/Mcp/AgentAnswers.cs" Link="App/AgentAnswers.cs" />
   </ItemGroup>
 
+  <!-- How the person's question shows an agent's call's arguments, from their text alone, compiled in since its project is
+       the app's. -->
+  <ItemGroup>
+    <Compile Include="../../src/Passenger.App/Mcp/AskedArguments.cs" Link="App/AskedArguments.cs" />
+  </ItemGroup>
+
   <!-- The command lines Settings give an agent to add Passenger with, from the executable's path and the shell alone,
        compiled in since its project is the app's. -->
   <ItemGroup>

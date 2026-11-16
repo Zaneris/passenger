@@ -350,8 +350,7 @@ public partial class MainWindow
 
     private static Control AgentArguments(IReadOnlyList<(string Name, string Value)> arguments)
     {
-        const int Longest = 400;
-        Border frame = CodeBlock.Of(string.Join('\n', arguments.Select(a => $"{a.Name}: {(a.Value.Length > Longest ? a.Value[..Longest] + "…" : a.Value)}")));
+        Border frame = CodeBlock.Of(Mcp.AskedArguments.Of(arguments));
         frame.MaxHeight = 200;
         Control text = frame.Child!;
         frame.Child = null;
