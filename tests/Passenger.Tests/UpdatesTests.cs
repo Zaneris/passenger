@@ -301,6 +301,59 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
         window.Close();
     }
 
+    /// <summary>A release's notes marked a security release's say what it fixes in their Security section's first line.</summary>
+    private static string SecurityNotes(string version) =>
+        $"{ReleaseNotes.SecurityMarker}\nPassenger {version} closes a hole.\n\n## Security\n\n"
+        + "- **Agents reach only the open folder** ([#1](https://github.com/Zaneris/passenger/issues/1)): a path outside it is refused.\n- Another fix.\n\n## Fixed\n\n- Something else.\n";
+
+    /// <summary>What <see cref="SecurityNotes"/> says the release fixes, in plain words.</summary>
+    private const string SecurityFixes = "Agents reach only the open folder (#1): a path outside it is refused";
+
+    [AvaloniaFact]
+    public void A_release_whose_notes_mark_it_a_security_release_is_named_one_saying_what_it_fixes_and_one_unmarked_is_said_as_before()
+    {
+        using IDisposable theme = TestsTheme();
+        string newer = Bumped(1, 0);
+        github.Answer = Release($"v{newer}", body: SecurityNotes(newer));
+        MainWindow window = Started();
+        window.WatchForUpdates();
+        Ui.Settle();
+        Assert.True(Notice(window) == $"Security update: Passenger {newer} available", $"v{newer}'s notes mark it a security release, but {UpdatesSaid(window)}");
+        string tip = ToolTip.GetTip(window.FindControl<Button>("UpdateButton")!) as string ?? string.Empty;
+        Assert.StartsWith($"Passenger {newer} is a security update: {SecurityFixes}\nInstall it as soon as you can.\n", tip, StringComparison.Ordinal);
+        Assert.Equal($"Passenger {newer} is a security update: {SecurityFixes}. Install it soon", window.Status);
+        Assert.Contains(Ui.IdeLog().Split('\n'), line => line.Contains($"Updates: Passenger {newer} is out (v{newer}; this is {Product.Version}), a security release: ", StringComparison.Ordinal));
+        window.Close();
+
+        string later = Bumped(1, 1);
+        github.Answer = Release($"v{later}", body: $"Passenger {later} fixes things.\n\n## Security\n\n- Not marked a security release.\n");
+        window = Started();
+        string? before = window.Status;
+        window.WatchForUpdates();
+        Ui.Settle();
+        Assert.True(Notice(window) == $"Passenger {later} available", $"v{later}'s notes carry no mark, but {UpdatesSaid(window)}");
+        Assert.DoesNotContain("security", ToolTip.GetTip(window.FindControl<Button>("UpdateButton")!) as string ?? string.Empty, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(before, window.Status);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void An_installed_Passenger_offers_to_restart_into_a_security_release_at_once_when_it_is_ready()
+    {
+        using IDisposable theme = TestsTheme();
+        InstalledCopy copy = InstalledCopy.Make(images, TestFolders.Create("installed-"));
+        string newer = Bumped(1, 0);
+        github.Answer = Release($"v{newer}", files: copy.Update(newer), body: SecurityNotes(newer));
+        MainWindow window = Started(copy.Updater());
+        window.WatchForUpdates();
+        Ui.WaitFor(() => Notice(window) == $"Restart to install security update Passenger {newer}", () => $"the status bar to offer the security update once v{newer} had downloaded: {UpdatesSaid(window)}");
+        Assert.Equal($"Passenger {newer} is a security update: {SecurityFixes}, downloaded and checked", window.Status);
+        Assert.Equal("restart into it now", window.StatusPlace?.Name);
+        Assert.StartsWith($"Passenger {newer} is a security update: {SecurityFixes}\nRestart into it now rather than later.\n",
+            ToolTip.GetTip(window.FindControl<Button>("UpdateButton")!) as string ?? string.Empty, StringComparison.Ordinal);
+        window.Close();
+    }
+
     [AvaloniaFact]
     public void An_installed_Passenger_downloads_a_newer_release_in_the_background_checks_it_and_offers_Restart_to_Update()
     {
@@ -1643,7 +1696,7 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
 
     /// <summary>A release as GitHub's API gives it, with every download a release publishes; the files given are the
     /// stand-in's to serve, by their names, and the rest GitHub's, which no test downloads.</summary>
-    private StandIn.Reply Release(string tag, bool prerelease = false, bool draft = false, IReadOnlyDictionary<string, byte[]>? files = null)
+    private StandIn.Reply Release(string tag, bool prerelease = false, bool draft = false, IReadOnlyDictionary<string, byte[]>? files = null, string? body = null)
     {
         JsonArray assets = [];
         foreach (string name in Downloads.Union(files?.Keys ?? []))
@@ -1664,6 +1717,7 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
             ["draft"] = draft,
             ["prerelease"] = prerelease,
             ["assets"] = assets,
+            ["body"] = body,
         };
         return new StandIn.Reply(200, release.ToJsonString());
     }

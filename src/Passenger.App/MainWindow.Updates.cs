@@ -14,7 +14,9 @@ namespace Passenger.App;
 /// any other copy says once per version that one is out, linking this system's download, or, for a package manager's
 /// copy, that the package manager updates it. Help, Check for Updates asks when a person wants. The window watching
 /// does it all once for the process, and every window shows its notice and offers Restart to Update, one opened later
-/// too. Every answer is logged; only one a person asked for, or a download that did not land, is said.</summary>
+/// too. Every answer is logged; only one a person asked for, or a download that did not land, is said. A security release
+/// (<see cref="ReleaseNotes.SecurityOf"/>) is named one in the notice, in the warning colour, saying what it fixes and asking
+/// to be put in soon; the status bar says so once, and once it is ready offers to restart into it now.</summary>
 public partial class MainWindow
 {
     /// <summary>The words when there is nothing newer.</summary>
@@ -310,7 +312,7 @@ public partial class MainWindow
                 {
                     if (asker is not null)
                     {
-                        asker.status.Text = $"Passenger {release.Version} is available, and downloading";
+                        asker.status.Text = release.Security is null ? $"Passenger {release.Version} is available, and downloading" : $"{SecurityWords(release)}, and downloading";
                     }
                     if (downloadingRelease?.Version != release.Version)
                     {
@@ -327,10 +329,14 @@ public partial class MainWindow
                 if (!told)
                 {
                     Announced = release.Version;
+                    if (release.Security is not null && asker is null)
+                    {
+                        Say($"{SecurityWords(release)}. Install it soon", new StatusPlace("open its release page", () => Browse(release.Page)));
+                    }
                 }
                 if (asker is not null)
                 {
-                    asker.status.Text = $"Passenger {release.Version} is available";
+                    asker.status.Text = release.Security is null ? $"Passenger {release.Version} is available" : $"{SecurityWords(release)}. Install it soon";
                 }
                 break;
             case ReleaseAnswer.Failed { Reason: var reason } when asker is not null:
@@ -404,6 +410,10 @@ public partial class MainWindow
             case UpdateOutcome.Ready:
                 readyRelease = release;
                 ShowReady(release);
+                if (release.Security is not null)
+                {
+                    Say($"{SecurityWords(release)}, downloaded and checked", new StatusPlace("restart into it now", () => Request(AppActions.RestartToUpdate)));
+                }
                 break;
             case UpdateOutcome.ByHand { Command: var command }:
                 byHand = command;
@@ -517,22 +527,33 @@ public partial class MainWindow
         }
     }
 
+    /// <summary>What a security release fixes, as its notice and the status bar say it.</summary>
+    private static string SecurityWords(LatestRelease release) =>
+        release.Security is { Length: > 0 } fixes ? $"Passenger {release.Version} is a security update: {fixes}" : $"Passenger {release.Version} is a security update";
+
+    /// <summary>A security release's first lines in its notice's tip, asking for it soon; nothing for any other release.</summary>
+    private static string SecurityTip(LatestRelease release, string soon) => release.Security is null ? string.Empty : $"{SecurityWords(release)}\n{soon}\n";
+
     /// <summary>The release as a link to this system's download (or its page, for a release without one).</summary>
     private void ShowUpdate(LatestRelease release, Uri link, string? why = null)
     {
         shownRelease = release with { Link = link };
         string opens = link == release.Link && release.Asset is { } asset ? $"Download {asset}" : $"Open the release page of {release.Tag}";
-        Notice(UpdateNotice.Available, IconKeys.ArrowDown, TokenKeys.Link, $"Passenger {release.Version} available",
-            $"{(why is null ? string.Empty : why + "\n")}{opens}\n{link}");
+        bool security = release.Security is not null;
+        Notice(UpdateNotice.Available, security ? IconKeys.Lock : IconKeys.ArrowDown, security ? TokenKeys.Warning : TokenKeys.Link,
+            security ? $"Security update: Passenger {release.Version} available" : $"Passenger {release.Version} available",
+            $"{SecurityTip(release, "Install it as soon as you can.")}{(why is null ? string.Empty : why + "\n")}{opens}\n{link}");
     }
 
     /// <summary>The download's progress, then, once it has all come (100), its check, which takes a while for a disk image.</summary>
     private void ShowDownloading(LatestRelease release, int percent)
     {
         shownRelease = release;
-        Notice(UpdateNotice.Downloading, IconKeys.ArrowDown, TokenKeys.Link,
-            percent < 100 ? $"Downloading Passenger {release.Version}: {percent}%" : $"Checking Passenger {release.Version}…",
-            $"Passenger {release.Version} is downloading from GitHub, to be checked and installed when Passenger restarts.\nClick to open its release page.");
+        bool security = release.Security is not null;
+        string named = security ? $"security update Passenger {release.Version}" : $"Passenger {release.Version}";
+        Notice(UpdateNotice.Downloading, security ? IconKeys.Lock : IconKeys.ArrowDown, security ? TokenKeys.Warning : TokenKeys.Link,
+            percent < 100 ? $"Downloading {named}: {percent}%" : $"Checking {named}…",
+            $"{SecurityTip(release, "Restart into it once it is ready.")}Passenger {release.Version} is downloading from GitHub, to be checked and installed when Passenger restarts.\nClick to open its release page.");
     }
 
     private void ShowReady(LatestRelease release)
@@ -541,8 +562,10 @@ public partial class MainWindow
         string how = SelfUpdate?.Asks is { } asks
             ? $"Click to restart into it.\n{asks}, and only Restart to Update installs it."
             : "Click to restart into it;\notherwise it installs when Passenger closes.";
-        Notice(UpdateNotice.Ready, IconKeys.Rerun, TokenKeys.Link, $"Restart to update to Passenger {release.Version}",
-            $"Passenger {release.Version} is downloaded and checked. {how}{RelaysEnded()}");
+        bool security = release.Security is not null;
+        Notice(UpdateNotice.Ready, IconKeys.Rerun, security ? TokenKeys.Warning : TokenKeys.Link,
+            security ? $"Restart to install security update Passenger {release.Version}" : $"Restart to update to Passenger {release.Version}",
+            $"{SecurityTip(release, "Restart into it now rather than later.")}Passenger {release.Version} is downloaded and checked. {how}{RelaysEnded()}");
     }
 
     /// <summary>A release downloaded and checked that this copy cannot install itself: the command that does, which a
@@ -550,8 +573,10 @@ public partial class MainWindow
     private void ShowByHand(LatestRelease release, string command)
     {
         shownRelease = release with { Link = release.Page };
-        Notice(UpdateNotice.ByHand, IconKeys.ArrowDown, TokenKeys.Link, $"Passenger {release.Version} ready to install",
-            $"Passenger {release.Version} is downloaded and checked, but this user cannot write {SelfUpdate?.Installed}, where it is installed for everyone.\n"
+        bool security = release.Security is not null;
+        Notice(UpdateNotice.ByHand, security ? IconKeys.Lock : IconKeys.ArrowDown, security ? TokenKeys.Warning : TokenKeys.Link,
+            security ? $"Security update: Passenger {release.Version} ready to install" : $"Passenger {release.Version} ready to install",
+            $"{SecurityTip(release, "Install it as soon as you can.")}Passenger {release.Version} is downloaded and checked, but this user cannot write {SelfUpdate?.Installed}, where it is installed for everyone.\n"
             + $"To install it, run this in a terminal, then start Passenger again:\n{command}\nClick to copy the command.");
     }
 

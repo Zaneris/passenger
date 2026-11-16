@@ -4,7 +4,9 @@
 # version is the tag's, else VERSION's (a dry run from a branch). A version with none takes an annotated tag's message
 # when it says more than its name, else the first line of each commit since the previous vX.Y.Z tag (every commit, for
 # the first release), cut to GitHub's 125,000 characters with a link to the rest. Notes still the stand-in (their
-# "<!-- Stand-in" line) fail a release PUBLISH=true publishes, and only warn otherwise.
+# "<!-- Stand-in" line) fail a release PUBLISH=true publishes, and only warn otherwise. A security release's notes carry
+# the line "<!-- Security release -->" and a Security section ("## Security"), whose first line, what it fixes, every
+# Passenger's update notice says (ReleaseNotes.SecurityOf); notes so marked without that line fail.
 set -eu
 fail() {
     echo "release-notes: $*" >&2
@@ -29,6 +31,10 @@ if [ -n "$version" ] && [ -f "$notes" ]; then
     if grep -q '^<!-- Stand-in' "$notes"; then
         [ "${PUBLISH:-}" != true ] || fail "docs/release-notes/$version.md is still the stand-in: write the notes before publishing $version"
         echo "release-notes: docs/release-notes/$version.md is still the stand-in, which a published release refuses" >&2
+    fi
+    if grep -q '^[[:space:]]*<!-- Security release -->[[:space:]]*$' "$notes"; then
+        awk '/^#+[[:space:]]+[Ss]ecurity[[:space:]]*$/ { inside = 1; next } inside && NF { found = !/^#/; exit } END { exit !found }' "$notes" \
+            || fail "docs/release-notes/$version.md is marked a security release, but no line follows its Security section's heading to say what it fixes"
     fi
     cat "$notes"
     exit 0

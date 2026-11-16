@@ -44,6 +44,10 @@ public sealed record LatestRelease(string Version, string Tag, Uri Link, string?
     /// <summary>Every file the release carries that downloads over http or https, by name: what an update downloads.</summary>
     public IReadOnlyList<ReleaseFile> Files { get; init; } = [];
 
+    /// <summary>What a security release says it fixes, its notes' Security section's first line (<see cref="ReleaseNotes.SecurityOf"/>),
+    /// empty where they say nothing more; null for any other release.</summary>
+    public string? Security { get; init; }
+
     /// <summary>The file the release carries by this name, or null.</summary>
     public ReleaseFile? File(string name) => Files.FirstOrDefault(f => f.Name == name);
 }
@@ -155,8 +159,9 @@ public static partial class Releases
         Uri? download = files.FirstOrDefault(f => f.Name == asset)?.Url;
         Uri page = WebAddress.Of(release.HtmlUrl) ?? ReleaseFeed.GitHubReleases;
         Uri link = download ?? page;
-        return new ReleaseAnswer.Newer(new LatestRelease(number, tag, link, download is null ? null : asset) { Page = page, Files = files },
-            $"Passenger {number} is out ({tag}; this is {running}): {link}");
+        string? security = release.Body is { } body ? ReleaseNotes.SecurityOf(body) : null;
+        return new ReleaseAnswer.Newer(new LatestRelease(number, tag, link, download is null ? null : asset) { Page = page, Files = files, Security = security },
+            $"Passenger {number} is out ({tag}; this is {running}){(security is null ? string.Empty : ", a security release")}: {link}");
     }
 
     private static ReleaseAnswer.Failed Failed(ReleaseFeed feed, string reason) =>
@@ -167,9 +172,9 @@ public static partial class Releases
     [GeneratedRegex(@"^[vV]?(?<version>\d+(?:\.\d+){1,3})(?<label>-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$")]
     private static partial Regex Tag();
 
-    /// <summary>What Passenger reads of GitHub's release: its tag and page, whether it is a draft or a pre-release, and
-    /// its downloads by name.</summary>
-    private sealed record GitHubRelease(string? TagName, string? HtmlUrl, bool Draft, bool Prerelease, GitHubAsset[]? Assets);
+    /// <summary>What Passenger reads of GitHub's release: its tag and page, whether it is a draft or a pre-release, its
+    /// downloads by name, and its notes.</summary>
+    private sealed record GitHubRelease(string? TagName, string? HtmlUrl, bool Draft, bool Prerelease, GitHubAsset[]? Assets, string? Body);
 
     private sealed record GitHubAsset(string? Name, string? BrowserDownloadUrl, long Size);
 }
