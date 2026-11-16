@@ -54,7 +54,7 @@ public sealed partial class SettingsDialog : IdeWindow
     /// <summary>The names of <see cref="DiscordShown"/>'s choices, in its order.</summary>
     public static readonly string[] DiscordChoices = ["Passenger only", "The solution", "The solution and the file"];
 
-    private static readonly string[] Order = [Appearance, SystemPage, UpdatesPage, ExplorerPage, EditorPage, CodeFoldingPage, PostfixPage, XamlCodeStylePage, GDScriptCodeStylePage, LiveTemplatesPage,
+    private static readonly string[] Order = [Appearance, SystemPage, TrustPage, UpdatesPage, ExplorerPage, EditorPage, CodeFoldingPage, PostfixPage, XamlCodeStylePage, GDScriptCodeStylePage, LiveTemplatesPage,
         VersionControlPage, BuildPage, RunPage, HotReloadPage, NodePage, EslintPage, PrettierPage, SchemasPage, StylesheetsPage, DockerPage, GodotPage, TerminalPage, McpPage, DiscordPage, DiagnosticsPage, KeymapPage];
 
     /// <summary>The names of Attributes format's choices, in <see cref="Passenger.Xaml.Features.XamlAttributeStyle"/>'s
@@ -107,10 +107,12 @@ public sealed partial class SettingsDialog : IdeWindow
     /// <param name="preview">An optional temporary visual overlay, released when this dialog closes.</param>
     /// <param name="agents">The agents' setup the MCP Server page shows: this copy's, and the window's folder.</param>
     /// <param name="editorConfigs">What the window's folder's .editorconfig files set over the rows, followed while it is open.</param>
+    /// <param name="trust">The folders the person answered for, which the Trusted Folders page shows, where the window keeps them.</param>
     public SettingsDialog(AppSettings current, ActionRegistry actions, Action<AppSettings, AppSettings> apply, Mcp.AgentSetup? agents = null, SettingsPreview? preview = null,
-        FolderEditorConfigs? editorConfigs = null)
+        FolderEditorConfigs? editorConfigs = null, TrustAnswers? trust = null)
     {
         this.apply = apply;
+        this.trust = trust;
         this.preview = preview;
         this.editorConfigs = editorConfigs;
         Closed += (_, _) => preview?.Dispose();
@@ -210,6 +212,7 @@ public sealed partial class SettingsDialog : IdeWindow
             apply(applied, Working);
             applied = Working;
             preview?.Update(applied, Working);
+            ApplyTrust();
         }
     }
 
@@ -307,6 +310,7 @@ public sealed partial class SettingsDialog : IdeWindow
         Add(SystemPage, "Save when idle for", new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { idle, NumberSetting.WithUnit(seconds, "seconds") } },
             "autosave files idle inactive seconds");
 
+        AddTrust();
         Add(Declared.CheckForUpdates);
 
         Add(Declared.AlwaysSelectOpenedFile);

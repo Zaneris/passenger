@@ -288,7 +288,8 @@ public sealed class ProjectSession : IAsyncDisposable
     /// refused (<see cref="Refusals.Untrusted"/>). A session with no folder has none to guard.</summary>
     public bool Trusted { get; private set; } = true;
 
-    /// <summary>The folder came to be trusted, and what the session held back began.</summary>
+    /// <summary>The folder came to be trusted, and what the session held back began; or its trust was taken back, and what
+    /// trusting began ended where it could be.</summary>
     public event EventHandler? TrustChanged;
 
     /// <summary>The folders a trusted folder's solution reaches outside it, its projects' beside it: trusted with it while
@@ -331,6 +332,69 @@ public sealed class ProjectSession : IAsyncDisposable
         ReadBuildChoices();
         Web?.Trust();
         TrustChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>The folder's trust was taken back: what trusting began is held back where it can be, the language server
+    /// (and one started ahead) ended, the project hosts handed out for it ended, which may hold its tasks loaded, the
+    /// folders it lent let go, Git's reads without the repository's own configuration, and its web languages on Passenger's
+    /// own TypeScript; what the person started runs on until it ends (<see cref="StillRunning"/>). Once.</summary>
+    public void Untrust()
+    {
+        UiThread.Check();
+        if (!Trusted || IsEnded || Folder is not { } folder)
+        {
+            return;
+        }
+        Trusted = false;
+        WorkspaceTrust.Lend(this, []);
+        IdeErrors.Write($"Trust taken back from {folder}: none of its code runs from now on");
+        // Untrusted, it ends the server and starts none.
+        StartCSharp();
+        IdeErrors.Observe(EndAhead());
+        IdeErrors.Observe(BackgroundWork.Run(() => ProjectHosts.EndServingAsync(folder, $"the trust of {folder} was taken back")));
+        IdeErrors.Observe(Vcs.RefreshAsync());
+        Web?.Untrust();
+        TrustChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>What of the folder's code the person started still runs, each as a sentence names it: the build, the
+    /// program, the debugged program, the profiled program, the tests, the Aspire application, the containers, the game.</summary>
+    public IReadOnlyList<string> StillRunning()
+    {
+        List<string> running = [];
+        if (Builder.IsRunning)
+        {
+            running.Add("the build");
+        }
+        if (RunProgram.IsRunning)
+        {
+            running.Add("the program");
+        }
+        if (Debug.IsDebugging)
+        {
+            running.Add("the debugged program");
+        }
+        if (Profiled is not null)
+        {
+            running.Add("the profiled program");
+        }
+        if (Tests.IsBusy)
+        {
+            running.Add("the tests");
+        }
+        if (Aspire.IsRunning)
+        {
+            running.Add("the Aspire application");
+        }
+        if (ContainerRun is { IsStopped: false })
+        {
+            running.Add("the containers");
+        }
+        if (games.Count > 0)
+        {
+            running.Add("the game");
+        }
+        return running;
     }
 
     /// <summary>The solution or project opened by name, which a folder with several keeps over the solution its name would

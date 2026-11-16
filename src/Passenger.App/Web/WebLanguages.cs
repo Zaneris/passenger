@@ -76,7 +76,7 @@ public sealed class WebLanguages : IAsyncDisposable
     private bool asksDockerHub;
     private bool disposed;
 
-    /// <summary>Whether the folder was trusted as the servers started, which its trust given later starts TypeScript's again for.</summary>
+    /// <summary>Whether the folder is trusted as the servers know it, which its trust given or taken back later starts TypeScript's again for.</summary>
     private bool trusted;
 
     /// <summary>The variable that shortens how long GDScript's server waits, no GDScript open, before it is let go.</summary>
@@ -568,6 +568,28 @@ public sealed class WebLanguages : IAsyncDisposable
         ServerPlace place = new(WebServerKind.TypeScript, null);
         if (servers.TryGetValue(place, out NodeServer? server))
         {
+            Replace(place, server);
+        }
+        Recheck();
+    }
+
+    /// <summary>The folder's trust was taken back: ESLint and Prettier end, TypeScript's server starts again on Passenger's
+    /// own TypeScript, and a GDScript server on a headless Godot editor, which loads the project's native extensions, ends
+    /// for one on the person's own editor where it runs.</summary>
+    public void Untrust()
+    {
+        UiThread.Check();
+        if (disposed || !trusted)
+        {
+            return;
+        }
+        trusted = false;
+        Eslint.Reset();
+        IdeErrors.Observe(Prettier.ResetAsync());
+        foreach ((ServerPlace place, NodeServer server) in servers.Where(s => s.Key.Kind == WebServerKind.TypeScript
+            || s.Key.Kind == WebServerKind.GDScript && (godotAsked.Contains(s.Key) || GodotHeadlessAtOpen)).ToList())
+        {
+            godotAsked.Remove(place);
             Replace(place, server);
         }
         Recheck();

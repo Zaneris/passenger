@@ -66,6 +66,10 @@ public sealed class ProjectHost : IAsyncDisposable
         startedFor = (folder, globalJson);
     }
 
+    /// <summary>The folders the host was handed out for (<see cref="ProjectHosts.ForAsync"/>), whose MSBuild files it may
+    /// have run and whose tasks it may hold loaded; read and written under the hosts' gate.</summary>
+    internal HashSet<string> Served { get; } = new(PathNames.Comparer);
+
     /// <summary>Whether its SDK is the one a folder picks, known without asking dotnet: the host was started for that folder,
     /// whose global.json stands as it did, and found the SDK as dotnet does there.</summary>
     public bool StartedFor(string folder) => PathNames.Same(startedFor.Folder, folder) && Dotnet.GlobalJsonOver(folder) == startedFor.GlobalJson;
@@ -648,6 +652,7 @@ public static class ProjectHosts
             Running.RemoveAll(h => h.HasExited);
             if (Running.FirstOrDefault(h => h.StartedFor(folder)) is { } own)
             {
+                own.Served.Add(folder);
                 return own;
             }
             if (!Directory.Exists(folder))
@@ -670,13 +675,34 @@ public static class ProjectHosts
                 string? root = wanted is null ? null : Dotnet.Find(folder)?.Root;
                 if (root is not null && Running.FirstOrDefault(h => PathNames.Same(Path.TrimEndingDirectorySeparator(h.Sdk), Path.Combine(root, "sdk", wanted!))) is { } same)
                 {
+                    same.Served.Add(folder);
                     return same;
                 }
             }
             ProjectHost started = await ProjectHost.StartAsync(folder, cancel).ConfigureAwait(false);
             PassengerLog.Write($"Project host (process {started.ProcessId}) started with the .NET SDK {started.Version} for {folder}");
+            started.Served.Add(folder);
             Running.Add(started);
             return started;
+        }
+        finally
+        {
+            Gate.Release();
+        }
+    }
+
+    /// <summary>Ends the hosts handed out for a folder or one under it (one whose trust was taken back), which may hold its
+    /// tasks loaded: what each was asked fails as at a host's own end, so another window's asks go to a host started anew.</summary>
+    public static async Task EndServingAsync(string folder, string why)
+    {
+        await Gate.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            foreach (ProjectHost host in Running.Where(h => h.Served.Any(f => PathNames.Within(f, folder))).ToList())
+            {
+                Running.Remove(host);
+                host.End(why);
+            }
         }
         finally
         {

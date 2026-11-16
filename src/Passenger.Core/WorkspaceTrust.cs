@@ -4,8 +4,8 @@ namespace Passenger.Core;
 /// TypeScript, ESLint and Prettier, the programs its Git configuration names, a dotnet its global.json names, Godot's
 /// editor on its native extensions, its built assemblies in a previewer. One answer per folder, a folder trusted with
 /// every folder under it: the person's, which the App keeps in their state and gives here (<see cref="Trust"/>), and
-/// every folder's in a process nobody is asked in (<see cref="TrustEverything"/>). A trust given is never taken back
-/// while the process runs. Any thread.</summary>
+/// every folder's in a process nobody is asked in (<see cref="TrustEverything"/>). A trust given stands until the person
+/// takes it back (<see cref="TakeBack"/>). Any thread.</summary>
 public static class WorkspaceTrust
 {
     /// <summary>Why a folder's code does not run, in the one sentence every refusal of it says.</summary>
@@ -21,8 +21,8 @@ public static class WorkspaceTrust
     /// <summary>Whether this process trusts every folder: nobody is here to ask.</summary>
     public static bool TrustsEverything => Volatile.Read(ref folders).Everything;
 
-    /// <summary>The trust changed: a folder was trusted, or the process came to trust every folder. Raised on the thread
-    /// that changed it.</summary>
+    /// <summary>The trust changed: a folder was trusted or taken back, or the process came to trust every folder. Raised on
+    /// the thread that changed it.</summary>
     public static event EventHandler? Changed;
 
     /// <summary>Every folder trusted from now on, but one held to the person's answer: a Passenger nobody sees (an agent's
@@ -32,6 +32,10 @@ public static class WorkspaceTrust
     /// <summary>Folders trusted from now on, each with every folder under it: the person's answer, and those their state
     /// keeps. Canonical paths.</summary>
     public static void Trust(params IEnumerable<string> trusted) => Change(now => now.With(trusted));
+
+    /// <summary>A folder the person trusted, and every folder trusted under it, no longer trusted from now on: what runs of
+    /// its code is the caller's to end. A folder above it still trusted, or one lent, keeps it trusted. A canonical path.</summary>
+    public static void TakeBack(string folder) => Change(now => now.Without(folder));
 
     /// <summary>The folders a trusted workspace reaches outside its own (a solution's projects beside it), trusted while it is
     /// open, in place of those it lent before; none lets them go. Canonical paths.</summary>
@@ -137,6 +141,13 @@ public sealed record TrustedFolders
             }
         }
         return roots.Count == Roots.Count && roots.SequenceEqual(Roots) ? this : this with { Roots = roots };
+    }
+
+    /// <summary>These with a folder no longer trusted, nor any trusted under it.</summary>
+    public TrustedFolders Without(string folder)
+    {
+        List<string> roots = [.. Roots.Where(r => !PathNames.Within(r, folder))];
+        return roots.Count == Roots.Count ? this : this with { Roots = roots };
     }
 
     private bool TrustsAsGiven(string path) => Roots.Any(r => PathNames.Within(path, r)) || Lent.Any(l => PathNames.Within(path, l.Folder))

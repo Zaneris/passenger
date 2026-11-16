@@ -40,6 +40,10 @@ public static class Refusals
     /// <summary>What the banner over an untrusted folder says.</summary>
     public const string UntrustedSaid = "This folder is not trusted: none of its code runs until you trust it";
 
+    /// <summary>What the banner over a folder no longer trusted says while what the person started there runs on.</summary>
+    public static string UntrustedRunsOn(IReadOnlyList<string> running) =>
+        $"This folder is no longer trusted: {Plural.Listed(running)} {(running.Count == 1 ? "runs" : "run")} on until {(running.Count == 1 ? "it ends" : "they end")} or this window closes";
+
     /// <summary>An agent asked to trust a folder, which only the person does.</summary>
     public const string TrustIsThePersons = "Only the person trusts a folder, with Trust Folder over the editors";
 

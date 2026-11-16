@@ -220,7 +220,7 @@ public partial class MainWindow
     public SettingsDialog ShowSettings()
     {
         SettingsDialog dialog = new(settings, actions!, (from, to) => settingsStore.Apply(from, to), Mcp.AgentSetup.Here(Folder, settings.TerminalShell), settingsStore.BeginPreview(),
-            session.EditorConfigs);
+            session.EditorConfigs, keepsWorkspace ? new TrustAnswers(Store().Trust.Value, ApplyTrust) : null);
         IdeErrors.Observe(dialog.ShowDialog(this));
         return dialog;
     }

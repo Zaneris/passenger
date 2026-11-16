@@ -54,4 +54,18 @@ public sealed class TrustedFoldersTests
         Assert.False(lent.Lending(workspace, []).Trusts(At("repo", "tests")), "A folder stayed trusted once the workspace that lent it let it go");
         Assert.True(lent.Lending(new object(), []).Trusts(At("repo", "tests")), "Another workspace letting its folders go took back this one's");
     }
+
+    [Fact]
+    public void A_folder_taken_back_is_trusted_no_longer_with_every_folder_under_it_while_a_parent_still_trusted_keeps_it()
+    {
+        TrustedFolders trusted = TrustedFolders.None.With([At("work", "app"), At("other")]);
+
+        TrustedFolders taken = trusted.Without(At("work", "app"));
+
+        Assert.False(taken.Trusts(At("work", "app", "src")), "A folder under the one taken back stayed trusted");
+        Assert.True(taken.Trusts(At("other")), "Taking one folder back took back another beside it");
+        Assert.Same(taken, taken.Without(At("work", "app")));
+        Assert.Empty(TrustedFolders.None.With([At("other", "a"), At("other", "b")]).Without(At("other")).Roots);
+        Assert.True(TrustedFolders.None.With([At("work")]).Without(At("work", "app")).Trusts(At("work", "app")), "A folder whose parent stays trusted was taken back");
+    }
 }

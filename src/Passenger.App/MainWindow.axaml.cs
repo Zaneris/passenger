@@ -689,6 +689,8 @@ public partial class MainWindow : IdeWindow
         StopButton.IsEnabled = buildRun.WhyNotStop() is null;
         // A configuration said to be running follows its run as Stop does.
         ShowChosenConfiguration(session.Configurations);
+        // So does the banner of a folder no longer trusted, which names what runs on.
+        ShowTrust();
     }
 
     private void OnDebugStateChanged()

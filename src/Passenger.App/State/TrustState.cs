@@ -31,6 +31,16 @@ public sealed record TrustState : IStateDocument<TrustState>
     /// <summary>The state with a folder opened without trusting.</summary>
     public TrustState Declined(string folder) => Untrusted.Any(f => PathNames.Same(f, folder)) ? this : this with { Untrusted = [.. Untrusted, folder] };
 
+    /// <summary>The state with a folder trusted no longer, and opened without trusting from now on.</summary>
+    public TrustState StoppedTrusting(string folder) => Forgotten(folder).Declined(folder);
+
+    /// <summary>The state with what the person answered for a folder forgotten, so it is asked of again as it opens.</summary>
+    public TrustState Forgotten(string folder) => this with
+    {
+        Trusted = [.. Trusted.Where(f => !PathNames.Same(f, folder))],
+        Untrusted = [.. Untrusted.Where(f => !PathNames.Same(f, folder))],
+    };
+
     private static IReadOnlyList<string> Folders(IReadOnlyList<string>? folders) =>
         [.. (folders ?? []).Where(f => !string.IsNullOrWhiteSpace(f) && Path.IsPathFullyQualified(f)).Distinct(PathNames.Comparer)];
 }

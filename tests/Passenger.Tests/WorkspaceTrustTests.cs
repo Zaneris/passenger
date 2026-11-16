@@ -1,5 +1,6 @@
 using Avalonia.Headless.XUnit;
 using Passenger.App;
+using Passenger.App.Settings;
 using Passenger.Core;
 using Passenger.Vcs;
 
@@ -7,7 +8,7 @@ namespace Passenger.Tests;
 
 /// <summary>A folder the person has not trusted, as their own window opens it: the question asked once and kept, a parent
 /// trusted covering the folders in it, none of the folder's code run (its targets, its Git configuration's programs, the C#
-/// server, its own TypeScript) until Trust Folder, and then each.</summary>
+/// server, its own TypeScript) until Trust Folder, and then each; its trust taken back in Settings, and its answer forgotten.</summary>
 public sealed class WorkspaceTrustTests
 {
     [AvaloniaFact]
@@ -149,6 +150,71 @@ public sealed class WorkspaceTrustTests
         {
             window.Close();
         }
+    }
+
+    [AvaloniaFact]
+    public void Trust_taken_back_in_Settings_ends_the_language_server_says_what_runs_on_and_forgotten_asks_again_at_the_next_open()
+    {
+        string folder = PathNames.Canonical(TestFolders.Create("taken-back-"));
+        string elsewhere = PathNames.Canonical(TestFolders.Create("taken-back-elsewhere-"));
+        File.WriteAllText(Path.Combine(elsewhere, "README.md"), "# Another folder\n");
+        File.WriteAllText(Path.Combine(folder, "Shop.csproj"), TestProjects.Console());
+        File.WriteAllText(Path.Combine(folder, "Program.cs"), "System.Console.WriteLine(\"waiting\");\nSystem.Threading.Thread.Sleep(System.Threading.Timeout.Infinite);\n");
+        string state = TestFolders.Create("trust-state-");
+        using IDisposable asked = WorkspaceTrust.Ask(folder);
+        using IDisposable askedElsewhere = WorkspaceTrust.Ask(elsewhere);
+        MainWindow window = new() { Width = 1200, Height = 800, StateFolder = state };
+        window.Show();
+        window.KeepLayout();
+        try
+        {
+            Open(window, folder);
+            Ui.ClickButton(Asked(window), WorkspaceTrustDialog.Trust);
+            Ui.Settle();
+            Assert.True(window.Session.Trusted, "The folder trusted at its question stayed untrusted");
+            Assert.NotNull(window.Session.CSharp);
+            Assert.True(window.Perform(AppActions.RunProgram), $"Run was refused in the folder trusted: {window.Status}");
+            Ui.WaitFor(() => window.Runner.IsRunning && window.BottomPanel.Run.Document.Snapshot.ToString().Contains("waiting", StringComparison.Ordinal),
+                () => $"the program to run: {window.Status}", TimeSpan.FromMinutes(3));
+
+            SettingsDialog settings = window.ShowSettings();
+            Ui.Settle();
+            settings.Page = SettingsDialog.TrustPage;
+            Ui.Settle();
+            TrustedFoldersTable.Row row = settings.TrustedFolders.Of(folder)
+                ?? throw new InvalidOperationException($"Trusted Folders lists no {folder}: [{string.Join(", ", settings.TrustedFolders.Rows.Select(r => r.Folder))}]");
+            Assert.True(row.Trusted.IsChecked == true, "The folder trusted was listed as not trusted");
+            Ui.Click(row.Trusted);
+            Ui.ClickButton(settings, "Apply");
+            Ui.Settle();
+
+            Assert.False(window.Session.Trusted, "The folder's window stayed trusted once its trust was taken back");
+            Assert.Null(window.Session.CSharp);
+            Assert.Equal(Refusals.Untrusted, window.Actions.WhyNot(AppActions.Build, window.Actions.Context()));
+            Assert.True(window.Runner.IsRunning, "Taking the trust back ended the program the person started");
+            Assert.Equal(Refusals.UntrustedRunsOn(["the program"]), window.TrustSaid);
+            window.Perform(AppActions.Stop);
+            Ui.WaitFor(() => !window.Runner.IsRunning, "the program to stop");
+            Ui.WaitFor(() => window.TrustSaid == Refusals.UntrustedSaid, () => $"the banner to say only that the folder is not trusted once the program ended ({window.TrustSaid})");
+
+            Ui.Click(row.Forget);
+            Assert.Null(settings.TrustedFolders.Of(folder));
+            Ui.ClickButton(settings, "OK");
+            Ui.Settle();
+            Open(window, elsewhere);
+            Ui.ClickButton(Asked(window), WorkspaceTrustDialog.Untrusted);
+            Open(window, folder);
+            Ui.ClickButton(Asked(window), WorkspaceTrustDialog.Untrusted);
+            Ui.Settle();
+            Assert.False(window.Session.Trusted);
+        }
+        finally
+        {
+            window.Close();
+        }
+        using System.Text.Json.JsonDocument kept = System.Text.Json.JsonDocument.Parse(File.ReadAllText(Path.Combine(state, "trust.json")));
+        Assert.Empty(kept.RootElement.GetProperty("trusted").EnumerateArray());
+        Assert.Equal([elsewhere, folder], kept.RootElement.GetProperty("untrusted").EnumerateArray().Select(f => f.GetString()));
     }
 
     /// <summary>A folder opened in the window, once its opening has landed.</summary>

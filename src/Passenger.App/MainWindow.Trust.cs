@@ -4,8 +4,9 @@ namespace Passenger.App;
 
 /// <summary>The open folder's trust (<see cref="WorkspaceTrust"/>): a folder opened untrusted runs none of its code, the
 /// banner over the editors saying so with Trust Folder; one the person never answered for asks once as it opens
-/// (<see cref="WorkspaceTrustDialog"/>), the answer kept in their state where the window keeps it. A folder trusted here,
-/// in another window or through a parent, has its session begin at once what it held back, as an open begins it.</summary>
+/// (<see cref="WorkspaceTrustDialog"/>), the answer kept in their state where the window keeps it, and changed or forgotten
+/// in Settings' Trusted Folders. A folder trusted here, in another window or through a parent, has its session begin at once
+/// what it held back, as an open begins it; one whose trust is taken back holds back what it can, the banner naming what runs on.</summary>
 public partial class MainWindow
 {
     /// <summary>The trust question while it asks, else null.</summary>
@@ -42,22 +43,60 @@ public partial class MainWindow
     }
 
     /// <summary>A folder trusted since its session began (here, in another window, or a folder above it) has the session
-    /// begin what it held back, and its XAML previews start; the banner says what stands.</summary>
+    /// begin what it held back, and its XAML previews start; one whose trust was taken back has the session hold back what
+    /// trusting began, and its previews end; the banner says what stands.</summary>
     private void FollowTrust()
     {
-        if (session.Folder is { } folder && !session.Trusted && WorkspaceTrust.Trusts(folder))
+        if (session.Folder is { } folder && session.Trusted != WorkspaceTrust.Trusts(folder))
         {
-            AskingTrust?.Close();
-            session.Trust();
-            // Each preview said why it drew nothing: it starts on the project's build now.
+            if (session.Trusted)
+            {
+                session.Untrust();
+            }
+            else
+            {
+                AskingTrust?.Close();
+                session.Trust();
+            }
+            // Each preview runs the project's build, or said why it drew nothing: it starts again as the trust now stands.
             RestartPreviews(null);
             UpdateStatus();
         }
         ShowTrust();
     }
 
-    /// <summary>The banner over the editors says the open folder is untrusted, while it is.</summary>
-    private void ShowTrust() => TrustBanner.Say(session.Folder is not null && !session.Trusted ? Refusals.UntrustedSaid : null);
+    /// <summary>The banner over the editors says the open folder is untrusted, while it is, and what the person started there
+    /// runs on until it ends.</summary>
+    private void ShowTrust() => TrustBanner.Say(session.Folder is null || session.Trusted ? null
+        : session.StillRunning() is { Count: > 0 } running ? Refusals.UntrustedRunsOn(running) : Refusals.UntrustedSaid);
+
+    /// <summary>Settings' Trusted Folders put in force: each folder trusted there trusted, each no longer trusted taken back
+    /// (every window of it holding back what trusting began, <see cref="FollowTrust"/>), and the answers kept as changed from
+    /// those Settings showed, so another window's change meanwhile stays.</summary>
+    private void ApplyTrust(State.TrustState from, State.TrustState to)
+    {
+        UiThread.Check();
+        static bool In(IReadOnlyList<string> folders, string folder) => folders.Any(f => PathNames.Same(f, folder));
+        State.TrustState kept = Store().Trust.Value;
+        foreach (string forgotten in from.Trusted.Concat(from.Untrusted).Where(f => !In(to.Trusted, f) && !In(to.Untrusted, f)))
+        {
+            kept = kept.Forgotten(forgotten);
+        }
+        foreach (string declined in to.Untrusted.Where(f => !In(from.Untrusted, f)))
+        {
+            kept = kept.StoppedTrusting(declined);
+        }
+        foreach (string trusted in to.Trusted.Where(f => !In(from.Trusted, f)))
+        {
+            kept = kept.With(trusted);
+        }
+        state!.Trust.Set(kept);
+        foreach (string taken in from.Trusted.Where(f => !In(to.Trusted, f)))
+        {
+            WorkspaceTrust.TakeBack(taken);
+        }
+        WorkspaceTrust.Trust(to.Trusted.Where(f => !In(from.Trusted, f)));
+    }
 
     /// <summary>Asks of a folder opened untrusted whether the person trusts it, unless they answered for it, or a folder
     /// above it, before: once the window shows, and never while it asks of it already.</summary>
