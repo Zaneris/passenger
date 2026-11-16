@@ -36,8 +36,8 @@ public sealed partial class BuildRunController
     public TerminalNeed? DebugNeedOf(DebugTab tab) => debugNeeds is { Need: { } need } hearing && hearing.Console == tab.Console ? need : null;
 
     /// <summary>Hears the program Profile starts in the Run window's console as Run's own (<see cref="RunNeed"/>), whose
-    /// Run in the Terminal the window offers: Profile starts a program in no terminal.</summary>
-    public void HearProfiled(OutputView console, string configuration) => HearNeeds(console, configuration, debugged: false, profiled: true);
+    /// Profile in the Terminal the window offers; null, for one Profile starts in the terminal, hears none.</summary>
+    public void HearProfiled(OutputView? console, string configuration) => HearNeeds(console, configuration, debugged: false, profiled: true);
 
     /// <summary>Hears what a configuration's program writes to a console, Run's or a Debug tab's, until it says it needs a
     /// terminal, when the window offers there to start it in one; null hears none. The need heard last is forgotten, and

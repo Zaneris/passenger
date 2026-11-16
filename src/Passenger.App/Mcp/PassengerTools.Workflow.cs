@@ -544,12 +544,21 @@ public sealed partial class PassengerTools
         bool attach = false,
         string? container = null,
         string? resource = null,
+        bool? terminal = null,
         CancellationToken cancel = default) => OnUi(cancel, async () =>
     {
         ProjectSession current = Session;
         if (resource is not null && container is not null)
         {
             throw new ArgumentException("Name resource or container, not both");
+        }
+        if (resource is not null)
+        {
+            NoTerminalFor(terminal);
+        }
+        if (attach && terminal is not null)
+        {
+            throw new ArgumentException("An attached profiler profiles the program already running where it runs: omit terminal");
         }
         if (attach && (arguments is not null || configuration is not null && resource is null))
         {
@@ -564,6 +573,10 @@ public sealed partial class PassengerTools
             throw new ArgumentException(MemoryWithoutSeconds);
         }
         using Choosing? choice = !attach && resource is null ? Choose(configuration) : null;
+        if (choice is not null)
+        {
+            UseTerminal(Session.Configurations.Chosen?.Name ?? string.Empty, terminal);
+        }
         AgentCall.Follow(window.Actions.Work, AppActions.Profile, AppActions.Build, AppActions.AttachProfiler, AppActions.RunProgram, AppActions.MemorySnapshot);
         using (LaunchBuild built = new(Builds))
         {
@@ -650,7 +663,7 @@ public sealed partial class PassengerTools
             Godot = GameFramesOf(snapshot, Math.Clamp(top, 1, 200)),
             // A program Profile started that said it needs a terminal, as the Profiler window offers one.
             NeedsTerminal = Builds.RunNeed is { Profiled: true } need && !attach
-                ? $"{need.Said}: {McpTools.Run} with terminal true runs it in a Terminal tab, where {McpTools.Profile} with attach profiles it" : null,
+                ? $"{need.Said}: {McpTools.Profile} with terminal true profiles it in a Terminal tab" : null,
         };
 
         ProfileFrame Frame(string method, int total, int self) =>

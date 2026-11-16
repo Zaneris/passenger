@@ -504,7 +504,7 @@ public partial class MainWindow
     private void OfferTerminal(TerminalNeed need, ToolWindows.OutputView console)
     {
         UiThread.Check();
-        string start = need.Debugged ? AppActions.DebugInTerminal : AppActions.RunInTerminal;
+        string start = need.Debugged ? AppActions.DebugInTerminal : need.Profiled ? AppActions.ProfileInTerminal : AppActions.RunInTerminal;
         console.ShowOffer(need.Said, actions![start]!.Title, () => Request(start));
         if (need.Profiled)
         {
@@ -512,12 +512,12 @@ public partial class MainWindow
         }
     }
 
-    /// <summary>Run or Debug in the Terminal: the configuration whose program said it needs a terminal set to run in one,
-    /// kept with the folder as Edit Configurations keeps its Use external console, chosen, and started again through Run's
-    /// or Debug's action, which stops the run it ends first.</summary>
-    private void StartInTerminal(ActionContext context, bool debug)
+    /// <summary>Run, Debug or Profile in the Terminal: the configuration whose program said it needs a terminal set to run in
+    /// one, kept with the folder as Edit Configurations keeps its Use external console, chosen, and started again through
+    /// <paramref name="start"/>, Run's, Debug's or Profile's action, which stops the run it ends first.</summary>
+    private void StartInTerminal(ActionContext context, string start)
     {
-        if ((debug ? buildRun.DebugNeed : buildRun.RunNeed) is not { } need)
+        if ((start == AppActions.Debug ? buildRun.DebugNeed : buildRun.RunNeed) is not { } need)
         {
             return;
         }
@@ -526,7 +526,7 @@ public partial class MainWindow
             status.Text = $"{need.Configuration} is no longer one of the folder's run configurations";
             return;
         }
-        if (actions!.Run(debug ? AppActions.Debug : AppActions.RunProgram, context) is { } why)
+        if (actions!.Run(start, context) is { } why)
         {
             status.Text = why;
         }

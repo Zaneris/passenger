@@ -744,7 +744,8 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
 
     /// <summary>An agent's profile of a program reading a key, which refuses the Run window's pipe, answers that it needs a
     /// terminal and how to give it one, and its debug_start stops at the exception and answers so there; debug_start with
-    /// terminal true then debugs it in a Terminal tab, where it reads the key the agent types there with debug_input.</summary>
+    /// terminal true then debugs it in a Terminal tab, where it reads the key the agent types there with debug_input, and
+    /// profile with terminal true profiles it there as it waits for its key.</summary>
     [Fact]
     public async Task An_agents_debug_start_of_a_program_needing_a_terminal_says_so_at_its_stop_and_terminal_true_debugs_it_in_one()
     {
@@ -753,7 +754,7 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         await using McpClient client = await Start(["--mcp", Folder], languageServer: false);
         JsonElement profiled = await Call(client, McpTools.Profile);
         Assert.True(profiled.TryGetProperty("needsTerminal", out JsonElement need) && need.GetString() ==
-            $"Sum needs a terminal for Console.ReadKey: the Run window gives it pipes: {McpTools.Run} with terminal true runs it in a Terminal tab, where {McpTools.Profile} with attach profiles it",
+            $"Sum needs a terminal for Console.ReadKey: the Run window gives it pipes: {McpTools.Profile} with terminal true profiles it in a Terminal tab",
             $"The profile of a program refusing the Run window's pipe did not say it needs a terminal: {profiled}");
 
         JsonElement stopped = await Call(client, McpTools.DebugStart, new() { ["waitSeconds"] = 60 });
@@ -768,6 +769,11 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         Assert.True(await Waiting.UntilAsync(async () => (shown = (await Call(client, McpTools.Output, new() { ["of"] = "debug" })).GetString() ?? string.Empty).Contains("key q", StringComparison.Ordinal),
             TimeSpan.FromSeconds(30), Cancel, TimeSpan.FromMilliseconds(100)), $"The program debugged in the terminal did not read the key typed there ({typed}): {shown}");
         Assert.StartsWith("Sum, debugged", shown, StringComparison.Ordinal);
+
+        JsonElement waiting = await Call(client, McpTools.Profile, new() { ["seconds"] = 2, ["terminal"] = true });
+        Assert.True(waiting.GetProperty("samples").GetInt32() > 0 && !waiting.TryGetProperty("needsTerminal", out _),
+            $"The profile of the program in the terminal as it waited for its key took no samples, or said it needs a terminal: {waiting}");
+        await Call(client, McpTools.Stop);
     }
 
     /// <summary>A run refused for a reason of its own (here a launch profile's command named RetryFailed, which Passenger does

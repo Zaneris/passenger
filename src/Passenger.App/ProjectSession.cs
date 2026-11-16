@@ -1879,7 +1879,7 @@ public sealed class ProjectSession : IAsyncDisposable
             start.Work.Cancel();
         }
         // Profile's program ends with the others, and each run, read by no one now, leaves no port listening.
-        Profiled?.Run.Kill();
+        Profiled?.Kill();
         foreach (ProfilingSession run in new[] { Profiling, Profiled?.Run }.OfType<ProfilingSession>().Distinct())
         {
             // Not held, and off the window's thread, whose loop may stop first: nothing it does is drawn.

@@ -22,7 +22,7 @@ public partial class MainWindow
 
     private void AddProfiler() => profiler = new ProfilerCommands(new ProfilerParts(() => session, () => buildRun, Dock, actions!, Bottom.Run,
         text => status.Text = text, () => StateFolder, PickSnapshotAsync, NavigateTo, NavigateTo, (process, control) => liveTree?.Reveal(process, control) == true, Editors,
-        ChooseProfiledAsync, ProfiledInContainerAsync, ShowInFileManager, (title, text, yes) => Confirm(title, text, yes), ProfileAspireAsync));
+        ChooseProfiledAsync, ProfiledInContainerAsync, ShowInFileManager, (title, text, yes) => Confirm(title, text, yes), ProfileAspireAsync, ShowInTerminal));
 
     /// <summary>Profiles the chosen configuration as Profile does: null once it runs, else what stopped it.</summary>
     public Task<string?> ProfileAsync(string? arguments = null) => profiler!.ProfileAsync(arguments);

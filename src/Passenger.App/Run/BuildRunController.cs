@@ -1201,7 +1201,7 @@ public sealed partial class BuildRunController
         {
             return Said(ActionWork.Busy(profiling));
         }
-        if (session.Profiled is { Run.HasExited: false } profiled)
+        if (session.Profiled is { Run.HasExited: false, Terminal: null } profiled)
         {
             return Said($"{profiled.Name}, which Profile started, uses the Run console: Kill it first");
         }
@@ -2992,7 +2992,7 @@ public sealed partial class BuildRunController
         Task ran = session.RunProgram.IsRunning ? session.RunProgram.Ended : Task.CompletedTask;
         session.RunProgram.Stop();
         Task copies = EndCopyRunsAsync();
-        session.Profiled?.Run.Kill();
+        session.Profiled?.Kill();
         session.Builder.Stop();
         Task played = parts.StopInGodotEditor?.Invoke() ?? Task.CompletedTask;
         return Task.WhenAll(containers, aspire, ran, copies, played);

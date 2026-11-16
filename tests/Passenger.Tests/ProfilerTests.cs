@@ -108,6 +108,7 @@ public sealed class ProfilerTests : IClassFixture<ProfilerTests.Waits>, IDisposa
 
         Passenger.App.Profiling.ProfilerView view = window.ProfilerView;
         Snapshot snapshot = view.Snapshot!;
+        Assert.True(snapshot.CutShort is null, $"The trace of a program that ended by itself was read as cut short: {snapshot.CutShort}");
         Assert.StartsWith("Main thread", snapshot.Threads[0].Name, StringComparison.Ordinal);
         Assert.Equal(snapshot.Samples, view.Flame.Root!.Total);
         Assert.Contains(view.Rows, r => r.Node.Name.StartsWith("Work.Spin", StringComparison.Ordinal));
@@ -934,12 +935,26 @@ public sealed class ProfilerTests : IClassFixture<ProfilerTests.Waits>, IDisposa
     }
 
     /// <summary>A profiled program that needs a terminal (Console.ReadKey refusing the Run window's pipe) has the Profiler
-    /// window and the Run window it writes to say so, read from the exception .NET writes there, with Run in the Terminal,
-    /// which runs it in a tab of the Terminal window, where Attach Profiler reaches it, the offer then gone.</summary>
+    /// window and the Run window it writes to say so, read from the exception .NET writes there, with Profile in the
+    /// Terminal, which keeps the configuration's Use external console on and profiles it from its start in a tab of the
+    /// Terminal window, the offer then gone: there it reads the key typed, the Run console left as it was, and its end shows
+    /// its snapshot, samples taken.</summary>
     [AvaloniaFact]
-    public void A_profiled_program_needing_a_terminal_is_offered_one_in_the_Run_window()
+    public void A_profiled_program_needing_a_terminal_is_offered_one_and_Profile_in_the_Terminal_profiles_it_reading_the_key_typed_there()
     {
-        string project = Project("Keys", "Console.WriteLine(\"key?\");\nConsoleKeyInfo key = Console.ReadKey(intercept: true);\nConsole.WriteLine($\"key {key.KeyChar}\");\n");
+        string project = Project("Keys", """
+            using System.Diagnostics;
+            Console.WriteLine("key?");
+            ConsoleKeyInfo key = Console.ReadKey(intercept: true);
+            Console.WriteLine($"key {key.KeyChar}");
+            Stopwatch spun = Stopwatch.StartNew();
+            double total = 0;
+            while (spun.ElapsedMilliseconds < 300)
+            {
+                total += Math.Sqrt(spun.ElapsedTicks);
+            }
+            Console.WriteLine($"spun {total > 0}");
+            """);
         MainWindow window = Ui.OpenFolder(project, languageServer: false);
         Passenger.App.ToolWindows.OutputView run = window.BottomPanel.Run;
         try
@@ -949,20 +964,42 @@ public sealed class ProfilerTests : IClassFixture<ProfilerTests.Waits>, IDisposa
             const string said = "Keys needs a terminal for Console.ReadKey: the Run window gives it pipes";
             Assert.True(run.Offered == said && window.ProfilerView.Offered == said,
                 $"The profiled program is not offered a terminal, the Profiler window saying {window.ProfilerView.Offered ?? "nothing"} and the Run window {run.Offered ?? "nothing"}, where it shows:\n{run.Document.Snapshot}");
+            string console = run.Document.Snapshot.ToString();
+            Snapshot? crashed = window.ProfilerView.Snapshot;
 
-            Ui.ClickButton(window.ProfilerView, "Run in the Terminal");
-            Ui.WaitFor(() => window.RunInTerminal is { IsRunning: true }, () => $"the program to run in the terminal: {Ui.Said(window)}", TimeSpan.FromMinutes(2));
+            Ui.ClickButton(window.ProfilerView, "Profile in the Terminal");
+            Ui.WaitFor(() => window.Session.Profiled is { Terminal: { } tab } && Terminal(tab).Contains("key?", StringComparison.Ordinal),
+                () => $"the program to be profiled in the terminal and ask for its key: {Ui.Said(window)}", TimeSpan.FromMinutes(2));
+            Passenger.App.Run.TerminalRun program = window.Session.Profiled!.Terminal!;
             Assert.Equal(Passenger.App.Run.ConsoleKind.Terminal, window.Configuration?.Console);
+            Assert.True(window.ProfilerView.IsFollowing, $"The profiler window does not follow the run in the terminal: {window.ProfilerView.Status}");
             Assert.True(window.ProfilerView.Offered is null && run.Offered is null, $"The offer taken is still made: {window.ProfilerView.Offered ?? run.Offered}");
-            Assert.Null(window.Actions.WhyNot(AppActions.AttachProfiler, window.Actions.Context()));
+            Assert.Equal(console, run.Document.Snapshot.ToString());
+
+            window.ShowToolWindow(ToolWindowIds.Terminal);
+            window.TerminalPanel.FocusView();
+            Ui.WaitFor(() => window.TerminalPanel.View.IsFocused && window.TerminalPanel.ActiveTab?.Run == program, "the keys to go to the program's tab");
+            Assert.True(window.Session.Profiled is { Run.HasExited: false }, $"The profiled program in the terminal ended before its key: {Ui.Said(window)}; {window.ProfilerView.Status}");
+            window.KeyTextInput("q");
+            Ui.WaitFor(() => Terminal(program).Contains("key q", StringComparison.Ordinal), () => $"the program to read the key typed in the terminal; its tab shows:\n{Terminal(program)}");
+            Ui.WaitFor(() => window.ProfilerView.Snapshot is { } shown && shown != crashed, () => $"the program's end to show its snapshot: {Ui.Said(window)}", TimeSpan.FromMinutes(2));
+            Snapshot snapshot = window.ProfilerView.Snapshot!;
+            Assert.True(snapshot.Samples > 0 && snapshot.CutShort is null,
+                $"The run in the terminal has {snapshot.Samples} samples{(snapshot.CutShort is { } cut ? $", its trace cut short: {cut}" : string.Empty)}: {Ui.Said(window)}");
+            Assert.True(Terminal(program).Contains("spun True", StringComparison.Ordinal), $"The program in the terminal did not run on to its end: {Terminal(program)}");
+            Assert.Equal(console, run.Document.Snapshot.ToString());
         }
         finally
         {
             Ui.Run(window, AppActions.Stop);
-            Ui.WaitFor(() => window.RunInTerminal is not { IsRunning: true }, "the program in the terminal to stop");
+            Ui.WaitFor(() => window.Session.Profiled is null, "the program in the terminal to stop");
             window.Close();
         }
     }
+
+    /// <summary>The text of a program's tab of the Terminal window, its scrollback and its screen.</summary>
+    private static string Terminal(Passenger.App.Run.TerminalRun run) =>
+        string.Join('\n', run.Session.Screen.Scrollback.Select(l => l.Text()).Concat(run.Session.Screen.Lines.Select(l => l.Text())));
 
     /// <summary>Attach Profiler where its snapshot cannot be written says so and leaves the program as it was, running and
     /// recorded by nothing: the recording it began there ended (EventPipe released), which the program's frames provider

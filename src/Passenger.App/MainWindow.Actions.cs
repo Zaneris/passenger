@@ -339,10 +339,13 @@ public partial class MainWindow
             _ => Untrusted() ?? (session.Configurations.Chosen is { } chosen ? buildRun.WhyNotRunAnotherCopy(chosen) : Unconfigured("run")), ("Run", 0, 2), works: A.RunProgram);
         Add(A.DebugAnotherCopy, "Debug Another Copy", "Run", _ => IdeErrors.Observe(DebugAnotherCopyAsync()),
             _ => Untrusted() ?? (session.Configurations.Chosen is { } chosen ? buildRun.WhyNotAnotherCopy(chosen) : Unconfigured("debug")), ("Run", 0, 2), works: A.Debug);
-        Add(A.RunInTerminal, "Run in the Terminal", "Run", c => StartInTerminal(c, debug: false), _ => Untrusted() ?? (buildRun.RunNeed is null ? Refusals.NoTerminalNeed("Run") : null),
+        Add(A.RunInTerminal, "Run in the Terminal", "Run", c => StartInTerminal(c, A.RunProgram), _ => Untrusted() ?? (buildRun.RunNeed is null ? Refusals.NoTerminalNeed("Run") : null),
             words: ["Use external console", "Console.ReadKey"], works: A.RunProgram);
-        Add(A.DebugInTerminal, "Debug in the Terminal", "Run", c => StartInTerminal(c, debug: true), _ => Untrusted() ?? (buildRun.DebugNeed is null ? Refusals.NoTerminalNeed("Debug") : null),
+        Add(A.DebugInTerminal, "Debug in the Terminal", "Run", c => StartInTerminal(c, A.Debug), _ => Untrusted() ?? (buildRun.DebugNeed is null ? Refusals.NoTerminalNeed("Debug") : null),
             words: ["Use external console", "Console.ReadKey"], works: A.Debug);
+        Add(A.ProfileInTerminal, "Profile in the Terminal", "Run", c => StartInTerminal(c, A.Profile),
+            _ => Untrusted() ?? (buildRun.RunNeed is not { Profiled: true } ? Refusals.NoTerminalNeed("Profiler") : null),
+            words: ["Use external console", "Console.ReadKey"], works: A.Profile);
         // No key in Rider's Visual Studio keymaps.
         Add(A.EditConfigurations, "Edit Configurations…", "Run", _ => ShowRunConfigurations(), NeedsFolder, ("Run", 0, 5));
         // Edit Configurations' button, on the configuration chosen there; elsewhere, on the toolbar's.
