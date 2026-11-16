@@ -183,7 +183,7 @@ public static partial class ProjectTemplates
     /// dotnet said why not.</summary>
     public static async Task<string?> RestoreAsync(string project, string folder, CancellationToken cancel = default, bool windowsTargeting = false)
     {
-        IReadOnlyList<string> arguments = windowsTargeting ? ["restore", project, $"-p:{MSBuildNames.EnableWindowsTargeting}=true"] : ["restore", project];
+        IReadOnlyList<string> arguments = windowsTargeting ? ["restore", project, PropertySwitch.Of(MSBuildNames.EnableWindowsTargeting, "true")] : ["restore", project];
         Task<ChildResult> restore = ChildProcesses.RunAsync(ChildProcesses.DotnetCommand(arguments, folder), limit: TimeSpan.FromMinutes(10), cancel: cancel);
         BackgroundWork.Track(restore);
         ChildResult restored = await restore;

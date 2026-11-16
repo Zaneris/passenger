@@ -124,7 +124,7 @@ public static class AppHostSteps
         try
         {
             ProcessStartInfo start = ChildProcesses.DotnetCommand(["run", "--project", project, "--no-launch-profile", .. configured,
-                .. windowsTargeting ? (string[])[$"-p:{MSBuildNames.EnableWindowsTargeting}=true"] : [], "--", .. AppHostPipeline.ListArguments],
+                .. windowsTargeting ? (string[])[PropertySwitch.Of(MSBuildNames.EnableWindowsTargeting, "true")] : [], "--", .. AppHostPipeline.ListArguments],
                 Path.GetDirectoryName(project));
             start.Environment[AspireVariables.BackchannelPath] = socket;
             start.Environment[AspireVariables.InteractivityEnabled] = "false";

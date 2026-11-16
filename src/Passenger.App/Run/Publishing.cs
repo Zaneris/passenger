@@ -80,7 +80,7 @@ public sealed record PublishRequest(string Project, string? Profile, string? Con
     /// <summary>The dotnet publish command line: the same as a person types to publish with the profile, ending as a build's
     /// does (<see cref="BuildOutput.Tail"/>), Windows targeting given where the project host gave it.</summary>
     public IReadOnlyList<string> Arguments(bool windowsTargeting) => Kind == PublishKind.AppHost
-        ? ["run", "--project", Project, "--no-launch-profile", .. Configured, .. windowsTargeting ? (string[])[$"-p:{MSBuildNames.EnableWindowsTargeting}=true"] : [], "--",
+        ? ["run", "--project", Project, "--no-launch-profile", .. Configured, .. windowsTargeting ? (string[])[PropertySwitch.Of(MSBuildNames.EnableWindowsTargeting, "true")] : [], "--",
             .. Aspire.AppHostPipeline.RunArguments(Step, Staging ?? Folder ?? string.Empty)]
         : ["publish", Project, .. Command(), .. BuildOutput.Tail(windowsTargeting)];
 
@@ -95,7 +95,7 @@ public sealed record PublishRequest(string Project, string? Profile, string? Con
         }
         if (Profile is not null && !BuiltInProfile)
         {
-            arguments.Add($"-p:{MSBuildNames.PublishProfile}={Profile}");
+            arguments.Add(PropertySwitch.Of(MSBuildNames.PublishProfile, Profile));
         }
         if (Kind == PublishKind.Container)
         {

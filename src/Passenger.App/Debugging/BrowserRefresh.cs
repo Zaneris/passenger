@@ -334,7 +334,7 @@ public sealed class BrowserRefresh : IDisposable
         }
         List<string> arguments = ["msbuild", bundled, "-nologo", "-verbosity:quiet",
             $"-target:{MSBuildNames.GenerateComputedBuildStaticWebAssets};{MSBuildNames.ResolveReferencedProjectsStaticWebAssets}",
-            .. properties.Select(p => $"-property:{p.Key}={p.Value}")];
+            .. properties.Select(p => PropertySwitch.Of(p.Key, p.Value))];
         byte[]? held = emptied is not null ? Emptied(emptied) : null;
         bool ran = false;
         try

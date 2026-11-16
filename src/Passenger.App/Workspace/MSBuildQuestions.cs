@@ -54,7 +54,7 @@ public static class MSBuildQuestions
             given[MSBuildNames.TargetFramework] = framework;
         }
         return ["msbuild", project, "-nologo", .. question.Targets.Count > 0 ? [$"-target:{string.Join(';', question.Targets)}"] : Array.Empty<string>(),
-            .. question.Asking, .. given.Select(g => $"-property:{g.Key}={g.Value}")];
+            .. question.Asking, .. given.Select(g => PropertySwitch.Of(g.Key, g.Value))];
     }
 }
 

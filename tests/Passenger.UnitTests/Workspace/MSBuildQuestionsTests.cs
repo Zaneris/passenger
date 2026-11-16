@@ -94,9 +94,9 @@ public sealed class MSBuildQuestionsTests
         };
 
         Assert.Equal(["msbuild", "/src/App/App.csproj", "-nologo", "-target:DeployToDevice;ComputeRunArguments", "-getProperty:_AndroidPackage", "-getItem:Devices",
-            "-getTargetResult:_GetRequiredWorkloads", "-property:Configuration=Release", "-property:device=emulator-5554", "-property:TargetFramework=net11.0-android"],
+            "-getTargetResult:_GetRequiredWorkloads", "-p:Configuration=Release", "-p:device=emulator-5554", "-p:TargetFramework=net11.0-android"],
             MSBuildQuestions.Arguments("/src/App/App.csproj", "net11.0-android", globals, question));
-        Assert.Equal(["msbuild", "/src/App/App.csproj", "-nologo", "-target:Restore", "-property:Configuration=Release", "-property:device=old"],
+        Assert.Equal(["msbuild", "/src/App/App.csproj", "-nologo", "-target:Restore", "-p:Configuration=Release", "-p:device=old"],
             MSBuildQuestions.Arguments("/src/App/App.csproj", null, globals, new MSBuildQuestion([MSBuildNames.Restore])));
     }
 }

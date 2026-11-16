@@ -133,20 +133,19 @@ public sealed record BuildChoice(BuildConfiguration Chosen, bool OfSolution)
     public IReadOnlyList<string> ArgumentsFor(string target, bool solution, string? platforms, bool watched = false,
         Func<string, IReadOnlyList<string>>? references = null)
     {
-        string property = watched ? "--property" : "-p";
         if (solution)
         {
-            return ["-c", Chosen.Configuration, $"{property}:{MSBuildNames.Platform}={Chosen.Platform}"];
+            return ["-c", Chosen.Configuration, PropertySwitch.Of(MSBuildNames.Platform, Chosen.Platform, watched)];
         }
         IReadOnlyDictionary<string, string> properties = PropertiesOf(target, platforms);
         List<string> arguments = ["-c", properties[MSBuildNames.Configuration]];
         if (properties.TryGetValue(MSBuildNames.Platform, out string? platform))
         {
-            arguments.Add($"{property}:{MSBuildNames.Platform}={platform}");
+            arguments.Add(PropertySwitch.Of(MSBuildNames.Platform, platform, watched));
         }
         if (references is not null && ToldOf(target, platforms, references) is { Count: > 0 } told)
         {
-            arguments.Add($"{property}:{MSBuildNames.CurrentSolutionConfigurationContents}={Escaped(Contents(told), "%;,\"")}");
+            arguments.Add(PropertySwitch.Of(MSBuildNames.CurrentSolutionConfigurationContents, Contents(told), watched));
         }
         return arguments;
     }
@@ -210,23 +209,5 @@ public sealed record BuildChoice(BuildConfiguration Chosen, bool OfSolution)
                 .Append(XmlEntities.Encode($"{told[i].Configuration}|{told[i].Platform}")).Append("</ProjectConfiguration>");
         }
         return contents.Append("</SolutionConfiguration>").ToString();
-    }
-
-    /// <summary>A value as MSBuild reads it literally, each of <paramref name="special"/> written as its %XX escape.</summary>
-    public static string Escaped(string value, string special)
-    {
-        StringBuilder escaped = new(value.Length);
-        foreach (char c in value)
-        {
-            if (special.Contains(c))
-            {
-                escaped.Append('%').Append(((int)c).ToString("X2", System.Globalization.CultureInfo.InvariantCulture));
-            }
-            else
-            {
-                escaped.Append(c);
-            }
-        }
-        return escaped.ToString();
     }
 }

@@ -134,7 +134,7 @@ public static partial class BuildOutput
     /// project off Windows (<see cref="WindowsTargeting(string, IReadOnlyList{ProjectModel})"/>), then no terminal logger
     /// animation, no repeated summary and lines not wrapped, so every problem is one line read once.</summary>
     public static IReadOnlyList<string> Tail(bool windowsTargeting) =>
-        windowsTargeting ? [$"-p:{MSBuildNames.EnableWindowsTargeting}=true", .. LoggerSwitches] : LoggerSwitches;
+        windowsTargeting ? [PropertySwitch.Of(MSBuildNames.EnableWindowsTargeting, "true"), .. LoggerSwitches] : LoggerSwitches;
 
     private static readonly string[] LoggerSwitches = ["-nologo", "-tl:off", "-clp:NoSummary;ForceNoAlign"];
 

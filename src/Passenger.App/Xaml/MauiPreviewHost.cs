@@ -109,8 +109,8 @@ internal sealed class MauiPreviewHost : ChildPreviewHost
             return null;
         }
         string plain = project.TargetFrameworks[0].Split('-')[0];
-        return [$"-p:{MSBuildNames.TargetFrameworks}={plain}", $"-p:{MSBuildNames.OutputType}=Library", $"-p:{MSBuildNames.UseArtifactsOutput}=true",
-            $"-p:{MSBuildNames.ArtifactsPath}={PlainFolder(project.Path)}"];
+        return [PropertySwitch.Of(MSBuildNames.TargetFrameworks, plain), PropertySwitch.Of(MSBuildNames.OutputType, "Library"),
+            PropertySwitch.Of(MSBuildNames.UseArtifactsOutput, "true"), PropertySwitch.Of(MSBuildNames.ArtifactsPath, PlainFolder(project.Path))];
     }
 
     /// <summary>The platform a target framework is for, or a build's folder named for one, its configuration before an

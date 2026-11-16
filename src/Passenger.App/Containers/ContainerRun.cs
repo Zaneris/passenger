@@ -188,8 +188,8 @@ public static class ContainerPlans
                 string repository = $"passenger-{Slug(configuration.Name)}-{ContainerLabels.FolderValue(workspace.Folder)[..8]}";
                 properties = new Dictionary<string, string>(properties, StringComparer.OrdinalIgnoreCase) { ["PassengerImage"] = $"{repository}:{SdkImageTag}" };
                 IReadOnlyList<string> configured = workspace.PublishArgumentsFor(single.Path, properties.GetValueOrDefault(MSBuildNames.Configuration));
-                publish = ["publish", single.Path, $"-t:{MSBuildNames.PublishContainer}", .. configured, $"-p:{CarriedProperties.ContainerRepository}={repository}",
-                    $"-p:{MSBuildNames.ContainerImageTag}={SdkImageTag}", "-nologo"];
+                publish = ["publish", single.Path, $"-t:{MSBuildNames.PublishContainer}", .. configured, PropertySwitch.Of(CarriedProperties.ContainerRepository, repository),
+                    PropertySwitch.Of(MSBuildNames.ContainerImageTag, SdkImageTag), "-nologo"];
             }
             string service = DockerFiles.ServiceName(single.Name.Split(' ')[0]);
             fixedProjects[service] = single.Path;

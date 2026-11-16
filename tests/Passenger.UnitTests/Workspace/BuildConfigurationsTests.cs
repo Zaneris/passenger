@@ -1,4 +1,5 @@
 using Passenger.App.Run;
+using Passenger.Core;
 using Passenger.Host;
 using Passenger.Workspace;
 
@@ -167,14 +168,15 @@ public class BuildConfigurationsTests
     }
 
     /// <summary>What a build is told of its references reads as MSBuild reads it whatever their paths hold: the path and the
-    /// mapping written as XML, then the command line's separators and MSBuild's escape mark escaped.</summary>
+    /// mapping written as XML, then given as any property is, the command line's separators and MSBuild's escape mark
+    /// escaped.</summary>
     [Fact]
     public void What_a_build_is_told_of_its_references_keeps_a_path_of_quotes_ampersands_and_msbuilds_separators()
     {
         string contents = BuildChoice.Contents([new SolutionBuilt("/w/it's & <x>, 100%; \"q\"/L.csproj", "Release", "AnyCPU")]);
         Assert.Equal("<SolutionConfiguration><ProjectConfiguration Project='1' AbsolutePath='/w/it&apos;s &amp; &lt;x>, 100%; \"q\"/L.csproj'>Release|AnyCPU"
             + "</ProjectConfiguration></SolutionConfiguration>", contents);
-        Assert.Equal("a%25b%3Bc%2Cd%22e", BuildChoice.Escaped("a%b;c,d\"e", "%;,\""));
+        Assert.Equal("a%25b%3Bc%2Cd%22e", PropertySwitch.Escaped("a%b;c,d\"e"));
     }
 
     /// <summary>dotnet watch runs a project as its build does, its configuration and platform given in its own words: it takes
