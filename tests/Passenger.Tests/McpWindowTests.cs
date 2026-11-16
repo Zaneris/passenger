@@ -506,6 +506,67 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
         }
     }
 
+    /// <summary>A MAUI page's folder whose first load restores MAUI, the server's report that it loaded the project again
+    /// with what the restore brought heard before the end of the batch it loaded in (held back here, as a server that loads
+    /// the project once more in that batch keeps its end): an agent's definition of the InitializeComponent MAUI's generator
+    /// declares, asked as the folder opens, waits through the batch's end and the generators' run it queues, saying so,
+    /// and goes to that declaration, never answering nothing as of the code before the generator ran.</summary>
+    [AvaloniaFact]
+    public void An_agents_definition_of_what_a_restored_generator_declares_waits_for_the_end_of_the_batch_its_project_loaded_again_in()
+    {
+        string folder = McpNavigationTests.MauiPage("mcp-maui-batch-");
+        DeleteAtEnd(folder);
+        string project = Path.Combine(folder, "MauiApp1.csproj");
+        MainWindow window = new() { Width = 1200, Height = 800 };
+        window.Show();
+        TaskCompletionSource loading = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource reloading = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource ending = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        McpClient? client = null;
+        try
+        {
+            // Pumped, not settled throughout: the server's loads and the batch's end held wait on the window.
+            Task opening = window.OpenFolder(folder);
+            Ui.PumpUntil(() => opening.IsCompleted && window.CSharpService is not null, "the folder to open with a language server", AgentLimit);
+            Task loadHeld = window.Session.DesignTimeBuilds.HoldNextAsked(project, loading.Task);
+            Task batchHeld = window.CSharpService!.HoldBatchEndPastRestore(ending.Task);
+            // The window's own load again after the restore, which an agent's question would wait for too, comes after.
+            window.CSharpService.HoldReloads(project, ending.Task);
+            window.ApplySettings(window.Settings with { McpServer = true });
+            Assert.True(window.AgentSocket is not null, $"The window does not listen for agents: {window.Status}");
+            client = Ui.AwaitPumped(Waiting.Apart(() => Start(["--mcp-attach", ProcessId])), "the agent attaching", AgentLimit);
+            Heard heard = new();
+            Task<CallToolResult> asked = Waiting.Apart(() => Result(client, McpTools.Definition, new() { ["path"] = "MainPage.xaml.cs", ["line"] = 9, ["column"] = 9 }, heard: heard));
+            Ui.PumpUntil(() => loadHeld.IsCompleted && window.CSharpService.Session is not null && (heard.Told.Count > 0 || asked.IsCompleted),
+                "the server's first load of MauiApp1 to be held while the agent's definition waits", AgentLimit);
+            Task reloadHeld = window.Session.DesignTimeBuilds.HoldNextAsked(project, reloading.Task);
+            loading.SetResult();
+            Ui.PumpUntil(() => asked.IsCompleted || reloadHeld.IsCompleted, "the server's load after the restore to ask for MauiApp1's builds", AgentLimit);
+            Ui.Hold(TimeSpan.FromSeconds(2), "the generators' run the first load queued, 1.5 s after it, to go before the load after the restore");
+            reloading.SetResult();
+            Ui.PumpUntil(() => asked.IsCompleted || (batchHeld.IsCompleted
+                && heard.Told.Any(t => t.Message?.Contains("to load again the projects its restore brought packages to", StringComparison.Ordinal) == true)),
+                "the agent's definition to wait for the end of the batch the server loaded MauiApp1 again in after its restore", AgentLimit);
+            ending.SetResult();
+            CallToolResult answer = Ui.AwaitPumped(asked, "the agent's definition of InitializeComponent", AgentLimit);
+            string said = Text(answer);
+            Assert.True(answer.IsError != true && said.Contains("MainPage.xaml.sg.cs", StringComparison.Ordinal)
+                && said.Contains("private partial void InitializeComponent();", StringComparison.Ordinal),
+                $"definition of a MAUI page's InitializeComponent, asked as the server's batch loading MauiApp1 again after its restore had still to end, answered: {said}");
+        }
+        finally
+        {
+            loading.TrySetResult();
+            reloading.TrySetResult();
+            ending.TrySetResult();
+            if (client is not null)
+            {
+                Gone(client);
+            }
+            window.Close();
+        }
+    }
+
     /// <summary>A MAUI page's folder whose load after its first restore waits for its design-time builds (held back here)
     /// longer than an agent's code tools wait for the C# language server, given this window a little past the time the
     /// server may say nothing of a load under way: the agent's definition of the InitializeComponent MAUI's generator

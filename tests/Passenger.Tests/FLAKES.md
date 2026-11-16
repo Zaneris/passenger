@@ -30,6 +30,24 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 
 ## 2026-11-16
 
+- `McpNavigationTests`' `Definition_of_a_maui_pages_initialize_component_answers_the_generators_declaration_in_a_copy_of_its_code`,
+  CI 43745484602 (macOS report shard 3), and
+  `Definition_of_the_element_an_attached_propertys_read_names_in_a_maui_expression_goes_to_the_element`, CI 43914237421
+  (macOS report shard 2): "No symbol at MainPage.xaml.cs:9:9, and line 9 declares none". **A race in the IDE**: the wait
+  for what a project's restore brought let go of the project at the server's report that it had loaded again, but the
+  wait for the generators' run that load queues begins only at the end of the server's batch of loads. The server loads
+  with half the processors, one on CI's three-core Macs, so the window's own load again of the project, asked while the
+  server's was under way, ran after it in the same batch: both CI logs say "Completed (re)load of 2 project(s)", the
+  first load reported 10 and 16 ms before the batch's end, and an agent's question, looked at every 50 ms, went through
+  in that gap, answered before MAUI's generator ran on what the restore brought (so the log said nothing of the
+  generators' wait, which had not begun). Reproduced on the Mac as CI runs: `DOTNET_PROCESSOR_COUNT=3` (batches of two
+  loads), restores without the workload check, and the build's files told the server 200 ms late; 1 of 16 rounds failed
+  with CI's words, the question let through 5 ms after the first load's report and 5 ms before the batch's end. A
+  restored project's load now holds the wait until its batch ends (`CSharpService.ReloadingRestored`), and 40 rounds of
+  the same passed; `McpWindowTests`'
+  `An_agents_definition_of_what_a_restored_generator_declares_waits_for_the_end_of_the_batch_its_project_loaded_again_in`
+  holds the window's hearing of that batch's end (`CSharpService.HoldBatchEndPastRestore`) and failed with CI's words
+  before. #1735 (the projects read as written) played no part (#1745).
 - `ConfigurationTests`' `A_read_through_a_field_another_partial_file_declares_is_warned_of`, CI 43896578697 (Linux x64
   report shard 3): "Waited 180 s for the key read through the other part's field, and only it, to be warned of: ", its
   words read before the wait began, so the empty list said nothing. **A race in the IDE**: the check of a read's key

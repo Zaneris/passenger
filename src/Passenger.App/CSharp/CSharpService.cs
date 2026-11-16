@@ -270,13 +270,13 @@ public sealed partial class CSharpService : IAsyncDisposable
 
     /// <summary>Whether a restore the server ran as it loaded has ended and the projects it restored are still to load again,
     /// which until then the server answers for as loaded before their restore (with no package's build files, its
-    /// generators among them); or have loaded again, and the generators' run that load queued has not yet run, or the
-    /// server has yet to read what the load's builds wrote (<see cref="WaitForGenerators"/>): none for a file of a project
-    /// the restore failed for, which loads again with nothing it brought.</summary>
+    /// generators among them); or have loaded again in a batch still under way, whose end begins the wait for the
+    /// generators' run; or the generators' run that load queued has not yet run, or the server has yet to read what the
+    /// load's builds wrote (<see cref="WaitForGenerators"/>): none for a file of a project the restore failed for.</summary>
     public bool ReloadingRestored(string path)
     {
         UiThread.Check();
-        if (!reloadingRestored && !RestoredStillToLoad() && !GeneratorsWaited())
+        if (!reloadingRestored && !restoredLoaded && !RestoredStillToLoad() && !GeneratorsWaited())
         {
             return false;
         }
@@ -296,7 +296,7 @@ public sealed partial class CSharpService : IAsyncDisposable
         {
             return $"the C# language server to load {Path.GetFileNameWithoutExtension(restoredToLoad.First())} again with what its restore brought";
         }
-        if (reloadingRestored)
+        if (reloadingRestored || restoredLoaded)
         {
             return "the C# language server to load again the projects its restore brought packages to";
         }
@@ -315,7 +315,8 @@ public sealed partial class CSharpService : IAsyncDisposable
     /// again once it hears of its assets, in a batch of its own after a batch of others' changes may have ended.</summary>
     private readonly HashSet<string> restoredToLoad = new(PathNames.Comparer);
 
-    /// <summary>Whether a project of <see cref="restoredToLoad"/> loaded in the batch under way.</summary>
+    /// <summary>Whether a project of <see cref="restoredToLoad"/> loaded in the batch under way: its report comes before the
+    /// batch's end, which may load it again (a load asked for meanwhile), and only that end queues the generators' wait.</summary>
     private bool restoredLoaded;
 
     /// <summary>When the server last said how its loads and restores went, or was given a project's builds to load: a
@@ -1861,6 +1862,27 @@ public sealed partial class CSharpService : IAsyncDisposable
     private TaskCompletionSource? refreshesHeld;
     private RoslynSession? refreshHeard;
 
+    /// <summary>Holds the window's hearing of the end of the batch in which a project the server restored loads again until
+    /// <paramref name="until"/> has ended, as a server loading the project once more in that batch keeps its end, for a
+    /// test: done once one is held. What the server says meanwhile is heard as it comes.</summary>
+    public Task HoldBatchEndPastRestore(Task until)
+    {
+        UiThread.Check();
+        TaskCompletionSource reached = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        batchEndHeld = (until, reached);
+        return reached.Task;
+    }
+
+    /// <summary>The end of a batch a test holds the hearing of (<see cref="HoldBatchEndPastRestore"/>), and what is done once
+    /// one is.</summary>
+    private (Task Until, TaskCompletionSource Reached)? batchEndHeld;
+
+    private async Task HearBatchEndAsync(LanguageServer from, LoadReport report, Task until)
+    {
+        await until.Ended();
+        UiThread.Post(() => OnLoadReport(from, report));
+    }
+
     /// <summary>Ends a test's hold on the server's word that its diagnostics moved, the word held said after what is heard
     /// now.</summary>
     private void LetGoOfRefreshes()
@@ -1958,6 +1980,11 @@ public sealed partial class CSharpService : IAsyncDisposable
                     saidProject = null;
                     Said?.Invoke(this, new ServerSaid($"{Shown(project)} loaded without problems", null));
                 }
+                break;
+            case { Kind: LoadReportKind.BatchEnded } when restoredLoaded && batchEndHeld is { } hold:
+                batchEndHeld = null;
+                hold.Reached.TrySetResult();
+                IdeErrors.Observe(HearBatchEndAsync(from, report, hold.Until));
                 break;
             case { Kind: LoadReportKind.BatchEnded }:
                 if (reloadingRestored || restoredLoaded)
