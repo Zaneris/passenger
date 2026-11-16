@@ -333,10 +333,45 @@ public sealed class ConfigurationTests : IClassFixture<ConfigurationTests.Projec
         try
         {
             Ui.WaitFor(() => Missing(window).SetEquals(["Reader:Motto"]),
-                $"the key read through the other part's field, and only it, to be warned of: {string.Join(", ", Missing(window))}");
+                () => $"the key read through the other part's field, and only it, to be warned of: {Marked(window)}");
         }
         finally
         {
+            window.Close();
+        }
+    }
+
+    /// <summary>A file pulled before the programs running its code are known, its projects not yet evaluated, is warned of the
+    /// keys nothing gives once they are: the configuration's check runs again as the evaluations land, whether or not the
+    /// server says its diagnostics moved, which a warm server whose projects loaded long since never does.</summary>
+    [AvaloniaFact]
+    public void A_read_pulled_before_its_projects_are_evaluated_is_warned_of_once_they_are()
+    {
+        TaskCompletionSource evaluated = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource checkedOnce = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        MainWindow window = new() { Width = 1200, Height = 800, Autosaves = false, WarmServer = project.Server };
+        window.Show();
+        window.OpenFolder(project.Folder);
+        // Held before the first round asks the host, which it does only after its own work on the thread pool.
+        Task held = window.Session.Models.HoldEvaluation(PathNames.Canonical(project.PathOf("Shop/Shop.csproj")), evaluated.Task);
+        window.OpenFile(project.PathOf("Shop/Reader.Reads.cs"));
+        try
+        {
+            Ui.PumpUntil(() => window.CSharpService is not null, "the window's C# service", TimeSpan.FromMinutes(1));
+            window.CSharpService!.HoldRefreshes(checkedOnce.Task);
+            // Pumped, not settled: the round held is the window's background work until let go.
+            Ui.PumpUntil(() => held.IsCompleted, "the first round to hold Shop's evaluation", TimeSpan.FromMinutes(1));
+            Ui.PumpUntil(() => Marked(window).Contains("CS0219", StringComparison.Ordinal), "the compiler's warning of the unused variable, pulled with Passenger's own",
+                TimeSpan.FromMinutes(3));
+            Assert.True(window.Session.Projects.All(p => p.Evaluated is null) && Missing(window).Count == 0,
+                $"The file was pulled with its projects evaluated or a key warned of: {Marked(window)}");
+            evaluated.SetResult();
+            Ui.WaitFor(() => Missing(window).SetEquals(["Reader:Motto"]), () => $"the key nothing gives to be warned of once Shop is evaluated: {Marked(window)}");
+        }
+        finally
+        {
+            evaluated.TrySetResult();
+            checkedOnce.TrySetResult();
             window.Close();
         }
     }
@@ -640,7 +675,8 @@ public sealed class ConfigurationTests : IClassFixture<ConfigurationTests.Projec
             TestFolders.Write(Folder, "Shop/Options.cs", Options);
             // A partial class whose configuration one file holds and the other reads, never naming it.
             TestFolders.Write(Folder, "Shop/Reader.cs", "public sealed partial class Reader(IConfiguration given)\n{\n    private readonly IConfiguration _config = given;\n}\n");
-            TestFolders.Write(Folder, "Shop/Reader.Reads.cs", "public sealed partial class Reader\n{\n    public string? Motto() => _config[\"Reader:Motto\"];\n}\n");
+            TestFolders.Write(Folder, "Shop/Reader.Reads.cs",
+                "public sealed partial class Reader\n{\n    public string? Motto()\n    {\n        int unused = 0;\n        return _config[\"Reader:Motto\"];\n    }\n}\n");
             TestFolders.Write(Folder, "Shop/appsettings.json", Settings);
             // A launch profile's variable gives Shop:Theme.
             TestFolders.Write(Folder, "Shop/Properties/launchSettings.json", """

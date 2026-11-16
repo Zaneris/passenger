@@ -1784,6 +1784,11 @@ public sealed partial class CSharpService : IAsyncDisposable
             held.TrySetResult();
             return;
         }
+        if (refreshesHeldUntil is { IsCompleted: false })
+        {
+            heardWhileHeld = from;
+            return;
+        }
         if (session == from)
         {
             SolutionMoved();
@@ -1815,6 +1820,39 @@ public sealed partial class CSharpService : IAsyncDisposable
         UiThread.Check();
         refreshesHeld = new(TaskCreationOptions.RunContinuationsAsynchronously);
         return refreshesHeld.Task;
+    }
+
+    /// <summary>Holds the server's word that its diagnostics moved until <paramref name="until"/> has ended, then says the last
+    /// word heard meanwhile: as a server with nothing new to say would say none, for a test of what pulls a file again
+    /// without it.</summary>
+    public void HoldRefreshes(Task until)
+    {
+        UiThread.Check();
+        refreshesHeldUntil = until;
+        IdeErrors.Observe(LetGoOfRefreshesOnceAsync(until));
+    }
+
+    /// <summary>What a test holds the server's word that its diagnostics moved until (<see cref="HoldRefreshes"/>), and the
+    /// server last heard to say so meanwhile.</summary>
+    private Task? refreshesHeldUntil;
+    private RoslynSession? heardWhileHeld;
+
+    private async Task LetGoOfRefreshesOnceAsync(Task until)
+    {
+        await until.Ended();
+        UiThread.Post(() =>
+        {
+            if (refreshesHeldUntil != until)
+            {
+                return;
+            }
+            refreshesHeldUntil = null;
+            if (heardWhileHeld is { } heard)
+            {
+                heardWhileHeld = null;
+                Refreshed(heard);
+            }
+        });
     }
 
     /// <summary>A test's hold on the server's word that its diagnostics moved, done once a word is held, and the server last

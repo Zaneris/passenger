@@ -1349,9 +1349,20 @@ public sealed class ProjectSession : IAsyncDisposable
             ReadBuildChoices();
         }
         Web?.Checks.CodeChanged();
+        // The programs a file's code runs in, and what configures them, are known only as their projects are evaluated.
+        if (!before.Projects.Select(ConfiguresAs).SequenceEqual(Workspace.Projects.Select(ConfiguresAs)))
+        {
+            CSharp?.ConfigurationChanged();
+        }
         MSBuild.ProjectsEvaluated();
         TimeSolutionView();
     }
+
+    /// <summary>What of a project the configuration its code runs with is found from (<see cref="ConfiguredCodeOf"/>): whether
+    /// it runs as a program or owns a configuration, what it references, its UserSecretsId and whether it is an AppHost.</summary>
+    private static (string Path, bool Runs, bool Owns, bool Host, string? Secrets, string References) ConfiguresAs(ProjectModel project) =>
+        (project.Path, project.IsRunnable, project.OwnsConfiguration, project.IsAspireHost, project.Property(Passenger.Host.CarriedProperties.UserSecretsId),
+            string.Join('\n', project.ProjectReferences));
 
     /// <summary>A project's package references, each framework's, as a change of any one is told.</summary>
     private static IEnumerable<(string? Framework, string Name, string? Version)> FrameworkPackages(ProjectModel project) =>

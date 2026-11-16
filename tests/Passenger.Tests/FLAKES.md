@@ -30,6 +30,21 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 
 ## 2026-11-16
 
+- `ConfigurationTests`' `A_read_through_a_field_another_partial_file_declares_is_warned_of`, CI 43896578697 (Linux x64
+  report shard 3): "Waited 180 s for the key read through the other part's field, and only it, to be warned of: ", its
+  words read before the wait began, so the empty list said nothing. **A race in the IDE**: the check of a read's key
+  asks which programs run the file's code (`ProjectSession.ConfiguredCodeOf`), which only their projects' evaluations
+  tell, and only the server's word that its diagnostics moved pulled the file again. The window took up the class's warm
+  server, its projects loaded long since, which answered the file's first pull at once; where the project host evaluated
+  Shop only after that pull, as under CI's load, the pull found no program running the code, and the server, with
+  nothing new to say, never gave its word, so the key was never marked. Shown by holding Shop's evaluation until the
+  file's first pull had shown its compiler warning on a server whose word after its load had come: never marked, every
+  time; on one that had loaded a moment before, its word after the load came after the evaluation and the key with it.
+  Evaluations that move what configures a project's code (which projects run as programs, what they reference, their
+  UserSecretsId, an AppHost) now have the open files' reads checked again (`ProjectSession.OnEvaluated`), and a new test
+  holds the evaluation and the server's word (`CSharpService.HoldRefreshes`); the old test's words are now read as its
+  wait gives up. The class passed on the Ubuntu and Windows VMs and 3 of 3 times on the Mac under 12 CPU burners beside
+  other agents' runs (#1809).
 - `HtmlPreviewTests`' `An_HTML_files_page_is_given_its_text_beside_it_once_turned_on_and_again_as_typing_pauses`, CI
   43896578697 (Windows x64 report shard 1): "The page was given the text 1 more times while it was typed". **The test
   waited wrong**: it typed "," and " shop" as two inputs and took it that no page was given between them, but Avalonia's
