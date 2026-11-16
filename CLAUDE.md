@@ -431,7 +431,7 @@ Projects in `src/`; `find_symbol` finds the rest from the names here. A pointer'
   update or, on Windows, ends, signalling the relay alone, never its agent's process group; `godot_editor` makes each
   change one `EditorUndoRedoManager` action.
 
-Releases and the site: `ci.yml` and `release.yml` (from a `vX.Y.Z` tag, its body `docs/release-notes/X.Y.Z.md`, refused
+A security report is handled by `SECURITY.md`'s steps in its private advisory, never a public issue. Releases and the site: `ci.yml` and `release.yml` (from a `vX.Y.Z` tag, its body `docs/release-notes/X.Y.Z.md`, refused
 while it is the stand-in) call `test.yml`: the gate on every system in two shards, and for CI the report lane too.
 `site/` is passenger-ide.net, plain HTML and CSS loading only its own files (CSP 'self'), deployed by the owner by hand:
 each page has its own title, description, canonical, Open Graph tags and `sitemap.xml` entry, a changed share card takes
