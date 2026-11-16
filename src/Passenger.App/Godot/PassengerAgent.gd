@@ -5,6 +5,7 @@ extends Node
 
 const SAID := "passenger:said"
 const GONE := "passenger:gone"
+const HERE := "passenger:here"
 const SHIFT := 1
 const CTRL := 2
 const ALT := 4
@@ -33,6 +34,12 @@ var _keys_back_modifiers := 0
 var _letting_go := false
 ## The last member, so it is set only once every other member's default is (members are made in the order written).
 var _made = true
+
+
+## Said as this script is set on the helper's node, which Godot took into the game's tree, so no refusal raised after is
+## the helper's.
+func _init() -> void:
+    EngineDebugger.send_message(HERE, [])
 
 
 ## Every call Passenger makes, by its name, its ask and its other arguments. Godot reads the debugger's messages between a

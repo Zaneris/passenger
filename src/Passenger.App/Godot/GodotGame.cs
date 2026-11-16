@@ -71,8 +71,23 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IGodotValues, 
     /// predate it, so only one asked since says the helper is gone.</summary>
     private int brought;
 
-    /// <summary>Whether the helper was last sent for and has not been heard since: a node Godot refused to add meanwhile is its.</summary>
-    private bool placing;
+    /// <summary>Where the helper's coming in stands (<see cref="BringAsync"/>): sent for, the answer to the fence sent ahead
+    /// of its node yet to come; past the fence, where the first of Godot's refusals that name no node is the helper's; or
+    /// over, the helper here, refused, or no ask waiting.</summary>
+    private Placing placing;
+
+    /// <summary>The asks of the helper under way, those still bringing it in among them: the last one's end ends its coming in.</summary>
+    private int asksUnderWay;
+
+    /// <summary>The object inspected ahead of the helper's node as it is brought in, whose answer is the fence: the root.</summary>
+    private ulong fence;
+
+    private enum Placing
+    {
+        Over,
+        Fenced,
+        Open,
+    }
 
     /// <summary>Whether the game has run its loop since it connected or last stopped in a script: its monitors, which its loop
     /// alone sends, came since. Until then a node's _ready may still be running, its tree adding no node.</summary>
@@ -563,6 +578,11 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IGodotValues, 
             case GodotWords.InspectObjects:
                 foreach (GodotObjectState state in GodotObjectState.Read(message.Data))
                 {
+                    if (placing == Placing.Fenced && state.Id == fence)
+                    {
+                        // What the game raised before Godot read the helper's node came ahead of this.
+                        placing = Placing.Open;
+                    }
                     inspected[state.Id] = state;
                     Tuning.Read(state);
                     if (objectsAsked.Remove(state.Id, out TaskCompletionSource<GodotObjectState>? asked))
@@ -586,9 +606,9 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IGodotValues, 
                 break;
             case GodotWords.Error when GodotError.Read(message.Data) is { } error && Scripts?.Claims(error) == true:
                 break;
-            case GodotWords.Error when placing && GodotError.Read(message.Data) is { } error && GodotAgent.Unplaced(error):
+            case GodotWords.Error when placing == Placing.Open && GodotError.Read(message.Data) is { } error && GodotAgent.Unplaced(error):
                 // The helper's node, refused by a parent setting its children up: the asks waiting say so, and the game's problems stay its own.
-                placing = false;
+                placing = Placing.Over;
                 beside = null;
                 foreach (TaskCompletionSource<List<object?>> asked in agentAsked.Values)
                 {
@@ -635,13 +655,16 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IGodotValues, 
             case GodotWords.Screenshotted when message.Data is [long id, long width, long height, string path]:
                 picturesAsked.GetValueOrDefault(id)?.TrySetResult(((int)width, (int)height, path));
                 break;
+            case GodotAgent.Here:
+                placing = Placing.Over;
+                break;
             case GodotAgent.Said when message.Data is List<object?> { Count: >= 2 } said && said[0] is long ask:
-                placing = false;
+                placing = Placing.Over;
                 agentAsked.GetValueOrDefault(ask)?.TrySetResult(said);
                 break;
             case GodotAgent.Gone:
                 // The game's count of nodes may never show it: come and gone within one beat of its monitors, or a node made in its place.
-                placing = false;
+                placing = Placing.Over;
                 beside = null;
                 Freed();
                 break;
@@ -1080,6 +1103,24 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IGodotValues, 
     private async Task<List<object?>> AskAsync(string call, object?[] arguments, Func<Task>? then)
     {
         UiThread.Check();
+        asksUnderWay++;
+        try
+        {
+            return await HelperAnswerAsync(call, arguments, then);
+        }
+        finally
+        {
+            // However the last ask ended, no error after it is Godot's refusal of the helper.
+            if (--asksUnderWay == 0)
+            {
+                placing = Placing.Over;
+            }
+        }
+    }
+
+    /// <summary>The helper's answer to a call, brought in first where the game's tree lacks it.</summary>
+    private async Task<List<object?>> HelperAnswerAsync(string call, object?[] arguments, Func<Task>? then)
+    {
         (string Scene, int Moves)? named = beside is { } known && known.Moves == moves ? known : null;
         (GodotNode Tree, int Brought, int Moves)? asked = null;
         if (named is null || bringing is null)
@@ -1101,7 +1142,7 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IGodotValues, 
         if (asked is ({ } lacking, int since, _) && !lacking.Children.Any(GodotAgent.Is) && (bringing is null || (bringing.IsCompleted && since == brought)))
         {
             Freed();
-            bringing = BringAsync();
+            bringing = BringAsync(lacking.Id);
         }
         if (bringing is { } coming)
         {
@@ -1224,16 +1265,21 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IGodotValues, 
     /// <summary>The paths Passenger's helper gave the resources it read by their ids, for one whose own properties name none.</summary>
     private readonly Dictionary<ulong, string> heldPaths = [];
 
-    /// <summary>Has the game make Passenger's helper beside the scene its live editing names, its script the file written.</summary>
-    private async Task BringAsync()
+    /// <summary>Has the game make Passenger's helper beside the scene its live editing names, its script the file written,
+    /// behind a fence: an inspection of the game's root, which Godot answers as it reads it, having written out what it
+    /// raised before, so the first refusal naming no node after that answer, raised as Godot read the node, is the
+    /// helper's, unless the helper said it was here first.</summary>
+    private async Task BringAsync(ulong root)
     {
         string script = await BackgroundWork.Run(GodotAgent.Written);
         try
         {
-            placing = true;
-            await SendAsync(GodotWords.LiveCreateNode, GodotAgent.PathOf(".."), "Node", GodotAgent.NodeName);
-            // Godot's own paths part their folders with '/' on every system.
-            await SendAsync(GodotWords.LiveNodePropertyResource, GodotLiveEditIds.Agent, "script", script.Replace('\\', '/'));
+            fence = root;
+            placing = Placing.Fenced;
+            // In one write, so Godot reads the three at once; its own paths part their folders with '/' on every system.
+            await SendTogetherAsync(GodotMessage.MainThread, [(GodotWords.InspectObjects, [new List<object?> { (long)root }, false]),
+                (GodotWords.LiveCreateNode, [GodotAgent.PathOf(".."), "Node", GodotAgent.NodeName]),
+                (GodotWords.LiveNodePropertyResource, [GodotLiveEditIds.Agent, "script", script.Replace('\\', '/')])]);
         }
         finally
         {

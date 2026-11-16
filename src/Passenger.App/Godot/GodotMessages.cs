@@ -129,6 +129,10 @@ public static class GodotWords
     /// <summary>The function of Godot's that adds a node to its parent, and the file it is in, whose errors say it added none.</summary>
     public const string AddChildFunction = "add_child";
     public const string NodeSource = "scene/main/node.cpp";
+
+    /// <summary>How Godot's refusal to add a node to a parent setting up its children begins, the one refusal of add_child that
+    /// names no node: its others are about a node already placed, and say which.</summary>
+    public const string BusyParent = "Parent node is busy setting up children";
 }
 
 /// <summary>What a click in a game picks under Godot's runtime node selection, as its <c>set_type</c> numbers it: nothing

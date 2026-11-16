@@ -369,6 +369,54 @@ public sealed class GodotScriptGameTests : IClassFixture<GodotScriptGameTests.Ga
         }
     }
 
+    /// <summary>The scene's one node's script, which adds again each frame the child it added as it was ready, Godot refusing it
+    /// each time as a node that already has a parent; at a few frames a second, so Godot drops none of its errors.</summary>
+    private const string Readding = "extends Node\n\nvar held := Node.new()\n\n\nfunc _ready() -> void:\n\tEngine.max_fps = 30\n\tadd_child(held)\n\n\n"
+        + "func _process(_delta: float) -> void:\n\tadd_child(held)\n";
+
+    /// <summary>An agent's app_tree on a game whose own add_child fails each frame brings Passenger's helper in and says where
+    /// the nodes are drawn: Godot's refusals of the game's own child, raised while the helper came in, are the game's errors,
+    /// said in Problems, never taken as Godot refusing the helper; and the helper is in the game's tree once.</summary>
+    [AvaloniaFact]
+    public void A_games_own_add_child_errors_as_an_agents_app_tree_brings_the_helper_in_stay_the_games_and_the_helper_comes_in_once()
+    {
+        File.WriteAllText(TickerPath, Readding);
+        MainWindow window = Open();
+        try
+        {
+            // Nothing else brings the helper in.
+            window.ApplySettings(window.Settings with { GodotLiveValues = false });
+            Choose(window);
+            Ui.Launched(window, window.RunAsync(), "the game's start", TimeSpan.FromMinutes(2));
+            Ui.WaitFor(() => window.Session.Game is { State: Passenger.App.LiveTree.LiveAppState.Connected, Monitors: not null },
+                () => $"the game to connect and run its loop ({window.Status}; {Run(window)})", TimeSpan.FromMinutes(1));
+            Passenger.App.Godot.GodotGame running = window.Session.Game!;
+            List<string> raised = [];
+            running.Raised += (_, error) => raised.Add(error.Said);
+            Ui.PumpUntil(() => raised.Any(Readded), "the game's own add_child to fail", TimeSpan.FromMinutes(1));
+
+            int before = raised.Count(Readded);
+            string tree = Ui.AwaitPumped(new Passenger.App.Mcp.PassengerTools(window).AppTree(depth: 2), "an agent's app_tree", TimeSpan.FromMinutes(1));
+            Assert.True(!tree.Contains("Where its nodes are drawn is unknown", StringComparison.Ordinal),
+                $"app_tree took the game's own add_child errors for Godot refusing Passenger's helper, so it could not say where the nodes are drawn: {tree}");
+            Ui.PumpUntil(() => raised.Count(Readded) > before + 2, "the game's add_child errors to go on once the helper answered", TimeSpan.FromMinutes(1));
+            Ui.WaitFor(() => window.BottomPanel.Problems.GodotProblems.Any(p => Readded(p.Message)),
+                () => $"the game's add_child errors in Problems ({string.Join("; ", window.BottomPanel.Problems.GodotProblems.Select(p => p.Message).Distinct().Take(5))})", TimeSpan.FromMinutes(1));
+
+            Passenger.App.Godot.GodotNode root = Ui.AwaitPumped(running.SceneTreeAsync(), "the game's tree", TimeSpan.FromMinutes(1));
+            Assert.True(root.Children.Count(Passenger.App.Godot.GodotAgent.Is) == 1,
+                $"Passenger's helper is in the game's tree {root.Children.Count(Passenger.App.Godot.GodotAgent.Is)} times: [{string.Join(", ", root.Children.Select(c => c.Name))}]");
+            Stop(window);
+        }
+        finally
+        {
+            window.ApplySettings(window.Settings with { GodotLiveValues = true });
+            End(window);
+        }
+
+        static bool Readded(string said) => said.Contains("already has a parent", StringComparison.Ordinal);
+    }
+
     /// <summary>A script saved while Run runs the game with Hot Reload reaches it: what it says after is the edit's, its count
     /// going on.</summary>
     [AvaloniaFact]

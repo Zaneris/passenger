@@ -19,6 +19,9 @@ public static partial class GodotAgent
     /// it was asked and has yet to answer, nor anything sent to it after.</summary>
     public const string Gone = "passenger:gone";
 
+    /// <summary>The message it sends as its script is set on its node, which Godot has then taken into the game's tree.</summary>
+    public const string Here = "passenger:here";
+
     /// <summary>The message it sends as the game, holding the keys in Passenger's Game window, hears the keys that hand them
     /// back (<see cref="KeysBack"/>'s call set them).</summary>
     public const string KeysAsked = "passenger:keys";
@@ -48,10 +51,12 @@ public static partial class GodotAgent
     /// <summary>Whether a place an error was raised at is the helper's script.</summary>
     public static bool Raised(GodotError error) => IsScript(error.File) || error.Frames.Any(f => IsScript(f.File));
 
-    /// <summary>Whether an error the game raised is Godot refusing to add a node to a parent setting up its children, as the
-    /// helper's node is refused while a node's _ready, or a call through the nodes, runs under the root.</summary>
+    /// <summary>Whether an error the game raised is Godot refusing to add a node to a parent setting up its children, the one
+    /// refusal a node made a moment before can meet, as the helper's node is refused while a node's _ready, or a call through
+    /// the nodes, runs under the root. Godot's other refusals of add_child are about a node already placed, the game's.</summary>
     public static bool Unplaced(GodotError error) =>
-        error.Function == GodotWords.AddChildFunction && error.File.Replace('\\', '/').EndsWith(GodotWords.NodeSource, StringComparison.Ordinal);
+        error.Function == GodotWords.AddChildFunction && error.File.Replace('\\', '/').EndsWith(GodotWords.NodeSource, StringComparison.Ordinal)
+        && error.Said.Contains(GodotWords.BusyParent, StringComparison.Ordinal);
 
     /// <summary>What a call on the helper says once Godot refused the helper's node.</summary>
     public static string NotPlaced(string game) => $"{game} was setting up the nodes under its root (running a node's _ready, or a call through them) as "
