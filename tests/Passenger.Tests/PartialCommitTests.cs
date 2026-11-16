@@ -62,6 +62,39 @@ public sealed class PartialCommitTests : IDisposable
         }
     }
 
+    /// <summary>A change staged and then taken back out of the working tree, beside the line a partial commit takes,
+    /// stays staged once the commit is made, with the change committed taken in; the change left out stays in the
+    /// working tree alone.</summary>
+    [AvaloniaFact]
+    public void A_change_only_staged_stays_staged_through_a_commit_of_another_change_of_its_file()
+    {
+        const string Staged = "one\nTWO\nthree\nfour\nfive\n";
+        File.WriteAllText(PathOf("Notes.txt"), Staged);
+        TestGit.Run(folder, "add", "Notes.txt");
+        File.WriteAllText(PathOf("Notes.txt"), After);
+        MainWindow window = Ui.OpenFolder(folder);
+        try
+        {
+            window.Perform(AppActions.ShowCommit);
+            Ui.Landed(() => window.CommitView.Rows.OfType<CommitRow>().Count() == 2, "the changed files");
+            window.CommitView.Rows.OfType<CommitRow>().Single(r => r.Change.Name == "Other.txt").IsChosen = false;
+            IDiffHost host = Ui.Landed(window.ShowDiffAsync(PathOf("Notes.txt")), "the diff")!;
+            Ui.Click(Boxes(host.View!)[1]);
+            host.Close();
+            window.CommitView.Message = "The first change";
+            Assert.True(Ui.Landed(window.CommitView.CommitAsync(false), "the partial commit"), window.Status);
+            Assert.Equal("ONE\ntwo\nthree\nfour\nfive\n", TestGit.Run(folder, "show", "HEAD:Notes.txt"));
+            Assert.True(TestGit.Run(folder, "show", ":Notes.txt") == "ONE\nTWO\nthree\nfour\nfive\n",
+                $"The change only staged did not stay staged beside the one committed: the index holds\n{TestGit.Run(folder, "show", ":Notes.txt")}");
+            Assert.Equal(After, File.ReadAllText(PathOf("Notes.txt")));
+            Assert.Equal("Other.txt\n", TestGit.Run(folder, "diff", "--cached", "--name-only", "HEAD", "--", "Other.txt"));
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     private static CheckBox[] Boxes(DiffView view) =>
         [.. view.GetVisualDescendants().OfType<CheckBox>().Where(b => b.IsVisible && ToolTip.GetTip(b) as string == "Include this change in commit")];
 

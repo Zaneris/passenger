@@ -1832,6 +1832,30 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
             && tracked.GetProperty("ahead").GetInt32() == 1 && tracked.GetProperty("behind").GetInt32() == 0, $"vcs_status of a branch one commit ahead of its upstream answered: {tracked}");
     }
 
+    /// <summary>vcs_commit's lines commit one change of a file whose index holds a change taken back out of the working
+    /// tree since: the change only staged stays staged, the committed one taken in beside it, and the change left out
+    /// stays in the working tree.</summary>
+    [Fact]
+    public async Task An_agents_commit_of_some_lines_keeps_a_change_only_staged_staged()
+    {
+        string repository = TestFolders.Create("mcp-partial-staged-");
+        DeleteAtEnd(repository);
+        string notes = Path.Combine(repository, "Notes.txt");
+        File.WriteAllText(notes, "one\ntwo\nthree\nfour\nfive\nsix\nseven\n");
+        await TestGit.InitAsync(repository);
+        File.WriteAllText(notes, "one\nTWO\nthree\nfour\nfive\nsix\nseven\n");
+        await TestGit.RunAsync(repository, "add", "Notes.txt");
+        File.WriteAllText(notes, "ONE\ntwo\nthree\nfour\nfive\nsix\nSEVEN\n");
+
+        await using McpClient client = await Start(["--mcp", repository], languageServer: false);
+        string made = Text(await Call(client, McpTools.VcsCommit, new() { ["message"] = "Capital one", ["lines"] = new Dictionary<string, string> { ["Notes.txt"] = "1" } }));
+        Assert.EndsWith(" Capital one; left uncommitted: 1 change of Notes.txt", made, StringComparison.Ordinal);
+        Assert.Equal("ONE\ntwo\nthree\nfour\nfive\nsix\nseven\n", await TestGit.RunAsync(repository, "show", "HEAD:Notes.txt"));
+        string index = await TestGit.RunAsync(repository, "show", ":Notes.txt");
+        Assert.True(index == "ONE\nTWO\nthree\nfour\nfive\nsix\nseven\n", $"The change only staged did not stay staged beside the one committed: the index holds\n{index}");
+        Assert.Equal("ONE\ntwo\nthree\nfour\nfive\nsix\nSEVEN\n", File.ReadAllText(notes));
+    }
+
     /// <summary>vcs_commit with movesFirst commits a file git mv moved and then rewrote past what git finds alike as a rename,
     /// as the Commit window offers: the move first, a commit of its own with that message, then the edits with the
     /// message, the answer naming both; a commit whose moves git keeps with their edits makes no commit of them first.</summary>

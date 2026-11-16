@@ -112,6 +112,104 @@ public sealed record PartialCommit(FileDiff Diff, IReadOnlyList<DiffHunk> Hunks,
         };
     }
 
+    /// <summary>What the index is to hold of a file once a commit took some of its changes, each text as git keeps it:
+    /// <paramref name="staged"/>, what it held, with the changes <paramref name="committed"/> made to the last commit's
+    /// <paramref name="head"/> taken in, so a staged change the commit left out stays staged. Where both changed the same
+    /// lines of the last commit, the committed lines are taken. Null where the three can't be read alike: UTF-16 or UTF-32
+    /// (by a byte order mark) in one but not all, or a wide text that does not read back byte for byte.</summary>
+    public static byte[]? Restaged(byte[] head, byte[] staged, byte[] committed)
+    {
+        Encoding? wide = Wide(head);
+        if (Wide(staged)?.CodePage != wide?.CodePage || Wide(committed)?.CodePage != wide?.CodePage)
+        {
+            return null;
+        }
+        // Latin-1 gives each byte a character of its own, so a UTF-8 or 8-bit text splits at its line feeds and comes back whole.
+        Encoding reading = wide ?? Encoding.Latin1;
+        return Read(head) is { } before && Read(staged) is { } kept && Read(committed) is { } taken
+            ? reading.GetBytes(string.Concat(Restaged(before, kept, taken))) : null;
+
+        static Encoding? Wide(byte[] bytes) => FileText.Bom(bytes) is { CodePage: not 65001 } encoding ? encoding : null;
+
+        string[]? Read(byte[] bytes) => reading.GetString(bytes) is var text && reading.GetBytes(text).AsSpan().SequenceEqual(bytes) ? Lines(text) : null;
+    }
+
+    /// <summary><see cref="Restaged(byte[], byte[], byte[])"/> over lines that keep their breaks. Changes of the two
+    /// sides that only meet, one ending where the other begins, are both taken; those that share a line of the last
+    /// commit, or both add lines at one place, make one stretch, which is the committed side's where it changed any of it.</summary>
+    private static List<string> Restaged(string[] head, string[] staged, string[] committed)
+    {
+        IReadOnlyList<DiffHunk> kept = LineDiff.Hunks(head, staged);
+        IReadOnlyList<DiffHunk> taken = LineDiff.Hunks(head, committed);
+        List<string> lines = [];
+        int at = 0;
+        int i = 0;
+        int j = 0;
+        int keptShift = 0;
+        int takenShift = 0;
+        while (i < kept.Count || j < taken.Count)
+        {
+            // The stretch begins at the first change left, one adding lines before one replacing lines at the same place.
+            bool keptFirst = j == taken.Count || i < kept.Count && (kept[i].OldStart, kept[i].OldCount > 0).CompareTo((taken[j].OldStart, taken[j].OldCount > 0)) <= 0;
+            DiffHunk first = keptFirst ? kept[i++] : taken[j++];
+            int start = first.OldStart;
+            int end = End(first);
+            int keptGrowth = keptFirst ? first.NewCount - first.OldCount : 0;
+            int takenGrowth = keptFirst ? 0 : first.NewCount - first.OldCount;
+            bool anyTaken = !keptFirst;
+            while (true)
+            {
+                if (i < kept.Count && Overlaps(kept[i], start, end))
+                {
+                    end = Math.Max(end, End(kept[i]));
+                    keptGrowth += kept[i].NewCount - kept[i].OldCount;
+                    i++;
+                }
+                else if (j < taken.Count && Overlaps(taken[j], start, end))
+                {
+                    end = Math.Max(end, End(taken[j]));
+                    takenGrowth += taken[j].NewCount - taken[j].OldCount;
+                    anyTaken = true;
+                    j++;
+                }
+                else
+                {
+                    break;
+                }
+            }
+            lines.AddRange(head.AsSpan(at, start - at));
+            lines.AddRange(anyTaken ? committed.AsSpan(start + takenShift, end - start + takenGrowth) : staged.AsSpan(start + keptShift, end - start + keptGrowth));
+            at = end;
+            keptShift += keptGrowth;
+            takenShift += takenGrowth;
+        }
+        lines.AddRange(head.AsSpan(at));
+        return lines;
+
+        // Lines added at a place share it with a stretch only inside it, and with lines added at that same place.
+        static bool Overlaps(DiffHunk hunk, int start, int end) => (hunk.OldCount > 0, start < end) switch
+        {
+            (true, true) => hunk.OldStart < end && start < End(hunk),
+            (true, false) => hunk.OldStart < start && start < End(hunk),
+            (false, true) => start < hunk.OldStart && hunk.OldStart < end,
+            (false, false) => hunk.OldStart == start,
+        };
+    }
+
+    /// <summary>A text's lines, each with the break that ends it.</summary>
+    private static string[] Lines(string text)
+    {
+        List<string> lines = [];
+        for (int start = 0; start < text.Length;)
+        {
+            int feed = text.IndexOf('\n', start);
+            int end = feed < 0 ? text.Length : feed + 1;
+            lines.Add(text[start..end]);
+            start = end;
+        }
+        return [.. lines];
+    }
+
     private static int End(DiffHunk hunk) => hunk.OldStart + hunk.OldCount;
 
     private static int Offset(LineStarts starts, int length, int line) => line < starts.Count ? starts[line] : length;

@@ -1571,7 +1571,8 @@ public sealed partial class Git
         public void Dispose() => File.Dispose();
     }
 
-    /// <summary>A private index keeps excluded changes out of the commit and leaves the real index untouched on failure.</summary>
+    /// <summary>A private index keeps excluded changes out of the commit and leaves the real index untouched on failure;
+    /// once made, a file committed in part keeps staged what the index held of it beside what went in (<see cref="RestagedAsync"/>).</summary>
     private async Task<GitResult> CommitPartialAsync(IReadOnlyList<string> paths, string message, bool amend, CommitSigning signing, GitAsker? asker,
         IReadOnlyDictionary<string, PartialCommit> partial)
     {
@@ -1605,6 +1606,13 @@ public sealed partial class Git
             return entries;
         }
         bool composed = await ComposesAsync();
+        (GitResult listed, Dictionary<string, StagedEntry> staged) = await StagedAsync();
+        if (!listed.Succeeded)
+        {
+            return listed;
+        }
+        StringBuilder restaged = new();
+        HashSet<string> left = new(PathNames.Comparer);
         foreach ((string path, byte[] bytes) in contents)
         {
             string name = GitForm(Relative(path), composed);
@@ -1625,19 +1633,104 @@ public sealed partial class Git
             {
                 return updated;
             }
+            string from = partial[path].From is { } moved ? GitForm(Relative(moved), composed) : name;
+            switch (await RestagedAsync(name, from, (entry[..6], blob.Read!.Trim()), staged))
+            {
+                case { Refused: { } refused }:
+                    return refused;
+                case { Left: true }:
+                    left.Add(Relative(path));
+                    break;
+                case { Entry: { } kept }:
+                    restaged.Append(kept);
+                    break;
+            }
         }
         using CommitFile file = CommitFile.Message(message);
         GitResult committed = await RunAsync(Root, [.. signing.Before, "commit", "-F", file.Path, .. amend ? new[] { "--amend" } : [], .. signing.After],
             environment: index.Environment, asker: asker);
         if (committed.Succeeded)
         {
-            GitResult reset = await OnFilesAsync(["reset", "-q", "HEAD"], relative);
-            if (!reset.Succeeded)
+            // An empty list of paths would reset the whole index.
+            string[] reset = [.. relative.Where(r => !left.Contains(r))];
+            GitResult indexed = reset.Length > 0 ? await OnFilesAsync(["reset", "-q", "HEAD"], reset) : Done;
+            if (indexed.Succeeded && restaged.Length > 0)
             {
-                return committed with { Output = committed.Output + "\n" + reset.Message };
+                indexed = await RunAsync(Root, ["update-index", "-z", "--index-info"], restaged.ToString());
+            }
+            if (!indexed.Succeeded)
+            {
+                return committed with { Output = committed.Output + "\n" + indexed.Message };
             }
         }
         return committed;
+    }
+
+    /// <summary>A path's entry in the last commit and in the index where the two differ, each a mode and a blob (zeros
+    /// where it has none), with git's letter for how they differ: A, D, M, T or U (in conflict).</summary>
+    private sealed record StagedEntry(char Status, (string Mode, string Blob) Head, (string Mode, string Blob) Index);
+
+    /// <summary>The index's entries that differ from the last commit's, by name as git writes it.</summary>
+    private async Task<(GitResult Ran, Dictionary<string, StagedEntry> Staged)> StagedAsync()
+    {
+        GitResult listed = await RunAsync(Root, ["diff-index", "--cached", "-z", "--no-renames", "HEAD"]);
+        Dictionary<string, StagedEntry> staged = new(StringComparer.Ordinal);
+        string[] fields = listed.Succeeded ? listed.Output.Split('\0') : [];
+        // ":<mode> <mode> <blob> <blob> <letter>", then its path.
+        for (int i = 0; i + 1 < fields.Length; i += 2)
+        {
+            if (fields[i].TrimStart(':').Split(' ') is [{ } headMode, { } indexMode, { } headBlob, { } indexBlob, [char status, ..]])
+            {
+                staged[fields[i + 1]] = new StagedEntry(status, (headMode, headBlob), (indexMode, indexBlob));
+            }
+        }
+        return (listed, staged);
+    }
+
+    /// <summary>What the index is to hold at a file a partial commit takes some changes of (<paramref name="name"/>, moved
+    /// from <paramref name="from"/>), once <paramref name="committed"/> is: nothing to do but take the commit's where
+    /// nothing else was staged there; the entry that keeps what was staged with the commit's changes taken in
+    /// (<see cref="PartialCommit.Restaged"/>); left as it stands where a deletion, a link or a submodule is staged
+    /// there; or refused, before any commit, where the staged text can't be kept beside the committed one.</summary>
+    private async Task<(string? Entry, bool Left, GitResult? Refused)> RestagedAsync(string name, string from, (string Mode, string Blob) committed,
+        IReadOnlyDictionary<string, StagedEntry> staged)
+    {
+        StagedEntry? here = staged.GetValueOrDefault(name);
+        StagedEntry? there = from == name ? null : staged.GetValueOrDefault(from);
+        if (here is { Status: 'D' } || here is { Status: not 'U', Index.Mode: not ("100644" or "100755") })
+        {
+            return (null, true, null);
+        }
+        // What is staged of the file: at its name, else at the name it had while the index has not moved it.
+        (string Mode, string Blob)? index = here is { Status: 'A' or 'M' or 'T' } ? here.Index
+            : here is null && there is { Status: 'M' or 'T', Index.Mode: "100644" or "100755" } ? there.Index : null;
+        if (index is not { } held)
+        {
+            return (null, false, null);
+        }
+        (string Mode, string Blob)? last = from == name ? here!.Head : there is { Status: not 'U' and not 'A' } ? there.Head : null;
+        string? head = last?.Blob ?? await BlobAtAsync("HEAD", from);
+        string mode = last is { } before && before.Mode != held.Mode ? held.Mode : committed.Mode;
+        string blob = committed.Blob;
+        if (held.Blob != head && held.Blob != committed.Blob)
+        {
+            byte[]? merged = head is not null && await BytesAsync(Root, ["cat-file", "blob", head]) is { } headBytes
+                && await BytesAsync(Root, ["cat-file", "blob", held.Blob]) is { } heldBytes
+                && await BytesAsync(Root, ["cat-file", "blob", committed.Blob]) is { } committedBytes
+                ? await BackgroundWork.Run(() => PartialCommit.Restaged(headBytes, heldBytes, committedBytes)) : null;
+            if (merged is null)
+            {
+                return (null, false, new GitResult(1, string.Empty,
+                    $"{System.IO.Path.GetFileName(name)} has staged changes Passenger can't keep beside the ones chosen: commit it whole, or unstage it first"));
+            }
+            (GitResult Ran, string? Read) written = await RunAsync(Root, ["hash-object", "-w", "--stdin", "--no-filters"], TextAsync, merged);
+            if (!written.Ran.Succeeded)
+            {
+                return (null, false, written.Ran);
+            }
+            blob = written.Read!.Trim();
+        }
+        return mode == committed.Mode && blob == committed.Blob ? (null, false, null) : ($"{mode} {blob}\t{name}\0", false, null);
     }
 
     /// <summary>Whether a path is on the disk: a file, a folder or a link, a broken one too, which git tracks as itself.</summary>
