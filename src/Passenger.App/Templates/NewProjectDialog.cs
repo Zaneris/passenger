@@ -49,6 +49,11 @@ public enum ProjectSetup
     Aspire,
 }
 
+/// <summary>The window's one install of .NET workloads (<see cref="MainWindow.InstallWorkloadsAsync(IReadOnlyList{string}, bool,
+/// Action{string}, Action{string}, CancellationToken)"/>): given their ids, what takes its stages and the lines dotnet
+/// writes, and what stops it; whether they were installed, and what it came to.</summary>
+public delegate Task<(bool Installed, string Said)> WorkloadInstall(IReadOnlyList<string> ids, Action<string> stages, Action<string> lines, CancellationToken stop);
+
 /// <summary>The New Project dialog, for New Solution and Add, New Project: the template families read ahead down the
 /// left (<see cref="TemplateFamilies"/>) under a search; on the right the names, where it goes, the family's Type, the
 /// framework, the language and the Type's options (a value set kept by a Type that has it), or a Type's package to
@@ -114,6 +119,9 @@ public sealed class NewProjectDialog : IdeWindow
 
     /// <summary>The set-up chosen last, in any dialog, which the next service made offers.</summary>
     public static ProjectSetup Remembered { get; set; }
+
+    /// <summary>What Install runs for a template a .NET workload brings: the window's one install of workloads.</summary>
+    public required WorkloadInstall Workloads { get; init; }
 
     /// <summary>Why no container can be set up here (no container engine's command), once asked; null while it can.</summary>
     private string? noEngine;
@@ -789,13 +797,14 @@ public sealed class NewProjectDialog : IdeWindow
         return reached.Task;
     }
 
-    /// <summary>Install, as its button does: dotnet new install of the chosen template's package, its output shown as it
+    /// <summary>Install, as its button does: the chosen template's package or workload installed, its output shown as it
     /// comes, then the templates read again and the one installed chosen, with its options.</summary>
-    public Task InstallAsync() => template is { Pack: { } pack } wanted ? InstallAsync(pack, wanted) : Task.CompletedTask;
+    public Task InstallAsync() => template is { Pack: { Unbuilt: null } pack } wanted ? InstallAsync(pack, wanted) : Task.CompletedTask;
 
-    /// <summary>dotnet new install of a package, its output shown as it comes, then the templates read again: for the
-    /// template chosen (<paramref name="wanted"/>), which the one installed takes the place of, else for a set-up the
-    /// package's templates make, offered once they are read. Output of a failure stays shown.</summary>
+    /// <summary>dotnet new install of a package, or a workload through the window's one install of them (<see cref="Workloads"/>),
+    /// its output shown as it comes, then the templates read again: for the template chosen (<paramref name="wanted"/>),
+    /// which the one installed takes the place of, else for a set-up the package's templates make, offered once they are
+    /// read. Output of a failure stays shown.</summary>
     private async Task InstallAsync(TemplatePack pack, ProjectTemplate? wanted)
     {
         if (installing is not null || creating is not null)
@@ -809,27 +818,16 @@ public sealed class NewProjectDialog : IdeWindow
         Busy(true);
         installOutput.Clear();
         installOutput.IsVisible = true;
-        using ProcessRunner runner = new(installOutput);
         try
         {
-            if (runner.StartDotnet(pack.Install, InstallFolder()) is { } refused)
-            {
-                Fail($"Installation of {pack.Named} has failed: {refused}");
-                return;
-            }
-            BackgroundWork.Track(runner.Ended);
-            int code;
-            using (cancel.Token.Register(runner.Stop))
-            {
-                code = await runner.Ended;
-            }
+            string? failed = pack.IsWorkload ? await InstallWorkloadAsync(pack, cancel.Token) : await InstallPackageAsync(pack, cancel.Token);
             if (cancel.IsCancellationRequested)
             {
                 return;
             }
-            if (code != 0)
+            if (failed is not null)
             {
-                Fail($"Installation of {pack.Named} has failed ({ExitCodes.Said(code)}): its output says why");
+                Fail(failed);
                 return;
             }
             ProjectTemplates.Forget();
@@ -854,6 +852,31 @@ public sealed class NewProjectDialog : IdeWindow
             installing = null;
             Busy(false);
         }
+    }
+
+    /// <summary>dotnet new install of a package, its output shown as it comes: null once installed, else why not.</summary>
+    private async Task<string?> InstallPackageAsync(TemplatePack pack, CancellationToken cancel)
+    {
+        using ProcessRunner runner = new(installOutput);
+        if (runner.StartDotnet(ProjectTemplates.New(["install", pack.Id]), InstallFolder()) is { } refused)
+        {
+            return $"Installation of {pack.Named} has failed: {refused}";
+        }
+        BackgroundWork.Track(runner.Ended);
+        int code;
+        using (cancel.Register(runner.Stop))
+        {
+            code = await runner.Ended;
+        }
+        return code == 0 ? null : $"Installation of {pack.Named} has failed ({ExitCodes.Said(code)}): its output says why";
+    }
+
+    /// <summary>A workload installed through the window's one install of them, its stages said under the dialog and the
+    /// lines dotnet writes shown as they come: null once installed, else what it came to.</summary>
+    private async Task<string?> InstallWorkloadAsync(TemplatePack pack, CancellationToken cancel)
+    {
+        (bool installed, string said) = await Workloads([pack.Id], stage => progress.Text = $"{stage}…", line => installOutput.Sink.Write($"{line}\n"), cancel);
+        return installed ? null : said;
     }
 
     /// <summary>Where dotnet new install runs, whose NuGet configuration says where the package comes from: the directory
@@ -902,7 +925,7 @@ public sealed class NewProjectDialog : IdeWindow
         }
         if (template.Pack is { } pack)
         {
-            return $"{template.Name} comes with {pack.Named}, which is not installed: Install it first";
+            return pack.WhyNotFor(template.Name) ?? $"{template.Name} comes with {pack.Named}, which is not installed: Install it first";
         }
         if (template.GodotGame && GodotWhyNot() is { } godot)
         {
@@ -1520,10 +1543,13 @@ public sealed class NewProjectDialog : IdeWindow
         formatRow?.IsVisible = !solution;
         if (chosen is { Pack: { } pack })
         {
-            offerText.Text = pack.Offer;
-            offerCommand.Text = pack.IsWorkload
+            string? whyNot = pack.WhyNotFor(chosen.Name);
+            offerText.Text = whyNot ?? pack.Offer;
+            offerCommand.Text = whyNot is not null ? $"{char.ToUpperInvariant(pack.Named[0])}{pack.Named[1..]} is not installed, and Passenger offers no install of it here."
+                : pack.IsWorkload
                 ? $"{char.ToUpperInvariant(pack.Named[0])}{pack.Named[1..]} is not installed. Install runs {pack.Command}, which installs it into the .NET Passenger builds with, from NuGet."
                 : $"{pack.Id} is not installed. Install runs {pack.Command}, which takes it from the NuGet feeds this directory uses.";
+            install.IsVisible = whyNot is null;
             installOutput.IsVisible = false;
         }
         if (chosen is null)

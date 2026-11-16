@@ -213,8 +213,7 @@ public sealed record MobileWant
             }
             if (AndroidElsewhere.Count > 0)
             {
-                sentences.Add($"{Plural.Listed([.. AndroidElsewhere])} {Plural.Agreeing(AndroidElsewhere.Count, "builds", "build")} for Android only on "
-                    + $"{AndroidHosts.Builders}: {AndroidHosts.Why(AndroidHost!)}");
+                sentences.Add($"{Plural.Listed([.. AndroidElsewhere])} {Plural.Agreeing(AndroidElsewhere.Count, "builds", "build")} {AndroidHosts.Elsewhere(AndroidHost!)}");
             }
             return sentences.Count == 0 ? null : string.Join(". ", sentences);
         }

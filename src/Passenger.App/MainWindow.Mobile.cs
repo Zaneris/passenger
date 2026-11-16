@@ -12,9 +12,9 @@ namespace Passenger.App;
 /// <summary>What the folder's mobile projects (MAUI, .NET for Android, iOS, Mac Catalyst) need that this machine lacks,
 /// asked of their workloads off the window's thread as their projects evaluate (<see cref="MobileQuestions"/>) and said
 /// once in the banner over the window (<see cref="MobileWant"/>), in place of the load errors it explains in the status
-/// bar. Install Workloads installs the missing workloads into the .NET Passenger builds with; Install Android SDK and
-/// Java runs the Android workload's own installer once the person accepted the SDK's licences; Get Xcode names where Xcode
-/// comes from. Each install has the projects loaded again.</summary>
+/// bar. Install Workloads installs the missing workloads into the .NET Passenger builds with, the one install of them New
+/// Project's Install runs too; Install Android SDK and Java runs the Android workload's own installer once the person
+/// accepted the SDK's licences; Get Xcode names where Xcode comes from. Each install has the projects loaded again.</summary>
 public partial class MainWindow
 {
     /// <summary>What the folder's mobile projects need, as last asked.</summary>
@@ -38,16 +38,12 @@ public partial class MainWindow
     /// <summary>A load problem the want may explain, held from the status bar until the ask under way lands.</summary>
     private ServerSaid? mobileHeld;
 
-    /// <summary>Lines the last install wrote, for a test.</summary>
-    public IReadOnlyList<string> MobileInstallSaid { get; private set; } = [];
-
     private Button? workloadsLink;
     private Button? androidLink;
     private Button? xcodeLink;
 
-    /// <summary>What a test runs in place of dotnet for Install Workloads, given dotnet's arguments (workload install, workload
-    /// update).</summary>
-    public static Func<IReadOnlyList<string>, ProcessStartInfo>? WorkloadStandIn { get; set; }
+    /// <summary>What a test's workload installs take in place of the .NET they install into, and of its dotnet.</summary>
+    public static WorkloadStandIn? WorkloadStandIn { get; set; }
 
     /// <summary>Where Xcode comes from.</summary>
     private static readonly Uri XcodePage = new("https://developer.apple.com/xcode/");
@@ -209,52 +205,77 @@ public partial class MainWindow
         return true;
     }
 
-    /// <summary>Install Workloads: the person asked, then dotnet workload install of the workloads lacking into the .NET
-    /// Passenger builds with, its lines said as its stages, and the projects loaded again with them. A .NET that knows none
-    /// of them, having no workload set installed, first installs its newest (dotnet workload update); the downloads go to a
-    /// folder of Passenger's on disk where the temporary folder is held in memory (<see cref="WorkloadInstalls"/>).</summary>
+    /// <summary>Install Workloads: the workloads the projects lack, once the person agreed to install them.</summary>
     private async Task InstallWorkloadsAsync()
     {
         UiThread.Check();
-        IReadOnlyList<string> ids = MobileWant.Workloads;
-        if (ids.Count == 0 || work.Begin(AppActions.InstallWorkloads, "Asking to install the .NET workloads") is not { } installing)
+        if (MobileWant.Workloads is { Count: > 0 } ids)
         {
-            return;
+            await InstallWorkloadsAsync(ids, asks: true, null, null, CancellationToken.None);
+        }
+    }
+
+    /// <summary>dotnet workload install of <paramref name="ids"/> into the .NET Passenger builds with, Install Workloads' and
+    /// New Project's one way: refused where this user may not write it, asked of the person where it <paramref name="asks"/>,
+    /// its stages and lines said and handed on, the projects loaded again after. A .NET with no workload set installs its
+    /// newest first (dotnet workload update); downloads go to disk where the temporary folder is in memory
+    /// (<see cref="WorkloadInstalls"/>). Whether they were installed, and what it came to, as the status bar says it.</summary>
+    public async Task<(bool Installed, string Said)> InstallWorkloadsAsync(IReadOnlyList<string> ids, bool asks, Action<string>? stages, Action<string>? lines,
+        CancellationToken stop)
+    {
+        UiThread.Check();
+        string named = $"{Plural.Noun(ids.Count, "workload")} {Plural.Listed([.. ids])}";
+        if (work.Begin(AppActions.InstallWorkloads, asks ? "Asking to install the .NET workloads" : $"Installing the .NET {named}") is not { } installing)
+        {
+            return (false, ActionWork.Busy(work.Of(AppActions.InstallWorkloads)!));
         }
         using (installing)
         {
-            string root = Dotnet.Root(Folder);
-            string named = $"{Plural.Noun(ids.Count, "workload")} {Plural.Listed([.. ids])}";
-            string command = $"dotnet workload install {string.Join(' ', ids)}";
-            if (WorkloadStandIn is null && !await BackgroundWork.Run(() => Writable(root)))
+            using CancellationTokenSource stopping = CancellationTokenSource.CreateLinkedTokenSource(installing.Stopping, stop);
+            (bool, string) Came(bool installed, string said)
             {
-                Told(installing, false, Refusals.WorkloadsNeedAdministrator(root, command));
-                return;
+                Told(installing, installed, said);
+                return (installed, said);
             }
-            if (!await Confirm($"Install the .NET {named}?",
+            void Stage(string stage)
+            {
+                installing.Say(stage);
+                stages?.Invoke(stage);
+            }
+            void Heard(string line)
+            {
+                installing.Say(line);
+                lines?.Invoke(line);
+            }
+            string root = WorkloadStandIn?.Root ?? Dotnet.Root(Folder);
+            string command = $"dotnet workload install {string.Join(' ', ids)}";
+            if (!await BackgroundWork.Run(() => Writable(root)))
+            {
+                return Came(false, Refusals.WorkloadsNeedAdministrator(root, command));
+            }
+            if (asks && !await Confirm($"Install the .NET {named}?",
                 $"Passenger runs {command} with the .NET in {PathNames.Shown(root, null)}, which downloads them from NuGet. "
                 + $"{Plural.Listed([.. MobileWant.Projects])} then {Plural.Agreeing(MobileWant.Projects.Count, "loads", "load")} again.", "Install"))
             {
-                Told(installing, false, $"The .NET {named} {Plural.Agreeing(ids.Count, "was", "were")} not installed");
-                return;
+                return Came(false, $"The .NET {named} {Plural.Agreeing(ids.Count, "was", "were")} not installed");
             }
-            installing.Say($"Installing the .NET {named}");
+            Stage($"Installing the .NET {named}");
             string temporary = Path.GetTempPath();
             string cache = Path.Combine(StateFolder, "cache");
             string? downloads = OperatingSystem.IsLinux() ? await BackgroundWork.Run(() => MadeDownloads(temporary, cache)) : null;
             int code;
-            IReadOnlyList<string> lines;
+            IReadOnlyList<string> said;
             try
             {
-                (code, lines) = await RunWorkloadAsync(["workload", "install", .. ids], downloads, installing);
-                if (code != 0 && !installing.IsStopped && WorkloadInstalls.Unknown(lines))
+                (code, said) = await RunWorkloadAsync(["workload", "install", .. ids], downloads, Heard, stopping.Token);
+                if (code != 0 && !stopping.IsCancellationRequested && WorkloadInstalls.Unknown(said))
                 {
-                    installing.Say("This .NET has no workload set installed: installing its newest first (dotnet workload update)");
-                    (code, lines) = await RunWorkloadAsync(["workload", "update"], downloads, installing);
-                    if (code == 0 && !installing.IsStopped)
+                    Stage("This .NET has no workload set installed: installing its newest first (dotnet workload update)");
+                    (code, said) = await RunWorkloadAsync(["workload", "update"], downloads, Heard, stopping.Token);
+                    if (code == 0 && !stopping.IsCancellationRequested)
                     {
-                        installing.Say($"Installing the .NET {named}");
-                        (code, lines) = await RunWorkloadAsync(["workload", "install", .. ids], downloads, installing);
+                        Stage($"Installing the .NET {named}");
+                        (code, said) = await RunWorkloadAsync(["workload", "install", .. ids], downloads, Heard, stopping.Token);
                     }
                 }
             }
@@ -265,21 +286,19 @@ public partial class MainWindow
                     await BackgroundWork.Run(() => DeleteDownloads(downloads));
                 }
             }
-            if (installing.IsStopped)
+            if (stopping.IsCancellationRequested)
             {
-                Told(installing, false, $"The install of the .NET {named} was stopped");
-                return;
+                return Came(false, $"The install of the .NET {named} was stopped");
             }
             if (code != 0)
             {
-                Told(installing, false, WorkloadInstalls.NoRoom(lines)
+                return Came(false, WorkloadInstalls.NoRoom(said)
                     ? $"The .NET {named} could not be installed: its downloads found no room left in {PathNames.Shown(downloads ?? temporary, null)}. Make room there and install again"
-                    : $"The .NET {named} could not be installed ({ExitCodes.Said(code)}): {LastWords(lines)}");
-                return;
+                    : $"The .NET {named} could not be installed ({ExitCodes.Said(code)}): {LastWords(said)}");
             }
-            installing.Say("Loading the projects again");
+            Stage("Loading the projects again");
             await LoadAgainAsync();
-            Told(installing, true, MobileWant.Workloads.Intersect(ids).Any()
+            return Came(true, MobileWant.Workloads.Intersect(ids).Any()
                 ? $"dotnet workload install ended, but the projects still lack {Plural.Listed([.. MobileWant.Workloads.Intersect(ids)])}"
                 : $"The .NET {named} {Plural.Agreeing(ids.Count, "is", "are")} installed: the projects loaded again");
         }
@@ -341,7 +360,7 @@ public partial class MainWindow
             }
             IReadOnlyList<string> arguments = MSBuildQuestions.Arguments(project.Path, framework, ProjectModels.Properties(session.Workspace, project),
                 new MSBuildQuestion([MSBuildNames.InstallAndroidDependencies]) { Given = given });
-            (int code, IReadOnlyList<string> lines) = await RunInstallAsync(ChildProcesses.DotnetCommand(arguments, project.Folder), installing);
+            (int code, IReadOnlyList<string> lines) = await RunInstallAsync(ChildProcesses.DotnetCommand(arguments, project.Folder), installing.Say, installing.Stopping);
             if (installing.IsStopped)
             {
                 Told(installing, false, "The Android SDK's install was stopped");
@@ -360,16 +379,17 @@ public partial class MainWindow
         }
     }
 
-    /// <summary>dotnet run for Install Workloads with these arguments (or the test's stand-in), downloading into
-    /// <paramref name="downloads"/> where it is given, its lines said as the work's stages.</summary>
-    private Task<(int Code, IReadOnlyList<string> Lines)> RunWorkloadAsync(IReadOnlyList<string> arguments, string? downloads, Working installing)
+    /// <summary>dotnet run for a workload install with these arguments (or the test's stand-in), downloading into
+    /// <paramref name="downloads"/> where it is given, each line it writes <paramref name="heard"/>.</summary>
+    private Task<(int Code, IReadOnlyList<string> Lines)> RunWorkloadAsync(IReadOnlyList<string> arguments, string? downloads, Action<string> heard,
+        CancellationToken stopping)
     {
-        ProcessStartInfo start = WorkloadStandIn?.Invoke(arguments) ?? ChildProcesses.DotnetCommand(arguments, Folder);
+        ProcessStartInfo start = WorkloadStandIn?.Start(arguments) ?? ChildProcesses.DotnetCommand(arguments, Folder);
         if (downloads is not null)
         {
             start.Environment["TMPDIR"] = downloads;
         }
-        return RunInstallAsync(start, installing);
+        return RunInstallAsync(start, heard, stopping);
     }
 
     /// <summary>The folder a workload install downloads into in place of <paramref name="temporary"/>, made, where that is
@@ -435,8 +455,9 @@ public partial class MainWindow
         return new ConfirmDialog(title, text, "Accept and Install", "Decline", shown) { EnterAgrees = false }.ShowDialog<bool>(this);
     }
 
-    /// <summary>An install's program run with its lines said as the work's stages, stopped with it.</summary>
-    private static async Task<(int Code, IReadOnlyList<string> Lines)> RunInstallAsync(ProcessStartInfo start, Working installing)
+    /// <summary>An install's program run, each line it writes <paramref name="heard"/> on the window's thread, ended once
+    /// <paramref name="stopping"/> is canceled.</summary>
+    private static async Task<(int Code, IReadOnlyList<string> Lines)> RunInstallAsync(ProcessStartInfo start, Action<string> heard, CancellationToken stopping)
     {
         List<string> lines = [];
         start.RedirectStandardOutput = true;
@@ -454,10 +475,10 @@ public partial class MainWindow
                 {
                     lines.Add(said);
                 }
-                UiThread.Post(() => installing.Say(said));
+                UiThread.Post(() => heard(said));
             }
             Task hearing = ChildProcesses.Hear(process, Heard, Heard);
-            using (installing.Stopping.Register(() => ChildProcesses.Kill(process)))
+            using (stopping.Register(() => ChildProcesses.Kill(process)))
             {
                 await process.WaitForExitAsync(CancellationToken.None);
                 await hearing;

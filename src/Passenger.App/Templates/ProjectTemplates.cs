@@ -165,9 +165,14 @@ public static partial class ProjectTemplates
         }
     }
 
+    /// <summary>Whether dotnet new lists the templates the .NET SDK and its workloads carry: false only for a test, with a
+    /// <see cref="Hive"/> of its own, standing in for a .NET that lacks a workload's (its <c>--debug:disable-sdk-templates</c>).</summary>
+    public static bool SdkTemplates { get; set; } = true;
+
     /// <summary>The .NET command line's arguments for <c>dotnet new</c> with these, in the IDE's hive.</summary>
     public static IReadOnlyList<string> New(IEnumerable<string> arguments) =>
-        ["new", .. arguments, .. Hive is { } hive ? ["--debug:custom-hive", hive] : Array.Empty<string>()];
+        ["new", .. arguments, .. Hive is { } hive ? ["--debug:custom-hive", hive] : Array.Empty<string>(),
+            .. SdkTemplates ? Array.Empty<string>() : ["--debug:disable-sdk-templates"]];
 
     /// <summary><c>dotnet new</c> with these arguments in a folder, in the IDE's hive.</summary>
     public static System.Diagnostics.ProcessStartInfo NewCommand(IEnumerable<string> arguments, string folder) =>
@@ -233,7 +238,7 @@ public static partial class ProjectTemplates
         string root = TemplateRoot(custom)
             ?? throw new InvalidOperationException("Neither DOTNET_CLI_HOME nor the home folder is set, so dotnet new keeps no templates to read");
         string cache = CacheFile(root, sdk) ?? throw new InvalidOperationException($"dotnet new keeps no templates at {Path.Combine(root, "dotnetcli", sdk, "templatecache.json")}");
-        return await ParseAsync(cache, sdk);
+        return await ParseAsync(cache, sdk, folder);
     }
 
     /// <summary>The cache dotnet new keeps of an SDK's templates, when it keeps one.</summary>
@@ -246,8 +251,9 @@ public static partial class ProjectTemplates
         custom ?? (Dotnet.CliHome() is { } home ? Path.Combine(home, ".templateengine") : null);
 
     /// <summary>The templates in dotnet new's cache, each one's options from its parameters with its ide.host.json's over
-    /// them, the project templates with the known packages' kinds it has not got, in families, and the item templates.</summary>
-    private static async Task<TemplateCatalog> ParseAsync(string cache, string sdk)
+    /// them, the project templates with the known packages' kinds it has not got (as the .NET a folder's projects take builds
+    /// them), in families, and the item templates.</summary>
+    private static async Task<TemplateCatalog> ParseAsync(string cache, string sdk, string folder)
     {
         using JsonDocument document = await ReadSharedAsync(cache);
         List<JsonElement> all = JsonMembers.Value(document.RootElement, "TemplateInfo") is { ValueKind: JsonValueKind.Array } listed
@@ -257,7 +263,8 @@ public static partial class ProjectTemplates
         List<ProjectTemplate> templates = Groups(all.Where(t => Tag(t, "type") is "project" or "solution" && Usable(t)), ide);
         List<ProjectTemplate> items = Groups(all.Where(t => Tag(t, "type") == "item" && Usable(t)), ide);
         (IReadOnlyList<string> formats, string format) = SolutionFormats(all);
-        return new TemplateCatalog(sdk, TemplateFamilies.Of([.. templates, .. TemplatePacks.Offered(templates)]), formats, format, items);
+        IEnumerable<ProjectTemplate> offered = TemplatePacks.Offered(templates, Mobile.AndroidHosts.Unbuilt(folder));
+        return new TemplateCatalog(sdk, TemplateFamilies.Of([.. templates, .. offered]), formats, format, items);
     }
 
     /// <summary>Templates as groups, each of its templates a variant, newest first.</summary>

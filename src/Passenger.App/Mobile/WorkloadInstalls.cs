@@ -24,3 +24,8 @@ public static class WorkloadInstalls
     public static bool NoRoom(IReadOnlyList<string> said) =>
         said.Any(l => l.Contains("No space left on device", StringComparison.Ordinal) || l.Contains("Disk quota exceeded", StringComparison.Ordinal));
 }
+
+/// <summary>What a test's workload install takes in place of the .NET it installs into: that .NET's folder, which is
+/// checked writable as the real one is, and what runs in place of dotnet given dotnet's arguments (workload install,
+/// workload update).</summary>
+public sealed record WorkloadStandIn(string Root, Func<IReadOnlyList<string>, System.Diagnostics.ProcessStartInfo> Start);

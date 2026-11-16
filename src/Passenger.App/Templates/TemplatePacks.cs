@@ -1,3 +1,5 @@
+using Passenger.App.Mobile;
+
 namespace Passenger.App.Templates;
 
 /// <summary>A template package New Project offers to install when dotnet new does not have it: by its NuGet id, what
@@ -8,14 +10,19 @@ public sealed record TemplatePack(string Id, string Offer, string Version, strin
     /// <summary>Whether a .NET workload of this id brings the templates, which dotnet workload install installs.</summary>
     public bool IsWorkload { get; init; }
 
+    /// <summary>This machine as a person names it ("Linux on Arm64") where it builds none of the Android apps the package
+    /// makes (<see cref="AndroidHosts"/>), so no install of it is offered; null where it builds them.</summary>
+    public string? Unbuilt { get; init; }
+
     /// <summary>The package or workload as the dialog names it.</summary>
     public string Named => IsWorkload ? $"the .NET {Id} workload" : Id;
 
-    /// <summary>The .NET command line that installs it.</summary>
-    public IReadOnlyList<string> Install => IsWorkload ? ["workload", "install", Id] : ProjectTemplates.New(["install", Id]);
-
     /// <summary>What Install runs, as the dialog says it.</summary>
     public string Command => IsWorkload ? $"dotnet workload install {Id}" : $"dotnet new install {Id}";
+
+    /// <summary>Why no install is offered for <paramref name="kind"/>, one of its kinds by name, in the words the banner over
+    /// the window says of a project (<see cref="Unbuilt"/>); null where one is.</summary>
+    public string? WhyNotFor(string kind) => Unbuilt is { } host ? $"{kind} builds {AndroidHosts.Elsewhere(host)}" : null;
 }
 
 /// <summary>A project (or a solution, which only New Solution makes) a template package gives, as its template.json
@@ -27,7 +34,7 @@ public sealed record PackKind(string Name, string ShortName, bool IsSolution, IR
 /// Functions' and AI Extensions', and those the mobile workloads bring (<see cref="Workloads"/>). Their kinds are kept here, from each package at
 /// the version named, rather than read from the package, which would mean downloading every one each time the dialog
 /// opens; once installed, dotnet new's own templates take their place, at the version installed.</summary>
-public static class TemplatePacks
+public static partial class TemplatePacks
 {
     private static readonly string[] Desktop = ["Desktop", "Xaml", "Avalonia", "Windows", "Linux", "macOS"];
 
@@ -40,10 +47,11 @@ public static class TemplatePacks
     private static readonly string[] Ios = ["iOS", "Mobile"];
 
     /// <summary>The workloads whose templates New Project offers where they are not installed, each on the systems it
-    /// installs on (MAUI's on Linux as its Android part alone), their kinds from each workload's templates at the version named.</summary>
-    private static IEnumerable<TemplatePack> Workloads()
+    /// installs on, Apple's where <paramref name="apple"/> (macOS, Windows), MAUI's elsewhere as its Android part alone, which
+    /// none is offered to install where this machine builds no Android app (<paramref name="androidHost"/>, as
+    /// <see cref="AndroidHosts.Unbuilt(string?)"/> names it); their kinds from each workload's templates at the version named.</summary>
+    public static IEnumerable<TemplatePack> Workloads(bool apple, string? androidHost)
     {
-        bool apple = OperatingSystem.IsMacOS() || OperatingSystem.IsWindows();
         yield return new TemplatePack(apple ? "maui" : "maui-android", "Install the .NET MAUI workload for creating apps for Android, iOS, Mac Catalyst and Windows from one project",
             "11.0.0", "Microsoft",
         [
@@ -53,13 +61,13 @@ public static class TemplatePacks
             new(".NET MAUI Multi-Project App", "maui-multiproject", true, ["C#"],
                 "A project for creating a .NET MAUI application for iOS, Android, Mac Catalyst and WinUI with multiple, separate app projects.", Maui, "MauiApp1"),
             new(".NET MAUI Class Library", "mauilib", false, ["C#"], "A project for creating a .NET MAUI class library", Maui, "MauiLib1"),
-        ]) { IsWorkload = true };
+        ]) { IsWorkload = true, Unbuilt = apple ? null : androidHost };
         yield return new TemplatePack("android", "Install the .NET android workload for creating Android apps", "37.2.31", "Microsoft",
         [
             new("Android Application", "android", false, ["C#"], "A project for creating a .NET for Android application", Android, "AndroidApp1"),
             new("Android Class Library", "androidlib", false, ["C#"], "A project for creating a .NET for Android class library", Android, "AndroidLib1"),
             new("Android Wear Application", "androidwear", false, ["C#"], "A project for creating a Wear OS app using .NET for Android", Android, "AndroidApp1"),
-        ]) { IsWorkload = true };
+        ]) { IsWorkload = true, Unbuilt = androidHost };
         if (!apple)
         {
             yield break;
@@ -123,24 +131,4 @@ public static class TemplatePacks
                 ["Common", "AI", "Web", "Blazor", "Aspire"], "ChatApp"),
         ]),
     ];
-
-    /// <summary>Each known kind dotnet new has no template for (none of the installed has its short name), as a template
-    /// whose <see cref="ProjectTemplate.Pack"/> is the package that brings it.</summary>
-    public static IEnumerable<ProjectTemplate> Offered(IReadOnlyList<ProjectTemplate> installed)
-    {
-        HashSet<string> had = new(installed.SelectMany(t => t.ShortNames), StringComparer.OrdinalIgnoreCase);
-        foreach (TemplatePack pack in All.Concat(Workloads()))
-        {
-            foreach (PackKind kind in pack.Kinds.Where(k => !had.Contains(k.ShortName)))
-            {
-                List<TemplateVariant> variants = [.. kind.Languages.Select(language =>
-                    new TemplateVariant($"{pack.Id}::{kind.ShortName}::{language}", language, 0, kind.Description, null, [], null, []))];
-                yield return new ProjectTemplate(kind.Name, [kind.ShortName], pack.Author, kind.Classifications, kind.DefaultName, variants)
-                {
-                    IsSolution = kind.IsSolution,
-                    Pack = pack,
-                };
-            }
-        }
-    }
 }

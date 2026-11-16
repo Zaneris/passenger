@@ -253,7 +253,7 @@ public sealed class NewGodotGameTests : IDisposable
     public void A_godot_game_with_no_godot_found_is_refused_saying_how_to_get_one()
     {
         MainWindow window = Started();
-        NewProjectDialog dialog = new(place, null, godot: Path.Combine(place, "no-godot", "Godot"));
+        NewProjectDialog dialog = new(place, null, godot: Path.Combine(place, "no-godot", "Godot")) { Workloads = window.InstallAskedWorkloadsAsync };
         IdeErrors.Observe(dialog.ShowDialog(window));
         try
         {
@@ -281,7 +281,7 @@ public sealed class NewGodotGameTests : IDisposable
         string old = TestFolders.Create("old-godot-");
         string three = TestFolders.Write(old, "Godot_v3.5.3-stable_x11.64", string.Empty);
         MainWindow window = Started();
-        NewProjectDialog dialog = new(place, null, godot: three);
+        NewProjectDialog dialog = new(place, null, godot: three) { Workloads = window.InstallAskedWorkloadsAsync };
         IdeErrors.Observe(dialog.ShowDialog(window));
         try
         {

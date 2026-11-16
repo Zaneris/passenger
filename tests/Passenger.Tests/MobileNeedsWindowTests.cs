@@ -55,11 +55,11 @@ public sealed class MobileNeedsWindowTests : IDisposable
         (MainWindow window, string name, string platform, string said) = LackingWorkload();
 
         List<IReadOnlyList<string>> installed = [];
-        MainWindow.WorkloadStandIn = arguments =>
+        MainWindow.WorkloadStandIn = new WorkloadStandIn(folder, arguments =>
         {
             installed.Add(arguments);
             return ChildProcesses.DotnetCommand(["--version"]);
-        };
+        });
         List<string> asked = [];
         window.Confirm = (title, _, _) =>
         {
@@ -96,14 +96,14 @@ public sealed class MobileNeedsWindowTests : IDisposable
             "Successfully updated workload(s): .",
             $"Workload installation failed: One or more errors occurred. (Disk quota exceeded : '{Path.Combine("tmp", "dotnet-sdk-advertising-temp", "pack.nupkg")}')",
         ];
-        MainWindow.WorkloadStandIn = arguments =>
+        MainWindow.WorkloadStandIn = new WorkloadStandIn(folder, arguments =>
         {
             int round = asked.Count;
             asked.Add(arguments);
             System.Diagnostics.ProcessStartInfo start = Saying($"round-{round}", said[Math.Min(round, said.Length - 1)], round == 1 ? 0 : 1);
             starts.Add(start);
             return start;
-        };
+        });
         window.Confirm = (_, _, _) => Task.FromResult(true);
         string? temporary = Environment.GetEnvironmentVariable("TMPDIR");
         string? memory = OperatingSystem.IsLinux() && new DriveInfo("/dev/shm").DriveFormat == "tmpfs" ? "/dev/shm" : null;
@@ -136,6 +136,126 @@ public sealed class MobileNeedsWindowTests : IDisposable
         Assert.True(given is not null && PathNames.IsUnder(given, cache), $"With the temporary folder in memory, the install downloaded into {given}, not a folder under {cache}");
         Assert.False(Directory.Exists(given), $"The install's downloads folder {given} was left behind");
         window.Close();
+    }
+
+    /// <summary>New Project's Install of a template a workload brings (a .NET lacking the workload stood in by dotnet new
+    /// without the SDK's templates, its dotnet by a stand-in) is Install Workloads' own install: refused where the .NET is not
+    /// this user's to write, in the dialog and the status bar; else run asking nothing more, a workload set first where the
+    /// .NET knows none, its lines shown in the dialog, and the folder's project loaded again, the dialog then saying that
+    /// dotnet new still lists none of its templates. Where this machine builds no Android app, no install is offered.</summary>
+    [AvaloniaFact]
+    public void New_Projects_Install_of_a_workloads_template_is_Install_Workloads_own_refused_where_the_dotnet_is_not_writable_and_loading_the_projects_again()
+    {
+        File.WriteAllText(Path.Combine(folder, "Desk.csproj"), TestProjects.Library());
+        string templates = PathNames.Canonical(TestFolders.Create("workload-templates-"));
+        string unwritable = OperatingSystem.IsWindows()
+            ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "dotnet")
+            : Directory.CreateDirectory(Path.Combine(templates, "dotnet")).FullName;
+        string? hive = ProjectTemplates.Hive;
+        ProjectTemplates.Hive = Directory.CreateDirectory(Path.Combine(templates, "hive")).FullName;
+        ProjectTemplates.SdkTemplates = false;
+        ProjectTemplates.Forget();
+        try
+        {
+            if (!OperatingSystem.IsWindows())
+            {
+                File.SetUnixFileMode(unwritable, UnixFileMode.UserRead | UnixFileMode.UserExecute);
+                Assert.SkipWhen(Libc.Access(unwritable, Libc.MayWrite) == 0, $"This user may write {unwritable} whatever its mode says, so no .NET stands in as another's");
+            }
+            // dotnet new lists none at all without one of the SDK's or the hive's, which the dialog takes for no templates.
+            ChildResult made = Ui.Await(Waiting.Apart(() => ChildProcesses.RunAsync(ProjectTemplates.NewCommand(["install", WritePlainTemplate(templates)], templates),
+                limit: TimeSpan.FromMinutes(2))), "dotnet new install of the test's template", Slow);
+            Assert.True(made.Succeeded, $"dotnet new install of the test's template failed:\n{made.Output}{made.Error}");
+            string[] said = ["Workload installation failed: Workload ID android is not recognized.", "Successfully updated workload(s): .", "Successfully installed workload(s) android."];
+            List<IReadOnlyList<string>> asked = [];
+            MainWindow.WorkloadStandIn = new WorkloadStandIn(unwritable, arguments =>
+            {
+                int round = asked.Count;
+                asked.Add(arguments);
+                return Saying($"new-project-{round}", said[Math.Min(round, said.Length - 1)], round == 0 ? 1 : 0);
+            });
+            MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+            Ui.WaitFor(() => window.Projects.Any(p => p.IsEvaluated), "the project to evaluate", Slow);
+            List<string> questions = [];
+            window.Confirm = (title, _, _) =>
+            {
+                questions.Add(title);
+                return Task.FromResult(true);
+            };
+            window.Perform(AppActions.NewSolution);
+            Ui.Settle();
+            NewProjectDialog dialog = Assert.Single(window.OwnedWindows.OfType<NewProjectDialog>(), d => d.IsVisible);
+            Ui.WaitFor(() => dialog.TemplatesRead.IsCompleted, "dotnet new's templates to be read", Slow);
+            ProjectTemplate android = Assert.Single(dialog.Templates, t => t.ShortName == "android");
+            Assert.True(android.Pack is { Id: "android", IsWorkload: true }, $"Android's app is offered with {android.Pack?.Id ?? "nothing"}, though dotnet new lists none of the SDK's");
+            Ui.Click(dialog.FamilyRow(android.Family)!);
+            if (dialog.Chosen != android)
+            {
+                dialog.TypeChooser.SelectedItem = android;
+                Ui.Settle();
+            }
+            Assert.Equal(android.Name, dialog.Chosen?.Name);
+            if (AndroidHosts.Unbuilt(folder) is { } host)
+            {
+                Assert.False(dialog.InstallButton.IsEffectivelyVisible, $"{host}, which builds no Android app, was offered the Android workload's install");
+                Assert.StartsWith($"{android.Name} builds for Android only on {AndroidHosts.Builders}: {AndroidHosts.Why(host)}\n", dialog.Offer, StringComparison.Ordinal);
+                dialog.Cancel();
+                window.Close();
+                return;
+            }
+
+            Ui.Click(dialog.InstallButton);
+            Ui.WaitFor(() => !dialog.IsInstalling, () => $"the install to end: {window.Status}", Slow);
+            string refused = Refusals.WorkloadsNeedAdministrator(unwritable, "dotnet workload install android");
+            Assert.Empty(asked);
+            Assert.Equal(refused, dialog.Problem);
+            Assert.Equal(refused, window.Status);
+
+            MainWindow.WorkloadStandIn = MainWindow.WorkloadStandIn with { Root = templates };
+            int rounds = window.Session.Models.Rounds;
+            Ui.Click(dialog.InstallButton);
+            Ui.WaitFor(() => !dialog.IsInstalling, () => $"the install to end: {window.Status}", Slow);
+            Assert.Equal([["workload", "install", "android"], ["workload", "update"], ["workload", "install", "android"]], asked);
+            Assert.Empty(questions);
+            Assert.True(window.Session.Models.Rounds > rounds, "The folder's project was not evaluated again after the install");
+            Assert.Contains(said[^1], dialog.InstallOutput, StringComparison.Ordinal);
+            Assert.Equal("The .NET workload android is installed: the projects loaded again", window.Status);
+            // The stand-in installs nothing, so dotnet new still lists none of the workload's templates.
+            Assert.Equal($"the .NET android workload is installed, but dotnet new has no {android.Name} (android) from it", dialog.Problem);
+            dialog.Cancel();
+            window.Close();
+        }
+        finally
+        {
+            ProjectTemplates.Hive = hive;
+            ProjectTemplates.SdkTemplates = true;
+            ProjectTemplates.Forget();
+            if (!OperatingSystem.IsWindows())
+            {
+                File.SetUnixFileMode(unwritable, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+            }
+            TestFolders.Delete(templates);
+        }
+    }
+
+    /// <summary>A project template of the test's own in <paramref name="under"/>, for dotnet new to list with none of the SDK's.</summary>
+    private static string WritePlainTemplate(string under)
+    {
+        string template = Directory.CreateDirectory(Path.Combine(under, "PlainTemplate", ".template.config")).Parent!.FullName;
+        File.WriteAllText(Path.Combine(template, ".template.config", "template.json"), """
+            {
+              "$schema": "http://json.schemastore.org/template",
+              "author": "Passenger's tests",
+              "classifications": [ "Library" ],
+              "identity": "Passenger.Tests.Plain.CSharp",
+              "name": "Plain Library",
+              "shortName": "probe-plain",
+              "sourceName": "Plain",
+              "tags": { "language": "C#", "type": "project" }
+            }
+            """);
+        File.WriteAllText(Path.Combine(template, "Plain.csproj"), TestProjects.Library());
+        return template;
     }
 
     /// <summary>Skips a test of the Android SDK's install where this machine builds no Android app, which offers none.</summary>
@@ -412,18 +532,17 @@ public sealed class MobileNeedsWindowTests : IDisposable
     [Fact]
     public void New_Project_offers_each_mobile_template_a_missing_workload_brings_naming_the_workload_that_installs_it()
     {
-        List<ProjectTemplate> offered = [.. TemplatePacks.Offered([])];
+        List<ProjectTemplate> offered = [.. TemplatePacks.Offered([], androidHost: null)];
         string id = OperatingSystem.IsLinux() ? "maui-android" : "maui";
         ProjectTemplate maui = offered.Single(t => t.ShortNames.Contains("maui"));
         Assert.True(maui.Pack is { IsWorkload: true } pack && pack.Id == id, $"The MAUI app is offered with {maui.Pack?.Id}");
         Assert.Equal($"the .NET {id} workload", maui.Pack!.Named);
         Assert.Equal($"dotnet workload install {id}", maui.Pack.Command);
-        Assert.Equal(["workload", "install", id], maui.Pack.Install);
         Assert.Equal("android", offered.Single(t => t.ShortNames.Contains("android")).Pack!.Id);
         Assert.Equal(!OperatingSystem.IsLinux(), offered.Any(t => t.ShortNames.Contains("ios") && t.Pack!.Id == "ios"));
         Assert.Equal("Avalonia.Templates", offered.Single(t => t.ShortNames.Contains("avalonia.xplat")).Pack!.Command["dotnet new install ".Length..]);
 
-        List<ProjectTemplate> again = [.. TemplatePacks.Offered([maui with { Pack = null }])];
+        List<ProjectTemplate> again = [.. TemplatePacks.Offered([maui with { Pack = null }], androidHost: null)];
         Assert.DoesNotContain(again, t => t.ShortNames.Contains("maui"));
         Assert.Contains(again, t => t.ShortNames.Contains("maui-blazor"));
     }

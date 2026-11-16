@@ -18,6 +18,10 @@ public static class AndroidHosts
     /// <summary>Why Android apps are built only on <see cref="Builders"/>, <paramref name="host"/> being this machine.</summary>
     public static string Why(string host) => $".NET's Android build tools are x64 programs, which {host} does not run";
 
+    /// <summary>Where and why what builds for Android builds, said after it ("AndroidApp builds …"), <paramref name="host"/>
+    /// being this machine.</summary>
+    public static string Elsewhere(string host) => $"for Android only on {Builders}: {Why(host)}";
+
     /// <summary>This machine as a person names it ("Linux on Arm64") where it builds no Android app, asked of the packs of
     /// the .NET <paramref name="folder"/>'s projects take; null where it builds them.</summary>
     public static string? Unbuilt(string? folder) =>

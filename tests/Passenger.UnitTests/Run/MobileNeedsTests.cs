@@ -2,6 +2,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Xml;
 using Passenger.App.Mobile;
+using Passenger.App.Templates;
 using Passenger.App.Workspace;
 using Passenger.Core;
 
@@ -9,8 +10,8 @@ namespace Passenger.UnitTests.Run;
 
 /// <summary>What a mobile project needs, worked out from what its workloads answer and what is on disk: the workloads the
 /// SDK names, the Android SDK's packages and the JDK the Android workload wants, the Xcode an Apple workload could not
-/// find, a project on Mono, where Android apps are built, the Android SDK's licences of what is to be installed, and how a
-/// workload install is run and read.</summary>
+/// find, a project on Mono, where Android apps are built and New Project offers their workloads, the Android SDK's licences
+/// of what is to be installed, and how a workload install is run and read.</summary>
 public class MobileNeedsTests
 {
     /// <summary>_GetRequiredWorkloads of a project targeting tvOS and macOS where neither workload is installed.</summary>
@@ -373,6 +374,24 @@ public class MobileNeedsTests
             Want([new ProjectNeeds(Maui, MauiFrameworks), lacking], onMac: false, androidHost: "Linux on Arm64").Said);
         Assert.Null(Want([new ProjectNeeds("Desktop", ["net11.0"])], onMac: false, androidHost: "Linux on Arm64").Said);
         Assert.Equal("AndroidApp needs the .NET workload android", Want([lacking], onMac: false).Said);
+    }
+
+    [Fact]
+    public void On_Linux_on_Arm64_New_Project_offers_no_Android_workload_saying_why_in_the_banners_words()
+    {
+        List<TemplatePack> arm = [.. TemplatePacks.Workloads(apple: false, AndroidHosts.Unbuilt(Architecture.Arm64, []))];
+        List<TemplatePack> x64 = [.. TemplatePacks.Workloads(apple: false, AndroidHosts.Unbuilt(Architecture.X64, []))];
+        List<TemplatePack> mac = [.. TemplatePacks.Workloads(apple: true, null)];
+
+        Assert.Equal(["maui-android", "android"], arm.Select(p => p.Id));
+        Assert.All(arm, p => Assert.True(p.Unbuilt == "Linux on Arm64", $"Linux on Arm64, which builds no Android app, is offered {p.Named}"));
+        Assert.Equal("Android Application builds for Android only on Windows, a Mac or x64 Linux: .NET's Android build tools are x64 programs, which Linux on Arm64 does not run",
+            arm[1].WhyNotFor("Android Application"));
+        Assert.Equal(".NET MAUI App builds for Android only on Windows, a Mac or x64 Linux: .NET's Android build tools are x64 programs, which Linux on Arm64 does not run",
+            arm[0].WhyNotFor(".NET MAUI App"));
+        Assert.Equal(["maui-android", "android"], x64.Select(p => p.Id));
+        Assert.All([.. x64, .. mac], p => Assert.True(p.Unbuilt is null && p.WhyNotFor("App") is null, $"{p.Named} is not offered where it builds: {p.WhyNotFor("App")}"));
+        Assert.Equal(["maui", "android", "ios", "maccatalyst"], mac.Select(p => p.Id));
     }
 
     [Fact]

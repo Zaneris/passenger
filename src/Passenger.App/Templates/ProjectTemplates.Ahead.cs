@@ -71,7 +71,7 @@ public static partial class ProjectTemplates
         {
             return read;
         }
-        return TemplateRoot(Hive) is { } root && CacheFile(root, sdk) is { } cache ? await ParseAsync(cache, sdk) : null;
+        return TemplateRoot(Hive) is { } root && CacheFile(root, sdk) is { } cache ? await ParseAsync(cache, sdk, folder) : null;
     }
 
     /// <summary>Reads the templates of the SDK a folder builds with ahead of the dialog, once the window is up and below
