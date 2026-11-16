@@ -902,7 +902,8 @@ public sealed class WebLanguagesTests : IClassFixture<BlazorShop>
         return bytes[Keys / 2];
     }
 
-    private static void CopyFolder(string from, string to)
+    /// <summary>A folder's files copied into another, its folders made as they come.</summary>
+    internal static void CopyFolder(string from, string to)
     {
         foreach (string file in Directory.EnumerateFiles(from, "*", SearchOption.AllDirectories))
         {

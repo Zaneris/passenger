@@ -144,6 +144,8 @@
         </Border>
 
         <DockPanel Grid.Row="1">
+            <!-- The open folder is not trusted, so none of its code runs, with Trust Folder (MainWindow.Trust.cs). -->
+            <app:Banner Name="TrustBanner" />
             <!-- What .NET the machine or the folder lacks, with its fix (MainWindow.Dotnet.cs). -->
             <app:Banner Name="DotnetBanner" />
             <!-- What the folder's mobile projects need that the machine lacks, with how to get it (MainWindow.Mobile.cs). -->

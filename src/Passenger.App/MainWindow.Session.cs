@@ -155,7 +155,7 @@ public partial class MainWindow
         Task none = session.LeaveAsync();
         ending = ending.IsCompleted ? none : Task.WhenAll(ending, none);
         // The folder's documents read off the window's thread meanwhile, so its restore takes them in with no read.
-        Task reading = keepsWorkspace ? Hold(opening).ReadAsync() : Task.CompletedTask;
+        Task reading = keepsWorkspace ? Task.WhenAll(Hold(opening).ReadAsync(), TakeKeptTrustAsync()) : Task.CompletedTask;
         int open = ++opens;
         if (ending.IsCompleted && reading.IsCompleted)
         {
@@ -231,6 +231,11 @@ public partial class MainWindow
         ShowUnreadSolution();
         Remember();
         IdeErrors.Observe(KeepSnapshotsAsync());
+        // Untrusted, the folder is asked of once the window has it, nothing of its code begun meanwhile.
+        if (!opened.Trusted)
+        {
+            AskTrust(folder);
+        }
         RunWaitingToOpen(folder);
     }
 
@@ -342,6 +347,7 @@ public partial class MainWindow
         }
         ShowStop();
         ShowHotReloadButtons();
+        ShowTrust();
         // The last folder's build said nothing of this one.
         Bottom.Problems.ForgetBuild();
         buildRun.ShowBindings();

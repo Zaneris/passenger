@@ -126,6 +126,9 @@ public static class AppActions
     // The Godot found's export templates installed from a .tpz the person picks: no key of Rider's.
     public const string InstallGodotTemplates = "app.godot.installTemplates";
 
+    // The open folder trusted, so its code runs: no key of Rider's.
+    public const string TrustFolder = "app.trustFolder";
+
     // The .NET SDK installed into the person's own folder, and put on their shell's PATH: no key of Rider's.
     public const string InstallDotnetSdk = "app.dotnet.install";
     public const string AddDotnetToPath = "app.dotnet.addToPath";

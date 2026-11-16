@@ -101,6 +101,7 @@ public partial class MainWindow : IdeWindow
         AddGodotProject();
         AddGodotExport();
         AddDotnet();
+        AddTrust();
         AddRoutes();
         AddSteps();
         AddStepLibrary();

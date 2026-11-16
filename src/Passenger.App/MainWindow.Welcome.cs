@@ -276,6 +276,8 @@ public partial class MainWindow
         {
             if (dialog.Cloned is { } cloned)
             {
+                // A clone the person made here is trusted as it opens, never asked of.
+                TrustFolder(PathNames.Canonical(cloned));
                 Open(cloned);
             }
         };
