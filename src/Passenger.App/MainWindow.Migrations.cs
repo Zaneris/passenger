@@ -65,7 +65,8 @@ public partial class MainWindow
             }
         };
         controller.Changed += (_, _) => ListMigrationsIfShown();
-        Func<ActionContext, string?> none = _ => Folder is null ? Refusals.NoFolder : controller.Projects.Count == 0 ? Refusals.NoEfCore : null;
+        // dotnet ef builds the project and runs its code.
+        Func<ActionContext, string?> none = _ => Folder is null ? Refusals.NoFolder : Untrusted() ?? (controller.Projects.Count == 0 ? Refusals.NoEfCore : null);
         actions!.Add(new IdeAction(A.MigrationsRefresh, "Refresh Migrations", "Migrations", c => IdeErrors.Observe(controller.ListAsync(A.MigrationsRefresh)))
         {
             WhyNot = none,

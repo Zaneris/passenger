@@ -140,6 +140,22 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         Assert.True(run.IsError == true && Text(run).Contains(Missing, StringComparison.Ordinal), $"run without the SDK answered: {Text(run)}");
     }
 
+    /// <summary>An agent's own Passenger trusts the folder it was started on, since the agent runs there already: it says
+    /// so in its instructions and in workspace, and runs the folder's code without asking.</summary>
+    [Fact]
+    public async Task An_agents_own_Passenger_trusts_the_folder_it_was_started_on_and_says_so()
+    {
+        string folder = PathNames.Canonical(TestFolders.Create("mcp-trusted-"));
+        DeleteAtEnd(folder);
+        File.WriteAllText(Path.Combine(folder, "App.csproj"), TestProjects.Console());
+        File.WriteAllText(Path.Combine(folder, "Program.cs"), "System.Console.WriteLine(\"App\");\n");
+        await using McpClient client = await Start(["--mcp", folder], languageServer: false);
+        Assert.True(client.ServerInstructions?.Contains("trusts the folder it was started on", StringComparison.Ordinal) == true,
+            $"The server's instructions leave out that an agent's own Passenger trusts its folder: {client.ServerInstructions}");
+        JsonElement workspace = await Call(client, McpTools.Workspace);
+        Assert.True(workspace.TryGetProperty("trust", out JsonElement trust) && trust.GetString() == "trusted", $"workspace on an agent's own Passenger's folder answered: {workspace}");
+    }
+
     /// <summary>The code tools asked of a folder whose projects have no SDK to load with, its language server ready with
     /// none of their code: each says so, why and what mends it, as workspace does, never an empty answer.</summary>
     [Fact]

@@ -80,7 +80,16 @@ public partial class MainWindow
             return;
         }
         AskingTrust?.Close();
-        WorkspaceTrustDialog dialog = new(folder);
+        WorkspaceTrustDialog dialog;
+        try
+        {
+            dialog = new WorkspaceTrustDialog(folder);
+        }
+        catch (AgentRefusedException)
+        {
+            // Opened by an agent's action, which asks the person nothing: the banner offers Trust Folder.
+            return;
+        }
         AskingTrust = dialog;
         dialog.Closed += (_, _) =>
         {

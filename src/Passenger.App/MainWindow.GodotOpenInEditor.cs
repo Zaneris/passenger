@@ -30,7 +30,7 @@ public partial class MainWindow
     {
         actions!.Add(new IdeAction(AppActions.GodotOpenInEditor, "Open in Godot Editor", "Godot", _ => IdeErrors.Observe(OpenInGodotEditorAsync()))
         {
-            WhyNot = _ => Folder is null ? Refusals.NoFolder : GodotAtHand() is null ? Refusals.NoGodotProject
+            WhyNot = _ => Folder is null ? Refusals.NoFolder : Untrusted() is { } untrusted ? untrusted : GodotAtHand() is null ? Refusals.NoGodotProject
                 : Editors.Active?.Path is { } path && GodotOfFile(path) is not null && (GodotProject.IsScene(path) || IsGodotScript(path)) ? null : Refusals.NoGodotScene,
             Menus = [new MenuPlace("Tools", 0, 8)],
             Words = ["Godot", "scene", "node", "editor", "select"],

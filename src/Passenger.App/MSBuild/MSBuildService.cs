@@ -176,8 +176,8 @@ public sealed class MSBuildService(Func<string?> folder, Func<WorkspaceModel?> w
     /// <summary>The global properties a build of the solution gives its projects.</summary>
     internal Dictionary<string, string> Properties() => workspace() is { } open ? ProjectModels.Properties(open) : [];
 
-    /// <summary>The project host for the folder's SDK; null with no folder.</summary>
-    internal async Task<ProjectHost?> HostAsync() => folder() is { } open ? await BackgroundWork.Run(() => ProjectHosts.ForAsync(open)) : null;
+    /// <summary>The project host for the folder's SDK; null with no folder, or one not trusted.</summary>
+    internal async Task<ProjectHost?> HostAsync() => folder() is { } open && WorkspaceTrust.Trusts(open) ? await BackgroundWork.Run(() => ProjectHosts.ForAsync(open)) : null;
 
     /// <summary>The SDKs the host's .NET SDK carries (its Sdks folder's), read once.</summary>
     internal Task<IReadOnlyList<string>> SdksAsync() => sdks ??= ReadSdksAsync();
