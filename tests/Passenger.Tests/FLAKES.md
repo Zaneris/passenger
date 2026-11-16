@@ -30,6 +30,15 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 
 ## 2026-11-16
 
+- `HtmlPreviewTests`' `An_HTML_files_page_is_given_its_text_beside_it_once_turned_on_and_again_as_typing_pauses`, CI
+  43896578697 (Windows x64 report shard 1): "The page was given the text 1 more times while it was typed". **The test
+  waited wrong**: it typed "," and " shop" as two inputs and took it that no page was given between them, but Avalonia's
+  headless `KeyTextInput` runs the window's queued work before its key, so where the runner took longer between the two
+  than the preview's 300 ms typing pause, the pause had ended and the page was given "Hello," between them, as it should
+  be. With 700 ms held between the keys the old test failed every time with CI's words. The test now holds typing's
+  pause open across the keys (`HtmlPreview.HoldTypingOpen`, through `Debounce.HoldOpen`) and, once let go, finds the
+  page given once with the whole text; with the same 700 ms between the keys it passes, as it did on the Windows and
+  Ubuntu VMs and 3 of 3 times on the Mac under 12 CPU burners (#1808).
 - `ProblemsTests`' `A_file_changed_on_disk_while_a_pull_is_under_way_has_it_asked_again_of_the_solution_the_change_made`,
   CI 43823406953 (Linux report shard 3): "Waited 180 s for the analysis to ask again once the key's own pull answered".
   **The test waited wrong**: it held the next answer of the analysis's pulls from before its key, taking it that the key

@@ -104,6 +104,10 @@ public sealed class HtmlPreview : Panel
 
     private void OnChanged(object? sender, DocumentChangedEventArgs e) => typing.Restart();
 
+    /// <summary>Typing's pause held open until let go (<see cref="Debounce.HoldOpen"/>): for a test of what keys typed within
+    /// the pause give the page, however slow its machine is between them.</summary>
+    public IDisposable HoldTypingOpen() => typing.HoldOpen();
+
     /// <summary>The page given the text as it stands, the web view made as it is first needed; the same file's page is read
     /// first for where it was scrolled to, unless the last one given has yet to load.</summary>
     private async Task GiveAsync()

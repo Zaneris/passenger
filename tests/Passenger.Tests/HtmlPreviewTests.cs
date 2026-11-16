@@ -56,10 +56,16 @@ public sealed partial class HtmlPreviewTests : IDisposable
 
         window.EditorArea.CodeEditor.Focus();
         Ui.PlaceAfter(window.EditorArea.CodeEditor, "<h1>Hello");
-        window.KeyTextInput(",");
-        window.KeyTextInput(" shop");
-        Assert.True(preview.Loads == 1, $"The page was given the text {preview.Loads - 1} more times while it was typed");
+        // Typing's pause held open, so the keys come within it however long the machine takes between them.
+        using (preview.HoldTypingOpen())
+        {
+            window.KeyTextInput(",");
+            window.KeyTextInput(" shop");
+            Assert.True(preview.Loads == 1, $"The page was given the text {preview.Loads - 1} more times while it was typed");
+        }
         Ui.WaitFor(() => preview.Loads == 2, () => $"the page given the text typed once typing paused ({preview.Loads} times)");
+        Ui.Settle();
+        Assert.True(preview.Loads == 2, $"The page was given the text {preview.Loads - 1} times once typing paused, where once gives it all");
         Assert.Equal(Page.Replace("Hello", "Hello, shop", StringComparison.Ordinal), preview.Given!.Value.Html);
 
         Ui.Click(group.PreviewToggle);
