@@ -1129,7 +1129,7 @@ internal sealed partial class XamlAssist : LanguageAssist
             if (LineDirective().Match(lines[at]) is { Success: true } directive)
             {
                 string xaml = Path.GetFullPath(Path.Combine(Path.GetDirectoryName(path)!, directive.Groups["file"].Value.Replace('\\', Path.DirectorySeparatorChar)));
-                return File.Exists(xaml) ? Passenger.Core.PathNames.Canonical(xaml) : null;
+                return Passenger.Core.FoundPaths.Askable(xaml) && File.Exists(xaml) ? Passenger.Core.PathNames.Canonical(xaml) : null;
             }
         }
         return null;

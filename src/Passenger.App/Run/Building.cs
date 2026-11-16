@@ -243,7 +243,7 @@ public static partial class BuildOutput
         {
             if (canonical is null)
             {
-                path = PathNames.Canonical(path);
+                path = Canonical(path);
             }
             else if (canonical.TryGetValue(path, out string? known))
             {
@@ -251,7 +251,7 @@ public static partial class BuildOutput
             }
             else
             {
-                path = canonical[path] = PathNames.Canonical(path);
+                path = canonical[path] = Canonical(path);
             }
         }
         int lineNumber = int.TryParse(match.Groups["line"].Value, out int l) ? l - 1 : 0;
@@ -264,6 +264,10 @@ public static partial class BuildOutput
             Framework = framework,
         };
     }
+
+    /// <summary>A problem's file as the file system names it; a share's or a device's (as a #line directive may name one)
+    /// as written, never asked.</summary>
+    private static string Canonical(string path) => FoundPaths.Askable(path) ? PathNames.Canonical(path) : path;
 
     /// <summary>The project a problem's line names after it, and the framework of the inner build of a multi-targeted one,
     /// as MSBuild writes it (<c>/src/App/App.csproj::TargetFramework=net9.0</c>); no framework for a build of one.</summary>
@@ -283,7 +287,7 @@ public static partial class BuildOutput
         {
             return null;
         }
-        return problem.Path is { } path && path.StartsWith('/') && paths.ToHost(path) is { } host ? problem with { Path = PathNames.Canonical(host) } : problem;
+        return problem.Path is { } path && path.StartsWith('/') && paths.ToHost(path) is { } host ? problem with { Path = Canonical(host) } : problem;
     }
 
     [GeneratedRegex(@"^#\d+\s+\d+(?:\.\d+)?\s+")]

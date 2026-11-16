@@ -408,8 +408,9 @@ internal sealed partial class WebAssist(AssistContext context, PopupPlacement po
     {
         for (string? folder = Path.GetDirectoryName(packageJson); folder is not null; folder = Path.GetDirectoryName(folder))
         {
+            // A name rooted on a share or a device (as package.json's text may write one) is no package of these folders'.
             string candidate = Path.Combine(folder, "node_modules", name, "package.json");
-            if (File.Exists(candidate))
+            if (Passenger.Core.FoundPaths.Askable(candidate) && File.Exists(candidate))
             {
                 return Passenger.Core.PathNames.Canonical(candidate);
             }

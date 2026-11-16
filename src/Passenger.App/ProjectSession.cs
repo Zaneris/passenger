@@ -99,10 +99,15 @@ public sealed class ProjectSession : IAsyncDisposable
     /// may have read the files already) waited for it.</summary>
     private HeldChanges? unheardAhead;
 
+    /// <summary>The folder held as one the IDE works in, so a path inside it found in a console is asked of the disk
+    /// even on a share (<see cref="FoundPaths.Reach"/>).</summary>
+    private readonly IDisposable? reached;
+
     private ProjectSession(SessionSetup setup, string? folder)
     {
         this.setup = setup;
         Folder = folder;
+        reached = folder is null ? null : FoundPaths.Reach(folder);
         Configurations = new RunConfigurations(folder, () => Workspace);
         Aspire = new AspireController(this, setup.StateFolder);
         Aspire.Inspected = app => Reloaded(app);
@@ -1804,6 +1809,7 @@ public sealed class ProjectSession : IAsyncDisposable
     {
         closing = true;
         State = null;
+        reached?.Dispose();
         Models.Close();
         DesignTimeBuilds.Close();
         Watcher?.Dispose();

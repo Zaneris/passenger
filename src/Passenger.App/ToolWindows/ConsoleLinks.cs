@@ -70,6 +70,9 @@ public sealed partial class ConsoleLinks : IHighlighter
     /// <summary>How many lines' characters have been made a string to find their links: once for each line not kept.</summary>
     public long LinesCopied { get; private set; }
 
+    /// <summary>Every path asked of the disk since the console last forgot what it found (or last kept as many), as found.</summary>
+    public IReadOnlyCollection<string> Asked => files.Keys;
+
     /// <summary>Where a relative path is looked for, in order: the project the output came from first.</summary>
     public Func<IReadOnlyList<string>> Folders { get; set; } = () => [];
 
@@ -320,7 +323,7 @@ public sealed partial class ConsoleLinks : IHighlighter
         }
         if (address.IsFile)
         {
-            return Exists(address.LocalPath) is { } file ? new FileLink(file, default) : null;
+            return FoundPaths.OfFileAddress(address) is { } local && Exists(local) is { } file ? new FileLink(file, default) : null;
         }
         return new WebLink(address);
     }
@@ -385,12 +388,17 @@ public sealed partial class ConsoleLinks : IHighlighter
         return null;
     }
 
-    /// <summary>The file's canonical path, or null when no file is there; each path asked once.</summary>
+    /// <summary>The file's canonical path, or null when no file is there; each path asked once, and one naming a share, a
+    /// device or an automount root outside the folders given never (<see cref="FoundPaths"/>), so a line reaches nothing.</summary>
     private string? Exists(string path)
     {
         if (files.TryGetValue(path, out string? known))
         {
             return known;
+        }
+        if (!FoundPaths.Askable(path) && !FoundPaths.Askable(path, Folders()))
+        {
+            return null;
         }
         string? found;
         try

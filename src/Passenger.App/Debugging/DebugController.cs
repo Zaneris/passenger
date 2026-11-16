@@ -2863,7 +2863,7 @@ public sealed class DebugController : IDisposable
         UpdateAllMarks();
         // The frame is gone to before its first wait, for its values.
         Task values = top is not null ? ChooseFrame(top, navigate: shows) : Task.CompletedTask;
-        if (thread == session.StoppedThread && !shows && bindingStop?.Problem.Problem is { Path: { } xaml } failedAt && File.Exists(xaml))
+        if (thread == session.StoppedThread && !shows && bindingStop?.Problem.Problem is { Path: { } xaml } failedAt && FoundPaths.Askable(xaml) && File.Exists(xaml))
         {
             // No code of the app's made the binding fail (a template's, a style's): its XAML is where to look.
             Navigate?.Invoke(this, (xaml, failedAt.Position));

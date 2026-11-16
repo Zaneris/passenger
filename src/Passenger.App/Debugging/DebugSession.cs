@@ -921,11 +921,13 @@ public sealed class DebugSession
     /// <summary>A thread's frames, each source on this disk named as the IDE names its files: a PDB records a file as the
     /// build was given it (another letter case, an 8.3 name, a container's path the session's map names back), and its
     /// stops would otherwise miss the open file. Named off the caller's thread: a stop asks the disk twice for each frame
-    /// with a source, a hundred and more of them in an app's stack.</summary>
+    /// with a source, a hundred and more of them in an app's stack. A source a PDB names on a share or a device has no
+    /// path, so neither this nor anything shown from the frame asks for it.</summary>
     public async Task<IReadOnlyList<DapStackFrame>> StackTraceAsync(int threadId) =>
         [.. (await connection.RequestAsync<StackTraceResponse>(DapCommands.StackTrace, new StackTraceArguments(threadId)).ConfigureAwait(false)).StackFrames.Select(f =>
-            f.Source is { Path: { } named } source && ToIde(named) is var path && Path.IsPathFullyQualified(path) && File.Exists(path)
-                ? f with { Source = source with { Path = PathNames.Canonical(path) } }
+            f.Source is not { Path: { } named } source ? f
+                : ToIde(named) is var path && !FoundPaths.Askable(path) ? f with { Source = source with { Path = null } }
+                : Path.IsPathFullyQualified(path) && File.Exists(path) ? f with { Source = source with { Path = PathNames.Canonical(path) } }
                 : f)];
 
     public async Task<IReadOnlyList<DapScope>> ScopesAsync(int frameId) =>

@@ -60,12 +60,12 @@ public sealed class TestCatalog<THandle>
     }
 
     /// <summary>A path as a runner names it (as it was given, or as the PDB or the compiler had it), canonical as the
-    /// tree's are.</summary>
+    /// tree's are; a share's or a device's as named, never asked.</summary>
     public string Canonical(string path)
     {
         if (!canonical.TryGetValue(path, out string? made))
         {
-            canonical[path] = made = PathNames.Canonical(path);
+            canonical[path] = made = FoundPaths.Askable(path) ? PathNames.Canonical(path) : path;
         }
         return made;
     }

@@ -83,7 +83,7 @@ public static partial class BindingErrors
     /// <summary>A XAML file's text as the editor has it, else as it is on disk, else none.</summary>
     public static TextSnapshot? TextOf(string file, IEnumerable<OpenDocument> documents)
     {
-        if (!File.Exists(file))
+        if (!FoundPaths.Askable(file) || !File.Exists(file))
         {
             return null;
         }
@@ -102,8 +102,9 @@ public static partial class BindingErrors
         }
     }
 
-    /// <summary>A XAML file's path as the editor knows it, when it is there.</summary>
-    private static string Canonical(string file) => File.Exists(file) ? PathNames.Canonical(file) : file;
+    /// <summary>A XAML file's path as the editor knows it, when it is there; a share's or a device's as the app named it,
+    /// never asked.</summary>
+    private static string Canonical(string file) => FoundPaths.Askable(file) && File.Exists(file) ? PathNames.Canonical(file) : file;
 
     /// <summary>The problem a failure is in Problems: at its misspelt member in <paramref name="text"/> (its file's text,
     /// when there is one to read), else at its control's element, in the editor's lines (<see cref="AppPlaces"/>).</summary>

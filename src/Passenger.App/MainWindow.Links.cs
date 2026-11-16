@@ -38,12 +38,16 @@ public partial class MainWindow
         Bottom.Tests.Links.Folders = () => LinkFolders(null);
     }
 
+    /// <summary>What the terminal's lines link, found as they are drawn; none until the Terminal window is first made.</summary>
+    public ConsoleLinks? TerminalLinks { get; private set; }
+
     /// <summary>The terminal's links: web addresses and stack frames as the consoles find them, and any path to a file,
     /// a relative one under the folder the shell said it is in, then the open folder's. A line's links are given as the
     /// view takes them once for each time they are found, so a frame drawing the line again makes nothing.</summary>
     private void AddTerminalLinks(ToolWindows.TerminalPanel terminal)
     {
         ConsoleLinks links = new() { FilePaths = true };
+        TerminalLinks = links;
         System.Runtime.CompilerServices.ConditionalWeakTable<FoundLink[], (int Start, int Length, object Target, bool Hidden)[]> given = [];
         string? shellFolder = null;
         links.Folders = () => LinkFolders(shellFolder);
@@ -78,7 +82,8 @@ public partial class MainWindow
     /// <summary>What a link a program made in the terminal opens (OSC 8, as Spectre.Console's link markup writes): a web
     /// address in the browser, a file address on this machine its file or folder once clicked; null for any other, which
     /// stays text. The view asks it as it draws, so it asks nothing of the disk, and an address naming another host, a
-    /// share or a device is never a link: drawing a line reaches no other machine, nor mounts anything.</summary>
+    /// share, a device or an automount root is never a link (<see cref="FoundPaths.OfFileAddress"/>): drawing a line reaches
+    /// no other machine, nor mounts anything.</summary>
     public static LinkTarget? ProgramLink(string address)
     {
         if (!Uri.TryCreate(address, UriKind.Absolute, out Uri? uri))
@@ -89,19 +94,7 @@ public partial class MainWindow
         {
             return new WebLink(uri);
         }
-        if (!uri.IsFile || (uri.Host.Length > 0 && !uri.Host.Equals("localhost", StringComparison.OrdinalIgnoreCase)))
-        {
-            return null;
-        }
-        string path = Uri.UnescapeDataString(uri.AbsolutePath);
-        if (!OperatingSystem.IsWindows())
-        {
-            // A second separator first makes a share's path: //host, /\\host.
-            return path is ['/', not ('/' or '\\'), ..] ? new ProgramFileLink(path) : null;
-        }
-        // A drive's path alone, /C:/x or C:/x as .NET gives it here: a share's or a device's (\\host, \\?\, \\.\) has none.
-        string windows = (path is ['/', ..] ? path[1..] : path).Replace('/', '\\');
-        return windows is [var drive, ':', '\\', ..] && char.IsAsciiLetter(drive) ? new ProgramFileLink(windows) : null;
+        return FoundPaths.OfFileAddress(uri) is { } path ? new ProgramFileLink(path) : null;
     }
 
     /// <summary>Opens a path a program linked, once clicked: its file in the editor, else its folder in the file manager,

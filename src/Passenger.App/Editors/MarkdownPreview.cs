@@ -492,7 +492,9 @@ public sealed class MarkdownPreview : ScrollViewer
         }
         try
         {
-            return PathNames.Canonical(Path.Combine(from, rest));
+            // Climbed out by its dots to an automount root (../../net/host), it is no file of the folder's to ask about.
+            string combined = Path.Combine(from, rest);
+            return FoundPaths.Askable(combined, [from]) ? PathNames.Canonical(combined) : null;
         }
         catch (Exception error) when (error is ArgumentException or IOException or NotSupportedException)
         {

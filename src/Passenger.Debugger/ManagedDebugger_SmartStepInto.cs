@@ -91,7 +91,7 @@ public partial class ManagedDebugger
 
         _logger?.Invoke($"Step-in calls of IL_{start:X4}..IL_{end:X4}, lines {points[at].StartLine}-{points[last].EndLine}: {calls.Count}");
         string? path = ModuleMetadataReader.DocumentOf(points[at]);
-        SyntaxTree? source = path is not null && File.Exists(path)
+        SyntaxTree? source = path is not null && FoundPaths.Askable(path) && File.Exists(path)
             ? CodeBrackets.Parse(SourceText.From(File.ReadAllText(path)), CodeBrackets.Defining(preprocessorSymbols ?? [], languageVersion).WithDocumentationMode(DocumentationMode.None))
             : null;
         List<(StepInPlan Plan, string Label, LinePositionSpan? Place)> found = source is null || CodeBrackets.DeepAt(source) is not null

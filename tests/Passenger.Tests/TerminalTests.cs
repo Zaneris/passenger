@@ -1692,9 +1692,79 @@ public sealed class TerminalTests
         string here = OperatingSystem.IsWindows() ? @"C:\work\x.txt" : "/work/x.txt";
         Assert.Equal(new ProgramFileLink(here), MainWindow.ProgramLink(OperatingSystem.IsWindows() ? "file://localhost/C:/work/x.txt" : "file://localhost/work/x.txt"));
         foreach (string none in (string[])["file://otherhost/share/x", "file:////otherhost/share/y", "file:///%5C%5Cotherhost%5Cshare%5Cz", "file:///%2F%2Fotherhost/z",
-            "file://127.0.0.2/x", "file:///%5C%5C%3F%5CC:%5Cx", "file:///%5C%5C.%5Cpipe%5Cx", "mailto:someone@example.com", "x-apple.systempreferences:", "not an address"])
+            "file://127.0.0.2/x", "file:///%5C%5C%3F%5CC:%5Cx", "file:///%5C%5C.%5Cpipe%5Cx", "file:///net/otherhost/x", "mailto:someone@example.com", "x-apple.systempreferences:", "not an address"])
         {
             Assert.True(MainWindow.ProgramLink(none) is null, $"{none} is a link, which drawing it or a click on it would take to another host, a share or a device");
+        }
+    }
+
+    /// <summary>What TerminalCases' found-paths case writes: paths naming another machine as program output writes them,
+    /// then a frame in a file of the folder's.</summary>
+    private static readonly string[] FoundPathLines =
+    [
+        @"   at Shop.Main() in \\otherhost\share\Program.cs:line 5",
+        "   at Shop.Main() in /_///otherhost/share/Program.cs:line 6",
+        "//otherhost/share/Program.cs(3,1): error CS1002: ; expected",
+        "/net/otherhost/share/Program.cs(4,1): error CS1002: ; expected",
+        @"/net/otherhost/share/Program.cs:12 and \\?\C:\share\Device.cs:4",
+        "   at: void Main._Process(double) (res:////otherhost/share/Main.cs:19)",
+        "see file://otherhost/share/x.cs or file:////otherhost/share/y.cs",
+        "   at Shop.Main() in src/Program.cs:line 2",
+    ];
+
+    /// <summary>A path naming another machine in a program's output (a share's by either slash, a device's, one under an
+    /// automount root), as a stack frame, a compiler's message, a Godot error's place or a file address writes it, is no
+    /// link and never asked of the disk as the terminal or the Run window shows it, so showing a line reaches no other
+    /// machine and mounts nothing; a frame in a file of the folder's still links it, and a click opens it at its line.</summary>
+    [AvaloniaFact]
+    public void A_path_naming_another_machine_in_the_terminal_or_a_console_is_never_asked_of_the_disk()
+    {
+        string folder = TestFolders.Create("terminal-");
+        Directory.CreateDirectory(Path.Combine(folder, "src"));
+        string program = Path.Combine(folder, "src", "Program.cs");
+        File.WriteAllText(program, "first\nsecond\n");
+        (MainWindow window, TerminalSession shell) = Open(folder);
+        TerminalView view = window.TerminalPanel.View;
+        RunCase(window, "found-paths");
+        long line = WaitForLine(shell, FoundPathLines[^1], "the frame in the folder's file");
+        WaitForPromptBelow(window, shell, FoundPathLines[^1]);
+        Ui.Settle();
+        Held(window.TerminalLinks!, "the terminal");
+
+        Point at = view.TranslatePoint(view.PointOf(line, FoundPathLines[^1].IndexOf("src/", StringComparison.Ordinal) + 2), window)!.Value;
+        window.MouseMove(at);
+        Ui.Settle();
+        Assert.True(view.HoveredLink is { Hidden: false }, "The pointer rests on the frame in the folder's file, but it is no link");
+        window.MouseDown(at, MouseButton.Left);
+        window.MouseUp(at, MouseButton.Left);
+        Ui.Settle();
+        Assert.Equal(PathNames.Canonical(program), window.EditorArea.Active?.Path);
+        Assert.Equal(1, window.EditorArea.CodeEditor.CaretPosition.Line);
+
+        Ui.Run(window, AppActions.ShowRun);
+        OutputView run = window.BottomPanel.Run;
+        run.Append(string.Concat(FoundPathLines.Select(said => said + "\n")));
+        Ui.Settle();
+        Held(run.Links, "the Run window");
+        Assert.True(window.Perform(AppActions.CloseAllTabs));
+        Ui.Settle();
+        Assert.Null(window.EditorArea.Active);
+        Ui.ClickLink(run, FoundPathLines[^1]);
+        Assert.Equal(PathNames.Canonical(program), window.EditorArea.Active?.Path);
+        window.Close();
+
+        void Held(ConsoleLinks links, string where)
+        {
+            foreach (string said in FoundPathLines[..^1])
+            {
+                Assert.True(links.In(said) is not { Length: > 0 } found || found.All(l => l.Target is WebLink),
+                    $"{where} links {said}, which names another machine");
+            }
+            Assert.Contains(links.In(FoundPathLines[^1]), l => l.Target is FileLink { Path: var linked, Position.Line: 1 } && PathNames.Same(linked, PathNames.Canonical(program)));
+            string[] reached = [.. links.Asked.Where(p => p.StartsWith(@"\\", StringComparison.Ordinal) || p.StartsWith("//", StringComparison.Ordinal)
+                || p.StartsWith("/net/", StringComparison.OrdinalIgnoreCase))];
+            Assert.True(reached.Length == 0, $"Showing {where}'s lines asked the disk about {string.Join(", ", reached)}, which reaches another machine or mounts it");
+            Assert.Contains(links.Asked, p => PathNames.Same(PathNames.Canonical(p), PathNames.Canonical(program)));
         }
     }
 

@@ -107,14 +107,15 @@ public static class SourcePaths
     }
 
     /// <summary>A file on this disk as the file system names it, as the IDE names the breakpoints' paths it sends
-    /// (<see cref="PathNames.Canonical"/>); null when there is no such file.</summary>
+    /// (<see cref="PathNames.Canonical"/>); null when there is no such file, or a PDB names a share's or a device's, which
+    /// is never asked (<see cref="FoundPaths"/>).</summary>
     private static string? Canonical(string path)
     {
         if (Canonicals.TryGetValue(path, out string? known))
         {
             return known;
         }
-        if (!Path.IsPathFullyQualified(path) || !File.Exists(path))
+        if (!Path.IsPathFullyQualified(path) || !FoundPaths.Askable(path) || !File.Exists(path))
         {
             return null;
         }

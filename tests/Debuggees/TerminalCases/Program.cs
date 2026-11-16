@@ -248,6 +248,19 @@ switch (args)
             + " esc \e]8;;file:///%5C%5Cotherhost%5Cshare%5Cz\e\\path\e]8;;\e\\"
             + $" here \e]8;;{new Uri(there).AbsoluteUri}\e\\notes\e]8;;\e\\ gone \e]8;;{new Uri(missing).AbsoluteUri}\e\\lost\e]8;;\e\\\r\n");
         break;
+    case ["found-paths"]:
+        // Paths naming another machine as a stack frame, a deterministic build's frame, a compiler's message, a Godot
+        // error's place and file addresses write them (a share's by either slash, a device's, an automount root's), then a
+        // frame in a file of the folder's.
+        Write("   at Shop.Main() in \\\\otherhost\\share\\Program.cs:line 5\r\n"
+            + "   at Shop.Main() in /_///otherhost/share/Program.cs:line 6\r\n"
+            + "//otherhost/share/Program.cs(3,1): error CS1002: ; expected\r\n"
+            + "/net/otherhost/share/Program.cs(4,1): error CS1002: ; expected\r\n"
+            + "/net/otherhost/share/Program.cs:12 and \\\\?\\C:\\share\\Device.cs:4\r\n"
+            + "   at: void Main._Process(double) (res:////otherhost/share/Main.cs:19)\r\n"
+            + "see file://otherhost/share/x.cs or file:////otherhost/share/y.cs\r\n"
+            + "   at Shop.Main() in src/Program.cs:line 2\r\n");
+        break;
     case ["blocks"]:
         // A bar of full blocks, as Spectre.Console's charts draw, then upper halves and a right half.
         Write("██████ ▀▀▐\r\n");
