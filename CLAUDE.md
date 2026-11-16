@@ -314,7 +314,7 @@ Projects in `src/`; `find_symbol` finds the rest from the names here. A pointer'
   server's edit to a file written moments before waits for the server to read it (`WorkspaceEdits`); one written as it
   worked is refused. A generated document is never opened in the server (it would freeze its text into the compilation):
   its file (`RoslynSession.WrittenAsync`) or a read-only copy (`GeneratedCode`), asked about through
-  `RoslynSession.Unopened`. Whether a place is in generated code is Roslyn's own check, asked through the extension
+  `RoslynSession.Unopened`; a generator's symbols reach `find_symbol` and Go to Symbol through `WorkspaceSymbols.Kept` and `NamedSymbol.Generated`, after the person's own, landing in its copy. Whether a place is in generated code is Roslyn's own check, asked through the extension
   (`GeneratedCode.SetApartAsync`), never a file-name or comment rule of Passenger's. The server finds a partial member's callers only at its declaring half and callees only at
   its body half (`PartialHalf`). Its Go to Declaration leaves out a type's generated parts once the person wrote one
   (`GeneratedParts`); an extension's document handler refuses a file that's no C# document, a `.razor`, so a handler
@@ -396,7 +396,7 @@ Projects in `src/`; `find_symbol` finds the rest from the names here. A pointer'
   An app's OpenAPI document is asked only at its origin (`OpenApiAddresses`), and what's made from one with no app asked
   comes from `AppDocuments`, never a process-wide cache. `ResourceFiles` is the one reader and writer of `.resx` and
   `xlf/*.xlf`, a table's change one edit of the open text. A configuration read is checked against the programs running
-  its code (`ProjectSession.ConfiguredCodeOf`, `ProjectModel.ProgramsRunning`), never its own library's folder.
+  its code (`ProjectSession.ConfiguredCodeOf`, `ProjectModel.ProgramsRunning`), never its own library's folder, checked again as evaluations change what configures it (`ProjectSession.OnEvaluated`).
 - **Debugging.** `DebugController`, `DebugSession`; Variables and the hover card are one list, a hover evaluating only
   inside the stopped frame's method (`MethodBounds`). A row's expression is the debugger's `evaluateName`, never built
   in the window. A frame is named only through `FrameNames` (a lambda or local function by the method it is written in, never the compiler's name); an exception's StackTrace as the runtime writes it. A library's types are shown as the App tells the debugger at launch (`DapTypePresentation`), never by
@@ -812,7 +812,7 @@ class taking far longer than its work needs is a bug, never held to a limit. A t
 a control shown, enabled and hit); a chord one `Ui.Press(window, "control M , control S")` (its first key forgotten
 after 2 s); multi-line edits `Typing.Replace` (`KeyTextInput` drops `\n`); a server's request or answer held
 `LanguageServer.HoldNext`/`HoldNextAnswer` (the next answer to come, whatever request it answers), a container run's `up` `BuildRunController.HoldNextUp`; a log the IDE may be
-writing `Ui.Shared`. A terminal test points at a line, acts on the screen or types its next command once the shell's prompt is below
+writing `Ui.Shared`; a typing pause held open `Debounce.HoldOpen`, the server's word that its diagnostics changed `CSharpService.HoldRefreshes`. A terminal test points at a line, acts on the screen or types its next command once the shell's prompt is below
 it (`WaitForPromptBelow`; a command typed ahead is echoed, then drawn again a row lower with the prompt): cmd's prompt comes in a later ConPTY frame and scrolls a full screen. A dialog is held to `DialogButtonsTests.Check`, the window to UiRulesTests. A drag whose drawing a test checks goes through `Ui.DragDrawn`: `Ui.Drag` and a screenshot's `--drag` draw no frame between moves. A helper that runs a
 program waits on the UI thread with its loop running; a fixture or windowless test awaits its `…Async` form. A stand-in
 leaves files a target writes as it found them (a new one makes MSBuild skip the target). A stand-in's record a test reads while Passenger may run it again is written beside and moved into place (`McpTests.EnvironmentGitAsync`), never `> file`. A headless click runs queued
