@@ -205,6 +205,11 @@
     <Compile Include="../../src/Passenger.App/Godot/GameFit.cs" Link="App/GameFit.cs" />
   </ItemGroup>
 
+  <!-- Which file a game's picture is read from, a path and a folder alone, compiled in since its project is the app's. -->
+  <ItemGroup>
+    <Compile Include="../../src/Passenger.App/Godot/GodotPictures.cs" Link="App/GodotPictures.cs" />
+  </ItemGroup>
+
   <!-- What godot_editor tells an agent of the scene Godot's editor edits, compiled in since its project is the app's. -->
   <ItemGroup>
     <Compile Include="../../src/Passenger.App/Mcp/GodotEditedScenes.cs" Link="App/GodotEditedScenes.cs" />

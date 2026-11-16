@@ -96,6 +96,9 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IGodotValues, 
     /// <summary>Ends at the game's next monitors.</summary>
     private TaskCompletionSource nextBeat = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
+    /// <summary>The temporary folder the game was given, where Godot writes a picture asked of it (<see cref="GodotPictures"/>).</summary>
+    private string temporary = Path.GetTempPath();
+
     private GodotGame(string name, string folder, string? version, bool headless, bool unseen, bool scriptsAlone, TcpListener? listener, GodotScriptStart? scripts,
         Func<byte[], CancellationToken, Task>? relay = null)
     {
@@ -124,7 +127,10 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IGodotValues, 
         }
         TcpListener listener = new(IPAddress.Loopback, 0);
         listener.Start(1);
-        GodotGame game = new(plan.Name, folder, plan.GodotVersion, GodotExecutables.RunsHeadless(plan.Arguments), plan.GodotUnseen, plan.ScriptsAlone, listener, scripts);
+        GodotGame game = new(plan.Name, folder, plan.GodotVersion, GodotExecutables.RunsHeadless(plan.Arguments), plan.GodotUnseen, plan.ScriptsAlone, listener, scripts)
+        {
+            temporary = GodotPictures.TemporaryOf(plan.Environment),
+        };
         if (VirtualDisplays.Serves(plan.Environment.GetValueOrDefault(VirtualDisplays.Variable)))
         {
             game.drawsOnServer = true;
@@ -1045,7 +1051,8 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IGodotValues, 
             + "so there is no picture of it: run it without --headless to take one";
 
     /// <summary>A PNG of the game's window as Godot draws it (its root viewport), and its size in pixels, the file Godot
-    /// wrote it to deleted once read; refused for a headless game, which draws nothing.</summary>
+    /// wrote it to deleted once read; refused for a headless game, which draws nothing, and where the answer names any
+    /// file but a PNG in the game's temporary folder (<see cref="GodotPictures.WhyNot"/>).</summary>
     public async Task<(byte[] Png, int Width, int Height)> PictureAsync()
     {
         UiThread.Check();
@@ -1061,6 +1068,10 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IGodotValues, 
             int sent = stops;
             await SendAsync(GodotWords.Screenshot, ask);
             (int width, int height, string path) = await Answer(asked.Task, sent, "with its picture");
+            if (GodotPictures.WhyNot(path, temporary) is { } refused)
+            {
+                throw new LiveAppException($"{Name}'s picture was not read: its answer named {path}, {refused}");
+            }
             try
             {
                 return (await File.ReadAllBytesAsync(path), width, height);
