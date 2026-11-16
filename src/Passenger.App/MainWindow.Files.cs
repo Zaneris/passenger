@@ -1,4 +1,3 @@
-using System.Runtime.InteropServices;
 using Avalonia.Input.Platform;
 using Passenger.App.CSharp;
 using Passenger.App.Editors;
@@ -537,7 +536,8 @@ public partial class MainWindow
         }
         List<string> gone = [];
         List<(string Path, string Why)> refused = [];
-        // What goes from a shared project's folder leaves its items file too, in a command whose Undo writes both back.
+        // What goes from a shared project's folder leaves its items file too, in a command whose Undo takes it back out of
+        // the Trash and writes the items file back.
         using CommandHistory.Recording? sharing = InShared(paths) ? Editors.Commands.Record($"Delete {Plural.Listed(names)}") : null;
         for (int i = 0; i < paths.Count; i++)
         {
@@ -548,13 +548,13 @@ public partial class MainWindow
             }
             try
             {
-                List<(string File, byte[] Bytes)> held = sharing is not null && SharedItemsOf(path) is not null
-                    ? [.. FilesAt(path).Select(f => (f, FileText.Read(f)))] : [];
-                Trash.Move(path);
+                bool shared = sharing is not null && SharedItemsOf(path) is not null;
+                bool folder = Directory.Exists(path);
+                Trashed? went = Trash.Move(path);
                 gone.Add(path);
-                foreach ((string file, byte[] bytes) in held)
+                if (shared)
                 {
-                    sharing!.Deleted(file, bytes);
+                    sharing!.Also(TrashedPart(path, folder, went));
                 }
                 if (taken[i] is { } kept)
                 {
@@ -870,138 +870,4 @@ public partial class MainWindow
         name.Trim().Length == 0 ? "A name is needed"
         : name.IndexOfAny(Path.GetInvalidFileNameChars().Where(c => c is not '/' and not '\\').ToArray()) >= 0 || name.Contains("..", StringComparison.Ordinal) ? $"{name} is not a file name"
         : null;
-}
-
-/// <summary>The platform's Trash (the Recycle Bin on Windows), where a deleted file can still be found.</summary>
-public static class Trash
-{
-    /// <summary>A folder to use as the Trash instead of the platform's. The process's, as the system's Trash is every
-    /// window's.</summary>
-    public static string? Folder { get; set; }
-
-    public static void Move(string path)
-    {
-        if (OperatingSystem.IsWindows() && Folder is null)
-        {
-            if (Directory.Exists(path))
-            {
-                Microsoft.VisualBasic.FileIO.FileSystem.DeleteDirectory(path, Microsoft.VisualBasic.FileIO.UIOption.OnlyErrorDialogs, Microsoft.VisualBasic.FileIO.RecycleOption.SendToRecycleBin);
-            }
-            else
-            {
-                Microsoft.VisualBasic.FileIO.FileSystem.DeleteFile(path, Microsoft.VisualBasic.FileIO.UIOption.OnlyErrorDialogs, Microsoft.VisualBasic.FileIO.RecycleOption.SendToRecycleBin);
-            }
-            return;
-        }
-        if (OperatingSystem.IsLinux() && Folder is null)
-        {
-            MoveToFreedesktopTrash(path);
-            return;
-        }
-        if (OperatingSystem.IsMacOS() && Folder is null)
-        {
-            MoveToMacTrash(path);
-            return;
-        }
-        string bin = Folder ?? throw new PlatformNotSupportedException("Passenger knows no Trash on this system");
-        Directory.CreateDirectory(bin);
-        string name = Path.GetFileName(path);
-        string target = Path.Combine(bin, name);
-        // The Trash keeps what it already holds: a second one of a name takes the time beside it.
-        if (File.Exists(target) || Directory.Exists(target))
-        {
-            target = Path.Combine(bin, $"{Path.GetFileNameWithoutExtension(name)} {DateTime.Now:HH-mm-ss-fff}{Path.GetExtension(name)}");
-        }
-        MoveTo(path, target);
-    }
-
-    /// <summary>Foundation, where NSFileManager is: the runtime's own native library loads it today, which nothing promises.</summary>
-    private static readonly Lazy<nint> Foundation = new(() => NativeLibrary.Load("/System/Library/Frameworks/Foundation.framework/Foundation"));
-
-    /// <summary>The Trash as Finder fills it, through NSFileManager: it records where the item was, so Finder's Put Back
-    /// returns it, and an item on another volume goes to that volume's own Trash rather than across. What the system
-    /// refuses is an IOException in its own words.</summary>
-    [System.Runtime.Versioning.SupportedOSPlatform("macos")]
-    private static void MoveToMacTrash(string path)
-    {
-        _ = Foundation.Value;
-        // Its own pool, so what the calls autorelease goes now on any thread, with or without AppKit's run loop.
-        nint pool = MacObjC.Send(MacObjC.Class("NSAutoreleasePool"), MacObjC.Selector("new"));
-        try
-        {
-            nint named = MacObjC.Send(MacObjC.Class("NSString"), MacObjC.Selector("stringWithUTF8String:"), path);
-            nint url = MacObjC.Send(MacObjC.Class("NSURL"), MacObjC.Selector("fileURLWithPath:"), named);
-            nint manager = MacObjC.Send(MacObjC.Class("NSFileManager"), MacObjC.Selector("defaultManager"));
-            nint error = 0;
-            if (!MacObjC.Send(manager, MacObjC.Selector("trashItemAtURL:resultingItemURL:error:"), url, 0, ref error))
-            {
-                string? said = error == 0 ? null
-                    : Marshal.PtrToStringUTF8(MacObjC.Send(MacObjC.Send(error, MacObjC.Selector("localizedDescription")), MacObjC.Selector("UTF8String")));
-                throw new IOException(said ?? $"The Trash refused {Path.GetFileName(path)}");
-            }
-        }
-        finally
-        {
-            MacObjC.Send(pool, MacObjC.Selector("drain"));
-        }
-    }
-
-    /// <summary>The freedesktop.org Trash in the person's data folder (~/.local/share/Trash), as Linux's file managers
-    /// keep it: the item in files/ under a name of its own, beside a record in info/ of where it was and when it went,
-    /// from which they put it back. A folder on another file system is refused, as a move across them cannot be made.</summary>
-    [System.Runtime.Versioning.SupportedOSPlatform("linux")]
-    private static void MoveToFreedesktopTrash(string path)
-    {
-        const UnixFileMode Private = UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute;
-        string trash = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Trash");
-        Directory.CreateDirectory(trash, Private);
-        string files = Directory.CreateDirectory(Path.Combine(trash, "files"), Private).FullName;
-        string info = Directory.CreateDirectory(Path.Combine(trash, "info"), Private).FullName;
-        string full = Path.TrimEndingDirectorySeparator(Path.GetFullPath(path));
-        string name = Path.GetFileName(full);
-        string where = string.Join('/', full.Split('/').Select(Uri.EscapeDataString));
-        for (int copy = 1; ; copy++)
-        {
-            string kept = copy == 1 ? name : $"{name}.{copy}";
-            string target = Path.Combine(files, kept);
-            string record = Path.Combine(info, kept + ".trashinfo");
-            if (Path.Exists(target))
-            {
-                continue;
-            }
-            // Made only when no record has the name, so two programs trashing at once never share one.
-            try
-            {
-                using FileStream claimed = new(record, FileMode.CreateNew, FileAccess.Write);
-                using StreamWriter writer = new(claimed);
-                writer.Write($"[Trash Info]\nPath={where}\nDeletionDate={DateTime.Now:yyyy-MM-ddTHH:mm:ss}\n");
-            }
-            catch (IOException) when (File.Exists(record))
-            {
-                continue;
-            }
-            try
-            {
-                MoveTo(full, target);
-            }
-            catch (Exception error) when (error is IOException or UnauthorizedAccessException)
-            {
-                File.Delete(record);
-                throw;
-            }
-            return;
-        }
-    }
-
-    private static void MoveTo(string path, string target)
-    {
-        if (Directory.Exists(path))
-        {
-            Directory.Move(path, target);
-        }
-        else
-        {
-            File.Move(path, target);
-        }
-    }
 }

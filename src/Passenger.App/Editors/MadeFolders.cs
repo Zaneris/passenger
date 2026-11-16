@@ -21,10 +21,18 @@ public static class MadeFolders
     private static (Task Until, TaskCompletionSource Reached)? holdNext;
 
     /// <summary>Each file under a folder by its path from there, with its length and last write time, but what builds
-    /// write and the system's own files.</summary>
+    /// write and the system's own files; a file alone by an empty path.</summary>
     public static Dictionary<string, (long Length, DateTime Written)> Stamps(string folder)
     {
         Dictionary<string, (long Length, DateTime Written)> stamps = new(PathNames.Comparer);
+        if (!Directory.Exists(folder))
+        {
+            if (new FileInfo(folder) is { Exists: true } file)
+            {
+                stamps[string.Empty] = (file.Length, file.LastWriteTimeUtc);
+            }
+            return stamps;
+        }
         string root = PathNames.Canonical(folder);
         foreach ((_, IReadOnlyList<string> files) in PathNames.FilesUnder(root, OutsideBuilds))
         {
@@ -40,12 +48,12 @@ public static class MadeFolders
         return stamps;
     }
 
-    /// <summary>Why a folder is no longer as it was stamped, naming the first file changed, gone or made in it since; null
-    /// when it is.</summary>
+    /// <summary>Why a folder (or a file) is no longer as it was stamped, naming the first file changed, gone or made in it
+    /// since; null when it is.</summary>
     public static string? Unlike(string folder, IReadOnlyDictionary<string, (long Length, DateTime Written)> made)
     {
         string name = Path.GetFileName(folder);
-        if (!Directory.Exists(folder))
+        if (!Directory.Exists(folder) && !File.Exists(folder))
         {
             return $"{name} is no longer there";
         }

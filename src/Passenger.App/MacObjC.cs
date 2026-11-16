@@ -49,8 +49,9 @@ internal static partial class MacObjC
     [StructLayout(LayoutKind.Sequential)]
     public readonly record struct CGRect(double X, double Y, double Width, double Height);
 
-    /// <summary>A message answering a BOOL, its last argument where an NSError is put (left as it was if none is).</summary>
+    /// <summary>A message answering a BOOL, its last two arguments where an object it answers and an NSError are put (each
+    /// left as it was if none is).</summary>
     [LibraryImport(Runtime, EntryPoint = "objc_msgSend")]
     [return: MarshalAs(UnmanagedType.U1)]
-    public static partial bool Send(nint receiver, nint selector, nint argument, nint second, ref nint error);
+    public static partial bool Send(nint receiver, nint selector, nint argument, ref nint answer, ref nint error);
 }

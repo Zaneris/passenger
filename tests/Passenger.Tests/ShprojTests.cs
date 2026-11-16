@@ -13,8 +13,9 @@ namespace Passenger.Tests;
 /// <summary>A solution of a shared project (.shproj) and two projects importing its items: the Solution view shows the
 /// shared project with its files in their folders and each importer naming it under its Dependencies, none of its files
 /// among the importer's own; a file made, renamed, deleted, included or excluded in its folder writes its items file, each
-/// undone in one step; an import is taken and dropped through Add Reference and the Dependencies; Add Existing Project adds
-/// a .shproj; a test in a shared file is found from code; and a shared file opens with the C# of a project importing it.</summary>
+/// undone in one step, a folder deleted coming back as it was; an import is taken and dropped through Add Reference and the
+/// Dependencies; Add Existing Project adds a .shproj; a test in a shared file is found from code; and a shared file opens
+/// with the C# of a project importing it.</summary>
 public sealed class ShprojTests : IDisposable
 {
     private const string Items = """
@@ -177,6 +178,77 @@ public sealed class ShprojTests : IDisposable
         finally
         {
             window.Close();
+        }
+    }
+
+    [AvaloniaFact]
+    public void A_folder_deleted_from_a_shared_project_comes_back_with_Undo_as_it_was_and_its_command_holds_none_of_its_bytes()
+    {
+        string tools = Path.Combine(Shared, "Tools");
+        string script = TestFolders.Write(folder, "Shop.Shared/Tools/run.sh", "#!/bin/sh\necho run\n");
+        if (!OperatingSystem.IsWindows())
+        {
+            File.SetUnixFileMode(script, File.GetUnixFileMode(script) | UnixFileMode.UserExecute | UnixFileMode.GroupExecute);
+        }
+        UnixFileMode? mode = OperatingSystem.IsWindows() ? null : File.GetUnixFileMode(script);
+        string empty = Directory.CreateDirectory(Path.Combine(tools, "Empty")).FullName;
+        string link = Path.Combine(tools, "Hello.cs");
+        string target = Path.Join("..", "Greeting.cs");
+        bool linked = true;
+        try
+        {
+            File.CreateSymbolicLink(link, target);
+        }
+        catch (Exception refused) when (OperatingSystem.IsWindows() && refused is IOException or UnauthorizedAccessException)
+        {
+            // Windows lets this user make no symlink: the rest is checked without one.
+            linked = false;
+        }
+        string large = Path.Combine(tools, "data.bin");
+        const int Large = 8 << 20;
+        File.WriteAllBytes(large, new byte[Large]);
+        string listed = Items.Replace("Models\\Order.cs\" />", "Models\\Order.cs\" />\n    <Compile Include=\"$(MSBuildThisFileDirectory)Tools\\Hello.cs\" />\n"
+            + "    <None Include=\"$(MSBuildThisFileDirectory)Tools\\run.sh\" />\n    <None Include=\"$(MSBuildThisFileDirectory)Tools\\data.bin\" />", StringComparison.Ordinal);
+        File.WriteAllText(ItemsFile, listed);
+        MainWindow window = Open();
+        List<string> asked = Answered(window);
+        try
+        {
+            Assert.True(Ui.Await(window.DeleteAsync(tools), "the delete"), window.Status);
+            Assert.False(Directory.Exists(tools), "Tools is still there after its delete");
+            Assert.Equal(Items, File.ReadAllText(ItemsFile));
+            CommandHistory.Command? command = window.EditorArea.Commands.ToUndo(null);
+            Assert.True(command is not null, $"The delete left no command for Undo to take back: {window.Status}");
+            (long held, string most) = HeldBytes.Of(command, o => o is Avalonia.AvaloniaObject || (o is OpenDocument open && window.EditorArea.Documents.Contains(open)));
+            Assert.True(held < 256 * 1024, $"The delete's Undo holds {held:N0} bytes for a folder holding a file of {Large:N0}, the most in {most}");
+
+            Undo(window, Path.Combine(Shared, "Models"));
+            AsItWas("Undo");
+            Ui.ClickRow(window, window.ExplorerView.Tree.Rows.First(r => r.Path == Path.Combine(Shared, "Models")));
+            Ui.Run(window, EditorActions.Redo);
+            Assert.False(Directory.Exists(tools), $"Redo left Tools: {window.Status}");
+            Assert.Equal(Items, File.ReadAllText(ItemsFile));
+            Undo(window, Path.Combine(Shared, "Models"));
+            AsItWas("Undo after Redo");
+            Assert.Equal(["Delete", "Undo", "Redo", "Undo"], asked);
+        }
+        finally
+        {
+            window.Close();
+        }
+
+        void AsItWas(string put)
+        {
+            Assert.True(Directory.Exists(tools), $"{put} did not put Tools back: {window.Status}");
+            Assert.True(!linked || new FileInfo(link).LinkTarget == target,
+                $"{put} put Hello.cs back as {(new FileInfo(link).LinkTarget is { } led ? $"a link to {led}" : "a file")}, not as its link to {target}");
+            Assert.True(Directory.Exists(empty) && !Directory.EnumerateFileSystemEntries(empty).Any(), $"{put} did not put the empty folder back");
+            if (!OperatingSystem.IsWindows())
+            {
+                Assert.True(File.GetUnixFileMode(script) == mode, $"{put} put run.sh back as {File.GetUnixFileMode(script)}, not {mode}");
+            }
+            Assert.Equal(Large, new FileInfo(large).Length);
+            Assert.Equal(listed, File.ReadAllText(ItemsFile));
         }
     }
 
