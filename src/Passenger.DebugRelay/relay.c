@@ -41,6 +41,8 @@ struct pollfd { int fd; short events; short revents; };
 extern int poll(struct pollfd *, unsigned long, int);
 typedef long pthread_t;
 extern int pthread_create(pthread_t *, const void *, void *(*)(void *), void *);
+extern int pthread_mutex_init(void *, const void *);
+extern int pthread_cond_init(void *, const void *);
 extern int pthread_mutex_lock(void *);
 extern int pthread_mutex_unlock(void *);
 extern int pthread_cond_wait(void *, void *);
@@ -56,6 +58,7 @@ extern int __android_log_print(int, const char *, const char *, ...);
 #define RTLD_DEFAULT ((void *)0)
 #define DBI_NAME "libmscordbi.so"
 #define DAC_NAME "libmscordaccore.so"
+#define CLOCK_MONOTONIC 1
 #else
 #include <stdio.h>
 static void logf_(const char *f, ...) { va_list a; va_start(a, f); vfprintf(stderr, f, a); fputc('\n', stderr); va_end(a); }
@@ -66,6 +69,7 @@ static void logf_(const char *f, ...) { va_list a; va_start(a, f); vfprintf(stde
 #define RTLD_DEFAULT ((void *)-2)
 #define DBI_NAME "libmscordbi.dylib"
 #define DAC_NAME "libmscordaccore.dylib"
+#define CLOCK_MONOTONIC 6
 #endif
 
 static const GUID IID_IUnknown = {0x00000000, 0x0000, 0x0000, {0xC0, 0, 0, 0, 0, 0, 0, 0x46}};
@@ -87,6 +91,7 @@ typedef HRESULT (*AnyCall)(void *, uint64_t, uint64_t, uint64_t, uint64_t, uint6
 // ---- The stream to Passenger ----------------------------------------------------------------------------------------
 
 static int g_conn = -1;
+// Room for each system's pthread_mutex_t and pthread_cond_t, made ready by pthread_*_init: Darwin's zeroed are not.
 static uint64_t g_writeLock[8], g_stateLock[8], g_stateCond[8];
 static int g_go, g_local;
 static void *g_cordebug;
@@ -438,7 +443,7 @@ static int listenSocket(char *said, size_t saidSize) {
 
 static long nowMs(void) {
     struct timespec t;
-    clock_gettime(1 /* CLOCK_MONOTONIC */, &t);
+    clock_gettime(CLOCK_MONOTONIC, &t);
     return t.tv_sec * 1000 + t.tv_nsec / 1000000;
 }
 
@@ -484,6 +489,9 @@ static int waitForPassenger(int waitMs) {
 }
 
 static HRESULT start(void) {
+    pthread_mutex_init(g_writeLock, 0);
+    pthread_mutex_init(g_stateLock, 0);
+    pthread_cond_init(g_stateCond, 0);
     initCallbacks();
     const char *local = getenv("PASSENGER_DEBUG_LOCAL");
     g_local = local && *local == '1';
