@@ -142,7 +142,7 @@ public partial class MainWindow
         Add(A.Exit, "Exit", "IDE", _ => PassengerApp.Quit(), menu: OperatingSystem.IsMacOS() ? null : ("File", 4, 0));
         Add(A.FindAction, "Find Action…", "IDE", _ => ShowFindAction(), menu: ("Help", 0, 0));
 
-        // Unit Tests, Problems and the Explorer take Find's keys for their filters, a console's window for its text.
+        // Unit Tests, Problems, the Explorer and the Step Library take Find's keys for their filters, a console its text.
         Add(A.Find, "Find", "IDE", c =>
         {
             if (c.ToolWindow?.Id == ToolWindowIds.Tests)
@@ -156,6 +156,10 @@ public partial class MainWindow
             else if (c.ToolWindow?.Id == ToolWindowIds.Explorer && Explorer.Tree.Root is not null)
             {
                 Explorer.FocusFilter();
+            }
+            else if (c.ToolWindow?.Id == ToolWindowIds.StepLibrary)
+            {
+                StepLibraryWindow.FocusFilter();
             }
             else if (c.ToolWindow?.Id == ToolWindowIds.Aspire)
             {
@@ -173,7 +177,7 @@ public partial class MainWindow
             {
                 Editors.ShowFind(replace: false);
             }
-        }, c => c.ToolWindow?.Id is ToolWindowIds.Tests or ToolWindowIds.Problems || c.ToolWindow?.Id == ToolWindowIds.Explorer && Explorer.Tree.Root is not null || ConsoleFind(c) is not null
+        }, c => c.ToolWindow?.Id is ToolWindowIds.Tests or ToolWindowIds.Problems or ToolWindowIds.StepLibrary || c.ToolWindow?.Id == ToolWindowIds.Explorer && Explorer.Tree.Root is not null || ConsoleFind(c) is not null
             || DiffWindowOf(c) is not null ? null : Refusals.NeedsFile(c), ("Edit/Find", 0, 0));
         Add(A.Replace, "Replace", "IDE", c => (DiffWindowOf(c) is { } window ? (Action<bool>)window.ShowFind : Editors.ShowFind)(true),
             c => DiffWindowOf(c) is not null ? null : Refusals.NeedsFile(c), ("Edit/Find", 0, 1));

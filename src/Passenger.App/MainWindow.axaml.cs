@@ -103,6 +103,7 @@ public partial class MainWindow : IdeWindow
         AddDotnet();
         AddRoutes();
         AddSteps();
+        AddStepLibrary();
         AddRequestMarks();
         AddRequests();
         AddMigrations();

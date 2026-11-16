@@ -340,6 +340,12 @@ public static class Refusals
     /// <summary>No project of the folder is a Reqnroll or SpecFlow one whose bindings the C# server has read.</summary>
     public const string NoReqnrollProject = "No Reqnroll or SpecFlow project's step definitions are read: open its .feature files, or wait for C# to load";
 
+    /// <summary>A step's phrase asked to be written where the editor shows no .feature file.</summary>
+    public const string NoFeature = "The editor shows no .feature file: open the feature to write the step into";
+
+    /// <summary>The Step Library's action asked with no definition chosen there.</summary>
+    public const string NoStepChosen = "No step definition is chosen in the Step Library";
+
     /// <summary>Go to Declaration of an overload an unloaded project's source no longer declares, gone to by its name.</summary>
     public const string OverloadNotInSource = "This overload is not in the source, which has changed since its assembly was built: went to the declarations of that name";
 

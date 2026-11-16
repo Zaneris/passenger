@@ -490,7 +490,7 @@ public sealed class DockingTests
         window.KeepLayout();
         DockHost dock = window.DockHost;
         string[] built = [ToolWindowIds.Structure, ToolWindowIds.Find, ToolWindowIds.Hierarchy, ToolWindowIds.Bookmarks, ToolWindowIds.LocalHistory, ToolWindowIds.Endpoints, ToolWindowIds.NuGet, ToolWindowIds.Containers, ToolWindowIds.Terminal, ToolWindowIds.Git, ToolWindowIds.Commit,
-            ToolWindowIds.Problems, ToolWindowIds.Debug, ToolWindowIds.LiveTree, ToolWindowIds.Profiler, ToolWindowIds.Aspire, ToolWindowIds.Requests, ToolWindowIds.Migrations];
+            ToolWindowIds.Problems, ToolWindowIds.Debug, ToolWindowIds.LiveTree, ToolWindowIds.Profiler, ToolWindowIds.Aspire, ToolWindowIds.Requests, ToolWindowIds.Migrations, ToolWindowIds.StepLibrary];
         foreach (string id in built)
         {
             Assert.False(dock[id].IsBuilt, $"The {dock[id].Title} window's view was made as the window started, though it is hidden");

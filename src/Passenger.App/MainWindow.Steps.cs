@@ -44,11 +44,12 @@ public partial class MainWindow
         };
     }
 
-    /// <summary>A read is due and someone looks: a .feature file open (<paramref name="opening"/> one now, which the open
-    /// files may not list yet), or an agent's or a person's ask.</summary>
+    /// <summary>A read is due and someone looks: a .feature file open or the Step Library shown (<paramref name="opening"/>
+    /// one now, which the open files or the dock may not list yet), or an agent's or a person's ask.</summary>
     private void WantSteps(bool opening = false)
     {
-        if (ReadsSteps && session.Steps.Wants && (opening || Editors.Documents.Any(d => Bdd.FeatureChecks.IsFeature(d.Path))))
+        if (ReadsSteps && session.Steps.Wants
+            && (opening || Dock.IsShown(ToolWindowIds.StepLibrary) || Editors.Documents.Any(d => Bdd.FeatureChecks.IsFeature(d.Path))))
         {
             stepsLater?.Restart();
         }
@@ -79,6 +80,7 @@ public partial class MainWindow
         {
             session.Steps.Stale();
         }
+        StepLibraryFilesChanged(changes);
         WantSteps();
     }
 

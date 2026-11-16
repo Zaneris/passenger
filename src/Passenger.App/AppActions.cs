@@ -371,6 +371,11 @@ public static class AppActions
     // Reqnroll's Find Unused Step Definitions, which its Visual Studio extension gives no keys either.
     public const string FindUnusedStepDefinitions = "app.code.findUnusedStepDefinitions";
 
+    // The Step Library window over the folder's step definitions, and Insert Step into Feature of the one chosen there: no
+    // keys of Rider's.
+    public const string ShowStepLibrary = "app.showStepLibrary";
+    public const string InsertStep = "app.steps.insert";
+
     // Rider's ReformatWithPrettierAction (its Visual Studio keymaps give its keys to VcsShowPrevChangeMarker) and
     // Javascript.Linters.EsLint.Fix, which it names Fix ESLint Problems; both in the editor's menu.
     public const string ReformatWithPrettier = "app.code.reformatWithPrettier";

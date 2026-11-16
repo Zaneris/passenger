@@ -149,7 +149,7 @@ internal sealed partial class GherkinAssist : LanguageAssist
         HashSet<string> written = new(StringComparer.Ordinal);
         foreach (StepBinding binding in analysis.Steps?.Bindings.Where(b => b.Binds(kind)) ?? [])
         {
-            StepSample sample = StepSamples.Of(binding) ?? new StepSample(binding.Expression ?? binding.Method, []);
+            StepSample sample = StepLibrary.SampleOf(binding);
             if (written.Add(sample.Text))
             {
                 yield return (Item(sample.Text, CompletionItemKind.Method, binding.Shown, sample.Text), $"{binding.Shown}\n{binding.Expression}", sample, sample.Text);
@@ -210,15 +210,29 @@ internal sealed partial class GherkinAssist : LanguageAssist
         TextSnapshot text = context.Editor.Document.Snapshot;
         int caret = context.Caret;
         int line = text.GetLineFromOffset(caret);
-        int end = chosen.Sample is null ? caret : text.GetLineStart(line) + text.GetLineText(line).TrimEnd('\r').Length;
-        while (chosen.Sample is null && end < text.Length && !char.IsWhiteSpace(text[end]))
+        if (chosen.Sample is { } sample)
+        {
+            WriteStep(start, text.GetLineStart(line) + text.GetLineText(line).TrimEnd('\r').Length, string.Empty, sample);
+            return;
+        }
+        int end = caret;
+        while (end < text.Length && !char.IsWhiteSpace(text[end]))
         {
             end++;
         }
-        SelectionSet after = chosen.Sample is { Holes: [{ } hole, ..] }
-            ? SelectionSet.Single(new Selection(start + hole.Start, start + hole.Start + hole.Length))
-            : SelectionSet.Single(start + chosen.Insert.Length);
-        context.Editor.ApplyEdits([new TextEdit(start, Math.Max(0, end - start), chosen.Insert)], after);
+        context.Editor.ApplyEdits([new TextEdit(start, Math.Max(0, end - start), chosen.Insert)], SelectionSet.Single(start + chosen.Insert.Length));
+    }
+
+    /// <summary>A step's phrase written over the editor's text from <paramref name="start"/> to <paramref name="end"/>, after
+    /// <paramref name="before"/> (a line's break, indent and keyword, or nothing), its first slot chosen to type over, else
+    /// the caret at its end.</summary>
+    private void WriteStep(int start, int end, string before, StepSample sample)
+    {
+        int at = start + before.Length;
+        SelectionSet after = sample.Holes is [{ } hole, ..]
+            ? SelectionSet.Single(new Selection(at + hole.Start, at + hole.Start + hole.Length))
+            : SelectionSet.Single(at + sample.Text.Length);
+        context.Editor.ApplyEdits([new TextEdit(start, Math.Max(0, end - start), before + sample.Text)], after);
     }
 
     public override string? Describe(CompletionItem item) => offered.TryGetValue(item, out (string Said, StepSample? Sample, string Insert) chosen) ? chosen.Said : null;

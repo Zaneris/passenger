@@ -307,6 +307,7 @@ public partial class MainWindow
         BindErrorPins(next);
         BindStepRuns(next);
         BindEndpoints(next);
+        BindStepLibrary(next);
         BindMigrations(next);
         BindPackages(next);
         BindContainers(next);

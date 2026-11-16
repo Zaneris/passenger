@@ -170,6 +170,12 @@ internal sealed partial class GherkinAssist
         {
             return null;
         }
+        return await UsesOfAsync(bdd, bindings);
+    }
+
+    /// <summary>Every step the bindings given bind in the features of the projects that see them, and their names as a title.</summary>
+    private static async Task<(string Title, IReadOnlyList<LspLocation> Places)> UsesOfAsync(BddSource bdd, IReadOnlyList<StepBinding> bindings)
+    {
         List<LspLocation> places = [];
         foreach ((string path, FeatureAnalysis analysis) in await bdd.FeaturesAsync(bindings.SelectMany(bdd.ProjectsSeeing).DistinctBy(p => p.Project)))
         {

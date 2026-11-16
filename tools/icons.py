@@ -143,6 +143,8 @@ ICONS = [
     ("SignatureExpired", "Shield Error", "16_regular"),
     # A list's Sort and Filter menu (the NuGet window's packages and projects, Attach to Process's processes).
     ("Filter", "Filter", "20_regular"),
+    # The Step Library window's stripe button: the shelf of steps a project's features may be written in.
+    ("StepLibrary", "Library", "20_regular"),
 ]
 
 # Resource key, then two icons (folder and size and style, as above) whose parts make it: the first's shape outside its
