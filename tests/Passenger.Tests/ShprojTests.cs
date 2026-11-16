@@ -182,6 +182,39 @@ public sealed class ShprojTests : IDisposable
         }
     }
 
+    /// <summary>A file copied into a shared project's folder is written into its items file in the copy's own command: one
+    /// Undo moves the copy to the Trash and writes the items file back, and Redo brings back both.</summary>
+    [AvaloniaFact]
+    public void A_file_copied_into_a_shared_projects_folder_is_written_into_its_items_file_in_the_copys_command_which_one_undo_takes_back()
+    {
+        MainWindow window = Open();
+        List<string> asked = Answered(window);
+        try
+        {
+            string models = Path.Combine(Shared, "Models");
+            string copy = Path.Combine(models, "Greeting.cs");
+            string listed = Items.Replace("Models\\Order.cs\" />", "Models\\Order.cs\" />\n    <Compile Include=\"$(MSBuildThisFileDirectory)Models\\Greeting.cs\" />", StringComparison.Ordinal);
+            Assert.True(Ui.Await(window.PutAsync([Path.Combine(Shared, "Greeting.cs")], models, copy: true), "the copy").Count == 1, window.Status);
+            Assert.Equal(listed, File.ReadAllText(ItemsFile));
+            Assert.Equal("Copy Greeting.cs to Models", window.EditorArea.Commands.ToUndo(null)?.Name);
+
+            Undo(window, models);
+            Assert.False(File.Exists(copy), $"Undo left the copy of Greeting.cs: {window.Status}");
+            Assert.True(File.Exists(Path.Combine(trash, "Greeting.cs")), $"Undo did not move the copy of Greeting.cs to the Trash: {window.Status}");
+            Assert.Equal(Items, File.ReadAllText(ItemsFile));
+
+            Choose(window, models);
+            Ui.Run(window, EditorActions.Redo);
+            Assert.True(File.Exists(copy) && !File.Exists(Path.Combine(trash, "Greeting.cs")), $"Redo did not bring back the copy of Greeting.cs: {window.Status}");
+            Assert.Equal(listed, File.ReadAllText(ItemsFile));
+            Assert.Equal(["Undo", "Redo"], asked);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     [AvaloniaFact]
     public void A_folder_deleted_from_a_shared_project_comes_back_with_Undo_as_it_was_and_its_command_holds_none_of_its_bytes()
     {

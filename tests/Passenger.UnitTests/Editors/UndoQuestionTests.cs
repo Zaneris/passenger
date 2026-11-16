@@ -3,7 +3,8 @@ using Passenger.App.Editors;
 namespace Passenger.UnitTests.Editors;
 
 /// <summary>The question before Undo or Redo of a command of several files names all it does to them: the texts it changes,
-/// each file it renames or moves back, and those it brings back or deletes, by their names as they stand now.</summary>
+/// each file it renames or moves back, and those it brings back or deletes, a copy said as one, by their names as they
+/// stand now.</summary>
 public sealed class UndoQuestionTests
 {
     private static readonly string Root = Path.Combine(Path.GetTempPath(), "shop");
@@ -45,6 +46,18 @@ public sealed class UndoQuestionTests
         Assert.Equal("Undo Move to Another File? It changes Shapes.cs, and deletes Circle.cs.", undo);
         string redo = UndoQuestion.Of("Move to Another File", redo: true, [At("Shapes.cs"), At("Circle.cs")], [], [At("Circle.cs")], [], []);
         Assert.Equal("Redo Move to Another File? It changes Shapes.cs, and brings back Circle.cs.", redo);
+    }
+
+    [Fact]
+    public void A_copy_is_said_as_a_copy_deleted_by_undo_and_brought_back_by_redo_apart_from_the_file_of_its_name_it_replaced()
+    {
+        string copy = At("Catalog", "Order.cs");
+        string undo = UndoQuestion.Of("Copy Order.cs to Catalog", redo: false, [], [], [copy], [], [], [copy]);
+        Assert.Equal("Undo Copy Order.cs to Catalog? It brings back Order.cs, and deletes the copy Order.cs.", undo);
+        string redo = UndoQuestion.Of("Copy Order.cs to Catalog", redo: true, [], [], [], [copy], [], [copy]);
+        Assert.Equal("Redo Copy Order.cs to Catalog? It brings back the copy Order.cs, and deletes Order.cs.", redo);
+        string both = UndoQuestion.Of("Copy Lines and Order.cs to Catalog", redo: false, [At("Shop.projitems")], [], [], [], [], [At("Catalog", "Lines"), copy]);
+        Assert.Equal("Undo Copy Lines and Order.cs to Catalog? It changes Shop.projitems, and deletes the copies Lines and Order.cs.", both);
     }
 
     [Fact]

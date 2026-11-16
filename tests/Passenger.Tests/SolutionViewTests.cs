@@ -146,6 +146,85 @@ public sealed class SolutionViewTests : IDisposable
         window.Close();
     }
 
+    /// <summary>A file and a folder copied and pasted over a file and a folder of their names, Replace agreed to, are one
+    /// command with what they replaced: one Undo moves the copies to the Trash and brings back the two they replaced, each as
+    /// it was, Redo puts the copies back in their place, and an Undo once a copy has changed since is refused, saying so.</summary>
+    [AvaloniaFact]
+    public void A_file_and_a_folder_copied_over_ones_of_their_names_are_one_command_whose_undo_trashes_the_copies_and_brings_back_what_they_replaced()
+    {
+        const string Kept = "namespace Shop.Core.Catalog;\n\npublic class Order\n{\n}\n";
+        const string Old = "namespace Shop.Core.Catalog.Lines;\n\npublic class Old\n{\n}\n";
+        string models = Path.Combine(folder, "Shop.App", "Models");
+        string catalog = Path.Combine(folder, "Shop.Core", "Catalog");
+        Write("Shop.Core/Catalog/Order.cs", Kept);
+        Write("Shop.Core/Catalog/Lines/Old.cs", Old);
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        List<string> asked = [];
+        window.Confirm = (title, text, _) =>
+        {
+            asked.Add($"{title}: {text}");
+            return Task.FromResult(true);
+        };
+
+        ExplorerNode lines = Show(window, Path.Combine(models, "Lines"));
+        ExplorerNode order = Show(window, Path.Combine(models, "Order.cs"));
+        Ui.ClickRow(window, lines);
+        Ui.Click(Ui.Row(window.ExplorerView, order), modifiers: RawInputModifiers.Shift);
+        Ui.Run(window, EditorActions.Copy);
+        Ui.ClickRow(window, Show(window, catalog));
+        Ui.Run(window, EditorActions.Paste);
+        Ui.WaitFor(() => window.Status?.StartsWith("Copied", StringComparison.Ordinal) == true, () => $"the paste over Lines and Order.cs: {window.Status}");
+        Assert.True(asked.Count == 2 && asked.All(a => a.StartsWith("Files Already Exist", StringComparison.Ordinal)), $"The paste asked: {string.Join(" | ", asked)}");
+        Copied("The paste");
+        Assert.True(InTrash().SequenceEqual(["Old.cs", Kept]), $"The paste did not move the Order.cs and Lines it replaced to the Trash, which holds [{string.Join(", ", InTrash())}]");
+        Assert.Equal("Copy Lines and Order.cs to Catalog", window.EditorArea.Commands.ToUndo(null)?.Name);
+
+        asked.Clear();
+        Ended("Undo");
+        Assert.Equal(["Undo: Undo Copy Lines and Order.cs to Catalog? It brings back Lines and Order.cs, and deletes the copies Lines and Order.cs."], asked);
+        Assert.True(File.ReadAllText(Path.Combine(catalog, "Order.cs")) == Kept, $"Undo did not bring back the Order.cs the copy replaced: {window.Status}");
+        Assert.True(File.ReadAllText(Path.Combine(catalog, "Lines", "Old.cs")) == Old && !File.Exists(Path.Combine(catalog, "Lines", "Line.cs")),
+            $"Undo did not bring back the Lines the copy replaced, as it was: {window.Status}");
+        Assert.True(InTrash().SequenceEqual(["Line.cs", Order]), $"Undo did not move the copies to the Trash, which holds [{string.Join(", ", InTrash())}]");
+
+        asked.Clear();
+        Ended("Redo");
+        Assert.Equal(["Redo: Redo Copy Lines and Order.cs to Catalog? It brings back the copies Lines and Order.cs, and deletes Lines and Order.cs."], asked);
+        Copied("Redo");
+        Assert.True(InTrash().SequenceEqual(["Old.cs", Kept]), $"Redo did not move the Order.cs and Lines it replaces to the Trash again, which holds [{string.Join(", ", InTrash())}]");
+
+        asked.Clear();
+        File.WriteAllText(Path.Combine(catalog, "Lines", "Line.cs"), "changed\n");
+        Ended("Undo");
+        Assert.True(window.Status == $"Cannot undo Copy Lines and Order.cs to Catalog: {Path.Join("Lines", "Line.cs")} has been changed since",
+            $"Undo of a copy changed since says, whole: {window.Status}");
+        Assert.Empty(asked);
+        Assert.True(File.ReadAllText(Path.Combine(catalog, "Lines", "Line.cs")) == "changed\n" && File.ReadAllText(Path.Combine(catalog, "Order.cs")) == Order,
+            "The Undo refused took a copy changed since away");
+        window.Close();
+
+        // Undo or Redo from the Explorer, once it has ended either way.
+        void Ended(string verb)
+        {
+            Ui.ClickRow(window, Show(window, catalog));
+            Ui.Run(window, verb == "Undo" ? EditorActions.Undo : EditorActions.Redo);
+            Ui.WaitFor(() => window.Status?.StartsWith(verb == "Undo" ? "Undone" : "Redone", StringComparison.Ordinal) == true || window.Status?.StartsWith("Cannot", StringComparison.Ordinal) == true,
+                () => $"{verb} of the paste: {window.Status}");
+        }
+
+        void Copied(string after)
+        {
+            Assert.True(File.ReadAllText(Path.Combine(catalog, "Order.cs")) == Order && File.Exists(Path.Combine(catalog, "Lines", "Line.cs"))
+                && !File.Exists(Path.Combine(catalog, "Lines", "Old.cs")), $"{after} did not leave the copies of Order.cs and Lines in place of Catalog's: {window.Status}");
+            Assert.True(File.ReadAllText(Path.Combine(models, "Order.cs")) == Order && File.Exists(Path.Combine(models, "Lines", "Line.cs")), $"{after} changed what was copied");
+        }
+
+        // What the Trash holds: a file's text, a folder's files by name.
+        IEnumerable<string> InTrash() => Directory.EnumerateFileSystemEntries(trash)
+            .Select(e => Directory.Exists(e) ? string.Join(", ", Directory.EnumerateFiles(e).Select(Path.GetFileName).Order(StringComparer.Ordinal)) : File.ReadAllText(e))
+            .Order(StringComparer.Ordinal);
+    }
+
     /// <summary>Every file of a folder of 400 chosen and cut allocates on the UI thread, for each file, under twice what every
     /// file of a folder of 40 does, each row dimmed and a file's dependent going with it.</summary>
     [Gate]

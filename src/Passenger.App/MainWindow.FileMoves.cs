@@ -13,7 +13,7 @@ namespace Passenger.App;
 /// key held). A copy into its own folder asks the copy's name, and a name already taken there asks whether to replace
 /// what has it. A move carries its open files' tabs, undo and carets, saved first, and what knows a file by its path
 /// follows it, its project's items too. A file's dependents, nested under it in the Solution view, go where it
-/// goes.</summary>
+/// goes. Each paste or drop is one command of Undo.</summary>
 public partial class MainWindow
 {
     /// <summary>What Cut or Copy last put on the clipboard, whose text is their paths: a Paste finds them only while the
@@ -100,9 +100,9 @@ public partial class MainWindow
 
     /// <summary>Moves or copies files and folders into a folder: what is there already stays put, a folder never goes
     /// inside itself, a copy into its own folder is named by the person, and a name taken there is replaced (what had it
-    /// going to the Trash) only once they agree. A move, with what follows it and what it replaced, is one command, which
-    /// Undo in the Explorer takes back whole. The status bar says what went where and what could not; the last one put is
-    /// chosen in the Explorer. Answers with where each went.</summary>
+    /// going to the Trash) only once they agree. A move or a copy, with what follows it and what it replaced, is one
+    /// command, which Undo takes back whole, a copy going to the Trash. The status bar says what went where and what could
+    /// not; the last one put is chosen in the Explorer. Answers with where each went.</summary>
     public async Task<IReadOnlyList<string>> PutAsync(IReadOnlyList<string> paths, string into, bool copy)
     {
         into = PathNames.Canonical(into);
@@ -113,8 +113,8 @@ public partial class MainWindow
         List<string> elsewhere = [.. paths.Where(p => Directory.Exists(p) && !PathNames.Within(into, p) && !PathNames.Same(Path.Combine(into, Path.GetFileName(p)), p))];
         using IDisposable? releasing = copy ? null : await LetGoAsync(elsewhere,
             $"Waiting for the design-time {Plural.Noun(elsewhere.Count, "build")} of {Plural.Listed([.. elsewhere.Select(Path.GetFileName).OfType<string>()])} to end before {Plural.Agreeing(elsewhere.Count, "it moves", "they move")}…");
-        using CommandHistory.Recording? recording = copy ? null
-            : Editors.Commands.RecordWrites($"Move {Plural.Listed([.. paths.Where(p => !dependents.Contains(p)).Select(Path.GetFileName).OfType<string>()])} to {Path.GetFileName(into)}");
+        using CommandHistory.Recording recording = Editors.Commands.RecordWrites(
+            $"{(copy ? "Copy" : "Move")} {Plural.Listed([.. paths.Where(p => !dependents.Contains(p)).Select(Path.GetFileName).OfType<string>()])} to {Path.GetFileName(into)}");
         List<string> put = [];
         List<(string From, string To)> moved = [];
         // The ends of the moves, followed with the copies once all are put.
@@ -147,7 +147,7 @@ public partial class MainWindow
                 .Where(d => !PathNames.Same(d.Item1, d.Item2))];
             foreach ((string from, string to) in going)
             {
-                if (await PutOneAsync(from, to, into, recording, came) is { } problem)
+                if (await PutOneAsync(from, to, into, copy, recording, came) is { } problem)
                 {
                     if (problem.Length > 0)
                     {
@@ -166,27 +166,17 @@ public partial class MainWindow
                 }
             }
         }
-        if ((FollowMoved(moved, recording) ?? (recording is null ? null : await FollowGodotAsync(moved, recording))) is { } unfollowed)
+        // Copies made in a shared project's folder go into its items file in the copy's command, Undo taking back both.
+        string? unfollowed = !copy ? FollowMoved(moved, recording) ?? await FollowGodotAsync(moved, recording)
+            : put.Count > 0 && InShared(put) ? IntoShared([.. put.SelectMany(FilesAt)], recording)
+            : null;
+        if (unfollowed is not null)
         {
             refused.Add(unfollowed);
         }
-        else if (recording is not null && await recording.LandedAsync(waiting => status.Text = waiting) is [(string unwritten, Exception notLanded), ..])
+        else if (await recording.LandedAsync(waiting => status.Text = waiting) is [(string unwritten, Exception notLanded), ..])
         {
-            refused.Add($"{Path.GetFileName(unwritten)} could not follow the files moved: {notLanded.Message}");
-        }
-        if (copy && put.Count > 0 && InShared(put))
-        {
-            // Copies made in a shared project's folder go into its items file, Undo taking back both.
-            using CommandHistory.Recording copied = Editors.Commands.Record($"Copy {Plural.Listed([.. put.Select(Path.GetFileName).OfType<string>()])} to {Path.GetFileName(into)}");
-            List<string> files = [.. put.SelectMany(FilesAt)];
-            foreach (string file in files)
-            {
-                copied.Made(file);
-            }
-            if (IntoShared(files, copied) is { } unshared)
-            {
-                refused.Add(unshared);
-            }
+            refused.Add($"{Path.GetFileName(unwritten)} could not follow the files {(copy ? "copied" : "moved")}: {notLanded.Message}");
         }
         if (put.Count > 0)
         {
@@ -200,24 +190,31 @@ public partial class MainWindow
         return put;
     }
 
-    /// <summary>Moves one file or folder to where it goes within the move's command (<paramref name="moving"/>), or copies
-    /// it where there is none, replacing what has its name there once the person agrees (to the Trash, in the move's
-    /// command, whose Undo brings it back), a move's ends gathered into <paramref name="came"/>; null once it is there, else
-    /// why not ("" when they would not replace).</summary>
-    private async Task<string?> PutOneAsync(string source, string target, string into, CommandHistory.Recording? moving, List<string> came)
+    /// <summary>Moves or copies one file or folder to where it goes within the paste's command (<paramref name="recording"/>),
+    /// replacing what has its name there once the person agrees (to the Trash, in the same command, whose Undo brings it
+    /// back), a move's ends gathered into <paramref name="came"/> and a copy kept for Undo to take to the Trash; null once
+    /// it is there, else why not ("" when they would not replace).</summary>
+    private async Task<string?> PutOneAsync(string source, string target, string into, bool copy, CommandHistory.Recording recording, List<string> came)
     {
         string name = Path.GetFileName(source);
         if (!PathNames.Same(target, source) && (File.Exists(target) || Directory.Exists(target)))
         {
             if (!await Confirm("Files Already Exist", $"{Path.GetFileName(target)} with the same name already exists in '{Path.GetFileName(into)}'. Replace?", "Replace")
-                || !await DeleteAsync(target, asked: true, within: moving))
+                || !await DeleteAsync(target, asked: true, within: recording))
             {
                 return string.Empty;
             }
         }
-        return (moving is null ? CopyOnDisk(source, target) : Gathering(came, () => moving.Move(source, target))) is { } problem
-            ? $"{name} could not be {(moving is null ? "copied" : "moved")}: {problem}"
-            : null;
+        if (!copy)
+        {
+            return Gathering(came, () => recording.Move(source, target)) is { } unmoved ? $"{name} could not be moved: {unmoved}" : null;
+        }
+        if (CopyOnDisk(source, target) is { } uncopied)
+        {
+            return $"{name} could not be copied: {uncopied}";
+        }
+        await recording.CopiedAsync(target);
+        return null;
     }
 
     /// <summary>The files nested under one in the Solution view, by its project's DependentUpon and, while nesting by
@@ -529,14 +526,15 @@ public partial class MainWindow
         string question = UndoQuestion.Of(command.Name, redo, [.. command.Texts.Select(t => t.Document?.Path ?? (redo ? t.Path : command.Moved(t.Path)))],
             [.. command.Moves.Select(m => redo ? (m.From, m.To) : (m.To, m.From))],
             [.. (redo ? command.Created.Select(c => c.Path) : command.Deleted.Select(d => d.Path))],
-            [.. (redo ? command.Deleted.Select(d => d.Path) : command.Created.Select(c => c.Path))], [.. command.Parts.Select(p => p.Name)]);
+            [.. (redo ? command.Deleted.Select(d => d.Path) : command.Created.Select(c => c.Path))], [.. command.Parts.Select(p => p.Name)],
+            [.. command.Copied.Select(c => c.Path)]);
         if (!await Confirm(verb, question, verb))
         {
             return;
         }
         // What may come or go, with the folders over it, as they stand before: a part may make or take away a folder.
         Dictionary<string, bool> stood = Standing(command.Moves.SelectMany(m => new[] { m.From, m.To }).Concat(command.Created.Select(c => c.Path))
-            .Concat(command.Deleted.Select(d => d.Path)));
+            .Concat(command.Deleted.Select(d => d.Path)).Concat(command.Copied.Select(c => c.Path)));
         List<string> moved = [];
         IReadOnlyList<string> written = Editors.Commands.Writes(command, redo);
         bool rereads = command.Texts.Any(t => WorkspaceModel.IsSolution(t.Path))

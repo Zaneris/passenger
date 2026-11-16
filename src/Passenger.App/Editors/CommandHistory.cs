@@ -9,10 +9,10 @@ namespace Passenger.App.Editors;
 /// <summary>Undo of a command that changed more than one file, moved, made one or changed more than files (a
 /// <see cref="Part"/>), as a rename or Write to Launch Profile does: Undo where it is the last change (an editor of one
 /// of its files, or the Solution view) takes all of it back at once, the files it moved going back, every file's text
-/// as it was and the files it made gone, and Redo makes all of it again, each only while every file is still as the
-/// command left it. One that changed one open file's text alone is that file's own undo step; one file not open, with
-/// no undo of its own, is one. The files not open are read and written off the window's thread, every write of them (a
-/// command's, Replace in Files', Undo's and Redo's) in one order (<see cref="InTurnAsync"/>).</summary>
+/// as it was and the files it made or copied gone, and Redo makes all of it again, each only while every file is still
+/// as the command left it. One that changed one open file's text alone is that file's own undo step; one file not open,
+/// with no undo of its own, is one. The files not open are read and written off the window's thread, every write of
+/// them (a command's, Replace in Files', Undo's and Redo's) in one order (<see cref="InTurnAsync"/>).</summary>
 public sealed class CommandHistory
 {
     /// <summary>The most commands kept, the oldest going first.</summary>
@@ -220,8 +220,9 @@ public sealed class CommandHistory
                 return changed;
             }
         }
-        if (redo && command.Deleted.Where(d => d.PutBack is not null).ToList() is { Count: > 0 } putBack
-            && await BackgroundWork.Run(() => putBack.Select(d => MadeFolders.Unlike(d.Path, d.PutBack!)).FirstOrDefault(u => u is not null)) is { } since)
+        // What goes to the Trash (a deletion made again, a copy taken back) goes only while it is as it was last left.
+        if ((redo ? command.Deleted : command.Copied).Where(t => t.Left is not null).ToList() is { Count: > 0 } leaving
+            && await BackgroundWork.Run(() => leaving.Select(t => MadeFolders.Unlike(t.Path, t.Left!)).FirstOrDefault(u => u is not null)) is { } since)
         {
             return since;
         }
@@ -303,15 +304,18 @@ public sealed class CommandHistory
     /// <summary>The files not open that taking a command back (or making it again, given true) writes, whose saves may
     /// still be landing once it returns (<see cref="EditorArea.LandedAsync(IEnumerable{string}, Action{string}?)"/>).</summary>
     public IReadOnlyList<string> Writes(Command command, bool redo) =>
-        [.. command.Texts.Where(t => !IsOpen(t.Document)).Select(t => t.Path), .. redo ? command.Created.Select(c => c.Path) : command.Deleted.Select(d => d.Path)];
+    [
+        .. command.Texts.Where(t => !IsOpen(t.Document)).Select(t => t.Path),
+        .. redo ? command.Created.Select(c => c.Path).Concat(command.Copied.Select(c => c.Path)) : command.Deleted.Select(d => d.Path),
+    ];
 
     /// <summary>The folders taking a command back (or making it again, given true) moves, each where it is and where it goes,
-    /// as a refused put moves it back: those of its moves there now, what it deleted, which goes to or from the Trash, and
-    /// its parts' (<see cref="Part.Folder"/>).</summary>
+    /// as a refused put moves it back: those of its moves there now, what it deleted or copied, which goes to or from the
+    /// Trash, and its parts' (<see cref="Part.Folder"/>).</summary>
     private static List<string> Moving(Command command, bool redo) =>
     [
         .. command.Moves.Select(m => redo ? m : (From: m.To, To: m.From)).Where(m => Directory.Exists(m.From)).SelectMany(m => new[] { m.From, m.To }),
-        .. command.Deleted.Select(d => PathNames.Canonical(d.Path)),
+        .. command.Deleted.Concat(command.Copied).Select(t => PathNames.Canonical(t.Path)),
         .. command.Parts.Select(p => p.Folder).OfType<string>().Select(PathNames.Canonical),
     ];
 
@@ -332,33 +336,32 @@ public sealed class CommandHistory
             {
                 return $"{Path.GetFileName(there)} is no longer there";
             }
-            // A file the command deleted to take its place is deleted again first.
-            if (Exists(free) && !PathNames.Same(free, there) && !(redo && command.Deleted.Any(d => PathNames.Same(d.Path, free))))
+            // A file the command deleted to take its place is deleted again first, and one it copied there goes first.
+            if (Exists(free) && !PathNames.Same(free, there) && !(redo ? command.Deleted : command.Copied).Any(t => PathNames.Same(t.Path, free)))
             {
                 return $"{Path.GetFileName(free)} is already there";
             }
         }
-        foreach (Deletion deleted in command.Deleted)
+        // What goes to the Trash: a deletion made again, a copy taken back.
+        foreach (Trashing going in redo ? command.Deleted : command.Copied)
         {
-            string name = Path.GetFileName(deleted.Path);
-            if (redo)
+            if (!Exists(going.Path))
             {
-                if (!Exists(deleted.Path))
-                {
-                    return $"{name} is no longer there";
-                }
-                if (editors.Documents.FirstOrDefault(d => d.IsModified && PathNames.Within(d.Path, deleted.Path)) is { } edited)
-                {
-                    return $"{edited.Name} has edits not saved";
-                }
-                continue;
+                return $"{Path.GetFileName(going.Path)} is no longer there";
             }
-            if (deleted.Went is not { } went)
+            if (editors.Documents.FirstOrDefault(d => d.IsModified && PathNames.Within(d.Path, going.Path)) is { } edited)
+            {
+                return $"{edited.Name} has edits not saved";
+            }
+        }
+        foreach (Trashing coming in redo ? command.Copied : command.Deleted)
+        {
+            string name = Path.GetFileName(coming.Path);
+            if (coming.Went is not { } went)
             {
                 return $"{name} was deleted outright, not kept in the Trash";
             }
-            // A file the command moved another over is free once its moves are taken back.
-            if (Exists(deleted.Path) && !command.Moves.Any(m => PathNames.Same(m.To, deleted.Path)))
+            if (Exists(coming.Path) && !FreedFirst(command, coming.Path, redo))
             {
                 return $"{name} is already there";
             }
@@ -411,6 +414,12 @@ public sealed class CommandHistory
         return null;
     }
 
+    /// <summary>Whether taking a command back (or making it again, given true) frees a place before what it brings back from
+    /// the Trash comes there: taken back, a move's end and a copy go first; made again, a move's start and a deletion.</summary>
+    private static bool FreedFirst(Command command, string path, bool redo) => redo
+        ? command.Deleted.Any(d => PathNames.Same(d.Path, path)) || command.Moves.Any(m => PathNames.Same(m.From, path))
+        : command.Copied.Any(c => PathNames.Same(c.Path, path)) || command.Moves.Any(m => PathNames.Same(m.To, path));
+
     /// <summary>Why the rest of a command cannot be put once its parts that go first are, where one let the window go on
     /// while it was put (a folder carried off the window's thread): its files not open looked at again off it, then what
     /// the window holds, so nothing comes between that look and the rest of the put; null when nothing it puts changed.</summary>
@@ -424,10 +433,11 @@ public sealed class CommandHistory
         return Changed(command, redo, looks, command.Parts.Where(p => !p.First));
     }
 
-    /// <summary>Takes a command back: its parts put first (<see cref="Part.First"/>), the files it moved go back, the open
-    /// files take their undo steps and what it deleted comes out of the Trash, then the files not open are written as they
-    /// were, off the window's thread, the files it made go and its other parts are put. Null once done, else why not, what
-    /// it had done by then taken back (<see cref="TakenBackAsync"/>).</summary>
+    /// <summary>Takes a command back: its parts put first (<see cref="Part.First"/>), what it copied goes to the Trash,
+    /// the files it moved go back, the open files take their undo steps and what it deleted comes out of the Trash,
+    /// then the files not open are written as they were, off the window's thread, the files it made go and its other
+    /// parts are put. Null once done, else why not, what it had done by then taken back
+    /// (<see cref="TakenBackAsync"/>).</summary>
     private async Task<string?> UndoAsync(Command command, IReadOnlyDictionary<string, Look> looks, Func<Func<string?>, string?> moving)
     {
         (string? unput, bool waited) = await PutFirstAsync(command, redo: false);
@@ -441,6 +451,15 @@ public sealed class CommandHistory
             return await TakenBackAsync(since, done);
         }
         List<FilePut> writes = [.. command.Texts.Where(t => !IsOpen(t.Document)).Select(t => Text(t.Path, t.Before, t.After, looks[command.Moved(t.Path)].Stored))];
+        // Before the moves go back, so a place a copy took is free.
+        foreach (Trashing copied in command.Copied.Reverse())
+        {
+            if (ToTrash(copied) is { } kept)
+            {
+                return await TakenBackAsync(kept, done);
+            }
+            done.Add(() => Task.FromResult(FromTrash(copied)));
+        }
         string? unmoved = moving(() =>
         {
             foreach ((string from, string to) in command.Moves.Reverse())
@@ -460,7 +479,7 @@ public sealed class CommandHistory
             return await TakenBackAsync(unmoved, done);
         }
         // Once the moves are back, so one the command moved another over is free.
-        foreach (Deletion deleted in command.Deleted.Reverse())
+        foreach (Trashing deleted in command.Deleted.Reverse())
         {
             if (FromTrash(deleted) is { } untrashed)
             {
@@ -490,17 +509,18 @@ public sealed class CommandHistory
             }
             done.Add(() => part.Put(true));
         }
-        foreach (Deletion deleted in command.Deleted)
+        foreach (Trashing deleted in command.Deleted)
         {
-            deleted.PutBack = await BackgroundWork.Run(() => MadeFolders.Stamps(deleted.Path));
+            deleted.Left = await BackgroundWork.Run(() => MadeFolders.Stamps(deleted.Path));
         }
         return null;
     }
 
-    /// <summary>Makes a command again: its parts put first (<see cref="Part.First"/>), the open files take their redo steps
-    /// and what it deleted goes to the Trash, the files it made and the files not open are written as it left them, off the
-    /// window's thread, then the files it moved move again and its other parts are put. Null once done, else why not, what
-    /// it had done by then taken back (<see cref="TakenBackAsync"/>).</summary>
+    /// <summary>Makes a command again: its parts put first (<see cref="Part.First"/>), the open files take their redo
+    /// steps and what it deleted goes to the Trash, the files it made and the files not open are written as it left
+    /// them, off the window's thread, then the files it moved move again, what it copied comes out of the Trash and its
+    /// other parts are put. Null once done, else why not, what it had done by then taken back
+    /// (<see cref="TakenBackAsync"/>).</summary>
     private async Task<string?> RedoAsync(Command command, IReadOnlyDictionary<string, Look> looks, Func<Func<string?>, string?> moving)
     {
         (string? unput, bool waited) = await PutFirstAsync(command, redo: true);
@@ -521,7 +541,7 @@ public sealed class CommandHistory
         Step(command, redo: true);
         done.Add(() => Task.FromResult(Restep(command, redo: false)));
         // Before the moves, so one the command moved another over is free for it.
-        foreach (Deletion deleted in command.Deleted)
+        foreach (Trashing deleted in command.Deleted)
         {
             if (ToTrash(deleted) is { } kept)
             {
@@ -549,6 +569,15 @@ public sealed class CommandHistory
         {
             return await TakenBackAsync(unmoved, done);
         }
+        // Once the moves are made, so a place one left is free.
+        foreach (Trashing copied in command.Copied)
+        {
+            if (FromTrash(copied) is { } untrashed)
+            {
+                return await TakenBackAsync(untrashed, done);
+            }
+            done.Add(() => Task.FromResult(ToTrash(copied)));
+        }
         foreach (Part part in command.Parts.Where(p => !p.First))
         {
             if (await part.Put(true) is { } failed)
@@ -556,6 +585,10 @@ public sealed class CommandHistory
                 return await TakenBackAsync(failed, done);
             }
             done.Add(() => part.Put(false));
+        }
+        foreach (Trashing copied in command.Copied)
+        {
+            copied.Left = await BackgroundWork.Run(() => MadeFolders.Stamps(copied.Path));
         }
         return null;
     }
@@ -741,18 +774,18 @@ public sealed class CommandHistory
     /// <summary>How an open file is stored: its encoding, byte order mark and a CR file's breaks, its text left out.</summary>
     private static FileText StoredAs(OpenDocument document) => new(string.Empty, document.Encoding, document.HasBom, document.Separator == LineSeparator.CR);
 
-    /// <summary>What a command deleted moved back from the Trash to where it was as the command began, as it is there
+    /// <summary>What a command deleted or copied moved back from the Trash to where the command had it, as it is there
     /// (links, modes, empty folders), on the window's thread: why not, null once back.</summary>
-    private static string? FromTrash(Deletion deleted)
+    private static string? FromTrash(Trashing item)
     {
-        string name = Path.GetFileName(deleted.Path);
-        if (deleted.Went is not { } went)
+        string name = Path.GetFileName(item.Path);
+        if (item.Went is not { } went)
         {
             return $"{name} was deleted outright, not kept in the Trash";
         }
         try
         {
-            Trash.PutBack(went with { From = deleted.Path });
+            Trash.PutBack(went with { From = item.Path });
             return null;
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
@@ -761,19 +794,19 @@ public sealed class CommandHistory
         }
     }
 
-    /// <summary>What a command deleted moved to the Trash again from where it was as the command began, on the window's
-    /// thread, its open files closed: why not, null once there.</summary>
-    private string? ToTrash(Deletion deleted)
+    /// <summary>What a command deleted or copied moved to the Trash from where the command had it, on the window's thread,
+    /// its open files closed: why not, null once there.</summary>
+    private string? ToTrash(Trashing item)
     {
         try
         {
-            deleted.Went = Trash.Move(deleted.Path);
+            item.Went = Trash.Move(item.Path);
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
-            return $"{Path.GetFileName(deleted.Path)} could not be moved to the Trash: {error.Message}";
+            return $"{Path.GetFileName(item.Path)} could not be moved to the Trash: {error.Message}";
         }
-        foreach (OpenDocument document in editors.Documents.Where(d => PathNames.Within(d.Path, deleted.Path)).ToList())
+        foreach (OpenDocument document in editors.Documents.Where(d => PathNames.Within(d.Path, item.Path)).ToList())
         {
             editors.CloseDeleted(document);
         }
@@ -885,13 +918,15 @@ public sealed class CommandHistory
 
     /// <summary>What a command did: its name ("Rename Foo to Bar"), each file's text before and after it (at the path the
     /// file had then; an open file's with the undo step that made it), the files it moved, in order, the files it made, the
-    /// files it deleted, and what else it changed.</summary>
+    /// files it deleted, the files and folders it copied, and what else it changed.</summary>
     public sealed class Command(string name, IReadOnlyList<TextChange> texts, IReadOnlyList<(string From, string To)> moves, IReadOnlyList<Creation>? created = null,
-        IReadOnlyList<Part>? parts = null, IReadOnlyList<Deletion>? deleted = null)
+        IReadOnlyList<Part>? parts = null, IReadOnlyList<Trashing>? deleted = null, IReadOnlyList<Trashing>? copied = null)
     {
         public IReadOnlyList<Creation> Created { get; } = created ?? [];
 
-        public IReadOnlyList<Deletion> Deleted { get; } = deleted ?? [];
+        public IReadOnlyList<Trashing> Deleted { get; } = deleted ?? [];
+
+        public IReadOnlyList<Trashing> Copied { get; } = copied ?? [];
 
         public IReadOnlyList<Part> Parts { get; } = parts ?? [];
 
@@ -920,20 +955,24 @@ public sealed class CommandHistory
         public FileText? Stored { get; set; }
     }
 
-    /// <summary>A file or folder a command deleted (one a rename moved another over), at its path as the command began, kept
-    /// as where the Trash put it, never its bytes: its Undo moves it back from there once the moves are taken back, and its
-    /// Redo moves it to the Trash again, while it is as Undo left it, before they are made. One the Trash keeps nowhere
-    /// Passenger can find refuses Undo.</summary>
-    public sealed class Deletion(string path, Trashed? went)
+    /// <summary>A file or folder a command takes to the Trash one way and brings back from there the other, kept as where the
+    /// Trash put it, never its bytes. One it deleted (one a rename moved another over), at its path as the command began, its
+    /// Undo moves back once the moves are taken back, and its Redo moves to the Trash again before they are made; one it
+    /// copied, at its path as the command left it, its Undo moves to the Trash before the moves are taken back, and its Redo
+    /// moves back once they are made. Each goes to the Trash only while it is as it was last left; one the Trash keeps
+    /// nowhere Passenger can find refuses its way back.</summary>
+    public sealed class Trashing(string path, Trashed? went)
     {
         public string Path { get; } = path;
 
-        /// <summary>Where the Trash put it last; null where it keeps it nowhere Passenger can find.</summary>
+        /// <summary>Where the Trash put it last; null before it went there, and where the Trash keeps it nowhere Passenger can
+        /// find.</summary>
         public Trashed? Went { get; internal set; } = went;
 
-        /// <summary>Each file under it as Undo put it back (<see cref="MadeFolders.Stamps"/>), which Redo finds again before it
-        /// moves it to the Trash; null until then.</summary>
-        internal Dictionary<string, (long Length, DateTime Written)>? PutBack { get; set; }
+        /// <summary>Each file under it as it was last left where the command had it (<see cref="MadeFolders.Stamps"/>), which
+        /// its move to the Trash finds again first: a copy's as the copy made it, a deletion's once Undo put it back, null
+        /// until then.</summary>
+        internal Dictionary<string, (long Length, DateTime Written)>? Left { get; set; }
     }
 
     /// <summary>Something besides files a command changed (a run configuration's changes kept with the folder), named as the
@@ -992,7 +1031,8 @@ public sealed class CommandHistory
         private readonly List<LocalHistory.Activity> naming = [];
         private readonly TaskCompletionSource ending = new(TaskCreationOptions.RunContinuationsAsynchronously);
         private readonly List<(string From, string To)> moves = [];
-        private readonly List<Deletion> deletions = [];
+        private readonly List<Trashing> deletions = [];
+        private readonly List<Trashing> copies = [];
         private readonly List<Part> parts = [];
         private List<TextChange>? openTaken;
         // The files the gate let it write (EditorArea.ClearAsync), never asked of again.
@@ -1028,7 +1068,7 @@ public sealed class CommandHistory
         {
             if (document is null)
             {
-                return moves.Count > 0 || closed.Count > 0 || queued.Count > 0 || madeAt.Count > 0 || parts.Count > 0 || deletions.Count > 0
+                return moves.Count > 0 || closed.Count > 0 || queued.Count > 0 || madeAt.Count > 0 || parts.Count > 0 || deletions.Count > 0 || copies.Count > 0
                     || (ownWrites ? wrote.Count > 0 || writing.Any(w => w.Key.Text.NextUndo != w.Value.Step) : Steps().Count > 0);
             }
             object? next = document.Text.NextUndo;
@@ -1095,7 +1135,8 @@ public sealed class CommandHistory
 
         /// <summary>A file or folder the command moved to the Trash (one a rename moves another over), at its path now, with
         /// where it went there (<see cref="Trash.Move"/>; null where the Trash keeps it nowhere Passenger can find), which its
-        /// Undo moves back: nothing of what it holds is kept.</summary>
+        /// Undo moves back: nothing of what it holds is kept. One the command copied there leaves the command with what it
+        /// copied under it, the Trash keeping them: Undo has nothing to bring back for it.</summary>
         public void Deleted(string path, Trashed? went)
         {
             string began = Began(path);
@@ -1103,7 +1144,23 @@ public sealed class CommandHistory
             {
                 closed.Remove(under);
             }
-            deletions.Add(new Deletion(began, went));
+            bool copied = copies.Any(c => PathNames.Same(c.Path, path));
+            copies.RemoveAll(c => PathNames.Within(c.Path, path));
+            if (!copied)
+            {
+                deletions.Add(new Trashing(began, went));
+            }
+        }
+
+        /// <summary>A file or folder the command made by copying another, at its path now, kept as each file in it was left
+        /// (<see cref="MadeFolders.Stamps"/>, read off the window's thread), never its bytes: its Undo moves it to the Trash
+        /// while it is as the copy left it, and its Redo moves it back from there.</summary>
+        public async Task CopiedAsync(string path)
+        {
+            // Kept before the read, so an Undo meanwhile waits for the command.
+            Trashing copied = new(path, null);
+            copies.Add(copied);
+            copied.Left = await BackgroundWork.Run(() => MadeFolders.Stamps(path));
         }
 
         /// <summary>A file not open that the command, or its language server a moment before, made empty for the command to
@@ -1143,6 +1200,7 @@ public sealed class CommandHistory
             }
             queued.RemoveAll(q => PathNames.IsUnder(q.Began, folder));
             deletions.RemoveAll(d => PathNames.IsUnder(d.Path, folder));
+            copies.RemoveAll(c => PathNames.IsUnder(c.Path, folder));
             foreach (OpenDocument document in writing.Keys.Concat(wrote.Keys).Where(d => PathNames.IsUnder(d.Path, folder)).ToList())
             {
                 writing.Remove(document);
@@ -1244,10 +1302,11 @@ public sealed class CommandHistory
         /// for it however few files it changed.</summary>
         public void Also(Part part) => parts.Add(part);
 
-        /// <summary>Takes back all the command has done once it is refused partway, so none of it stays and no Undo is kept:
-        /// what it queued is never written, its moves go back, the open files take back their steps, the files not open it
-        /// wrote, made or deleted are put as they were off the window's thread, and its parts are put back. Why it was
-        /// <paramref name="refused"/>, with what could not be put back (a file changed since).</summary>
+        /// <summary>Takes back all the command has done once it is refused partway, so none of it stays and no Undo is
+        /// kept: what it queued is never written, what it copied goes to the Trash, its moves go back, the open files
+        /// take back their steps, the files not open it wrote, made or deleted are put as they were off the window's
+        /// thread, and its parts are put back. Why it was <paramref name="refused"/>, with what could not be put back
+        /// (a file changed since).</summary>
         public async Task<string> TakenBackAsync(string refused)
         {
             if (takenBack)
@@ -1263,6 +1322,15 @@ public sealed class CommandHistory
             }
             List<TextChange> texts = ownWrites ? [.. wrote.Values] : Steps();
             List<string> left = [];
+            // First, so what the command moved or deleted can go back where a copy stands.
+            foreach (Trashing copied in Enumerable.Reverse(copies))
+            {
+                if (history.ToTrash(copied) is { } kept)
+                {
+                    left.Add(kept);
+                }
+            }
+            copies.Clear();
             if (MoveBack().Refused is { } unmoved)
             {
                 left.Add(unmoved);
@@ -1277,7 +1345,7 @@ public sealed class CommandHistory
                 editors.Step(text.Document, redo: false);
             }
             // Once its moves are back, so each goes where it was as the command began.
-            foreach (Deletion deleted in Enumerable.Reverse(deletions))
+            foreach (Trashing deleted in Enumerable.Reverse(deletions))
             {
                 if (FromTrash(deleted) is { } unput)
                 {
@@ -1394,9 +1462,10 @@ public sealed class CommandHistory
                     texts.Add(new TextChange(null, path, before, TextSnapshot.From(after), null));
                 }
             }
-            if (texts.Count > 1 || texts.Any(t => t.Document is null) || moves.Count > 0 || created.Count > 0 || parts.Count > 0 || deletions.Count > 0)
+            if (texts.Count > 1 || texts.Any(t => t.Document is null) || moves.Count > 0 || created.Count > 0 || parts.Count > 0 || deletions.Count > 0
+                || copies.Count > 0)
             {
-                history.Keep(new Command(name, texts, made.Moves, created, [.. parts], [.. deletions]));
+                history.Keep(new Command(name, texts, made.Moves, created, [.. parts], [.. deletions], [.. copies]));
             }
         }
 
