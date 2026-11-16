@@ -21,6 +21,10 @@ public sealed class MauiTemplateRunTests
 {
     private static readonly TimeSpan Slow = TimeSpan.FromMinutes(15);
 
+    /// <summary>How long a step after the build waits at most (the app's page up, the Debug build kept whole): each fails
+    /// with its own words well before the test runner takes a test that has done nothing for 10 minutes as hung.</summary>
+    private static readonly TimeSpan Step = TimeSpan.FromMinutes(2);
+
     /// <summary>What the app writes once its main page is made, which the Run window shows.</summary>
     private const string Up = "MauiApp1's main page is up";
 
@@ -164,7 +168,7 @@ public sealed class MauiTemplateRunTests
                 Assert.True(opening.Contains("-g") && opening.Contains("-j"),
                     $"The app opens where the person sees it, though nobody sees the window that ran it: {string.Join(' ', opening.Skip(3))}");
                 Ui.WaitFor(() => Output(window).Contains(Up, StringComparison.Ordinal),
-                    () => $"the app to make its main page, said in the Run window; it shows:\n{Output(window)}\n{Ui.Said(window)}", Slow);
+                    () => $"the app to make its main page, said in the Run window; it shows:\n{Output(window)}\n{Ui.Said(window)}", Step);
                 Assert.True(window.Runner.IsRunning, $"The app's run ended once its page was up:\n{Output(window)}");
                 Assert.True(Running(app) is not null, $"No process runs {app.Executable} once its page is up");
                 // The template's Debug build trims .NET's own assemblies: the Run window offers to keep them whole.
@@ -175,9 +179,10 @@ public sealed class MauiTemplateRunTests
                 Ui.WaitFor(() => Running(app) is null, () => $"the app to end once stopped; process {Running(app)} still runs it", TimeSpan.FromSeconds(30));
                 string project = Path.Combine(folder, "MauiApp1", "MauiApp1.csproj");
                 Ui.ClickButton(window.BottomPanel.Run, "Keep .NET's Assemblies Whole in Debug");
-                Ui.WaitFor(() => window.Actions.Work.Of(AppActions.KeepAssembliesWhole) is null && File.ReadAllText(project).Contains("'Debug'\">None</MtouchLink>", StringComparison.Ordinal),
-                    () => $"the Run window's offer to keep the Debug build whole: {Ui.Said(window)}\n{File.ReadAllText(project)}", Slow);
+                Ui.WaitFor(() => window.Actions.Work.Of(AppActions.KeepAssembliesWhole) is null, () => $"the Run window's offer to keep the Debug build whole: {Ui.Said(window)}", Step);
                 Assert.Equal(Passenger.App.Mobile.MobileHeads.Whole("MauiApp1"), window.Status);
+                // The app has other heads, so MtouchLink is set for its Mac Catalyst framework's Debug build alone.
+                Assert.Contains("== 'Debug' And $([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'maccatalyst'\">None</MtouchLink>", File.ReadAllText(project), StringComparison.Ordinal);
                 Assert.Null(window.BottomPanel.Run.Offered);
             }
             finally
