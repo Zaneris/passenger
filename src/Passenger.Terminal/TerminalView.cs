@@ -130,6 +130,10 @@ public sealed partial class TerminalView : Control
     /// a terminal with none.</summary>
     public Func<ReadOnlySpan<char>, IReadOnlyList<(int Start, int Length, object Target, bool Hidden)>>? Links { get; set; }
 
+    /// <summary>What a link a program made (OSC 8) opens, by its address, which only the host reads; null for an address
+    /// it opens nothing for, which stays text. Null for a terminal whose programs' links are all text.</summary>
+    public Func<string, object?>? LinkTo { get; set; }
+
     /// <summary>The link under the pointer; null when there is none.</summary>
     public TerminalLink? HoveredLink { get; private set; }
 
@@ -396,9 +400,11 @@ public sealed partial class TerminalView : Control
         FollowInputMethod();
     }
 
-    /// <summary>Whether a cell is drawn in a run with its neighbours: one code point a column wide that the terminal's
-    /// font has. A wide character, a letter with its marks or one another font draws is drawn alone, fitted to its cells.</summary>
-    private bool InRun(Cell cell) => cell.Width == 1 && !cell.IsJoined && (cell.Rune < 0x7f || glyphs?.ContainsGlyph(cell.Rune) == true);
+    /// <summary>Whether a line's cell is drawn in a run with its neighbours: one code point a column wide that the
+    /// terminal's font has, linked or not. A wide character, a letter with its marks or one another font draws is drawn
+    /// alone, fitted to its cells.</summary>
+    private bool InRun(TerminalLine line, int column) => line.Cells[column] is { Width: 1 } cell && line.IsOneCodePoint(column)
+        && (cell.Rune < 0x7f || glyphs?.ContainsGlyph(cell.Rune) == true);
 
     /// <summary>The link holding the cell under a point, if any.</summary>
     private TerminalLink? LinkAt(Point at)

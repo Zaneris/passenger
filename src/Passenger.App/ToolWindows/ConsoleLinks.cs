@@ -24,6 +24,10 @@ public sealed record FolderLink(string Path) : LinkTarget;
 
 public sealed record WebLink(Uri Address) : LinkTarget;
 
+/// <summary>A path on this machine a program linked in the terminal (OSC 8), as it named it: its file opens in the editor,
+/// or its folder in the file manager, whichever the disk has once it is clicked.</summary>
+public sealed record ProgramFileLink(string Path) : LinkTarget;
+
 /// <summary>A link in a line of text: where it starts in the line, how long it is, and what it opens. A hidden one (the
 /// terminal's file paths) is drawn as plain text until Cmd or Ctrl is held over it.</summary>
 public readonly record struct FoundLink(int Start, int Length, LinkTarget Target, bool Hidden = false);

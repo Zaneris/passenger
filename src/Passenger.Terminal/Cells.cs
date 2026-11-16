@@ -28,8 +28,9 @@ public readonly record struct CellStyle(int Fore, int Back, CellFlags Flags)
 
 /// <summary>One cell of the screen: its grapheme's first code point (0 for a blank), its style, and how many columns it
 /// takes: 2 for a wide character, whose second column is a cell of width 0. A grapheme of more code points (e and a
-/// combining acute, a flag's two letters) is kept by its line (<see cref="TerminalLine.TextOf"/>), so a cell holds no
-/// reference for the collector to track through the millions a flood of output writes.</summary>
+/// combining acute, a flag's two letters), and the address a program linked the cell to, are kept by its line
+/// (<see cref="TerminalLine.TextOf"/>, <see cref="TerminalLine.LinkOf"/>), so a cell holds no reference for the collector
+/// to track through the millions a flood of output writes.</summary>
 public struct Cell
 {
     /// <summary>The grapheme's first code point; 0 for a blank.</summary>
@@ -41,7 +42,8 @@ public struct Cell
 
     public byte Width;
 
-    /// <summary>Which of its line's graphemes the cell shows, from 1; 0 when <see cref="Rune"/> is all of it.</summary>
+    /// <summary>Which of its line's extras the cell shows (<see cref="CellExtra"/>), from 1; 0 when <see cref="Rune"/> is all
+    /// of it and it is linked to nothing.</summary>
     internal ushort Joined;
 
     public CellStyle Style
@@ -59,7 +61,7 @@ public struct Cell
 
     public readonly bool IsBlank => Rune == 0;
 
-    /// <summary>Whether the cell's grapheme is more than its first code point.</summary>
+    /// <summary>Whether the cell's grapheme is more than its first code point, or it is linked.</summary>
     public readonly bool IsJoined => Joined != 0;
 
     /// <summary>Whether another cell shows what this one does: its code point, colours, flags and width, neither one's
@@ -68,10 +70,14 @@ public struct Cell
         Rune == other.Rune && fore == other.fore && back == other.back && flags == other.flags && Width == other.Width && Joined == 0 && other.Joined == 0;
 }
 
+/// <summary>What a cell shows beyond its first code point: its whole grapheme, and the address a program linked it to with
+/// OSC 8, or null.</summary>
+internal readonly record struct CellExtra(string Text, string? Link);
+
 /// <summary>A row of cells, and whether the text went on to the next row by wrapping (so a copy joins them).</summary>
 public sealed class TerminalLine
 {
-    private List<string>? graphemes;
+    private List<CellExtra>? graphemes;
     private bool wrapped;
 
     public TerminalLine(int columns, CellStyle style)
@@ -112,8 +118,11 @@ public sealed class TerminalLine
         return Cells;
     }
 
-    /// <summary>The graphemes the line's joined cells show, by their <see cref="Cell.Joined"/> less one.</summary>
-    internal List<string>? Graphemes => graphemes;
+    /// <summary>What the line's joined cells show, by their <see cref="Cell.Joined"/> less one.</summary>
+    internal List<CellExtra>? Graphemes => graphemes;
+
+    /// <summary>Whether a program linked any of its cells since it was last blank: none is, where it did not.</summary>
+    internal bool Linked { get; private set; }
 
     public void Clear(int from, int to, CellStyle style)
     {
@@ -136,6 +145,7 @@ public sealed class TerminalLine
         Clear(0, columns, style);
         Wrapped = false;
         graphemes?.Clear();
+        Linked = false;
         Writes++;
         return this;
     }
@@ -159,8 +169,20 @@ public sealed class TerminalLine
     /// <summary>What the cell at a column shows: its whole grapheme, a space for a blank.</summary>
     public string TextOf(int column) => TextOf(Cells[column]);
 
-    /// <summary>Makes a cell show a grapheme of more than one code point.</summary>
-    internal void SetGrapheme(int column, string grapheme)
+    /// <summary>Makes a cell show a grapheme of more than one code point, linked as it was.</summary>
+    internal void SetGrapheme(int column, string grapheme) => SetExtra(column, new CellExtra(grapheme, LinkOf(column)));
+
+    /// <summary>Links a cell to an address, as a program's OSC 8 does the text it writes.</summary>
+    internal void SetLink(int column, string link) => SetExtra(column, new CellExtra(TextOf(column), link));
+
+    /// <summary>Whether the cell at a column shows its first code point alone, linked or not.</summary>
+    internal bool IsOneCodePoint(int column) =>
+        Cells[column] is not { Joined: not 0 and var joined, Rune: var rune } || graphemes is null || graphemes[joined - 1].Text.Length == (rune > 0xFFFF ? 2 : 1);
+
+    /// <summary>The address a program linked the cell at a column to, or null.</summary>
+    public string? LinkOf(int column) => Cells[column].Joined is not 0 and var joined && graphemes is not null ? graphemes[joined - 1].Link : null;
+
+    internal void SetExtra(int column, CellExtra extra)
     {
         if (graphemes is null)
         {
@@ -170,8 +192,9 @@ public sealed class TerminalLine
         {
             Compact();
         }
-        graphemes.Add(grapheme);
+        graphemes.Add(extra);
         Cells[column].Joined = (ushort)graphemes.Count;
+        Linked |= extra.Link is not null;
         Writes++;
     }
 
@@ -220,7 +243,7 @@ public sealed class TerminalLine
         Cell cell = Cells[column];
         if (cell.Joined != 0 && graphemes is not null)
         {
-            return graphemes[cell.Joined - 1];
+            return graphemes[cell.Joined - 1].Text;
         }
         if (cell.Rune == 0)
         {
@@ -231,12 +254,12 @@ public sealed class TerminalLine
     }
 
     private string TextOf(Cell cell) =>
-        cell.Joined != 0 && graphemes is not null ? graphemes[cell.Joined - 1] : cell.Rune == 0 ? " " : char.ConvertFromUtf32(cell.Rune);
+        cell.Joined != 0 && graphemes is not null ? graphemes[cell.Joined - 1].Text : cell.Rune == 0 ? " " : char.ConvertFromUtf32(cell.Rune);
 
-    /// <summary>Keeps only the graphemes cells still show: one written over stays in the list until it fills.</summary>
+    /// <summary>Keeps only the extras cells still show: one written over stays in the list until it fills.</summary>
     private void Compact()
     {
-        List<string> kept = [];
+        List<CellExtra> kept = [];
         Dictionary<int, ushort> moved = [];
         for (int i = 0; i < Cells.Length; i++)
         {

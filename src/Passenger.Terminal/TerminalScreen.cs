@@ -24,7 +24,8 @@ public enum MouseTracking
 /// program sets. Bytes from the program go in through <see cref="Feed"/> and are read as xterm reads them: UTF-8 text,
 /// C0 controls, and ESC, CSI, OSC and DCS sequences after the state machine in vt100.net's DEC parser, covering what
 /// shells, editors and full-screen programs use (cursor movement, erasing, scroll regions, the alternate screen, 16,
-/// 256 and 24-bit colours, the line-drawing set, bracketed paste, mouse reports, the kitty keyboard protocol's flags).
+/// 256 and 24-bit colours, the line-drawing set, bracketed paste, mouse reports, the kitty keyboard protocol's flags,
+/// OSC 8's links).
 /// Answers to a program's questions (where the cursor is, what the terminal is, the keyboard flags in force) come out of
 /// <see cref="Reply"/>. No UI: the view draws it.</summary>
 public sealed class TerminalScreen
@@ -144,6 +145,9 @@ public sealed class TerminalScreen
 
     /// <summary>What the last OSC 7 said, as it said it.</summary>
     private string? place;
+
+    /// <summary>The address OSC 8 links what the program writes to, until it ends the link; null outside one.</summary>
+    private string? hyperlink;
 
     /// <summary>Counts every change, so a view knows to draw again.</summary>
     public int Version { get; private set; }
@@ -379,7 +383,7 @@ public sealed class TerminalScreen
 
         List<TerminalLine> rows = new(old.Count);
         Cell[] text = new Cell[Columns * 4];
-        List<string> carried = [];
+        List<CellExtra> carried = [];
         (int Row, int Column, bool Pending) at = (0, 0, false);
         int screenTop = 0;
         for (int index = 0; index < old.Count;)
@@ -398,7 +402,7 @@ public sealed class TerminalScreen
             int cursorOffset = -1;
             int topOffset = -1;
             ReadOnlySpan<Cell> joined = default;
-            List<string>? graphemes = null;
+            List<CellExtra>? graphemes = null;
             carried.Clear();
             while (true)
             {
@@ -490,7 +494,7 @@ public sealed class TerminalScreen
     /// <summary>A line of text cut into rows of a width, added to <paramref name="rows"/>, a wide character that would
     /// end a row going on to the next: where the cursor's offset lands (null when it is not in this line), and the row
     /// where the old screen's top began. <paramref name="graphemes"/> are those the text's joined cells number.</summary>
-    private static (int Row, int Column, bool Pending)? Wrap(ReadOnlySpan<Cell> text, List<string>? graphemes, int columns,
+    private static (int Row, int Column, bool Pending)? Wrap(ReadOnlySpan<Cell> text, List<CellExtra>? graphemes, int columns,
         List<TerminalLine> rows, int cursorOffset, int topOffset, out int? topAt)
     {
         (int Row, int Column, bool Pending)? cursorAt = null;
@@ -524,7 +528,7 @@ public sealed class TerminalScreen
                 {
                     if (cells[column].Joined != 0)
                     {
-                        row.SetGrapheme(column, graphemes[cells[column].Joined - 1]);
+                        row.SetExtra(column, graphemes[cells[column].Joined - 1]);
                     }
                 }
             }
@@ -783,6 +787,10 @@ public sealed class TerminalScreen
         }
         Overwrite(cells, CursorColumn);
         cells[CursorColumn] = new Cell { Rune = rune, Style = style, Width = (byte)width };
+        if (hyperlink is not null)
+        {
+            Lines[CursorRow].SetLink(CursorColumn, hyperlink);
+        }
         if (width == 2)
         {
             Overwrite(cells, CursorColumn + 1);
@@ -837,6 +845,13 @@ public sealed class TerminalScreen
                 Overwrite(cells, column + i);
                 written.Rune = Shown(text[i]);
                 cells[column + i] = written;
+            }
+            if (hyperlink is not null)
+            {
+                for (int i = 0; i < take; i++)
+                {
+                    Lines[CursorRow].SetLink(column + i, hyperlink);
+                }
             }
             lastRune = written.Rune;
             if (column + take >= Columns)
@@ -906,9 +921,15 @@ public sealed class TerminalScreen
 
     /// <summary>Whether a regional indicator is a flag's second letter: the one before it stands alone, so the two are
     /// one grapheme in the first's two columns, the two columns wcwidth gives the pair.</summary>
-    private bool JoinsFlag(int rune) =>
-        rune is >= 0x1F1E6 and <= 0x1F1FF && Previous() is int column and >= 0
-        && Lines[CursorRow].Cells[column] is { Joined: 0, Rune: >= 0x1F1E6 and <= 0x1F1FF };
+    private bool JoinsFlag(int rune)
+    {
+        if (rune is not (>= 0x1F1E6 and <= 0x1F1FF) || Previous() is not (int column and >= 0))
+        {
+            return false;
+        }
+        // A linked letter stands alone too.
+        return Lines[CursorRow].Cells[column].Rune is >= 0x1F1E6 and <= 0x1F1FF && Lines[CursorRow].IsOneCodePoint(column);
+    }
 
     /// <summary>Writing over half of a wide character blanks its other half.</summary>
     private void Overwrite(Cell[] cells, int column)
@@ -1480,6 +1501,13 @@ public sealed class TerminalScreen
                 Title = value.ToString();
             }
         }
+        else if (code is "8")
+        {
+            // OSC 8 ; params ; address: an empty address ends the link.
+            int split = value.IndexOf(';');
+            ReadOnlySpan<char> address = split < 0 ? [] : value[(split + 1)..];
+            hyperlink = address.IsEmpty ? null : address.SequenceEqual(hyperlink) ? hyperlink : address.ToString();
+        }
         else if (code is "7" && !value.SequenceEqual(place))
         {
             place = value.ToString();
@@ -1670,6 +1698,7 @@ public sealed class TerminalScreen
         alternateKeyboard.Clear();
         tabStops = Stops(Columns);
         Title = string.Empty;
+        hyperlink = null;
     }
 
     private TerminalLine[] NewLines(int rows)

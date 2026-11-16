@@ -25,6 +25,9 @@ public sealed partial class TerminalView
     /// <summary>Links found before, given again while they are where they were rather than made anew.</summary>
     private readonly List<TerminalLink> knownLinks = [];
 
+    /// <summary>What the host said each address a program linked opens (<see cref="LinkTo"/>), asked once for each.</summary>
+    private readonly Dictionary<string, object?> programTargets = new(StringComparer.Ordinal);
+
     /// <summary>A line's text as its links are looked for in it, and the row (from the line's first) and column of
     /// the cell each of its characters came from.</summary>
     private char[] linkText = new char[512];
@@ -166,10 +169,10 @@ public sealed partial class TerminalView
             bool chosen = drawn.IsChosen(column);
             bool isLink = Linked(column);
             int end = column + 1;
-            bool alone = !InRun(head);
+            bool alone = !InRun(line, column);
             if (!alone)
             {
-                while (end < cells.Length && InRun(cells[end]) && cells[end].Style == head.Style && drawn.IsChosen(end) == chosen && Linked(end) == isLink)
+                while (end < cells.Length && InRun(line, end) && cells[end].Style == head.Style && drawn.IsChosen(end) == chosen && Linked(end) == isLink)
                 {
                     end++;
                 }
@@ -380,7 +383,7 @@ public sealed partial class TerminalView
     private void FindShownLinks(TerminalScreen screen, long first)
     {
         shownLinks.Clear();
-        if (Links is null)
+        if (Links is null && LinkTo is null)
         {
             return;
         }
@@ -460,7 +463,12 @@ public sealed partial class TerminalView
         {
             return;
         }
-        IReadOnlyList<(int Start, int Length, object Target, bool Hidden)> found = Links!(linkText.AsSpan(0, length));
+        ProgramLinks(screen, first, end);
+        if (Links is null)
+        {
+            return;
+        }
+        IReadOnlyList<(int Start, int Length, object Target, bool Hidden)> found = Links(linkText.AsSpan(0, length));
         for (int i = 0; i < found.Count; i++)
         {
             (int start, int count, object target, bool hidden) = found[i];
@@ -473,6 +481,69 @@ public sealed partial class TerminalView
                 foundLinks.Add(Known(first + linkRows[start], linkColumns[start], toLine, toColumn, target, hidden));
             }
         }
+    }
+
+    /// <summary>The links a program made on the rows of one line (OSC 8), into <see cref="foundLinks"/>: each run of cells
+    /// linked to one address, across the rows it wraps over, that the host opens something for.</summary>
+    private void ProgramLinks(TerminalScreen screen, long first, long end)
+    {
+        if (LinkTo is null)
+        {
+            return;
+        }
+        string? open = null;
+        (long Line, int Column) from = default;
+        (long Line, int Column) to = default;
+        for (long each = first; each <= end; each++)
+        {
+            TerminalLine shown = screen.LineAt(each);
+            if (!shown.Linked)
+            {
+                Close();
+                continue;
+            }
+            Cell[] cells = shown.Cells;
+            for (int c = 0; c < cells.Length; c++)
+            {
+                if (cells[c].Width == 0)
+                {
+                    continue;
+                }
+                string? link = shown.LinkOf(c);
+                if (link != open)
+                {
+                    Close();
+                    open = link;
+                    from = (each, c);
+                }
+                to = (each, Math.Min(c + cells[c].Width - 1, cells.Length - 1));
+            }
+        }
+        Close();
+
+        void Close()
+        {
+            if (open is not null && TargetOf(open) is { } target)
+            {
+                foundLinks.Add(Known(from.Line, from.Column, to.Line, to.Column, target, hidden: false));
+            }
+            open = null;
+        }
+    }
+
+    /// <summary>What a program's link opens, as the host said the first time it was asked.</summary>
+    private object? TargetOf(string address)
+    {
+        if (!programTargets.TryGetValue(address, out object? target))
+        {
+            if (programTargets.Count >= 256)
+            {
+                programTargets.Clear();
+            }
+            target = LinkTo!(address);
+            programTargets[address] = target;
+        }
+        return target;
     }
 
     /// <summary>A link found where one was before: that one, so finding it again in every frame makes nothing.</summary>

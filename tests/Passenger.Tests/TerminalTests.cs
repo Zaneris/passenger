@@ -13,6 +13,7 @@ using Passenger.App;
 using Passenger.App.Docking;
 using Passenger.App.Run;
 using Passenger.App.Settings;
+using Passenger.App.ToolWindows;
 using Passenger.Core;
 using Passenger.Editor;
 using Passenger.Terminal;
@@ -1522,6 +1523,109 @@ public sealed class TerminalTests
         Ui.DoubleClick(view, view.PointOf(doubleClick, 13));
         Assert.Equal(copyOnSelection ? "example.com" : "clipboard kept", Ui.Clipboard(window));
         window.Close();
+    }
+
+    /// <summary>Words a program links (OSC 8, as Spectre.Console's link markup writes them) are a link a click opens: each
+    /// run of words linked to a web address, its link ended by ST or by BEL, an id among its parameters passed over; words
+    /// linked to an address a click opens nothing for, and the words between, stay text.</summary>
+    [AvaloniaFact]
+    public void Words_a_program_links_to_a_web_address_are_a_link_a_click_opens()
+    {
+        (MainWindow window, TerminalSession shell) = Open(TestFolders.Create("terminal-"));
+        TerminalView view = window.TerminalPanel.View;
+        const string Written = "see the docs or this not mail end";
+        RunCase(window, "links");
+        long line = WaitForLine(shell, Written, "the program's linked words");
+        WaitForPromptBelow(window, shell, Written);
+        TerminalLink? Over(int column)
+        {
+            window.MouseMove(view.TranslatePoint(view.PointOf(line, column), window)!.Value);
+            Ui.Settle();
+            return view.HoveredLink;
+        }
+        void Click(int column)
+        {
+            Point at = view.TranslatePoint(view.PointOf(line, column), window)!.Value;
+            window.MouseMove(at);
+            window.MouseDown(at, MouseButton.Left);
+            window.MouseUp(at, MouseButton.Left);
+            Ui.Settle();
+        }
+
+        Assert.Equal((line, 4, line, 11, false), Over(6) is { } docs ? (docs.FromLine, docs.FromColumn, docs.ToLine, docs.ToColumn, docs.Hidden) : default);
+        Click(6);
+        Assert.Equal(["https://example.com/spectre"], window.Browsed.Select(u => u.AbsoluteUri));
+        Assert.Equal((line, 16, line, 19), Over(17) is { } other ? (other.FromLine, other.FromColumn, other.ToLine, other.ToColumn) : default);
+        Click(17);
+        Assert.Equal("https://example.com/other", window.Browsed[^1].AbsoluteUri);
+        Assert.True(Over(26) is null, "Words linked to a mail address are a link, which a click would hand the system to open");
+        Assert.True(Over(13) is null, "The words between two links are a link");
+        Click(13);
+        Assert.Equal(2, window.Browsed.Count);
+        window.Close();
+    }
+
+    /// <summary>Words a program links to a file address are a link only for a path on this machine, which a click opens
+    /// as the disk has it then: another host's file, a share's path by four slashes or by escaped backslashes are text, so
+    /// drawing them reaches no other machine; a file here opens in the editor, and one that is not there is said in the
+    /// status bar, nothing opened.</summary>
+    [AvaloniaFact]
+    public void Words_a_program_links_to_a_file_are_a_link_only_on_this_machine_and_a_click_asks_the_disk()
+    {
+        string folder = TestFolders.Create("terminal-");
+        string notes = Path.Combine(folder, "notes.txt");
+        File.WriteAllText(notes, "first\nsecond\n");
+        string missing = Path.Combine(folder, "lost.txt");
+        (MainWindow window, TerminalSession shell) = Open(folder);
+        TerminalView view = window.TerminalPanel.View;
+        const string Written = "far host unc shape esc path here notes gone lost";
+        RunCase(window, "file-links", notes, missing);
+        long line = WaitForLine(shell, Written, "the program's linked words");
+        WaitForPromptBelow(window, shell, Written);
+        TerminalLink? Over(int column)
+        {
+            window.MouseMove(view.TranslatePoint(view.PointOf(line, column), window)!.Value);
+            Ui.Settle();
+            return view.HoveredLink;
+        }
+        void Click(int column)
+        {
+            Point at = view.TranslatePoint(view.PointOf(line, column), window)!.Value;
+            window.MouseMove(at);
+            window.MouseDown(at, MouseButton.Left);
+            window.MouseUp(at, MouseButton.Left);
+            Ui.Settle();
+        }
+
+        Assert.True(Over(5) is null, "Words linked to another host's file are a link, so drawing them asks that host for it");
+        Assert.True(Over(14) is null, "Words linked to a share's path by four slashes are a link, so drawing them asks the share for it");
+        Assert.True(Over(24) is null, "Words linked to a share's path by escaped backslashes are a link, so drawing them asks the share for it");
+        Assert.Equal((line, 33, line, 37), Over(34) is { } here ? (here.FromLine, here.FromColumn, here.ToLine, here.ToColumn) : default);
+        Assert.Equal((line, 44, line, 47), Over(45) is { } gone ? (gone.FromLine, gone.FromColumn, gone.ToLine, gone.ToColumn) : default);
+        Click(45);
+        Assert.Equal($"The program's link names {missing}, which is not there", window.Status);
+        Assert.Null(window.EditorArea.Active);
+        Click(34);
+        Assert.Equal(PathNames.Canonical(notes), window.EditorArea.Active?.Path);
+        window.Close();
+    }
+
+    /// <summary>What a program's link opens is told from its address alone, the disk asked nothing, so a link to a file
+    /// that is not there is one as much as a link to one that is; an address of another host, of a share or a device, or
+    /// of a scheme a click opens nothing for is none.</summary>
+    [Fact]
+    public void What_a_programs_link_opens_is_told_from_its_address_alone()
+    {
+        string missing = Path.Combine(TestRun.Root, "no-such-folder", "no-such-file.txt");
+        Assert.Equal(new ProgramFileLink(missing), MainWindow.ProgramLink(new Uri(missing).AbsoluteUri));
+        Assert.Equal(new WebLink(new Uri("https://example.com/a")), MainWindow.ProgramLink("https://example.com/a"));
+        string here = OperatingSystem.IsWindows() ? @"C:\work\x.txt" : "/work/x.txt";
+        Assert.Equal(new ProgramFileLink(here), MainWindow.ProgramLink(OperatingSystem.IsWindows() ? "file://localhost/C:/work/x.txt" : "file://localhost/work/x.txt"));
+        foreach (string none in (string[])["file://otherhost/share/x", "file:////otherhost/share/y", "file:///%5C%5Cotherhost%5Cshare%5Cz", "file:///%2F%2Fotherhost/z",
+            "file://127.0.0.2/x", "file:///%5C%5C%3F%5CC:%5Cx", "file:///%5C%5C.%5Cpipe%5Cx", "mailto:someone@example.com", "x-apple.systempreferences:", "not an address"])
+        {
+            Assert.True(MainWindow.ProgramLink(none) is null, $"{none} is a link, which drawing it or a click on it would take to another host, a share or a device");
+        }
     }
 
     /// <summary>A window over a folder of its own holding TerminalConsoleApp, restored, its configuration Keys running the
