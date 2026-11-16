@@ -1656,6 +1656,15 @@ public static class Ui
             ?? throw new Xunit.Sdk.XunitException($"No button says {words}: [{string.Join(", ", buttons.Select(b => b.Content).OfType<string>())}]"));
     }
 
+    /// <summary>A line's links as a console or the terminal draws them once the disk has answered for every path they name,
+    /// which it is asked off the window's thread.</summary>
+    public static Passenger.App.ToolWindows.FoundLink[] LinksIn(Passenger.App.ToolWindows.ConsoleLinks links, string line)
+    {
+        links.In(line);
+        WaitFor(() => !links.Looking, () => $"the disk's answers for the paths in: {line}");
+        return links.In(line);
+    }
+
     /// <summary>A click on a console line's link to a file, at its first character, as a person clicks it: the pointer
     /// rested there first, failing unless that underlines the link.</summary>
     public static void ClickLink(Passenger.App.ToolWindows.OutputView console, string line) =>
@@ -1667,7 +1676,7 @@ public static class Ui
     public static void ClickLink(Passenger.App.ToolWindows.OutputView console, string line, Func<Passenger.App.ToolWindows.FoundLink, bool> which)
     {
         CodeEditor editor = console.Editor;
-        Passenger.App.ToolWindows.FoundLink link = console.Links.In(line).Single(which);
+        Passenger.App.ToolWindows.FoundLink link = LinksIn(console.Links, line).Single(which);
         int offset = editor.Document.Snapshot.ToString().IndexOf(line, StringComparison.Ordinal) + link.Start;
         editor.GoTo(editor.Document.Snapshot.GetPosition(offset));
         Settle();

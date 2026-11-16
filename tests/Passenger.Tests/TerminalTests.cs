@@ -1715,7 +1715,8 @@ public sealed class TerminalTests
     /// <summary>A path naming another machine in a program's output (a share's by either slash, a device's, one under an
     /// automount root), as a stack frame, a compiler's message, a Godot error's place or a file address writes it, is no
     /// link and never asked of the disk as the terminal or the Run window shows it, so showing a line reaches no other
-    /// machine and mounts nothing; a frame in a file of the folder's still links it, and a click opens it at its line.</summary>
+    /// machine and mounts nothing; a frame in a file of the folder's still links it once the disk, asked off the window's
+    /// thread, has answered, and a click opens it at its line.</summary>
     [AvaloniaFact]
     public void A_path_naming_another_machine_in_the_terminal_or_a_console_is_never_asked_of_the_disk()
     {
@@ -1751,16 +1752,24 @@ public sealed class TerminalTests
         Assert.Null(window.EditorArea.Active);
         Ui.ClickLink(run, FoundPathLines[^1]);
         Assert.Equal(PathNames.Canonical(program), window.EditorArea.Active?.Path);
+
+        string other = Path.Combine(folder, "src", "Other.cs");
+        File.WriteAllText(other, "first\n");
+        const string Later = "   at Shop.Later() in src/Other.cs:line 1";
+        int resolved = PathNames.ResolvedOnThisThread;
+        Assert.Empty(run.Links.In(Later));
+        Assert.True(resolved == PathNames.ResolvedOnThisThread, "Reading a line's links asked the disk on the window's thread, which a slow disk would hold");
+        Assert.Contains(Ui.LinksIn(run.Links, Later), l => l.Target is FileLink { Path: var linked } && PathNames.Same(linked, PathNames.Canonical(other)));
         window.Close();
 
         void Held(ConsoleLinks links, string where)
         {
             foreach (string said in FoundPathLines[..^1])
             {
-                Assert.True(links.In(said) is not { Length: > 0 } found || found.All(l => l.Target is WebLink),
+                Assert.True(Ui.LinksIn(links, said) is not { Length: > 0 } found || found.All(l => l.Target is WebLink),
                     $"{where} links {said}, which names another machine");
             }
-            Assert.Contains(links.In(FoundPathLines[^1]), l => l.Target is FileLink { Path: var linked, Position.Line: 1 } && PathNames.Same(linked, PathNames.Canonical(program)));
+            Assert.Contains(Ui.LinksIn(links, FoundPathLines[^1]), l => l.Target is FileLink { Path: var linked, Position.Line: 1 } && PathNames.Same(linked, PathNames.Canonical(program)));
             string[] reached = [.. links.Asked.Where(p => p.StartsWith(@"\\", StringComparison.Ordinal) || p.StartsWith("//", StringComparison.Ordinal)
                 || p.StartsWith("/net/", StringComparison.OrdinalIgnoreCase))];
             Assert.True(reached.Length == 0, $"Showing {where}'s lines asked the disk about {string.Join(", ", reached)}, which reaches another machine or mounts it");

@@ -27,9 +27,9 @@ public static class WebAssemblyValues
                 JsonMembers.Items(f, "scopeChain").Select(s => JsonMembers.Text(JsonMembers.Object(s, "object"), "objectId")).FirstOrDefault(id => id is not null)))];
 
     /// <summary>The file a proxy's URL of a source names, canonical; null for one of no file (a <c>dotnet://</c> source
-    /// the machine does not have).</summary>
+    /// the machine does not have) or another host's, a share's or a device's, never asked (<see cref="FoundPaths"/>).</summary>
     public static string? PathOf(string? url) =>
-        Uri.TryCreate(url, UriKind.Absolute, out Uri? address) && address.IsFile ? PathNames.Canonical(address.LocalPath) : null;
+        Uri.TryCreate(url, UriKind.Absolute, out Uri? address) && FoundPaths.OfFileAddress(address) is { } path ? PathNames.Canonical(path) : null;
 
     /// <summary>The pattern a breakpoint in a file is asked for by: the file's path as its program's symbols name it, matched
     /// whole, its separators either way and its letter case as the file system tells it apart.</summary>

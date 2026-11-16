@@ -42,8 +42,9 @@ public partial class MainWindow
     public ConsoleLinks? TerminalLinks { get; private set; }
 
     /// <summary>The terminal's links: web addresses and stack frames as the consoles find them, and any path to a file,
-    /// a relative one under the folder the shell said it is in, then the open folder's. A line's links are given as the
-    /// view takes them once for each time they are found, so a frame drawing the line again makes nothing.</summary>
+    /// a relative one under the folder the shell said it is in, then the open folder's, each asked of the disk off the
+    /// window's thread. A line's links are given as the view takes them once for each time they are found, so a frame
+    /// drawing the line again makes nothing.</summary>
     private void AddTerminalLinks(ToolWindows.TerminalPanel terminal)
     {
         ConsoleLinks links = new() { FilePaths = true };
@@ -51,6 +52,8 @@ public partial class MainWindow
         System.Runtime.CompilerServices.ConditionalWeakTable<FoundLink[], (int Start, int Length, object Target, bool Hidden)[]> given = [];
         string? shellFolder = null;
         links.Folders = () => LinkFolders(shellFolder);
+        // Drawn again in a frame of its own: a change of the shell's folder forgets what was found while a frame is drawn.
+        links.Changed += (_, _) => UiThread.Post(terminal.View.InvalidateVisual);
         terminal.View.Links = text =>
         {
             string? at = terminal.Active?.Screen.WorkingDirectory;

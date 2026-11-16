@@ -359,7 +359,7 @@ public sealed class ContainerRunsTests(RestoredFolders folders) : IClassFixture<
             static bool Logged(string l) => l.Contains("at Shop.Program.Main()", StringComparison.Ordinal) && l.Contains("| ", StringComparison.Ordinal);
             Ui.WaitFor(() => Run(window).Split('\n').Any(Logged), "the container's frame in the Run window", TimeSpan.FromMinutes(1));
             string line = Run(window).Split('\n').First(Logged);
-            FileLink link = Assert.IsType<FileLink>(Assert.Single(window.BottomPanel.Run.Links.In(line)).Target);
+            FileLink link = Assert.IsType<FileLink>(Assert.Single(Ui.LinksIn(window.BottomPanel.Run.Links, line)).Target);
             Assert.Equal(PathNames.Canonical(Path.Combine(folder, "src", "Shop", "Program.cs")), link.Path);
             Assert.Equal(0, link.Position.Line);
             Assert.Equal($"{project}-shop:passenger", Docker.Short(Docker.Run("inspect", "-f", "{{.Config.Image}}", Container(project, "shop"))));

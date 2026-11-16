@@ -35,11 +35,12 @@ public readonly record struct FoundLink(int Start, int Length, LinkTarget Target
 /// <summary>The links in a console's lines: web addresses, a .NET stack frame's file and line ("at X in
 /// /path/File.cs:line 12"), and a compiler's message ("File.cs(12,5): error ..."). The terminal's (<see cref="FilePaths"/>)
 /// add any path to a file, with a line and column after it or not. A path is a link only to a file there is, a relative
-/// one found under the folders given (the project's first); a stack frame's <c>/_/</c>, a deterministic build's name for
-/// the source root, is relative too. A stretch of the IDE's own words is a link too (<see cref="Claim"/>), as the folder a
-/// publish landed in. A line's links are kept while its text is the same, found again by its characters, and the editor's
-/// for a line while it starts where it did, so drawing it again and the pointer moving over it copy and make nothing. As
-/// a highlighter it colours them, for a view with no colours of its own.</summary>
+/// one found under the folders given (the project's first), the disk asked off the window's thread and the line's links
+/// coming with its answer; a stack frame's <c>/_/</c>, a deterministic build's name for the source root, is relative too.
+/// A stretch of the IDE's own words is a link too (<see cref="Claim"/>), as the folder a publish landed in. A line's links
+/// are kept while its text is the same, found again by its characters, and the editor's for a line while it starts where
+/// it did, so drawing it again and the pointer moving over it copy and make nothing. As a highlighter it colours them, for
+/// a view with no colours of its own.</summary>
 public sealed partial class ConsoleLinks : IHighlighter
 {
     /// <summary>Lines longer than this have no links: output written without line breaks costs nothing more to draw.</summary>
@@ -55,6 +56,23 @@ public sealed partial class ConsoleLinks : IHighlighter
     private readonly Dictionary<string, FoundLink[]> claimed = [];
 
     private readonly Dictionary<string, string?> files = new(PathNames.Comparer);
+
+    /// <summary>The paths being asked of the disk, off the window's thread, or waiting to be: each asked once at a time.</summary>
+    private readonly HashSet<string> asking = new(PathNames.Comparer);
+
+    private readonly List<string> toAsk = [];
+
+    /// <summary>Lines whose links wait on a path being asked, read again once its answer lands.</summary>
+    private readonly HashSet<string> waiting = new(StringComparer.Ordinal);
+
+    /// <summary>Whether the line being read waits on a path being asked.</summary>
+    private bool waited;
+
+    /// <summary>Whether a batch of paths is being asked now.</summary>
+    private bool lookingUp;
+
+    /// <summary>How many times what was found has been forgotten, so answers asked before are passed over.</summary>
+    private int forgotten;
 
     /// <summary><see cref="lines"/> read by a line's characters, so a line kept is found with no string made of it.</summary>
     private readonly Dictionary<string, FoundLink[]>.AlternateLookup<ReadOnlySpan<char>> kept;
@@ -72,6 +90,9 @@ public sealed partial class ConsoleLinks : IHighlighter
 
     /// <summary>Every path asked of the disk since the console last forgot what it found (or last kept as many), as found.</summary>
     public IReadOnlyCollection<string> Asked => files.Keys;
+
+    /// <summary>Whether paths found in lines are being asked of the disk: their lines' links come once they are answered.</summary>
+    public bool Looking => asking.Count > 0;
 
     /// <summary>Where a relative path is looked for, in order: the project the output came from first.</summary>
     public Func<IReadOnlyList<string>> Folders { get; set; } = () => [];
@@ -91,6 +112,10 @@ public sealed partial class ConsoleLinks : IHighlighter
         claimed.Clear();
         files.Clear();
         given.Clear();
+        asking.Clear();
+        toAsk.Clear();
+        waiting.Clear();
+        forgotten++;
         Changed?.Invoke(this, EventArgs.Empty);
     }
 
@@ -226,6 +251,7 @@ public sealed partial class ConsoleLinks : IHighlighter
         {
             return kept;
         }
+        waited = false;
         List<FoundLink> found = [];
         foreach (Match url in Url().Matches(line))
         {
@@ -288,8 +314,13 @@ public sealed partial class ConsoleLinks : IHighlighter
         if (lines.Count >= Kept)
         {
             lines.Clear();
+            waiting.Clear();
         }
         lines[line] = links;
+        if (waited)
+        {
+            waiting.Add(line);
+        }
         return links;
     }
 
@@ -340,23 +371,43 @@ public sealed partial class ConsoleLinks : IHighlighter
             ? Path.GetDirectoryName(project.Groups["project"].Value)
             : null;
 
-    /// <summary>The file a path names, if there is one: as given when absolute (from the home folder after ~), else under
-    /// the project named, then each of the folders. A deterministic build's <c>/_/</c> stands for those folders too.</summary>
+    /// <summary>The file a path names, if there is one: the first there of those it may name (<see cref="Candidates"/>);
+    /// none while an answer before it has not come, the line waiting on it.</summary>
     private string? Resolve(string path, string? project = null, bool deterministic = false)
     {
         if (path.Length == 0 || path.Length > 1024 || path.AsSpan().IndexOfAny(Path.GetInvalidPathChars()) >= 0)
         {
             return null;
         }
-        // A Godot game's res:// path is its project's, which the folders given hold.
+        bool unknown = false;
+        foreach (string candidate in Candidates(path, project, deterministic))
+        {
+            // Every candidate up to the first known to be there is asked in one batch, so a line waits for one answer.
+            if (!Known(candidate, out string? file))
+            {
+                unknown = true;
+            }
+            else if (file is not null)
+            {
+                return unknown ? null : file;
+            }
+        }
+        return null;
+    }
+
+    /// <summary>The files a path may name, in order: as given when absolute (from the home folder after ~), a container's
+    /// path first as the workspace's, else under the project named, then each of the folders. A deterministic build's
+    /// <c>/_/</c> stands for those folders too, and a Godot game's res:// for its project's, which the folders hold.</summary>
+    private IEnumerable<string> Candidates(string path, string? project, bool deterministic)
+    {
         string relative = path.StartsWith(GodotResource, StringComparison.Ordinal) ? path[GodotResource.Length..] : path;
         if (relative != path)
         {
             path = relative;
         }
-        else if (path.StartsWith('/') && Paths() is { IsEmpty: false } map && map.ToHost(path) is { } host && Exists(host) is { } mapped)
+        else if (path.StartsWith('/') && Paths() is { IsEmpty: false } map && map.ToHost(path) is { } host)
         {
-            return mapped;
+            yield return host;
         }
         if (deterministic && (path.StartsWith("/_/", StringComparison.Ordinal) || path.StartsWith(@"\_\", StringComparison.Ordinal)))
         {
@@ -364,57 +415,116 @@ public sealed partial class ConsoleLinks : IHighlighter
         }
         else if (PathNames.Expanded(path) is { } home)
         {
-            return Exists(home);
+            yield return home;
+            yield break;
         }
         else if (Path.IsPathFullyQualified(path))
         {
-            return Exists(path);
+            yield return path;
+            yield break;
         }
         else if (Path.IsPathRooted(path))
         {
-            return null;
+            yield break;
         }
-        if (project is not null && Exists(Path.Combine(project, relative)) is { } inProject)
+        if (project is not null)
         {
-            return inProject;
+            yield return Path.Combine(project, relative);
         }
         foreach (string folder in Folders())
         {
-            if (Exists(Path.Combine(folder, relative)) is { } found)
-            {
-                return found;
-            }
+            yield return Path.Combine(folder, relative);
         }
-        return null;
     }
 
-    /// <summary>The file's canonical path, or null when no file is there; each path asked once, and one naming a share, a
-    /// device or an automount root outside the folders given never (<see cref="FoundPaths"/>), so a line reaches nothing.</summary>
-    private string? Exists(string path)
+    /// <summary>The file's canonical path, or null when no file is there or it is being asked (<see cref="Known"/>).</summary>
+    private string? Exists(string path) => Known(path, out string? file) ? file : null;
+
+    /// <summary>Whether the disk's answer for a path is known, the file it names in <paramref name="file"/>: each path asked
+    /// once, off the window's thread (a line drawn never waits on the disk), the line being read waiting on it; one naming a
+    /// share, a device or an automount root outside the folders given never (<see cref="FoundPaths"/>), so a line reaches
+    /// nothing.</summary>
+    private bool Known(string path, out string? file)
     {
-        if (files.TryGetValue(path, out string? known))
+        if (files.TryGetValue(path, out file))
         {
-            return known;
+            return true;
         }
         if (!FoundPaths.Askable(path) && !FoundPaths.Askable(path, Folders()))
         {
-            return null;
+            return true;
         }
-        string? found;
+        waited = true;
+        if (asking.Add(path))
+        {
+            toAsk.Add(path);
+            Ask();
+        }
+        return false;
+    }
+
+    /// <summary>Asks the disk about the paths waiting to be asked, a batch at a time off the window's thread; as its
+    /// answers land, the lines that waited on them are read again and the views told.</summary>
+    private void Ask()
+    {
+        if (lookingUp || toAsk.Count == 0)
+        {
+            return;
+        }
+        lookingUp = true;
+        string[] batch = [.. toAsk];
+        toAsk.Clear();
+        IdeErrors.Observe(AskAsync(batch, forgotten));
+    }
+
+    private async Task AskAsync(string[] batch, int asked)
+    {
+        string?[] found;
         try
         {
-            found = File.Exists(path) ? PathNames.Canonical(path) : null;
+            // On a later turn however soon answered, so a line asking is kept, waiting, before its answers land.
+            found = await BackgroundWork.Run(() => Array.ConvertAll(batch, Lookup))
+                .ConfigureAwait(ConfigureAwaitOptions.ContinueOnCapturedContext | ConfigureAwaitOptions.ForceYielding);
+        }
+        finally
+        {
+            lookingUp = false;
+        }
+        UiThread.Check();
+        if (asked == forgotten)
+        {
+            if (files.Count + batch.Length > Kept)
+            {
+                files.Clear();
+            }
+            for (int i = 0; i < batch.Length; i++)
+            {
+                files[batch[i]] = found[i];
+                asking.Remove(batch[i]);
+            }
+            string[] again = [.. waiting];
+            waiting.Clear();
+            foreach (string line in again)
+            {
+                lines.Remove(line);
+                In(line);
+            }
+            Changed?.Invoke(this, EventArgs.Empty);
+        }
+        Ask();
+    }
+
+    /// <summary>The file's canonical path as the disk has it, or null when no file is there.</summary>
+    private static string? Lookup(string path)
+    {
+        try
+        {
+            return File.Exists(path) ? PathNames.Canonical(path) : null;
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
         {
-            found = null;
+            return null;
         }
-        if (files.Count >= Kept)
-        {
-            files.Clear();
-        }
-        files[path] = found;
-        return found;
     }
 
     /// <summary>A web address (mailto:, http, https, ftp, ftps, news, and www. without a scheme) to its last character that

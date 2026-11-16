@@ -533,6 +533,8 @@ public sealed class OutputView : DockPanel, IOwnKeys
             if (filtered is not null)
             {
                 body.Children.Remove(filtered);
+                // Its colours hear the console's links, which outlive it.
+                filtered.Highlighter = null;
                 filtered = null;
             }
             Editor.IsVisible = true;
@@ -586,10 +588,11 @@ public sealed class OutputView : DockPanel, IOwnKeys
     /// <summary>The filtered console's colours: each entry in its severity's, its links over them.</summary>
     private sealed class FoldColours(OutputView view) : IHighlighter
     {
+        /// <summary>Its links' changes, as the disk's answers for their paths land.</summary>
         public event EventHandler? Changed
         {
-            add { }
-            remove { }
+            add => view.Links.Changed += value;
+            remove => view.Links.Changed -= value;
         }
 
         public IReadOnlyList<SyntaxSpan> GetSpans(TextSnapshot text, int start, int length)

@@ -261,7 +261,7 @@ public sealed class BuildRunTests : IClassFixture<RestoredFolders>, IDisposable
         int line = Enumerable.Range(0, text.LineCount).FirstOrDefault(l => text.GetLineText(l).Contains(" : warning AVLN3001", StringComparison.Ordinal), -1);
         Assert.True(line >= 0, $"The Build window shows no warning about the file as a whole:\n{text}");
         string said = text.GetLineText(line);
-        FoundLink link = Assert.Single(build.Links.In(said), l => l.Target is FileLink);
+        FoundLink link = Assert.Single(Ui.LinksIn(build.Links, said), l => l.Target is FileLink);
         Assert.True(link.Target is FileLink { Path: var linked, Position: var at } && PathNames.Same(linked, axaml) && at == default
             && said.Substring(link.Start, link.Length).EndsWith("Tools Window.axaml", StringComparison.Ordinal),
             $"The warning's file is linked as {said.Substring(link.Start, link.Length)} to {link.Target}, not as the file {axaml} as a whole, in: {said}");
