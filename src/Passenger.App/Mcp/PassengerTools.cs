@@ -1230,7 +1230,9 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         }
         // A Razor file's C# at its place in the Razor file, another generator's in a copy of its code.
         IReadOnlyList<Place> places = await Places(await session.WrittenAsync([.. kept.Select(s => s.Location)], cancel), cancel);
-        return Held([.. indexers, .. kept.Select((s, i) => new SymbolFound(s.Name, SymbolKinds.Name(s.Kind), s.Owner, places[i].Path, places[i].Line, places[i].Column))],
+        // Each one's container as the exact find names it, a type's namespace too.
+        IReadOnlyList<string?> containers = await session.ContainersAsync([.. kept.Select(s => s.Location)], cancel) ?? [.. kept.Select(s => s.Owner)];
+        return Held([.. indexers, .. kept.Select((s, i) => new SymbolFound(s.Name, SymbolKinds.Name(s.Kind), containers[i], places[i].Path, places[i].Line, places[i].Column))],
             "symbol", NarrowedSymbols, matching.Count - kept.Count, LargerLimit);
 
         static SymbolFound Found(NamedPlace n) => new(n.Name, n.Kind, n.Container, n.Path, n.Line, n.Column) { Id = n.Id };

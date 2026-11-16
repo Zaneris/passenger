@@ -34,6 +34,7 @@ public static class Handlers
     public const string LocalizedReads = "Passenger.Roslyn.Extension.LocalizedReads";
     public const string SymbolsNamed = "Passenger.Roslyn.Extension.SymbolsNamed";
     public const string SymbolAt = "Passenger.Roslyn.Extension.SymbolAt";
+    public const string SymbolContainers = "Passenger.Roslyn.Extension.SymbolContainers";
     public const string WrittenPlaces = "Passenger.Roslyn.Extension.WrittenPlaces";
     public const string ComponentClass = "Passenger.Roslyn.Extension.ComponentClass";
     public const string GeneratedTexts = "Passenger.Roslyn.Extension.GeneratedTexts";
@@ -61,7 +62,7 @@ public static class Handlers
     [
         DescribeSignature, ChangeSignature, DescribeInterface, ExtractInterface, DescribeType, MoveTypeToFile, MoveTypeToNamespace,
         DescribeHierarchy, PullMembersUp, PushMembersDown, DocumentTexts, DocumentsWritten, ReferencesRead, ReferencedFiles, GeneratorsRun, AspireProjectDeclaration, AspireCodeHelp, AspireReferenceFix, AspireRunResources,
-        AspireRename, AspireParameters, ConnectionReads, WebRoutes, RouteBody, LocalizedReads, SymbolsNamed, SymbolAt, WrittenPlaces,
+        AspireRename, AspireParameters, ConnectionReads, WebRoutes, RouteBody, LocalizedReads, SymbolsNamed, SymbolAt, SymbolContainers, WrittenPlaces,
         ComponentClass, GeneratedTexts, GeneratedNamed, PartialHalf, GeneratedParts, GeneratedDocuments, JsInteropCalls, GodotCode, GodotNames, GodotPaths, GodotKindStrings, GodotNameStrings, GodotFix, ToolkitRenames,
         MauiExpressionCompletion, MauiExpressionSymbol, MauiXamlChecks, MauiExpressionUses, MauiExpressionHover,
         CompletionCall, StepBindings,
@@ -187,6 +188,14 @@ public sealed record NamedSymbol(
     [JsonPropertyName("generated")]
     public string? Generated { get; init; }
 }
+
+/// <summary>Declarations whose symbols' containers are asked for, each by its name's span as the server names it (a
+/// workspace symbol's place).</summary>
+public sealed record ContainersAsked([property: JsonPropertyName("declarations")] IReadOnlyList<UriSpan> Declarations);
+
+/// <summary>Each declaration's container, in order, as <see cref="NamedSymbol.Container"/> names it: a member's or a nested
+/// type's type, a type's namespace; null for a type in the global namespace, or a place that declares nothing now.</summary>
+public sealed record ContainersFound([property: JsonPropertyName("containers")] IReadOnlyList<string?> Containers);
 
 /// <summary>A place in a document as the server counts it: a line and a UTF-16 column, from zero.</summary>
 public sealed record Place([property: JsonPropertyName("line")] int Line, [property: JsonPropertyName("character")] int Character);

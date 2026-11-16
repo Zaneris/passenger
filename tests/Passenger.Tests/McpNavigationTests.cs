@@ -32,6 +32,9 @@ public sealed class McpNavigationTests : McpRig, IClassFixture<RestoredFolders>
     private const string Shapes = "using System.Text.Json.Serialization;\n\n[JsonSerializable(typeof(int))]\npartial class ShapeContext : JsonSerializerContext\n{\n}\n\n"
         + "static class UsesContext\n{\n    public static object Info => ShapeContext.Default.Int32;\n}\n";
 
+    private const string Gallery = "namespace Gallery.Shapes;\n\npublic class Polygon<T>\n{\n    public int Corners() => 3;\n\n"
+        + "    public sealed class Edge\n    {\n        public int Length;\n    }\n}\n";
+
     private const string Tally = "static class Tally\n{\n    public static int Of(string text) => Words.Count(text) + Words.Count(text, 1);\n\n"
         + "    public static int CountAll(string[] texts) => texts.Sum(Words.Count);\n}\n";
 
@@ -504,6 +507,7 @@ public sealed class McpNavigationTests : McpRig, IClassFixture<RestoredFolders>
         Write("Words.cs", Words);
         Write("Aaa.cs", Tally);
         Write("Shapes.cs", Shapes);
+        Write("Gallery.cs", Gallery);
         await using McpClient client = await Start(["--mcp", Folder]);
 
         // Words and Word at the person's places though the regex generator declares them again; its class after, in a copy.
@@ -520,6 +524,16 @@ public sealed class McpNavigationTests : McpRig, IClassFixture<RestoredFolders>
             "Words" => !s.TryGetProperty("container", out _),
             _ => false,
         }), $"find_symbol Word named the containers of a partial type's members otherwise than by the type's name: {string.Join(", ", found[..own].Select(s => s.GetRawText()))}");
+        // A type's container is its namespace, a member's or a nested type's its type, found by name exactly or not.
+        foreach ((string name, string container) in new[] { ("Polygon", "Gallery.Shapes"), ("Corners", "Polygon<T>"), ("Edge", "Polygon<T>"), ("Length", "Polygon<T>.Edge") })
+        {
+            JsonElement exact = Assert.Single((await Call(client, McpTools.FindSymbol, new() { ["query"] = name, ["exact"] = true })).EnumerateArray());
+            JsonElement matched = (await Call(client, McpTools.FindSymbol, new() { ["query"] = name })).EnumerateArray()
+                .First(s => s.GetProperty("path").GetString() == "Gallery.cs" && s.GetProperty("line").GetInt32() == exact.GetProperty("line").GetInt32());
+            Assert.True(Container(exact) == container && Container(matched) == container,
+                $"find_symbol {name} named its container {Container(exact) ?? "none"} found exactly and {Container(matched) ?? "none"} found by Go to Symbol, not {container}");
+        }
+        static string? Container(JsonElement symbol) => symbol.TryGetProperty("container", out JsonElement container) ? container.GetString() : null;
         JsonElement word = Assert.Single((await Call(client, McpTools.FindSymbol, new() { ["query"] = "Word", ["exact"] = true })).EnumerateArray());
         Assert.Equal(("Words.cs", 6), (word.GetProperty("path").GetString(), word.GetProperty("line").GetInt32()));
         JsonElement named = Assert.Single((await Call(client, McpTools.FindSymbol, new() { ["query"] = "Word_0", ["exact"] = true })).EnumerateArray());

@@ -29,6 +29,42 @@ public sealed class SymbolAt : IExtensionDocumentMessageHandler<Caret, SymbolsFo
     }
 }
 
+/// <summary>What the symbols declared at places are in (<see cref="SymbolNames.ContainerOf"/>), as a symbol found by name is
+/// told it, for symbols found otherwise (Go to Symbol's).</summary>
+public sealed class SymbolContainers : IExtensionWorkspaceMessageHandler<ContainersAsked, ContainersFound>
+{
+    public async Task<ContainersFound> ExecuteAsync(ContainersAsked message, ExtensionWorkspaceMessageContext context, CancellationToken cancellationToken)
+    {
+        List<string?> found = [];
+        foreach (UriSpan declared in message.Declarations)
+        {
+            found.Add(await ContainerAsync(context.Solution, declared, cancellationToken).ConfigureAwait(false));
+        }
+        return new ContainersFound(found);
+    }
+
+    /// <summary>The container of the symbol whose declaration's name is at a span's start: the first a node from its token
+    /// outward declares.</summary>
+    private static async Task<string?> ContainerAsync(Solution solution, UriSpan declared, CancellationToken cancel)
+    {
+        if ((await solution.GetTextDocumentsAsync(new global::Roslyn.LanguageServer.Protocol.DocumentUri(declared.Uri), cancel).ConfigureAwait(false)).OfType<Document>().FirstOrDefault() is not { } document
+            || await document.GetSyntaxRootAsync(cancel).ConfigureAwait(false) is not { } root
+            || await document.GetSemanticModelAsync(cancel).ConfigureAwait(false) is not { } model)
+        {
+            return null;
+        }
+        int at = WrittenPlaces.Offset(await document.GetTextAsync(cancel).ConfigureAwait(false), declared.Start);
+        for (SyntaxNode? node = root.FindToken(at).Parent; node is not null; node = node.Parent)
+        {
+            if (model.GetDeclaredSymbol(node, cancel) is { } symbol)
+            {
+                return SymbolNames.ContainerOf(symbol);
+            }
+        }
+        return null;
+    }
+}
+
 /// <summary>The class a Razor component's file makes (<see cref="SymbolNames.ComponentAsync"/>).</summary>
 public sealed class ComponentClass : IExtensionWorkspaceMessageHandler<ComponentAsked, ComponentFound>
 {
@@ -141,11 +177,14 @@ internal static class SymbolNames
     public static NamedSymbol Named(Solution solution, ISymbol symbol)
     {
         (string? path, Place? at) = Declared(solution, symbol);
-        string? container = symbol.ContainingType?.ToDisplayString(Short)
-            ?? (symbol.ContainingNamespace is { IsGlobalNamespace: false } space ? space.ToDisplayString() : null);
-        NamedSymbol named = new(symbol.Name, symbol.ToDisplayString(Short), KindOf(symbol), symbol.OriginalDefinition.GetDocumentationCommentId(), container, path, at);
+        NamedSymbol named = new(symbol.Name, symbol.ToDisplayString(Short), KindOf(symbol), symbol.OriginalDefinition.GetDocumentationCommentId(), ContainerOf(symbol), path, at);
         return path is null && GeneratedPlace(solution, symbol) is { } made ? named with { Generated = made.Uri, At = made.At } : named;
     }
+
+    /// <summary>What a symbol is in, as an agent is told it: a member's or a nested type's type, else its namespace; null in
+    /// the global namespace.</summary>
+    public static string? ContainerOf(ISymbol symbol) => symbol.ContainingType?.ToDisplayString(Short)
+        ?? (symbol.ContainingNamespace is { IsGlobalNamespace: false } space ? space.ToDisplayString() : null);
 
     /// <summary>The first of a symbol's declarations in a source generator's document, by the server's URI of it; null for a
     /// symbol no generator declares.</summary>

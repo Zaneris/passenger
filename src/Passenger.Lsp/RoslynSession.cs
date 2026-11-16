@@ -357,6 +357,16 @@ public sealed class RoslynSession : IAsyncDisposable, IDocumentHost
     public Task<Roslyn.Extension.SymbolsFound> SymbolsNamedAsync(string name, int limit, CancellationToken cancel = default) =>
         ExtensionAsync<Roslyn.Extension.SymbolsFound>(Roslyn.Extension.Handlers.SymbolsNamed, new Roslyn.Extension.SymbolsAsked(name, limit), cancel);
 
+    /// <summary>What the symbols declared at places the server named are in (Passenger's extension's <see
+    /// cref="Roslyn.Extension.ContainersAsked"/>), in order, as <see cref="SymbolsNamedAsync"/> names a symbol's container: a
+    /// member's type, a type's namespace; null when the server has no extension to ask.</summary>
+    public async Task<IReadOnlyList<string?>?> ContainersAsync(IReadOnlyList<LspLocation> declarations, CancellationToken cancel = default) =>
+        Server.ExtensionProblem is null
+            ? (await ExtensionAsync<Roslyn.Extension.ContainersFound>(Roslyn.Extension.Handlers.SymbolContainers, new Roslyn.Extension.ContainersAsked([.. declarations.Select(d =>
+                new Roslyn.Extension.UriSpan(d.Uri, new Roslyn.Extension.Place(d.Range.Start.Line, d.Range.Start.Character), new Roslyn.Extension.Place(d.Range.End.Line, d.Range.End.Character)))]),
+                cancel).ConfigureAwait(false)).Containers
+            : null;
+
     /// <summary>Places the server named, a source generator's document's each taken to the file its code was written in (a
     /// Razor component's C# to its .razor, as the server takes a reference's), the rest as they were; all as they were when
     /// the server has no extension to ask.</summary>
