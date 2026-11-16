@@ -144,11 +144,18 @@ public sealed class McpProcessesTests : McpRig, IClassFixture<RestoredFolders>
             }
             Volatile.Write(ref saving, false);
             int labels = Await(labelling, "the agent's labels");
-            Ui.Settle();
-            HashSet<string> kept = [.. File.ReadAllLines(log).Select(line => System.Text.Json.Nodes.JsonNode.Parse(line)?["n"]?.GetValue<string>())
-                .OfType<string>().Where(name => name.StartsWith("agent ", StringComparison.Ordinal))];
-            List<string> lost = [.. Enumerable.Range(1, labels).Select(n => $"agent {n}").Where(label => !kept.Contains(label))];
-            Assert.True(lost.Count == 0, $"Of the {labels} labels the agent's Passenger put, the person's window pruning the shared history lost {lost.Count}: {string.Join(", ", lost.Take(20))}");
+            // A label waits for the history however long the window holds it, so the last may land after its call answered.
+            List<string> lost = [];
+            Ui.WaitFor(() =>
+            {
+                string written = File.ReadAllText(log);
+                HashSet<string> kept = [.. written[..(written.LastIndexOf('\n') + 1)].Split('\n', StringSplitOptions.RemoveEmptyEntries)
+                    .Select(line => System.Text.Json.Nodes.JsonNode.Parse(line)?["n"]?.GetValue<string>()).OfType<string>()
+                    .Where(name => name.StartsWith("agent ", StringComparison.Ordinal))];
+                lost = [.. Enumerable.Range(1, labels).Select(n => $"agent {n}").Where(label => !kept.Contains(label))];
+                return lost.Count == 0;
+            }, () => $"the {labels} labels the agent's Passenger put, of which the person's window pruning the shared history lost {lost.Count}: {string.Join(", ", lost.Take(20))}",
+                TimeSpan.FromSeconds(30));
             Assert.True(File.ReadAllLines(log).Count(line => line.Contains("\"earlier ", StringComparison.Ordinal)) == Earlier, "The earlier labels, which both keep, were not all kept");
         }
         finally

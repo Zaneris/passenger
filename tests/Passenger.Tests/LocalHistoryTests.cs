@@ -651,6 +651,51 @@ public sealed class LocalHistoryTests : IDisposable
         later.Close();
     }
 
+    /// <summary>A label put while another Passenger on the same state holds the history, writing its log anew as a prune
+    /// does and for longer than a change waits to say so, is in the log once that Passenger lets go: written after the
+    /// rewrite, never beside it into the log the rewrite then replaces.</summary>
+    [AvaloniaFact]
+    public void A_label_put_while_another_passenger_on_the_same_state_writes_the_log_anew_is_kept_after_its_rewrite()
+    {
+        string state = TestFolders.Create("history-state-");
+        Write("Shop.cs", Original);
+        string root = Path.Combine(Passenger.App.State.ProjectState.FolderOf(state, folder), "localHistory");
+        Directory.CreateDirectory(root);
+        string log = Path.Combine(root, "changes.log");
+        long now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        File.WriteAllText(log, string.Concat(
+            $"{{\"s\":1,\"t\":{now - 2000},\"k\":\"label\",\"n\":\"Dropped by the other\"}}\n",
+            $"{{\"s\":2,\"t\":{now - 1000},\"k\":\"label\",\"n\":\"Kept by the other\"}}\n"));
+        MainWindow window = Open("Shop.cs", state, new HistoryKeeping());
+        Assert.Equal(PathNames.Canonical(root), PathNames.Canonical(window.LocalHistory!.Root));
+
+        // The other Passenger's prune: the history held (its lock beside the log), the log read, and written anew without
+        // its oldest line once longer than a change waits for the history has passed, or once the log grew meanwhile.
+        using ManualResetEventSlim held = new();
+        Task<bool> other = Waiting.Apart(() =>
+        {
+            using FileStream holding = new(Path.Combine(root, "changes.lock"), FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
+            string[] read = File.ReadAllLines(log);
+            long length = new FileInfo(log).Length;
+            held.Set();
+            bool grew = Waiting.Until(() => new FileInfo(log).Length != length, TimeSpan.FromSeconds(15), scaled: false);
+            AtomicFile.Write(log, Encoding.UTF8.GetBytes(string.Concat(read.Skip(1).Select(line => line + "\n"))));
+            return grew;
+        });
+        Ui.PumpUntil(() => held.IsSet, "the other Passenger to hold the history");
+        Ui.ChooseFromEditorMenu(window, "Local History", "Put Label…");
+        window.KeyTextInput("Mine");
+        Ui.Press(window, "ENTER", settle: false);
+        bool written = Ui.AwaitPumped(other, "the other Passenger to write the log anew and let go");
+        Ui.Settle();
+
+        string[] labels = [.. File.ReadAllLines(log).Select(line => System.Text.Json.Nodes.JsonNode.Parse(line)?["n"]?.GetValue<string>()).OfType<string>()];
+        Assert.False(written, "The label was written into the log while another Passenger held the history to write it anew");
+        Assert.True(labels.Contains("Mine"), $"The label put while another Passenger on the same state wrote the log anew was lost to its rewrite: the log holds [{string.Join(", ", labels)}]");
+        Assert.Equal(["Kept by the other", "Mine"], labels);
+        window.Close();
+    }
+
     /// <summary>A revert follows only what it changes: a file's text put back leaves every Explorer row as it was, with Go to
     /// File's folder never walked again and the project not checked again, and a file deleted brought back puts in its own
     /// row alone.</summary>

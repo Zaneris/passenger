@@ -530,6 +530,17 @@ internal static class StateFile
         }
     }
 
+    /// <summary>Whether a refusal of <see cref="Hold"/> is another Passenger's holding the file, as an IOException's HResult
+    /// says it: Windows' sharing or lock violation, EWOULDBLOCK's number on Linux and on macOS; not a disk's refusal.</summary>
+    public static bool HeldElsewhere(IOException refused) => OperatingSystem.IsWindows()
+        ? refused.HResult is SharingViolation or LockViolation
+        : refused.HResult == (OperatingSystem.IsMacOS() ? MacWouldBlock : LinuxWouldBlock);
+
+    private const int SharingViolation = unchecked((int)0x80070020);
+    private const int LockViolation = unchecked((int)0x80070021);
+    private const int LinuxWouldBlock = 11;
+    private const int MacWouldBlock = 35;
+
     /// <summary>A document's file read whole under its <see cref="Hold"/>, so the read is never in the way of another
     /// Passenger's write (Windows refuses a move over a file a program has open sharing no deletion, as this read does, and
     /// any move where the file system has no POSIX semantics); read without it where it is not had in time, or where its

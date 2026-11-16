@@ -62,8 +62,8 @@ public sealed class LocalHistory
     /// same folder may have written it for a line it is about to add.</summary>
     private static readonly TimeSpan Orphaned = TimeSpan.FromMinutes(10);
 
-    /// <summary>How long a change to the history waits for another Passenger keeping it in the same state to let go of it:
-    /// past that an append goes on all the same, and a prune waits for its next turn.</summary>
+    /// <summary>How long a prune waits for another Passenger keeping the history in the same state to let go of it before it
+    /// leaves it for its next turn, and how often a change, which waits on however long that takes, says it is waiting.</summary>
     private static readonly TimeSpan HeldFor = TimeSpan.FromSeconds(10);
 
     /// <summary>How long after a change another Passenger on the same state may hear it and keep it as an external change
@@ -87,7 +87,8 @@ public sealed class LocalHistory
     private long readTo;
     private byte[] readLine = [];
 
-    /// <summary>The lines this store appended without the hold, on the queue: passed over when a read of the log meets them.</summary>
+    /// <summary>The lines this store appended where the log could not be read first, on the queue: passed over when a read
+    /// of the log meets them.</summary>
     private readonly HashSet<string> unread = new(StringComparer.Ordinal);
 
     /// <summary>The saves of each path queued and not yet recorded, whose new content the disk may already hold.</summary>
@@ -1080,7 +1081,7 @@ public sealed class LocalHistory
             return;
         }
         Directory.CreateDirectory(Root);
-        using FileStream? holding = Hold();
+        using FileStream holding = HoldToChange();
         bool caughtUp = TryTakeLog();
         List<HistoryEvent> taken = [];
         lock (gate)
@@ -1105,9 +1106,9 @@ public sealed class LocalHistory
         using (FileStream appending = new(log, FileMode.Append, FileAccess.Write, FileShare.Read))
         {
             appending.Write(Encoding.UTF8.GetBytes(lines.ToString()));
-            if (holding is not null && caughtUp)
+            if (caughtUp)
             {
-                // Held, nothing else was appended since the log was read: these lines are read.
+                // Nothing else was appended since the log was read, held all along: these lines are read.
                 (readTo, readLine) = (appending.Position, Encoding.UTF8.GetBytes(Line(taken[^1]) + "\n"));
             }
             else
@@ -1302,7 +1303,7 @@ public sealed class LocalHistory
         string file = BlobPath(hash);
         if (File.Exists(file))
         {
-            using (Hold())
+            using (HoldToChange())
             {
                 try
                 {
@@ -1329,9 +1330,9 @@ public sealed class LocalHistory
     private string BlobPath(string hash) => Path.Combine(blobs, hash[..2], hash[2..]);
 
     /// <summary>The history held against every other Passenger keeping it in the same state (an agent's, over --mcp) while
-    /// this one changes it: the log appended to or written again, content taken up again or deleted. Its lock file
-    /// (<see cref="State.StateFile.Hold"/>), waited for on the queue (never the UI thread) up to <see cref="HeldFor"/>; null when
-    /// not had.</summary>
+    /// this one reads its log or writes it again: its lock file (<see cref="State.StateFile.Hold"/>), waited for on the queue
+    /// (never the UI thread) up to <see cref="HeldFor"/>; null when not had, a read then going on without it and a prune
+    /// waiting for its next turn. A change waits for it however long it is held (<see cref="HoldToChange"/>).</summary>
     private FileStream? Hold()
     {
         try
@@ -1342,6 +1343,25 @@ public sealed class LocalHistory
         {
             IdeErrors.Write($"Local History of {Folder}: another Passenger on the same state held {held}.lock past {Durations.Said(HeldFor)}: {refused.Message}");
             return null;
+        }
+    }
+
+    /// <summary>The history held for a change to it, a line appended or content named again, however long another Passenger
+    /// on the same state holds it (said each <see cref="HeldFor"/>): a line written beside that one's rewrite of the log (its
+    /// prune) goes with the log it replaces, and content named beside its clearing of old content may be deleted. On the queue.</summary>
+    private FileStream HoldToChange()
+    {
+        long began = System.Diagnostics.Stopwatch.GetTimestamp();
+        while (true)
+        {
+            try
+            {
+                return State.StateFile.Hold(held, HeldFor);
+            }
+            catch (IOException refused) when (State.StateFile.HeldElsewhere(refused))
+            {
+                IdeErrors.Write($"Local History of {Folder}: another Passenger on the same state has held {held}.lock for {Durations.Said(System.Diagnostics.Stopwatch.GetElapsedTime(began))}, and what this one keeps waits for it");
+            }
         }
     }
 
