@@ -62,7 +62,7 @@ internal sealed unsafe partial class Connection : IDisposable
                 return null;
             }
             // macOS takes neither SOCK_CLOEXEC nor MSG_NOSIGNAL: both are the socket's own there.
-            if (OperatingSystem.IsMacOS() && (UnixControl(socket, MacCloseOnRun) != 0 || !MacNoSignal(socket))
+            if (DarwinKernel && (UnixControl(socket, MacCloseOnRun) != 0 || !MacNoSignal(socket))
                 || UnixConnect(socket, named, (uint)address.Length) != 0)
             {
                 UnixClose(socket);
@@ -92,7 +92,7 @@ internal sealed unsafe partial class Connection : IDisposable
         }
         byte[] name = Encoding.UTF8.GetBytes(path);
         byte[] address = new byte[2 + SocketFolders.PathLimit];
-        if (OperatingSystem.IsMacOS())
+        if (DarwinKernel)
         {
             address[0] = (byte)address.Length;
             address[1] = UnixFamily;
@@ -184,6 +184,9 @@ internal sealed unsafe partial class Connection : IDisposable
 
     /// <summary>MSG_DONTWAIT: Linux's, else macOS's.</summary>
     private static int UnixNoWaiting => LinuxKernel ? 0x40 : 0x80;
+
+    /// <summary>Whether the system's calls are Darwin's: on macOS, and in an iOS simulator's app, which .NET tells apart from it.</summary>
+    private static bool DarwinKernel => OperatingSystem.IsMacOS() || OperatingSystem.IsIOS() || OperatingSystem.IsTvOS();
 
     /// <summary>Whether the system's calls are Linux's: on Linux, and on Android, which .NET tells apart from it.</summary>
     private static bool LinuxKernel => OperatingSystem.IsLinux() || OperatingSystem.IsAndroid();

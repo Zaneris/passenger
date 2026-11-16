@@ -8,12 +8,41 @@ namespace Passenger.App.Run.Devices;
 /// it, and once its build is installed there, the app's start (<see cref="App"/>).</summary>
 public sealed record DeviceLaunch(KeptTarget Target, string Framework)
 {
-    public AndroidApp? App { get; init; }
+    public IDeviceApp? App { get; init; }
 }
 
-/// <summary>A Debug start's relay in an app on a device: the local address adb forwards to its socket, the token it takes
-/// a client by, the build's copies of what the app loads, and what to put back once debugging ends.</summary>
-public sealed record RelaySession(string Address, int Port, string Token, string Modules, string Abi, string? Linked);
+/// <summary>An app installed where it runs other than this machine (an Android device's or emulator's, an iOS simulator's),
+/// as <see cref="DeviceStart"/> puts Passenger's relay and inspector in it and takes them out again.</summary>
+public interface IDeviceApp
+{
+    /// <summary>The app's id there: an Android package, an Apple bundle identifier.</summary>
+    string Package { get; }
+
+    /// <summary>The app's process as its start said it began, from what the console shows of the start's first lines;
+    /// null until it has.</summary>
+    string? StartedIn(Passenger.Text.TextSnapshot shown);
+
+    /// <summary>What a start puts in the app beside its build (<see cref="DeviceLaunches.PutInAsync"/> on Android): the relay
+    /// where <paramref name="relayed"/>, the inspector and the update handlers' hook where given; what went in, the relay's
+    /// session, else why not. Whatever fails partway, or is stopped, is taken out again.</summary>
+    Task<(DevicePut? Put, RelaySession? Relay, string? Problem)> PutInAsync(bool relayed, DeviceInspector? inspector, UpdateHandlerHook.DeviceReach? handlers,
+        CancellationToken cancel);
+
+    /// <summary>The app ended there (unless <paramref name="stop"/> is false) and what a start put in taken out. Never throws.</summary>
+    Task EndAsync(DevicePut? put, bool stop);
+
+    /// <summary>The build's environment back in the app once it has read the one a start put in. Never throws.</summary>
+    Task PutBackEnvironmentAsync(DevicePut put);
+}
+
+/// <summary>A Debug start's relay in an app on a device: the local address it is reached at (adb's forward to its socket, a
+/// simulator's port on this machine), the token it takes a client by, the build's copies of what the app loads, and what to
+/// put back once debugging ends; <see cref="Given"/> the variables the app's start gives it, where its device takes them
+/// from the start rather than from a file in the app (a simulator's).</summary>
+public sealed record RelaySession(string Address, int Port, string Token, string Modules, string Abi, string? Linked)
+{
+    public IReadOnlyDictionary<string, string> Given { get; init; } = new Dictionary<string, string>();
+}
 
 /// <summary>What a start put in an app on its device beside its build, which its end takes out: the device's ABI, where
 /// the build's environment file pointed, whether the relay and the files carried in (the inspector's, the update handlers'
@@ -68,14 +97,19 @@ public static class DeviceLaunches
 {
     /// <summary>A plan's device found and its app installed, what a start whose end never reached the device left in the app
     /// taken out (<see cref="AndroidApp.TakeOutLeft"/>), the plan's program then the device's shell running the app and
-    /// writing its log (<see cref="AndroidApp.Run"/>); why not, in words for the person. <paramref name="listed"/> is told the
-    /// targets found on the way, an emulator it started among them as running.</summary>
+    /// writing its log (<see cref="AndroidApp.Run"/>), or on an iOS simulator simctl's launch (<see cref="SimulatorReadyAsync"/>);
+    /// why not, in words for the person. <paramref name="listed"/> is told the targets found on the way, an emulator or a
+    /// simulator it started among them as running, and <paramref name="startedSimulator"/> each simulator it booted (its simctl and UDID).</summary>
     public static async Task<(LaunchPlan? Plan, string? Problem)> ReadyAsync(LaunchPlan plan, IReadOnlyDictionary<string, string> globals, bool unseen, Action<string> say,
-        Action<IReadOnlyList<DeviceTarget>> listed, CancellationToken cancel)
+        Action<IReadOnlyList<DeviceTarget>> listed, CancellationToken cancel, Action<string, string>? startedSimulator = null)
     {
         if (plan.Device is not { } device || plan.Project is not { } project)
         {
             return (plan, null);
+        }
+        if (device.Target is { Platform: TargetPlatform.Ios, Kind: TargetKind.Simulator })
+        {
+            return await SimulatorReadyAsync(plan, device, project, globals, unseen, say, listed, startedSimulator, cancel);
         }
         if (device.Target.Platform != TargetPlatform.Android)
         {
@@ -122,6 +156,53 @@ public static class DeviceLaunches
             Leading = app.Run().Count,
             WorkingDirectory = Path.GetDirectoryName(project)!,
             Device = device with { App = app },
+        }, null);
+    }
+
+    /// <summary>A plan's iOS simulator found, booted with no window where it is shut down, and its app installed there, the
+    /// plan's program then simctl launching the app afresh with its output on simctl's own (<see cref="SimulatorApp.Launch"/>);
+    /// why not, in words for the person. A simulator booted here is told to <paramref name="booted"/>, whose folder shuts it down,
+    /// and where someone sees this Passenger (not <paramref name="unseen"/>), the Run window's notes say it has no window.</summary>
+    private static async Task<(LaunchPlan? Plan, string? Problem)> SimulatorReadyAsync(LaunchPlan plan, DeviceLaunch device, string project,
+        IReadOnlyDictionary<string, string> globals, bool unseen, Action<string> say, Action<IReadOnlyList<DeviceTarget>> listed, Action<string, string>? booted, CancellationToken cancel)
+    {
+        string name = Path.GetFileNameWithoutExtension(project);
+        say($"Looking for {device.Target.Name}…");
+        (IReadOnlyList<DeviceTarget> targets, AppleTools? tools, string? unlisted) = await AppleSimulators.ListAsync(project, device.Framework, globals, cancel);
+        if (tools is null)
+        {
+            return (null, unlisted);
+        }
+        if (DeviceTargets.Find(device.Target, targets) is not { } target)
+        {
+            return (null, DeviceTargets.Gone(device.Target, targets, name));
+        }
+        bool booting = !target.Running;
+        if (booting)
+        {
+            // Told before its boot, so one stopped partway is shut down with the folder too.
+            booted?.Invoke(tools.Simctl, target.Id);
+            if (await AppleSimulators.BootAsync(tools, target, say, cancel) is { } unbooted)
+            {
+                return (null, unbooted);
+            }
+            targets = [.. targets.Select(t => t == target ? t with { Running = true } : t)];
+        }
+        listed(targets);
+        say($"Installing {name} on {target.Name}…");
+        (SimulatorApp? app, string? uninstalled) = await AppleSimulators.InstallAsync(project, device.Framework, target.Id, tools, globals, cancel);
+        if (app is null)
+        {
+            return (null, $"{name} could not be installed on {target.Name}: {uninstalled}");
+        }
+        return (plan with
+        {
+            Program = tools.Simctl,
+            Arguments = app.Launch(),
+            Leading = app.Launch().Count,
+            WorkingDirectory = Path.GetDirectoryName(project)!,
+            Device = device with { App = app },
+            Notes = booting && !unseen ? [.. plan.Notes, $"{target.Name} was started with no window: open it from Xcode to see {name}"] : plan.Notes,
         }, null);
     }
 

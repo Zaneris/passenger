@@ -2,13 +2,13 @@ using System.Text;
 
 namespace Passenger.Core;
 
-/// <summary>How long a Unix socket's path may be: what its address holds (104 bytes on macOS, 108 elsewhere), its ending NUL
-/// among them. Apart from the rest, so the inspectors and the Hot Reload hook, which make no socket folder, check a path
-/// the same way.</summary>
+/// <summary>How long a Unix socket's path may be: what its address holds (104 bytes on Darwin, an iOS simulator's app's too,
+/// 108 elsewhere), its ending NUL among them. Apart from the rest, so the inspectors and the Hot Reload hook, which make no
+/// socket folder, check a path the same way.</summary>
 public static partial class SocketFolders
 {
     /// <summary>The bytes a Unix socket's address holds for its path, its ending NUL among them.</summary>
-    public static int PathLimit => OperatingSystem.IsMacOS() ? 104 : 108;
+    public static int PathLimit => OperatingSystem.IsMacOS() || OperatingSystem.IsIOS() || OperatingSystem.IsTvOS() ? 104 : 108;
 
     /// <summary>Whether a path fits a Unix socket's address, as .NET's endpoint takes it (UTF-8, and its NUL).</summary>
     public static bool Fits(string path) => path.Length > 0 && Encoding.UTF8.GetByteCount(path) < PathLimit;

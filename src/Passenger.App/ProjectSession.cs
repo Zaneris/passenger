@@ -828,7 +828,7 @@ public sealed class ProjectSession : IAsyncDisposable
 
     /// <summary>A start of the app of a program named <paramref name="name"/> on its device, held from now until what it puts
     /// in there is out again, however its start, its run or session, or the folder ends.</summary>
-    public DeviceStart StartsOnDevice(string name, AndroidApp app)
+    public DeviceStart StartsOnDevice(string name, IDeviceApp app)
     {
         UiThread.Check();
         onDevices.RemoveAll(d => d.Out.IsCompleted);
@@ -847,10 +847,51 @@ public sealed class ProjectSession : IAsyncDisposable
         return Task.WhenAll(onDevices.Where(d => name is null || d.Name == name).Select(d => d.Settled.IsCompleted ? d.Out : d.Settled));
     }
 
-    /// <summary>What every start on a device still holds there taken out at once, off the window's thread, whose loop may stop
-    /// first: done once all of it is out, or <see cref="DeviceLaunches.EndLimit"/> after, the rest named in the log.</summary>
-    private Task EndOnDevices() => Within(DeviceLaunches.EndLimit, Folder,
-        [("the apps on devices", Task.WhenAll(onDevices.Select(d => d.Out.IsCompleted ? d.Out : BackgroundWork.Unheld(d.EndNowAsync))))]);
+    /// <summary>The simulators the folder's starts booted, by their simctl and UDID, shut down again at its end
+    /// (<see cref="EndOnDevices"/>); those it found running are left as they were.</summary>
+    private readonly List<(string Simctl, string Udid)> booted = [];
+
+    private readonly Lock bootedGate = new();
+
+    /// <summary>Whether the folder's end has taken the simulators it booted, so one booted later is shut down at once.</summary>
+    private bool bootedTaken;
+
+    /// <summary>A simulator a start of the folder's booted, shut down with the folder, at once where the folder has ended. Any thread.</summary>
+    public void Booted(string simctl, string udid)
+    {
+        lock (bootedGate)
+        {
+            if (!bootedTaken)
+            {
+                booted.Add((simctl, udid));
+                return;
+            }
+        }
+        // Unheld: the folder has ended, and the process may wait for nothing more.
+        IdeErrors.Observe(BackgroundWork.Unheld(() => AppleSimulators.ShutDownAsync(simctl, udid)));
+    }
+
+    /// <summary>What every start on a device still holds there taken out at once, then the simulators the folder's starts
+    /// booted shut down, off the window's thread, whose loop may stop first: done once all of it is out, or
+    /// <see cref="DeviceLaunches.EndLimit"/> after, the rest named in the log.</summary>
+    private Task EndOnDevices()
+    {
+        Task starts = Task.WhenAll(onDevices.Select(d => d.Out.IsCompleted ? d.Out : BackgroundWork.Unheld(d.EndNowAsync)));
+        (string Simctl, string Udid)[] shut;
+        lock (bootedGate)
+        {
+            bootedTaken = true;
+            shut = [.. booted];
+            booted.Clear();
+        }
+        // Unheld: the process waits for it once the window's loop has stopped.
+        Task down = shut.Length == 0 ? starts : BackgroundWork.Unheld(async () =>
+        {
+            await starts.Ended();
+            await Task.WhenAll(shut.Select(b => AppleSimulators.ShutDownAsync(b.Simctl, b.Udid)));
+        });
+        return Within(DeviceLaunches.EndLimit, Folder, [("the apps on devices", down)]);
+    }
 
     /// <summary>The Avalonia or WPF app Run started last, inspected for its failed bindings and agents' tools (the Live Visual
     /// Tree follows the debugger's); null after any other program, or one Hot Reload runs. It ends with its run, and with the

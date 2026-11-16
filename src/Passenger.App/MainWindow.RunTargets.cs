@@ -10,8 +10,8 @@ namespace Passenger.App;
 
 /// <summary>Where the chosen configuration's app runs: for a project whose frameworks run on devices, emulators or
 /// simulators, the widget beside the run configuration's names the target chosen, and its action lists what the
-/// project's platforms run on as their workloads list it (Android's devices and emulators, those not running too, which
-/// Run and Debug start), with this machine for a platform whose apps run here (Windows'). The choice is the project's,
+/// project's platforms run on as their workloads list it (Android's devices and emulators, iOS's simulators on a Mac,
+/// those not running too, which Run and Debug start), with this machine for a platform whose apps run here (Windows'). The choice is the project's,
 /// kept with the folder, and decides the framework built and the launch profile tied to its platform; one no longer
 /// listed is said.</summary>
 public partial class MainWindow
@@ -103,24 +103,39 @@ public partial class MainWindow
     /// now: a listing restores the project, after which it is evaluated again.</summary>
     private ProjectModel? StillTargeted(ProjectModel project) => TargetProject() is { } now && PathNames.Same(now.Path, project.Path) ? now : null;
 
-    /// <summary>The project's targets listed again by each platform's workload (Android's now), off the window's thread.</summary>
+    /// <summary>The project's targets listed again by each platform's workload (Android's, and on a Mac iOS's simulators),
+    /// off the window's thread.</summary>
     private async Task ListRunTargetsAsync(ProjectModel project)
     {
         ProjectSession listing = session;
         List<DeviceTarget> found = DeviceTargets.OfThisMachine is { } here && DeviceTargets.FrameworkFor(project.TargetFrameworks, here) is not null
             ? [DeviceTargets.Here(here)] : [];
-        string? problem = null;
+        List<string> problems = [];
+        Dictionary<string, string> globals = ProjectModels.Properties(listing.Workspace, project);
         if (DeviceTargets.FrameworkFor(project.TargetFrameworks, TargetPlatform.Android) is { } android)
         {
-            Dictionary<string, string> globals = ProjectModels.Properties(listing.Workspace, project);
             (IReadOnlyList<DeviceTarget> targets, AndroidTools? tools, string? unlisted) =
                 await BackgroundWork.Run(() => AndroidDevices.ListAsync(project.Path, android, globals, CancellationToken.None));
             found.AddRange(targets);
-            problem = tools is null ? unlisted : tools.Lacks is { } lacks ? Refusals.NoAndroidPlatform(lacks) : null;
+            if ((tools is null ? unlisted : tools.Lacks is { } lacks ? Refusals.NoAndroidPlatform(lacks) : null) is { } problem)
+            {
+                problems.Add(problem);
+            }
+        }
+        // iOS's simulators run only on a Mac: elsewhere an iOS head is passed over unsaid, as its build is.
+        if (OperatingSystem.IsMacOS() && DeviceTargets.FrameworkFor(project.TargetFrameworks, TargetPlatform.Ios) is { } ios)
+        {
+            (IReadOnlyList<DeviceTarget> targets, AppleTools? tools, string? unlisted) =
+                await BackgroundWork.Run(() => AppleSimulators.ListAsync(project.Path, ios, globals, CancellationToken.None));
+            found.AddRange(targets);
+            if (tools is null && unlisted is not null)
+            {
+                problems.Add(unlisted);
+            }
         }
         if (session == listing && !listing.IsEnded)
         {
-            targetsUnlisted = problem;
+            targetsUnlisted = problems.Count > 0 ? string.Join("; ", problems) : null;
             listing.Targets.List(project, found);
         }
     }
@@ -175,7 +190,7 @@ public partial class MainWindow
         {
             session.Frameworks.Choose(project, framework);
         }
-        Say(target.Running || target.Kind != TargetKind.Emulator
+        Say(target.Running || target.Kind is not (TargetKind.Emulator or TargetKind.Simulator)
             ? $"{project.Name} runs on {target.Name}" : $"{project.Name} runs on {target.Name}, which Run and Debug start");
     }
 

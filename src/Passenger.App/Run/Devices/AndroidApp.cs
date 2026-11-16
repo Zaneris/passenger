@@ -6,7 +6,7 @@ namespace Passenger.App.Run.Devices;
 /// <summary>An app installed on an Android device, as its build says it starts: the device's serial, adb, the package and
 /// the activity it launches, and the build's intermediate folder (where a Debug build keeps the environment and the
 /// assemblies it deployed). Its commands are adb's arguments, each made here once.</summary>
-public sealed record AndroidApp(string Serial, string Adb, string Package, string Activity, string Intermediate)
+public sealed partial record AndroidApp(string Serial, string Adb, string Package, string Activity, string Intermediate)
 {
     /// <summary>The properties the workload's <c>ComputeRunArguments</c> leaves that the app's start reads.</summary>
     public static readonly IReadOnlyList<string> Properties =

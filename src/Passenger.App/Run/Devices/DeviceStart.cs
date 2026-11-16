@@ -38,7 +38,7 @@ public sealed class DeviceStart : IDisposable
     /// <summary>Whether the app was started, what the start put in handed to its run's or session's end.</summary>
     private bool handed;
 
-    public DeviceStart(string name, AndroidApp app)
+    public DeviceStart(string name, IDeviceApp app)
     {
         Name = name;
         App = app;
@@ -52,7 +52,7 @@ public sealed class DeviceStart : IDisposable
     /// <summary>The program whose app it starts, as Run and Debug name it.</summary>
     public string Name { get; }
 
-    public AndroidApp App { get; }
+    public IDeviceApp App { get; }
 
     /// <summary>Done once the start's own part is over: what it put in taken out again, or handed to its run's or session's end.</summary>
     public Task Settled => settled.Task;
@@ -88,7 +88,7 @@ public sealed class DeviceStart : IDisposable
     {
         using CancellationTokenSource stopping = CancellationTokenSource.CreateLinkedTokenSource(cancel, ending.Token);
         // Unheld: the folder's end waits for it where the window's loop may have stopped; the start holds the window meanwhile.
-        Task<(DevicePut?, RelaySession?, string?)> under = BackgroundWork.Unheld(() => DeviceLaunches.PutInAsync(App, relayed, inspector, handlers, stopping.Token));
+        Task<(DevicePut?, RelaySession?, string?)> under = BackgroundWork.Unheld(() => App.PutInAsync(relayed, inspector, handlers, stopping.Token));
         lock (gate)
         {
             putting = under;
@@ -141,7 +141,7 @@ public sealed class DeviceStart : IDisposable
                 return;
             }
             // Unheld: the take-out waits for it, which the folder's end waits for where the window's loop may have stopped.
-            puttingBack = BackgroundWork.Unheld(() => DeviceLaunches.PutBackEnvironmentAsync(App, placed));
+            puttingBack = BackgroundWork.Unheld(() => App.PutBackEnvironmentAsync(placed));
             IdeErrors.Observe(puttingBack);
         }
     }
@@ -163,7 +163,7 @@ public sealed class DeviceStart : IDisposable
                     {
                         await putBack.Ended();
                     }
-                    await DeviceLaunches.EndAsync(App, placed);
+                    await App.EndAsync(placed, stop: true);
                 }
                 finally
                 {

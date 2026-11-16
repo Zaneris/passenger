@@ -395,9 +395,13 @@
             CopyToOutputDirectory="PreserveNewest" Visible="false" />
       <!-- The debug relay a Debug app on an Android device loads, for each of its processors, as tools/debug-relay.sh
            built it (CI builds it on macOS for every system's package): carried whatever system this build runs on.
-           iOS's waits until a simulator proves it and the Mac's notarization is known to take another platform's
+           An iOS simulator's app loads its own from where an Apple silicon Mac's Passenger carries it, whose every Mach-O
+           is arm64; a device's waits until one proves it and the Mac's notarization is known to take another platform's
            Mach-O in the bundle. -->
       <DebugRelayFile Include="$([MSBuild]::EnsureTrailingSlash('$(ArtifactsPath)'))debug-relay/**/libpassenger-debug.so" />
+      <DebugRelayFile Include="$([MSBuild]::EnsureTrailingSlash('$(ArtifactsPath)'))debug-relay/iossimulator-arm64*/libpassenger-debug.dylib"
+                      Condition="'$(RuntimeIdentifier)' == 'osx-arm64' Or ('$(RuntimeIdentifier)' == '' And $([MSBuild]::IsOSPlatform('OSX'))
+                                 And '$([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture)' == 'Arm64')" />
       <None Include="@(DebugRelayFile)" Link="debugger/relay/%(DebugRelayFile.RecursiveDir)%(DebugRelayFile.Filename)%(DebugRelayFile.Extension)"
             CopyToOutputDirectory="PreserveNewest" Visible="false" />
     </ItemGroup>

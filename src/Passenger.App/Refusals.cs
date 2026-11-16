@@ -527,7 +527,15 @@ public static class Refusals
 
     /// <summary>A target of a platform Passenger does not run apps on yet.</summary>
     public static string NotYetOn(string target) =>
-        $"Passenger does not run apps on {target} yet: it runs them on Android devices and emulators";
+        $"Passenger does not run apps on {target} yet: it runs them on Android devices and emulators and on iOS simulators";
+
+    /// <summary>An iOS app's simulators asked for on a system other than macOS.</summary>
+    public const string IosOnMacAlone = "iOS apps run on simulators only on a Mac, with Xcode";
+
+    /// <summary>The iOS workload could not list simulators (no workload, no Xcode), with how to get them.</summary>
+    public static string NoIos(string problem) =>
+        $"iOS's simulators could not be listed ({problem}): iOS apps need the .NET ios workload (dotnet workload install ios) and the Xcode it names, "
+        + "with an iOS simulator runtime (Xcode's Settings, Components)";
 
     /// <summary>A Mac Catalyst app debugged: the system's .NET debugger libraries for Mac Catalyst load only into a Mac
     /// Catalyst process, which Passenger's debugger is not yet.</summary>

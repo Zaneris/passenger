@@ -891,7 +891,7 @@ public sealed partial class BuildRunController
                     {
                         listing.Targets.List(device, targets);
                     }
-                }), work.Stopping);
+                }), work.Stopping, listing.Booted);
             if (installed is null)
             {
                 await collecting.CancelAsync();
@@ -1332,6 +1332,11 @@ public sealed partial class BuildRunController
                 {
                     (handlers, variables) = (hook, new Dictionary<string, string>(hooked.Environment));
                 }
+            }
+            if (plan.Device?.App is Devices.SimulatorApp)
+            {
+                // A simulator's app takes its variables from simctl's launch: the inspector's, the relay's and the hook's with the plan's.
+                variables = Devices.SimulatorApp.Given(Devices.SimulatorApp.Variables(variables, inspected?.Device, relay, handlers));
             }
             if (plan.Console == ConsoleKind.Terminal)
             {

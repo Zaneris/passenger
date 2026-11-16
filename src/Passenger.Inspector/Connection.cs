@@ -100,8 +100,9 @@ internal sealed class Connection : IDisposable
     private static readonly TimeSpan AcceptLimit = TimeSpan.FromSeconds(60);
 
     /// <summary>An app on a device listening on an abstract socket of this name, which Passenger reaches through adb's
-    /// forward, taking the first client whose first line is the launch's token (<see cref="Wire.TokenVariable"/>); null,
-    /// having said why, once none came in time. The app's start waits for it, so nothing it says before then is lost.</summary>
+    /// forward, or on an iOS simulator, whose .NET has no Unix sockets, on the loopback's port the name gives; taking the
+    /// first client whose first line is the launch's token (<see cref="Wire.TokenVariable"/>); null, having said why, once
+    /// none came in time. The app's start waits for it, so nothing it says before then is lost.</summary>
     private static Connection? Accept(string name)
     {
         string? token = Environment.GetEnvironmentVariable(Wire.TokenVariable);
@@ -111,10 +112,11 @@ internal sealed class Connection : IDisposable
             NotIn($"it was given no token for its socket {name}");
             return null;
         }
-        using Socket listener = new(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
+        bool port = int.TryParse(name, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out int number);
+        using Socket listener = port ? new(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp) : new(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
         try
         {
-            listener.Bind(new UnixDomainSocketEndPoint("\0" + name));
+            listener.Bind(port ? new System.Net.IPEndPoint(System.Net.IPAddress.Loopback, number) : new UnixDomainSocketEndPoint("\0" + name));
             listener.Listen(1);
             Deadline until = Deadline.In(AcceptLimit);
             while (!until.Passed)

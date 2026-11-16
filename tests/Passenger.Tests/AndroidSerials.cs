@@ -10,6 +10,6 @@ internal static class AndroidSerials
     /// <summary>The target's own serial where it ran when listed, else the one the window's Run or Debug booted it as.</summary>
     public static string Of(MainWindow window, DeviceTarget target) =>
         target.Running ? target.Id
-        : (window.Session.RunPlan?.Device ?? window.Debugger.Tabs.Select(t => t.Plan?.Device).LastOrDefault(d => d?.App is not null))?.App?.Serial
+        : ((window.Session.RunPlan?.Device ?? window.Debugger.Tabs.Select(t => t.Plan?.Device).LastOrDefault(d => d?.App is not null))?.App as AndroidApp)?.Serial
             ?? throw new InvalidOperationException($"{target.Name} was not started by the window, so the emulator it runs as is unknown");
 }

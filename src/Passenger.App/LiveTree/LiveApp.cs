@@ -40,8 +40,8 @@ public enum LiveAppKind
 }
 
 /// <summary>Passenger's end of its inspector inside an Avalonia app it runs or debugs (src/Passenger.Inspector), a WPF app
-/// (src/Passenger.Inspector.Wpf, also given ENABLE_XAML_DIAGNOSTICS_SOURCE_INFO) or a .NET MAUI app on a device
-/// (src/Passenger.Inspector.Maui), one protocol for all: a startup hook and a
+/// (src/Passenger.Inspector.Wpf, also given ENABLE_XAML_DIAGNOSTICS_SOURCE_INFO) or a .NET MAUI app on a device or a
+/// simulator (src/Passenger.Inspector.Maui), one protocol for all: a startup hook and a
 /// socket of the launch's own; from before Main it tells of failed bindings, and once the UI is up says hello and answers on
 /// the UI thread (paused under the debugger, once it runs again). One launch's alone, never in the app as built. A UI-thread
 /// object: its events come on the UI thread.</summary>
@@ -257,7 +257,7 @@ public sealed class LiveApp : ILiveTreeSource, IDisposable
     {
         if (plan.Device is not null)
         {
-            return OnDevice(plan, overlays ?? []);
+            return plan.Device.App is Run.Devices.SimulatorApp simulator ? OnSimulator(plan, simulator, overlays ?? []) : OnDevice(plan, overlays ?? []);
         }
         if (Inspected(plan, wpf) is not { Kind: var kind })
         {
@@ -284,7 +284,7 @@ public sealed class LiveApp : ILiveTreeSource, IDisposable
     /// or a build of Passenger without that inspector.</summary>
     private static LiveApp? OnDevice(LaunchPlan plan, IReadOnlyList<string> overlays)
     {
-        if (plan.Device?.App is not { } app)
+        if (plan.Device?.App is not Run.Devices.AndroidApp app)
         {
             return null;
         }
@@ -302,13 +302,36 @@ public sealed class LiveApp : ILiveTreeSource, IDisposable
         string token = Convert.ToHexString(System.Security.Cryptography.RandomNumberGenerator.GetBytes(16));
         // The hook first: its folder's other assemblies are what it carries (Avalonia's XAML Hot Reload compiler, its headless platform).
         string[] files = [inspector, .. Directory.EnumerateFiles(Path.GetDirectoryName(inspector)!, "*.dll").Where(f => !PathNames.Same(f, inspector)).Order(StringComparer.Ordinal)];
-        // MAUI records where its XAML made each element where the variable says so, under the project the inspector is told.
-        KeyValuePair<string, string>[] more = kind == LiveAppKind.Maui
-            ? [new(RuntimeVariables.XamlDiagnosticsSourceInfo, "1"), .. plan.Project is { } project ? [new KeyValuePair<string, string>(Wire.ProjectVariable, Path.GetDirectoryName(project)!)] : (KeyValuePair<string, string>[])[]]
-            : overlays.Count > 0 ? [new(Wire.OverlaysVariable, string.Join(',', overlays))] : [];
         return new LiveApp(plan.Name, $"{Wire.Listens}{socket}", null, plan, kind == LiveAppKind.Avalonia ? overlays : [], kind,
-            device: new Run.Devices.DeviceInspector(socket, token, files, more));
+            device: new Run.Devices.DeviceInspector(socket, token, files, More(kind, plan, overlays)));
     }
+
+    /// <summary>The live app for a plan that runs an app on an iOS simulator whose built bundle carries Avalonia or .NET MAUI: the
+    /// framework's inspector loaded from where Passenger carries it, listening on a loopback port of its own (the simulator's
+    /// .NET has no Unix sockets) for the token only this launch knows, its variables for the start to give it through simctl
+    /// (<see cref="Run.Devices.SimulatorApp.Variables"/>); null for any other app, or a build of Passenger without that inspector.</summary>
+    private static LiveApp? OnSimulator(LaunchPlan plan, Run.Devices.SimulatorApp app, IReadOnlyList<string> overlays)
+    {
+        if (!Directory.Exists(app.Bundle) || DeployedKind(Directory.EnumerateFiles(app.Bundle, "*.dll")) is not { } kind)
+        {
+            return null;
+        }
+        string inspector = kind == LiveAppKind.Maui ? MauiInspectorPath : InspectorPath;
+        if (!File.Exists(inspector) || Run.Devices.SimulatorApp.FreePort() is not { } port)
+        {
+            return null;
+        }
+        string listens = port.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        string token = Convert.ToHexString(System.Security.Cryptography.RandomNumberGenerator.GetBytes(16));
+        return new LiveApp(plan.Name, $"{Wire.Listens}{listens}", null, plan, kind == LiveAppKind.Avalonia ? overlays : [], kind,
+            device: new Run.Devices.DeviceInspector(listens, token, [inspector], More(kind, plan, overlays)));
+    }
+
+    /// <summary>The variables an app on a device takes for its inspector beyond its hook, socket and token: MAUI's record of
+    /// where its XAML made each element and the project the inspector is told, or Avalonia's overlays.</summary>
+    private static KeyValuePair<string, string>[] More(LiveAppKind kind, LaunchPlan plan, IReadOnlyList<string> overlays) => kind == LiveAppKind.Maui
+        ? [new(RuntimeVariables.XamlDiagnosticsSourceInfo, "1"), .. plan.Project is { } project ? [new KeyValuePair<string, string>(Wire.ProjectVariable, Path.GetDirectoryName(project)!)] : (KeyValuePair<string, string>[])[]]
+        : overlays.Count > 0 ? [new(Wire.OverlaysVariable, string.Join(',', overlays))] : [];
 
     /// <summary>The framework whose inspector an app on a device takes, by the assemblies its build deployed: Avalonia where
     /// its controls are among them, else .NET MAUI where its controls are; null for neither.</summary>

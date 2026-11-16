@@ -39,7 +39,7 @@ public sealed record DeviceTarget(TargetPlatform Platform, string Id, string Nam
     /// <summary>The target as the chooser names it: its name, and what it is where its name does not say.</summary>
     public string Shown => Kind switch
     {
-        TargetKind.Emulator when !Running => $"{Name} (not running)",
+        TargetKind.Emulator or TargetKind.Simulator when !Running => $"{Name} (not running)",
         _ => Name,
     };
 }
@@ -112,9 +112,11 @@ public static partial class DeviceTargets
         return found;
     }
 
-    /// <summary>A description without the workload's own word on whether it runs, which the chooser says itself.</summary>
+    /// <summary>A description without the workload's own word on whether it runs (Android's "Not Running", a simulator's
+    /// state), which the chooser says itself.</summary>
     private static string Unsaid(string description) =>
-        description.EndsWith(" (Not Running)", StringComparison.OrdinalIgnoreCase) ? description[..^" (Not Running)".Length] : description;
+        ((string[])[" (Not Running)", " (Shutdown)", " (Booted)"]).FirstOrDefault(s => description.EndsWith(s, StringComparison.OrdinalIgnoreCase)) is { } state
+            ? description[..^state.Length] : description;
 
     /// <summary>This machine as the target of a platform whose apps run here (a Windows app's head on Windows, a Mac
     /// Catalyst one on a Mac), which the chooser lists beside the devices.</summary>

@@ -69,9 +69,13 @@ public sealed partial class BuildRunController
     }
 
     /// <summary>The hook that calls the update handlers of a plan's app on a device after each Hot Reload update; null where
-    /// it cannot be loaded there.</summary>
-    private static UpdateHandlerHook? HandlersOnDevice(LaunchPlan plan) =>
-        plan.Device is { } device ? UpdateHandlerHook.OnDevice(device.Framework, plan.Name) : null;
+    /// it cannot be loaded there. A simulator's app reaches it as a program of this Mac does, its start giving it its variables.</summary>
+    private static UpdateHandlerHook? HandlersOnDevice(LaunchPlan plan) => plan.Device switch
+    {
+        { App: SimulatorApp } => UpdateHandlerHook.OnSimulator(plan),
+        { } device => UpdateHandlerHook.OnDevice(device.Framework, plan.Name),
+        null => null,
+    };
 
     /// <summary>An app Run started on a device with Passenger's relay in it, attached to quietly for Hot Reload alone, which
     /// lets its start there go, each update told to <paramref name="handlers"/>: what its applies come to is said in
@@ -98,7 +102,7 @@ public sealed partial class BuildRunController
     /// log is the session's console), and the session attached through the relay as the app's runtime waits for it. Once the
     /// session ends, however it ends, the app ends there and the relay comes out; Stop and the folder's end wait for it from
     /// the start's first step there (<see cref="DeviceStart"/>). Null once the session is open, else why not.</summary>
-    private async Task<string?> DebugOnDeviceAsync(LaunchPlan plan, AndroidApp app, Working work, BuiltEdits? edits)
+    private async Task<string?> DebugOnDeviceAsync(LaunchPlan plan, IDeviceApp app, Working work, BuiltEdits? edits)
     {
         work.Say($"Putting Passenger's debugger in {app.Package}…");
         // An Avalonia or MAUI app's inspector goes in beside the relay, which the Live Visual Tree reaches.
@@ -126,6 +130,14 @@ public sealed partial class BuildRunController
             System.Diagnostics.ProcessStartInfo start = plan.Start();
             start.RedirectStandardOutput = true;
             start.RedirectStandardError = true;
+            if (app is SimulatorApp)
+            {
+                // A simulator's app takes its variables from simctl's launch: the inspector's, the relay's and the hook's.
+                foreach ((string name, string value) in SimulatorApp.Given(SimulatorApp.Variables(plan.Environment, inspected?.Device, relay, handlers)))
+                {
+                    start.Environment[name] = value;
+                }
+            }
             shell = await ChildProcesses.StartAsync(start);
         }
         catch (System.ComponentModel.Win32Exception unstarted)

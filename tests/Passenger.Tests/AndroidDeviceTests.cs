@@ -488,7 +488,7 @@ public sealed class AndroidDeviceTests
         {
             Choose(window, project, target);
             Ui.Launched(window, window.RunAsync(), "the build, the install and the start on the emulator", Slow);
-            AndroidApp app = window.Session.RunPlan?.Device?.App ?? throw new InvalidOperationException("The run on the emulator named no app there");
+            AndroidApp app = window.Session.RunPlan?.Device?.App as AndroidApp ?? throw new InvalidOperationException("The run on the emulator named no app there");
             Ui.Run(window, AppActions.Stop);
             Ui.WaitFor(() => window.Runner.Ended.IsCompleted, "the run to end once stopped");
             Ui.WaitFor(() => Pid(tools, app.Serial).Length == 0, () => $"the app to end on the emulator once stopped; it runs as {Pid(tools, app.Serial)}", TimeSpan.FromSeconds(30));

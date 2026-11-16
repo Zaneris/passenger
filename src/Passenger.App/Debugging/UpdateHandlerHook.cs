@@ -116,6 +116,19 @@ public sealed class UpdateHandlerHook : IDisposable
         return new UpdateHandlerHook(null, listener, reach);
     }
 
+    /// <summary>The hook for a plan's app on an iOS simulator, a program of this Mac that connects to its socket here as any
+    /// other does, its variables given by its start (<see cref="Over"/>); null where it cannot be loaded.</summary>
+    public static UpdateHandlerHook? OnSimulator(Run.LaunchPlan plan) =>
+        plan.RunsOn is { } framework && Listen(framework, plan.Name, plan.Environment) is ({ } hook, _) ? hook : null;
+
+    /// <summary>The variables that load the hook of this machine's socket in a program of <paramref name="environment"/>: its
+    /// socket, and the hook first among the startup hooks the environment names.</summary>
+    public IReadOnlyDictionary<string, string> Over(IReadOnlyDictionary<string, string> environment) => new Dictionary<string, string>
+    {
+        [Wire.SocketVariable] = SocketPath ?? string.Empty,
+        [RuntimeVariables.StartupHooks] = StartupHooks.First(environment, HookPath),
+    };
+
     /// <summary>Whether the hook loads in a program on <paramref name="framework"/>: one on .NET 8 or later, the hook carried.</summary>
     private static bool Loads(string framework) => FrameworkNames.Major(framework) is >= 8 && File.Exists(HookPath);
 
