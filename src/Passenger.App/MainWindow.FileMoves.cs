@@ -106,6 +106,9 @@ public partial class MainWindow
     public async Task<IReadOnlyList<string>> PutAsync(IReadOnlyList<string> paths, string into, bool copy)
     {
         into = PathNames.Canonical(into);
+        // A Godot file's .uid or .import copied with it is made for its copy as Godot's duplicate makes one.
+        HashSet<string> chosen = new(paths, PathNames.Comparer);
+        paths = copy ? [.. paths.Where(p => !GodotUids.IsBeside(p) || !chosen.Contains(GodotUids.BesideOf(p)) || session.GodotOf(p) is null)] : paths;
         // A file's dependents go with it, renamed as a copy's name asks; one chosen with its parent goes as the parent's.
         IReadOnlyDictionary<string, IReadOnlyList<string>> following = DependentsOf(paths);
         HashSet<string> dependents = [.. following.Values.SelectMany(d => d)];
@@ -229,7 +232,17 @@ public partial class MainWindow
         {
             return await UncopiedAsync($"{name} could not be copied: {uncopied}", [target]);
         }
+        (IReadOnlyList<string> made, string? unfit) = await assist.Languages.CSharp.GodotCopiedAsync(source, target);
+        if (unfit is not null)
+        {
+            return await UncopiedAsync($"{name} could not be copied as Godot copies it: {unfit}", [target, .. made]);
+        }
         await recording.CopiedAsync(target);
+        foreach (string beside in made)
+        {
+            await recording.CopiedAsync(beside);
+            came.Add(beside);
+        }
         return null;
 
         // A copy that failed partway is taken back, and what it replaced put back; what could not be is left to the command's Undo.

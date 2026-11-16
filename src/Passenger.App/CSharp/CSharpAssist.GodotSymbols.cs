@@ -658,4 +658,105 @@ internal sealed partial class CSharpAssist
         }
         return (files, beside);
     }
+
+    /// <summary>A copy made in a Godot project (<paramref name="source"/> to <paramref name="target"/>, a file or a folder) left
+    /// as Godot's own duplicate leaves one (<see cref="GodotUids.Copied"/>), off the window's thread, links passed over: its uids
+    /// made anew, a folder's scenes naming what was copied with them, a file's copy given the .uid and .import of its original
+    /// where none is there (a replaced file's, whose uid it takes). The files it made beside the copy, or why it could not.</summary>
+    internal async Task<(IReadOnlyList<string> Made, string? Why)> GodotCopiedAsync(string source, string target)
+    {
+        if (context.GodotScenes?.Invoke() is not { } index || index.GameOf(target) is not { } folder)
+        {
+            return ([], null);
+        }
+        bool whole = Directory.Exists(target);
+        GodotScenes? scenes = whole && index.GameOf(source) is { } from && PathNames.Same(from, folder) ? await index.ScenesAsync(folder) : null;
+        Func<string, bool> named = scenes is null ? _ => false : uid => scenes.ResOfUid(uid) is not null;
+        return await BackgroundWork.Run(() => Copied(folder, source, target, whole, scenes is not null, named));
+
+        static (IReadOnlyList<string> Made, string? Why) Copied(string folder, string source, string target, bool whole, bool within, Func<string, bool> named)
+        {
+            List<string> made = [];
+            try
+            {
+                // Each file of the copy with the file it is a copy of; Godot's own beside them go as theirs.
+                List<(string From, string To)> pairs = whole
+                    ? [.. Files(target).Where(f => !GodotUids.IsBeside(f)).Select(f => (Path.Combine(source, Path.GetRelativePath(target, f)), f))]
+                    : [(source, target)];
+                // A file's copy takes its original's .uid and .import, a folder's those copied with it.
+                string Beside(string from, string to, string kept) => whole ? to + kept : File.Exists(to + kept) ? string.Empty : from + kept;
+                List<(GodotCopy Copy, string Path, FileText? Text, FileText? Uid, FileText? Import)> read = [];
+                foreach ((string from, string to) in pairs)
+                {
+                    FileText? text = GodotFile.IsText(to) ? FileText.Load(to) : null;
+                    FileText? uid = Read(Beside(from, to, ".uid"));
+                    FileText? import = Read(Beside(from, to, ".import"));
+                    read.Add((new GodotCopy(GodotResPaths.Of(folder, from) ?? from, GodotResPaths.Of(folder, to) ?? to, text?.Text, uid?.Text, import?.Text), to, text, uid, import));
+                }
+                IReadOnlyList<GodotCopy> copied = GodotUids.Copied([.. read.Select(r => r.Copy)], within, named, Random.Shared);
+                for (int i = 0; i < read.Count; i++)
+                {
+                    (GodotCopy was, string to, FileText? text, FileText? uid, FileText? import) = read[i];
+                    GodotCopy now = copied[i];
+                    if (text is not null && now.Text != was.Text)
+                    {
+                        FileText.SaveOver(to, text, now.Text!);
+                    }
+                    Write(to + ".uid", uid, was.Uid, now.Uid, now.Uid != was.Uid);
+                    // An .import goes with a file's copy whatever it gives, as Godot's duplicate keeps its settings.
+                    Write(to + ".import", import, was.Import, now.Import, true);
+                }
+                return (made, null);
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+            {
+                return (made, error.Message);
+            }
+
+            static FileText? Read(string path) => path.Length > 0 && File.Exists(path) && new FileInfo(path).LinkTarget is null ? FileText.Load(path) : null;
+
+            // Written over in a folder's copy where it changed, else made beside a file's copy.
+            void Write(string path, FileText? had, string? was, string? now, bool makes)
+            {
+                if (had is null || now is null)
+                {
+                    return;
+                }
+                if (whole)
+                {
+                    if (now != was)
+                    {
+                        FileText.SaveOver(path, had, now);
+                    }
+                }
+                else if (makes && FileText.SaveNewOnly(path, now) is not null)
+                {
+                    made.Add(path);
+                }
+            }
+        }
+
+        // The files under a folder, those of its links passed over.
+        static IEnumerable<string> Files(string under)
+        {
+            foreach (FileSystemInfo entry in new DirectoryInfo(under).EnumerateFileSystemInfos())
+            {
+                if (entry.LinkTarget is not null)
+                {
+                    continue;
+                }
+                if (entry is DirectoryInfo)
+                {
+                    foreach (string file in Files(entry.FullName))
+                    {
+                        yield return file;
+                    }
+                }
+                else
+                {
+                    yield return entry.FullName;
+                }
+            }
+        }
+    }
 }

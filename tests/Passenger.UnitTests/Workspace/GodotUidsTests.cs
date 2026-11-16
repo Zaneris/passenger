@@ -52,6 +52,62 @@ public class GodotUidsTests
         Assert.True(scenes.KeepsUids);
     }
 
+    [Fact]
+    public void A_folders_copy_takes_new_uids_and_its_scenes_name_the_files_copied_with_them_as_godots_duplicate_leaves_them()
+    {
+        const string Scene = "[gd_scene load_steps=4 format=3 uid=\"uid://bplayer\"]\n\n"
+            + "[ext_resource type=\"Script\" uid=\"uid://cscript\" path=\"res://a/player.gd\" id=\"1_s\"]\n"
+            + "[ext_resource type=\"Texture2D\" uid=\"uid://bicon\" path=\"res://a/old_icon.svg\" id=\"2_t\"]\n"
+            + "[ext_resource type=\"Texture2D\" path=\"res://a/keep.png\" id=\"3_k\"]\n"
+            + "[ext_resource type=\"Script\" uid=\"uid://celse\" path=\"res://a/player.gd\" id=\"4_e\"]\n"
+            + "[ext_resource type=\"Script\" path=\"res://shared/util.gd\" id=\"5_u\"]\n\n"
+            + "[node name=\"Player\" type=\"Node2D\"]\nscript = ExtResource(\"1_s\")\n";
+        const string Import = "[remap]\n\nimporter=\"texture\"\ntype=\"CompressedTexture2D\"\nuid=\"uid://bicon\"\npath=\"res://.godot/imported/icon.svg-1.ctex\"\n";
+        const string Kept = "[remap]\n\nimporter=\"keep\"\n";
+        IReadOnlyList<GodotCopy> copied = GodotUids.Copied([
+            new GodotCopy("res://a/player.tscn", "res://b/player.tscn", Scene, null, null),
+            new GodotCopy("res://a/player.gd", "res://b/player.gd", null, "uid://cscript\n", null),
+            new GodotCopy("res://a/icon.svg", "res://b/icon.svg", null, null, Import),
+            new GodotCopy("res://a/keep.png", "res://b/keep.png", null, null, Kept),
+            new GodotCopy("res://a/notes.txt", "res://b/notes.txt", null, null, null),
+        ], within: true, uid => uid == "uid://celse", new Random(7));
+
+        string script = GodotUids.OfBeside("player.gd.uid", copied[1].Uid!)!;
+        string icon = GodotUids.OfBeside("icon.svg.import", copied[2].Import!)!;
+        GodotFile scene = GodotFile.Parse(copied[0].Text!);
+        string[] uids = [scene.Header!.Text("uid")!, script, icon];
+        Assert.True(uids.All(u => u.StartsWith(GodotUids.Scheme, StringComparison.Ordinal)) && uids.Distinct().Count() == 3
+            && !uids.Intersect(["uid://bplayer", "uid://cscript", "uid://bicon"]).Any(), $"The copies kept a uid of their originals: {string.Join(", ", uids)}");
+        Assert.Equal(Import.Replace("uid://bicon", icon, StringComparison.Ordinal), copied[2].Import);
+        Assert.Equal(Kept, copied[3].Import);
+        Assert.Equal(new GodotCopy("res://a/notes.txt", "res://b/notes.txt", null, null, null), copied[4]);
+        // By the uid a copied file gave, whatever path it writes; by path where it writes no uid; a uid another file gives and a file not copied, as written.
+        Assert.Equal(
+        [
+            ("res://b/player.gd", script),
+            ("res://b/icon.svg", icon),
+            ("res://b/keep.png", null),
+            ("res://a/player.gd", "uid://celse"),
+            ("res://shared/util.gd", null),
+        ], scene.Externals.Select(e => (e.Path, e.Uid)));
+        Assert.EndsWith("[node name=\"Player\" type=\"Node2D\"]\nscript = ExtResource(\"1_s\")\n", copied[0].Text, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_files_copy_takes_new_uids_and_names_what_its_original_named()
+    {
+        const string Scene = "[gd_scene format=3 uid=\"uid://bplayer\"]\n\n[ext_resource type=\"Script\" uid=\"uid://cscript\" path=\"res://a/player.gd\" id=\"1_s\"]\n";
+        IReadOnlyList<GodotCopy> copied = GodotUids.Copied([new GodotCopy("res://a/player.tscn", "res://a/player_2.tscn", Scene, null, null),
+            new GodotCopy("res://a/player.gd", "res://b/player.gd", null, "uid://cscript\r\n", null)], within: false, _ => false, new Random(7));
+
+        GodotFile scene = GodotFile.Parse(copied[0].Text!);
+        Assert.NotEqual("uid://bplayer", scene.Header!.Text("uid"));
+        Assert.Equal([("res://a/player.gd", "uid://cscript")], scene.Externals.Select(e => (e.Path, e.Uid)));
+        Assert.Matches("^uid://[a-y0-8]+\r\n$", copied[1].Uid);
+        Assert.NotEqual("uid://cscript\r\n", copied[1].Uid);
+        Assert.Equal("nothing\n", GodotUids.Copied([new GodotCopy("res://a/broken.gd", "res://b/broken.gd", null, "nothing\n", null)], within: false, _ => false, new Random(7))[0].Uid);
+    }
+
     private static byte[] Cache(params (long Id, string Res)[] entries)
     {
         List<byte> bytes = [];
