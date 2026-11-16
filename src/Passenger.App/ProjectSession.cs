@@ -108,6 +108,7 @@ public sealed class ProjectSession : IAsyncDisposable
         Aspire.Inspected = app => Reloaded(app);
         AspireFiles = new AspireFiles(this);
         NodeFiles = new Web.NodeFiles(this);
+        EditorConfigs = new Settings.FolderEditorConfigs(this);
         Builder = new ProcessRunner(setup.Views.Build, builds: true);
         Runner = new ProcessRunner(setup.Views.Run, takesInput: true);
         Tests = new TestController(setup.Views.TestTree, setup.BuildForTests, () => Projects, () => Workspace, line => setup.Views.Build.Append($"{line}\n"))
@@ -254,6 +255,9 @@ public sealed class ProjectSession : IAsyncDisposable
         // The Node packages too, their scripts run configurations.
         session.Index.Walked += (_, _) => session.NodeFiles.Walked(folder, session.Index.Files);
         session.Index.Changed += (_, change) => session.NodeFiles.CameAndWent(folder, change.Came, change.Gone);
+        // And the .editorconfig files Settings says the keys of.
+        session.Index.Walked += (_, _) => session.EditorConfigs.Walked();
+        session.Index.Changed += (_, change) => session.EditorConfigs.CameAndWent(change.Came, change.Gone);
         session.Index.Build(folder);
         session.Watcher = new FolderWatcher(folder, setup.Watching);
         session.Web = new Web.WebLanguages(folder, setup.Settings, setup.Engine)
@@ -590,6 +594,9 @@ public sealed class ProjectSession : IAsyncDisposable
 
     /// <summary>Done once the folder's Node packages have been read from its first walk.</summary>
     public Task NodeFilesRead => Folder is null ? Task.CompletedTask : NodeFiles.Read;
+
+    /// <summary>What the folder's .editorconfig files set over Settings' rows.</summary>
+    public Settings.FolderEditorConfigs EditorConfigs { get; }
 
     /// <summary>The folder's builds, rebuilds and cleans, in the window's Build console.</summary>
     public ProcessRunner Builder { get; }

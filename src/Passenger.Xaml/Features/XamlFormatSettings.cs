@@ -113,18 +113,6 @@ public sealed record XamlFormatSettings
     public XamlFormatSettings Clamped() =>
         this with { AttributeOrder = string.IsNullOrWhiteSpace(AttributeOrder) ? DefaultAttributeOrder : AttributeOrder };
 
-    /// <summary>The .editorconfig keys read, as Rider names them: ReSharper's XML formatter's (which XAML's is) with their
-    /// <c>resharper_</c> forms, and XAML Styler's options under <c>xaml_</c>.</summary>
-    public static IReadOnlyList<string> EditorConfigKeys { get; } =
-    [
-        "xml_attribute_style", "xml_attribute_indent", "xml_spaces_around_eq_in_attribute", "xml_space_after_last_attribute",
-        "xml_space_before_self_closing", "xml_keep_user_linebreaks", "xml_max_blank_lines_between_tags",
-        "xml_linebreak_before_multiline_elements", "xml_linebreak_before_singleline_elements",
-        "xml_linebreaks_inside_tags_for_elements_with_child_elements", "xml_linebreaks_inside_tags_for_multiline_elements",
-        "xml_indent_child_elements", "xml_indent_text", "xml_blank_line_after_pi", "xml_wrap_tags_and_pi", "xml_wrap_around_elements", "max_line_length",
-        "xaml_enable_attribute_reordering", "xaml_attribute_ordering_rule_groups", "xaml_remove_ending_tag_of_empty_element",
-    ];
-
     /// <summary>These settings with what a file's .editorconfig says over them, by Rider's keys (or their
     /// <c>resharper_</c> forms); a value that does not read as its option's is passed over, as editorconfig's are.</summary>
     public XamlFormatSettings Over(Func<string, string?> editorConfig)

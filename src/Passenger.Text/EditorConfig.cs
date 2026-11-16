@@ -62,7 +62,7 @@ public sealed class EditorConfig
                 {
                     continue;
                 }
-                foreach ((string key, string value) in section.Pairs)
+                foreach ((string key, string value, _) in section.Pairs)
                 {
                     if (Word(value) == "unset")
                     {
@@ -173,10 +173,25 @@ public sealed class EditorConfig
     /// <summary>A width in columns, or null for a value that is not one.</summary>
     private static int? Width(string? value) => Number(value) is int width and >= 1 and <= 32 ? width : null;
 
-    /// <summary>A section: its glob, the line its header is on (from 1) and where the glob starts in the file's text.</summary>
-    private sealed record Section(string Glob, int Line, int Offset, List<(string Key, string Value)> Pairs);
+    /// <summary>A section: its glob, the line its header is on (from 1), where the glob starts in the file's text, and its
+    /// pairs with the line each is on.</summary>
+    private sealed record Section(string Glob, int Line, int Offset, List<(string Key, string Value, int Line)> Pairs);
 
     private sealed record ConfigFile(bool Root, List<Section> Sections);
+
+    /// <summary>A key a section sets: the section's glob as written, the line the key is on (from 1), the key in lower case
+    /// and its value as written.</summary>
+    public readonly record struct Pair(string Glob, int Line, string Key, string Value);
+
+    /// <summary>What an .editorconfig says: whether it is marked <c>root = true</c>, and each key its sections set, in the
+    /// file's order.</summary>
+    public sealed record Written(bool Root, IReadOnlyList<Pair> Pairs);
+
+    /// <summary>What the .editorconfig at a path says, read as <see cref="For"/> reads it; null where there is none to read.</summary>
+    public static Written? WrittenIn(string file) =>
+        Read(file) is { } config
+            ? new Written(config.Root, [.. config.Sections.SelectMany(s => s.Pairs.Select(p => new Pair(s.Glob, p.Line, p.Key, p.Value)))])
+            : null;
 
     /// <summary>A section of an .editorconfig's text that matches no file: where its glob is in the text, and why.</summary>
     public readonly record struct RefusedSection(TextRange Glob, string Why);
@@ -247,7 +262,7 @@ public sealed class EditorConfig
             string value = line[(equals + 1)..].Trim();
             if (current is not null)
             {
-                current.Pairs.Add((key, value));
+                current.Pairs.Add((key, value, number));
             }
             else if (!inSections && key == "root")
             {

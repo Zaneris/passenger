@@ -106,10 +106,13 @@ public sealed partial class SettingsDialog : IdeWindow
 
     /// <param name="preview">An optional temporary visual overlay, released when this dialog closes.</param>
     /// <param name="agents">The agents' setup the MCP Server page shows: this copy's, and the window's folder.</param>
-    public SettingsDialog(AppSettings current, ActionRegistry actions, Action<AppSettings, AppSettings> apply, Mcp.AgentSetup? agents = null, SettingsPreview? preview = null)
+    /// <param name="editorConfigs">What the window's folder's .editorconfig files set over the rows, followed while it is open.</param>
+    public SettingsDialog(AppSettings current, ActionRegistry actions, Action<AppSettings, AppSettings> apply, Mcp.AgentSetup? agents = null, SettingsPreview? preview = null,
+        FolderEditorConfigs? editorConfigs = null)
     {
         this.apply = apply;
         this.preview = preview;
+        this.editorConfigs = editorConfigs;
         Closed += (_, _) => preview?.Dispose();
         this.actions = actions;
         Working = current;
@@ -150,6 +153,12 @@ public sealed partial class SettingsDialog : IdeWindow
         Content = DialogFooter.Page(new DockPanel { Children = { leftPane, right } }, DialogFooter.OkCancel(ok, () => Close(false), more: applyButton));
         Filter();
         Opened += (_, _) => Dispatcher.UIThread.Post(() => search.Focus(), DispatcherPriority.Loaded);
+        if (editorConfigs is not null)
+        {
+            editorConfigs.Changed += EditorConfigsChanged;
+            Closed += (_, _) => editorConfigs.Changed -= EditorConfigsChanged;
+            IdeErrors.Observe(ShowSaidOverAsync());
+        }
     }
 
     /// <summary>The settings as the options now stand.</summary>
@@ -451,7 +460,7 @@ public sealed partial class SettingsDialog : IdeWindow
     private void Add(Setting setting, Control editor)
     {
         SettingRow row = setting.Row ?? throw new ArgumentException("A setting with no row of its own goes in a row the dialog builds", nameof(setting));
-        Add(row.Page, row.Label, editor, row.Words, row.Note);
+        Add(row.Page, row.Label, editor, row.Words, row.NoteShown, over: row.Over);
         if (row.When is { } when)
         {
             // Greyed, saying why, while the setting it follows leaves it no effect.
@@ -475,13 +484,45 @@ public sealed partial class SettingsDialog : IdeWindow
     public string? WhyGreyed(string label) =>
         dependents.FirstOrDefault(d => d.Label == label) is { Editor: { } editor, When: { } when } && !when.Holds(Working) && !editor.IsEnabled ? when.Why : null;
 
+    /// <summary>What the folder's .editorconfig files set over the rows, followed while the dialog is open.</summary>
+    private readonly FolderEditorConfigs? editorConfigs;
+
+    /// <summary>Each row the folder's .editorconfig files may set, by its label, with what says so under it.</summary>
+    private readonly List<(string Label, EditorConfigOver Over, TextBlock Said)> saidOver = [];
+
+    /// <summary>Reads of what the .editorconfig files set, the last asked alone landing.</summary>
+    private int saidAsked;
+
+    /// <summary>What the folder's .editorconfig files set over a row, by its label, a line to each key as the row shows them;
+    /// null where they set nothing over it.</summary>
+    public string? SaidOver(string label) => saidOver.FirstOrDefault(s => s.Label == label).Said is { IsVisible: true } said ? said.Text : null;
+
+    private void EditorConfigsChanged(object? sender, EventArgs e) => IdeErrors.Observe(ShowSaidOverAsync());
+
+    /// <summary>Says under each row what the folder's .editorconfig files set over it, once read off the window's thread.</summary>
+    private async Task ShowSaidOverAsync()
+    {
+        int mine = ++saidAsked;
+        EditorConfigLines read = await editorConfigs!.ReadAsync();
+        if (mine != saidAsked)
+        {
+            return;
+        }
+        foreach ((_, EditorConfigOver over, TextBlock said) in saidOver)
+        {
+            IReadOnlyList<string> lines = read.Shortly(over);
+            said.Text = string.Join('\n', lines);
+            said.IsVisible = lines.Count > 0;
+        }
+    }
+
     /// <summary>A page that is one control of its own (the live templates' list and editor), the whole of its width, found
     /// by a search for any of its words.</summary>
     private void AddPage(string page, Control content, string keywords) => options.Add(new Option(page, page, content, $"{page} {keywords}"));
 
     /// <summary>An option's row: its label, what edits it, and a note under the editor when it needs saying what it
-    /// does; a keymap row names its action.</summary>
-    private Control Add(string page, string label, Control editor, string keywords, string? note = null, string? action = null)
+    /// does; a keymap row names its action, and one the folder's .editorconfig files may set the keys it is said over by.</summary>
+    private Control Add(string page, string label, Control editor, string keywords, string? note = null, string? action = null, EditorConfigOver? over = null)
     {
         // Beside an editor of several lines the label stands level with its first line.
         double firstLine = editor switch
@@ -501,8 +542,16 @@ public sealed partial class SettingsDialog : IdeWindow
         };
         AutomationProperties.SetLabeledBy(editor, name);
         TextBlock? said = note is null ? null : new TextBlock { Text = note, TextWrapping = TextWrapping.Wrap, HorizontalAlignment = HorizontalAlignment.Left, Classes = { StyleClasses.Muted } };
-        OptionRow row = new(name, editor, said, firstLine);
-        options.Add(new Option(page, label, row, $"{page} {label} {keywords}", action));
+        TextBlock? setOver = null;
+        if (over is not null)
+        {
+            setOver = new TextBlock { TextWrapping = TextWrapping.Wrap, HorizontalAlignment = HorizontalAlignment.Left, IsVisible = false, Classes = { StyleClasses.SaidOver } };
+            saidOver.Add((label, over, setOver));
+        }
+        OptionRow row = new(name, editor, said, firstLine, setOver);
+        // A row an .editorconfig says over is found by the keys that do, as a person reads them in the file.
+        string keys = over is null ? string.Empty : $" editorconfig {string.Join(' ', over.Keys.Concat(over.Aliases))}";
+        options.Add(new Option(page, label, row, $"{page} {label} {keywords}{keys}", action));
         return row;
     }
 

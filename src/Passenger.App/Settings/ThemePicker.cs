@@ -22,6 +22,8 @@ public sealed class ThemeSetting(bool code, Func<AppSettings, SourcedTheme?> get
     public override Control Editor(AppSettings now, Action<Func<AppSettings, AppSettings>> change) => new ThemePicker(this, () => now, change);
 
     public override AppSettings Clamp(AppSettings settings) => settings;
+
+    public override AppSettings Other(AppSettings settings) => set(settings, get(settings) is null ? new SourcedTheme(ThemeSource.BuiltIn.Name, "Other") : null);
 }
 
 /// <summary>A theme's or a code colour scheme's drop-down: Passenger's own first, then each source's by name with the source

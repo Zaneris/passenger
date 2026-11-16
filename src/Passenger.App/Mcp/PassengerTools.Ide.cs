@@ -28,10 +28,16 @@ public sealed partial class PassengerTools
 
     [McpServerTool(Name = McpTools.Settings, Title = "The IDE's settings", ReadOnly = true), Description(
         "Every setting the Settings dialog has, by its settings.json name (editorFontSize, theme...), with its value, kind, " +
-        "choices and range; kept is false for an --mcp Passenger's own, kept nowhere (it opens on the settings.json of the folder " +
-        "PASSENGER_SETTINGS names).")]
+        "choices, range and what the folder's .editorconfig files set over it; kept is false for an --mcp Passenger's own, kept " +
+        "nowhere (it opens on the settings.json of the folder PASSENGER_SETTINGS names).")]
     public Task<SettingsInfo> GetSettings(CancellationToken cancel = default) => OnUi(cancel, async () =>
     {
+        // Looked at every 50 ms: the .editorconfig files are those the folder's walk lists.
+        await Until(() => !Session.Index.IsWalking, IndexLimit, cancel);
+        EditorConfigLines said = await Session.EditorConfigs.ReadAsync();
+        Dictionary<string, IReadOnlyList<string>> over = Declared.All.Where(s => s.Row?.Over is not null).GroupBy(s => s.Member)
+            .Select(g => (g.Key, Lines: g.SelectMany(s => said.Of(s.Row!.Over!)).Distinct(StringComparer.Ordinal).ToArray()))
+            .Where(g => g.Lines.Length > 0).ToDictionary(g => g.Key, g => (IReadOnlyList<string>)g.Lines, StringComparer.Ordinal);
         JsonObject own = SettingsNode(window.Settings);
         JsonObject values = SettingsNode(Declared.InForce(window.Settings));
         // A font's own names alone: the families installed (hundreds) are said by their count, each taken by its name.
@@ -52,6 +58,7 @@ public sealed partial class PassengerTools
             return new SettingInfo(p.Key, JsonSerializer.SerializeToElement(values[p.Key]), SettingKind(p.Value), choices, range?.Min, range?.Max)
             {
                 Note = font?.Note ?? ThemeNote(p.Value.Name) ?? (vimKeys ? VimKeysNote() : null) ?? ThemesUntilSet(own[p.Key], values[p.Key]),
+                EditorConfig = over.GetValueOrDefault(p.Key),
             };
         })]);
     });
@@ -602,6 +609,10 @@ public sealed record SettingInfo(string Name, JsonElement Value, string Kind, IR
 {
     /// <summary>What its choices leave out and how to ask for it: a font's installed families, how a theme is named.</summary>
     public string? Note { get; init; }
+
+    /// <summary>What the folder's .editorconfig files set over it, for the files each section's glob names, which take that
+    /// rather than the setting: "./.editorconfig sets max_line_length = 120 for *.gd".</summary>
+    public IReadOnlyList<string>? EditorConfig { get; init; }
 }
 
 /// <summary>A setting an agent changed: as it was, as it is now in force, and why that is not what was asked, when it is not.</summary>

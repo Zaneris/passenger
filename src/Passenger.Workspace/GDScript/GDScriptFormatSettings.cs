@@ -25,10 +25,6 @@ public sealed record GDScriptFormatSettings
     /// <summary>Trailing comma: a multi-line array, dictionary or enum ends its last line with a comma.</summary>
     public bool TrailingCommas { get; init; } = true;
 
-    /// <summary>The .editorconfig keys read.</summary>
-    public static IReadOnlyList<string> EditorConfigKeys { get; } =
-        ["max_line_length", "gdscript_blank_lines_around_functions", "gdscript_trailing_comma"];
-
     /// <summary>Each value brought into what it allows.</summary>
     public GDScriptFormatSettings Clamped() => this with
     {

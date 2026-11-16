@@ -4,12 +4,12 @@ using Avalonia.Layout;
 
 namespace Passenger.App.Settings;
 
-/// <summary>An option's row in Settings: its label, what edits it, and a note under the editor. On a page with room for the
-/// labels' column beside the widest editor, the label stands at the left with the editor and note beside it; on a
-/// narrower page, as every row of it does, the label stands above the editor and the note under it, and a lone check box
-/// before its label. An editor that stretches up to a most width (a list, a line of text, a number box) is given that
-/// width where there is room and the page's where there is not; any other takes its own. The note wraps where the widest
-/// editor ends, or at the page's edge before it.</summary>
+/// <summary>An option's row in Settings: its label, what edits it, a note under the editor, and under that what the open
+/// folder's .editorconfig files set over it, where they do. On a page with room for the labels' column beside the widest
+/// editor, the label stands at the left with the editor and the lines under it beside it; on a narrower page, as every row
+/// of it does, the label stands above the editor, and a lone check box before its label. An editor that stretches up to a
+/// most width (a list, a line of text, a number box) is given that width where there is room and the page's where there is
+/// not; any other takes its own. The lines under it wrap where the widest editor ends, or at the page's edge before it.</summary>
 public sealed class OptionRow : Panel
 {
     /// <summary>The labels' column beside the editors.</summary>
@@ -31,17 +31,20 @@ public sealed class OptionRow : Panel
 
     /// <param name="labelTop">Where the label stands beside a tall editor, level with its first line; below zero, centred
     /// on the editor.</param>
-    public OptionRow(TextBlock label, Control editor, TextBlock? note, double labelTop)
+    /// <param name="saidOver">Where what the folder's .editorconfig files set over the option is said, for a row they may
+    /// set; shown only while it says something.</param>
+    public OptionRow(TextBlock label, Control editor, TextBlock? note, double labelTop, TextBlock? saidOver = null)
     {
         Label = label;
         Editor = editor;
         Note = note;
+        SaidOver = saidOver;
         this.labelTop = labelTop;
         Children.Add(label);
         Children.Add(editor);
-        if (note is not null)
+        foreach (TextBlock under in ((TextBlock?[])[note, saidOver]).OfType<TextBlock>())
         {
-            Children.Add(note);
+            Children.Add(under);
         }
     }
 
@@ -50,6 +53,9 @@ public sealed class OptionRow : Panel
     public Control Editor { get; }
 
     public TextBlock? Note { get; }
+
+    /// <summary>What the open folder's .editorconfig files set over the option, under the note.</summary>
+    public TextBlock? SaidOver { get; }
 
     /// <summary>Whether the label stands above the editor (or after its check box), as laid out last.</summary>
     public bool IsStacked { get; private set; }
@@ -72,21 +78,21 @@ public sealed class OptionRow : Panel
         if (!IsStacked)
         {
             Label.Measure(new Size(LabelWidth, double.PositiveInfinity));
-            Note?.Measure(new Size(NoteRoom(width - LabelWidth), double.PositiveInfinity));
-            return new Size(LabelWidth + Math.Max(Editor.DesiredSize.Width, Note?.DesiredSize.Width ?? 0), Beside() + Below());
+            MeasureUnder(NoteRoom(width - LabelWidth));
+            return new Size(LabelWidth + Math.Max(Editor.DesiredSize.Width, UnderWidth()), Beside() + Below());
         }
         Editor.Measure(new Size(width, double.PositiveInfinity));
         if (Boxed)
         {
             double lead = Editor.DesiredSize.Width + BoxGap;
             Label.Measure(new Size(Math.Max(0, width - lead), double.PositiveInfinity));
-            Note?.Measure(new Size(Math.Max(0, NoteRoom(width) - lead), double.PositiveInfinity));
-            return new Size(lead + Math.Max(Label.DesiredSize.Width, Note?.DesiredSize.Width ?? 0),
+            MeasureUnder(Math.Max(0, NoteRoom(width) - lead));
+            return new Size(lead + Math.Max(Label.DesiredSize.Width, UnderWidth()),
                 Math.Max(Label.DesiredSize.Height, Editor.DesiredSize.Height) + Below());
         }
         Label.Measure(new Size(width, double.PositiveInfinity));
-        Note?.Measure(new Size(NoteRoom(width), double.PositiveInfinity));
-        return new Size(Math.Max(Label.DesiredSize.Width, Math.Max(Editor.DesiredSize.Width, Note?.DesiredSize.Width ?? 0)),
+        MeasureUnder(NoteRoom(width));
+        return new Size(Math.Max(Label.DesiredSize.Width, Math.Max(Editor.DesiredSize.Width, UnderWidth())),
             Label.DesiredSize.Height + Gap + Editor.DesiredSize.Height + Below());
     }
 
@@ -99,14 +105,14 @@ public sealed class OptionRow : Panel
             double box = Math.Max(Label.DesiredSize.Height, Editor.DesiredSize.Height);
             Editor.Arrange(new Rect(0, 0, Editor.DesiredSize.Width, box));
             Label.Arrange(new Rect(lead, 0, Math.Max(0, width - lead), box));
-            Note?.Arrange(new Rect(lead, box + Gap, Math.Max(0, NoteRoom(width) - lead), Note.DesiredSize.Height));
+            ArrangeUnder(lead, box, Math.Max(0, NoteRoom(width) - lead));
         }
         else if (IsStacked)
         {
             Label.Arrange(new Rect(0, 0, width, Label.DesiredSize.Height));
             double y = Label.DesiredSize.Height + Gap;
             Editor.Arrange(new Rect(0, y, Across(width), Editor.DesiredSize.Height));
-            Note?.Arrange(new Rect(0, y + Editor.DesiredSize.Height + Gap, NoteRoom(width), Note.DesiredSize.Height));
+            ArrangeUnder(0, y + Editor.DesiredSize.Height, NoteRoom(width));
         }
         else
         {
@@ -114,15 +120,39 @@ public sealed class OptionRow : Panel
             double top = Math.Max(0, labelTop);
             Label.Arrange(new Rect(0, top, LabelWidth, line - top));
             Editor.Arrange(new Rect(LabelWidth, 0, Across(width - LabelWidth), line));
-            Note?.Arrange(new Rect(LabelWidth, line + Gap, NoteRoom(width - LabelWidth), Note.DesiredSize.Height));
+            ArrangeUnder(LabelWidth, line, NoteRoom(width - LabelWidth));
         }
         return finalSize;
+    }
+
+    /// <summary>The note and what is said over the option, those shown, one under the other.</summary>
+    private IEnumerable<TextBlock> Under() => ((TextBlock?[])[Note, SaidOver]).OfType<TextBlock>().Where(t => t.IsVisible);
+
+    private void MeasureUnder(double room)
+    {
+        foreach (TextBlock under in Under())
+        {
+            under.Measure(new Size(room, double.PositiveInfinity));
+        }
+    }
+
+    private double UnderWidth() => Under().Select(t => t.DesiredSize.Width).DefaultIfEmpty(0).Max();
+
+    /// <summary>Lays the lines under the editor out from <paramref name="top"/>, each a gap below what is above it.</summary>
+    private void ArrangeUnder(double left, double top, double room)
+    {
+        foreach (TextBlock under in Under())
+        {
+            top += Gap;
+            under.Arrange(new Rect(left, top, room, under.DesiredSize.Height));
+            top += under.DesiredSize.Height;
+        }
     }
 
     /// <summary>The height of the label and editor side by side.</summary>
     private double Beside() => Math.Max(Label.DesiredSize.Height + Math.Max(0, labelTop), Editor.DesiredSize.Height);
 
-    private double Below() => Note is null ? 0 : Gap + Note.DesiredSize.Height;
+    private double Below() => Under().Sum(t => Gap + t.DesiredSize.Height);
 
     /// <summary>What a note takes of the room beside or under the label: up to where the widest editor ends.</summary>
     private static double NoteRoom(double room) => Math.Min(room, EditorWidth);

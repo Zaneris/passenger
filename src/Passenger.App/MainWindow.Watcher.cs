@@ -129,6 +129,7 @@ public partial class MainWindow
         {
             session.Index.Apply(folder, changes.ComeOrGone);
         }
+        session.EditorConfigs.FilesChanged(changes.Paths, every: changes.Lost);
         // An .editorconfig written, made or deleted: each open file follows what the ones over it say now.
         if (changes.Paths.Any(p => Path.GetFileName(p) == EditorConfig.FileName))
         {

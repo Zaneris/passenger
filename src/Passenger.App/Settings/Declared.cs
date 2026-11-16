@@ -1,3 +1,4 @@
+using Passenger.Languages;
 using Passenger.Vcs;
 using Passenger.Workspace.GDScript;
 using Passenger.Xaml.Features;
@@ -12,6 +13,9 @@ public static class Declared
 {
     /// <summary>Every declaration, each adding itself as it is made, so this comes before them.</summary>
     internal static readonly List<Setting> All = [];
+
+    /// <summary>Every declaration, in the order made.</summary>
+    public static IReadOnlyList<Setting> Every => All;
 
     /// <summary>The settings with every value a theme gives filled in as it stands where the person gave none.</summary>
     public static AppSettings InForce(AppSettings settings) => All.Aggregate(settings, (filled, setting) => setting.FilledIn(filled));
@@ -174,9 +178,11 @@ public static class Declared
             + "GDScript) turns this on for scripts alone."));
 
     public static readonly ToggleSetting EnsureFinalLineBreak = new(s => s.EnsureFinalLineBreak, (s, v) => s with { EnsureFinalLineBreak = v },
-        new(D.EditorPage, "Ensure a final line break on save", "save actions on save final line break newline end of file eol editorconfig insert_final_newline",
-            "Every save, autosave too, ends a file with a line break. An .editorconfig's insert_final_newline says over this "
-            + "for the files it covers: false saves them with none."));
+        new(D.EditorPage, "Ensure a final line break on save", "save actions on save final line break newline end of file eol",
+            "Every save, autosave too, ends a file with a line break; an insert_final_newline of false saves a file with none.")
+        {
+            Over = new(["insert_final_newline"]),
+        });
 
     public static readonly ToggleSetting FoldFileHeader = new(s => s.FoldFileHeader, (s, v) => s with { FoldFileHeader = v },
         new(D.CodeFoldingPage, "File header", $"{D.FoldingWords} comments licence license copyright top",
@@ -203,102 +209,147 @@ public static class Declared
     public static readonly ChoiceSetting<XamlAttributeStyle> AttributeStyle = new(s => s.XamlFormat.AttributeStyle, (s, v) => s with { XamlFormat = s.XamlFormat with { AttributeStyle = v } },
         Named<XamlAttributeStyle>(D.AttributeStyles),
         new(D.XamlCodeStylePage, "Attributes format", $"{D.XamlWords} attributes format separate lines single line first attribute do not touch",
-            "Reformat Code lays out .axaml and .xaml by these, Rider's own. A file's .editorconfig overrides each by Rider's key: "
-            + "xml_attribute_style, xml_attribute_indent, xml_indent_child_elements, max_line_length and the rest, with "
-            + "xaml_enable_attribute_reordering, xaml_attribute_ordering_rule_groups and xaml_remove_ending_tag_of_empty_element."));
+            "Reformat Code and Code Cleanup lay out .axaml and .xaml by these.") { Over = Xml("attribute_style") });
 
     public static readonly ChoiceSetting<XamlAttributeIndent> AttributeIndent = new(s => s.XamlFormat.AttributeIndent, (s, v) => s with { XamlFormat = s.XamlFormat with { AttributeIndent = v } },
         Named<XamlAttributeIndent>(D.AttributeIndents),
-        new(D.XamlCodeStylePage, "Attributes indenting", $"{D.XamlWords} attributes indenting indent align first attribute single double"));
+        new(D.XamlCodeStylePage, "Attributes indenting", $"{D.XamlWords} attributes indenting indent align first attribute single double")
+        {
+            Over = Xml("attribute_indent"),
+        });
 
     public static readonly ToggleSetting SpacesAroundEquals = new(s => s.XamlFormat.SpacesAroundEquals, (s, v) => s with { XamlFormat = s.XamlFormat with { SpacesAroundEquals = v } },
-        new(D.XamlCodeStylePage, "Spaces around '=' in attribute", $"{D.XamlWords} spaces equals"));
+        new(D.XamlCodeStylePage, "Spaces around '=' in attribute", $"{D.XamlWords} spaces equals") { Over = Xml("spaces_around_eq_in_attribute") });
 
     public static readonly ToggleSetting SpaceAfterLastAttribute = new(s => s.XamlFormat.SpaceAfterLastAttribute,
         (s, v) => s with { XamlFormat = s.XamlFormat with { SpaceAfterLastAttribute = v } },
-        new(D.XamlCodeStylePage, "Space after last attribute", $"{D.XamlWords} space tag header"));
+        new(D.XamlCodeStylePage, "Space after last attribute", $"{D.XamlWords} space tag header") { Over = Xml("space_after_last_attribute") });
 
     public static readonly ToggleSetting SpaceBeforeSelfClosing = new(s => s.XamlFormat.SpaceBeforeSelfClosing,
         (s, v) => s with { XamlFormat = s.XamlFormat with { SpaceBeforeSelfClosing = v } },
-        new(D.XamlCodeStylePage, "Space before '/>'", $"{D.XamlWords} space self closing empty"));
+        new(D.XamlCodeStylePage, "Space before '/>'", $"{D.XamlWords} space self closing empty") { Over = Xml("space_before_self_closing") });
 
     public static readonly ToggleSetting KeepLineBreaks = new(s => s.XamlFormat.KeepLineBreaks, (s, v) => s with { XamlFormat = s.XamlFormat with { KeepLineBreaks = v } },
-        new(D.XamlCodeStylePage, "Keep existing line breaks", $"{D.XamlWords} line breaks keep user"));
+        new(D.XamlCodeStylePage, "Keep existing line breaks", $"{D.XamlWords} line breaks keep user") { Over = Xml("keep_user_linebreaks") });
 
     public static readonly NumberSetting MaxBlankLines = new(s => s.XamlFormat.MaxBlankLines, (s, v) => s with { XamlFormat = s.XamlFormat with { MaxBlankLines = (int)v } },
-        0, XamlFormatSettings.MostBlankLines, 1, new(D.XamlCodeStylePage, "Maximum blank lines between tags", $"{D.XamlWords} blank lines empty"));
+        0, XamlFormatSettings.MostBlankLines, 1, new(D.XamlCodeStylePage, "Maximum blank lines between tags", $"{D.XamlWords} blank lines empty")
+        {
+            Over = Xml("max_blank_lines_between_tags"),
+        });
 
     public static readonly ToggleSetting MultilineElementsOnNewLine = new(s => s.XamlFormat.MultilineElementsOnNewLine,
         (s, v) => s with { XamlFormat = s.XamlFormat with { MultilineElementsOnNewLine = v } },
-        new(D.XamlCodeStylePage, "Place multiline elements on a new line", $"{D.XamlWords} tags line breaks multiline"));
+        new(D.XamlCodeStylePage, "Place multiline elements on a new line", $"{D.XamlWords} tags line breaks multiline")
+        {
+            Over = Xml("linebreak_before_multiline_elements"),
+        });
 
     public static readonly ToggleSetting SinglelineElementsOnNewLine = new(s => s.XamlFormat.SinglelineElementsOnNewLine,
         (s, v) => s with { XamlFormat = s.XamlFormat with { SinglelineElementsOnNewLine = v } },
-        new(D.XamlCodeStylePage, "Place single-line elements on a new line", $"{D.XamlWords} tags line breaks single line"));
+        new(D.XamlCodeStylePage, "Place single-line elements on a new line", $"{D.XamlWords} tags line breaks single line")
+        {
+            Over = Xml("linebreak_before_singleline_elements"),
+        });
 
     public static readonly ToggleSetting BreaksInsideElementsWithChildren = new(s => s.XamlFormat.BreaksInsideElementsWithChildren,
         (s, v) => s with { XamlFormat = s.XamlFormat with { BreaksInsideElementsWithChildren = v } },
         new(D.XamlCodeStylePage, "Line breaks after start-tag and before end-tag in elements that contain other elements and no text",
-            $"{D.XamlWords} tag content line breaks children"));
+            $"{D.XamlWords} tag content line breaks children") { Over = Xml("linebreaks_inside_tags_for_elements_with_child_elements") });
 
     public static readonly ToggleSetting BreaksInsideMultilineElements = new(s => s.XamlFormat.BreaksInsideMultilineElements,
         (s, v) => s with { XamlFormat = s.XamlFormat with { BreaksInsideMultilineElements = v } },
-        new(D.XamlCodeStylePage, "Line breaks after start-tag and before end-tag in multiline elements", $"{D.XamlWords} tag content line breaks multiline"));
+        new(D.XamlCodeStylePage, "Line breaks after start-tag and before end-tag in multiline elements", $"{D.XamlWords} tag content line breaks multiline")
+        {
+            Over = Xml("linebreaks_inside_tags_for_multiline_elements"),
+        });
 
     public static readonly ChoiceSetting<XamlContentIndent> ChildIndent = new(s => s.XamlFormat.ChildIndent, (s, v) => s with { XamlFormat = s.XamlFormat with { ChildIndent = v } },
         Named<XamlContentIndent>(D.ContentIndents),
-        new(D.XamlCodeStylePage, "Indent inside element that does not contain text", $"{D.XamlWords} indent children elements tag content"));
+        new(D.XamlCodeStylePage, "Indent inside element that does not contain text", $"{D.XamlWords} indent children elements tag content")
+        {
+            Over = Xml("indent_child_elements"),
+        });
 
     public static readonly ChoiceSetting<XamlContentIndent> TextIndent = new(s => s.XamlFormat.TextIndent, (s, v) => s with { XamlFormat = s.XamlFormat with { TextIndent = v } },
         Named<XamlContentIndent>(D.ContentIndents),
-        new(D.XamlCodeStylePage, "Indent inside element that contains text", $"{D.XamlWords} indent text tag content"));
+        new(D.XamlCodeStylePage, "Indent inside element that contains text", $"{D.XamlWords} indent text tag content") { Over = Xml("indent_text") });
 
     public static readonly ToggleSetting BlankLineAfterProcessingInstructions = new(s => s.XamlFormat.BlankLineAfterProcessingInstructions,
         (s, v) => s with { XamlFormat = s.XamlFormat with { BlankLineAfterProcessingInstructions = v } },
-        new(D.XamlCodeStylePage, "Blank line after processing instructions", $"{D.XamlWords} processing instructions xml declaration blank line"));
+        new(D.XamlCodeStylePage, "Blank line after processing instructions", $"{D.XamlWords} processing instructions xml declaration blank line")
+        {
+            Over = Xml("blank_line_after_pi"),
+        });
 
     public static readonly ToggleSetting WrapTags = new(s => s.XamlFormat.WrapTags, (s, v) => s with { XamlFormat = s.XamlFormat with { WrapTags = v } },
-        new(D.XamlCodeStylePage, "Wrap tags and processing instructions", $"{D.XamlWords} wrap long lines tags margin"));
+        new(D.XamlCodeStylePage, "Wrap tags and processing instructions", $"{D.XamlWords} wrap long lines tags margin")
+        {
+            Over = Xml("wrap_tags_and_pi"),
+        });
 
     public static readonly ToggleSetting WrapAroundElements = new(s => s.XamlFormat.WrapAroundElements, (s, v) => s with { XamlFormat = s.XamlFormat with { WrapAroundElements = v } },
-        new(D.XamlCodeStylePage, "Wrap before and after elements", $"{D.XamlWords} wrap long lines elements margin"));
+        new(D.XamlCodeStylePage, "Wrap before and after elements", $"{D.XamlWords} wrap long lines elements margin")
+        {
+            Over = Xml("wrap_around_elements"),
+        });
 
     public static readonly NumberSetting RightMargin = new(s => s.XamlFormat.RightMargin, (s, v) => s with { XamlFormat = s.XamlFormat with { RightMargin = (int)v } },
         0, XamlFormatSettings.WidestMargin, 1,
         new(D.XamlCodeStylePage, "Right margin (columns)", $"{D.XamlWords} right margin columns wrap hard max line length")
         {
             When = new(s => s.XamlFormat.WrapTags || s.XamlFormat.WrapAroundElements, "Wrap tags and processing instructions and Wrap before and after elements are both off"),
+            Over = Xml("max_line_length", "max_line_length"),
+        });
+
+    public static readonly ToggleSetting ReorderAttributes = new(s => s.XamlFormat.ReorderAttributes,
+        (s, v) => s with { XamlFormat = s.XamlFormat with { ReorderAttributes = v } },
+        new(D.XamlCodeStylePage, "Reorder attributes", $"{D.XamlWords} attributes order ordering sort reorder xaml styler x:name grid",
+            "XAML Styler's Enable attribute reordering: each attribute in the group below that names it most nearly, a group to a line.")
+        {
+            Over = new(["xaml_enable_attribute_reordering"], Language.Xaml),
+        });
+
+    public static readonly LinesSetting AttributeOrder = new(s => s.XamlFormat.AttributeOrder, (s, v) => s with { XamlFormat = s.XamlFormat with { AttributeOrder = v } },
+        ';', 210, new(D.XamlCodeStylePage, "Attribute ordering rule groups", $"{D.XamlWords} attributes order ordering rule groups xaml styler")
+        {
+            When = new(s => s.XamlFormat.ReorderAttributes, "Reorder attributes is off"),
+            Over = new(["xaml_attribute_ordering_rule_groups"], Language.Xaml),
         });
 
     public static readonly ToggleSetting CollapseEmptyElements = new(s => s.XamlFormat.CollapseEmptyElements,
         (s, v) => s with { XamlFormat = s.XamlFormat with { CollapseEmptyElements = v } },
-        new(D.XamlCodeStylePage, "Remove ending tag of empty element", $"{D.XamlWords} empty element end tag self closing collapse xaml styler"));
+        new(D.XamlCodeStylePage, "Remove ending tag of empty element", $"{D.XamlWords} empty element end tag self closing collapse xaml styler")
+        {
+            Over = new(["xaml_remove_ending_tag_of_empty_element"], Language.Xaml),
+        });
 
     public static readonly ToggleSetting GDScriptWrapLongLines = new(s => s.GDScriptFormat.WrapLongLines,
         (s, v) => s with { GDScriptFormat = s.GDScriptFormat with { WrapLongLines = v } },
         new(D.GDScriptCodeStylePage, "Wrap long lines inside brackets", $"{D.GDScriptWords} wrap long lines line length brackets arguments arrays multiline",
             "Reformat Code lays a .gd script out by Godot's GDScript style guide, indented by its .editorconfig, else with "
-            + "Godot's tabs. A line past the line length breaks inside its brackets in the guide's multiline forms. A file's "
-            + ".editorconfig says over this by max_line_length: off leaves long lines as they are."));
+            + "Godot's tabs. A line past the line length breaks inside its brackets in the guide's multiline forms; a "
+            + "max_line_length of off leaves long lines as they are.") { Over = GDScript("max_line_length") });
 
     public static readonly NumberSetting GDScriptLineLength = new(s => s.GDScriptFormat.LineLength,
         (s, v) => s with { GDScriptFormat = s.GDScriptFormat with { LineLength = (int)v } },
         GDScriptFormatSettings.ShortestLine, GDScriptFormatSettings.LongestLine, 1,
         new(D.GDScriptCodeStylePage, "Line length (columns)", $"{D.GDScriptWords} line length columns max right margin hard wrap 100 80",
-            "The style guide's is 100. A file's .editorconfig says over this by max_line_length.")
+            "The style guide's is 100.")
         {
             When = new(s => s.GDScriptFormat.WrapLongLines, "Wrap long lines inside brackets is off, so no line is wrapped"),
+            Over = GDScript("max_line_length"),
         });
 
     public static readonly NumberSetting GDScriptBlankLines = new(s => s.GDScriptFormat.BlankLinesAroundFunctions,
         (s, v) => s with { GDScriptFormat = s.GDScriptFormat with { BlankLinesAroundFunctions = (int)v } }, 1, 2, 1,
         new(D.GDScriptCodeStylePage, "Blank lines around functions and classes", $"{D.GDScriptWords} blank lines empty functions classes methods",
-            "The style guide's is 2. A file's .editorconfig says over this by gdscript_blank_lines_around_functions."));
+            "The style guide's is 2.") { Over = GDScript("gdscript_blank_lines_around_functions") });
 
     public static readonly ToggleSetting GDScriptTrailingCommas = new(s => s.GDScriptFormat.TrailingCommas,
         (s, v) => s with { GDScriptFormat = s.GDScriptFormat with { TrailingCommas = v } },
         new(D.GDScriptCodeStylePage, "Trailing comma in multi-line arrays, dictionaries and enums", $"{D.GDScriptWords} trailing comma arrays dictionaries enums",
-            "A file's .editorconfig says over this by gdscript_trailing_comma. A comma already written stays."));
+            "A comma already written stays.") { Over = GDScript("gdscript_trailing_comma") });
 
     public static readonly ToggleSetting GDScriptFormatOnSave = new(s => s.GDScriptFormatOnSave, (s, v) => s with { GDScriptFormatOnSave = v },
         new(D.GDScriptCodeStylePage, "Reformat on save", $"{D.GDScriptWords} save actions on save format on save",
@@ -460,6 +511,13 @@ public static class Declared
         Vcs.DiffView.HighlightingWays,
         new(D.VersionControlPage, "Highlighting differences", "diff highlight highlighting differences words characters lines inline changed git vcs",
             "What a diff marks inside the lines that changed. A diff's own Settings changes it too."));
+
+    /// <summary>The keys XAML's layout is said over by: the XML formatter's (<c>xml_</c>, read under <c>resharper_xml_</c>
+    /// too), and any <paramref name="more"/> after it.</summary>
+    private static EditorConfigOver Xml(string key, params string[] more) => new(["xml_" + key, .. more], Language.Xaml) { Aliases = ["resharper_xml_" + key] };
+
+    /// <summary>A key a script's layout is said over by.</summary>
+    private static EditorConfigOver GDScript(string key) => new([key], Language.GDScript);
 
     /// <summary>An enum's values with the names Settings gives them, in the enum's order.</summary>
     private static (T Value, string Name)[] Named<T>(string[] names) where T : struct, Enum => [.. Enum.GetValues<T>().Zip(names)];

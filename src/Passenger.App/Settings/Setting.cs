@@ -4,6 +4,7 @@ using Avalonia.Layout;
 using Avalonia.Media;
 using Passenger.Core;
 using Passenger.Editor;
+using Passenger.Languages;
 
 namespace Passenger.App.Settings;
 
@@ -14,10 +15,30 @@ public sealed record SettingRow(string Page, string Label, string Words, string?
     /// <summary>Whether its row takes effect under the settings as they stand, and why not where not: a row another greys
     /// while it is off (a line length while wrapping is off).</summary>
     public SettingWhen? When { get; init; }
+
+    /// <summary>The .editorconfig keys that say over it for the files they are set for, which its note names and under
+    /// which Settings says what the open folder's .editorconfig files set.</summary>
+    public EditorConfigOver? Over { get; init; }
+
+    /// <summary>The note as Settings shows it: its own words, then the keys that say over it.</summary>
+    public string? NoteShown => Over is null ? Note : Note is null ? Over.Words : $"{Note} {Over.Words}";
 }
 
 /// <summary>What a row takes effect under, and the words said on it while it does not.</summary>
 public sealed record SettingWhen(Func<AppSettings, bool> Holds, string Why);
+
+/// <summary>The .editorconfig keys a file's .editorconfig says over a row's setting by, for <paramref name="Files"/>'
+/// files (null for every file); <see cref="Aliases"/> are read as well, under names the row's note leaves out.</summary>
+public sealed record EditorConfigOver(IReadOnlyList<string> Keys, Language? Files = null)
+{
+    public IReadOnlyList<string> Aliases { get; init; } = [];
+
+    /// <summary>What the row's note says of them.</summary>
+    public string Words => $"A file's .editorconfig says over this by {Plural.Either(Keys)}.";
+
+    /// <summary>Whether a key (as an .editorconfig's reader lowers it) is one of them.</summary>
+    public bool Names(string key) => Keys.Contains(key, StringComparer.Ordinal) || Aliases.Contains(key, StringComparer.Ordinal);
+}
 
 /// <summary>A setting of one value, declared once in <see cref="Declared"/>: how it is read and written, what it allows (a
 /// number's range, an enum's values) and its own row in Settings, where it has one. Its editor and its clamp come from
@@ -46,6 +67,14 @@ public abstract class Setting
 
     /// <summary>The settings with this one's value as it stands in force where a theme gives it and the person gave none.</summary>
     public virtual AppSettings FilledIn(AppSettings settings) => settings;
+
+    /// <summary>The settings with this one at another value it takes, which tells what it is kept as (<see cref="Member"/>).</summary>
+    public abstract AppSettings Other(AppSettings settings);
+
+    /// <summary>Its name in settings.json, as the agents' settings tool names it: the member <see cref="Other"/> changes.</summary>
+    public string Member => member ??= SettingMembers.Changed(new AppSettings(), Other(new AppSettings()))[0].Split('.')[0];
+
+    private string? member;
 }
 
 /// <summary>A setting on or off, edited by a check box.</summary>
@@ -59,6 +88,8 @@ public sealed class ToggleSetting(Func<AppSettings, bool> get, Func<AppSettings,
     }
 
     public override AppSettings Clamp(AppSettings settings) => settings;
+
+    public override AppSettings Other(AppSettings settings) => set(settings, !get(settings));
 }
 
 /// <summary>A number held between <paramref name="min"/> and <paramref name="max"/>, edited by a spin box in steps of
@@ -96,6 +127,8 @@ public sealed class NumberSetting(Func<AppSettings, double> get, Func<AppSetting
         given is not null && !given(settings) ? settings : set(settings, Math.Clamp(get(settings), min, max));
 
     public override AppSettings FilledIn(AppSettings settings) => given is not null && !given(settings) ? set(settings, get(settings)) : settings;
+
+    public override AppSettings Other(AppSettings settings) => set(settings, get(settings) == min ? max : min);
 }
 
 /// <summary>A size chosen from a drop-down of <paramref name="sizes"/> (1.5 shown as 150%), from the least to the most: the
@@ -131,6 +164,8 @@ public sealed class SizeSetting(Func<AppSettings, double> get, Func<AppSettings,
     public static string Percent(double size) => string.Create(System.Globalization.CultureInfo.InvariantCulture, $"{size * 100:0.#}%");
 
     public override AppSettings Clamp(AppSettings settings) => set(settings, Math.Clamp(get(settings), sizes[0], sizes[^1]));
+
+    public override AppSettings Other(AppSettings settings) => set(settings, get(settings) == sizes[0] ? sizes[^1] : sizes[0]);
 }
 
 /// <summary>One of an enum's values, edited by a drop-down of the names Settings gives them, in <paramref name="choices"/>'
@@ -168,6 +203,9 @@ public sealed class ChoiceSetting<T> : Setting where T : struct, Enum
     }
 
     public override AppSettings Clamp(AppSettings settings) => Enum.IsDefined(get(settings)) ? settings : set(settings, fallback);
+
+    public override AppSettings Other(AppSettings settings) =>
+        set(settings, choices.Select(c => c.Value).FirstOrDefault(v => !EqualityComparer<T>.Default.Equals(v, get(settings))));
 }
 
 /// <summary>One of an enum's values that a theme may give and the person's own choice wins over, edited by a drop-down: its
@@ -196,6 +234,8 @@ public sealed class ThemedChoiceSetting<T>(Func<AppSettings, T?> own, Func<AppSe
     public override AppSettings Clamp(AppSettings settings) => own(settings) is { } chosen && !Enum.IsDefined(chosen) ? set(settings, null) : settings;
 
     public override AppSettings FilledIn(AppSettings settings) => own(settings) is null ? set(settings, inForce(settings)) : settings;
+
+    public override AppSettings Other(AppSettings settings) => set(settings, own(settings) is null ? choices[0].Value : null);
 }
 
 /// <summary>Vim mode's Ctrl keys (<see cref="Vim.CtrlKeys"/>), each Vim mode's or the keymap's: the setting names those the
@@ -261,6 +301,8 @@ public sealed class VimKeysSetting(string property, Func<AppSettings, string> ge
             ? $"{Row!.Label} ({SettingsDialog.PlaceOfPage(Row.Page)}) has no key {unknown}: its keys are {Plural.Listed(Keys)}, a space between each"
             : null;
 
+    public override AppSettings Other(AppSettings settings) => set(settings, Joined(Given(settings), Keys[0], !Given(settings).Contains(Keys[0])));
+
     /// <summary>The keys given with <paramref name="key"/> given to the keymap or taken back, as the setting keeps them.</summary>
     private static string Joined(IReadOnlySet<string> given, string key, bool toKeymap) =>
         string.Join(' ', Keys.Where(k => k == key ? toKeymap : given.Contains(k)));
@@ -317,9 +359,37 @@ public sealed class ProgramSetting(Func<AppSettings, string?> get, Func<AppSetti
 
     public override AppSettings Clamp(AppSettings settings) => string.IsNullOrWhiteSpace(get(settings)) ? set(settings, null) : settings;
 
+    public override AppSettings Other(AppSettings settings) => set(settings, get(settings) is null ? "program" : null);
+
     public override string? Refused(AppSettings was, AppSettings now) => get(now) is { } line && line != get(was) && Run.CommandLine.NamesNoProgram(line)
         ? $"{Row!.Label} {line.Trim()} ({SettingsDialog.PlaceOfPage(Row.Page)}) {NamesNone}"
         : null;
+}
+
+/// <summary>A text of parts with <paramref name="separator"/> between each (XAML's attribute groups), edited a part to a line
+/// in a box of several lines <paramref name="height"/> high, where a line longer than the box scrolls into view rather than
+/// being cut at its edge; kept with a space after each separator.</summary>
+public sealed class LinesSetting(Func<AppSettings, string> get, Func<AppSettings, string, AppSettings> set, char separator, double height, SettingRow row)
+    : Setting(row)
+{
+    public override Control Editor(AppSettings now, Action<Func<AppSettings, AppSettings>> change)
+    {
+        TextBox lines = new()
+        {
+            Classes = { StyleClasses.Search }, Text = string.Join('\n', Parts(get(now))), AcceptsReturn = true, MaxWidth = OptionRow.EditorWidth, Height = height,
+        };
+        ScrollViewer.SetHorizontalScrollBarVisibility(lines, Avalonia.Controls.Primitives.ScrollBarVisibility.Auto);
+        lines.TextChanged += (_, _) => change(s => set(s, string.Join($"{separator} ", (lines.Text ?? string.Empty).Split('\n', Split))));
+        return lines;
+    }
+
+    public override AppSettings Clamp(AppSettings settings) => settings;
+
+    public override AppSettings Other(AppSettings settings) => set(settings, $"{get(settings)}{separator} other");
+
+    private const StringSplitOptions Split = StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries;
+
+    private string[] Parts(string text) => text.Split(separator, Split);
 }
 
 /// <summary>A font family by name (<paramref name="property"/>'s), chosen from a drop-down of what <paramref name="fonts"/>
@@ -398,6 +468,8 @@ public sealed class FontSetting(string property, Func<AppSettings, string?> get,
     }
 
     public override AppSettings Clamp(AppSettings settings) => set(settings, Trimmed(get(settings)));
+
+    public override AppSettings Other(AppSettings settings) => set(settings, get(settings) is null ? fonts.Carried : null);
 
     public override string? Refused(AppSettings was, AppSettings now) =>
         Trimmed(get(now)) is { } name && !string.Equals(name, Trimmed(get(was)), StringComparison.OrdinalIgnoreCase) && fonts.WhyNot(name) is { } why

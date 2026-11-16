@@ -106,6 +106,25 @@ public sealed class McpIdeTests : McpRig, IClassFixture<RestoredFolders>
         Assert.Equal(warnings, reached);
     }
 
+    /// <summary>An agent's settings say, setting by setting, what the folder's .editorconfig files set over it for the files
+    /// their sections name, as Settings does under its rows: GDScript's layout the line length scripts take, XAML's
+    /// nothing, set for scripts alone, and the final line break what Markdown files take.</summary>
+    [Fact]
+    public async Task Settings_say_what_the_folders_editorconfig_files_set_over_each_setting()
+    {
+        await TakeFolderAsync();
+        Write(".editorconfig", "root = true\n\n[*.gd]\nmax_line_length = 120\n\n[*.md]\ninsert_final_newline = false\n");
+        await using McpClient client = await Start(["--mcp", Folder]);
+        JsonElement[] settings = [.. (await Call(client, McpTools.Settings)).GetProperty("settings").EnumerateArray()];
+        JsonElement Named(string name) => settings.Single(s => s.GetProperty("name").GetString() == name);
+        string[] said = Named("gdScriptFormat").TryGetProperty("editorConfig", out JsonElement lines) ? [.. lines.EnumerateArray().Select(l => l.GetString()!)] : [];
+        Assert.True(said.SequenceEqual(["./.editorconfig sets max_line_length = 120 for *.gd"]),
+            $"gdScriptFormat said the folder's .editorconfig sets over it: {string.Join("; ", said)}");
+        Assert.False(Named("xamlFormat").TryGetProperty("editorConfig", out JsonElement xaml),
+            $"xamlFormat was said to be set over by a max_line_length set for scripts alone: {xaml}");
+        Assert.Equal("./.editorconfig sets insert_final_newline = false for *.md", Named("ensureFinalLineBreak").GetProperty("editorConfig")[0].GetString());
+    }
+
     /// <summary>An agent's Passenger whose state PASSENGER_SETTINGS names opens on the settings.json kept there, as a person's
     /// window would: solution-wide analysis on there is on from its start, listing an error of a file nobody opened, and the
     /// settings stay its own, kept nowhere, so a change it makes leaves the file as it was.</summary>

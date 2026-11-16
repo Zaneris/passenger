@@ -354,6 +354,10 @@
     <Style Selector="TextBlock.muted">
         <Setter Property="Foreground" Value="{DynamicResource Passenger.TextMuted}" />
     </Style>
+    <!-- What a file in the open folder sets over a setting, under its row in Settings: the setting is not what applies there. -->
+    <Style Selector="TextBlock.saidOver">
+        <Setter Property="Foreground" Value="{DynamicResource Passenger.Warning}" />
+    </Style>
     <!-- Words saying what is wrong: a field's problem, what failed. -->
     <Style Selector="TextBlock.error">
         <Setter Property="Foreground" Value="{DynamicResource Passenger.Error}" />

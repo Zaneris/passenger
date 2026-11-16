@@ -306,6 +306,9 @@ public sealed class Language
     /// <summary>Whether the language is coloured and folded by its own parse in-process (C#'s) rather than by its grammar.</summary>
     internal bool Parsed { get; }
 
+    /// <summary>The file names it claims, though a language declared before it may claim a file first.</summary>
+    public IReadOnlyList<FilePattern> Patterns => patterns;
+
     /// <summary>Every language's id, in the order declared, as a theme names a language it colours.</summary>
     public static IEnumerable<string> Ids => All.Select(l => l.Id);
 
