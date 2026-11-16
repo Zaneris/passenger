@@ -289,7 +289,7 @@ public sealed class TestController : IAsyncDisposable
 
     /// <summary>Run Until Failure of the methods a match takes once the first run's build has ended
     /// (<see cref="RunMatchingAsync"/>), those same methods run again after.</summary>
-    public Task<string?> RunUntilFailureAsync(string workspace, Func<TestNode, bool> match, Func<string?, string> none) => UntilFailureAsync(workspace, new Choice(null, match, none));
+    public Task<string?> RunUntilFailureAsync(string workspace, Func<TestNode, bool> match, Func<string?, string> none) => UntilFailureAsync(workspace, new Choice(null, Methods(match), none));
 
     private async Task<string?> UntilFailureAsync(string workspace, Choice choice)
     {
@@ -340,7 +340,14 @@ public sealed class TestController : IAsyncDisposable
     /// runner finds, runs with them. <paramref name="none"/> says what is said when it takes none, given why the tests of
     /// the projects concerned could not be found (null where they were).</summary>
     public Task<string?> RunMatchingAsync(string workspace, Func<TestNode, bool> match, Func<string?, string> none, bool debug = false) =>
-        RunChoiceAsync(workspace, new Choice(null, match, none), debug, build: true, prefix: string.Empty);
+        RunChoiceAsync(workspace, new Choice(null, Methods(match), none), debug, build: true, prefix: string.Empty);
+
+    /// <summary>Runs the rows a pick takes from the tree's methods as they stand once the build and the look for the tests it
+    /// built have ended (<see cref="RunMatchingAsync"/>): a data row of a method alone, as an outline's example row.</summary>
+    public Task<string?> RunPickedAsync(string workspace, Func<IReadOnlyList<TestNode>, List<TestNode>> pick, Func<string?, string> none, bool debug = false) =>
+        RunChoiceAsync(workspace, new Choice(null, pick, none), debug, build: true, prefix: string.Empty);
+
+    private static Func<IReadOnlyList<TestNode>, List<TestNode>> Methods(Func<TestNode, bool> match) => methods => [.. methods.Where(match)];
 
     private async Task<string?> RunChoiceAsync(string workspace, Choice choice, bool debug, bool build, string prefix)
     {
@@ -363,7 +370,7 @@ public sealed class TestController : IAsyncDisposable
                 return problem;
             }
             stop.Token.ThrowIfCancellationRequested();
-            List<TestNode>? chosen = choice.Match is { } match ? [.. Tree.Methods.Where(match)] : choice.Rows;
+            List<TestNode>? chosen = choice.Pick is { } pick ? pick(Tree.Methods) : choice.Rows;
             List<TestItem> tests = Chosen(chosen ?? Tree.Methods);
             if (tests.Count == 0)
             {
@@ -860,9 +867,9 @@ public sealed class TestController : IAsyncDisposable
         return $"Tests passed: {passed}, failed: {failed}{(skipped > 0 ? $", skipped: {skipped}" : "")} of {results.Count} in {Durations.Said(summary.Elapsed)}{ending}";
     }
 
-    /// <summary>What a run runs: rows chosen (every test for none), or the tree's methods a match takes once the tests built
-    /// are found, and what is said when that is none, given why the tests of the projects concerned could not be found.</summary>
-    private sealed record Choice(List<TestNode>? Rows, Func<TestNode, bool>? Match, Func<string?, string>? None);
+    /// <summary>What a run runs: rows chosen (every test for none), or the rows a pick takes of the tree's methods once the
+    /// tests built are found, and what is said when that is none, given why the tests of the projects concerned could not be found.</summary>
+    private sealed record Choice(List<TestNode>? Rows, Func<IReadOnlyList<TestNode>, List<TestNode>>? Pick, Func<string?, string>? None);
 
     /// <summary>The debugger for a run: the runner's test host started under it, or attached to, on the UI thread, from
     /// when the run is the debugger session's rather than work a screenshot waits for.</summary>

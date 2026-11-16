@@ -2,6 +2,7 @@ using Passenger.App.Workspace;
 using Passenger.Core;
 using Passenger.Editor;
 using Passenger.Languages.CSharp;
+using Passenger.Workspace.Gherkin;
 
 namespace Passenger.App.Testing;
 
@@ -10,11 +11,10 @@ namespace Passenger.App.Testing;
 /// ran. A file's tests are read off the UI thread from its own parse as each lands, none made for them, so typing in one
 /// file reads no other; the Unit Tests window's tree takes the same read (<see cref="Read"/>). An open GDScript file of a
 /// Godot project carrying GUT is read for GUT's tests as its typing pauses (<see cref="GutScripts"/>), and an open .feature
-/// file of a test project for its feature, rules and scenarios, each marked from the start and run by the tests the runner
-/// or the code-behind's <c>#line</c> directives say are on its lines.
-/// The icons follow the Unit Tests window at once when tests are found or a run begins or ends, and at most every 150 ms
-/// while its results come in (a pause would never come in a long run); with no test known, and none known before, there
-/// is nothing to follow.</summary>
+/// file of a test project for its feature, rules, scenarios and example rows, each marked from the start and run by the tests
+/// the runner or the code-behind's <c>#line</c> directives say are on its lines, a row by its outline's test's row. The icons
+/// follow the Unit Tests window at once when tests are found or a run begins or ends, and at most every 150 ms while its
+/// results come in (a pause would never come in a long run); with no test known, and none known before, nothing follows.</summary>
 public sealed class TestGutter
 {
     private static readonly TimeSpan Throttle = TimeSpan.FromMilliseconds(150);
@@ -175,8 +175,8 @@ public sealed class TestGutter
         return file.Places.Types.Where(t => t.First <= line && line <= t.Last && file.Tests.Types.Any(held => held.Type == t.Type)).MaxBy(t => t.First);
     }
 
-    /// <summary>Reads again each open GDScript file last read before its project was known to carry GUT: the test projects
-    /// were found again.</summary>
+    /// <summary>Reads again each open GDScript file last read before its project was known to carry GUT, and each .feature
+    /// file last read before its test project was known: the test projects were found again.</summary>
     public void ReadUnplaced()
     {
         UiThread.Check();
@@ -194,6 +194,26 @@ public sealed class TestGutter
     /// <summary>A line a compiler gives a test (from one, in its counting) as the editor's, from one.</summary>
     public static int EditorLine(Passenger.Lsp.ServerLines lines, int line) =>
         line <= 0 ? line : CSharp.ServerPlaces.PositionOf(lines, new Passenger.Lsp.LspPosition(line - 1, 0)).Line + 1;
+
+    /// <summary>The example row on a .feature file's line, with the outline it is a row of, as the file was last read; null on
+    /// any other line.</summary>
+    public (DeclaredPlace Outline, ExampleRow Row)? RowAt(OpenDocument document, int line)
+    {
+        UiThread.Check();
+        if (!files.TryGetValue(document, out Declared? file) || file.Rows.FirstOrDefault(r => r.Row.Line == line) is not { } row
+            || file.Places.Methods.FirstOrDefault(m => m.Line == row.Outline.Line) is not { } outline)
+        {
+            return null;
+        }
+        return (outline, row);
+    }
+
+    /// <summary>Whether a data row of an outline's test ran an example row, by the arguments its name gives, the rows read with it.</summary>
+    public static bool Ran(TestNode node, ExampleRow row, IReadOnlyList<ExampleRow> rows) =>
+        node.Kind == TestNodeKind.Row && ReferenceEquals(ExampleRows.RowOf(rows, row.Outline, node.Name), row);
+
+    /// <summary>The example rows a .feature file was last read to hold.</summary>
+    public IReadOnlyList<ExampleRow> RowsOf(OpenDocument document) => files.TryGetValue(document, out Declared? file) ? file.Rows : [];
 
     /// <summary>The scenario, else the rule, else the feature a .feature file's line is in, as the file was last read; null in
     /// any other file, or outside them.</summary>
@@ -214,7 +234,7 @@ public sealed class TestGutter
     private async Task ReadFeatureAsync(OpenDocument document, Declared file, int asked, Passenger.Text.TextSnapshot text)
     {
         string? project = ProjectsOf?.Invoke(document.Path).FirstOrDefault();
-        FilePlaces places = project is null ? FilePlaces.None : await BackgroundWork.Run(() =>
+        (FilePlaces places, IReadOnlyList<ExampleRow> rows) = project is null ? (FilePlaces.None, []) : await BackgroundWork.Run(() =>
         {
             Passenger.Workspace.Gherkin.FeatureReading reading = Passenger.Workspace.Gherkin.FeatureReading.Read(text.ToString(),
                 Passenger.Workspace.Gherkin.FeatureLanguage.Of(Path.GetDirectoryName(project)));
@@ -226,7 +246,7 @@ public sealed class TestGutter
             types.AddRange(reading.Rules.Select(r => new DeclaredPlace($"{r.Keyword}: {r.Title}", null, r.Line, r.Line, r.EndLine)));
             List<DeclaredPlace> methods = [.. reading.Scenarios.Where(s => s.Kind != Passenger.Workspace.Gherkin.ScenarioKind.Background)
                 .Select(s => new DeclaredPlace(document.Path, s.Title.Length > 0 ? s.Title : s.Keyword, s.Line, s.Line, s.EndLine))];
-            return new FilePlaces(types, methods);
+            return (new FilePlaces(types, methods), ExampleRows.Of(reading));
         });
         if (asked != file.Asked || !ReferenceEquals(document.Text.Snapshot, text) || !files.ContainsKey(document))
         {
@@ -235,6 +255,8 @@ public sealed class TestGutter
         file.Reads++;
         file.Tests = FileTests.None;
         file.Places = places;
+        file.Rows = rows;
+        file.Unplaced = project is null;
         file.Marked = places.Types.Concat(places.Methods).Select(p => p.Line).ToHashSet();
         Index();
         Colour(document, file);
@@ -340,13 +362,37 @@ public sealed class TestGutter
         {
             Mark(place);
         }
+        foreach (ExampleRow row in file.Rows)
+        {
+            HashSet<TestNode>? ran = null;
+            if (file.Places.Methods.FirstOrDefault(m => m.Line == row.Outline.Line) is { } outline)
+            {
+                foreach (TestNode method in MethodsOf(outline) ?? [])
+                {
+                    foreach (TestNode each in method.Children.Where(c => Ran(c, row, file.Rows)))
+                    {
+                        (ran ??= new(ReferenceEqualityComparer.Instance)).Add(each);
+                    }
+                }
+            }
+            marks.Add(new TestMark(row.Row.Line, MarkOf(ran)));
+        }
         if (!marks.SequenceEqual(document.TestMarks))
         {
             document.TestMarks = marks;
         }
 
-        // A place no test is known by costs nothing: a parse of a file of thousands of methods colours them on every key.
         void Mark(DeclaredPlace place)
+        {
+            HashSet<TestNode>? methods = MethodsOf(place);
+            if (methods is not null || testLines.Contains(place.Line) || file.Marked.Contains(place.Line))
+            {
+                marks.Add(new TestMark(place.Line, MarkOf(methods)));
+            }
+        }
+
+        // A place no test is known by costs nothing: a parse of a file of thousands of methods colours them on every key.
+        HashSet<TestNode>? MethodsOf(DeclaredPlace place)
         {
             HashSet<TestNode>? methods = null;
             Dictionary<string, HashSet<TestNode>> index = place.Method is null ? byType : byMethod;
@@ -369,10 +415,7 @@ public sealed class TestGutter
                     (methods ??= new(ReferenceEqualityComparer.Instance)).Add(method);
                 }
             }
-            if (methods is not null || testLines.Contains(place.Line) || file.Marked.Contains(place.Line))
-            {
-                marks.Add(new TestMark(place.Line, MarkOf(methods)));
-            }
+            return methods;
         }
     }
 
@@ -440,10 +483,14 @@ public sealed class TestGutter
         /// <summary>A GDScript file's read as its typing pauses; null for a C# file, read from its parses.</summary>
         public Debounce? Reading { get; set; }
 
-        /// <summary>Whether a GDScript file was last read with no project carrying GUT known to hold it.</summary>
+        /// <summary>Whether a GDScript file was last read with no project carrying GUT known to hold it, or a .feature file with
+        /// no test project.</summary>
         public bool Unplaced { get; set; }
 
         /// <summary>The lines marked whether or not a test is known there: a feature's and its scenarios'.</summary>
         public IReadOnlySet<int> Marked { get; set; } = new HashSet<int>();
+
+        /// <summary>A feature's outlines' example rows, each marked by the row of its outline's test that ran it.</summary>
+        public IReadOnlyList<ExampleRow> Rows { get; set; } = [];
     }
 }

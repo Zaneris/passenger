@@ -13,7 +13,7 @@ using Passenger.Text;
 namespace Passenger.Tests;
 
 /// <summary>A Reqnroll feature's scenarios run and debugged from the feature (<see cref="ReqnrollProjects"/>): each scenario
-/// marked in the gutter before anything is built, Run Tests at the caret building the project and running the scenario's
+/// and example row marked in the gutter before anything is built, Run Tests at the caret building the project and running the scenario's
 /// test, its mark taking the result; a breakpoint on a step's line stopping there, Step Into going into the step's
 /// definition and Step Over from a step to the next, an outline's placeholder hovered showing its example's value, and a
 /// Scenario with examples bound and run once for each row. Debugged through the window, so the class runs alone.</summary>
@@ -50,8 +50,8 @@ public sealed class BddRunTests : IClassFixture<RestoredFolders>, IDisposable
         try
         {
             OpenDocument feature = window.EditorArea.Active!;
-            Ui.WaitFor(() => feature.TestMarks.Select(m => m.Line).Order().SequenceEqual([1, 7, 13, 24]),
-                () => $"the feature and its scenarios marked: {string.Join(", ", feature.TestMarks.Select(m => $"{m.Line} {m.Kind}"))}");
+            Ui.WaitFor(() => feature.TestMarks.Select(m => m.Line).Order().SequenceEqual([1, 7, 13, 21, 22, 24]),
+                () => $"the feature, its scenarios and its example rows marked: {string.Join(", ", feature.TestMarks.Select(m => $"{m.Line} {m.Kind}"))}");
             CodeEditor editor = window.EditorArea.CodeEditor;
             Ui.PlaceAfter(editor, "Given the first number is 5");
             Ui.Run(window, AppActions.RunTests);

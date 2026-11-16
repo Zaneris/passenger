@@ -1150,7 +1150,8 @@ public partial class MainWindow : IdeWindow
     }
 
     /// <summary>A press on an icon of the gutter's marks: a test's menu, a route's or an .http request's, a run
-    /// configuration's, a colour's picker or a scene mark's menu; false where the line has none of these.</summary>
+    /// configuration's, a colour's picker, a scene mark's menu or a feature step's test; false where the line has none of
+    /// these.</summary>
     private bool PressMark(CodeEditor editor, OpenDocument document, GutterClick click)
     {
         if (document.TestMarks.Any(m => m.Line == click.Line))
@@ -1175,7 +1176,7 @@ public partial class MainWindow : IdeWindow
             ShowRunMarkMenu(editor, document, click.Line);
             return true;
         }
-        return PickColour(editor, document, click) || ShowSceneMarkMenu(editor, document, click.Line);
+        return PickColour(editor, document, click) || ShowSceneMarkMenu(editor, document, click.Line) || ShowStepRun(document, click.Line);
     }
 
     /// <summary>The Breakpoints window, a breakpoint chosen in it.</summary>

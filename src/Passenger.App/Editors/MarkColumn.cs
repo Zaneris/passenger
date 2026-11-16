@@ -25,7 +25,8 @@ public sealed record SceneLead(string Words, string File, int Line);
 public readonly record struct ColourMark(int Line, Color Colour, object? Data = null);
 
 /// <summary>The gutter's column right of the line numbers: one icon a line, the execution point's arrow before a test's run
-/// icon before a run configuration's before a colour's swatch before a scene mark's, and the breakpoints' dots over the
+/// icon before a run configuration's before a colour's swatch before a scene mark's before a feature step's outcome, and
+/// the breakpoints' dots over the
 /// numbers, the number giving way, each read from the file shown for the lines on screen. A press within
 /// <see cref="Reach"/> of its left edge, as its icons reach into the change bars beside it, is its on a line with an icon:
 /// the arrow's drags the arrow to Set Next Statement, the rest are <see cref="Pressed"/>'s.</summary>
@@ -42,6 +43,7 @@ public sealed class MarkColumn : IGutterColumn
     private readonly HashSet<int> runs = [];
     private readonly Dictionary<int, Color> colours = [];
     private readonly HashSet<int> scenes = [];
+    private readonly Dictionary<int, Passenger.Workspace.Gherkin.StepOutcome> steps = [];
     private readonly FollowedDocument file;
 
     /// <summary>The line the dragged arrow is over, while it is dragged.</summary>
@@ -70,6 +72,8 @@ public sealed class MarkColumn : IGutterColumn
 
     public IReadOnlyList<SceneMark> SceneMarks => file.Document?.SceneMarks ?? [];
 
+    public IReadOnlyList<StepMark> StepMarks => file.Document?.StepMarks ?? [];
+
     /// <summary>Shows a file's marks, followed as it changes them; none for no file.</summary>
     public void Show(OpenDocument? document)
     {
@@ -82,7 +86,7 @@ public sealed class MarkColumn : IGutterColumn
     private void OnFileChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (e.PropertyName is nameof(OpenDocument.LineMarks) or nameof(OpenDocument.TestMarks) or nameof(OpenDocument.RunMarks)
-            or nameof(OpenDocument.RouteMarks) or nameof(OpenDocument.ColourMarks) or nameof(OpenDocument.SceneMarks))
+            or nameof(OpenDocument.RouteMarks) or nameof(OpenDocument.ColourMarks) or nameof(OpenDocument.SceneMarks) or nameof(OpenDocument.StepMarks))
         {
             Changed?.Invoke(this, EventArgs.Empty);
         }
@@ -118,6 +122,12 @@ public sealed class MarkColumn : IGutterColumn
         {
             scenes.Add(sceneMarks[i].Line);
         }
+        steps.Clear();
+        LineOrdered<StepMark> stepMarks = LineOrdered<StepMark>.Of(StepMarks, static m => m.Line);
+        for (int i = stepMarks.From(frame.First); i < stepMarks.Count && stepMarks.LineOf(i) <= frame.Last; i++)
+        {
+            steps.TryAdd(stepMarks[i].Line, stepMarks[i].Outcome);
+        }
         double left = frame.Left;
         foreach (GutterLine shown in frame.Lines)
         {
@@ -151,6 +161,10 @@ public sealed class MarkColumn : IGutterColumn
             else if (scenes.Contains(line))
             {
                 DrawScene(frame, left, top);
+            }
+            else if (steps.TryGetValue(line, out Passenger.Workspace.Gherkin.StepOutcome step))
+            {
+                Testing.StepMarks.Draw(frame, step, left, top);
             }
             if (debug.TryBreakpoint(line, out LineMark mark))
             {

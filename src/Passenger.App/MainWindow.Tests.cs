@@ -199,9 +199,26 @@ public partial class MainWindow
         }
     }
 
-    /// <summary>The menu on a test's run icon: run or debug that test, or all of its class's.</summary>
+    /// <summary>The menu on a test's run icon: run or debug that test, or all of its class's; on an outline's example row,
+    /// run or debug that row alone.</summary>
     private void ShowTestMenu(CodeEditor editor, OpenDocument document, int line)
     {
+        if (testGutter.RowAt(document, line) is ({ } outline, { } row))
+        {
+            IReadOnlyList<Passenger.Workspace.Gherkin.ExampleRow> rows = testGutter.RowsOf(document);
+            string shown = $"{outline.Method} [{row.Shown}]";
+            MenuFlyout rowMenu = new();
+            MenuItem runRow = new() { Header = $"Run '{shown}'" };
+            runRow.Click += (_, _) => RunRowAt(outline, row, rows, document.Path, debug: false);
+            MenuItem debugRow = new() { Header = $"Debug '{shown}'" };
+            debugRow.Click += (_, _) => RunRowAt(outline, row, rows, document.Path, debug: true);
+            rowMenu.Items.Add(runRow);
+            rowMenu.Items.Add(debugRow);
+            TestMarkMenu = rowMenu;
+            rowMenu.Placement = Avalonia.Controls.PlacementMode.Pointer;
+            rowMenu.ShowAt(editor, showAtPointer: true);
+            return;
+        }
         if (testGutter.At(document, line) is not { } chosen)
         {
             return;
@@ -307,6 +324,24 @@ public partial class MainWindow
             || test.Places.Any(at => PathNames.Same(at.Path, path) && place.Holds(compiled is null ? at.Line : Testing.TestGutter.EditorLine(compiled, at.Line)));
 
         string None(string? unfound) => Refusals.NoTestOf(method ?? type, unfound);
+    }
+
+    /// <summary>Runs (or debugs) one example row of an outline: the row of the outline's test, as the tree has it once the
+    /// run's build has ended and its tests are found, whose arguments are the row's.</summary>
+    private void RunRowAt(Testing.DeclaredPlace outline, Passenger.Workspace.Gherkin.ExampleRow row, IReadOnlyList<Passenger.Workspace.Gherkin.ExampleRow> rows,
+        string path, bool debug)
+    {
+        if (Folder is null)
+        {
+            return;
+        }
+        ProjectSession running = session;
+        string workspace = Folder;
+        Passenger.Lsp.ServerLines? compiled = CSharp.ServerPlaces.Compiled(path, CSharp.ServerPlaces.TextOf(Editors, path));
+        RunTests(() => running.Tests.RunPickedAsync(workspace, methods => [.. methods
+            .Where(test => test.Places.Any(at => PathNames.Same(at.Path, path) && outline.Holds(compiled is null ? at.Line : Testing.TestGutter.EditorLine(compiled, at.Line))))
+            .SelectMany(test => test.Children.Where(c => c.Item is not null && Testing.TestGutter.Ran(c, row, rows)))],
+            unfound => Refusals.NoTestOf($"{outline.Method} [{row.Shown}]", unfound), debug));
     }
 
     /// <summary>A test host a runner would start, started under the debugger as a plan of its own (the runner built it, and

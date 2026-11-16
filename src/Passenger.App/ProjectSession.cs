@@ -773,6 +773,9 @@ public sealed class ProjectSession : IAsyncDisposable
     /// <summary>The errors the last Godot game launched raised, pinned to their lines.</summary>
     public Godot.GodotErrorPins ErrorPins { get; } = new();
 
+    /// <summary>How each step of the features last run went, on its line.</summary>
+    public Bdd.StepRuns StepRuns { get; } = new();
+
     /// <summary>The chosen Debug tab's app as <see cref="LiveAppChanged"/> last told it.</summary>
     private LiveApp? liveAppTold;
 

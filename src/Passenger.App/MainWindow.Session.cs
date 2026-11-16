@@ -305,6 +305,7 @@ public partial class MainWindow
         BindBookmarks(next);
         BindGamePane(next);
         BindErrorPins(next);
+        BindStepRuns(next);
         BindEndpoints(next);
         BindMigrations(next);
         BindPackages(next);

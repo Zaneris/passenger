@@ -1,5 +1,6 @@
 using Avalonia;
 using Avalonia.Media;
+using Avalonia.Media.TextFormatting;
 using Passenger.Editor;
 
 namespace Passenger.App.Testing;
@@ -54,5 +55,66 @@ public static class TestMarks
             // A failed test: the run icon with a red mark on it.
             context.DrawEllipse(frame.Brush(TokenKeys.Editor_Error), frame.Pen(TokenKeys.Editor_Gutter, 1.2), new Point(x + size, y + size - 1), 2.6, 2.6);
         }
+    }
+}
+
+/// <summary>How a feature's step went in the run that last took it, beside its line (from zero), and what its failure said
+/// (a failed or ambiguous step's first line), which the editor shows after the line.</summary>
+public readonly record struct StepMark(int Line, Passenger.Workspace.Gherkin.StepOutcome Outcome, string? Failure = null);
+
+/// <summary>A step's outcome as the gutter draws it, as the Unit Tests window marks a test: a tick passed, a cross failed or
+/// ambiguous, a dash skipped, a ring pending, a question mark undefined.</summary>
+public static class StepMarks
+{
+    public static void Draw(GutterFrame frame, Passenger.Workspace.Gherkin.StepOutcome outcome, double left, double top)
+    {
+        double size = Math.Min(frame.LineHeight - 8, 9);
+        double x = left + 3;
+        double y = top + ((frame.LineHeight - size) / 2);
+        switch (outcome)
+        {
+            case Passenger.Workspace.Gherkin.StepOutcome.Undefined:
+                TextLine mark = frame.Label("?", TokenKeys.Editor_Warning, 0.85, bold: true);
+                mark.Draw(frame.Context, new Point(x + ((size - mark.WidthIncludingTrailingWhitespace) / 2), top + ((frame.LineHeight - mark.Height) / 2)));
+                return;
+            case Passenger.Workspace.Gherkin.StepOutcome.Pending:
+                frame.Context.DrawEllipse(null, frame.Pen(TokenKeys.Editor_Warning, 1.4), new Point(x + (size / 2), y + (size / 2)), size / 2.4, size / 2.4);
+                return;
+        }
+        (string kind, string brush) = outcome switch
+        {
+            Passenger.Workspace.Gherkin.StepOutcome.Passed => ("tick", TokenKeys.Test_Passed),
+            Passenger.Workspace.Gherkin.StepOutcome.Skipped => ("dash", TokenKeys.Test_Skipped),
+            _ => ("cross", TokenKeys.Test_Failed),
+        };
+        GutterShape key = new($"{nameof(StepMarks)}.{kind}", size);
+        if (!frame.TryShape(key, out StreamGeometry? shape))
+        {
+            shape = frame.AddShape(key);
+            using StreamGeometryContext path = shape.Open();
+            switch (kind)
+            {
+                case "tick":
+                    path.BeginFigure(new Point(0, size * 0.55), false);
+                    path.LineTo(new Point(size * 0.38, size * 0.9));
+                    path.LineTo(new Point(size, size * 0.1));
+                    path.EndFigure(false);
+                    break;
+                case "dash":
+                    path.BeginFigure(new Point(size * 0.1, size / 2), false);
+                    path.LineTo(new Point(size * 0.9, size / 2));
+                    path.EndFigure(false);
+                    break;
+                default:
+                    path.BeginFigure(new Point(size * 0.1, size * 0.1), false);
+                    path.LineTo(new Point(size * 0.9, size * 0.9));
+                    path.EndFigure(false);
+                    path.BeginFigure(new Point(size * 0.9, size * 0.1), false);
+                    path.LineTo(new Point(size * 0.1, size * 0.9));
+                    path.EndFigure(false);
+                    break;
+            }
+        }
+        frame.DrawShape(shape, null, frame.Pen(brush, 1.6, PenLineCap.Round, PenLineJoin.Round), x, y);
     }
 }

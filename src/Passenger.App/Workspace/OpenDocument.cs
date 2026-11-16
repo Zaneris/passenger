@@ -554,6 +554,22 @@ public sealed class OpenDocument : Observable
         set => Set(ref testMarks, value);
     }
 
+    /// <summary>How each step of a feature went in the run that last took it (<see cref="Bdd.StepRuns"/>), beside its line,
+    /// a failure's words after it.</summary>
+    public IReadOnlyList<Testing.StepMark> StepMarks
+    {
+        get => stepMarks;
+        set
+        {
+            if (Set(ref stepMarks, value))
+            {
+                Decorations.SetLineAnnotations(ShownAnnotations);
+            }
+        }
+    }
+
+    private IReadOnlyList<Testing.StepMark> stepMarks = [];
+
     /// <summary>The run icons beside what a run configuration runs from it: a program's entry point, a launch profile, a
     /// compose file's services, a Dockerfile's image.</summary>
     public IReadOnlyList<RunMark> RunMarks
@@ -757,9 +773,11 @@ public sealed class OpenDocument : Observable
         return moved ?? annotations;
     }
 
-    /// <summary>What its editors show after its lines: the debugger's annotations, then the app's live values.</summary>
-    public IReadOnlyList<LineAnnotation> ShownAnnotations => liveValues.Count == 0 && errorPins.Count == 0 ? lineAnnotations
-        : [.. lineAnnotations, .. liveValues, .. errorPins.Select(p => new LineAnnotation(p.Line, p.Last, p.Warnings ? LineAnnotationLook.Muted : LineAnnotationLook.Error))];
+    /// <summary>What its editors show after its lines: the debugger's annotations, then the app's live values, a run's errors
+    /// and its failed steps' words.</summary>
+    public IReadOnlyList<LineAnnotation> ShownAnnotations => liveValues.Count == 0 && errorPins.Count == 0 && stepMarks.Count == 0 ? lineAnnotations
+        : [.. lineAnnotations, .. liveValues, .. errorPins.Select(p => new LineAnnotation(p.Line, p.Last, p.Warnings ? LineAnnotationLook.Muted : LineAnnotationLook.Error)),
+            .. stepMarks.Where(m => m.Failure is not null).Select(m => new LineAnnotation(m.Line, m.Failure!, LineAnnotationLook.Error))];
 
     private IReadOnlyList<Editors.ErrorPin> errorPins = [];
 
