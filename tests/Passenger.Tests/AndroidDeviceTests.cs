@@ -430,6 +430,52 @@ public sealed class AndroidDeviceTests
         }
     }
 
+    /// <summary>Run with Hot Reload stopped once all its start puts in the app is there, the relay and a port forwarded to
+    /// it, never starts the app: once Stop and the start have answered, no process of the app runs on the emulator and
+    /// nothing of the start is left there, where the start went on to start the app Stop had said it stopped.</summary>
+    [AvaloniaFact]
+    public void A_run_stopped_once_its_relay_is_in_the_app_never_starts_the_app_on_the_emulator()
+    {
+        (string folder, string project, DeviceTarget target, AndroidTools tools) = Prepared();
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        window.ApplySettings(window.Settings with { HotReload = true });
+        TaskCompletionSource reached = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource go = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        try
+        {
+            Choose(window, project, target);
+            DeviceLaunches.HeldStarts = () =>
+            {
+                reached.TrySetResult();
+                return go.Task;
+            };
+            Task<string?> running = window.RunAsync();
+            Ui.PumpUntil(() => reached.Task.IsCompleted || running.IsCompleted, "the build, the install and the relay put in the app", Slow);
+            if (!reached.Task.IsCompleted)
+            {
+                Assert.Fail($"The run ended before it put its relay in the app: {Ui.AwaitPumped(running, "the run's end")}{Ui.BuildErrors(window)}");
+            }
+            Task stopped = window.Builds.StopAllAsync();
+            go.TrySetResult();
+            Ui.AwaitPumped(stopped, "Stop's answer once the start it stopped has settled", Slow);
+            Ui.PumpUntil(() => running.IsCompleted, "the stopped run's answer", Slow);
+            string serial = Serial(target, project);
+            Ui.Hold(TimeSpan.FromSeconds(5), "a moment in which a start that went on would have started the app");
+            string pid = Pid(tools, serial);
+            Assert.True(pid.Length == 0, $"The run Stop stopped once its relay was in the app started the app all the same, which runs as {pid}: "
+                + $"{(running.IsCompletedSuccessfully ? running.Result : running.Exception?.Message) ?? "it said it runs"}\n{Output(window)}");
+            Assert.Equal(Passenger.App.Run.BuildRunController.StoppedStarting("AndroidApp"), Ui.AwaitPumped(running, "the stopped run's answer"));
+            Ui.WaitFor(() => Left(tools, serial).Length == 0, () => $"what the stopped run put on the emulator to be taken out; it still has {Left(tools, serial)}",
+                TimeSpan.FromSeconds(30));
+        }
+        finally
+        {
+            DeviceLaunches.HeldStarts = null;
+            go.TrySetResult();
+            window.Close();
+        }
+    }
+
     /// <summary>A copy of the test app, the emulator or device to run it on and the Android tools; skipped, saying why, where
     /// the workload, its SDK and Java, a target or the relays are missing.</summary>
     private static (string Folder, string Project, DeviceTarget Target, AndroidTools Tools) Prepared()

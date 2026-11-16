@@ -65,7 +65,12 @@ public sealed class DeviceStart(string name, AndroidApp app) : IDisposable
         }
         try
         {
-            return await under;
+            (DevicePut? Put, RelaySession? Relay, string? Problem) put = await under;
+            if (put.Put is not null && DeviceLaunches.HeldStarts is { } held)
+            {
+                await held();
+            }
+            return put;
         }
         catch (OperationCanceledException)
         {

@@ -123,6 +123,10 @@ public static class DeviceLaunches
     /// on: a test's way to stop a start there. Null waits for nothing.</summary>
     public static Func<Task>? HeldPuts { get; set; }
 
+    /// <summary>Waited for once a start has put in the app all it puts there, before the start goes on to start the app: a
+    /// test's way to stop a start between its put and the app's start. Null waits for nothing.</summary>
+    public static Func<Task>? HeldStarts { get; set; }
+
     /// <summary>Waited for as an app's end on its device begins, before anything there is ended or taken out: a test's way to
     /// hold a clean-up. Null waits for nothing.</summary>
     public static Func<Task>? HeldEnds { get; set; }

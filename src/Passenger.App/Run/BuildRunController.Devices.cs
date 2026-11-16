@@ -97,12 +97,13 @@ public sealed partial class BuildRunController
         UpdateHandlerHook? handlers = session.Debug.HotReloadOn() ? HandlersOnDevice(plan) : null;
         using DeviceStart onDevice = session.StartsOnDevice(plan.Name, app);
         (RelaySession? relay, string? unrelayed) = await onDevice.PutRelayAsync(inspected?.Device, handlers, work.Stopping);
-        if (relay is null)
+        if (relay is null || work.Stopping.IsCancellationRequested)
         {
+            // Refused, or stopped once the relay is in: the app never starts, and what went in comes out first.
             handlers?.Dispose();
             inspected?.Dispose();
             await onDevice.TakeOutAsync();
-            return unrelayed;
+            return relay is null ? unrelayed : Canceled(work, plan.Name);
         }
         work.Say($"Starting {plan.Name} on its device under the debugger…");
         parts.Dock.Show(ToolWindowIds.Debug);

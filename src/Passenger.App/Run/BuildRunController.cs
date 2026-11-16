@@ -1288,6 +1288,16 @@ public sealed partial class BuildRunController
             {
                 await InspectOnDeviceAsync(onDevice, inspected, work);
             }
+            if (work.Stopping.IsCancellationRequested)
+            {
+                // Stopped before its program starts (as what it puts on a device went in, say): it never starts, and what went in comes out first.
+                inspected?.Dispose();
+                if (onDevice is not null)
+                {
+                    await onDevice.TakeOutAsync();
+                }
+                return Said(Canceled(work, chosen.Name));
+            }
             ShowBindings();
             // dotnet watch opens no browser of its own: the plan's opens through the window once the program listens.
             Dictionary<string, string> variables = watched
