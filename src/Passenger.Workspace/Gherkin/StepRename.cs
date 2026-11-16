@@ -12,9 +12,13 @@ public sealed class StepRename
 {
     private readonly IReadOnlyList<Part> parts;
 
-    private StepRename(IReadOnlyList<Part> parts, string? refused)
+    /// <summary>The old expression's parts, whose words around a parameter say which quotes beside its argument are its own.</summary>
+    private readonly IReadOnlyList<Part> old;
+
+    private StepRename(IReadOnlyList<Part> parts, IReadOnlyList<Part> old, string? refused)
     {
         this.parts = parts;
+        this.old = old;
         Refused = refused;
     }
 
@@ -27,19 +31,20 @@ public sealed class StepRename
         IReadOnlyList<Part>? after = PartsOf(renamed, cucumber);
         if (before is null || after is null)
         {
-            return new StepRename([], "Only an expression of words and parameters can be renamed");
+            return new StepRename([], [], "Only an expression of words and parameters can be renamed");
         }
         string[] was = [.. before.Where(p => p.Parameter).Select(p => p.Text)];
         string[] now = [.. after.Where(p => p.Parameter).Select(p => p.Text)];
         if (!was.SequenceEqual(now))
         {
-            return new StepRename([], $"The new expression's parameters differ from the old one's: {string.Join(", ", now)} against {string.Join(", ", was)}");
+            return new StepRename([], [], $"The new expression's parameters differ from the old one's: {string.Join(", ", now)} against {string.Join(", ", was)}");
         }
-        return new StepRename(after, null);
+        return new StepRename(after, before, null);
     }
 
     /// <summary>A step's text rewritten: the new words around its arguments (each where the old expression matched it, with
-    /// the quotes around one that has them); null where it is given fewer arguments than the expression's parameters.</summary>
+    /// the quotes around one that has them, but those the old expression's own words write); null where it is given fewer
+    /// arguments than the expression's parameters.</summary>
     public string? Step(string text, IReadOnlyList<StepArgument> arguments)
     {
         StringBuilder written = new();
@@ -55,17 +60,27 @@ public sealed class StepRename
             {
                 return null;
             }
-            StepArgument at = arguments[argument++];
+            StepArgument at = arguments[argument];
             int start = at.Start;
             int end = at.Start + at.Length;
-            if (start > 0 && end < text.Length && text[start - 1] is '"' or '\'' && text[end] == text[start - 1])
+            if (start > 0 && end < text.Length && text[start - 1] is '"' or '\'' && text[end] == text[start - 1] && !WordsQuote(argument, text[start - 1]))
             {
                 start--;
                 end++;
             }
             written.Append(text, start, end - start);
+            argument++;
         }
         return written.ToString();
+    }
+
+    /// <summary>Whether the old expression's words beside its parameter <paramref name="index"/> write a quote, which is then
+    /// theirs, not the argument's.</summary>
+    private bool WordsQuote(int index, char quote)
+    {
+        int at = old.Select((part, i) => (part, i)).Where(p => p.part.Parameter).ElementAt(index).i;
+        return (at > 0 && old[at - 1] is { Parameter: false } before && before.Text.EndsWith(quote))
+            || (at + 1 < old.Count && old[at + 1] is { Parameter: false } after && after.Text.StartsWith(quote));
     }
 
     /// <summary>An expression's words (as a step writes them) and parameters (as the expression writes them), in order; null

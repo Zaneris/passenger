@@ -25,6 +25,18 @@ public sealed class StepRenameTests
     }
 
     [Fact]
+    public void Quotes_the_old_expressions_words_write_around_a_parameter_are_its_words_not_the_arguments()
+    {
+        StepRename regex = StepRename.Of("I have entered \"(.*)\" into the calculator", "I typed \"(.*)\" into the calculator", cucumber: false)!;
+        StepRename word = StepRename.Of("I enter '{word}' here", "I type '{word}' there", cucumber: true)!;
+
+        Assert.Equal("I typed \"50\" into the calculator", regex.Step("I have entered \"50\" into the calculator", [new StepArgument(16, 2)]));
+        Assert.Equal("I type 'abc' there", word.Step("I enter 'abc' here", [new StepArgument(9, 3)]));
+        Assert.Equal("I typed 50 into the calculator", StepRename.Of("I have entered \"(.*)\" into the calculator", "I typed (.*) into the calculator", cucumber: false)
+            .Step("I have entered \"50\" into the calculator", [new StepArgument(16, 2)]));
+    }
+
+    [Fact]
     public void A_regular_expressions_groups_are_its_parameters_and_its_escapes_its_words()
     {
         StepRename rename = StepRename.Of(@"I pay (\d+)\.00", @"I spend (\d+)\.00 now", cucumber: false)!;
