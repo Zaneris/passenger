@@ -207,7 +207,7 @@ public sealed partial class FeatureReading
     public static FeatureReading Read(string text, string defaultLanguage)
     {
         string language = GherkinDialects.Default(defaultLanguage);
-        TokenMatcher matcher = new(language);
+        TokenMatcher matcher = new(new GherkinDialects.ReqnrollProvider(language));
         FeatureReading reading = new(matcher.CurrentDialect);
         reading.Match(text, matcher);
         reading.Close();
@@ -304,7 +304,7 @@ public sealed partial class FeatureReading
         {
             return FeatureLineKind.Empty;
         }
-        if (Feature is null && matcher.Match_Language(token))
+        if (Feature is null && NamesLanguage(matcher, token))
         {
             Dialect = matcher.CurrentDialect;
             return FeatureLineKind.Language;
@@ -315,11 +315,18 @@ public sealed partial class FeatureReading
         }
         if (matcher.Match_TagLine(token))
         {
-            foreach (GherkinLineSpan span in token.Line.GetTags())
+            try
             {
-                FeatureTag tag = new(line, span.Column - 1, span.Text);
-                pendingTags.Add(tag);
-                Tags.Add(tag);
+                foreach (GherkinLineSpan span in token.Line.GetTags())
+                {
+                    FeatureTag tag = new(line, span.Column - 1, span.Text);
+                    pendingTags.Add(tag);
+                    Tags.Add(tag);
+                }
+            }
+            catch (InvalidTagException)
+            {
+                // A tag holding a space is Check's mistake to say; the tags before it on the line stand.
             }
             describing = false;
             return FeatureLineKind.Tags;
@@ -379,6 +386,20 @@ public sealed partial class FeatureReading
             return FeatureLineKind.TableRow;
         }
         return describing ? FeatureLineKind.Description : FeatureLineKind.Other;
+    }
+
+    /// <summary>Whether a line names the file's language in one the reader knows; one naming a language it doesn't know is
+    /// a comment, as the reader takes it, its mistake said by <see cref="Check"/>.</summary>
+    private static bool NamesLanguage(TokenMatcher matcher, Token token)
+    {
+        try
+        {
+            return matcher.Match_Language(token);
+        }
+        catch (NoSuchLanguageException)
+        {
+            return false;
+        }
     }
 
     private List<FeatureTag> TakeTags()
@@ -536,7 +557,7 @@ public sealed partial class FeatureReading
         string read = LoneReturn().Replace(text, " ");
         try
         {
-            parser.Parse(new TokenScanner(new StringReader(read)), new TokenMatcher(language));
+            parser.Parse(new TokenScanner(new StringReader(read)), new TokenMatcher(new GherkinDialects.ReqnrollProvider(language)));
         }
         catch (CompositeParserException composite)
         {

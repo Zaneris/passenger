@@ -189,6 +189,35 @@ public sealed class FeatureReadingTests
     }
 
     [Fact]
+    public void An_unknown_language_or_a_tag_holding_a_space_is_a_mistake_said_where_gherkin_says_it_and_the_rest_reads()
+    {
+        FeatureReading unknown = FeatureReading.Read("# language: d\nFeature: F\n\nScenario: S\n  Given one\n", "en");
+        FeatureError language = Assert.Single(unknown.Errors);
+        Assert.Equal((0, 0, "Language not supported: d"), (language.Line, language.Column, language.Message));
+        Assert.Equal(FeatureLineKind.Comment, unknown.Lines[0]);
+        Assert.Equal(("en", "Feature", "one"), (unknown.Dialect.Language, unknown.Feature?.Keyword, Assert.Single(unknown.Steps).Text));
+
+        FeatureReading spaced = FeatureReading.Read("Feature: F\n\n@fast @wip in progress\nScenario: S\n  Given one\n", "en");
+        FeatureError tag = Assert.Single(spaced.Errors);
+        Assert.Equal((2, 6, "A tag may not contain whitespace"), (tag.Line, tag.Column, tag.Message));
+        Assert.Equal(["@fast"], spaced.Tags.Select(t => t.Name));
+        Assert.Equal("one", Assert.Single(spaced.Steps).Text);
+
+        Assert.Equal("# language: d\nFeature: F\n\nScenario: S\n    Given one\n",
+            GherkinFormatter.Format("# language: d\nFeature: F\n\nScenario: S\n  Given one\n", GherkinFormatOptions.Default, "en"));
+    }
+
+    [Fact]
+    public void A_language_line_with_a_region_gherkin_lacks_reads_in_its_language_as_reqnrolls_reader_does()
+    {
+        FeatureReading reading = FeatureReading.Read("# language: de-AT\nFunktionalität: Rechner\n\nSzenario: Addieren\n  Angenommen eine Zahl 5\n", "en");
+
+        Assert.Empty(reading.Errors);
+        Assert.Equal(("de-AT", "Funktionalität", StepKind.Given), (reading.Dialect.Language, reading.Feature?.Keyword, Assert.Single(reading.Steps).Kind));
+        Assert.Equal("Language not supported: xx", Assert.Single(FeatureReading.Read("# language: xx-YY\nFeature: F\n", "en").Errors).Message);
+    }
+
+    [Fact]
     public void A_mistake_after_a_lone_carriage_return_is_placed_on_the_editors_line()
     {
         FeatureReading reading = FeatureReading.Read("Feature: F\r# a note\nScenario: A\n  Given one\n  | a |\n  Banana\n", "en");

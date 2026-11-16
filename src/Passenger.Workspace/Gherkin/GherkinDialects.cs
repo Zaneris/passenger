@@ -1,4 +1,5 @@
 using Gherkin;
+using Gherkin.Ast;
 
 namespace Passenger.Workspace.Gherkin;
 
@@ -40,4 +41,25 @@ public static class GherkinDialects
     public static GherkinDialect Of(string language) => Knows(language) ? new GherkinDialectProvider(language).DefaultDialect : new GherkinDialectProvider(English).DefaultDialect;
 
     private static bool Knows(string language) => Languages.Contains(language, StringComparer.Ordinal);
+
+    /// <summary>The languages a file's <c># language:</c> line names, as Reqnroll's reader takes them: one with a region the
+    /// reader doesn't know in its language's keywords under the name written ("de-AT" as "de"); one it doesn't know at all
+    /// refused as the reader refuses it.</summary>
+    public sealed class ReqnrollProvider(string defaultLanguage) : GherkinDialectProvider(defaultLanguage)
+    {
+        public override GherkinDialect GetDialect(string language, Location? location)
+        {
+            if (!language.Contains('-', StringComparison.Ordinal))
+            {
+                return base.GetDialect(language, location);
+            }
+            if (TryGetDialect(language, location, out GherkinDialect regional))
+            {
+                return regional;
+            }
+            GherkinDialect d = base.GetDialect(language.Split('-')[0], location);
+            return new GherkinDialect(language, d.FeatureKeywords, d.RuleKeywords, d.BackgroundKeywords, d.ScenarioKeywords, d.ScenarioOutlineKeywords,
+                d.ExamplesKeywords, d.GivenStepKeywords, d.WhenStepKeywords, d.ThenStepKeywords, d.AndStepKeywords, d.ButStepKeywords);
+        }
+    }
 }

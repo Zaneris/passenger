@@ -12,8 +12,8 @@ namespace Passenger.Tests;
 /// <summary>A .feature file is Gherkin's: coloured by its grammar (keywords, tags, comments, its tables as data) and by
 /// Gherkin's reading of it (descriptions, placeholders, an examples table's header),
 /// folded by Gherkin's own reading of it (the feature, each scenario, its examples and doc strings), outlined in Structure
-/// and commented with a <c>#</c>, laid out by Reformat Code and its tables aligned as a bar or Enter is typed, all with
-/// no project or language server.</summary>
+/// and commented with a <c>#</c>, laid out by Reformat Code and its tables aligned as a bar or Enter is typed, read in the
+/// language its <c># language:</c> line names as each key of it is typed, all with no project or language server.</summary>
 public sealed class GherkinEditingTests : FileColoursFolder
 {
     private const string Feature =
@@ -162,5 +162,34 @@ public sealed class GherkinEditingTests : FileColoursFolder
             () => $"German's keywords offered: {string.Join(", ", window.Assist.CompletionLabels)}");
         Assert.DoesNotContain("When", window.Assist.CompletionLabels);
         window.Close();
+    }
+
+    [AvaloniaFact]
+    public void A_language_line_typed_a_key_at_a_time_marks_a_language_gherkin_lacks_and_reads_the_feature_in_the_one_named()
+    {
+        MainWindow window = Window();
+        CodeEditor editor = Open(window, "Sprache.feature", "\nFunktionalität: Rechner\n\nSzenario: Addieren\n  Angenommen eine Zahl 5\n  Dann ist das Ergebnis 5\n");
+        OpenDocument document = window.EditorArea.Active!;
+        editor.Focus();
+        editor.Selections = SelectionSet.Single(0);
+        foreach (char key in "# language: de")
+        {
+            window.KeyTextInput(key.ToString());
+            Ui.Settle();
+            string typed = document.Text.Snapshot.GetLineText(0);
+            Assert.True(IdeErrors.Errors.Count == 0, $"Reading the feature once \"{typed}\" was typed made internal errors: {string.Join("; ", IdeErrors.Errors.Select(e => e.Message))}");
+            if (typed == "# language: d")
+            {
+                Assert.True(document.Markers.Any(m => m.Range.Start == 0 && m.Kind == MarkerKind.Error && m.Said == "Language not supported: d"),
+                    $"A language Gherkin lacks should be marked where it is named: {string.Join("; ", document.Markers.Select(m => $"{m.Range.Start} {m.Said}"))}");
+            }
+        }
+
+        Ui.WaitFor(() => KindOf(editor, "Angenommen") == TokenKind.Keyword, "the German keywords coloured once the language is named");
+        Assert.True(document.Markers.Count == 0, $"The feature read in German should hold no mistake: {string.Join("; ", document.Markers.Select(m => m.Message))}");
+        Ui.WaitFor(() => Folds().SequenceEqual([(1, 5), (3, 5)]), () => $"the German feature and scenario folded: {string.Join(", ", Folds())}");
+        window.Close();
+
+        (int, int)[] Folds() => [.. document.FoldRegions.Select(r => (document.Text.Snapshot.GetLineFromOffset(r.Start), document.Text.Snapshot.GetLineFromOffset(r.End)))];
     }
 }
