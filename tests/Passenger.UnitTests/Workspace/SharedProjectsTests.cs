@@ -117,6 +117,76 @@ public sealed class SharedProjectsTests : IDisposable
         Assert.Contains("<Import_RootNamespace>Shop.Shared</Import_RootNamespace>", emptied, StringComparison.Ordinal);
     }
 
+    private const string Globbed = """
+        <Project>
+          <ItemGroup>
+            <Compile Include="$(MSBuildThisFileDirectory)Models\**\*.cs" Exclude="$(MSBuildThisFileDirectory)Models\Drafts\**" />
+            <Compile Include="$(MSBuildThisFileDirectory)Greeting.cs;$(MSBuildThisFileDirectory)Extra.cs" />
+            <None Include="$(MSBuildThisFileDirectory)readme.md" />
+          </ItemGroup>
+        </Project>
+        """;
+
+    /// <summary>The file at a path under the shared folder, with its separators.</summary>
+    private string At(string relative) => Path.Combine([Shared, .. relative.Split('/')]);
+
+    /// <summary>Whether the items file's text takes a file, as the build would read it there.</summary>
+    private bool Takes(string text, string relative) =>
+        SharedProjects.ItemsIn(text, ItemsFile, folder => PathNames.IsUnder(At(relative), folder) ? [At(relative)] : []).Any(i => i.Path == At(relative));
+
+    [Fact]
+    public void A_file_made_where_a_wildcard_of_its_type_takes_it_gets_no_item_of_its_own_and_one_it_leaves_out_does()
+    {
+        Assert.Equal(Globbed, SharedProjects.WithAdded(Globbed, ItemsFile, [At("Models/Customer.cs"), At("Models/Parts/Line.cs")]));
+
+        string added = SharedProjects.WithAdded(Globbed, ItemsFile, [At("Models/Drafts/Sketch.cs"), At("Views/Main.cs")]);
+
+        Assert.Equal(Globbed.Replace("Extra.cs\" />", "Extra.cs\" />\n    <Compile Include=\"$(MSBuildThisFileDirectory)Models\\Drafts\\Sketch.cs\" />\n"
+            + "    <Compile Include=\"$(MSBuildThisFileDirectory)Views\\Main.cs\" />", StringComparison.Ordinal), added);
+    }
+
+    [Fact]
+    public void A_file_a_wildcard_takes_is_excluded_by_a_remove_after_it_holding_in_every_build_and_included_again_by_that_remove_going()
+    {
+        string excluded = SharedProjects.WithExcluded(Globbed, ItemsFile, [At("Models/Order.cs")]);
+
+        Assert.Equal(Globbed.Replace("Drafts\\**\" />", "Drafts\\**\" />\n    <Compile Remove=\"$(MSBuildThisFileDirectory)Models\\Order.cs\" />", StringComparison.Ordinal), excluded);
+        Assert.False(Takes(excluded, "Models/Order.cs"), "Order.cs is still compiled once excluded");
+        Assert.True(Takes(excluded, "Models/Customer.cs"), "Excluding Order.cs took Customer.cs out of the wildcard too");
+        Assert.Equal(Globbed, SharedProjects.WithAdded(excluded, ItemsFile, [At("Models/Order.cs")]));
+
+        const string Conditioned = "<Project>\n  <ItemGroup Condition=\"'$(OS)' == 'Unix'\">\n    <Compile Include=\"$(MSBuildThisFileDirectory)**\\*.cs\" />\n  </ItemGroup>\n</Project>\n";
+        Assert.Equal(Conditioned.Replace("</Project>", "  <ItemGroup>\n    <Compile Remove=\"$(MSBuildThisFileDirectory)Greeting.cs\" />\n  </ItemGroup>\n</Project>", StringComparison.Ordinal),
+            SharedProjects.WithExcluded(Conditioned, ItemsFile, [At("Greeting.cs")]));
+    }
+
+    [Fact]
+    public void A_file_one_item_names_beside_another_leaves_that_item_naming_the_other_whether_deleted_or_excluded()
+    {
+        string kept = Globbed.Replace("Greeting.cs;$(MSBuildThisFileDirectory)Extra.cs", "Greeting.cs", StringComparison.Ordinal);
+
+        Assert.Equal(kept, SharedProjects.WithRemoved(Globbed, ItemsFile, [At("Extra.cs")]));
+        Assert.Equal(kept, SharedProjects.WithExcluded(Globbed, ItemsFile, [At("Extra.cs")]));
+        Assert.Equal(Globbed.Replace("$(MSBuildThisFileDirectory)Greeting.cs;", string.Empty, StringComparison.Ordinal),
+            SharedProjects.WithRemoved(Globbed, ItemsFile, [At("Greeting.cs")]));
+        Assert.DoesNotContain("Greeting.cs", SharedProjects.WithRemoved(Globbed, ItemsFile, [At("Greeting.cs"), At("Extra.cs")]), StringComparison.Ordinal);
+
+        const string Referenced = "<Project>\n  <ItemGroup>\n    <Compile Include=\"A.cs&#59; B&amp;C.cs ;D.cs\" />\n  </ItemGroup>\n</Project>\n";
+        Assert.Equal(Referenced.Replace("A.cs&#59; ", string.Empty, StringComparison.Ordinal), SharedProjects.WithRemoved(Referenced, ItemsFile, [At("A.cs")]));
+        Assert.Equal(Referenced.Replace("&#59; B&amp;C.cs ", string.Empty, StringComparison.Ordinal), SharedProjects.WithRemoved(Referenced, ItemsFile, [At("B&C.cs")]));
+    }
+
+    [Fact]
+    public void A_file_one_item_names_beside_another_is_named_where_it_moved_within_the_folder_and_taken_out_where_it_left_it()
+    {
+        string moved = SharedProjects.WithListsMoved(Globbed, ItemsFile, [(At("Extra.cs"), At("Parts/Extra.cs")), (At("Greeting.cs"), Path.Combine(root, "Api", "Greeting.cs"))]);
+
+        Assert.Equal(Globbed.Replace("$(MSBuildThisFileDirectory)Greeting.cs;$(MSBuildThisFileDirectory)Extra.cs", "$(MSBuildThisFileDirectory)Parts\\Extra.cs", StringComparison.Ordinal), moved);
+        string swapped = SharedProjects.WithListsMoved(Globbed, ItemsFile, [(At("Greeting.cs"), At("Swap.cs")), (At("Extra.cs"), At("Greeting.cs")), (At("Swap.cs"), At("Extra.cs"))]);
+        Assert.Equal(Globbed.Replace("Greeting.cs;$(MSBuildThisFileDirectory)Extra.cs", "Extra.cs;$(MSBuildThisFileDirectory)Greeting.cs", StringComparison.Ordinal), swapped);
+        Assert.Equal(Globbed, SharedProjects.WithListsMoved(Globbed, ItemsFile, [(At("Models/Order.cs"), At("Models/Sale.cs"))]));
+    }
+
     [Fact]
     public void Its_items_follow_a_file_renamed_within_its_folder_one_moved_out_and_one_moved_in()
     {

@@ -28,6 +28,10 @@ public partial class MainWindow
     /// command recording them: null once written, else why not.</summary>
     private string? OutOfShared(IEnumerable<string> gone, CommandHistory.Recording recording) => KeepShared(gone, recording, SharedProjects.Remove);
 
+    /// <summary>Files of shared projects' folders left on disk and taken out of their items files (Exclude from Project), a
+    /// wildcard's by a Remove, as part of the command recording them: null once written, else why not.</summary>
+    private string? ExcludedFromShared(IEnumerable<string> files, CommandHistory.Recording recording) => KeepShared(files, recording, SharedProjects.Exclude);
+
     private string? KeepShared(IEnumerable<string> paths, CommandHistory.Recording recording, Func<string, IReadOnlyCollection<string>, bool> change)
     {
         foreach (IGrouping<string, string> held in paths.Select(p => (Path: p, Items: SharedItemsOf(p))).Where(p => p.Items is not null && File.Exists(p.Items))
@@ -74,7 +78,7 @@ public partial class MainWindow
         {
             return status.Text = held;
         }
-        if ((include ? IntoShared(paths, recording) : OutOfShared(paths, recording)) is { } refused)
+        if ((include ? IntoShared(paths, recording) : ExcludedFromShared(paths, recording)) is { } refused)
         {
             return status.Text = await recording.TakenBackAsync(refused);
         }

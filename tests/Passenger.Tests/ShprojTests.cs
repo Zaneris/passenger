@@ -3,6 +3,7 @@ using Avalonia.Headless.XUnit;
 using Passenger.App;
 using Passenger.App.Editors;
 using Passenger.App.Explorer;
+using Passenger.App.Run;
 using Passenger.App.Workspace;
 using Passenger.Core;
 using Passenger.Editor;
@@ -12,10 +13,10 @@ namespace Passenger.Tests;
 
 /// <summary>A solution of a shared project (.shproj) and two projects importing its items: the Solution view shows the
 /// shared project with its files in their folders and each importer naming it under its Dependencies, none of its files
-/// among the importer's own; a file made, renamed, deleted, included or excluded in its folder writes its items file, each
-/// undone in one step, a folder deleted coming back as it was; an import is taken and dropped through Add Reference and the
-/// Dependencies; Add Existing Project adds a .shproj; a test in a shared file is found from code; and a shared file opens
-/// with the C# of a project importing it.</summary>
+/// among the importer's own; a file made, renamed, deleted, included or excluded in its folder writes its items file as
+/// MSBuild reads it (a wildcard's and a list's too), each undone in one step, a folder deleted coming back as it was; an
+/// import is taken and dropped through Add Reference and the Dependencies; Add Existing Project adds a .shproj; a test in a
+/// shared file is found from code; and a shared file opens with the C# of a project importing it.</summary>
 public sealed class ShprojTests : IDisposable
 {
     private const string Items = """
@@ -321,6 +322,47 @@ public sealed class ShprojTests : IDisposable
         {
             window.Close();
         }
+    }
+
+    [AvaloniaFact]
+    public void A_wildcard_takes_a_class_made_under_it_alone_exclude_writes_a_remove_after_it_and_a_file_deleted_from_a_two_file_item_leaves_the_other_building()
+    {
+        string extra = TestFolders.Write(folder, "Shop.Shared/Extra.cs", "namespace Shop.Shared;\n\npublic static class Extra\n{\n}\n");
+        string globbed = Items.Replace("<Compile Include=\"$(MSBuildThisFileDirectory)Greeting.cs\" />\n    <Compile Include=\"$(MSBuildThisFileDirectory)Models\\Order.cs\" />",
+            "<Compile Include=\"$(MSBuildThisFileDirectory)Models\\**\\*.cs\" />\n    <Compile Include=\"$(MSBuildThisFileDirectory)Greeting.cs;$(MSBuildThisFileDirectory)Extra.cs\" />",
+            StringComparison.Ordinal);
+        File.WriteAllText(ItemsFile, globbed);
+        MainWindow window = Open();
+        List<string> asked = Answered(window);
+        try
+        {
+            string models = Path.Combine(Shared, "Models");
+            Assert.Null(window.CreateClass(models, "Customer"));
+            Assert.Equal(globbed, File.ReadAllText(ItemsFile));
+            Ui.WaitFor(() => Listed(window).SequenceEqual([("Customer.cs", false), ("Order.cs", false)]),
+                () => $"Customer.cs listed under Models by the wildcard; it shows {string.Join(", ", Listed(window))}");
+
+            string order = Path.Combine(models, "Order.cs");
+            Choose(window, order);
+            Ui.ChooseFromRowMenu(window, window.ExplorerView.Selected!, "Exclude from Project");
+            string excluded = globbed.Replace("Models\\**\\*.cs\" />", "Models\\**\\*.cs\" />\n    <Compile Remove=\"$(MSBuildThisFileDirectory)Models\\Order.cs\" />", StringComparison.Ordinal);
+            Ui.WaitFor(() => File.ReadAllText(ItemsFile) == excluded, () => $"Order.cs taken out of the wildcard by a Remove: {window.Status}\n{File.ReadAllText(ItemsFile)}");
+            Ui.WaitFor(() => Listed(window).SequenceEqual([("Customer.cs", false), ("Order.cs", true)]),
+                () => $"Order.cs shown as left out, Customer.cs not; Models shows {string.Join(", ", Listed(window))}");
+
+            Assert.True(Ui.Await(window.DeleteAsync(extra), "the delete"), window.Status);
+            Assert.Equal(excluded.Replace("Greeting.cs;$(MSBuildThisFileDirectory)Extra.cs", "Greeting.cs", StringComparison.Ordinal), File.ReadAllText(ItemsFile));
+            BuildOutcome built = Ui.Await(window.BuildAsync(), "the solution's build", TimeSpan.FromMinutes(3));
+            Assert.True(built.Succeeded, $"The solution did not build once Extra.cs went: {built.Message}\n{string.Join("\n", built.Output)}");
+            Assert.Equal(["Delete"], asked);
+        }
+        finally
+        {
+            window.Close();
+        }
+
+        static IEnumerable<(string Name, bool Unlisted)> Listed(MainWindow window) =>
+            Row(window, "Shop.Shared").Children!.Single(r => r.Name == "Models").Children!.Select(r => (r.Name, r.Unlisted));
     }
 
     [AvaloniaFact]
