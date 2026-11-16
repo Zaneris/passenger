@@ -167,42 +167,55 @@ public sealed class ProblemsTests : IClassFixture<ProblemsTests.Project>
 
     /// <summary>A file nobody has open changed on disk while one of solution-wide analysis's pulls is under way has the pull
     /// let go and asked again of the solution the change made, rather than waited for: the server would finish it on the
-    /// solution before the change, then analyse it whole again, as it did every session's first round, whose solution moves
-    /// as its projects' generators run again once they have loaded. With the pull's answer held, as by a server analysing a
-    /// large solution for minutes, the Solution tab lists the file's new error once the server says its solution moved.</summary>
+    /// solution before the change, then analyse it whole again, as it did every session's first round. With the pull asked
+    /// after a key held unsent, as by a server analysing a large solution for minutes, the Solution tab lists the file's new
+    /// error once the server says its solution moved.</summary>
     [AvaloniaFact]
     public void A_file_changed_on_disk_while_a_pull_is_under_way_has_it_asked_again_of_the_solution_the_change_made()
     {
         MainWindow window = project.Open("Helper.cs");
         ProblemsModel problems = window.BottomPanel.Problems;
+        List<(long At, string What)> marks = [];
+        long since = Mark(marks, "solution-wide analysis turned on");
         window.Perform(AppActions.ToggleSolutionAnalysis);
         Ui.WaitFor(() => problems.SolutionProblems?.Any(p => p.Code == "CS0029") == true, "the closed file's error");
         Passenger.App.CSharp.CSharpService service = window.CSharpService!;
         Passenger.Lsp.LanguageServer server = service.Session!.Server;
+        Passenger.Editor.CodeEditor editor = window.EditorArea.CodeEditor;
         const string Analysed = "WorkspaceDocumentsAndProject";
-        TaskCompletionSource answered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource released = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        Task? holding = null;
+        // Placed at the key's change, so only a pull asked after it is held: the one under way may be one no key lets go, which the server answers.
+        void HoldTheNextPull(object? sender, DocumentChangedEventArgs e)
+        {
+            editor.Document.Changed -= HoldTheNextPull;
+            Mark(marks, "the key's change, the next pull to be held unsent");
+            holding = server.HoldNext(Passenger.Roslyn.Extension.ExtensionMethods.WorkspaceDiagnostic,
+                p => p is Passenger.Lsp.WorkspaceDiagnosticParams { Identifier: Analysed }, released.Task);
+        }
         try
         {
-            Task holding = server.HoldNextAnswer(Passenger.Roslyn.Extension.ExtensionMethods.WorkspaceDiagnostic,
-                p => p is Passenger.Lsp.WorkspaceDiagnosticParams { Identifier: Analysed }, answered.Task);
-            // A key lets go of the pull held open for a change; the one asked after the key's own pull is the one held.
-            int before = service.PullsAsked(Analysed);
+            editor.Document.Changed += HoldTheNextPull;
             Rename(window, "Twice", "Twice2");
-            Ui.WaitFor(() => service.PullsAsked(Analysed) > before, "the analysis to ask again once the key's own pull answered");
+            Ui.WaitFor(() => holding?.IsCompleted == true,
+                () => $"the analysis to ask again once the key's own pull answered, and that pull held:\n{StepsSince(service, since, marks)}");
             int asked = service.PullsAsked(Analysed);
 
+            Mark(marks, "Bad.cs rewritten");
             project.Rewrite("Bad.cs", "class Bad\n{\n    public int Count = Missing;\n}\n");
             bool Listed() => problems.SolutionProblems?.Any(p => p.Code == "CS0103" && p.Path?.EndsWith("Bad.cs", StringComparison.Ordinal) == true) == true;
-            // Pumped, not settled: the held pull's answer is work in flight until it is let go.
+            // Pumped, not settled: the held pull stands for the server's work in flight until it is let go.
             Assert.True(Ui.Pumped(Listed, TimeSpan.FromSeconds(90)),
-                $"Bad.cs's new error was not listed while a pull asked before Bad.cs changed went unanswered ({(holding.IsCompleted ? "its answer came and is held" : "unanswered")}): "
+                $"Bad.cs's new error was not listed while the pull asked after the key, before Bad.cs changed, was held unsent: "
                 + $"the analysis asked {service.PullsAsked(Analysed) - asked} more pulls of every file's problems (listed: "
-                + $"{string.Join("; ", problems.SolutionProblems?.Select(p => $"{Path.GetFileName(p.Path)} {p.Code}") ?? [])}){Ui.ServerLogTail()}");
+                + $"{string.Join("; ", problems.SolutionProblems?.Select(p => $"{Path.GetFileName(p.Path)} {p.Code}") ?? [])}):\n"
+                + $"{StepsSince(service, since, marks)}{Ui.ServerLogTail()}");
             Assert.DoesNotContain(problems.SolutionProblems!, p => p.Code == "CS0029" && p.Path?.EndsWith("Bad.cs", StringComparison.Ordinal) == true);
         }
         finally
         {
-            answered.TrySetResult();
+            editor.Document.Changed -= HoldTheNextPull;
+            released.TrySetResult();
         }
         window.Close();
     }
