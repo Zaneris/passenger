@@ -34,22 +34,51 @@ public sealed record WorkspaceModel(string Folder, SolutionModel? Solution, IRea
     public IReadOnlyList<Stamp> ReadFrom { get; init; } = [];
 
     /// <summary>The build configuration and platform chosen for its builds, evaluations and runs; null for what MSBuild takes
-    /// when given none, which nothing is given for.</summary>
+    /// when given none, which nothing is given for, where it maps each project as a build of it given nothing builds it.</summary>
     public BuildChoice? Build { get; init; }
 
     /// <summary>The global properties a project takes for <see cref="Build"/>, none for the configuration MSBuild takes.</summary>
     public IReadOnlyDictionary<string, string> BuildPropertiesOf(string project) =>
-        Build is { } chosen ? chosen.PropertiesOf(project, Projects.FirstOrDefault(p => PathNames.Same(p.Path, project))?.Property(CarriedProperties.Platforms))
+        Build is { } chosen ? chosen.PropertiesOf(project, PlatformsOf(project))
             : new Dictionary<string, string>();
+
+    /// <summary>The global properties a build of a project alone is given for <see cref="Build"/>, as <see cref="BuildArgumentsFor"/>
+    /// gives them: its own (<see cref="BuildPropertiesOf"/>), and what the solution maps those it references to where the
+    /// build must be told (<see cref="BuildChoice.ToldOf"/>).</summary>
+    public IReadOnlyDictionary<string, string> BuiltWith(string project) => BuiltTogetherWith([project])(project);
+
+    /// <summary>The global properties each of projects built side by side in one build is given (<see cref="BuiltWith"/>'s),
+    /// each told of every project any of them must be told of: a project two of them reach is then given the same
+    /// properties by each, so the build builds it once.</summary>
+    public Func<string, IReadOnlyDictionary<string, string>> BuiltTogetherWith(IReadOnlyList<string> projects)
+    {
+        if (Build is not { } chosen)
+        {
+            return _ => new Dictionary<string, string>();
+        }
+        List<SolutionBuilt> told = [.. projects.SelectMany(project => chosen.ToldOf(project, PlatformsOf(project), ReferencesOf)).Distinct()];
+        return project =>
+        {
+            Dictionary<string, string> properties = new(BuildPropertiesOf(project), StringComparer.OrdinalIgnoreCase);
+            if (told.Count > 0)
+            {
+                properties[MSBuildNames.CurrentSolutionConfigurationContents] = BuildChoice.Contents(told);
+            }
+            return properties;
+        };
+    }
+
+    /// <summary>The platforms a project declares, as last evaluated; null for one not among <see cref="Projects"/>.</summary>
+    private string? PlatformsOf(string project) => Projects.FirstOrDefault(p => PathNames.Same(p.Path, project))?.Property(CarriedProperties.Platforms);
 
     /// <summary>The configuration and platform a project builds as for <see cref="Build"/>: those it is given, else the .NET
     /// SDK's Debug and AnyCPU, which a build given none takes; a solution's Any CPU as the project's AnyCPU.</summary>
     public BuildConfiguration BuiltAs(string project)
     {
         IReadOnlyDictionary<string, string> given = BuildPropertiesOf(project);
-        string platform = given.GetValueOrDefault(MSBuildNames.Platform) is { Length: > 0 } named
-            && !named.Equals("Any CPU", StringComparison.OrdinalIgnoreCase) ? named : BuildConfigurations.AnyCpu;
-        return new BuildConfiguration(given.GetValueOrDefault(MSBuildNames.Configuration) is { Length: > 0 } configuration ? configuration : "Debug", platform);
+        string platform = given.GetValueOrDefault(MSBuildNames.Platform) is { Length: > 0 } named ? BuildConfigurations.OfProject(named) : BuildConfigurations.GivenNone.Platform;
+        return new BuildConfiguration(given.GetValueOrDefault(MSBuildNames.Configuration) is { Length: > 0 } configuration ? configuration : BuildConfigurations.GivenNone.Configuration,
+            platform);
     }
 
     /// <summary>The first of a project and those it references (as <paramref name="other"/> has them) that it and another
@@ -71,12 +100,16 @@ public sealed record WorkspaceModel(string Folder, SolutionModel? Solution, IRea
         return null;
     }
 
-    /// <summary>What a dotnet build of a target (the solution, a project, a program) is given for <see cref="Build"/>; none
-    /// for the configuration MSBuild takes, or the folder itself. dotnet watch's (<paramref name="watched"/>) in its own words.</summary>
+    /// <summary>What a dotnet build of a target (the solution, a project, a program) is given for <see cref="Build"/>, a
+    /// project's with what the solution maps those it references to, as its projects reference each other; none for the
+    /// configuration MSBuild takes, or the folder itself. dotnet watch's (<paramref name="watched"/>) in its own words.</summary>
     public IReadOnlyList<string> BuildArgumentsFor(string target, bool watched = false) =>
         Build is not { } chosen || PathNames.Same(target, Folder) ? []
         : chosen.ArgumentsFor(target, Solution is { } solution && PathNames.Same(solution.Path, target),
-            Projects.FirstOrDefault(p => PathNames.Same(p.Path, target))?.Property(CarriedProperties.Platforms), watched);
+            PlatformsOf(target), watched, ReferencesOf);
+
+    /// <summary>The projects a project references, as last evaluated; none for one not among <see cref="Projects"/>.</summary>
+    public IReadOnlyList<string> ReferencesOf(string project) => Projects.FirstOrDefault(p => PathNames.Same(p.Path, project))?.ProjectReferences ?? [];
 
     /// <summary>What a dotnet publish of a project is given to build it as its build does: <see cref="BuildArgumentsFor"/>'s,
     /// else the configuration its build takes given none (<paramref name="builtAs"/>, as its evaluation says), which a

@@ -185,6 +185,42 @@ public sealed class LaunchUpToDateTests
         }
     }
 
+    /// <summary>Under a solution whose default, Debug, maps App to Release, and whose Staging maps the library App references
+    /// to Release: Run right after Build Solution starts no dotnet build of App and runs what the Build built, under each;
+    /// one after the library changed builds first, building the library as Staging maps it, and one after that builds nothing.</summary>
+    [AvaloniaFact]
+    public void A_run_right_after_build_solution_under_a_configuration_mapping_its_projects_starts_no_build_and_builds_them_as_mapped_after_a_change()
+    {
+        string folder = WriteSolution(mapped: true);
+        List<string> builds = [];
+        EventHandler<ChildStart> started = Counting(builds);
+        ChildProcesses.Started += started;
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        try
+        {
+            Ui.WaitFor(() => window.Configurations.Any(c => c.Name == "App"), "App's run configuration");
+            Assert.True(window.SelectConfiguration("App"));
+            Ui.WaitFor(() => BuildConfigurationTests.Offered(window) == "Debug, Release, Staging", () => $"the solution's configurations offered: {BuildConfigurationTests.Offered(window)}");
+            Built(window, AppActions.Build, succeeds: true, "Build Solution under Debug");
+            Ran(window, builds, built: false, "hello-1 lib-1", "a run right after Build Solution under Debug");
+            Assert.True(Output(window).Contains(Path.Combine("App", "bin", "Release"), StringComparison.Ordinal),
+                $"A run under Debug did not start App's Release build, as Debug maps it:\n{Output(window)}");
+
+            BuildConfigurationTests.Choose(window, "Staging");
+            Built(window, AppActions.Build, succeeds: true, "Build Solution under Staging");
+            Ran(window, builds, built: false, "hello-1 lib-1", "a run right after Build Solution under Staging");
+            Edit(Path.Combine(folder, "Lib", "Greeting.cs"), "lib-1", "lib-2");
+            Ran(window, builds, built: true, "hello-1 lib-2", "a run under Staging after the library changed");
+            Ran(window, builds, built: false, "hello-1 lib-2", "a run under Staging with nothing changed since");
+            Assert.False(Directory.Exists(Path.Combine(folder, "Lib", "bin", "Staging")), "A run under Staging built the library as Staging, which Staging maps to Release");
+        }
+        finally
+        {
+            ChildProcesses.Started -= started;
+            window.Close();
+        }
+    }
+
     /// <summary>Build Solution of a solution whose app targets two frameworks raises no IDE error, and Run right after it
     /// starts no dotnet build of the app, the Build window saying it is up to date, and runs its first framework's build.</summary>
     [AvaloniaFact]
@@ -313,21 +349,27 @@ public sealed class LaunchUpToDateTests
     }
 
     /// <summary>A solution of a console app, App, that says its C# constant and the word of the library it references, Lib;
-    /// and another console app, Tool, that references neither; restored. App targets the frameworks given, if any.</summary>
-    internal static string WriteSolution(string? appFrameworks = null)
+    /// and another console app, Tool, that references neither; restored. App targets the frameworks given, if any. A
+    /// <paramref name="mapped"/> solution declares Staging too, its Debug mapping App to Release, its Staging Lib.</summary>
+    internal static string WriteSolution(string? appFrameworks = null, bool mapped = false)
     {
         string folder = TestFolders.Create("uptodate-built-");
         TestFolders.Write(folder, "Lib/Lib.csproj", TestProjects.Library());
         TestFolders.Write(folder, "Lib/Greeting.cs", "namespace Lib;\n\npublic static class Greeting\n{\n    public static string Name => \"lib-1\";\n}\n");
-        string app = TestProjects.Console().With("  <ItemGroup>\n    <ProjectReference Include=\"../Lib/Lib.csproj\" />\n  </ItemGroup>\n");
+        string app = (mapped ? TestProjects.Console("<Configurations>Debug;Release;Staging</Configurations>") : TestProjects.Console())
+            .With("  <ItemGroup>\n    <ProjectReference Include=\"../Lib/Lib.csproj\" />\n  </ItemGroup>\n");
         TestFolders.Write(folder, "App/App.csproj", appFrameworks is null ? app
             : app.Replace($"<TargetFramework>{TestProjects.Framework}</TargetFramework>", $"<TargetFrameworks>{appFrameworks}</TargetFrameworks>", StringComparison.Ordinal));
         TestFolders.Write(folder, "App/Program.cs",
             "System.Console.WriteLine($\"said: {Words.Hello} {Lib.Greeting.Name}\");\n\nstatic class Words\n{\n    public const string Hello = \"hello-1\";\n}\n");
         TestFolders.Write(folder, "Tool/Tool.csproj", TestProjects.Console());
         TestFolders.Write(folder, "Tool/Program.cs", "System.Console.WriteLine(\"tool\");\n");
-        TestFolders.Write(folder, "Built.slnx",
-            "<Solution>\n  <Project Path=\"App/App.csproj\" />\n  <Project Path=\"Lib/Lib.csproj\" />\n  <Project Path=\"Tool/Tool.csproj\" />\n</Solution>\n");
+        TestFolders.Write(folder, "Built.slnx", mapped
+            ? "<Solution>\n  <Configurations>\n    <BuildType Name=\"Debug\" />\n    <BuildType Name=\"Release\" />\n    <BuildType Name=\"Staging\" />\n  </Configurations>\n"
+                + "  <Project Path=\"App/App.csproj\">\n    <BuildType Solution=\"Debug|*\" Project=\"Release\" />\n  </Project>\n"
+                + "  <Project Path=\"Lib/Lib.csproj\">\n    <BuildType Solution=\"Staging|*\" Project=\"Release\" />\n  </Project>\n"
+                + "  <Project Path=\"Tool/Tool.csproj\" />\n</Solution>\n"
+            : "<Solution>\n  <Project Path=\"App/App.csproj\" />\n  <Project Path=\"Lib/Lib.csproj\" />\n  <Project Path=\"Tool/Tool.csproj\" />\n</Solution>\n");
         // By its real path, as the IDE's builds name it, so the first build's restore finds nothing to do.
         Restore.Run(PathNames.Canonical(Path.Combine(folder, "Built.slnx")));
         return folder;

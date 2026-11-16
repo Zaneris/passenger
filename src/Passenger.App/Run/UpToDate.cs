@@ -76,8 +76,8 @@ public static class UpToDate
         return checks;
     }
 
-    /// <summary>The global properties a build of one step gives its project: its framework, Windows targeting, and the
-    /// configuration and platform chosen for it.</summary>
+    /// <summary>The global properties a build of one step gives its project: its framework, Windows targeting, and what the
+    /// build configuration chosen gives it (<see cref="WorkspaceModel.BuiltWith"/>).</summary>
     private static Dictionary<string, string> PropertiesOf(BuildStep step, bool windowsTargeting, Func<string, IReadOnlyDictionary<string, string>>? configured)
     {
         Dictionary<string, string> properties = new(StringComparer.OrdinalIgnoreCase);

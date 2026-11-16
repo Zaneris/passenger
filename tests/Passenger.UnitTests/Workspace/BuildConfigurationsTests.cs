@@ -114,6 +114,69 @@ public class BuildConfigurationsTests
         Assert.Equal(Library, mapped.BuiltUnlike(plain, Game)?.Project);
     }
 
+    /// <summary>A solution's default gives builds nothing only where it maps every project as a build of it given nothing
+    /// builds it: Debug and AnyCPU, a solution's Any CPU being AnyCPU.</summary>
+    [Fact]
+    public void A_solution_configuration_changes_nothing_given_none_only_where_it_maps_every_project_to_debug_and_anycpu()
+    {
+        Assert.True(BuildConfigurations.MapsAsGivenNone([new SolutionBuilt(Game, "Debug", "AnyCPU"), new SolutionBuilt(Library, "debug", "Any CPU")]));
+        Assert.True(BuildConfigurations.MapsAsGivenNone([]));
+        Assert.False(BuildConfigurations.MapsAsGivenNone([new SolutionBuilt(Game, "Release", "AnyCPU"), new SolutionBuilt(Library, "Debug", "AnyCPU")]));
+        Assert.False(BuildConfigurations.MapsAsGivenNone([new SolutionBuilt(Game, "Debug", "x64")]));
+    }
+
+    /// <summary>A project's build is told what the solution maps the projects it reaches through its references to, where a
+    /// project referencing one builds as another (a reference takes its referrer's configuration unless told): the app as
+    /// Staging tells its library mapped to Release, and the library below it mapped to Staging, which would otherwise take
+    /// Release from the library; the library's own build tells that one alone, and built beside it the one below is told
+    /// the same, so the library's build of it is the same build; a mapping alike everywhere tells nothing.</summary>
+    [Fact]
+    public void A_projects_build_is_told_the_mapping_of_each_reference_that_would_take_another_from_the_project_referencing_it()
+    {
+        const string app = "/work/App/App.csproj";
+        const string shared = "/work/Shared/Shared.csproj";
+        BuildChoice staging = new(new BuildConfiguration("Staging", "Any CPU"), OfSolution: true)
+        {
+            Mapped = [new SolutionBuilt(app, "Staging", "AnyCPU"), new SolutionBuilt(Library, "Release", "AnyCPU"), new SolutionBuilt(shared, "Staging", "AnyCPU")],
+        };
+        WorkspaceModel workspace = new WorkspaceModel("/work", null,
+            [Project(app, null) with { ProjectReferences = [Library] }, Project(Library, null) with { ProjectReferences = [shared] }, Project(shared, null)]) with { Build = staging };
+        Assert.Equal([Library, shared], staging.ToldOf(app, null, workspace.ReferencesOf).Select(t => t.Project));
+        Assert.Equal(["-c", "Staging", "-p:Platform=AnyCPU", "-p:CurrentSolutionConfigurationContents=<SolutionConfiguration>"
+            + "<ProjectConfiguration Project='1' AbsolutePath='/work/Library/Library.csproj'>Release|AnyCPU</ProjectConfiguration>"
+            + "<ProjectConfiguration Project='2' AbsolutePath='/work/Shared/Shared.csproj'>Staging|AnyCPU</ProjectConfiguration></SolutionConfiguration>"],
+            workspace.BuildArgumentsFor(app));
+        Assert.StartsWith("--property:CurrentSolutionConfigurationContents=<SolutionConfiguration>", workspace.BuildArgumentsFor(app, watched: true)[^1], StringComparison.Ordinal);
+        Assert.Equal([shared], staging.ToldOf(Library, null, workspace.ReferencesOf).Select(t => t.Project));
+        Assert.Empty(staging.ToldOf(shared, null, workspace.ReferencesOf));
+        Assert.Equal(BuildChoice.Contents(staging.ToldOf(app, null, workspace.ReferencesOf)), workspace.BuiltWith(app)["CurrentSolutionConfigurationContents"]);
+        Assert.Equal(new Dictionary<string, string> { ["Configuration"] = "Staging", ["Platform"] = "AnyCPU" }, workspace.BuiltWith(shared));
+        Func<string, IReadOnlyDictionary<string, string>> together = workspace.BuiltTogetherWith([Library, shared]);
+        Assert.Equal(new Dictionary<string, string>
+        {
+            ["Configuration"] = "Staging", ["Platform"] = "AnyCPU", ["CurrentSolutionConfigurationContents"] = BuildChoice.Contents([staging.Mapped[2]]),
+        }, together(shared));
+        Assert.Equal(together(shared)["CurrentSolutionConfigurationContents"], together(Library)["CurrentSolutionConfigurationContents"]);
+
+        BuildChoice release = new(new BuildConfiguration("Release", "Any CPU"), OfSolution: true)
+        {
+            Mapped = [new SolutionBuilt(app, "Release", "AnyCPU"), new SolutionBuilt(Library, "release", "Any CPU"), new SolutionBuilt(shared, "Release", "AnyCPU")],
+        };
+        Assert.Equal(["-c", "Release", "-p:Platform=AnyCPU"], (workspace with { Build = release }).BuildArgumentsFor(app));
+        Assert.Empty((workspace with { Build = null }).BuiltWith(app));
+    }
+
+    /// <summary>What a build is told of its references reads as MSBuild reads it whatever their paths hold: the path and the
+    /// mapping written as XML, then the command line's separators and MSBuild's escape mark escaped.</summary>
+    [Fact]
+    public void What_a_build_is_told_of_its_references_keeps_a_path_of_quotes_ampersands_and_msbuilds_separators()
+    {
+        string contents = BuildChoice.Contents([new SolutionBuilt("/w/it's & <x>, 100%; \"q\"/L.csproj", "Release", "AnyCPU")]);
+        Assert.Equal("<SolutionConfiguration><ProjectConfiguration Project='1' AbsolutePath='/w/it&apos;s &amp; &lt;x>, 100%; \"q\"/L.csproj'>Release|AnyCPU"
+            + "</ProjectConfiguration></SolutionConfiguration>", contents);
+        Assert.Equal("a%25b%3Bc%2Cd%22e", BuildChoice.Escaped("a%b;c,d\"e", "%;,\""));
+    }
+
     /// <summary>dotnet watch runs a project as its build does, its configuration and platform given in its own words: it takes
     /// <c>-p</c> for its project, so the platform goes as <c>--property</c>; none for the default.</summary>
     [Fact]

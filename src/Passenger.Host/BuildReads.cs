@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Xml;
 using Microsoft.Build.Evaluation;
 using Microsoft.Build.Evaluation.Context;
 using Microsoft.Build.Exceptions;
@@ -8,11 +9,12 @@ using Passenger.Core;
 namespace Passenger.Host;
 
 /// <summary>What a build of a project reads, as its evaluations with the build's global properties can say, and what it
-/// makes, with each project it references in turn (every framework of one, with those properties but the framework, as a
-/// reference is built). A build that reads more than its evaluations show is said as such: a project not SDK-style C#, a
-/// target or build event of the project's own, a response file, a reference given other properties. Evaluated afresh
-/// each time, every file stamped before the build it comes before; several projects asked at once share their
-/// evaluations, each project they reach evaluated once, side by side.</summary>
+/// makes, with each project it references in turn (every framework of one, with those properties but the framework, and the
+/// configuration and platform the build tells it a reference is mapped to, as a reference is built). A build that reads
+/// more than its evaluations show is said as such: a project not SDK-style C#, a target or build event of the project's
+/// own, a response file, a reference given other properties. Evaluated afresh each time, every file stamped before the
+/// build it comes before; several projects asked at once share their evaluations, each project they reach evaluated once,
+/// side by side.</summary>
 internal static class BuildReads
 {
     /// <summary>A reference's metadata that builds it with other global properties than its evaluation here has.</summary>
@@ -31,8 +33,14 @@ internal static class BuildReads
     {
         Dictionary<string, string> globals = new(asked.Properties, StringComparer.OrdinalIgnoreCase);
         string? framework = globals.Remove(MSBuildNames.TargetFramework, out string? given) ? given : null;
+        Dictionary<string, (string Configuration, string Platform)>? told = globals.Remove(MSBuildNames.CurrentSolutionConfigurationContents, out string? contents)
+            ? Told(contents) : new(PathNames.Comparer);
+        if (told is null)
+        {
+            return [.. asked.Projects.Select(project => new BuildInputs { Unknown = $"{Path.GetFileName(project)}'s build is told its references' configurations in a list MSBuild cannot read" })];
+        }
         using ProjectCollection collection = new(globals, loggers: null, ToolsetDefinitionLocations.Default);
-        Evaluated evaluated = new(collection, EvaluationContext.Create(EvaluationContext.SharingPolicy.Shared), globals);
+        Evaluated evaluated = new(collection, EvaluationContext.Create(EvaluationContext.SharingPolicy.Shared), globals, told);
         try
         {
             evaluated.Load([.. asked.Projects.Select(project => (project, framework))], cancel);
@@ -119,6 +127,32 @@ internal static class BuildReads
         }
     }
 
+    /// <summary>The configuration and platform a build is told each project it references is mapped to, by its path, read as
+    /// its AssignProjectConfiguration reads them (<see cref="MSBuildNames.CurrentSolutionConfigurationContents"/>); null for
+    /// text that is no such list.</summary>
+    private static Dictionary<string, (string Configuration, string Platform)>? Told(string contents)
+    {
+        Dictionary<string, (string Configuration, string Platform)> told = new(PathNames.Comparer);
+        XmlDocument document = new() { XmlResolver = null };
+        try
+        {
+            using XmlReader reader = XmlReader.Create(new StringReader(contents), new XmlReaderSettings { DtdProcessing = DtdProcessing.Ignore, XmlResolver = null });
+            document.Load(reader);
+        }
+        catch (XmlException)
+        {
+            return null;
+        }
+        foreach (XmlElement project in document.DocumentElement?.ChildNodes.OfType<XmlElement>() ?? [])
+        {
+            if (project.GetAttribute("AbsolutePath") is { Length: > 0 } path && project.InnerText.Split('|') is [{ Length: > 0 } configuration, { Length: > 0 } platform])
+            {
+                told[Path.GetFullPath(path)] = (configuration, platform);
+            }
+        }
+        return told;
+    }
+
     /// <summary>What one evaluation says a build of it reads, the projects it references and those of its reads a restore
     /// writes (<see cref="Unknown"/>); or why a build of it reads more than that.</summary>
     private sealed record Walk(string? Why, Dictionary<string, Stamp> Reads, IReadOnlyList<string> References, HashSet<string> Restored)
@@ -138,9 +172,10 @@ internal static class BuildReads
         error is InvalidProjectFileException or IOException or UnauthorizedAccessException or InvalidOperationException or ArgumentException;
 
     /// <summary>The evaluations a request's answers read, each project's made and walked once (its file stamped before it is
-    /// read): those asked first, side by side, then the projects they reference, a round at a time. One a round did not
-    /// reach is made when first read.</summary>
-    private sealed class Evaluated(ProjectCollection collection, EvaluationContext context, IReadOnlyDictionary<string, string> globals)
+    /// read): those asked first, side by side, then the projects they reference, a round at a time, each one the build is
+    /// told of (<paramref name="told"/>) with its configuration and platform. One a round did not reach is made when first read.</summary>
+    private sealed class Evaluated(ProjectCollection collection, EvaluationContext context, IReadOnlyDictionary<string, string> globals,
+        IReadOnlyDictionary<string, (string Configuration, string Platform)> told)
     {
         private readonly ConcurrentDictionary<string, Lazy<(Stamp File, List<(Project Project, Walk Walk)>? Projects, Exception? Failed)>> made = new(PathNames.Comparer);
 
@@ -174,7 +209,7 @@ internal static class BuildReads
                 Stamp file = Stamps.File(path);
                 try
                 {
-                    return (file, [.. Evaluations(path, framework, collection, context, globals).Select(project => (project, Walk.Of(project)))], null);
+                    return (file, [.. Evaluations(path, framework, collection, context, GlobalsOf(path)).Select(project => (project, Walk.Of(project)))], null);
                 }
                 catch (Exception error) when (Unevaluated(error))
                 {
@@ -183,6 +218,12 @@ internal static class BuildReads
             })).Value;
 
         private static string Key(string path, string? framework) => $"{framework}|{path}";
+
+        /// <summary>The global properties a project is built with: the build's, with the configuration and platform it is told
+        /// the project is mapped to, if any.</summary>
+        private IReadOnlyDictionary<string, string> GlobalsOf(string path) => told.TryGetValue(path, out (string Configuration, string Platform) mapped)
+            ? new Dictionary<string, string>(globals, StringComparer.OrdinalIgnoreCase) { [MSBuildNames.Configuration] = mapped.Configuration, [MSBuildNames.Platform] = mapped.Platform }
+            : globals;
     }
 
     /// <summary>A project's evaluations a build reads: of the framework given, else its one, else its outer one and each of its

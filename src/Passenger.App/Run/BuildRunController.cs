@@ -551,7 +551,7 @@ public sealed partial class BuildRunController
         List<List<(BuildStep Step, bool MustShow)>> asked = [.. steps.GroupBy(step => step.Step.Framework).Select(group => group.ToList())];
         IReadOnlyList<UpToDate.Check?>[] found = await BackgroundWork.Run(() => Task.WhenAll(asked.Select(group => UpToDate.CheckAsync([.. group.Select(step => step.Step)],
             [.. group.Select(step => BuildOutput.Arguments(step.Step.Project, BuildKind.Build, step.Step.Framework, windows, step.Step.Output, configured.BuildArgumentsFor(step.Step.Project)))],
-            windows, folder, stop, configured.BuildPropertiesOf))));
+            windows, folder, stop, configured.BuiltWith))));
         checks.AddRange(found.Zip(asked).SelectMany(each => each.First.Zip(each.Second)).Where(each => each.First is not null)
             .Select(each => new Checked(each.First!, each.Second.MustShow)));
     }
@@ -1104,8 +1104,8 @@ public sealed partial class BuildRunController
             (IReadOnlyList<UpToDate.Check?> found, side) = await BackgroundWork.Run(async () => (
                 await UpToDate.CheckAsync([.. projects.Select(project => new BuildStep(project, framework, output))],
                     [.. projects.Select(project => BuildOutput.Arguments(project, BuildKind.Build, framework, windows, output, within.BuildArgumentsFor(project)))], windows, folder,
-                    stopping, within.BuildPropertiesOf),
-                projects.Count > 1 ? TogetherBuild.Write(state, folder, projects) : null));
+                    stopping, within.BuiltWith),
+                projects.Count > 1 ? TogetherBuild.Write(state, folder, projects, within.BuiltTogetherWith(projects)) : null));
             if (stopping.IsCancellationRequested)
             {
                 return new BuildOutcome(BuildStatus.Stopped, "Build stopped");

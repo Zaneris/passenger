@@ -123,6 +123,134 @@ public sealed class BuildConfigurationTests
         }
     }
 
+    /// <summary>A solution whose default, Debug, maps its app to Release: Run builds and starts the app's Release build, as
+    /// the solution's Build builds it, the library it references built as Debug.</summary>
+    [AvaloniaFact]
+    public void Run_under_the_solutions_default_builds_and_starts_the_app_as_the_default_maps_it()
+    {
+        string folder = Mapping("configuration-default-mapped-");
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        try
+        {
+            Ui.WaitFor(() => Offered(window) == "Debug, Release, Staging", () => $"Debug, Release and Staging offered, where the widget offers {Offered(window)}");
+            Assert.Equal("Debug", window.FindControl<TextBlock>("BuildConfigName")!.Text);
+            string output = RunToItsEnd(window);
+            Assert.True(output.Contains("app Release, lib Debug", StringComparison.Ordinal),
+                $"Run under the solution's Debug did not start the app as Release and its library as Debug, as Debug maps them:\n{output}");
+            Assert.True(File.Exists(Output(folder, "App", "Release")), "Run under the solution's Debug did not build the app into bin/Release, as Debug maps it");
+            Assert.False(File.Exists(Output(folder, "App", "Debug")), "Run under the solution's Debug built the app as Debug, which Debug maps to Release");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>Staging chosen, which maps the app to Staging and the library it references to Release: Run builds the app as
+    /// Staging and the library as Release, and the program runs both so, never a Staging build of the library.</summary>
+    [AvaloniaFact]
+    public void Run_under_staging_builds_the_library_the_app_references_as_the_solution_maps_it()
+    {
+        string folder = Mapping("configuration-references-mapped-");
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        try
+        {
+            Ui.WaitFor(() => Offered(window) == "Debug, Release, Staging", () => $"Debug, Release and Staging offered, where the widget offers {Offered(window)}");
+            Choose(window, "Staging");
+            string output = RunToItsEnd(window);
+            Assert.True(output.Contains("app Staging, lib Release", StringComparison.Ordinal),
+                $"Run under Staging did not start the app as Staging with its library as Release, as Staging maps them:\n{output}");
+            Assert.True(File.Exists(Output(folder, "Lib", "Release")), "Run under Staging did not build the library into bin/Release, as Staging maps it");
+            Assert.False(File.Exists(Output(folder, "Lib", "Staging")), "Run under Staging built the library as Staging, which Staging maps to Release");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>Staging chosen and a launch profile starting the app and a second one, which Staging maps to Release: Run
+    /// builds the two in one build, each as Staging maps it, and the library both reference as Release, never as Staging.</summary>
+    [AvaloniaFact]
+    public void Run_of_a_launch_profile_under_staging_builds_its_projects_together_each_as_the_solution_maps_it()
+    {
+        string folder = Mapping("configuration-together-mapped-", second: true);
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        try
+        {
+            Ui.WaitFor(() => Offered(window) == "Debug, Release, Staging", () => $"Debug, Release and Staging offered, where the widget offers {Offered(window)}");
+            Ui.WaitFor(() => window.Configurations.Any(c => c.Name == "Both"), () => $"the launch profile listed: {string.Join(", ", window.Configurations.Select(c => c.Name))}");
+            Assert.True(window.SelectConfiguration("Both"), "The launch profile could not be chosen");
+            Choose(window, "Staging");
+            Ui.Launched(window, window.RunAsync(), "the profile's projects to start", TimeSpan.FromMinutes(3));
+            Ui.WaitFor(() => !window.IsRunning, () => $"the profile's programs to end: {Ui.Said(window)}", TimeSpan.FromMinutes(1));
+            Assert.True(File.Exists(Output(folder, "App", "Staging")), "Run of the profile under Staging did not build the app as Staging, as Staging maps it");
+            Assert.True(File.Exists(Output(folder, "Second", "Release")), "Run of the profile under Staging did not build the second app as Release, as Staging maps it");
+            Assert.False(File.Exists(Output(folder, "Second", "Staging")), "Run of the profile under Staging built the second app as Staging, which Staging maps to Release");
+            Assert.True(File.Exists(Output(folder, "Lib", "Release")), "Run of the profile under Staging did not build the library as Release, as Staging maps it");
+            Assert.False(File.Exists(Output(folder, "Lib", "Staging")), "Run of the profile under Staging built the library as Staging, which Staging maps to Release");
+        }
+        finally
+        {
+            if (window.IsRunning)
+            {
+                Assert.Null(window.Actions.Run(AppActions.StopAll));
+                Ui.WaitFor(() => !window.IsRunning, "the profile's programs to end");
+            }
+            window.Close();
+        }
+    }
+
+    /// <summary>A restored solution of an app and the library it references, which prints the configuration each was built
+    /// as: its Debug maps the app to Release, its Staging maps the library to Release. With <paramref name="second"/>, a second
+    /// app referencing the library, which Staging maps to Release, and a launch profile, Both, starting the two apps.</summary>
+    private static string Mapping(string prefix, bool second = false)
+    {
+        string folder = PathNames.Canonical(TestFolders.Create(prefix));
+        foreach (string app in second ? (string[])["App", "Second"] : ["App"])
+        {
+            TestFolders.Write(folder, $"{app}/{app}.csproj", TestProjects.Console("<Configurations>Debug;Release;Staging</Configurations>")
+                .With("  <ItemGroup>\n    <ProjectReference Include=\"../Lib/Lib.csproj\" />\n  </ItemGroup>\n"));
+            TestFolders.Write(folder, $"{app}/Program.cs", "using System.Reflection;\n\nclass Program\n{\n"
+                + "    static void Main() => System.Console.WriteLine($\"app {Of(typeof(Program))}, lib {Of(typeof(Lib))}\");\n\n"
+                + "    static string Of(System.Type type) => type.Assembly.GetCustomAttribute<AssemblyConfigurationAttribute>()?.Configuration;\n}\n");
+        }
+        TestFolders.Write(folder, "Lib/Lib.csproj", TestProjects.Library());
+        TestFolders.Write(folder, "Lib/Lib.cs", "public static class Lib\n{\n}\n");
+        string secondApp = second ? "\n  <Project Path=\"Second/Second.csproj\">\n    <BuildType Solution=\"Staging|*\" Project=\"Release\" />\n  </Project>" : string.Empty;
+        TestFolders.Write(folder, "Mapped.slnx", $"""
+            <Solution>
+              <Configurations>
+                <BuildType Name="Debug" />
+                <BuildType Name="Release" />
+                <BuildType Name="Staging" />
+              </Configurations>
+              <Project Path="App/App.csproj">
+                <BuildType Solution="Debug|*" Project="Release" />
+              </Project>
+              <Project Path="Lib/Lib.csproj">
+                <BuildType Solution="Staging|*" Project="Release" />
+              </Project>{secondApp}
+            </Solution>
+
+            """);
+        if (second)
+        {
+            TestFolders.Write(folder, "Mapped.slnLaunch", "[\n  {\n    \"Name\": \"Both\",\n    \"Projects\": [\n      { \"Path\": \"App\\\\App.csproj\", \"Action\": \"Start\" },\n"
+                + "      { \"Path\": \"Second\\\\Second.csproj\", \"Action\": \"Start\" }\n    ]\n  }\n]\n");
+        }
+        Restore.Run(Path.Combine(folder, "Mapped.slnx"));
+        return folder;
+    }
+
+    /// <summary>Run of the configuration chosen, waited for until its program ends: what the Run window shows of it.</summary>
+    private static string RunToItsEnd(MainWindow window)
+    {
+        Ui.Launched(window, window.RunAsync(), "the run", TimeSpan.FromMinutes(2));
+        Ui.WaitFor(() => !window.Runner.IsRunning, "the program to end");
+        return window.BottomPanel.Run.Document.Snapshot.ToString();
+    }
+
     /// <summary>The configuration chosen is the folder's: a window keeping state opens it again building as Staging, its
     /// widget naming it and its projects evaluated under it from the start.</summary>
     [AvaloniaFact]

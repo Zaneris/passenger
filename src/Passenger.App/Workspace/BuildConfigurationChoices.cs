@@ -9,7 +9,8 @@ namespace Passenger.App.Workspace;
 /// evaluation of it: of those its solution declares (as MSBuild reads the solution), or with none, those its projects
 /// declare (<see cref="BuildConfigurations.Declared"/>). The one MSBuild takes given none is chosen until another is, and a
 /// choice is kept with the folder (<see cref="WorkspaceState.Build"/>), with what the solution maps each project to under
-/// it, so the folder opens building as it last did. A UI-thread object.</summary>
+/// it, so the folder opens building as it last did: the default's too where it maps a project otherwise than a build of it
+/// given nothing builds it. A UI-thread object.</summary>
 public sealed class BuildConfigurationChoices
 {
     private StateDocument<WorkspaceState>? kept;
@@ -34,7 +35,8 @@ public sealed class BuildConfigurationChoices
     /// <summary>Why the solution's configurations could not be read, the last time they were asked; null when they were.</summary>
     public string? Problem { get; private set; }
 
-    /// <summary>What builds are given: null for the one MSBuild takes given none.</summary>
+    /// <summary>What builds are given: null for the one MSBuild takes given none, where it maps each project as a build of it
+    /// given nothing builds it.</summary>
     public BuildChoice? Choice => choice;
 
     /// <summary>The one chosen: <see cref="Choice"/>'s, else the default.</summary>
@@ -144,9 +146,9 @@ public sealed class BuildConfigurationChoices
     }
 
     /// <summary>What a run naming a build configuration of its own by its key builds as, in place of the folder's choice: the
-    /// folder's choice where it names the one chosen, nothing for the one MSBuild takes given none, else the one named with
-    /// what the solution maps each project to under it, asked of the solution; why not where it is not offered, or the
-    /// solution could not say.</summary>
+    /// folder's choice where it names the one chosen, else the one named with what the solution maps each project to under
+    /// it, asked of the solution, nothing for the one MSBuild takes given none where that changes nothing
+    /// (<see cref="Of"/>); why not where it is not offered, or the solution could not say.</summary>
     public async Task<(BuildChoice? Choice, string? Problem)> ForRunAsync(string folder, WorkspaceModel workspace, string named)
     {
         UiThread.Check();
@@ -160,17 +162,19 @@ public sealed class BuildConfigurationChoices
         {
             return (null, $"{wanted.Key} is not one of the build configurations {(OfSolution ? "the solution declares" : "the projects declare")}");
         }
-        if (Default is { } fallback && offered.Is(fallback))
-        {
-            return (null, null);
-        }
         if (workspace.Solution is not { } solution)
         {
-            return (new BuildChoice(offered, OfSolution: false), null);
+            return (Of(offered, ofSolution: false, []), null);
         }
         (SolutionBuild? read, string? problem) = await AskAsync(folder, solution.Path, offered);
-        return read is null ? (null, problem) : (new BuildChoice(offered, OfSolution: true) { Mapped = read.Mapped }, null);
+        return read is null ? (null, problem) : (Of(offered, ofSolution: true, read.Mapped), null);
     }
+
+    /// <summary>What builds are given for one offered and what the solution maps each project to under it: nothing for the
+    /// default where it maps each as a build of it given nothing builds it (<see cref="BuildConfigurations.MapsAsGivenNone"/>).</summary>
+    private BuildChoice? Of(BuildConfiguration offered, bool ofSolution, IReadOnlyList<SolutionBuilt> mapped) =>
+        Default is { } fallback && offered.Is(fallback) && BuildConfigurations.MapsAsGivenNone(mapped) ? null
+        : new BuildChoice(offered, ofSolution) { Mapped = mapped };
 
     private static async Task<(SolutionBuild? Read, string? Problem)> AskAsync(string folder, string solution, BuildConfiguration? chosen)
     {
@@ -204,10 +208,11 @@ public sealed class BuildConfigurationChoices
         }
     }
 
-    /// <summary>The one chosen and its mapping given from now on, kept with the folder: nothing for the default.</summary>
+    /// <summary>The one chosen and its mapping given from now on, kept with the folder: nothing for the default where nothing
+    /// changes what it builds (<see cref="Of"/>).</summary>
     private void Apply(BuildConfiguration? chosen, IReadOnlyList<SolutionBuilt> mapped)
     {
-        BuildChoice? next = chosen is null || Default is null || chosen.Is(Default) ? null : new BuildChoice(chosen, OfSolution) { Mapped = mapped };
+        BuildChoice? next = chosen is null || Default is null ? null : Of(chosen, OfSolution, mapped);
         bool same = next is null ? choice is null
             : choice is not null && choice.Chosen.Key == next.Chosen.Key && choice.OfSolution == next.OfSolution
               && choice.Mapped.SequenceEqual(next.Mapped);

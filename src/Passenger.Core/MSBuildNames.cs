@@ -45,6 +45,11 @@ public static class MSBuildNames
     public const string SolutionFileName = "SolutionFileName";
     public const string SolutionExt = "SolutionExt";
 
+    /// <summary>What a build of a solution tells each project its references are mapped to, which the project's
+    /// AssignProjectConfiguration gives each reference it builds: an XML list of projects by path, each with its
+    /// configuration and platform.</summary>
+    public const string CurrentSolutionConfigurationContents = "CurrentSolutionConfigurationContents";
+
     // What a project builds for, and with.
     public const string Configuration = "Configuration";
     public const string Platform = "Platform";
