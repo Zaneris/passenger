@@ -7,9 +7,15 @@ namespace Passenger.App.Run.Devices;
 /// (<see cref="Out"/>): the start puts its relay or inspector in (<see cref="PutRelayAsync"/>, <see cref="PutInspectorAsync"/>),
 /// then hands it to its run's or session's end (<see cref="EndsWith"/>) or takes it out itself (<see cref="TakeOutAsync"/>).
 /// Each step on the device runs off the window's thread, so the folder's end takes it all out (<see cref="EndNowAsync"/>)
-/// once the window's loop has stopped too. Stop waits for a start until it has settled (<see cref="Settled"/>).</summary>
-public sealed class DeviceStart(string name, AndroidApp app) : IDisposable
+/// once the window's loop has stopped too. Stop waits for a start until it has settled (<see cref="Settled"/>), and a
+/// Passenger the system asks to end until every start is out (<see cref="EveryOut"/>).</summary>
+public sealed class DeviceStart : IDisposable
 {
+    /// <summary>The starts in this process not yet out again, whichever window holds each.</summary>
+    private static readonly List<DeviceStart> Starts = [];
+
+    private static readonly Lock StartsGate = new();
+
     private readonly Lock gate = new();
 
     /// <summary>Canceled by the folder's end, so a put under way stops there and takes out what it had put in.</summary>
@@ -28,16 +34,36 @@ public sealed class DeviceStart(string name, AndroidApp app) : IDisposable
     /// <summary>Whether the app was started, what the start put in handed to its run's or session's end.</summary>
     private bool handed;
 
-    /// <summary>The program whose app it starts, as Run and Debug name it.</summary>
-    public string Name { get; } = name;
+    public DeviceStart(string name, AndroidApp app)
+    {
+        Name = name;
+        App = app;
+        lock (StartsGate)
+        {
+            Starts.RemoveAll(s => s.Out.IsCompleted);
+            Starts.Add(this);
+        }
+    }
 
-    public AndroidApp App { get; } = app;
+    /// <summary>The program whose app it starts, as Run and Debug name it.</summary>
+    public string Name { get; }
+
+    public AndroidApp App { get; }
 
     /// <summary>Done once the start's own part is over: what it put in taken out again, or handed to its run's or session's end.</summary>
     public Task Settled => settled.Task;
 
     /// <summary>Done once all the start put in is out again and its app ended there, however its start or its end went.</summary>
     public Task Out => taken.Task;
+
+    /// <summary>Done once every start in this process is out again, whichever window holds it.</summary>
+    public static Task EveryOut()
+    {
+        lock (StartsGate)
+        {
+            return Task.WhenAll(Starts.Select(s => s.Out));
+        }
+    }
 
     /// <summary>Passenger's relay put in the installed Debug app as <see cref="DeviceLaunches"/> puts it (the inspector and
     /// the update handlers' hook beside it where given): the relay's session, else why not. Stopped partway, by

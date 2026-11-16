@@ -131,6 +131,15 @@ public static class DeviceLaunches
     /// hold a clean-up. Null waits for nothing.</summary>
     public static Func<Task>? HeldEnds { get; set; }
 
+    /// <summary>The variable holding each app's end on a device that many milliseconds as it begins, where
+    /// <see cref="HeldEnds"/> holds nothing: a test's hold of a clean-up in a Passenger of its own (<c>--mcp</c>).</summary>
+    [IdentifierHome]
+    public const string EndHoldVariable = "PASSENGER_DEVICE_END_HOLD_MS";
+
+    /// <summary>How long each app's end on a device is held as it begins: none, or what <see cref="EndHoldVariable"/> gives;
+    /// a value there that is no whole number of milliseconds above 0 is fatal.</summary>
+    public static TimeSpan EndHold => EnvironmentValues.Milliseconds(EndHoldVariable, TimeSpan.Zero);
+
     /// <summary>How long Passenger's end and a folder's wait for its apps' ends on devices, apart from what else they wait for:
     /// force-stop's own wait for the process to go, then each thing taken out, one adb call at a time, on a loaded machine.</summary>
     public static TimeSpan EndLimit => Waits.Of(TimeSpan.FromSeconds(30));
@@ -308,6 +317,10 @@ public static class DeviceLaunches
             if (HeldEnds is { } held)
             {
                 await held();
+            }
+            else if (EndHold > TimeSpan.Zero)
+            {
+                await Task.Delay(EndHold);
             }
             if (stop && Gone(app, await AndroidDevices.AdbAsync(app.Adb, app.ForceStop(), CancellationToken.None)))
             {

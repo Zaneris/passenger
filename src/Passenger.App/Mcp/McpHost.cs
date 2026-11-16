@@ -8,6 +8,7 @@ using Avalonia.Threading;
 using ModelContextProtocol;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
+using Passenger.App.Run.Devices;
 using Passenger.App.Settings;
 using Passenger.App.State;
 using Passenger.App.Workspace;
@@ -202,8 +203,9 @@ public static partial class McpHost
 
     /// <summary>Has the system's request to end the process (SIGTERM, which a client may send just after closing the
     /// input) end it as the end of its input does, <paramref name="end"/>, so its state is written and what it started
-    /// ends, the process going after <see cref="EndLimit"/> at the latest, unless <paramref name="kept"/> takes the signal
-    /// as its own. Null where the system has no such signal.</summary>
+    /// ends, the process going after <see cref="EndLimit"/> at the latest, or once what its starts put on devices is out
+    /// (<see cref="ExitOnceEndedAsync"/>), unless <paramref name="kept"/> takes the signal as its own. Null where the system
+    /// has no such signal.</summary>
     internal static System.Runtime.InteropServices.PosixSignalRegistration? EndOnSignal(Action end, Func<bool>? kept = null)
     {
         try
@@ -216,13 +218,29 @@ public static partial class McpHost
                     return;
                 }
                 end();
-                IdeErrors.Observe(Task.Delay(EndLimit).ContinueWith(_ => Environment.Exit(143), TaskScheduler.Default));
+                IdeErrors.Observe(ExitOnceEndedAsync());
             });
         }
         catch (PlatformNotSupportedException)
         {
             return null;
         }
+    }
+
+    /// <summary>The process gone, however far its end got, <see cref="EndLimit"/> after the system asked it to end, or later
+    /// while an app's end on a device is under way: once every start there is out, within the
+    /// <see cref="DeviceLaunches.EndLimit"/> a folder's end gives them, as an end through its input waits for them.</summary>
+    private static async Task ExitOnceEndedAsync()
+    {
+        try
+        {
+            await Task.WhenAll(Task.Delay(EndLimit), DeviceStart.EveryOut().WaitAsync(DeviceLaunches.EndLimit));
+        }
+        catch (TimeoutException)
+        {
+            // Past that limit the process goes all the same.
+        }
+        Environment.Exit(143);
     }
 
     /// <summary><c>--mcp</c>: the IDE with no window, its tools on the standard input given (<see cref="StandardInput.Take"/>)

@@ -254,6 +254,47 @@ public sealed class McpAndroidDeviceTests : McpRig
         Assert.True(left.Length == 0, $"Passenger went leaving on the emulator {left}: the next start finds them, and the app runs on marked as debugged");
     }
 
+    /// <summary>An agent's Passenger the system asks to end (SIGTERM) while its debugged app's end on the emulator is held past
+    /// the moment such an end otherwise gives its process waits for it, as one whose input closes does: it goes only once
+    /// the app has ended there and nothing of the debugging is left, where it went leaving the relay, its port and the app
+    /// marked as debugged.</summary>
+    [Fact]
+    public async Task An_agents_passenger_the_system_ends_while_its_debugged_apps_end_on_the_emulator_is_held_leaves_nothing_there()
+    {
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "Windows has no SIGTERM for the system to send");
+        string folder = PathNames.Canonical(TestFolders.Create("mcp-android-"));
+        DeleteAtEnd(folder);
+        string source = Path.Combine(Debuggees.Root, "tests", "AndroidApp");
+        foreach (string file in Directory.EnumerateFiles(source, "*", SearchOption.AllDirectories).Where(f => !Path.GetRelativePath(source, f).StartsWith("bin", StringComparison.Ordinal)
+            && !Path.GetRelativePath(source, f).StartsWith("obj", StringComparison.Ordinal)))
+        {
+            string copy = Path.Combine(folder, Path.GetRelativePath(source, file));
+            Directory.CreateDirectory(Path.GetDirectoryName(copy)!);
+            File.Copy(file, copy);
+        }
+        string project = Path.Combine(folder, "AndroidApp.csproj");
+        (DeviceTarget target, AndroidTools tools) = await TargetAsync(project);
+        if (!((string[])["android-arm64", "android-x64"]).Any(runtime => File.Exists(Path.Combine(AppContext.BaseDirectory, "debugger", "relay", runtime, AndroidApp.RelayFile))))
+        {
+            Assert.Skip("This build carries no Android debug relay, which `just debug-relay android` makes before a build carries it");
+        }
+        // Past the 3 s the process gives the rest of its end once the system asks it to go, within the apps' own limit.
+        System.Diagnostics.Process passenger = StartPassenger(["--mcp", folder], environment: new() { [DeviceLaunches.EndHoldVariable] = "8000" }, languageServer: false);
+        McpClient client = await Connect(passenger, ["--mcp", folder]);
+        await ChooseAsync(client, "AndroidApp", target);
+        JsonElement debugged = await Call(client, McpTools.DebugStart, new() { ["configuration"] = "AndroidApp", ["waitSeconds"] = 3600 });
+        Assert.True(debugged.GetProperty("state").GetString() == "running", $"debug_start did not leave the app running debugged on the emulator: {debugged}");
+        string serial = await SerialAsync(target, project);
+        Assert.True((await LeftAsync(tools, serial)).Length > 0, $"debug_start put nothing of Passenger's on the emulator: {debugged}");
+
+        OwnProcess.Of(passenger).Terminate();
+        Assert.True(await Waiting.Within(passenger.WaitForExitAsync(Cancel), TimeSpan.FromMinutes(1), Cancel), "Passenger did not end once the system asked it to");
+        string left = await LeftAsync(tools, serial);
+        Assert.True(left.Length == 0, $"Passenger went as the system asked leaving on the emulator {left}: the next start finds them, and the app runs on marked as debugged");
+        string running = (await ChildProcesses.RunAsync(ChildProcesses.Command(tools.Adb, ["-s", serial, "shell", "pidof", Package]), cancel: Cancel)).Output.Trim();
+        Assert.True(running.Length == 0, $"Passenger went as the system asked with its debugged app still running on the emulator as {running}");
+    }
+
     /// <summary>What a Debug start leaves on the emulator of <paramref name="serial"/>: a port forwarded to a relay's or an
     /// inspector's socket, a socket reversed to Passenger, the relay in the app's folder, the app marked as debugged; empty
     /// once its end took them away.</summary>
