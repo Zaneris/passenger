@@ -205,4 +205,8 @@ public static class MSBuildNames
     public const string DetectSdkLocations = "_DetectSdkLocations";
     public const string SdkDevPath = "_SdkDevPath";
     public const string SdkVersion = "_SdkVersion";
+
+    // A Mac Catalyst app's bundle as the Apple workloads' ComputeRunArguments leaves it: its folder and its program's name.
+    public const string AppBundleDir = "AppBundleDir";
+    public const string NativeExecutableName = "_NativeExecutableName";
 }

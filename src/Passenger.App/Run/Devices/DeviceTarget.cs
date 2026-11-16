@@ -116,17 +116,28 @@ public static partial class DeviceTargets
     private static string Unsaid(string description) =>
         description.EndsWith(" (Not Running)", StringComparison.OrdinalIgnoreCase) ? description[..^" (Not Running)".Length] : description;
 
-    /// <summary>This machine as the target of a platform whose apps run here (a Windows app's head on Windows), which the
-    /// chooser lists beside the devices.</summary>
+    /// <summary>This machine as the target of a platform whose apps run here (a Windows app's head on Windows, a Mac
+    /// Catalyst one on a Mac), which the chooser lists beside the devices.</summary>
     public static DeviceTarget Here(TargetPlatform platform) =>
-        new(platform, platform.ToString().ToLowerInvariant(), $"{platform} (this machine)", TargetKind.ThisMachine, Running: true);
+        new(platform, platform.ToString().ToLowerInvariant(), $"{Named(platform)} (this machine)", TargetKind.ThisMachine, Running: true);
 
-    /// <summary>The platform whose apps run on this machine, where the system has one: Windows' on Windows.</summary>
-    public static TargetPlatform? OfThisMachine => OperatingSystem.IsWindows() ? TargetPlatform.Windows : null;
+    /// <summary>A platform as people name it.</summary>
+    public static string Named(TargetPlatform platform) => platform switch
+    {
+        TargetPlatform.Ios => "iOS",
+        TargetPlatform.MacCatalyst => "Mac Catalyst",
+        _ => platform.ToString(),
+    };
+
+    /// <summary>The platform whose apps run on this machine, where the system has one: Windows' on Windows, Mac Catalyst's
+    /// on a Mac.</summary>
+    public static TargetPlatform? OfThisMachine => OperatingSystem.IsWindows() ? TargetPlatform.Windows
+        : OperatingSystem.IsMacOS() ? TargetPlatform.MacCatalyst
+        : null;
 
     /// <summary>Where a project of these frameworks runs with no target chosen: this machine, where its apps run here
     /// (<paramref name="here"/>, <see cref="OfThisMachine"/>) and the project has a head of that platform, as a MAUI app's
-    /// Windows head on Windows; null where a target must be chosen.</summary>
+    /// Windows head on Windows and its Mac Catalyst head on a Mac; null where a target must be chosen.</summary>
     public static KeptTarget? Unchosen(IReadOnlyList<string> frameworks, TargetPlatform? here) =>
         here is { } platform && FrameworkFor(frameworks, platform) is not null ? KeptTarget.Of(Here(platform)) : null;
 

@@ -900,6 +900,17 @@ public sealed partial class BuildRunController
             }
             plan = installed;
         }
+        if (build && plan.MacCatalyst is { App: null } && session.Projects.FirstOrDefault(p => PathNames.Same(p.Path, plan.Project!)) is { } catalyst)
+        {
+            (LaunchPlan? opened, string? unopened) = await Devices.MacCatalystApps.ReadyAsync(plan, Workspace.ProjectModels.Properties(plan.Workspace, catalyst), work.Stopping);
+            if (opened is null)
+            {
+                await collecting.CancelAsync();
+                await AbandonAsync(told);
+                return (null, Checkpoint(work, chosen.Name) ?? unopened, false);
+            }
+            plan = opened;
+        }
         if (told is not null)
         {
             if (!told.IsCompleted)
@@ -1222,7 +1233,9 @@ public sealed partial class BuildRunController
             UnfollowWatched();
             // dotnet watch builds the project itself, and runs it again after an edit it cannot apply.
             bool functions = chosen.RunsFunctions(session.Projects);
-            bool wanted = (hotReload ?? parts.Settings().HotReload) && chosen.NamesNoOtherProgram(session.Projects) && !functions;
+            // A Mac Catalyst app takes no edits yet: its runtime's debugger libraries load only into a Mac Catalyst process.
+            bool catalyst = RunsOnMacCatalyst(chosen);
+            bool wanted = (hotReload ?? parts.Settings().HotReload) && chosen.NamesNoOtherProgram(session.Projects) && !functions && !catalyst;
             bool godot = chosen.RunsGodot(session.Projects);
             // An app on a device takes its edits through Passenger's relay in it, which holds its start there until the debugger attaches.
             bool elsewhere = RunsOnDevice(chosen);
@@ -1270,6 +1283,7 @@ public sealed partial class BuildRunController
             session.RunPlan = plan;
             string running = watched || reloaded ? $"Running {chosen.Name} with Hot Reload: a save applies its changes"
                 : wanted && godot && !plan.ScriptsAlone ? $"Running {chosen.Name} without Hot Reload: {GodotLaunch.EditorReloads}"
+                : catalyst && (hotReload ?? parts.Settings().HotReload) ? $"Running {chosen.Name} without Hot Reload: {Refusals.MacCatalystUnreloaded}"
                 : functions && (hotReload ?? parts.Settings().HotReload) ? $"Running {chosen.Name} without Hot Reload: {Refusals.FunctionsUnreloaded}"
                 : $"Running {chosen.Name}";
             // An Avalonia or WPF app is launched with the inspector in it, which tells of its failed bindings while it runs.
@@ -1374,10 +1388,17 @@ public sealed partial class BuildRunController
             {
                 FollowWatched(chosen.Name);
             }
+            // The wall clock's, as the system keeps a process's start: the app opened is the one started since.
+            DateTime opening = DateTime.UtcNow;
             // Its fork off the window's thread (#441): the program runs from now as Stop and IsRunning see it, its id known once started.
             string? notStarted = Started(watched
                 ? await session.Runner.StartDotnetAsync(Watch(plan), plan.WorkingDirectory, variables, plan.Placed)
                 : await session.Runner.StartAsync(plan.Start(), variables));
+            if (notStarted is null && plan.MacCatalyst?.App is { } opened)
+            {
+                // The system starts it apart from its opener, which Stop ends: it ends with its run here, and with Passenger.
+                IdeErrors.Observe(Devices.MacCatalystApps.EndWithAsync(opened, opening, session.Runner.Ended));
+            }
             if (notStarted is null)
             {
                 parts.OpenBrowser(plan, session.Runner.Ended);
@@ -2517,6 +2538,10 @@ public sealed partial class BuildRunController
         if (plan.Device?.App is { } device)
         {
             return await DebugOnDeviceAsync(plan, device, work, edits);
+        }
+        if (plan.MacCatalyst is not null)
+        {
+            return Refusals.MacCatalystUndebugged(plan.Name);
         }
         if (plan.Functions)
         {

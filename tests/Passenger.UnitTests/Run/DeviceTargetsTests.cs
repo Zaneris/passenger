@@ -284,6 +284,20 @@ public class DeviceTargetsTests
     }
 
     [Fact]
+    public void On_a_mac_a_projects_mac_catalyst_head_is_this_machine_and_runs_here_with_nothing_chosen()
+    {
+        string[] maui = ["net11.0-android", "net11.0-ios", "net11.0-maccatalyst"];
+
+        DeviceTarget here = DeviceTargets.Here(TargetPlatform.MacCatalyst);
+        Assert.Equal("Mac Catalyst (this machine)", here.Shown);
+        Assert.Equal(TargetKind.ThisMachine, here.Kind);
+        Assert.Equal("Windows (this machine)", DeviceTargets.Here(TargetPlatform.Windows).Shown);
+        Assert.Equal(KeptTarget.Of(here), DeviceTargets.Unchosen(maui, TargetPlatform.MacCatalyst));
+        Assert.Equal("net11.0-maccatalyst", DeviceTargets.FrameworkFor(maui, here.Platform));
+        Assert.Null(DeviceTargets.Unchosen(["net11.0-android", "net11.0-ios"], TargetPlatform.MacCatalyst));
+    }
+
+    [Fact]
     public void An_android_app_is_runnable_though_its_sdk_makes_its_output_a_library()
     {
         ProjectModel Evaluated(string output, string? android) => new("/src/Shop/Shop.csproj", "Shop", output, ["net11.0-android"], [], [], true)

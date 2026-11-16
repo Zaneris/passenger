@@ -529,6 +529,18 @@ public static class Refusals
     public static string NotYetOn(string target) =>
         $"Passenger does not run apps on {target} yet: it runs them on Android devices and emulators";
 
+    /// <summary>A Mac Catalyst app debugged: the system's .NET debugger libraries for Mac Catalyst load only into a Mac
+    /// Catalyst process, which Passenger's debugger is not yet.</summary>
+    public static string MacCatalystUndebugged(string app) =>
+        $"Passenger's debugger does not reach a Mac Catalyst app yet, so {app} cannot be debugged: Run starts it";
+
+    /// <summary>A Mac Catalyst app run with Hot Reload, whose edits would go through the debugger.</summary>
+    public const string MacCatalystUnreloaded = "Passenger does not apply Hot Reload to a Mac Catalyst app yet";
+
+    /// <summary>A Mac Catalyst app profiled, whose sandbox keeps the profiler's port out of its reach.</summary>
+    public static string MacCatalystUnprofiled(string app) =>
+        $"Passenger's profiler does not record a Mac Catalyst app yet, so {app} cannot be profiled: Run starts it";
+
     /// <summary>An Android app run where this machine (<paramref name="host"/>, "Linux on Arm64") builds none.</summary>
     public static string AndroidBuiltElsewhere(string host) => $"Android apps are built only on {AndroidHosts.Builders}: {AndroidHosts.Why(host)}";
 

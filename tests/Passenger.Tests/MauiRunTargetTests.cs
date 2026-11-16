@@ -11,9 +11,9 @@ namespace Passenger.Tests;
 /// <summary>The .NET MAUI template's app in the window: its run configuration is named for the project, never for the
 /// template's Windows profile, and the target chosen beside it says where it runs. An Android emulator's plan builds
 /// the app's Android head with no Windows profile; on Windows, Windows chosen from the widget's menu runs the template's
-/// own profile on this machine, as it does with nothing chosen, where elsewhere a target must be chosen. Plans are worked
-/// out with no build, so no emulator is needed; where MSBuild cannot say what the Android head builds for want of MAUI's
-/// workloads, it skips there, saying so.</summary>
+/// own profile on this machine, as it does with nothing chosen; on a Mac, nothing chosen runs its Mac Catalyst head on
+/// this machine, with no Windows profile; on Linux a target must be chosen. Plans are worked out with no build, so no
+/// emulator is needed; where MSBuild cannot say what a head builds for want of MAUI's workloads, it skips there, saying so.</summary>
 public sealed class MauiRunTargetTests
 {
     private static readonly TimeSpan Slow = TimeSpan.FromMinutes(2);
@@ -44,6 +44,20 @@ public sealed class MauiRunTargetTests
                 Assert.Equal("Windows Machine", unchosen.Environment.GetValueOrDefault(LaunchProfile.NameVariable));
                 Assert.Equal(DeviceTargets.Here(TargetPlatform.Windows).Shown, window.FindControl<TextBlock>("RunTargetName")!.Text);
             }
+            else if (OperatingSystem.IsMacOS())
+            {
+                if (unchosen is null)
+                {
+                    SkipWithoutWorkloads(window, refused);
+                }
+                LaunchPlan mac = unchosen ?? throw new Xunit.Sdk.XunitException($"MauiApp1 with no target chosen was refused on a Mac: {refused}");
+                Assert.Null(mac.Device);
+                Assert.Equal("net11.0-maccatalyst", mac.Framework);
+                Assert.Equal("net11.0-maccatalyst", mac.MacCatalyst?.Framework);
+                Assert.False(mac.Environment.ContainsKey(LaunchProfile.NameVariable),
+                    $"The Mac Catalyst head's run took the launch profile {mac.Environment.GetValueOrDefault(LaunchProfile.NameVariable)}, the template's Windows one");
+                Assert.Equal(DeviceTargets.Here(TargetPlatform.MacCatalyst).Shown, window.FindControl<TextBlock>("RunTargetName")!.Text);
+            }
             else
             {
                 Assert.Null(unchosen);
@@ -55,11 +69,7 @@ public sealed class MauiRunTargetTests
             (LaunchPlan? planned, string? unplanned) = Ui.Await(window.Builds.ResolvePlanAsync(window.Session.Configurations.Chosen!, null), "the app's plan", Slow);
             if (planned is null)
             {
-                Ui.Await(window.MobileAsked(), "what the app's heads need to be asked", Slow);
-                if (window.MobileWant.Workloads.Count > 0)
-                {
-                    Assert.Skip($"This .NET lacks the workloads {string.Join(", ", window.MobileWant.Workloads)}, without which MSBuild cannot say what the app's Android head builds ({unplanned})");
-                }
+                SkipWithoutWorkloads(window, unplanned);
             }
             LaunchPlan android = planned ?? throw new Xunit.Sdk.XunitException($"MauiApp1 has no plan for the Android emulator: {unplanned}");
             Assert.Equal("MauiApp1", android.Name);
@@ -85,6 +95,17 @@ public sealed class MauiRunTargetTests
         {
             window.Close();
             TestFolders.Delete(folder);
+        }
+    }
+
+    /// <summary>Skips, saying which, where this .NET lacks a workload of the app's heads, without which MSBuild cannot say what
+    /// a head builds (<paramref name="unplanned"/>).</summary>
+    private static void SkipWithoutWorkloads(MainWindow window, string? unplanned)
+    {
+        Ui.Await(window.MobileAsked(), "what the app's heads need to be asked", Slow);
+        if (window.MobileWant.Workloads.Count > 0)
+        {
+            Assert.Skip($"This .NET lacks the workloads {string.Join(", ", window.MobileWant.Workloads)}, without which MSBuild cannot say what the app's heads build ({unplanned})");
         }
     }
 

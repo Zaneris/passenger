@@ -21,6 +21,12 @@ public sealed partial class BuildRunController
         && DeviceTargets.PlatformsOf(project.TargetFrameworks).Count > 0
         && (session.Targets.InForce(project) is { } target ? target.Kind != TargetKind.ThisMachine : DeviceTargets.RunsOnlyElsewhere(project.TargetFrameworks));
 
+    /// <summary>Whether a configuration runs its project's Mac Catalyst app on this machine, as the target in force says.</summary>
+    private bool RunsOnMacCatalyst(RunConfiguration chosen) =>
+        chosen.Program.Length == 0 && session.Projects.FirstOrDefault(p => PathNames.Same(p.Path, chosen.Project)) is { } project
+        && session.Targets.InForce(project) is { Platform: TargetPlatform.MacCatalyst, Kind: TargetKind.ThisMachine }
+        && DeviceTargets.FrameworkFor(project.TargetFrameworks, TargetPlatform.MacCatalyst) is not null;
+
     /// <summary>The app ended on its device once its run here ends, however it ended, and what its start put in taken out.</summary>
     private static async Task EndOnDeviceAsync(Task<int> ended, DeviceStart start)
     {

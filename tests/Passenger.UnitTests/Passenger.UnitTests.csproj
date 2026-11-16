@@ -383,13 +383,14 @@
   </ItemGroup>
 
   <!-- Where an app of devices runs (the targets a workload lists, a choice kept and lost), its start's adb commands and its
-       Debug build's environment file, as text and bytes alone, and MSBuild's questions they and the mobile needs read the
+       Debug build's environment file, a Mac Catalyst app's opening, as text and bytes alone, and MSBuild's questions they and the mobile needs read the
        answers of, compiled in since their project is the app's. -->
   <ItemGroup>
     <Compile Include="../../src/Passenger.App/Workspace/MSBuildQuestions.cs" Link="App/MSBuildQuestions.cs" />
     <Compile Include="../../src/Passenger.App/Run/Devices/DeviceTarget.cs" Link="App/DeviceTarget.cs" />
     <Compile Include="../../src/Passenger.App/Run/Devices/AndroidApp.cs" Link="App/AndroidApp.cs" />
     <Compile Include="../../src/Passenger.App/Run/Devices/AndroidEnvironment.cs" Link="App/AndroidEnvironment.cs" />
+    <Compile Include="../../src/Passenger.App/Run/Devices/MacCatalystApp.cs" Link="App/MacCatalystApp.cs" />
   </ItemGroup>
 
   <!-- What a mobile project needs, from its workloads' answers and what is on disk, the Android SDK's licences of what is

@@ -6,9 +6,10 @@ namespace Passenger.App.Run;
 /// <summary>Where a desktop app runs that a Passenger nobody sees launches (<see cref="LaunchPlan.Unseen"/>), so no window
 /// of it reaches the person's screen: an Avalonia app on Avalonia's headless platform, which its inspector gives it before
 /// its Main (<see cref="Passenger.Inspector.Wire.UnseenVariable"/>); on Windows every desktop app on a desktop of its own
-/// too (<see cref="ChildProcesses.OnDesktopOfItsOwn"/>); elsewhere any other desktop app is refused, saying why. Which app
-/// that is, is read from what the plan starts (<see cref="DesktopPrograms"/>). A program with no windows of its own (a
-/// console's, a web app's) runs as it is; on Linux one not read as a desktop app finds no display (<see cref="NoDisplay"/>).</summary>
+/// too (<see cref="ChildProcesses.OnDesktopOfItsOwn"/>); a Mac Catalyst app opened hidden (<see cref="Devices.MacCatalystApps"/>);
+/// elsewhere any other desktop app is refused, saying why. Which app that is, is read from what the plan starts
+/// (<see cref="DesktopPrograms"/>). A program with no windows of its own (a console's, a web app's) runs as it is; on Linux
+/// one not read as a desktop app finds no display (<see cref="NoDisplay"/>).</summary>
 public static class UnseenApps
 {
     /// <summary>Whether a plan's program starts on a desktop of its own: on Windows a desktop app a Passenger nobody sees
@@ -39,8 +40,9 @@ public static class UnseenApps
     }
 
     /// <summary>What desktop app a plan starts where nobody is to see it (<see cref="LaunchPlan.DesktopApp"/>); null
-    /// for a plan people see run, a Godot game's (whose launch hides it itself), or a program with no windows of its own.</summary>
+    /// for a plan people see run, a Godot game's or a Mac Catalyst app's (whose launch hides it itself), or a program with
+    /// no windows of its own.</summary>
     private static DesktopProgram? Hidden(LaunchPlan plan) =>
         // An app on a device or an emulator opens its windows there, never on this machine's screen.
-        plan.Unseen && plan.Godot is null && plan.Device is null ? plan.DesktopApp() : null;
+        plan.Unseen && plan.Godot is null && plan.Device is null && plan.MacCatalyst is null ? plan.DesktopApp() : null;
 }

@@ -160,6 +160,10 @@ public sealed partial record LaunchPlan
     /// on after its build (<see cref="Devices.DeviceLaunches"/>); null for a program of this machine.</summary>
     public Devices.DeviceLaunch? Device { get; init; }
 
+    /// <summary>The Mac Catalyst app it runs on this machine, which the system opens as it opens an app once its build says
+    /// where it is (<see cref="Devices.MacCatalystApps"/>); null for any other plan.</summary>
+    public Devices.MacCatalystLaunch? MacCatalyst { get; init; }
+
     /// <summary>The folder of the Godot project whose game or editor the plan runs on Godot (<see cref="GodotLaunch"/>);
     /// null for any other plan.</summary>
     public string? Godot { get; init; }
@@ -322,6 +326,10 @@ public sealed partial record LaunchPlan
         {
             throw new LaunchException(Refusals.NoRunTarget(project.Name));
         }
+        if (configuration.Program.Length == 0 && platform == Devices.TargetPlatform.MacCatalyst && !OperatingSystem.IsMacOS())
+        {
+            throw new LaunchException($"{configuration.Name} cannot run here: a Mac Catalyst app runs only on a Mac");
+        }
         // The project's own configuration, named for no platform, runs its platform's profile where the target is of that platform.
         if (platform is { } on && configuration is { LaunchProfile.Length: 0, Program.Length: 0 } && Devices.DeviceTargets.ProfileFor(LaunchProfile.Read(project), on) is { } tied)
         {
@@ -466,6 +474,8 @@ public sealed partial record LaunchPlan
             Unseen = headless,
             Notes = underDotnet is null ? [] : [$"{configuration.Name} runs as dotnet {System.IO.Path.GetFileName(target)}, not by its apphost: {underDotnet}"],
             Device = device is { Kind: not Devices.TargetKind.ThisMachine } && configuration.Program.Length == 0 ? new Devices.DeviceLaunch(device, framework ?? project.TargetFrameworks[0]) : null,
+            MacCatalyst = platform == Devices.TargetPlatform.MacCatalyst && configuration.Program.Length == 0
+                ? new Devices.MacCatalystLaunch(framework ?? project.TargetFrameworks[0]) : null,
         };
         if (configuration.Program.Length > 0 || !project.IsFunctionsApp)
         {
