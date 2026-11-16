@@ -166,12 +166,12 @@ public sealed class McpGodotProfileTests : McpRig, IClassFixture<GodotProfileGam
     /// settings, in user folders of the run's.</summary>
     private async Task<McpClient> Started()
     {
+        KeepSettings(new System.Text.Json.Nodes.JsonObject { ["godotExecutable"] = game.Godot!.Executable });
         McpClient client = await Start(["--mcp", game.Folder], languageServer: false, environment: new()
         {
             [GodotExecutables.Variable] = null,
             [Passenger.App.Godot.GodotUserFolders.HomeVariable] = game.Folder + "-home",
         });
-        await Call(client, McpTools.SettingsSet, new() { ["changes"] = new Dictionary<string, object> { ["godotExecutable"] = game.Godot!.Executable } });
         return client;
     }
 

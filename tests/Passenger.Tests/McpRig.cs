@@ -68,6 +68,14 @@ public abstract class McpRig : IDisposable
     /// <summary>A folder a test made for itself, removed with the test once the Passengers that worked in it have gone.</summary>
     protected void DeleteAtEnd(string folder) => made.Add(folder);
 
+    /// <summary>Settings the person kept, which the test's own Passengers read as they start: a program's path among them,
+    /// which settings_set refuses an agent.</summary>
+    protected void KeepSettings(System.Text.Json.Nodes.JsonObject settings)
+    {
+        settings["version"] = global::Passenger.App.Settings.AppSettings.Upgrades.Count;
+        File.WriteAllText(Path.Combine(OwnState, StateStore.SettingsFile), settings.ToJsonString());
+    }
+
     /// <summary>The Passenger the test started last.</summary>
     protected Process LastPassenger()
     {

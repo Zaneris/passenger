@@ -67,7 +67,7 @@ public sealed partial class PassengerTools
         "Changes settings as the Settings dialog's OK does: changes maps each name settings lists to a JSON value of its kind " +
         "({\"editorFontSize\": 15, \"theme\": \"Dark\"}): a number brought into its range, text (null for none), a choice by " +
         "name, an object's members to change. Anything Settings lacks or refuses is refused, changing nothing. On a person's window the " +
-        "change is theirs, kept; Enable MCP Server and agentFolders are theirs alone. Returns each as it was and is now.")]
+        "change is theirs, kept; Enable MCP Server, agentFolders and each setting naming a program Passenger runs are theirs alone. Returns each as it was and is now.")]
     public Task<IReadOnlyList<SettingChange>> SetSettings(
         Dictionary<string, JsonElement> changes,
         CancellationToken cancel = default) => OnUi(cancel, async () =>
@@ -124,6 +124,10 @@ public sealed partial class PassengerTools
             if (property.Name == nameof(AppSettings.AgentFolders))
             {
                 throw new InvalidOperationException("The folders agents join unasked are the person's to change, by the window's question and in Settings, never an agent's");
+            }
+            if (AppSettings.NamingPrograms.Contains(property.Name))
+            {
+                throw new InvalidOperationException($"{name} names a program Passenger runs, or code it loads: the person sets it in Settings, never an agent; nothing changed");
             }
             next[name] = SettingValue(name, property, next[name], value);
             named.Add(name);

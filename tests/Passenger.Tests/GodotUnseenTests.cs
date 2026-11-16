@@ -40,8 +40,8 @@ public sealed class GodotUnseenTests : McpRig
     [Fact]
     public async Task An_agents_own_passenger_runs_a_godot_game_with_no_window_though_nothing_it_was_given_says_so()
     {
+        KeepSettings(new System.Text.Json.Nodes.JsonObject { ["godotExecutable"] = godot.Executable });
         await using McpClient client = await Start(["--mcp", game], environment: new() { [McpProxy.StartVariable] = null, [GodotExecutables.Variable] = godot.Executable }, languageServer: false);
-        await Call(client, McpTools.SettingsSet, new() { ["changes"] = new Dictionary<string, object> { ["godotExecutable"] = godot.Executable } });
         JsonElement ran = await Call(client, McpTools.Run, new() { ["configuration"] = Lonely, ["waitSeconds"] = 60 });
         IReadOnlyList<string> started = await godot.StartedAsync($"the game's start ({ran})");
         string unseen = !GodotExecutables.DrawsWithoutWindow("4.7.2") ? GodotExecutables.Headless : OperatingSystem.IsMacOS() ? GodotExecutables.Embedded : "--resolution";
@@ -55,10 +55,10 @@ public sealed class GodotUnseenTests : McpRig
     {
         string agent = TestFolders.Create("unseen-agent-");
         DeleteAtEnd(agent);
+        KeepSettings(new System.Text.Json.Nodes.JsonObject { ["godotExecutable"] = godot.Executable });
         string[] calls =
         [
-            JsonSerializer.Serialize(new { jsonrpc = "2.0", id = 2, method = "tools/call", @params = new { name = McpTools.SettingsSet, arguments = new { changes = new { godotExecutable = godot.Executable } } } }),
-            JsonSerializer.Serialize(new { jsonrpc = "2.0", id = 3, method = "tools/call", @params = new { name = McpTools.Run, arguments = new { configuration = Lonely, waitSeconds = 60 } } }),
+            JsonSerializer.Serialize(new { jsonrpc = "2.0", id = 2, method = "tools/call", @params = new { name = McpTools.Run, arguments = new { configuration = Lonely, waitSeconds = 60 } } }),
         ];
         (string command, string answers) = await ScreenshotAgent.WriteAsync(agent, calls);
         string picture = Path.Combine(OwnState, "unseen.png");

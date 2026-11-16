@@ -118,8 +118,8 @@ public sealed class HomeDotnetTests(LinkedDotnetTests.Linked linked) : McpRig, I
         try
         {
             Dictionary<string, string?> environment = Apart(home, other, "/bin/sh");
+            KeepSettings(new System.Text.Json.Nodes.JsonObject { ["terminalShell"] = "/bin/sh" });
             await using McpClient client = await Start(["--mcp", folder], environment: environment, languageServer: false);
-            await Call(client, McpTools.SettingsSet, new() { ["changes"] = new Dictionary<string, object> { ["terminalShell"] = "/bin/sh" } });
             string answer = Text(await Call(client, McpTools.TerminalRun, new() { ["command"] = $"echo \"path=$PATH root=$DOTNET_ROOT\"; env | grep -c -e '^{FirstOnPath.FolderVariable}=' -e '^{FirstOnPath.ValueVariable}=' -e '^{FirstOnPath.AgainVariable}=' -e '^{FirstOnPath.ZdotdirVariable}='", ["waitSeconds"] = 30 }));
             string[] lines = answer.Split('\n', StringSplitOptions.TrimEntries);
             Assert.True(lines.Contains($"path={environment["PATH"]} root={other}") && lines.Contains("0"),
@@ -169,6 +169,7 @@ public sealed class HomeDotnetTests(LinkedDotnetTests.Linked linked) : McpRig, I
         string framework = $"net{sdk.Split('.')[0]}.0";
         File.WriteAllText(Path.Combine(folder, "Lib.csproj"), TestProjects.Library().Replace($"<TargetFramework>{TestProjects.Framework}<", $"<TargetFramework>{framework}<", StringComparison.Ordinal));
         File.WriteAllText(Path.Combine(folder, "Greeter.cs"), "namespace Lib;\n\npublic class Greeter\n{\n}\n");
+        KeepSettings(new System.Text.Json.Nodes.JsonObject { ["terminalShell"] = "/bin/sh" });
         await using McpClient client = await Start(["--mcp", folder], environment: Apart(home, other, "/bin/sh"), languageServer: false);
 
         JsonElement workspace = await Call(client, McpTools.Workspace);
@@ -179,7 +180,6 @@ public sealed class HomeDotnetTests(LinkedDotnetTests.Linked linked) : McpRig, I
         Assert.True(built.GetProperty("succeeded").GetBoolean() && File.Exists(Path.Combine(folder, "bin", "Debug", framework, "Lib.dll")),
             $"With the SDK {sdk} in the .dotnet global.json's paths name alone, the project did not build there: {built}");
 
-        await Call(client, McpTools.SettingsSet, new() { ["changes"] = new Dictionary<string, object> { ["terminalShell"] = "/bin/sh" } });
         string answer = Text(await Call(client, McpTools.TerminalRun, new() { ["command"] = "command -v git; dotnet --version", ["waitSeconds"] = 60 }));
         string[] lines = answer.Split('\n', StringSplitOptions.TrimEntries);
         Assert.True(lines.Contains(sdk) && !lines.Contains(planted),

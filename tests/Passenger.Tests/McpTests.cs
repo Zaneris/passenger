@@ -1173,8 +1173,8 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
     }
 
     /// <summary>Two terminal commands an agent sends at once take turns in the Agent Shell, each answer holding its own
-    /// command's output and none of the other's; and settings_set refuses a shell path that names no program, as Settings
-    /// does, nothing changed, the Agent Shell still taking commands.</summary>
+    /// command's output and none of the other's; and settings_set refuses an agent the shell's path, the person's alone,
+    /// nothing changed, the Agent Shell still taking commands.</summary>
     [Fact]
     public async Task An_agents_terminal_commands_sent_at_once_take_turns_each_answering_its_own_output()
     {
@@ -1192,8 +1192,8 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
             $"The agent's second command, sent beside another, answered what was not its own:\n{second}");
 
         CallToolResult refused = await Result(client, McpTools.SettingsSet, new() { ["changes"] = new Dictionary<string, object> { ["terminalShell"] = "\"\"" } });
-        Assert.True(refused.IsError == true && Text(refused).Contains("Shell path \"\" (Settings | Terminal) names no program to start", StringComparison.Ordinal),
-            $"settings_set of a shell path naming no program answered: {Text(refused)}");
+        Assert.True(refused.IsError == true && Text(refused).Contains("terminalShell names a program Passenger runs, or code it loads: the person sets it in Settings", StringComparison.Ordinal),
+            $"settings_set of the shell's path, the person's alone, answered: {Text(refused)}");
         JsonElement shell = (await Call(client, McpTools.Settings)).GetProperty("settings").EnumerateArray().Single(s => s.GetProperty("name").GetString() == "terminalShell");
         Assert.True(shell.GetProperty("value").ValueKind == JsonValueKind.Null, $"The refused shell path was kept all the same: {shell.GetRawText()}");
         Assert.Contains("gamma", (await Call(client, McpTools.TerminalRun, new() { ["command"] = "echo gamma" })).GetString()!, StringComparison.Ordinal);

@@ -436,6 +436,14 @@ public sealed record AppSettings : IStateDocument<AppSettings>
     /// from one window while another's Settings takes back a different one stays.</summary>
     public static IReadOnlyList<string> Sets { get; } = [nameof(AgentFolders), nameof(ThemeSources)];
 
+    /// <summary>The settings naming a program Passenger runs, or a package of code it loads (the terminal's shell, the Node.js
+    /// the web servers run on, the browser and the Godot it debugs in, ESLint's and Prettier's packages): the person's alone to
+    /// change, which settings_set refuses an agent.</summary>
+    public static IReadOnlySet<string> NamingPrograms { get; } = new HashSet<string>(StringComparer.Ordinal)
+    {
+        nameof(TerminalShell), nameof(NodeInterpreter), nameof(DebugBrowser), nameof(GodotExecutable), nameof(EslintPackage), nameof(PrettierPackage),
+    };
+
     /// <summary>A shortcut kept under an action's former id is kept under its id now, unless one is there already, as
     /// <see cref="Clamped"/> reads them: written so, the former id leaves the file, and an action's shortcuts reset stay so.</summary>
     public static void Renamed(JsonObject settings)

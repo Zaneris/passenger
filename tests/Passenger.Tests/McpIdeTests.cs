@@ -301,7 +301,7 @@ public sealed class McpIdeTests : McpRig, IClassFixture<RestoredFolders>
 
     /// <summary>An agent on the person's window reads their settings and changes them as Settings does: asked first, a number
     /// brought into its range, kept in settings.json and in force in the window at once; a name or choice Settings lacks
-    /// changes nothing, and Enable MCP Server stays the person's.</summary>
+    /// changes nothing, and Enable MCP Server and the program Godot runs on stay the person's.</summary>
     [AvaloniaFact]
     public void An_agent_reads_and_changes_the_persons_settings_as_settings_does_once_they_allow_it()
     {
@@ -344,6 +344,7 @@ public sealed class McpIdeTests : McpRig, IClassFixture<RestoredFolders>
                 (new() { ["editorFontSize"] = "large" }, "editorFontSize takes a number, not \"large\""),
                 (new() { ["mcpServer"] = false }, "Enable MCP Server is the person's to change"),
                 (new() { ["agentFolders"] = new[] { Folder } }, "The folders agents join unasked are the person's to change"),
+                (new() { ["godotExecutable"] = "godot --verbose" }, "godotExecutable names a program Passenger runs, or code it loads: the person sets it in Settings"),
             })
             {
                 CallToolResult refused = Await(Waiting.Apart(() => Result(client, McpTools.SettingsSet, new() { ["changes"] = changes })), "the refused settings change");
