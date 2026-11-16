@@ -286,6 +286,46 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
         }
     }
 
+    /// <summary>An agent in a person's window whose folder they opened without trusting is refused at once the tools that
+    /// would run its code, in the words the window greys its actions with, asking the person nothing; workspace says why,
+    /// and the agent cannot trust the folder itself.</summary>
+    [AvaloniaFact]
+    public void An_agent_in_a_window_whose_folder_is_not_trusted_is_refused_what_would_run_its_code_and_cannot_trust_it()
+    {
+        string folder = PathNames.Canonical(TestFolders.Create("mcp-untrusted-"));
+        File.WriteAllText(Path.Combine(folder, "App.csproj"), TestProjects.Console());
+        File.WriteAllText(Path.Combine(folder, "Program.cs"), "System.Console.WriteLine(\"App\");\n");
+        using IDisposable asked = WorkspaceTrust.Ask(folder);
+        MainWindow window = AgentsWindow(folder, languageServer: false);
+        Ui.WaitFor(() => window.AskingTrust is { IsVisible: true }, "the trust question");
+        Ui.ClickButton(window.AskingTrust!, WorkspaceTrustDialog.Untrusted);
+        McpClient client = Await(Waiting.Apart(() => Start(["--mcp-attach", ProcessId, folder])), "the agent attaching");
+        try
+        {
+            foreach (string tool in (string[])[McpTools.Build, McpTools.Run, McpTools.DebugStart, McpTools.TestsRun])
+            {
+                CallToolResult refused = Await(Waiting.Apart(() => Result(client, tool)), tool);
+                Assert.True(refused.IsError == true && Text(refused).Contains(Refusals.Untrusted, StringComparison.Ordinal),
+                    $"{tool} in a window whose folder is not trusted answered: {Text(refused)}");
+            }
+            JsonElement workspace = Await(Waiting.Apart(() => Call(client, McpTools.Workspace)), "the workspace");
+            Assert.Equal(Refusals.Untrusted, workspace.GetProperty("trust").GetString());
+
+            Task<CallToolResult> trusting = Waiting.Apart(() => Result(client, McpTools.IdeAction, new() { ["action"] = AppActions.TrustFolder }));
+            Press(Question(window, "the question for the agent's action"), "Allow");
+            CallToolResult trust = Await(trusting, "the agent's Trust Folder");
+            Assert.True(trust.IsError == true && Text(trust).Contains(Refusals.TrustIsThePersons, StringComparison.Ordinal),
+                $"An agent's Trust Folder answered: {Text(trust)}");
+            Assert.False(window.Session.Trusted, "An agent trusted the person's folder");
+        }
+        finally
+        {
+            Gone(client);
+            window.Close();
+            TestFolders.Delete(folder);
+        }
+    }
+
     /// <summary>A file whose grammar failed reading it can never tell the lines inside its strings, so Convert Indentation is
     /// refused at once saying the grammar failed, where the agent waited out its minute for a reading that never came and
     /// was then told the file was still being read.</summary>

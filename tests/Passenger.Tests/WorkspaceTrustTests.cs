@@ -14,8 +14,10 @@ public sealed class WorkspaceTrustTests
     public void An_untrusted_folder_runs_none_of_its_code_until_trusted_then_its_targets_git_monitor_and_language_server_run()
     {
         string folder = PathNames.Canonical(TestFolders.Create("untrusted-"));
-        string built = Path.Combine(folder, "built.marker");
-        string monitored = Path.Combine(folder, "monitored.marker");
+        // Outside the folder, whose watcher would hear each mark and have Git's status read again, marking it again.
+        string marks = PathNames.Canonical(TestFolders.Create("untrusted-marks-"));
+        string built = Path.Combine(marks, "built.marker");
+        string monitored = Path.Combine(marks, "monitored.marker");
         File.WriteAllText(Path.Combine(folder, "Shop.csproj"), TestProjects.Console());
         File.WriteAllText(Path.Combine(folder, "Program.cs"), "System.Console.WriteLine(\"Hello\");\n");
         File.WriteAllText(Path.Combine(folder, "Directory.Build.targets"),

@@ -42,13 +42,15 @@ public partial class MainWindow
     }
 
     /// <summary>A folder trusted since its session began (here, in another window, or a folder above it) has the session
-    /// begin what it held back; the banner says what stands.</summary>
+    /// begin what it held back, and its XAML previews start; the banner says what stands.</summary>
     private void FollowTrust()
     {
         if (session.Folder is { } folder && !session.Trusted && WorkspaceTrust.Trusts(folder))
         {
             AskingTrust?.Close();
             session.Trust();
+            // Each preview said why it drew nothing: it starts on the project's build now.
+            RestartPreviews(null);
             UpdateStatus();
         }
         ShowTrust();
