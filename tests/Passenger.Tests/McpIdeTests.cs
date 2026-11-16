@@ -21,6 +21,29 @@ public sealed class McpIdeTests : McpRig, IClassFixture<RestoredFolders>
     {
     }
 
+    /// <summary>A label put while another Passenger on the same state holds Local History past the call's wait is answered as
+    /// waiting for it, never as put, and is listed once that Passenger lets go (#1791).</summary>
+    [Fact]
+    public async Task A_label_put_while_another_passenger_holds_local_history_is_answered_as_waiting_and_listed_once_let_go()
+    {
+        await TakeFolderAsync();
+        await using McpClient client = await Start(["--mcp", Folder]);
+        await Call(client, McpTools.LocalHistoryLabel, new() { ["name"] = "first" });
+        string root = Path.Combine(Passenger.App.State.ProjectState.FolderOf(OwnState, PathNames.Canonical(Folder)), "localHistory");
+        Assert.True(File.Exists(Path.Combine(root, "changes.log")), $"No Local History log at {root} after a label was put");
+
+        string answer;
+        using (FileStream holding = new(Path.Combine(root, "changes.lock"), FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None))
+        {
+            answer = (await Call(client, McpTools.LocalHistoryLabel, new() { ["name"] = "held" })).GetString()!;
+        }
+        Assert.True(answer.StartsWith("Label held waits for another Passenger", StringComparison.Ordinal),
+            $"A label put while another Passenger held Local History past the call's wait answered \"{answer}\", as if it were kept");
+        JsonElement labelled = (await Call(client, McpTools.LocalHistory)).GetProperty("rows")[0];
+        Assert.True(labelled.GetProperty("title").GetString() == "held" && labelled.GetProperty("label").GetBoolean(),
+            $"Once the other Passenger let go, Local History's newest row is {labelled.GetRawText()}, not the label held");
+    }
+
     /// <summary>A grammar takes a moment to read a long file, whose lines inside strings Convert Indentation must know: the action
     /// waits for it, right after the file opens and again after the edit its first conversion made, where each refused the agent.</summary>
     [Fact]

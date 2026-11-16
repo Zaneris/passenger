@@ -105,6 +105,7 @@ public sealed class LocalHistory
     private readonly string stateFolder;
     private readonly DateTime openedUtc = DateTime.UtcNow;
     private bool draining;
+    private volatile bool heldElsewhere;
     private bool changed;
     private int users;
     private long lastSet;
@@ -425,6 +426,10 @@ public sealed class LocalHistory
             }
         }
     }
+
+    /// <summary>Whether a change waits for another Passenger on the same state to let go of the history
+    /// (<see cref="HoldToChange"/>).</summary>
+    public bool WaitsForAnother => heldElsewhere;
 
     /// <summary>Everything kept so far, oldest first, and the content each path is known to have now (null for deleted).</summary>
     public (IReadOnlyList<HistoryEvent> Events, IReadOnlyDictionary<string, string?> Known) Snapshot()
@@ -1356,10 +1361,13 @@ public sealed class LocalHistory
         {
             try
             {
-                return State.StateFile.Hold(held, HeldFor);
+                FileStream holding = State.StateFile.Hold(held, HeldFor);
+                heldElsewhere = false;
+                return holding;
             }
             catch (IOException refused) when (State.StateFile.HeldElsewhere(refused))
             {
+                heldElsewhere = true;
                 IdeErrors.Write($"Local History of {Folder}: another Passenger on the same state has held {held}.lock for {Durations.Said(System.Diagnostics.Stopwatch.GetElapsedTime(began))}, and what this one keeps waits for it");
             }
         }

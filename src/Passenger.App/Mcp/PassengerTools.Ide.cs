@@ -532,7 +532,9 @@ public sealed partial class PassengerTools
         history.Label(label);
         // Looked at every 50 ms: Local History's queue, drained off the UI thread, raises nothing as it empties.
         await Until(() => !history.IsRecording, HistoryLimit, cancel);
-        return $"Label {label} put";
+        return !history.IsRecording ? $"Label {label} put"
+            : history.WaitsForAnother ? $"Label {label} waits for another Passenger on the same state, which holds Local History: it is kept once that one lets go, and local_history lists it then"
+            : $"Label {label} is still being kept: local_history lists it once it is";
     });
 
     /// <summary>The open folder's Local History and a path in the folder an agent named (the folder itself when none).</summary>
