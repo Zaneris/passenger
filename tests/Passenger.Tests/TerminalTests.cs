@@ -44,8 +44,7 @@ public sealed class TerminalTests
             window.MouseDown(at, MouseButton.Left);
             window.MouseUp(at, MouseButton.Left, RawInputModifiers.Shift);
             Ui.Press(window, "ENTER");
-            WaitForLine(shell, text => text.Contains("^[[<0;1;1M", StringComparison.Ordinal), "the reported mouse press");
-            Assert.Contains(Lines(shell.Screen), text => text.Contains("^[[<0;1;1M^[[<0;1;1m", StringComparison.Ordinal));
+            WaitForLine(shell, text => text.Contains("^[[<0;1;1M^[[<0;1;1m", StringComparison.Ordinal), "the reported mouse press and its release, Shift held");
             Ui.Press(window, "control C");
             window.Close();
         }
