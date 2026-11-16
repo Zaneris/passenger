@@ -5,8 +5,8 @@ using MauiElement = Microsoft.Maui.Controls.Element;
 namespace Passenger.Inspector.Maui;
 
 /// <summary>Where the elements of one of a MAUI app's windows are, in the window's units from its top left: as its platform
-/// laid out the view MAUI made of each (on Android, where that view is in its window), else from MAUI's own frames, each in
-/// what holds it, added up to the window. Read on the app's UI thread, for one answer.</summary>
+/// laid out the view MAUI made of each (on Android and UIKit, where that view is in its window), else from MAUI's own frames,
+/// each in what holds it, added up to the window. Read on the app's UI thread, for one answer.</summary>
 internal sealed class Places
 {
     private readonly Window window;
@@ -42,6 +42,10 @@ internal sealed class Places
                 ? Placing.InUnits(at.X, at.Y, AndroidViews.Size(platform)?.Width ?? Pixels(view.Frame.Width), AndroidViews.Size(platform)?.Height ?? Pixels(view.Frame.Height), Density)
                 : null;
         }
+        if (AppleViews.Here)
+        {
+            return AppleViews.InWindow(platform);
+        }
         return Summed(element, view);
     }
 
@@ -69,9 +73,15 @@ internal sealed class Places
         return Words.Boxed(x, y, view.Frame.Width, view.Frame.Height);
     }
 
-    /// <summary>The window's area: its own size where its platform says it, else its activity's on Android, else its page's.</summary>
+    /// <summary>The window's area: on UIKit its window's size in the points its views are placed in (on Mac Catalyst not the
+    /// Mac's, which MAUI's window gives), else its own size where its platform says it, else its activity's on Android, else
+    /// its page's.</summary>
     private static Box ClientOf(Window window, double density)
     {
+        if (AppleViews.Size(window.Handler?.PlatformView) is { Width: > 0, Height: > 0 } shown)
+        {
+            return Words.Boxed(0, 0, shown.Width, shown.Height);
+        }
         if (window.Width > 0 && window.Height > 0)
         {
             return Words.Boxed(0, 0, window.Width, window.Height);

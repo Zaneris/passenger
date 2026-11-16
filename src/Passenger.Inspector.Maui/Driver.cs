@@ -1,12 +1,13 @@
+using Microsoft.Maui;
 using Microsoft.Maui.Controls;
 using MauiElement = Microsoft.Maui.Controls.Element;
 
 namespace Passenger.Inspector.Maui;
 
 /// <summary>An agent's input to a MAUI app as a person gives it, aimed as every inspector aims (<see cref="Driving{T, TTop}"/>):
-/// a click is a finger's tap given to the window's own way in from its platform (on Android, its activity's touch), so the
-/// platform's hit testing, MAUI's gestures and a button's Clicked run as they would. Typing, keys and scrolling are refused
-/// for now, saying so.</summary>
+/// a click is a finger's tap given to the window's own way in from its platform (on Android, its activity's touch; on iOS
+/// and Mac Catalyst, what UIKit's hit test finds there), so the platform's hit testing, MAUI's gestures and a button's
+/// Clicked run as they would. Typing, keys and scrolling are refused for now, saying so.</summary>
 internal sealed class Driver(Inspector inspector) : Driving<MauiElement, Window>
 {
     protected override string Hidden => "it, or an element holding it, has IsVisible false";
@@ -28,7 +29,7 @@ internal sealed class Driver(Inspector inspector) : Driving<MauiElement, Window>
         (float px, float py) = Placing.Pixel(x, y, places.Density);
         for (int tap = 0; tap < Math.Max(1, action.Count ?? 1); tap++)
         {
-            if (AndroidViews.Tap(top.Handler?.PlatformView, px, py) is { } why)
+            if ((AppleViews.Here ? TapOnUiKit(top, places, x, y) : AndroidViews.Tap(top.Handler?.PlatformView, px, py)) is { } why)
             {
                 throw new Refusal(why);
             }
@@ -36,6 +37,31 @@ internal sealed class Driver(Inspector inspector) : Driving<MauiElement, Window>
         MauiElement? took = Took(element, Hit(top, x, y));
         return new InputDone(inspector.IdOf(top), x, y, took is null ? null : inspector.IdOf(took), took is null ? null : Shown.Called(took),
             took is null ? null : Shown.TextOf(took), Focused(top));
+    }
+
+    /// <summary>A tap at a point of the window, in its units, given through UIKit (<see cref="AppleViews.Tap"/>): where it
+    /// reaches a view a tap gesture watches, which UIKit gives no way to touch, the MAUI view's own tap gestures take it, as
+    /// that gesture would, at the point in what each asks it of. Why not, or null.</summary>
+    private static string? TapOnUiKit(Window top, Places places, double x, double y)
+    {
+        (string? why, object? watched) = AppleViews.Tap(top.Handler?.PlatformView, x, y);
+        if (why is not null || watched is null)
+        {
+            return why;
+        }
+        foreach (MauiElement element in ElementTrees.Below<MauiElement>(top, Inspector.Children))
+        {
+            if (element is View { Handler: IViewHandler handler } view && (handler.PlatformView == watched || handler.ContainerView == watched))
+            {
+                foreach (TapGestureRecognizer gesture in view.GestureRecognizers.OfType<TapGestureRecognizer>().Where(g => g.NumberOfTapsRequired <= 1).ToList())
+                {
+                    gesture.SendTapped(view, relativeTo => relativeTo is MauiElement from && places.Of(from) is { } box
+                        ? new Microsoft.Maui.Graphics.Point(x - box.X, y - box.Y) : new Microsoft.Maui.Graphics.Point(x, y));
+                }
+                return null;
+            }
+        }
+        return null;
     }
 
     protected override InputDone Scroll(Window top, MauiElement? element, InputAction action) =>

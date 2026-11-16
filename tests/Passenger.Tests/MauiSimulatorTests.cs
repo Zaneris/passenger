@@ -13,11 +13,12 @@ namespace Passenger.Tests;
 
 /// <summary>The app <c>dotnet new maui</c> makes, its iOS head run and debugged on an iOS simulator chosen beside its run
 /// configuration, as the iOS workload lists them: Run builds it for the simulator, boots one that is shut down with no window,
-/// installs and starts the app there, its output in the Run window and its MAUI inspector's tree the app's; with Hot Reload
-/// an edit lands through Passenger's relay, carried into the app's data container, and its update handler is called; Debug
-/// stops in its main page, steps, shows, evaluates and takes an edit; Stop ends the app and takes out what was carried, and
-/// a simulator the window booted is shut down as it closes. Skips, saying why, off a Mac, without MAUI's and iOS's workloads,
-/// Xcode or an iPhone simulator, or the simulator's relay. Debugged through the window, so alone.</summary>
+/// installs and starts the app there, its output in the Run window, its MAUI inspector's tree the app's and a tap reaching
+/// its button through UIKit; with Hot Reload an edit lands through Passenger's relay, carried into the app's data container,
+/// and its update handler is called; Debug stops in its main page, steps, shows, evaluates and takes an edit; Stop ends the
+/// app and takes out what was carried, and a simulator the window booted is shut down as it closes. Skips, saying why, off
+/// a Mac, without MAUI's and iOS's workloads, Xcode or an iPhone simulator, or the simulator's relay. Debugged through the
+/// window, so alone.</summary>
 [Collection(Alone.Name)]
 public sealed class MauiSimulatorTests
 {
@@ -27,7 +28,7 @@ public sealed class MauiSimulatorTests
     private const string Handled = "Update handler called for MainPage";
 
     [AvaloniaFact]
-    public void A_maui_apps_ios_head_run_on_a_simulator_shows_its_tree_takes_a_hot_reload_edit_and_ends_with_stop()
+    public void A_maui_apps_ios_head_run_on_a_simulator_shows_its_tree_takes_a_tap_and_a_hot_reload_edit_and_ends_with_stop()
     {
         (string folder, string project, DeviceTarget target, AppleTools tools) = Prepared("maui-ios-run");
         MainWindow window = Ui.OpenFolder(folder);
@@ -43,7 +44,10 @@ public sealed class MauiSimulatorTests
             LiveApp app = window.Session.RunApp!;
             Assert.True(app is { Kind: LiveAppKind.Maui } && app.Framework.StartsWith("MAUI 11.", StringComparison.Ordinal), $"The app was taken for {app.Kind}, {app.Framework}");
             AppTree tree = Ui.AwaitPumped(app.TreeAsync(), "the app's tree", TimeSpan.FromMinutes(1));
-            Assert.Contains(AppTree.Walk(tree.Roots), e => e.Element is { Type: "Button", Name: "CounterBtn" });
+            Element button = AppTree.Walk(tree.Roots).Select(e => e.Element).FirstOrDefault(e => e is { Type: "Button", Name: "CounterBtn" })
+                ?? throw new Xunit.Sdk.XunitException("The app's tree has no CounterBtn");
+            InputDone tapped = Ui.AwaitPumped(app.InputAsync(new InputAction(InputKinds.Click) { Element = button.Id }), "a tap on the button", TimeSpan.FromMinutes(1));
+            Assert.True(tapped.Target == button.Id && tapped.Shows == "Clicked 1 time", $"The tap reached {tapped.TargetName}, which shows \"{tapped.Shows}\", not the button counting it");
             string? started = SimulatorStart(window.BottomPanel.Run.Document.Snapshot, window);
             Assert.True(started is not null, $"simctl did not say the app's process in the Run window:\n{Output(window)}");
             string carried = Carried(window);

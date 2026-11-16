@@ -50,7 +50,7 @@ internal static class AndroidViews
         MethodInfo? uptime = Clock?.GetMethod("UptimeMillis", BindingFlags.Public | BindingFlags.Static, Type.EmptyTypes);
         if (obtain is null || dispatch is null || uptime is null)
         {
-            return activity is null ? "The window has no activity to touch" : "A touch is given only on Android so far";
+            return activity is null ? "The window has no activity to touch" : "A tap is given only on Android, iOS and Mac Catalyst so far";
         }
         ParameterInfo[] parameters = obtain.GetParameters();
         long down = (long)uptime.Invoke(null, null)!;
