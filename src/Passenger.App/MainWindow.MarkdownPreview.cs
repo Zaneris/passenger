@@ -37,7 +37,27 @@ public partial class MainWindow
             Words = ["Preview HTML", "Web Page Preview"],
         });
         Editors.Root = () => Folder;
+        Editors.LeftOutUnder = LeftOutUnderAsync;
         Editors.FileLinkClicked += (_, path) => OpenLinkedFile(path);
+    }
+
+    /// <summary>What .gitignore leaves out below a folder, as its repository's git says: none where it is in no repository
+    /// or git is not installed, and the folder whole where git could not say, so nothing below it is served.</summary>
+    private static async Task<IReadOnlyList<string>> LeftOutUnderAsync(string folder)
+    {
+        if (await Passenger.Vcs.Git.OpenAsync(folder) is not { Tree: { } git })
+        {
+            return [];
+        }
+        try
+        {
+            return await git.LeftOutUnderAsync(folder);
+        }
+        catch (InvalidOperationException error)
+        {
+            IdeErrors.Write($"The HTML preview serves nothing below {folder}, as git could not say what .gitignore leaves out: {error.Message}");
+            return [folder];
+        }
     }
 
     private void ToggleHtmlPreview()
@@ -67,10 +87,15 @@ public partial class MainWindow
         }
     }
 
-    /// <summary>A file a preview's link names, opened in the editor; one not there said in the status bar.</summary>
+    /// <summary>A file a preview's link names, opened in the editor; one not there said in the status bar, and a share's or
+    /// a device's never asked of the disk.</summary>
     private void OpenLinkedFile(string path)
     {
-        if (File.Exists(path))
+        if (!FoundPaths.Askable(path))
+        {
+            status.Text = $"{path} is another machine's or a device's, which is never opened";
+        }
+        else if (File.Exists(path))
         {
             OpenFile(path);
         }

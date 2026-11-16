@@ -499,6 +499,20 @@ public sealed partial class Git
         return [.. listed.Output.Split('\0').Where(e => e.Length > 1 && e[^1] == '/').Select(e => names.Full(e[..^1]))];
     }
 
+    /// <summary>What .gitignore and git's other excludes leave out of the repository under <paramref name="folder"/>, a
+    /// folder of the working tree: each file or folder they leave out that git does not track, a folder named whole,
+    /// absolute as the disk names them.</summary>
+    public async Task<IReadOnlyList<string>> LeftOutUnderAsync(string folder)
+    {
+        GitResult listed = await RunAsync(folder, ["ls-files", "-z", "--others", "--ignored", "--exclude-standard", "--directory"]);
+        if (!listed.Succeeded)
+        {
+            throw new InvalidOperationException(listed.Message);
+        }
+        DiskNames names = new(folder);
+        return [.. listed.Output.Split('\0').Where(e => e.Length > 0).Select(e => names.Full(e.TrimEnd('/')))];
+    }
+
     /// <summary>Whether each blob a conflict's stages name is binary, by the blob's hash, which names those bytes for good.</summary>
     private readonly System.Collections.Concurrent.ConcurrentDictionary<string, bool> binaryBlobs = new(StringComparer.Ordinal);
 

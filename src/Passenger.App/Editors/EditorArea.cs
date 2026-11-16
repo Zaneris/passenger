@@ -122,6 +122,10 @@ public sealed partial class EditorArea : UserControl
     /// <summary>The open folder, whose files alone a Markdown preview draws the images of; null for none.</summary>
     public Func<string?> Root { get; set; } = () => null;
 
+    /// <summary>What .gitignore leaves out below a folder, which an HTML preview's page is never served: files and
+    /// folders whole, none where the folder is in no repository.</summary>
+    public Func<string, Task<IReadOnlyList<string>>> LeftOutUnder { get; set; } = _ => Task.FromResult<IReadOnlyList<string>>([]);
+
     /// <summary>What a C# file is parsed with in process, open or not: its project's preprocessor symbols
     /// (<see cref="CSharp.CompilationSymbols"/>), as the window knows its projects. Asked on the UI thread.</summary>
     public Func<string, CSharpParseOptions> ParseOptions { get; set; } = _ => CSharpParsing.Default;

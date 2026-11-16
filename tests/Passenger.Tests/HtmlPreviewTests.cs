@@ -13,10 +13,11 @@ namespace Passenger.Tests;
 
 /// <summary>An HTML file's page beside its text, in the system's web view, which a headless window neither makes nor
 /// draws: what the page is given and when, the text as the editor has it with the file's folder for its relative
-/// addresses, again once typing pauses and not before; off until the strip's toggle turns it on; a Linux without
-/// WebKitGTK 4.1 saying so in the page's place; and, where a window is seen, the page given again at the place it was
-/// scrolled to, the open folder's stylesheet and picture loaded, a page over WebView2's 2 MB for a text shown whole, and a
-/// page with no background on the web view's own ground.</summary>
+/// addresses, again once typing pauses and not before; off until the strip's toggle turns it on; the page kept from going
+/// elsewhere, the banner over it opening where it went only when asked; a Linux without WebKitGTK 4.1 saying so in the
+/// page's place; and, where a window is seen, the page given again at the place it was scrolled to, its folder's
+/// stylesheet and picture loaded, a page over WebView2's 2 MB for a text shown whole, and a page with no background on the
+/// web view's own ground.</summary>
 public sealed partial class HtmlPreviewTests : IDisposable
 {
     private const string Page = "<!doctype html>\n<html>\n  <head><link rel=\"stylesheet\" href=\"site.css\"></head>\n  <body><h1>Hello</h1></body>\n</html>\n";
@@ -73,6 +74,83 @@ public sealed partial class HtmlPreviewTests : IDisposable
         window.Close();
     }
 
+    [AvaloniaFact]
+    public void An_HTML_page_is_kept_from_going_elsewhere_and_the_banner_over_it_opens_where_it_went_only_when_asked()
+    {
+        string index = Path.Combine(folder, "index.html");
+        string other = Path.Combine(folder, "other.html");
+        File.WriteAllText(index, Page);
+        File.WriteAllText(other, Page);
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        Assert.Null(window.OpenFile(index));
+        Ui.Settle();
+        EditorGroup group = window.EditorArea.ActiveGroup;
+        Ui.Click(group.PreviewToggle);
+        HtmlPreview preview = group.Html ?? throw new Xunit.Sdk.XunitException("The toggle showed no page beside the HTML file");
+        if (HtmlPreview.WhyNone() is { } why)
+        {
+            window.Close();
+            Assert.Skip($"This system shows no page: {why}");
+        }
+        Assert.Null(preview.Refused);
+        Assert.False(preview.Leaving(new Uri(index)), "The page was kept from loading itself");
+
+        // A link or the page's own script: the web view stays, and the browser opens only from the banner.
+        Uri web = new("https://example.com/next?from=page");
+        Assert.True(preview.Leaving(web), $"The page was let go to {web}");
+        Ui.Settle();
+        Assert.Equal($"The page was kept from going to {web.OriginalString}", preview.Refused);
+        Assert.Equal("Open in Browser", preview.Opens);
+        Assert.True(window.Browsed.Count == 0, $"The page going to {web} opened {string.Join(", ", window.Browsed)} with nobody asking");
+        Ui.Click(preview.OpenLink);
+        Assert.True(window.Browsed.LastOrDefault() == web, $"The banner's Open in Browser opened [{string.Join(", ", window.Browsed)}], not {web}");
+
+        // A share's path is never opened, nor asked of the disk.
+        Uri share = new("file://host/share/page.html");
+        Assert.True(preview.Leaving(share), $"The page was let go to {share}");
+        Ui.Settle();
+        Assert.Equal($"The page was kept from going to {share.OriginalString}, another machine's or a device's, which is never opened", preview.Refused);
+        Assert.Null(preview.Opens);
+
+        // A file of this machine opens in the editor only from the banner, its own page then given with nothing said.
+        Assert.True(preview.Leaving(new Uri(other)), $"The page was let go to {other}");
+        Ui.Settle();
+        Assert.Equal("Open in Editor", preview.Opens);
+        Assert.True(window.EditorArea.Active?.Path == index, $"The page going to {other} opened {window.EditorArea.Active?.Path} with nobody asking");
+        Ui.Click(preview.OpenLink);
+        Ui.WaitFor(() => window.EditorArea.Active?.Path == other, () => $"the banner's Open in Editor to open {other}, not {window.EditorArea.Active?.Path}");
+        Ui.WaitFor(() => preview.Given is not null && preview.Refused is null, () => $"the page of {other} given with nothing said over it, not '{preview.Refused}'");
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void An_HTML_page_served_is_refused_what_gitignore_leaves_out_below_its_folder()
+    {
+        string site = Directory.CreateDirectory(Path.Combine(folder, "site")).FullName;
+        TestGit.Run(folder, "init", "-q", "-b", "main");
+        File.WriteAllText(Path.Combine(folder, ".gitignore"), "secrets.json\nbin/\n");
+        string index = Path.Combine(site, "index.html");
+        File.WriteAllText(index, Page);
+        string secrets = Path.Combine(site, "secrets.json");
+        File.WriteAllText(secrets, "{}\n");
+        Directory.CreateDirectory(Path.Combine(site, "bin", "Debug"));
+        File.WriteAllText(Path.Combine(site, "bin", "Debug", "app.js"), "let a;\n");
+        string css = Path.Combine(site, "site.css");
+        File.WriteAllText(css, "h1 { color: teal; }\n");
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+
+        IReadOnlyList<string> leftOut = Ui.Await(window.EditorArea.LeftOutUnder(site), "git's word of what .gitignore leaves out");
+        ServedPage served = new(index, Page, leftOut);
+        Uri At(string below) => new(served.Address, below);
+        Assert.True(served.Answer(At("secrets.json")) == PageAnswer.Forbidden, $"A file .gitignore leaves out was served, of [{string.Join(", ", leftOut)}]");
+        Assert.True(served.Answer(At("bin/Debug/app.js")) == PageAnswer.Forbidden, $"A file in a folder .gitignore leaves out was served, of [{string.Join(", ", leftOut)}]");
+        Assert.Equal(css, served.Answer(At("site.css")).File);
+
+        string elsewhere = Directory.CreateDirectory(Path.Combine(TestFolders.Create("html-"), "plain")).FullName;
+        Assert.Empty(Ui.Await(window.EditorArea.LeftOutUnder(elsewhere), "git's word of a folder in no repository"));
+        window.Close();
+    }
+
     /// <summary>Scrolled down, the page is given an edit at the same place; given a page shorter than the place, it ends at
     /// its end; and a page scrolling itself as it loads is left where it went. Only a web view of the system's scrolls, which
     /// a window nobody sees never makes, so headless this skips, run by hand where Passenger's window is seen.</summary>
@@ -116,12 +194,12 @@ public sealed partial class HtmlPreviewTests : IDisposable
         window.Close();
     }
 
-    /// <summary>A page in a subfolder, unsaved and as typed, takes a stylesheet from the open folder above it and a picture
-    /// from beside it. On Windows, where Passenger serves the open folder, a picture beside that folder loads by no address.
-    /// Only a web view of the system's loads a page, so headless this skips, run by hand where Passenger's window is
-    /// seen.</summary>
+    /// <summary>A page in a subfolder, unsaved and as typed, takes a stylesheet from a folder below it and a picture from
+    /// beside it. On Windows, where Passenger serves the page's folder, a picture beside the open folder loads by no address,
+    /// and one whose name begins with a dot is refused, the banner saying so. Only a web view of the system's loads a page,
+    /// so headless this skips, run by hand where Passenger's window is seen.</summary>
     [AvaloniaFact]
-    public void An_HTML_page_loads_the_open_folders_stylesheet_and_picture_as_it_is_typed()
+    public void An_HTML_page_loads_its_folders_stylesheet_and_picture_as_it_is_typed()
     {
         if (PassengerApp.ShowsNoWindow)
         {
@@ -133,19 +211,21 @@ public sealed partial class HtmlPreviewTests : IDisposable
         }
         string open = Directory.CreateDirectory(Path.Combine(folder, "open")).FullName;
         string pages = Directory.CreateDirectory(Path.Combine(open, "pages")).FullName;
-        string css = Directory.CreateDirectory(Path.Combine(open, "css")).FullName;
+        string css = Directory.CreateDirectory(Path.Combine(pages, "css")).FullName;
         string beside = Path.Combine(folder, "beside.png");
         File.WriteAllBytes(beside, Convert.FromBase64String(Dot));
         File.WriteAllBytes(Path.Combine(pages, "dot.png"), Convert.FromBase64String(Dot));
+        File.WriteAllBytes(Path.Combine(pages, ".hidden.png"), Convert.FromBase64String(Dot));
         File.WriteAllText(Path.Combine(css, "site.css"), "h1 { color: rgb(0, 128, 0); }\n");
         string index = Path.Combine(pages, "index.html");
         File.WriteAllText(index, $"""
             <!doctype html>
             <html>
-              <head><link rel="stylesheet" href="../css/site.css"></head>
+              <head><link rel="stylesheet" href="css/site.css"></head>
               <body>
                 <h1>Hello</h1>
                 <img id="inside" src="dot.png">
+                <img id="hidden" src=".hidden.png">
                 <img id="up" src="../../beside.png">
                 <img id="whole" src="{new Uri(beside).AbsoluteUri}">
               </body>
@@ -161,6 +241,10 @@ public sealed partial class HtmlPreviewTests : IDisposable
         NativeWebView web = Assert.Single(preview.GetLogicalChildren().OfType<NativeWebView>());
         Ui.WaitFor(() => preview.Landed == 1, () => $"the page's first load ({preview.Loads} given, {preview.Landed} loaded)");
         CheckLoaded(web);
+        if (OperatingSystem.IsWindows())
+        {
+            Assert.Equal("Not served to the page: .hidden.png as its name begins with a dot", preview.Refused);
+        }
 
         Typing.Replace(window, "Hello<", "Hello, shop<");
         Ui.WaitFor(() => preview.Landed == 2, () => $"the page given the edit to load ({preview.Loads} given, {preview.Landed} loaded)");
@@ -264,7 +348,7 @@ public sealed partial class HtmlPreviewTests : IDisposable
         $"<!doctype html>\n<html>\n  <head>{head}</head>\n  <body>\n{string.Concat(Enumerable.Range(1, count).Select(i => $"    <p>Paragraph {i}</p>\n"))}  </body>\n</html>\n";
 
     /// <summary>The page's stylesheet and picture loaded, and on Windows neither address of the picture beside the open
-    /// folder.</summary>
+    /// folder, nor the picture whose name begins with a dot.</summary>
     private static void CheckLoaded(NativeWebView web)
     {
         Ui.WaitFor(() => Script(web, "getComputedStyle(document.querySelector('h1')).color")?.Trim('"') == "rgb(0, 128, 0)",
@@ -275,6 +359,7 @@ public sealed partial class HtmlPreviewTests : IDisposable
         {
             Assert.Equal("0", Script(web, "document.getElementById('up').naturalWidth")?.Trim('"'));
             Assert.Equal("0", Script(web, "document.getElementById('whole').naturalWidth")?.Trim('"'));
+            Assert.Equal("0", Script(web, "document.getElementById('hidden').naturalWidth")?.Trim('"'));
         }
     }
 

@@ -5,9 +5,9 @@ using Passenger.Core;
 namespace Passenger.UnitTests.Editor;
 
 /// <summary>What an HTML preview's page and its folder are served as where the web view reads no folder: the page at its
-/// path below the open folder, or by its name where none holds it, with the editor's text; each file under that folder as
-/// it is on disk in its media type; and nothing else on the disk, however an address is spelled and whatever a link inside
-/// the folder leads to.</summary>
+/// name with the editor's text; each file below its folder as it is on disk in its media type, but for one whose name or a
+/// folder's on its way begins with a dot and one .gitignore leaves out, each refused saying why; and nothing else on the
+/// disk, however an address is spelled and whatever a link inside the folder leads to.</summary>
 public sealed class ServedPageTests : IDisposable
 {
     private const string Html = "<!doctype html>\n<h1>Grüße</h1>\n";
@@ -24,7 +24,7 @@ public sealed class ServedPageTests : IDisposable
     public void The_page_is_served_at_its_files_name_with_the_editors_text_not_the_disks()
     {
         Write(Index, "<h1>As saved</h1>\n");
-        ServedPage served = new(Index, Html, null);
+        ServedPage served = new(Index, Html);
 
         Assert.Equal($"https://{ServedPage.Host}/index.html", served.Address.AbsoluteUri);
         PageAnswer answer = served.Answer(served.Address);
@@ -37,7 +37,7 @@ public sealed class ServedPageTests : IDisposable
     public void A_page_never_saved_is_served_with_nothing_on_the_disk()
     {
         Directory.CreateDirectory(Folder);
-        ServedPage served = new(Index, Html, null);
+        ServedPage served = new(Index, Html);
         Assert.Equal(Html, Read(served.Answer(served.Address)));
     }
 
@@ -52,7 +52,7 @@ public sealed class ServedPageTests : IDisposable
             Assert.Skip("Windows names no file with a question mark");
         }
         string page = Write(Path.Join(Folder, name), "<h1>As saved</h1>\n");
-        ServedPage served = new(page, Html, null);
+        ServedPage served = new(page, Html);
         Assert.Equal(Html, Read(served.Answer(served.Address)));
         Assert.Equal(page, served.FileOf(served.Address));
     }
@@ -62,7 +62,7 @@ public sealed class ServedPageTests : IDisposable
     {
         string css = Write(Path.Join(Folder, "site.css"), "h1 { color: green; }\n");
         string picture = Write(Path.Join(Folder, "img", "a dot.png"), "not really a picture");
-        ServedPage served = new(Index, Html, null);
+        ServedPage served = new(Index, Html);
 
         PageAnswer style = served.Answer(At("site.css"));
         Assert.Equal((200, css, "text/css"), (style.Status, style.File, style.Type));
@@ -76,74 +76,89 @@ public sealed class ServedPageTests : IDisposable
     }
 
     [Fact]
-    public void A_page_in_a_subfolder_reaches_what_the_open_folder_holds()
+    public void A_page_in_a_subfolder_is_served_only_what_its_own_folder_holds()
     {
         string about = Write(Path.Join(Folder, "pages", "about.html"), "<h1>As saved</h1>\n");
-        string css = Write(Path.Join(Folder, "css", "site.css"), "h1 { color: green; }\n");
+        Write(Path.Join(Folder, "css", "site.css"), "h1 { color: green; }\n");
         string beside = Write(Path.Join(Folder, "pages", "dot.png"), "dot");
-        ServedPage served = new(about, Html, Folder);
+        string below = Write(Path.Join(Folder, "pages", "img", "dot.png"), "dot");
+        ServedPage served = new(about, Html);
 
-        Assert.Equal($"https://{ServedPage.Host}/pages/about.html", served.Address.AbsoluteUri);
+        Assert.Equal($"https://{ServedPage.Host}/about.html", served.Address.AbsoluteUri);
         Assert.Equal(Html, Read(served.Answer(served.Address)));
-        Assert.Equal(css, served.Answer(new Uri(served.Address, "../css/site.css")).File);
-        Assert.Equal(css, served.Answer(new Uri(served.Address, "/css/site.css")).File);
         Assert.Equal(beside, served.Answer(new Uri(served.Address, "dot.png")).File);
-    }
-
-    [Fact]
-    public void A_page_below_folders_of_any_name_is_found_at_its_own_address()
-    {
-        string page = Write(Path.Join(Folder, "my pages", "été #1", "index.html"), "<h1>As saved</h1>\n");
-        ServedPage served = new(page, Html, Folder);
-
-        Assert.Equal($"https://{ServedPage.Host}/my%20pages/%C3%A9t%C3%A9%20%231/index.html", served.Address.AbsoluteUri);
-        Assert.Equal(Html, Read(served.Answer(served.Address)));
-    }
-
-    [Theory]
-    [InlineData("../../outside.css")]
-    [InlineData("..%2F..%2Foutside.css")]
-    [InlineData("..%5C..%5Coutside.css")]
-    [InlineData("%2e%2e%2f%2e%2e%2foutside.css")]
-    public void A_file_beside_the_open_folder_is_not_served_to_a_page_in_a_subfolder(string below)
-    {
-        Write(Path.Join(root, "outside.css"), "h1 { color: red; }\n");
-        string about = Write(Path.Join(Folder, "pages", "about.html"), "<h1>As saved</h1>\n");
-        ServedPage served = new(about, Html, Folder);
-
-        foreach (Uri asked in (Uri[])[new Uri(served.Address, below), At(below), At($"pages/{below}")])
+        Assert.Equal(below, served.Answer(new Uri(served.Address, "img/dot.png")).File);
+        foreach (string climbing in (string[])["../css/site.css", "/css/site.css", "..%2Fcss%2Fsite.css"])
         {
-            Assert.True(served.Answer(asked) == PageAnswer.Missing, $"The address {asked} reached past the open folder");
+            PageAnswer answer = served.Answer(new Uri(served.Address, climbing));
+            Assert.True(answer == PageAnswer.Missing, $"The address {climbing} was answered {answer.Status} with {answer.File}, beside the page's folder");
         }
     }
 
     [Fact]
-    public void A_page_outside_the_open_folder_keeps_its_own_folder_as_the_limit()
+    public void A_page_below_folders_of_any_name_is_found_at_its_own_name()
     {
-        string open = Path.Join(root, "open");
-        Write(Path.Join(open, "theirs.css"), "h1 { color: red; }\n");
-        string css = Write(Path.Join(Folder, "site.css"), "h1 { color: green; }\n");
-        ServedPage served = new(Index, Html, open);
+        string page = Write(Path.Join(Folder, "my pages", "été #1", "index.html"), "<h1>As saved</h1>\n");
+        ServedPage served = new(page, Html);
 
         Assert.Equal($"https://{ServedPage.Host}/index.html", served.Address.AbsoluteUri);
-        Assert.Equal(css, served.Answer(At("site.css")).File);
-        Assert.True(served.Answer(At("..%2Fopen%2Ftheirs.css")) == PageAnswer.Missing, "A page outside the open folder was served the open folder's file");
+        Assert.Equal(Html, Read(served.Answer(served.Address)));
+    }
+
+    [Theory]
+    [InlineData(".env", ".env as its name begins with a dot")]
+    [InlineData(".git/config", ".git/config as it is in .git, whose name begins with a dot")]
+    [InlineData("assets/.secret/key.json", "assets/.secret/key.json as it is in assets/.secret, whose name begins with a dot")]
+    [InlineData("%2Eenv", ".env as its name begins with a dot")]
+    public void A_file_whose_name_or_folder_begins_with_a_dot_is_refused_saying_why(string below, string said)
+    {
+        Write(Path.Join(Folder, below.Replace("%2E", ".", StringComparison.Ordinal)), "SECRET=1\n");
+        ServedPage served = new(Index, Html);
+        List<string> refused = [];
+        served.Refused += (_, why) => refused.Add(why);
+
+        PageAnswer answer = served.Answer(At(below));
+        Assert.True(answer == PageAnswer.Forbidden && answer.Open() is null, $"The address {below} was answered {answer.Status} with {answer.File}");
+        Assert.Equal((403, "Forbidden"), (answer.Status, answer.Reason));
+        Assert.Equal([said], refused);
     }
 
     [Fact]
-    public void A_page_at_the_top_of_the_open_folder_stands_at_its_name()
+    public void A_file_or_folder_gitignore_leaves_out_is_refused_saying_why()
     {
-        string css = Write(Path.Join(Folder, "css", "site.css"), "h1 { color: green; }\n");
-        ServedPage served = new(Index, Html, Folder);
-        Assert.Equal($"https://{ServedPage.Host}/index.html", served.Address.AbsoluteUri);
-        Assert.Equal(css, served.Answer(new Uri(served.Address, "css/site.css")).File);
+        string secrets = Write(Path.Join(Folder, "secrets.json"), "{}\n");
+        string built = Path.Join(Folder, "bin");
+        Write(Path.Join(built, "Debug", "app.js"), "let a;\n");
+        string css = Write(Path.Join(Folder, "site.css"), "h1 { color: green; }\n");
+        ServedPage served = new(Index, Html, [secrets, built]);
+        List<string> refused = [];
+        served.Refused += (_, why) => refused.Add(why);
+
+        Assert.True(served.Answer(At("secrets.json")) == PageAnswer.Forbidden, "A file .gitignore leaves out was served");
+        Assert.True(served.Answer(At("bin/Debug/app.js")) == PageAnswer.Forbidden, "A file in a folder .gitignore leaves out was served");
+        Assert.Equal(css, served.Answer(At("site.css")).File);
+        Assert.Equal(["secrets.json as .gitignore leaves it out", "bin/Debug/app.js as .gitignore leaves it out"], refused);
+    }
+
+    [Fact]
+    public void A_page_refused_nothing_raises_no_refusal()
+    {
+        Write(Path.Join(Folder, "site.css"), "h1 { color: green; }\n");
+        ServedPage served = new(Index, Html);
+        List<string> refused = [];
+        served.Refused += (_, why) => refused.Add(why);
+        served.Answer(served.Address);
+        served.Answer(At("site.css"));
+        served.Answer(At("nothing.css"));
+        served.Answer(At("../outside.css"));
+        Assert.Empty(refused);
     }
 
     [Fact]
     public void A_file_changed_on_disk_is_served_as_it_is_now()
     {
         string css = Write(Path.Join(Folder, "site.css"), "h1 { color: green; }\n");
-        ServedPage served = new(Index, Html, null);
+        ServedPage served = new(Index, Html);
         Assert.Equal("h1 { color: green; }\n", Read(served.Answer(At("site.css"))));
 
         File.WriteAllText(css, "h1 { color: teal; }\n");
@@ -162,10 +177,11 @@ public sealed class ServedPageTests : IDisposable
     {
         Write(Path.Join(root, "outside.css"), "h1 { color: red; }\n");
         Write(Path.Join(Folder, "img", "dot.png"), "dot");
-        ServedPage served = new(Index, Html, null);
+        ServedPage served = new(Index, Html);
 
+        // Off Windows a backslash is a name's own letter, so ..\outside.css names a file of the folder whose name begins with a dot.
         PageAnswer answer = served.Answer(At(below));
-        Assert.True(answer == PageAnswer.Missing, $"The address {below} was answered {answer.Status} with {answer.File}, outside the page's folder");
+        Assert.True(answer == PageAnswer.Missing || answer == PageAnswer.Forbidden, $"The address {below} was answered {answer.Status} with {answer.File}, outside the page's folder");
         Assert.Null(answer.Open());
     }
 
@@ -177,7 +193,7 @@ public sealed class ServedPageTests : IDisposable
         Write(Path.Join(Folder, "site.css"), "h1 { color: green; }\n");
         Link(() => File.CreateSymbolicLink(Path.Join(Folder, "linked.css"), outside));
         Link(() => Directory.CreateSymbolicLink(Path.Join(Folder, "linked"), Path.GetDirectoryName(below)!));
-        ServedPage served = new(Index, Html, null);
+        ServedPage served = new(Index, Html);
 
         Assert.True(served.Answer(At("linked.css")) == PageAnswer.Missing, "A file link leading out of the page's folder was served");
         Assert.True(served.Answer(At("linked/secret.txt")) == PageAnswer.Missing, "A folder link leading out of the page's folder was served");
@@ -188,7 +204,7 @@ public sealed class ServedPageTests : IDisposable
     {
         string css = Write(Path.Join(Folder, "theme", "site.css"), "h1 { color: green; }\n");
         Link(() => File.CreateSymbolicLink(Path.Join(Folder, "site.css"), css));
-        ServedPage served = new(Index, Html, null);
+        ServedPage served = new(Index, Html);
         Assert.Equal("h1 { color: green; }\n", Read(served.Answer(At("site.css"))));
     }
 
@@ -200,7 +216,7 @@ public sealed class ServedPageTests : IDisposable
     public void An_address_of_no_file_answers_that_nothing_is_there(string below)
     {
         Write(Path.Join(Folder, "img", "dot.png"), "dot");
-        ServedPage served = new(Index, Html, null);
+        ServedPage served = new(Index, Html);
 
         PageAnswer answer = served.Answer(At(below));
         Assert.Equal((404, "Not Found"), (answer.Status, answer.Reason));
@@ -216,7 +232,7 @@ public sealed class ServedPageTests : IDisposable
     public void An_address_of_anywhere_else_names_no_file(string address)
     {
         Write(Index, Html);
-        ServedPage served = new(Index, Html, null);
+        ServedPage served = new(Index, Html);
         Assert.Null(served.FileOf(new Uri(address)));
         Assert.True(served.Answer(new Uri(address)) == PageAnswer.Missing, $"The address {address} was served as the page's own");
     }
@@ -225,17 +241,8 @@ public sealed class ServedPageTests : IDisposable
     public void A_link_to_a_file_not_there_yet_names_it_for_the_editor()
     {
         Directory.CreateDirectory(Folder);
-        ServedPage served = new(Index, Html, null);
+        ServedPage served = new(Index, Html);
         Assert.Equal(Path.Join(Folder, "docs", "next page.html"), served.FileOf(At("docs/next%20page.html")));
-    }
-
-    [Fact]
-    public void A_link_climbing_from_a_subfolder_names_the_open_folders_file_for_the_editor()
-    {
-        string about = Write(Path.Join(Folder, "pages", "about.html"), "<h1>As saved</h1>\n");
-        string index = Write(Index, "<h1>Home</h1>\n");
-        ServedPage served = new(about, Html, Folder);
-        Assert.Equal(index, served.FileOf(new Uri(served.Address, "../index.html")));
     }
 
     [Fact]
@@ -243,7 +250,7 @@ public sealed class ServedPageTests : IDisposable
     {
         string css = Write(Path.Join(Folder, "site.css"), "h1 { color: green; }\n");
         string moved = Path.Join(Folder, "moved.css");
-        ServedPage served = new(Index, Html, null);
+        ServedPage served = new(Index, Html);
 
         using Stream reading = served.Answer(At("site.css")).Open()!;
         File.WriteAllText(css, "h1 { color: teal; }\n");
@@ -257,7 +264,7 @@ public sealed class ServedPageTests : IDisposable
     public void Every_answer_says_it_is_not_to_be_kept()
     {
         Write(Path.Join(Folder, "site.css"), "h1 { color: green; }\n");
-        ServedPage served = new(Index, Html, null);
+        ServedPage served = new(Index, Html);
         Assert.Equal("Content-Type: text/html; charset=utf-8\r\nCache-Control: no-store", served.Answer(served.Address).Headers);
         Assert.Equal("Content-Type: text/css\r\nCache-Control: no-store", served.Answer(At("site.css")).Headers);
         Assert.Equal("Cache-Control: no-store", PageAnswer.Missing.Headers);
