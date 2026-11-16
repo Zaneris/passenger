@@ -57,6 +57,10 @@ public sealed record MobileWant
     /// <summary>The projects needing their heads' edits alone, which the sentence of what is lacking leaves out.</summary>
     public IReadOnlyList<string> EditsAlone { get; init; } = [];
 
+    /// <summary>The projects whose Mac Catalyst head's Debug build trims .NET's own assemblies, unsaid here: what a run of one
+    /// says and the project's fix offer to keep them whole.</summary>
+    public IReadOnlyList<HeadEdits> Trimmed { get; init; } = [];
+
     /// <summary>The projects whose every app is an Apple platform's, off a Mac.</summary>
     public IReadOnlyList<string> AppleOffMac { get; init; } = [];
 
@@ -95,6 +99,7 @@ public sealed record MobileWant
         List<string> simulators = [];
         List<HeadEdits> heads = [];
         List<string> editsAlone = [];
+        List<HeadEdits> trimmed = [];
         foreach (ProjectNeeds project in projects)
         {
             bool needs = false;
@@ -109,7 +114,11 @@ public sealed record MobileWant
                 workloads.Add(workload.Id);
             }
             needs |= lacking.Count > 0;
-            if (project.Heads is { } head)
+            if (project.Heads is { TrimsDebug: true } trims)
+            {
+                trimmed.Add(trims);
+            }
+            if (project.Heads is { Needed: true } head)
             {
                 heads.Add(head);
             }
@@ -154,7 +163,7 @@ public sealed record MobileWant
                 simulators.AddRange(apple.Simulators.Where(r => !simulators.Contains(r)));
                 needs |= apple.Simulators.Count > 0;
             }
-            if (project.Heads is not null)
+            if (project.Heads is { Needed: true })
             {
                 if (!needs)
                 {
@@ -183,6 +192,7 @@ public sealed record MobileWant
             OnMono = mono,
             Heads = heads,
             EditsAlone = editsAlone,
+            Trimmed = trimmed,
             AppleOffMac = offMac,
             AndroidElsewhere = androidElsewhere,
             AndroidHost = androidElsewhere.Count > 0 ? androidHost : null,

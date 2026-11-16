@@ -284,7 +284,7 @@ public class MobileHeadsTests
     }
 
     [Fact]
-    public void A_mac_catalyst_heads_trimmed_debug_build_is_named_with_what_stays_out_and_mtouchlink_none_written_for_debug_alone()
+    public void A_mac_catalyst_heads_trimmed_debug_build_is_kept_out_of_the_banner_and_made_whole_with_mtouchlink_none_for_debug_alone()
     {
         const string catalyst = "/src/Cat/Cat.csproj";
         string project = ProjectText.Replace("net10.0-ios", "net11.0-maccatalyst", StringComparison.Ordinal).Replace(">13.0<", ">17.0<", StringComparison.Ordinal);
@@ -292,21 +292,25 @@ public class MobileHeadsTests
             FrameworkNames.MacCatalyst, "/src/Cat") with { LinkMode = "SdkOnly", Manifest = null };
         HeadEdits edits = MobileHeads.Edits(catalyst, "Cat", [answer], path => path == catalyst ? project : null)!;
 
-        Assert.True(edits is { TrimsDebug: true, TrimmedPlatform: null, Files: [catalyst] }, $"The trimmed Debug build's edit: {edits}");
-        Assert.Equal($"Cat needs an edit to build and run here: <MtouchLink>None</MtouchLink> for its Mac Catalyst head's Debug build, which trims .NET's own "
-            + $"assemblies, so {Passenger.App.Run.Devices.MacCatalystApp.KeptOut} (its obj and bin folders deleted before its next build, which fails on what a trimmed one left there)",
-            edits.Said);
+        Assert.True(edits is { TrimsDebug: true, TrimmedPlatform: null, Needed: false, Makes: false, Files: [] }, $"The trimmed Debug build was taken for an edit the banner makes: {edits}");
+        MobileWant want = MobileWant.Of([new ProjectNeeds("Cat", ["net11.0-maccatalyst"]) { Heads = edits }], onMac: true, _ => null, "/sdk", _ => false);
+        Assert.True(want is { Said: null, Heads: [], Trimmed: [{ Name: "Cat" }] }, $"The banner said the trimmed Debug build: {want.Said}");
         Assert.Contains("    <Nullable>enable</Nullable>\n    <MtouchLink Condition=\"'$(Configuration)' == 'Debug'\">None</MtouchLink>\n  </PropertyGroup>",
-            MobileHeads.ProjectText(project, edits).Text, StringComparison.Ordinal);
+            MobileHeads.WholeText(project, edits.TrimmedPlatform), StringComparison.Ordinal);
+        Assert.Equal("Cat's Mac Catalyst Debug build keeps .NET's own assemblies whole (<MtouchLink>None</MtouchLink>): delete its obj and bin folders before its next "
+            + "build, which fails on what a trimmed one left there", MobileHeads.Whole("Cat"));
+        Assert.Equal(["<TargetFramework>net11.0-maccatalyst</TargetFramework>"], MobileHeads.CatalystPlaces(project).Select(p => project[p.Start..p.End].Trim()));
+
         string debugGroup = project.Replace("</Project>", "  <PropertyGroup Condition=\"'$(Configuration)'=='Debug'\">\n    <DebugType>full</DebugType>\n  </PropertyGroup>\n</Project>",
             StringComparison.Ordinal);
-        Assert.Contains("<DebugType>full</DebugType>\n    <MtouchLink>None</MtouchLink>", MobileHeads.ProjectText(debugGroup, edits).Text, StringComparison.Ordinal);
+        Assert.Contains("<DebugType>full</DebugType>\n    <MtouchLink>None</MtouchLink>", MobileHeads.WholeText(debugGroup, null), StringComparison.Ordinal);
+        Assert.Null(MobileHeads.WholeText(MobileHeads.WholeText(project, null)!, null));
         Assert.Null(Edits(project, ManifestText, answer with { LinkMode = "None", Manifest = null }));
         string several = project.Replace("<TargetFramework>net11.0-maccatalyst</TargetFramework>", "<TargetFrameworks>net11.0-ios;net11.0-maccatalyst</TargetFrameworks>",
             StringComparison.Ordinal);
         HeadEdits both = MobileHeads.Edits(catalyst, "Cat", [answer], path => path == catalyst ? several : null)!;
         Assert.Contains("<MtouchLink Condition=\"'$(Configuration)' == 'Debug' And $([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'maccatalyst'\">None</MtouchLink>",
-            MobileHeads.ProjectText(several, both).Text, StringComparison.Ordinal);
+            MobileHeads.WholeText(several, both.TrimmedPlatform), StringComparison.Ordinal);
     }
 
     [Fact]

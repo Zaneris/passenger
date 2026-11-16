@@ -137,6 +137,9 @@ public static class AppActions
     // The edits a mobile project's heads need to build here, made to its project and Info.plist: no key of Rider's.
     public const string MakeMobileEdits = "app.mobile.makeEdits";
 
+    // A Mac Catalyst head's Debug build kept whole of .NET's own assemblies, for Passenger's inspector and update handlers' hook: no key of Rider's.
+    public const string KeepAssembliesWhole = "app.mobile.keepAssembliesWhole";
+
     // The Endpoints window over the folder's .http files, and Test of the request chosen there: no key of Rider's.
     public const string ShowEndpoints = "app.showEndpoints";
     public const string TestEndpoint = "app.endpoints.test";

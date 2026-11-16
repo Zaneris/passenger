@@ -73,13 +73,14 @@ public sealed record HeadEdits(string Project, string Name)
     public bool WritesProject { get; init; }
 
     /// <summary>Whether its Mac Catalyst head's Debug build trims .NET's own assemblies, which Passenger's inspector and
-    /// update handlers' hook need whole; with the platform its MtouchLink is set for where the project has other heads.</summary>
+    /// update handlers' hook need whole (no need of its build, so the banner leaves it to the Run window and the project's
+    /// fix: <see cref="MobileHeads.WholeText"/>); with the platform MtouchLink is set for where it has other heads.</summary>
     public bool TrimsDebug { get; init; }
 
     public string? TrimmedPlatform { get; init; }
 
     /// <summary>Whether anything is to be edited.</summary>
-    public bool Needed => Moves.Count > 0 || Raised.Count > 0 || TrimsDebug || Manifests.Any(m => m.Now is not null || m.SceneSdk is not null);
+    public bool Needed => Moves.Count > 0 || Raised.Count > 0 || Manifests.Any(m => m.Now is not null || m.SceneSdk is not null);
 
     /// <summary>Whether Make the Mobile Edits has an edit of these to make.</summary>
     public bool Makes => Files.Count > 0;
@@ -127,10 +128,10 @@ public sealed record HeadEdits(string Project, string Name)
                         _ => string.Empty,
                     });
             }
-            if (TrimsDebug)
+            if (edits.Count == 0)
             {
-                edits.Add($"{MacCatalystApp.LinkNone} for its Mac Catalyst head's Debug build, which trims .NET's own assemblies, so {MacCatalystApp.KeptOut} "
-                    + "(its obj and bin folders deleted before its next build, which fails on what a trimmed one left there)");
+                // Its Mac Catalyst head's trimmed Debug build alone, which the banner leaves to its run and its fix.
+                return string.Empty;
             }
             string listed = edits.Count == 1 ? edits[0] : $"{string.Join("; ", edits[..^1])}; and {edits[^1]}";
             return $"{Name} needs {(edits.Count == 1 ? "an edit" : "edits")} to build and run here: {listed}{(ByHand is null ? string.Empty : $". {ByHand}")}";
@@ -310,9 +311,9 @@ public static partial class MobileHeads
         };
         if (!edits.Needed)
         {
-            return null;
+            return trims ? edits : null;
         }
-        (string made, string? why) = moves.Count > 0 || raised.Count > 0 || trims ? ProjectText(text, edits) : (text, null);
+        (string made, string? why) = moves.Count > 0 || raised.Count > 0 ? ProjectText(text, edits) : (text, null);
         if (why is not null)
         {
             byHand.Insert(0, why);
@@ -389,11 +390,6 @@ public static partial class MobileHeads
             yield return text => Unmade(ProjectEdits.WithFrameworksMoved(text, edits.Moves.ToDictionary(m => m.Framework, m => m.Moved, StringComparer.OrdinalIgnoreCase)),
                 $"its frameworks {Plural.Listed([.. edits.Moves.Select(m => m.Framework)])} are set outside the project's own properties: set {Plural.Listed([.. edits.Moves.Select(m => m.Moved)])} there");
         }
-        if (edits.TrimsDebug)
-        {
-            yield return text => Unmade(ProjectEdits.WithDebugProperty(text, MSBuildNames.MtouchLink, "None", edits.TrimmedPlatform),
-                $"its {MSBuildNames.MtouchLink} is set in the project already: set None there for its Mac Catalyst head's Debug build");
-        }
         foreach (HeadMinimum raised in edits.Raised)
         {
             yield return text => Unmade(ProjectEdits.WithPlatformProperty(text, MSBuildNames.SupportedOSPlatformVersion, raised.Platform, raised.Version, raised.Least),
@@ -408,6 +404,32 @@ public static partial class MobileHeads
             }
             return changed;
         }
+    }
+
+    /// <summary>The project's text with MtouchLink None for its Mac Catalyst head's Debug build alone, which keeps .NET's own
+    /// assemblies whole for Passenger's inspector and update handlers' hook; null where the project sets MtouchLink itself.</summary>
+    public static string? WholeText(string text, string? platform) => ProjectEdits.WithDebugProperty(text, MSBuildNames.MtouchLink, "None", platform);
+
+    /// <summary>What making the Debug build whole comes to: the edit, and that the head's next build needs its obj and bin
+    /// emptied first, as it fails on what a trimmed one left there.</summary>
+    public static string Whole(string name) =>
+        $"{name}'s Mac Catalyst Debug build keeps .NET's own assemblies whole ({MacCatalystApp.LinkNone}): delete its obj and bin folders before its next build, "
+        + "which fails on what a trimmed one left there";
+
+    /// <summary>The lines of a project naming its Mac Catalyst framework, where the fix keeping its Debug build whole stands.</summary>
+    public static IReadOnlyList<TextRange> CatalystPlaces(string text)
+    {
+        List<TextRange> places = [];
+        for (int at = text.IndexOf(FrameworkNames.MacCatalyst, StringComparison.OrdinalIgnoreCase); at >= 0;
+            at = text.IndexOf(FrameworkNames.MacCatalyst, at + 1, StringComparison.OrdinalIgnoreCase))
+        {
+            TextRange line = TextRange.FromBounds(TextNavigation.LineStart(text, at), TextNavigation.LineEnd(text, at));
+            if (text[line.Start..line.End].Contains("<TargetFramework", StringComparison.Ordinal) && !places.Contains(line))
+            {
+                places.Add(line);
+            }
+        }
+        return places;
     }
 
     /// <summary>Info.plist's text with its least version and scene manifest as <paramref name="edit"/> says; unchanged where

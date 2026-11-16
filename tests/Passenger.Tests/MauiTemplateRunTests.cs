@@ -99,8 +99,7 @@ public sealed class MauiTemplateRunTests
                 Ui.WaitFor(() => window.Session.Projects.Any(p => p.IsEvaluated), () => $"the app's project to evaluate: {Ui.Said(window)}", Slow);
                 Built(window);
                 MobileWant want = window.MobileWant;
-                // The edits the banner offers its heads (its Mac Catalyst head's trimmed Debug build) are no lack of this machine's.
-                string? said = (want with { Heads = [] }).Said;
+                string? said = window.MobileSaid;
                 IReadOnlyList<string> heads = window.Session.Projects.Single().TargetFrameworks;
                 Assert.True(window.Perform(AppActions.Build), $"The app's build could not begin: {window.Status}");
                 Ui.WaitFor(() => !window.IsBuilding, () => $"the app's build to end: {window.Status}", Slow);
@@ -138,7 +137,8 @@ public sealed class MauiTemplateRunTests
 
     /// <summary>On a Mac, Run with nothing chosen builds the app's Mac Catalyst head and the system opens it as an app, hidden
     /// and never in front as nobody sees this window: what it writes is in the Run window while it runs, and Stop ends it,
-    /// the app gone with its opener.</summary>
+    /// the app gone with its opener. Its Debug build trims .NET's own assemblies, so the Run window offers to keep them
+    /// whole, which writes MtouchLink None for its Debug build.</summary>
     [AvaloniaFact]
     public void On_a_mac_run_opens_the_maui_apps_mac_catalyst_head_hidden_its_output_in_the_run_window_and_stop_ends_it()
     {
@@ -167,9 +167,18 @@ public sealed class MauiTemplateRunTests
                     () => $"the app to make its main page, said in the Run window; it shows:\n{Output(window)}\n{Ui.Said(window)}", Slow);
                 Assert.True(window.Runner.IsRunning, $"The app's run ended once its page was up:\n{Output(window)}");
                 Assert.True(Running(app) is not null, $"No process runs {app.Executable} once its page is up");
+                // The template's Debug build trims .NET's own assemblies: the Run window offers to keep them whole.
+                Assert.False(app.Whole, "The template's Mac Catalyst Debug build no longer trims .NET's own assemblies");
+                Assert.Equal($"MauiApp1's Debug build trims .NET's own assemblies, so {MacCatalystApp.KeptOut}", window.BottomPanel.Run.Offered);
                 Ui.Run(window, AppActions.Stop);
                 Ui.WaitFor(() => window.Runner.Ended.IsCompleted, "the app's run to end once stopped", TimeSpan.FromMinutes(1));
                 Ui.WaitFor(() => Running(app) is null, () => $"the app to end once stopped; process {Running(app)} still runs it", TimeSpan.FromSeconds(30));
+                string project = Path.Combine(folder, "MauiApp1", "MauiApp1.csproj");
+                Ui.ClickButton(window.BottomPanel.Run, "Keep .NET's Assemblies Whole in Debug");
+                Ui.WaitFor(() => window.Actions.Work.Of(AppActions.KeepAssembliesWhole) is null && File.ReadAllText(project).Contains("'Debug'\">None</MtouchLink>", StringComparison.Ordinal),
+                    () => $"the Run window's offer to keep the Debug build whole: {Ui.Said(window)}\n{File.ReadAllText(project)}", Slow);
+                Assert.Equal(Passenger.App.Mobile.MobileHeads.Whole("MauiApp1"), window.Status);
+                Assert.Null(window.BottomPanel.Run.Offered);
             }
             finally
             {

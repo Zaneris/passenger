@@ -54,6 +54,10 @@ public sealed record BuildRunParts(
     /// <summary>Opens a folder in the file manager: where a publish put the app, from the status bar's word that it did.</summary>
     public Action<string>? ShowFolder { get; init; }
 
+    /// <summary>A run of a project (its path and name) whose Mac Catalyst build trims .NET's own assemblies: the window offers
+    /// over the Run window to keep them whole in its Debug build.</summary>
+    public Action<string, string>? Trimmed { get; init; }
+
     /// <summary>Lands the files a folder holds in another, as the window writes files (one command of Undo named by the
     /// title, for those in the open folder): the files written, or why not.</summary>
     public Func<string, string, string, Task<(IReadOnlyList<string> Written, string? Problem)>>? LandFiles { get; init; }
@@ -1387,6 +1391,10 @@ public sealed partial class BuildRunController
             foreach (string note in plan.Notes)
             {
                 parts.Views.Run.Append($"{note}\n");
+            }
+            if (plan is { MacCatalyst.App.Whole: false, Project: { } trimmed })
+            {
+                parts.Trimmed?.Invoke(trimmed, chosen.Name);
             }
             ShowInRun(dashboard);
             parts.Say(running);

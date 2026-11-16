@@ -201,6 +201,38 @@ public sealed class OutputView : DockPanel, IOwnKeys
     /// <summary>What the bar over the console says of its program, null while it shows none.</summary>
     public string? Waiting => waiting?.Said;
 
+    /// <summary>The bar over the console offering what its run's words ask of the project, and what its link does; made the
+    /// first time it is shown.</summary>
+    private Banner? offer;
+
+    private Button? offerLink;
+
+    private Action? offered;
+
+    /// <summary>Shows over the console words offering a change with a link that makes it, until the console is emptied;
+    /// null takes it away.</summary>
+    public void ShowOffer(string? said, string link = "", Action? make = null)
+    {
+        UiThread.Check();
+        offered = make;
+        if (said is null || make is null)
+        {
+            offer?.Say(null);
+            return;
+        }
+        if (offer is null || offerLink is null)
+        {
+            offer = new Banner();
+            offerLink = offer.Link(link, () => offered?.Invoke());
+            Children.Insert(Children.IndexOf(body), offer);
+        }
+        offerLink.Content = link;
+        offer.Say(said);
+    }
+
+    /// <summary>What the offer over the console says, null while it shows none.</summary>
+    public string? Offered => offer?.Said;
+
     /// <summary>A program's text as it reached the console, its colour codes gone, a batch at a time, with the stretches
     /// of it each of its streams wrote.</summary>
     public event EventHandler<ConsoleWritten>? Written;
@@ -309,6 +341,7 @@ public sealed class OutputView : DockPanel, IOwnKeys
         UiThread.Check();
         Sink.Drop();
         Document.Clear();
+        ShowOffer(null);
         Links.Forget();
         ForgetFolds();
     }

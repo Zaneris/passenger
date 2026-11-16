@@ -12,7 +12,8 @@ namespace Passenger.Tests;
 /// fix on a line of the project) makes them as one command Undo takes back and Redo makes again, and the head then builds,
 /// restored from nuget.org. Avalonia's cross-platform app's iOS head and its Android head (built where the Android workload
 /// finds a JDK), a MAUI app made before its template gave its Apple heads scenes, and a Mac Catalyst app whose Info.plist
-/// names its least macOS and no scene manifest. Each skips, saying why, off a Mac or without its workloads.</summary>
+/// names its least macOS and no scene manifest; a Mac Catalyst head whose Debug build trims .NET's own assemblies is kept out
+/// of the banner and kept whole by its own action or fix. Each skips, saying why, off a Mac or without its workloads.</summary>
 public sealed partial class MobileHeadEditsTests
 {
     private static readonly TimeSpan Slow = TimeSpan.FromMinutes(8);
@@ -92,17 +93,7 @@ public sealed partial class MobileHeadEditsTests
             Assert.Equal(sentence, Edits(window, head).Said);
             Assert.True(window.MobileSaid?.Contains(sentence, StringComparison.Ordinal) == true, $"The banner did not name each edit of {head}: {window.MobileSaid}");
 
-            window.OpenFile(project);
-            Ui.Settle();
-            Ui.PlaceAfter(window.EditorArea.CodeEditor, "<TargetFramework>");
-            Ui.Run(window, AppActions.QuickFix);
-            Ui.WaitFor(() => window.Assist.Offered.Contains("Make the Mobile Edits"), () => $"the fix on {head}'s framework; offered: {string.Join(", ", window.Assist.Offered)}");
-            int index = window.Assist.Offered.ToList().IndexOf("Make the Mobile Edits");
-            for (int i = 0; i < index; i++)
-            {
-                Ui.Press(window, "DOWN");
-            }
-            Ui.Press(window, "ENTER");
+            Choose(window, project, "<TargetFramework>", "Make the Mobile Edits");
             Ui.WaitFor(() => window.Actions.Work.Of(AppActions.MakeMobileEdits) is null && window.Status == $"The mobile edits of {head} are made",
                 () => $"the fix to make {head}'s edits: {Ui.Said(window)}", Slow);
             Ui.WaitFor(() => window.EditorArea.Find(project)!.Text.Snapshot.ToString() == projectMade.Replace("net10.0-android", "net11.0-android", StringComparison.Ordinal)
@@ -162,13 +153,15 @@ public sealed partial class MobileHeadEditsTests
                 Assert.True(window.MobileSaid?.Contains(said, StringComparison.Ordinal) == true, $"The banner did not say \"{said}\": {window.MobileSaid}");
             }
 
+            Assert.DoesNotContain("MtouchLink", window.MobileSaid, StringComparison.Ordinal);
+
             Ui.ClickButton(window, "Make the Mobile Edits");
             Ui.WaitFor(() => window.Actions.Work.Of(AppActions.MakeMobileEdits) is null, () => $"the edits to be made: {Ui.Said(window)}", Slow);
             Assert.Equal("The mobile edits of M10 are made", window.Status);
             string edited = File.ReadAllText(project);
             Assert.Contains("<TargetFrameworks>net11.0-android</TargetFrameworks>", edited, StringComparison.Ordinal);
             Assert.Contains("'android'\">24.0</SupportedOSPlatformVersion>", edited, StringComparison.Ordinal);
-            Assert.Equal(edits.TrimsDebug, edited.Contains(">None</MtouchLink>", StringComparison.Ordinal));
+            Assert.DoesNotContain("MtouchLink", edited, StringComparison.Ordinal);
             foreach (string platform in (string[])["iOS", "MacCatalyst"])
             {
                 Assert.Contains("<string>__MAUI_DEFAULT_SCENE_CONFIGURATION__</string>", File.ReadAllText(Path.Combine(app, "Platforms", platform, "Info.plist")), StringComparison.Ordinal);
@@ -181,6 +174,14 @@ public sealed partial class MobileHeadEditsTests
             Redo(window, "M10");
             Ui.WaitFor(() => File.ReadAllText(project) == edited && File.Exists(Path.Combine(app, "Platforms", "MacCatalyst", "SceneDelegate.cs")),
                 () => $"Redo to make the edits again: {window.Status}");
+            // Its Mac Catalyst head's Debug build trims .NET's own assemblies, as MAUI's does: the fix on its framework's line keeps them whole.
+            Ui.WaitFor(() => window.MobileWant.Trimmed.Any(h => h.Name == "M10"), () => $"M10's Mac Catalyst Debug build to be found trimmed: {Ui.Said(window)}", Slow);
+            {
+                Choose(window, project, "net11.0-maccatalyst", "Keep .NET's Assemblies Whole in Debug");
+                Ui.WaitFor(() => File.ReadAllText(project).Contains("== 'maccatalyst'\">None</MtouchLink>", StringComparison.Ordinal),
+                    () => $"the fix to keep the Mac Catalyst head's Debug build whole: {Ui.Said(window)}\n{File.ReadAllText(project)}", Slow);
+                Assert.Equal(MobileHeads.Whole("M10"), window.Status);
+            }
             Builds(window, project, "net11.0-ios");
             Builds(window, project, "net11.0-maccatalyst");
         }
@@ -226,9 +227,18 @@ public sealed partial class MobileHeadEditsTests
                 Assert.True(window.MobileSaid?.Contains(said, StringComparison.Ordinal) == true, $"The banner did not say \"{said}\": {window.MobileSaid}");
             }
 
+            Assert.DoesNotContain("MtouchLink", window.MobileSaid, StringComparison.Ordinal);
+
             Ui.ClickButton(window, "Make the Mobile Edits");
             Ui.WaitFor(() => window.Actions.Work.Of(AppActions.MakeMobileEdits) is null, () => $"the edits to be made: {Ui.Said(window)}", Slow);
             Assert.Equal("The mobile edits of Cat are made", window.Status);
+            Ui.WaitFor(() => window.MobileWant.Trimmed.Any(h => h.Name == "Cat"), () => $"Cat's Debug build to be found trimmed: {Ui.Said(window)}", Slow);
+            {
+                Assert.True(window.Perform(AppActions.KeepAssembliesWhole), $"Keep .NET's Assemblies Whole in Debug was refused: {window.Status}");
+                Ui.WaitFor(() => window.Actions.Work.Of(AppActions.KeepAssembliesWhole) is null && File.ReadAllText(project).Contains("'Debug'\">None</MtouchLink>", StringComparison.Ordinal),
+                    () => $"the Debug build to be kept whole: {Ui.Said(window)}\n{File.ReadAllText(project)}", Slow);
+                Assert.Equal(MobileHeads.Whole("Cat"), window.Status);
+            }
             string edited = File.ReadAllText(plist);
             Assert.Contains("<key>LSMinimumSystemVersion</key>\n    <string>14.0</string>", edited, StringComparison.Ordinal);
             Assert.Contains("<string>Default Configuration</string>", edited, StringComparison.Ordinal);
@@ -263,6 +273,22 @@ public sealed partial class MobileHeadEditsTests
             Assert.Skip($"This .NET lacks a workload of the app's heads, or Xcode, so its heads are not asked of: {window.MobileSaid}");
         }
         return window;
+    }
+
+    /// <summary>A fix chosen from Show Context Actions with the caret after some text of a file it opens.</summary>
+    private static void Choose(MainWindow window, string file, string after, string fix)
+    {
+        window.OpenFile(file);
+        Ui.Settle();
+        Ui.PlaceAfter(window.EditorArea.CodeEditor, after);
+        Ui.Run(window, AppActions.QuickFix);
+        Ui.WaitFor(() => window.Assist.Offered.Contains(fix), () => $"{fix} after {after}; offered: {string.Join(", ", window.Assist.Offered)}");
+        int index = window.Assist.Offered.ToList().IndexOf(fix);
+        for (int i = 0; i < index; i++)
+        {
+            Ui.Press(window, "DOWN");
+        }
+        Ui.Press(window, "ENTER");
     }
 
     /// <summary>The edits the banner names of a project's heads.</summary>

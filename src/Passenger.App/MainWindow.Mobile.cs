@@ -2,6 +2,7 @@ using System.Diagnostics;
 using Avalonia.Controls;
 using Passenger.App.CSharp;
 using Passenger.App.Mobile;
+using Passenger.App.Run.Devices;
 using Passenger.App.Templates;
 using Passenger.App.Workspace;
 using Passenger.Core;
@@ -46,6 +47,10 @@ public partial class MainWindow
     private Button? xcodeLink;
     private Button? headsLink;
 
+    /// <summary>The project whose run said its Mac Catalyst Debug build trims .NET's own assemblies, which Keep .NET's
+    /// Assemblies Whole in Debug edits first.</summary>
+    private string? wholeAsked;
+
     /// <summary>What a test's workload installs take in place of the .NET they install into, and of its dotnet.</summary>
     public static WorkloadStandIn? WorkloadStandIn { get; set; }
 
@@ -77,6 +82,13 @@ public partial class MainWindow
             WhyNot = _ => MobileWant.Heads.Any(h => h.Makes) ? null : Refusals.NoMobileEdits,
             Words = ["iOS", "Android", "Mac Catalyst", "Info.plist", MSBuildNames.SupportedOSPlatformVersion, AppManifests.MinimumOSVersion, AppManifests.SceneManifest],
             Works = AppActions.MakeMobileEdits,
+        });
+        actions.Add(new IdeAction(AppActions.KeepAssembliesWhole, "Keep .NET's Assemblies Whole in Debug", "IDE",
+            _ => IdeErrors.Observe(KeepWholeAsync(wholeAsked ?? MobileWant.Trimmed.FirstOrDefault()?.Project)))
+        {
+            WhyNot = _ => wholeAsked is not null || MobileWant.Trimmed.Count > 0 ? null : Refusals.NothingTrimmed,
+            Words = ["Mac Catalyst", MSBuildNames.MtouchLink, "trimming", "Live Visual Tree", "Hot Reload"],
+            Works = AppActions.KeepAssembliesWhole,
         });
         headsLink = MobileBanner.Link(actions[AppActions.MakeMobileEdits]!.Title, () => Request(AppActions.MakeMobileEdits));
         workloadsLink = MobileBanner.Link(actions[AppActions.InstallWorkloads]!.Title, () => Request(AppActions.InstallWorkloads));
@@ -281,21 +293,87 @@ public partial class MainWindow
         }
     }
 
-    /// <summary>Make the Mobile Edits offered on a line of a project or Info.plist that one of its heads' edits changes, where
-    /// Show Context Actions and an agent's code_actions find it.</summary>
+    /// <summary>A run of a project whose Mac Catalyst build trims .NET's own assemblies: the Run window offers, over what its
+    /// start said, to keep them whole in its Debug build.</summary>
+    private void OfferWhole(string project, string name)
+    {
+        UiThread.Check();
+        wholeAsked = project;
+        BottomPanel.Run.ShowOffer($"{name}'s Debug build trims .NET's own assemblies, so {MacCatalystApp.KeptOut}", actions![AppActions.KeepAssembliesWhole]!.Title,
+            () => Request(AppActions.KeepAssembliesWhole));
+    }
+
+    /// <summary>Keep .NET's Assemblies Whole in Debug: MtouchLink None written for the project's Mac Catalyst head's Debug
+    /// build alone, one command of Undo through the window's gate, saying its obj and bin are to be emptied before its next
+    /// build; what it came to, as the status bar says it.</summary>
+    private async Task<(bool Made, string Said)> KeepWholeAsync(string? project)
+    {
+        UiThread.Check();
+        if (project is null || session.Projects.FirstOrDefault(p => PathNames.Same(p.Path, project)) is not { } model)
+        {
+            return (false, Refusals.NothingTrimmed);
+        }
+        if (work.Begin(AppActions.KeepAssembliesWhole, $"Keeping .NET's assemblies whole in {model.Name}'s Debug build") is not { } keeping)
+        {
+            return (false, ActionWork.Busy(work.Of(AppActions.KeepAssembliesWhole)!));
+        }
+        using (keeping)
+        {
+            string? platform = model.TargetFrameworks.Count > 1 ? FrameworkNames.MacCatalyst : null;
+            string? refused = await ChangeFileAsync($"Keep .NET's Assemblies Whole in {model.Name}'s Debug Build", [project], () =>
+            {
+                if (FileText.Load(project) is not { } now)
+                {
+                    return $"{PathNames.Shown(project, Folder)} could not be read";
+                }
+                if (MobileHeads.WholeText(now.Text, platform) is not { } whole)
+                {
+                    return $"{model.Name} sets {MSBuildNames.MtouchLink} itself: set None there for its Mac Catalyst head's Debug build";
+                }
+                _ = FileText.SaveOver(project, now, whole);
+                return null;
+            });
+            (bool, string) came = refused is null ? (true, MobileHeads.Whole(model.Name)) : (false, $"{model.Name}'s Debug build was left as it was: {refused}");
+            Told(keeping, came.Item1, came.Item2);
+            if (refused is null)
+            {
+                wholeAsked = null;
+                BottomPanel.Run.ShowOffer(null);
+                await session.Models.Idle;
+                AskMobile(again: true);
+            }
+            return came;
+        }
+    }
+
+    /// <summary>Make the Mobile Edits offered on a line of a project or Info.plist that one of its heads' edits changes, and
+    /// Keep .NET's Assemblies Whole in Debug on a project's line naming a Mac Catalyst framework whose Debug build trims them,
+    /// where Show Context Actions and an agent's code_actions find them.</summary>
     private IReadOnlyList<CSharp.EditorFix> MobileFixes(OpenDocument file, int offset)
     {
-        if (MobileWant.Heads.FirstOrDefault(h => h.Makes && h.Files.Any(f => PathNames.Same(f, file.Path))) is not { } head)
-        {
-            return [];
-        }
         string text = file.Text.Snapshot.ToString();
         int line = TextNavigation.LineStart(text, offset);
-        if (!MobileHeads.Places(file.Path, text, head).Any(p => line >= p.Start && line <= p.End))
+        List<CSharp.EditorFix> fixes = [];
+        if (MobileWant.Trimmed.FirstOrDefault(h => PathNames.Same(h.Project, file.Path)) is { } trimmed
+            && MobileHeads.CatalystPlaces(text).Any(p => line >= p.Start && line <= p.End))
         {
-            return [];
+            fixes.Add(new CSharp.EditorFix(actions![AppActions.KeepAssembliesWhole]!.Title, $"{trimmed.Name}'s Debug build trims .NET's own assemblies, so {MacCatalystApp.KeptOut}",
+                new TextRange(offset, 0), string.Empty)
+            {
+                Elsewhere = async (_, _) =>
+                {
+                    (bool made, string said) = await KeepWholeAsync(trimmed.Project);
+                    return made ? new CSharp.RefactorOutcome(said, null, [new CSharp.RefactoredFile(trimmed.Project, CSharp.RefactoredChange.Changed, [])], [])
+                        : CSharp.RefactorOutcome.Refused(said);
+                },
+            });
         }
-        return [new CSharp.EditorFix(actions![AppActions.MakeMobileEdits]!.Title, head.Said, new TextRange(offset, 0), string.Empty)
+        if (MobileWant.Heads.FirstOrDefault(h => h.Makes && h.Files.Any(f => PathNames.Same(f, file.Path))) is not { } head
+            || !MobileHeads.Places(file.Path, text, head).Any(p => line >= p.Start && line <= p.End))
+        {
+            return fixes;
+        }
+        return [.. fixes, new CSharp.EditorFix(actions![AppActions.MakeMobileEdits]!.Title, head.Said, new TextRange(offset, 0), string.Empty)
         {
             Elsewhere = async (_, _) =>
             {

@@ -106,6 +106,7 @@ public partial class MainWindow
         Navigate = NavigateTo,
         ProfileService = RecordRunServiceAsync,
         ShowFolder = ShowInFileManager,
+        Trimmed = OfferWhole,
         LandFiles = LandFilesAsync,
         InGodotEditor = PlayInGodotEditorAsync,
         StopInGodotEditor = StopInGodotEditorAsync,

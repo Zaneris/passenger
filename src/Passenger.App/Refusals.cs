@@ -573,6 +573,9 @@ public static class Refusals
     /// <summary>Install Android SDK and Java with nothing of Android's lacking.</summary>
     public const string NothingAndroidLacking = "No Android project of the folder lacks the Android SDK, its packages or a JDK";
 
+    /// <summary>Keep .NET's Assemblies Whole with no Mac Catalyst head whose Debug build trims them.</summary>
+    public const string NothingTrimmed = "No Mac Catalyst head of the folder has a Debug build that trims .NET's own assemblies";
+
     /// <summary>Make the Mobile Edits with no mobile head needing an edit Passenger makes.</summary>
     public const string NoMobileEdits = "No mobile app's head of the folder needs an edit Passenger makes";
 
