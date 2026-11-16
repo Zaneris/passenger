@@ -627,6 +627,71 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
         }
     }
 
+    /// <summary>A project's package written again as the same version range in other words: the server restores it, the
+    /// restore leaving its assets file as it was, and (the window's own load again held back) never loads it again. Once the
+    /// server has said nothing of its loads for its quiet time that wait is let go for good, so a later load of another
+    /// project, its design-time build held here, keeps no agent's question waiting for a load that will never come:
+    /// definition of what the first restore brought answers while that build is held.</summary>
+    [AvaloniaFact]
+    public void An_agents_question_after_a_restore_that_left_its_assets_as_they_were_waits_for_no_later_load()
+    {
+        string folder = PathNames.Canonical(TestFolders.Create("mcp-restored-same-"));
+        DeleteAtEnd(folder);
+        using StandInFeed feed = new();
+        feed.Add("Passenger.Sample", "1.0.0", new Dictionary<string, string>
+        {
+            ["build/Passenger.Sample.targets"] = "<Project>\n  <ItemGroup>\n    <Compile Include=\"$(MSBuildThisFileDirectory)Brought.cs\" />\n  </ItemGroup>\n</Project>\n",
+            ["build/Brought.cs"] = "namespace Sample;\n\npublic static class Brought\n{\n    public static string Say() => \"brought\";\n}\n",
+        });
+        TestFolders.Write(folder, "nuget.config", $"<configuration>\n  <packageSources>\n    <clear />\n    <add key=\"stand-in\" value=\"{feed.Index}\" protocolVersion=\"3\" allowInsecureConnections=\"true\" />\n"
+            + "  </packageSources>\n  <config>\n    <add key=\"globalPackagesFolder\" value=\"packages\" />\n  </config>\n</configuration>\n");
+        string sample = "  <ItemGroup>\n    <PackageReference Include=\"Passenger.Sample\" Version=\"1.0.0\" />\n  </ItemGroup>\n";
+        string uses = TestFolders.Write(folder, "Uses/Uses.csproj", TestProjects.Library().With(sample));
+        string caller = TestFolders.Write(folder, "Uses/Caller.cs", "namespace Uses;\n\npublic static class Caller\n{\n    public static string Call() => Sample.Brought.Say();\n}\n");
+        string other = TestFolders.Write(folder, "Other/Other.csproj", TestProjects.Library());
+        string assets = Path.Combine(folder, "Uses", "obj", "project.assets.json");
+        MainWindow window = AgentsWindow(folder);
+        Ui.WaitFor(() => window.CSharpService is { IsReady: true }, () => $"the language server to load Uses and Other ({window.CSharpService?.State})", TimeSpan.FromMinutes(3));
+        McpClient client = Await(Waiting.Apart(() => Start(["--mcp-attach", ProcessId])), "the agent attaching");
+        TaskCompletionSource building = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource keeping = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        global::Passenger.App.CSharp.CSharpService csharp = window.CSharpService!;
+        Dictionary<string, object?> brought = new() { ["path"] = "Uses/Caller.cs", ["line"] = 5, ["column"] = 43 };
+        try
+        {
+            // Asked first, so the server's first restore of Uses and its load after it are over.
+            string first = Text(Ui.AwaitPumped(Waiting.Apart(() => Result(client, McpTools.Definition, brought)), "the agent's first definition of Brought", AgentLimit));
+            Assert.True(first.Contains("Brought.cs", StringComparison.Ordinal), $"definition of a class Uses's first restore brought answered: {first}");
+            DateTime written = File.GetLastWriteTimeUtc(assets);
+
+            // The window's own load again of Uses, which its evaluation of the change asks for, held: only the server's comes.
+            csharp.HoldReloads(uses, keeping.Task);
+            TestFolders.Write(folder, "Uses/Uses.csproj", TestProjects.Library().With(sample.Replace("Version=\"1.0.0\"", "Version=\"[1.0.0, )\"", StringComparison.Ordinal)));
+            Ui.PumpUntil(() => csharp.ReloadingWhat(caller)?.Contains("to load Uses again with what its restore brought", StringComparison.Ordinal) == true,
+                "the server to restore Uses once its package was written again", AgentLimit);
+            Assert.True(File.GetLastWriteTimeUtc(assets) == written, "The restore of the same package written again wrote Uses's assets file again, so the server loads Uses again after all");
+            Ui.PumpUntil(() => csharp.ReloadingWhat(caller) is null, "the wait for a load of Uses to be let go once the server said nothing of its loads for its quiet time", AgentLimit);
+
+            Task held = window.Session.DesignTimeBuilds.HoldNextAsked(other, building.Task);
+            TestFolders.Write(folder, "Other/Other.csproj", TestProjects.Library().With("  <PropertyGroup>\n    <Description>Changed</Description>\n  </PropertyGroup>\n"));
+            Ui.PumpUntil(() => held.IsCompleted, "the server's load of Other to ask for its design-time build, held", AgentLimit);
+            Heard heard = new();
+            Task<CallToolResult> asked = Waiting.Apart(() => Result(client, McpTools.Definition, brought, heard: heard));
+            string said = Text(Ui.AwaitPumped(asked, "the agent's definition of Brought, asked while Other's design-time build is held", AgentLimit));
+            Assert.True(said.Contains("Brought.cs", StringComparison.Ordinal) && !building.Task.IsCompleted,
+                $"definition of a class a restore brought, asked once the wait for Uses's load had been let go and while another project's build was held, answered: {said}"
+                + $" (last told: {heard.Told.LastOrDefault()?.Message})");
+            Assert.DoesNotContain(heard.Told, t => t.Message?.Contains("to load Uses again", StringComparison.Ordinal) == true);
+        }
+        finally
+        {
+            building.TrySetResult();
+            keeping.TrySetResult();
+            Gone(client);
+            window.Close();
+        }
+    }
+
     /// <summary>An agent's question of an open file costs the person's window what it asks, not the file's size: the disk,
     /// which the agent's own file tools may have written, is looked at off the UI thread and the file read only once its
     /// length or time changed, so editor_text of one line of an open 20,000-line file allocates on the UI thread about what

@@ -414,6 +414,7 @@ public sealed partial class CSharpService
     {
         if (session?.Server == from)
         {
+            LetGoOfQuietRestores();
             buildsAsked++;
         }
     });
@@ -426,6 +427,7 @@ public sealed partial class CSharpService
         {
             if (session?.Server == from)
             {
+                LetGoOfQuietRestores();
                 // Given, the load goes on, which the server reports in its own time.
                 buildsAsked = Math.Max(0, buildsAsked - 1);
                 loadSaid = Stopwatch.GetTimestamp();

@@ -330,7 +330,22 @@ public sealed partial class CSharpService : IAsyncDisposable
     private static TimeSpan LoadsQuiet => Waits.Of(TimeSpan.FromSeconds(15));
 
     /// <summary>Whether a project a restore brought something to is still to load again (<see cref="restoredToLoad"/>).</summary>
-    private bool RestoredStillToLoad() => restoredToLoad.Count > 0 && (restoringTheirs || buildsAsked > 0 || Stopwatch.GetElapsedTime(loadSaid) < LoadsQuiet);
+    private bool RestoredStillToLoad()
+    {
+        LetGoOfQuietRestores();
+        return restoredToLoad.Count > 0;
+    }
+
+    /// <summary>Lets go for good of the projects restored that the server has not loaded again once it has said nothing of
+    /// its loads for <see cref="LoadsQuiet"/>, with no restore under way and no builds asked for still to give: it never
+    /// will (the restore left their assets as they were), so nothing it says later waits for them again.</summary>
+    private void LetGoOfQuietRestores()
+    {
+        if (restoredToLoad.Count > 0 && !restoringTheirs && buildsAsked == 0 && Stopwatch.GetElapsedTime(loadSaid) >= LoadsQuiet)
+        {
+            restoredToLoad.Clear();
+        }
+    }
 
     /// <summary>The files the server's builds wrote that it held otherwise than the disk as the generators' wait last looked
     /// (<see cref="WaitForGenerators"/>).</summary>
@@ -1832,6 +1847,7 @@ public sealed partial class CSharpService : IAsyncDisposable
         {
             return;
         }
+        LetGoOfQuietRestores();
         loadSaid = Stopwatch.GetTimestamp();
         switch (report)
         {
