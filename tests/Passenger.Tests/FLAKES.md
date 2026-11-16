@@ -30,6 +30,10 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 
 ## 2026-11-15
 
+- `TerminalTests`' `A_program_receives_the_mouse_release_when_Shift_changes_after_the_press`, CI 43778696623 (macOS shard 2 of
+  the report lane): the screen held the press's report `^[[<0;1;1M` without its release. **The test waited wrong**: it waited
+  for the press's report and then looked for the press and release together, where the tty echoes each report as it comes
+  and the release's may come a read later. It now waits for the line holding both (b83cf30c7).
 - `SelfDebuggingTests`' `Passenger_opened_on_its_repository_debugs_itself_on_a_state_of_its_own_stopping_stepping_and_evaluating_in_its_ui_code`,
   CI 43770890675 (Linux shard 1 of the report lane): "Building Passenger rewrote the checkout's restore of 30 projects …
   read "/home/runner/.nuget/NuGet/NuGet.Config" and now reads "/tmp/passenger-run-…/home/.nuget/NuGet/NuGet.Config"".
