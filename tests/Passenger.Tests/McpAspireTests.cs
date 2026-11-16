@@ -449,8 +449,11 @@ public sealed class McpAspireTests : McpRig, IClassFixture<RestoredFolders>
             int[] orchestrator = [.. Processes.Listed().Where(process => process.Value.Contains("dcp start-apiserver", StringComparison.Ordinal)
                 && process.Value.Contains($"--monitor {host.ToString(CultureInfo.InvariantCulture)} ", StringComparison.Ordinal)).Select(process => process.Key)];
             Assert.NotEmpty(orchestrator);
-            // The orchestrator first, which would take its containers down as its AppHost goes, and Passenger last.
-            int[] killed = [.. orchestrator, .. orchestrator.SelectMany(Processes.Descendants), .. Processes.Descendants(passenger.Id), passenger.Id];
+            // The orchestrator first, which would take its containers down as its AppHost goes, the watchdog, and Passenger last.
+            string watchdog = ChildProcesses.WatchdogOf(passenger.Id);
+            int[] killed = [.. orchestrator, .. orchestrator.SelectMany(Processes.Descendants),
+                .. Processes.Listed().Where(process => process.Value.EndsWith(watchdog, StringComparison.Ordinal)).Select(process => process.Key),
+                .. Processes.Descendants(passenger.Id), passenger.Id];
             foreach (int id in killed.Distinct())
             {
                 OwnProcess.Of(id).Kill(alone: true);

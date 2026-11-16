@@ -9,7 +9,9 @@ namespace Passenger.Core;
 /// On Windows each child is in the runtime's job object (KillOnParentExit), which the system kills once Passenger's
 /// handle to it is gone. macOS has neither a job nor a parent-death signal: there each child leads a session and process
 /// group of its own, and a watchdog shell reading a pipe only Passenger writes kills every group still alive once that
-/// pipe closes, which it does however Passenger's process ends. Linux is treated as macOS is.</summary>
+/// pipe closes, which it does however Passenger's process ends. The watchdog is no process of Passenger's tree, so a kill
+/// of the tree (a test runner's of a hung host) leaves it to end what lives outside it, an app the system started for
+/// Passenger among them. Linux is treated as macOS is.</summary>
 internal static partial class Lifeline
 {
     private const int SigKill = 9;
@@ -45,6 +47,13 @@ internal static partial class Lifeline
         done
         for group in $groups; do kill -s KILL -- "-$group"; done
         if [ -n "$last" ]; then eval "$last"; fi
+        """;
+
+    /// <summary>Starts the watchdog (<c>$1</c>, named <c>$2</c>) on this shell's input and ends at once, so the system takes
+    /// the watchdog for its own: it is in no process tree of Passenger's.</summary>
+    private const string Apart = """
+        exec 3<&0
+        /bin/sh -c "$1" "$2" 0<&3 3<&- &
         """;
 
     /// <summary>JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE: a job's processes end as its last handle closes.</summary>
@@ -227,6 +236,9 @@ internal static partial class Lifeline
         }
     }
 
+    /// <summary>What the watchdog of Passenger's process <paramref name="ide"/> is named, last on its command line.</summary>
+    public static string NameOf(int ide) => string.Create(System.Globalization.CultureInfo.InvariantCulture, $"passenger-watchdog-{ide}");
+
     /// <summary>Writes a line to the watchdog. One that was ended by hand is replaced, and its successor is given every
     /// group listed, so the line need not be written again.</summary>
     private static void Tell(string line)
@@ -246,11 +258,11 @@ internal static partial class Lifeline
         }
     }
 
-    /// <summary>The watchdog, started with the first child (again if it was ended by hand, with every group listed). Null
-    /// where there is no shell to be it: children still run, only nothing ends them on a crash.</summary>
+    /// <summary>The watchdog, started with the first child (again if it was ended by hand, with every group listed), as
+    /// its input takes a line. Null where there is no shell to be it: children still run, only nothing ends them on a crash.</summary>
     private static Process? Watchdog()
     {
-        if (unavailable || watchdog is { } running && DotnetProcesses.Runs(running))
+        if (unavailable || watchdog is { } running && Reads(running))
         {
             return watchdog;
         }
@@ -259,7 +271,7 @@ internal static partial class Lifeline
         try
         {
             // Its own session too, so a terminal's Ctrl+C or hangup, which ends Passenger, leaves it to do its work.
-            ProcessStartInfo start = new("/bin/sh", ["-c", Watch])
+            ProcessStartInfo start = new("/bin/sh", ["-c", Apart, "sh", Watch, NameOf(Environment.ProcessId)])
             {
                 UseShellExecute = false,
                 CreateNoWindow = true,
@@ -283,6 +295,21 @@ internal static partial class Lifeline
             unavailable = true;
         }
         return watchdog;
+    }
+
+    /// <summary>Whether the watchdog still reads its input: an empty line, which it passes over, is refused once it has gone.</summary>
+    private static bool Reads(Process watching)
+    {
+        try
+        {
+            watching.StandardInput.Write('\n');
+            watching.StandardInput.Flush();
+            return true;
+        }
+        catch (IOException)
+        {
+            return false;
+        }
     }
 
     [LibraryImport("kernel32.dll", EntryPoint = "CreateJobObjectW", SetLastError = true, StringMarshalling = StringMarshalling.Utf16)]

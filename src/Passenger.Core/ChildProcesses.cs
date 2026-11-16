@@ -438,6 +438,10 @@ public static class ChildProcesses
     /// takes the place of the one given before; on Windows nothing runs it, and the next start ends what is left.</summary>
     public static void AtIdeEnd(string command) => Lifeline.AtEnd(command);
 
+    /// <summary>What ends the command line of the watchdog of the IDE's process <paramref name="ide"/> (<see cref="Lifeline"/>)
+    /// on macOS and Linux, which is in no process tree of the IDE's.</summary>
+    public static string WatchdogOf(int ide) => Lifeline.NameOf(ide);
+
     /// <summary>Runs a child to its end, its output and errors read whole, <paramref name="input"/> written to it first; an
     /// exit code among <paramref name="answers"/> is its answer (git's "no such file"), not a failure to log. Canceled, or
     /// still running after <paramref name="limit"/>, it is killed with all it started, its output let go, and the task is

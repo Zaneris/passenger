@@ -1,8 +1,11 @@
 using System.Runtime.InteropServices;
+using System.Text.Json;
 using Avalonia.Headless.XUnit;
+using ModelContextProtocol.Client;
 using Passenger.App;
 using Passenger.App.Debugging;
 using Passenger.App.LiveTree;
+using Passenger.App.Mcp;
 using Passenger.App.Run.Devices;
 using Passenger.Core;
 using Passenger.Inspector;
@@ -16,10 +19,11 @@ namespace Passenger.Tests;
 /// Reload carries the inspector and the update handlers' hook in too, so its tree is the app's window, a tap reaches its
 /// button's centre, an edit lands and its update handler is called; built as the template has it, which trims them, Debug
 /// says they stay out, and stops in its main page, which its interpreter runs, steps, shows, evaluates and takes an edit.
-/// Stop ends the app and takes out what was carried. Skips, saying why, off a Mac, without MAUI's and Mac Catalyst's
-/// workloads or Xcode, or the Mac Catalyst relay. Debugged through the window, so alone.</summary>
+/// Stop ends the app and takes out what was carried; an agent's Passenger killed with its tree ends the app it opened too.
+/// Skips, saying why, off a Mac, without MAUI's and Mac Catalyst's workloads or Xcode, or the Mac Catalyst relay. Debugged
+/// through the window, so alone.</summary>
 [Collection(Alone.Name)]
-public sealed class MauiCatalystTests
+public sealed class MauiCatalystTests : McpRig
 {
     private static readonly TimeSpan Slow = TimeSpan.FromMinutes(8);
 
@@ -137,6 +141,71 @@ public sealed class MauiCatalystTests
             window.Close();
             TestFolders.Delete(folder);
         }
+    }
+
+    /// <summary>An agent's Passenger that ran the app is killed as a test runner kills a hung host, every process of its tree
+    /// first, the deepest first, then itself: the app, which the system started apart from Passenger, still ends with it, as
+    /// its watchdog, in no tree of Passenger's, ends what Passenger took on.</summary>
+    [Fact]
+    public async Task A_maui_apps_mac_catalyst_head_an_agents_passenger_ran_ends_once_that_passenger_and_its_tree_are_killed()
+    {
+        if (!OperatingSystem.IsMacOS())
+        {
+            Assert.Skip("A .NET MAUI app's Mac Catalyst head runs only on a Mac");
+        }
+        string folder = PathNames.Canonical(TestFolders.Create("maui-catalyst-killed"));
+        DeleteAtEnd(folder);
+        (_, string? unmade) = await MauiApp.CreateMacCatalystHeadAsync(folder);
+        if (unmade is not null)
+        {
+            Assert.Skip(unmade);
+        }
+        int? app = null;
+        try
+        {
+            McpClient client = await Start(["--mcp", folder], languageServer: false);
+            // Each program it takes on is in its log as it does.
+            await Call(client, McpTools.SettingsSet, new() { ["changes"] = new Dictionary<string, object> { ["logEveryProgram"] = true } });
+            await Until(async () => (await Call(client, McpTools.Workspace)).GetProperty("runConfigurations").EnumerateArray().Any(c => c.GetString() == MauiApp.Name),
+                "the app's run configuration");
+            JsonElement ran = await Call(client, McpTools.Run, new() { ["configuration"] = MauiApp.Name, ["waitSeconds"] = 0 });
+            Assert.True(ran.GetProperty("stillRunning").GetBoolean(), $"run did not leave the app running: {ran}");
+            string log = Path.Combine(OwnState, "logs", "passenger.log");
+            await Until(() => (app = Opened(folder)) is int id && File.Exists(log) && Ui.Shared(log).Contains($"Process {id} started", StringComparison.Ordinal),
+                "the app to run and Passenger to take it on, as its log says");
+
+            System.Diagnostics.Process passenger = LastPassenger();
+            int[] killed = [.. Processes.Descendants(passenger.Id).Reverse(), passenger.Id];
+            foreach (int id in killed)
+            {
+                OwnProcess.Of(id).Kill(alone: true);
+            }
+            await Until(() => killed.All(id => !Processes.IsRunning(id)), "Passenger and every process of its tree killed");
+            await Until(() => Opened(folder) is null, $"the app (process {app}) to end with the Passenger that ran it, though no process of its tree is left");
+        }
+        finally
+        {
+            if (app is int left && Opened(folder) == left)
+            {
+                OwnProcess.Of(left).Kill(alone: true);
+            }
+        }
+    }
+
+    /// <summary>The process running a Mac Catalyst app built in <paramref name="folder"/>; null where none does.</summary>
+    private static int? Opened(string folder)
+    {
+        foreach (System.Diagnostics.Process process in System.Diagnostics.Process.GetProcesses())
+        {
+            using (process)
+            {
+                if (Libc.ExecutableOf(process.Id) is { } program && PathNames.IsUnder(program, folder) && Path.GetFileName(program) == MauiApp.Name)
+                {
+                    return process.Id;
+                }
+            }
+        }
+        return null;
     }
 
     /// <summary>The MAUI template's Mac Catalyst head in a folder of its own, with an update handler that says each type an
