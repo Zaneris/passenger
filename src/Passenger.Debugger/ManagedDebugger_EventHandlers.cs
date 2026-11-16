@@ -125,10 +125,11 @@ public partial class ManagedDebugger
             }
             else if (corModule.IsInMemory)
             {
-                int size = corModule.Size;
-                CORDB_ADDRESS baseAddress2 = corModule.BaseAddress;
-                (byte[] bytes, _) = (_process ?? throw new InvalidOperationException("A module loaded before its process")).ReadMemory(baseAddress2, size);
-                metadataReader = ModuleMetadataReader.TryLoadFromBytes(bytes);
+                // Its size is the program's word, so the image is read only as long as its headers lay it out, a piece at a time.
+                System.Runtime.InteropServices.Marshal.ThrowExceptionForHR(corModule.TryGetSize(out uint size));
+                ICorDebugProcess process = _process ?? throw new InvalidOperationException("A module loaded before its process");
+                metadataReader = ModuleMetadataReader.TryLoadFromBytes(Relay.ModuleImages.Read(process, baseAddress.Value, size, out string? why)
+                    ?? throw new InvalidOperationException($"Its image in the program's memory is not read: {why}"));
             }
             else
             {

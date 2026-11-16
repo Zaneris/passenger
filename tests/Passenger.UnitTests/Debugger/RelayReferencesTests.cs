@@ -250,6 +250,32 @@ public class RelayReferencesTests
         Assert.True(app.BrokenBy is null && value.TryGetType(out _) == 0, $"The session did not go on past the refused module: {app.BrokenBy}");
     }
 
+    [Theory]
+    [InlineData(false, "past the")]
+    [InlineData(true, "could not be read past")]
+    public void An_in_memory_module_said_to_take_2_GB_is_refused_saying_why_with_nothing_held_for_it_and_the_session_goes_on(bool laidOut, string why)
+    {
+        // The app's memory holds the image and 8 KB after it, then ends.
+        byte[] image = [.. Plugin().Image, .. new byte[8192]];
+        const uint Claimed = 0x7FFF_F000;
+        if (laidOut)
+        {
+            // Its headers lay out the size the app claims: only its memory says otherwise.
+            BinaryPrimitives.WriteUInt32LittleEndian(image.AsSpan(BinaryPrimitives.ReadInt32LittleEndian(image.AsSpan(0x3C)) + 24 + 56), Claimed);
+        }
+        App app = new() { Image = image, ImageSize = Claimed };
+        RelaySession session = new(app, new DeviceModules(null), null);
+        Assert.Equal(0, Module(session).TryGetSize(out uint size));
+        ICorDebugProcess process = (ICorDebugProcess)new StrategyBasedComWrappers().GetOrCreateObjectForComInstance(
+            session.Take(new RemotePointer(0x8000, 0x8000), RemoteInterfaces.Of(typeof(ICorDebugProcess))), CreateObjectFlags.UniqueInstance);
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        byte[]? read = ModuleImages.Read(process, App.ImageAt, size, out string? said);
+        long held = GC.GetAllocatedBytesForCurrentThread() - before;
+        Assert.True(read is null && said?.Contains(why, StringComparison.Ordinal) == true, $"An image of {image.Length:N0} bytes said to take {Claimed:N0} was not refused as {why}: {said}");
+        Assert.True(held < 1 << 20, $"Reading an image of {image.Length:N0} bytes said to take {Claimed:N0} took {held:N0} bytes, as if the app's word were its size");
+        Assert.True(app.BrokenBy is null, $"The session did not go on past the refused module: {app.BrokenBy}");
+    }
+
     private static ICorDebugModule Module(RelaySession session) =>
         (ICorDebugModule)new StrategyBasedComWrappers().GetOrCreateObjectForComInstance(
             session.Take(new RemotePointer(App.ModuleAt, App.ModuleAt), RemoteInterfaces.Of(typeof(ICorDebugModule))), CreateObjectFlags.UniqueInstance);
@@ -391,13 +417,16 @@ public class RelayReferencesTests
     {
         /// <summary>The module the tests take, and where its image lies in the app's memory.</summary>
         public const ulong ModuleAt = 0x6000;
-        private const ulong ImageAt = 0x7F000000;
+        public const ulong ImageAt = 0x7F000000;
 
         private readonly ConcurrentQueue<uint> _asked = new();
         private ulong _next = 0x10000;
 
         /// <summary>The image of the module at <see cref="ModuleAt"/>, loaded from bytes; null where it has none.</summary>
         public byte[]? Image { get; init; }
+
+        /// <summary>The size the module says its image takes, where not the image's own.</summary>
+        public uint? ImageSize { get; init; }
 
         /// <summary>How many reads of the app's memory came.</summary>
         public int Reads { get; private set; }
@@ -495,7 +524,7 @@ public class RelayReferencesTests
             }
             if (obj == ModuleAt && slot == RelaySession.SlotOf(typeof(ICorDebugModule), nameof(ICorDebugModule.TryGetSize)))
             {
-                return new RelayReply(0, [BitConverter.GetBytes(image.Length)], []);
+                return new RelayReply(0, [BitConverter.GetBytes(ImageSize ?? (uint)image.Length)], []);
             }
             if (obj != ModuleAt && slot == RelaySession.SlotOf(typeof(ICorDebugProcess), nameof(ICorDebugProcess.TryReadMemory)) && args.Count == 4)
             {

@@ -118,6 +118,23 @@ public class RelayPlansTests
         }
     }
 
+    [Fact]
+    public void A_modules_image_is_read_whole_in_pieces_each_no_longer_than_what_came_before_it()
+    {
+        byte[] file = File.ReadAllBytes(typeof(RelayPlansTests).Assembly.Location);
+        const ulong at = 0x7000_0000;
+        const int Piece = 64 * 1024;
+        List<int> reads = [];
+        byte[]? read = ModuleImages.Image(at, (uint)file.Length, (address, count) =>
+        {
+            reads.Add(count);
+            return address >= at && address - at + (ulong)count <= (ulong)file.Length ? file.AsSpan((int)(address - at), count).ToArray() : null;
+        }, out string? why, Piece);
+        Assert.True(read is not null && read.SequenceEqual(file), $"An image of {file.Length:N0} bytes did not come whole: {why}");
+        Assert.True(reads.Count > 2 && reads.Skip(1).Select((count, i) => count <= Piece && count <= reads.Take(i + 1).Sum()).All(held => held),
+            $"An image was read in pieces of {string.Join(", ", reads)} bytes, one longer than {Piece:N0} or than what came before it");
+    }
+
     private static IEnumerable<InterfacePlan> DebuggerPlans() => typeof(ICorDebug).Assembly.GetTypes()
         .Where(type => type.IsInterface && type.Name.StartsWith("ICorDebug", StringComparison.Ordinal)
             && type.IsDefined(typeof(System.Runtime.InteropServices.Marshalling.GeneratedComInterfaceAttribute), inherit: false))
