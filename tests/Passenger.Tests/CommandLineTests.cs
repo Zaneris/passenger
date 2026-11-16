@@ -535,6 +535,54 @@ public sealed class CommandLineTests : IDisposable
             $"The start after the one that said the crash still showed an IDE error: it exited {code}, saying: {error}");
     }
 
+    /// <summary>Passenger started in the folder it opens, as a terminal in a repository starts it, works in the person's home
+    /// once its command line is read, so a program started by its bare name (Avalonia's xdg-open) is never one the folder
+    /// holds; a screenshot named from where it was started is still written there.</summary>
+    [Fact]
+    public async Task Started_in_the_folder_it_opens_Passenger_works_in_the_persons_home_once_its_command_line_is_read()
+    {
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "Windows tells another process's working folder only from inside its memory");
+        string home = PathNames.Canonical(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile));
+        ProcessStartInfo start = ChildProcesses.Command(Passenger, ["--mcp", "."], folder);
+        start.Environment[StateStore.Variable] = settings;
+        start.RedirectStandardInput = true;
+        start.RedirectStandardOutput = true;
+        start.RedirectStandardError = true;
+        using Process passenger = ChildProcesses.Start(start);
+        Task heard = ChildProcesses.Hear(passenger, _ => { }, _ => { });
+        try
+        {
+            string? working = null;
+            bool moved = await Waiting.UntilAsync(async () => (working = await WorkingFolderAsync(passenger.Id)) is { } now && PathNames.Same(now, home),
+                TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken, TimeSpan.FromMilliseconds(100));
+            Assert.True(moved, $"Passenger started in {folder} works in {working ?? "a folder lsof did not tell"}, not the home folder {home}");
+        }
+        finally
+        {
+            passenger.StandardInput.Close();
+            if (!await Waiting.Within(passenger.WaitForExitAsync(TestContext.Current.CancellationToken), TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken))
+            {
+                ChildProcesses.Kill(passenger);
+            }
+            await heard;
+        }
+
+        (int code, string error) = await Run(". --size 800x500 --scale 1 --screenshot out.png");
+        Assert.True(code == 0 && File.Exists(Path.Combine(folder, "out.png")), $"The screenshot named from the folder it was started in was not written there: exit code {code}\n{error}");
+    }
+
+    /// <summary>The folder a process works in, as the system tells it: Linux's /proc link, macOS's lsof.</summary>
+    private static async Task<string?> WorkingFolderAsync(int process)
+    {
+        if (OperatingSystem.IsLinux())
+        {
+            return Directory.ResolveLinkTarget($"/proc/{process}/cwd", returnFinalTarget: false)?.FullName;
+        }
+        ChildResult told = await ChildProcesses.RunAsync(ChildProcesses.Command("/usr/sbin/lsof", ["-a", "-p", process.ToString(System.Globalization.CultureInfo.InvariantCulture), "-d", "cwd", "-Fn"]),
+            limit: TimeSpan.FromSeconds(30), cancel: TestContext.Current.CancellationToken);
+        return told.Output.Split('\n').FirstOrDefault(line => line.StartsWith('n'))?[1..] is { Length: > 0 } named ? PathNames.Canonical(named) : null;
+    }
+
     private Task<(int Code, string Error)> Run(string arguments) => Run(arguments.Split(' '), settings);
 
     /// <summary>Passenger run in the test's folder with these arguments and its state in a folder of their own, with these

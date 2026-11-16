@@ -399,8 +399,9 @@ public sealed record LaunchOptions(string? Folder, IReadOnlyList<string> Files, 
         return (folder, workspace, files);
     }
 
-    /// <summary>The screenshot, refused unless its PNG has a folder to go in, its frame is one the headless window draws,
-    /// and its crop and every point its steps press or move to lie in the window.</summary>
+    /// <summary>The screenshot, its PNG's path made whole (Passenger leaves the folder it was started in), refused unless the
+    /// PNG has a folder to go in, its frame is one the headless window draws, and its crop and every point its steps press
+    /// or move to lie in the window.</summary>
     private static ScreenshotOptions Checked(ScreenshotOptions shot, string? cropText, List<(string Flag, string Text, Point At)> points)
     {
         string full = Path.GetFullPath(shot.Path);
@@ -428,7 +429,7 @@ public sealed record LaunchOptions(string? Folder, IReadOnlyList<string> Files, 
                 throw new FormatException(FormattableString.Invariant($"{flag} {text} is outside the {width}x{height} window"));
             }
         }
-        return shot;
+        return shot with { Path = full };
     }
 
     /// <summary>An agent's command line, split as a run configuration's arguments are, its program a file (from the working

@@ -72,6 +72,10 @@ internal static class Program
         }
 
         Options = options;
+        if (options.Mcp != McpMode.Attach)
+        {
+            LeaveStartingFolder();
+        }
         // Before anything starts, so nothing started reads it; a relay keeps its own, which the updated app it becomes reads.
         Stream? input = options.Mcp == McpMode.Attach ? null : StandardInput.Take();
         // Before the shell's environment or a look for leftovers: Main's thread waits here for a running Passenger's answer.
@@ -114,6 +118,23 @@ internal static class Program
         // What the windows ended (debuggers, Roslyn's servers) has a moment; then an update made ready installs, last of all.
         PassengerApp.End();
         return code;
+    }
+
+    /// <summary>Works in the person's home folder from here on, the command line's paths read whole: a program started by
+    /// its bare name (Avalonia's xdg-open) is looked for in the working folder before the PATH, and the folder Passenger
+    /// was started in may be a repository it opens. A relay (--mcp-attach) keeps its own, its agent's folder.</summary>
+    private static void LeaveStartingFolder()
+    {
+        string home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile, Environment.SpecialFolderOption.DoNotVerify);
+        try
+        {
+            Environment.CurrentDirectory = home;
+        }
+        catch (Exception refused) when (refused is IOException or UnauthorizedAccessException or ArgumentException)
+        {
+            // A home that is gone or unnamed: the root of the system's disk, which only the system writes.
+            Environment.CurrentDirectory = Path.GetPathRoot(Environment.SystemDirectory) is { Length: > 0 } root ? root : "/";
+        }
     }
 
     /// <summary>A screenshot keeps nothing of the person's: unless PASSENGER_SETTINGS names a folder, its state and logs
