@@ -405,7 +405,7 @@ Projects in `src/`; `find_symbol` finds the rest from the names here. A pointer'
   (`ContainerReach.PathsAsync`), else back by the engine's own match (`SourcePaths.FileOf`).
 - **BDD (Reqnroll, SpecFlow).** A .feature file is read only through `FeatureReading` (Cucumber's Gherkin package, in its
   project's language, `FeatureLanguage`, a `# language:` line through `GherkinDialects.ReqnrollProvider`, as Reqnroll's reader takes a region Gherkin lacks; a scenario is an outline wherever it has examples, whatever its keyword, as Reqnroll's parser builds it; what Reqnroll's code-behind generator refuses is `GeneratorChecks`, marked only where Gherkin's reader finds no mistake) and its steps matched only through `StepMatcher` (Reqnroll's own rules, ported:
-  keep them its); a run's step outcomes come only from the step trace in each test's output (`StepTrace`), an outline's row by `ExampleRows.RowOf` (pickle index first), held by `StepRuns`, the gutter and `tests_run` both through `MainWindow.FeatureRunsAsync`); bindings come from the extension's `StepBindings` with no build, never reflection, cached in
+  keep them its); a run's step outcomes come only from the step trace in each test's output (`StepTrace`), an outline's row by `ExampleRows.RowOf` (pickle index first), held by `StepRuns`, the gutter and `tests_run` both through `MainWindow.FeatureRunsAsync`); the Step Library lists `StepCatalog` through `StepLibrary`, counting uses through `StepUses` only while shown, and writes a phrase through completion's own `GherkinAssist.WriteStep`; bindings come from the extension's `StepBindings` with no build, never reflection, cached in
   `StepCatalog`, unknown (no undefined mark) until read; an open feature's marks and colours come from `FeatureChecks`,
   its commands from `GherkinAssist`; a scenario's test is at its feature line by its code-behind's `#line`
   (`DeclaredTest.Written`, `TestNode.Places`), never the runner's line for mapped code.
@@ -702,6 +702,7 @@ a new name, and `just site-shots` retakes its images.
 - **Avalonia's headless `KeyTextInput` and `KeyPress` run the window's queued work before the key**, so a count taken around one includes what came due before it: count from the key's change.
 - **Avalonia 12.1 counts a run of clicks per button**: a press of another button starts a new run (`ClickCount` 1); a
   control with no background is no pointer target.
+- **Avalonia 12's ListBox takes Enter before a bubbling `KeyDown`** on the list: a list's Enter is heard in the tunnel (#1802).
 - **Avalonia 12's ListBox re-points its keys' row by the chosen row's new index before moving rows**, so a focused row
   loses the keys when rows come above it, and moves a Shift range's anchor only with its first chosen row: every tree
   goes through `TreeKeys.Attach`.
