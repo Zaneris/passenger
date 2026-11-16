@@ -130,6 +130,6 @@ public sealed class NodeFiles(ProjectSession session)
         one.Select(Said).SequenceEqual(other.Select(Said), StringComparer.Ordinal);
 
     private static string Said(NodePackage package) =>
-        $"{package.Manifest}\n{package.Name}\n{package.Manager}\n{package.ManagerSource}\n{package.Engines}\n{package.Root}\n"
+        $"{package.Manifest}\n{package.Name}\n{package.Manager}\n{package.ManagerSource}\n{package.Engines}\n{package.Root}\n{package.RunsHooks}\n"
         + string.Join('\n', package.Scripts.Select(s => $"{s.Name}\0{s.Command}"));
 }
