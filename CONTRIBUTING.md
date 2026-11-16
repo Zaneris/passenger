@@ -12,7 +12,7 @@ Search the [issues](https://github.com/Zaneris/passenger/issues) first: it may b
 - your system and Passenger's version (Passenger > About on macOS, Help > About elsewhere);
 - what the log says: Help > Show Log opens the folder, and `passenger.log` there has the IDE's errors.
 
-A security problem goes to the maintainer privately rather than into a public issue.
+A security problem goes to the maintainer privately rather than into a public issue: see [SECURITY.md](SECURITY.md).
 
 ## Proposing a feature or a larger change
 
