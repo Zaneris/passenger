@@ -90,6 +90,25 @@ public sealed class EditorConfigTests : IDisposable
         Assert.False(EditorConfig.Matches(deep, "/c"));
     }
 
+    /// <summary>A section's glob is the repository's text, matched on the window's thread as a file opens: one whose stars
+    /// could be laid along a name in more ways than any machine could try (21 of them over 80 letters) is answered at once.</summary>
+    [Fact]
+    public void A_glob_of_many_stars_against_a_long_name_is_answered_at_once()
+    {
+        string glob = string.Concat(Enumerable.Repeat("*a", 21));
+        Assert.False(EditorConfig.Matches(glob, "/" + new string('a', 80) + "b"), $"[{glob}] matched a name ending in b");
+        Assert.True(EditorConfig.Matches(glob, "/src/" + new string('a', 80)), $"[{glob}] did not match a name of 80 a's");
+    }
+
+    [Theory]
+    [InlineData("a{1..3}.txt", "/a2.txt", true)]
+    [InlineData("a{1..3}.txt", "/a4.txt", false)]
+    [InlineData("a{1..3}.txt", "/a02.txt", false)]
+    [InlineData("v{-2..2}/*.cs", "/v-1/A.cs", true)]
+    [InlineData("v{-2..2}/*.cs", "/v3/A.cs", false)]
+    public void A_number_range_matches_a_whole_number_between_its_ends(string glob, string relative, bool matches) =>
+        Assert.True(EditorConfig.Matches(glob, relative) == matches, $"[{glob}] {(matches ? "did not match" : "matched")} {relative}");
+
     [Theory]
     [InlineData("[ab].a", "/b.a", true)]
     [InlineData("[!ab].b", "/a.b", false)]

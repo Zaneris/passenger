@@ -153,6 +153,18 @@ public class ItemPathsTests
         });
     }
 
+    /// <summary>A shared project's items are its .projitems' text, matched against every file of the folder: twelve
+    /// <c>**</c> between names could be laid along a path 40 folders deep in more ways than any machine could try.</summary>
+    [Fact]
+    public void A_glob_of_many_double_stars_against_a_deep_path_is_answered_at_once()
+    {
+        string glob = string.Concat(Enumerable.Repeat($"**{Path.DirectorySeparatorChar}a{Path.DirectorySeparatorChar}", 12));
+        string[] deep = [.. Enumerable.Repeat("a", 40)];
+        Assert.False(Matches(At("cs", glob + "b.cs"), At(["cs", .. deep, "c.cs"])), "Twelve **/a/ took a file named c.cs for b.cs");
+        Assert.True(Matches(At("cs", glob + "b.cs"), At(["cs", .. deep, "b.cs"])), "Twelve **/a/ did not take b.cs 40 folders a deep");
+        Assert.False(Matches(At("cs", glob + "b.cs"), At(["cs", .. deep[..11], "b.cs"])), "Twelve **/a/ took b.cs only 11 folders a deep");
+    }
+
     [Fact]
     public void A_file_matching_in_its_own_case_or_in_none_asks_no_folder()
     {

@@ -369,7 +369,8 @@ public sealed class RouteTemplate
                 {
                     written.Append(i % 2 == 1 ? ".+" : Regex.Escape(parts[i]));
                 }
-                pattern = new Regex(written.Append('$').ToString(), RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+                // The project's template: on the linear engine, so no template holds a request's match past a moment.
+                pattern = new Regex(written.Append('$').ToString(), RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.NonBacktracking);
             }
         }
 

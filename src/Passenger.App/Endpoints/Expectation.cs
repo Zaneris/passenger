@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using Passenger.Core;
+using Passenger.Text;
 
 namespace Passenger.App.Endpoints;
 
@@ -161,11 +162,11 @@ public sealed partial record Expectation(string Kind, string Subject, string Op,
         {
             try
             {
-                return new ExpectationResult(this, Regex.IsMatch(actual, Value, RegexOptions.None, TimeSpan.FromSeconds(1)), Shortened(actual));
+                return new ExpectationResult(this, TextSearch.IsWrittenMatch(actual, Value, RegexOptions.None, TextSearch.AtOnce), Shortened(actual));
             }
             catch (RegexMatchTimeoutException)
             {
-                return new ExpectationResult(this, false, "no match within 1 s, the pattern given up on");
+                return new ExpectationResult(this, false, $"no match within {Durations.Said(TextSearch.AtOnce)}, the pattern given up on");
             }
         }
         bool passed = Op switch

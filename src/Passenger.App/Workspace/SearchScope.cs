@@ -76,8 +76,9 @@ public sealed class FileMask
     /// <summary>Whether a file's name passes the mask.</summary>
     public bool Matches(string name) => (included?.IsMatch(name) ?? true) && !(excluded?.IsMatch(name) ?? false);
 
+    /// <summary>The wildcards as one pattern, on the linear engine: a mask of many stars matches a long name at once.</summary>
     private static Regex? Compiled(List<string> patterns) =>
-        patterns.Count == 0 ? null : new Regex($"^(?:{string.Join('|', patterns)})$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+        patterns.Count == 0 ? null : new Regex($"^(?:{string.Join('|', patterns)})$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.NonBacktracking);
 
     /// <summary>A wildcard as a pattern: every character itself but * and ?.</summary>
     private static string Pattern(string wildcard)

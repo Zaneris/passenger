@@ -351,7 +351,8 @@ public static class DockerFiles
         }
         try
         {
-            return new Regex(made.Append('$').ToString(), RegexOptions.CultureInvariant, TimeSpan.FromSeconds(1));
+            // The repository's text: on the linear engine, so no pattern holds a path's match past a moment.
+            return new Regex(made.Append('$').ToString(), RegexOptions.CultureInvariant | RegexOptions.NonBacktracking);
         }
         catch (ArgumentException)
         {

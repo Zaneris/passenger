@@ -290,7 +290,9 @@ public sealed class EditorConfig
         }
         try
         {
-            return new CompiledGlob(new Regex(@"\A" + regex + @"\z", RegexOptions.CultureInvariant | RegexOptions.Singleline), translation.Ranges, null);
+            // The repository's text: on the linear engine, so no glob holds a match (and the window) past a moment.
+            return new CompiledGlob(new Regex(@"\A" + regex + @"\z", RegexOptions.CultureInvariant | RegexOptions.Singleline | RegexOptions.NonBacktracking),
+                translation.Ranges, null);
         }
         catch (RegexParseException failed)
         {

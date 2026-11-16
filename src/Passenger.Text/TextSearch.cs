@@ -37,6 +37,23 @@ public static class TextSearch
     /// whole number of milliseconds above 0 is fatal.</summary>
     public static TimeSpan Apart => EnvironmentValues.Milliseconds(ApartVariable, TimeSpan.FromSeconds(5));
 
+    /// <summary>Whether a text holds a match of a regex a person or a program wrote (an expectation, a schema's pattern): on
+    /// the linear engine where its constructs allow, else held to <paramref name="within"/> (<see cref="AtOnce"/> on the
+    /// UI thread, <see cref="Apart"/> off it), past which it throws a <see cref="RegexMatchTimeoutException"/>. A pattern
+    /// that does not parse throws an <see cref="ArgumentException"/>.</summary>
+    public static bool IsWrittenMatch(string text, string pattern, RegexOptions options, TimeSpan within)
+    {
+        try
+        {
+            return System.Text.RegularExpressions.Regex.IsMatch(text, pattern, options | RegexOptions.NonBacktracking, within);
+        }
+        catch (NotSupportedException)
+        {
+            // A backreference, a lookaround or an atomic group, which only backtracking reads.
+            return System.Text.RegularExpressions.Regex.IsMatch(text, pattern, options, within);
+        }
+    }
+
     /// <summary>Every match of a query, a regex's search stopping past <paramref name="within"/> (<see cref="AtOnce"/> on
     /// the UI thread, <see cref="Apart"/> off it).</summary>
     public static SearchResult FindAll(TextSnapshot snapshot, SearchQuery query, TimeSpan within, int limit = MaxMatches)

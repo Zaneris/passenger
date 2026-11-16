@@ -5,6 +5,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using Passenger.Core;
+using Passenger.Text;
 
 namespace Passenger.App.Endpoints;
 
@@ -313,7 +314,7 @@ public static class OpenApiSchemas
     {
         try
         {
-            return Regex.IsMatch(text, pattern, RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(200));
+            return TextSearch.IsWrittenMatch(text, pattern, RegexOptions.CultureInvariant, TextSearch.AtOnce);
         }
         catch (Exception unread) when (unread is ArgumentException or RegexMatchTimeoutException)
         {

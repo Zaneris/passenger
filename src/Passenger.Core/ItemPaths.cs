@@ -74,19 +74,39 @@ public static class ItemPaths
 
     /// <summary>Whether names match a glob's parts in order: a part <c>**</c> any number of names, <c>*</c> and <c>?</c>
     /// within one, a name differing only in letter case where <paramref name="caseIgnoredAt"/> says its folder (by the
-    /// name's index) ignores case. A run of <c>**</c> is read as one, so a match goes as deep as its names and no deeper.</summary>
-    public static bool Matches(string[] parts, string[] names, Func<int, bool> caseIgnoredAt) =>
-        Matches(Folded(parts), 0, names, 0, caseIgnoredAt);
+    /// name's index) ignores case. A run of <c>**</c> is read as one, so a match goes as deep as its names and no deeper,
+    /// and each part is tried against each name once, so a glob of many <c>**</c> (a project's text) costs its parts
+    /// times the names, never the ways they could be laid along the path.</summary>
+    public static bool Matches(string[] parts, string[] names, Func<int, bool> caseIgnoredAt)
+    {
+        string[] folded = Folded(parts);
+        sbyte[]? tried = Array.IndexOf(folded, "**") >= 0 ? new sbyte[(folded.Length + 1) * (names.Length + 1)] : null;
+        return Matches(folded, 0, names, 0, caseIgnoredAt, tried);
+    }
 
     private static readonly char[] Separators = ['/', '\\'];
 
     private static string[] Folded(string[] parts) => [.. parts.Where((part, at) => at == 0 || part != "**" || parts[at - 1] != "**")];
 
-    private static bool Matches(string[] parts, int part, string[] names, int name, Func<int, bool> caseIgnoredAt) =>
-        part == parts.Length ? name == names.Length
-        : parts[part] == "**" ? Matches(parts, part + 1, names, name, caseIgnoredAt) || (name < names.Length && Matches(parts, part, names, name + 1, caseIgnoredAt))
-        : name < names.Length && (NameMatches(parts[part], names[name], ignoreCase: false) || NameMatches(parts[part], names[name], ignoreCase: true) && caseIgnoredAt(name))
-            && Matches(parts, part + 1, names, name + 1, caseIgnoredAt);
+    /// <summary>Whether the parts from <paramref name="part"/> match the names from <paramref name="name"/>, each pair's
+    /// answer kept in <paramref name="tried"/> (1 yes, -1 no), which only a glob with a <c>**</c> needs.</summary>
+    private static bool Matches(string[] parts, int part, string[] names, int name, Func<int, bool> caseIgnoredAt, sbyte[]? tried)
+    {
+        int at = part * (names.Length + 1) + name;
+        if (tried is not null && tried[at] != 0)
+        {
+            return tried[at] > 0;
+        }
+        bool matched = part == parts.Length ? name == names.Length
+            : parts[part] == "**" ? Matches(parts, part + 1, names, name, caseIgnoredAt, tried) || (name < names.Length && Matches(parts, part, names, name + 1, caseIgnoredAt, tried))
+            : name < names.Length && (NameMatches(parts[part], names[name], ignoreCase: false) || NameMatches(parts[part], names[name], ignoreCase: true) && caseIgnoredAt(name))
+                && Matches(parts, part + 1, names, name + 1, caseIgnoredAt, tried);
+        if (tried is not null)
+        {
+            tried[at] = matched ? (sbyte)1 : (sbyte)-1;
+        }
+        return matched;
+    }
 
     /// <summary>Whether a name matches one part of a glob; the empty part before a rooted path's first separator, which the
     /// system's matcher matches with nothing, matches the empty name.</summary>
