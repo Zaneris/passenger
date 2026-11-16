@@ -22,6 +22,29 @@ public static class AppleSimulators
     /// <summary>How long one of simctl's other commands is waited for (an install copies the whole app).</summary>
     private static readonly TimeSpan SimctlLimit = TimeSpan.FromMinutes(3);
 
+    /// <summary>The simulators this process booted and has not shut down, by their simctl and UDID, which the watchdog shuts
+    /// down however Passenger ends (<see cref="ChildProcesses.AtIdeEnd"/>).</summary>
+    private static readonly HashSet<(string Simctl, string Udid)> Up = [];
+
+    /// <summary>A simulator a start of this process boots, shut down by the watchdog where Passenger ends before
+    /// <see cref="ShutDownAsync"/> shuts it down. Any thread.</summary>
+    public static void Booting(string simctl, string udid)
+    {
+        lock (Up)
+        {
+            if (Up.Add((simctl, udid)))
+            {
+                TellWatchdog();
+            }
+        }
+    }
+
+    /// <summary>The watchdog's command shutting down every simulator still up. Under <see cref="Up"/>'s lock.</summary>
+    private static void TellWatchdog() => ChildProcesses.AtIdeEnd(nameof(AppleSimulators), Up.Count == 0 ? null
+        : string.Join("; ", Up.Select(b => $"{Quoted(b.Simctl)} shutdown {Quoted(b.Udid)}")));
+
+    private static string Quoted(string word) => global::Passenger.Terminal.ShellWords.Quoted(word, ShellKind.Posix);
+
     /// <summary>The project's iOS targets and the Xcode its workload builds with, or why none could be listed (no Mac, no
     /// workload, no Xcode) in words for the person. The project is restored first with no framework given, as Android's
     /// listing is.</summary>
@@ -125,6 +148,16 @@ public static class AppleSimulators
         try
         {
             ChildResult down = await SimctlAsync(simctl, ["shutdown", udid], CancellationToken.None);
+            if (down.Succeeded)
+            {
+                lock (Up)
+                {
+                    if (Up.Remove((simctl, udid)))
+                    {
+                        TellWatchdog();
+                    }
+                }
+            }
             IdeLog.Write(IdeLog.Ide, down.Succeeded ? $"The simulator {udid}, which a start booted, is shut down" : $"The simulator {udid} was not shut down: {down.Said}");
         }
         catch (Exception unreached) when (unreached is TimeoutException or System.ComponentModel.Win32Exception)

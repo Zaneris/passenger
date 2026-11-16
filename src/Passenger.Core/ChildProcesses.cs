@@ -434,9 +434,10 @@ public static class ChildProcesses
     }
 
     /// <summary>A one-line shell command run on macOS and Linux once the IDE's process has ended, however it ended, after
-    /// its children are: for what lives outside any child (the containers an engine runs), which only a command ends. It
-    /// takes the place of the one given before; on Windows nothing runs it, and the next start ends what is left.</summary>
-    public static void AtIdeEnd(string command) => Lifeline.AtEnd(command);
+    /// its children are: for what lives outside any child (the containers an engine runs, a simulator it booted), which only
+    /// a command ends. It takes the place of the one <paramref name="key"/> gave before, null of none; on Windows nothing
+    /// runs it, and the next start ends what is left.</summary>
+    public static void AtIdeEnd(string key, string? command) => Lifeline.AtEnd(key, command);
 
     /// <summary>What ends the command line of the watchdog of the IDE's process <paramref name="ide"/> (<see cref="Lifeline"/>)
     /// on macOS and Linux, which is in no process tree of the IDE's.</summary>

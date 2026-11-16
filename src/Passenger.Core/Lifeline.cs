@@ -68,7 +68,7 @@ internal static partial class Lifeline
     /// <summary>On Windows, the jobs of the children whose whole family ends with them (<see cref="HoldFamily"/>), by id.</summary>
     private static readonly Dictionary<int, SafeFileHandle> Families = [];
     private static Process? watchdog;
-    private static string? atEnd;
+    private static readonly SortedDictionary<string, string> AtEnds = new(StringComparer.Ordinal);
     private static bool unavailable;
     private static Timer? pruning;
 
@@ -106,21 +106,32 @@ internal static partial class Lifeline
         }
     }
 
-    /// <summary>Has the watchdog run a one-line shell command once Passenger's process has ended and its children's groups
-    /// are killed, in place of the one given before: for what no group holds, such as the containers an engine runs for
-    /// Passenger, which only a command to that engine ends. Nothing on Windows, which has no watchdog.</summary>
-    public static void AtEnd(string command)
+    /// <summary>Has the watchdog run a one-line shell command, <paramref name="key"/>'s in place of the one it gave before
+    /// (none: nothing of its), once Passenger's process has ended and its children's groups are killed: for what no group
+    /// holds, such as the containers an engine runs or a simulator it boots, which only a command ends. Each key's command
+    /// runs in a subshell of its own, in turn. Nothing on Windows, which has no watchdog.</summary>
+    public static void AtEnd(string key, string? command)
     {
-        if (OperatingSystem.IsWindows() || command.Contains('\n', StringComparison.Ordinal))
+        if (OperatingSystem.IsWindows() || command is not null && command.Contains('\n', StringComparison.Ordinal))
         {
             return;
         }
         lock (Gate)
         {
-            atEnd = command;
-            Tell($"!{command}");
+            if (command is { Length: > 0 })
+            {
+                AtEnds[key] = command;
+            }
+            else if (!AtEnds.Remove(key))
+            {
+                return;
+            }
+            Tell($"!{Last()}");
         }
     }
+
+    /// <summary>The commands run last, each in a subshell, so one's exit or failure leaves the next to run. Under the gate.</summary>
+    private static string Last() => string.Join("; ", AtEnds.Values.Select(command => $"( {command} )"));
 
     /// <summary>On Windows, puts a child that has just started in a job of its own, which every process it starts from then
     /// on joins, so <see cref="KillGroup"/> ends them all, those whose own parent has gone among them (a restore's MSBuild
@@ -283,9 +294,9 @@ internal static partial class Lifeline
             {
                 started.StandardInput.Write($"+{group}\n");
             }
-            if (atEnd is not null)
+            if (AtEnds.Count > 0)
             {
-                started.StandardInput.Write($"!{atEnd}\n");
+                started.StandardInput.Write($"!{Last()}\n");
             }
             started.StandardInput.Flush();
             watchdog = started;

@@ -859,6 +859,7 @@ public sealed class ProjectSession : IAsyncDisposable
     /// <summary>A simulator a start of the folder's booted, shut down with the folder, at once where the folder has ended. Any thread.</summary>
     public void Booted(string simctl, string udid)
     {
+        AppleSimulators.Booting(simctl, udid);
         lock (bootedGate)
         {
             if (!bootedTaken)

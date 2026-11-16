@@ -56,13 +56,14 @@ public sealed class McpIosSimulatorTests : McpRig
         }
     }
 
-    /// <summary>An agent's Passenger that ran the head on a simulator is killed as a test runner kills a hung host, every
-    /// process of its tree first, the deepest first, then itself: the app there, a process of this Mac that an end of
-    /// simctl's launch leaves running, still ends with it, as its watchdog, in no tree of Passenger's, ends what it took on.</summary>
+    /// <summary>An agent's Passenger that booted a simulator and ran the head there is killed as a test runner kills a hung
+    /// host, every process of its tree first, the deepest first, then itself: the app there, a process of this Mac that an
+    /// end of simctl's launch leaves running, still ends with it, and the simulator is shut down, as its watchdog, in no tree
+    /// of Passenger's, ends what it took on (#1792).</summary>
     [Fact]
-    public async Task An_ios_heads_app_an_agents_passenger_ran_on_a_simulator_ends_once_that_passenger_and_its_tree_are_killed()
+    public async Task An_ios_heads_app_an_agents_passenger_ran_on_a_simulator_it_booted_ends_and_the_simulator_shuts_down_once_that_passenger_and_its_tree_are_killed()
     {
-        (string folder, DeviceTarget target, AppleTools tools) = await PreparedAsync("mcp-avalonia-ios-killed-");
+        (string folder, DeviceTarget target, AppleTools tools) = await PreparedAsync("mcp-avalonia-ios-killed-", shutDown: true);
         string head = $"{Name}.iOS";
         int? app = null;
         try
@@ -93,6 +94,7 @@ public sealed class McpIosSimulatorTests : McpRig
             }
             await Until(() => killed.All(id => !Processes.IsRunning(id)), "Passenger and every process of its tree killed");
             await Until(() => !Processes.IsRunning(launched), $"the app (process {launched}) to end on {target.Name} with the Passenger that ran it");
+            await Until(async () => !await UpAsync(target, tools), $"{target.Name}, which the killed Passenger booted, to be shut down");
         }
         finally
         {
@@ -105,8 +107,9 @@ public sealed class McpIosSimulatorTests : McpRig
     }
 
     /// <summary>The Avalonia app's iOS head in a folder of its own, restored, and the iPhone simulator to run it on, booted
-    /// already where one is; a skip saying why where there is none.</summary>
-    private async Task<(string Folder, DeviceTarget Target, AppleTools Tools)> PreparedAsync(string name)
+    /// already where one is (shut down, where <paramref name="shutDown"/>, for the start to boot); a skip saying why where
+    /// there is none.</summary>
+    private async Task<(string Folder, DeviceTarget Target, AppleTools Tools)> PreparedAsync(string name, bool shutDown = false)
     {
         if (!OperatingSystem.IsMacOS())
         {
@@ -126,12 +129,20 @@ public sealed class McpIosSimulatorTests : McpRig
             Assert.Skip($"There is nothing to run on: {problem}");
         }
         DeviceTarget? target = targets.Where(t => t is { Platform: TargetPlatform.Ios, Kind: TargetKind.Simulator } && t.Name.StartsWith("iPhone", StringComparison.Ordinal))
-            .OrderBy(t => t.Running ? 0 : 1).FirstOrDefault();
+            .Where(t => !shutDown || !t.Running).OrderBy(t => t.Running ? 0 : 1).FirstOrDefault();
         if (target is null)
         {
-            Assert.Skip("The iOS workload lists no iPhone simulator: add one in Xcode, with its iOS simulator runtime");
+            Assert.Skip(shutDown ? "The iOS workload lists no iPhone simulator shut down for the start to boot: every one is running"
+                : "The iOS workload lists no iPhone simulator: add one in Xcode, with its iOS simulator runtime");
         }
         return (folder, target, tools);
+    }
+
+    /// <summary>Whether simctl lists the simulator booted.</summary>
+    private static async Task<bool> UpAsync(DeviceTarget target, AppleTools tools)
+    {
+        ChildResult listed = await ChildProcesses.RunAsync(ChildProcesses.Command(tools.Simctl, ["list", "devices"]), limit: TimeSpan.FromMinutes(1), cancel: Cancel);
+        return listed.Output.Split('\n').Any(line => line.Contains(target.Id, StringComparison.Ordinal) && line.Contains("(Booted)", StringComparison.Ordinal));
     }
 
     /// <summary>The simulator shut down where the test's Passenger booted it: as it ends it shuts down a simulator it booted,

@@ -243,7 +243,7 @@ public static partial class ContainerLabels
             if (EndCommand() is { } end && end != toldWatchdog)
             {
                 toldWatchdog = end;
-                ChildProcesses.AtIdeEnd(end);
+                ChildProcesses.AtIdeEnd(nameof(ContainerLabels), end);
             }
         }
     }
