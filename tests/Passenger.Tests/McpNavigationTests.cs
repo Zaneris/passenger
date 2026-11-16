@@ -513,6 +513,13 @@ public sealed class McpNavigationTests : McpRig, IClassFixture<RestoredFolders>
         Assert.True(own == 2 && generated.Any(s => s.GetProperty("name").GetString() == "Word_0") && generated.All(InGeneratorsCode)
             && !generated.Any(s => s.GetProperty("name").GetString() is "Word" or "Words"),
             $"find_symbol Word answered no place of the person's for Words and Word, then the generator's class in its code: {string.Join(", ", found.Select(s => s.GetRawText()))}");
+        // The partial method in its type by the type's name alone, the partial type in none, as for a type of one part.
+        Assert.True(found[..own].All(s => s.GetProperty("name").GetString() switch
+        {
+            "Word" => s.TryGetProperty("container", out JsonElement type) && type.GetString() == "Words",
+            "Words" => !s.TryGetProperty("container", out _),
+            _ => false,
+        }), $"find_symbol Word named the containers of a partial type's members otherwise than by the type's name: {string.Join(", ", found[..own].Select(s => s.GetRawText()))}");
         JsonElement word = Assert.Single((await Call(client, McpTools.FindSymbol, new() { ["query"] = "Word", ["exact"] = true })).EnumerateArray());
         Assert.Equal(("Words.cs", 6), (word.GetProperty("path").GetString(), word.GetProperty("line").GetInt32()));
         JsonElement named = Assert.Single((await Call(client, McpTools.FindSymbol, new() { ["query"] = "Word_0", ["exact"] = true })).EnumerateArray());

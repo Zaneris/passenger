@@ -114,7 +114,7 @@ public sealed class StepRuns
         bool went = false;
         foreach (StepRun step in In(path))
         {
-            if (!Reads(text.Snapshot, step.Line, step.LineText))
+            if (!AnchoredLine.Reads(text.Snapshot, step.Line, step.LineText))
             {
                 step.At.Detach();
                 steps.Remove(step);
@@ -151,7 +151,7 @@ public sealed class StepRuns
                 continue;
             }
             bool followed = step.At.Follow();
-            if (!Reads(change.After, step.Line, step.LineText))
+            if (!AnchoredLine.Reads(change.After, step.Line, step.LineText))
             {
                 steps.RemoveAt(i);
                 step.At.Detach();
@@ -164,29 +164,5 @@ public sealed class StepRuns
         {
             Changed?.Invoke(this, path);
         }
-    }
-
-    /// <summary>The longest line compared on the stack.</summary>
-    private const int OnStack = 256;
-
-    /// <summary>Whether a text's line reads as it did.</summary>
-    private static bool Reads(TextSnapshot text, int line, string was)
-    {
-        if (line >= text.LineCount)
-        {
-            return false;
-        }
-        LineSpan span = text.GetLine(line);
-        if (span.Length != was.Length)
-        {
-            return false;
-        }
-        if (span.Length > OnStack)
-        {
-            return text.GetText(span.Start, span.Length) == was;
-        }
-        Span<char> read = stackalloc char[OnStack];
-        text.CopyTo(span.Start, read[..span.Length]);
-        return read[..span.Length].SequenceEqual(was);
     }
 }

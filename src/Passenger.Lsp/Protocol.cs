@@ -343,20 +343,20 @@ public sealed record FoldingRangeParams(TextDocumentIdentifier TextDocument);
 /// <summary>A symbol found by name across the workspace.</summary>
 public sealed record SymbolInformation(string Name, SymbolKind Kind, LspLocation Location, string? ContainerName = null)
 {
-    /// <summary>The type it is in, from Roslyn's container ("in Type (project P (tfm))") without the project, which its place
-    /// says; null for a type's own ("project P (tfm)").</summary>
+    /// <summary>The type it is in, as Roslyn's container names it before the file or project it adds, which its place says
+    /// ("in Type (File.cs - P (tfm))" for a partial member, "in Type (project P (tfm))"); null for a type in no other, whose
+    /// container names only those ("project P (tfm)", a partial type's "File.cs - P (tfm)").</summary>
     [JsonIgnore]
     public string? Owner
     {
         get
         {
-            if (ContainerName is not { } container)
+            if (ContainerName is not { } container || !container.StartsWith("in ", StringComparison.Ordinal))
             {
                 return null;
             }
-            int project = container.LastIndexOf(" (project ", StringComparison.Ordinal);
-            string within = project >= 0 ? container[..project] : container.StartsWith("project ", StringComparison.Ordinal) ? string.Empty : container;
-            within = within.StartsWith("in ", StringComparison.Ordinal) ? within[3..] : within;
+            int added = container.IndexOf(" (", 3, StringComparison.Ordinal);
+            string within = added > 3 ? container[3..added] : container[3..];
             return within.Length == 0 ? null : within;
         }
     }
@@ -369,15 +369,9 @@ public static class WorkspaceSymbols
     /// type's or member's other part), whose place is the person's.</summary>
     public static IEnumerable<SymbolInformation> Kept(IReadOnlyList<SymbolInformation> found)
     {
-        HashSet<(string, SymbolKind, string?)> own = [.. found.Where(s => !Generated(s)).Select(s => (s.Name, s.Kind, Within(s)))];
-        return found.Where(s => !Generated(s) || !own.Contains((s.Name, s.Kind, Within(s))));
+        HashSet<(string, SymbolKind, string?)> own = [.. found.Where(s => !Generated(s)).Select(s => (s.Name, s.Kind, s.Owner))];
+        return found.Where(s => !Generated(s) || !own.Contains((s.Name, s.Kind, s.Owner)));
     }
-
-    /// <summary>What a symbol is in, as Roslyn's container names it before the file and project it adds ("in Type (File.cs -
-    /// P)" for a partial's part, "in Type (project P)"); null for a type in no other, whose container names only those.</summary>
-    private static string? Within(SymbolInformation symbol) =>
-        symbol.ContainerName is { } container && container.StartsWith("in ", StringComparison.Ordinal) && container.IndexOf(" (", 3, StringComparison.Ordinal) is int open and > 3
-            ? container[3..open] : null;
 
     /// <summary>Whether a symbol's place is in a source generator's document, which no file on disk holds.</summary>
     public static bool Generated(SymbolInformation symbol) => DocumentUris.GeneratedName(symbol.Location.Uri) is not null;
