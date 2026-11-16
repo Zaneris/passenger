@@ -43,7 +43,13 @@ public sealed record ConfigFile(string Path, ConfigPlace Place, IReadOnlyList<Co
 {
     public bool ReadOnly => Place == ConfigPlace.Machine;
 
+    /// <summary>The feeds whose credentials the file holds, by name, whether its packageSources name them or not.</summary>
+    public IReadOnlyList<string> Credentialed { get; init; } = [];
+
     public bool Disables(string feed) => DisabledNames.Contains(feed, StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>The URL the file gives a feed of that name, or null where its packageSources name none.</summary>
+    public string? ValueOf(string feed) => Feeds.FirstOrDefault(f => NuGetConfigNames.SameKey(f.Name, feed))?.Value;
 }
 
 /// <summary>A feed in effect, as NuGet's own reading of the files gives it: its name, where it is (a local folder made
@@ -52,6 +58,54 @@ public sealed record ConfigFile(string Path, ConfigPlace Place, IReadOnlyList<Co
 public sealed record FeedSource(string Name, string Source, bool Enabled, string? DefinedIn, int ProtocolVersion, bool AllowInsecure, bool SkipCertificateCheck, FeedCredentials? Credentials)
 {
     public bool IsHttp => Source.StartsWith("http://", StringComparison.OrdinalIgnoreCase) || Source.StartsWith("https://", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>Why the credentials NuGet gives the feed by its name are not sent to it (<see cref="FeedCredentialHosts"/>);
+    /// null where they are, or there are none.</summary>
+    public string? Withheld { get; init; }
+}
+
+/// <summary>Where a feed's credentials go: only to the host they were stored for, matched by the feed's URL, never by its
+/// name alone, so a nuget.config nearer the folder (a repository's) naming a feed of the person's at another server never
+/// takes the credentials the person keeps for it. A credential's URL is the one the file holding it gives the feed, else one
+/// a file after it in NuGet's order gives it; credentials from NuGet's environment variable take the URL the person's own
+/// files (the user's, the machine's) give it. Pure.</summary>
+internal static class FeedCredentialHosts
+{
+    /// <summary>The variable before a feed's name that gives NuGet its credentials.</summary>
+    public const string Variable = "NuGetPackageSourceCredentials_";
+
+    /// <summary>Why a feed at <paramref name="source"/> is not sent the credentials NuGet gives it by its name, from the
+    /// environment where <paramref name="fromEnvironment"/>, else from the first of <paramref name="files"/> (NuGet's order)
+    /// holding them; null where they go to it.</summary>
+    public static string? Withholds(string feed, string source, IReadOnlyList<ConfigFile> files, bool fromEnvironment)
+    {
+        int holding = fromEnvironment ? -1 : IndexOf(files, f => f.Credentialed.Any(name => NuGetConfigNames.SameKey(name, feed)));
+        string holder = fromEnvironment ? $"the {Variable}{feed} variable" : holding < 0 ? "no nuget.config" : files[holding].Path;
+        IEnumerable<ConfigFile> scope = fromEnvironment ? files.Where(f => f.Place is ConfigPlace.User or ConfigPlace.Machine)
+            : holding < 0 ? [] : files.Skip(holding);
+        string? stored = scope.Select(f => f.ValueOf(feed)).FirstOrDefault(value => value is not null);
+        if (stored is null)
+        {
+            return $"{feed}'s credentials in {holder} are for no URL: {(fromEnvironment ? "the person's own nuget.config gives" : "neither that file nor one after it gives")} {feed} one, so they go to none";
+        }
+        return Origin(stored) is { } kept && Origin(source) is { } asked && kept.Equals(asked, StringComparison.OrdinalIgnoreCase) ? null
+            : $"{feed}'s credentials in {holder} are for {Origin(stored) ?? stored}, not {Origin(source) ?? source}, where a nuget.config nearer the folder points {feed}";
+    }
+
+    /// <summary>A URL's scheme and host (with its port), or null for one that is no absolute URL.</summary>
+    private static string? Origin(string url) => Uri.TryCreate(url, UriKind.Absolute, out Uri? uri) ? uri.GetLeftPart(UriPartial.Authority) : null;
+
+    private static int IndexOf(IReadOnlyList<ConfigFile> files, Func<ConfigFile, bool> holds)
+    {
+        for (int at = 0; at < files.Count; at++)
+        {
+            if (holds(files[at]))
+            {
+                return at;
+            }
+        }
+        return -1;
+    }
 }
 
 /// <summary>The package sources a folder's restore uses, read through NuGet's own configuration, with its
@@ -139,14 +193,16 @@ public sealed class PackageSourceSet
             PackageSourceProvider provider = new(settings);
             foreach (PackageSource source in provider.LoadPackageSources())
             {
+                (FeedCredentials? credentials, string? withheld) = Credentials(source, files);
                 feeds.Add(new FeedSource(source.Name, source.Source, source.IsEnabled,
                     files.FirstOrDefault(f => f.Feeds.Any(feed => feed.Name.Equals(source.Name, StringComparison.OrdinalIgnoreCase)))?.Path,
-                    source.ProtocolVersion, source.AllowInsecureConnections, source.DisableTLSCertificateValidation, Credentials(source)));
+                    source.ProtocolVersion, source.AllowInsecureConnections, source.DisableTLSCertificateValidation, credentials) { Withheld = withheld });
             }
             foreach (PackageSource source in provider.LoadAuditSources())
             {
+                (FeedCredentials? credentials, string? withheld) = Credentials(source, files);
                 audits.Add(new FeedSource(source.Name, source.Source, true, null, source.ProtocolVersion, source.AllowInsecureConnections,
-                    source.DisableTLSCertificateValidation, Credentials(source)));
+                    source.DisableTLSCertificateValidation, credentials) { Withheld = withheld });
             }
         }
         catch (Exception failed) when (failed is NuGetConfigurationException or InvalidOperationException or ArgumentException)
@@ -170,21 +226,26 @@ public sealed class PackageSourceSet
         return new PackageSourceSet(root, files, feeds, mapping, patterns, null, audits);
     }
 
-    /// <summary>A feed's credentials as NuGet would send them; a password NuGet keeps encrypted, which only Windows can
-    /// read, is none elsewhere.</summary>
-    private static FeedCredentials? Credentials(PackageSource source)
+    /// <summary>A feed's credentials as NuGet would send them, where they are for its host (<see cref="FeedCredentialHosts"/>),
+    /// else none and why; a password NuGet keeps encrypted, which only Windows can read, is none elsewhere.</summary>
+    private static (FeedCredentials? Credentials, string? Withheld) Credentials(PackageSource source, IReadOnlyList<ConfigFile> files)
     {
         if (source.Credentials is not { } given || !given.IsValid())
         {
-            return null;
+            return (null, null);
+        }
+        bool fromEnvironment = Environment.GetEnvironmentVariable(FeedCredentialHosts.Variable + source.Name) is { Length: > 0 };
+        if (FeedCredentialHosts.Withholds(source.Name, source.Source, files, fromEnvironment) is { } withheld)
+        {
+            return (null, withheld);
         }
         try
         {
-            return new FeedCredentials(given.Username, given.Password);
+            return (new FeedCredentials(given.Username, given.Password), null);
         }
         catch (Exception unreadable) when (unreadable is NotSupportedException or PlatformNotSupportedException or System.Security.Cryptography.CryptographicException or FormatException)
         {
-            return null;
+            return (null, null);
         }
     }
 
@@ -220,7 +281,10 @@ public sealed class PackageSourceSet
         List<(string Key, string Value)> config = [.. Pairs(NuGetConfigNames.Section(root, NuGetConfigNames.Config))];
         string? Setting(string name) => config.LastOrDefault(c => NuGetConfigNames.SameKey(c.Key, name)).Value;
         return new ConfigFile(path, place, feeds, [.. disabled], NuGetConfigNames.Clears(sources), Setting(NuGetConfigNames.GlobalPackagesFolder),
-            Setting(NuGetConfigNames.RepositoryPath), null);
+            Setting(NuGetConfigNames.RepositoryPath), null)
+        {
+            Credentialed = [.. NuGetConfigNames.Credentialed(credentials)],
+        };
     }
 
     /// <summary>The keys and values of an element's add elements.</summary>

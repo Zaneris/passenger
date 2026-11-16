@@ -262,6 +262,9 @@ public sealed class FeedClient
     /// <summary>Where the window asks a credential provider for what the feed's nuget.config does not give.</summary>
     public CredentialProviders Providers { get; init; } = CredentialProviders.Default;
 
+    /// <summary>Why the credentials NuGet gives the feed by its name are not sent to it (<see cref="FeedSource.Withheld"/>).</summary>
+    public string? Withheld { get; init; }
+
     /// <summary>A GET of one of the feed's URLs, answered (whatever its status) once credentials have been tried.</summary>
     public async Task<HttpResponseMessage> GetAsync(Uri url, CancellationToken cancel)
     {
@@ -291,7 +294,7 @@ public sealed class FeedClient
                 throw new HttpRequestException($"{Name} refused the credentials its nuget.config gives (401 Unauthorized)", null, HttpStatusCode.Unauthorized);
             }
             retry = await Providers.GetAsync(Index, isRetry: sent is not null, cancel)
-                ?? throw new HttpRequestException($"{Name} needs credentials (401 Unauthorized): none in its nuget.config, and no credential provider gave any", null, HttpStatusCode.Unauthorized);
+                ?? throw new HttpRequestException($"{Name} needs credentials (401 Unauthorized): {Withheld ?? "none in its nuget.config"}, and no credential provider gave any", null, HttpStatusCode.Unauthorized);
             Volatile.Write(ref credentials, retry);
         }
         response = await SendAsync(url, retry, cancel);
@@ -717,7 +720,7 @@ public static class PackageFeeds
             string path = Uri.TryCreate(source.Source, UriKind.Absolute, out Uri? uri) && uri.IsFile ? uri.LocalPath : source.Source;
             return new FolderFeed(path, source.Name);
         }
-        FeedClient client = new(source.Name, new Uri(source.Source), http, source.Credentials, source.AllowInsecure, source.SkipCertificateCheck);
+        FeedClient client = new(source.Name, new Uri(source.Source), http, source.Credentials, source.AllowInsecure, source.SkipCertificateCheck) { Withheld = source.Withheld };
         bool v3 = source.ProtocolVersion == 3 || new Uri(source.Source).AbsolutePath.EndsWith(".json", StringComparison.OrdinalIgnoreCase);
         return v3 ? new V3Feed(client) : new V2Feed(client);
     }

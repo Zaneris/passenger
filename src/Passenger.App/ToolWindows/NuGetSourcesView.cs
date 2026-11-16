@@ -188,7 +188,8 @@ public sealed class NuGetSourcesView : Panel
         Add(line, new TextBlock { Text = feed.Name, TextTrimming = TextTrimming.CharacterEllipsis }, 0);
         Add(line, new TextBlock { Classes = { StyleClasses.Muted }, Text = feed.Source, TextTrimming = TextTrimming.PathSegmentEllipsis }, 1);
         Add(line, new TextBlock { Classes = { StyleClasses.Muted }, Text = feed.Enabled ? string.Empty : "disabled", Margin = new Thickness(10, 0, 0, 0) }, 2);
-        ToolTip.SetTip(line, $"{(feed.Enabled ? "Enabled" : "Disabled")}, from {from}{(feed.Credentials is { } held ? $", with {held}" : string.Empty)}");
+        ToolTip.SetTip(line, $"{(feed.Enabled ? "Enabled" : "Disabled")}, from {from}{(feed.Credentials is { } held ? $", with {held}" : string.Empty)}"
+            + (feed.Withheld is { } withheld ? $". {withheld}" : string.Empty));
         return line;
     }
 

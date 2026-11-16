@@ -73,6 +73,10 @@ internal static class NuGetConfigNames
     public static IEnumerable<XElement> CredentialsOf(XElement? section, string feed) =>
         section?.Elements().Where(e => SameKey(XmlConvert.DecodeName(e.Name.LocalName), feed)) ?? [];
 
+    /// <summary>The feeds a credentials section holds credentials for, by the names their elements encode.</summary>
+    public static IEnumerable<string> Credentialed(XElement? section) =>
+        section?.Elements().Where(e => !Is(e, AddElement) && !Is(e, ClearElement)).Select(e => XmlConvert.DecodeName(e.Name.LocalName)) ?? [];
+
     /// <summary>The name of the element holding a feed's credentials.</summary>
     public static string CredentialsElement(string feed) => XmlConvert.EncodeLocalName(feed);
 
