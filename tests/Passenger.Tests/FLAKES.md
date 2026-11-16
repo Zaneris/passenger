@@ -30,6 +30,16 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 
 ## 2026-11-16
 
+- `AssetPreviewTests`' `Invalid_empty_missing_unsupported_and_oversized_assets_fail_without_opening_binary_text`, CI
+  43812589368 (Linux x64 report shard 4): "Assert.Empty() Failure … AssetPreview { Bitmap = null, … IsPending = True }"
+  after an agent's open of huge.bmp was refused. **A race in the IDE**: `OpenDocument.Load` starts an asset's decode, and
+  where the thread pool ended it before the window's thread reached its await (a 58-byte file refused by its header, its
+  code compiled by the person's open just before), the failure ran inside `Load`, raising `PreviewFailed` before the
+  editors listened or listed the document: its tab stayed loading for good while the agent heard it could not be opened.
+  Shown by opening it again and again: 2 of 300 opens by hand left it loading on the Mac, 992 of 1,000 by hand and 992 by
+  an agent under load, 994 and 995 under load on the Ubuntu VM; and by decodes ending at once (`BackgroundWork.EndingAtOnce`). `Load`
+  now refuses an asset whose decode failed before it returns, as a missing one; 0 of 1,000 each under load on the Mac and
+  the VM (a3fdc9fc7, #1775).
 - `McpRefactorTests`' `Usages_answer_at_once_without_a_file_another_project_has_yet_to_load_and_a_rename_waits_for_it`,
   CI 43797752504 (macOS report shard 2): "Rename was not applied: App is not loaded again yet … after 20 s". **An order in
   the IDE**: the rename waits both for App's new caller and for App's load again (App evaluated again as files came into
