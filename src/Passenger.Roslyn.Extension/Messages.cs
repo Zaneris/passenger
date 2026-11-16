@@ -53,6 +53,7 @@ public static class Handlers
     public const string MauiExpressionSymbol = "Passenger.Roslyn.Extension.MauiExpressionSymbol";
     public const string MauiXamlChecks = "Passenger.Roslyn.Extension.MauiXamlChecks";
     public const string MauiExpressionUses = "Passenger.Roslyn.Extension.MauiExpressionUses";
+    public const string MauiExpressionHover = "Passenger.Roslyn.Extension.MauiExpressionHover";
     public const string CompletionCall = "Passenger.Roslyn.Extension.CompletionCall";
     public const string StepBindings = "Passenger.Roslyn.Extension.StepBindings";
 
@@ -62,7 +63,7 @@ public static class Handlers
         DescribeHierarchy, PullMembersUp, PushMembersDown, DocumentTexts, DocumentsWritten, ReferencesRead, ReferencedFiles, GeneratorsRun, AspireProjectDeclaration, AspireCodeHelp, AspireReferenceFix, AspireRunResources,
         AspireRename, AspireParameters, ConnectionReads, WebRoutes, RouteBody, LocalizedReads, SymbolsNamed, SymbolAt, WrittenPlaces,
         ComponentClass, GeneratedTexts, GeneratedNamed, PartialHalf, GeneratedParts, GeneratedDocuments, JsInteropCalls, GodotCode, GodotNames, GodotPaths, GodotKindStrings, GodotNameStrings, GodotFix, ToolkitRenames,
-        MauiExpressionCompletion, MauiExpressionSymbol, MauiXamlChecks, MauiExpressionUses,
+        MauiExpressionCompletion, MauiExpressionSymbol, MauiXamlChecks, MauiExpressionUses, MauiExpressionHover,
         CompletionCall, StepBindings,
     ];
 }
@@ -270,6 +271,9 @@ public sealed record MauiCompletion(
     [property: JsonPropertyName("kind")] string Kind,
     [property: JsonPropertyName("detail")] string? Detail,
     [property: JsonPropertyName("sort")] string Sort);
+
+/// <summary>The hover card of a place in an expression, in Markdown, as C#'s hover gives it; null where there is none.</summary>
+public sealed record MauiHover([property: JsonPropertyName("markdown")] string? Markdown);
 
 /// <summary>A MAUI XAML file as the editor has it, and its expressions, to be checked as MAUI's source generator and C#'s
 /// compiler would.</summary>

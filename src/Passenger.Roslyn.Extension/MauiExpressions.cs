@@ -7,10 +7,18 @@ using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Extensions;
 using Microsoft.CodeAnalysis.FindSymbols;
+using Microsoft.CodeAnalysis.LanguageServer.Handler;
+using Microsoft.CodeAnalysis.LanguageService;
 using Microsoft.CodeAnalysis.Text;
 using Passenger.Core;
 using Passenger.Languages.CSharp;
 using Passenger.Xaml.Dialects;
+using LspCapabilities = Roslyn.LanguageServer.Protocol.ClientCapabilities;
+using LspHover = Roslyn.LanguageServer.Protocol.Hover;
+using LspHoverSetting = Roslyn.LanguageServer.Protocol.HoverSetting;
+using LspMarkup = Roslyn.LanguageServer.Protocol.MarkupContent;
+using LspMarkupKind = Roslyn.LanguageServer.Protocol.MarkupKind;
+using LspTextDocumentCapabilities = Roslyn.LanguageServer.Protocol.TextDocumentClientCapabilities;
 
 namespace Passenger.Roslyn.Extension;
 
@@ -88,6 +96,34 @@ public sealed class MauiExpressionSymbol : IExtensionWorkspaceMessageHandler<Mau
             symbol = await SymbolFinder.FindSymbolAtPositionAsync(made.Document, position - 1, cancellationToken).ConfigureAwait(false);
         }
         return new SymbolsFound(symbol is null || symbol.Name.StartsWith("__", StringComparison.Ordinal) ? [] : [SymbolNames.Named(made.Document.Project.Solution, symbol)], 0);
+    }
+}
+
+/// <summary>The hover card of a place in a MAUI XAML file's C# expression, as the server's own hover answers in C#: its quick
+/// info of the code MAUI's source generator writes there, in Markdown; none on what only that code writes.</summary>
+public sealed class MauiExpressionHover : IExtensionWorkspaceMessageHandler<MauiExpressionAsked, MauiHover>
+{
+    private static readonly LspCapabilities Markdown = new()
+    {
+        TextDocument = new LspTextDocumentCapabilities { Hover = new LspHoverSetting { ContentFormat = [LspMarkupKind.Markdown] } },
+    };
+
+    public async Task<MauiHover> ExecuteAsync(MauiExpressionAsked message, ExtensionWorkspaceMessageContext context, CancellationToken cancellationToken)
+    {
+        if (MauiExpressionDocument.ProjectOf(context.Solution, message.Path) is not { } project
+            || MauiExpressionCode.Of(message.Expression.Value, message.Expression.Types) is not { } code
+            || await MauiExpressionDocument.MakeAsync(project, [message.Expression], null, cancellationToken).ConfigureAwait(false) is not { } made)
+        {
+            return new MauiHover(null);
+        }
+        int position = made.Expressions[0].DocumentAt(code.CodeAt(message.At));
+        if (await SymbolFinder.FindSymbolAtPositionAsync(made.Document, position, cancellationToken).ConfigureAwait(false) is { } symbol
+            && symbol.Name.StartsWith("__", StringComparison.Ordinal))
+        {
+            return new MauiHover(null);
+        }
+        LspHover? hover = await HoverHandler.GetHoverAsync(made.Document, position, SymbolDescriptionOptions.Default, Markdown, cancellationToken).ConfigureAwait(false);
+        return new MauiHover(hover?.Contents is { Value: LspMarkup { Value: { Length: > 0 } markdown } } ? markdown : null);
     }
 }
 

@@ -260,9 +260,18 @@ public sealed partial class PassengerTools
     private static async Task<XamlSymbol?> XamlSymbolAt(XamlServed xaml, int offset) =>
         await BackgroundWork.Run(() => XamlNavigation.At(xaml.File, offset)) is { Targets.Count: > 0 } symbol ? symbol : null;
 
-    /// <summary>Find Usages in XAML: an element's name in its file and its code-behind, a resource key in the project's XAML.</summary>
+    /// <summary>Find Usages in XAML: an element's name in its file, its code-behind and a MAUI page's expressions, a resource
+    /// key in the project's XAML, and from a name in an expression what the C# it reads is, as Find Usages finds them.</summary>
     private async Task<IReadOnlyList<Place>> XamlUsages(XamlServed xaml, int offset, CancellationToken cancel)
     {
+        if (XamlExpressions.At(xaml.File, offset) is ({ } expression, _) && XamlExpressions.Is(xaml.File, expression.Attribute))
+        {
+            await CodeBehindRead(cancel);
+            if (await window.Assist.Languages.Xaml.ExpressionUsesAsync(xaml.Xaml, offset) is { } read)
+            {
+                return read.Uses.Count > 0 ? await Places(read.Uses, cancel) : read.None is { } none ? throw new InvalidOperationException(none) : [];
+            }
+        }
         if (await XamlSymbolAt(xaml, offset) is not { } symbol)
         {
             return [];

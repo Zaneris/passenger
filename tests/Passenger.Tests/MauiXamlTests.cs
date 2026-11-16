@@ -1,3 +1,4 @@
+using Avalonia;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Passenger.App;
@@ -474,6 +475,40 @@ public sealed class MauiXamlTests : IClassFixture<MauiXamlTests.Gallery>
         IReadOnlyList<string> found = FoundUsages(window);
         Assert.Contains(found, u => u.StartsWith("PeoplePage.xaml:9 <Label Text=\"{Repeat('a', 2)}\"", StringComparison.Ordinal));
         window.Close();
+    }
+
+    /// <summary>The pointer resting on a name in a C# expression shows the card C#'s hover shows, of the code MAUI's source
+    /// generator writes there: on an element read by an attached property's getter (<c>label.(Grid.Row)</c>), the field the
+    /// generator makes for it; on a member of x:DataType's, that member.</summary>
+    [AvaloniaFact]
+    public void Hover_in_a_csharp_expression_shows_the_card_of_the_element_or_member_a_name_reads()
+    {
+        app.Rewrite("MainPage.xaml", Gallery.MainPage.Replace("Text=\"Hello, World!\"", "x:Name=\"label\"\n                Text=\"Hello, World!\"", StringComparison.Ordinal)
+            .Replace("Text=\"Click me\"", "Text=\"Click me\"\n                IsVisible=\"{label.(Grid.Row) GT 0}\"", StringComparison.Ordinal));
+        MainWindow window = app.Open(app.PathOf("MainPage.xaml"));
+        string card = Hover(window, window.EditorArea.CodeEditor, "{label.(Grid", "label");
+        Assert.Contains("Label MainPage.label", card, StringComparison.Ordinal);
+
+        window.OpenFile(app.PathOf("PeoplePage.xaml"));
+        Ui.Settle();
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        Replace(editor, "Title=\"{Binding Greeting}\"", "Title=\"{Greeting}\"");
+        Assert.Contains("string ViewModels.MainViewModel.Greeting { get; set; }", Hover(window, editor, "{Greeting}", "Greeting"), StringComparison.Ordinal);
+        window.Close();
+    }
+
+    /// <summary>The card shown with the pointer resting on a name in some text of the editor's.</summary>
+    private static string Hover(MainWindow window, CodeEditor editor, string text, string name)
+    {
+        Ui.Press(window, "ESCAPE");
+        window.MouseMove(new Avalonia.Point(0, 0), Avalonia.Input.RawInputModifiers.None);
+        Ui.WaitFor(() => window.Assist.HoverText is null, "the last card to go");
+        string written = editor.Document.Snapshot.ToString();
+        int at = written.IndexOf(text, StringComparison.Ordinal) + text.IndexOf(name, StringComparison.Ordinal) + 1;
+        Avalonia.Point point = editor.TranslatePoint(editor.PointOf(at) + new Avalonia.Point(1, editor.LineHeight / 2), window)!.Value;
+        window.MouseMove(point, Avalonia.Input.RawInputModifiers.None);
+        Ui.WaitFor(() => window.Assist.HoverText is not null, $"the card on {name} in {text}");
+        return window.Assist.HoverText!;
     }
 
     private static IReadOnlyList<string> FoundUsages(MainWindow window)

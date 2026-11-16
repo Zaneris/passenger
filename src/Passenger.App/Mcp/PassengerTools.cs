@@ -382,8 +382,9 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
     [McpServerTool(Name = McpTools.Usages, Title = "Find usages", ReadOnly = true), Description(
         "Every place the symbol at a position is used, its declaration included, as Find Usages finds them (a C# symbol's in " +
         "XAML too), by file, each as line:column and its line's text, after the C# symbol the place took; in XAML, an " +
-        "element's name in its file and code-behind, a resource's key across the project, or a C# type or member as from its " +
-        "declaration; a Reqnroll step's or step definition's, every step it binds in .feature files. JSON and MSBuild files have none.")]
+        "element's name in its file, code-behind and C# expressions, a resource's key across the project, or a C# type or " +
+        "member as from its declaration; a Reqnroll step's or step definition's, every step it binds in .feature files. JSON " +
+        "and MSBuild files have none.")]
     public Task<UsagesFound> Usages(string? path = null, int? line = null, int? column = null, string? symbol = null, CancellationToken cancel = default) => OnUi(cancel, async () =>
     {
         CodePlace at = await AskedAt(path, line, column, symbol, cancel);

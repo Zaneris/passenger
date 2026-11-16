@@ -416,6 +416,13 @@ public sealed class RoslynSession : IAsyncDisposable, IDocumentHost
             ? (await ExtensionAsync<Roslyn.Extension.SymbolsFound>(Roslyn.Extension.Handlers.MauiExpressionSymbol, new Roslyn.Extension.MauiExpressionAsked(path, expression, at), cancel).ConfigureAwait(false)).Symbols.FirstOrDefault()
             : null;
 
+    /// <summary>The hover card of a place in a MAUI XAML file's C# expression, in Markdown (Passenger's extension's
+    /// <see cref="Roslyn.Extension.MauiExpressionHover"/>); null for none, or when the server has no extension to ask.</summary>
+    public async Task<string?> MauiHoverAsync(string path, Roslyn.Extension.MauiExpression expression, int at, CancellationToken cancel = default) =>
+        Server.ExtensionProblem is null
+            ? (await ExtensionAsync<Roslyn.Extension.MauiHover>(Roslyn.Extension.Handlers.MauiExpressionHover, new Roslyn.Extension.MauiExpressionAsked(path, expression, at), cancel).ConfigureAwait(false)).Markdown
+            : null;
+
     /// <summary>Where a MAUI XAML file's expressions name a C# symbol, by its documentation id (Passenger's extension's
     /// <see cref="Roslyn.Extension.MauiExpressionUses"/>); null when the server has no extension to ask.</summary>
     public async Task<IReadOnlyList<Roslyn.Extension.MauiUse>?> MauiUsesAsync(string path, IReadOnlyList<Roslyn.Extension.MauiExpression> expressions, string id,

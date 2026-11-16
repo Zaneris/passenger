@@ -83,12 +83,21 @@ internal sealed partial class XamlAssist : LanguageAssist
     public override IBrush? Swatch(CompletionItem item) =>
         xamlOffered.TryGetValue(item, out XamlItem? offered) ? CodeAssist.Swatch(offered.Colour) : null;
 
-    /// <summary>The hover card's words for a XAML name, then each language's value of a localized string.</summary>
+    /// <summary>The hover card's words for a XAML name, then each language's value of a localized string; in a C#
+    /// expression, C#'s card of what its name reads.</summary>
     public override async Task<bool> HoverAsync(IHoverCard card, OpenDocument document, int offset, CancellationToken cancel)
     {
         if (context.XamlOf(document) is not { } xaml)
         {
             return false;
+        }
+        if (await ExpressionCardAsync(xaml, offset) is { } read)
+        {
+            if (!cancel.IsCancellationRequested)
+            {
+                card.AddHover(new Hover { Contents = JsonSerializer.SerializeToElement(new { kind = "markdown", value = read }) });
+            }
+            return true;
         }
         if (await XamlDescription(xaml, offset) is { } described && !cancel.IsCancellationRequested)
         {
@@ -542,16 +551,16 @@ internal sealed partial class XamlAssist : LanguageAssist
     /// <summary>What Find Usages finds in XAML, said where it finds nothing else.</summary>
     internal const string XamlUsesWhat = "Find Usages in XAML finds an element's name, a resource's key, or a type or member of the folder's C#";
 
-    /// <summary>Where a XAML name is used: an element's name where the file names it and where its code-behind uses its
-    /// field; a resource key where any of the project's XAML uses it, its definitions included; a type or member the
-    /// folder's C# declares where Find Usages from its declaration finds it. Null for any other name.</summary>
+    /// <summary>Where a XAML name is used: an element's name where the file names it, where its code-behind uses its field
+    /// and where a MAUI page's expressions read it; a resource key where any of the project's XAML uses it, its definitions
+    /// included; a type or member the folder's C# declares where Find Usages from its declaration finds it. Null for any
+    /// other name.</summary>
     internal async Task<IReadOnlyList<LspLocation>?> XamlUsesAsync(XamlFile file, XamlSymbol symbol)
     {
         List<LspLocation> usages = [];
         if (symbol.Named is { } named)
         {
-            usages.AddRange(XamlNavigation.NameUses(file, named.Value).Select(r => Location(file.Path, r.Start, r.End)));
-            usages.AddRange((await CodeBehindUses(file, named.Value)).Uses);
+            usages.AddRange(await ElementUsesAsync(file, named.Value));
         }
         else if (symbol.Targets.Count > 0 && symbol.Targets[0].Kind == XamlTargetKind.Resource)
         {
@@ -579,6 +588,15 @@ internal sealed partial class XamlAssist : LanguageAssist
         }
         return usages;
     }
+
+    /// <summary>Where an element's name is used: where its file names it, where its code-behind uses the field made for it,
+    /// and where a MAUI page's C# expressions read it.</summary>
+    private async Task<IReadOnlyList<LspLocation>> ElementUsesAsync(XamlFile file, string name) =>
+    [
+        .. XamlNavigation.NameUses(file, name).Select(r => Location(file.Path, r.Start, r.End)),
+        .. (await CodeBehindUses(file, name)).Uses,
+        .. await ElementReadsAsync(file, name, ServerPlaces.TextOf(context.Editors, file.Path) ?? TextSnapshot.Empty),
+    ];
 
     /// <summary>The usages of the C# symbol declared at a place of the folder's code, as Find Usages finds them from its
     /// declaration: the server's, from the file as the editor has it, with XAML's; none from a server not loaded.</summary>
@@ -710,13 +728,16 @@ internal sealed partial class XamlAssist : LanguageAssist
         return ([], null);
     }
 
-    /// <summary>Whether a place is in the C# made for a class's XAML: Avalonia's generator's <c>Class.g.cs</c>, or the
-    /// <c>obj/…/File.g.cs</c> (<c>.g.i.cs</c> at design time) WPF's MarkupCompile writes for the XAML file.</summary>
+    /// <summary>Whether a place is in the C# made for a class's XAML: Avalonia's generator's <c>Class.g.cs</c>, MAUI's
+    /// <c>File.xaml.sg.cs</c> and <c>File.xaml.xsg.cs</c>, or the <c>obj/…/File.g.cs</c> (<c>.g.i.cs</c> at design time) WPF's
+    /// MarkupCompile writes for the XAML file.</summary>
     private static bool IsGenerated(LspLocation place, string className, string xamlPath)
     {
         if (!place.Uri.StartsWith("file:", StringComparison.OrdinalIgnoreCase))
         {
-            return place.Uri.Contains(className + ".g.cs", StringComparison.Ordinal);
+            string file = Path.GetFileName(xamlPath);
+            return place.Uri.Contains(className + ".g.cs", StringComparison.Ordinal) || (DocumentUris.GeneratedName(place.Uri) is { } hint
+                && (hint.EndsWith(file + ".sg.cs", StringComparison.OrdinalIgnoreCase) || hint.EndsWith(file + ".xsg.cs", StringComparison.OrdinalIgnoreCase)));
         }
         string path = DocumentUris.ToPath(place.Uri);
         string stem = Path.GetFileNameWithoutExtension(xamlPath);
@@ -727,9 +748,9 @@ internal sealed partial class XamlAssist : LanguageAssist
     /// <summary>What Rename in XAML renames, said where the caret is on none of it.</summary>
     internal const string XamlRenamesWhat = "Rename in XAML renames an element's name, or a type or member of the folder's C#";
 
-    /// <summary>Rename in XAML: an element's name, where the file names it and where its code-behind uses its field; a type
-    /// or member of the folder's C# a name leads to, from its declaration (<see cref="DeclaredRenameAsync"/>). One command
-    /// undone whole.</summary>
+    /// <summary>Rename in XAML: an element's name, where the file names it or its expressions read it and where its
+    /// code-behind uses its field; a type or member of the folder's C# a name leads to, from its declaration
+    /// (<see cref="DeclaredRenameAsync"/>). One command undone whole.</summary>
     private async Task XamlRename(XamlDocument xaml)
     {
         int caret = Editor.Selections.Primary.Caret;
@@ -809,11 +830,11 @@ internal sealed partial class XamlAssist : LanguageAssist
         }
     }
 
-    /// <summary>An element's name renamed where its XAML file (<paramref name="path"/>, open or not) names it and where its
-    /// code-behind uses its field, as one command undone whole: the files it changed, once written, and the words for it;
-    /// refused where the name cannot be the field's (a C# keyword, another element's of its name scope, or what the
-    /// code-behind's class declares), a file could not be written, or the server the <paramref name="patience"/> waits for
-    /// may not know the field's uses yet; null when the project's XAML is not read.</summary>
+    /// <summary>An element's name renamed where its XAML file (<paramref name="path"/>, open or not) names it or a MAUI
+    /// page's expressions read it, and where its code-behind uses its field, as one command undone whole: the files it
+    /// changed, once written, and the words for it; refused where the name cannot be the field's (a C# keyword, another
+    /// element's of its name scope, or what the code-behind's class declares), a file could not be written, or the server
+    /// the <paramref name="patience"/> waits for may not know the field's uses yet; null when the project's XAML is not read.</summary>
     internal async Task<RefactorOutcome?> XamlRenameAsync(string path, string old, string name, Patience? patience)
     {
         if (!Microsoft.CodeAnalysis.CSharp.SyntaxFacts.IsValidIdentifier(name))
@@ -847,6 +868,10 @@ internal sealed partial class XamlAssist : LanguageAssist
         foreach (TextRange use in XamlNavigation.NameUses(file, old))
         {
             Add(Location(file.Path, read, use.Start, use.End), null);
+        }
+        foreach (LspLocation use in await ElementReadsAsync(file, old, read))
+        {
+            Add(use, null);
         }
         (IReadOnlyList<LspLocation> behind, int? answered) = await CodeBehindUses(file, old);
         // A server that has yet to read the XAML knows no field of this name, and so no use of it.

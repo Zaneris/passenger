@@ -102,6 +102,51 @@ public sealed class McpNavigationTests : McpRig, IClassFixture<RestoredFolders>
             $"definition of the element CounterBtn, read in {Read}, answered no place naming it: {answer.GetRawText()}");
     }
 
+    /// <summary>An element a MAUI page's C# expressions read by its name (<c>label.(Grid.Row)</c>, the field MAUI's generator
+    /// makes for it): usages from the name in an expression lists the element, each expression reading it and the
+    /// code-behind's use, as from a code-behind's field, and none of the generator's own code; and rename from the element
+    /// renames each of them.</summary>
+    [Fact]
+    public async Task Usages_of_an_element_a_maui_expression_reads_list_the_element_each_expression_and_the_code_behinds_use_and_rename_renames_them()
+    {
+        string folder = MauiPage("mcp-maui-element-");
+        DeleteAtEnd(folder);
+        string page = File.ReadAllText(Path.Combine(folder, "MainPage.xaml"))
+            .Replace("Text=\"Hello, World!\"", "x:Name=\"label\"\n                Text=\"Hello, World!\"", StringComparison.Ordinal)
+            .Replace("Text=\"Click me\"", "Text=\"Click me\"\n                IsVisible=\"{label.(Grid.Row) GT 0}\"\n                IsEnabled=\"{label.(Grid.Column) LT 2}\"",
+                StringComparison.Ordinal);
+        TestFolders.Write(folder, "MainPage.xaml", page);
+        string code = File.ReadAllText(Path.Combine(folder, "MainPage.xaml.cs")).Replace("Announce(CounterBtn.Text)", "Announce(label.Text)", StringComparison.Ordinal);
+        TestFolders.Write(folder, "MainPage.xaml.cs", code);
+        string[] lines = page.Split('\n');
+        (string, int, int, string) At(string path, string[] of, string text, string name)
+        {
+            int line = Array.FindIndex(of, l => l.Contains(text, StringComparison.Ordinal));
+            return (path, line + 1, of[line].IndexOf(text, StringComparison.Ordinal) + text.IndexOf(name, StringComparison.Ordinal) + 1, of[line].Trim());
+        }
+        (string Path, int Line, int Column, string Text) read = At("MainPage.xaml", lines, "{label.(Grid.Row)", "label");
+        await using McpClient client = await Start(["--mcp", folder]);
+
+        // Asked of the code-behind first, which waits for the load after the restore bringing MAUI's generator.
+        await Call(client, McpTools.Definition, new() { ["path"] = "MainPage.xaml.cs", ["line"] = 9, ["column"] = 9 });
+        JsonElement answer = await Call(client, McpTools.Usages, new() { ["path"] = read.Path, ["line"] = read.Line, ["column"] = read.Column + 2 });
+        (string, int, int, string)[] expected =
+        [
+            At("MainPage.xaml", lines, "x:Name=\"label\"", "label"), read, At("MainPage.xaml", lines, "{label.(Grid.Column)", "label"),
+            At("MainPage.xaml.cs", code.Split('\n'), "Announce(label.Text)", "label"),
+        ];
+        Assert.True(Used(answer).Order().SequenceEqual(expected.Order()),
+            $"usages of the element label, read in {read.Text}, answered other than its x:Name, both expressions and the code-behind's use: {answer.GetRawText()}");
+
+        (_, int named, int at, _) = expected[0];
+        await Call(client, McpTools.Rename, new() { ["path"] = "MainPage.xaml", ["line"] = named, ["column"] = at + 1, ["newName"] = "caption" });
+        string renamed = File.ReadAllText(Path.Combine(folder, "MainPage.xaml"));
+        string behind = File.ReadAllText(Path.Combine(folder, "MainPage.xaml.cs"));
+        Assert.True(renamed == page.Replace("\"label\"", "\"caption\"", StringComparison.Ordinal).Replace("{label.", "{caption.", StringComparison.Ordinal)
+            && behind == code.Replace("(label.", "(caption.", StringComparison.Ordinal),
+            $"renaming the element label to caption left a use of it, or changed more: {renamed}\n{behind}");
+    }
+
     /// <summary>A MAUI page's folder whose language server, started ahead of the agent's window, loaded, restored and began
     /// loading again with MAUI's generator before the window took it up: the window's C# is ready only once it has heard
     /// what the server said meanwhile, its restore among it, so an agent's question asked as the window opens waits for the

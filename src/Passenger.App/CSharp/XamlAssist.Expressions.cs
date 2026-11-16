@@ -10,8 +10,8 @@ using Passenger.Xaml.Syntax;
 namespace Passenger.App.CSharp;
 
 /// <summary>A XAML file's C# expressions (MAUI's), answered by the language server as it answers C#: completion, Go to
-/// Declaration and Find Usages at a place in one, asked of Passenger's extension, which reads the expression as MAUI's
-/// source generator writes it into the page's code.</summary>
+/// Declaration, Find Usages and the hover card at a place in one, asked of Passenger's extension, which reads the
+/// expression as MAUI's source generator writes it into the page's code.</summary>
 internal sealed partial class XamlAssist
 {
     /// <summary>What completion offers in the expression a caret is in, where its text starts, and whether the caret is in
@@ -115,9 +115,12 @@ internal sealed partial class XamlAssist
     /// <summary>The name of the element the file names as a field the server named, one of the page's that MAUI's generator
     /// made for it (declared in no file of the folder's); null for any other symbol.</summary>
     private static XmlAttribute? NamedElementOf(XamlFile file, Roslyn.Extension.NamedSymbol symbol) =>
-        symbol is { Path: null, Id: { } id } && file.ClassName is { } page && id == $"F:{page}.{symbol.Name}"
+        symbol is { Path: null, Id: { } id } && file.ClassName is { } page && id == FieldId(page, symbol.Name)
             ? file.Tree.Elements.Select(XamlFile.NameAttribute).FirstOrDefault(a => a is { IsValueClosed: true } && a.Value == symbol.Name)
             : null;
+
+    /// <summary>The documentation id of the field a page's class has for an element it names.</summary>
+    private static string FieldId(string page, string name) => $"F:{page}.{name}";
 
     /// <summary>A library's type or member a symbol the server named is, found among the project's references by its
     /// documentation id; null for none.</summary>
@@ -152,22 +155,88 @@ internal sealed partial class XamlAssist
     /// Usages finds them from its declaration. False outside an expression.</summary>
     private async Task<bool> ExpressionUsagesAsync(XamlDocument xaml, int offset, bool inPopup)
     {
-        if (await ExpressionSymbolAsync(xaml, offset) is not (_, var symbol))
+        if (await ExpressionUsesAsync(xaml, offset) is not { } found)
         {
             return false;
         }
+        if (found.Uses.Count == 0)
+        {
+            context.Say(found.None ?? "No usages found");
+            return true;
+        }
+        context.ShowUsages($"Usages of {found.Name}", found.Uses, inPopup ? offset : null);
+        return true;
+    }
+
+    /// <summary>What Find Usages finds from a place in an expression: the name of the symbol it names and where the folder's
+    /// C# and XAML use it, as from its declaration, a field MAUI's generator made for an element as that element's name
+    /// (<see cref="ElementUsesAsync"/>); with why there are none where the symbol has none to find, or none where no symbol
+    /// is named. Null outside an expression.</summary>
+    internal async Task<(string Name, IReadOnlyList<LspLocation> Uses, string? None)?> ExpressionUsesAsync(XamlDocument xaml, int offset)
+    {
+        if (await ExpressionSymbolAsync(xaml, offset) is not ({ } file, var symbol))
+        {
+            return null;
+        }
+        if (symbol is null)
+        {
+            return (string.Empty, [], null);
+        }
+        if (NamedElementOf(file, symbol) is not null)
+        {
+            return (symbol.Name, await ElementUsesAsync(file, symbol.Name), "No usages found");
+        }
         if (symbol is not { Path: { } path, At: { } at })
         {
-            context.Say(symbol is null ? "No usages found" : $"{symbol.Shown} is declared outside the folder's code");
-            return true;
+            return (symbol.Name, [], $"{symbol.Shown} is declared outside the folder's code");
         }
-        IReadOnlyList<LspLocation> usages = await DeclaredUsesAsync(new SourcePlace(PathNames.Canonical(path), at.Line, at.Character));
-        if (usages.Count == 0)
+        return (symbol.Name, await DeclaredUsesAsync(new SourcePlace(PathNames.Canonical(path), at.Line, at.Character)), "No usages found");
+    }
+
+    /// <summary>Where a MAUI page's C# expressions read an element of its own by name, as MAUI's source generator binds each
+    /// to the field it makes for the element, placed in <paramref name="text"/>, the file's text they were read from; none
+    /// in a file whose dialect reads no expressions, or with no server loaded.</summary>
+    private async Task<IReadOnlyList<LspLocation>> ElementReadsAsync(XamlFile file, string name, TextSnapshot text)
+    {
+        if (!file.Dialect.ReadsExpressions || file.ClassName is not { } page || context.CSharp?.Session is not { IsLoaded: true } session)
         {
-            context.Say("No usages found");
-            return true;
+            return [];
         }
-        context.ShowUsages($"Usages of {symbol.Name}", usages, inPopup ? offset : null);
-        return true;
+        List<XamlExpression> reading = await BackgroundWork.Run(() => XamlExpressions.In(file).Where(e => e.Code.Code.Contains(name, StringComparison.Ordinal)).ToList());
+        if (reading.Count == 0)
+        {
+            return [];
+        }
+        IReadOnlyList<Roslyn.Extension.MauiUse>? uses;
+        try
+        {
+            uses = await session.MauiUsesAsync(file.Path, [.. reading.Select(XamlService.Asked)], FieldId(page, name));
+        }
+        catch (LanguageServerFailed)
+        {
+            return [];
+        }
+        return [.. (uses ?? []).Where(u => u.Expression < reading.Count)
+            .Select(u => Location(file.Path, text, reading[u.Expression].ValueStart + u.Start, reading[u.Expression].ValueStart + u.End))];
+    }
+
+    /// <summary>The hover card of a place in an expression in Markdown, as C#'s hover gives it of the code MAUI's source
+    /// generator writes there; null outside an expression (a markup extension's name still being typed among them), or
+    /// where the server gives none.</summary>
+    private async Task<string?> ExpressionCardAsync(XamlDocument xaml, int offset)
+    {
+        if (context.CSharp?.Session is not { IsLoaded: true } session || await xaml.FileAsync() is not { } file
+            || XamlExpressions.At(file, offset) is not ({ } expression, _) || !XamlExpressions.Is(file, expression.Attribute))
+        {
+            return null;
+        }
+        try
+        {
+            return await session.MauiHoverAsync(file.Path, XamlService.Asked(expression), offset - expression.ValueStart);
+        }
+        catch (LanguageServerFailed)
+        {
+            return null;
+        }
     }
 }
