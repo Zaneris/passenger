@@ -1,5 +1,6 @@
 using Passenger.App.Workspace;
 using Passenger.Core;
+using Passenger.Text;
 
 namespace Passenger.App.Mobile;
 
@@ -7,8 +8,9 @@ namespace Passenger.App.Mobile;
 /// through MSBuild's questions as the .NET CLI's (no build, no restore): the workloads it lacks
 /// (<c>_GetRequiredWorkloads</c>), what its Android app needs (<c>GetAndroidDependencies</c>, Java's too) and whether its
 /// Apple apps have the Xcode their workload wants (<c>_DetectSdkLocations</c>) and its simulator runtimes (that Xcode's
-/// <c>simctl</c>). Only a framework on CoreCLR whose workload is installed is asked past the first, an Android one only
-/// where this machine builds Android apps.</summary>
+/// <c>simctl</c>), and the edits an iOS app's head needs (<see cref="IosHeads"/>). Only a framework on CoreCLR whose
+/// workload is installed is asked past the first, an Android one only where this machine builds Android apps, and an iOS
+/// head at the framework it builds on CoreCLR.</summary>
 public static class MobileQuestions
 {
     /// <summary>Where Xcode is installed when it is, on a Mac.</summary>
@@ -48,7 +50,15 @@ public static class MobileQuestions
                 apple = new AppleAnswer(null) { Simulators = lacking };
             }
         }
-        return new ProjectNeeds(name, frameworks) { Workloads = workloads, Android = android, Apple = apple };
+        IosHeadEdits? ios = null;
+        if (onMac && workloads.Count == 0 && IosHeads.HeadOf(frameworks) is { } head)
+        {
+            string built = IosHeads.OnCoreClr(head);
+            ios = IosHeads.Answer(await QuestionAsync(project, built, IosHeads.Question, globals, cancel), Path.GetDirectoryName(project)!) is { } answer
+                ? IosHeads.Edits(project, name, head, built, answer, path => FileText.Load(path)?.Text)
+                : null;
+        }
+        return new ProjectNeeds(name, frameworks) { Workloads = workloads, Android = android, Apple = apple, Ios = ios };
     }
 
     /// <summary>Longest a listing of the simulator runtimes is waited for, which may start the simulators' service first.</summary>

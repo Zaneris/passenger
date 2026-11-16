@@ -5,8 +5,9 @@ namespace Passenger.App.Mobile;
 /// <summary>What the folder's mobile projects need that this machine lacks, from what their workloads answered
 /// (<see cref="ProjectNeeds"/>): the .NET workloads to install, the Android SDK, its packages and the JDK to install
 /// through the Android workload's installer, the Xcode the Apple workloads want and the simulator runtimes it lacks, the
-/// projects on a .NET whose mobile apps run on Mono, those whose Apple apps build only on a Mac, and those whose Android
-/// apps this machine builds none of (<see cref="AndroidHosts"/>). Said once, in the banner over the window.</summary>
+/// projects on a .NET whose mobile apps run on Mono, the edits an iOS app's head needs (<see cref="IosHeadEdits"/>, which
+/// name its move from Mono), those whose Apple apps build only on a Mac, and those whose Android apps this machine builds
+/// none of (<see cref="AndroidHosts"/>). Said once, in the banner over the window.</summary>
 public sealed record MobileWant
 {
     public static MobileWant Nothing { get; } = new();
@@ -47,8 +48,14 @@ public sealed record MobileWant
     /// <summary>The simulator runtimes the Apple apps need that Xcode has none of ("iOS 27.0"), each once.</summary>
     public IReadOnlyList<string> Simulators { get; init; } = [];
 
-    /// <summary>The projects on .NET 10 or earlier, each with its first such framework.</summary>
+    /// <summary>The projects on .NET 10 or earlier, each with its first such framework, but the iOS heads whose edits name it.</summary>
     public IReadOnlyList<(string Project, string Framework)> OnMono { get; init; } = [];
+
+    /// <summary>The iOS app heads needing edits to build here, in the folder's order.</summary>
+    public IReadOnlyList<IosHeadEdits> IosHeads { get; init; } = [];
+
+    /// <summary>The iOS heads needing their edits alone, which the sentence of what is lacking leaves out.</summary>
+    public IReadOnlyList<string> EditsAlone { get; init; } = [];
 
     /// <summary>The projects whose every app is an Apple platform's, off a Mac.</summary>
     public IReadOnlyList<string> AppleOffMac { get; init; } = [];
@@ -64,7 +71,7 @@ public sealed record MobileWant
 
     /// <summary>Whether anything is said.</summary>
     public bool Says => Workloads.Count > 0 || AndroidLacks || Xcode is not null || Simulators.Count > 0 || OnMono.Count > 0 || AppleOffMac.Count > 0
-        || AndroidElsewhere.Count > 0;
+        || AndroidElsewhere.Count > 0 || IosHeads.Count > 0;
 
     /// <summary>What the folder's projects need, from their answers: <paramref name="usualSdk"/> is where the Android SDK
     /// is looked for where the workload found none, <paramref name="exists"/> whether a file or folder is there, and
@@ -86,6 +93,8 @@ public sealed record MobileWant
         string? unchosen = null;
         string? developerDir = null;
         List<string> simulators = [];
+        List<IosHeadEdits> heads = [];
+        List<string> editsAlone = [];
         foreach (ProjectNeeds project in projects)
         {
             bool needs = false;
@@ -100,7 +109,11 @@ public sealed record MobileWant
                 workloads.Add(workload.Id);
             }
             needs |= lacking.Count > 0;
-            if (mobile.FirstOrDefault(f => FrameworkNames.Major(f) is < MobilePlatforms.FirstOnCoreClr) is { } old)
+            if (project.Ios is { } head)
+            {
+                heads.Add(head);
+            }
+            else if (mobile.FirstOrDefault(f => FrameworkNames.Major(f) is < MobilePlatforms.FirstOnCoreClr) is { } old)
             {
                 mono.Add((project.Name, old));
                 needs = true;
@@ -141,6 +154,14 @@ public sealed record MobileWant
                 simulators.AddRange(apple.Simulators.Where(r => !simulators.Contains(r)));
                 needs |= apple.Simulators.Count > 0;
             }
+            if (project.Ios is not null)
+            {
+                if (!needs)
+                {
+                    editsAlone.Add(project.Name);
+                }
+                needs = true;
+            }
             if (needs)
             {
                 needing.Add(project.Name);
@@ -160,6 +181,8 @@ public sealed record MobileWant
             DeveloperDir = developerDir,
             Simulators = simulators,
             OnMono = mono,
+            IosHeads = heads,
+            EditsAlone = editsAlone,
             AppleOffMac = offMac,
             AndroidElsewhere = androidElsewhere,
             AndroidHost = androidElsewhere.Count > 0 ? androidHost : null,
@@ -201,7 +224,8 @@ public sealed record MobileWant
                 lacks.Add($"the {Plural.Listed([.. Simulators])} simulator {Plural.Noun(Simulators.Count, "runtime")}, which Xcode installs "
                     + $"(Xcode › Settings › Components, or {Plural.Listed([.. Simulators.Select(r => r.Split(' ')[0]).Distinct().Select(p => $"xcodebuild -downloadPlatform {p}")])})");
             }
-            List<string> needing = [.. Projects.Where(p => !OnMono.Any(m => m.Project == p) && !AppleOffMac.Contains(p) && !AndroidElsewhere.Contains(p))];
+            List<string> needing = [.. Projects.Where(p => !OnMono.Any(m => m.Project == p) && !EditsAlone.Contains(p) && !AppleOffMac.Contains(p)
+                && !AndroidElsewhere.Contains(p))];
             if (lacks.Count > 0 && needing.Count > 0)
             {
                 sentences.Add($"{Plural.Listed([.. needing])} {Plural.Agreeing(needing.Count, "needs", "need")} {Plural.Listed([.. lacks])}");
@@ -213,6 +237,10 @@ public sealed record MobileWant
             if (DeveloperDir is { } developerDir)
             {
                 sentences.Add($"DEVELOPER_DIR names {developerDir}, where the Apple workloads find no Xcode");
+            }
+            foreach (IosHeadEdits head in IosHeads)
+            {
+                sentences.Add(head.Said);
             }
             foreach ((string project, string framework) in OnMono)
             {

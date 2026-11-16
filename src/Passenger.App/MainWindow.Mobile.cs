@@ -5,6 +5,7 @@ using Passenger.App.Mobile;
 using Passenger.App.Templates;
 using Passenger.App.Workspace;
 using Passenger.Core;
+using Passenger.Text;
 using Passenger.Workspace;
 
 namespace Passenger.App;
@@ -14,7 +15,8 @@ namespace Passenger.App;
 /// once in the banner over the window (<see cref="MobileWant"/>), in place of the load errors it explains in the status
 /// bar. Install Workloads installs the missing workloads into the .NET Passenger builds with, the one install of them New
 /// Project's Install runs too; Install Android SDK and Java runs the Android workload's own installer once the person
-/// accepted the SDK's licences; Get Xcode names where Xcode comes from. Each install has the projects loaded again.</summary>
+/// accepted the SDK's licences; Get Xcode names where Xcode comes from. Each install has the projects loaded again. Make the
+/// iOS Edits makes the edits an iOS app's head needs to build here in its project and Info.plist, one command of Undo.</summary>
 public partial class MainWindow
 {
     /// <summary>What the folder's mobile projects need, as last asked.</summary>
@@ -41,6 +43,7 @@ public partial class MainWindow
     private Button? workloadsLink;
     private Button? androidLink;
     private Button? xcodeLink;
+    private Button? iosLink;
 
     /// <summary>What a test's workload installs take in place of the .NET they install into, and of its dotnet.</summary>
     public static WorkloadStandIn? WorkloadStandIn { get; set; }
@@ -68,6 +71,13 @@ public partial class MainWindow
             Words = ["Android SDK", "JDK", "Java", "sdkmanager", MSBuildNames.InstallAndroidDependencies],
             Works = AppActions.InstallAndroidDependencies,
         });
+        actions.Add(new IdeAction(AppActions.MakeIosEdits, "Make the iOS Edits", "IDE", _ => IdeErrors.Observe(MakeIosEditsAsync()))
+        {
+            WhyNot = _ => MobileWant.IosHeads.Any(h => h.Makes) ? null : Refusals.NoIosEdits,
+            Words = ["iOS", "Info.plist", MSBuildNames.SupportedOSPlatformVersion, AppManifests.MinimumOSVersion, AppManifests.SceneManifest],
+            Works = AppActions.MakeIosEdits,
+        });
+        iosLink = MobileBanner.Link(actions[AppActions.MakeIosEdits]!.Title, () => Request(AppActions.MakeIosEdits));
         workloadsLink = MobileBanner.Link(actions[AppActions.InstallWorkloads]!.Title, () => Request(AppActions.InstallWorkloads));
         androidLink = MobileBanner.Link(actions[AppActions.InstallAndroidDependencies]!.Title, () => Request(AppActions.InstallAndroidDependencies));
         xcodeLink = MobileBanner.Link("Get Xcode", () => Browse(XcodePage));
@@ -172,6 +182,7 @@ public partial class MainWindow
         workloadsLink!.IsVisible = MobileWant.Workloads.Count > 0;
         androidLink!.IsVisible = MobileWant.AndroidLacks;
         xcodeLink!.IsVisible = MobileWant is { Xcode: not null, UnchosenXcode: null };
+        iosLink!.IsVisible = MobileWant.IosHeads.Any(h => h.Makes);
         if (mobileHeld is { } held)
         {
             mobileHeld = null;
@@ -203,6 +214,55 @@ public partial class MainWindow
         }
         status.Say(words, said.Severity, null);
         return true;
+    }
+
+    /// <summary>Make the iOS Edits: each iOS head's project and Info.plist written as its edits say, read again as they stand
+    /// once the gate is passed, as one command of Undo; then what the projects need is asked again.</summary>
+    private async Task MakeIosEditsAsync()
+    {
+        UiThread.Check();
+        List<IosHeadEdits> heads = [.. MobileWant.IosHeads.Where(h => h.Makes)];
+        if (heads.Count == 0 || work.Begin(AppActions.MakeIosEdits, "Making the iOS edits") is not { } making)
+        {
+            return;
+        }
+        using (making)
+        {
+            List<string> files = [.. heads.SelectMany(h => h.Files).Distinct(PathNames.Comparer)];
+            string named = Plural.Listed([.. heads.Select(h => h.Name)]);
+            string? refused = await ChangeFileAsync($"Make the iOS Edits of {named}", files, () =>
+            {
+                foreach (IosHeadEdits head in heads)
+                {
+                    foreach (string file in head.Files)
+                    {
+                        if (FileText.Load(file) is not { } now)
+                        {
+                            return $"{PathNames.Shown(file, Folder)} could not be read";
+                        }
+                        bool project = PathNames.Same(file, head.Project);
+                        string text = project ? IosHeads.ProjectText(now.Text, head).Text : IosHeads.ManifestText(now.Text, head);
+                        if (text != now.Text)
+                        {
+                            _ = FileText.SaveOver(file, now, text);
+                        }
+                    }
+                }
+                return null;
+            });
+            if (refused is not null)
+            {
+                Told(making, false, $"The iOS edits of {named} were not made: {refused}");
+                return;
+            }
+            making.Say("Asking what the projects need again");
+            // The projects the edits wrote are evaluated again first, so the ask reads their frameworks as written.
+            await session.Models.Idle;
+            AskMobile(again: true);
+            await mobileAsking;
+            IReadOnlyList<string> left = [.. MobileWant.IosHeads.Where(h => h.Makes && heads.Any(made => made.Name == h.Name)).Select(h => h.Name)];
+            Told(making, left.Count == 0, left.Count == 0 ? $"The iOS edits of {named} are made" : $"The iOS edits were made, but {Plural.Listed([.. left])} still {Plural.Agreeing(left.Count, "needs", "need")} what the banner says");
+        }
     }
 
     /// <summary>Install Workloads: the workloads the projects lack, once the person agreed to install them.</summary>

@@ -206,6 +206,18 @@ public static class MSBuildNames
     public const string SdkDevPath = "_SdkDevPath";
     public const string SdkVersion = "_SdkVersion";
 
+    // The Apple workloads' reading of an app's project: the Info.plist it takes and those laid over it, the least version
+    // of the platform the project builds for and the least its workload builds for, whether the workload checks the app's
+    // scene manifest, and whether the project makes an app's bundle, an app extension's being none.
+    public const string DetectAppManifest = "_DetectAppManifest";
+    public const string AppBundleManifest = "AppBundleManifest";
+    public const string PartialAppManifest = "PartialAppManifest";
+    public const string SupportedOSPlatformVersion = "SupportedOSPlatformVersion";
+    public const string MinSupportedOSPlatformVersion = "MinSupportedOSPlatformVersion";
+    public const string ValidateSceneManifest = "ValidateSceneManifest";
+    public const string CanOutputAppBundle = "_CanOutputAppBundle";
+    public const string IsAppExtension = "IsAppExtension";
+
     // A Mac Catalyst app's bundle as the Apple workloads' ComputeRunArguments leaves it: its folder and its program's name.
     public const string AppBundleDir = "AppBundleDir";
     public const string NativeExecutableName = "_NativeExecutableName";

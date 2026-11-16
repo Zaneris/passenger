@@ -56,6 +56,11 @@ internal sealed class XmlText
     public string IndentIn(XElement parent) =>
         parent.Elements().LastOrDefault() is { } last && Indent(last) is { Length: > 0 } own ? own : LineIndent(Span(parent).Start) + Unit;
 
+    /// <summary>The step a parent's children are indented by beyond it: theirs less its own, else <see cref="Unit"/>.</summary>
+    public string StepIn(XElement parent) =>
+        IndentIn(parent) is { } inside && LineIndent(Span(parent).Start) is { } outside && inside.Length > outside.Length && inside.StartsWith(outside, StringComparison.Ordinal)
+            ? inside[outside.Length..] : Unit;
+
     /// <summary>Puts an element after another: on the same line when more follows it there, else on a line of its own
     /// indented as it is, a step further in when its line begins with what holds it.</summary>
     public void After(XElement element, string with)

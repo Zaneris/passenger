@@ -21,8 +21,8 @@ public sealed record AppleAnswer(string? Problem, string? Unchosen = null)
     public IReadOnlyList<string> Simulators { get; init; } = [];
 }
 
-/// <summary>A mobile project as asked of its workloads: its name and frameworks, the workloads it lacks, and what its
-/// Android and Apple workloads say where it has them.</summary>
+/// <summary>A mobile project as asked of its workloads: its name and frameworks, the workloads it lacks, what its
+/// Android and Apple workloads say where it has them, and the edits it needs as an iOS app's head.</summary>
 public sealed record ProjectNeeds(string Name, IReadOnlyList<string> Frameworks)
 {
     public IReadOnlyList<WorkloadLacked> Workloads { get; init; } = [];
@@ -30,6 +30,8 @@ public sealed record ProjectNeeds(string Name, IReadOnlyList<string> Frameworks)
     public AndroidAnswer? Android { get; init; }
 
     public AppleAnswer? Apple { get; init; }
+
+    public IosHeadEdits? Ios { get; init; }
 }
 
 /// <summary>The platforms whose apps a .NET workload builds, by a target framework's platform (<c>net11.0-android</c>,

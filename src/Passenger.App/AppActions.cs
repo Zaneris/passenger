@@ -134,6 +134,9 @@ public static class AppActions
     public const string InstallWorkloads = "app.dotnet.installWorkloads";
     public const string InstallAndroidDependencies = "app.android.install";
 
+    // The edits an iOS app's head needs to build here, made to its project and Info.plist: no key of Rider's.
+    public const string MakeIosEdits = "app.ios.makeEdits";
+
     // The Endpoints window over the folder's .http files, and Test of the request chosen there: no key of Rider's.
     public const string ShowEndpoints = "app.showEndpoints";
     public const string TestEndpoint = "app.endpoints.test";
