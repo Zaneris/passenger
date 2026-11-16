@@ -91,6 +91,43 @@ public sealed class ColourSwatchesTests : IDisposable
         window.Close();
     }
 
+    /// <summary>A picker open in the main window closes once an editor in a window of its own becomes the active one, as the
+    /// popups placed at a line do, and the picker opened there is that window's own: its Choose writes its colour over its
+    /// own call and closes it there, the main window's file left as it was.</summary>
+    [AvaloniaFact]
+    public void A_picker_closes_as_an_editor_window_becomes_active_and_the_one_opened_there_writes_its_own_colour()
+    {
+        string accent = TestFolders.Write(folder, "Accent.cs", "class Accent\n{\n    static object Shade = Avalonia.Media.Color.FromRgb(0x11, 0x22, 0x33);\n}\n");
+        (MainWindow window, CodeEditor editor) = Open();
+        List<Window> opened = [];
+        using IDisposable watching = Window.WindowOpenedEvent.AddClassHandler<Window>((shown, _) => opened.Add(shown));
+        window.OpenFile(accent);
+        OpenDocument accentShown = window.EditorArea.Active!;
+        Ui.WaitFor(() => accentShown.ColourMarks.Any(m => m.Line == 2), "the swatch of Accent's colour");
+        Ui.Press(window, "shift F4");
+        Ui.Settle();
+        Window editors = opened.LastOrDefault(w => w is not MainWindow && w.IsVisible) ?? throw new Xunit.Sdk.XunitException("Open Tab in New Window opened no window of its own");
+        CodeEditor there = editors.GetVisualDescendants().OfType<EditorGroup>().Single().Editor;
+        Assert.Same(accentShown.Text, there.Document);
+
+        Pick(window, editor);
+        Passenger.App.Xaml.ColourPicker first = window.GetVisualDescendants().OfType<Passenger.App.Xaml.ColourPicker>().Single(p => p.IsEffectivelyVisible);
+        Ui.Click(there, there.GutterColumnPoint(there.Gutter!.Marks, 2));
+        Assert.Equal("#112233", window.PickingColour);
+        Assert.False(first.IsAttachedToVisualTree(), "The main window's picker stayed open once an editor in a window of its own became the active one and opened its own");
+        Passenger.App.Xaml.ColourPicker second = editors.GetVisualDescendants().OfType<Passenger.App.Xaml.ColourPicker>().Single(p => p.IsEffectivelyVisible);
+
+        editors.KeyTextInput("#AA0000");
+        Ui.Click(second.GetVisualDescendants().OfType<Button>().Single(b => b.Content is "Choose"));
+        Ui.Settle();
+        Assert.False(second.IsAttachedToVisualTree(), "The editor window's picker stayed open once its Choose was pressed");
+        Assert.Null(window.PickingColour);
+        Assert.True(there.Document.Snapshot.ToString().Contains("FromRgb(170, 0, 0)", StringComparison.Ordinal),
+            $"Choose in the editor window's picker did not write its colour over its own call ({window.Status}):\n{there.Document.Snapshot}");
+        Assert.Equal(Palette, editor.Document.Snapshot.ToString());
+        window.Close();
+    }
+
     /// <summary>Where a control lies in its window.</summary>
     private static Rect In(MainWindow window, Control control) => new(control.TranslatePoint(default, window) ?? default, control.Bounds.Size);
 

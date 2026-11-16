@@ -1,4 +1,5 @@
 using Avalonia;
+using Avalonia.Controls;
 using Passenger.App.CSharp;
 using Passenger.App.Editors;
 using Passenger.App.Workspace;
@@ -16,6 +17,9 @@ namespace Passenger.App;
 public partial class MainWindow
 {
     private ColourPicker? picker;
+
+    /// <summary>The layer the open picker was placed in, its editor's window's.</summary>
+    private Canvas? pickerLayer;
 
     /// <summary>The colour the open picker has, as hex; null while none is open.</summary>
     public string? PickingColour => picker?.Colour.Hex;
@@ -36,9 +40,10 @@ public partial class MainWindow
         Swatch swatch = Swatch.Of(Editors, use.WritePath ?? document.Path, use.WriteRange.Value);
         ColourPicker opened = new(use.Colour, Unwritable(document, use));
         picker = opened;
+        pickerLayer = Editors.AssistLayer;
         opened.DetachedFromVisualTree += (_, _) => swatch.Held?.Remove();
-        Editors.AssistLayer.Children.Add(opened);
-        assist.PlaceAtLine(opened, new Point(click.Position.X, editor.PointOf(editor.Document.Snapshot.GetLineStart(click.Line)).Y));
+        pickerLayer.Children.Add(opened);
+        assist.PlaceAtLine(opened, new Point(click.Position.X, editor.PointOf(editor.Document.Snapshot.GetLineStart(click.Line)).Y), ClosePicker);
         opened.Chosen += (_, colour) =>
         {
             // Read before the picker goes, which lets go of the swatch's text.
@@ -57,8 +62,9 @@ public partial class MainWindow
     {
         if (picker is not null)
         {
-            Editors.AssistLayer.Children.Remove(picker);
+            pickerLayer?.Children.Remove(picker);
             picker = null;
+            pickerLayer = null;
         }
     }
 
