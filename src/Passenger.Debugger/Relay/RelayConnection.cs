@@ -135,10 +135,11 @@ internal sealed class RelayConnection : IDisposable, IRelayLink
         }
     }
 
-    /// <summary>Where a relay is reached: a Unix socket for a path, else host:port, a bare port being the loopback's.</summary>
+    /// <summary>Where a relay is reached: a Unix socket for a path (on Windows a drive's too), else host:port, a bare port
+    /// being the loopback's.</summary>
     internal static EndPoint EndPointOf(string address)
     {
-        if (address.StartsWith('/'))
+        if (address.StartsWith('/') || Path.IsPathFullyQualified(address))
         {
             return new UnixDomainSocketEndPoint(address);
         }

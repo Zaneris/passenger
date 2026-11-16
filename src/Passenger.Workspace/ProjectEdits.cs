@@ -374,7 +374,7 @@ public static class ProjectEdits
 
     /// <summary>The TargetFramework and TargetFrameworks elements of a project's property groups.</summary>
     private static IEnumerable<XElement> FrameworkElements(XmlText xml) =>
-        xml.Root.Descendants().Where(e => e.Name.LocalName is "TargetFramework" or "TargetFrameworks" && !e.HasElements && e.Parent?.Name.LocalName == "PropertyGroup");
+        xml.Root.Descendants().Where(e => e.Name.LocalName is MSBuildNames.TargetFramework or MSBuildNames.TargetFrameworks && !e.HasElements && e.Parent?.Name.LocalName == "PropertyGroup");
 
     /// <summary>A project file's text with each framework of <paramref name="moves"/> named anew wherever a TargetFramework or
     /// TargetFrameworks element names it among its frameworks, under a condition or not, every other character as it was;
@@ -453,8 +453,9 @@ public static class ProjectEdits
         {
             return null;
         }
-        string debug = "'$(Configuration)' == 'Debug'";
-        string condition = platform is null ? debug : $"{debug} And $([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == '{platform}'";
+        string debug = $"'$({MSBuildNames.Configuration})' == 'Debug'";
+        string condition = platform is null ? debug
+            : $"{debug} And $([MSBuild]::GetTargetPlatformIdentifier('$({MSBuildNames.TargetFramework})')) == '{platform}'";
         string written = XmlEntities.Encode(value);
         List<XElement> groups = [.. xml.Root.Elements().Where(e => e.Name.LocalName == "PropertyGroup")];
         if (platform is null && groups.FirstOrDefault(g => ((string?)g.Attribute("Condition"))?.Replace(" ", string.Empty, StringComparison.Ordinal)

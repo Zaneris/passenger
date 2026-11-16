@@ -71,6 +71,10 @@ public class RelayConnectionTests
             RelayConnection.EndPointOf("/Users/a/Library/Containers/com.x/Data/tmp/passenger/r"));
         Assert.Equal(new IPEndPoint(IPAddress.Loopback, 5599), RelayConnection.EndPointOf("127.0.0.1:5599"));
         Assert.Equal(new IPEndPoint(IPAddress.Loopback, 5600), RelayConnection.EndPointOf(":5600"));
+        if (OperatingSystem.IsWindows())
+        {
+            Assert.Equal(new UnixDomainSocketEndPoint(@"C:\Temp\passenger\r"), RelayConnection.EndPointOf(@"C:\Temp\passenger\r"));
+        }
     }
 
     /// <summary>The app's end of a relay at a socket: one client taken, its first frame read whole and the relay's hello
