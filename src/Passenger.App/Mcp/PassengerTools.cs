@@ -1662,7 +1662,8 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         "Builds and runs the unit tests, or those whose full name contains filter, as the Unit Tests window does, each project " +
         "by the runner its build asks for (Microsoft Testing Platform for xUnit v3, MSTest's and NUnit's runners and TUnit; a Godot game's GUT " +
         "and GoDotTest in Godot; VSTest for the rest). With debug, under the debugger: a stop in a test comes back, and debug_continue goes on. Returns the tally and " +
-        "every failure with its message and stack trace.")]
+        "every failure with its message and stack trace; a failed Reqnroll or SpecFlow scenario's steps each with how it went, one that did not pass with the " +
+        "definition its text binds, its arguments, what was said and the stack's frames in the folder.")]
     public Task<TestRunInfo> TestsRun(
         string? filter = null,
         bool debug = false, CancellationToken cancel = default) => OnUi(cancel, async () =>
@@ -1694,7 +1695,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         {
             throw new InvalidOperationException(WithBuildErrors(problem, built.Ended));
         }
-        return TestInfo(tests);
+        return TestInfo(tests, await StepsOfAsync([.. tests.RunOutcomes.Where(o => o.State == Testing.TestState.Failed)], cancel));
     });
 
     [McpServerTool(Name = McpTools.TestsList, Title = "The unit tests", ReadOnly = true), Description(
@@ -1734,9 +1735,11 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
     /// <summary>The last run's tally and its failures, of the tests it ran alone as it told them (a test renamed as it ran
     /// still told), a method's results together (its failed rows, the rest counted), each message and stack whole and its
     /// output's last lines.</summary>
-    private TestRunInfo TestInfo(Testing.TestController tests)
+    private TestRunInfo TestInfo(Testing.TestController tests, IReadOnlyDictionary<Testing.TestOutcome, IReadOnlyList<StepInfo>>? steps = null)
     {
         List<TestFailure> failures = [];
+        int stepsGiven = 0;
+        int stepsLeft = 0;
         foreach (IGrouping<(string, string, string?), Testing.TestOutcome> method in tests.RunOutcomes
             .GroupBy(o => (o.Test.Project, o.Test.Method, o.Test.Framework)).Where(m => m.Any(o => o.State == Testing.TestState.Failed)))
         {
@@ -1744,14 +1747,115 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             Testing.TestNode? shown = tests.Tree.Node(test) is { } node ? node.Kind == Testing.TestNodeKind.Row ? node.Parent : node : null;
             bool several = shown?.Framework is not null || tests.RunOutcomes.Any(o => o.Test.Project == test.Project && o.Test.Method == test.Method && o.Test.Framework != test.Framework);
             string? place = shown?.Path is { } at ? $"{Relative(at)}:{shown.Line}" : test.Path is { } found ? $"{Relative(found)}:{test.Line}" : null;
+            List<StepInfo> its = steps is null ? [] : [.. method.SelectMany(o => steps.GetValueOrDefault(o) ?? [])];
+            if (its.Count > 0 && stepsGiven + its.Count > AgentAnswers.MostFindings)
+            {
+                stepsLeft++;
+                its = [];
+            }
+            stepsGiven += its.Count;
             failures.Add(new TestFailure(shown is null ? $"{test.Method}{(several ? $" ({test.Framework})" : string.Empty)}" : TestName(shown), place,
-                Testing.TestNode.FailuresOf([.. method], FailureOutputLines)));
+                Testing.TestNode.FailuresOf([.. method], FailureOutputLines))
+            {
+                Steps = its.Count > 0 ? its : null,
+            });
         }
-        return new TestRunInfo(tests.Summary, failures);
+        return new TestRunInfo(tests.Summary, failures)
+        {
+            StepsLeftOut = stepsLeft == 0 ? null : $"The steps of {Plural.Of(stepsLeft, "more failed scenario")} are left out; tests_run with a filter naming one answers its steps",
+        };
     }
 
     /// <summary>How many of a failure's last lines of output an answer gives: an agent's answer holds no test's every line.</summary>
     private const int FailureOutputLines = 50;
+
+    /// <summary>Each failed Reqnroll or SpecFlow scenario's steps as its run went, by its outcome (<see cref="MainWindow.FeatureRunsAsync"/>):
+    /// each step's text, place and outcome; one that did not pass with the definition its text binds as the editor matches it,
+    /// the arguments it ran with as converted where the run says them, else as its text gives them, what the run said, the
+    /// failure's frames in the folder, and for one undefined or ambiguous what came close, in the editor's words.</summary>
+    private async Task<Dictionary<Testing.TestOutcome, IReadOnlyList<StepInfo>>> StepsOfAsync(IReadOnlyList<Testing.TestOutcome> failed, CancellationToken cancel)
+    {
+        Dictionary<Testing.TestOutcome, IReadOnlyList<StepInfo>> steps = new(ReferenceEqualityComparer.Instance);
+        foreach (Bdd.FeatureRun feature in await window.FeatureRunsAsync(Session, failed))
+        {
+            try
+            {
+                // The bindings the definitions are named from, read from the code as the server has it now.
+                await ServerSettledAsync(feature.Path, _ => true, cancel);
+                await window.StepsAsync(cancel);
+            }
+            catch (Exception unread) when (unread is TimeoutException or InvalidOperationException)
+            {
+                AgentCall.Say($"The steps' definitions are not named: {unread.Message}");
+            }
+            Bdd.FeatureAnalysis analysis = await Session.Features.ReadAsync(feature.Path, feature.Text);
+            foreach (IGrouping<Testing.TestOutcome, (Passenger.Workspace.Gherkin.StepResult Result, Testing.TestOutcome Test)> test in feature.Steps.GroupBy(s => s.Test, ReferenceEqualityComparer.Instance as IEqualityComparer<Testing.TestOutcome>))
+            {
+                steps[test.Key] = [.. test.Select(s => StepOf(feature, analysis, s.Result, s.Test))];
+            }
+        }
+        return steps;
+    }
+
+    private StepInfo StepOf(Bdd.FeatureRun feature, Bdd.FeatureAnalysis analysis, Passenger.Workspace.Gherkin.StepResult result, Testing.TestOutcome test)
+    {
+        StepInfo step = new(result.Said, $"{Relative(feature.Path)}:{result.Line + 1}", result.Outcome.ToString().ToLowerInvariant())
+        {
+            Row = test.Row,
+        };
+        if (result.Outcome == Passenger.Workspace.Gherkin.StepOutcome.Passed)
+        {
+            return step;
+        }
+        Passenger.Workspace.Gherkin.FeatureStep? written = analysis.Reading.Steps.FirstOrDefault(s => s.Line == result.Line);
+        Passenger.Workspace.Gherkin.StepMatch? match = null;
+        if (written is not null && analysis.Matcher is { } matcher && result.Said.StartsWith(written.Keyword.TrimEnd(), StringComparison.Ordinal))
+        {
+            string text = result.Said[written.Keyword.TrimEnd().Length..].TrimStart();
+            Passenger.Workspace.Gherkin.FeatureScenario scenario = written.Scenario;
+            match = matcher.Match(written.Kind, text, written.DocString is not null, written.Table is not null,
+                new Passenger.Workspace.Gherkin.StepContext(analysis.Reading.Feature?.Title, scenario.Title, scenario.AllTags));
+            if (match.Bindings.FirstOrDefault() is { } bound)
+            {
+                step = step with
+                {
+                    Definition = bound.Binding.MethodPlace is { } place ? $"{Relative(place.Path)}:{place.Line + 1} {bound.Binding.Type}.{bound.Binding.Method}" : $"{bound.Binding.Type}.{bound.Binding.Method}",
+                    Arguments = result.Arguments ?? string.Join(", ", bound.Arguments.Select((a, i) =>
+                        $"{(i < bound.Binding.Parameters.Count ? $"{bound.Binding.Parameters[i].Name} ({bound.Binding.Parameters[i].Type}): " : string.Empty)}{text.Substring(a.Start, a.Length)}")),
+                };
+            }
+        }
+        string? said = result.Outcome is Passenger.Workspace.Gherkin.StepOutcome.Undefined or Passenger.Workspace.Gherkin.StepOutcome.Ambiguous
+            ? string.Join("\n", analysis.Marks.Where(m => analysis.Text.GetLineFromOffset(m.Range.Start) == result.Line).Select(m => m.Message)) is { Length: > 0 } marked ? marked : result.Message
+            : result.Message ?? (result.Outcome == Passenger.Workspace.Gherkin.StepOutcome.Failed ? test.Message : null);
+        return step with
+        {
+            Message = said,
+            Frames = result.Outcome == Passenger.Workspace.Gherkin.StepOutcome.Failed && OwnFrames(test.StackTrace) is { Count: > 0 } frames ? frames : null,
+        };
+    }
+
+    /// <summary>The frames of a stack in the open folder's files, each "at Type.Method(…) in path:line" with the path the folder's own.</summary>
+    private List<string> OwnFrames(string? stack)
+    {
+        List<string> frames = [];
+        foreach (string line in (stack ?? string.Empty).Split('\n'))
+        {
+            string frame = line.Trim();
+            int @in = frame.LastIndexOf(" in ", StringComparison.Ordinal);
+            int at = frame.LastIndexOf(":line ", StringComparison.Ordinal);
+            if (!frame.StartsWith("at ", StringComparison.Ordinal) || @in < 0 || at < @in || Session.Folder is not { } folder)
+            {
+                continue;
+            }
+            string path = frame[(@in + 4)..at];
+            if (Path.IsPathFullyQualified(path) && PathNames.IsUnder(PathNames.Canonical(path), folder))
+            {
+                frames.Add($"{frame[..@in]} in {Relative(PathNames.Canonical(path))}:{frame[(at + 6)..]}");
+            }
+        }
+        return frames;
+    }
 
     /// <summary>A test's full name, Namespace.Class.Method, and the target framework it ran under when its project has several.</summary>
     private static string TestName(Testing.TestNode method)
@@ -3840,9 +3944,33 @@ public sealed record DebugSnapshot(
     public IReadOnlyList<string>? Sessions { get; init; }
 }
 
-public sealed record TestRunInfo(string Summary, IReadOnlyList<TestFailure> Failures, DebugSnapshot? Debugger = null);
+public sealed record TestRunInfo(string Summary, IReadOnlyList<TestFailure> Failures, DebugSnapshot? Debugger = null)
+{
+    /// <summary>What of the failed scenarios' steps an answer of many left out.</summary>
+    public string? StepsLeftOut { get; init; }
+}
 
-public sealed record TestFailure(string Test, string? Location, string Details);
+public sealed record TestFailure(string Test, string? Location, string Details)
+{
+    /// <summary>A failed Reqnroll or SpecFlow scenario's steps, as its run went.</summary>
+    public IReadOnlyList<StepInfo>? Steps { get; init; }
+}
+
+/// <summary>A scenario's step as its run went: its text with an example's values, place and outcome, the example row it ran for;
+/// for one that did not pass, the definition its text binds (path:line Type.Method), its arguments, what was said, and a
+/// failure's frames in the folder.</summary>
+public sealed record StepInfo(string Step, string Location, string Outcome)
+{
+    public string? Row { get; init; }
+
+    public string? Definition { get; init; }
+
+    public string? Arguments { get; init; }
+
+    public string? Message { get; init; }
+
+    public IReadOnlyList<string>? Frames { get; init; }
+}
 
 public sealed record TestInfoRow(string Test, string State, string? Location)
 {
