@@ -179,12 +179,35 @@ public sealed class SharedProjectsTests : IDisposable
     [Fact]
     public void A_file_one_item_names_beside_another_is_named_where_it_moved_within_the_folder_and_taken_out_where_it_left_it()
     {
-        string moved = SharedProjects.WithListsMoved(Globbed, ItemsFile, [(At("Extra.cs"), At("Parts/Extra.cs")), (At("Greeting.cs"), Path.Combine(root, "Api", "Greeting.cs"))]);
+        Directory.CreateDirectory(Shared);
+        File.WriteAllText(ItemsFile, Globbed);
 
-        Assert.Equal(Globbed.Replace("$(MSBuildThisFileDirectory)Greeting.cs;$(MSBuildThisFileDirectory)Extra.cs", "$(MSBuildThisFileDirectory)Parts\\Extra.cs", StringComparison.Ordinal), moved);
-        string swapped = SharedProjects.WithListsMoved(Globbed, ItemsFile, [(At("Greeting.cs"), At("Swap.cs")), (At("Extra.cs"), At("Greeting.cs")), (At("Swap.cs"), At("Extra.cs"))]);
+        Assert.True(SharedProjects.Follow(ItemsFile, [(At("Extra.cs"), At("Parts/Extra.cs")), (At("Greeting.cs"), Path.Combine(root, "Api", "Greeting.cs"))], _ => []),
+            "The items file did not follow the files its list names");
+        Assert.Equal(Globbed.Replace("$(MSBuildThisFileDirectory)Greeting.cs;$(MSBuildThisFileDirectory)Extra.cs", "$(MSBuildThisFileDirectory)Parts/Extra.cs", StringComparison.Ordinal),
+            File.ReadAllText(ItemsFile));
+        string swapped = ProjectEdits.WithItemsMoved(Globbed, ItemsFile, [(At("Greeting.cs"), At("Swap.cs")), (At("Extra.cs"), At("Greeting.cs")), (At("Swap.cs"), At("Extra.cs"))])!;
         Assert.Equal(Globbed.Replace("Greeting.cs;$(MSBuildThisFileDirectory)Extra.cs", "Extra.cs;$(MSBuildThisFileDirectory)Greeting.cs", StringComparison.Ordinal), swapped);
-        Assert.Equal(Globbed, SharedProjects.WithListsMoved(Globbed, ItemsFile, [(At("Models/Order.cs"), At("Models/Sale.cs"))]));
+        Assert.Null(ProjectEdits.WithItemsMoved(Globbed, ItemsFile, [(At("Models/Order.cs"), At("Models/Sale.cs"))]));
+    }
+
+    [Fact]
+    public void A_file_a_list_names_moved_where_a_wildcard_of_its_type_takes_it_is_named_no_more_and_one_its_drafts_leave_out_is()
+    {
+        string covered = ProjectEdits.WithItemsMoved(Globbed, ItemsFile, [(At("Extra.cs"), At("Models/Extra.cs"))])!;
+
+        Assert.Equal(Globbed.Replace("Greeting.cs;$(MSBuildThisFileDirectory)Extra.cs", "Greeting.cs", StringComparison.Ordinal), covered);
+        Assert.True(Takes(covered, "Models/Extra.cs"), "The wildcard no longer takes Extra.cs where it moved");
+        string both = ProjectEdits.WithItemsMoved(Globbed, ItemsFile, [(At("Extra.cs"), At("Models/Extra.cs")), (At("Greeting.cs"), At("Models/Greeting.cs"))])!;
+        Assert.Equal(Globbed.Replace("    <Compile Include=\"$(MSBuildThisFileDirectory)Greeting.cs;$(MSBuildThisFileDirectory)Extra.cs\" />\n", string.Empty, StringComparison.Ordinal), both);
+        string drafted = ProjectEdits.WithItemsMoved(Globbed, ItemsFile, [(At("Extra.cs"), At("Models/Drafts/Extra.cs"))])!;
+        Assert.Equal(Globbed.Replace("$(MSBuildThisFileDirectory)Extra.cs", "$(MSBuildThisFileDirectory)Models/Drafts/Extra.cs", StringComparison.Ordinal), drafted);
+
+        const string Kept = "<Project>\n  <ItemGroup>\n    <Compile Include=\"Models\\**\\*.cs\" />\n    <Compile Include=\"A.cs;B.cs\" Link=\"Shared\\%(Filename)%(Extension)\" />\n"
+            + "    <None Include=\"C.txt;D.txt\" />\n    <Compile Remove=\"Models\\E.cs\" />\n    <Compile Include=\"E.cs\" />\n  </ItemGroup>\n</Project>\n";
+        string kept = ProjectEdits.WithItemsMoved(Kept, ItemsFile, [(At("A.cs"), At("Models/A.cs")), (At("C.txt"), At("Models/C.txt")), (At("E.cs"), At("Models/E.cs"))])!;
+        Assert.Equal(Kept.Replace("\"A.cs;", "\"Models/A.cs;", StringComparison.Ordinal).Replace("\"C.txt;", "\"Models/C.txt;", StringComparison.Ordinal)
+            .Replace("\"E.cs\"", "\"Models/E.cs\"", StringComparison.Ordinal), kept);
     }
 
     [Fact]

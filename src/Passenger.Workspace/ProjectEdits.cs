@@ -492,22 +492,37 @@ public static class ProjectEdits
             ? PropertyGroups(xml).SelectMany(g => g.Elements()).FirstOrDefault(e => e.Name.LocalName == name && !e.HasElements)?.Value.Trim()
             : null;
 
-    /// <summary>The project (at its path now) following files and folders moved or renamed: each path it names from its
-    /// folder, or from $(MSBuildThisFileDirectory) (an item's Include, Update, Remove or Exclude, a glob by its folder; an
-    /// Import's Project and the Exists of its Condition, not an SDK's; a HintPath), names where that went, a list or another
-    /// property staying as written, and a DependentUpon or LastGenOutput (from its item's file) names it there. A project
-    /// that moved reads its paths from where it was, so one naming a file outside it still finds it. Whether it changed.</summary>
+    /// <summary>The project (at its path now) following files and folders moved or renamed, as <see cref="WithItemsMoved"/>
+    /// writes it. Whether it changed.</summary>
     public static bool MoveItems(string project, IReadOnlyList<(string From, string To)> moves)
     {
         ProjectText file = new(project);
-        if (Read(file.Text) is not { } xml)
+        if (WithItemsMoved(file.Text, project, moves) is not { } moved)
         {
             return false;
         }
+        file.Write(moved);
+        return true;
+    }
+
+    /// <summary>A project file's text (the file at <paramref name="project"/> now) following files and folders moved: each path
+    /// it names from its folder, or from $(MSBuildThisFileDirectory) (each of an item's Include, Update, Remove or Exclude, a
+    /// glob by its folder; an Import's Project and its Condition's Exists; a HintPath), names where that went, unless another
+    /// item of its type takes it there (<see cref="NamedOnce"/>), and a DependentUpon or LastGenOutput names it from its item's
+    /// file. A project moved reads its paths from where it was. Null where nothing changed or the text is no XML.</summary>
+    public static string? WithItemsMoved(string text, string project, IReadOnlyList<(string From, string To)> moves)
+    {
+        if (Read(text) is not { } xml)
+        {
+            return null;
+        }
         string folder = Path.GetDirectoryName(project)!;
-        string Moved(string path) => moves.FirstOrDefault(m => PathNames.Within(path, m.From)) is { From: not null } move ? PathNames.Moved(path, move.From, move.To) : path;
-        string before = Path.GetDirectoryName(moves.FirstOrDefault(m => PathNames.Within(project, m.To)) is { To: not null } back ? PathNames.Moved(project, back.To, back.From) : project)!;
+        // In turn, as the moves were made: one may move again what one before it moved.
+        string Moved(string path) => moves.Aggregate(path, (at, move) => PathNames.Moved(at, move.From, move.To));
+        string before = Path.GetDirectoryName(Enumerable.Reverse(moves).Aggregate(project, (at, move) => PathNames.Moved(at, move.To, move.From)))!;
         List<(int Start, int Length, string With)> edits = [];
+        // Where the files an Include names went, which another item may take there.
+        HashSet<string> arrived = new(PathNames.Comparer);
         foreach (XElement item in xml.Root.Descendants())
         {
             switch (item.Name.LocalName)
@@ -535,7 +550,11 @@ public static class ProjectEdits
                     continue;
                 }
                 own ??= kind is "Include" or "Update" && ItemPaths.Read(ProjectItems.FromThisFolder(XmlEntities.DecodeText(xml.Written(span)).Trim())) is { Glob: false, Path.Length: > 0 } one ? one.Path : null;
-                Follow(span, once: kind == "Exclude");
+                // Each name of a list (A.cs;B.cs) as MSBuild splits it, the rest of the list as written.
+                foreach ((int Start, int Length) part in xml.PartsOf(span))
+                {
+                    Follow(part, xml.Text[span.Start - 1], once: kind == "Exclude", arriving: kind == "Include");
+                }
             }
             if (own is null)
             {
@@ -562,14 +581,13 @@ public static class ProjectEdits
         }
         if (edits.Count == 0)
         {
-            return false;
+            return null;
         }
         xml.Apply(edits);
-        file.Write(xml.Text);
-        return true;
+        return arrived.Count == 0 ? xml.Text : NamedOnce(xml.Text, project, arrived);
 
         // A path named from the project's folder names where that is now; a glob, by its folder. Read and written as XML.
-        void Follow((int Start, int Length)? at, char? quote = null, bool once = false, bool quoted = false)
+        void Follow((int Start, int Length)? at, char? quote = null, bool once = false, bool quoted = false, bool arriving = false)
         {
             if (at is not { } span)
             {
@@ -590,10 +608,70 @@ public static class ProjectEdits
             {
                 string moved = item.At(Written(Path.GetRelativePath(folder, now), item.Path));
                 edits.Add((start, written.Length, XmlEntities.Encode(quoted ? ItemPaths.InCondition(moved) : moved, quote ?? xml.Text[span.Start - 1])));
+                if (arriving && !item.Glob)
+                {
+                    arrived.Add(now);
+                }
             }
         }
 
         static string Full(string folder, string relative) => Path.GetFullPath(Path.Combine(folder, relative.Replace('\\', '/')));
+    }
+
+    /// <summary>A project's text without the names of files a move brought (<paramref name="arrived"/>) where another item of
+    /// its type every build sees takes them already, a wildcard's too, as MSBuild would take such a file twice (NETSDK1022):
+    /// each out of its list as written, an item naming no other going whole. One whose item says more of it than its name
+    /// (a Link, its metadata) stays.</summary>
+    private static string NamedOnce(string text, string project, IReadOnlySet<string> arrived)
+    {
+        string folder = Path.GetDirectoryName(project)!;
+        while (Twice(text) is { } without)
+        {
+            text = without;
+        }
+        return text;
+
+        // The text without the first such name; null where there is none.
+        string? Twice(string now)
+        {
+            XmlText xml = new(now);
+            List<XElement> items = [.. SharedProjects.ItemsIn(xml.Root)];
+            for (int index = 0; index < items.Count; index++)
+            {
+                XElement item = items[index];
+                string type = item.Name.LocalName;
+                if (xml.ValueOf(item, "Include") is not { } span || item.Elements().Any() || item.Attributes().Any(a => a.Name.LocalName is not ("Include" or "Condition")))
+                {
+                    continue;
+                }
+                List<(int Start, int Length)> parts = xml.PartsOf(span);
+                for (int at = 0; at < parts.Count; at++)
+                {
+                    if (ProjectItems.PathOf(folder, XmlEntities.DecodeText(xml.Written(parts[at]))) is not { Glob: false } named || !arrived.Contains(named.Whole)
+                        || !items.Any(e => e != item && e.Name.LocalName.Equals(type, StringComparison.OrdinalIgnoreCase) && ProjectItems.Unconditioned(e)
+                            && SharedProjects.Includes(folder, e, named.Whole)))
+                    {
+                        continue;
+                    }
+                    XmlText without = new(now);
+                    List<string> kept = [.. parts.Where((_, other) => other != at).Select(xml.Written).Where(p => p.Trim().Length > 0)];
+                    if (kept.Count == 0)
+                    {
+                        SharedProjects.RemoveItem(without, SharedProjects.ItemsIn(without.Root).ElementAt(index));
+                    }
+                    else
+                    {
+                        without.Apply([(span.Start, span.Length, string.Join(';', kept).Trim())]);
+                    }
+                    // A later Remove of it leaves the name it needs.
+                    if (SharedProjects.Taking(without.Text, project, named.Whole).Any(i => i.Type.Equals(type, StringComparison.OrdinalIgnoreCase)))
+                    {
+                        return without.Text;
+                    }
+                }
+            }
+            return null;
+        }
     }
 
     /// <summary>Reads the project, makes a change on its text, and writes it back unless the change says why not.</summary>

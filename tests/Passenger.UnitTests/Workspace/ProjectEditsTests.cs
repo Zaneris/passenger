@@ -72,6 +72,31 @@ public sealed class ProjectEditsTests : IDisposable
         Assert.Equal(Lib, File.ReadAllText(lib));
     }
 
+    /// <summary>Each file a list names (A.cs;B.cs) follows its move as the build splits the list, at a semicolon written as a
+    /// reference too, the rest of it, its spaces and the other names, as written; an Exclude's list follows as well.</summary>
+    [Fact]
+    public void Each_file_a_list_names_follows_its_move_the_rest_of_the_list_as_written()
+    {
+        const string App = """
+            <Project Sdk="Microsoft.NET.Sdk">
+              <ItemGroup>
+                <Compile Include="..\Linked\Alpha.cs;..\Linked\Beta.cs" />
+                <None Include="A.txt&#59; B&amp;C.txt ;D.txt" Exclude="Old\E.txt;F.txt" />
+              </ItemGroup>
+            </Project>
+
+            """;
+        string project = Path.Combine(root, "App", "App.csproj");
+        Directory.CreateDirectory(Path.GetDirectoryName(project)!);
+        File.WriteAllText(project, App);
+
+        Assert.True(ProjectEdits.MoveItems(project, [(Path.Combine(root, "Linked", "Beta.cs"), Path.Combine(root, "Linked", "Parts", "Beta.cs")),
+            (Path.Combine(root, "App", "B&C.txt"), Path.Combine(root, "App", "Notes", "B&C.txt")), (Path.Combine(root, "App", "F.txt"), Path.Combine(root, "App", "Old", "F.txt"))]),
+            "The project did not follow the files its lists name, so the build looks for each where it was (CS2001)");
+        Assert.Equal(App.Replace("..\\Linked\\Beta.cs", "..\\Linked\\Parts\\Beta.cs", StringComparison.Ordinal)
+            .Replace(" B&amp;C.txt ", " Notes/B&amp;C.txt ", StringComparison.Ordinal).Replace(";F.txt", ";Old/F.txt", StringComparison.Ordinal), File.ReadAllText(project));
+    }
+
     /// <summary>A file a project names, renamed to a name holding an ampersand, is named escaped, so the project still reads
     /// as XML and names it; and one already named escaped is found by its name and followed as it moves.</summary>
     [Fact]
@@ -231,7 +256,7 @@ public sealed class ProjectEditsTests : IDisposable
               <ItemGroup>
                 <ProjectReference Include="..\new%40two%25\Lib.csproj" />
                 <Compile Remove="../new%40two%2525/gen/**" />
-                <None Include="..\old%3Bone\a.txt;..\old%3Bone\b.txt" />
+                <None Include="..\new%40two%25\a.txt;..\new%40two%25\b.txt" />
                 <None Include="$(Shared)\old%3Bone\c.txt" />
                 <Reference Include="Native">
                   <HintPath>..\new%40two%25\Native.dll</HintPath>

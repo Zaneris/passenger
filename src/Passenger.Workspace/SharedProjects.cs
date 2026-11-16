@@ -119,15 +119,15 @@ public static class SharedProjects
     /// Whether it changed; one it would still take throws, saying so.</summary>
     public static bool Exclude(string projitems, IReadOnlyCollection<string> files) => Write(projitems, text => WithExcluded(text, projitems, files));
 
-    /// <summary>An items file following files and folders moved: what moved within its folder is named where it went
-    /// (<see cref="ProjectEdits.MoveItems"/>), what left it is taken out, and the files of what came into it from elsewhere
-    /// are written in (<paramref name="came"/>, those now under it). Whether it changed.</summary>
+    /// <summary>An items file following files and folders moved: what moved within its folder is named where it went, in a
+    /// list too, unless a wildcard of its type takes it there (<see cref="ProjectEdits.MoveItems"/>), what left it is taken
+    /// out, and the files of what came into it from elsewhere are written in (<paramref name="came"/>, those now under it).
+    /// Whether it changed.</summary>
     public static bool Follow(string projitems, IReadOnlyList<(string From, string To)> moves, Func<string, IEnumerable<string>> came)
     {
         string folder = Path.GetDirectoryName(projitems)!;
         string was = moves.FirstOrDefault(m => PathNames.Within(projitems, m.To)) is { To: not null } back ? PathNames.Moved(folder, back.To, back.From) : folder;
         bool changed = ProjectEdits.MoveItems(projitems, moves);
-        changed |= Write(projitems, text => WithListsMoved(text, projitems, moves));
         List<string> left = [.. moves.Where(m => PathNames.IsUnder(m.From, was) && !PathNames.IsUnder(m.To, folder)).Select(m => m.To)];
         List<string> come = [.. moves.Where(m => !PathNames.IsUnder(m.From, was) && PathNames.IsUnder(m.To, folder)).SelectMany(m => came(m.To))];
         changed |= left.Count > 0 && Remove(projitems, left);
@@ -184,10 +184,10 @@ public static class SharedProjects
         XmlText xml = new(text);
         string folder = Path.GetDirectoryName(projitems)!;
         bool Gone(string part) => ProjectItems.PathOf(folder, XmlEntities.DecodeText(part).Trim()) is { Glob: false } named && paths.Any(p => PathNames.Within(named.Whole, p));
-        while (ItemsIn(xml.Root).Select(e => (Item: e, Span: xml.ValueOf(e, "Include"))).FirstOrDefault(i => i.Span is { } span && Segments(xml.Written(span)).Any(Gone)) is
+        while (ItemsIn(xml.Root).Select(e => (Item: e, Span: xml.ValueOf(e, "Include"))).FirstOrDefault(i => i.Span is { } span && xml.PartsOf(span).Select(xml.Written).Any(Gone)) is
             { Item: { } gone, Span: { } at })
         {
-            List<string> kept = [.. Segments(xml.Written(at)).Where(part => !Gone(part) && part.Trim().Length > 0)];
+            List<string> kept = [.. xml.PartsOf(at).Select(xml.Written).Where(part => !Gone(part) && part.Trim().Length > 0)];
             if (kept.Count == 0)
             {
                 RemoveItem(xml, gone);
@@ -195,67 +195,6 @@ public static class SharedProjects
             else
             {
                 xml.Apply([(at.Start, at.Length, string.Join(';', kept).Trim())]);
-            }
-        }
-        return xml.Text;
-    }
-
-    /// <summary>An items file's text with the names in its lists (an item naming several files) following files and folders
-    /// moved: one moved within its folder named where it went, as it was written (from <c>$(MSBuildThisFileDirectory)</c> or
-    /// not, with its separators), one moved out of it taken out; an item left naming none goes.</summary>
-    public static string WithListsMoved(string text, string projitems, IReadOnlyList<(string From, string To)> moves)
-    {
-        XmlText xml = new(text);
-        string folder = Path.GetDirectoryName(projitems)!;
-        string Moved(string path)
-        {
-            foreach ((string from, string to) in moves)
-            {
-                path = PathNames.Moved(path, from, to);
-            }
-            return path;
-        }
-        // Last first, so each item's place among them holds while those after it change.
-        for (int at = ItemsIn(xml.Root).Count() - 1; at >= 0; at--)
-        {
-            XElement item = ItemsIn(xml.Root).ElementAt(at);
-            if (xml.ValueOf(item, "Include") is not { } span || Segments(xml.Written(span)) is not { Count: > 1 } parts)
-            {
-                continue;
-            }
-            char quote = xml.Text[span.Start - 1];
-            bool changed = false;
-            List<string> kept = [];
-            foreach (string part in parts)
-            {
-                string written = XmlEntities.DecodeText(part);
-                string name = written.Trim();
-                if (ProjectItems.PathOf(folder, name) is not { Glob: false } named || Moved(named.Whole) is var to && PathNames.Same(to, named.Whole))
-                {
-                    kept.Add(part);
-                    continue;
-                }
-                changed = true;
-                if (PathNames.IsUnder(to, folder))
-                {
-                    string relative = Path.GetRelativePath(folder, to);
-                    relative = name.Contains('/') && !name.Contains('\\') ? relative.Replace('\\', '/') : relative.Replace('/', '\\');
-                    string from = name.Length > ProjectItems.FromThisFolder(name).Length ? ProjectItems.ThisFolder : string.Empty;
-                    int lead = written.Length - written.TrimStart().Length;
-                    kept.Add(written[..lead] + XmlEntities.Encode(from + ItemPaths.Named(relative), quote) + written[(lead + name.Length)..]);
-                }
-            }
-            if (!changed)
-            {
-                continue;
-            }
-            if (kept.All(p => p.Trim().Length == 0))
-            {
-                RemoveItem(xml, item);
-            }
-            else
-            {
-                xml.Apply([(span.Start, span.Length, string.Join(';', kept.Where(p => p.Trim().Length > 0)).Trim())]);
             }
         }
         return xml.Text;
@@ -303,11 +242,11 @@ public static class SharedProjects
         ItemsIn(text, projitems, _ => []).Any(i => PathNames.Same(i.Path, file)) || Taking(text, projitems, file).Any(i => i.Type.Equals(type, StringComparison.OrdinalIgnoreCase));
 
     /// <summary>The items an items file's text takes a file as, its wildcards' too.</summary>
-    private static IEnumerable<EvaluatedItem> Taking(string text, string projitems, string file) =>
+    internal static IEnumerable<EvaluatedItem> Taking(string text, string projitems, string file) =>
         ItemsIn(text, projitems, folder => PathNames.IsUnder(file, folder) ? [file] : []).Where(i => PathNames.Same(i.Path, file));
 
     /// <summary>Whether an item's Include names or finds a file and its Exclude leaves it.</summary>
-    private static bool Includes(string folder, XElement item, string file) =>
+    internal static bool Includes(string folder, XElement item, string file) =>
         ProjectItems.Value(item, "Include") is { } include
         && ItemPaths.Parts(include).Select(p => ProjectItems.PathOf(folder, p)).OfType<ItemPath>().Any(named => named.Glob ? Matching(named)(file) : PathNames.Same(named.Whole, file))
         && !Patterns(folder, ProjectItems.Value(item, "Exclude"), once: true).Any(excluded => excluded(file));
@@ -329,7 +268,7 @@ public static class SharedProjects
     }
 
     /// <summary>An item taken out, its item group with it where it was the last.</summary>
-    private static void RemoveItem(XmlText xml, XElement item)
+    internal static void RemoveItem(XmlText xml, XElement item)
     {
         if (item.Parent is { } group && group.Nodes().All(n => n == item || n is XText { Value: var space } && string.IsNullOrWhiteSpace(space)))
         {
@@ -339,33 +278,6 @@ public static class SharedProjects
         {
             xml.Remove(item);
         }
-    }
-
-    /// <summary>A value's parts as written, split where MSBuild splits it once XML has read it: at each semicolon, written
-    /// or as a reference, never one ending another reference.</summary>
-    private static List<string> Segments(string raw)
-    {
-        List<string> parts = [];
-        int start = 0;
-        for (int at = 0; at < raw.Length; at++)
-        {
-            if (raw[at] == '&' && XmlEntities.ReferenceAt(raw, at, out int length) is { } named)
-            {
-                if (named == ";")
-                {
-                    parts.Add(raw[start..at]);
-                    start = at + length;
-                }
-                at += length - 1;
-            }
-            else if (raw[at] == ';')
-            {
-                parts.Add(raw[start..at]);
-                start = at + 1;
-            }
-        }
-        parts.Add(raw[start..]);
-        return parts;
     }
 
     /// <summary>The item type a file goes into an items file as: C# and Visual Basic code compiled, a .resx embedded, a
@@ -424,7 +336,7 @@ public static class SharedProjects
     }
 
     /// <summary>The items of the file's own item groups, in its order: none a target makes.</summary>
-    private static IEnumerable<XElement> ItemsIn(XElement root) =>
+    internal static IEnumerable<XElement> ItemsIn(XElement root) =>
         root.Descendants().Where(e => e.Parent is { } group && ProjectItems.IsItemGroup(group) && !group.Ancestors().Any(a => a.Name.LocalName == "Target"));
 
     /// <summary>What an Exclude or Remove names, each a test of a path; an Exclude's glob read <paramref name="once"/>.</summary>

@@ -239,6 +239,35 @@ internal sealed class XmlText
 
     public string Written((int Start, int Length) span) => Text.Substring(span.Start, span.Length);
 
+    /// <summary>Where each part of a value is as written (an item's list of paths), split where MSBuild splits it once XML
+    /// has read it: at each semicolon, written or as a reference, never one ending another reference. Each part keeps the
+    /// spaces around it; one written empty is there too.</summary>
+    public List<(int Start, int Length)> PartsOf((int Start, int Length) span)
+    {
+        string raw = Written(span);
+        List<(int Start, int Length)> parts = [];
+        int start = 0;
+        for (int at = 0; at < raw.Length; at++)
+        {
+            if (raw[at] == '&' && XmlEntities.ReferenceAt(raw, at, out int length) is { } named)
+            {
+                if (named == ";")
+                {
+                    parts.Add((span.Start + start, at - start));
+                    start = at + length;
+                }
+                at += length - 1;
+            }
+            else if (raw[at] == ';')
+            {
+                parts.Add((span.Start + start, at - start));
+                start = at + 1;
+            }
+        }
+        parts.Add((span.Start + start, raw.Length - start));
+        return parts;
+    }
+
     /// <summary>Makes several changes of the text as it reads now at once, each a span and what replaces it, none
     /// overlapping another.</summary>
     public void Apply(IEnumerable<(int Start, int Length, string With)> edits)

@@ -365,6 +365,51 @@ public sealed class ShprojTests : IDisposable
             Row(window, "Shop.Shared").Children!.Single(r => r.Name == "Models").Children!.Select(r => (r.Name, r.Unlisted));
     }
 
+    /// <summary>A file a list names (A.cs;B.cs), in a shared project's items file and in a project's own file, follows its
+    /// move: named where it went as written beside the others, or named no more where a wildcard of its type takes it
+    /// there, so both build.</summary>
+    [AvaloniaFact]
+    public void A_file_a_two_file_item_names_moved_is_named_where_it_went_or_left_to_a_wildcard_taking_it_there_and_the_solution_builds()
+    {
+        TestFolders.Write(folder, "Shop.Shared/Extra.cs", "namespace Shop.Shared;\n\npublic static class Extra\n{\n}\n");
+        TestFolders.Write(folder, "Shop.Shared/Third.cs", "namespace Shop.Shared;\n\npublic static class Third\n{\n}\n");
+        string listed = Items.Replace("<Compile Include=\"$(MSBuildThisFileDirectory)Greeting.cs\" />\n    <Compile Include=\"$(MSBuildThisFileDirectory)Models\\Order.cs\" />",
+            "<Compile Include=\"$(MSBuildThisFileDirectory)Models\\**\\*.cs\" />\n"
+            + "    <Compile Include=\"$(MSBuildThisFileDirectory)Greeting.cs;$(MSBuildThisFileDirectory)Extra.cs;$(MSBuildThisFileDirectory)Third.cs\" />", StringComparison.Ordinal);
+        File.WriteAllText(ItemsFile, listed);
+        string linked = Path.Combine(folder, "Linked");
+        TestFolders.Write(folder, "Linked/Alpha.cs", "namespace Shop.Linked;\n\npublic static class Alpha\n{\n}\n");
+        TestFolders.Write(folder, "Linked/Beta.cs", "namespace Shop.Linked;\n\npublic static class Beta\n{\n}\n");
+        Directory.CreateDirectory(Path.Combine(linked, "Covered"));
+        string api = Path.Combine(folder, "Shop.Api", "Shop.Api.csproj");
+        string own = TestProjects.Console().With("  <ItemGroup>\n    <Compile Include=\"..\\Linked\\Covered\\**\\*.cs\" />\n"
+            + "    <Compile Include=\"..\\Linked\\Alpha.cs;..\\Linked\\Beta.cs\" />\n  </ItemGroup>\n  <Import Project=\"..\\Shop.Shared\\Shop.Shared.projitems\" Label=\"Shared\" />\n");
+        File.WriteAllText(api, own);
+        MainWindow window = Open();
+        List<string> asked = Answered(window);
+        try
+        {
+            (string File, string Into)[] moves = [(Path.Combine(Shared, "Extra.cs"), Path.Combine(Shared, "Models")), (Path.Combine(Shared, "Third.cs"), Path.Combine(Shared, "Parts")),
+                (Path.Combine(linked, "Beta.cs"), Path.Combine(linked, "Covered")), (Path.Combine(linked, "Alpha.cs"), Path.Combine(linked, "Parts"))];
+            foreach ((string file, string into) in moves)
+            {
+                Directory.CreateDirectory(into);
+                Assert.True(Ui.Await(window.PutAsync([file], into, copy: false), $"the move of {Path.GetFileName(file)}").Count == 1, window.Status);
+            }
+
+            Assert.Equal(listed.Replace("Greeting.cs;$(MSBuildThisFileDirectory)Extra.cs;$(MSBuildThisFileDirectory)Third.cs", "Greeting.cs;$(MSBuildThisFileDirectory)Parts/Third.cs",
+                StringComparison.Ordinal), File.ReadAllText(ItemsFile));
+            Assert.Equal(own.Replace("..\\Linked\\Alpha.cs;..\\Linked\\Beta.cs", "..\\Linked\\Parts\\Alpha.cs", StringComparison.Ordinal), File.ReadAllText(api));
+            BuildOutcome built = Ui.Await(window.BuildAsync(), "the solution's build", TimeSpan.FromMinutes(3));
+            Assert.True(built.Succeeded, $"The solution did not build once the files its lists name moved: {built.Message}\n{string.Join("\n", built.Output)}");
+            Assert.Empty(asked);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     [AvaloniaFact]
     public void A_project_takes_and_drops_a_shared_projects_import_through_add_reference_and_its_dependencies_each_undone_in_one_step()
     {
