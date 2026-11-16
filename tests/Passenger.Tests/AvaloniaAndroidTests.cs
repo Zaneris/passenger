@@ -16,7 +16,7 @@ namespace Passenger.Tests;
 /// edit saved, and Debug stops at a breakpoint in the shared project's App, its locals shown, the shared library still
 /// built for its own framework; each end leaves nothing of Passenger's on the device and the build's own environment in
 /// the app, Debug's after a start left its own environment file in the build's link's place. Skips, saying why, without the
-/// Android workload, its SDK and Java, Avalonia's Android packages in the package cache, an emulator, or the relays.
+/// Android workload, its SDK and Java, Avalonia's Android packages from nuget.org, an emulator, or the relays.
 /// Debugged through the window, so alone.</summary>
 [Collection(Alone.Name)]
 public sealed class AvaloniaAndroidTests

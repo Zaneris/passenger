@@ -131,7 +131,8 @@ internal static class AvaloniaApp
 
     /// <summary>Avalonia's cross-platform solution made in a folder (<see cref="CreateCrossPlatformAsync"/>), its Android
     /// head (<c>name.Android</c>, its application <c>com.CompanyName.name</c>) taken to the first .NET whose Android apps run
-    /// on CoreCLR and restored from the package cache alone: the head's project, and why it did not restore, or null.</summary>
+    /// on CoreCLR and restored from nuget.org, as no restore of the solution's brings Avalonia's Android packages: the head's
+    /// project, and why it did not restore, or null.</summary>
     public static async Task<(string Project, string? Unrestored)> CreateAndroidHeadAsync(string folder, string name)
     {
         await CreateCrossPlatformAsync(folder, name);
@@ -139,10 +140,10 @@ internal static class AvaloniaApp
         // The template's head is .NET 10's, on Mono; on CoreCLR from .NET 11, whose Android workload takes API 24 at least.
         File.WriteAllText(project, File.ReadAllText(project).Replace("net10.0-android", $"net{Passenger.App.Mobile.MobilePlatforms.FirstOnCoreClr}.0-android", StringComparison.Ordinal)
             .Replace("<SupportedOSPlatformVersion>23<", "<SupportedOSPlatformVersion>24<", StringComparison.Ordinal));
+        TestFolders.Write(folder, "nuget.config", TestRun.FromNuGetOrg);
         ChildResult restored = await ChildProcesses.RunAsync(ChildProcesses.DotnetCommand(["restore", project], Path.GetDirectoryName(project)!), limit: Limit * 2);
         return (project, restored.Succeeded ? null
-            : $"The app's Android head does not restore here, from the package cache alone (Avalonia.Android {Version} and its AndroidX packages are there once an Avalonia "
-                + $"Android app was restored): {restored.Output.Split('\n').FirstOrDefault(l => l.Contains(": error ", StringComparison.Ordinal))?.Trim() ?? restored.FirstLine}");
+            : $"The app's Android head does not restore here from nuget.org: {restored.Output.Split('\n').FirstOrDefault(l => l.Contains(": error ", StringComparison.Ordinal))?.Trim() ?? restored.FirstLine}");
     }
 
     /// <summary>Avalonia's cross-platform solution made in a folder (<see cref="CreateCrossPlatformAsync"/>), its iOS head
