@@ -839,6 +839,18 @@ public sealed partial class Git
         return above.Succeeded && int.TryParse(above.Output.Trim(), System.Globalization.CultureInfo.InvariantCulture, out int count) ? count + 1 : null;
     }
 
+    /// <summary>The whole hash of the commit a hash or its first characters (at least 4) name, as a log shows it; null where
+    /// git has no such commit, or the characters name more than one object, or are no hash's.</summary>
+    public async Task<string?> CommitNamedAsync(string hash)
+    {
+        if (hash.Length is < 4 or > 64 || !hash.All(char.IsAsciiHexDigit))
+        {
+            return null;
+        }
+        GitResult named = await RunAsync(Root, ["rev-parse", "-q", "--verify", $"{hash}^{{commit}}"], answers: [1, NotThere]);
+        return named.Succeeded ? named.Output.Trim() : null;
+    }
+
     /// <summary>The commit HEAD names, as the log reads it, or null before the first commit.</summary>
     public async Task<CommitInfo?> HeadAsync()
     {

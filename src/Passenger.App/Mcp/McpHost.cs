@@ -61,7 +61,7 @@ public static partial class McpHost
         "service of the run, as workspace lists them; terminal, true to start it in a Terminal tab from now on (false: the Run " +
         "and Debug windows), as Edit Configurations' Use external console; symbol, in place of path, line and column, a C# symbol of the solution's " +
         "own code by name: Name, Type.Member or Namespace.Type, an overload as Member(string, int), or its documentation id " +
-        "(M:Namespace.Type.Member(System.String)); within, a folder or file whose places alone usages or hierarchy lists; from, the line " +
+        "(M:Namespace.Type.Member(System.String)); within, a folder or file whose places alone usages or hierarchy lists, or whose projects and routes workspace; from, the line " +
         "editor_text, outline, a file's diagnostics or its local_history reads on from. An answer that would run past 40,000 characters keeps what comes first " +
         "(usages: every file it can, counted, the first files' places listed) and says how many it left out and how to ask for them, in its " +
         "more or, after a list, in words; a place's line is shown around its column, 200 characters at most.\n\n" +

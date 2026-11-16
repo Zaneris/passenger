@@ -117,7 +117,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         await Session.NodeFilesRead.WaitAsync(cancel);
         await Task.Yield();
         await Session.Models.Idle.WaitAsync(cancel);
-        return await RunsWorkspace(Snapshot(), cancel);
+        return HeldWorkspace(await RunsWorkspace(Snapshot(), cancel));
     });
 
     [McpServerTool(Name = McpTools.Workspace, Title = "The workspace", ReadOnly = true), Description(
@@ -125,12 +125,17 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         "configurations (the chosen one marked), the build configuration every build takes and the others, whether the folder is trusted, the language server's state, the open files (unsaved marked) and the active " +
         "one with its caret, and the Aspire AppHosts and container run under way, each resource with its state, hold, debug " +
         "session and target. routes adds the web projects' routes, read from their code.")]
-    public Task<Workspace> GetWorkspace(bool routes = false, CancellationToken cancel = default) => OnUi(cancel, async () =>
+    public Task<Workspace> GetWorkspace(bool routes = false, string? within = null, CancellationToken cancel = default) => OnUi(cancel, async () =>
     {
+        string? inside = Within(within);
         Workspace answered = await RunsWorkspace(Snapshot(), cancel);
+        if (inside is not null)
+        {
+            answered = answered with { Projects = [.. answered.Projects.Where(p => Inside(p.Path, inside))] };
+        }
         if (!routes)
         {
-            return answered;
+            return HeldWorkspace(answered);
         }
         if (Session.CSharp is null)
         {
@@ -138,13 +143,53 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         }
         await When(() => Session.CSharp is not { } csharp || csharp.IsReady || csharp.IsStopped, ServerLimit, cancel, ServerState());
         IReadOnlyList<Roslyn.Extension.WebRoute> found = await window.RoutesAsync(cancel);
-        return answered with
+        return HeldWorkspace(answered with
         {
-            Routes = [.. found.Select(r => new RouteInfo(Path.GetFileNameWithoutExtension(r.Project), r.Kind, Endpoints.RouteRequests.Title(r), r.Handler,
+            Routes = [.. found.Where(r => inside is null || PathNames.Within(r.Path, inside)).Select(r => new RouteInfo(Path.GetFileNameWithoutExtension(r.Project), r.Kind,
+                Endpoints.RouteRequests.Title(r), r.Handler,
                 [.. r.Parameters.Select(p => $"{p.Name}{(p.Constraints is { } c ? ":" + c : p.Type is { } t ? ": " + t : string.Empty)}{(p.Optional ? "?" : string.Empty)} ({p.Source})")],
                 Relative(r.Path), ServerPlaces.PositionOf(Editors, r.Path, new LspPosition(r.At.Line, r.At.Character)).Line + 1, r.BodyType))],
-        };
+        });
     });
+
+    /// <summary>workspace's answer held within <see cref="AgentAnswers.MostCharacters"/>: its projects and routes whole where
+    /// they fit; else each list given its share of the room, half each where both run past theirs, the first projects whole
+    /// and those after named alone where room is short (<see cref="AgentAnswers.Grouped"/>), the first routes whole and the
+    /// rest left out, its more saying how many and that within lists those of a folder or file.</summary>
+    private static Workspace HeldWorkspace(Workspace answered)
+    {
+        IReadOnlyList<ProjectInfo> projects = answered.Projects;
+        IReadOnlyList<RouteInfo> routes = answered.Routes ?? [];
+        int room = Room(answered with { Projects = [], Routes = answered.Routes is null ? null : [] });
+        int projectsTake = projects.Sum(p => Size(p) + 1);
+        int routesTake = routes.Sum(r => Size(r) + 1);
+        if (projectsTake + routesTake <= room)
+        {
+            return answered;
+        }
+        int share = routesTake <= room / 2 ? room - routesTake : Math.Min(projectsTake, room / 2);
+        (int whole, int named) = AgentAnswers.Grouped(projects, Size, p => Size(Named(p)), share);
+        ProjectInfo[] kept = [.. projects.Take(whole), .. projects.Skip(whole).Take(named).Select(Named)];
+        int routesKept = AgentAnswers.Fitting(routes, Size, room - kept.Sum(p => Size(p) + 1));
+        int projectsLeft = projects.Count - kept.Length;
+        string?[] said =
+        [
+            named == 0 ? null : string.Create(System.Globalization.CultureInfo.InvariantCulture, $"{named:N0} {Plural.Noun(named, "project")} named alone"),
+            projectsLeft == 0 ? null : Left(projectsLeft, "project"),
+            routesKept == routes.Count ? null : Left(routes.Count - routesKept, "route"),
+        ];
+        return answered with
+        {
+            Projects = kept,
+            Routes = answered.Routes is null ? null : [.. routes.Take(routesKept)],
+            More = $"{Plural.Listed([.. said.OfType<string>()])}: within, a folder or file, lists {(answered.Routes is null ? "the projects" : "the projects and routes")} there whole",
+        };
+
+        // A project named alone, its kind and frameworks left to within.
+        static ProjectInfo Named(ProjectInfo project) => new(project.Name, project.Path, null, null);
+
+        static string Left(int left, string noun) => string.Create(System.Globalization.CultureInfo.InvariantCulture, $"{left:N0} more {Plural.Noun(left, noun)} left out");
+    }
 
     /// <summary>Waits for an image's or a font's decode, which lands off the window's thread: one whose first decode
     /// failed has closed its tab, and the agent hears why rather than that the file is open.</summary>
@@ -2872,7 +2917,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
     [McpServerTool(Name = McpTools.IdeActions, Title = "The IDE's actions", ReadOnly = true), Description(
         "Every action ide_action runs (those with no shortcut too), as id: name [group] (shortcut on this platform), " +
         "and why one cannot run here now.")]
-    public Task<IReadOnlyList<string>> IdeActions(
+    public Task<CallToolResult> IdeActions(
         [Description("Only those whose id, name or group holds it (\"rebase\", \"Git\")")] string? query = null,
         CancellationToken cancel = default) => OnUi(cancel, () =>
     {
@@ -2881,8 +2926,9 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         IEnumerable<IdeAction> asked = query is not { Length: > 0 } words ? actions.All
             : actions.All.Where(a => a.Id.Contains(words, StringComparison.OrdinalIgnoreCase) || a.Title.Contains(words, StringComparison.OrdinalIgnoreCase)
                 || a.Group.Contains(words, StringComparison.OrdinalIgnoreCase));
-        return Task.FromResult((IReadOnlyList<string>)[.. asked.Select(a =>
-            $"{a.Id}: {a.Title} [{a.Group}]{(actions.Shortcut(a.Id) is { } keys ? $" ({keys})" : string.Empty)}{(a.WhyNot(context) is { } why ? $" - cannot run: {why}" : string.Empty)}")]);
+        return Task.FromResult(Held([.. asked.Select(a =>
+            $"{a.Id}: {a.Title} [{a.Group}]{(actions.Shortcut(a.Id) is { } keys ? $" ({keys})" : string.Empty)}{(a.WhyNot(context) is { } why ? $" - cannot run: {why}" : string.Empty)}")],
+            "action", "query, a group's name or a word of the action's, narrows them"));
     });
 
     // The work behind them
@@ -3843,13 +3889,16 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
     /// <summary>A list's answer held within <see cref="AgentAnswers.MostCharacters"/>: its first entries as JSON and, where it
     /// left some out, after them the words saying how many (<paramref name="noun"/>) and how to read them
     /// (<paramref name="how"/>); <paramref name="beyond"/> more found past the entries (an agent's limit) are said as left
-    /// out too, read as <paramref name="beyondHow"/> says where the limit alone cut them.</summary>
-    private static CallToolResult Held<T>(IReadOnlyList<T> entries, string noun, string how, int beyond = 0, string? beyondHow = null)
+    /// out too, read as <paramref name="beyondHow"/> says where the limit alone cut them. Where the size cut them, words of
+    /// the last entry kept (<paramref name="readOn"/>) come before <paramref name="how"/>.</summary>
+    private static CallToolResult Held<T>(IReadOnlyList<T> entries, string noun, string how, int beyond = 0, string? beyondHow = null, Func<T, string>? readOn = null)
     {
         int kept = AgentAnswers.Fitting(entries, Size, AgentAnswers.MostCharacters - WordsRoom);
         int left = entries.Count - kept + beyond;
-        return Listed(kept == entries.Count ? entries : [.. entries.Take(kept)],
-            left == 0 ? null : AgentAnswers.More(left, noun, kept == entries.Count && beyondHow is not null ? beyondHow : how));
+        string said = kept == entries.Count && beyondHow is not null ? beyondHow
+            : kept < entries.Count && kept > 0 && readOn is not null ? $"{readOn(entries[kept - 1])}; {how}"
+            : how;
+        return Listed(kept == entries.Count ? entries : [.. entries.Take(kept)], left == 0 ? null : AgentAnswers.More(left, noun, said));
     }
 
     /// <summary>A text cut, where its JSON runs past <paramref name="room"/> characters, to a part whose JSON does not.</summary>
@@ -4132,6 +4181,10 @@ public sealed record Workspace(
     /// <summary>The solution the folder opens by that does not read ("path:line:column: why"), in whose place the projects
     /// under the folder are open; null with none.</summary>
     public string? UnreadSolution { get; init; }
+
+    /// <summary>How many projects the answer named alone or left out, and routes it left out, and how to read them; null
+    /// where it holds them all.</summary>
+    public string? More { get; init; }
 }
 
 /// <summary>A route as an agent reads it: its project, what declares it, its methods and template ("GET /todos/{id:int}"),
@@ -4140,7 +4193,7 @@ public sealed record RouteInfo(string Project, string Kind, string Route, string
 
 /// <summary>A project as workspace lists it: its output type as evaluated, but Exe for an Android app (a .NET MAUI app's
 /// Android build), which .NET for Android evaluates as Library though it runs.</summary>
-public sealed record ProjectInfo(string Name, string Path, string? OutputType, IReadOnlyList<string> TargetFrameworks)
+public sealed record ProjectInfo(string Name, string Path, string? OutputType, IReadOnlyList<string>? TargetFrameworks)
 {
     /// <summary>True for a project not loaded: one the solution filter opened leaves out, or one the person unloaded; null
     /// for one loaded, which the answer leaves unsaid.</summary>

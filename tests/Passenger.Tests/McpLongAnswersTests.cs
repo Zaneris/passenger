@@ -13,7 +13,8 @@ namespace Passenger.Tests;
 /// (<see cref="AgentAnswers.MostCharacters"/>), each saying how many it left out and how to ask for them, and that way
 /// reaching the rest: a symbol used thousands of times, its callers, a text found thousands of times, a name thousands of
 /// methods match, a file of thousands of members and warnings, a build of them, a file's text before a change, a long
-/// history, a commit of a thousand files and a thousand tests.</summary>
+/// history read on past each answer, a commit of a thousand files, a thousand tests, the IDE's actions, and a solution of
+/// hundreds of projects and thousands of routes.</summary>
 public sealed class McpLongAnswersTests : McpRig, IClassFixture<RestoredFolders>
 {
     public McpLongAnswersTests(RestoredFolders folders)
@@ -108,11 +109,95 @@ public sealed class McpLongAnswersTests : McpRig, IClassFixture<RestoredFolders>
         // A long history, a commit of a thousand files, and a thousand tests, in a folder of their own.
         string tests = await ManyTestsAsync();
         await using McpClient other = await Start(["--mcp", tests], languageServer: false);
-        LeftOut(await Held(other, McpTools.VcsLog, new() { ["count"] = 500 }), "commit", 500, "a path narrows them to a file's or folder's");
+        CallToolResult log = await Held(other, McpTools.VcsLog, new() { ["count"] = 500 });
+        LeftOut(log, "commit", 500, "a path narrows them to a file's or folder's");
+        string[] first = Subjects(log);
+        Match readOn = Regex.Match(((TextContentBlock)log.Content[1]).Text, @"left out: before (\w+) reads on; ");
+        Assert.True(readOn.Success && readOn.Groups[1].Value == Json(log)[first.Length - 1].GetProperty("hash").GetString(),
+            $"vcs_log cut short named no before of its last commit to read on from: {((TextContentBlock)log.Content[1]).Text}");
+        string[] after = Subjects(await Held(other, McpTools.VcsLog, new() { ["count"] = 500, ["before"] = readOn.Groups[1].Value }));
+        Assert.True(after.Length > 0 && Number(after[0]) == Number(first[^1]) - 1,
+            $"vcs_log before the last of {first.Length} commits ({first[^1]}) went on from {(after.Length > 0 ? after[0] : "none")}");
+        Assert.Contains("is no commit of the history vcs_log lists of Many", Text(await Result(other, McpTools.VcsLog, new() { ["path"] = "Many", ["before"] = readOn.Groups[1].Value })), StringComparison.Ordinal);
         JsonElement commit = Assert.Single(Json(await Held(other, McpTools.VcsLog, new() { ["path"] = "Many" }, whole: true)).EnumerateArray());
         Assert.True(commit.GetProperty("changes").GetArrayLength() + Number(commit.GetProperty("more").GetString()!) == ManyFiles,
             $"vcs_log of a folder whose commit added {ManyFiles} files answered: {Text(commit)[..Math.Min(600, Text(commit).Length)]}");
         LeftOut(await Held(other, McpTools.TestsList, new() { ["limit"] = 5000 }), "test", ManyTests, "filter or state narrows them");
+
+        // The IDE's actions, every one, within the limit, or saying how query narrows them.
+        CallToolResult actions = await Held(other, McpTools.IdeActions, new());
+        if (actions.Content.Count > 1)
+        {
+            LeftOut(actions, "action", null, "query, a group's name or a word of the action's, narrows them");
+        }
+
+        // Each commit's subject, as the history writes them.
+        static string[] Subjects(CallToolResult listed) => [.. Json(listed).EnumerateArray().Select(c => c.GetProperty("subject").GetString()!)];
+    }
+
+    private const int WideLibraries = 400;
+
+    private const int RouteFiles = 20;
+
+    private const int RoutesEach = 100;
+
+    [Fact]
+    public async Task A_workspace_of_hundreds_of_projects_and_thousands_of_routes_holds_to_the_limit_and_within_lists_those_of_a_folder_or_file_whole()
+    {
+        string wide = await WideSolutionAsync();
+        await using McpClient client = await Start(["--mcp", Path.Combine(wide, "Web.slnf")]);
+        const int Projects = WideLibraries + 1;
+        const int Routes = RouteFiles * RoutesEach;
+
+        // Every project it can named, the first whole, and the first routes, each list given its share of the room.
+        JsonElement workspace = Json(await Held(client, McpTools.Workspace, new() { ["routes"] = true }));
+        JsonElement[] projects = [.. workspace.GetProperty("projects").EnumerateArray()];
+        int whole = projects.Count(p => p.TryGetProperty("targetFrameworks", out _));
+        string more = workspace.GetProperty("more").GetString()!;
+        Match said = Regex.Match(more, @"^(?:([\d,]+) projects? named alone(?:, | and ))?(?:([\d,]+) more projects? left out(?:, | and ))?([\d,]+) more routes? left out: within, a folder or file, lists the projects and routes there whole$");
+        int named = said.Groups[1].Success ? Number(said.Groups[1].Value) : 0;
+        int projectsLeft = said.Groups[2].Success ? Number(said.Groups[2].Value) : 0;
+        int routes = workspace.GetProperty("routes").GetArrayLength();
+        Assert.True(said.Success && projects.Length == whole + named && projects.Length + projectsLeft == Projects && routes > 0 && routes + Number(said.Groups[3].Value) == Routes,
+            $"workspace of {Projects} projects and {Routes:N0} routes listed {projects.Length} projects ({whole} whole) and {routes} routes, saying: {more}");
+
+        // Within a project's folder that project whole, and within a file of routes all of its routes and no project.
+        string lastNamed = projects[^1].GetProperty("path").GetString()!;
+        JsonElement library = Json(await Held(client, McpTools.Workspace, new() { ["within"] = Path.GetDirectoryName(lastNamed) }, whole: true));
+        JsonElement only = Assert.Single(library.GetProperty("projects").EnumerateArray());
+        Assert.True(only.GetProperty("path").GetString() == lastNamed && only.GetProperty("targetFrameworks").GetArrayLength() == 1 && !library.TryGetProperty("more", out _),
+            $"workspace within {Path.GetDirectoryName(lastNamed)} answered: {library}");
+        string file = Path.Combine("Web", "Routes", $"R{RouteFiles - 1}.cs");
+        JsonElement routesOf = Json(await Held(client, McpTools.Workspace, new() { ["routes"] = true, ["within"] = file }, whole: true));
+        Assert.True(routesOf.GetProperty("projects").GetArrayLength() == 0 && routesOf.GetProperty("routes").GetArrayLength() == RoutesEach
+            && routesOf.GetProperty("routes").EnumerateArray().All(r => r.GetProperty("path").GetString() == file),
+            $"workspace's routes within {file} answered {routesOf.GetProperty("projects").GetArrayLength()} projects and {routesOf.GetProperty("routes").GetArrayLength()} routes, not its {RoutesEach}");
+    }
+
+    /// <summary>A solution of hundreds of libraries, never restored, and a web app of thousands of routes in files of their
+    /// own, restored, which a solution filter opens alone.</summary>
+    private async Task<string> WideSolutionAsync()
+    {
+        string wide = PathNames.Canonical(TestFolders.Create("mcp-wide-"));
+        DeleteAtEnd(wide);
+        StringBuilder solution = new("<Solution>\n  <Project Path=\"Web/Web.csproj\" />\n");
+        for (int library = 0; library < WideLibraries; library++)
+        {
+            TestFolders.Write(wide, $"Libraries/Library{library}/Library{library}.csproj", TestProjects.Library());
+            solution.Append(CultureInfo.InvariantCulture, $"  <Project Path=\"Libraries/Library{library}/Library{library}.csproj\" />\n");
+        }
+        TestFolders.Write(wide, "Wide.slnx", solution.Append("</Solution>\n").ToString());
+        TestFolders.Write(wide, "Web.slnf", "{\n  \"solution\": {\n    \"path\": \"Wide.slnx\",\n    \"projects\": [ \"Web\\\\Web.csproj\" ]\n  }\n}\n");
+        TestFolders.Write(wide, "Web/Web.csproj", TestProjects.Web("<ImplicitUsings>enable</ImplicitUsings>"));
+        TestFolders.Write(wide, "Web/Program.cs", "WebApplication app = WebApplication.CreateBuilder(args).Build();\n"
+            + string.Concat(Enumerable.Range(0, RouteFiles).Select(f => $"Routes{f}.Map(app);\n")) + "app.Run();\n");
+        for (int file = 0; file < RouteFiles; file++)
+        {
+            TestFolders.Write(wide, $"Web/Routes/R{file}.cs", $"static class Routes{file}\n{{\n    public static void Map(WebApplication app)\n    {{\n"
+                + string.Concat(Enumerable.Range(0, RoutesEach).Select(r => $"        app.MapGet(\"/files/{file}/routes/{r}/{{id:int}}\", (int id) => id + {r});\n")) + "    }\n}\n");
+        }
+        await Restore.RunAsync(Path.Combine(wide, "Web", "Web.csproj"));
+        return wide;
     }
 
     private const int ManyFiles = 1000;

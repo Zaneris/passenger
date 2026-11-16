@@ -225,9 +225,9 @@ public sealed partial class PassengerTools
         "The newest commits (count of them, at most 500) of every branch, with their branches and tags and a signed one's signature (good, unverified, bad or " +
         "expired, by whom and with which key). With a path, Show History's: the commits from HEAD " +
         "that changed that file (followed through renames) or folder, each with what it did there; with startLine and endLine " +
-        "too, those that changed those lines.")]
+        "too, those that changed those lines. before, a commit an answer listed, reads on: the commits after it, in the same order.")]
     public Task<ModelContextProtocol.Protocol.CallToolResult> VcsLog(int count = 20, string? path = null, int? startLine = null, int? endLine = null,
-        CancellationToken cancel = default) => OnUi(cancel, async () =>
+        string? before = null, CancellationToken cancel = default) => OnUi(cancel, async () =>
     {
         await Session.Vcs.Opened;
         Git repository = Session.Vcs.Repository ?? throw new InvalidOperationException(Session.Vcs.NoRepository);
@@ -242,12 +242,14 @@ public sealed partial class PassengerTools
             (int first, int last) when path is not null && first >= 1 && last >= first => (first - 1, last - 1),
             _ => throw new ArgumentException("startLine and endLine come together, with a path, from 1 and the last at or after the first"),
         };
+        string? after = before is null ? null : await repository.CommitNamedAsync(before)
+            ?? throw new ArgumentException($"before names {before}, which is no commit here: it takes the hash of a commit vcs_log listed", nameof(before));
         IReadOnlyDictionary<string, CommitSignature?> signatures;
         if (path is null)
         {
-            IReadOnlyList<CommitInfo> commits = await repository.LogAsync(most);
+            IReadOnlyList<CommitInfo> commits = After(await repository.LogAsync(await ReadingAsync(null)), c => c.Hash);
             signatures = await Session.Vcs.Signatures.ReadAsync(repository, [.. commits.Select(c => c.Hash)]);
-            return Held([.. commits.Select(c => Commit(c, null))], "commit", "a path narrows them to a file's or folder's");
+            return Held([.. commits.Select(c => Commit(c, null))], "commit", "a path narrows them to a file's or folder's", readOn: ReadOn);
         }
         string full = Resolve(path);
         // Lines past the file's end are no lines at all, never ones not committed yet.
@@ -260,9 +262,33 @@ public sealed partial class PassengerTools
         // Read now, so a rename made a moment ago is followed to where the last commit has the file.
         await Session.Vcs.RefreshAsync();
         HistoryScope scope = await window.HistoryScopeAsync(full, lines);
-        IReadOnlyList<HistoryCommit> history = await repository.HistoryAsync(scope, most);
+        IReadOnlyList<HistoryCommit> history = After(await repository.HistoryAsync(scope, await ReadingAsync(["HEAD"])), h => h.Commit.Hash);
         signatures = await Session.Vcs.Signatures.ReadAsync(repository, [.. history.Select(h => h.Commit.Hash)]);
-        return Held([.. history.Select(h => Commit(h.Commit, h.Changes))], "commit", "a path within narrows them to its own");
+        return Held([.. history.Select(h => Commit(h.Commit, h.Changes))], "commit", "a path within narrows them to its own", readOn: ReadOn);
+
+        // How many commits to read: count's, and with before every one that may come before it in the log of those revisions.
+        async Task<int> ReadingAsync(IReadOnlyList<string>? revisions) => after is null ? most
+            : await repository.LogDepthAsync(after, revisions) is int depth ? depth + most
+            : throw new ArgumentException($"before names {before}, which is no commit here", nameof(before));
+
+        // The commits after before's, at most count of them; those read where none is asked.
+        IReadOnlyList<T> After<T>(IReadOnlyList<T> read, Func<T, string> hash)
+        {
+            if (after is null)
+            {
+                return read;
+            }
+            for (int at = 0; at < read.Count; at++)
+            {
+                if (hash(read[at]) == after)
+                {
+                    return [.. read.Skip(at + 1).Take(most)];
+                }
+            }
+            throw new ArgumentException($"{before} is no commit of the history vcs_log lists{(path is null ? string.Empty : $" of {path}{(lines is null ? string.Empty : $" lines {startLine} to {endLine}")}")}", nameof(before));
+        }
+
+        static string ReadOn(VcsCommit last) => $"before {last.Hash} reads on";
 
         VcsCommit Commit(CommitInfo commit, IReadOnlyList<FileChange>? changes)
         {
