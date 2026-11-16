@@ -206,7 +206,7 @@ public partial class MainWindow
     /// revert changes) and one change set of the history: an open file's text and encoding over the lines that differ
     /// (<see cref="OpenDocument.Revert"/>), saved; a closed one's bytes written as they were, off the window's thread in
     /// turn with every other write of closed files (one made anew taken away by its Undo); one that did not exist then
-    /// deleted (to the Trash, and kept in the history). Null once all are written, else why not.</summary>
+    /// moved to the Trash, which its Undo brings it back from, and kept in the history. Null once all are written, else why not.</summary>
     private async Task<string?> RevertAsync(IReadOnlyList<(string Path, string? Version)> files, string activity)
     {
         if (session.LocalHistory is not { } history)
@@ -230,7 +230,7 @@ public partial class MainWindow
             {
                 if (version is null)
                 {
-                    if ((File.Exists(path) || Directory.Exists(path)) && !await DeleteAsync(path, asked: true))
+                    if ((File.Exists(path) || Directory.Exists(path)) && !await DeleteAsync(path, asked: true, within: recording))
                     {
                         refused.Add(Path.GetFileName(path));
                     }

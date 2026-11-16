@@ -472,9 +472,9 @@ public partial class MainWindow
     /// changed once it is done.</summary>
     private List<string>? movesFollowed;
 
-    /// <summary>Delete on a project: it leaves the solution, and the solution filter open, as one command Undo takes back
-    /// whole, and its files stay. Moving its folder to the Trash is a second question, never asked of the open folder, a
-    /// folder above it, or one holding the solution or another of its projects.</summary>
+    /// <summary>Delete on a project: it leaves the solution, and the solution filter open, and its files stay. Moving its
+    /// folder to the Trash is a second question, never asked of the open folder, a folder above it, or one holding the
+    /// solution or another of its projects. Both are one command Undo takes back whole.</summary>
     public async Task<bool> RemoveProjectAsync(string project)
     {
         string name = Path.GetFileNameWithoutExtension(project);
@@ -487,16 +487,19 @@ public partial class MainWindow
         {
             return false;
         }
-        if (await EditSolutionAsync(file => SolutionEdits.RemoveProject(file, project), $"Removed {name} from {solution.Name}", [project], $"Remove Project {name}") is { } problem)
+        // Its second question waits between its writes, so of the open files it takes only what it writes.
+        using CommandHistory.Recording removing = Editors.Commands.RecordWrites($"Remove Project {name}");
+        if (await EditSolutionAsync(file => SolutionEdits.RemoveProject(file, project), $"Removed {name} from {solution.Name}", [project], $"Remove Project {name}", removing) is { } problem)
         {
-            status.Text = $"{name} could not be removed: {problem}";
+            status.Text = $"{name} could not be removed: {await removing.TakenBackAsync(problem)}";
             return false;
         }
         string own = PathNames.Canonical(Path.GetDirectoryName(project)!);
-        bool apart = !PathNames.Within(Folder, own) && !PathNames.Within(solution.Path, own) && !Projects.Any(p => PathNames.Within(p.Path, own));
+        bool apart = !PathNames.Within(Folder, own) && !PathNames.Within(solution.Path, own)
+            && !Projects.Any(p => !PathNames.Same(p.Path, project) && PathNames.Within(p.Path, own));
         if (apart && await Confirm("Delete Project Files", $"Also move the folder {Path.GetFileName(own)} and everything in it to the Trash?", "Move to Trash"))
         {
-            await DeleteAsync(own, asked: true);
+            await DeleteAsync(own, asked: true, within: removing);
         }
         return true;
     }
@@ -505,25 +508,26 @@ public partial class MainWindow
     /// to end.</summary>
     private static readonly TimeSpan BuildsGoing = TimeSpan.FromSeconds(60);
 
-    /// <summary>Deletes a file or folder to the Trash, as <see cref="DeleteAsync(IReadOnlyList{string}, bool)"/> deletes
-    /// several.</summary>
-    public Task<bool> DeleteAsync(string path, bool asked = false) => DeleteAsync([path], asked);
+    /// <summary>Deletes a file or folder to the Trash, as <see cref="DeleteAsync(IReadOnlyList{string}, bool, CommandHistory.Recording?)"/>
+    /// deletes several.</summary>
+    public Task<bool> DeleteAsync(string path, bool asked = false, CommandHistory.Recording? within = null) => DeleteAsync([path], asked, within);
 
     /// <summary>Deletes files and folders to the Trash, none inside another, once asked in one question (unless it was
-    /// already); their open files are saved first, and again just before they go with what was typed while it waited, so
-    /// the Trash and Local History have what the editor showed, and close once gone, or keep their tabs where one could not
-    /// go. The design-time builds of the projects in them are held off, those running waited out. Those of a shared project
-    /// leave its items file in a command whose Undo takes all it deleted out of the Trash. True once all went.</summary>
-    public async Task<bool> DeleteAsync(IReadOnlyList<string> paths, bool asked = false)
+    /// already), as <see cref="TrashAsync"/> moves them, within the command given: true once all went.</summary>
+    public async Task<bool> DeleteAsync(IReadOnlyList<string> paths, bool asked = false, CommandHistory.Recording? within = null) =>
+        (asked || await Confirm("Delete", DeleteQuestion(paths), "Delete")) && await TrashAsync(paths, within) is [];
+
+    /// <summary>Moves files and folders to the Trash, none inside another, said in the status bar; their open files are
+    /// saved first, and again just before they go with what was typed while it waited, so the Trash and Local History have
+    /// what the editor showed, and close once gone. The design-time builds of the projects in them are held off, those
+    /// running waited out. Each goes in the command given, else, in a shared project's folder, in one of its own leaving
+    /// its items file, whose Undo takes it out of the Trash. Each that stayed, with why; null where an open file could not be saved.</summary>
+    private async Task<IReadOnlyList<(string Path, string Why)>?> TrashAsync(IReadOnlyList<string> paths, CommandHistory.Recording? within)
     {
         List<string> names = [.. paths.Select(Path.GetFileName).OfType<string>()];
-        if (!asked && !await Confirm("Delete", DeleteQuestion(paths), "Delete"))
-        {
-            return false;
-        }
         if (SavedFirst() is null)
         {
-            return false;
+            return null;
         }
         History.LocalHistory? keeping = session.LocalHistory;
         History.HistoryDeletion?[] taken = keeping is null ? new History.HistoryDeletion?[paths.Count] : await Task.WhenAll(paths.Select(keeping.CaptureAsync));
@@ -532,13 +536,14 @@ public partial class MainWindow
         // Nothing is awaited from here to the moves, so what was typed while it waited goes with them.
         if (SavedFirst() is not { } typed)
         {
-            return false;
+            return null;
         }
         List<string> gone = [];
         List<(string Path, string Why)> refused = [];
         // What goes from a shared project's folder leaves its items file too, in a command whose Undo takes all it deleted
         // back out of the Trash and writes the items file back.
-        using CommandHistory.Recording? sharing = InShared(paths) ? Editors.Commands.Record($"Delete {Plural.Listed(names)}") : null;
+        using CommandHistory.Recording? sharing = within is null && InShared(paths) ? Editors.Commands.Record($"Delete {Plural.Listed(names)}") : null;
+        CommandHistory.Recording? recording = within ?? sharing;
         for (int i = 0; i < paths.Count; i++)
         {
             string path = paths[i];
@@ -550,7 +555,7 @@ public partial class MainWindow
             {
                 Trashed? went = Trash.Move(path);
                 gone.Add(path);
-                sharing?.Deleted(path, went);
+                recording?.Deleted(path, went);
                 if (taken[i] is { } kept)
                 {
                     keeping!.Deleted(kept);
@@ -570,19 +575,19 @@ public partial class MainWindow
             CameOrWent(gone);
         }
         List<string> said = gone.Count == 0 ? [] : [$"Moved {Plural.Listed([.. gone.Select(Path.GetFileName).OfType<string>()])} to the Trash"];
-        if (sharing is not null && gone.Count > 0 && OutOfShared(gone, sharing) is { } unshared)
+        if (recording is not null && gone.Count > 0 && OutOfShared(gone, recording) is { } unshared)
         {
             said.Add(unshared);
         }
         // Those refused for one reason are named together, as the Trash refusing every one would be.
-        List<(string Name, string Why)> why = [];
+        List<(string Path, string Why)> why = [];
         foreach ((string path, string message) in refused)
         {
-            why.Add((Path.GetFileName(path), message + await HeldByAsync(path)));
+            why.Add((path, message + await HeldByAsync(path)));
         }
-        said.AddRange(why.GroupBy(r => r.Why).Select(g => $"{Plural.Listed([.. g.Select(r => r.Name)])} could not be deleted: {g.Key}"));
+        said.AddRange(why.GroupBy(r => r.Why).Select(g => $"{Plural.Listed([.. g.Select(r => Path.GetFileName(r.Path))])} could not be deleted: {g.Key}"));
         status.Text = string.Join("; ", said);
-        return refused.Count == 0;
+        return why;
 
         // The open files under the paths with edits not saved, each saved; null, said, when one could not be.
         List<string>? SavedFirst()

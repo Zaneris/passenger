@@ -446,6 +446,48 @@ public sealed class ExplorerFilesTests : IDisposable
         window.Close();
     }
 
+    /// <summary>A project removed with its folder moved to the Trash, as the second question asks, is one command: one Undo
+    /// puts the project back in the solution and brings its folder back out of the Trash, and Redo takes both away again.</summary>
+    [AvaloniaFact]
+    public void Undo_of_a_project_removed_with_its_folder_brings_back_both_and_redo_takes_both_again()
+    {
+        string library = Directory.CreateDirectory(Path.Combine(folder, "Lib")).FullName;
+        File.Copy(Path.Combine(folder, "Shop.csproj"), Path.Combine(library, "Lib.csproj"));
+        File.WriteAllText(Path.Combine(library, "Shelf.cs"), "class Shelf { }\n");
+        string solution = Path.Combine(folder, "Shop.slnx");
+        string listed = "<Solution>\n  <Project Path=\"Shop.csproj\" />\n  <Project Path=\"Lib/Lib.csproj\" />\n</Solution>\n";
+        File.WriteAllText(solution, listed);
+        MainWindow window = Open();
+        List<string> asked = Questions(window);
+
+        Ui.ClickRow(window, Assert.Single(window.ExplorerView.Tree.Rows, r => r.Kind == NodeKind.Project && r.Name == "Lib"));
+        Ui.Press(window, "BACK_SPACE");
+        Ui.WaitFor(() => Finished(window, "Moved"), "the project's folder to go");
+        Assert.False(Directory.Exists(library), $"Lib's folder stayed: {window.Status}");
+        Assert.DoesNotContain("Lib.csproj", File.ReadAllText(solution), StringComparison.Ordinal);
+        Assert.Equal("Remove Project Lib", window.EditorArea.Commands.ToUndo(null)?.Name);
+
+        asked.Clear();
+        Ui.ClickRow(window, Assert.Single(window.ExplorerView.Tree.Rows, r => r.Kind == NodeKind.Project && r.Name == "Shop"));
+        Ui.Run(window, EditorActions.Undo);
+        Ui.WaitFor(() => window.Status?.StartsWith("Undone", StringComparison.Ordinal) == true || window.Status?.StartsWith("Cannot", StringComparison.Ordinal) == true,
+            () => $"Undo of the removal: {window.Status}");
+        Assert.True(asked.Count == 1 && asked[0].Contains("brings back Lib", StringComparison.Ordinal), $"Undo asked: {string.Join(" | ", asked)}");
+        Assert.True(File.ReadAllText(Path.Combine(library, "Shelf.cs")) == "class Shelf { }\n" && File.Exists(Path.Combine(library, "Lib.csproj")),
+            $"Undo of the removal left Lib's folder in the Trash, holding [{string.Join(", ", Left(trash))}]: {window.Status}");
+        Assert.Equal(listed, File.ReadAllText(solution));
+        Assert.Empty(Directory.EnumerateFileSystemEntries(trash));
+
+        Ui.ClickRow(window, Assert.Single(window.ExplorerView.Tree.Rows, r => r.Kind == NodeKind.Project && r.Name == "Shop"));
+        Ui.Run(window, EditorActions.Redo);
+        Ui.WaitFor(() => window.Status?.StartsWith("Redone", StringComparison.Ordinal) == true || window.Status?.StartsWith("Cannot", StringComparison.Ordinal) == true,
+            () => $"Redo of the removal: {window.Status}");
+        Assert.False(Directory.Exists(library), $"Redo of the removal left Lib's folder: {window.Status}");
+        Assert.True(File.Exists(Path.Combine(trash, "Lib", "Shelf.cs")), "Redo did not move Lib's folder to the Trash again");
+        Assert.DoesNotContain("Lib.csproj", File.ReadAllText(solution), StringComparison.Ordinal);
+        window.Close();
+    }
+
     [AvaloniaFact]
     public void A_delete_the_Trash_refuses_keeps_the_open_file_and_its_unsaved_edit_and_one_it_takes_goes_with_them_kept_in_Local_History()
     {

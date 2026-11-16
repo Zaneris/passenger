@@ -594,6 +594,47 @@ public sealed class LocalHistoryTests : IDisposable
         window.Close();
     }
 
+    /// <summary>A folder's revert to a set before one of its files was made moves that file to the Trash in the revert's
+    /// command: one Undo, asked once, writes the other file back and brings the one made back out of the Trash.</summary>
+    [AvaloniaFact]
+    public void A_folders_revert_to_before_a_file_was_made_moves_it_to_the_Trash_and_one_undo_brings_it_back()
+    {
+        const string A = "class A\n{\n}\n";
+        const string B = "class B\n{\n}\n";
+        string a = Write("src/A.cs", A);
+        string src = Path.Combine(folder, "src");
+        string b = Path.Combine(src, "B.cs");
+        MainWindow window = Open("src/A.cs");
+        Save(window, 0, 0, "sealed ");
+        Assert.Null(window.CreateFile(src, "B.cs", B));
+        foreach (Passenger.App.Workspace.OpenDocument open in window.EditorArea.Documents.ToList())
+        {
+            window.EditorArea.Close(open);
+        }
+        Ui.Settle();
+        Ui.WaitFor(() => !window.LocalHistory!.IsRecording, "the save and the new file kept");
+        HistoryRow first = HistoryRows.OfFolder(window.LocalHistory!.Snapshot().Events, src).Single(r => r.Title == "Modify A.cs");
+
+        Assert.Null(Ui.AwaitPumped(window.RevertLocalHistoryAsync(src, first.Set), "the revert"));
+        Assert.True(File.ReadAllText(a) == A && !File.Exists(b), $"The revert did not put A.cs back and take B.cs away: {window.Status}");
+        Assert.True(File.ReadAllText(Path.Combine(trash, "B.cs")) == B, "The revert did not move B.cs to the Trash");
+
+        List<string> asked = [];
+        window.Confirm = (_, question, _) =>
+        {
+            asked.Add(question);
+            return Task.FromResult(true);
+        };
+        Ui.ClickRow(window, Show(window, a));
+        Ui.Run(window, EditorActions.Undo);
+        Ui.WaitFor(() => File.Exists(b) && File.ReadAllText(a) == "sealed " + A,
+            () => $"one Undo to take back the revert: A.cs '{File.ReadAllText(a)}', B.cs {(File.Exists(b) ? "back" : "gone")}, {window.Status}");
+        Assert.Equal(B, File.ReadAllText(b));
+        Assert.True(asked.Count == 1 && asked[0].Contains("brings back B.cs", StringComparison.Ordinal), $"Undo of the revert asked: {string.Join(" | ", asked)}");
+        Assert.Empty(Directory.EnumerateFileSystemEntries(trash));
+        window.Close();
+    }
+
     /// <summary>A change kept twice in the log two Passengers on the same state append to, as an external change by the one
     /// that heard it and under its own name by the one that made it, in either order, lists once under its maker's name.</summary>
     [AvaloniaFact]

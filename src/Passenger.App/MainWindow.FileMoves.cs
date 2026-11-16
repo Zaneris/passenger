@@ -100,9 +100,9 @@ public partial class MainWindow
 
     /// <summary>Moves or copies files and folders into a folder: what is there already stays put, a folder never goes
     /// inside itself, a copy into its own folder is named by the person, and a name taken there is replaced (what had it
-    /// going to the Trash) only once they agree. A move, with what follows it, is one command, which Undo in the Explorer
-    /// takes back whole. The status bar says what went where and what could not; the last one put is chosen in the
-    /// Explorer. Answers with where each went.</summary>
+    /// going to the Trash) only once they agree. A move, with what follows it and what it replaced, is one command, which
+    /// Undo in the Explorer takes back whole. The status bar says what went where and what could not; the last one put is
+    /// chosen in the Explorer. Answers with where each went.</summary>
     public async Task<IReadOnlyList<string>> PutAsync(IReadOnlyList<string> paths, string into, bool copy)
     {
         into = PathNames.Canonical(into);
@@ -201,15 +201,16 @@ public partial class MainWindow
     }
 
     /// <summary>Moves one file or folder to where it goes within the move's command (<paramref name="moving"/>), or copies
-    /// it where there is none, replacing what has its name there once the person agrees, a move's ends gathered into
-    /// <paramref name="came"/>; null once it is there, else why not ("" when they would not replace).</summary>
+    /// it where there is none, replacing what has its name there once the person agrees (to the Trash, in the move's
+    /// command, whose Undo brings it back), a move's ends gathered into <paramref name="came"/>; null once it is there, else
+    /// why not ("" when they would not replace).</summary>
     private async Task<string?> PutOneAsync(string source, string target, string into, CommandHistory.Recording? moving, List<string> came)
     {
         string name = Path.GetFileName(source);
         if (!PathNames.Same(target, source) && (File.Exists(target) || Directory.Exists(target)))
         {
             if (!await Confirm("Files Already Exist", $"{Path.GetFileName(target)} with the same name already exists in '{Path.GetFileName(into)}'. Replace?", "Replace")
-                || !await DeleteAsync(target, asked: true))
+                || !await DeleteAsync(target, asked: true, within: moving))
             {
                 return string.Empty;
             }

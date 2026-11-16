@@ -99,6 +99,53 @@ public sealed class SolutionViewTests : IDisposable
         window.Close();
     }
 
+    /// <summary>A file cut and pasted over one of its name, Replace agreed to, moves the one there to the Trash in the move's
+    /// command: one Undo moves the file back and brings the one it replaced back out of the Trash, each holding its own
+    /// text, and Redo replaces it again.</summary>
+    [AvaloniaFact]
+    public void A_file_pasted_over_one_of_its_name_replaces_it_in_the_moves_command_so_one_undo_puts_both_back()
+    {
+        const string Kept = "namespace Shop.Core.Catalog;\n\npublic class Order\n{\n}\n";
+        string order = Path.Combine(folder, "Shop.App", "Models", "Order.cs");
+        string catalog = Path.Combine(folder, "Shop.Core", "Catalog");
+        string there = Path.Combine(catalog, "Order.cs");
+        Write("Shop.Core/Catalog/Order.cs", Kept);
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        List<string> asked = [];
+        window.Confirm = (title, text, _) =>
+        {
+            asked.Add($"{title}: {text}");
+            return Task.FromResult(true);
+        };
+
+        Ui.ClickRow(window, Show(window, order));
+        Ui.Run(window, EditorActions.Cut);
+        Ui.ClickRow(window, Show(window, catalog));
+        Ui.Run(window, EditorActions.Paste);
+        Ui.WaitFor(() => window.Status?.StartsWith("Moved", StringComparison.Ordinal) == true, () => $"the paste over Order.cs: {window.Status}");
+        Assert.True(asked.Count == 1 && asked[0].StartsWith("Files Already Exist", StringComparison.Ordinal), $"The paste asked: {string.Join(" | ", asked)}");
+        Assert.True(!File.Exists(order) && File.ReadAllText(there) == Order, $"The paste did not put Shop.App's Order.cs in place of Catalog's: {window.Status}");
+        Assert.True(File.ReadAllText(Path.Combine(trash, "Order.cs")) == Kept, "The Order.cs replaced is not in the Trash");
+
+        asked.Clear();
+        Ui.ClickRow(window, Show(window, catalog));
+        Ui.Run(window, EditorActions.Undo);
+        Ui.WaitFor(() => window.Status?.StartsWith("Undone", StringComparison.Ordinal) == true || window.Status?.StartsWith("Cannot", StringComparison.Ordinal) == true,
+            () => $"Undo of the paste: {window.Status}");
+        Assert.True(asked.Count == 1 && asked[0].Contains("brings back Order.cs", StringComparison.Ordinal), $"Undo of the paste asked: {string.Join(" | ", asked)}");
+        Assert.True(File.Exists(order) && File.ReadAllText(order) == Order, $"Undo did not move Order.cs back to Models: {window.Status}");
+        Assert.True(File.Exists(there) && File.ReadAllText(there) == Kept, $"Undo did not bring back the Order.cs the paste replaced: {window.Status}");
+        Assert.Empty(Directory.EnumerateFileSystemEntries(trash));
+
+        Ui.ClickRow(window, Show(window, catalog));
+        Ui.Run(window, EditorActions.Redo);
+        Ui.WaitFor(() => window.Status?.StartsWith("Redone", StringComparison.Ordinal) == true || window.Status?.StartsWith("Cannot", StringComparison.Ordinal) == true,
+            () => $"Redo of the paste: {window.Status}");
+        Assert.True(!File.Exists(order) && File.ReadAllText(there) == Order, $"Redo did not replace Catalog's Order.cs again: {window.Status}");
+        Assert.True(File.ReadAllText(Path.Combine(trash, "Order.cs")) == Kept, "Redo did not move the Order.cs it replaces to the Trash again");
+        window.Close();
+    }
+
     /// <summary>Every file of a folder of 400 chosen and cut allocates on the UI thread, for each file, under twice what every
     /// file of a folder of 40 does, each row dimmed and a file's dependent going with it.</summary>
     [Gate]

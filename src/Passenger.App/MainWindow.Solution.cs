@@ -193,8 +193,9 @@ public partial class MainWindow
     /// <summary>Makes one change to the open solution's file and, once it has landed, reads the solution again: null when it
     /// was made, else why not, which the status bar says too. The projects it takes out (<paramref name="leaving"/>) leave
     /// the solution filter open too, both files changed in one command Undo takes back whole, named
-    /// <paramref name="command"/>.</summary>
-    private async Task<string?> EditSolutionAsync(Func<string, string?> edit, string done, IReadOnlyCollection<string>? leaving = null, string? command = null)
+    /// <paramref name="command"/>, or in the command given (<paramref name="into"/>).</summary>
+    private async Task<string?> EditSolutionAsync(Func<string, string?> edit, string done, IReadOnlyCollection<string>? leaving = null, string? command = null,
+        CommandHistory.Recording? into = null)
     {
         if (Solution is not { } solution)
         {
@@ -211,7 +212,7 @@ public partial class MainWindow
             unfiltered = edited is null && filter is not null ? Change(() => SolutionEdits.RemoveFromFilter(filter, leaving!), Path.GetFileName(filter)) : null;
             return edited;
         }
-        string? refused = await (command is null ? ChangeFileAsync(writing, Write, null) : ChangeFileAsync(command, writing, Write));
+        string? refused = await (command is null ? ChangeFileAsync(writing, Write, into) : ChangeFileAsync(command, writing, Write, into));
         // The edit's own refusal says itself; the disk's is said as the solution's.
         string? problem = refused is null || refused == edited ? refused : $"{solution.Name} could not be changed: {refused}";
         if (problem is null)
