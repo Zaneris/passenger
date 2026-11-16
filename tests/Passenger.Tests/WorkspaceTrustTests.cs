@@ -217,6 +217,40 @@ public sealed class WorkspaceTrustTests
         Assert.Equal([elsewhere, folder], kept.RootElement.GetProperty("untrusted").EnumerateArray().Select(f => f.GetString()));
     }
 
+    [AvaloniaFact]
+    public void A_project_added_to_a_solution_not_trusted_is_made_without_its_restore_which_would_run_the_folders_MSBuild_files()
+    {
+        string folder = PathNames.Canonical(TestFolders.Create("untrusted-new-project-"));
+        string marks = PathNames.Canonical(TestFolders.Create("untrusted-new-project-marks-"));
+        string restored = Path.Combine(marks, "restored.marker");
+        TestFolders.Write(folder, "Shop.slnx", "<Solution />\n");
+        TestFolders.Write(folder, "Directory.Build.targets",
+            $"<Project>\n  <Target Name=\"Mark\" BeforeTargets=\"Restore;_GenerateRestoreGraph\">\n    <Exec Command=\"echo ran &gt; &quot;{restored}&quot;\" />\n  </Target>\n</Project>\n");
+        using IDisposable asked = WorkspaceTrust.Ask(folder);
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        try
+        {
+            Ui.ClickButton(Asked(window), WorkspaceTrustDialog.Untrusted);
+            Ui.Settle();
+            Ui.Run(window, AppActions.NewProject);
+            Passenger.App.Templates.NewProjectDialog dialog = NewServiceSetupTests.Opened(window);
+            NewServiceSetupTests.Choose(dialog, "classlib");
+            dialog.ProjectName = "Lib";
+            dialog.Framework = TestProjects.Framework;
+            NewServiceSetupTests.Created(dialog, "the class library");
+
+            Assert.Equal($"Lib did not restore: {Refusals.Untrusted}", NewServiceSetupTests.SetUp(window));
+            Assert.True(File.Exists(Path.Combine(folder, "Lib", "Lib.csproj")), $"No Lib.csproj was made: {window.Status}");
+            Assert.Contains("Lib/Lib.csproj", File.ReadAllText(Path.Combine(folder, "Shop.slnx")), StringComparison.Ordinal);
+            Assert.False(File.Exists(Path.Combine(folder, "Lib", "obj", "project.assets.json")), "The project made in the folder not trusted was restored");
+            Assert.False(File.Exists(restored), "A restore ran Directory.Build.targets' Exec in the folder not trusted");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     /// <summary>A folder opened in the window, once its opening has landed.</summary>
     private static void Open(MainWindow window, string folder)
     {

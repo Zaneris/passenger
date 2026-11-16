@@ -92,6 +92,10 @@ public sealed record TemplateVariant(string Identity, string? Language, int Prec
     /// <summary>The option that keeps dotnet new from restoring what it made (skipRestore's), when the template restores.</summary>
     public string? SkipRestoreOption { get; init; }
 
+    /// <summary>Whether dotnet new restores what it made, by the template's restore post action, unless told not to
+    /// (<see cref="SkipRestoreOption"/>), which runs the MSBuild files of the folders above it.</summary>
+    public bool Restores { get; init; }
+
     /// <summary>The output type of the projects it makes, where their files say it alike (Exe, Library); null where an SDK
     /// of their own or a choice decides it, or it makes no project read here.</summary>
     public string? OutputType { get; init; }
@@ -141,6 +145,9 @@ public static partial class ProjectTemplates
 
     /// <summary>A member's name read in any letter case, as ide.host.json files write them both ways.</summary>
     private const bool AnyCase = true;
+
+    /// <summary>The template engine's post action that restores what a template made.</summary>
+    private static readonly Guid RestorePostAction = new("210D431B-A78B-4D2F-B762-4ED3E3EA9025");
 
     /// <summary>What the dialog asks or sets for itself: the name, the framework, the language, the restore, the host.</summary>
     private static readonly HashSet<string> NotShown = new(StringComparer.OrdinalIgnoreCase)
@@ -412,6 +419,7 @@ public static partial class ProjectTemplates
             frameworkOption, frameworks, defaultFramework, options)
         {
             SkipRestoreOption = parameters.ContainsKey("skipRestore") ? LongName(cli, "skipRestore") : null,
+            Restores = JsonMembers.Texts(template, "PostActions", AnyCase).Any(a => Guid.TryParse(a, out Guid action) && action == RestorePostAction),
             OutputType = Tag(template, "type") == "project" ? ide.OutputType(template) : null,
         };
     }

@@ -966,6 +966,11 @@ public sealed class NewProjectDialog : IdeWindow
         {
             return $"{what} already exists in this location: {root} is not empty";
         }
+        // Where the folder is not trusted the project is made without its restore, which a template that cannot skip it would run.
+        if (target is not null && Variant() is { Restores: true, SkipRestoreOption: null } && !WorkspaceTrust.Trusts(root))
+        {
+            return Refusals.RestoresUntrusted(template.Name);
+        }
         return options.WhyNot();
     }
 

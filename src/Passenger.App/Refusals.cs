@@ -44,6 +44,10 @@ public static class Refusals
     public static string UntrustedRunsOn(IReadOnlyList<string> running) =>
         $"This folder is no longer trusted: {Plural.Listed(running)} {(running.Count == 1 ? "runs" : "run")} on until {(running.Count == 1 ? "it ends" : "they end")} or this window closes";
 
+    /// <summary>A project template that restores what it makes, with no option to skip that, refused in a folder not trusted.</summary>
+    public static string RestoresUntrusted(string template) =>
+        $"{template} restores the project it makes and cannot be told not to, which would run this folder's MSBuild files: trust the folder first";
+
     /// <summary>An agent asked to trust a folder, which only the person does.</summary>
     public const string TrustIsThePersons = "Only the person trusts a folder, with Trust Folder over the editors";
 
