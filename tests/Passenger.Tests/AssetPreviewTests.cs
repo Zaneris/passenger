@@ -501,6 +501,42 @@ public sealed class AssetPreviewTests : IDisposable
         window.Close();
     }
 
+    /// <summary>A loaded machine's thread pool can end a small file's decode before the window's thread awaits it, so the
+    /// open learns of the failure before it has a tab: decodes ending at once stand in for that.</summary>
+    [AvaloniaFact]
+    public void An_asset_whose_decode_fails_before_its_open_returns_is_refused_at_once_and_never_left_loading()
+    {
+        byte[] huge = ImageBytes(".bmp");
+        BinaryPrimitives.WriteInt32LittleEndian(huge.AsSpan(18), 10000);
+        BinaryPrimitives.WriteInt32LittleEndian(huge.AsSpan(22), 10000);
+        File.WriteAllBytes(Path.Combine(folder, "huge.bmp"), huge);
+        File.WriteAllBytes(Path.Combine(folder, "broken.ttf"), "not a font"u8.ToArray());
+        MainWindow window = Open();
+        string? error;
+        using (BackgroundWork.AtOnce decoding = BackgroundWork.EndingAtOnce())
+        {
+            error = window.OpenFile("huge.bmp");
+            Assert.True(decoding.Ran > 0, "The decode never ran at once, so this test stood in for nothing");
+        }
+        Ui.Settle();
+        Assert.True(window.EditorArea.Documents.Count == 0, "An image whose decode had failed was left open, loading for good");
+        Assert.Contains("32 million pixels", error ?? "", StringComparison.Ordinal);
+        Assert.Equal(error, window.Status);
+
+        Passenger.App.Mcp.PassengerTools agent = new(window);
+        Task opening;
+        using (BackgroundWork.EndingAtOnce())
+        {
+            opening = agent.Open("broken.ttf");
+            Ui.WaitFor(() => opening.IsCompleted, "the agent's open to answer");
+        }
+        Assert.True(opening.IsFaulted, "An agent was told a font whose decode had failed is open");
+        Assert.Contains("font could not be decoded", opening.Exception!.InnerException!.Message, StringComparison.Ordinal);
+        Ui.Settle();
+        Assert.True(window.EditorArea.Documents.Count == 0, "A font an agent opened whose decode had failed was left open, loading for good");
+        window.Close();
+    }
+
     /// <summary>A preview's tab holds an empty stand-in for text: nothing that reads or changes a file's text may take it for
     /// the image's, or an agent's replace would claim to have changed a picture, and a bookmark would mark a line it lacks.</summary>
     [AvaloniaFact]

@@ -99,10 +99,10 @@ public sealed class OpenDocument : Observable
     }
 
     /// <summary>Opens a supported image or font as a read-only asset with an empty text placeholder, otherwise as text.
-    /// An asset's tab shows it loading until its decode lands off the UI thread; a missing, empty or oversized one is
-    /// refused at once. Other binary content opens as its bytes' text, read-only and never written
-    /// (<see cref="FileText.Bytes"/>), or, unless <paramref name="asBytes"/> (for what would edit it), is refused with an
-    /// <see cref="IOException"/>, as is one past <see cref="LargestText"/>. C# is parsed with its project's symbols.</summary>
+    /// An asset's tab shows it loading until its decode lands off the UI thread; one missing, empty or oversized, or whose
+    /// decode failed before this returns, is refused at once. Other binary content opens as its bytes' text, read-only and
+    /// never written (<see cref="FileText.Bytes"/>), or, unless <paramref name="asBytes"/> (for what would edit it), is
+    /// refused with an <see cref="IOException"/>, as is one past <see cref="LargestText"/>. C# is parsed with its project's symbols.</summary>
     public static OpenDocument Load(string path, bool asBytes = true, CSharpParseOptions? options = null)
     {
         if (AssetPreview.KindOf(path) is { } kind)
@@ -113,6 +113,12 @@ public sealed class OpenDocument : Observable
                 Language = kind == AssetKind.Font ? Language.Font : Language.Image,
             };
             asset.Decode();
+            // The thread pool may end the decode before its await, which then said PreviewFailed with nobody yet listening.
+            if (asset.PreviewFailure is { } failure)
+            {
+                asset.Close();
+                throw new IOException(failure);
+            }
             return asset;
         }
         // A workbook's tab holds no text, since its table is read from the file itself.
