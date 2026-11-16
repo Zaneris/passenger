@@ -72,4 +72,11 @@ public static class McpTools
     public const string VcsStash = "vcs_stash";
     public const string VcsStatus = "vcs_status";
     public const string Workspace = "workspace";
+
+    /// <summary>The tools that run the open folder's code (build it, run, debug, test or profile its programs, restore its
+    /// packages, apply Hot Reload to them), which a window whose folder is not trusted refuses (<see cref="Refusals.Untrusted"/>).</summary>
+    public static IReadOnlySet<string> RunCode { get; } = new HashSet<string>(StringComparer.Ordinal)
+    {
+        Build, Run, DebugStart, TestsRun, Profile, HotReload, NugetInstall,
+    };
 }

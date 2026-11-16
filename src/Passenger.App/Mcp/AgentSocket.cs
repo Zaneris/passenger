@@ -511,6 +511,11 @@ internal sealed class ConnectedTool(McpServerTool tool, MainWindow? window, Agen
             connection.Named(request.Server.ClientInfo);
             return connection.AdmitAsync(window!, told, cancel);
         });
+        // A folder not trusted runs none of its code, whoever asks: the person trusts it first, never an agent.
+        if (refused is null && McpTools.RunCode.Contains(shown.Name) && await UiThread.InvokeAsync(() => window!.Session is { Folder: not null, Trusted: false }))
+        {
+            refused = Refusals.Untrusted;
+        }
         if (refused is null && shown.Annotations is not ({ ReadOnlyHint: true } or { DestructiveHint: false }) && !ChangesNothing(shown, request.Params?.Arguments))
         {
             refused = await UiThread.InvokeAsync(() => connection.AllowAsync(window!, shown, request.Params?.Arguments, told, cancel));

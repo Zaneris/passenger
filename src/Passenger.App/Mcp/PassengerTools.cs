@@ -122,7 +122,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
 
     [McpServerTool(Name = McpTools.Workspace, Title = "The workspace", ReadOnly = true), Description(
         "The open folder and solution (or solution filter), its projects (output type, frameworks and the one chosen, unloaded marked; a shared one with sharedBy), run " +
-        "configurations (the chosen one marked), the build configuration every build takes and the others, the language server's state, the open files (unsaved marked) and the active " +
+        "configurations (the chosen one marked), the build configuration every build takes and the others, whether the folder is trusted, the language server's state, the open files (unsaved marked) and the active " +
         "one with its caret, and the Aspire AppHosts and container run under way, each resource with its state, hold, debug " +
         "session and target. routes adds the web projects' routes, read from their code.")]
     public Task<Workspace> GetWorkspace(bool routes = false, CancellationToken cancel = default) => OnUi(cancel, async () =>
@@ -134,7 +134,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         }
         if (Session.CSharp is null)
         {
-            throw new InvalidOperationException($"{Refusals.NoCSharp}, and routes are read from code through it");
+            throw new InvalidOperationException($"{Session.WhyNoCSharp}, and routes are read from code through it");
         }
         await When(() => Session.CSharp is not { } csharp || csharp.IsReady || csharp.IsStopped, ServerLimit, cancel, ServerState());
         IReadOnlyList<Roslyn.Extension.WebRoute> found = await window.RoutesAsync(cancel);
@@ -3235,7 +3235,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         }
         if (Session.CSharp is null)
         {
-            throw new InvalidOperationException(Refusals.NoCSharp);
+            throw new InvalidOperationException(Session.WhyNoCSharp);
         }
         // The session's server, which starts again when its projects change: each look is at the one there is then.
         if (Session.CSharp is { IsReady: false })
@@ -3326,7 +3326,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         OpenDocument document = await DocumentAsync(path, cancel);
         if (Session.CSharp is null)
         {
-            throw new InvalidOperationException(Refusals.NoCSharp);
+            throw new InvalidOperationException(Session.WhyNoCSharp);
         }
         // The server is never given another language's file, so waiting for it to load one would wait out the limit.
         if (document.Language.Service != Languages.LanguageService.CSharp)
@@ -3402,7 +3402,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         }
         OpenDocument copy = await DocumentAsync(path, cancel);
         await When(() => Session.CSharp is not { } csharp || csharp.IsReady || csharp.IsStopped, ServerLimit, cancel, ServerState());
-        (LspDocument? lsp, string? why) = Session.CSharp is { } service ? await service.Generated.AskableAsync(copy, cancel) : (null, Refusals.NoCSharp);
+        (LspDocument? lsp, string? why) = Session.CSharp is { } service ? await service.Generated.AskableAsync(copy, cancel) : (null, Session.WhyNoCSharp);
         return lsp is null ? throw new InvalidOperationException(why) : (copy, lsp);
     }
 
@@ -3697,6 +3697,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             Session.Debug.Session?.State.ToString().ToLowerInvariant() ?? "not debugging")
         {
             SdkMissing = SdkMissingSaid(session),
+            Trust = session.Folder is null ? null : session.Trusted ? "trusted" : Refusals.Untrusted,
             MobileNeeds = window.MobileWant.Said,
             UnreadSolution = session.Workspace?.Unread is { } unread ? UnreadSolutionSaid(unread) : null,
             BuildConfiguration = session.BuildChoices.Chosen is not { } built ? null
@@ -3863,6 +3864,10 @@ public sealed record Workspace(
     /// <summary>What .NET the machine or the folder lacks (no .NET, a runtime alone, global.json's SDK, an SDK older than a
     /// project's framework) and how the person mends it; null lacking nothing.</summary>
     public string? SdkMissing { get; init; }
+
+    /// <summary>Whether the folder is trusted, so Passenger runs its code ("trusted"), or why none of it runs; null with no
+    /// folder open.</summary>
+    public string? Trust { get; init; }
 
     /// <summary>What the folder's mobile projects need that the machine lacks, and where they build if not on it, as the
     /// banner over Passenger's window says it; null with nothing to say.</summary>

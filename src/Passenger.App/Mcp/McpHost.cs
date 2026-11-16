@@ -90,8 +90,11 @@ public static partial class McpHost
         "save_all, stop and stepping never ask), and before it opens another folder in their window. A call waits for each answer 2 " +
         "minutes at most, telling its progress meanwhile when asked to; one refused or left unanswered says so, and a later call asks " +
         "again. A file the agent opens or edits there comes in a tab behind the person's, whose tab, caret and keys stay as they were. " +
-        "Passenger --mcp FOLDER is an agent's own IDE with no window, which asks nothing and runs apps where nobody sees them " +
-        "(an Avalonia app on its headless platform), saying so when one cannot run there.";
+        "Where the person has not trusted the folder, build, run, debug_start, tests_run, profile, hot_reload and nuget_install " +
+        "are refused until they trust it, and C# answers wait for that too. " +
+        "Passenger --mcp FOLDER is an agent's own IDE with no window, which asks nothing, trusts the folder it was started on (the agent " +
+        "runs there already), and runs apps where nobody sees them (an Avalonia app on its headless platform), saying so when one cannot " +
+        "run there.";
 
     /// <summary>The server as an agent sees it, whichever way it is reached.</summary>
     internal static Implementation ServerInfo => new()
