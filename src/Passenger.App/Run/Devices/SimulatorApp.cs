@@ -63,6 +63,12 @@ public sealed partial record SimulatorApp(string Udid, string Simctl, string Pac
     /// <summary>The lines of the console looked through for the start: the plan's notes, then simctl's first.</summary>
     private const int FirstLines = 64;
 
+    /// <summary>Whether <paramref name="program"/> is the app's as its simulator runs it, a process of this Mac: in its
+    /// bundle's copy installed among the simulator's own bundles.</summary>
+    public bool Runs(string program) =>
+        program.Contains($"/Devices/{Udid}/data/Containers/Bundle/Application/", StringComparison.Ordinal)
+        && Path.GetFileName(Path.GetDirectoryName(program)) is { } bundle && bundle.Equals(Path.GetFileName(Bundle), StringComparison.Ordinal);
+
     /// <summary>simctl's arguments ending the app, wherever it was started from.</summary>
     public IReadOnlyList<string> Terminate() => ["terminate", Udid, Package];
 

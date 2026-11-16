@@ -86,12 +86,17 @@ public static partial class MacCatalystApps
     /// <summary>The process of <paramref name="app"/> started since <paramref name="since"/> (the wall clock's, as the system
     /// keeps a process's start), looked for until it is found or its opener has <paramref name="ended"/>, then once more;
     /// null where none is.</summary>
-    public static async Task<int?> StartedAsync(MacCatalystApp app, DateTime since, Task ended, CancellationToken cancel = default)
+    public static Task<int?> StartedAsync(MacCatalystApp app, DateTime since, Task ended, CancellationToken cancel = default) =>
+        StartedAsync(program => PathNames.Same(program, app.Executable), since, ended, cancel);
+
+    /// <summary>The process whose program <paramref name="runs"/> takes for an app's, started since <paramref name="since"/>,
+    /// looked for until it is found or what started it has <paramref name="ended"/>, then once more; null where none is.</summary>
+    internal static async Task<int?> StartedAsync(Func<string, bool> runs, DateTime since, Task ended, CancellationToken cancel)
     {
         while (true)
         {
             bool last = ended.IsCompleted;
-            if (Find(app.Executable, since) is int found)
+            if (Find(runs, since) is int found)
             {
                 return found;
             }
@@ -122,7 +127,10 @@ public static partial class MacCatalystApps
     }
 
     /// <summary>The first process running <paramref name="executable"/> that started at or after <paramref name="since"/>.</summary>
-    internal static int? Find(string executable, DateTime since)
+    internal static int? Find(string executable, DateTime since) => Find(program => PathNames.Same(program, executable), since);
+
+    /// <summary>The first process whose program <paramref name="runs"/> takes that started at or after <paramref name="since"/>.</summary>
+    private static int? Find(Func<string, bool> runs, DateTime since)
     {
         int[] ids = new int[4096];
         int count = ListAllProcesses(ids, ids.Length * sizeof(int));
@@ -130,7 +138,7 @@ public static partial class MacCatalystApps
         DateTime from = since - TimeSpan.FromSeconds(1);
         for (int i = 0; i < Math.Min(count, ids.Length); i++)
         {
-            if (ids[i] > 0 && Libc.ExecutableOf(ids[i]) is { } program && PathNames.Same(program, executable)
+            if (ids[i] > 0 && Libc.ExecutableOf(ids[i]) is { } program && runs(program)
                 && DotnetProcesses.StartedAt(ids[i]) is { } started && started >= from)
             {
                 return ids[i];

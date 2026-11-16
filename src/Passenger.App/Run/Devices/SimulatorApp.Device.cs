@@ -115,6 +115,17 @@ public sealed partial record SimulatorApp : IDeviceApp
         }
     }
 
+    /// <summary>The app's process, started since <paramref name="since"/> (the wall clock's, as the system keeps a process's
+    /// start), taken on once it runs, so it ends with Passenger as its children do, where an end of simctl's launch would
+    /// leave it running; its run ends it through simctl. Looked for until <paramref name="ended"/>. Never throws.</summary>
+    public async Task TakeOnAsync(DateTime since, Task ended)
+    {
+        if (await MacCatalystApps.StartedAsync(Runs, since, ended, CancellationToken.None) is int id)
+        {
+            ChildProcesses.Adopt(id, new System.Diagnostics.ProcessStartInfo(Libc.ExecutableOf(id) ?? Bundle));
+        }
+    }
+
     /// <summary>Nothing to put back: the app's environment is its start's alone.</summary>
     public Task PutBackEnvironmentAsync(DevicePut put) => Task.CompletedTask;
 }

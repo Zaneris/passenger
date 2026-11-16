@@ -126,6 +126,8 @@ public sealed partial class BuildRunController
         parts.Views.Debug.ShowTab(console: true);
         DebugProject = Path.GetDirectoryName(plan.Project);
         Process shell;
+        // The wall clock's, as the system keeps a process's start: a simulator's app is the one started since.
+        DateTime launching;
         try
         {
             // Read here, its log going to the session's console once the session has one.
@@ -143,6 +145,7 @@ public sealed partial class BuildRunController
             {
                 start.Environment[name] = value;
             }
+            launching = DateTime.UtcNow;
             shell = await ChildProcesses.StartAsync(start);
         }
         catch (System.ComponentModel.Win32Exception unstarted)
@@ -170,6 +173,10 @@ public sealed partial class BuildRunController
         {
             // The system starts it apart from its opener: it ends with its session here, and with Passenger.
             IdeErrors.Observe(MacCatalystApps.EndWithAsync(opened, opened.Since, ended));
+        }
+        else if (app is SimulatorApp simulator)
+        {
+            IdeErrors.Observe(simulator.TakeOnAsync(launching, ended));
         }
         onDevice.EndsWith(EndDebuggedOnDeviceAsync(ended, shell, log, onDevice));
         return null;

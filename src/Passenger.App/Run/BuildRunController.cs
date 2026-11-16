@@ -1344,6 +1344,8 @@ public sealed partial class BuildRunController
                 // A Mac Catalyst app takes the opener's environment, which the system hands it: the inspector's, the relay's and the hook's with the plan's.
                 variables = carried.Variables(variables, inspected?.Device, relay, handlers);
             }
+            // The wall clock's, as the system keeps a process's start: the app opened is the one started since.
+            DateTime opening = DateTime.UtcNow;
             if (plan.Console == ConsoleKind.Terminal)
             {
                 // The terminal's text is the program's own: its failed bindings are in Problems alone.
@@ -1367,6 +1369,10 @@ public sealed partial class BuildRunController
                         }
                         await AttachForHotReloadAsync(chosen.Name, inTerminal.Debuggee, null, work, Take(ref edits), running, Take(ref handlers), inspected, ProgramBuild.Of(plan));
                     }
+                }
+                if (refused is null && session.InTerminal is { } apart)
+                {
+                    TakeOn(plan, opening, apart.Ended);
                 }
                 if (onDevice is not null)
                 {
@@ -1403,19 +1409,13 @@ public sealed partial class BuildRunController
             {
                 FollowWatched(chosen.Name);
             }
-            // The wall clock's, as the system keeps a process's start: the app opened is the one started since.
-            DateTime opening = DateTime.UtcNow;
             // Its fork off the window's thread (#441): the program runs from now as Stop and IsRunning see it, its id known once started.
             string? notStarted = Started(watched
                 ? await session.Runner.StartDotnetAsync(Watch(plan), plan.WorkingDirectory, variables, plan.Placed)
                 : await session.Runner.StartAsync(plan.Start(), variables));
-            if (notStarted is null && plan.MacCatalyst?.App is { } opened)
-            {
-                // The system starts it apart from its opener, which Stop ends: it ends with its run here, and with Passenger.
-                IdeErrors.Observe(Devices.MacCatalystApps.EndWithAsync(opened, opening, session.Runner.Ended));
-            }
             if (notStarted is null)
             {
+                TakeOn(plan, opening, session.Runner.Ended);
                 parts.OpenBrowser(plan, session.Runner.Ended);
             }
             EndWith(inspected, notStarted is null ? session.Runner.Ended : Task.CompletedTask);
@@ -1446,6 +1446,21 @@ public sealed partial class BuildRunController
             handlers?.Dispose();
             dashboard?.Dispose();
             work.Dispose();
+        }
+    }
+
+    /// <summary>An app the system starts apart from what its run started (a Mac Catalyst app's opener, simctl's launch on a
+    /// simulator) found once it runs since <paramref name="since"/>, so it ends with Passenger, and a Mac Catalyst app with
+    /// its run as it <paramref name="ended"/>; a simulator's run ends its app through simctl.</summary>
+    private static void TakeOn(LaunchPlan plan, DateTime since, Task ended)
+    {
+        if (plan.MacCatalyst?.App is { } opened)
+        {
+            IdeErrors.Observe(Devices.MacCatalystApps.EndWithAsync(opened, since, ended));
+        }
+        else if (plan.Device?.App is Devices.SimulatorApp simulator)
+        {
+            IdeErrors.Observe(simulator.TakeOnAsync(since, ended));
         }
     }
 

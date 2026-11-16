@@ -8,7 +8,8 @@ namespace Passenger.UnitTests.Run;
 /// <summary>Where an iOS app runs: the simulators and devices the iOS workload lists (each by its UDID, a shut-down one said
 /// not running and named without the workload's own word on its state), and an installed app's start on a simulator:
 /// simctl's launch with its output on simctl's own, the app's variables under simctl's prefix with simctl's own words
-/// unbuffered, the process simctl says it launched, and the relay's variables for a Debug start.</summary>
+/// unbuffered, the process simctl says it launched, the app's own process by its installed bundle, and the relay's
+/// variables for a Debug start.</summary>
 public class SimulatorTargetsTests
 {
     private const string Listed = """
@@ -58,6 +59,18 @@ public class SimulatorTargetsTests
     {
         Assert.Equal(["launch", "--console", "--terminate-running-process", "B7339FFC-A65B-4992-9FF7-440A256F2635", "com.companyname.mauiapp1"], App.Launch());
         Assert.Equal(["terminate", "B7339FFC-A65B-4992-9FF7-440A256F2635", "com.companyname.mauiapp1"], App.Terminate());
+    }
+
+    [Fact]
+    public void The_apps_process_is_the_one_running_its_bundles_copy_installed_on_its_own_simulator()
+    {
+        string installed = "/Users/someone/Library/Developer/CoreSimulator/Devices/B7339FFC-A65B-4992-9FF7-440A256F2635/data/Containers/Bundle/Application/"
+            + "5D1C2B3A-0000-4000-8000-000000000001/MauiApp1.app/MauiApp1";
+
+        Assert.True(App.Runs(installed));
+        Assert.False(App.Runs(installed.Replace("B7339FFC-A65B-4992-9FF7-440A256F2635", "03DEA474-B2A5-4EFF-9D2D-0DD5B669FB9A", StringComparison.Ordinal)));
+        Assert.False(App.Runs(installed.Replace("MauiApp1.app/MauiApp1", "Other.app/Other", StringComparison.Ordinal)));
+        Assert.False(App.Runs(App.Bundle + "/MauiApp1"));
     }
 
     [Fact]
