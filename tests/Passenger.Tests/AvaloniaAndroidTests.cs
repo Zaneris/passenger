@@ -136,34 +136,6 @@ public sealed class AvaloniaAndroidTests
     /// <summary>A local's value as Variables shows it where the program stopped; null before it shows one.</summary>
     private static string? Shown(MainWindow window, string name) => window.BottomPanel.Debug.Tree.Rows.FirstOrDefault(r => r.Depth == 0 && r.Name == name)?.Value;
 
-    /// <summary>The app's tree as its inspector last answered, asked again each time the last answer is read, so a wait
-    /// on what it shows never waits inside itself.</summary>
-    private sealed class TreeAsked(LiveApp app)
-    {
-        private Task<Passenger.Inspector.AppTree>? asking;
-        private List<Passenger.Inspector.Element> read = [];
-
-        /// <summary>The elements' types as last read.</summary>
-        public string Shown => string.Join(", ", read.Select(e => e.Type));
-
-        /// <summary>Whether the last answer holds an element so; the next answer is asked for once this one is read.</summary>
-        public bool Holds(Func<Passenger.Inspector.Element, bool> wanted)
-        {
-            asking ??= app.TreeAsync();
-            Task<Passenger.Inspector.AppTree> answered = asking;
-            if (answered.IsCompleted)
-            {
-                asking = null;
-                read = [];
-                if (answered.IsCompletedSuccessfully)
-                {
-                    read = [.. Passenger.Inspector.AppTree.Walk(answered.Result.Roots).Select(e => e.Element)];
-                }
-            }
-            return read.Any(wanted);
-        }
-    }
-
     /// <summary>What a start left on the emulator of <paramref name="serial"/>: a port forwarded to a relay's or an
     /// inspector's socket, a socket reversed to Passenger, the inspector's files in the app, the app marked as debugged;
     /// empty once its end took them away.</summary>

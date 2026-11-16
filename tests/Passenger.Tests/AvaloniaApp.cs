@@ -145,6 +145,38 @@ internal static class AvaloniaApp
                 + $"Android app was restored): {restored.Output.Split('\n').FirstOrDefault(l => l.Contains(": error ", StringComparison.Ordinal))?.Trim() ?? restored.FirstLine}");
     }
 
+    /// <summary>Avalonia's cross-platform solution made in a folder (<see cref="CreateCrossPlatformAsync"/>), its iOS head
+    /// (<c>name.iOS</c>, its bundle <c>companyName.name</c>) taken to the first .NET whose iOS apps run on CoreCLR, at the
+    /// least iOS that .NET's workload builds for and with the scene manifest Xcode's SDK from 27 asks of an app, and restored
+    /// from nuget.org, as no restore of the solution's brings Avalonia's iOS packages: the head's project, and why it did not
+    /// restore, or null.</summary>
+    public static async Task<(string Project, string? Unrestored)> CreateIosHeadAsync(string folder, string name)
+    {
+        await CreateCrossPlatformAsync(folder, name);
+        string project = Path.Combine(folder, $"{name}.iOS", $"{name}.iOS.csproj");
+        string ios = $"net{Passenger.App.Mobile.MobilePlatforms.FirstOnCoreClr}.0-ios";
+        Rewrite(project, ("net10.0-ios", ios), ("<SupportedOSPlatformVersion>13.0<", "<SupportedOSPlatformVersion>15.0<"));
+        // Avalonia's app delegate hands iOS its scene delegate, which iOS asks for only of an app whose manifest says it has scenes.
+        Rewrite(Path.Combine(folder, $"{name}.iOS", "Info.plist"), ("<string>13.0</string>", "<string>15.0</string>"), ("\t<key>MinimumOSVersion</key>",
+            "\t<key>UIApplicationSceneManifest</key>\n\t<dict>\n\t\t<key>UIApplicationSupportsMultipleScenes</key>\n\t\t<false/>\n\t</dict>\n\t<key>MinimumOSVersion</key>"));
+        TestFolders.Write(folder, "nuget.config", TestRun.FromNuGetOrg);
+        ChildResult restored = await ChildProcesses.RunAsync(ChildProcesses.DotnetCommand(["restore", project], Path.GetDirectoryName(project)!), limit: Limit * 2);
+        return (project, restored.Succeeded ? null
+            : $"The app's iOS head does not restore here from nuget.org: {restored.Output.Split('\n').FirstOrDefault(l => l.Contains(": error ", StringComparison.Ordinal))?.Trim() ?? restored.FirstLine}");
+
+        static void Rewrite(string file, params (string Was, string Now)[] changes)
+        {
+            string text = File.ReadAllText(file);
+            string lineEnd = text.Contains("\r\n", StringComparison.Ordinal) ? "\r\n" : "\n";
+            foreach ((string was, string now) in changes)
+            {
+                Assert.True(text.Contains(was, StringComparison.Ordinal), $"The template's {Path.GetFileName(file)} no longer has {was}:\n{text}");
+                text = text.Replace(was, now.Replace("\n", lineEnd, StringComparison.Ordinal), StringComparison.Ordinal);
+            }
+            File.WriteAllText(file, text);
+        }
+    }
+
     /// <summary>A value the test project's build put in the assembly (Passenger.Tests.csproj).</summary>
     internal static string Metadata(string key) =>
         typeof(AvaloniaApp).Assembly.GetCustomAttributes<AssemblyMetadataAttribute>().FirstOrDefault(a => a.Key == key)?.Value

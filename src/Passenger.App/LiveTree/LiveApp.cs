@@ -310,9 +310,10 @@ public sealed class LiveApp : ILiveTreeSource, IDisposable
         [inspector, .. Directory.EnumerateFiles(Path.GetDirectoryName(inspector)!, "*.dll").Where(f => !PathNames.Same(f, inspector)).Order(StringComparer.Ordinal)];
 
     /// <summary>The live app for a plan that runs an app on an iOS simulator whose built bundle carries Avalonia or .NET MAUI: the
-    /// framework's inspector loaded from where Passenger carries it, listening on a loopback port of its own (the simulator's
-    /// .NET has no Unix sockets) for the token only this launch knows, its variables for the start to give it through simctl
-    /// (<see cref="Run.Devices.SimulatorApp.Variables"/>); null for any other app, or a build of Passenger without that inspector.</summary>
+    /// framework's inspector, with the files the start carries into the app's data container, listening on a loopback port of
+    /// its own (the simulator's .NET has no Unix sockets) for the token only this launch knows, its variables for the start to
+    /// give it through simctl (<see cref="Run.Devices.SimulatorApp.Variables"/>); null for any other app, or a build of
+    /// Passenger without that inspector.</summary>
     private static LiveApp? OnSimulator(LaunchPlan plan, Run.Devices.SimulatorApp app, IReadOnlyList<string> overlays)
     {
         if (!Directory.Exists(app.Bundle) || DeployedKind(Directory.EnumerateFiles(app.Bundle, "*.dll")) is not { } kind)
