@@ -66,7 +66,7 @@ artifacts/bin/Passenger.App/debug/Passenger . --file src/Passenger.App/App.axaml
 ```
 
 Steps: `--key` (as a US keyboard types it: `shift+4` is `$`), `--type` (one input, so completion opens only on a trigger typed alone), `--click`, `--right-click`,
-`--hover X,Y` (logical units), `--click-name NAME` (exit 2 if none), `--drag[-hold]`, `--wait MS`, `--window-buttons`,
+`--hover X,Y` (logical units), `--click-name NAME` (exit 2 if none), `--drag[-hold]`, `--wait MS`, `--window-buttons`, `--untrusted` (the folder held to the person's answer),
 `--agent COMMAND` (an agent in the Terminal's Agent tab, every tool allowed); a step after one that opens a dialog goes
 to the dialog. State is kept only where PASSENGER_SETTINGS names a folder, whose settings.json a screenshot or `--mcp`
 Passenger opens on, keeping no change (short on macOS: a socket path holds 103 bytes). Headless, dispatcher timers fire only inside a running frame (`Screenshot.Pump`, `Ui.WaitFor`).
@@ -100,6 +100,7 @@ tests run with a 4 MB `System.GC.Gen0MaxBudget`, so a young collection fits a 14
   read under it). Started elsewhere: the terminal's shell (Porta.Pty; on macOS `MacPseudoTerminal`, held until its reader reads, through dash to take its terminal), vstest.console, Velopack's Update.exe, an agent's
   `--mcp-attach` Passenger (`StartApart`), the system web view's helpers; a program run in the terminal is `Adopt`ed.
   Passenger's own standard input is taken at its start (`StandardInput`), so nothing it starts reads it.
+- **A folder's code runs only once it is trusted** (`WorkspaceTrust.Trusts`, Core; a parent covers its children, kept in `StateStore.Trust`): the project host refuses an untrusted folder, git runs there without the repository's programs (`UntrustedGit`), and TypeScript, ESLint, Prettier, headless Godot, previewers, a global.json's dotnet, BuildKit checks and restores ask first; an action that would run its code greys with `Refusals.Untrusted`, an attached agent's tool through `McpTools.RunCode`; trusting starts what was held back (`ProjectSession.Trust`), never a restart, a trusted solution's outside projects through `WorkspaceTrust.Lend`. A Passenger nobody sees and a test run trust every folder; a test holds one to the person's answer with `WorkspaceTrust.Ask`, a screenshot with `--untrusted`.
 - **No secret on a command line** (any process can read it): give it through the environment, or don't make it. Secrets
   are masked everywhere (Details, logs, consoles, hints, agents' answers, `ChildProcesses.Shown`) by one rule,
   `ContainerSecrets`.
