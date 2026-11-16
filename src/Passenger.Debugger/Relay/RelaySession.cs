@@ -422,7 +422,7 @@ internal sealed unsafe partial class RelaySession
         return [.. taken];
     }
 
-    /// <summary>What the app wrote, put where the engine looks for it.</summary>
+    /// <summary>What the app wrote, put where the engine looks for it, never past the room each argument was sent with.</summary>
     private void Write(int hr, IReadOnlyList<byte[]> outs, nint[][] objects, List<RelayArg> sent, MethodPlan method, nint* args)
     {
         int outAt = 0;
@@ -435,7 +435,7 @@ internal sealed unsafe partial class RelaySession
                 byte[] written = outs[outAt++];
                 if (args[i] != 0)
                 {
-                    written.CopyTo(new Span<byte>((void*)args[i], written.Length));
+                    written.CopyTo(new Span<byte>((void*)args[i], arg.Size));
                 }
                 if (method.Params[i].ElementType == typeof(CorDebugExceptionObjectStackFrame))
                 {
@@ -444,12 +444,7 @@ internal sealed unsafe partial class RelaySession
             }
             else if (arg.Kind == RelayArgKind.Objects)
             {
-                nint[] blocks = objects[objectsAt++];
-                nint* into = (nint*)args[i];
-                for (int j = 0; j < blocks.Length; j++)
-                {
-                    into[j] = blocks[j];
-                }
+                objects[objectsAt++].CopyTo(new Span<nint>((void*)args[i], arg.Size));
             }
         }
     }
@@ -568,6 +563,38 @@ internal sealed unsafe partial class RelaySession
         ["o", "o", "oobi"],
     ];
 
+    /// <summary>Why a callback's arguments are not as the relay sends them, else null: an object as 16 bytes, a number as 8,
+    /// a string as its even length and its characters, a block of bytes as its length and its bytes with that length the
+    /// number after it, all within the frame.</summary>
+    internal static string? Misread(string kinds, byte[] body, int at)
+    {
+        for (int i = 0; i < kinds.Length; i++)
+        {
+            int taken = kinds[i] switch { 'o' => 16, 'i' => 8, _ => 4 };
+            if (body.Length - at < taken)
+            {
+                return $"its callback's arguments end at byte {body.Length}, short of its argument {i + 1}";
+            }
+            if (kinds[i] is 's' or 'b')
+            {
+                int length = BinaryPrimitives.ReadInt32LittleEndian(body.AsSpan(at));
+                if (length < 0 || body.Length - at - 4 < length || (kinds[i] == 's' && length % 2 != 0))
+                {
+                    return $"its callback's argument {i + 1} names {length} bytes, in {body.Length - at - 4} left of its frame";
+                }
+                taken += length;
+                // The number is a ULONG32 the relay sends in 64 bits: the engine reads its low half alone.
+                if (kinds[i] == 'b' && (i + 1 >= kinds.Length || kinds[i + 1] != 'i' || body.Length - at - taken < 8
+                    || (uint)BinaryPrimitives.ReadUInt64LittleEndian(body.AsSpan(at + taken)) != (uint)length))
+                {
+                    return $"its callback's block of {length} bytes is not the size its next argument says";
+                }
+            }
+            at += taken;
+        }
+        return null;
+    }
+
     private static readonly Type[] s_callbackTypes = [typeof(ICorDebugManagedCallback), typeof(ICorDebugManagedCallback2), typeof(ICorDebugManagedCallback3), typeof(ICorDebugManagedCallback4)];
 
     private void HoldCallbacks(nint engineCallbacks)
@@ -597,13 +624,20 @@ internal sealed unsafe partial class RelaySession
         callbacks.Start();
     }
 
-    private void HandOn(RelayEvent each)
+    /// <summary>Hands one callback the app's runtime made to the engine's own, its arguments read as the relay sends them;
+    /// one whose arguments are otherwise ends the session as a broken relay's, handing on nothing.</summary>
+    internal void HandOn(RelayEvent each)
     {
         // A callback is a new stop: what the program said before it no longer holds.
         EndStop();
         int iface = each.Interface - 1;
         nint target = iface is >= 0 and < 4 ? _callbackInterfaces[iface] : 0;
         string kinds = iface is >= 0 and < 4 && each.Slot < s_callbackKinds[iface].Length ? s_callbackKinds[iface][each.Slot] : "";
+        if (Misread(kinds, each.Body, each.Offset) is { } why)
+        {
+            _link.Broken(why);
+            return;
+        }
         MethodPlan? method = kinds.Length > 0 ? RemoteInterfaces.Of(s_callbackTypes[iface]).Methods[each.Slot] : null;
         nint* a = stackalloc nint[7];
         List<nint> copies = [];

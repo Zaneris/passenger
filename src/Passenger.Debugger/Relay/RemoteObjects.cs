@@ -97,6 +97,9 @@ internal sealed class RemoteObject(ulong identity)
 
     public Dictionary<AnswerKey, RememberedAnswer> Answers { get; } = [];
 
+    /// <summary>A value's size as the engine was first told it: a value's type, and so its size, never changes.</summary>
+    public uint? Size { get; set; }
+
     public EnumBuffer<nint>? Enumeration { get; set; }
 
     /// <summary>Held while an enumerator's elements are read and handed out, one caller at a time.</summary>

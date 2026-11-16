@@ -1,4 +1,3 @@
-using System.Runtime.InteropServices;
 using System.Text;
 using Passenger.Debugger.Interop;
 
@@ -24,20 +23,9 @@ public partial class ManagedDebugger
                 continue;
             }
 
-            uint ReadUInt32Field()
-            {
-                ICorDebugValue fieldValue = corDebugObjectValue.GetFieldValue(corDebugObjectValue.Class, fieldDef);
-                IntPtr buffer = Marshal.AllocHGlobal(4);
-                try
-                {
-                    ((ICorDebugGenericValue)fieldValue.UnwrapDebugValue()).GetValue(buffer);
-                    return (uint)Marshal.ReadInt32(buffer);
-                }
-                finally
-                {
-                    Marshal.FreeHGlobal(buffer);
-                }
-            }
+            // Read at the field's own size, the room the value's bytes are written into wherever they come from.
+            uint ReadUInt32Field() =>
+                BitConverter.ToUInt32(((ICorDebugGenericValue)corDebugObjectValue.GetFieldValue(corDebugObjectValue.Class, fieldDef).UnwrapDebugValue()).GetValueAsBytes());
 
             switch (name)
             {
@@ -59,19 +47,9 @@ public partial class ManagedDebugger
                     break;
                 case "_lo64":
                     // .NET 7+ layout: _lo64 is a ulong covering lo+mid
-                    ICorDebugValue fieldValue64 = corDebugObjectValue.GetFieldValue(corDebugObjectValue.Class, fieldDef);
-                    IntPtr buf64 = Marshal.AllocHGlobal(8);
-                    try
-                    {
-                        ((ICorDebugGenericValue)fieldValue64.UnwrapDebugValue()).GetValue(buf64);
-                        ulong raw64 = (ulong)Marshal.ReadInt64(buf64);
-                        lo = (uint)(raw64 & 0xFFFFFFFF);
-                        mid = (uint)(raw64 >> 32);
-                    }
-                    finally
-                    {
-                        Marshal.FreeHGlobal(buf64);
-                    }
+                    ulong raw64 = BitConverter.ToUInt64(((ICorDebugGenericValue)corDebugObjectValue.GetFieldValue(corDebugObjectValue.Class, fieldDef).UnwrapDebugValue()).GetValueAsBytes());
+                    lo = (uint)(raw64 & 0xFFFFFFFF);
+                    mid = (uint)(raw64 >> 32);
 
                     hasLo = true;
                     hasMid = true;

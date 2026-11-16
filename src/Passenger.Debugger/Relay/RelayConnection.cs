@@ -50,6 +50,10 @@ internal interface IRelayLink
     /// <summary>Lets go of one reference to an object in the app, sent with the next call or once enough wait.</summary>
     void Release(ulong pointer);
 
+    /// <summary>Ends the link to a relay that said what no relay of Passenger's says, saying why: nothing more of it is
+    /// read, and the session ends as at the app's end.</summary>
+    void Broken(string why);
+
     /// <summary>The round trips and the time waited for their answers since the last tally.</summary>
     (int Trips, double WaitedMs) TakeTally();
 }
@@ -62,7 +66,7 @@ internal sealed class RelayConnection : IDisposable, IRelayLink
     private const int ReleasesSentAlone = 256;
 
     /// <summary>The longest frame the relay sends: a call's answer brings back no more than the call made room for.</summary>
-    private const int LongestFrame = 64 << 20;
+    internal const int LongestFrame = 64 << 20;
     private readonly Stream _stream;
     private readonly Lock _writing = new();
     private readonly PendingRequests<string, byte[]> _pending = new();
@@ -176,6 +180,10 @@ internal sealed class RelayConnection : IDisposable, IRelayLink
             }
         }
         byte[] answer = Ask("a call", body.ToArray());
+        if (answer.Length < 4)
+        {
+            throw Refused($"it answered a call with {answer.Length} bytes, short of its HRESULT");
+        }
         int hr = BinaryPrimitives.ReadInt32LittleEndian(answer);
         int at = 4;
         List<byte[]> outs = [];
@@ -197,13 +205,22 @@ internal sealed class RelayConnection : IDisposable, IRelayLink
             }
             else if (arg.Kind is RelayArgKind.Out or RelayArgKind.InOut)
             {
-                int size = BinaryPrimitives.ReadInt32LittleEndian(answer.AsSpan(at));
+                // The relay answers each room at the size it was asked for: any other would be written past the caller's.
+                int size = Counted(answer, at);
+                if (size != arg.Size || answer.Length - at - 4 < size)
+                {
+                    throw Refused($"it answered a room of {size} bytes, in {answer.Length - at - 4} left of its answer, where {arg.Size} were asked for");
+                }
                 outs.Add(answer.AsSpan(at + 4, size).ToArray());
                 at += 4 + size;
             }
             else if (arg.Kind == RelayArgKind.Objects)
             {
-                int count = BinaryPrimitives.ReadInt32LittleEndian(answer.AsSpan(at));
+                int count = Counted(answer, at);
+                if (count < 0 || count > arg.Size || (answer.Length - at - 4) / 16 < count)
+                {
+                    throw Refused($"it answered {count} objects, in {answer.Length - at - 4} bytes left of its answer, where room was made for {arg.Size}");
+                }
                 at += 4;
                 RemotePointer[] pointers = new RemotePointer[count];
                 for (int i = 0; i < count; i++, at += 16)
@@ -214,6 +231,23 @@ internal sealed class RelayConnection : IDisposable, IRelayLink
             }
         }
         return new RelayReply(hr, outs, objects);
+    }
+
+    /// <summary>The count at <paramref name="at"/> in an answer, or the refusal of one that ends before it.</summary>
+    private int Counted(byte[] answer, int at) =>
+        answer.Length - at >= 4 ? BinaryPrimitives.ReadInt32LittleEndian(answer.AsSpan(at)) : throw Refused($"its answer ends at byte {answer.Length}, short of a count");
+
+    /// <summary>A call's answer no relay of Passenger's gives: the link ended (<see cref="Broken"/>), and the call failed.</summary>
+    private IOException Refused(string why)
+    {
+        Broken(why);
+        return new IOException($"The app's relay is broken: {why}");
+    }
+
+    public void Broken(string why)
+    {
+        _log?.Invoke($"The app's relay is broken, so its session ends: {why}");
+        _stream.Dispose();
     }
 
     /// <summary>Lets the app's runtime go on with its start: the debugger has taken hold of it.</summary>

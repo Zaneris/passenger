@@ -12,8 +12,8 @@ internal sealed unsafe partial class RelaySession
     private readonly ConcurrentDictionary<nint, StandIn> _moduleOfScope = new();
 
     /// <summary>The engine's callbacks, which stay in the IDE; a module's name, place and metadata, read on the host; a
-    /// generic value's bytes, as many as its size; a thread's or a stack walk's context, as many bytes as asked. A call
-    /// with any other argument no plan can size is refused rather than sent.</summary>
+    /// value's size, kept, and a generic value's bytes, as many as that size; a thread's or a stack walk's context, as many
+    /// bytes as asked. A call with any other argument no plan can size is refused rather than sent.</summary>
     private int? Answered(StandIn standIn, MethodPlan method, nint* args)
     {
         Type type = standIn.Plan.Type;
@@ -59,14 +59,23 @@ internal sealed unsafe partial class RelaySession
             *(nint*)args[1] = module.Block;
             return 0;
         }
+        if (method.Declaring == typeof(ICorDebugValue) && method.Name == nameof(ICorDebugValue.TryGetSize) && standIn.Pointer != 0)
+        {
+            int sized = SizeOf(standIn, out uint size);
+            if (sized >= 0 && args[0] != 0)
+            {
+                *(uint*)args[0] = size;
+            }
+            return sized;
+        }
         if (type == typeof(ICorDebugGenericValue) && method.Name is nameof(ICorDebugGenericValue.TryGetValue) or nameof(ICorDebugGenericValue.TrySetValue))
         {
-            RelayReply size = _link.Call(standIn.Pointer, SlotOf(typeof(ICorDebugGenericValue), nameof(ICorDebugValue.TryGetSize)), [RelayArg.Out(4)]);
-            if (size.Hr < 0)
+            int sized = SizeOf(standIn, out uint size);
+            if (sized < 0)
             {
-                return size.Hr;
+                return sized;
             }
-            int bytes = BinaryPrimitives.ReadInt32LittleEndian(size.Outs[0]);
+            int bytes = (int)size;
             uint slot = SlotOf(typeof(ICorDebugGenericValue), method.Name);
             if (method.Name == nameof(ICorDebugGenericValue.TryGetValue))
             {
@@ -108,6 +117,38 @@ internal sealed unsafe partial class RelaySession
             return _link.Call(standIn.Pointer, SlotOf(type, method.Name), [RelayArg.Number((uint)args[0]), RelayArg.Number((uint)size), RelayArg.In(new ReadOnlySpan<byte>((void*)args[2], size).ToArray())]).Hr;
         }
         return null;
+    }
+
+    /// <summary>A value's size, asked of the app once for the object and kept, as its type never changes: the engine's room
+    /// for its bytes and the bytes carried for it are then one size. A size no answer of the relay's could carry ends the
+    /// session as a broken relay's.</summary>
+    private int SizeOf(StandIn value, out uint size)
+    {
+        lock (_lock)
+        {
+            if (value.Owner.Size is uint kept)
+            {
+                size = kept;
+                return 0;
+            }
+        }
+        size = 0;
+        RelayReply asked = _link.Call(value.Pointer, SlotOf(typeof(ICorDebugValue), nameof(ICorDebugValue.TryGetSize)), [RelayArg.Out(4)]);
+        if (asked.Hr < 0)
+        {
+            return asked.Hr;
+        }
+        uint said = BinaryPrimitives.ReadUInt32LittleEndian(asked.Outs[0]);
+        if (said > RelayConnection.LongestFrame)
+        {
+            _link.Broken($"it said a value is {said} bytes, more than any answer of its carries");
+            return E_FAIL;
+        }
+        lock (_lock)
+        {
+            size = value.Owner.Size ??= said;
+        }
+        return asked.Hr;
     }
 
     /// <summary>What a call the app took changes here: an update its runtime applied to a module is applied to the host's

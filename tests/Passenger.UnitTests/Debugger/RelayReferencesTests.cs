@@ -1,3 +1,4 @@
+using System.Buffers.Binary;
 using System.Collections.Concurrent;
 using System.Collections.Immutable;
 using System.Reflection.Metadata;
@@ -14,9 +15,9 @@ namespace Passenger.UnitTests.Debugger;
 
 /// <summary>The engine's hold on an app's objects through the relay: each object let go in the app once the engine holds
 /// none of it, the objects the app's debugger keeps anyway held for the session, what an object said asked of the app
-/// once, for as long as it holds (a method's function until an update makes its next version), the metadata an update
-/// takes to be there made in the app first, and the update applied to the host's copy of the module's metadata once the
-/// app took it.</summary>
+/// once, for as long as it holds (a method's function until an update makes its next version, a value's size for good, its
+/// bytes read at that size alone), the metadata an update takes to be there made in the app first, the update applied to
+/// the host's copy of the module's metadata once the app took it, and a callback read as the relay sends one or not at all.</summary>
 public class RelayReferencesTests
 {
     [Fact]
@@ -158,6 +159,89 @@ public class RelayReferencesTests
     }
 
     [Fact]
+    public void A_values_size_is_asked_of_the_app_once_and_its_bytes_are_read_at_that_size_alone()
+    {
+        App app = new() { Sizes = [4, 64] };
+        RelaySession session = new(app, new DeviceModules(null), null);
+        nint block = session.Take(new RemotePointer(0x7000, 0x7000), RemoteInterfaces.Of(typeof(ICorDebugGenericValue)));
+        ICorDebugGenericValue value = (ICorDebugGenericValue)new StrategyBasedComWrappers().GetOrCreateObjectForComInstance(block, CreateObjectFlags.UniqueInstance);
+        Assert.True(value.TryGetSize(out uint size) == 0 && size == 4, $"The value's size came back as {size}, not the 4 the app first said");
+        session.EndStop();
+        nint room = Marshal.AllocHGlobal(4 + 16);
+        try
+        {
+            for (int i = 0; i < 4 + 16; i++)
+            {
+                Marshal.WriteByte(room, i, 0xAB);
+            }
+            Assert.Equal(0, value.TryGetValue(room));
+            byte[] read = new byte[4 + 16];
+            Marshal.Copy(room, read, 0, read.Length);
+            Assert.True(read.AsSpan(0, 4).IndexOfAnyExcept((byte)7) < 0 && read.AsSpan(4).IndexOfAnyExcept((byte)0xAB) < 0,
+                $"The value's bytes were written as {Convert.ToHexString(read)}: past the 4 the engine made room for, where the app said another size later");
+        }
+        finally
+        {
+            Marshal.FreeHGlobal(room);
+        }
+        Assert.True(app.Asked(typeof(ICorDebugValue), nameof(ICorDebugValue.TryGetSize)) == 1,
+            $"The value's size was asked of the app {app.Asked(typeof(ICorDebugValue), nameof(ICorDebugValue.TryGetSize))} times, so it could answer the engine one size and the read another");
+    }
+
+    [Fact]
+    public void A_callback_read_as_the_relay_sends_it_is_handed_on_and_one_running_past_its_frame_ends_the_session()
+    {
+        App app = new();
+        RelaySession session = new(app, new DeviceModules(null), null);
+        session.HandOn(LogMessage(message: "Hello"u8.Length * 2, sent: "Hello"u8.Length * 2));
+        // The app domain is one the app's debugger keeps, the thread let go once handed on.
+        Assert.True(app.BrokenBy is null && app.Released.SequenceEqual([0x9000ul]),
+            $"A log message as the relay sends one was taken for a broken relay's ({app.BrokenBy}), or its thread not let go: {string.Join(", ", app.Released)}");
+
+        session.HandOn(LogMessage(message: 4096, sent: 10));
+        Assert.True(app.BrokenBy is not null && app.Released.Count == 1,
+            "A log message naming 4096 bytes where its frame holds 10 was handed on, its message read past what the relay sent");
+    }
+
+    [Theory]
+    [InlineData("ooiss", 16 + 16 + 8 + 4 + 2, "a string cut short")]
+    [InlineData("oo", 16 + 8, "an object cut short")]
+    public void A_callbacks_arguments_short_of_what_its_kinds_take_are_misread(string kinds, int length, string what)
+    {
+        byte[] body = new byte[length];
+        if (kinds == "ooiss")
+        {
+            BinaryPrimitives.WriteInt32LittleEndian(body.AsSpan(40), 6);
+        }
+        Assert.True(RelaySession.Misread(kinds, body, 0) is not null, $"A callback with {what} was read as the relay sends one");
+    }
+
+    [Fact]
+    public void A_callbacks_block_of_bytes_is_read_only_at_the_size_its_next_argument_says()
+    {
+        byte[] body = new byte[16 + 16 + 4 + 8 + 8];
+        BinaryPrimitives.WriteInt32LittleEndian(body.AsSpan(32), 8);
+        BinaryPrimitives.WriteInt64LittleEndian(body.AsSpan(44), 8);
+        Assert.Null(RelaySession.Misread("oobi", body, 0));
+        BinaryPrimitives.WriteInt64LittleEndian(body.AsSpan(44), 4096);
+        Assert.True(RelaySession.Misread("oobi", body, 0) is not null, "A data breakpoint's context of 8 bytes was handed on as 4096, so the engine would read past it");
+    }
+
+    /// <summary>A log message's callback as the relay sends it: its two objects, a level, an empty switch name and a message
+    /// naming <paramref name="message"/> bytes of which <paramref name="sent"/> come.</summary>
+    private static RelayEvent LogMessage(int message, int sent)
+    {
+        byte[] body = new byte[4 + 16 + 16 + 8 + 4 + 4 + sent];
+        (body[0], body[1], body[2], body[3]) = (0x81, 1, 15, 5);
+        BinaryPrimitives.WriteUInt64LittleEndian(body.AsSpan(4), 0x8000);
+        BinaryPrimitives.WriteUInt64LittleEndian(body.AsSpan(12), 0x8000);
+        BinaryPrimitives.WriteUInt64LittleEndian(body.AsSpan(20), 0x9000);
+        BinaryPrimitives.WriteUInt64LittleEndian(body.AsSpan(28), 0x9000);
+        BinaryPrimitives.WriteInt32LittleEndian(body.AsSpan(48), message);
+        return new RelayEvent(1, 15, body, 4);
+    }
+
+    [Fact]
     public void An_update_the_app_took_is_applied_to_the_hosts_copy_of_the_modules_metadata_so_a_method_it_added_is_read()
     {
         string folder = Directory.CreateTempSubdirectory("relay-update").FullName;
@@ -233,6 +317,14 @@ public class RelayReferencesTests
         /// <summary>The name a module answers, as the app's runtime names it; null where none is asked for.</summary>
         public string? ModuleName { get; init; }
 
+        /// <summary>The sizes a value answers, one for each time it is asked, the last for any after; null where none is.</summary>
+        public uint[]? Sizes { get; init; }
+
+        private int _sized;
+
+        /// <summary>Why the session took the relay for broken; null while it has not.</summary>
+        public string? BrokenBy { get; private set; }
+
         public List<ulong> Released { get; } = [];
 
         /// <summary>Each call's object and slot, in order.</summary>
@@ -251,6 +343,10 @@ public class RelayReferencesTests
             if (slot == 0)
             {
                 return new RelayReply(0, [], [[new RemotePointer(obj + 8, obj)]]);
+            }
+            if (Sizes is { } sizes && slot == RelaySession.SlotOf(typeof(ICorDebugValue), nameof(ICorDebugValue.TryGetSize)) && args.Count == 1)
+            {
+                return new RelayReply(0, [BitConverter.GetBytes(sizes[Math.Min(_sized++, sizes.Length - 1)])], []);
             }
             if (ModuleName is { } name && slot == RelaySession.SlotOf(typeof(ICorDebugModule), nameof(ICorDebugModule.TryGetName)) && args.Count == 3)
             {
@@ -290,6 +386,8 @@ public class RelayReferencesTests
                 Released.Add(pointer);
             }
         }
+
+        public void Broken(string why) => BrokenBy ??= why;
 
         public (int Trips, double WaitedMs) TakeTally() => (0, 0);
     }

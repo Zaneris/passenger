@@ -57,7 +57,7 @@ internal static class RelayAnswers
     private static readonly Dictionary<Type, string[]> s_forTheStop = new()
     {
         [typeof(ICorDebugProcess)] = [nameof(ICorDebugProcess.TryGetThread)],
-        [typeof(ICorDebugValue)] = [nameof(ICorDebugValue.TryGetType), nameof(ICorDebugValue.TryGetSize), nameof(ICorDebugValue.TryGetAddress)],
+        [typeof(ICorDebugValue)] = [nameof(ICorDebugValue.TryGetType), nameof(ICorDebugValue.TryGetAddress)],
         [typeof(ICorDebugValue2)] = [nameof(ICorDebugValue2.TryGetExactType)],
         [typeof(ICorDebugReferenceValue)] = [nameof(ICorDebugReferenceValue.TryIsNull), nameof(ICorDebugReferenceValue.TryGetValue), nameof(ICorDebugReferenceValue.TryDereference)],
         [typeof(ICorDebugObjectValue)] = [nameof(ICorDebugObjectValue.TryGetClass), nameof(ICorDebugObjectValue.TryIsValueClass)],

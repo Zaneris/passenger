@@ -7,10 +7,10 @@ using Passenger.Debugger.Relay;
 
 namespace Passenger.UnitTests.Debugger;
 
-/// <summary>The debugger's end of the relay in an app on a device: a call answered by the frame that names its number, and
-/// once the app has gone, every call failing, the one waiting and each made after it, as an app that died mid-call leaves
-/// a forward that still takes what is written; a relay reached at a Unix socket's path (a Mac Catalyst app's, in its
-/// container) as at a port.</summary>
+/// <summary>The debugger's end of the relay in an app on a device: a call answered by the frame that names its number, its
+/// rooms and objects as asked for, and a relay answering more ending its session; once the app has gone, every call
+/// failing, the one waiting and each made after it, as an app that died mid-call leaves a forward that still takes what is
+/// written; a relay reached at a Unix socket's path (a Mac Catalyst app's, in its container) as at a port.</summary>
 public class RelayConnectionTests
 {
     private static readonly TimeSpan Patience = TimeSpan.FromSeconds(10);
@@ -23,6 +23,46 @@ public class RelayConnectionTests
         Assert.True(relay.ProcessId == StandInRelay.ProcessId, $"The relay's hello named process {relay.ProcessId}, not {StandInRelay.ProcessId}");
         RelayReply reply = await CallAsync(relay, "A call the relay answered");
         Assert.True(reply.Hr == StandInRelay.Answer, $"A call came back with 0x{reply.Hr:X8}, not the 0x{StandInRelay.Answer:X8} the relay answered it with");
+    }
+
+    [Fact]
+    public async Task A_room_answered_at_the_size_asked_for_comes_back_whole_with_its_objects()
+    {
+        StandInRelay app = new() { Reply = Answer(room: 8, objects: 2) };
+        using RelayConnection relay = new(app, token: null, log: null);
+        RelayReply reply = await Within(Calling(relay, [RelayArg.Out(8), RelayArg.Objects(2)]), "A call the relay answered at the size asked for");
+        Assert.True(reply.Outs[0].AsSpan().SequenceEqual(Enumerable.Range(1, 8).Select(i => (byte)i).ToArray())
+            && reply.Objects[0].SequenceEqual([new RemotePointer(0x100, 0x101), new RemotePointer(0x200, 0x201)]),
+            $"The room came back as {Convert.ToHexString(reply.Outs[0])} with {reply.Objects[0].Length} objects, not as the relay answered it");
+    }
+
+    /// <summary>A room of another size than asked for, or more objects than room was made for, would be written past the
+    /// engine's own: the call fails and the session ends, saying why.</summary>
+    [Theory]
+    [InlineData(64, 2)]
+    [InlineData(4, 2)]
+    [InlineData(8, 3)]
+    public async Task A_relay_answering_a_room_of_another_size_or_more_objects_than_asked_for_fails_the_call_and_ends_its_session(int room, int objects)
+    {
+        StandInRelay app = new() { Reply = Answer(room, objects) };
+        List<string> said = [];
+        using RelayConnection relay = new(app, token: null, log: line =>
+        {
+            lock (said)
+            {
+                said.Add(line);
+            }
+        });
+        using ManualResetEventSlim gone = new();
+        relay.WhenGone(gone.Set);
+        IOException refused = await Assert.ThrowsAsync<IOException>(() => Within(Calling(relay, [RelayArg.Out(8), RelayArg.Objects(2)]),
+            $"A call the relay answered with a room of {room} bytes and {objects} objects"));
+        Assert.True(gone.Wait(Patience, TestContext.Current.CancellationToken),
+            $"The session went on with a relay that answered a room of {room} bytes and {objects} objects where 8 and 2 were asked for: {refused.Message}");
+        lock (said)
+        {
+            Assert.True(said.Any(line => line.Contains("broken", StringComparison.Ordinal)), $"The session ended without saying the relay broke: {string.Join(" | ", said)}");
+        }
     }
 
     [Fact]
@@ -104,7 +144,27 @@ public class RelayConnectionTests
 
     /// <summary>A call made on a thread of its own, as the engine's are, held by nothing: one that waits for good must not
     /// hold the tests beside it.</summary>
-    private static Task<RelayReply> Calling(RelayConnection relay) => BackgroundWork.UnheldThread(() => relay.Call(0x1000, 3, []));
+    private static Task<RelayReply> Calling(RelayConnection relay, RelayArg[]? args = null) => BackgroundWork.UnheldThread(() => relay.Call(0x1000, 3, args ?? []));
+
+    /// <summary>A call's answer as the relay writes one: S_OK, a room of <paramref name="room"/> bytes (1, 2, …), and
+    /// <paramref name="objects"/> objects, each its pointer and identity.</summary>
+    private static byte[] Answer(int room, int objects)
+    {
+        byte[] answer = new byte[4 + 4 + room + 4 + objects * 16];
+        BinaryPrimitives.WriteInt32LittleEndian(answer.AsSpan(4), room);
+        for (int i = 0; i < room; i++)
+        {
+            answer[8 + i] = (byte)(i + 1);
+        }
+        int at = 8 + room;
+        BinaryPrimitives.WriteInt32LittleEndian(answer.AsSpan(at), objects);
+        for (int i = 0; i < objects; i++)
+        {
+            BinaryPrimitives.WriteUInt64LittleEndian(answer.AsSpan(at + 4 + i * 16), (ulong)(0x100 * (i + 1)));
+            BinaryPrimitives.WriteUInt64LittleEndian(answer.AsSpan(at + 12 + i * 16), (ulong)(0x100 * (i + 1) + 1));
+        }
+        return answer;
+    }
 
     private static async Task<RelayReply> Within(Task<RelayReply> call, string what)
     {
@@ -139,6 +199,9 @@ public class RelayConnectionTests
 
         public bool Answers { get; init; }
 
+        /// <summary>What each call is answered with, in place of <see cref="Answer"/> alone; null for that.</summary>
+        public byte[]? Reply { get; init; }
+
         /// <summary>Whether a call has been written.</summary>
         public SemaphoreSlim Asked { get; } = new(0);
 
@@ -169,11 +232,11 @@ public class RelayConnectionTests
                 return;
             }
             uint id = BinaryPrimitives.ReadUInt32LittleEndian(buffer.AsSpan(offset + 4));
-            if (Answers && !frames.IsAddingCompleted)
+            if ((Answers || Reply is not null) && !frames.IsAddingCompleted)
             {
                 byte[] answer = new byte[4];
                 BinaryPrimitives.WriteInt32LittleEndian(answer, Answer);
-                frames.Add(Frame(id, answer));
+                frames.Add(Frame(id, Reply ?? answer));
             }
         }
 
