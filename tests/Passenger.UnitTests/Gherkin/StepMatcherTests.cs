@@ -176,6 +176,21 @@ public sealed class StepMatcherTests
     }
 
     [Fact]
+    public void A_scenario_with_examples_is_an_outline_whatever_its_keyword_its_steps_matched_once_for_each_row()
+    {
+        StepMatcher matcher = Matcher(Binding(BindingKind.Given, "the first number is {int}", "GivenTheFirstNumberIs", P("number", Int)));
+        FeatureReading reading = FeatureReading.Read(
+            "Feature: F\n\nScenario: S\n  Given the first number is <a>\n\nExamples:\n  | a |\n  | 1 |\n  | 2 |\n", "en");
+        FeatureReading oneBad = FeatureReading.Read(
+            "Feature: F\n\nScenario: S\n  Given the first number is <a>\n\nExamples:\n  | a |\n  | 1 |\n  | x |\n", "en");
+
+        Assert.Equal(ScenarioKind.Outline, reading.Scenarios.Single().Kind);
+        Assert.Equal(MatchStatus.Defined, matcher.Match(reading.Steps[0], reading).Status);
+        Assert.Empty(Assert.Single(matcher.Match(reading.Steps[0], reading).Bindings).Arguments);
+        Assert.Equal(MatchStatus.Undefined, matcher.Match(oneBad.Steps[0], oneBad).Status);
+    }
+
+    [Fact]
     public void An_outlines_step_with_placeholders_carries_no_arguments_however_many_example_rows_it_has()
     {
         StepMatcher matcher = Matcher(Binding(BindingKind.Given, "the first number is {int}", "GivenTheFirstNumberIs", P("number", Int)));

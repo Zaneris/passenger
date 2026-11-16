@@ -551,6 +551,8 @@ anchored to the whole step) and `Reqnroll/Bindings/StepDefinitionRegexCalculator
 `Reqnroll/Bindings/BindingScope.cs` at the same commit: the order of its checks and how a scope's fit is counted.
 `GherkinDialects.cs` beside them holds `ReqnrollProvider`, a port of `Reqnroll/Parser/ReqnrollGherkinDialectProvider.cs` at
 the same commit: a `# language:` naming a region Gherkin lacks read in its language's keywords under the name written.
+`FeatureReading.cs` beside them tells a scenario an outline as `Reqnroll.Parser/ReqnrollGherkinParser.cs`'s
+`CreateScenario` builds one at the same commit: wherever it has examples, whatever its keyword.
 
 ```
 BSD 3-Clause License

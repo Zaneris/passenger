@@ -24,6 +24,8 @@ public enum StepKeywordKind
     Unknown,
 }
 
+/// <summary>What a scenario is as Reqnroll's parser builds it: an outline wherever it has examples, whatever its keyword, run
+/// once for each row; a Scenario Outline with none a scenario, run once with its steps as written.</summary>
 public enum ScenarioKind
 {
     Background,
@@ -119,7 +121,7 @@ public sealed class FeatureExamples(string keyword, string title, int line, int 
 /// rule, and an outline's examples.</summary>
 public sealed class FeatureScenario(ScenarioKind kind, string keyword, string title, int line, int column, IReadOnlyList<FeatureTag> tags, FeatureHeader? rule)
 {
-    public ScenarioKind Kind { get; } = kind;
+    public ScenarioKind Kind { get; internal set; } = kind;
 
     public string Keyword { get; } = keyword;
 
@@ -354,14 +356,17 @@ public sealed partial class FeatureReading
         }
         if (matcher.Match_ScenarioLine(token))
         {
-            ScenarioKind kind = Dialect.ScenarioOutlineKeywords.Contains(token.MatchedKeyword, StringComparer.Ordinal) ? ScenarioKind.Outline : ScenarioKind.Scenario;
-            Begin(new FeatureScenario(kind, token.MatchedKeyword, token.MatchedText ?? "", line, indent, TakeTags(), rule));
+            Begin(new FeatureScenario(ScenarioKind.Scenario, token.MatchedKeyword, token.MatchedText ?? "", line, indent, TakeTags(), rule));
             return FeatureLineKind.Scenario;
         }
         if (matcher.Match_ExamplesLine(token))
         {
             examples = new FeatureExamples(token.MatchedKeyword, token.MatchedText ?? "", line, indent, TakeTags());
             scenario?.Examples.Add(examples);
+            if (scenario is { Kind: ScenarioKind.Scenario })
+            {
+                scenario.Kind = ScenarioKind.Outline;
+            }
             lastStep = null;
             describing = true;
             return FeatureLineKind.Examples;

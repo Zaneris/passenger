@@ -15,8 +15,8 @@ namespace Passenger.Tests;
 /// <summary>A Reqnroll feature's scenarios run and debugged from the feature (<see cref="ReqnrollProjects"/>): each scenario
 /// marked in the gutter before anything is built, Run Tests at the caret building the project and running the scenario's
 /// test, its mark taking the result; a breakpoint on a step's line stopping there, Step Into going into the step's
-/// definition and Step Over from a step to the next, and an outline's placeholder hovered showing its example's value.
-/// Debugged through the window, so the class runs alone.</summary>
+/// definition and Step Over from a step to the next, an outline's placeholder hovered showing its example's value, and a
+/// Scenario with examples bound and run once for each row. Debugged through the window, so the class runs alone.</summary>
 [Collection(Alone.Name)]
 public sealed class BddRunTests : IClassFixture<RestoredFolders>, IDisposable
 {
@@ -32,6 +32,8 @@ public sealed class BddRunTests : IClassFixture<RestoredFolders>, IDisposable
     private string FeatureFile => Path.Combine(folder, "Calc.Specs", "Features", "Calculator.feature");
 
     private string StepsFile => Path.Combine(folder, "Calc.Specs", "StepDefinitions", "CalculatorStepDefinitions.cs");
+
+    private string Specs => Path.Combine(folder, "Calc.Specs", "Calc.Specs.csproj");
 
     private MainWindow Open()
     {
@@ -64,6 +66,39 @@ public sealed class BddRunTests : IClassFixture<RestoredFolders>, IDisposable
                 () => $"the scenario of a step none binds to fail ({window.Status}): {string.Join(", ", feature.TestMarks.Select(m => $"{m.Line} {m.Kind}"))}",
                 TimeSpan.FromMinutes(4));
             Assert.Contains(feature.TestMarks, m => m.Line == 13 && m.Kind == TestMarkKind.Passed);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact]
+    public void A_scenario_with_examples_binds_its_steps_for_each_row_and_its_run_mark_runs_a_row_for_each_example()
+    {
+        TestFolders.Write(folder, "Calc.Specs/Features/Calculator.feature",
+            ReqnrollProjects.Feature.Replace("Scenario Outline: Add numbers", "Scenario: Add numbers", StringComparison.Ordinal));
+        MainWindow window = Open();
+        try
+        {
+            OpenDocument feature = window.EditorArea.Active!;
+            Ui.WaitFor(() => window.Session.Steps.For(Specs) is { Bindings.Count: > 0 }, () => $"the specs' bindings read ({window.Status})", TimeSpan.FromMinutes(3));
+            Ui.WaitFor(() => feature.Markers.Any(m => m.Code == Passenger.App.Bdd.FeatureAnalysis.Undefined),
+                () => $"the step nobody wrote marked: {string.Join("; ", feature.Markers.Select(m => m.Message))}");
+            string[] marked = [.. feature.Markers.Select(m => feature.Text.Snapshot.GetText(m.Range.Start, m.Range.Length))];
+            Assert.True(marked.SequenceEqual(["Given a step nobody wrote"]),
+                $"The scenario's steps with placeholders are said unbound though each of its examples binds them: {string.Join("; ", marked)}");
+
+            Ui.PlaceAfter(window.EditorArea.CodeEditor, "Given the first number is <");
+            Ui.Run(window, AppActions.RunTests);
+            Ui.WaitFor(() => !window.Tests.IsBusy && feature.TestMarks.Any(m => m.Line == 13 && m.Kind == TestMarkKind.Passed),
+                () => $"the scenario's mark to show it passed ({window.Status}): {string.Join(", ", feature.TestMarks.Select(m => $"{m.Line} {m.Kind}"))}; tests: {Listed(window)}",
+                TimeSpan.FromMinutes(4));
+            TestNode scenario = Assert.Single(window.Tests.Tree.Methods, m => m.FullName?.EndsWith(".AddNumbers", StringComparison.Ordinal) == true);
+            string[] rows = [.. scenario.Children.Where(c => c.Kind == TestNodeKind.Row && c.State == TestState.Passed).Select(c => c.Name)];
+            Assert.True(rows.Length == 2 && rows.Any(r => r.Contains("a: \"1\", b: \"2\", sum: \"3\"", StringComparison.Ordinal))
+                && rows.Any(r => r.Contains("a: \"5\", b: \"5\", sum: \"10\"", StringComparison.Ordinal)),
+                $"The scenario's run is to pass a row for each example: {string.Join("; ", scenario.Children.Select(c => $"{c.Name} {c.State}"))}");
         }
         finally
         {

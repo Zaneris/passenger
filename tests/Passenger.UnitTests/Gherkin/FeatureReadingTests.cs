@@ -110,6 +110,19 @@ public sealed class FeatureReadingTests
     }
 
     [Fact]
+    public void A_scenario_is_an_outline_where_it_has_examples_whatever_its_keyword_as_reqnrolls_parser_builds_it()
+    {
+        FeatureReading reading = FeatureReading.Read(
+            "Feature: F\n\nExample: With\n  Given <a>\n\n  Examples:\n    | a |\n    | 1 |\n\n" +
+            "Scenario Outline: Without\n  Given <a>\n\nScenario: Plain\n  Given one\n", "en");
+
+        Assert.Equal(
+            [("With", ScenarioKind.Outline), ("Without", ScenarioKind.Scenario), ("Plain", ScenarioKind.Scenario)],
+            reading.Scenarios.Select(s => (s.Title, s.Kind)));
+        Assert.Empty(reading.Errors);
+    }
+
+    [Fact]
     public void A_file_in_german_reads_its_keywords_in_german()
     {
         FeatureReading reading = FeatureReading.Read(
