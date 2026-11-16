@@ -13,6 +13,7 @@ public enum DecorationKind
     Annotations,
     ChangeMarks,
     Bookmarks,
+    Review,
 }
 
 /// <summary>What is drawn on one document's text for whoever shows it: its markers, inlay hints, folds, line-end
@@ -65,6 +66,15 @@ public sealed class DocumentDecorations
     public IReadOnlyList<ChangeMark> ChangeMarks => ChangesByLine.Items;
 
     public LineOrdered<ChangeMark> ChangesByLine { get; private set; } = NoChanges;
+
+    /// <summary>The lines an agent changed that wait for the person's review, from the text before its changes: tinted
+    /// in every editor of the file, apart from the change marks a version control's bars draw.</summary>
+    public IReadOnlyList<ChangeMark> ReviewMarks => ReviewByLine.Items;
+
+    public LineOrdered<ChangeMark> ReviewByLine { get; private set; } = NoChanges;
+
+    /// <summary>The lines the agent removed, each run where it stood, drawn as rows of their own in every editor.</summary>
+    public IReadOnlyList<RemovedLines> ReviewRemoved { get; private set; } = [];
 
     /// <summary>The bookmarked lines.</summary>
     public IReadOnlyList<int> Bookmarks => BookmarksByLine.Items;
@@ -128,6 +138,19 @@ public sealed class DocumentDecorations
         }
         ChangesByLine = marks.Count == 0 ? NoChanges : new LineOrdered<ChangeMark>(marks, static c => c.Line, LastOf);
         Changed?.Invoke(this, DecorationKind.ChangeMarks);
+    }
+
+    public void SetReviewMarks(IReadOnlyList<ChangeMark> marks, IReadOnlyList<RemovedLines>? removed = null)
+    {
+        removed ??= [];
+        if ((ReferenceEquals(marks, ReviewMarks) || (marks.Count == 0 && ReviewMarks.Count == 0))
+            && (ReferenceEquals(removed, ReviewRemoved) || (removed.Count == 0 && ReviewRemoved.Count == 0)))
+        {
+            return;
+        }
+        ReviewByLine = marks.Count == 0 ? NoChanges : new LineOrdered<ChangeMark>(marks, static c => c.Line, LastOf);
+        ReviewRemoved = removed;
+        Changed?.Invoke(this, DecorationKind.Review);
     }
 
     public void SetBookmarks(IReadOnlyList<int> lines)

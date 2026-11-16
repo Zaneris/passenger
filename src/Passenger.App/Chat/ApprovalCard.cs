@@ -111,16 +111,21 @@ public sealed class ApprovalCard : Border
     /// <summary>The question's line: its title, what it adds and removes where it edits, and its state.</summary>
     private DockPanel Heading(ToolCall call, IReadOnlyList<ChatChange> changes)
     {
+        // Docked, the title last, so a long one ends in an ellipsis before the counts and the state rather than under them.
         DockPanel heading = new();
+        chip.Margin = new Thickness(8, 0, 0, 0);
         DockPanel.SetDock(chip, Dock.Right);
         heading.Children.Add(chip);
-        StackPanel left = new() { Orientation = Orientation.Horizontal, Spacing = 8 };
-        left.Children.Add(new TextBlock
+        StackPanel left = new() { Orientation = Orientation.Horizontal, Spacing = 8, Margin = new Thickness(8, 0, 0, 0) };
+        DockPanel.SetDock(left, Dock.Right);
+        TextBlock title = new()
         {
             Text = plan is not null ? $"Plan: {plan.Title}" : call.Title.Length > 0 ? call.Title : "The agent asks",
             FontWeight = FontWeight.SemiBold,
             TextTrimming = TextTrimming.CharacterEllipsis,
-        });
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        ToolTip.SetTip(title, title.Text);
         if (changes.Count > 0)
         {
             int added = 0;
@@ -135,6 +140,7 @@ public sealed class ApprovalCard : Border
             left.Children.Add(Counted($"−{removed}", TokenKeys.Vcs_Deleted));
         }
         heading.Children.Add(left);
+        heading.Children.Add(title);
         return heading;
     }
 

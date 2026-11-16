@@ -84,7 +84,10 @@ public sealed partial class CodeEditor
     private RowMap RowsOf(WrapMap? wrapped)
     {
         FoldLines folds = Folding;
-        return rowMap is { } map && ReferenceEquals(map.Folds, folds) && ReferenceEquals(map.Wraps, wrapped) ? map : new RowMap(folds, wrapped);
+        IReadOnlyList<RemovedLines> removed = ChangeBackgrounds ? [] : decorations.ReviewRemoved;
+        return rowMap is { } map && ReferenceEquals(map.Folds, folds) && ReferenceEquals(map.Wraps, wrapped) && ReferenceEquals(map.Removed, removed)
+            ? map
+            : new RowMap(folds, wrapped, removed);
     }
 
     /// <summary>Where the text's lines wrap at the view's width now, or null while soft wrap is off or the view has no width
@@ -335,28 +338,38 @@ public sealed partial class CodeEditor
     /// <summary>The rows a frame shows, found again for each.</summary>
     private readonly List<RowSpan> rowsShown = [];
 
+    /// <summary>Where each row of <see cref="rowsShown"/> stands among all the rows: one after another, but for the rows of
+    /// removed lines between them (<see cref="RemovedLines"/>).</summary>
+    private readonly List<int> rowsAt = [];
+
     /// <summary>The rows from <paramref name="firstRow"/> to <paramref name="lastRow"/>, in order, stepping over folded lines
     /// rather than visiting them.</summary>
     private List<RowSpan> RowsOnScreen(TextSnapshot text, int firstRow, int lastRow)
     {
         List<RowSpan> shown = rowsShown;
         shown.Clear();
+        rowsAt.Clear();
         RowMap map = Rows;
         FoldLines folds = map.Folds;
         (int line, int sub) = map.LineOfRow(firstRow);
+        // A removed line's row at the top: the text's rows begin with the line below it.
+        sub = Math.Max(0, sub);
         if (line >= text.LineCount || folds.IsHidden(line))
         {
             return shown;
         }
         int k = folds.RangeAtOrBefore(line) + 1;
         LineSpan span = text.GetLine(line);
-        for (int row = firstRow; row <= lastRow; row++)
+        int at = map.RowOf(line) + sub;
+        while (at <= lastRow)
         {
             LineWrap? wrap = map.Wraps?[line];
             shown.Add(RowSpan.Of(span, wrap, sub));
+            rowsAt.Add(at);
             if (wrap is not null && sub < wrap.Starts.Length)
             {
                 sub++;
+                at++;
                 continue;
             }
             sub = 0;
@@ -371,6 +384,7 @@ public sealed partial class CodeEditor
                 break;
             }
             span = text.GetLine(line);
+            at = map.RowOf(line);
         }
         return shown;
     }
@@ -1336,11 +1350,35 @@ public sealed partial class CodeEditor
         /// <summary>The rows the wraps add to the lines the folded ranges before each hide; one more than the ranges.</summary>
         private readonly int[] hiddenExtra = NoneHidden;
 
-        public RowMap(FoldLines folds, WrapMap? wraps)
+        /// <summary>The lines removed lines stand above, rising (the line count for those after the last), each once.</summary>
+        private readonly int[] removedAbove = [];
+
+        /// <summary>How many removed lines stand above the lines before each of <see cref="removedAbove"/>; one more.</summary>
+        private readonly int[] removedBefore = NoneHidden;
+
+        public RowMap(FoldLines folds, WrapMap? wraps, IReadOnlyList<RemovedLines> removed)
         {
             Folds = folds;
             Wraps = wraps;
+            Removed = removed;
             Count = folds.Text.LineCount - folds.HiddenCount;
+            if (removed.Count > 0)
+            {
+                int lines = folds.Text.LineCount;
+                // Shown where their line shows: those above a folded line go with it.
+                Shown = [.. removed
+                    .Where(r => r.Text.Count > 0 && r.Line >= 0 && (r.Line >= lines || !folds.IsHidden(r.Line)))
+                    .GroupBy(r => Math.Min(r.Line, lines))
+                    .OrderBy(g => g.Key)
+                    .Select(g => new RemovedLines(g.Key, [.. g.SelectMany(r => r.Text)]))];
+                removedAbove = [.. Shown.Select(r => r.Line)];
+                removedBefore = new int[Shown.Count + 1];
+                for (int k = 0; k < Shown.Count; k++)
+                {
+                    removedBefore[k + 1] = removedBefore[k] + Shown[k].Text.Count;
+                }
+                Count += removedBefore[^1];
+            }
             if (wraps is null)
             {
                 return;
@@ -1361,13 +1399,35 @@ public sealed partial class CodeEditor
 
         public WrapMap? Wraps { get; }
 
+        /// <summary>The removed lines it was made with, to know it again.</summary>
+        public IReadOnlyList<RemovedLines> Removed { get; }
+
+        /// <summary>The removed lines it shows, by the line each stands above, rising.</summary>
+        public IReadOnlyList<RemovedLines> Shown { get; } = [];
+
         public int Count { get; }
 
-        /// <summary>A line's first row; a folded line's is its fold's first line's.</summary>
+        /// <summary>A line's first row; a folded line's is its fold's first line's. Removed lines above it come before it.</summary>
         public int RowOf(int line)
         {
             line = Folds.Shown(line);
-            return Folds.RowOf(line) + (Wraps is null ? 0 : Wraps.ExtraBefore(line) - hiddenExtra[Folds.RangeAtOrBefore(line) + 1]);
+            int row = Folds.RowOf(line) + (Wraps is null ? 0 : Wraps.ExtraBefore(line) - hiddenExtra[Folds.RangeAtOrBefore(line) + 1]);
+            return removedAbove.Length == 0 ? row : row + RemovedThrough(line);
+        }
+
+        /// <summary>The first row of the <paramref name="k"/>th removed lines shown, the line they stand above's less them.</summary>
+        public int RemovedRow(int k) => Shown[k].Line >= Folds.Text.LineCount
+            ? Count - (removedBefore[^1] - removedBefore[k])
+            : RowOf(Shown[k].Line) - Shown[k].Text.Count;
+
+        /// <summary>How many removed lines stand above the lines up to <paramref name="line"/>, its own with them.</summary>
+        private int RemovedThrough(int line) => removedBefore[Sorted.FirstAfter<int>(removedAbove, line)];
+
+        /// <summary>Where a line's rows begin with the removed lines above it.</summary>
+        private int BlockTop(int line)
+        {
+            int shown = Folds.Shown(line);
+            return RowOf(shown) - (RemovedThrough(shown) - RemovedThrough(shown - 1));
         }
 
         /// <summary>How many rows a line takes: one for a folded one, which shares its fold's.</summary>
@@ -1375,9 +1435,10 @@ public sealed partial class CodeEditor
             Wraps is null || Folds.IsHidden(line) || line >= Wraps.LineCount ? 1 : 1 + (Wraps[line]?.Breaks ?? 0);
 
         /// <summary>The line a row shows and which of its rows it is; past the last row, the lines past the end.</summary>
+        /// <summary>A removed line's row is the line's below it, at a row before its first (less than zero).</summary>
         public (int Line, int Row) LineOfRow(int row)
         {
-            if (Wraps is null || row < 0)
+            if ((Wraps is null && removedAbove.Length == 0) || row < 0)
             {
                 return (Folds.LineOfRow(row), 0);
             }
@@ -1385,8 +1446,10 @@ public sealed partial class CodeEditor
             {
                 return (Folds.Text.LineCount + row - Count, 0);
             }
-            // The last line whose first row is at most the row; a folded one is on its fold's first line's.
-            int last = Math.Max(0, Sorted.FirstAfter(Folds.Text.LineCount, this, static (map, at) => map.RowOf(at), row) - 1);
+            // The last line whose rows (removed lines above it first) begin at most at the row; a folded one is its fold's.
+            int last = removedAbove.Length == 0
+                ? Math.Max(0, Sorted.FirstAfter(Folds.Text.LineCount, this, static (map, at) => map.RowOf(at), row) - 1)
+                : Math.Max(0, Sorted.FirstAfter(Folds.Text.LineCount, this, static (map, at) => map.BlockTop(at), row) - 1);
             int line = Folds.Shown(last);
             return (line, row - RowOf(line));
         }

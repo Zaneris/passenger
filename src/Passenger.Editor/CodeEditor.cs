@@ -250,9 +250,13 @@ public sealed partial class CodeEditor : Control
                 ScrollWithinRows();
                 FollowInputMethod();
                 break;
+            case DecorationKind.Review:
+                // Removed lines drawn as rows of their own move the rows after them, as a fold does.
+                UpdateScrollBars();
+                break;
         }
         // The gutter's columns read change marks and bookmarks, which a row's key leaves to them; a fold moves rows.
-        if (kind is DecorationKind.ChangeMarks or DecorationKind.Bookmarks or DecorationKind.Folds)
+        if (kind is DecorationKind.ChangeMarks or DecorationKind.Bookmarks or DecorationKind.Folds or DecorationKind.Review)
         {
             Redraw();
         }

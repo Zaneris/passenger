@@ -10,6 +10,8 @@ using Avalonia.VisualTree;
 using Passenger.Acp;
 using Passenger.App;
 using Passenger.App.Chat;
+using Passenger.App.Workspace;
+using Passenger.Text;
 
 namespace Passenger.Tests;
 
@@ -311,6 +313,11 @@ public sealed class ChatTests
         Assert.Equal(StandInAgent.Plan, File.ReadAllText(plan));
         ApprovalCard card = window.Chat.Questions.Single();
         Assert.Contains(card.GetVisualDescendants().OfType<TextBlock>(), text => text.Text == "Plan: Add a math class");
+        // Shown at once as a page, with no click; Claude Code's own draft is a step, neither reviewed nor a second plan.
+        Ui.WaitFor(() => window.EditorArea.Active?.Path?.EndsWith("add-a-math-class.plan.md", StringComparison.Ordinal) == true, () => $"the plan shown, where {window.EditorArea.Active?.Path} is");
+        Assert.True(window.EditorArea.ShowsMarkdownPreview);
+        Assert.Empty(window.Chat.Review.Shown);
+        Assert.Contains(window.Chat.Tools, line => line.Title == "Draft the plan");
 
         Ui.Click(InCard(card, "Build"));
         Ui.WaitFor(() => !window.Chat.Busy, () => $"the turn ended, where the conversation is {Shown(window)}");
@@ -368,6 +375,62 @@ public sealed class ChatTests
 
         Assert.Equal("To-dos 1/3", window.Chat.Todos.Count);
         Assert.Equal(["completed", "in_progress", "pending"], window.Chat.Todos.Entries.Select(entry => entry.Status));
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void An_edited_file_opens_behind_with_its_added_lines_tinted_and_its_banner()
+    {
+        MainWindow window = Reviewing(out StandInAgent agent, out string folder);
+        Send(window, "edit");
+        Ui.WaitFor(() => !window.Chat.Busy && Reviewed(window, "hello.txt")?.AgentReview is not null, () => $"hello.txt in review in its editor, where the conversation is {Shown(window)}");
+
+        OpenDocument hello = Reviewed(window, "hello.txt")!;
+        Assert.Equal([new ChangeMark(1, 1, ChangeMarkKind.Added)], hello.Decorations.ReviewMarks);
+        Assert.Empty(hello.Decorations.ReviewRemoved);
+        Assert.StartsWith("The agent changed this file (hello.txt: +1 −0)", hello.AgentReview!.Said, StringComparison.Ordinal);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void A_replaced_line_shows_where_it_stood_as_a_row_above_the_line_that_took_its_place()
+    {
+        MainWindow window = Reviewing(out StandInAgent agent, out string folder);
+        window.OpenFile(Path.Combine(folder, "hello.txt"));
+        Ui.Settle();
+        Passenger.Editor.CodeEditor editor = window.EditorArea.CodeEditor;
+        double before = editor.PointOf(0).Y;
+
+        Send(window, "swap");
+        Ui.WaitFor(() => !window.Chat.Busy && Reviewed(window, "hello.txt")?.Decorations.ReviewRemoved.Count == 1, () => $"the removed line marked, where the conversation is {Shown(window)}");
+        Ui.Settle();
+
+        OpenDocument hello = Reviewed(window, "hello.txt")!;
+        Assert.Equal("hi\n", hello.Text.Snapshot.ToString());
+        Assert.Equal(0, hello.Decorations.ReviewRemoved[0].Line);
+        Assert.Equal(["hello"], hello.Decorations.ReviewRemoved[0].Text);
+        Assert.Equal([new ChangeMark(0, 1, ChangeMarkKind.Added)], hello.Decorations.ReviewMarks);
+        // The removed line's row stands above the first line, which moves down a row.
+        Assert.True(editor.PointOf(0).Y >= before + (editor.LineHeight * 0.9), $"The first line stayed at {editor.PointOf(0).Y}, from {before}");
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void The_files_banner_Keep_ends_its_review_and_Undo_puts_it_back()
+    {
+        MainWindow window = Reviewing(out StandInAgent agent, out string folder);
+        Send(window, "edit");
+        Ui.WaitFor(() => !window.Chat.Busy && Reviewed(window, "hello.txt")?.AgentReview is not null && Reviewed(window, "notes.md")?.AgentReview is not null, "both files in review");
+
+        Reviewed(window, "notes.md")!.AgentReview!.Keep();
+        Ui.WaitFor(() => Reviewed(window, "notes.md")?.AgentReview is null, "notes.md kept");
+        Assert.Empty(Reviewed(window, "notes.md")!.Decorations.ReviewMarks);
+        Assert.Equal(["hello.txt"], window.Chat.Review.Shown.Select(file => Path.GetFileName(file.Path)));
+
+        Reviewed(window, "hello.txt")!.AgentReview!.Undo();
+        Ui.WaitFor(() => window.Chat.Review.Shown.Count == 0 && Reviewed(window, "hello.txt")?.AgentReview is null, "hello.txt undone");
+        Assert.Equal("hello\n", File.ReadAllText(Path.Combine(folder, "hello.txt")));
+        Assert.Equal("hello\n", Reviewed(window, "hello.txt")!.Text.Snapshot.ToString());
         window.Close();
     }
 
@@ -460,6 +523,10 @@ public sealed class ChatTests
         return window;
     }
 
+    /// <summary>The open file of that name, if it is open.</summary>
+    private static OpenDocument? Reviewed(MainWindow window, string name) =>
+        window.EditorArea.Documents.FirstOrDefault(document => Path.GetFileName(document.Path) == name);
+
     private static Button InReview(MainWindow window, string content) =>
         window.Chat.Review.GetVisualDescendants().OfType<Button>().First(b => Equals(b.Content, content));
 
@@ -509,7 +576,7 @@ public sealed class ChatTests
         public bool Cancelled { get; private set; }
 
         /// <summary>The plan it asks to build, as the Claude adapter sends a plan's Markdown.</summary>
-        public const string Plan = "# Add a math class\n\n1. Write MathOperations.cs\n2. Add tests\n";
+        public const string Plan = "# Plan: Add a math class\n\n1. Write MathOperations.cs\n2. Add tests\n";
 
         private readonly List<string> steered = [];
         private readonly List<string> order = [];
@@ -638,6 +705,12 @@ public sealed class ChatTests
                             await writer.WriteLineAsync("""{"jsonrpc":"2.0","id":"ask_1","method":"session/request_permission","params":{"sessionId":"sess_1","toolCall":{"toolCallId":"call_2","status":"pending","title":"Write notes.md","kind":"edit","content":[{"type":"diff","path":"/work/notes.md","oldText":"","newText":"# Notes\n"}]},"options":[{"optionId":"allow-once","name":"Yes","kind":"allow_once"},{"optionId":"allow-always","name":"Yes, allow all edits during this session","kind":"allow_always"},{"optionId":"reject","name":"No","kind":"reject_once"}]}}""");
                             break;
                         }
+                        if (text == "swap" && SessionFolder is { } swapped)
+                        {
+                            await Edit(writer, "call_6", Path.Combine(swapped, "hello.txt"), "hi\n");
+                            await Answer(writer, id, """{"stopReason":"end_turn"}""");
+                            break;
+                        }
                         if (text == "edit" && SessionFolder is { } folder)
                         {
                             await Edit(writer, "call_3", Path.Combine(folder, "hello.txt"), "hello\nworld\n");
@@ -650,6 +723,10 @@ public sealed class ChatTests
                         {
                             waiting = id;
                             string content = JsonValue.Create(Plan).ToJsonString();
+                            // Claude Code drafts its plan in its own folder first; nothing is written there here.
+                            string draft = JsonValue.Create(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".claude", "plans", "stand-in-draft.md")).ToJsonString();
+                            await Update(writer, $$$"""{"toolCallId":"call_draft","sessionUpdate":"tool_call","status":"pending","title":"Write","kind":"edit","content":[],"locations":[{"path":{{{draft}}}}]}""");
+                            await Update(writer, """{"toolCallId":"call_draft","sessionUpdate":"tool_call_update","status":"completed"}""");
                             await Update(writer, """{"sessionUpdate":"plan","entries":[{"content":"Read the code","priority":"high","status":"completed"},{"content":"Write MathOperations.cs","priority":"high","status":"in_progress"},{"content":"Add tests","priority":"medium","status":"pending"}]}""");
                             await Update(writer, $$$"""{"toolCallId":"call_5","sessionUpdate":"tool_call","status":"pending","title":"Approve Plan","kind":"switch_mode","content":[{"type":"content","content":{"type":"text","text":{{{content}}}}}]}""");
                             await writer.WriteLineAsync($$$"""{"jsonrpc":"2.0","id":"ask_plan","method":"session/request_permission","params":{"sessionId":"sess_1","toolCall":{"toolCallId":"call_5","title":"Ready to code?","kind":"switch_mode","content":[{"type":"content","content":{"type":"text","text":{{{content}}}}}]},"options":[{"optionId":"exit-plan-auto","name":"Yes, and use auto mode","kind":"allow_always"},{"optionId":"exit-plan-default","name":"Yes, manually approve edits","kind":"allow_once"},{"optionId":"reject","name":"No, keep planning","kind":"reject_once"}]}}""");

@@ -477,6 +477,16 @@ public sealed class OpenDocument : Observable
 
     private NoticeAction? noticeAction;
 
+    private AgentReview? agentReview;
+
+    /// <summary>The changes an agent made to the file that wait for the person's review: what the banner says of them,
+    /// with Keep and Undo; null while none wait. Its lines are tinted from <see cref="Decorations"/>' review marks.</summary>
+    public AgentReview? AgentReview
+    {
+        get => agentReview;
+        set => Set(ref agentReview, value);
+    }
+
     /// <summary>What the banner offers to do about its notice, as a link after it (Run 'npm install'); null for nothing.</summary>
     public NoticeAction? NoticeAction
     {
@@ -1613,6 +1623,10 @@ public sealed class OpenDocument : Observable
 
 /// <summary>A link the editor's banner offers after its notice: its words and what it does.</summary>
 public sealed record NoticeAction(string Text, Action Run);
+
+/// <summary>An agent's changes to a file in review, as its banner offers them: what it says ("Claude Agent changed this
+/// file · +12 −3") and what Keep and Undo do.</summary>
+public sealed record AgentReview(string Said, Action Keep, Action Undo);
 
 /// <summary>A file's length and last write time on disk, and when they were found.</summary>
 public readonly record struct DiskStamp(long Length, DateTime Written, DateTime Found)

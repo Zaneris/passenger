@@ -6,6 +6,7 @@ using Passenger.Acp;
 using Passenger.App.Chat;
 using Passenger.App.Vcs;
 using Passenger.Core;
+using Passenger.Editor;
 using Passenger.Text;
 using VcsDiff = Passenger.Vcs.FileDiff;
 
@@ -64,7 +65,7 @@ public partial class MainWindow
                 {
                     chatReview.Done(file.Path);
                 }
-                view.Review.Show(chatReview.Files);
+                ShowReview(view);
             };
             view.Review.UndoRequested += (_, files) =>
             {
@@ -92,6 +93,98 @@ public partial class MainWindow
             Menus = [new MenuPlace("Tools", 0, 10)],
         });
         Closed += (_, _) => EndChatAgent();
+        reviewMarking = new Debounce(TimeSpan.FromMilliseconds(250), MarkReviewAsync);
+        // A file opened while the agent's changes to it wait, and every edit of one, is marked again once typing pauses.
+        Editors.Opened += (_, document) =>
+        {
+            document.Text.Changed += (_, _) =>
+            {
+                if (document.AgentReview is not null)
+                {
+                    reviewMarking.Restart();
+                }
+            };
+            reviewMarking.Restart();
+        };
+    }
+
+    private Debounce? reviewMarking;
+
+    /// <summary>The review as it is now: the files in the bar above the box, and in each open file's own editor its lines
+    /// tinted and its banner's Keep and Undo.</summary>
+    private void ShowReview(ChatView view)
+    {
+        view.Review.Show(chatReview.Files);
+        reviewMarking?.Restart();
+    }
+
+    /// <summary>Opens the files the agent just changed, each in a tab behind the file the person has shown (an agent's
+    /// file comes behind, <see cref="AgentAsks"/>), so its changes are there to see in its own editor.</summary>
+    private void OpenBehind(IEnumerable<ReviewedFile> files)
+    {
+        foreach (ReviewedFile file in files)
+        {
+            if (!file.Deleted && Editors.Find(file.Path) is null && File.Exists(file.Path))
+            {
+                AgentAsks.Act(() => Editors.Open(file.Path, focus: false));
+            }
+        }
+    }
+
+    /// <summary>Marks the agent's changes in review in every open file they are in, as Cursor shows them in the file: its
+    /// lines tinted from the file's text before the agent against its text now (red rules where lines went), and its
+    /// banner saying so with Keep and Undo; a file with none waiting has neither.</summary>
+    private async Task MarkReviewAsync()
+    {
+        IReadOnlyList<ReviewedFile> files = chatReview.Files;
+        foreach (Workspace.OpenDocument document in Editors.Documents.ToArray())
+        {
+            string path = PathNames.Canonical(document.Path);
+            if (files.FirstOrDefault(file => file.Path == path) is not { } file || !document.HoldsText)
+            {
+                document.Decorations.SetReviewMarks([]);
+                document.AgentReview = null;
+                continue;
+            }
+            TextSnapshot text = document.Text.Snapshot;
+            (ChangeMark[] added, RemovedLines[] removed) = await BackgroundWork.Run(() => ReviewMarks(file.BeforeText, text.ToString()));
+            if (!ReferenceEquals(document.Text.Snapshot, text))
+            {
+                // Typed over meanwhile: the debounce that typing restarted marks it again.
+                continue;
+            }
+            document.Decorations.SetReviewMarks(added, removed);
+            document.AgentReview = new Workspace.AgentReview(
+                $"The agent changed this file ({Path.GetFileName(path)}: +{file.Added} −{file.Removed}), to keep or undo",
+                () => KeepChatFile(file),
+                () => UndoChatFile(file));
+        }
+    }
+
+    /// <summary>A file's changes as Cursor shows them in the file: the lines added (in place of others or not) tinted as
+    /// added, and the lines removed shown where they stood, above what took their place.</summary>
+    private static (ChangeMark[] Added, RemovedLines[] Removed) ReviewMarks(string before, string now)
+    {
+        string[] then = LineDiff.Lines(before);
+        IReadOnlyList<DiffHunk> hunks = LineDiff.Hunks(then, LineDiff.Lines(now));
+        ChangeMark[] added = [.. hunks.Where(h => h.NewCount > 0).Select(h => new ChangeMark(h.NewStart, h.NewCount, ChangeMarkKind.Added))];
+        RemovedLines[] removed = [.. hunks.Where(h => h.OldCount > 0).Select(h => new RemovedLines(h.NewStart, then[h.OldStart..(h.OldStart + h.OldCount)]))];
+        return (added, removed);
+    }
+
+    /// <summary>Keeps the agent's changes to a file, from its banner.</summary>
+    private void KeepChatFile(ReviewedFile file)
+    {
+        chatReview.Done(file.Path);
+        ShowReview(Chat);
+    }
+
+    /// <summary>Undoes the agent's changes to a file, from its banner.</summary>
+    private void UndoChatFile(ReviewedFile file)
+    {
+        Task undoing = UndoChatAsync(Chat, [file]);
+        BackgroundWork.Track(undoing);
+        IdeErrors.Observe(undoing);
     }
 
     /// <summary>Starts the agent in the open folder and opens its session in the agent's Accept edits mode, as Cursor
@@ -205,15 +298,20 @@ public partial class MainWindow
         {
             Planned(call);
             (string[] paths, bool done) = Reviewed(call);
+            // Claude Code's draft of its plan is its own: the plan shown is the folder's copy, so the draft is a step, not a file.
+            ToolCall shown = call.Kind == "edit" && call.Locations.Count > 0 && call.Locations.All(ChatPlans.IsAgentDraft)
+                ? call with { Title = "Draft the plan" }
+                : call;
             OnWindowThread(() =>
             {
-                view.Tool(call);
+                view.Tool(shown);
                 if (done)
                 {
                     IReadOnlyList<ReviewedFile> files = chatReview.Files;
                     ReviewedFile[] these = [.. files.Where(file => paths.Contains(file.Path, StringComparer.Ordinal))];
                     view.Counted(call.Id, these.Sum(file => file.Added), these.Sum(file => file.Removed));
-                    view.Review.Show(files);
+                    ShowReview(view);
+                    OpenBehind(these);
                 }
             });
         };
@@ -265,6 +363,9 @@ public partial class MainWindow
                 return null;
             }
             chatPlans[call.Id] = saved;
+            // Shown at once in the main editor as a page, as Cursor shows its plan; the keys stay in the chat.
+            string page = saved.Path;
+            OnWindowThread(() => OpenChatPlan(page, focus: false));
         }
         return new ChatPlan(saved.Path, PathNames.Shown(saved.Path, root), ChatPlans.TitleOf(saved.Text));
     }
@@ -299,10 +400,16 @@ public partial class MainWindow
         static string Normalized(string text) => text.Replace("\r\n", "\n", StringComparison.Ordinal).Trim();
     }
 
-    /// <summary>A plan's file as a page: open in the editor with the Markdown preview beside it, its diagrams drawn.</summary>
-    private void OpenChatPlan(string path)
+    /// <summary>A plan's file as a page: shown in the editor with the Markdown preview beside it, its diagrams drawn; with
+    /// <paramref name="focus"/> its editor takes the keys, as a click on Open plan asks.</summary>
+    private void OpenChatPlan(string path, bool focus = true)
     {
-        if (OpenFile(path) is null && !Editors.ShowsMarkdownPreview)
+        if (Editors.Open(path, focus) is { } problem)
+        {
+            status.Text = problem;
+            return;
+        }
+        if (!Editors.ShowsMarkdownPreview)
         {
             ToggleMarkdownPreview();
         }
@@ -344,7 +451,7 @@ public partial class MainWindow
         {
             return ([], false);
         }
-        string[] named = [.. call.Locations.Concat(call.Diffs.Select(diff => diff.Path)).Select(PathNames.Canonical).Distinct(StringComparer.Ordinal)];
+        string[] named = [.. call.Locations.Concat(call.Diffs.Select(diff => diff.Path)).Select(PathNames.Canonical).Distinct(StringComparer.Ordinal).Where(path => !ChatPlans.IsAgentDraft(path))];
         if (named.Length > 0 && chatEdits.TryAdd(call.Id, named))
         {
             foreach (string path in named)
@@ -441,7 +548,7 @@ public partial class MainWindow
             }
             chatReview.Done(file.Path);
         }
-        view.Review.Show(chatReview.Files);
+        ShowReview(view);
         status.Text = refused.Count == 0
             ? files.Count == 1 ? $"Undid the agent's changes to {Path.GetFileName(files[0].Path)}" : $"Undid the agent's changes to {files.Count} files"
             : $"Not undone: {string.Join(", ", refused)}";

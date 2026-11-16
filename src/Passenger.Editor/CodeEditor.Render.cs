@@ -423,12 +423,12 @@ public sealed partial class CodeEditor
     private static Cursor HandCursor => hand ??= new Cursor(StandardCursorType.Hand);
 
     /// <summary>A diff side's tint for each line from <paramref name="first"/> to <paramref name="last"/> inside a change,
-    /// the first change's that holds it.</summary>
+    /// the first change's that holds it: a diff's own changes, else (in any editor) the agent's changes in review.</summary>
     private Dictionary<int, IBrush> ChangeTints(int first, int last)
     {
         Dictionary<int, IBrush> tints = changeTints;
         tints.Clear();
-        LineOrdered<ChangeMark> changes = decorations.ChangesByLine;
+        LineOrdered<ChangeMark> changes = TintedChanges;
         for (int i = changes.From(first); i < changes.Count && changes.LineOf(i) <= last; i++)
         {
             ChangeMark change = changes[i];
@@ -470,10 +470,48 @@ public sealed partial class CodeEditor
         }
     }
 
-    /// <summary>A diff side's rule where the other side has lines this one has none of.</summary>
+    /// <summary>The lines an agent removed, as rows of their own where they stood (<see cref="RemovedLines"/>): on the
+    /// deleted colour, in the editor's font, the tabs as wide as the text's.</summary>
+    private void DrawRemovedLines(DrawingContext context, double gutter, Size size, double left)
+    {
+        RowMap map = Rows;
+        if (map.Shown.Count == 0)
+        {
+            return;
+        }
+        int top = RowAtY(0);
+        int bottom = RowAtY(size.Height);
+        string tab = new(' ', Math.Max(1, Indent.TabWidth));
+        Typeface typeface = Typeface;
+        for (int k = 0; k < map.Shown.Count; k++)
+        {
+            int first = map.RemovedRow(k);
+            IReadOnlyList<string> lines = map.Shown[k].Text;
+            if (first > bottom || first + lines.Count < top)
+            {
+                continue;
+            }
+            for (int i = Math.Max(0, top - first); i < lines.Count && first + i <= bottom; i++)
+            {
+                double y = ((first + i) * metrics.LineHeight) - scroll.Y;
+                context.FillRectangle(palette.DiffDeleted, new Rect(gutter, y, Math.Max(0, size.Width - gutter), metrics.LineHeight));
+                FormattedText words = new(lines[i].Replace("\t", tab, StringComparison.Ordinal), System.Globalization.CultureInfo.InvariantCulture,
+                    FlowDirection.LeftToRight, typeface, FontSize, palette.Text);
+                context.DrawText(words, new Point(left, y + ((metrics.LineHeight - words.Height) / 2)));
+            }
+        }
+    }
+
+    /// <summary>The changes whose lines are tinted: a diff side's own, else the agent's in review.</summary>
+    private LineOrdered<ChangeMark> TintedChanges => ChangeBackgrounds ? decorations.ChangesByLine : decorations.ReviewByLine;
+
+    /// <summary>Whether lines are tinted for changes: in a diff, or where an agent's changes wait for review.</summary>
+    private bool TintsChanges => ChangeBackgrounds || decorations.ReviewMarks.Count > 0;
+
+    /// <summary>A diff side's rule where the other side has lines this one has none of, and where an agent removed lines.</summary>
     private void DrawChangeRules(DrawingContext context, int first, int last, double gutter, double width)
     {
-        LineOrdered<ChangeMark> changes = decorations.ChangesByLine;
+        LineOrdered<ChangeMark> changes = TintedChanges;
         for (int i = changes.From(first); i < changes.Count && changes.LineOf(i) <= last + 1; i++)
         {
             ChangeMark change = changes[i];

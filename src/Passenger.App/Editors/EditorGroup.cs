@@ -63,6 +63,8 @@ public sealed class EditorGroup : DockPanel
     private HairlineDivider? divider;
     private Control? side;
     private readonly Banner banner = new();
+    private readonly Button reviewKeep;
+    private readonly Button reviewUndo;
     private readonly Button bannerLink;
     private EditorTab? active;
 
@@ -125,6 +127,12 @@ public sealed class EditorGroup : DockPanel
         bannerLink = banner.Link(null, () => active?.Document.NoticeAction?.Run());
         bannerLink.Name = "BannerLink";
         bannerLink.IsVisible = false;
+        // An agent's changes in review: Keep rightmost, Undo before it, as Cursor offers them over the file.
+        reviewKeep = banner.Link("Keep", () => active?.Document.AgentReview?.Keep());
+        reviewUndo = banner.Link("Undo", () => active?.Document.AgentReview?.Undo());
+        reviewKeep.Name = "ReviewKeep";
+        reviewUndo.Name = "ReviewUndo";
+        reviewKeep.IsVisible = reviewUndo.IsVisible = false;
         Children.Add(tabBar);
         Children.Add(banner);
         Children.Add(Find);
@@ -589,11 +597,15 @@ public sealed class EditorGroup : DockPanel
     private void ShowBanner(OpenDocument document)
     {
         // A diff's own bar says what it is.
-        string[] said = [.. new[] { document.IsReadOnly && document.Diff is null ? document.Origin : null, document.Notice, document.EncodingWarning }.OfType<string>()];
+        string[] said = [.. new[] { document.AgentReview?.Said, document.IsReadOnly && document.Diff is null ? document.Origin : null, document.Notice, document.EncodingWarning }.OfType<string>()];
         banner.Say(said.Length > 0 ? string.Join("  ·  ", said) : null);
         bannerLink.IsVisible = document.Notice is not null && document.NoticeAction is not null;
         bannerLink.Content = document.NoticeAction?.Text;
+        reviewKeep.IsVisible = reviewUndo.IsVisible = document.AgentReview is not null;
     }
+
+    /// <summary>The banner's Keep and Undo of an agent's changes in review, shown while the file has them.</summary>
+    public (Button Keep, Button Undo) ReviewLinks => (reviewKeep, reviewUndo);
 
     /// <summary>What the banner over the file shown says, null while it shows none.</summary>
     public string? BannerText => banner.Said;
@@ -747,7 +759,7 @@ public sealed class EditorGroup : DockPanel
             case nameof(OpenDocument.Highlighter):
                 Editor.Highlighter = document.Highlighter;
                 break;
-            case nameof(OpenDocument.Notice) or nameof(OpenDocument.NoticeAction) or nameof(OpenDocument.EncodingWarning):
+            case nameof(OpenDocument.Notice) or nameof(OpenDocument.NoticeAction) or nameof(OpenDocument.EncodingWarning) or nameof(OpenDocument.AgentReview):
                 ShowBanner(document);
                 break;
             case nameof(OpenDocument.ProjectContexts):
