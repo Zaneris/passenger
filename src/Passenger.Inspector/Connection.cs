@@ -100,7 +100,8 @@ internal sealed class Connection : IDisposable
     private static readonly TimeSpan AcceptLimit = TimeSpan.FromSeconds(60);
 
     /// <summary>An app on a device listening on an abstract socket of this name, which Passenger reaches through adb's
-    /// forward, or on an iOS simulator, whose .NET has no Unix sockets, on the loopback's port the name gives; taking the
+    /// forward, on an iOS simulator, whose .NET has no Unix sockets, on the loopback's port the name gives, or in a Mac
+    /// Catalyst app, whose sandbox takes a listener only in its container, on the Unix socket a path names there; taking the
     /// first client whose first line is the launch's token (<see cref="Wire.TokenVariable"/>); null, having said why, once
     /// none came in time. The app's start waits for it, so nothing it says before then is lost.</summary>
     private static Connection? Accept(string name)
@@ -113,10 +114,16 @@ internal sealed class Connection : IDisposable
             return null;
         }
         bool port = int.TryParse(name, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out int number);
+        bool path = name.StartsWith('/');
         using Socket listener = port ? new(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp) : new(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
         try
         {
-            listener.Bind(port ? new System.Net.IPEndPoint(System.Net.IPAddress.Loopback, number) : new UnixDomainSocketEndPoint("\0" + name));
+            if (path)
+            {
+                // Only a start that died leaves one at the path its own start named.
+                File.Delete(name);
+            }
+            listener.Bind(port ? new System.Net.IPEndPoint(System.Net.IPAddress.Loopback, number) : new UnixDomainSocketEndPoint(path ? name : "\0" + name));
             listener.Listen(1);
             Deadline until = Deadline.In(AcceptLimit);
             while (!until.Passed)
@@ -135,7 +142,7 @@ internal sealed class Connection : IDisposable
             NotIn($"Passenger did not reach its socket {name} within {AcceptLimit.TotalSeconds:0} s");
             return null;
         }
-        catch (Exception error) when (error is SocketException or IOException or ArgumentException)
+        catch (Exception error) when (error is SocketException or IOException or ArgumentException or UnauthorizedAccessException or PlatformNotSupportedException)
         {
             NotIn($"it could not listen on its socket {name}: {error.Message}");
             return null;

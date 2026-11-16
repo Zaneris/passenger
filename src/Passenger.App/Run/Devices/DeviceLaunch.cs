@@ -53,14 +53,15 @@ public sealed record DevicePut(string Abi, string? Linked, bool Relayed, bool Ca
     public IReadOnlyList<string> Reversed { get; init; } = [];
 }
 
-/// <summary>Passenger's inspector as a start puts it in an Avalonia app on a device: its files, the variables its startup
-/// hook reads (<see cref="Variables"/>), the abstract socket it listens on, and the port Passenger reaches it through once
-/// adb forwards one (<see cref="Reach"/>).</summary>
+/// <summary>Passenger's inspector as a start puts it in an Avalonia or MAUI app on a device: its files, the variables its
+/// startup hook reads (<see cref="Variables"/>), the socket it listens on, and where Passenger reaches it once the start
+/// has put it in (<see cref="Reach(int)"/>).</summary>
 public sealed class DeviceInspector(string socket, string token, IReadOnlyList<string> files, IReadOnlyList<KeyValuePair<string, string>> more)
 {
-    private readonly TaskCompletionSource<int> reached = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private readonly TaskCompletionSource<System.Net.EndPoint> reached = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-    /// <summary>The abstract socket the inspector listens on in the app.</summary>
+    /// <summary>The socket the inspector listens on in the app: an abstract one's name on Android, a loopback port's number
+    /// on an iOS simulator, a Unix socket's path in a Mac Catalyst app's container.</summary>
     public string Socket { get; } = socket;
 
     /// <summary>The line Passenger first writes, by which the inspector takes it.</summary>
@@ -69,10 +70,15 @@ public sealed class DeviceInspector(string socket, string token, IReadOnlyList<s
     /// <summary>The inspector's files on this machine, put in the app's <see cref="AndroidApp.Carried"/> folder.</summary>
     public IReadOnlyList<string> Files { get; } = files;
 
-    /// <summary>The local port adb forwards to the inspector's socket, once it does; faulted where it could not.</summary>
-    public Task<int> Reached => reached.Task;
+    /// <summary>Where Passenger reaches the inspector once the start has put it in: the local port adb forwards to its
+    /// socket, the simulator's port, or the socket's path; faulted where it could not.</summary>
+    public Task<System.Net.EndPoint> Reached => reached.Task;
 
-    public void Reach(int port) => reached.TrySetResult(port);
+    /// <summary>The inspector reached at a port of this machine's loopback.</summary>
+    public void Reach(int port) => reached.TrySetResult(new System.Net.IPEndPoint(System.Net.IPAddress.Loopback, port));
+
+    /// <summary>The inspector reached at the Unix socket of a path.</summary>
+    public void Reach(string path) => reached.TrySetResult(new System.Net.Sockets.UnixDomainSocketEndPoint(path));
 
     public void Unreached(string why) => reached.TrySetException(new IOException(why));
 

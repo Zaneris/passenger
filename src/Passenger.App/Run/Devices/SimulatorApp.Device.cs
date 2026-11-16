@@ -37,7 +37,7 @@ public sealed partial record SimulatorApp : IDeviceApp
         string[] files = [.. inspector?.Files ?? [], .. relay is null ? [] : (string[])[relay], .. relayed && File.Exists(UpdateHandlerHook.HookPath) ? (string[])[UpdateHandlerHook.HookPath] : []];
         DevicePut put = new(string.Empty, null, relayed, files.Length > 0, []);
         cancel.ThrowIfCancellationRequested();
-        if (files.Length > 0 && CarryIn(files) is { } uncarried)
+        if (files.Length > 0 && CarriedIn.Copy(Carried, files) is { } uncarried)
         {
             await EndAsync(put, stop: false);
             return (null, null, $"What {Package} loads of Passenger's could not be put in its data container ({Carried}): {uncarried}");
@@ -56,24 +56,6 @@ public sealed partial record SimulatorApp : IDeviceApp
         return (put, session, null);
     }
 
-    /// <summary>The files copied into <see cref="Carried"/> by their names, made afresh; why not, or null.</summary>
-    private string? CarryIn(IReadOnlyList<string> files)
-    {
-        try
-        {
-            Directory.CreateDirectory(Carried);
-            foreach (string file in files)
-            {
-                File.Copy(file, Path.Combine(Carried, Path.GetFileName(file)), overwrite: true);
-            }
-            return null;
-        }
-        catch (Exception unwritten) when (unwritten is IOException or UnauthorizedAccessException)
-        {
-            return unwritten.Message;
-        }
-    }
-
     /// <summary>A port of the loopback no program listens on now, for the relay to listen on; null where none could be had.</summary>
     internal static int? FreePort()
     {
@@ -90,31 +72,9 @@ public sealed partial record SimulatorApp : IDeviceApp
     }
 
     /// <summary>The variables a start gives the app over the plan's <paramref name="environment"/>: the inspector's, listening
-    /// on its port (its hook loaded from <see cref="Carried"/>, first among the startup hooks), the relay's and the update
-    /// handlers' hook's (carried too, first again), each where the start has one.</summary>
+    /// on its port, the relay's and the update handlers' hook's, each loaded from <see cref="Carried"/> where the start has one.</summary>
     public Dictionary<string, string> Variables(IReadOnlyDictionary<string, string> environment, DeviceInspector? inspector, RelaySession? relay,
-        UpdateHandlerHook? handlers)
-    {
-        Dictionary<string, string> given = new(environment);
-        if (inspector is not null)
-        {
-            Over(given, inspector.Variables(Carried, [.. given]));
-        }
-        Over(given, relay?.Given ?? new Dictionary<string, string>());
-        if (handlers is not null)
-        {
-            Over(given, handlers.Over(given, Path.Combine(Carried, Path.GetFileName(UpdateHandlerHook.HookPath))));
-        }
-        return given;
-
-        static void Over(Dictionary<string, string> under, IEnumerable<KeyValuePair<string, string>> over)
-        {
-            foreach ((string name, string value) in over.ToList())
-            {
-                under[name] = value;
-            }
-        }
-    }
+        UpdateHandlerHook? handlers) => CarriedIn.Variables(Carried, environment, inspector, relay, handlers);
 
     /// <summary>The app ended on its simulator where <paramref name="stop"/>, simctl's answer in the log where it could not
     /// (one already gone answers that it found nothing to end), then what a start carried in taken out. Never throws.</summary>
@@ -126,14 +86,7 @@ public sealed partial record SimulatorApp : IDeviceApp
         }
         if (put is { Carried: true })
         {
-            try
-            {
-                Directory.Delete(Carried, recursive: true);
-            }
-            catch (Exception left) when (left is IOException or UnauthorizedAccessException)
-            {
-                IdeLog.Write(IdeLog.Ide, $"What a start carried into {Package} on the simulator {Udid} was not all taken out ({Carried}): {left.Message}");
-            }
+            CarriedIn.TakeOut(Carried, $"{Package} on the simulator {Udid}");
         }
     }
 

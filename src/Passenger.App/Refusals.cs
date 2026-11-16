@@ -540,14 +540,6 @@ public static class Refusals
         $"iOS's simulators could not be listed ({problem}): iOS apps need the .NET ios workload (dotnet workload install ios) and the Xcode it names, "
         + "with an iOS simulator runtime (Xcode's Settings, Components)";
 
-    /// <summary>A Mac Catalyst app debugged: the system's .NET debugger libraries for Mac Catalyst load only into a Mac
-    /// Catalyst process, which Passenger's debugger is not yet.</summary>
-    public static string MacCatalystUndebugged(string app) =>
-        $"Passenger's debugger does not reach a Mac Catalyst app yet, so {app} cannot be debugged: Run starts it";
-
-    /// <summary>A Mac Catalyst app run with Hot Reload, whose edits would go through the debugger.</summary>
-    public const string MacCatalystUnreloaded = "Passenger does not apply Hot Reload to a Mac Catalyst app yet";
-
     /// <summary>A Mac Catalyst app profiled, whose sandbox keeps the profiler's port out of its reach.</summary>
     public static string MacCatalystUnprofiled(string app) =>
         $"Passenger's profiler does not record a Mac Catalyst app yet, so {app} cannot be profiled: Run starts it";

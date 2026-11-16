@@ -23,8 +23,9 @@ public static class Wire
     public const string SocketVariable = "PASSENGER_INSPECTOR";
 
     /// <summary>What begins <see cref="SocketVariable"/>'s value where the app listens rather than connects: an app on a
-    /// device, whose abstract socket of this name Passenger reaches through adb's forward, or on an iOS simulator, whose
-    /// loopback port of this number it reaches as it is.</summary>
+    /// device, whose abstract socket of this name Passenger reaches through adb's forward, on an iOS simulator, whose
+    /// loopback port of this number it reaches as it is, or a Mac Catalyst app, at the Unix socket of this path in its
+    /// container.</summary>
     public const char Listens = '@';
 
     /// <summary>The app's environment where it listens (<see cref="Listens"/>): the line Passenger first writes, which only the

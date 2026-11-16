@@ -16,8 +16,10 @@ public static partial class MacCatalystApps
         {
             return (plan, null);
         }
-        MSBuildAnswer said = await MSBuildQuestions.AskAsync(project, launch.Framework, globals,
-            new MSBuildQuestion([MSBuildNames.ComputeRunArguments]) { Properties = [MSBuildNames.AppBundleDir, MSBuildNames.NativeExecutableName] }, cancel);
+        MSBuildAnswer said = await MSBuildQuestions.AskAsync(project, launch.Framework, globals, new MSBuildQuestion([MSBuildNames.ComputeRunArguments, MSBuildNames.ReadAppManifest])
+        {
+            Properties = [MSBuildNames.AppBundleDir, MSBuildNames.NativeExecutableName, MSBuildNames.BundleIdentifier, MSBuildNames.RuntimeIdentifier, MSBuildNames.LinkMode],
+        }, cancel);
         string name = Path.GetFileNameWithoutExtension(project);
         if (!said.Succeeded || said.Property(MSBuildNames.AppBundleDir) is not { Length: > 0 } bundle
             || said.Property(MSBuildNames.NativeExecutableName) is not { Length: > 0 } program)
@@ -25,19 +27,57 @@ public static partial class MacCatalystApps
             return (null, $"MSBuild did not say where {name}'s Mac Catalyst app is: {said.Said.FirstLine}");
         }
         string folder = PathNames.Canonical(Path.Combine(Path.GetDirectoryName(project)!, bundle));
-        MacCatalystApp app = new(folder, Path.Combine(MacBundles.Programs(folder), program));
+        string package = said.Property(MSBuildNames.BundleIdentifier) ?? string.Empty;
+        MacCatalystApp app = new(folder, Path.Combine(MacBundles.Programs(folder), program))
+        {
+            Package = package.Length > 0 ? package : name,
+            RuntimeIdentifier = said.Property(MSBuildNames.RuntimeIdentifier) ?? string.Empty,
+            Whole = said.Property(MSBuildNames.LinkMode) is not { Length: > 0 } link || link.Equals("None", StringComparison.OrdinalIgnoreCase),
+        };
         if (!File.Exists(app.Executable))
         {
             return (null, $"Could not run {name}: its Mac Catalyst app {Path.GetFileName(folder)} has not been built");
         }
+        bool sandboxed = await SandboxedAsync(folder, cancel);
+        if (sandboxed && package.Length == 0)
+        {
+            return (null, $"MSBuild did not say {name}'s bundle identifier, which names the container its sandbox keeps it in: {said.Said.FirstLine}");
+        }
+        string into;
+        try
+        {
+            int start = Interlocked.Increment(ref carried);
+            into = sandboxed ? Path.Combine(MacCatalystApp.ContainerTemporary(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), package),
+                    MacCatalystApp.CarriedName(Environment.ProcessId, start))
+                : Path.Combine(SocketFolders.Own(State.StateStore.DefaultRoot), $"{Environment.ProcessId}-{start}.catalyst");
+        }
+        catch (Exception unowned) when (unowned is IOException or UnauthorizedAccessException)
+        {
+            return (null, $"Could not run {name}: Passenger has no folder of its own to carry its inspector into: {unowned.Message}");
+        }
+        // The wall clock's, as the system keeps a process's start: the app's process is the one started since.
+        app = app with { Carried = into, Since = DateTime.UtcNow };
         IReadOnlyList<string> opening = Opening(app, plan.Unseen, [.. plan.OwnArguments]);
         return (plan with
         {
+            Notes = app.Whole ? plan.Notes : [.. plan.Notes, MacCatalystApp.Trimmed(name)],
             Program = Shell,
             Arguments = opening,
             Leading = opening.Count - plan.OwnArguments.Count(),
             MacCatalyst = launch with { App = app },
         }, null);
+    }
+
+    /// <summary>The folders this process has carried into for apps, which number each one's name apart.</summary>
+    private static int carried;
+
+    /// <summary>Whether the app's signature gives it the App Sandbox, as codesign reads it from the bundle: a sandboxed app runs
+    /// in its container, the only place it reads Passenger's files and listens on sockets.</summary>
+    private static async Task<bool> SandboxedAsync(string bundle, CancellationToken cancel)
+    {
+        ChildResult read = await ChildProcesses.RunAsync(ChildProcesses.Command("/usr/bin/codesign", ["-d", "--entitlements", "-", "--xml", bundle]),
+            limit: TimeSpan.FromSeconds(30), cancel: cancel);
+        return read.Succeeded && MacCatalystApp.Sandboxed(read.Output);
     }
 
     /// <summary>How often a start looks for its app among the processes.</summary>
@@ -82,7 +122,7 @@ public static partial class MacCatalystApps
     }
 
     /// <summary>The first process running <paramref name="executable"/> that started at or after <paramref name="since"/>.</summary>
-    private static int? Find(string executable, DateTime since)
+    internal static int? Find(string executable, DateTime since)
     {
         int[] ids = new int[4096];
         int count = ListAllProcesses(ids, ids.Length * sizeof(int));

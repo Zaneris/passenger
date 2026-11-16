@@ -3,7 +3,7 @@ using Passenger.Core;
 
 namespace Passenger.Tests;
 
-/// <summary>The app <c>dotnet new maui</c> makes, as one head alone (its Android or its iOS head): the template's other heads
+/// <summary>The app <c>dotnet new maui</c> makes, as one head alone (its Android, iOS or Mac Catalyst head): the template's other heads
 /// taken out of its frameworks, so its restore and build need that platform's workload and no other, restored from
 /// nuget.org, as no restore of the solution's brings MAUI's mobile packages (so a test of it is never one of the gate's). The
 /// template's main page has a label "Hello, World!" and a button named CounterBtn, "Click me", which counts its clicks.</summary>
@@ -20,6 +20,9 @@ internal static class MauiApp
     /// <summary>The framework the iOS head is built for: the first .NET whose iOS apps run on CoreCLR.</summary>
     public static readonly string Ios = $"net{Passenger.App.Mobile.MobilePlatforms.FirstOnCoreClr}.0-ios";
 
+    /// <summary>The framework the Mac Catalyst head is built for, of the same .NET as the others.</summary>
+    public static readonly string MacCatalyst = $"net{Passenger.App.Mobile.MobilePlatforms.FirstOnCoreClr}.0-maccatalyst";
+
     /// <summary>The longest dotnet new and the restore may each take.</summary>
     private static readonly TimeSpan Limit = TimeSpan.FromMinutes(6);
 
@@ -29,6 +32,9 @@ internal static class MauiApp
 
     /// <summary>The app's iOS head alone, made and restored as <see cref="CreateAndroidHeadAsync"/> makes its Android head.</summary>
     public static Task<(string Project, string? Unmade)> CreateIosHeadAsync(string folder) => CreateHeadAsync(folder, Ios);
+
+    /// <summary>The app's Mac Catalyst head alone, made and restored as <see cref="CreateAndroidHeadAsync"/> makes its Android head.</summary>
+    public static Task<(string Project, string? Unmade)> CreateMacCatalystHeadAsync(string folder) => CreateHeadAsync(folder, MacCatalyst);
 
     /// <summary>The app with <paramref name="framework"/> alone in place of the template's first framework and those its
     /// conditions add, restored.</summary>

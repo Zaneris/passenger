@@ -69,12 +69,14 @@ public sealed partial class BuildRunController
     }
 
     /// <summary>The hook that calls the update handlers of a plan's app on a device after each Hot Reload update; null where
-    /// it cannot be loaded there. A simulator's app reaches it as a program of this Mac does, its start giving it its variables.</summary>
-    private static UpdateHandlerHook? HandlersOnDevice(LaunchPlan plan) => plan.Device switch
+    /// it cannot be loaded there. A simulator's app reaches it as a program of this Mac does, its start giving it its variables;
+    /// a Mac Catalyst app at a socket in the folder its start carries into, which its sandbox lets it reach.</summary>
+    private static UpdateHandlerHook? HandlersOnDevice(LaunchPlan plan) => plan switch
     {
-        { App: SimulatorApp } => UpdateHandlerHook.OnSimulator(plan),
-        { } device => UpdateHandlerHook.OnDevice(device.Framework, plan.Name),
-        null => null,
+        { Device.App: SimulatorApp } => UpdateHandlerHook.OnSimulator(plan),
+        { Device: { } device } => UpdateHandlerHook.OnDevice(device.Framework, plan.Name),
+        { MacCatalyst.App: { Whole: true } catalyst } => CarriedIn.Make(catalyst.Carried) is null ? UpdateHandlerHook.At(plan, catalyst.HandlersSocket) : null,
+        _ => null,
     };
 
     /// <summary>An app Run started on a device with Passenger's relay in it, attached to quietly for Hot Reload alone, which
@@ -119,7 +121,7 @@ public sealed partial class BuildRunController
             await onDevice.TakeOutAsync();
             return relay is null ? unrelayed : Canceled(work, plan.Name);
         }
-        work.Say($"Starting {plan.Name} on its device under the debugger…");
+        work.Say($"Starting {plan.Name} {(app is MacCatalystApp ? "on this Mac" : "on its device")} under the debugger…");
         parts.Dock.Show(ToolWindowIds.Debug);
         parts.Views.Debug.ShowTab(console: true);
         DebugProject = Path.GetDirectoryName(plan.Project);
@@ -130,13 +132,16 @@ public sealed partial class BuildRunController
             System.Diagnostics.ProcessStartInfo start = plan.Start();
             start.RedirectStandardOutput = true;
             start.RedirectStandardError = true;
-            if (app is SimulatorApp simulator)
+            // The inspector's, the relay's and the hook's: a simulator's app takes them from simctl's launch, a Mac Catalyst app from its opener.
+            IReadOnlyDictionary<string, string> given = app switch
             {
-                // A simulator's app takes its variables from simctl's launch: the inspector's, the relay's and the hook's.
-                foreach ((string name, string value) in SimulatorApp.Given(simulator.Variables(plan.Environment, inspected?.Device, relay, handlers)))
-                {
-                    start.Environment[name] = value;
-                }
+                SimulatorApp simulator => SimulatorApp.Given(simulator.Variables(plan.Environment, inspected?.Device, relay, handlers)),
+                MacCatalystApp catalyst => catalyst.Variables(plan.Environment, inspected?.Device, relay, handlers),
+                _ => new Dictionary<string, string>(),
+            };
+            foreach ((string name, string value) in given)
+            {
+                start.Environment[name] = value;
             }
             shell = await ChildProcesses.StartAsync(start);
         }
@@ -160,7 +165,13 @@ public sealed partial class BuildRunController
         onDevice.Started();
         ConsoleSink console = tab.Console.Sink;
         Task log = Task.WhenAll(console.PumpAsync(ChildProcesses.Output(shell), ConsoleStream.Output), console.PumpAsync(ChildProcesses.Errors(shell), ConsoleStream.Error));
-        onDevice.EndsWith(EndDebuggedOnDeviceAsync(DebugEnded(debug.SessionNamed(plan.Name)), shell, log, onDevice));
+        Task ended = DebugEnded(debug.SessionNamed(plan.Name));
+        if (app is MacCatalystApp opened)
+        {
+            // The system starts it apart from its opener: it ends with its session here, and with Passenger.
+            IdeErrors.Observe(MacCatalystApps.EndWithAsync(opened, opened.Since, ended));
+        }
+        onDevice.EndsWith(EndDebuggedOnDeviceAsync(ended, shell, log, onDevice));
         return null;
     }
 

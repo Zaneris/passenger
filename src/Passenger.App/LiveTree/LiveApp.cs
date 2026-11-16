@@ -259,6 +259,10 @@ public sealed class LiveApp : ILiveTreeSource, IDisposable
         {
             return plan.Device.App is Run.Devices.SimulatorApp simulator ? OnSimulator(plan, simulator, overlays ?? []) : OnDevice(plan, overlays ?? []);
         }
+        if (plan.MacCatalyst?.App is { } catalyst)
+        {
+            return OnMacCatalyst(plan, catalyst, overlays ?? []);
+        }
         if (Inspected(plan, wpf) is not { Kind: var kind })
         {
             return null;
@@ -329,6 +333,32 @@ public sealed class LiveApp : ILiveTreeSource, IDisposable
         string token = Convert.ToHexString(System.Security.Cryptography.RandomNumberGenerator.GetBytes(16));
         return new LiveApp(plan.Name, $"{Wire.Listens}{listens}", null, plan, kind == LiveAppKind.Avalonia ? overlays : [], kind,
             device: new Run.Devices.DeviceInspector(listens, token, Carried(inspector), More(kind, plan, overlays)));
+    }
+
+    /// <summary>The live app for a plan that runs a Mac Catalyst app whose bundle carries Avalonia or .NET MAUI: the framework's
+    /// inspector, carried into the folder the start carries into (<see cref="Run.Devices.MacCatalystApp.Carried"/>), listening
+    /// on a socket there (its sandbox takes a listener only in its container) for the token only this launch knows, its
+    /// variables for the start to give it through the opener; null for any other app, one whose build trims .NET's own
+    /// assemblies, one whose socket's path is past what a socket's address holds, or a build of Passenger without that inspector.</summary>
+    private static LiveApp? OnMacCatalyst(LaunchPlan plan, Run.Devices.MacCatalystApp app, IReadOnlyList<string> overlays)
+    {
+        if (!app.Whole || !Directory.Exists(app.Assemblies) || DeployedKind(Directory.EnumerateFiles(app.Assemblies, "*.dll")) is not { } kind)
+        {
+            return null;
+        }
+        string inspector = kind == LiveAppKind.Maui ? MauiInspectorPath : InspectorPath;
+        if (!File.Exists(inspector))
+        {
+            return null;
+        }
+        if (!SocketFolders.Fits(app.InspectorSocket))
+        {
+            IdeErrors.Write($"{plan.Name} runs uninspected: the socket for its inspector in its container is too long, as {SocketFolders.TooLong(app.InspectorSocket)}");
+            return null;
+        }
+        string token = Convert.ToHexString(System.Security.Cryptography.RandomNumberGenerator.GetBytes(16));
+        return new LiveApp(plan.Name, $"{Wire.Listens}{app.InspectorSocket}", null, plan, kind == LiveAppKind.Avalonia ? overlays : [], kind,
+            device: new Run.Devices.DeviceInspector(app.InspectorSocket, token, Carried(inspector), More(kind, plan, overlays)));
     }
 
     /// <summary>The variables an app on a device takes for its inspector beyond its hook, socket and token: MAUI's record of
@@ -624,16 +654,16 @@ public sealed class LiveApp : ILiveTreeSource, IDisposable
     /// socket is not listening yet.</summary>
     private static readonly TimeSpan Unanswered = TimeSpan.FromMilliseconds(500);
 
-    /// <summary>The inspector in an app on a device reached through adb's forward once the start has made one: connected and
-    /// given the token, again and again until the app's socket takes it, as adb takes each connection here and ends it at
-    /// once while the app's inspector is not listening yet. Null where the session ended first, or no port was forwarded,
-    /// which the app is refused for.</summary>
+    /// <summary>The inspector in an app on a device reached where the start says once it has put it in (adb's forward, a
+    /// simulator's port, a socket in a Mac Catalyst app's container): connected and given the token, again and again until
+    /// the app's socket takes it, as adb takes each connection here and ends it at once while the app's inspector is not
+    /// listening yet. Null where the session ended first, or it could not be reached, which the app is refused for.</summary>
     private async Task<Socket?> ReachAsync(Run.Devices.DeviceInspector device, CancellationToken stop)
     {
-        int port;
+        EndPoint at;
         try
         {
-            port = await device.Reached.WaitAsync(stop);
+            at = await device.Reached.WaitAsync(stop);
         }
         catch (OperationCanceledException)
         {
@@ -651,10 +681,11 @@ public sealed class LiveApp : ILiveTreeSource, IDisposable
         byte[] token = System.Text.Encoding.UTF8.GetBytes(device.Token + "\n");
         while (!stop.IsCancellationRequested)
         {
-            Socket socket = new(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+            Socket socket = at is UnixDomainSocketEndPoint ? new(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified)
+                : new(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
             try
             {
-                await socket.ConnectAsync(IPAddress.Loopback, port, stop);
+                await socket.ConnectAsync(at, stop);
                 await socket.SendAsync(token, SocketFlags.None, stop);
                 if (!socket.Poll(Unanswered, SelectMode.SelectRead) || socket.Available > 0)
                 {
@@ -663,7 +694,7 @@ public sealed class LiveApp : ILiveTreeSource, IDisposable
             }
             catch (SocketException)
             {
-                // adb's end, or no adb: asked again in a moment.
+                // adb's end, no adb, or no socket listening yet: asked again in a moment.
             }
             catch (OperationCanceledException)
             {

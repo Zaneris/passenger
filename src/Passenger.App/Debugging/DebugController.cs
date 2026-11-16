@@ -812,7 +812,7 @@ public sealed class DebugController : IDisposable
         UpdateHandlerHook? handlers = null)
     {
         bool hotReloadOn = HotReloadOn();
-        string where = plan.Device?.Target.Name ?? "its device";
+        string where = plan.Device?.Target.Name ?? (plan.MacCatalyst is not null ? "this Mac" : "its device");
         return OpenAsync((built, log, output, starting) => DebugSession.AttachThroughRelayAsync(plan.Name, relay, Breakpoints, built, log, output, ColumnOf, starting, hotReloadOn),
             plan.Name, launched: false, hotReloadOn: hotReloadOn, plan: plan, edits: edits, app: app, hook: hotReloadOn ? handlers : Unheld(handlers),
             attachedWords: $"{plan.Name} runs on {where}; what it logs there is shown here");

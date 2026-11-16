@@ -1233,12 +1233,10 @@ public sealed partial class BuildRunController
             UnfollowWatched();
             // dotnet watch builds the project itself, and runs it again after an edit it cannot apply.
             bool functions = chosen.RunsFunctions(session.Projects);
-            // A Mac Catalyst app takes no edits yet: its runtime's debugger libraries load only into a Mac Catalyst process.
-            bool catalyst = RunsOnMacCatalyst(chosen);
-            bool wanted = (hotReload ?? parts.Settings().HotReload) && chosen.NamesNoOtherProgram(session.Projects) && !functions && !catalyst;
+            bool wanted = (hotReload ?? parts.Settings().HotReload) && chosen.NamesNoOtherProgram(session.Projects) && !functions;
             bool godot = chosen.RunsGodot(session.Projects);
-            // An app on a device takes its edits through Passenger's relay in it, which holds its start there until the debugger attaches.
-            bool elsewhere = RunsOnDevice(chosen);
+            // An app on a device, or a Mac Catalyst app, takes its edits through Passenger's relay in it, which holds its start until the debugger attaches.
+            bool elsewhere = RunsOnDevice(chosen) || RunsOnMacCatalyst(chosen);
             // A game's errors, which Godot writes every frame they happen, folded in its console.
             parts.Views.Run.Fold = godot && !chosen.GodotEditor ? new Godot.GodotConsoleFold() : null;
             // An Avalonia or WPF app's XAML edits reach it through the inspector, which the app dotnet watch starts never carries.
@@ -1272,7 +1270,7 @@ public sealed partial class BuildRunController
                 return await RunCopiesAsync(chosen, plan, count, reloaded, work, Take(ref edits));
             }
             // A game of GDScript alone takes its saved scripts over its own connection: no debugger holds its start for C#'s edits.
-            bool heldStart = reloaded && !plan.ScriptsAlone && plan.Device is null;
+            bool heldStart = reloaded && !plan.ScriptsAlone && plan.Device is null && plan.MacCatalyst is null;
             work.Say($"Starting {chosen.Name}…");
             ran = chosen.Name;
             RunProject = Path.GetDirectoryName(plan.Project);
@@ -1283,14 +1281,13 @@ public sealed partial class BuildRunController
             session.RunPlan = plan;
             string running = watched || reloaded ? $"Running {chosen.Name} with Hot Reload: a save applies its changes"
                 : wanted && godot && !plan.ScriptsAlone ? $"Running {chosen.Name} without Hot Reload: {GodotLaunch.EditorReloads}"
-                : catalyst && (hotReload ?? parts.Settings().HotReload) ? $"Running {chosen.Name} without Hot Reload: {Refusals.MacCatalystUnreloaded}"
                 : functions && (hotReload ?? parts.Settings().HotReload) ? $"Running {chosen.Name} without Hot Reload: {Refusals.FunctionsUnreloaded}"
                 : $"Running {chosen.Name}";
             // An Avalonia or WPF app is launched with the inspector in it, which tells of its failed bindings while it runs.
             LaunchPlan launched = session.InspectedRun(plan, watched);
             LiveApp? inspected = session.RunApp;
             // Held from its first step on a device until what it puts in there is out again, which Stop and the folder's end wait for.
-            using Devices.DeviceStart? onDevice = plan.Device?.App is { } app ? session.StartsOnDevice(chosen.Name, app) : null;
+            using Devices.DeviceStart? onDevice = (plan.Device?.App ?? (Devices.IDeviceApp?)plan.MacCatalyst?.App) is { } app ? session.StartsOnDevice(chosen.Name, app) : null;
             (Devices.RelaySession? relay, UpdateHandlerHook? deviceHandlers, string? unrelayed) = reloaded && onDevice is not null
                 ? await RelayOnDeviceAsync(plan, onDevice, inspected, work) : (null, null, null);
             handlers ??= deviceHandlers;
@@ -1337,6 +1334,11 @@ public sealed partial class BuildRunController
             {
                 // A simulator's app takes its variables from simctl's launch: the inspector's, the relay's and the hook's with the plan's.
                 variables = Devices.SimulatorApp.Given(simulator.Variables(variables, inspected?.Device, relay, handlers));
+            }
+            else if (plan.MacCatalyst?.App is { } carried)
+            {
+                // A Mac Catalyst app takes the opener's environment, which the system hands it: the inspector's, the relay's and the hook's with the plan's.
+                variables = carried.Variables(variables, inspected?.Device, relay, handlers);
             }
             if (plan.Console == ConsoleKind.Terminal)
             {
@@ -2544,9 +2546,10 @@ public sealed partial class BuildRunController
         {
             return await DebugOnDeviceAsync(plan, device, work, edits);
         }
-        if (plan.MacCatalyst is not null)
+        if (plan.MacCatalyst is { } catalyst)
         {
-            return Refusals.MacCatalystUndebugged(plan.Name);
+            // Its runtime's debugger libraries load only into a Mac Catalyst process: it is debugged through Passenger's relay in it.
+            return catalyst.App is { } opened ? await DebugOnDeviceAsync(plan, opened, work, edits) : $"Could not debug {plan.Name}: its Mac Catalyst app has not been built";
         }
         if (plan.Functions)
         {

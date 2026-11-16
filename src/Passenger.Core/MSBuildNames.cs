@@ -222,6 +222,11 @@ public static class MSBuildNames
     public const string AppBundleDir = "AppBundleDir";
     public const string NativeExecutableName = "_NativeExecutableName";
 
+    // The Apple workloads' trimming of an app's build, which a project sets as MtouchLink and its build reads as _LinkMode:
+    // None leaves every assembly whole.
+    public const string MtouchLink = "MtouchLink";
+    public const string LinkMode = "_LinkMode";
+
     // The Apple workloads' reading of an app's built bundle: where it is and the bundle identifier it carries.
     public const string ReadAppManifest = "_ReadAppManifest";
     public const string AppBundlePath = "_AppBundlePath";

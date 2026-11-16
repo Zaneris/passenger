@@ -121,6 +121,12 @@ public sealed class UpdateHandlerHook : IDisposable
     public static UpdateHandlerHook? OnSimulator(Run.LaunchPlan plan) =>
         plan.RunsOn is { } framework && Listen(framework, plan.Name, plan.Environment) is ({ } hook, _) ? hook : null;
 
+    /// <summary>The hook for a plan's Mac Catalyst app, listening at <paramref name="socket"/> in the folder its start carries
+    /// into, the one place its sandbox lets it connect to a socket, its variables given by its start (<see cref="Over"/>);
+    /// null where it cannot be loaded or listened for.</summary>
+    public static UpdateHandlerHook? At(Run.LaunchPlan plan, string socket) =>
+        plan.RunsOn is { } framework && Listen(framework, plan.Name, plan.Environment, socket) is ({ } hook, _) ? hook : null;
+
     /// <summary>The variables that load the hook of this machine's socket in a program of <paramref name="environment"/>: its
     /// socket, and the hook, as <paramref name="hook"/> names its copy, first among the startup hooks the environment names.</summary>
     public IReadOnlyDictionary<string, string> Over(IReadOnlyDictionary<string, string> environment, string hook) => new Dictionary<string, string>
@@ -132,20 +138,22 @@ public sealed class UpdateHandlerHook : IDisposable
     /// <summary>Whether the hook loads in a program on <paramref name="framework"/>: one on .NET 8 or later, the hook carried.</summary>
     private static bool Loads(string framework) => FrameworkNames.Major(framework) is >= 8 && File.Exists(HookPath);
 
-    /// <summary>A hook listening on a socket of its own for a program on <paramref name="framework"/>, and the variables that
-    /// load it there; null on a .NET older than the hook's (8), with the hook missing, or no socket to be made.</summary>
-    private static (UpdateHandlerHook Hook, IReadOnlyDictionary<string, string> Variables)? Listen(string framework, string name, IReadOnlyDictionary<string, string> environment)
+    /// <summary>A hook listening on a socket of its own (in Passenger's socket folder, else at <paramref name="at"/>) for a
+    /// program on <paramref name="framework"/>, and the variables that load it there; null on a .NET older than the hook's
+    /// (8), with the hook missing, or no socket to be made.</summary>
+    private static (UpdateHandlerHook Hook, IReadOnlyDictionary<string, string> Variables)? Listen(string framework, string name, IReadOnlyDictionary<string, string> environment,
+        string? at = null)
     {
         if (!Loads(framework))
         {
             return null;
         }
-        string socket = $"{Environment.ProcessId}-{Interlocked.Increment(ref made)}.handlers";
+        string socket = at ?? $"{Environment.ProcessId}-{Interlocked.Increment(ref made)}.handlers";
         Socket listener = new(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
         try
         {
-            socket = Path.Combine(SocketFolders.Own(StateStore.DefaultRoot), socket);
-            // Only a dead Passenger that had this process's number leaves one by this name.
+            socket = at ?? Path.Combine(SocketFolders.Own(StateStore.DefaultRoot), socket);
+            // Only a dead Passenger that had this process's number, or a dead start of the app, leaves one by this name.
             File.Delete(socket);
             listener.Bind(new UnixDomainSocketEndPoint(socket));
             listener.Listen(1);
