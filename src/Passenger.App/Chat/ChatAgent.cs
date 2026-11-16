@@ -11,6 +11,9 @@ public sealed class ChatAgent(AcpSession session, Action end) : IAsyncDisposable
     /// <summary>The ACP adapter for Claude Code, run with npx as Zed and JetBrains run it.</summary>
     public const string ClaudeAdapter = "@agentclientprotocol/claude-agent-acp";
 
+    /// <summary>The Claude adapter's mode that asks before every change ("Manual"); it starts in one that never asks.</summary>
+    public const string ManualMode = "default";
+
     public AcpSession Session { get; } = session;
 
     /// <summary>Starts the Claude adapter in <paramref name="folder"/>; what the start throws (no npx found), this throws.</summary>
