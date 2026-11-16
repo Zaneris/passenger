@@ -259,8 +259,13 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
                     + "Razor, a C# project's XAML, MSBuild files, JSON, YAML, HTML, CSS, SCSS, Less, JavaScript, TypeScript, Dockerfiles and compose files, "
                     + "Godot's scenes, shaders and scripts, and .editorconfig, .slnx and .http files");
             }
+            string? unmatched = Bdd.FeatureChecks.IsFeature(marked.Path) ? await FeatureMatchedAsync(marked, cancel) : null;
             TimeSpan waited = await Checked(marked, cancel);
             List<Finding> missing = [];
+            if (unmatched is not null)
+            {
+                missing.Add(new Finding("info", null, unmatched, Relative(marked.Path), 1, 1));
+            }
             if (marked.Unanswered is { Count: > 0 } unanswered)
             {
                 // Each check that has not answered for the text as it stands, within the wait or its own.
@@ -308,6 +313,25 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
                 Relative(document.Path), at.Line + 1, at.Column + 1);
         })];
     });
+
+    /// <summary>Waits until a feature's marks are of its steps matched against the step definitions as the code stands: the
+    /// C# language server settled on the folder, as every C# question waits for it (refused saying so while it still loads),
+    /// the bindings read and the file read against them. Null once they are; else why its steps are matched against none.</summary>
+    private async Task<string?> FeatureMatchedAsync(OpenDocument feature, CancellationToken cancel)
+    {
+        if (Session.CSharp is null)
+        {
+            return Refusals.StepsUnmatched(serverRuns: false);
+        }
+        await ServerSettledAsync(feature.Path, _ => true, cancel);
+        await window.StepsAsync(cancel);
+        if (!Session.Steps.HasRead)
+        {
+            return Refusals.StepsUnmatched(serverRuns: Session.CSharp is { IsReady: true });
+        }
+        await Session.Features.CurrentAsync(feature);
+        return null;
+    }
 
     /// <summary>Waits, within <see cref="MarkersLimit"/>, for a file's own checks of its text as it stands (<see
     /// cref="OpenDocument.IsChecking"/>), which its markers and the fixes for them answer from, until the turn it comes back in

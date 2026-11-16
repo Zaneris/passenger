@@ -340,6 +340,12 @@ public static class Refusals
     /// <summary>No project of the folder is a Reqnroll or SpecFlow one whose bindings the C# server has read.</summary>
     public const string NoReqnrollProject = "No Reqnroll or SpecFlow project's step definitions are read: open its .feature files, or wait for C# to load";
 
+    /// <summary>A feature's diagnostics with no step definitions read to match its steps against: the C# language server,
+    /// which reads them, runs and did not answer for them (<paramref name="serverRuns"/>), or runs for no folder.</summary>
+    public static string StepsUnmatched(bool serverRuns) =>
+        $"No step definitions were read to match its steps against ({(serverRuns ? "the C# language server did not answer for them" : CSharpNotRunning)}): "
+        + "no step is marked undefined, nor an argument its definition cannot take";
+
     /// <summary>A step's phrase asked to be written where the editor shows no .feature file.</summary>
     public const string NoFeature = "The editor shows no .feature file: open the feature to write the step into";
 

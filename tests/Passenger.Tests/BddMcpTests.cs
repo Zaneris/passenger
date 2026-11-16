@@ -1,5 +1,6 @@
 using System.Text.Json;
 using ModelContextProtocol.Client;
+using Passenger.App.Bdd;
 using Passenger.App.Mcp;
 using Passenger.Core;
 
@@ -15,6 +16,8 @@ public sealed class BddMcpTests(RestoredFolders folders) : McpRig, IClassFixture
     private static readonly string Feature = Path.Combine("Calc.Specs", "Features", "Calculator.feature");
 
     private static readonly string Steps = Path.Combine("Calc.Specs", "StepDefinitions", "CalculatorStepDefinitions.cs");
+
+    private static readonly string Broken = Path.Combine("Calc.Specs", "Features", "Broken.feature");
 
     private static Dictionary<string, object?> At(string path, int line, int column) => new() { ["path"] = path, ["line"] = line, ["column"] = column };
 
@@ -45,6 +48,26 @@ public sealed class BddMcpTests(RestoredFolders folders) : McpRig, IClassFixture
         Assert.StartsWith("Renamed the step to \"the initial number is {int}\"", renamed, StringComparison.Ordinal);
         Assert.Contains("[Given(\"the initial number is {int}\")]", File.ReadAllText(Path.Combine(folder, Steps)), StringComparison.Ordinal);
         Assert.Contains("  Given the initial number is 50\n", File.ReadAllText(Path.Combine(folder, Feature)), StringComparison.Ordinal);
+    }
+
+    /// <summary>An agent's first call of a fresh session, diagnostics on a feature, lists the marks its steps' definitions
+    /// make (a step none binds, an argument its definition cannot take), the definitions read as the C# server loads, never
+    /// answering as of none read.</summary>
+    [Fact]
+    public async Task An_agents_first_diagnostics_of_a_feature_lists_its_undefined_step_and_the_argument_its_definition_cannot_take()
+    {
+        string folder = PathNames.Canonical(await folders.TakeAsync("bddmcp-", made => ReqnrollProjects.Write(made)));
+        DeleteAtEnd(folder);
+        TestFolders.Write(folder, Broken, "Feature: Broken\n\nScenario: Too much\n  Given the second number is 99999999999\n  And a step nobody wrote\n");
+        McpClient client = await Start(["--mcp", folder]);
+
+        JsonElement[] found = [.. (await Call(client, McpTools.Diagnostics, new() { ["path"] = Broken })).EnumerateArray()];
+        string said = string.Join("; ", found.Select(f => f.GetRawText()));
+        Assert.True(found.Length == 2
+            && found.Any(f => (f.GetProperty("code").GetString(), f.GetProperty("severity").GetString(), f.GetProperty("line").GetInt32(), f.GetProperty("column").GetInt32())
+                == (FeatureAnalysis.Argument, "error", 4, 30))
+            && found.Any(f => (f.GetProperty("code").GetString(), f.GetProperty("line").GetInt32()) == (FeatureAnalysis.Undefined, 5)),
+            $"diagnostics, an agent's first call, is to list the too large number and the step nobody wrote: {said}");
     }
 
     [Fact]
