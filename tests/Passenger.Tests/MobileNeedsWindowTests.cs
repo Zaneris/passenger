@@ -529,6 +529,48 @@ public sealed class MobileNeedsWindowTests : IDisposable
         window.Close();
     }
 
+    /// <summary>DEVELOPER_DIR naming the command-line tools (or, on a Mac without them, a folder of no Xcode): the iOS
+    /// workload finds no Xcode there though one is in Applications, and the banner names DEVELOPER_DIR, never the system's
+    /// choice of Xcode, which DEVELOPER_DIR passes over, nor Get Xcode, as one is here.</summary>
+    [AvaloniaFact]
+    public void An_iOS_project_where_DEVELOPER_DIR_names_no_Xcode_says_so_in_place_of_choosing_the_Xcode_in_Applications()
+    {
+        if (!OperatingSystem.IsMacOS())
+        {
+            Assert.Skip("Xcode is asked of only on a Mac");
+        }
+        string? xcode = Directory.Exists("/Applications")
+            ? Directory.EnumerateDirectories("/Applications", "Xcode*.app").Order(StringComparer.Ordinal).FirstOrDefault(x => Directory.Exists(Path.Combine(x, "Contents", "Developer")))
+            : null;
+        if (xcode is null)
+        {
+            Assert.Skip("This Mac has no Xcode in Applications for the banner to name");
+        }
+        string tools = Directory.Exists("/Library/Developer/CommandLineTools") ? "/Library/Developer/CommandLineTools"
+            : Directory.CreateDirectory(Path.Combine(folder, "CommandLineTools")).FullName;
+        Environment.SetEnvironmentVariable("DEVELOPER_DIR", tools);
+        File.WriteAllText(Path.Combine(folder, "Ios.csproj"), $"""
+            <Project Sdk="Microsoft.NET.Sdk">
+              <PropertyGroup>
+                <TargetFramework>{Mobile}-ios</TargetFramework>
+                <OutputType>Exe</OutputType>
+              </PropertyGroup>
+            </Project>
+            """);
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        Ui.WaitFor(() => window.Projects.Any(p => p.IsEvaluated), "the project to evaluate", Slow);
+        Ui.Await(window.MobileAsked(), "what the project needs to be asked", Slow);
+        if (window.MobileWant.Workloads.Count > 0)
+        {
+            window.Close();
+            Assert.Skip($"This .NET lacks the ios workload, so its Xcode is not asked of: {window.MobileSaid}");
+        }
+
+        Assert.Equal($"Ios needs Xcode, which is in {xcode}. DEVELOPER_DIR names {tools}, where the Apple workloads find no Xcode", window.MobileSaid);
+        Assert.DoesNotContain(ShownButtons(window), b => b == "Get Xcode");
+        window.Close();
+    }
+
     [Fact]
     public void New_Project_offers_each_mobile_template_a_missing_workload_brings_naming_the_workload_that_installs_it()
     {

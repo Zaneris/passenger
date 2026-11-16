@@ -113,6 +113,9 @@ public static class MobileAnswers
     /// project; null where it passed.</summary>
     public static string? Apple(MSBuildAnswer checkedXcode) => checkedXcode.Succeeded ? null : FirstError(checkedXcode.Said.Output + "\n" + checkedXcode.Said.Error);
 
+    /// <summary>Whether an Apple workload's refusal says it found no Xcode at all, as where none is chosen.</summary>
+    public static bool FoundNoXcode(string problem) => problem.Contains("developer path", StringComparison.OrdinalIgnoreCase);
+
     /// <summary>The Xcode developer folder and SDK version an Apple workload's check found (<c>_SdkDevPath</c>,
     /// <c>_SdkVersion</c>); nulls for output that is no such answer.</summary>
     public static (string? Developer, string? SdkVersion) AppleSdk(MSBuildAnswer checkedXcode) =>

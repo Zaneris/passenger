@@ -73,9 +73,9 @@ public class MobileNeedsTests
     private static MSBuildAnswer Said(int code, string output, string errors) => new(new ChildResult(code, output, errors));
 
     private static MobileWant Want(IReadOnlyList<ProjectNeeds> projects, bool onMac = true, IReadOnlySet<string>? disk = null, string? androidHome = null,
-        string? javaHome = null, string? androidHost = null) =>
-        MobileWant.Of(projects, onMac, name => name switch { "ANDROID_HOME" => androidHome, "JAVA_HOME" => javaHome, _ => null }, Sdk, (disk ?? OnDisk).Contains,
-            androidHost);
+        string? javaHome = null, string? androidHost = null, string? developerDir = null) =>
+        MobileWant.Of(projects, onMac, name => name switch { "ANDROID_HOME" => androidHome, "JAVA_HOME" => javaHome, "DEVELOPER_DIR" => developerDir, _ => null }, Sdk,
+            (disk ?? OnDisk).Contains, androidHost);
 
     [Fact]
     public void The_workloads_the_SDK_names_are_each_taken_once_with_the_framework_that_needs_it()
@@ -231,6 +231,31 @@ public class MobileNeedsTests
         Assert.Equal([Maui], want.Projects);
         Assert.Equal("MauiApp1 needs a JDK (Java 21.0.8), the Android SDK's platforms;android-37.0 and build-tools;37.0.0 and Xcode, which is in "
             + "/Applications/Xcode-beta.app but not chosen (sudo xcode-select -s /Applications/Xcode-beta.app)", want.Said);
+    }
+
+    /// <summary>The command-line tools' folder, which DEVELOPER_DIR may name, as a Mac installs it.</summary>
+    private const string CommandLineTools = "/Library/Developer/CommandLineTools";
+
+    [Fact]
+    public void A_DEVELOPER_DIR_where_the_Apple_workloads_find_no_Xcode_is_said_in_place_of_choosing_the_Xcode_in_Applications()
+    {
+        ProjectNeeds maui = new(Maui, MauiFrameworks) { Apple = new AppleAnswer("Could not find a valid Xcode developer path", "/Applications/Xcode.app") };
+        ProjectNeeds ios = new("IosApp", ["net11.0-ios"]) { Apple = new AppleAnswer("Could not find a valid Xcode developer path") };
+        ProjectNeeds older = new("IosApp", ["net11.0-ios"])
+        {
+            Apple = new AppleAnswer("This version of .NET for iOS (27.2.11039) requires Xcode 27.2. The current version of Xcode is 27.0."),
+        };
+
+        MobileWant named = Want([maui], developerDir: CommandLineTools);
+
+        Assert.Equal(CommandLineTools, named.DeveloperDir);
+        Assert.Equal("MauiApp1 needs Xcode, which is in /Applications/Xcode.app. DEVELOPER_DIR names /Library/Developer/CommandLineTools, where the Apple workloads "
+            + "find no Xcode", named.Said);
+        Assert.Equal("IosApp needs Xcode (Could not find a valid Xcode developer path). DEVELOPER_DIR names /Library/Developer/CommandLineTools, where the Apple "
+            + "workloads find no Xcode", Want([ios], developerDir: CommandLineTools).Said);
+        Assert.Null(Want([older], developerDir: "/Applications/Xcode-27.0.app/Contents/Developer").DeveloperDir);
+        Assert.Null(Want([maui]).DeveloperDir);
+        Assert.Equal("IosApp builds only on a Mac, with Xcode", Want([ios], onMac: false, developerDir: CommandLineTools).Said);
     }
 
     [Fact]

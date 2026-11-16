@@ -40,6 +40,10 @@ public sealed record MobileWant
     /// <summary>An Xcode in Applications that none chose, where the workload found none.</summary>
     public string? UnchosenXcode { get; init; }
 
+    /// <summary>The folder DEVELOPER_DIR names, where the Apple workloads found no Xcode: they take it over the system's
+    /// choice, so no Xcode chosen is used while it is set.</summary>
+    public string? DeveloperDir { get; init; }
+
     /// <summary>The simulator runtimes the Apple apps need that Xcode has none of ("iOS 27.0"), each once.</summary>
     public IReadOnlyList<string> Simulators { get; init; } = [];
 
@@ -80,6 +84,7 @@ public sealed record MobileWant
         string? java = null;
         string? xcode = null;
         string? unchosen = null;
+        string? developerDir = null;
         List<string> simulators = [];
         foreach (ProjectNeeds project in projects)
         {
@@ -130,6 +135,7 @@ public sealed record MobileWant
                 {
                     xcode ??= problem;
                     unchosen ??= apple.Unchosen;
+                    developerDir ??= MobileAnswers.FoundNoXcode(problem) && environment("DEVELOPER_DIR") is { Length: > 0 } named ? named : null;
                     needs = true;
                 }
                 simulators.AddRange(apple.Simulators.Where(r => !simulators.Contains(r)));
@@ -151,6 +157,7 @@ public sealed record MobileWant
             JavaHome = java is not null && environment("JAVA_HOME") is { Length: > 0 } javaHome ? javaHome : null,
             Xcode = xcode,
             UnchosenXcode = unchosen,
+            DeveloperDir = developerDir,
             Simulators = simulators,
             OnMono = mono,
             AppleOffMac = offMac,
@@ -185,9 +192,9 @@ public sealed record MobileWant
             }
             if (Xcode is not null)
             {
-                lacks.Add(UnchosenXcode is { } found
-                    ? $"Xcode, which is in {found} but not chosen (sudo xcode-select -s {found})"
-                    : $"Xcode ({Xcode.TrimEnd('.')})");
+                lacks.Add(UnchosenXcode is not { } found ? $"Xcode ({Xcode.TrimEnd('.')})"
+                    : DeveloperDir is null ? $"Xcode, which is in {found} but not chosen (sudo xcode-select -s {found})"
+                    : $"Xcode, which is in {found}");
             }
             if (Simulators.Count > 0)
             {
@@ -202,6 +209,10 @@ public sealed record MobileWant
             if (JavaHome is { } javaHome)
             {
                 sentences.Add($"JAVA_HOME names {javaHome}, where the Android workload finds no JDK");
+            }
+            if (DeveloperDir is { } developerDir)
+            {
+                sentences.Add($"DEVELOPER_DIR names {developerDir}, where the Apple workloads find no Xcode");
             }
             foreach ((string project, string framework) in OnMono)
             {

@@ -171,7 +171,7 @@ public partial class MainWindow
         MobileBanner.Say(said is not null && said != mobileHidden ? said : null);
         workloadsLink!.IsVisible = MobileWant.Workloads.Count > 0;
         androidLink!.IsVisible = MobileWant.AndroidLacks;
-        xcodeLink!.IsVisible = MobileWant.Xcode is not null;
+        xcodeLink!.IsVisible = MobileWant is { Xcode: not null, UnchosenXcode: null };
         if (mobileHeld is { } held)
         {
             mobileHeld = null;

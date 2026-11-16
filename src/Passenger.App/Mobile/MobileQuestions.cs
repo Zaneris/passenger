@@ -41,7 +41,7 @@ public static class MobileQuestions
             MSBuildAnswer said = await AppleSdkAsync(project, forApple, globals, cancel);
             if (MobileAnswers.Apple(said) is { } problem)
             {
-                apple = new AppleAnswer(problem, problem.Contains("developer path", StringComparison.OrdinalIgnoreCase) ? UnchosenXcode() : null);
+                apple = new AppleAnswer(problem, MobileAnswers.FoundNoXcode(problem) ? UnchosenXcode() : null);
             }
             else if (await SimulatorsLackingAsync(project, [.. mobile.Where(f => Asked(f, MobilePlatforms.HasSimulator))], forApple, said, globals, cancel) is { Count: > 0 } lacking)
             {
