@@ -147,6 +147,23 @@ public class DeviceTargetsTests
     }
 
     [Fact]
+    public void What_an_end_that_never_reached_the_device_left_is_taken_out_the_builds_environment_linked_back_where_a_start_left_its_own()
+    {
+        AndroidApp app = new("emulator-5554", "adb", "com.shop", "crc64.MainActivity", "/obj");
+
+        IReadOnlyList<string> unleft = app.TakeOutLeft();
+
+        Assert.Equal(["-s", "emulator-5554", "shell"], unleft.Take(3));
+        Assert.StartsWith("run-as com.shop sh -c 'rm -rf /data/user/0/com.shop/files/.passenger; cd /data/user/0/com.shop/files/.__override__ 2>/dev/null || exit 0; ", unleft[3],
+            StringComparison.Ordinal);
+        // In each ABI's folder: the relay, and an environment that is a file, never the build's own link.
+        Assert.Contains("for a in *; do [ -d \"$a\" ] || continue; ( cd \"$a\" || exit 1; rm -f libpassenger-debug.so; [ -L environment ] || [ ! -e environment ] || { rm -f environment; ",
+            unleft[3], StringComparison.Ordinal);
+        Assert.Contains("for f in *.dll; do d=$(readlink \"$f\") && { [ -e \"${d%/*}/environment\" ] && ln -s \"${d%/*}/environment\" environment; break; }; done; } ) || exit 1; done'",
+            unleft[3], StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void The_debug_environment_keeps_the_builds_variables_and_adds_the_relays_profiler_and_token()
     {
         AndroidApp app = new("emulator-5554", "adb", "com.shop", "crc64.MainActivity", "/obj");

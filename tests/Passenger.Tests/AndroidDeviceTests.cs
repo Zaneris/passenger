@@ -476,6 +476,110 @@ public sealed class AndroidDeviceTests
         }
     }
 
+    /// <summary>The relay and an environment naming it, left in the app by a start whose end never reached the emulator (its
+    /// device gone as it ended), are out before the app's next Run starts it: the app starts at once without the relay,
+    /// where it loaded it and waited a minute for a debugger, and its environment is the build's link again.</summary>
+    [AvaloniaFact]
+    public void A_relay_a_vanished_end_left_in_the_app_is_out_before_its_next_run_starts_it()
+    {
+        (string folder, string project, DeviceTarget target, AndroidTools tools) = Prepared();
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        try
+        {
+            Choose(window, project, target);
+            Ui.Launched(window, window.RunAsync(), "the build, the install and the start on the emulator", Slow);
+            AndroidApp app = window.Session.RunPlan?.Device?.App ?? throw new InvalidOperationException("The run on the emulator named no app there");
+            Ui.Run(window, AppActions.Stop);
+            Ui.WaitFor(() => window.Runner.Ended.IsCompleted, "the run to end once stopped");
+            Ui.WaitFor(() => Pid(tools, app.Serial).Length == 0, () => $"the app to end on the emulator once stopped; it runs as {Pid(tools, app.Serial)}", TimeSpan.FromSeconds(30));
+            string abi = LeaveRelay(tools, app);
+            Assert.True(Left(tools, app.Serial).Contains("the relay in the app", StringComparison.Ordinal), "The relay was not left in the app as a vanished end leaves it");
+
+            Ui.Launched(window, window.RunAsync(), "the next run's start on the emulator", Slow);
+            Ui.WaitFor(() => Output(window).Contains("Hello from Passenger's test app, 42", StringComparison.Ordinal),
+                () => $"the app to start at once, its log in the Run window; it shows:\n{Output(window)}\n{Ui.Said(window)}", TimeSpan.FromSeconds(40));
+            string pid = Pid(tools, app.Serial);
+            string loaded = Adb(tools, app.Serial, "shell", $"run-as {Package} cat /proc/{pid}/maps");
+            Assert.False(loaded.Contains(AndroidApp.RelayFile, StringComparison.Ordinal), "The next run's app loaded the relay a vanished end left in it, so its start waits a minute for a debugger");
+            Assert.True(Left(tools, app.Serial).Length == 0, $"The next run started the app with {Left(tools, app.Serial)} still in it");
+            string environment = Adb(tools, app.Serial, "shell", $"run-as {Package} readlink files/.__override__/{abi}/environment").Trim();
+            Assert.True(environment.StartsWith("/data/local/tmp/", StringComparison.Ordinal),
+                $"The app's environment is not the build's link again, so its starts run without the build's variables: {environment}");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>A debugged app ended on the emulator and started from its launcher while its end there is held, as where the
+    /// device goes as it ends, loads no relay: the app's environment is the build's again from the relay's hello on, where it
+    /// still named the relay, which held the launcher's start a minute for a debugger.</summary>
+    [AvaloniaFact]
+    public void A_debugged_app_started_from_its_launcher_while_its_end_is_held_loads_no_relay()
+    {
+        (string folder, string project, DeviceTarget target, AndroidTools tools) = Prepared();
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        TaskCompletionSource reached = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource go = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        try
+        {
+            Choose(window, project, target);
+            Ui.Launched(window, window.DebugAsync(), "the debug session's start on the emulator", Slow);
+            string serial = AndroidSerials.Of(window, target);
+            Ui.WaitFor(() => Pid(tools, serial).Length > 0, () => $"the debugged app to run on the emulator: {Ui.Said(window)}\n{Console(window)}", Slow);
+
+            DeviceLaunches.HeldEnds = () =>
+            {
+                reached.TrySetResult();
+                return go.Task;
+            };
+            Ui.Run(window, AppActions.Stop, settle: false);
+            Ui.PumpUntil(() => reached.Task.IsCompleted, "the debugged app's end on the emulator to begin", Slow);
+            Adb(tools, serial, "shell", "am", "force-stop", Package);
+            Adb(tools, serial, "shell", "monkey", "-p", Package, "-c", "android.intent.category.LAUNCHER", "1");
+            // Its process comes before its runtime: read once it greets, or has the relay, which holds its greeting a minute.
+            string pid = string.Empty;
+            string loaded = string.Empty;
+            Ui.WaitFor(() => (pid = Pid(tools, serial)).Length > 0
+                && ((loaded = Adb(tools, serial, "shell", $"run-as {Package} cat /proc/{pid}/maps")).Contains(AndroidApp.RelayFile, StringComparison.Ordinal)
+                    || Adb(tools, serial, "logcat", "-d", $"--pid={pid}", "-s", "PassengerTest:I").Contains("Hello from Passenger's test app", StringComparison.Ordinal)),
+                () => $"the app started from its launcher to greet, or to load the relay; it runs as {(pid.Length > 0 ? pid : "nothing yet")}", TimeSpan.FromSeconds(30));
+            Assert.False(loaded.Contains(AndroidApp.RelayFile, StringComparison.Ordinal),
+                "The app started from its launcher loaded the relay of a debugging whose end had not reached the emulator, so its start waits a minute for a debugger");
+
+            go.TrySetResult();
+            Ui.WaitFor(() => Left(tools, serial).Length == 0 && Pid(tools, serial).Length == 0,
+                () => $"the held end to end the app and take out what the debugging put on the emulator; it still has {Left(tools, serial)}, the app running as {Pid(tools, serial)}",
+                TimeSpan.FromSeconds(30));
+        }
+        finally
+        {
+            DeviceLaunches.HeldEnds = null;
+            go.TrySetResult();
+            window.Close();
+        }
+    }
+
+    /// <summary>Passenger's relay and an environment naming it put in the installed app as a Debug start puts them, and nothing
+    /// else of a start (no port forwarded, the app not marked as debugged): what a start's end leaves where its device went
+    /// as it ended. The device's ABI, whose folder they are in.</summary>
+    private static string LeaveRelay(AndroidTools tools, AndroidApp app)
+    {
+        string abi = Adb(tools, app.Serial, "shell", "getprop", "ro.product.cpu.abi").Trim();
+        string runtime = AndroidApp.RelayRuntime(abi) ?? throw new InvalidOperationException($"No relay is built for the emulator's {abi}");
+        string relay = Path.Combine(AppContext.BaseDirectory, "debugger", "relay", runtime, AndroidApp.RelayFile);
+        string environment = Path.Combine(TestFolders.Create("android-left"), "environment");
+        File.WriteAllBytes(environment, AndroidEnvironment.Write(AndroidEnvironment.With(AndroidEnvironment.Read(File.ReadAllBytes(app.BuiltEnvironment(abi))),
+            app.RelayVariables(abi, "passenger-debug-left", "left"))));
+        Adb(tools, app.Serial, "push", relay, app.Staged("relay"));
+        Adb(tools, app.Serial, "push", environment, app.Staged("environment"));
+        IReadOnlyList<string> put = app.PutIn(abi, relay: true, []);
+        ChildResult putIn = Ui.Await(Waiting.Apart(() => ChildProcesses.RunAsync(ChildProcesses.Command(tools.Adb, put))), "the relay put in the app");
+        Assert.True(putIn.Succeeded, $"The relay could not be left in the app: {putIn.Said}");
+        return abi;
+    }
+
     /// <summary>A copy of the test app, the emulator or device to run it on and the Android tools; skipped, saying why, where
     /// the workload, its SDK and Java, a target or the relays are missing.</summary>
     private static (string Folder, string Project, DeviceTarget Target, AndroidTools Tools) Prepared()

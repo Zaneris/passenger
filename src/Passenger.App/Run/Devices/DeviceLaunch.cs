@@ -66,7 +66,8 @@ public sealed class DeviceInspector(string socket, string token, IReadOnlyList<s
 /// Nothing goes into the project or its build.</summary>
 public static class DeviceLaunches
 {
-    /// <summary>A plan's device found and its app installed, the plan's program then the device's shell running the app and
+    /// <summary>A plan's device found and its app installed, what a start whose end never reached the device left in the app
+    /// taken out (<see cref="AndroidApp.TakeOutLeft"/>), the plan's program then the device's shell running the app and
     /// writing its log (<see cref="AndroidApp.Run"/>); why not, in words for the person. <paramref name="listed"/> is told the
     /// targets found on the way, an emulator it started among them as running.</summary>
     public static async Task<(LaunchPlan? Plan, string? Problem)> ReadyAsync(LaunchPlan plan, IReadOnlyDictionary<string, string> globals, bool unseen, Action<string> say,
@@ -108,6 +109,11 @@ public static class DeviceLaunches
         if (app is null)
         {
             return (null, $"{name} could not be installed on {target.Name}: {uninstalled}");
+        }
+        // Run to its end however the start is stopped, so the app is never left between the build's environment and none.
+        if (await AndroidDevices.AdbAsync(tools.Adb, app.TakeOutLeft(), CancellationToken.None) is { Succeeded: false } unleft)
+        {
+            IdeLog.Write(IdeLog.Ide, $"What an earlier start left in {app.Package} on {target.Name} may not all be out: {unleft.Said}");
         }
         return (plan with
         {
@@ -352,6 +358,24 @@ public static class DeviceLaunches
         catch (Exception gone) when (gone is IOException or InvalidOperationException or System.ComponentModel.Win32Exception)
         {
             IdeLog.Write(IdeLog.Ide, $"{app.Package} on {app.Serial} was not ended cleanly: {gone.Message}");
+        }
+    }
+
+    /// <summary>The build's environment put back in the app once the app has read the one a start put in (<paramref name="put"/>),
+    /// so the app's next start, from wherever, reads the build's; adb's answer in the log where it could not. Never throws.</summary>
+    internal static async Task PutBackEnvironmentAsync(AndroidApp app, DevicePut put)
+    {
+        try
+        {
+            ChildResult back = await AndroidDevices.AdbAsync(app.Adb, app.TakeOut(put.Abi, put.Linked, relay: false, carried: false), CancellationToken.None);
+            if (!back.Succeeded)
+            {
+                IdeLog.Write(IdeLog.Ide, $"The build's environment was not put back in {app.Package} on {app.Serial} as it started: {back.Said}");
+            }
+        }
+        catch (Exception unreached) when (unreached is IOException or InvalidOperationException or System.ComponentModel.Win32Exception)
+        {
+            IdeLog.Write(IdeLog.Ide, $"The build's environment was not put back in {app.Package} on {app.Serial} as it started: {unreached.Message}");
         }
     }
 

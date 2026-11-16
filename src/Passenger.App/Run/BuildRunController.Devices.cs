@@ -70,10 +70,10 @@ public sealed partial class BuildRunController
     /// <summary>An app Run started on a device with Passenger's relay in it, attached to quietly for Hot Reload alone, which
     /// lets its start there go, each update told to <paramref name="handlers"/>: what its applies come to is said in
     /// <paramref name="console"/> (null for the terminal's tab) and the status bar, which says <paramref name="running"/>
-    /// once attached. After an attach that fails, saying why, the app goes on without Hot Reload: the relay lets its start go
-    /// as the connection ends, or once its wait is over.</summary>
-    private async Task AttachOnDeviceForHotReloadAsync(string name, RelaySession relay, ConsoleSink? console, Working work, BuiltEdits? edits, string running,
-        LiveApp? app, ProgramBuild? builds, UpdateHandlerHook? handlers)
+    /// once attached, the build's environment then back in the app (<see cref="DeviceStart.Started"/>). After an attach that
+    /// fails, saying why, the app goes on without Hot Reload: the relay lets its start go as the connection ends, or once its wait is over.</summary>
+    private async Task AttachOnDeviceForHotReloadAsync(string name, DeviceStart start, RelaySession relay, ConsoleSink? console, Working work, BuiltEdits? edits,
+        string running, LiveApp? app, ProgramBuild? builds, UpdateHandlerHook? handlers)
     {
         work.Say($"Attaching to {name} on its device for Hot Reload…");
         string? refused = await session.Debug.AttachForHotReloadThroughRelayAsync(relay, name, (line, error) =>
@@ -81,6 +81,10 @@ public sealed partial class BuildRunController
             console?.Write($"{line}\n", error ? ConsoleStream.Error : ConsoleStream.Output);
             parts.Say(line);
         }, work.Stopping, edits, app, builds, handlers);
+        if (refused is null)
+        {
+            start.Started();
+        }
         parts.Say(refused is null ? running : $"Running {name} without Hot Reload: {refused}");
     }
 
@@ -134,6 +138,8 @@ public sealed partial class BuildRunController
             await onDevice.TakeOutAsync();
             return refused ?? $"Debugging {plan.Name} ended as it started";
         }
+        // The app has read its environment as its runtime started, which the relay's hello says.
+        onDevice.Started();
         ConsoleSink console = tab.Console.Sink;
         Task log = Task.WhenAll(console.PumpAsync(ChildProcesses.Output(shell), ConsoleStream.Output), console.PumpAsync(ChildProcesses.Errors(shell), ConsoleStream.Error));
         onDevice.EndsWith(EndDebuggedOnDeviceAsync(DebugEnded(debug.SessionNamed(plan.Name)), shell, log, onDevice));

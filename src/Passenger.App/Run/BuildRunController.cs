@@ -1348,7 +1348,8 @@ public sealed partial class BuildRunController
                     onDevice.EndsWith(EndOnDeviceAsync(refused is null && session.InTerminal is { } shell ? shell.Ended : Task.FromResult(0), onDevice));
                     if (refused is null && relay is not null)
                     {
-                        await AttachOnDeviceForHotReloadAsync(chosen.Name, relay, null, work, Take(ref edits), running, inspected, ProgramBuild.Of(plan), Take(ref handlers));
+                        await AttachOnDeviceForHotReloadAsync(chosen.Name, onDevice, relay, null, work, Take(ref edits), running, inspected, ProgramBuild.Of(plan),
+                            Take(ref handlers));
                     }
                 }
                 EndWith(inspected, refused is null && session.InTerminal is { } run ? run.Ended : Task.CompletedTask);
@@ -1392,9 +1393,9 @@ public sealed partial class BuildRunController
                 // Its shell on the device ends with the app; Stop ends the shell here, so the app is ended there too.
                 onDevice.EndsWith(EndOnDeviceAsync(notStarted is null ? session.Runner.Ended : Task.FromResult(0), onDevice));
             }
-            if (notStarted is null && relay is not null)
+            if (notStarted is null && relay is not null && onDevice is not null)
             {
-                await AttachOnDeviceForHotReloadAsync(chosen.Name, relay, parts.Views.Run.Sink, work, Take(ref edits), running, inspected, ProgramBuild.Of(plan),
+                await AttachOnDeviceForHotReloadAsync(chosen.Name, onDevice, relay, parts.Views.Run.Sink, work, Take(ref edits), running, inspected, ProgramBuild.Of(plan),
                     Take(ref handlers));
             }
             if (notStarted is null && heldStart && session.Runner.ProcessId is int id)

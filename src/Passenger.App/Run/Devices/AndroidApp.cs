@@ -153,6 +153,14 @@ public sealed record AndroidApp(string Serial, string Adb, string Package, strin
         + $"rm -f {(relay ? RelayFile + " " : string.Empty)}environment"
         + (linked is { Length: > 0 } ? $" && ln -s {linked} environment'" : "'"));
 
+    /// <summary>The app's own shell taking out what a start whose end never reached the device left in it (its device gone as
+    /// it ended): the files carried in and, in each ABI's fast-deployment folder, the relay and an environment of Passenger's
+    /// (a file where the build made a link), the build's own linked back in its place as <see cref="PutIn"/> finds it.</summary>
+    public IReadOnlyList<string> TakeOutLeft() => On("shell",
+        $"run-as {Package} sh -c 'rm -rf {Carried}; cd /data/user/0/{Package}/files/.__override__ 2>/dev/null || exit 0; "
+        + $"for a in *; do [ -d \"$a\" ] || continue; ( cd \"$a\" || exit 1; rm -f {RelayFile}; [ -L environment ] || [ ! -e environment ] || {{ rm -f environment; "
+        + "for f in *.dll; do d=$(readlink \"$f\") && { [ -e \"${d%/*}/environment\" ] && ln -s \"${d%/*}/environment\" environment; break; }; done; } ) || exit 1; done'");
+
     /// <summary>The ABI's folder name for the relay's runtime identifier (<c>arm64-v8a</c>'s android-arm64); null for one no relay is built for.</summary>
     public static string? RelayRuntime(string abi) => abi switch
     {

@@ -31,6 +31,10 @@ public sealed class DeviceStart : IDisposable
     /// <summary>The take-out under way or done, off the window's thread, which every end of the start shares.</summary>
     private Task? takingOut;
 
+    /// <summary>The build's environment put back once the app has read the start's (<see cref="Started"/>), off the window's
+    /// thread, which the take-out waits for.</summary>
+    private Task? puttingBack;
+
     /// <summary>Whether the app was started, what the start put in handed to its run's or session's end.</summary>
     private bool handed;
 
@@ -125,6 +129,23 @@ public sealed class DeviceStart : IDisposable
         taken.TrySetResult();
     }
 
+    /// <summary>The app has started from what the start put in (its relay said hello), so its environment, read once as its
+    /// runtime starts, goes back to the build's at once, off the window's thread: a start of the app from its launcher then
+    /// loads nothing of Passenger's, even where the start's end never reaches the device. Passed over once taken out.</summary>
+    public void Started()
+    {
+        lock (gate)
+        {
+            if (takingOut is not null || puttingBack is not null || Placed() is not { } placed)
+            {
+                return;
+            }
+            // Unheld: the take-out waits for it, which the folder's end waits for where the window's loop may have stopped.
+            puttingBack = BackgroundWork.Unheld(() => DeviceLaunches.PutBackEnvironmentAsync(App, placed));
+            IdeErrors.Observe(puttingBack);
+        }
+    }
+
     /// <summary>The app ended on its device and what the start put in taken out, off the window's thread, once for every end
     /// that asks: the start's own where it gives up, its run's or session's, the folder's.</summary>
     public Task TakeOutAsync()
@@ -132,11 +153,16 @@ public sealed class DeviceStart : IDisposable
         lock (gate)
         {
             DevicePut? placed = Placed();
+            Task? putBack = puttingBack;
             // Unheld: the folder's end waits for it where the window's loop may have stopped.
             takingOut ??= BackgroundWork.Unheld(async () =>
             {
                 try
                 {
+                    if (putBack is not null)
+                    {
+                        await putBack.Ended();
+                    }
                     await DeviceLaunches.EndAsync(App, placed);
                 }
                 finally
