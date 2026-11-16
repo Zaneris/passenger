@@ -55,6 +55,9 @@ public sealed class McpLongAnswersTests : McpRig, IClassFixture<RestoredFolders>
         JsonElement within = await Call(client, McpTools.Usages, new() { ["symbol"] = "Much.Used", ["within"] = last });
         Assert.True(Used(within).Count == CallsEach && Used(within).All(u => u.Path == last) && !within.TryGetProperty("more", out _),
             $"usages within {last} answered: {Text(within)[..Math.Min(400, Text(within).Length)]}");
+        JsonElement fromLine = await Call(client, McpTools.Usages, new() { ["symbol"] = "Much.Used", ["within"] = last, ["from"] = 10 });
+        Assert.True(Used(fromLine).Count == CallsEach - 7 && Used(fromLine).All(u => u.Line >= 10), $"usages within {last} from line 10 answered: {Text(fromLine)[..Math.Min(400, Text(fromLine).Length)]}");
+        Assert.Contains("from reads on a file's places", Text(await Result(client, McpTools.Usages, new() { ["symbol"] = "Much.Used", ["within"] = "Calls", ["from"] = 10 })), StringComparison.Ordinal);
 
         // Its callers, the same way, and those within a file alone.
         CallToolResult callers = await Held(client, McpTools.Hierarchy, new() { ["symbol"] = "Much.Used" });

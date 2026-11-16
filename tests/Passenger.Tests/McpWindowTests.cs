@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.VisualTree;
@@ -1461,7 +1462,8 @@ public sealed class McpWindowDebuggingTests : McpRig, IClassFixture<RestoredFold
     }
 
     /// <summary>While an attached agent's ten thousand usages are found, each with its line read from its closed file, the
-    /// window takes every key typed.</summary>
+    /// window takes every key typed; the files the answer only counted are read through within, and from where one file's
+    /// places run past the limit, to every place.</summary>
     [AvaloniaFact]
     public void The_window_takes_keys_while_an_attached_agent_finds_ten_thousand_usages_each_with_its_line()
     {
@@ -1497,13 +1499,36 @@ public sealed class McpWindowDebuggingTests : McpRig, IClassFixture<RestoredFold
                 typed++;
                 Ui.Hold(TimeSpan.FromMilliseconds(50), "a pause between keys, as a person types");
             }
-            IReadOnlyList<(string Path, int Line, int Column, string Text)> found = Used(Ui.AwaitPumped(usages, "the usages"));
+            JsonElement answered = Ui.AwaitPumped(usages, "the usages");
             Ui.Settle();
+            Assert.Equal(new string('x', typed), window.EditorArea.Active!.Text.Snapshot.ToString());
 
+            List<(string Path, int Line, int Column, string Text)> found = [.. Used(answered)];
+            foreach (string counted in answered.GetProperty("files").EnumerateArray().Where(f => f.TryGetProperty("count", out _)).Select(f => f.GetProperty("path").GetString()!))
+            {
+                for (int? from = null; ;)
+                {
+                    Dictionary<string, object?> asked = new() { ["path"] = "Helper.cs", ["line"] = 3, ["column"] = 23, ["within"] = counted };
+                    if (from is int line)
+                    {
+                        asked["from"] = line;
+                    }
+                    JsonElement part = Await(Waiting.Apart(() => Call(client, McpTools.Usages, asked)), $"the usages within {counted} from {from}");
+                    found.AddRange(Used(part));
+                    if (!part.TryGetProperty("more", out JsonElement more))
+                    {
+                        break;
+                    }
+                    int next = int.Parse(Regex.Match(more.GetString()!, @"from (\d+) with within").Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture);
+                    Assert.True(next > (from ?? 0), $"usages within {counted} from {from} said to read on from {next}: {more}");
+                    from = next;
+                }
+            }
+
+            Assert.Equal(10_002, found.Distinct().Count());
             Assert.Equal(10_002, found.Count);
             Assert.All(found, place => Assert.Contains("Twice(", place.Text, StringComparison.Ordinal));
             Assert.Contains(found, place => place.Path == "Uses3.cs" && place.Line == 5005 && place.Text == "total += Helper.Twice(2499);");
-            Assert.Equal(new string('x', typed), window.EditorArea.Active!.Text.Snapshot.ToString());
 
             JsonElement callers = Await(Waiting.Apart(() => Call(client, McpTools.Hierarchy, new() { ["path"] = "Helper.cs", ["line"] = 3, ["column"] = 23 })), "the callers");
             Assert.Equal(["Uses0.cs:7 total += Helper.Twice(0);", "Uses1.cs:7 total += Helper.Twice(0);", "Uses2.cs:7 total += Helper.Twice(0);", "Uses3.cs:7 total += Helper.Twice(0);"],

@@ -506,9 +506,13 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         "member as from its declaration; a Reqnroll step's or step definition's, every step it binds in .feature files. JSON " +
         "and MSBuild files have none.")]
     public Task<UsagesFound> Usages(string? path = null, int? line = null, int? column = null, string? symbol = null, string? within = null,
-        CancellationToken cancel = default) => OnUi(cancel, async () =>
+        int? from = null, CancellationToken cancel = default) => OnUi(cancel, async () =>
     {
         string? inside = Within(within);
+        if (from is not null && (inside is null || !File.Exists(inside)))
+        {
+            throw new ArgumentException("from reads on a file's places: within names that file", nameof(from));
+        }
         CodePlace at = await AskedAt(path, line, column, symbol, cancel);
         // A GDScript's member or local is found by Passenger's reading of the project's scripts, before Godot's server serves it.
         if (Godot.GodotScriptTypes.IsScript(at.Path))
@@ -516,7 +520,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             OpenDocument script = await DocumentAsync(at.Path, cancel);
             if (await window.Assist.GDScriptUsesAsync(script, Offset(script, at.Line, at.Column)) is ({ } scriptUses, { } unsure))
             {
-                return ByFile(inside, null, await Places(scriptUses, cancel)) with
+                return ByFile(inside, from, null, await Places(scriptUses, cancel)) with
                 {
                     Note = unsure.Count > 0 ? $"May use it where Passenger can't see whose member is read: {Passenger.Workspace.GDScript.GDScriptRefactorings.Places(unsure)}" : null,
                 };
@@ -528,7 +532,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         switch (served)
         {
             case XamlServed xaml:
-                return ByFile(inside, null, await XamlUsages(xaml, offset, cancel) is { Count: > 0 } uses ? uses
+                return ByFile(inside, from, null, await XamlUsages(xaml, offset, cancel) is { Count: > 0 } uses ? uses
                     : throw new InvalidOperationException($"No name, resource key or C# symbol at {place}: {XamlAssist.XamlUsesWhat}"));
             case MSBuildServed:
                 throw Lacks(served, "Find Usages", MSBuildHas);
@@ -540,11 +544,11 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
                     + $"{Path.GetFileName(script.Document.Path)} yet to be asked: one is starting for it");
             case ShaderServed shader:
                 return await window.Assist.Languages.Shaders.UsesAsync(shader.Document, offset) is (_, { } shaderUses)
-                    ? ByFile(inside, null, await Places(shaderUses, cancel))
+                    ? ByFile(inside, from, null, await Places(shaderUses, cancel))
                     : throw new InvalidOperationException($"No uniform, varying, function, struct or constant the shader declares is at {place}");
             case FeatureServed feature:
                 return await window.Assist.Languages.Gherkin.AgentUsesAsync(feature.Document, offset) is ({ } stepsOf, { } stepPlaces)
-                    ? ByFile(inside, stepsOf, await Places(stepPlaces, cancel))
+                    ? ByFile(inside, from, stepsOf, await Places(stepPlaces, cancel))
                     : throw new InvalidOperationException($"No step a step definition binds is at {place}");
             case ServerServed unfound when !unfound.Provides("referencesProvider"):
                 throw new InvalidOperationException($"{unfound.Language} has no usages: its language server finds none, so Find Usages finds nothing in {Path.GetFileName(unfound.Document.Path)}");
@@ -578,18 +582,19 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         // A project whose scripts no scene reaches lists none of its scenes, and says why.
         string[] notes = [.. new[] { untaken.Count > 0 ? Refusals.Untaken([.. untaken.Select(u => Relative(u.Path))]) : null, Session.ProjectOf(served.Document.Path)?.GodotLayoutProblem }.OfType<string>()];
         (IReadOnlyList<Place> places, IReadOnlySet<string> generated) = await SetApart(found, cancel);
-        return ByFile(inside, taken, places, generated, notes.Length > 0 ? string.Join(". ", notes) : null);
+        return ByFile(inside, from, taken, places, generated, notes.Length > 0 ? string.Join(". ", notes) : null);
     });
 
-    /// <summary>usages' answer: its places within <paramref name="within"/> (a full path, else every one) in order (<see
-    /// cref="Sorted"/>), each file named once, those of <paramref name="generated"/> said to be generated code; held within
-    /// <see cref="AgentAnswers.MostCharacters"/> (<see cref="AgentAnswers.Grouped"/>): every file it can counted, the first
-    /// files' places listed, saying what it left out.</summary>
-    private UsagesFound ByFile(string? within, string? symbol, IReadOnlyList<Place> places, IReadOnlySet<string>? generated = null, string? note = null)
+    /// <summary>usages' answer: its places within <paramref name="within"/> (a full path, else every one), from the line
+    /// <paramref name="from"/> on where given, in order (<see cref="Sorted"/>), each file named once, those of
+    /// <paramref name="generated"/> said to be generated code; held within <see cref="AgentAnswers.MostCharacters"/> (<see
+    /// cref="AgentAnswers.Grouped"/>): every file it can counted, the first files' places listed, and one file alone its
+    /// first places, saying what it left out.</summary>
+    private UsagesFound ByFile(string? within, int? from, string? symbol, IReadOnlyList<Place> places, IReadOnlySet<string>? generated = null, string? note = null)
     {
-        IReadOnlyList<Place> asked = within is null ? places : [.. places.Where(p => Inside(p.Path, within))];
-        List<FilePlaces> files = [.. Sorted(asked, generated).GroupBy(p => p.Path, StringComparer.Ordinal)
-            .Select(file => new FilePlaces(file.Key, [.. file.Select(p => p.Text.Length == 0 ? $"{p.Line}:{p.Column}" : $"{p.Line}:{p.Column} {p.Text}")])
+        IReadOnlyList<Place> asked = Sorted([.. places.Where(p => (within is null || Inside(p.Path, within)) && (from is null || p.Line >= from))], generated);
+        List<FilePlaces> files = [.. asked.GroupBy(p => p.Path, StringComparer.Ordinal)
+            .Select(file => new FilePlaces(file.Key, [.. file.Select(Shown)])
             {
                 Generated = generated?.Contains(file.Key) == true ? true : null,
             })];
@@ -598,6 +603,10 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         if (whole == files.Count)
         {
             return found;
+        }
+        if (files is [{ } only])
+        {
+            return OneFile(found, only, asked);
         }
         string[] said = [.. new[] { Said(files.Skip(whole).Take(named), "counted, not listed"), Said(files.Skip(whole + named), "left out") }.OfType<string>()];
         return found with
@@ -610,6 +619,30 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             : string.Create(System.Globalization.CultureInfo.InvariantCulture, $"{places:N0} {Plural.Noun(places, "place")} in {those.Count():N0} {Plural.Noun(those.Count(), "file")} {what}");
 
         static FilePlaces Counted(FilePlaces file) => file with { Places = null, Count = file.Places!.Count };
+    }
+
+    /// <summary>A usage as its file's places list it: "line:column text".</summary>
+    private static string Shown(Place place) => place.Text.Length == 0 ? $"{place.Line}:{place.Column}" : $"{place.Line}:{place.Column} {place.Text}";
+
+    /// <summary>usages' answer of one file's places past the limit: its first places that fit, ending before a line whose
+    /// places it could not list whole (unless that is its first), and the from that reads on from the next.</summary>
+    private UsagesFound OneFile(UsagesFound found, FilePlaces file, IReadOnlyList<Place> places)
+    {
+        int kept = AgentAnswers.Fitting(file.Places!, Size, Room(found with { Files = [file with { Places = [] }] }));
+        if (kept == places.Count)
+        {
+            return found;
+        }
+        int next = places[kept].Line;
+        while (kept > 0 && places[kept - 1].Line == next && places[0].Line != next)
+        {
+            kept--;
+        }
+        return found with
+        {
+            Files = [file with { Places = [.. file.Places!.Take(kept)] }],
+            More = AgentAnswers.More(places.Count - kept, "place", $"from {next} with within {file.Path} lists those from that line on"),
+        };
     }
 
     /// <summary>The folder or file a tool's within names, in full, refused where there is none; null where none is named.</summary>
