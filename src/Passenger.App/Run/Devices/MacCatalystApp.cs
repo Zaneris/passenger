@@ -20,9 +20,14 @@ public sealed partial record MacCatalystApp(string Bundle, string Executable)
 
     /// <summary>What a start of an app whose build trims .NET's own assemblies says, <paramref name="name"/> its program.</summary>
     public static string Trimmed(string name) =>
-        $"{name}'s build trims .NET's own assemblies, so Passenger's inspector and update handlers' hook, which need them whole, stay out of it: "
-        + $"the Live Visual Tree and an agent's app tools do not reach it, and Hot Reload calls no update handler. Its Debug build keeps them whole "
-        + $"with <{MSBuildNames.MtouchLink}>None</{MSBuildNames.MtouchLink}>";
+        $"{name}'s build trims .NET's own assemblies, so {KeptOut}. Its Debug build keeps them whole with {LinkNone}";
+
+    /// <summary>What stays out of an app whose build trims .NET's own assemblies, which the banner's edit of it says too.</summary>
+    public const string KeptOut = "Passenger's inspector and update handlers' hook, which need them whole, stay out of it: "
+        + "the Live Visual Tree and an agent's app tools do not reach it, and Hot Reload calls no update handler";
+
+    /// <summary>The property that keeps a build's assemblies whole, as a project writes it.</summary>
+    public const string LinkNone = $"<{MSBuildNames.MtouchLink}>None</{MSBuildNames.MtouchLink}>";
 
     /// <summary>Where a start puts what the app loads of Passenger's and the sockets it listens on: a folder of its container
     /// where its sandbox keeps it there (<see cref="ContainerTemporary"/>), else one of Passenger's own.</summary>

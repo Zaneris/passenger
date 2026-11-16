@@ -364,6 +364,126 @@ public static class ProjectEdits
         return (xml.Text, null);
     }
 
+    /// <summary>The frameworks a project file's TargetFramework and TargetFrameworks elements name, under a condition or not,
+    /// each once, those written as a property passed over; none where the text does not read as XML.</summary>
+    public static IReadOnlyList<string> FrameworksWritten(string text) =>
+        Read(text) is { } xml
+            ? [.. FrameworkElements(xml).SelectMany(e => e.Value.Split(';')).Select(f => f.Trim()).Where(f => f.Length > 0 && !f.Contains("$(", StringComparison.Ordinal))
+                .Distinct(StringComparer.OrdinalIgnoreCase)]
+            : [];
+
+    /// <summary>The TargetFramework and TargetFrameworks elements of a project's property groups.</summary>
+    private static IEnumerable<XElement> FrameworkElements(XmlText xml) =>
+        xml.Root.Descendants().Where(e => e.Name.LocalName is "TargetFramework" or "TargetFrameworks" && !e.HasElements && e.Parent?.Name.LocalName == "PropertyGroup");
+
+    /// <summary>A project file's text with each framework of <paramref name="moves"/> named anew wherever a TargetFramework or
+    /// TargetFrameworks element names it among its frameworks, under a condition or not, every other character as it was;
+    /// null where none names one or the text does not read as XML.</summary>
+    public static string? WithFrameworksMoved(string text, IReadOnlyDictionary<string, string> moves)
+    {
+        if (Read(text) is not { } xml)
+        {
+            return null;
+        }
+        List<(int Start, int Length, string With)> edits = [];
+        foreach (XElement set in FrameworkElements(xml))
+        {
+            if (xml.InnerOf(set) is not { } inner)
+            {
+                continue;
+            }
+            int at = inner.Start;
+            foreach (string part in xml.Written(inner).Split(';'))
+            {
+                string named = part.Trim();
+                if (moves.FirstOrDefault(m => string.Equals(m.Key, named, StringComparison.OrdinalIgnoreCase)).Value is { } moved)
+                {
+                    edits.Add((at + part.IndexOf(named, StringComparison.Ordinal), named.Length, moved));
+                }
+                at += part.Length + 1;
+            }
+        }
+        if (edits.Count == 0)
+        {
+            return null;
+        }
+        xml.Apply(edits);
+        return xml.Text;
+    }
+
+    /// <summary>A project file's text with a property set to <paramref name="value"/> where it sets <paramref name="was"/> for
+    /// a platform (android): the one element whose condition, or its group's, names the platform, else the one under no
+    /// condition, its value shaped as the one it replaces; null where none or several do, or the text does not read as XML.</summary>
+    public static string? WithPlatformProperty(string text, string name, string platform, string was, string value)
+    {
+        if (Read(text) is not { } xml)
+        {
+            return null;
+        }
+        List<XElement> setting = [.. xml.Root.Descendants().Where(e => e.Name.LocalName == name && !e.HasElements && e.Parent is { Name.LocalName: "PropertyGroup" } group
+            && group.Parent == xml.Root && SameValue(e.Value, was))];
+        bool Names(XElement e) => $"{(string?)e.Attribute("Condition")} {(string?)e.Parent!.Attribute("Condition")}".Contains($"'{platform}'", StringComparison.OrdinalIgnoreCase);
+        List<XElement> chosen = [.. setting.Where(Names)];
+        if (chosen.Count == 0)
+        {
+            chosen = [.. setting.Where(e => !ProjectItems.Conditioned(e) && !ProjectItems.Conditioned(e.Parent!))];
+        }
+        if (chosen is not [{ } only] || xml.InnerOf(only) is not { } inner)
+        {
+            return null;
+        }
+        string written = xml.Written(inner);
+        xml.Apply([(inner.Start + (written.Length - written.TrimStart().Length), written.Trim().Length, XmlEntities.Encode(Shaped(value, written.Trim())))]);
+        return xml.Text;
+    }
+
+    /// <summary>A version shaped as the one it replaces is written: 24 for 23, 24.0 for 21.0.</summary>
+    private static string Shaped(string value, string was) =>
+        was.Contains('.', StringComparison.Ordinal) == value.Contains('.', StringComparison.Ordinal) ? value
+        : was.Contains('.', StringComparison.Ordinal) ? value + ".0"
+        : value.EndsWith(".0", StringComparison.Ordinal) ? value[..^2] : value;
+
+    /// <summary>A project file's text with a property set for its Debug configuration alone (and for one platform's
+    /// framework, <paramref name="platform"/> where given): in its own property group conditioned on Debug alone, else
+    /// under that condition in its first unconditioned group, else in a group of its own so conditioned; null where the
+    /// project writes the property already, or the text does not read as XML.</summary>
+    public static string? WithDebugProperty(string text, string name, string value, string? platform)
+    {
+        if (Read(text) is not { } xml || xml.Root.Descendants().Any(e => e.Name.LocalName == name))
+        {
+            return null;
+        }
+        string debug = "'$(Configuration)' == 'Debug'";
+        string condition = platform is null ? debug : $"{debug} And $([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == '{platform}'";
+        string written = XmlEntities.Encode(value);
+        List<XElement> groups = [.. xml.Root.Elements().Where(e => e.Name.LocalName == "PropertyGroup")];
+        if (platform is null && groups.FirstOrDefault(g => ((string?)g.Attribute("Condition"))?.Replace(" ", string.Empty, StringComparison.Ordinal)
+            .Equals(debug.Replace(" ", string.Empty, StringComparison.Ordinal), StringComparison.OrdinalIgnoreCase) == true) is { } debugGroup)
+        {
+            xml.Append(debugGroup, $"<{name}>{written}</{name}>");
+        }
+        else if (groups.FirstOrDefault(g => !ProjectItems.Conditioned(g)) is { } plain)
+        {
+            xml.Append(plain, $"<{name} Condition=\"{XmlEntities.Encode(condition, '"')}\">{written}</{name}>");
+        }
+        else
+        {
+            string outer = xml.IndentIn(xml.Root);
+            xml.Append(xml.Root, $"<PropertyGroup Condition=\"{XmlEntities.Encode(condition, '"')}\">{xml.NewLine}{outer}{xml.Unit}<{name}>{written}</{name}>{xml.NewLine}{outer}</PropertyGroup>",
+                ownLine: true);
+        }
+        return xml.Text;
+    }
+
+    /// <summary>Whether a property's text is a value (15, 15.0, 23), the same as another, as versions where both read as one.</summary>
+    private static bool SameValue(string written, string value)
+    {
+        string one = written.Trim();
+        string two = value.Trim();
+        return one == two || (Version.TryParse(one.Contains('.', StringComparison.Ordinal) ? one : one + ".0", out Version? a)
+            && Version.TryParse(two.Contains('.', StringComparison.Ordinal) ? two : two + ".0", out Version? b) && a == b);
+    }
+
     /// <summary>A property's value as the project file's own text sets it in an unconditioned property group; null where it
     /// sets none, or the text does not read as XML.</summary>
     public static string? PropertyIn(string text, string name) =>

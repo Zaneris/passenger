@@ -573,8 +573,8 @@ public static class Refusals
     /// <summary>Install Android SDK and Java with nothing of Android's lacking.</summary>
     public const string NothingAndroidLacking = "No Android project of the folder lacks the Android SDK, its packages or a JDK";
 
-    /// <summary>Make the iOS Edits with no iOS head needing an edit Passenger makes.</summary>
-    public const string NoIosEdits = "No iOS app's head of the folder needs an edit Passenger makes";
+    /// <summary>Make the Mobile Edits with no mobile head needing an edit Passenger makes.</summary>
+    public const string NoMobileEdits = "No mobile app's head of the folder needs an edit Passenger makes";
 
     /// <summary>A .NET installed for every user, which a workload installs into only with an administrator's rights.</summary>
     public static string WorkloadsNeedAdministrator(string root, string command) =>

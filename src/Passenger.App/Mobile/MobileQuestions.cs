@@ -8,9 +8,9 @@ namespace Passenger.App.Mobile;
 /// through MSBuild's questions as the .NET CLI's (no build, no restore): the workloads it lacks
 /// (<c>_GetRequiredWorkloads</c>), what its Android app needs (<c>GetAndroidDependencies</c>, Java's too) and whether its
 /// Apple apps have the Xcode their workload wants (<c>_DetectSdkLocations</c>) and its simulator runtimes (that Xcode's
-/// <c>simctl</c>), and the edits an iOS app's head needs (<see cref="IosHeads"/>). Only a framework on CoreCLR whose
-/// workload is installed is asked past the first, an Android one only where this machine builds Android apps, and an iOS
-/// head at the framework it builds on CoreCLR.</summary>
+/// <c>simctl</c>), and the edits its heads need (<see cref="MobileHeads"/>). Only a framework on CoreCLR whose workload is
+/// installed is asked past the first, an Android one only where this machine builds Android apps, and each head at the
+/// framework it builds on CoreCLR.</summary>
 public static class MobileQuestions
 {
     /// <summary>Where Xcode is installed when it is, on a Mac.</summary>
@@ -50,15 +50,23 @@ public static class MobileQuestions
                 apple = new AppleAnswer(null) { Simulators = lacking };
             }
         }
-        IosHeadEdits? ios = null;
-        if (onMac && workloads.Count == 0 && IosHeads.HeadOf(frameworks) is { } head)
+        HeadEdits? heads = null;
+        if (workloads.Count == 0 && MobileHeads.HeadsOf(frameworks, onMac) is { Count: > 0 } asked)
         {
-            string built = IosHeads.OnCoreClr(head);
-            ios = IosHeads.Answer(await QuestionAsync(project, built, IosHeads.Question, globals, cancel), Path.GetDirectoryName(project)!) is { } answer
-                ? IosHeads.Edits(project, name, head, built, answer, path => FileText.Load(path)?.Text)
-                : null;
+            List<HeadAnswer> answers = [];
+            foreach (string head in asked)
+            {
+                string platform = MobilePlatforms.Of(head)!;
+                string built = MobileHeads.OnCoreClr(head);
+                if (MobileHeads.Answer(platform, built, await QuestionAsync(project, built, MobileHeads.Question(platform), globals, cancel), Path.GetDirectoryName(project)!)
+                    is { } answer)
+                {
+                    answers.Add(answer);
+                }
+            }
+            heads = MobileHeads.Edits(project, name, answers, path => File.Exists(path) ? FileText.Load(path)?.Text : null);
         }
-        return new ProjectNeeds(name, frameworks) { Workloads = workloads, Android = android, Apple = apple, Ios = ios };
+        return new ProjectNeeds(name, frameworks) { Workloads = workloads, Android = android, Apple = apple, Heads = heads };
     }
 
     /// <summary>Longest a listing of the simulator runtimes is waited for, which may start the simulators' service first.</summary>

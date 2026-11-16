@@ -99,7 +99,8 @@ public sealed class MauiTemplateRunTests
                 Ui.WaitFor(() => window.Session.Projects.Any(p => p.IsEvaluated), () => $"the app's project to evaluate: {Ui.Said(window)}", Slow);
                 Built(window);
                 MobileWant want = window.MobileWant;
-                string? said = window.MobileSaid;
+                // The edits the banner offers its heads (its Mac Catalyst head's trimmed Debug build) are no lack of this machine's.
+                string? said = (want with { Heads = [] }).Said;
                 IReadOnlyList<string> heads = window.Session.Projects.Single().TargetFrameworks;
                 Assert.True(window.Perform(AppActions.Build), $"The app's build could not begin: {window.Status}");
                 Ui.WaitFor(() => !window.IsBuilding, () => $"the app's build to end: {window.Status}", Slow);

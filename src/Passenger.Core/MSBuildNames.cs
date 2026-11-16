@@ -218,6 +218,21 @@ public static class MSBuildNames
     public const string CanOutputAppBundle = "_CanOutputAppBundle";
     public const string IsAppExtension = "IsAppExtension";
 
+    /// <summary>The Apple workload's own folder, whose Versions.plist maps Mac Catalyst's versions to macOS's.</summary>
+    public const string XamarinSdkRootDirectory = "_XamarinSdkRootDirectory";
+
+    /// <summary>The least Android API the Android workload builds an app for.</summary>
+    public const string AndroidMinimumSupportedApiLevel = "AndroidMinimumSupportedApiLevel";
+
+    // A project of .NET MAUI's, and the namespace its own code is written in.
+    public const string UseMaui = "UseMaui";
+    public const string RootNamespace = "RootNamespace";
+
+    // The folders a MAUI project takes each Apple head's files from, which its package sets where the project does not.
+    public const string PlatformsProjectFolder = "PlatformsProjectFolder";
+    public const string IosProjectFolder = "iOSProjectFolder";
+    public const string MacCatalystProjectFolder = "MacCatalystProjectFolder";
+
     // A Mac Catalyst app's bundle as the Apple workloads' ComputeRunArguments leaves it: its folder and its program's name.
     public const string AppBundleDir = "AppBundleDir";
     public const string NativeExecutableName = "_NativeExecutableName";
