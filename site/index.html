@@ -136,7 +136,7 @@
                 <li><a href="#profiling"><strong>CPU and memory profiling</strong>
                     <span>Call trees, flame graphs, and heap snapshots compared.</span></a></li>
                 <li><a href="#xaml"><strong>XAML previews and live trees</strong>
-                    <span>Avalonia and WPF drawn as you type, the running app's tree, XAML Hot Reload.</span></a></li>
+                    <span>Avalonia, WPF and MAUI drawn as you type, the running app's tree, XAML Hot Reload.</span></a></li>
                 <li><a href="#agents"><strong>An agent that drives the IDE</strong>
                     <span>Claude Code, Codex or OpenCode build, debug and try the running app through it.</span></a></li>
                 <li><a href="#web"><strong>Live requests with their SQL</strong>
@@ -155,6 +155,8 @@
                     <span>Every version of your files Passenger has seen, and Git's conflicts merged.</span></a></li>
                 <li><a href="/godot"><strong>Godot 4 games</strong>
                     <span>C# and GDScript run, debugged, profiled and Hot Reloaded, checked against their scenes.</span></a></li>
+                <li><a href="#mobile"><strong>Mobile apps on devices</strong>
+                    <span>.NET 11 MAUI, Android and iOS apps run, debugged and Hot Reloaded on an emulator or simulator.</span></a></li>
             </ul>
         </div>
     </section>
@@ -287,7 +289,7 @@
             <p class="kicker">XAML</p>
             <h2>See your XAML as you write it, and as it runs</h2>
             <p class="intro">Passenger is built with Avalonia, and it gives XAML the help C# gets, from the project's own
-                assemblies and the framework's own compiler and previewer, for Avalonia and WPF alike.</p>
+                assemblies and the framework's own compiler and previewer, for Avalonia, WPF and .NET MAUI alike.</p>
 
             <div class="feature">
                 <div class="text">
@@ -490,6 +492,38 @@
                 <div class="card">
                     <h3>The running game, tuned</h3>
                     <p>Its nodes and values in the Live Visual Tree, changed while it plays and kept into the scene.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section id="mobile">
+        <div class="wrap">
+            <p class="kicker">Mobile</p>
+            <h2>.NET 11 mobile apps, on a device, emulator or simulator</h2>
+            <p class="intro">From .NET 11, .NET MAUI, Android and iOS apps run on CoreCLR, the runtime Passenger's own
+                debugger is built for. Choose where the app runs beside the run configuration, and Run, Debug and Hot
+                Reload work there as they do on the desktop.</p>
+            <div class="grid">
+                <div class="card">
+                    <h3>Android, iOS and Mac Catalyst</h3>
+                    <p>An Android device or emulator, an iOS simulator on a Mac, or the Mac itself for Mac Catalyst: Run
+                        installs and starts the app there, its log in the Run window.</p>
+                </div>
+                <div class="card">
+                    <h3>The same debugger, on the device</h3>
+                    <p>Breakpoints, steps and values, and C# Hot Reload calling your app's own update handlers after
+                        each edit.</p>
+                </div>
+                <div class="card">
+                    <h3>MAUI's XAML, previewed and live</h3>
+                    <p>Completion, checks and a preview of MAUI 11's XAML as you type, and a running MAUI or Avalonia
+                        app's controls in the Live Visual Tree.</p>
+                </div>
+                <div class="card">
+                    <h3>What it needs, said</h3>
+                    <p>A missing workload, Android SDK, JDK or simulator runtime is said and installed, and a .NET 10
+                        app is told each edit it needs for .NET 11.</p>
                 </div>
             </div>
         </div>
