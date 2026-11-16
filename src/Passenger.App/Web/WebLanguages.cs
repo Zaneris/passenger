@@ -757,7 +757,8 @@ public sealed class WebLanguages : IAsyncDisposable
             WebServerKind.Css => new { provideFormatter = true },
             // Both read their settings from workspace/configuration alone.
             WebServerKind.Dockerfile or WebServerKind.Yaml => null,
-            _ => new { provideFormatter = true, handledSchemaProtocols = new[] { "file" } },
+            // Every schema asked of Passenger, a file's too, so none is read from another machine.
+            _ => new { provideFormatter = true, handledSchemaProtocols = Array.Empty<string>() },
         };
         return new ServerStart(process, folder, LogFolder, ClientCapabilities.Web, options)
         {

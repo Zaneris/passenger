@@ -7,8 +7,9 @@ namespace Passenger.App.Web;
 /// Node.js project (package.json, tsconfig.json, jsconfig.json, appsettings.json, launchSettings.json and a file-based
 /// program's .run.json, global.json) take SchemaStore's, and compose files the Compose specification's, carried under
 /// <c>web/schemas/</c> with those they refer to and never downloaded. A schema a file names itself (its <c>$schema</c>) is
-/// downloaded while Settings allow it, over HTTP or HTTPS, kept for the process; <c>PASSENGER_SCHEMAS</c> names another
-/// place to ask for them. Called on any thread.</summary>
+/// downloaded while Settings allow it, over HTTP or HTTPS, kept for the process, or read from a file on this machine's own
+/// disks (<see cref="FoundPaths.OfFileAddress"/>), never another machine's or a share's; <c>PASSENGER_SCHEMAS</c> names
+/// another place to ask for them. The JSON server asks here for every schema, a file's too. Called on any thread.</summary>
 public sealed class JsonSchemas(Func<bool> download)
 {
     [IdentifierHome]
@@ -46,8 +47,8 @@ public sealed class JsonSchemas(Func<bool> download)
     /// <summary>The associations as the JSON server's <c>json/schemaAssociations</c> takes them.</summary>
     public static object Notification => Associations.Select(a => new { fileMatch = a.FileMatch, uri = a.Uri }).ToArray();
 
-    /// <summary>A schema's text by its URI: a carried one's, else one downloaded when Settings allow it; a failure says
-    /// why, which the JSON server shows where the file names the schema.</summary>
+    /// <summary>A schema's text by its URI: a carried one's, a file's on this machine's own disks, else one downloaded when
+    /// Settings allow it; a failure says why, which the JSON server shows where the file names the schema.</summary>
     public async Task<string> ContentAsync(string uri, CancellationToken cancel)
     {
         if (!Uri.TryCreate(uri, UriKind.Absolute, out Uri? asked))
@@ -57,6 +58,11 @@ public sealed class JsonSchemas(Func<bool> download)
         if (Carried(asked) is { } path)
         {
             return await File.ReadAllTextAsync(path, cancel);
+        }
+        if (asked.IsFile)
+        {
+            return FoundPaths.OfFileAddress(asked) is { } file ? await ReadAsync(file, cancel)
+                : throw new InvalidOperationException($"Passenger reads a schema's file only from this machine's own disks, never another machine's or a share's ({uri})");
         }
         if (asked.Scheme != Uri.UriSchemeHttps && asked.Scheme != Uri.UriSchemeHttp)
         {
@@ -74,6 +80,19 @@ public sealed class JsonSchemas(Func<bool> download)
         catch (Exception error) when (fetching.IsCompleted && error is HttpRequestException or TaskCanceledException)
         {
             throw new InvalidOperationException($"{uri} could not be downloaded: {error.Message}", error);
+        }
+    }
+
+    /// <summary>A schema's file on this machine, its failure to read said.</summary>
+    private static async Task<string> ReadAsync(string path, CancellationToken cancel)
+    {
+        try
+        {
+            return await File.ReadAllTextAsync(path, cancel);
+        }
+        catch (Exception unread) when (unread is IOException or UnauthorizedAccessException)
+        {
+            throw new InvalidOperationException($"{path} could not be read: {unread.Message}", unread);
         }
     }
 

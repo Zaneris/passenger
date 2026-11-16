@@ -55,6 +55,40 @@ public sealed class JsonSchemaTests
         }
     }
 
+    /// <summary>A schema a file names on this machine's disk (its <c>$schema</c> beside it) is read and checks the file; one
+    /// naming another machine's file (<c>file://host/share/…</c>, which Windows would sign in to as the person) is never
+    /// asked of the disk, by Passenger or the JSON server, its file marked saying why and left unchecked.</summary>
+    [AvaloniaFact]
+    public void A_schema_a_file_names_is_read_from_this_machines_disk_and_never_from_another_machines()
+    {
+        WebLanguagesTests.SkipWithoutNode();
+        string folder = PathNames.Canonical(TestFolders.Create("schema-files-"));
+        TestFolders.Write(folder, "named.schema.json", """{ "type": "object", "properties": { "name": { "type": "string" } } }""" + "\n");
+        TestFolders.Write(folder, "near.json", "{\n  \"$schema\": \"./named.schema.json\",\n  \"name\": 5\n}\n");
+        TestFolders.Write(folder, "far.json", "{\n  \"$schema\": \"file://far.invalid/share/named.schema.json\",\n  \"name\": 5\n}\n");
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        try
+        {
+            window.OpenFile(Path.Combine(folder, "near.json"));
+            Ui.Settle();
+            OpenDocument near = window.EditorArea.Active!;
+            Ui.WaitFor(() => near.Markers.Any(m => m.Message.Contains("Incorrect type. Expected \"string\"", StringComparison.Ordinal)),
+                () => $"the mark on the name the schema beside the file refuses, where near.json has [{string.Join("; ", near.Markers.Select(m => m.Message))}]");
+
+            window.OpenFile(Path.Combine(folder, "far.json"));
+            Ui.Settle();
+            OpenDocument far = window.EditorArea.Active!;
+            Ui.WaitFor(() => far.Markers.Any(m => m.Message.Contains("Passenger reads a schema's file only from this machine's own disks", StringComparison.Ordinal)),
+                () => $"the mark saying another machine's schema is not read, where far.json has [{string.Join("; ", far.Markers.Select(m => m.Message))}]");
+            Assert.True(!far.Markers.Any(m => m.Message.Contains("Incorrect type", StringComparison.Ordinal)),
+                $"far.json was checked by a schema read from another machine: [{string.Join("; ", far.Markers.Select(m => m.Message))}]");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     /// <summary>.NET's configuration reads keys in any case, so Serilog's and Kestrel's do in appsettings.json: each is
     /// checked as its own spelling is (an argument's name that is none marked under lower-case keys), a key required in
     /// any case.</summary>
