@@ -670,7 +670,7 @@ a new name, and `just site-shots` retakes its images.
   hearing a change passes over the state folder by its canonical path (`LocalHistory.Open`), or each write is heard and
   written again.
 - **Local History's `changes.log` is shared by every Passenger on the same state**: a store takes in the others' lines
-  under `Hold` before it keeps anything, and a change logged twice lists once.
+  under `Hold` before it keeps anything, and a change logged twice lists once; nothing is written to it without the hold, however long another holds it (`LocalHistory.HoldToChange`), as a line written beside a prune's rewrite is lost with the log it replaces.
 - **.NET on iOS has no Unix sockets** (PlatformNotSupportedException), and `OperatingSystem.IsMacOS()` is false there: Darwin code takes `IsIOS()` too. simctl writes its own words only at its end unless `NSUnbufferedIO=YES`, and a killed `simctl launch --console` leaves its app running.
 - **A variable taken out of a process's own environment goes through `OwnEnvironment.Set`**: on macOS and Linux
   `SetEnvironmentVariable` never changes the process's own, from which Porta.Pty forks the shell. Porta.Pty drops an
