@@ -340,40 +340,19 @@ internal sealed class CorDebugLocation(ICorDebugValue value) : IDebuggeeLocation
                     throw new InvalidOperationException("CIL value sizes do not match");
                 }
 
-                byte[] sourceData = sourceGeneric.GetValueAsBytes();
-                unsafe
-                {
-                    fixed (byte* pointer = sourceData)
-                    {
-                        destinationGeneric.SetValue((nint)pointer);
-                    }
-                }
+                destinationGeneric.SetValue(sourceGeneric.GetValueAsBytes());
                 return;
             }
             if (source.Value is not null)
             {
-                byte[] data = destinationGeneric.Type == CorElementType.VALUETYPE
+                destinationGeneric.SetValue(destinationGeneric.Type == CorElementType.VALUETYPE
                     ? CilValueEncoding.GetBytesForSize(source.Value, destinationGeneric.Size)
-                    : CilValueEncoding.GetBytes(source.Value, destinationGeneric.Type);
-                unsafe
-                {
-                    fixed (byte* pointer = data)
-                    {
-                        destinationGeneric.SetValue((nint)pointer);
-                    }
-                }
+                    : CilValueEncoding.GetBytes(source.Value, destinationGeneric.Type));
                 return;
             }
             if (source.IsNull)
             {
-                byte[] zeroed = new byte[destinationGeneric.Size];
-                unsafe
-                {
-                    fixed (byte* pointer = zeroed)
-                    {
-                        destinationGeneric.SetValue((nint)pointer);
-                    }
-                }
+                destinationGeneric.SetValue(new byte[destinationGeneric.Size]);
                 return;
             }
             throw new NotSupportedException("The CIL value cannot be stored in this debuggee location");

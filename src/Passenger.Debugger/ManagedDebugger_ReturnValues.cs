@@ -345,14 +345,7 @@ public partial class ManagedDebugger
             ICorDebugValue boxed = await thread.CreateEval().NewParameterizedObjectNoConstructorAsync(ProcessRuntimeEventsUntilEvalEvent, EvalStatus, boxClass,
                 typeArguments.Length, typeArguments.Length == 0 ? null : typeArguments, throwOnException: true) ?? throw new InvalidOperationException($"No box was made for the {typeName} returned");
             ICorDebugHandleValue handle = boxed as ICorDebugHandleValue ?? ((ICorDebugHeapValue2)boxed.UnwrapDebugValue()).CreateHandle(CorDebugHandleType.HANDLE_STRONG);
-            ICorDebugGenericValue inside = (ICorDebugGenericValue)handle.UnwrapDebugValue();
-            unsafe
-            {
-                fixed (byte* pointer = bytes)
-                {
-                    inside.SetValue((nint)pointer);
-                }
-            }
+            ((ICorDebugGenericValue)handle.UnwrapDebugValue()).SetValue(bytes);
             return new ReturnedValue(method, handle, typeName, aliasType, null);
         }
         catch (Exception error) when (error is EvalException || Failures.OfRuntime(error))

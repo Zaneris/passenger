@@ -526,9 +526,10 @@ public partial class ManagedDebugger
         return PrimitiveTypes.Named(closed)?.Keyword ?? (global ? $"global::{closed}" : closed);
     }
 
-    public static CorDebugValueValueResult GetCorDebugGenericValue_Value_AsString(ICorDebugGenericValue corDebugGenericValue)
+    public static unsafe CorDebugValueValueResult GetCorDebugGenericValue_Value_AsString(ICorDebugGenericValue corDebugGenericValue)
     {
-        IntPtr buffer = Marshal.AllocHGlobal(corDebugGenericValue.Size);
+        // Read by its type's width, never past the room, whatever size the value says: what it leaves unwritten reads as zero.
+        nint buffer = (nint)NativeMemory.AllocZeroed((nuint)Math.Max(corDebugGenericValue.Size, sizeof(long)));
         try
         {
             corDebugGenericValue.GetValue(buffer);
@@ -563,7 +564,7 @@ public partial class ManagedDebugger
         }
         finally
         {
-            Marshal.FreeHGlobal(buffer);
+            NativeMemory.Free((void*)buffer);
         }
     }
 

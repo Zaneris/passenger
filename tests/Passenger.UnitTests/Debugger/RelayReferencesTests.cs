@@ -8,6 +8,7 @@ using System.Text;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.Emit;
+using Passenger.Debugger;
 using Passenger.Debugger.Interop;
 using Passenger.Debugger.Relay;
 
@@ -16,8 +17,9 @@ namespace Passenger.UnitTests.Debugger;
 /// <summary>The engine's hold on an app's objects through the relay: each object let go in the app once the engine holds
 /// none of it, the objects the app's debugger keeps anyway held for the session, what an object said asked of the app
 /// once, for as long as it holds (a method's function until an update makes its next version, a value's size for good, its
-/// bytes read at that size alone), the metadata an update takes to be there made in the app first, the update applied to
-/// the host's copy of the module's metadata once the app took it, and a callback read as the relay sends one or not at all.</summary>
+/// bytes read and written at that size alone), the metadata an update takes to be there made in the app first, the update
+/// applied to the host's copy of the module's metadata once the app took it, and a callback read as the relay sends one or
+/// not at all.</summary>
 public class RelayReferencesTests
 {
     [Fact]
@@ -189,6 +191,30 @@ public class RelayReferencesTests
     }
 
     [Fact]
+    public void A_write_of_fewer_bytes_than_the_app_says_its_value_takes_is_refused_and_nothing_is_sent()
+    {
+        App app = new() { Sizes = [64] };
+        ICorDebugGenericValue value = GenericValue(new RelaySession(app, new DeviceModules(null), null));
+        Assert.Throws<InvalidOperationException>(() => value.SetValue(BitConverter.GetBytes(42)));
+        Assert.True(app.Asked(typeof(ICorDebugGenericValue), nameof(ICorDebugGenericValue.TrySetValue)) == 0 && app.Sent.Count == 0,
+            $"An int written to a value the app says takes 64 bytes was sent as {string.Join(", ", app.Sent.Select(Convert.ToHexString))}: 60 bytes of the debugger's memory past the int's");
+    }
+
+    [Fact]
+    public void A_write_sends_the_app_as_many_bytes_as_its_value_takes_and_no_more()
+    {
+        App app = new() { Sizes = [4] };
+        ICorDebugGenericValue value = GenericValue(new RelaySession(app, new DeviceModules(null), null));
+        value.SetValue([1, 2, 3, 4, 5, 6, 7, 8]);
+        Assert.True(app.Sent.Count == 1 && app.Sent[0].SequenceEqual(new byte[] { 1, 2, 3, 4 }),
+            $"Writing a 4-byte value sent the app {string.Join(", ", app.Sent.Select(Convert.ToHexString))}, where its 4 bytes alone are its");
+    }
+
+    private static ICorDebugGenericValue GenericValue(RelaySession session) =>
+        (ICorDebugGenericValue)new StrategyBasedComWrappers().GetOrCreateObjectForComInstance(
+            session.Take(new RemotePointer(0x7000, 0x7000), RemoteInterfaces.Of(typeof(ICorDebugGenericValue))), CreateObjectFlags.UniqueInstance);
+
+    [Fact]
     public void A_callback_read_as_the_relay_sends_it_is_handed_on_and_one_running_past_its_frame_ends_the_session()
     {
         App app = new();
@@ -306,11 +332,14 @@ public class RelayReferencesTests
 
     /// <summary>An app's debugger as the relay carries it: every call answered by its arguments' kinds, a frame
     /// enumerator's Next with <see cref="Frames"/> frames, a module's name <see cref="ModuleName"/>, every call's object and
-    /// slot and every release heard.</summary>
+    /// slot, the bytes sent and every release heard.</summary>
     private sealed class App : IRelayLink
     {
         private readonly ConcurrentQueue<uint> _asked = new();
         private ulong _next = 0x10000;
+
+        /// <summary>The bytes of each argument sent to the app but a QueryInterface's interface id, in order.</summary>
+        public List<byte[]> Sent { get; } = [];
 
         public int Frames { get; init; }
 
@@ -340,6 +369,10 @@ public class RelayReferencesTests
         {
             _asked.Enqueue(slot);
             Calls.Add((obj, slot));
+            if (slot != 0)
+            {
+                Sent.AddRange(args.Where(arg => arg.Kind == RelayArgKind.In).Select(arg => arg.Bytes!));
+            }
             if (slot == 0)
             {
                 return new RelayReply(0, [], [[new RemotePointer(obj + 8, obj)]]);

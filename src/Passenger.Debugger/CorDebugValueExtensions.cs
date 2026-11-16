@@ -56,6 +56,32 @@ public static class CorDebugValueExtensions
         }
     }
 
+    /// <summary>Writes a value's bytes from <paramref name="bytes"/>, the one way any value is written: what writes it takes
+    /// the value's whole size from where it is pointed, so a value larger than the bytes given is refused, saying so.</summary>
+    public static unsafe void SetValue(this ICorDebugGenericValue value, ReadOnlySpan<byte> bytes)
+    {
+        int size = value.Size;
+        if (bytes.Length < size)
+        {
+            throw new InvalidOperationException($"The value takes {size} bytes, more than the {bytes.Length} written to it");
+        }
+        fixed (byte* from = bytes)
+        {
+            Marshal.ThrowExceptionForHR(value.TrySetValue((nint)from));
+        }
+    }
+
+    /// <summary>How many bytes a constant of <paramref name="type"/> holds, as metadata writes its value; null for a string,
+    /// whose length the metadata gives, and for a null reference, the one other constant.</summary>
+    internal static int? ConstantWidth(CorElementType type) => type switch
+    {
+        CorElementType.BOOLEAN or CorElementType.I1 or CorElementType.U1 => 1,
+        CorElementType.CHAR or CorElementType.I2 or CorElementType.U2 => 2,
+        CorElementType.I4 or CorElementType.U4 or CorElementType.R4 => 4,
+        CorElementType.I8 or CorElementType.U8 or CorElementType.R8 => 8,
+        _ => null,
+    };
+
     public static ICorDebugValue? GetClassFieldValue(this ICorDebugObjectValue objectValue, ICorDebugILFrame ilFrame, string fieldName)
     {
         ICorDebugType? currentType = objectValue.ExactType;
@@ -89,7 +115,9 @@ public static class CorDebugValueExtensions
         return fieldCorDebugValue;
     }
 
-    public static ICorDebugGenericValue GetLiteralCorDebugValue(this mdFieldDef fieldDef, IMetaDataImport metadataImport, ICorDebugILFrame ilFrame)
+    /// <summary>A constant field's value made in the program, its bytes the constant's own; a null reference's is the null
+    /// the runtime makes.</summary>
+    public static unsafe ICorDebugGenericValue GetLiteralCorDebugValue(this mdFieldDef fieldDef, IMetaDataImport metadataImport, ICorDebugILFrame ilFrame)
     {
         (string szField, mdTypeDef pClass, CorFieldAttr pdwAttr, nint ppvSigBlob, int pcbSigBlob, CorElementType pdwCPlusTypeFlag, nint ppValue, int pcchValue) fieldProps = metadataImport.GetFieldProps(fieldDef);
         nint ppValue = fieldProps.ppValue;
@@ -100,8 +128,10 @@ public static class CorDebugValueExtensions
         {
             throw new InvalidOperationException("Expected a CorDebugGenericValue for literal value");
         }
-
-        corDebugGenericValue.SetValue(ppValue);
+        if (ConstantWidth(corElementType) is int width)
+        {
+            corDebugGenericValue.SetValue(ppValue != 0 ? new ReadOnlySpan<byte>((void*)ppValue, width) : throw new InvalidOperationException($"The constant {fieldProps.szField} has no value"));
+        }
         return corDebugGenericValue;
     }
 

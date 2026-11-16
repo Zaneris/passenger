@@ -1042,13 +1042,7 @@ internal sealed class CilInterpreter(ManagedDebugger debugger, RuntimeAssemblyPr
                 // An enum goes through its value, signed as its type is: an sbyte enum's -1 is never 255.
                 sourceBytes = CilValueEncoding.GetBytesForSize(integer, primitiveResult.Size);
             }
-            unsafe
-            {
-                fixed (byte* pointer = sourceBytes)
-                {
-                    primitiveResult.SetValue((nint)pointer);
-                }
-            }
+            primitiveResult.SetValue(sourceBytes);
             return primitiveResult;
         }
         if (value.Value is null)
@@ -1079,14 +1073,7 @@ internal sealed class CilInterpreter(ManagedDebugger debugger, RuntimeAssemblyPr
             ?? throw new NotSupportedException($"Cannot materialize CIL value '{value.Value.GetType().Name}'");
         ICorDebugGenericValue generic = await CreatePrimitiveAsync(eval, elementType, resolver, handles);
         object materializedValue = elementType == CorElementType.BOOLEAN ? value.IsTrue() : value.Value;
-        byte[] bytes = CilValueEncoding.GetBytes(materializedValue, elementType);
-        unsafe
-        {
-            fixed (byte* pointer = bytes)
-            {
-                generic.SetValue((nint)pointer);
-            }
-        }
+        generic.SetValue(CilValueEncoding.GetBytes(materializedValue, elementType));
         return generic;
     }
 
@@ -1426,14 +1413,7 @@ internal sealed class CilInterpreter(ManagedDebugger debugger, RuntimeAssemblyPr
             typeArguments.Length == 0 ? null : typeArguments,
             throwOnException: true))
             ?? throw new InvalidOperationException("Failed to box CIL value");
-        ICorDebugGenericValue boxedGeneric = (ICorDebugGenericValue)boxed.UnwrapDebugValue();
-        unsafe
-        {
-            fixed (byte* pointer = sourceBytes)
-            {
-                boxedGeneric.SetValue((nint)pointer);
-            }
-        }
+        ((ICorDebugGenericValue)boxed.UnwrapDebugValue()).SetValue(sourceBytes);
         return CilValue.FromCorValue(boxed);
     }
 
@@ -1726,13 +1706,7 @@ internal sealed class CilInterpreter(ManagedDebugger debugger, RuntimeAssemblyPr
             {
                 throw new InvalidOperationException($"The expression's constants fill {data.Length} bytes, fewer than the array's {array.Count} elements hold");
             }
-            unsafe
-            {
-                fixed (byte* pointer = &data[offset])
-                {
-                    element.SetValue((nint)pointer);
-                }
-            }
+            element.SetValue(data.AsSpan(offset, size));
             offset += size;
         }
     }
@@ -1816,15 +1790,7 @@ internal sealed class CilInterpreter(ManagedDebugger debugger, RuntimeAssemblyPr
                 typeArguments.Length == 0 ? null : typeArguments,
                 throwOnException: true))
                 ?? throw new InvalidOperationException("Failed to box constrained CIL receiver");
-            ICorDebugGenericValue constrainedGeneric = (ICorDebugGenericValue)constrainedBox.UnwrapDebugValue();
-            byte[] constrainedData = sourceGeneric.GetValueAsBytes();
-            unsafe
-            {
-                fixed (byte* pointer = constrainedData)
-                {
-                    constrainedGeneric.SetValue((nint)pointer);
-                }
-            }
+            ((ICorDebugGenericValue)constrainedBox.UnwrapDebugValue()).SetValue(sourceGeneric.GetValueAsBytes());
             return constrainedBox;
         }
         if (value.CorValue is not null)
@@ -1853,14 +1819,7 @@ internal sealed class CilInterpreter(ManagedDebugger debugger, RuntimeAssemblyPr
             0,
             null,
             throwOnException: true)) ?? throw new InvalidOperationException("Failed to box CIL receiver");
-        ICorDebugGenericValue boxedGeneric = (ICorDebugGenericValue)boxed.UnwrapDebugValue();
-        unsafe
-        {
-            fixed (byte* pointer = data)
-            {
-                boxedGeneric.SetValue((nint)pointer);
-            }
-        }
+        ((ICorDebugGenericValue)boxed.UnwrapDebugValue()).SetValue(data);
         return boxed;
     }
 

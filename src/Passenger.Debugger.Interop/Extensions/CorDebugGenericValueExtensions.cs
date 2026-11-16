@@ -14,11 +14,5 @@ public static class CorDebugGenericValueExtensions
         {
             Marshal.ThrowExceptionForHR(instance.TryGetValue(pTo));
         }
-
-        /// <inheritdoc cref="M:Passenger.Debugger.Interop.ICorDebugGenericValue.TrySetValue(System.IntPtr)" />
-        public void SetValue(nint pFrom)
-        {
-            Marshal.ThrowExceptionForHR(instance.TrySetValue(pFrom));
-        }
     }
 }

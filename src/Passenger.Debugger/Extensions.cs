@@ -524,17 +524,9 @@ public static class Extensions
 
         if (value is true && corValue is ICorDebugGenericValue genValue)
         {
-            int size = genValue.Size;
-            byte[] valueData = new byte[size];
+            byte[] valueData = new byte[genValue.Size];
             valueData[0] = 1;
-            unsafe
-            {
-                fixed (byte* p = valueData)
-                {
-                    nint ptr = (IntPtr)p;
-                    genValue.SetValue(ptr);
-                }
-            }
+            genValue.SetValue(valueData);
         }
 
         return corValue;
