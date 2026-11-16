@@ -729,6 +729,34 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
             $"A run refused for its own build's failure did not name that build's error: {Text(sum)}");
     }
 
+    /// <summary>An agent's run or debug_start of another configuration that is refused (a launch profile of a command
+    /// Passenger does not run) leaves the window's chosen configuration as it was, so the agent's next call and the person's
+    /// Run act on the one they chose; a run that starts chooses its configuration, as a person's Run does.</summary>
+    [Fact]
+    public async Task An_agents_refused_run_of_another_configuration_leaves_the_chosen_one_and_a_started_run_chooses_its_own()
+    {
+        await TakeFolderAsync();
+        Write("Program.cs", "Console.WriteLine(\"ran\");\n");
+        Directory.CreateDirectory(Path.Combine(Folder, "Properties"));
+        File.WriteAllText(Path.Combine(Folder, "Properties", "launchSettings.json"),
+            "{\n  \"profiles\": {\n    \"First\": { \"commandName\": \"Project\" },\n    \"Again\": { \"commandName\": \"Project\" },\n    \"Jobs\": { \"commandName\": \"RetryFailed\" }\n  }\n}\n");
+        await using McpClient client = await Start(["--mcp", Folder], languageServer: false);
+        async Task<string?> ChosenAsync() => (await Call(client, McpTools.Workspace)).GetProperty("chosenConfiguration").GetString();
+        string? chosen = await ChosenAsync();
+        Assert.True(chosen is not null && chosen != "Sum: Jobs" && chosen != "Sum: Again", $"The folder opened on {chosen} chosen");
+
+        CallToolResult ran = await Result(client, McpTools.Run, new() { ["configuration"] = "Sum: Jobs" });
+        Assert.True(ran.IsError == true, $"The run of a profile Passenger does not run was answered: {Text(ran)}");
+        Assert.Equal(chosen, await ChosenAsync());
+        CallToolResult debugged = await Result(client, McpTools.DebugStart, new() { ["configuration"] = "Sum: Jobs" });
+        Assert.True(debugged.IsError == true, $"The debugged start of a profile Passenger does not run was answered: {Text(debugged)}");
+        Assert.Equal(chosen, await ChosenAsync());
+
+        JsonElement again = await Call(client, McpTools.Run, new() { ["configuration"] = "Sum: Again", ["waitSeconds"] = 60 });
+        Assert.True(again.GetProperty("output").GetString()?.Contains("ran\n", StringComparison.Ordinal) == true, $"The profile's run did not print its line: {again}");
+        Assert.Equal("Sum: Again", await ChosenAsync());
+    }
+
     /// <summary>An agent's run of a web app, which serves until it is stopped, answers once the app's host has started,
     /// still running and saying where it listens, rather than waiting out its time for an end that never comes; the app
     /// answers there.</summary>

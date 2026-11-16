@@ -1407,11 +1407,11 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             }
             return await AspireResourceUpAsync(target, waitSeconds, cancel);
         }
-        Choose(configuration);
+        using Choosing choice = Choose(configuration);
         string name = Session.Configurations.Chosen?.Name ?? string.Empty;
         if (Session.Configurations.Chosen is { IsMultiple: true })
         {
-            return arguments is null && telemetry is null ? await RunProjectsAsync(name, hotReload, waitSeconds, cancel)
+            return arguments is null && telemetry is null ? await RunProjectsAsync(name, hotReload, waitSeconds, choice, cancel)
                 : throw new ArgumentException($"{name} starts each of its projects as its own configuration does: omit arguments and telemetry, or run that configuration");
         }
         if (telemetry is { } collect)
@@ -1431,6 +1431,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
                 throw new InvalidOperationException(WithBuildErrors(refused, built.Ended));
             }
         }
+        choice.Began = true;
         if (builds.Containers is { } running)
         {
             // Its services are up once Run answers: what an agent wants is how each stands and what they said.
@@ -1486,7 +1487,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
 
     /// <summary>run of a multi-project configuration: its projects started, then each waited for until it ends or its host
     /// starts, within the wait; how each stands, and each one's last lines under its name.</summary>
-    private async Task<RunResult> RunProjectsAsync(string name, bool? hotReload, int waitSeconds, CancellationToken cancel)
+    private async Task<RunResult> RunProjectsAsync(string name, bool? hotReload, int waitSeconds, Choosing choice, CancellationToken cancel)
     {
         BuildRunController builds = Builds;
         AgentCall.Follow(window.Actions.Work, AppActions.RunProgram, AppActions.Build);
@@ -1497,6 +1498,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
                 throw new InvalidOperationException(WithBuildErrors(refused, built.Ended));
             }
         }
+        choice.Began = true;
         (IReadOnlyList<string> debugged, IReadOnlyList<TerminalRun> ran, IReadOnlyList<string> notes) = builds.ProjectsOf(name);
         List<(TerminalRun Run, HeardServing Serving)> each = [.. ran.Select(r => (r, new HeardServing(() => r, () => r.Session, () => TextSnapshot.Empty)))];
         AgentCall.Say($"Running {name}: waiting up to {Math.Max(0, waitSeconds)} s for each of its programs to end or its host to start");
@@ -1994,7 +1996,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             }
             return await DebugAspireTarget(resource, configuration, arguments, attach: false, waitSeconds, cancel);
         }
-        Choose(configuration);
+        using Choosing choice = Choose(configuration);
         AgentCall.Follow(window.Actions.Work, AppActions.Debug, AppActions.Build);
         bool several = Session.Configurations.Chosen is { IsMultiple: true };
         if (several && arguments is not null)
@@ -2008,6 +2010,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             {
                 throw new InvalidOperationException(WithBuildErrors(problem, built.Ended));
             }
+            choice.Began = true;
             // What a multi-project start started, the answer's own being the program the debugger shows.
             if (several && Session.Configurations.Chosen is { } chosen)
             {
@@ -2055,7 +2058,10 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         List<Problem> errors = built is { Status: BuildStatus.Failed } ? [.. built.Problems.Where(p => p.Severity == ProblemSeverity.Error)] : [];
         if (errors.Count == 0)
         {
-            return refused;
+            // Where the person chooses beside the configuration, an agent chooses with one call.
+            return refused.EndsWith(Refusals.ChooseRunTarget, StringComparison.Ordinal) && Session.Configurations.Chosen is { } chosen
+                ? $"{refused} ({McpTools.IdeAction} {AppActions.ChooseRunTarget} with input \"{chosen.Name}:\" lists them, \"{chosen.Name}:name\" chooses one)"
+                : refused;
         }
         IEnumerable<string> lines = errors.Take(10).Select(p =>
             $"{(p.Path is { } at ? $"{Relative(at)}:{p.Position.Line + 1}:{p.Position.Column + 1}" : p.Project)}: {p.Code} {p.Message}");
@@ -2445,8 +2451,9 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         "Runs an IDE action by its id (app.build, app.debug.stepOver...; ide_actions lists them) as its shortcut would, waits " +
         "for the work it begins and says what it came to, or says why it cannot. input: app.migrations.add's name, updateTo's " +
         "target; app.saveAsLaunchProfile's configuration (else the chosen one); app.targetFramework's framework, as " +
-        "Project:net9.0 where several projects target several; app.chooseRunTarget's device or emulator by name, " +
-        "app.chooseBuildConfiguration's configuration (Release, or Release|x64; none lists them for either).")]
+        "Project:net9.0 where several projects target several; app.chooseRunTarget's device, emulator or simulator by name " +
+        "(Configuration:name for another configuration's), app.chooseBuildConfiguration's configuration (Release, or " +
+        "Release|x64; none lists them for either).")]
     public Task<string> IdeAction(string action, string? input = null, CancellationToken cancel = default) => OnUi(cancel, async () =>
     {
         if (action.StartsWith("app.migrations.", StringComparison.Ordinal) && window.Actions[action] is not null)
@@ -2967,12 +2974,32 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         ? paused
         : throw new InvalidOperationException("The program is running; debug_pause stops it where it is");
 
-    private void Choose(string? configuration)
+    /// <summary>A launching call's configuration chosen as a person's Run chooses it, the choice put back as it stood once
+    /// the call ends unless its launch began (<see cref="Choosing.Began"/>) or another choice was made meanwhile: a call
+    /// refused leaves the window's choice as it was.</summary>
+    private Choosing Choose(string? configuration)
     {
         RunConfigurations configurations = Session.Configurations;
+        RunChoice held = configurations.Held;
         if (configuration is not null && !configurations.Select(configuration))
         {
             throw new InvalidOperationException($"No run configuration '{configuration}'; there are: {string.Join(", ", configurations.All.Select(c => c.Name))}");
+        }
+        return new Choosing(this, configurations, held, configurations.Held);
+    }
+
+    /// <summary>A launching call's choice of its configuration (<see cref="Choose"/>), put back as it was when disposed
+    /// before the launch began.</summary>
+    private sealed class Choosing(PassengerTools tools, RunConfigurations configurations, RunChoice held, RunChoice made) : IDisposable
+    {
+        public bool Began { get; set; }
+
+        public void Dispose()
+        {
+            if (!Began && tools.Session.Configurations == configurations && configurations.Held == made)
+            {
+                configurations.PutBack(held);
+            }
         }
     }
 

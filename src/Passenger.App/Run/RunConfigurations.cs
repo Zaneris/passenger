@@ -195,6 +195,25 @@ public sealed class RunConfigurations(string? folder, Func<WorkspaceModel?>? wor
         return true;
     }
 
+    /// <summary>The choice as it stands: the one chosen, and whether the person picked it.</summary>
+    public RunChoice Held => new(Chosen?.Name, preferred, picked);
+
+    /// <summary>Puts back a choice held before another was made for a launch that never began, as it stood, unless it
+    /// stands so still.</summary>
+    public void PutBack(RunChoice held)
+    {
+        UiThread.Check();
+        if (Held == held)
+        {
+            return;
+        }
+        preferred = held.Preferred;
+        picked = held.Picked;
+        Chosen = All.FirstOrDefault(c => string.Equals(c.Name, held.Chosen, StringComparison.OrdinalIgnoreCase)) ?? Chosen;
+        Changed?.Invoke(this, EventArgs.Empty);
+        Write();
+    }
+
     /// <summary>Takes the folder's own as Edit Configurations leaves them, and the one chosen there.</summary>
     public void Set(IReadOnlyList<RunConfiguration> mine, string? chosen, IReadOnlyList<ProjectModel> projects) => Set(mine, [], chosen, projects);
 
@@ -355,3 +374,7 @@ public sealed class RunConfigurations(string? folder, Func<WorkspaceModel?>? wor
 
     private string Full(string path) => folder is null || path.Length == 0 ? path : PathNames.Canonical(Path.Combine(folder, path));
 }
+
+/// <summary>The run configuration chosen at a moment (<see cref="RunConfigurations.Held"/>): its name, the name kept as the
+/// person's, and whether they picked it.</summary>
+public sealed record RunChoice(string? Chosen, string? Preferred, bool Picked);

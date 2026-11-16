@@ -1,5 +1,6 @@
 using Avalonia.Controls;
 using Avalonia.Interactivity;
+using Passenger.App.Run;
 using Passenger.App.Run.Devices;
 using Passenger.App.Workspace;
 using Passenger.Core;
@@ -48,8 +49,11 @@ public partial class MainWindow
     }
 
     /// <summary>The chosen configuration's project where its app runs on targets; null for any other.</summary>
-    private ProjectModel? TargetProject() =>
-        session.Configurations.Chosen is { Program.Length: 0, IsContainer: false, IsMultiple: false } chosen
+    private ProjectModel? TargetProject() => TargetProject(session.Configurations.Chosen);
+
+    /// <summary>A configuration's project where its app runs on targets; null for any other.</summary>
+    private ProjectModel? TargetProject(RunConfiguration? configuration) =>
+        configuration is { Program.Length: 0, IsContainer: false, IsMultiple: false } chosen
         && session.Projects.FirstOrDefault(p => PathNames.Same(p.Path, chosen.Project)) is { } project
         && DeviceTargets.PlatformsOf(project.TargetFrameworks).Count > 0 ? project : null;
 
@@ -195,28 +199,36 @@ public partial class MainWindow
             ? $"{project.Name} runs on {target.Name}" : $"{project.Name} runs on {target.Name}, which Run and Debug start");
     }
 
-    /// <summary>Choose Where It Runs for an agent, which no menu reaches: the chosen configuration's project's targets listed
-    /// again, and the one <paramref name="input"/> names (by its name, serial or AVD) chosen as the widget chooses it; with
-    /// none named, what there is to choose. Why not, thrown.</summary>
+    /// <summary>Choose Where It Runs for an agent, which no menu reaches: the project's targets listed again, of the chosen
+    /// configuration or of the one <paramref name="input"/> names before a colon (Configuration:target), whose choice stays
+    /// as it was, and the target it names (by its name, serial or AVD) chosen as the widget chooses it; with none named,
+    /// what there is to choose. Why not, thrown.</summary>
     internal async Task<string> ChooseRunTargetForAgentAsync(string? input)
     {
         UiThread.Check();
-        if (TargetProject() is not { } project)
+        RunConfiguration? named = session.Configurations.All.Where(c => input?.StartsWith(c.Name + ":", StringComparison.OrdinalIgnoreCase) == true)
+            .MaxBy(c => c.Name.Length);
+        if (named is not null)
         {
-            throw new InvalidOperationException("The run configuration chosen runs no app on a device, an emulator or a simulator");
+            input = input![(named.Name.Length + 1)..].Trim();
+        }
+        if (TargetProject(named ?? session.Configurations.Chosen) is not { } project)
+        {
+            throw new InvalidOperationException(named is null ? "The run configuration chosen runs no app on a device, an emulator or a simulator"
+                : $"{named.Name} runs no app on a device, an emulator or a simulator");
         }
         await ListRunTargetsAsync(project);
         IReadOnlyList<DeviceTarget> listed = session.Targets.Listed(project);
         // What a platform lacks is said after what is listed, as the menu says it with them.
         string offered = listed.Count == 0 ? targetsUnlisted ?? Refusals.NoTargets
             : Plural.Listed([.. listed.Select(t => t.Shown)]) + (targetsUnlisted is { } lacking ? $"; {lacking}" : string.Empty);
-        if (input is not { Length: > 0 } named)
+        if (input is not { Length: > 0 } wanted)
         {
             return $"{project.Name} runs on {session.Targets.InForce(project)?.Name ?? "nothing chosen yet"}; it can run on {offered}";
         }
-        DeviceTarget target = listed.FirstOrDefault(t => t.Name.Equals(named, StringComparison.OrdinalIgnoreCase) || t.Id.Equals(named, StringComparison.Ordinal)
-            || t.Avd is { } avd && avd.Equals(named, StringComparison.Ordinal))
-            ?? throw new InvalidOperationException($"{project.Name} cannot run on {named}: it can run on {offered}");
+        DeviceTarget target = listed.FirstOrDefault(t => t.Name.Equals(wanted, StringComparison.OrdinalIgnoreCase) || t.Id.Equals(wanted, StringComparison.Ordinal)
+            || t.Avd is { } avd && avd.Equals(wanted, StringComparison.Ordinal))
+            ?? throw new InvalidOperationException($"{project.Name} cannot run on {wanted}: it can run on {offered}");
         ChooseRunTarget(project, target);
         return $"{project.Name} runs on {target.Name}{(targetsUnlisted is { } unlisted ? $"; {unlisted}" : string.Empty)}";
     }

@@ -557,10 +557,7 @@ public sealed partial class PassengerTools
         {
             throw new ArgumentException(MemoryWithoutSeconds);
         }
-        if (!attach && resource is null)
-        {
-            Choose(configuration);
-        }
+        using Choosing? choice = !attach && resource is null ? Choose(configuration) : null;
         AgentCall.Follow(window.Actions.Work, AppActions.Profile, AppActions.Build, AppActions.AttachProfiler, AppActions.RunProgram, AppActions.MemorySnapshot);
         using (LaunchBuild built = new(Builds))
         {
@@ -573,6 +570,7 @@ public sealed partial class PassengerTools
                 throw new InvalidOperationException(WithBuildErrors(problem, built.Ended));
             }
         }
+        choice?.Began = true;
         if (resource is not null && (Session != current || current.IsEnded))
         {
             throw new InvalidOperationException("The workspace changed while starting the resource profiler");

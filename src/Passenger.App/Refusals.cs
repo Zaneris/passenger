@@ -523,7 +523,10 @@ public static class Refusals
 
     /// <summary>A project whose app runs on a device, an emulator or a simulator has none chosen to run on.</summary>
     public static string NoRunTarget(string project) =>
-        $"{project} runs on a device, an emulator or a simulator: choose one beside the run configuration";
+        $"{project} runs on a device, an emulator or a simulator: {ChooseRunTarget}";
+
+    /// <summary>How the person chooses where an app runs, which ends <see cref="NoRunTarget"/>.</summary>
+    public const string ChooseRunTarget = "choose one beside the run configuration";
 
     /// <summary>A target of a platform Passenger does not run apps on yet.</summary>
     public static string NotYetOn(string target) =>
