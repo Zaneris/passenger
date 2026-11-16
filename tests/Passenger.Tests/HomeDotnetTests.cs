@@ -46,7 +46,8 @@ public sealed class HomeDotnetTests(LinkedDotnetTests.Linked linked) : McpRig, I
         Assert.SkipWhen(OperatingSystem.IsWindows(), "Windows' own place for the install script's SDK, %LOCALAPPDATA%\\Microsoft\\dotnet, follows no variable a test can set");
         Assert.SkipUnless(File.Exists($"/bin/{shell}"), $"/bin/{shell} is not installed here");
         string installation = Dotnet.Root();
-        string sdk = DotnetInstallation.Read(installation).NewestSdk ?? throw new InvalidOperationException($"The tests' .NET in {installation} has no SDK");
+        string? sdk = OwnSdk(installation);
+        Assert.SkipWhen(sdk is null, $"Every SDK of the tests' .NET in {installation} is in the system's installation too, which a login shell finds first, so no global.json tells them apart");
         (string home, string other) = Homes();
         string folder = PathNames.Canonical(TestFolders.Create("home-terminal-"));
         DeleteAtEnd(folder);
@@ -62,6 +63,16 @@ public sealed class HomeDotnetTests(LinkedDotnetTests.Linked linked) : McpRig, I
         {
             File.Delete(Path.Combine(home, ".dotnet"));
         }
+    }
+
+    /// <summary>The newest SDK of the tests' .NET that no installation of the system's holds (one a login shell's PATH or a
+    /// package manager names first), so a global.json asking for it is served by the tests' own alone; null where every SDK
+    /// is there too.</summary>
+    private static string? OwnSdk(string installation)
+    {
+        string[] system = ["/usr/local/share/dotnet", "/usr/share/dotnet", "/usr/lib/dotnet", "/opt/homebrew/opt/dotnet/libexec", "/usr/local/opt/dotnet/libexec"];
+        HashSet<string> elsewhere = [.. system.Where(root => Directory.Exists(root) && !PathNames.Same(root, installation)).SelectMany(root => DotnetInstallation.Read(root).Sdks)];
+        return DotnetInstallation.Read(installation).Sdks.FirstOrDefault(sdk => !elsewhere.Contains(sdk));
     }
 
     /// <summary>A folder the installation found first serves (its global.json asks for that one's SDK) keeps its terminal's
