@@ -7,7 +7,8 @@ namespace Passenger.App.Run.Devices;
 /// macOS keeps it from reading elsewhere, and the variables its start gives it, naming them there.</summary>
 internal static class CarriedIn
 {
-    /// <summary>The folder made where it is not, the user's alone as a container's own folders are; why not, or null.</summary>
+    /// <summary>The folder made where it is not, each folder made for it the user's alone, as macOS makes a container's own
+    /// (a start may come before the app's first, and so before macOS has made its container); why not, or null.</summary>
     public static string? Make(string folder)
     {
         if (OperatingSystem.IsWindows())
@@ -16,7 +17,16 @@ internal static class CarriedIn
         }
         try
         {
-            Directory.CreateDirectory(folder, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+            // A mode given makes only the last folder so: those above it, made first, are made one by one.
+            Stack<string> missing = [];
+            for (string? at = Path.TrimEndingDirectorySeparator(folder); at is not null && !Directory.Exists(at); at = Path.GetDirectoryName(at))
+            {
+                missing.Push(at);
+            }
+            foreach (string made in missing)
+            {
+                Directory.CreateDirectory(made, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+            }
             return null;
         }
         catch (Exception unmade) when (unmade is IOException or UnauthorizedAccessException)
