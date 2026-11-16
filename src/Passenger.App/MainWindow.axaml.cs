@@ -864,6 +864,7 @@ public partial class MainWindow : IdeWindow
                 }
                 TakePlacement();
                 state.Flush();
+                Containers.ContainerLabels.Flush();
             };
             Action news = () => UiThread.Post(SayStateNews);
             State.StateFile.NewsNow += news;

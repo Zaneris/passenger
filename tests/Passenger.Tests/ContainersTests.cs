@@ -1267,8 +1267,9 @@ public sealed class ContainersTests
     }
 
     /// <summary>Close Solution over a run Detach let go of asks too: Cancel keeps the solution open, and Leave Running closes it
-    /// leaving the containers running as the person's, never taken down, recorded so the next start's clean-up passes them
-    /// over; the window's close after asks nothing more.</summary>
+    /// leaving the containers running as the person's, never taken down, recorded on disk by the time the solution has closed
+    /// so the next start's clean-up passes them over however soon Passenger quits; the window's close after asks nothing
+    /// more.</summary>
     [AvaloniaFact]
     public void Leave_Running_keeps_a_runs_containers_let_go_of_as_the_solution_closes_and_records_them_as_the_persons()
     {
@@ -1283,6 +1284,9 @@ public sealed class ContainersTests
             Assert.NotNull(window.CloseSolution());
             Ui.ClickButton(AskedOfLetGo(window), "Leave Running");
             Ui.WaitFor(() => window.Folder is null, "the solution to close once Leave Running was chosen");
+            IReadOnlyList<string> written = LeftOnDisk(TestRun.Settings);
+            Assert.True(written.Contains("c0ffee000001") && written.Contains("beef00000001"),
+                $"Leave Running's record was not on disk once the solution closed, so a Passenger quitting then leaves the next start to remove the containers: [{string.Join(", ", written)}]");
             Assert.False(TakenDown(engineFolder), "Leave Running took the containers down");
             Assert.Contains("c0ffee000001", ContainerLabels.LeftIn(TestRun.Settings));
             Assert.Contains("beef00000001", ContainerLabels.LeftIn(TestRun.Settings));
@@ -1346,33 +1350,69 @@ public sealed class ContainersTests
         Ui.WaitFor(() => TakenDown(engineFolder), "the close to take down the containers of the run let go of");
     }
 
-    /// <summary>The clean-up of what a Passenger that is gone left passes over what the person chose to leave running as
-    /// theirs: of two containers such a Passenger labelled, the one recorded as left runs on, the other is removed.</summary>
+    /// <summary>The next start's clean-up of what a Passenger that is gone left passes over what the person chose to leave
+    /// running as theirs, reading the record as it stands on disk the moment the choice is made, as a start after a Passenger
+    /// that quit at once does: of two containers such a Passenger labelled, the one recorded as left runs on, the other is
+    /// removed.</summary>
     [AvaloniaFact]
-    public void The_clean_up_of_what_a_gone_Passenger_left_passes_over_what_the_person_chose_to_leave_running()
+    public void The_next_starts_clean_up_passes_over_what_the_person_chose_to_leave_running_just_before_Passenger_ended()
     {
         Assert.SkipWhen(Docker.WhyNot is not null, Docker.WhyNot ?? string.Empty);
         MainWindow window = Ui.OpenFolder(TestFolders.Create("ctr-leftkept-"), languageServer: false);
         string[] labels = [.. window.Session.Containers.Labels.Where(word => word != "--label")];
         ContainerLabels.Flush();
-        string state = labels.Single(l => l.StartsWith(ContainerLabels.State, StringComparison.Ordinal));
+        // The next start's state folder, given this one's record as it stands once the choice is made.
+        string next = TestFolders.Create("ctr-leftnext-");
+        string state = $"{ContainerLabels.State}={ContainerLabels.StateValueOf(next)}";
         string machine = labels.Single(l => l.StartsWith(ContainerLabels.Machine, StringComparison.Ordinal));
         string gone = $"{ContainerLabels.Process}={ContainerLabels.Of(int.MaxValue - 9, 1)}";
         string kept = Docker.Container("leftkept", "sleep 600", state, machine, gone);
         string removed = Docker.Container("leftremoved", "sleep 600", state, machine, gone);
         try
         {
-            ContainerLabels.LeaveToPerson(ContainerEngine.Shared, [Docker.Run("inspect", "-f", "{{.Id}}", kept)[..12]]);
-            IReadOnlyList<string> cleaned = Ui.Await(Waiting.Apart(() => ContainerLabels.RemoveLeftoversAsync(ContainerEngine.Shared)), "the clean-up of what a gone Passenger left");
-            Assert.Equal("running", Docker.State(kept));
+            Ui.Await(ContainerLabels.LeaveToPersonAsync(ContainerEngine.Shared, [Docker.Run("inspect", "-f", "{{.Id}}", kept)[..12]]), "the choice to leave a container running");
+            File.Copy(Path.Combine(TestRun.Settings, ContainersFile), Path.Combine(next, ContainersFile));
+            IReadOnlyList<string> cleaned = Ui.Await(Waiting.Apart(() => ContainerLabels.RemoveLeftoversAsync(ContainerEngine.Shared, next)), "the clean-up of what a gone Passenger left");
+            Assert.True(Docker.State(kept) == "running",
+                $"The next start's clean-up removed {kept}, which the person chose to leave running just before Passenger ended: it removed [{string.Join(", ", cleaned)}]");
             Assert.True(Docker.State(removed) is null, $"The clean-up left {removed}, which nobody chose to leave running: it removed [{string.Join(", ", cleaned)}]");
         }
         finally
         {
             Docker.Ask(["rm", "-f", kept, removed]);
             window.Close();
+            TestFolders.Delete(next);
         }
     }
+
+    /// <summary>A choice to leave containers running is on disk once made, never a moment later, so a Passenger that ends at
+    /// once leaves it for the next start; and what another Passenger over the same state left running meanwhile stays beside
+    /// it, the two records joined rather than one taking the other's place.</summary>
+    [AvaloniaFact]
+    public void A_choice_to_leave_containers_running_is_on_disk_once_made_and_another_Passengers_stays_beside_it()
+    {
+        string file = Path.Combine(TestRun.Settings, ContainersFile);
+        Ui.Await(ContainerLabels.LeaveToPersonAsync(ContainerEngine.Shared, ["17580a000001"]), "the choice to leave a container running");
+        Assert.True(LeftOnDisk(TestRun.Settings).Contains("17580a000001"),
+            $"The choice to leave a container running was not on disk once made, so a Passenger ending then has the next start remove it: [{string.Join(", ", LeftOnDisk(TestRun.Settings))}]");
+
+        // Another Passenger over the same state leaves one of its own, writing the record before this one's next choice.
+        System.Text.Json.Nodes.JsonObject other = (System.Text.Json.Nodes.JsonObject)System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(file))!;
+        other["left"]!.AsArray().Add("17580b000001");
+        File.WriteAllText(file, other.ToJsonString());
+        Ui.Await(ContainerLabels.LeaveToPersonAsync(ContainerEngine.Shared, ["17580c000001"]), "a second choice to leave a container running");
+        IReadOnlyList<string> written = LeftOnDisk(TestRun.Settings);
+        Assert.True(written.Contains("17580a000001") && written.Contains("17580b000001") && written.Contains("17580c000001"),
+            $"Two Passengers' choices to leave containers running did not both stay in the record, so the next start removes the other's: [{string.Join(", ", written)}]");
+    }
+
+    /// <summary>The record of what was left running, in a state folder.</summary>
+    private const string ContainersFile = "containers.json";
+
+    /// <summary>What a state folder's record holds as left running, as the disk has it now: nothing where there is no record.</summary>
+    private static IReadOnlyList<string> LeftOnDisk(string stateFolder) => File.Exists(Path.Combine(stateFolder, ContainersFile))
+        ? System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(Path.Combine(stateFolder, ContainersFile)))?["left"]?.AsArray().Select(id => id!.GetValue<string>()).ToList() ?? []
+        : [];
 
     /// <summary>A window on a .dcproj's solution run on a stand-in engine that lists its container and network while up, the
     /// run let go of by Detach: said in the Run window and the status.</summary>

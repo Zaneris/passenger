@@ -6,7 +6,7 @@ namespace Passenger.App;
 /// <summary>The containers of runs Detach let go of, asked about as the person leaves the folder (quitting, closing the
 /// window or the solution, opening another folder here) while any still run: Stop takes them down with the folder, as
 /// everything it started goes; Leave Running makes them the person's, which no take-down or clean-up of Passenger's touches
-/// from then on (<see cref="ContainerLabels.LeaveToPerson"/>), the Containers window still listing them; Cancel keeps the
+/// from then on (<see cref="ContainerLabels.LeaveToPersonAsync"/>), the Containers window still listing them; Cancel keeps the
 /// folder open. A Passenger nobody sees, or an agent's, never asks: they go with the folder.</summary>
 public partial class MainWindow
 {
@@ -57,7 +57,7 @@ public partial class MainWindow
             foreach ((ContainerRun run, IReadOnlyList<string> containers, IReadOnlyList<string> networks) in up)
             {
                 asked.Containers.EndedProject(run.Plan.Compose);
-                ContainerLabels.LeaveToPerson(run.Engine, [.. containers, .. networks]);
+                await ContainerLabels.LeaveToPersonAsync(run.Engine, [.. containers, .. networks]);
             }
         }
         asked.RunsLetGo.Clear();

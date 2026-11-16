@@ -335,8 +335,8 @@ public static class PassengerApp
     internal static MainWindow? UpdatesWatcher => updates;
 
     /// <summary>Once every window has closed: waits, for at most each one's limit, for what they started to end
-    /// (<see cref="MainWindow.Ended"/>), then installs an update made ready, and last writes the state's changes whose
-    /// writes were refused (<see cref="State.StateStore.LandWaiting"/>). It needs no UI thread.</summary>
+    /// (<see cref="MainWindow.Ended"/>), then installs an update made ready, and last writes the state's changes still
+    /// waiting, of the store's documents and any other (<see cref="State.StateStore.LandWaiting"/>). It needs no UI thread.</summary>
     public static void End()
     {
         updates?.HoldRelaysForUpdate();

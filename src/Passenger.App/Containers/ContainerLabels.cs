@@ -66,9 +66,15 @@ public static partial class ContainerLabels
     /// then, so a person who never used containers here runs no docker command as Passenger starts. Any thread.</summary>
     public static bool EverLabelled => Kept.Value.Peek().Labelled;
 
-    /// <summary>Writes the record of a first labelling now, rather than a moment later: for a test that starts the next
-    /// Passenger at once.</summary>
-    public static void Flush() => Kept.Value.Flush();
+    /// <summary>Writes a change of the record still waiting now, on the caller's thread: as a window closes, and for a test
+    /// that starts the next Passenger at once. Any thread.</summary>
+    public static void Flush()
+    {
+        if (Kept.IsValueCreated)
+        {
+            Kept.Value.Flush();
+        }
+    }
 
     /// <summary>The state folder's label value: the first 16 hex digits of a SHA-256 of its path.</summary>
     public static string StateValue => StateValueOf(global::Passenger.App.State.StateStore.DefaultRoot);
@@ -108,7 +114,9 @@ public static partial class ContainerLabels
         TellWatchdog(engine);
         if (!Kept.Value.Value.Labelled)
         {
-            Kept.Value.Set(new ContainersState { Labelled = true });
+            Kept.Value.Set(Kept.Value.Value with { Labelled = true });
+            // At once: a start looks for what a crash left only where this is on disk.
+            IdeErrors.Observe(BackgroundWork.Run(Kept.Value.Flush));
         }
         List<string> words = ["--label", $"{State}={StateValue}", "--label", $"{Machine}={MachineValue}", "--label", $"{Process}={ProcessValue}"];
         if (folder is not null)
@@ -187,9 +195,10 @@ public static partial class ContainerLabels
     }
 
     /// <summary>Containers and networks of this process (by the short id the engine lists them by) the person chose to leave
-    /// running as theirs: the watchdog's command passes them over, told again now, and the state's record keeps them, so the
-    /// next start's clean-up passes them over too (<see cref="RemoveLeftoversAsync"/>). UI thread.</summary>
-    public static void LeaveToPerson(ContainerEngine engine, IReadOnlyCollection<string> ids)
+    /// running as theirs: the watchdog's command passes them over, told again now, and the state's record keeps them, written
+    /// before the task ends, so the next start's clean-up passes them over too however soon this process ends
+    /// (<see cref="RemoveLeftoversAsync"/>). UI thread.</summary>
+    public static async Task LeaveToPersonAsync(ContainerEngine engine, IReadOnlyCollection<string> ids)
     {
         UiThread.Check();
         lock (Watchdog)
@@ -199,6 +208,7 @@ public static partial class ContainerLabels
         ContainersState kept = Kept.Value.Value;
         Kept.Value.Set(kept with { Left = [.. kept.Left.Union(ids, StringComparer.Ordinal)] });
         TellWatchdog(engine);
+        await BackgroundWork.Run(Kept.Value.Flush);
     }
 
     /// <summary>What the person chose to leave running as theirs for a state folder (its <c>containers.json</c>, and for

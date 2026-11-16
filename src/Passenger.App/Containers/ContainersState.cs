@@ -11,9 +11,12 @@ public sealed record ContainersState : IStateDocument<ContainersState>
 {
     public bool Labelled { get; init; }
 
-    /// <summary>The containers and networks left running as the person's (<see cref="ContainerLabels.LeaveToPerson"/>), by
+    /// <summary>The containers and networks left running as the person's (<see cref="ContainerLabels.LeaveToPersonAsync"/>), by
     /// the short id the engine lists them by.</summary>
     public IReadOnlyList<string> Left { get; init; } = [];
+
+    /// <summary>What one Passenger over the state leaves running joins what another left meanwhile, never taking its place.</summary>
+    public static IReadOnlyList<string> Sets { get; } = [nameof(Left)];
 
     public static IReadOnlyList<Action<JsonObject>> Upgrades { get; } = [StateStore.Unversioned];
 

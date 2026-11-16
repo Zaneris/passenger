@@ -36,10 +36,10 @@ public interface IStateDocument<TSelf> where TSelf : class, IStateDocument<TSelf
 }
 
 /// <summary>One file of the store, read the first time it is wanted and clamped. A change is written a moment later,
-/// off the UI thread, through a temporary file flushed to disk and moved over the old one; it is merged over what the
-/// file holds then, so a value this build does not know, or one another Passenger changed, stays. The file is read and
-/// written under the lock every Passenger on the same state honours (<see cref="StateFile.Hold"/>). A write that fails
-/// keeps its change waiting and is tried again. A value of a kind its property cannot take is passed over alone; a file
+/// off the UI thread, or as Passenger ends where that comes first (<see cref="StateStore.LandWaiting"/>), through a temporary
+/// file flushed to disk and moved over the old one; it is merged over what the file holds then, so a value this build does
+/// not know, or one another Passenger changed, stays. The file is read and written under the lock every Passenger on the
+/// same state honours (<see cref="StateFile.Hold"/>). A write that fails keeps its change waiting and is tried again. A value of a kind its property cannot take is passed over alone; a file
 /// that does not read is set aside as <c>.bad</c>, never written over; each logged and said in a window keeping its state
 /// there.</summary>
 public sealed class StateDocument<T> where T : class, IStateDocument<T>, new()
@@ -75,6 +75,13 @@ public sealed class StateDocument<T> where T : class, IStateDocument<T>, new()
 
     private bool readOnly;
 
+    /// <summary>The write Passenger's end makes of a change still waiting, given how long it may wait for the lock.</summary>
+    private readonly Action<TimeSpan> landing;
+
+    /// <summary>Whether Passenger's end holds this side's change as waiting (<see cref="StateFile.Waits"/>), under
+    /// <see cref="gate"/>.</summary>
+    private bool landsAtEnd;
+
     /// <summary>A document at a path; <paramref name="formerly"/> is the file an older build kept the same value in, read
     /// while this one does not exist yet and left where it is.</summary>
     internal StateDocument(string path, string? formerly = null)
@@ -82,6 +89,7 @@ public sealed class StateDocument<T> where T : class, IStateDocument<T>, new()
         Path = path;
         this.formerly = formerly;
         writing = StateFile.Lock(path);
+        landing = left => Write(heldFor: left);
     }
 
     public string Path { get; }
@@ -114,8 +122,8 @@ public sealed class StateDocument<T> where T : class, IStateDocument<T>, new()
         return isKept ? found : null;
     }
 
-    /// <summary>Keeps a value, written a moment later unless it is the one kept already and written, or being tried
-    /// again.</summary>
+    /// <summary>Keeps a value, written a moment later, or as Passenger ends where that comes first, unless it is the one
+    /// kept already and written, or being tried again.</summary>
     public void Set(T next)
     {
         Load();
@@ -131,6 +139,7 @@ public sealed class StateDocument<T> where T : class, IStateDocument<T>, new()
             latest = text;
             pending = text;
             failed = 0;
+            LandsAtEnd();
             if (scheduled)
             {
                 return;
@@ -322,7 +331,7 @@ public sealed class StateDocument<T> where T : class, IStateDocument<T>, new()
             }
             if (mine is null || readOnly)
             {
-                StateFile.Landed(this);
+                Landed();
                 return true;
             }
             try
@@ -330,13 +339,13 @@ public sealed class StateDocument<T> where T : class, IStateDocument<T>, new()
                 using FileStream held = StateFile.Hold(Path, heldFor ?? StateFile.HeldFor);
                 if (OnDisk() is not { } disk)
                 {
-                    StateFile.Landed(this);
+                    Landed();
                     return true;
                 }
                 JsonObject merged = StateFile.Merged(disk.Document, Math.Max(disk.Version, T.Upgrades.Count), known, mine, T.Sets);
                 StateFile.Replace(Path, merged, Wrote is { } told && Holds(merged, mine) ? told : null);
                 known = mine;
-                StateFile.Landed(this);
+                Landed();
                 if (tries > 0)
                 {
                     lock (gate)
@@ -359,6 +368,29 @@ public sealed class StateDocument<T> where T : class, IStateDocument<T>, new()
         }
     }
 
+    /// <summary>Has Passenger's end write this side's change waiting, if it ends first. Under <see cref="gate"/>.</summary>
+    private void LandsAtEnd()
+    {
+        if (!landsAtEnd)
+        {
+            landsAtEnd = true;
+            StateFile.Waits(this, Path, landing);
+        }
+    }
+
+    /// <summary>Passenger's end has nothing of this side's to write, unless a change was set while the last was written.</summary>
+    private void Landed()
+    {
+        lock (gate)
+        {
+            if (pending is null)
+            {
+                landsAtEnd = false;
+                StateFile.Landed(this);
+            }
+        }
+    }
+
     /// <summary>A change whose write failed waits again, unless one set since holds it, and is tried after the next of
     /// <see cref="Again"/>'s waits, a flush's from the first, and as Passenger ends; the log says so at its first failure,
     /// once its tries are spent, and at a flush.</summary>
@@ -376,8 +408,8 @@ public sealed class StateDocument<T> where T : class, IStateDocument<T>, new()
                 wait = Again[tries - 1];
                 scheduled = true;
             }
+            LandsAtEnd();
         }
-        StateFile.Waits(this, Path, left => Write(heldFor: left));
         if (flushing)
         {
             StateFile.Log($"{Path} could not be written as it was flushed ({error.Message}): it is tried again while Passenger runs, and as it ends");
@@ -524,24 +556,24 @@ internal static class StateFile
 
     public static void Log(string line) => IdeErrors.Write($"State: {line}");
 
-    /// <summary>The documents whose change waits after a write that failed, each with its file and the write that tries it
-    /// again.</summary>
+    /// <summary>The documents whose change waits, not yet written or after a write that failed, each with its file and the
+    /// write that tries it again.</summary>
     private static readonly ConcurrentDictionary<object, (string Path, Action<TimeSpan> Write)> Unwritten = new();
 
     /// <summary>How long Passenger's end tries again the changes still waiting, <see cref="LandingPause"/> apart.</summary>
     private static readonly TimeSpan LandingLimit = TimeSpan.FromSeconds(2);
     private static readonly TimeSpan LandingPause = TimeSpan.FromMilliseconds(50);
 
-    /// <summary>A document's change waiting after a write that failed, written again as Passenger ends by
+    /// <summary>A document's change waiting, not yet written or after a write that failed, written as Passenger ends by
     /// <paramref name="write"/>, given how long it may wait for another Passenger's lock.</summary>
     public static void Waits(object document, string path, Action<TimeSpan> write) => Unwritten[document] = (path, write);
 
-    /// <summary>A document with no change waiting after a write that failed.</summary>
+    /// <summary>A document with no change waiting.</summary>
     public static void Landed(object document) => Unwritten.TryRemove(document, out _);
 
-    /// <summary>Writes again each change waiting after a write that failed, <see cref="LandingPause"/> apart, until all
-    /// have landed or <see cref="LandingLimit"/> has passed, a write waiting for another Passenger's lock only as long as
-    /// is left of it, and logs those still waiting as lost.</summary>
+    /// <summary>Writes each change waiting, one not yet written or after a write that failed, <see cref="LandingPause"/>
+    /// apart, until all have landed or <see cref="LandingLimit"/> has passed, a write waiting for another Passenger's lock
+    /// only as long as is left of it, and logs those still waiting as lost.</summary>
     public static void LandWaiting()
     {
         long began = Stopwatch.GetTimestamp();
