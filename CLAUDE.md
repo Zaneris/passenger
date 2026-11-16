@@ -14,6 +14,10 @@ Avalonia 12 UI, for Windows, macOS and Linux. v0.3.0 shipped; the Backlog
 and close or tick it when it lands. A new feature is the best Passenger can make it, never a copy of another IDE's; only
 its keys follow Rider's keymaps (their files are in the jars of `~/Applications/Rider.app`).
 
+**Consistency is key.** Each thing is done one way, IDE-wide: what several places share is one mechanism, declared
+once and applied the same everywhere (a shared helper, base style, token or declaration, held by a rule test), never
+written again per place.
+
 ## Commands
 
 ```sh
