@@ -7,7 +7,11 @@ namespace Passenger.App.Run.Devices;
 
 /// <summary>The Android SDK's tools as the workload resolves them for a project: adb's and the emulator's, and the SDK
 /// package of the platform the workload builds against where the SDK lacks it (<c>platforms;android-37.0</c>).</summary>
-public sealed record AndroidTools(string Adb, string Emulator, string? Lacks = null);
+public sealed record AndroidTools(string Adb, string Emulator, string? Lacks = null)
+{
+    /// <summary>The SDK's avdmanager, which makes an emulator; null where the SDK has no command-line tools.</summary>
+    public string? AvdManager { get; init; }
+}
 
 /// <summary>Android's targets through its workload and the SDK's own tools: the devices and emulators the workload lists
 /// (<c>ComputeAvailableDevices</c>, what <c>dotnet run --list-devices</c> asks), an emulator started where none runs,
@@ -54,9 +58,13 @@ public static class AndroidDevices
         {
             return ([], null, $"The Android workload's list of devices could not be read: {listed.Said.FirstLine}");
         }
-        string? lacks = PlatformLacked(listed.Property(MSBuildNames.AndroidSdkDirectory), listed.Property(MSBuildNames.TargetPlatformVersion));
+        string? sdk = listed.Property(MSBuildNames.AndroidSdkDirectory);
+        string? lacks = PlatformLacked(sdk, listed.Property(MSBuildNames.TargetPlatformVersion));
         AndroidTools tools = new(Tool(listed.Property(MSBuildNames.AdbToolPath) ?? string.Empty, "adb"), Tool(listed.Property(MSBuildNames.EmulatorToolPath) ?? string.Empty, "emulator"),
-            lacks);
+            lacks)
+        {
+            AvdManager = sdk is { Length: > 0 } ? AndroidFolders.AvdManager(sdk) : null,
+        };
         return (DeviceTargets.Parse(TargetPlatform.Android, listed), tools, null);
     }
 

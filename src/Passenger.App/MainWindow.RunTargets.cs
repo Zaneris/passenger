@@ -117,7 +117,8 @@ public partial class MainWindow
             (IReadOnlyList<DeviceTarget> targets, AndroidTools? tools, string? unlisted) =
                 await BackgroundWork.Run(() => AndroidDevices.ListAsync(project.Path, android, globals, CancellationToken.None));
             found.AddRange(targets);
-            if ((tools is null ? unlisted : tools.Lacks is { } lacks ? Refusals.NoAndroidPlatform(lacks) : null) is { } problem)
+            if ((tools is null ? unlisted : tools.Lacks is { } lacks ? Refusals.NoAndroidPlatform(lacks)
+                : targets.Count == 0 ? Refusals.NoAndroidTarget(tools.AvdManager) : null) is { } problem)
             {
                 problems.Add(problem);
             }
@@ -151,7 +152,7 @@ public partial class MainWindow
         }
         if (targetsUnlisted is { } unlisted)
         {
-            // What the platform lacks is said above its targets: they are listed, but no app is built for them until it has it.
+            // What a platform lacks (a device, a package its build needs) is said above the targets, which are listed all the same.
             menu.Items.Insert(0, new MenuItem
             {
                 Header = new TextBlock { Text = unlisted, TextWrapping = Avalonia.Media.TextWrapping.Wrap, MaxWidth = 420, Classes = { StyleClasses.Muted } },
@@ -206,7 +207,9 @@ public partial class MainWindow
         }
         await ListRunTargetsAsync(project);
         IReadOnlyList<DeviceTarget> listed = session.Targets.Listed(project);
-        string offered = listed.Count == 0 ? targetsUnlisted ?? Refusals.NoTargets : Plural.Listed([.. listed.Select(t => t.Shown)]);
+        // What a platform lacks is said after what is listed, as the menu says it with them.
+        string offered = listed.Count == 0 ? targetsUnlisted ?? Refusals.NoTargets
+            : Plural.Listed([.. listed.Select(t => t.Shown)]) + (targetsUnlisted is { } lacking ? $"; {lacking}" : string.Empty);
         if (input is not { Length: > 0 } named)
         {
             return $"{project.Name} runs on {session.Targets.InForce(project)?.Name ?? "nothing chosen yet"}; it can run on {offered}";

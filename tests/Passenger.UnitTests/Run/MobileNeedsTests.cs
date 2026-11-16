@@ -11,7 +11,7 @@ namespace Passenger.UnitTests.Run;
 /// <summary>What a mobile project needs, worked out from what its workloads answer and what is on disk: the workloads the
 /// SDK names, the Android SDK's packages and the JDK the Android workload wants, the Xcode an Apple workload could not
 /// find, a project on Mono, where Android apps are built and New Project offers their workloads, the Android SDK's licences
-/// of what is to be installed, and how a workload install is run and read.</summary>
+/// of what is to be installed, the SDK's avdmanager, and how a workload install is run and read.</summary>
 public class MobileNeedsTests
 {
     /// <summary>_GetRequiredWorkloads of a project targeting tvOS and macOS where neither workload is installed.</summary>
@@ -311,6 +311,35 @@ public class MobileNeedsTests
         Assert.False(want.AndroidLacks, $"Nothing is lacking, but it said {want.Said}");
         Assert.False(want.Says);
         Assert.Null(want.Said);
+    }
+
+    [Fact]
+    public void The_SDKs_avdmanager_is_its_command_line_tools_latest_else_their_newest_versions_and_none_without_them()
+    {
+        string sdk = PathNames.Canonical(Directory.CreateTempSubdirectory("passenger-unit-").FullName);
+        try
+        {
+            Assert.Null(AndroidFolders.AvdManager(sdk));
+            string program = OperatingSystem.IsWindows() ? "avdmanager.bat" : "avdmanager";
+            string Tools(string version)
+            {
+                string bin = Directory.CreateDirectory(Path.Combine(sdk, "cmdline-tools", version, "bin")).FullName;
+                File.Create(Path.Combine(bin, program)).Dispose();
+                return Path.Combine(bin, program);
+            }
+            Directory.CreateDirectory(Path.Combine(sdk, "cmdline-tools", "22.0", "bin"));
+            Assert.Null(AndroidFolders.AvdManager(sdk));
+
+            Tools("9.0");
+            string newest = Tools("21.0");
+            Assert.Equal(newest, AndroidFolders.AvdManager(sdk));
+            string latest = Tools("latest");
+            Assert.Equal(latest, AndroidFolders.AvdManager(sdk));
+        }
+        finally
+        {
+            Directory.Delete(sdk, recursive: true);
+        }
     }
 
     [Fact]

@@ -174,7 +174,7 @@ public static class MobileAnswers
 }
 
 /// <summary>Where the Android SDK is, as the workload looks for it (ANDROID_HOME, ANDROID_SDK_ROOT, then the system's
-/// usual folder), and which of a project's packages it lacks.</summary>
+/// usual folder), which of a project's packages it lacks, and its avdmanager.</summary>
 public static class AndroidFolders
 {
     /// <summary>The folder the Android SDK is usually installed in for this user: Android Studio's, where the workload
@@ -204,6 +204,16 @@ public static class AndroidFolders
         : environment("ANDROID_HOME") is { Length: > 0 } home ? home
         : environment("ANDROID_SDK_ROOT") is { Length: > 0 } root ? root
         : usual;
+
+    /// <summary>The avdmanager of the SDK at <paramref name="sdk"/>, which makes an emulator: its command-line tools' latest,
+    /// else those of their newest version; null where it has none.</summary>
+    public static string? AvdManager(string sdk)
+    {
+        string tools = Path.Combine(sdk, "cmdline-tools");
+        return Directory.Exists(tools)
+            ? Programs.CommandIn([Path.Combine(tools, "latest", "bin"), .. VersionOrder.NewestFirst(Directory.EnumerateDirectories(tools)).Select(v => Path.Combine(v, "bin"))], "avdmanager")
+            : null;
+    }
 
     /// <summary>Of a project's packages, those the SDK at <paramref name="sdk"/> lacks: a platform without its
     /// android.jar (under either folder name the SDK gives one), any other without its folder. The command-line tools,

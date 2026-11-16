@@ -562,6 +562,12 @@ public static class Refusals
         $"The Android SDK lacks {package}, the platform the .NET android workload builds against: install it with the SDK's sdkmanager "
         + $"(sdkmanager \"{package}\") or Android Studio's SDK Manager";
 
+    /// <summary>The Android workload listed no device or emulator, with how to get one: the SDK's avdmanager named where the SDK
+    /// has it (<paramref name="avdManager"/>).</summary>
+    public static string NoAndroidTarget(string? avdManager) =>
+        "No Android device is connected and no emulator is made: connect a device with USB debugging on, or make an emulator in Android Studio's Device Manager"
+        + (avdManager is null ? string.Empty : $" or with the Android SDK's avdmanager ({avdManager} create avd)");
+
     /// <summary>An agent's install of what a mobile project needs: the person installs it, accepting what it asks.</summary>
     public const string AgentInstallsMobile = "Only the person installs what a mobile project needs (a workload downloads from NuGet, the Android SDK asks them to accept "
         + "its licences): ask them to, with the banner over Passenger's window";
