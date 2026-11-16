@@ -55,7 +55,8 @@ public sealed class HeadStart
     public Task<ProjectBuildCache> Builds { get; private set; } = null!;
 
     /// <summary>Begins opening the folder or solution the command line names, with a C# language server when
-    /// <paramref name="languageServer"/>; null when it names none, or none that is there.</summary>
+    /// <paramref name="languageServer"/>; null when it names none, none that is there, or one not trusted
+    /// (<see cref="WorkspaceTrust"/>), whose code nothing runs before the session asks.</summary>
     public static HeadStart? Begin(LaunchOptions launch, bool languageServer)
     {
         if ((launch.Workspace ?? launch.Folder) is not { } given)
@@ -65,7 +66,7 @@ public sealed class HeadStart
         string full = PathNames.Canonical(given);
         bool fileNamed = File.Exists(full) && WorkspaceModel.Opens(full);
         string folder = fileNamed ? Path.GetDirectoryName(full)! : full;
-        if (!Directory.Exists(folder))
+        if (!Directory.Exists(folder) || !WorkspaceTrust.Trusts(folder))
         {
             return null;
         }

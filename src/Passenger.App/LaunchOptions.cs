@@ -41,7 +41,7 @@ public sealed record LaunchOptions(string? Folder, IReadOnlyList<string> Files, 
     private static readonly HashSet<string> Repeatable = ["--file", "--type", "--key", "--click", "--click-name", "--double-click", "--right-click", "--drag", "--drag-hold", "--hover", "--wait", "--open", "--agent"];
 
     /// <summary>What only a screenshot takes: its window, its picture and the steps before it.</summary>
-    private static readonly HashSet<string> ScreenshotOnly = ["--size", "--scale", "--crop", "--window-buttons", "--first-start", "--type", "--key", "--click", "--click-name", "--double-click", "--right-click", "--drag", "--drag-hold", "--hover", "--wait", "--open", "--agent"];
+    private static readonly HashSet<string> ScreenshotOnly = ["--size", "--scale", "--crop", "--window-buttons", "--untrusted", "--first-start", "--type", "--key", "--click", "--click-name", "--double-click", "--right-click", "--drag", "--drag-hold", "--hover", "--wait", "--open", "--agent"];
 
     /// <summary>A screenshot's longest side in pixels: a frame 16384 pixels square is already a gigabyte, and the headless
     /// window draws none at 24000.</summary>
@@ -106,6 +106,7 @@ public sealed record LaunchOptions(string? Folder, IReadOnlyList<string> Files, 
         Rect? crop = null;
         string? cropText = null;
         bool windowButtons = false;
+        bool untrusted = false;
         List<ScriptStep> steps = [];
         List<(string Flag, string Text, Point At)> points = [];
         McpMode mcp = McpMode.None;
@@ -218,6 +219,9 @@ public sealed record LaunchOptions(string? Folder, IReadOnlyList<string> Files, 
                 case "--window-buttons":
                     windowButtons = true;
                     break;
+                case "--untrusted":
+                    untrusted = true;
+                    break;
                 case "--first-start":
                     steps.Add(new ScriptStep.FirstStart());
                     break;
@@ -307,7 +311,7 @@ public sealed record LaunchOptions(string? Folder, IReadOnlyList<string> Files, 
         {
             throw new FormatException(start.NoFolder);
         }
-        ScreenshotOptions? screenshot = shot is null ? null : Checked(new ScreenshotOptions(shot, size, scale, steps, crop) { WindowButtons = windowButtons }, cropText, points);
+        ScreenshotOptions? screenshot = shot is null ? null : Checked(new ScreenshotOptions(shot, size, scale, steps, crop) { WindowButtons = windowButtons, Untrusted = untrusted }, cropText, points);
         return new LaunchOptions(folder, files, caret, theme, screenshot)
         {
             Workspace = workspace, Mcp = mcp, AttachTo = attachTo, ListenForAgents = listen, Headless = headless, Look = look, Scheme = scheme, NewWindow = newWindow,
@@ -534,6 +538,10 @@ public sealed record ScreenshotOptions(string Path, LogicalSize Size, double Sca
     /// <summary>Whether macOS's window buttons, which the headless capture has none of, are drawn in as a person sees
     /// them (<c>--window-buttons</c>); where Windows and Linux are pictured the bar's own are there already.</summary>
     public bool WindowButtons { get; init; }
+
+    /// <summary>Whether the folder opens held to the person's answer, as in their own window (<c>--untrusted</c>): its trust
+    /// question asked and its banner shown, none of its code run until the steps trust it.</summary>
+    public bool Untrusted { get; init; }
 }
 
 public readonly record struct LogicalSize(double Width, double Height);

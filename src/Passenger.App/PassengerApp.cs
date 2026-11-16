@@ -75,11 +75,13 @@ public static class PassengerApp
     internal static void RunsForAgent() => ForAgent = true;
 
     /// <summary>The process runs on the headless platform, as <c>--mcp</c>, <c>--headless</c> and a screenshot choose it
-    /// before their window is made, and nothing it starts has a display to reach (<see cref="NoDisplay"/>).</summary>
+    /// before their window is made, and nothing it starts has a display to reach (<see cref="NoDisplay"/>). Nobody is here
+    /// to ask whether a folder is trusted: whoever started it chose the folder, so every one is (<see cref="WorkspaceTrust"/>).</summary>
     internal static void RunsHeadless()
     {
         headless = true;
         NoDisplay.Take();
+        WorkspaceTrust.TrustEverything();
     }
 
     /// <summary>A window came in front, or one closed: Discord follows the front one.</summary>

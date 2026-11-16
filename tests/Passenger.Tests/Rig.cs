@@ -105,6 +105,8 @@ public sealed class TestRun : IAsyncDisposable
         Nice.Normal();
         // What the IDE has in flight is recorded from the first window on, for the quiet wait (Ui.Settle) to wait out.
         Passenger.Core.InFlight.Watched = true;
+        // Every folder a test opens is trusted, but one it holds to the person's answer (WorkspaceTrust.Ask).
+        Passenger.Core.WorkspaceTrust.TrustEverything();
         foreach (string left in Directory.EnumerateDirectories(Path.GetTempPath(), Prefix + "*"))
         {
             // A run still going has its process; one killed has none, and only an id reused since keeps its folder.

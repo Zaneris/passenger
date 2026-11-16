@@ -28,6 +28,8 @@ public static class Screenshot
     public static int Run(LaunchOptions launch, ScreenshotOptions options)
     {
         Program.SetUpHeadless(launch);
+        // Every folder a screenshot opens is trusted, but one it asks to see as a person's window first opens it.
+        using IDisposable? asked = options.Untrusted && launch.Folder is { } held ? WorkspaceTrust.Ask(held) : null;
 
         // A capture lets in only its own agent: no socket at all without one.
         Written written = new();

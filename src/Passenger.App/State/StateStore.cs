@@ -15,7 +15,7 @@ namespace Passenger.App.State;
 
 /// <summary>The IDE's own state, in one folder: the app's documents at its top (the settings, the layout a folder
 /// without its own opens on, where the window last stood, the recent solutions, the release last announced, Find in
-/// Files' mask, Rename's options),
+/// Files' mask, Rename's options, the folders trusted),
 /// and each folder's under <c>workspaces/&lt;name&gt;-&lt;hash&gt;/</c>, held only while a window has the folder open. Only
 /// the windows a person uses keep one, all of a process's windows over the same folder sharing it (<see cref="Open"/>), so
 /// each document is held once and what one window keeps another reads at once; a headless IDE starts on the defaults.</summary>
@@ -47,6 +47,7 @@ public sealed class StateStore
         Previews = new(Path.Combine(root, "previews.json"));
         LiveTree = new(Path.Combine(root, "liveTree.json"));
         Dotnet = new(Path.Combine(root, "dotnet.json"));
+        Trust = new(Path.Combine(root, "trust.json"));
         // Before this process writes any: a change is written a moment after it is made, and only through this store.
         UsedBefore = new[] { Path.Combine(root, SettingsFile), Layout.Path, Recent.Path, Updates.Path }.Any(File.Exists)
             || Directory.Exists(Path.Combine(root, "workspaces"));
@@ -130,6 +131,9 @@ public sealed class StateStore
     /// <summary>What the person said of the machine's .NET: the installations whose off-PATH word they hid.</summary>
     public StateDocument<DotnetState> Dotnet { get; }
 
+    /// <summary>The folders the person trusted, and those they opened without trusting.</summary>
+    public StateDocument<TrustState> Trust { get; }
+
     /// <summary>A folder's own documents, held for a window that has the folder open or is opening it until it lets them go
     /// (<see cref="LetGo"/>); every window holding the folder shares them.</summary>
     public ProjectState Hold(string folder)
@@ -174,6 +178,7 @@ public sealed class StateStore
         Previews.Flush();
         LiveTree.Flush();
         Dotnet.Flush();
+        Trust.Flush();
         foreach ((ProjectState documents, _) in projects.Values)
         {
             documents.Flush();
