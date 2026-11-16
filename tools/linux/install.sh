@@ -6,7 +6,9 @@
 #   sudo ./install.sh --system           for everyone: /opt/passenger, /usr/local/bin/passenger-ide, /usr/share/applications
 #   ./install.sh --uninstall [--system]  removes what that install added, and leaves the settings (~/.local/share/Passenger)
 #   ./install.sh --from FOLDER [--system] installs the unpacked passenger/ folder FOLDER rather than this script's own
-#   ./install.sh --from FOLDER --keep-replaced  also keeps the release it replaces beside FOLDER until the next start
+#   ./install.sh --archive FILE --sha256 SUM [--system]  installs the archive FILE, only where its SHA-256 is SUM,
+#                                        copied and unpacked where only this user writes
+#   ./install.sh --from FOLDER --keep-replaced  also keeps the release it replaces beside FOLDER (or FILE) until the next start
 # Installing a newer release's folder the same way replaces the old files and keeps the settings; the installed script
 # run again refreshes the menu entry, icons and command.
 set -eu
@@ -21,12 +23,14 @@ fail() {
 }
 
 usage() {
-    sed -n '2,13s/^# \{0,1\}//p' "$0"
+    sed -n '2,15s/^# \{0,1\}//p' "$0"
 }
 
 system=
 uninstall=
 from=
+archive=
+sha256=
 keep_replaced=
 while [ $# -gt 0 ]; do
     case $1 in
@@ -37,23 +41,50 @@ while [ $# -gt 0 ]; do
             from=$2
             shift
             ;;
+        --archive)
+            [ $# -gt 1 ] || fail "--archive names the Passenger-linux-*.tar.gz to install: --archive FILE --sha256 SUM"
+            archive=$2
+            shift
+            ;;
+        --sha256)
+            [ $# -gt 1 ] || fail "--sha256 gives the archive's SHA-256 as its release's SHA256SUMS does: --sha256 SUM"
+            sha256=$2
+            shift
+            ;;
         --keep-replaced) keep_replaced=1 ;;
         -h | --help)
             usage
             exit 0
             ;;
-        *) fail "'$1' is neither --system, --uninstall, --from FOLDER, --keep-replaced nor --help" ;;
+        *) fail "'$1' is neither --system, --uninstall, --from FOLDER, --archive FILE, --sha256 SUM, --keep-replaced nor --help" ;;
     esac
     shift
 done
 
-if [ -n "$keep_replaced" ] && [ -z "$from" ]; then
-    fail "--keep-replaced keeps the release replaced beside the folder --from names: --from FOLDER --keep-replaced"
+if [ -n "$from" ] && [ -n "$archive" ]; then
+    fail "--from and --archive each name what to install: give one"
 fi
+if [ -n "$archive" ] || [ -n "$sha256" ]; then
+    [ -n "$archive" ] && [ -n "$sha256" ] || fail "--archive is installed only where its SHA-256 is the one --sha256 gives: --archive FILE --sha256 SUM"
+    case $sha256 in
+        *[!0-9a-f]*) fail "--sha256 takes 64 lowercase hexadecimal digits, as SHA256SUMS gives them, not '$sha256'" ;;
+    esac
+    [ ${#sha256} -eq 64 ] || fail "--sha256 takes 64 lowercase hexadecimal digits, as SHA256SUMS gives them, not '$sha256'"
+    command -v sha256sum > /dev/null 2>&1 || fail "sha256sum is not installed, so $archive's SHA-256 cannot be checked"
+fi
+if [ -n "$keep_replaced" ] && [ -z "$from" ] && [ -z "$archive" ]; then
+    fail "--keep-replaced keeps the release replaced beside what --from or --archive names: --from FOLDER --keep-replaced"
+fi
+unpacking=
 if [ -n "$from" ]; then
     here=$(readlink -f "$from") || fail "$from is no folder to install from"
+    beside=$(dirname "$here")
+elif [ -n "$archive" ]; then
+    given=$(readlink -f "$archive") && [ -f "$given" ] || fail "$archive is no archive to install"
+    beside=$(dirname "$given")
 else
     here=$(dirname "$(readlink -f "$0")")
+    beside=$(dirname "$here")
 fi
 if [ -n "$system" ]; then
     [ "$(id -u)" = 0 ] || fail "--system installs for everyone, under /opt and /usr: run it with sudo"
@@ -154,6 +185,14 @@ settle() {
     if [ -n "$swapped" ]; then
         rm -rf "$old" || true
     fi
+    unpacked
+}
+
+# The archive's copy and what came out of it, on the way out.
+unpacked() {
+    if [ -n "$unpacking" ]; then
+        rm -rf "$unpacking" || true
+    fi
 }
 
 if [ -n "$uninstall" ]; then
@@ -176,6 +215,24 @@ if [ -n "$uninstall" ]; then
         echo "Passenger is uninstalled. Your settings stay in $data/Passenger; delete that folder to remove them too."
     fi
     exit 0
+fi
+
+# The archive copied where only this user writes before its SHA-256 is taken, so what is checked is what is unpacked,
+# whoever can write where it was.
+if [ -n "$archive" ]; then
+    mkdir -p "$(dirname "$dest")"
+    unpacking=$(mktemp -d "$(dirname "$dest")/.passenger-archive.XXXXXX") || fail "no folder could be made in $(dirname "$dest") to unpack $archive in"
+    trap unpacked EXIT
+    trap 'exit 1' HUP INT TERM
+    cp -- "$given" "$unpacking/archive.tar.gz" || fail "$archive could not be read"
+    actual=$(sha256sum < "$unpacking/archive.tar.gz" | cut -d ' ' -f 1)
+    if [ "$actual" != "$sha256" ]; then
+        fail "$archive's SHA-256 is $actual, not $sha256, the one its release gives: it changed after it was checked, so nothing was installed"
+    fi
+    mkdir "$unpacking/out"
+    tar -C "$unpacking/out" -xzf "$unpacking/archive.tar.gz" || fail "$archive does not unpack as a gzipped tar archive"
+    [ "$(ls -A "$unpacking/out")" = passenger ] || fail "$archive holds more than one passenger folder"
+    here=$unpacking/out/passenger
 fi
 
 is_passenger "$here" || fail "$here holds no Passenger: run the install.sh of an unpacked Passenger-linux-*.tar.gz"
@@ -208,7 +265,11 @@ if [ "$here" != "$(readlink -f "$dest" 2> /dev/null || echo "$dest")" ]; then
     trap settle EXIT
     trap 'exit 1' HUP INT TERM
     rm -rf "$new"
-    cp -R "$here" "$new"
+    if [ -n "$unpacking" ]; then
+        mv "$here" "$new"
+    else
+        cp -R "$here" "$new"
+    fi
     if [ -n "$system" ]; then
         chmod -R u+rwX,go+rX,go-w "$new"
     fi
@@ -218,9 +279,9 @@ if [ "$here" != "$(readlink -f "$dest" 2> /dev/null || echo "$dest")" ]; then
     mv "$new" "$dest"
     swapped=1
     # Kept for the release's next start to remove, which runs as the folder's owner, not as root: else removed now.
-    kept=$(dirname "$here")/replaced
+    kept=$beside/replaced
     if [ -n "$keep_replaced" ] && [ -e "$old" ] && rm -rf "$kept" && mv "$old" "$kept"; then
-        chown -R "$(stat -c %u:%g "$(dirname "$here")" 2> /dev/null)" "$kept" 2> /dev/null || true
+        chown -R "$(stat -c %u:%g "$beside" 2> /dev/null)" "$kept" 2> /dev/null || true
     else
         rm -rf "$old"
     fi

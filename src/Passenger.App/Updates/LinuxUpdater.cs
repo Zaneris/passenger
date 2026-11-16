@@ -9,13 +9,14 @@ using Passenger.Terminal;
 namespace Passenger.App.Updates;
 
 /// <summary>Linux's update, of a Passenger the archive's install.sh installed (Passenger-linux-x64.tar.gz or -arm64):
-/// downloaded into the state folder's <c>updates/</c>, its SHA-256 checked against the release's SHA256SUMS, unpacked and
-/// checked again (its layout and version). One person's install (~/.local/opt/passenger) has it unpacked beside it
-/// (<see cref="UpdateFolders"/>); as the process ends the two folders trade places in one step, the release replaced kept
-/// beside until the new one starts, and the new install.sh refreshes the menu entry, icons and command as it installs
-/// them. An install for everyone (/opt/passenger) is put in place by its own install.sh, as root through pkexec or by a
-/// command the person is given, which keeps the release replaced in the update's folder in the state until the new one
-/// starts, as a person's does; a copy a package manager installed is left to it.</summary>
+/// downloaded into the state folder's <c>updates/</c>, which only the person may write, its SHA-256 checked against the
+/// release's SHA256SUMS, unpacked and checked again (its layout and version). One person's install
+/// (~/.local/opt/passenger) has it unpacked beside it (<see cref="UpdateFolders"/>); as the process ends the two folders
+/// trade places in one step, the release replaced kept beside until the new one starts, and the new install.sh refreshes
+/// the menu entry, icons and command as it installs them. An install for everyone (/opt/passenger) keeps the archive, which
+/// its own install.sh, as root through pkexec or by a command the person is given, checks against that SHA-256 again
+/// and unpacks where only root writes before it installs it, keeping the release replaced in the update's folder until
+/// the new one starts, as a person's does; a copy a package manager installed is left to it.</summary>
 [SupportedOSPlatform("linux")]
 public sealed partial class LinuxUpdater : InPlaceUpdater
 {
@@ -42,6 +43,10 @@ public sealed partial class LinuxUpdater : InPlaceUpdater
 
     /// <summary>pkexec, found as the update was made ready, by which Restart to Update installs it as root; or null.</summary>
     private string? asker;
+
+    /// <summary>The SHA-256 the release's SHA256SUMS gives the archive made ready for everyone, which install.sh checks
+    /// the archive against as it installs it; or null.</summary>
+    private string? sum;
 
     /// <summary>The updater of the installed passenger/ folder <paramref name="install"/>, of the <paramref name="running"/>
     /// version (this build's by default); <paramref name="mayAsk"/> whether one this user cannot write asks for a password
@@ -162,41 +167,80 @@ public sealed partial class LinuxUpdater : InPlaceUpdater
     protected override async Task<UpdateOutcome> PrepareAsync(LatestRelease release, Action<int> progress, CancellationToken cancel)
     {
         asker = null;
+        sum = null;
         if (PackageOf(release) is not { } package)
         {
             return Announced(release, "archive for this processor");
         }
-        string unpacked = UnpackedFolder(release.Version);
-        string passenger = Path.Combine(unpacked, "passenger");
         // Not held: removing old copies is the disk's work, which nothing drawn waits for.
         await BackgroundWork.Unheld(() => Clean(keep: release.Version), cancel).ConfigureAwait(false);
+        // Only the person writes where a release is made ready, so no one else changes it before it is installed.
+        Containers.OwnFiles.Folder(Staging);
+        string folder = Path.Combine(Staging, release.Version);
+        Containers.OwnFiles.Folder(folder);
+        return kind == InstallKind.System
+            ? await ForEveryoneAsync(release, package, folder, progress, cancel).ConfigureAwait(false)
+            : await ForOneAsync(release, package, folder, progress, cancel).ConfigureAwait(false);
+    }
+
+    /// <summary>One person's release, unpacked beside the install from the archive downloaded into
+    /// <paramref name="folder"/>, which goes once it is unpacked.</summary>
+    private async Task<UpdateOutcome> ForOneAsync(LatestRelease release, ReleasePackage package, string folder, Action<int> progress, CancellationToken cancel)
+    {
+        string unpacked = UpdateFolders.Beside(Folder, release.Version);
+        string passenger = Path.Combine(unpacked, "passenger");
         if (Directory.Exists(passenger))
         {
             // Made ready by an earlier start: checked again rather than downloaded again.
             try
             {
                 Check(passenger, release.Version);
-                return await MadeAsync(release.Version, passenger, $"Passenger {release.Version} was unpacked before, to {passenger}, and checked again", cancel).ConfigureAwait(false);
+                return new UpdateOutcome.Ready($"Passenger {release.Version} was unpacked before, to {passenger}, and checked again");
             }
             catch (UpdateRefusedException)
             {
                 Remove(unpacked);
             }
         }
-        string folder = Directory.CreateDirectory(Path.Combine(Staging, release.Version)).FullName;
         (string saved, string expected) = await DownloadCheckedAsync(package, folder, progress, cancel).ConfigureAwait(false);
         await UnpackAsync(saved, unpacked, cancel).ConfigureAwait(false);
         File.Delete(saved);
         Check(passenger, release.Version);
-        return await MadeAsync(release.Version, passenger,
-            $"Passenger {release.Version} downloaded to {saved} and unpacked to {passenger}: {package.Download.Name}'s SHA-256 is {ReleaseSums.Name}' {expected}", cancel).ConfigureAwait(false);
+        return new UpdateOutcome.Ready(
+            $"Passenger {release.Version} downloaded to {saved} and unpacked to {passenger}: {package.Download.Name}'s SHA-256 is {ReleaseSums.Name}' {expected}");
     }
 
-    /// <summary>A release unpacked and checked: ready to install as Passenger ends, unless this user cannot write the
-    /// install and nobody can be asked for an administrator's password, which leaves it to a command the person runs.</summary>
-    private async Task<UpdateOutcome> MadeAsync(string version, string passenger, string said, CancellationToken cancel)
+    /// <summary>The release for everyone: its archive kept in <paramref name="folder"/>, for install.sh to check and
+    /// unpack again as it installs it, once its unpacked passenger folder here was checked and removed.</summary>
+    private async Task<UpdateOutcome> ForEveryoneAsync(LatestRelease release, ReleasePackage package, string folder, Action<int> progress, CancellationToken cancel)
     {
-        if (kind != InstallKind.System || Writable())
+        string archive = Path.Combine(folder, package.Download.Name);
+        if (File.Exists(archive))
+        {
+            // Downloaded by an earlier start: its SHA-256 checked again rather than downloaded again.
+            string given = await SumAsync(package, cancel).ConfigureAwait(false);
+            if (await Releases.Sha256Async(archive, cancel).ConfigureAwait(false) == given)
+            {
+                return await MadeAsync(archive, given,
+                    $"Passenger {release.Version} was downloaded before, to {archive}, and its SHA-256 checked again", cancel).ConfigureAwait(false);
+            }
+            File.Delete(archive);
+        }
+        (string saved, string expected) = await DownloadCheckedAsync(package, folder, progress, cancel).ConfigureAwait(false);
+        string passenger = Path.Combine(folder, "passenger");
+        await UnpackAsync(saved, folder, cancel).ConfigureAwait(false);
+        Check(passenger, release.Version);
+        Remove(passenger);
+        return await MadeAsync(saved, expected,
+            $"Passenger {release.Version} downloaded to {saved} and checked: its SHA-256 is {ReleaseSums.Name}' {expected}", cancel).ConfigureAwait(false);
+    }
+
+    /// <summary>The archive for everyone checked: ready to install as Passenger ends, by install.sh as root, through pkexec
+    /// unless this user can write the install, or else by a command the person runs.</summary>
+    private async Task<UpdateOutcome> MadeAsync(string archive, string expected, string said, CancellationToken cancel)
+    {
+        sum = expected;
+        if (Writable())
         {
             return new UpdateOutcome.Ready(said);
         }
@@ -205,26 +249,22 @@ public sealed partial class LinuxUpdater : InPlaceUpdater
             asker = pkexec;
             return new UpdateOutcome.Ready($"{said}; Restart to Update installs it in {Folder} as root through {pkexec}");
         }
-        string command = Command(passenger);
+        string command = Command(archive, expected);
         return new UpdateOutcome.ByHand(command, $"{said}; this user cannot write {Folder}, and no one can be asked for an administrator's password here, "
             + $"so it is installed by hand: {command}");
     }
 
-    /// <summary>The command that installs a release unpacked here for everyone, as a person types it, the release it
-    /// replaces kept for the new one's start to remove.</summary>
-    public string Command(string passenger) =>
-        $"sudo {ShellWords.Quoted(Path.Combine(Folder, "install.sh"), ShellKind.Posix)} --system --from {ShellWords.Quoted(passenger, ShellKind.Posix)} --keep-replaced";
+    /// <summary>The command that installs a release's archive kept here for everyone, as a person types it: install.sh
+    /// checks the archive against <paramref name="sha256"/> before it installs anything, and keeps the release it replaces
+    /// for the new one's start to remove.</summary>
+    public string Command(string archive, string sha256) =>
+        $"sudo {ShellWords.Quoted(Path.Combine(Folder, "install.sh"), ShellKind.Posix)} --system --archive {ShellWords.Quoted(archive, ShellKind.Posix)} --sha256 {sha256} --keep-replaced";
 
     /// <summary>pkexec, where it is on the PATH and a desktop session is there to show its question; else null.</summary>
     private static string? Pkexec() =>
         (Environment.GetEnvironmentVariable("DISPLAY") is { Length: > 0 } || Environment.GetEnvironmentVariable("WAYLAND_DISPLAY") is { Length: > 0 })
             ? Programs.OnPath("pkexec")
             : null;
-
-    /// <summary>Where a release is unpacked: beside one person's install, so the two can trade places in one step, else in
-    /// the state's own folder for it, from which install.sh copies it.</summary>
-    private string UnpackedFolder(string version) =>
-        kind == InstallKind.System ? Path.Combine(Staging, version) : UpdateFolders.Beside(Folder, version);
 
     /// <summary>Unpacks the archive into a folder of its own, its passenger/ folder put in place only once all of it came
     /// out, so a folder an interrupted unpacking left is never taken for a release.</summary>
@@ -277,8 +317,11 @@ public sealed partial class LinuxUpdater : InPlaceUpdater
         }
     }
 
-    /// <summary>The release's passenger/ folder, unpacked beside the install or in the state's folder for it.</summary>
-    protected override string Staged(string version) => Path.Combine(UnpackedFolder(version), "passenger");
+    /// <summary>The release's passenger/ folder unpacked beside one person's install, or the archive for everyone in the
+    /// state's folder for it.</summary>
+    protected override string Staged(string version) => kind == InstallKind.System
+        ? Path.Combine(Staging, version, Releases.ThisSystemsAsset() ?? string.Empty)
+        : Path.Combine(UpdateFolders.Beside(Folder, version), "passenger");
 
     protected override string? Replace(string staged, string version) => kind == InstallKind.System ? InstallForEveryone(staged) : Swap(staged, version);
 
@@ -317,22 +360,27 @@ public sealed partial class LinuxUpdater : InPlaceUpdater
         return InTwoRenames(passenger, Path.Combine(Path.GetDirectoryName(passenger)!, "replaced"), version).Why;
     }
 
-    /// <summary>The install for everyone put in place by its own install.sh, from the release unpacked here: as root
-    /// through pkexec, or itself where this user can write the install (root), the release it replaces kept beside the
-    /// unpacked one, given to this user, for the new one's start to remove. Gives why not.</summary>
-    private string? InstallForEveryone(string passenger)
+    /// <summary>The install for everyone put in place by its own install.sh, from the archive kept here, which it checks
+    /// against the release's SHA-256 and unpacks where only root writes: as root through pkexec, or itself where this user
+    /// can write the install (root), the release it replaces kept beside the archive, given to this user, for the new
+    /// one's start to remove. Gives why not.</summary>
+    private string? InstallForEveryone(string archive)
     {
+        if (sum is not { } expected)
+        {
+            return $"no SHA-256 of {archive} was read from the release's {ReleaseSums.Name}";
+        }
         string script = Path.Combine(Folder, "install.sh");
-        string[] arguments = ["--system", "--from", passenger, "--keep-replaced"];
+        string[] arguments = ["--system", "--archive", archive, "--sha256", expected, "--keep-replaced"];
         ProcessStartInfo command = Writable() || asker is null
             ? ChildProcesses.Command("/bin/sh", [script, .. arguments])
             : ChildProcesses.Command(asker, [script, .. arguments]);
         ChildResult ran = Run(command);
         IdeErrors.Write($"Updates: {ChildProcesses.Display(command)} said: {ran.Said}");
         return ran.Succeeded ? null
-            : ran.ExitCode == 126 && asker is not null ? $"no administrator's password was given to pkexec. To install it, run {Command(passenger)}"
-            : ran.ExitCode == 127 && asker is not null ? $"pkexec could not ask for an administrator's password ({ran.Said}). To install it, run {Command(passenger)}"
-            : $"install.sh failed ({ran.Said}). To install it, run {Command(passenger)}";
+            : ran.ExitCode == 126 && asker is not null ? $"no administrator's password was given to pkexec. To install it, run {Command(archive, expected)}"
+            : ran.ExitCode == 127 && asker is not null ? $"pkexec could not ask for an administrator's password ({ran.Said}). To install it, run {Command(archive, expected)}"
+            : $"install.sh failed ({ran.Said}). To install it, run {Command(archive, expected)}";
     }
 
     /// <summary>One person's menu entry, its icons and file types and the command's link, refreshed by the installed
@@ -356,6 +404,7 @@ public sealed partial class LinuxUpdater : InPlaceUpdater
     {
         Ready = null;
         asker = null;
+        sum = null;
         // Every one: no version is named so.
         Clean(keep: string.Empty);
         return Task.CompletedTask;

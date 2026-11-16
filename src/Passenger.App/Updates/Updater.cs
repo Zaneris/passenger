@@ -101,8 +101,7 @@ public abstract class Updater
     protected static async Task<(string Saved, string Sha256)> DownloadCheckedAsync(ReleasePackage package, string folder, Action<int> progress, CancellationToken cancel)
     {
         string name = package.Download.Name;
-        string expected = ReleaseSums.Of(await Releases.ReadTextAsync(package.Sums, cancel).ConfigureAwait(false), name)
-            ?? throw new UpdateRefusedException($"the release's {ReleaseSums.Name} gives no SHA-256 for {name}");
+        string expected = await SumAsync(package, cancel).ConfigureAwait(false);
         string saved = Path.Combine(folder, name);
         string actual = await Releases.DownloadAsync(package.Download, saved, progress, cancel).ConfigureAwait(false);
         if (actual != expected)
@@ -111,6 +110,12 @@ public abstract class Updater
         }
         return (saved, expected);
     }
+
+    /// <summary>The SHA-256 the release's SHA256SUMS gives its package for this system; an
+    /// <see cref="UpdateRefusedException"/> where it gives none.</summary>
+    protected static async Task<string> SumAsync(ReleasePackage package, CancellationToken cancel) =>
+        ReleaseSums.Of(await Releases.ReadTextAsync(package.Sums, cancel).ConfigureAwait(false), package.Download.Name)
+            ?? throw new UpdateRefusedException($"the release's {ReleaseSums.Name} gives no SHA-256 for {package.Download.Name}");
 
     /// <summary>The other Passenger processes whose executable is <paramref name="executable"/>, as the system names a
     /// process's executable, links resolved: the look of macOS and Linux.</summary>

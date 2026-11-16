@@ -27,7 +27,7 @@ public abstract class InPlaceUpdater(Func<string, Task> start) : Updater
         }
     }
 
-    /// <summary>Where the release <paramref name="version"/> was made ready: a folder, which may have gone since.</summary>
+    /// <summary>Where the release <paramref name="version"/> was made ready: a folder, or a file, which may have gone since.</summary>
     protected abstract string Staged(string version);
 
     /// <summary>Puts the release made ready at <paramref name="staged"/> in place of the install, which stays as it was
@@ -53,7 +53,7 @@ public abstract class InPlaceUpdater(Func<string, Task> start) : Updater
             return;
         }
         string staged = Staged(version);
-        if (!Directory.Exists(staged))
+        if (!Path.Exists(staged))
         {
             NotInstalled = $"{staged} is gone";
             IdeErrors.Write($"Updates: Passenger {version} was not installed: {NotInstalled}");

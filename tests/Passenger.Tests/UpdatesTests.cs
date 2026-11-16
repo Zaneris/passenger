@@ -1435,10 +1435,11 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
             Ui.WaitFor(() => Notice(window) == $"Passenger {newer} ready to install",
                 () => $"the status bar to say v{newer} is ready to install by hand: {UpdatesSaid(window)}");
 
-            string unpacked = Path.Combine(copy.Staging, newer, "passenger");
-            string command = $"sudo {ShellWords.Quoted(Path.Combine(copy.Install, "install.sh"), ShellKind.Posix)} --system --from {ShellWords.Quoted(unpacked, ShellKind.Posix)} --keep-replaced";
+            string archive = copy.Archive(newer);
+            string command = $"sudo {ShellWords.Quoted(Path.Combine(copy.Install, "install.sh"), ShellKind.Posix)} --system --archive {ShellWords.Quoted(archive, ShellKind.Posix)} "
+                + $"--sha256 {copy.Sum(newer)} --keep-replaced";
             Assert.True(window.UpdateByHand == command, $"The command that installs v{newer} is '{window.UpdateByHand}', not '{command}'");
-            Assert.True(copy.Holds(newer), $"v{newer} is not unpacked at {unpacked}, which the command installs from");
+            Assert.True(copy.Holds(newer), $"v{newer}'s archive is not at {archive}, which the command installs");
             string tip = ToolTip.GetTip(window.FindControl<Button>("UpdateButton")!) as string ?? string.Empty;
             Assert.True(tip.Contains($"this user cannot write {copy.Install}", StringComparison.Ordinal) && tip.Contains(command, StringComparison.Ordinal),
                 $"The notice does not say why Passenger cannot install v{newer} and the command that does: '{tip}'");
@@ -1458,6 +1459,59 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
         {
             File.SetUnixFileMode(opt, was);
         }
+    }
+
+    [AvaloniaFact]
+    [SupportedOSPlatform("linux")]
+    public void A_Linux_install_for_everyone_is_made_ready_where_only_the_person_writes_and_install_sh_takes_only_the_archive_Passenger_checked()
+    {
+        Assert.SkipUnless(OperatingSystem.IsLinux(), LinuxAlone);
+        using IDisposable theme = TestsTheme();
+        LinuxInstall copy = new(TestFolders.Create("installed-"), forEveryone: true);
+        string opt = Path.GetDirectoryName(copy.Install)!;
+        UnixFileMode was = File.GetUnixFileMode(opt);
+        File.SetUnixFileMode(opt, UnixFileMode.UserRead | UnixFileMode.UserExecute);
+        string newer = Bumped(1, 0);
+        try
+        {
+            Assert.SkipWhen(Libc.Access(opt, Libc.MayWrite) == 0, "The test runs as root, who can write any install");
+            github.Answer = Release($"v{newer}", files: copy.Update(newer));
+            MainWindow window = Started(copy.Updater());
+            window.WatchForUpdates();
+            Ui.WaitFor(() => Notice(window) == $"Passenger {newer} ready to install",
+                () => $"the status bar to say v{newer} is ready to install by hand: {UpdatesSaid(window)}");
+            window.Close();
+            Ended(window);
+        }
+        finally
+        {
+            File.SetUnixFileMode(opt, was);
+        }
+        const UnixFileMode OwnersAlone = UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute;
+        foreach (string folder in (string[])[copy.Staging, Path.Combine(copy.Staging, newer)])
+        {
+            Assert.True(File.GetUnixFileMode(folder) == OwnersAlone, $"{folder}, where v{newer} is made ready, is {File.GetUnixFileMode(folder)}: others may change it before it is installed");
+        }
+        Assert.False(Directory.Exists(Path.Combine(copy.Staging, newer, "passenger")), $"v{newer}'s passenger folder stays unpacked beside its archive, where install.sh never reads it");
+
+        // The root step's check, run as the person into the test's home: the same install.sh, without --system.
+        string archive = copy.Archive(newer);
+        byte[] checkedBytes = File.ReadAllBytes(archive);
+        string mine = Path.Combine(copy.Home, ".local", "opt", "passenger");
+        File.AppendAllText(archive, "changed after Passenger checked it");
+        ChildResult refused = copy.InstallArchive(archive, copy.Sum(newer));
+        Assert.True(!refused.Succeeded && refused.Error.Contains($"{archive}'s SHA-256 is", StringComparison.Ordinal)
+            && refused.Error.Contains($"not {copy.Sum(newer)}, the one its release gives", StringComparison.Ordinal),
+            $"install.sh did not refuse an archive changed after Passenger checked it, saying its SHA-256 differs: exit {refused.ExitCode}, {refused.Error}{refused.Output}");
+        Assert.False(Directory.Exists(mine), $"install.sh installed an archive changed after Passenger checked it, in {mine}");
+        string[] left = Directory.Exists(Path.GetDirectoryName(mine)) ? Directory.GetFileSystemEntries(Path.GetDirectoryName(mine)!) : [];
+        Assert.True(left.Length == 0, $"install.sh left what it unpacked beside {mine}: {string.Join(", ", left)}");
+
+        File.Delete(archive);
+        File.WriteAllBytes(archive, checkedBytes);
+        ChildResult installed = copy.InstallArchive(archive, copy.Sum(newer));
+        Assert.True(installed.Succeeded && LinuxInstall.ReleaseOf(mine) == newer,
+            $"install.sh did not install the archive Passenger checked: exit {installed.ExitCode}, {installed.Error}{installed.Output}; {mine} holds {LinuxInstall.ReleaseOf(mine) ?? "nothing"}");
     }
 
     [AvaloniaFact]
@@ -2055,19 +2109,39 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
             return new Dictionary<string, byte[]> { [Package(version)] = archive, ["SHA256SUMS"] = Encoding.UTF8.GetBytes(sums) };
         }
 
-        /// <summary>A release of this version unpacked where the updater makes it ready: beside the install, or for an
-        /// install for everyone in the state's folder; not while the updater removes it.</summary>
+        /// <summary>A release of this version made ready where the updater makes it ready: unpacked beside the install, or
+        /// for an install for everyone its archive in the state's folder; not while the updater removes it.</summary>
         public override bool Holds(string version)
         {
-            string unpacked = forEveryone ? Path.Combine(Staging, version) : UpdateFolders.Beside(Install, version);
             try
             {
-                return ReleaseOf(Path.Combine(unpacked, "passenger")) == version;
+                return forEveryone
+                    ? Convert.ToHexStringLower(SHA256.HashData(File.ReadAllBytes(Archive(version)))) == Sum(version)
+                    : ReleaseOf(Path.Combine(UpdateFolders.Beside(Install, version), "passenger")) == version;
             }
             catch (Exception gone) when (gone is DirectoryNotFoundException or FileNotFoundException)
             {
                 return false;
             }
+        }
+
+        /// <summary>Where an install for everyone keeps a release's archive for install.sh.</summary>
+        public string Archive(string version) => Path.Combine(Staging, version, Package(version));
+
+        /// <summary>The SHA-256 the release's SHA256SUMS gives its archive.</summary>
+        public string Sum(string version) => Convert.ToHexStringLower(SHA256.HashData(archives[version]));
+
+        /// <summary>install.sh of the install run as the test's person, into the test's home, on an archive and the SHA-256
+        /// it is to have.</summary>
+        public ChildResult InstallArchive(string archive, string sha256)
+        {
+            ProcessStartInfo install = ChildProcesses.Command("/bin/sh", [Path.Combine(Install, "install.sh"), "--archive", archive, "--sha256", sha256], Home);
+            foreach ((string name, string? value) in Variables())
+            {
+                install.Environment[name] = value;
+            }
+            install.Environment.Remove("SUDO_USER");
+            return Ran(install, TimeSpan.FromMinutes(1));
         }
 
         /// <summary>What is in the folder updates download to, and every release unpacked beside the install.</summary>
