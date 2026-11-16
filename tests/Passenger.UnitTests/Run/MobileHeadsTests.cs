@@ -14,9 +14,14 @@ namespace Passenger.UnitTests.Run;
 /// banner's words and made in the files' text, every other character kept, and placed on the lines it changes.</summary>
 public class MobileHeadsTests
 {
-    private const string Project = "/src/XApp.iOS/XApp.iOS.csproj";
+    private static readonly string Folder = Rooted("/src/XApp.iOS");
 
-    private const string Manifest = "/src/XApp.iOS/Info.plist";
+    private static readonly string Project = Rooted("/src/XApp.iOS/XApp.iOS.csproj");
+
+    private static readonly string Manifest = Rooted("/src/XApp.iOS/Info.plist");
+
+    /// <summary>A path of the tests' made-up folders as this system writes it, canonical as a head's answer makes its files'.</summary>
+    private static string Rooted(string path) => PathNames.Canonical(path);
 
     /// <summary>Avalonia 12.1.6's avalonia.xplat iOS head, as the template writes it.</summary>
     private const string ProjectText = """
@@ -63,8 +68,8 @@ public class MobileHeadsTests
         }
         """;
 
-    private static HeadAnswer Answer(string json = Answered, string platform = FrameworkNames.Ios, string folder = "/src/XApp.iOS") =>
-        MobileHeads.Answer(platform, $"net11.0-{platform}", new MSBuildAnswer(new ChildResult(0, json, string.Empty)), folder)!;
+    private static HeadAnswer Answer(string json = Answered, string platform = FrameworkNames.Ios, string? folder = null) =>
+        MobileHeads.Answer(platform, $"net11.0-{platform}", new MSBuildAnswer(new ChildResult(0, json, string.Empty)), folder ?? Folder)!;
 
     private static HeadEdits? Edits(string project, string manifest, params HeadAnswer[] answers) =>
         MobileHeads.Edits(Project, "XApp.iOS", answers, path => path == Project ? project : path == Manifest ? manifest : null);
@@ -99,7 +104,7 @@ public class MobileHeadsTests
         Assert.Equal(["<TargetFramework>net10.0-ios</TargetFramework>", "<SupportedOSPlatformVersion>13.0</SupportedOSPlatformVersion>"],
             MobileHeads.Places(Project, ProjectText, edits).Select(p => ProjectText[p.Start..p.End].Trim()));
         Assert.Equal(["<string>13.0</string>", "<dict>"], MobileHeads.Places(Manifest, ManifestText, edits).Select(p => ManifestText[p.Start..p.End].Trim()));
-        Assert.Empty(MobileHeads.Places("/src/XApp/App.axaml.cs", ProjectText, edits));
+        Assert.Empty(MobileHeads.Places(Rooted("/src/XApp/App.axaml.cs"), ProjectText, edits));
     }
 
     [Fact]
@@ -175,9 +180,9 @@ public class MobileHeadsTests
     [Fact]
     public void Avalonias_template_android_head_needs_its_framework_moved_and_its_least_api_raised_written_as_its_own()
     {
-        const string android = "/src/XApp.Android/XApp.Android.csproj";
+        string android = Rooted("/src/XApp.Android/XApp.Android.csproj");
         HeadAnswer answer = Answer("""{ "Properties": { "SupportedOSPlatformVersion": "23", "AndroidMinimumSupportedApiLevel": "24", "UseMaui": "", "RootNamespace": "XApp.Android" } }""",
-            FrameworkNames.Android, "/src/XApp.Android");
+            FrameworkNames.Android, Rooted("/src/XApp.Android"));
         HeadEdits edits = MobileHeads.Edits(android, "XApp.Android", [answer], path => path == android ? AndroidText : null)!;
 
         Assert.Equal("XApp.Android needs edits to build and run here: net11.0-android in place of net10.0-android, whose Android apps run on Mono (Passenger builds, runs and "
@@ -187,11 +192,11 @@ public class MobileHeadsTests
             MobileHeads.ProjectText(AndroidText, edits).Text);
     }
 
-    private const string MauiProject = "/src/M10/M10.csproj";
+    private static readonly string MauiProject = Rooted("/src/M10/M10.csproj");
 
-    private const string MauiIos = "/src/M10/Platforms/iOS/Info.plist";
+    private static readonly string MauiIos = Rooted("/src/M10/Platforms/iOS/Info.plist");
 
-    private const string MauiCatalyst = "/src/M10/Platforms/MacCatalyst/Info.plist";
+    private static readonly string MauiCatalyst = Rooted("/src/M10/Platforms/MacCatalyst/Info.plist");
 
     /// <summary>A MAUI app's property group as the net10.0 template writes it, its frameworks by system.</summary>
     private const string MauiText = """
@@ -220,25 +225,22 @@ public class MobileHeadsTests
             "ValidateSceneManifest": "true", "_CanOutputAppBundle": "true", "IsAppExtension": "false", "UseMaui": "true", "RootNamespace": "M10" },
           "Items": { "PartialAppManifest": [], "PackageReference": [ { "Identity": "Microsoft.Maui.Controls", "Version": "10.0.0" } ], "PackageVersion": [] }
         }
-        """, platform, "/src/M10");
+        """, platform, Rooted("/src/M10"));
 
     [Fact]
     public void A_maui_app_made_before_its_apple_heads_had_scenes_moves_every_framework_raises_android_where_its_condition_sets_it_and_names_mauis_scene_delegate()
     {
         HeadAnswer android = Answer("""{ "Properties": { "SupportedOSPlatformVersion": "21.0", "AndroidMinimumSupportedApiLevel": "24", "UseMaui": "true", "RootNamespace": "M10" } }""",
-            FrameworkNames.Android, "/src/M10");
+            FrameworkNames.Android, Rooted("/src/M10"));
         HeadEdits edits = MobileHeads.Edits(MauiProject, "M10", [android, MauiAnswer(FrameworkNames.Ios, "15.0", "15.0", "Platforms/iOS/Info.plist"),
-            MauiAnswer(FrameworkNames.MacCatalyst, "17.0", "17.0", "Platforms/MacCatalyst/Info.plist")], path => path switch
-            {
-                MauiProject => MauiText,
-                MauiIos or MauiCatalyst => MauiPlist,
-                _ => null,
-            })!;
+            MauiAnswer(FrameworkNames.MacCatalyst, "17.0", "17.0", "Platforms/MacCatalyst/Info.plist")],
+            path => path == MauiProject ? MauiText : path == MauiIos || path == MauiCatalyst ? MauiPlist : null)!;
 
         Assert.Equal([("net10.0-android", "net11.0-android"), ("net10.0-ios", "net11.0-ios"), ("net10.0-maccatalyst", "net11.0-maccatalyst"),
             ("net10.0-windows10.0.19041.0", "net11.0-windows10.0.19041.0")], edits.Moves);
         Assert.Equal([new HeadMinimum(FrameworkNames.Android, "21", "24")], edits.Raised);
-        Assert.Equal([MauiProject, MauiIos, MauiCatalyst, "/src/M10/Platforms/iOS/SceneDelegate.cs", "/src/M10/Platforms/MacCatalyst/SceneDelegate.cs"], edits.Files);
+        Assert.Equal([MauiProject, MauiIos, MauiCatalyst, Rooted("/src/M10/Platforms/iOS/SceneDelegate.cs"),
+            Rooted("/src/M10/Platforms/MacCatalyst/SceneDelegate.cs")], edits.Files);
         Assert.Equal("M10 needs edits to build and run here: net11.0-android, net11.0-ios, net11.0-maccatalyst and net11.0-windows10.0.19041.0 in place of net10.0-android, "
             + "net10.0-ios, net10.0-maccatalyst and net10.0-windows10.0.19041.0, whose mobile apps run on Mono (Passenger builds, runs and debugs mobile apps from .NET 11, "
             + "on CoreCLR); Android API 24 at the least, the least .NET 11's Android workload builds for, in place of 21 in its project; a scene manifest "
@@ -260,17 +262,17 @@ public class MobileHeadsTests
     [Fact]
     public void A_mac_catalyst_heads_LSMinimumSystemVersion_is_set_to_the_macOS_its_workload_maps_its_least_version_to()
     {
-        const string catalyst = "/src/Cat/Cat.csproj";
-        const string plist = "/src/Cat/Info.plist";
-        const string versions = "/packs/catalyst/Versions.plist";
+        string catalyst = Rooted("/src/Cat/Cat.csproj");
+        string plist = Rooted("/src/Cat/Info.plist");
+        string versions = Rooted("/packs/catalyst/Versions.plist");
         string project = ProjectText.Replace("net10.0-ios", "net10.0-maccatalyst", StringComparison.Ordinal).Replace(">13.0<", ">15.0<", StringComparison.Ordinal);
         string manifest = AppManifests.WithSceneManifest(ManifestText.Replace("MinimumOSVersion", "LSMinimumSystemVersion", StringComparison.Ordinal)
             .Replace("<string>13.0</string>", "<string>12.0</string>", StringComparison.Ordinal))!;
         HeadAnswer answer = Answer(Answered.Replace("\"13.0\"", "\"15.0\"", StringComparison.Ordinal).Replace("\"15.0\",\n    \"ValidateSceneManifest\"", "\"17.0\",\n    \"ValidateSceneManifest\"", StringComparison.Ordinal),
-            FrameworkNames.MacCatalyst, "/src/Cat") with { SdkRoot = "/packs/catalyst" };
+            FrameworkNames.MacCatalyst, Rooted("/src/Cat")) with { SdkRoot = Rooted("/packs/catalyst") };
         string map = "<plist version=\"1.0\">\n<dict>\n\t<key>MacCatalystVersionMap</key>\n\t<dict>\n\t\t<key>15.0</key>\n\t\t<string>12.0</string>\n"
             + "\t\t<key>17.0</key>\n\t\t<string>14.0</string>\n\t</dict>\n</dict>\n</plist>\n";
-        HeadEdits edits = MobileHeads.Edits(catalyst, "Cat", [answer], path => path switch { catalyst => project, plist => manifest, versions => map, _ => null })!;
+        HeadEdits edits = MobileHeads.Edits(catalyst, "Cat", [answer], path => path == catalyst ? project : path == plist ? manifest : path == versions ? map : null)!;
 
         Assert.Equal("17.0", answer.Least);
         ManifestEdit edit = Assert.Single(edits.Manifests);
@@ -280,16 +282,16 @@ public class MobileHeadsTests
             + "in its project; and macOS 14.0 as Info.plist's LSMinimumSystemVersion, Mac Catalyst 17.0's, in place of 12.0", edits.Said);
         Assert.Contains("<key>LSMinimumSystemVersion</key>\n\t<string>14.0</string>", MobileHeads.ManifestText(manifest, edit), StringComparison.Ordinal);
         Assert.Equal("Its LSMinimumSystemVersion 12.0 is to be the macOS version of Mac Catalyst 17.0",
-            MobileHeads.Edits(catalyst, "Cat", [answer], path => path switch { catalyst => project, plist => manifest, _ => null })!.ByHand);
+            MobileHeads.Edits(catalyst, "Cat", [answer], path => path == catalyst ? project : path == plist ? manifest : null)!.ByHand);
     }
 
     [Fact]
     public void A_mac_catalyst_heads_trimmed_debug_build_is_kept_out_of_the_banner_and_made_whole_with_mtouchlink_none_for_debug_alone()
     {
-        const string catalyst = "/src/Cat/Cat.csproj";
+        string catalyst = Rooted("/src/Cat/Cat.csproj");
         string project = ProjectText.Replace("net10.0-ios", "net11.0-maccatalyst", StringComparison.Ordinal).Replace(">13.0<", ">17.0<", StringComparison.Ordinal);
         HeadAnswer answer = Answer(Answered.Replace("\"13.0\"", "\"17.0\"", StringComparison.Ordinal).Replace("\"15.0\"", "\"17.0\"", StringComparison.Ordinal),
-            FrameworkNames.MacCatalyst, "/src/Cat") with { LinkMode = "SdkOnly", Manifest = null };
+            FrameworkNames.MacCatalyst, Rooted("/src/Cat")) with { LinkMode = "SdkOnly", Manifest = null };
         HeadEdits edits = MobileHeads.Edits(catalyst, "Cat", [answer], path => path == catalyst ? project : null)!;
 
         Assert.True(edits is { TrimsDebug: true, TrimmedPlatform: null, Needed: false, Makes: false, Files: [] }, $"The trimmed Debug build was taken for an edit the banner makes: {edits}");
