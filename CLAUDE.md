@@ -142,6 +142,7 @@ tests run with a 4 MB `System.GC.Gen0MaxBudget`, so a young collection fits a 14
   to the UI thread (`UiThread.Check()` in entry points). Text, Vcs, Workspace, Packages, Lsp, Dap, Debugger and Profiler
   never reference Avalonia and raise events on any thread; Editor, Languages and Terminal on the UI thread. The App
   crosses from another thread only through `UiThread` (`Post`, `Marshal`, `InvokeAsync`).
+- **A path read out of a program's or a file's text** (a frame, a compiler's message, a link, a PDB's document) is asked of the disk only where `FoundPaths.Askable` lets it: never a share's, a device's or one under an automount root, a window's open folder held through `FoundPaths.Reach`; a file address through `FoundPaths.OfFileAddress`; `ConsoleLinks` asks off the window's thread, and a test reads a line's links through `Ui.LinksIn`.
 - **Paths are canonical** (`PathNames.Canonical`, symlinks resolved, as MSBuild and Roslyn report them); compare with
   `PathNames.Comparer`/`Same`/`IsUnder`, names in one folder with `NamesIn(folder)`, never `Comparison` for a path; walk
   a project's folders with `FoldersUnder`, the open folder's files with `FilesUnder`; show one with `PathNames.Shown`; a path below a folder in forward slashes is `PathNames.Relative` (out by `..` only through `Route`), never `GetRelativePath(…).Replace`.
