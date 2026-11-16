@@ -108,6 +108,47 @@ public class GodotUidsTests
         Assert.Equal("nothing\n", GodotUids.Copied([new GodotCopy("res://a/broken.gd", "res://b/broken.gd", null, "nothing\n", null)], within: false, _ => false, new Random(7))[0].Uid);
     }
 
+    [Fact]
+    public void A_folders_copy_gives_its_binary_scenes_and_resources_uids_of_their_own_naming_the_files_copied_with_them()
+    {
+        const string Import = "[remap]\n\nimporter=\"texture\"\ntype=\"CompressedTexture2D\"\nuid=\"uid://cuk6yyqqtgnlm\"\npath=\"res://.godot/imported/icon.svg-1.ctex\"\n";
+        byte[] newer = [.. GodotBinaryResourceTests.Look];
+        BinaryPrimitives.WriteUInt32LittleEndian(newer.AsSpan(20), 7);
+        IReadOnlyList<GodotCopy> copied = GodotUids.Copied([
+            new GodotCopy("res://actors/level.scn", "res://levels/actors/level.scn", null, null, null, GodotBinaryResourceTests.Level),
+            new GodotCopy("res://actors/look.res", "res://levels/actors/look.res", null, null, null, GodotBinaryResourceTests.Look),
+            new GodotCopy("res://actors/player.gd", "res://levels/actors/player.gd", null, "uid://cplayerscrpt1\n", null),
+            new GodotCopy("res://actors/icon.svg", "res://levels/actors/icon.svg", null, null, Import),
+            new GodotCopy("res://actors/newer.res", "res://levels/actors/newer.res", null, null, null, newer),
+        ], within: true, _ => false, new Random(7));
+
+        GodotBinaryResource level = GodotBinaryResourceTests.Read(copied[0].Binary!);
+        GodotBinaryResource look = GodotBinaryResourceTests.Read(copied[1].Binary!);
+        string script = GodotUids.OfBeside("player.gd.uid", copied[2].Uid!)!;
+        string icon = GodotUids.OfBeside("icon.svg.import", copied[3].Import!)!;
+        string[] uids = [level.Uid!, look.Uid!, script, icon];
+        Assert.True(uids.Distinct().Count() == 4 && !uids.Intersect(["uid://bd1m7ab3qhdf3", "uid://26i3rvh6jh06", "uid://cplayerscrpt1", "uid://cuk6yyqqtgnlm"]).Any(),
+            $"A copy kept a uid of its original or of another copy: {string.Join(", ", uids)}");
+        Assert.Equal(
+        [
+            new GodotBinaryExternal("Script", "res://levels/actors/player.gd", script),
+            new GodotBinaryExternal("Texture2D", "res://levels/actors/look.res", look.Uid),
+            new GodotBinaryExternal("Texture2D", "res://levels/actors/icon.svg", icon),
+        ], level.Externals);
+        Assert.Equal([new GodotBinaryExternal("Texture2D", "res://levels/actors/icon.svg", icon)], look.Externals);
+        Assert.True(copied[0].Binary.AsSpan().StartsWith("RSCC"u8) && copied[1].Binary.AsSpan().StartsWith("RSRC"u8), "A copy was not left compressed or plain as its original was");
+        Assert.True(copied.Take(4).All(c => c.Unread is null), "A copy Passenger rewrote said it kept its original's uid");
+        // Godot 4.7 reads no format 7: the copy keeps its bytes and says why.
+        Assert.Same(newer, copied[4].Binary);
+        Assert.Contains("binary format 7", copied[4].Unread, StringComparison.Ordinal);
+
+        // A file's copy alone takes a uid of its own and names what its original named.
+        GodotBinaryResource alone = GodotBinaryResourceTests.Read(GodotUids.Copied([new GodotCopy("res://actors/level.scn", "res://actors/level_2.scn", null, null, null,
+            GodotBinaryResourceTests.Level)], within: false, _ => false, new Random(7))[0].Binary!);
+        Assert.NotEqual("uid://bd1m7ab3qhdf3", alone.Uid);
+        Assert.Equal(GodotBinaryResourceTests.Read(GodotBinaryResourceTests.Level).Externals, alone.Externals);
+    }
+
     private static byte[] Cache(params (long Id, string Res)[] entries)
     {
         List<byte> bytes = [];

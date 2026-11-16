@@ -133,6 +133,7 @@ public partial class MainWindow
         // The ends of the moves, followed with the copies once all are put.
         List<string> came = [];
         List<string> refused = [];
+        List<string> kept = [];
         foreach (string source in paths.Where(p => !dependents.Contains(p)))
         {
             string name = Path.GetFileName(source);
@@ -161,7 +162,7 @@ public partial class MainWindow
                 .Where(d => !PathNames.Same(d.Item1, d.Item2))];
             foreach ((string from, string to) in going)
             {
-                if (await PutOneAsync(from, to, into, copy, recording, came) is { } problem)
+                if (await PutOneAsync(from, to, into, copy, recording, came, kept) is { } problem)
                 {
                     if (problem.Length > 0)
                     {
@@ -203,15 +204,17 @@ public partial class MainWindow
             Explorer.FocusRows();
             refused.Insert(0, $"{(copy ? "Copied" : "Moved")} {Plural.Listed([.. put.Select(Path.GetFileName).OfType<string>()])} to {Path.GetFileName(into)}");
         }
-        status.Text = string.Join("; ", refused);
+        status.Text = string.Join("; ", [.. refused, .. kept]);
         return put;
     }
 
     /// <summary>Moves or copies one file or folder to where it goes within the paste's command (<paramref name="recording"/>),
     /// replacing what has its name there once the person agrees (to the Trash, in the same command, whose Undo brings it
     /// back), a move's ends gathered into <paramref name="came"/> and a copy kept for Undo to take to the Trash, one failing
-    /// partway taken back; null once it is there, else why not ("" when they would not replace).</summary>
-    private async Task<string?> PutOneAsync(string source, string target, string into, bool copy, CommandHistory.Recording recording, List<string> came)
+    /// partway taken back, what of a copy keeps its original's uid said into <paramref name="kept"/>; null once it is there,
+    /// else why not ("" when they would not replace).</summary>
+    private async Task<string?> PutOneAsync(string source, string target, string into, bool copy, CommandHistory.Recording recording, List<string> came,
+        List<string> kept)
     {
         string name = Path.GetFileName(source);
         bool replaced = false;
@@ -232,11 +235,12 @@ public partial class MainWindow
         {
             return await UncopiedAsync($"{name} could not be copied: {uncopied}", [target]);
         }
-        (IReadOnlyList<string> made, string? unfit) = await assist.Languages.CSharp.GodotCopiedAsync(source, target);
+        (IReadOnlyList<string> made, string? unfit, IReadOnlyList<string> unchanged) = await assist.Languages.CSharp.GodotCopiedAsync(source, target);
         if (unfit is not null)
         {
             return await UncopiedAsync($"{name} could not be copied as Godot copies it: {unfit}", [target, .. made]);
         }
+        kept.AddRange(unchanged);
         await recording.CopiedAsync(target);
         foreach (string beside in made)
         {

@@ -662,21 +662,23 @@ internal sealed partial class CSharpAssist
     /// <summary>A copy made in a Godot project (<paramref name="source"/> to <paramref name="target"/>, a file or a folder) left
     /// as Godot's own duplicate leaves one (<see cref="GodotUids.Copied"/>), off the window's thread, links passed over: its uids
     /// made anew, a folder's scenes naming what was copied with them, a file's copy given the .uid and .import of its original
-    /// where none is there (a replaced file's, whose uid it takes). The files it made beside the copy, or why it could not.</summary>
-    internal async Task<(IReadOnlyList<string> Made, string? Why)> GodotCopiedAsync(string source, string target)
+    /// where none is there (a replaced file's, whose uid it takes). The files it made beside the copy, or why it could not;
+    /// and what of it keeps its original's uid, a binary resource Passenger cannot rewrite, saying why.</summary>
+    internal async Task<(IReadOnlyList<string> Made, string? Why, IReadOnlyList<string> Kept)> GodotCopiedAsync(string source, string target)
     {
         if (context.GodotScenes?.Invoke() is not { } index || index.GameOf(target) is not { } folder)
         {
-            return ([], null);
+            return ([], null, []);
         }
         bool whole = Directory.Exists(target);
         GodotScenes? scenes = whole && index.GameOf(source) is { } from && PathNames.Same(from, folder) ? await index.ScenesAsync(folder) : null;
         Func<string, bool> named = scenes is null ? _ => false : uid => scenes.ResOfUid(uid) is not null;
         return await BackgroundWork.Run(() => Copied(folder, source, target, whole, scenes is not null, named));
 
-        static (IReadOnlyList<string> Made, string? Why) Copied(string folder, string source, string target, bool whole, bool within, Func<string, bool> named)
+        static (IReadOnlyList<string> Made, string? Why, IReadOnlyList<string> Kept) Copied(string folder, string source, string target, bool whole, bool within, Func<string, bool> named)
         {
             List<string> made = [];
+            List<string> kept = [];
             try
             {
                 // Each file of the copy with the file it is a copy of; Godot's own beside them go as theirs.
@@ -691,7 +693,9 @@ internal sealed partial class CSharpAssist
                     FileText? text = GodotFile.IsText(to) ? FileText.Load(to) : null;
                     FileText? uid = Read(Beside(from, to, ".uid"));
                     FileText? import = Read(Beside(from, to, ".import"));
-                    read.Add((new GodotCopy(GodotResPaths.Of(folder, from) ?? from, GodotResPaths.Of(folder, to) ?? to, text?.Text, uid?.Text, import?.Text), to, text, uid, import));
+                    byte[]? binary = text is null && import is null ? Binary(to) : null;
+                    read.Add((new GodotCopy(GodotResPaths.Of(folder, from) ?? from, GodotResPaths.Of(folder, to) ?? to, text?.Text, uid?.Text, import?.Text, binary),
+                        to, text, uid, import));
                 }
                 IReadOnlyList<GodotCopy> copied = GodotUids.Copied([.. read.Select(r => r.Copy)], within, named, Random.Shared);
                 for (int i = 0; i < read.Count; i++)
@@ -702,18 +706,44 @@ internal sealed partial class CSharpAssist
                     {
                         FileText.SaveOver(to, text, now.Text!);
                     }
+                    if (now.Binary is { } bytes && bytes != was.Binary)
+                    {
+                        FileText.Restore(to, bytes);
+                    }
+                    if (now.Unread is { } unread)
+                    {
+                        kept.Add($"{(whole ? PathNames.Relative(to, Path.GetDirectoryName(target)!) : Path.GetFileName(to))} keeps its original's uid: {unread}");
+                    }
                     Write(to + ".uid", uid, was.Uid, now.Uid, now.Uid != was.Uid);
                     // An .import goes with a file's copy whatever it gives, as Godot's duplicate keeps its settings.
                     Write(to + ".import", import, was.Import, now.Import, true);
                 }
-                return (made, null);
+                return (made, null, kept);
             }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException)
             {
-                return (made, error.Message);
+                return (made, error.Message, []);
             }
 
             static FileText? Read(string path) => path.Length > 0 && File.Exists(path) && new FileInfo(path).LinkTarget is null ? FileText.Load(path) : null;
+
+            // A file's bytes where they begin as Godot's binary format does.
+            static byte[]? Binary(string path)
+            {
+                if (new FileInfo(path).LinkTarget is not null)
+                {
+                    return null;
+                }
+                using (FileStream file = File.OpenRead(path))
+                {
+                    Span<byte> start = stackalloc byte[4];
+                    if (file.ReadAtLeast(start, start.Length, throwOnEndOfStream: false) < start.Length || !GodotBinaryResource.Starts(start))
+                    {
+                        return null;
+                    }
+                }
+                return File.ReadAllBytes(path);
+            }
 
             // Written over in a folder's copy where it changed, else made beside a file's copy.
             void Write(string path, FileText? had, string? was, string? now, bool makes)

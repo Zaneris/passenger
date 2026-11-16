@@ -359,7 +359,7 @@ public sealed record FileText(string Text, Encoding Encoding, bool HasBom, bool 
     }
 
     /// <summary>Writes a file's bytes as they were, as a save writes: Local History's revert of a file not open, or of one
-    /// deleted since, and a file landed whole.</summary>
+    /// deleted since, a file landed whole, and a copy's bytes made again.</summary>
     public static void Restore(string path, byte[] bytes)
     {
         Writing?.Invoke(path);

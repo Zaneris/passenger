@@ -9,10 +9,10 @@ using Passenger.Workspace;
 namespace Passenger.Tests;
 
 /// <summary>Files and folders copied in the Explorer within a Godot project Godot has opened, left as Godot's own duplicate
-/// leaves them: every copy given a uid of its own (a script's .uid, a scene's header, an imported file's .import), a
-/// folder's scene naming the script and texture copied with it, a file's copy given its .uid, the originals as they were;
-/// Godot's headless editor then opens the project with no two files of one uid. Without a Godot 4.4 or later, which keeps
-/// a script's uid beside it, each test skips saying why.</summary>
+/// leaves them: every copy given a uid of its own (a script's .uid, a scene's header, a binary scene's or resource's, an
+/// imported file's .import), a folder's scenes naming the files copied with them, a file's copy given its .uid, the
+/// originals as they were; Godot's headless editor then opens the project with no two files of one uid, and loads a copied
+/// scene from the copies. Without a Godot 4.4 or later, which keeps a script's uid beside it, each test skips saying why.</summary>
 public sealed class GodotExplorerCopyTests : IDisposable
 {
     private const string Script = "extends Node2D\n\n\nfunc _ready() -> void:\n\tprint(\"player\")\n";
@@ -22,6 +22,26 @@ public sealed class GodotExplorerCopyTests : IDisposable
         + "[ext_resource type=\"Texture2D\" path=\"res://actors/icon.svg\" id=\"2_t\"]\n\n"
         + "[node name=\"Player\" type=\"Node2D\"]\nscript = ExtResource(\"1_s\")\n\n"
         + "[node name=\"Sprite\" type=\"Sprite2D\" parent=\".\"]\ntexture = ExtResource(\"2_t\")\n";
+
+    /// <summary>An editor plugin that, where its variable says so, saves as a person's editor saves them a resource
+    /// (actors/look.res, an AtlasTexture of icon.svg, plain) and a scene (actors/level.scn, player.gd's Node2D showing
+    /// look.res and icon.svg, compressed), then quits.</summary>
+    private const string Maker = "@tool\nextends EditorPlugin\n\n\nfunc _enter_tree() -> void:\n\tif OS.get_environment(\"COPIES_MAKE\") != \"\":\n\t\t_make.call_deferred()\n\n\n"
+        + "func _make() -> void:\n\tvar files := EditorInterface.get_resource_filesystem()\n\tfor i in 600:\n\t\tawait get_tree().process_frame\n"
+        + "\t\tif not files.is_scanning() and i > 30:\n\t\t\tbreak\n"
+        + "\tvar look := AtlasTexture.new()\n\tlook.atlas = load(\"res://actors/icon.svg\")\n\tlook.region = Rect2(0, 0, 8, 8)\n"
+        + "\tprint(\"saved look \", ResourceSaver.save(look, \"res://actors/look.res\"))\n\tfiles.update_file(\"res://actors/look.res\")\n"
+        + "\tvar level := Node2D.new()\n\tlevel.name = \"Level\"\n\tlevel.set_script(load(\"res://actors/player.gd\"))\n"
+        + "\tfor shown in [[\"Look\", load(\"res://actors/look.res\")], [\"Icon\", load(\"res://actors/icon.svg\")]]:\n"
+        + "\t\tvar sprite := Sprite2D.new()\n\t\tsprite.name = shown[0]\n\t\tsprite.texture = shown[1]\n\t\tlevel.add_child(sprite)\n\t\tsprite.owner = level\n"
+        + "\tvar scene := PackedScene.new()\n\tscene.pack(level)\n"
+        + "\tprint(\"saved level \", ResourceSaver.save(scene, \"res://actors/level.scn\", ResourceSaver.FLAG_COMPRESS))\n\tlevel.free()\n\tget_tree().quit()\n";
+
+    /// <summary>A script that loads the copied scene, saying where the script and textures its nodes take came from.</summary>
+    private const string Loader = "extends SceneTree\n\n\nfunc _init() -> void:\n\tvar level: Node = load(\"res://levels/actors/level.scn\").instantiate()\n"
+        + "\tvar look: AtlasTexture = level.get_node(\"Look\").texture\n"
+        + "\tprint(\"loaded \", level.get_script().resource_path, \" \", look.resource_path, \" \", look.atlas.resource_path, \" \", level.get_node(\"Icon\").texture.resource_path)\n"
+        + "\tlevel.free()\n\tquit()\n";
 
     private readonly string folder = PathNames.Canonical(TestFolders.Create("godot-copy-"));
     private readonly GodotFound? godot = GodotExecutables.Find(null);
@@ -53,7 +73,7 @@ public sealed class GodotExplorerCopyTests : IDisposable
     public void A_folder_and_a_file_copied_in_a_godot_project_take_uids_of_their_own_as_godots_duplicate_gives_them()
     {
         // Godot has opened the project, so the texture has the .import Godot gives it.
-        Assert.True(Godot("--import") is { } first && first.Contains("Godot Engine", StringComparison.Ordinal), "Godot's first import wrote no log of its run");
+        Assert.True(Godot(["--import"]) is { } first && first.Contains("Godot Engine", StringComparison.Ordinal), "Godot's first import wrote no log of its run");
         string icon = Path.Combine(folder, "actors", "icon.svg.import");
         Assert.True(File.Exists(icon), "Godot's import made no .import for the texture");
         Dictionary<string, string> originals = Directory.EnumerateFiles(Path.Combine(folder, "actors")).ToDictionary(f => f, File.ReadAllText);
@@ -83,10 +103,79 @@ public sealed class GodotExplorerCopyTests : IDisposable
         Assert.Equal(Script, File.ReadAllText(Path.Combine(folder, "levels", "player.gd")));
         Assert.True(originals.All(o => File.ReadAllText(o.Key) == o.Value), "The copies changed a file of what they were copied from");
 
-        string said = Godot("--import") ?? string.Empty;
+        string said = Godot(["--import"]) ?? string.Empty;
         Assert.True(said.Contains("Godot Engine", StringComparison.Ordinal), $"Godot's import of the copies wrote no log of its run: {said}");
         Assert.False(said.Contains("UID duplicate", StringComparison.Ordinal), $"Godot found two files of one uid once the copies were made:\n{said}");
         Assert.True(originals.All(o => File.ReadAllText(o.Key) == o.Value), "Godot's import changed a file the copies were made from, so its uid was taken for another's");
+    }
+
+    /// <summary>A folder holding a scene and a resource Godot's editor saved as bytes (the scene compressed, as the editor
+    /// saves one, the resource plain), with the script and texture they name, copied and pasted into another folder of the
+    /// project: Godot's import finds no two files of one uid, the originals are as they were, and the copied scene loads its
+    /// script and textures from the copies. A resource of a binary format Passenger doesn't know, copied, stays as it was,
+    /// the paste saying so.</summary>
+    [AvaloniaFact]
+    public void A_folders_binary_scene_and_resource_copied_in_a_godot_project_take_uids_of_their_own_and_load_the_copies()
+    {
+        TestFolders.Write(folder, "project.godot", "; Engine configuration file.\nconfig_version=5\n\n[application]\n\nconfig/name=\"Copies\"\n\n"
+            + "[editor_plugins]\n\nenabled=PackedStringArray(\"res://addons/maker/plugin.cfg\")\n");
+        TestFolders.Write(folder, "addons/maker/plugin.cfg", "[plugin]\n\nname=\"maker\"\ndescription=\"\"\nauthor=\"\"\nversion=\"1\"\nscript=\"plugin.gd\"\n");
+        TestFolders.Write(folder, "addons/maker/plugin.gd", Maker);
+        Assert.True(Godot(["--import"]) is { } first && first.Contains("Godot Engine", StringComparison.Ordinal), "Godot's first import wrote no log of its run");
+        string made = Godot(["--editor", "--quit-after", "6000"], new Dictionary<string, string> { ["COPIES_MAKE"] = "1" }) ?? string.Empty;
+        Assert.True(made.Contains("saved look 0", StringComparison.Ordinal) && made.Contains("saved level 0", StringComparison.Ordinal),
+            $"Godot's editor saved no binary resource and scene to copy:\n{made}");
+        string level = Path.Combine(folder, "actors", "level.scn");
+        Assert.True(File.ReadAllBytes(level).AsSpan().StartsWith("RSCC"u8) && File.ReadAllBytes(Path.Combine(folder, "actors", "look.res")).AsSpan().StartsWith("RSRC"u8),
+            "Godot's editor saved the scene uncompressed or the resource compressed, so the copy reads neither form it was to");
+        Dictionary<string, byte[]> originals = Directory.EnumerateFiles(Path.Combine(folder, "actors")).ToDictionary(f => f, File.ReadAllBytes);
+
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        try
+        {
+            Paste(window, Path.Combine(folder, "actors"), "Copied actors to levels");
+        }
+        finally
+        {
+            window.Close();
+        }
+
+        string copies = Path.Combine(folder, "levels", "actors");
+        Assert.True(File.ReadAllBytes(Path.Combine(copies, "level.scn")).AsSpan().StartsWith("RSCC"u8), "The scene's copy was not left compressed as its original was");
+        Assert.True(originals.All(o => File.ReadAllBytes(o.Key).AsSpan().SequenceEqual(o.Value)), "The copy changed a file of what it was copied from");
+        string said = Godot(["--import"]) ?? string.Empty;
+        Assert.True(said.Contains("Godot Engine", StringComparison.Ordinal), $"Godot's import of the copies wrote no log of its run: {said}");
+        Assert.False(said.Contains("UID duplicate", StringComparison.Ordinal), $"Godot found two files of one uid once the copies were made:\n{said}");
+        Assert.True(originals.All(o => File.ReadAllBytes(o.Key).AsSpan().SequenceEqual(o.Value)), "Godot's import changed a file the copy was made from, so its uid was taken for another's");
+
+        string loader = TestFolders.Write(folder + "-home", "load.gd", Loader);
+        string loaded = Godot(["--script", loader]) ?? string.Empty;
+        Assert.True(loaded.Contains("loaded res://levels/actors/player.gd res://levels/actors/look.res res://levels/actors/icon.svg res://levels/actors/icon.svg", StringComparison.Ordinal),
+            $"Godot's load of the copied scene took its script or textures from elsewhere than the copies:\n{loaded}");
+        Assert.False(loaded.Contains("ERROR", StringComparison.Ordinal) || loaded.Contains("invalid UID", StringComparison.Ordinal),
+            $"Godot's load of the copied scene met a name it could not follow:\n{loaded}");
+
+        // The resource as a Godot whose binary format is 7 would write it: its format, after the magic and four numbers.
+        byte[] newer = File.ReadAllBytes(Path.Combine(folder, "actors", "look.res"));
+        newer[20] = 7;
+        string unknown = Path.Combine(folder, "actors", "newer.res");
+        File.WriteAllBytes(unknown, newer);
+        window = Ui.OpenFolder(folder, languageServer: false);
+        try
+        {
+            GodotSceneTests.Choose(window, unknown);
+            Ui.Run(window, EditorActions.Copy);
+            GodotSceneTests.Choose(window, Path.Combine(folder, "levels"));
+            Ui.Run(window, EditorActions.Paste);
+            Ui.WaitFor(() => window.Status is { } said && said.StartsWith("Copied newer.res to levels; newer.res keeps its original's uid: Godot 4.", StringComparison.Ordinal)
+                && said.EndsWith("wrote it in the binary format 7, which Passenger doesn't rewrite", StringComparison.Ordinal),
+                () => $"the paste of newer.res to say it keeps its original's uid: {window.Status}");
+        }
+        finally
+        {
+            window.Close();
+        }
+        Assert.Equal(newer, File.ReadAllBytes(Path.Combine(folder, "levels", "newer.res")));
     }
 
     /// <summary>A file or folder chosen in the Explorer, copied and pasted into the folder levels, its status waited for.</summary>
@@ -105,18 +194,18 @@ public sealed class GodotExplorerCopyTests : IDisposable
         return GodotUids.OfBeside(path, File.ReadAllText(path)) ?? throw new Xunit.Sdk.XunitException($"{Path.GetFileName(path)} gives no uid: {File.ReadAllText(path)}");
     }
 
-    /// <summary>Godot's headless editor run on the project with the arguments given, in user folders of the test's own, until
-    /// it ends: what it wrote to its log.</summary>
-    private string? Godot(string arguments)
+    /// <summary>Headless Godot run on the project with the arguments given, in user folders of the test's own and with the
+    /// variables given, until it ends: what it wrote to its log.</summary>
+    private string? Godot(IReadOnlyList<string> arguments, IReadOnlyDictionary<string, string>? variables = null)
     {
         string log = Path.Combine(folder + "-home", $"godot-{Guid.NewGuid():N}.log");
-        ProcessStartInfo start = ChildProcesses.Command(godot!.Executable, [GodotExecutables.Headless, "--path", folder, arguments, "--log-file", log], folder);
-        foreach ((string name, string value) in GodotTests.Game.Home(folder + "-home"))
+        ProcessStartInfo start = ChildProcesses.Command(godot!.Executable, [GodotExecutables.Headless, "--path", folder, .. arguments, "--log-file", log], folder);
+        foreach ((string name, string value) in GodotTests.Game.Home(folder + "-home").Concat(variables ?? new Dictionary<string, string>()))
         {
             start.Environment[name] = value;
         }
         Process process = ChildProcesses.Start(start);
-        Ui.PumpUntil(() => !DotnetProcesses.Runs(process.Id), $"Godot to end {arguments}", TimeSpan.FromMinutes(2));
+        Ui.PumpUntil(() => !DotnetProcesses.Runs(process.Id), $"Godot to end {string.Join(' ', arguments)}", TimeSpan.FromMinutes(2));
         return File.Exists(log) ? File.ReadAllText(log) : null;
     }
 }
