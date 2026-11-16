@@ -1415,6 +1415,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         [Description("Under dotnet watch (Settings' choice by default), where hot_reload or a save applies edits")] bool? hotReload = null,
         string? resource = null,
         [Description("Collect its logs and traces from now on (false stops), as Edit Configurations' box does; telemetry reads them")] bool? telemetry = null,
+        [Description("Run it in a Terminal tab from now on (false: the Run window), as Edit Configurations' Use external console")] bool? terminal = null,
         CancellationToken cancel = default) => OnUi(cancel, async () =>
     {
         if (resource is not null)
@@ -1426,6 +1427,10 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             if (telemetry is not null)
             {
                 throw new ArgumentException("An AppHost's resource sends its logs and traces to the AppHost's own dashboard; omit telemetry");
+            }
+            if (terminal is not null)
+            {
+                throw new ArgumentException("An AppHost's resource writes to the AppHost's console; omit terminal");
             }
             if (await ComposeTargetAsync(resource, configuration, starts: true, cancel) is { } service)
             {
@@ -1445,8 +1450,16 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         string name = Session.Configurations.Chosen?.Name ?? string.Empty;
         if (Session.Configurations.Chosen is { IsMultiple: true })
         {
-            return arguments is null && telemetry is null ? await RunProjectsAsync(name, hotReload, waitSeconds, choice, cancel)
-                : throw new ArgumentException($"{name} starts each of its projects as its own configuration does: omit arguments and telemetry, or run that configuration");
+            return arguments is null && telemetry is null && terminal is null ? await RunProjectsAsync(name, hotReload, waitSeconds, choice, cancel)
+                : throw new ArgumentException($"{name} starts each of its projects as its own configuration does: omit arguments, telemetry and terminal, or run that configuration");
+        }
+        if (terminal is { } inTerminal)
+        {
+            if (Session.Configurations.Chosen is { } elsewhere && (elsewhere.IsContainer || elsewhere.IsScript || Session.Aspire.IsAspire(elsewhere)))
+            {
+                throw new ArgumentException($"{name} runs {(elsewhere.IsContainer ? "containers" : elsewhere.IsScript ? "a package.json script" : "an AppHost")}, whose console is its own; omit terminal");
+            }
+            Session.Configurations.UseConsole(name, inTerminal ? ConsoleKind.Terminal : ConsoleKind.Internal);
         }
         if (telemetry is { } collect)
         {
@@ -1515,6 +1528,11 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         if (Session.Configurations.Chosen is { } chosen && Session.Aspire.IsAspire(chosen) && Session.Aspire.FindApp(chosen.Project) is { } aspire)
         {
             status += string.Concat(aspire.Notes.Select(n => $"\nNote: {n}"));
+        }
+        // A program that said it needs a terminal, as the Run window offers one.
+        if (builds.RunNeed is { } need)
+        {
+            status += $". {need.Said}: {McpTools.Run} with terminal true runs it in a Terminal tab";
         }
         return new RunResult(code is null, code, status, output);
     });

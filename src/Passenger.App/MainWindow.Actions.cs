@@ -336,6 +336,10 @@ public partial class MainWindow
             _ => session.Configurations.Chosen is { } chosen ? buildRun.WhyNotRunAnotherCopy(chosen) : Unconfigured("run"), ("Run", 0, 2), works: A.RunProgram);
         Add(A.DebugAnotherCopy, "Debug Another Copy", "Run", _ => IdeErrors.Observe(DebugAnotherCopyAsync()),
             _ => session.Configurations.Chosen is { } chosen ? buildRun.WhyNotAnotherCopy(chosen) : Unconfigured("debug"), ("Run", 0, 2), works: A.Debug);
+        Add(A.RunInTerminal, "Run in the Terminal", "Run", c => StartInTerminal(c, debug: false), _ => buildRun.RunNeed is null ? Refusals.NoTerminalNeed("Run") : null,
+            words: ["Use external console", "Console.ReadKey"], works: A.RunProgram);
+        Add(A.DebugInTerminal, "Debug in the Terminal", "Run", c => StartInTerminal(c, debug: true), _ => buildRun.DebugNeed is null ? Refusals.NoTerminalNeed("Debug") : null,
+            words: ["Use external console", "Console.ReadKey"], works: A.Debug);
         // No key in Rider's Visual Studio keymaps.
         Add(A.EditConfigurations, "Edit Configurations…", "Run", _ => ShowRunConfigurations(), NeedsFolder, ("Run", 0, 5));
         // Edit Configurations' button, on the configuration chosen there; elsewhere, on the toolbar's.

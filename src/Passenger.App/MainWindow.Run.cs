@@ -499,6 +499,35 @@ public partial class MainWindow
     /// <summary>Run, from its key, the toolbar or the Run window: what stopped it, if anything, is in the status bar.</summary>
     private void RunSelected() => IdeErrors.Observe(RunAsync());
 
+    /// <summary>A program run with the Run window's console, or a Debug tab's, said it needs a terminal: that console offers,
+    /// over what it wrote, to start it again in one.</summary>
+    private void OfferTerminal(TerminalNeed need, ToolWindows.OutputView console)
+    {
+        UiThread.Check();
+        string start = need.Debugged ? AppActions.DebugInTerminal : AppActions.RunInTerminal;
+        console.ShowOffer(need.Said, actions![start]!.Title, () => Request(start));
+    }
+
+    /// <summary>Run or Debug in the Terminal: the configuration whose program said it needs a terminal set to run in one,
+    /// kept with the folder as Edit Configurations keeps its Use external console, chosen, and started again through Run's
+    /// or Debug's action, which stops the run it ends first.</summary>
+    private void StartInTerminal(ActionContext context, bool debug)
+    {
+        if ((debug ? buildRun.DebugNeed : buildRun.RunNeed) is not { } need)
+        {
+            return;
+        }
+        if (!session.Configurations.UseConsole(need.Configuration, ConsoleKind.Terminal) || !SelectConfiguration(need.Configuration))
+        {
+            status.Text = $"{need.Configuration} is no longer one of the folder's run configurations";
+            return;
+        }
+        if (actions!.Run(debug ? AppActions.Debug : AppActions.RunProgram, context) is { } why)
+        {
+            status.Text = why;
+        }
+    }
+
     /// <summary>Rerun, of the configuration chosen (<see cref="BuildRunController.RerunAsync"/>): what stopped it, if anything,
     /// is in the status bar.</summary>
     private Task RerunAsync() => buildRun.RerunAsync();

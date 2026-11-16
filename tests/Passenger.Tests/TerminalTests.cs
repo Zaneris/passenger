@@ -1270,6 +1270,76 @@ public sealed class TerminalTests
         window.Close();
     }
 
+    /// <summary>A program needing a terminal that is run in the Run window has the Run window say so, read from the exception
+    /// .NET writes there (Console.ReadKey refusing the window's pipe, on Windows Console.Clear before it), with Run in the
+    /// Terminal, which has its configuration use the terminal, kept with the folder, and runs it again in a tab of the
+    /// Terminal window, where it reads a key typed there.</summary>
+    [AvaloniaFact]
+    public void A_program_needing_a_terminal_in_the_Run_window_is_offered_one_and_reads_a_key_there()
+    {
+        string folder = TestFolders.Create("terminal-need-");
+        string settings = TestFolders.Create("settings-");
+        try
+        {
+            string project = PathNames.Canonical(Debugging.Helpers.Debuggees.CopyTo("TerminalConsoleApp", folder));
+            Restore.Run(folder);
+            MainWindow window = Keeping(folder, settings);
+            try
+            {
+                window.SetConfigurations([new RunConfiguration { Name = "Keys", Project = project }], "Keys");
+                Ui.Launched(window, window.RunAsync(), "the run to start", TimeSpan.FromMinutes(3));
+                Assert.Null(window.RunInTerminal);
+                OutputView console = window.BottomPanel.Run;
+                Ui.WaitFor(() => window.RunEnd.IsCompleted, () => $"the program to end in the Run window; it shows:\n{console.Document.Snapshot}");
+                string call = OperatingSystem.IsWindows() ? "Console.Clear" : "Console.ReadKey";
+                Assert.True(console.Offered == $"Keys needs a terminal for {call}: the Run window gives it pipes",
+                    $"The Run window does not offer a terminal, saying {console.Offered ?? "nothing"}, where it shows:\n{console.Document.Snapshot}");
+
+                Ui.ClickButton(console, "Run in the Terminal");
+                Ui.WaitFor(() => window.RunInTerminal is { IsRunning: true }, () => $"the program to run in the terminal: {Ui.Said(window)}", TimeSpan.FromMinutes(2));
+                TerminalSession program = window.RunInTerminal!.Session;
+                Assert.Equal("Keys", window.TerminalPanel.ActiveTab?.Name);
+                WaitForScreen(window, program, s => s.Lines.Any(l => l.Text() == "key?"), "the program to ask for a key in the terminal");
+                Ui.WaitFor(() => window.TerminalPanel.View.IsFocused, "the keys to go to the program");
+                window.KeyTextInput("q");
+                WaitForLine(program, line => line is "key? key q" or "key? qkey q", "the key as the program read it");
+                Assert.Equal(ConsoleKind.Terminal, window.Configuration?.Console);
+                Ui.Run(window, AppActions.Stop);
+                Ui.WaitFor(() => window.RunInTerminal is { IsRunning: false }, "the program to end once stopped");
+            }
+            finally
+            {
+                window.Close();
+            }
+            MainWindow again = Keeping(folder, settings);
+            try
+            {
+                Assert.True(again.Configuration is { Name: "Keys", Console: ConsoleKind.Terminal }, "Run in the Terminal was not kept with the configuration once the folder opened again");
+            }
+            finally
+            {
+                again.Close();
+            }
+        }
+        finally
+        {
+            TestFolders.Delete(folder);
+            TestFolders.Delete(settings);
+        }
+    }
+
+    /// <summary>A window keeping its state in <paramref name="settings"/> open on a folder, without the C# language server,
+    /// which a run asks nothing of.</summary>
+    private static MainWindow Keeping(string folder, string settings)
+    {
+        MainWindow window = new() { Width = 1200, Height = 800, StateFolder = settings, StartsLanguageServer = false };
+        window.Show();
+        window.KeepLayout();
+        window.OpenFolder(folder);
+        Ui.Settle();
+        return window;
+    }
+
     /// <summary>Stop ends a program running in the terminal and the program it started, and its tab says it was ended.</summary>
     [AvaloniaFact]
     public void Stop_ends_a_program_running_in_the_terminal_and_what_it_started()

@@ -237,17 +237,27 @@ public sealed class RunConfigurations(string? folder, Func<WorkspaceModel?>? wor
     /// <summary>Turns a configuration's Collect logs and traces on or off, kept as Edit Configurations keeps its box (a
     /// generated one's as its change, the folder's own in place), the choice of configuration left as it was; false where
     /// none has the name.</summary>
-    public bool Collect(string name, bool on)
+    public bool Collect(string name, bool on) => Alter(name, found => found.Telemetry == on ? null : found with { Telemetry = on });
+
+    /// <summary>Has a configuration's program run in a tab of the Terminal window or the Run and Debug windows' consoles, kept
+    /// as Edit Configurations keeps its Use external console, the choice of configuration left as it was; false where none
+    /// has the name.</summary>
+    public bool UseConsole(string name, ConsoleKind console) => Alter(name, found => found.Console == console ? null : found with { Console = console });
+
+    /// <summary>A configuration changed as Edit Configurations keeps a change (a generated one's as its change, the folder's
+    /// own in place), the choice of configuration left as it was: <paramref name="change"/> gives it changed, or null where
+    /// it stands so already; false where none has the name.</summary>
+    private bool Alter(string name, Func<RunConfiguration, RunConfiguration?> change)
     {
         UiThread.Check();
         if (All.FirstOrDefault(c => string.Equals(c.Name, name, StringComparison.OrdinalIgnoreCase)) is not { } found)
         {
             return false;
         }
-        if (found.Telemetry != on)
+        if (change(found) is { } made)
         {
             // A generated one changed for the first time has no source yet: what it is now is what its project makes.
-            RunConfiguration changed = found with { Telemetry = on, Source = found.Generated ? found.Source ?? found : null };
+            RunConfiguration changed = made with { Source = found.Generated ? found.Source ?? found : null };
             Set(found.Generated ? own : [.. own.Select(c => string.Equals(c.Name, name, StringComparison.OrdinalIgnoreCase) ? changed : c)],
                 found.Generated ? [changed] : [], null, projects);
         }

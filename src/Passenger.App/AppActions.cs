@@ -291,6 +291,11 @@ public static class AppActions
     public const string RunAnotherCopy = "app.run.anotherCopy";
     public const string DebugAnotherCopy = "app.debug.anotherCopy";
 
+    // Run or Debug again in a tab of the Terminal window, of a program whose output in the Run or Debug window said it needs
+    // a terminal: no keys of Rider's.
+    public const string RunInTerminal = "app.run.inTerminal";
+    public const string DebugInTerminal = "app.debug.inTerminal";
+
     // Run, Debug and Profile of the program at hand (a gutter icon's, an Explorer row's, the open file's): no keys, Rider's
     // RunClass key being Attach to Process's in its Visual Studio keymap.
     public const string RunHere = "app.run.here";

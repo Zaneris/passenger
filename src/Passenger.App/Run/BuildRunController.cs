@@ -58,6 +58,10 @@ public sealed record BuildRunParts(
     /// over the Run window to keep them whole in its Debug build.</summary>
     public Action<string, string>? Trimmed { get; init; }
 
+    /// <summary>A program run with the Run window's console, or a Debug tab's, said it needs a terminal: the window offers over
+    /// that console to start it in one.</summary>
+    public Action<TerminalNeed, OutputView>? NeedsTerminal { get; init; }
+
     /// <summary>Lands the files a folder holds in another, as the window writes files (one command of Undo named by the
     /// title, for those in the open folder): the files written, or why not.</summary>
     public Func<string, string, string, Task<(IReadOnlyList<string> Written, string? Problem)>>? LandFiles { get; init; }
@@ -1204,6 +1208,8 @@ public sealed partial class BuildRunController
         {
             return Said(ActionWork.Busy(parts.Work.Of(AppActions.RunProgram)!));
         }
+        // What the Run window's last program said it needs is its own: this start is heard afresh where it uses the console.
+        HearNeeds(null, chosen.Name, debugged: false);
         if (chosen.IsScript)
         {
             using (work)
@@ -1403,6 +1409,7 @@ public sealed partial class BuildRunController
             ShowInRun(dashboard);
             parts.Say(running);
             WatchBindings(inspected, parts.Views.Run);
+            HearNeeds(parts.Views.Run, chosen.Name, debugged: false);
             if (watched)
             {
                 FollowWatched(chosen.Name);
@@ -2409,6 +2416,7 @@ public sealed partial class BuildRunController
         }
         debugged[chosen.Name] = (chosen, arguments);
         profileTabs.Remove(chosen.Name);
+        HearNeeds(null, chosen.Name, debugged: true);
         using IDisposable held = BackgroundWork.Scope();
         if (await EndOwnRunAsync(chosen, work, "debug") is { } left)
         {
@@ -2602,6 +2610,8 @@ public sealed partial class BuildRunController
         // An Avalonia or WPF app is launched with the Live Visual Tree's inspector, held by its tab, ending with this debugging.
         (LaunchPlan launched, LiveApp? inspected) = session.Inspected(listened);
         Task<string?> starting = debug.StartAsync(launched, app: inspected, edits: edits, copies: copies);
+        // Its tab, chosen as the start began, has its console where the program writes there.
+        HearNeeds(copies is null && launched.Console == ConsoleKind.Internal ? debug.Chosen?.Console : null, chosen.Name, debugged: true);
         if (game is not null && debug.Chosen?.Console is { } gameConsole)
         {
             gameConsole.Fold = new Godot.GodotConsoleFold();

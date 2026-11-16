@@ -485,9 +485,11 @@
     <Compile Include="../../src/Passenger.App/Godot/GodotDocs.cs" Link="App/GodotDocs.cs" />
   </ItemGroup>
 
-  <!-- What a program's output says of its serving, from its lines alone, compiled in since its project is the app's. -->
+  <!-- What a program's output says of its serving and of its needing a terminal, from its lines alone, compiled in since
+       their project is the app's. -->
   <ItemGroup>
     <Compile Include="../../src/Passenger.App/Run/ListeningLines.cs" Link="App/ListeningLines.cs" />
+    <Compile Include="../../src/Passenger.App/Run/TerminalNeeds.cs" Link="App/TerminalNeeds.cs" />
   </ItemGroup>
 
   <!-- How a build's lines name its problems, from their text alone, compiled in since its project is the app's. -->

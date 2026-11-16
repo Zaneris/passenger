@@ -254,6 +254,14 @@ public static class Refusals
     /// words (MSB1003); short enough to read whole in the smallest window's status bar.</summary>
     public const string NothingToBuild = "The open folder has no solution or project to build";
 
+    /// <summary>A program whose output said it needs a terminal for a call (<see cref="Run.TerminalNeeds"/>) where the Run
+    /// or Debug window's console gave it pipes.</summary>
+    public static string NeedsTerminal(string program, string call, string window) =>
+        $"{program} needs a terminal for {call}: the {window} window gives it pipes";
+
+    /// <summary>Run or Debug in the Terminal asked for while no program the window's console holds said it needs one.</summary>
+    public static string NoTerminalNeed(string window) => $"No program in the {window} window said it needs a terminal";
+
     /// <summary>Debug or Profile asked of a configuration running a Node package's script, which Run alone starts.</summary>
     public static string ScriptOnlyRuns(string name) =>
         $"{name} runs a package.json script with its package manager, which Run starts: Passenger debugs and profiles .NET programs";

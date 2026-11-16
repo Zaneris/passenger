@@ -702,6 +702,30 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
             $"The program wrote caf\u00e9 1\u202f234,5 \u6f22 but its run answered something else: {ran.GetProperty("output").GetString()}");
     }
 
+    /// <summary>An agent's run of a program reading a key, which refuses the Run window's pipe, answers that it needs a
+    /// terminal and how to give it one; run with terminal true then runs it in a Terminal tab, where it reads the key the
+    /// agent types there, and the configuration keeps running there.</summary>
+    [Fact]
+    public async Task An_agents_run_of_a_program_needing_a_terminal_says_so_and_terminal_true_runs_it_in_one()
+    {
+        await TakeFolderAsync();
+        Write("Program.cs", "Console.WriteLine(\"key?\");\nConsoleKeyInfo key = Console.ReadKey(intercept: true);\nConsole.WriteLine($\"key {key.KeyChar}\");\n");
+        await using McpClient client = await Start(["--mcp", Folder], languageServer: false);
+        JsonElement ran = await Call(client, McpTools.Run, new() { ["waitSeconds"] = 60 });
+        string status = ran.GetProperty("status").GetString()!;
+        Assert.True(status.EndsWith($". Sum needs a terminal for Console.ReadKey: the Run window gives it pipes: {McpTools.Run} with terminal true runs it in a Terminal tab", StringComparison.Ordinal),
+            $"The run of a program refusing the Run window's pipe did not say it needs a terminal: {ran}");
+
+        JsonElement inTerminal = await Call(client, McpTools.Run, new() { ["terminal"] = true, ["waitSeconds"] = 5 });
+        Assert.True(inTerminal.GetProperty("stillRunning").GetBoolean(), $"The program did not wait for a key in the terminal: {inTerminal}");
+        string typed = Text(await Result(client, McpTools.TerminalRun, new() { ["command"] = "q", ["waitSeconds"] = 30 }));
+        JsonElement output = await Call(client, McpTools.Output, new() { ["of"] = "run" });
+        Assert.True(output.GetString()?.Contains("key q", StringComparison.Ordinal) == true, $"The program in the terminal did not read the key typed there ({typed}): {output}");
+        JsonElement again = await Call(client, McpTools.Run, new() { ["waitSeconds"] = 5 });
+        Assert.True(again.GetProperty("stillRunning").GetBoolean() && again.GetProperty("status").GetString()?.Contains("needs a terminal", StringComparison.Ordinal) == false,
+            $"The configuration did not keep running in the terminal: {again}");
+    }
+
     /// <summary>A run refused for a reason of its own (here a launch profile's command named RetryFailed, which Passenger does
     /// not run) is answered with that reason alone, though the last build's errors are still in Problems; a run refused for
     /// the build it ran failing still names them.</summary>
