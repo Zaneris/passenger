@@ -242,6 +242,11 @@ public sealed record RunConfiguration
     [JsonIgnore]
     public string? Origin { get; init; }
 
+    /// <summary>For a generated one, the package its program draws for a terminal with (<see cref="DrawingPackage"/>), which
+    /// runs it in the terminal unless the person says otherwise; null for one that draws none.</summary>
+    [JsonIgnore]
+    public string? DrawsWith { get; init; }
+
     /// <summary>Why it cannot launch here (a launch profile of a kind Passenger does not run), or null.</summary>
     [JsonIgnore]
     public string? Unsupported { get; init; }
@@ -328,6 +333,8 @@ public sealed record RunConfiguration
             string name = NameOf(project);
             // A profile tied to a platform its apps run on makes none: the project's own takes it where that platform is the target.
             IReadOnlyList<LaunchProfile> profiles = project.IsScriptGame ? [] : Devices.DeviceTargets.OwnProfiles(project.TargetFrameworks, Run.LaunchProfile.Read(project));
+            string? drawing = DrawingPackage(project, all);
+            ConsoleKind console = drawing is null ? ConsoleKind.Internal : ConsoleKind.Terminal;
             if (!profiles.Any(p => p.Unsupported is null && !p.RunsInContainer))
             {
                 generated.Add(new RunConfiguration
@@ -338,9 +345,15 @@ public sealed record RunConfiguration
                     Generated = true,
                     // A program runs beside its C# file, as dotnet run there runs it: what it builds lies out of sight.
                     WorkingDirectory = project.IsProgram ? DotnetRunFolder : string.Empty,
+                    Console = console,
+                    DrawsWith = drawing,
                 });
             }
-            generated.AddRange(profiles.Select(p => From(project, p) with { Name = NameOf(project, p.Name), Generated = true }));
+            foreach (LaunchProfile profile in profiles)
+            {
+                RunConfiguration made = From(project, profile) with { Name = NameOf(project, profile.Name), Generated = true };
+                generated.Add(made.Kind == RunKind.Project ? made with { Console = console, DrawsWith = drawing } : made);
+            }
             if (godot)
             {
                 generated.Add(new RunConfiguration { Name = NameOf(project, GodotEditorName), Project = project.Path, GodotEditor = true, Generated = true });
@@ -386,6 +399,15 @@ public sealed record RunConfiguration
         }
         return generated;
     }
+
+    /// <summary>The package a project's program draws for a terminal with, its own or a referenced project's
+    /// (<see cref="ProjectModel.DrawsWith"/>): its generated configurations run in the Terminal window, the one place what
+    /// it draws shows; null for a program that draws none, and for one Passenger starts its own way (Godot's game, an
+    /// AppHost, a Functions app, an Android or browser app).</summary>
+    public static string? DrawingPackage(ProjectModel project, IReadOnlyList<ProjectModel> projects) =>
+        project.GodotFolder is not null || project.IsAspireHost || project.IsFunctionsApp || project.IsAndroidApp || project.RunsInBrowser
+            ? null
+            : project.WithReferenced(projects).Select(p => p.DrawsWith).FirstOrDefault(p => p is not null);
 
     /// <summary>The configuration running a Node package's script, named "package: script".</summary>
     public static RunConfiguration OfScript(NodePackage package, string script) => new()

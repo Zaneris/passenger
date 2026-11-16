@@ -187,7 +187,8 @@ public sealed class RunConfigurationsDialog : IdeWindow
         ArgumentsBox.TextChanged += (_, _) => Edit(c => c with { Arguments = ArgumentsBox.Text ?? string.Empty });
         WorkingDirectoryBox.TextChanged += (_, _) => Edit(c => c with { WorkingDirectory = WorkingDirectoryBox.Text?.Trim() ?? string.Empty });
         BuildBox.IsCheckedChanged += (_, _) => Edit(c => c with { BuildBeforeLaunch = BuildBox.IsChecked == true });
-        ConsoleBox.IsCheckedChanged += (_, _) => Edit(c => c with { Console = ConsoleBox.IsChecked == true ? ConsoleKind.Terminal : ConsoleKind.Internal });
+        // Shown again, as the note says why a drawing program runs in the terminal while it does.
+        ConsoleBox.IsCheckedChanged += (_, _) => Edit(c => c with { Console = ConsoleBox.IsChecked == true ? ConsoleKind.Terminal : ConsoleKind.Internal }, reshow: true);
         BrowserBox.IsCheckedChanged += (_, _) => Edit(c => c with { LaunchBrowser = BrowserBox.IsChecked == true });
         BrowserUrlBox.TextChanged += (_, _) => Edit(c => c with { BrowserUrl = BrowserUrlBox.Text?.Trim() ?? string.Empty });
         AddVariableButton.Click += (_, _) => AddVariable(string.Empty, string.Empty, focus: true);
@@ -1321,8 +1322,8 @@ public sealed class RunConfigurationsDialog : IdeWindow
         ShowAspireServices();
     }
 
-    /// <summary>What the fields cannot say: where a generated one comes from and how a change to it is kept, and why one
-    /// cannot run here.</summary>
+    /// <summary>What the fields cannot say: where a generated one comes from and how a change to it is kept, why it runs in
+    /// the terminal where that is its project's own default, and why one cannot run here.</summary>
     private static string NoteOn(RunConfiguration shown, ProjectModel? project, string? whyNot)
     {
         string name = project?.Name ?? Path.GetFileNameWithoutExtension(shown.Project);
@@ -1339,6 +1340,10 @@ public sealed class RunConfigurationsDialog : IdeWindow
         if (shown.GodotEditor && project?.GodotFolder is not null)
         {
             origin = $"{origin} Hot Reload: {GodotLaunch.EditorReloads}.".Trim();
+        }
+        if (shown is { Generated: true, Console: ConsoleKind.Terminal, DrawsWith: { } package })
+        {
+            origin = $"{origin} It runs in the terminal: {name} draws with {package}, whose colours, live output and prompts need one.".Trim();
         }
         return whyNot is { } why ? $"{origin} It cannot run here: {why}.".Trim() : origin;
     }

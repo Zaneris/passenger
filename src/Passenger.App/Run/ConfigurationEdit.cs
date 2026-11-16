@@ -100,6 +100,7 @@ public static class ConfigurationEdit
         {
             Generated = source.Generated,
             Origin = source.Origin,
+            DrawsWith = source.DrawsWith,
             Unsupported = source.Unsupported,
             Source = source,
         };

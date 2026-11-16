@@ -356,6 +356,20 @@ public sealed record ProjectModel(
         "Microsoft.AspNetCore.Components.WebAssembly.DevServer", "Microsoft.AspNetCore.Components.Gateway",
     };
 
+    /// <summary>The package it references that draws a program's output for a terminal (colours, tables, live progress,
+    /// prompts, a full-screen UI), by its id; null where it references none. Such a package reads whether its output and
+    /// input are a terminal's, so through a pipe it writes plain text or refuses to prompt.</summary>
+    public string? DrawsWith => Packages.Select(p => p.Name).FirstOrDefault(DrawsOnTerminal);
+
+    /// <summary>Whether a package is one of those that draw for a terminal (<see cref="TerminalPackages"/>), or of their
+    /// family (Spectre.Console.Cli).</summary>
+    public static bool DrawsOnTerminal(string package) => TerminalPackages.Any(family => package.Equals(family, StringComparison.OrdinalIgnoreCase)
+        || (package.Length > family.Length && package[family.Length] == '.' && package.StartsWith(family, StringComparison.OrdinalIgnoreCase)));
+
+    /// <summary>The packages, each with its family, that draw a program's output for the terminal it runs in.</summary>
+    private static readonly string[] TerminalPackages =
+        ["Spectre.Console", "Terminal.Gui", "XenoAtom.Terminal", "Sharprompt", "PrettyPrompt", "Consolonia", "ShellProgressBar", "Kurukuru", "RazorConsole"];
+
     /// <summary>Itself, then the projects it references among <paramref name="projects"/>, and those they reference, each once.</summary>
     public IReadOnlyList<ProjectModel> WithReferenced(IReadOnlyList<ProjectModel> projects)
     {
