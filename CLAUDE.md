@@ -180,7 +180,7 @@ tests run with a 4 MB `System.GC.Gen0MaxBudget`, so a young collection fits a 14
   its row and range in `Declared` (refused values `Refused`, which Settings and `settings_set` ask), `Add`ed in
   `SettingsDialog`, a line in `MainWindow.Follow` or `SettingsStore.InForce`, a look's in `SettingsPreview.Over` and
   `MainWindow.OnPreviewChanged` (`VisualsInForce`) instead, so Settings shows it before Apply; a row another setting
-  voids says so (`SettingRow.When`). A setting a theme may default is a `ThemedChoiceSetting`, its `AppSettings` value
+  voids says so (`SettingRow.When`); a row a file's .editorconfig says over declares its keys (`SettingRow.Over`), from which its note's words, the live line under it (`FolderEditorConfigs`) and `settings`' `editorConfig` come, never words of its own. A setting a theme may default is a `ThemedChoiceSetting`, its `AppSettings` value
   nullable and read through an in-force method (as `CodeSize()`).
 - **Every action is an `IdeAction`** in the window's `ActionRegistry` (ids and keymaps in `AppActions.cs`): keys, menus,
   Find Action, context menus and MCP's `ide_action` all run it; `WhyNot` greys it with why; titles come from the
