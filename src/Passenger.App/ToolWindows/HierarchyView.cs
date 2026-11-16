@@ -98,7 +98,6 @@ public sealed class HierarchyView : DockPanel
             ItemsSource = rows,
         };
         ReusedRows.Use(list, Row);
-        list.DoubleTapped += (_, _) => Go();
         TreeKeys.Attach<HierarchyRow>(list, Toggle, row =>
         {
             GoToRequested?.Invoke(this, row.Node);
@@ -268,14 +267,6 @@ public sealed class HierarchyView : DockPanel
 
     /// <summary>A row opened or closed is the one chosen.</summary>
     private void Choose(HierarchyRow row) => list.SelectedItem = row;
-
-    private void Go()
-    {
-        if (list.SelectedItem is HierarchyRow row)
-        {
-            GoToRequested?.Invoke(this, row.Node);
-        }
-    }
 
     /// <summary>A row for whichever symbol the list hands its container: its chevron, name, and what and where it is.</summary>
     private Control Row()

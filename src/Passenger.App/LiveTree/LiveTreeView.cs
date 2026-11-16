@@ -185,25 +185,21 @@ public sealed class LiveTreeView : DockPanel
             ItemsSource = PropertyRows,
         };
         ReusedRows.Use(properties, PropertyRow);
-        properties.DoubleTapped += (_, _) =>
+        ListKeys.Act(properties, new ListActs
         {
-            if (properties.SelectedItem is PropertyValue { Place: { } place })
+            Open = () =>
             {
-                GoToRequested?.Invoke(this, place);
-            }
-            else if (properties.SelectedItem is PropertyValue value)
-            {
-                Edit(value);
-            }
-        };
-        properties.KeyDown += (_, e) =>
-        {
-            if (e.Key is Key.Enter or Key.F2 && editing is null && properties.SelectedItem is PropertyValue { Place: null } value && WhyNotEdit?.Invoke(value) is null)
-            {
-                e.Handled = true;
-                Edit(value);
-            }
-        };
+                if (properties.SelectedItem is PropertyValue { Place: { } place })
+                {
+                    GoToRequested?.Invoke(this, place);
+                }
+                else
+                {
+                    EditChosen();
+                }
+            },
+            Edit = EditChosen,
+        });
         ToolWindows.ListMenus.Attach(properties, PropertyMenu);
         styles = new StackPanel { Margin = new Thickness(10, 4, 10, 10), Spacing = 10 };
         layout = new StackPanel { Margin = new Thickness(10, 4, 10, 10), Spacing = 8 };
@@ -413,6 +409,15 @@ public sealed class LiveTreeView : DockPanel
         }
         editing = value.Name;
         PropertiesRefreshed?.Invoke();
+    }
+
+    /// <summary>The chosen property's value made a box to type in, unless one is being typed in already.</summary>
+    private void EditChosen()
+    {
+        if (editing is null && properties.SelectedItem is PropertyValue { Place: null } value)
+        {
+            Edit(value);
+        }
     }
 
     /// <summary>A property could not be edited, saying why.</summary>

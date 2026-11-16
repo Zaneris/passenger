@@ -155,13 +155,6 @@ public static class RunRows
     public static void Toggles<T>(ListBox list, Action<T> toggle)
         where T : class, ITreeRow
     {
-        list.DoubleTapped += (_, _) =>
-        {
-            if (list.SelectedItem is RunItem<T> { Data.Expands: true } item)
-            {
-                toggle(item.Data);
-            }
-        };
         TreeKeys.Attach<RunItem<T>>(list, item => item.Data, item => toggle(item.Data));
     }
 

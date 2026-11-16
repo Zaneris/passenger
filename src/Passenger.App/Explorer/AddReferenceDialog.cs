@@ -50,7 +50,20 @@ public sealed class AddReferenceDialog : IdeWindow
         list = new ListBox { Classes = { StyleClasses.Tree }, ItemsSource = choices };
         ReusedRows.Use(list, CheckRows.Of);
         list.SelectedItem = choices.FirstOrDefault(c => c.CanChoose);
-        list.AddHandler(KeyDownEvent, OnListKeyDown, RoutingStrategies.Tunnel);
+        // Enter takes the choices as the dialog's default button does; Space flips the chosen row's box.
+        ListKeys.Act(list, new ListActs
+        {
+            Enter = Accept,
+            Keys = e =>
+            {
+                if (e.Key != Key.Space || e.KeyModifiers != KeyModifiers.None || list.SelectedItem is not ReferenceChoice { CanChoose: true } choice)
+                {
+                    return false;
+                }
+                choice.IsChosen = !choice.IsChosen;
+                return true;
+            },
+        });
         Border rows = new() { Classes = { StyleClasses.Framed }, Child = list };
 
         Button ok = DialogFooter.Default();
@@ -83,25 +96,6 @@ public sealed class AddReferenceDialog : IdeWindow
         else
         {
             list.Focus();
-        }
-    }
-
-    private void OnListKeyDown(object? sender, KeyEventArgs e)
-    {
-        if (e.KeyModifiers != KeyModifiers.None)
-        {
-            return;
-        }
-        if (e.Key == Key.Space && list.SelectedItem is ReferenceChoice { CanChoose: true } choice)
-        {
-            choice.IsChosen = !choice.IsChosen;
-            e.Handled = true;
-        }
-        else if (e.Key == Key.Enter)
-        {
-            // Ahead of the list, which would take it for its selection.
-            Accept();
-            e.Handled = true;
         }
     }
 }

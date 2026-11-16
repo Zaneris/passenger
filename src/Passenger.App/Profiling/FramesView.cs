@@ -59,7 +59,6 @@ public sealed class FramesView : DockPanel
         ColumnTitles titles = ColumnTitles.OfNumbers(("Control", 0), ("Own time", NumberWidth), ("Measures", NumberWidth), ("Measure time", NumberWidth),
             ("Arranges", NumberWidth), ("Arrange time", NumberWidth + 16));
         table = FramesTable.Table(rows, () => RowOf(titles));
-        table.DoubleTapped += (_, _) => Open();
         TreeKeys.Attach<LayoutRow>(table, Toggle, OpenControl);
         shown = new BandOverTable(new StackPanel { Children = { legend, strip, summary } }, titles, table);
         placeholder = FramesTable.Placeholder(NoFrames);
@@ -174,14 +173,6 @@ public sealed class FramesView : DockPanel
         + $"{frame.ArrangePasses:N0} {Plural.Noun(frame.ArrangePasses, "arrange pass", "arrange passes")} ({frame.Measures:N0} {Plural.Noun(frame.Measures, "measure")}, {frame.Arranges:N0} {Plural.Noun(frame.Arranges, "arrange")}); "
         + $"measuring {frame.MeasureMs:0.0} ms, arranging {frame.ArrangeMs:0.0} ms, rendering {frame.RecordMs:0.0} ms, then the compositor {frame.CompositeMs:0.0} ms.";
 
-
-    private void Open()
-    {
-        if (table.SelectedItem is LayoutRow row && !OpenControl(row))
-        {
-            Toggle(row);
-        }
-    }
 
     /// <summary>A control's row opened: its XAML, or its place in the Live Visual Tree; false for a type's row.</summary>
     private bool OpenControl(LayoutRow row)

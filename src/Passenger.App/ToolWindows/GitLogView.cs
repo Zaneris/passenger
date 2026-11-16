@@ -80,15 +80,7 @@ public sealed class GitLogView : DockPanel, IOwnKeys
         };
         ReusedRows.Use(list, Row);
         list.SelectionChanged += (_, _) => IdeErrors.Observe(ShowCommitAsync());
-        list.DoubleTapped += (_, _) => RequestFileDiff();
-        // Ahead of the list's own keys, which take Enter for its selection.
-        list.AddHandler(KeyDownEvent, (_, e) =>
-        {
-            if (e.Key == Key.Enter && e.KeyModifiers == KeyModifiers.None && RequestFileDiff())
-            {
-                e.Handled = true;
-            }
-        }, Avalonia.Interactivity.RoutingStrategies.Tunnel);
+        ListKeys.Act(list, new ListActs { Open = () => RequestFileDiff() });
         ListMenus.Attach(list, () => Selected is not { } commit ? [] :
         [
             .. FileChangeOf(commit) is { } change ? new Control[]
@@ -115,20 +107,26 @@ public sealed class GitLogView : DockPanel, IOwnKeys
             ItemsSource = files,
         };
         ReusedRows.Use(fileList, FileRow);
-        fileList.DoubleTapped += (_, _) => RequestDiff();
-        fileList.KeyDown += (_, e) =>
+        ListKeys.Act(fileList, new ListActs
         {
-            if (e.Key == Key.Enter || AppActions.Presses(AppActions.ShowDiff, e))
+            Open = RequestDiff,
+            Source = () =>
             {
-                RequestDiff();
-                e.Handled = true;
-            }
-            else if (e.Key == Key.F4 && e.KeyModifiers == KeyModifiers.None && fileList.SelectedItem is FileChange { Kind: not ChangeKind.Deleted } shown)
+                if (fileList.SelectedItem is FileChange { Kind: not ChangeKind.Deleted } shown)
+                {
+                    OpenRequested?.Invoke(this, shown.Path);
+                }
+            },
+            Keys = e =>
             {
-                OpenRequested?.Invoke(this, shown.Path);
-                e.Handled = true;
-            }
-        };
+                bool diff = AppActions.Presses(AppActions.ShowDiff, e);
+                if (diff)
+                {
+                    RequestDiff();
+                }
+                return diff;
+            },
+        });
         // A commit's file offers what the Commit window's changed files do.
         ListMenus.Attach(fileList, () => Selected is not { } commit || fileList.SelectedItem is not FileChange change ? [] :
         [

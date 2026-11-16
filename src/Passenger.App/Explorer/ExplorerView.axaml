@@ -19,8 +19,7 @@
             <Panel Name="Surface" Grid.Row="1">
                 <TextBlock Name="Hint" Classes="muted" Text="Nothing open"
                            HorizontalAlignment="Center" VerticalAlignment="Center" />
-                <ListBox Name="Rows" Classes="tree" IsVisible="False" SelectionMode="Multiple"
-                         DoubleTapped="OnRowDoubleTapped" />
+                <ListBox Name="Rows" Classes="tree" IsVisible="False" SelectionMode="Multiple" />
             </Panel>
         </Grid>
     </DockPanel>

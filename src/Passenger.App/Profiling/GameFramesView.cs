@@ -98,7 +98,6 @@ public sealed class GameFramesView : DockPanel
         ColumnTitles titles = ColumnTitles.OfNumbers(("Function", 0), ("Own time", NumberWidth), ("Time in all", NumberWidth), ("Calls", NumberWidth),
             ("In Godot's API", NumberWidth + 16));
         table = FramesTable.Table(rows, () => RowOf(titles));
-        table.DoubleTapped += (_, _) => Open();
         TreeKeys.Attach<GameRow>(table, Toggle, OpenRow);
         shown = new BandOverTable(new StackPanel { Children = { new DockPanel { Children = { legend, frameLink } }, strip, summary, joining } }, titles, table);
         placeholder = FramesTable.Placeholder(NoFrames);
@@ -276,14 +275,6 @@ public sealed class GameFramesView : DockPanel
         return $"{game.Engine}, {over.Count:N0} {Plural.Noun(over.Count, "frame")}: {UiFrames.Percentile(times, 0.5):0.0} ms at the median, {longest.FrameMs:0.0} ms at the longest "
             + $"(frame {longest.Number}); physics {physics:N1} ms, GDScript's own {script:N1} ms, C# {sharp:N1} ms (sampled), Godot's own {Math.Max(0, all - physics - script - sharp):N1} ms "
             + $"in all.{drawn} Choose a frame for its own.";
-    }
-
-    private void Open()
-    {
-        if (table.SelectedItem is GameRow row && !OpenRow(row))
-        {
-            Toggle(row);
-        }
     }
 
     /// <summary>A function's row opened: its script at its line, or its C# source; false for any other row.</summary>

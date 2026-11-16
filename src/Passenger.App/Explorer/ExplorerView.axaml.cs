@@ -619,27 +619,6 @@ public partial class ExplorerView : UserControl
         return true;
     }
 
-    private void Activate(ExplorerNode node)
-    {
-        if (node.IsFile && node.Path is { } path)
-        {
-            FileOpened?.Invoke(this, path);
-        }
-        else if (node.HasChildren)
-        {
-            Tree.Toggle(node);
-        }
-    }
-
-    private void OnRowDoubleTapped(object? sender, TappedEventArgs e)
-    {
-        if (Rows.SelectedItem is ExplorerNode node)
-        {
-            Activate(node);
-            e.Handled = true;
-        }
-    }
-
     private void OnChevronPressed(object? sender, PointerPressedEventArgs e)
     {
         if (sender is Control { DataContext: ExplorerNode { HasChildren: true } node })

@@ -70,6 +70,15 @@ public sealed class EndpointsTests : IDisposable
             Ui.Press(window, "F4");
             Assert.True(window.EditorArea.Active is null && api.Received.Count == 0 && list.SelectedItem is EndpointsView.FileRow,
                 $"A double click, Enter and F4 on the heading api.http opened {window.EditorArea.Active?.Path ?? "nothing"} and sent {api.Received.Count} requests, where a heading opens and sends nothing");
+
+            // On a request's row a click gave the keys, Enter tests it; a double click only goes to it, sending nothing.
+            EndpointRequest all = window.Endpoints.Requests[0];
+            Ui.Click(Ui.Row(list, all));
+            Ui.Press(window, "ENTER");
+            Ui.WaitFor(() => api.Received.Count == 1, () => $"the request All items sent by Enter on its row, where {api.Received.Count} were sent");
+            Ui.DoubleClick(Ui.Row(list, all));
+            Assert.True(window.EditorArea.Active?.Path is { } shown && Passenger.Core.PathNames.Same(shown, all.File) && api.Received.Count == 1,
+                $"A double click on All items opened {window.EditorArea.Active?.Path ?? "nothing"} and left {api.Received.Count} requests sent, where it goes to the request and sends nothing");
         }
         finally
         {

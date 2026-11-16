@@ -35,7 +35,7 @@ internal sealed partial class CodeCompletion
         this.popups = popups;
         popups.Add(completion);
         popups.Add(itemCard);
-        completion.List.DoubleTapped += (_, _) => IdeErrors.Observe(Commit());
+        ListKeys.Act(completion.List, new ListActs { Open = () => IdeErrors.Observe(Commit()) });
         completion.SelectedChanged += (_, _) => IdeErrors.Observe(DescribeSelected());
         completion.Swatch = item => open?.Own?.Swatch(item);
     }

@@ -102,14 +102,16 @@ public sealed class MemoryView : DockPanel
                 Go([new SnapshotPage(snapshot)]);
             }
         };
-        snapshotList.KeyDown += (_, e) =>
+        ListKeys.Act(snapshotList, new ListActs
         {
-            if (e.Key is Key.Delete or Key.Back && e.KeyModifiers == KeyModifiers.None && snapshotList.SelectedItem is SnapshotRow { Snapshot: var chosen })
+            Remove = () =>
             {
-                Remove(chosen);
-                e.Handled = true;
-            }
-        };
+                if (snapshotList.SelectedItem is SnapshotRow { Snapshot: var chosen })
+                {
+                    Remove(chosen);
+                }
+            },
+        });
         ListMenus.Attach(snapshotList, () => snapshotList.SelectedItem is not SnapshotRow { Snapshot: var chosen } ? [] :
         [
             ListMenus.Item("Remove Snapshot", "Delete", () => Remove(chosen)),
@@ -137,7 +139,7 @@ public sealed class MemoryView : DockPanel
                 Put(numbers, $"{type.Count:N0}", Sizes.Said(type.Bytes), Sizes.Said(type.RetainedBytes));
             });
         });
-        OnEnter(types, OpenType);
+        ListKeys.Act(types, new ListActs { Open = OpenType });
         typePage = Framed(typeTable.Sorting(SortTypes), types);
 
         ColumnTitles deltaTable = ColumnTitles.OfNumbers(("Type", 0), ("Objects delta", NumberWidth), ("Bytes delta", NumberWidth), ("New objects", NumberWidth),
@@ -152,7 +154,7 @@ public sealed class MemoryView : DockPanel
                     $"{type.DeadObjects:N0}", Sizes.Said(type.DeadBytes), $"{type.SurvivedObjects:N0}");
             });
         });
-        OnEnter(deltas, () => OpenDelta(Kind.New));
+        ListKeys.Act(deltas, new ListActs { Open = () => OpenDelta(Kind.New) });
         deltaPage = Framed(deltaTable.Sorting(SortDeltas), deltas);
 
         ColumnTitles objectTable = ColumnTitles.OfNumbers(("Object", 0), ("Bytes", NumberWidth), ("Retained bytes", NumberWidth + 16));
@@ -173,7 +175,7 @@ public sealed class MemoryView : DockPanel
                 Put(numbers, Sizes.Said(item.Bytes), Sizes.Said(item.RetainedBytes));
             });
         });
-        OnEnter(objects, OpenObject);
+        ListKeys.Act(objects, new ListActs { Open = OpenObject });
         objectsPage = Framed(objectTable, objects);
 
         ColumnTitles pathTable = ColumnTitles.OfNumbers(("Path", 0), ("Objects", NumberWidth), ("Retained bytes", NumberWidth + 16));
@@ -569,21 +571,6 @@ public sealed class MemoryView : DockPanel
     {
         row.IsExpanded = false;
         pathRows.Close(row);
-    }
-
-    /// <summary>Enter on a row opens it, as a double-click does; the row takes Enter as handled already, so it is heard
-    /// handled or not.</summary>
-    private static void OnEnter(ListBox list, Action open)
-    {
-        list.AddHandler(KeyDownEvent, (_, e) =>
-        {
-            if (e.Key == Key.Enter && e.KeyModifiers == KeyModifiers.None)
-            {
-                open();
-                e.Handled = true;
-            }
-        }, Avalonia.Interactivity.RoutingStrategies.Bubble, handledEventsToo: true);
-        list.DoubleTapped += (_, _) => open();
     }
 
     /// <summary>A column's header clicked: the list by that column, the most first (the type's name from A); again, the other way.</summary>

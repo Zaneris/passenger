@@ -126,7 +126,6 @@ public sealed class FindView : DockPanel
         };
         ReusedRows.Use(list, Row);
         list.SelectionChanged += (_, _) => ShowPreview();
-        list.DoubleTapped += (_, _) => Go();
         TreeKeys.Attach<FindRow>(list, Toggle, row =>
         {
             if (row.Usage is not { } usage)
@@ -445,18 +444,6 @@ public sealed class FindView : DockPanel
         int start = snapshot.GetOffset(new TextPosition(Math.Min(usage.Line, snapshot.LineCount - 1), usage.Column));
         preview.SetHighlights([new TextRange(start, Math.Min(usage.Length, snapshot.Length - start))], 0);
         preview.GoTo(snapshot.GetPosition(start));
-    }
-
-    private void Go()
-    {
-        if (Selected is { Usage: { } usage })
-        {
-            GoToRequested?.Invoke(this, usage);
-        }
-        else if (Selected is { } group)
-        {
-            Toggle(group);
-        }
     }
 
     /// <summary>A group opened or closed is the one chosen.</summary>

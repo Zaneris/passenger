@@ -2112,6 +2112,44 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
             + $"give each a row made once through ReusedRows.Use, showing its DataContext (Showing):\n{string.Join("\n", found)}");
     }
 
+    /// <summary>A list hears what its chosen row does by the keys and a double click only through ListKeys.Act (TreeKeys
+    /// for a tree, which takes it), ahead of its rows, which take Enter and Space for their choice before a handler of the
+    /// list hears them, so Enter does what a double click does in every list: a list's key or double click heard any other
+    /// way (its KeyDown or DoubleTapped, a handler added for them, an override, or a XAML attribute) fails here, naming its
+    /// line.</summary>
+    [Fact]
+    public void Every_lists_keys_and_double_click_are_heard_through_ListKeys()
+    {
+        Regex declared = new(@"\bListBox\??\s+(\w+)\b(?!\s*\()|\b(\w+)\s*=\s*new\s+ListBox\b|<ListBox\b[^>]*\bName=""(\w+)""");
+        Regex subclass = new(@"\bclass\s+\w+\s*:\s*ListBox\b");
+        Regex heard = new(@"(?:\b([\w.]+)\.)?(?:(?:KeyDown|KeyUp|DoubleTapped)\s*[+-]=|AddHandler\(\s*(?:[\w.]+\.)?(?:KeyDownEvent|KeyUpEvent|DoubleTappedEvent)\b|override\s+void\s+(?:OnKeyDown|OnKeyUp|OnDoubleTapped)\()");
+        Regex attribute = new(@"<ListBox\b[^>]*\b(?:KeyDown|KeyUp|DoubleTapped)=""");
+        (string Path, string Text)[] files = [.. UiFiles()];
+        Dictionary<string, HashSet<string>> lists = files.ToDictionary(f => f.Path,
+            f => declared.Matches(f.Text).SelectMany(m => m.Groups.Values.Skip(1)).Where(g => g.Success).Select(g => g.Value).ToHashSet(StringComparer.Ordinal));
+        HashSet<string> anywhere = [.. lists.Values.SelectMany(n => n)];
+        List<string> found = [];
+        foreach ((string path, string text) in files.Where(f => !f.Path.EndsWith("/ListKeys.cs", StringComparison.Ordinal)))
+        {
+            bool isList = subclass.IsMatch(text);
+            foreach (Match match in heard.Matches(text))
+            {
+                string line = text.Split('\n')[LineOf(text, match.Index) - 1].TrimStart();
+                string? on = match.Groups[1].Success ? match.Groups[1].Value : null;
+                bool list = on is null or "this" ? isList : on.Contains('.') ? anywhere.Contains(on[(on.LastIndexOf('.') + 1)..]) : lists[path].Contains(on);
+                if (list && !line.StartsWith("//", StringComparison.Ordinal))
+                {
+                    found.Add($"{path}:{LineOf(text, match.Index)}: {match.Value.Trim()}");
+                }
+            }
+            found.AddRange(attribute.Matches(text).Select(m => $"{path}:{LineOf(text, m.Index)}: {m.Value.Trim()}"));
+        }
+        Assert.True(anywhere.Count > 30 && files.Sum(f => Regex.Count(f.Text, @"\b(?:ListKeys\.Act|TreeKeys\.Attach<)")) > 40,
+            $"The rule found {anywhere.Count} lists declared and few taking ListKeys, so it no longer reads how lists are written");
+        Assert.True(found.Count == 0, $"{found.Count} lists hear their keys or double click by a handler of their own, which the rows' own Enter and Space go "
+            + $"ahead of, or which does other than Enter does: give each its acts through ListKeys.Act (TreeKeys.Attach for a tree):\n{string.Join("\n", found)}");
+    }
+
     /// <summary>A row a list reuses draws its icons with RowIcon, one control where a PathIcon is five that the list styles
     /// again whole each time it brings the row back into view: a PathIcon made in a row's factory (the body that hands back
     /// the row Showing its item) or in a row's own class fails here, naming its line; a button's glyph is the button's.</summary>

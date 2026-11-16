@@ -26,20 +26,18 @@ public sealed class BookmarksView : DockPanel
             Classes = { StyleClasses.Tree },
         };
         ReusedRows.Use(list, Row);
-        list.DoubleTapped += (_, _) => Go();
-        list.KeyDown += (_, e) =>
+        ListKeys.Act(list, new ListActs
         {
-            if (e.Key is Key.Enter or Key.F4)
+            Open = Go,
+            Source = Go,
+            Remove = () =>
             {
-                Go();
-                e.Handled = true;
-            }
-            else if (e.Key is Key.Delete or Key.Back && list.SelectedItem is Bookmark gone)
-            {
-                store.Remove(gone);
-                e.Handled = true;
-            }
-        };
+                if (list.SelectedItem is Bookmark gone)
+                {
+                    store.Remove(gone);
+                }
+            },
+        });
         placeholder = new TextBlock { Classes = { StyleClasses.EmptyText } };
         ActionTips.SetWords(placeholder, AppActions.ToggleBookmark, keys => $"{ActionTips.Named("Toggle Bookmark", keys)} marks the caret's line");
         Children.Add(new Panel { Children = { list, placeholder } });

@@ -151,6 +151,12 @@ public sealed class GitLogTests : IDisposable
         Assert.True(listed == "Shop.cs (Modified), Side.md (Added)", $"The merge commit chosen in the log listed [{listed}], where the branch it merged brought in Shop.cs and Side.md");
 
         ListBox files = log.GetVisualDescendants().OfType<ListBox>().First(l => ReferenceEquals(l.ItemsSource, log.Files));
+        // Enter on the row a click gave the keys shows its diff, as a double click does.
+        Ui.Click(Ui.Row(files, log.Files.First(f => f.Name == "Shop.cs")));
+        Ui.Press(window, "ENTER");
+        Ui.Landed(() => window.Frontmost is DiffWindow, "the diff of Shop.cs in the merge, by Enter on its row");
+        ((DiffWindow)window.Frontmost).Close();
+        Ui.Settle();
         Ui.DoubleClick(Ui.Row(files, log.Files.First(f => f.Name == "Shop.cs")));
         Ui.Landed(() => window.Frontmost is DiffWindow, "the diff of Shop.cs in the merge");
         DiffView diff = ((DiffWindow)window.Frontmost).View;

@@ -66,15 +66,7 @@ public sealed class ConflictsDialog : IdeWindow
         };
         ReusedRows.Use(list, Row);
         list.SelectionChanged += (_, _) => UpdateButtons();
-        list.DoubleTapped += (_, _) => IdeErrors.Observe(MergeAsync());
-        list.AddHandler(KeyDownEvent, (_, e) =>
-        {
-            if (e.Key == Key.Enter && e.KeyModifiers == KeyModifiers.None)
-            {
-                IdeErrors.Observe(MergeAsync());
-                e.Handled = true;
-            }
-        }, RoutingStrategies.Tunnel);
+        ListKeys.Act(list, new ListActs { Open = () => IdeErrors.Observe(MergeAsync()) });
         Border table = new()
         {
             Classes = { StyleClasses.Framed },

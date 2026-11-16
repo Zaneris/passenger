@@ -1504,7 +1504,11 @@ public sealed class GodotAddonTests : IDisposable
     {
         GodotSceneProperties properties = window.SceneProperties!;
         properties.Choose(property);
-        properties.EditText();
+        ListBox list = Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(properties).OfType<ListBox>().First();
+        list.ScrollIntoView(properties.Chosen!);
+        list.UpdateLayout();
+        list.ContainerFromItem(properties.Chosen!)?.Focus(Avalonia.Input.NavigationMethod.Pointer);
+        Ui.Press(window, "ENTER");
         Ui.WaitFor(() => properties.Typing is { IsFocused: true }, () => $"{property}'s value open as text (chosen {(properties.Chosen?.Property.Name ?? "none")}, "
             + $"its box {(properties.Typing is { } box ? $"shown for {(box.DataContext as GodotSceneProperty)?.Property.Name}" : "not shown")}, the keys with "
             + $"{TopLevel.GetTopLevel(window)?.FocusManager?.GetFocusedElement()?.GetType().Name ?? "nothing"}; {properties.Shown?.Name}'s rows: "

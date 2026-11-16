@@ -113,14 +113,6 @@ public sealed class BranchesPanel : DockPanel
             ItemsSource = rows,
         };
         ReusedRows.Use(list, Row);
-        list.DoubleTapped += (_, e) =>
-        {
-            if (Selected is { } node)
-            {
-                Activate(node);
-                e.Handled = true;
-            }
-        };
         TreeKeys.Attach<BranchNode>(list, Toggle, node =>
         {
             if (node.IsGroup)
@@ -129,8 +121,7 @@ public sealed class BranchesPanel : DockPanel
             }
             Activate(node);
             return true;
-        });
-        list.AddHandler(KeyDownEvent, OnKey, Avalonia.Interactivity.RoutingStrategies.Tunnel);
+        }, new ListActs { Keys = Take });
         // A listing again passes through no choice, which would grey every button for that moment and let go of one pressed.
         list.SelectionChanged += (_, _) =>
         {
@@ -568,12 +559,12 @@ public sealed class BranchesPanel : DockPanel
     /// <summary>Rider's keys here, beside the tree's (<see cref="TreeKeys"/>): Delete (Backspace too on the Mac) deletes, F2 or
     /// Shift+F6 renames a local branch on the Mac (Rename's Ctrl+R, R elsewhere, which the window routes here), and
     /// Ctrl+Alt+N (Cmd+Alt+N) makes one from the chosen.</summary>
-    private void OnKey(object? sender, KeyEventArgs e)
+    private bool Take(KeyEventArgs e)
     {
         bool mac = OperatingSystem.IsMacOS();
         if (Selected is not { } node)
         {
-            return;
+            return false;
         }
         KeyModifiers command = Keystroke.Command;
         if (node.Branch is { } branch && (e.Key == Key.Delete && e.KeyModifiers == KeyModifiers.None
@@ -591,9 +582,9 @@ public sealed class BranchesPanel : DockPanel
         }
         else
         {
-            return;
+            return false;
         }
-        e.Handled = true;
+        return true;
     }
 
     /// <summary>A row for whichever group, branch or tag the list hands its container: a group's chevron, a branch's or

@@ -1,16 +1,81 @@
+using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Interactivity;
+using Avalonia.VisualTree;
 
 namespace Passenger.App;
 
-/// <summary>The keys a search field gives the list under it (Go to File, Find Action, Recent Locations, New Project's
-/// templates, Attach to Process): Up and Down choose the row above or below, Page Up and Page Down a page of rows (those
-/// in sight, less one, so the row chosen last stays in view), the choice stopping at the ends and kept in sight. Left,
-/// Right, Home and End stay the field's, for its text. A row that cannot be chosen (a heading) is passed over. One
-/// behaviour for every such list; and a list given the keys has them on its chosen row (<see cref="Hold"/>).</summary>
+/// <summary>The keys of a list, one behaviour in every list. What its chosen row does by Enter, F4, F2, Delete and a double
+/// click (<see cref="Act"/>) is heard ahead of its rows, which take Enter and Space for their choice. A search field over a
+/// list gives it Up and Down, Page Up and Page Down (<see cref="Search"/>): the choice moves to the row above or below, or a
+/// page of rows (those in sight, less one), stopping at the ends, kept in sight, a heading passed over; Left, Right, Home
+/// and End stay the field's. A list given the keys has them on its chosen row (<see cref="Hold"/>).</summary>
 public static class ListKeys
 {
+    /// <summary>Gives a list what its chosen row does by the keys and a double click, the one way a list hears them, ahead
+    /// of its rows: Enter and a double click on a row run <see cref="ListActs.Open"/> (Enter <see cref="ListActs.Enter"/>
+    /// where the list gives one), F4 <see cref="ListActs.Source"/>, F2 <see cref="ListActs.Edit"/>, Delete and Backspace
+    /// <see cref="ListActs.Remove"/>, each with no modifier held, and <see cref="ListActs.Keys"/> any key first. A key or a
+    /// double click in a field or box inside a row stays that control's.</summary>
+    public static void Act(ListBox list, ListActs acts)
+    {
+        list.AddHandler(InputElement.KeyDownEvent, (_, e) =>
+        {
+            if (!ReferenceEquals(e.Source, list) && !(e.Source is Control row && ItemsControl.ItemsControlFromItemContainer(row) == list))
+            {
+                return;
+            }
+            if (acts.Keys?.Invoke(e) == true)
+            {
+                e.Handled = true;
+                return;
+            }
+            Action? act = e.KeyModifiers != KeyModifiers.None ? null : e.Key switch
+            {
+                Key.Enter => acts.Enter ?? acts.Open,
+                Key.F4 => acts.Source,
+                Key.F2 => acts.Edit,
+                Key.Delete or Key.Back => acts.Remove,
+                _ => null,
+            };
+            if (act is not null)
+            {
+                act();
+                e.Handled = true;
+            }
+        }, RoutingStrategies.Tunnel);
+        if (acts.Open is { } open)
+        {
+            list.AddHandler(InputElement.DoubleTappedEvent, (_, e) =>
+            {
+                if (OnRow(list, e.Source as Visual))
+                {
+                    open();
+                    e.Handled = true;
+                }
+            });
+        }
+    }
+
+    /// <summary>Whether what was pressed is one of the list's rows, or lies in one but not in a field or box of its own.</summary>
+    private static bool OnRow(ListBox list, Visual? pressed)
+    {
+        for (Visual? at = pressed; at is not null && at != list; at = at.GetVisualParent())
+        {
+            if (at is ListBoxItem item)
+            {
+                return ItemsControl.ItemsControlFromItemContainer(item) == list;
+            }
+            if (at is TextBox or ToggleButton or Button)
+            {
+                return false;
+            }
+        }
+        return false;
+    }
+
     /// <summary>Gives a list's chosen row the keys, as a click on it does (the first chosen where none is and
     /// <paramref name="chooseFirst"/> asks): the row a Shift range runs from, else the first chosen. False where the list has
     /// no row chosen to give them to.</summary>
@@ -134,4 +199,29 @@ public sealed record RowWithKeys(ListBox List, Control Row, object? Item)
 
     /// <summary>The row's index, where it is still shown and shows the same item; else null.</summary>
     public int? Index => Row.IsEffectivelyVisible && List.IndexFromContainer(Row) is int at and >= 0 && Equals(List.ItemFromContainer(Row), Item) ? at : null;
+}
+
+/// <summary>What a list's chosen row does by the keys and a double click (<see cref="ListKeys.Act"/>), each null where its
+/// rows do nothing by it; each runs on the list's chosen row.</summary>
+public sealed record ListActs
+{
+    /// <summary>A double click on a row, and Enter: what the row is for (opens it, goes to it, runs it).</summary>
+    public Action? Open { get; init; }
+
+    /// <summary>Enter, where it does what a stray double click must never do (sends a request, writes into a file): the
+    /// double click goes on doing <see cref="Open"/>.</summary>
+    public Action? Enter { get; init; }
+
+    /// <summary>F4: goes to what the row stands for in the code or the file.</summary>
+    public Action? Source { get; init; }
+
+    /// <summary>F2: edits the row's value in place.</summary>
+    public Action? Edit { get; init; }
+
+    /// <summary>Delete, and Backspace (a Mac keyboard's Delete): takes the chosen row out.</summary>
+    public Action? Remove { get; init; }
+
+    /// <summary>Any key, modifiers held or not, before the others: true where it was the list's (Space flipping a row's
+    /// box, an action's keys).</summary>
+    public Func<KeyEventArgs, bool>? Keys { get; init; }
 }

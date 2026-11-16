@@ -50,25 +50,19 @@ public sealed class StepLibraryView : DockPanel
         Children.Add(ToolBars.Top(filter));
 
         ReusedRows.Use(list, Row);
-        list.DoubleTapped += (_, _) => GoToChosen();
-        // Ahead of the row, which takes Enter for itself.
-        list.AddHandler(KeyDownEvent, (_, e) =>
+        // Enter writes the chosen phrase into the feature, which a stray double click never does: that goes to its method.
+        ListKeys.Act(list, new ListActs
         {
-            if (e.KeyModifiers != KeyModifiers.None)
+            Open = GoToChosen,
+            Source = GoToChosen,
+            Enter = () =>
             {
-                return;
-            }
-            if (e.Key == Key.Enter && list.SelectedItem is LibraryStep chosen)
-            {
-                InsertRequested?.Invoke(this, chosen);
-                e.Handled = true;
-            }
-            else if (e.Key == Key.F4)
-            {
-                GoToChosen();
-                e.Handled = true;
-            }
-        }, Avalonia.Interactivity.RoutingStrategies.Tunnel);
+                if (list.SelectedItem is LibraryStep chosen)
+                {
+                    InsertRequested?.Invoke(this, chosen);
+                }
+            },
+        });
         ListMenus.Attach(list, () => list.SelectedItem switch
         {
             LibraryStep chosen =>

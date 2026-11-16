@@ -26,33 +26,51 @@ public sealed class VariablesList : ListBox
         Classes.Add(StyleClasses.Tree);
         ItemsSource = tree.Rows;
         ReusedRows.Use(this, Row);
-        DoubleTapped += (_, _) =>
-        {
-            // A double-click opens what has members, and sets what has none; a query's SQL opens its text.
-            if (SelectedItem is VariableNode node && node.HasChildren)
-            {
-                IdeErrors.Observe(Toggle(node));
-            }
-            else if (SelectedItem is VariableNode { IsQueryText: true } text)
-            {
-                TextOpened?.Invoke(this, text);
-            }
-            else
-            {
-                EditSelectedValue();
-            }
-        };
         TreeKeys.Attach<VariableNode>(this, node => IdeErrors.Observe(Toggle(node)), node =>
         {
-            if (!node.IsQueryText || Tree.Rows.Any(r => r.IsEditing))
+            if (!node.IsQueryText || Editing)
             {
                 return false;
             }
             TextOpened?.Invoke(this, node);
             return true;
+        }, new ListActs
+        {
+            // A double click and Enter open what has members and set what has none; a query's SQL opens its text.
+            Open = () =>
+            {
+                if (Editing)
+                {
+                    return;
+                }
+                if (SelectedItem is VariableNode node && node.HasChildren)
+                {
+                    IdeErrors.Observe(Toggle(node));
+                }
+                else if (SelectedItem is VariableNode { IsQueryText: true } text)
+                {
+                    TextOpened?.Invoke(this, text);
+                }
+                else
+                {
+                    EditSelectedValue();
+                }
+            },
+            Edit = () =>
+            {
+                if (!Editing)
+                {
+                    EditSelectedValue();
+                }
+            },
+            Remove = () =>
+            {
+                if (!Editing && SelectedItem is VariableNode { Role: VariableRole.Watch } watch)
+                {
+                    WatchRemoved?.Invoke(this, watch.Name);
+                }
+            },
         });
-        // Ahead of the list's own keys, as the tree's are.
-        AddHandler(KeyDownEvent, OnKey, Avalonia.Interactivity.RoutingStrategies.Tunnel);
         // The menu is made again as the choice moves: each one made says as it closes.
         PropertyChanged += (_, e) =>
         {
@@ -159,25 +177,8 @@ public sealed class VariablesList : ListBox
         }
     }
 
-    private void OnKey(object? sender, KeyEventArgs e)
-    {
-        // A value being typed in its row takes its own keys.
-        if (SelectedItem is not VariableNode node || e.Source is TextBox || Tree.Rows.Any(r => r.IsEditing))
-        {
-            return;
-        }
-        switch (e.Key)
-        {
-            case Key.Delete or Key.Back when node.Role == VariableRole.Watch:
-                WatchRemoved?.Invoke(this, node.Name);
-                e.Handled = true;
-                break;
-            case Key.F2 when node.Settable is not null:
-                node.IsEditing = true;
-                e.Handled = true;
-                break;
-        }
-    }
+    /// <summary>Whether a value is being typed in its row, which takes its own keys.</summary>
+    private bool Editing => Tree.Rows.Any(r => r.IsEditing);
 
     /// <summary>The Variables and Watches menu: Set Value, Copy Value and Copy Name, Add to Watches, Inspect (the value
     /// evaluated on its own, to open), Remove Watch for a watch, and last Set Data Breakpoint (Remove Data Breakpoint on a

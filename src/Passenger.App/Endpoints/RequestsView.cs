@@ -46,15 +46,7 @@ public sealed class RequestsView : DockPanel
             ItemsSource = rows,
         };
         ReusedRows.Use(list, View);
-        list.DoubleTapped += (_, _) => Open();
-        list.KeyDown += (_, e) =>
-        {
-            if (e.Key is Key.Enter or Key.F4 && e.KeyModifiers == KeyModifiers.None)
-            {
-                Open();
-                e.Handled = true;
-            }
-        };
+        ListKeys.Act(list, new ListActs { Open = Open, Source = Open });
         placeholder = new TextBlock { Text = "No requests yet: run or debug a web app and send it one", Classes = { StyleClasses.EmptyText } };
         following = new TextBlock { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(4, 0), TextTrimming = TextTrimming.CharacterEllipsis };
         following.Classes.Add(StyleClasses.Muted);

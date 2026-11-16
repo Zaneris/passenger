@@ -71,38 +71,8 @@ public sealed class EndpointsView : DockPanel
             Classes = { StyleClasses.Tree },
         };
         ReusedRows.Use(list, Row);
-        list.DoubleTapped += (_, _) =>
-        {
-            if (list.SelectedItem is WebRoute route)
-            {
-                RouteGoToRequested?.Invoke(this, route);
-                return;
-            }
-            GoToChosen();
-        };
-        list.KeyDown += (_, e) =>
-        {
-            if (list.SelectedItem is WebRoute route && e.KeyModifiers == KeyModifiers.None && e.Key is Key.Enter or Key.F4)
-            {
-                (e.Key == Key.Enter ? RouteSendRequested : RouteGoToRequested)?.Invoke(this, route);
-                e.Handled = true;
-                return;
-            }
-            if (list.SelectedItem is not EndpointRequest chosen)
-            {
-                return;
-            }
-            if (e.Key == Key.Enter && e.KeyModifiers == KeyModifiers.None)
-            {
-                IdeErrors.Observe(TestAsync(chosen));
-                e.Handled = true;
-            }
-            else if (e.Key == Key.F4)
-            {
-                GoToChosen();
-                e.Handled = true;
-            }
-        };
+        // Enter sends what a double click only goes to: a stray click never sends a request.
+        ListKeys.Act(list, new ListActs { Open = GoToChosen, Source = GoToChosen, Enter = SendChosen });
         ListMenus.Attach(list, () => list.SelectedItem is WebRoute route ?
         [
             .. RouteRequests.Sendable(route) ? (IEnumerable<MenuItem>)[ListMenus.Item("Send Request", "Enter", () => RouteSendRequested?.Invoke(this, route))] : [],
@@ -443,11 +413,29 @@ public sealed class EndpointsView : DockPanel
         Refresh();
     }
 
+    /// <summary>Goes to the chosen request in its file, or the chosen route in its code; a heading goes nowhere.</summary>
     private void GoToChosen()
     {
-        if (list.SelectedItem is EndpointRequest chosen)
+        if (list.SelectedItem is WebRoute route)
+        {
+            RouteGoToRequested?.Invoke(this, route);
+        }
+        else if (list.SelectedItem is EndpointRequest chosen)
         {
             GoToRequested?.Invoke(this, chosen);
+        }
+    }
+
+    /// <summary>Tests the chosen request, or sends the chosen route one; a heading sends nothing.</summary>
+    private void SendChosen()
+    {
+        if (list.SelectedItem is WebRoute route)
+        {
+            RouteSendRequested?.Invoke(this, route);
+        }
+        else if (list.SelectedItem is EndpointRequest chosen)
+        {
+            IdeErrors.Observe(TestAsync(chosen));
         }
     }
 

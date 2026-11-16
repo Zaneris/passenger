@@ -65,15 +65,7 @@ public sealed class ProblemsView : DockPanel
         // The list comes first among the parts, so the window's action gives it the keys and Find's give them the filter.
         Grid.SetRow(topBar, 0);
         Children.Add(new Grid { RowDefinitions = new RowDefinitions("Auto,*"), Children = { new Panel { [Grid.RowProperty] = 1, Children = { empty, list } }, topBar } });
-        list.DoubleTapped += (_, _) => Choose();
-        list.AddHandler(KeyDownEvent, (_, e) =>
-        {
-            if (e.Key == Key.Enter)
-            {
-                Choose();
-                e.Handled = true;
-            }
-        }, Avalonia.Interactivity.RoutingStrategies.Tunnel);
+        ListKeys.Act(list, new ListActs { Open = Choose, Source = Choose });
         list.SelectionChanged += (_, _) =>
         {
             if (!following)

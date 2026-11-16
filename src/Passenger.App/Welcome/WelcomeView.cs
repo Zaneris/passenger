@@ -73,8 +73,17 @@ public sealed class WelcomeView : UserControl
             Classes = { StyleClasses.Tree, StyleClasses.WelcomeList },
         };
         ReusedRows.Use(list, Row);
-        list.DoubleTapped += (_, _) => OpenChosen();
-        list.KeyDown += OnListKeyDown;
+        ListKeys.Act(list, new ListActs
+        {
+            Open = OpenChosen,
+            Remove = () =>
+            {
+                if (Selected is { } chosen)
+                {
+                    RemoveRequested?.Invoke(this, chosen);
+                }
+            },
+        });
         ListKeys.Search(search, list, OpenChosen);
         ListMenus.Attach(list, () => list.SelectedItem is not RecentRow chosen ? [] :
         [
@@ -241,24 +250,6 @@ public sealed class WelcomeView : UserControl
     private static bool Matches(RecentRow row, string word) =>
         row.Name.Contains(word, StringComparison.OrdinalIgnoreCase) || row.Shown.Contains(word, StringComparison.OrdinalIgnoreCase)
         || FuzzyMatch.Score(word, row.Name) is not null;
-
-    private void OnListKeyDown(object? sender, KeyEventArgs e)
-    {
-        if (e.KeyModifiers != KeyModifiers.None || Selected is not { } chosen)
-        {
-            return;
-        }
-        if (e.Key == Key.Enter)
-        {
-            Chosen?.Invoke(this, chosen);
-            e.Handled = true;
-        }
-        else if (e.Key is Key.Delete or Key.Back)
-        {
-            RemoveRequested?.Invoke(this, chosen);
-            e.Handled = true;
-        }
-    }
 
     private void OpenChosen()
     {

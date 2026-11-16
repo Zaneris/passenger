@@ -190,43 +190,33 @@ public sealed class CommitView : DockPanel, IOwnKeys
                 ChoiceMoved?.Invoke(this, chosen.Change.Path);
             }
         };
-        // Double-click shows the diff and F4 the file.
-        list.DoubleTapped += (_, _) =>
+        // A double click and Enter show the diff, F4 the file, Space flips the chosen rows' boxes.
+        ListKeys.Act(list, new ListActs
         {
-            if (list.SelectedItem is CommitRow row)
+            Open = OpenChosen,
+            Source = () =>
             {
-                Open(row.Change);
-            }
-        };
-        // Ahead of the rows, which take Enter before a handler of the list hears it.
-        list.AddHandler(KeyDownEvent, (_, e) =>
-        {
-            if (list.SelectedItem is not CommitRow shown)
+                if (list.SelectedItem is CommitRow { Change.Kind: not ChangeKind.Deleted } shown)
+                {
+                    OpenRequested?.Invoke(this, shown.Change.Path);
+                }
+            },
+            Keys = e =>
             {
-                return;
-            }
-            bool plain = e.KeyModifiers == KeyModifiers.None;
-            if (plain && e.Key == Key.F4 && shown.Change.Kind is not ChangeKind.Deleted)
-            {
-                OpenRequested?.Invoke(this, shown.Change.Path);
-                e.Handled = true;
-            }
-            else if ((plain && e.Key == Key.Enter) || AppActions.Presses(AppActions.ShowDiff, e))
-            {
-                Open(shown.Change);
-                e.Handled = true;
-            }
-        }, RoutingStrategies.Tunnel);
-        list.KeyDown += (_, e) =>
-        {
-            if (e.Key == Key.Space && e.KeyModifiers == KeyModifiers.None)
-            {
-                // Space flips the chosen rows' boxes.
-                CommitRow[] selected = [.. list.SelectedItems?.OfType<CommitRow>().Where(r => r.CanChoose) ?? []];
-                Choose(selected, !selected.All(r => r.IsChosen));
-                e.Handled = true;
-            }
-        };
+                if (e.Key == Key.Space && e.KeyModifiers == KeyModifiers.None)
+                {
+                    CommitRow[] selected = [.. list.SelectedItems?.OfType<CommitRow>().Where(r => r.CanChoose) ?? []];
+                    Choose(selected, !selected.All(r => r.IsChosen));
+                    return true;
+                }
+                bool diff = AppActions.Presses(AppActions.ShowDiff, e);
+                if (diff)
+                {
+                    OpenChosen();
+                }
+                return diff;
+            },
+        });
         placeholder = new EmptyState();
         placeholder.ActionRequested += (_, action) => ActionRequested?.Invoke(this, action);
 
@@ -482,6 +472,14 @@ public sealed class CommitView : DockPanel, IOwnKeys
     public bool TakesKey(KeyEventArgs e) => list.IsKeyboardFocusWithin && list.SelectedItem is CommitRow && AppActions.Presses(AppActions.ShowDiff, e);
 
     /// <summary>What a double-click or Enter opens: a conflicted file's merge, any other file's diff.</summary>
+    private void OpenChosen()
+    {
+        if (list.SelectedItem is CommitRow row)
+        {
+            Open(row.Change);
+        }
+    }
+
     private void Open(FileChange change)
     {
         if (change.Kind is ChangeKind.Conflicted)

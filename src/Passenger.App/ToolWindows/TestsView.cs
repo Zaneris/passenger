@@ -68,22 +68,25 @@ public sealed class TestsView : DockPanel
         };
         ReusedRows.Use(tree, () => new TestRow(model));
         tree.SelectionChanged += (_, _) => ShowDetails();
-        tree.DoubleTapped += (_, _) =>
+        // A double click and Enter open or close a row with rows under it but a method's, and go to any other.
+        TreeKeys.Attach<TestNode>(tree, model.Toggle, GoTo, new ListActs
         {
-            if (tree.SelectedItem is not TestNode node)
+            Open = () =>
             {
-                return;
-            }
-            if (node.HasChildren && node.Kind != TestNodeKind.Method)
-            {
-                model.Toggle(node);
-            }
-            else
-            {
-                GoToRequested?.Invoke(this, node);
-            }
-        };
-        TreeKeys.Attach<TestNode>(tree, model.Toggle, GoTo);
+                if (tree.SelectedItem is not TestNode node)
+                {
+                    return;
+                }
+                if (node.HasChildren && node.Kind != TestNodeKind.Method)
+                {
+                    model.Toggle(node);
+                }
+                else
+                {
+                    GoToRequested?.Invoke(this, node);
+                }
+            },
+        });
         ListMenus.Attach(tree, () => tree.SelectedItem is not TestNode chosen ? [] :
         [
             ListMenus.Item("Run", Keys(AppActions.RunTests), () => RunRequested?.Invoke(this, false)),

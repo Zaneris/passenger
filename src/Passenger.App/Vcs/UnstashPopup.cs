@@ -38,7 +38,7 @@ public sealed class UnstashPopup : UserControl
             SelectedIndex = stashes.Count > 0 ? 0 : -1,
         };
         ReusedRows.Use(list, Row);
-        list.DoubleTapped += (_, _) => IdeErrors.Observe(PopAsync());
+        ListKeys.Act(list, new ListActs { Open = () => IdeErrors.Observe(PopAsync()) });
         Button pop = Action("Pop", () => PopAsync(), primary: true);
         Button apply = Action("Apply", () => ApplyAsync());
         Button remove = Action("Drop", () => DropAsync());

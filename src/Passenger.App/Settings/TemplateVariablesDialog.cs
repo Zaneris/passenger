@@ -168,7 +168,7 @@ public sealed class ChooseMacroDialog : IdeWindow
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
         list.ItemsSource = (string[])[NoMacro, .. LiveTemplates.Macros.Select(m => m.Description)];
         list.SelectedIndex = LiveTemplates.Macros.ToList().FindIndex(m => m.Name == current) + 1;
-        list.DoubleTapped += (_, _) => Close(true);
+        ListKeys.Act(list, new ListActs { Open = () => Close(true) });
         OkButton = DialogFooter.Default();
         OkButton.Click += (_, _) => Close(true);
         Content = DialogFooter.Page(new Border { Classes = { StyleClasses.Framed }, Margin = new Thickness(12), Child = list }, DialogFooter.OkCancel(OkButton, () => Close(false)));

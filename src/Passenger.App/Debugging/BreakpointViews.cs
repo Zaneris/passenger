@@ -303,8 +303,18 @@ public sealed class BreakpointsWindow : UserControl
             properties.Apply(store);
             ShowChosen();
         };
-        list.DoubleTapped += (_, _) => GoTo();
-        list.AddHandler(KeyDownEvent, OnListKeyDown, RoutingStrategies.Tunnel);
+        ListKeys.Act(list, new ListActs
+        {
+            Open = GoTo,
+            Source = GoTo,
+            Remove = () =>
+            {
+                if (Chosen is not null)
+                {
+                    RemoveChosen();
+                }
+            },
+        });
         ToolWindows.ListMenus.Attach(list, () => Chosen is not { } breakpoint ? [] :
         [
             ToolWindows.ListMenus.Item("Go to Source", "F4", GoTo, enabled: breakpoint is LineBreakpoint),
@@ -331,7 +341,7 @@ public sealed class BreakpointsWindow : UserControl
         // Add CLR Exception Breakpoints, in the window: the types that match what is typed, Enter adds the one chosen.
         typed.TextChanged += (_, _) => ShowFound();
         typed.AddHandler(KeyDownEvent, OnTypedKeyDown, RoutingStrategies.Tunnel);
-        found.DoubleTapped += (_, _) => AddChosenType();
+        ListKeys.Act(found, new ListActs { Open = AddChosenType });
         Button addType = new() { Content = "Add", Classes = { StyleClasses.Primary } };
         addType.Click += (_, _) => AddChosenType();
         StackPanel answers = DialogFooter.Popup(addType, ShowChosen);
@@ -616,25 +626,6 @@ public sealed class BreakpointsWindow : UserControl
                 },
             },
         };
-    }
-
-    private void OnListKeyDown(object? sender, KeyEventArgs e)
-    {
-        if (e.Key == Key.Escape)
-        {
-            Close();
-            e.Handled = true;
-        }
-        else if (e.Key == Key.Enter)
-        {
-            GoTo();
-            e.Handled = true;
-        }
-        else if (e.Key is Key.Delete or Key.Back && Chosen is not null)
-        {
-            RemoveChosen();
-            e.Handled = true;
-        }
     }
 
     private static Border Framed(Control content)

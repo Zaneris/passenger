@@ -112,14 +112,7 @@ public sealed class AttachToProcessDialog : IdeWindow
         ReusedRows.Use(rows, Row);
         // A heading is never chosen; a container shows a heading and a program in turn as the list is filled again.
         rows.ContainerPrepared += (_, e) => e.Container.IsEnabled = e.Container.DataContext is not AttachRow { Process: null };
-        rows.AddHandler(KeyDownEvent, OnKey, RoutingStrategies.Tunnel);
-        rows.DoubleTapped += (_, e) =>
-        {
-            if ((e.Source as Visual)?.FindAncestorOfType<ListBoxItem>(includeSelf: true) is not null)
-            {
-                Attach();
-            }
-        };
+        ListKeys.Act(rows, new ListActs { Open = Attach, Keys = e => ListKeys.Move(rows, e, i => Rows[i].Process is not null) });
         rows.SelectionChanged += (_, _) => attach!.IsEnabled = Chosen is { WhyNot: null };
         empty = new TextBlock { Classes = { StyleClasses.EmptyText }, Text = "Looking for .NET processes…" };
         Border table = new()

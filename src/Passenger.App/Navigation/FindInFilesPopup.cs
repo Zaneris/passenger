@@ -169,7 +169,7 @@ public sealed class FindInFilesPopup : UserControl, IAnswers<SearchMatch?>
         };
         ReusedRows.Use(results, () => Row(ligatures));
         results.SelectionChanged += (_, _) => ShowPreview();
-        results.DoubleTapped += (_, _) => Choose();
+        ListKeys.Act(results, new ListActs { Open = Choose });
         ToolWindows.ListMenus.Attach(results, () => results.SelectedItem is not SearchLine chosen ? [] :
         [
             ToolWindows.ListMenus.Item("Go to", "Enter", Choose),

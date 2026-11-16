@@ -33,15 +33,7 @@ public sealed class GodotSceneProperties : DockPanel, IGodotTuner
         Children.Add(heading);
         list.ItemsSource = Rows;
         ReusedRows.Use(list, Row);
-        list.DoubleTapped += (_, _) => EditText();
-        list.KeyDown += (_, e) =>
-        {
-            if (e.Key is Avalonia.Input.Key.Enter or Avalonia.Input.Key.F2 && typing is null)
-            {
-                e.Handled = true;
-                EditText();
-            }
-        };
+        ListKeys.Act(list, new ListActs { Open = EditText, Edit = EditText });
         Children.Add(list);
         this.Bind(BackgroundProperty, this.GetResourceObservable(TokenKeys.Panel));
     }

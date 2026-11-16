@@ -46,7 +46,7 @@ public abstract class SearchPopup<T> : UserControl, IAnswers<T?>
         };
         ReusedRows.Use(results, Row);
         empty = new TextBlock { Classes = { StyleClasses.Muted }, Margin = new Thickness(12, 0, 12, 12), IsVisible = false };
-        results.DoubleTapped += (_, _) => Choose();
+        ListKeys.Act(results, new ListActs { Open = Choose });
         query.TextChanged += (_, _) => QueryChanged();
         query.AddHandler(KeyDownEvent, OnQueryKeyDown, RoutingStrategies.Tunnel);
         if (option is { } shown)

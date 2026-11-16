@@ -5,6 +5,7 @@ using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.Input;
+using Avalonia.VisualTree;
 using Passenger.App;
 using Passenger.App.Explorer;
 using Passenger.App.Vcs;
@@ -110,8 +111,12 @@ public sealed class WelcomeTests : IClassFixture<WelcomeTests.Workspaces>, IDisp
         Ui.Press(window, "UP");
         Assert.Equal(Name(beta), window.Welcome.Selected?.Name);
         Ui.Press(window, "DOWN");
+        Assert.Equal(Name(alpha), window.Welcome.Selected?.Name);
+        // Enter on the row a click gave the keys opens it, as Enter in the search does.
+        ListBox list = window.Welcome.GetVisualDescendants().OfType<ListBox>().Single();
+        Ui.Click(Ui.Row(list, window.Welcome.Selected!));
         Ui.Press(window, "ENTER");
-        Assert.True(window.Folder == PathNames.Canonical(alpha), $"Down and Enter on {Name(alpha)} opened {window.Folder ?? "nothing"}");
+        Assert.True(window.Folder == PathNames.Canonical(alpha), $"Down and Enter on {Name(alpha)}'s row opened {window.Folder ?? "nothing"}");
         window.Close();
     }
 

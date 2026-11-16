@@ -2,38 +2,50 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Selection;
 using Avalonia.Input;
-using Avalonia.Interactivity;
 
 namespace Passenger.App;
 
-/// <summary>The keys of a tree a list draws as rows (<see cref="ITreeRow"/>), one behaviour in every such tree: Right opens
-/// a closed row, Left closes an open one or, on one closed, goes to the row it sits under; Enter and F4 open what the row
-/// stands for, and Enter, on a row that stands for nothing to open, opens or closes it. Right and Left are the tree's on
-/// every row, never the list's to scroll by; a value typed in a row keeps its own keys. The list scrolls to its chosen
-/// row only as the choice changes (<see cref="FollowChoices"/>), so a row opened or closed stays where it was clicked, and
-/// the keys stay on the chosen row, a Shift range running from the row it was begun on, however the rows change above or
-/// among them.</summary>
+/// <summary>The keys of a tree a list draws as rows (<see cref="ITreeRow"/>), one behaviour in every such tree, heard
+/// through <see cref="ListKeys.Act"/>: Right opens a closed row, Left closes an open one or, on one closed, goes to the row
+/// it sits under; Enter and a double click open what the row stands for, else open or close a row with rows under it, and
+/// F4 opens what it stands for. Right and Left are the tree's on every row, never the list's to scroll by. The list scrolls
+/// to its chosen row only as the choice changes (<see cref="FollowChoices"/>), so a row opened or closed stays where it was
+/// clicked, and the keys stay on the chosen row, a Shift range running from the row it was begun on, however the rows
+/// change above or among them.</summary>
 public static class TreeKeys
 {
     /// <summary>Gives a list of rows the tree's keys: <paramref name="toggle"/> opens or closes a row, <paramref name="open"/>
-    /// opens what it stands for, false where it stands for nothing.</summary>
-    public static void Attach<T>(ListBox list, Action<T> toggle, Func<T, bool>? open = null)
+    /// opens what it stands for, false where it stands for nothing; <paramref name="acts"/> what else its rows do, its
+    /// Open in place of the tree's Enter and double click.</summary>
+    public static void Attach<T>(ListBox list, Action<T> toggle, Func<T, bool>? open = null, ListActs? acts = null)
         where T : class, ITreeRow =>
-        Attach<T>(list, row => row, toggle, open);
+        Attach<T>(list, row => row, toggle, open, acts);
 
     /// <summary>The same for a list whose items hold their rows, read by <paramref name="rowOf"/>.</summary>
-    public static void Attach<T>(ListBox list, Func<T, ITreeRow> rowOf, Action<T> toggle, Func<T, bool>? open = null)
+    public static void Attach<T>(ListBox list, Func<T, ITreeRow> rowOf, Action<T> toggle, Func<T, bool>? open = null, ListActs? acts = null)
         where T : class
     {
         FollowChoices(list);
-        // Ahead of the list's own keys and its rows', which take the arrows and Enter before a handler of the list hears them.
-        list.AddHandler(InputElement.KeyDownEvent, (_, e) =>
+        acts ??= new ListActs();
+        ListKeys.Act(list, acts with
         {
-            if (e.KeyModifiers == KeyModifiers.None && e.Source is not TextBox && list.SelectedItem is T item && Take(list, e.Key, item, rowOf, toggle, open))
+            Keys = e => acts.Keys?.Invoke(e) == true
+                || (e.KeyModifiers == KeyModifiers.None && e.Key is Key.Right or Key.Left && list.SelectedItem is T item && Take(list, e.Key, item, rowOf, toggle)),
+            Open = acts.Open ?? (() =>
             {
-                e.Handled = true;
-            }
-        }, RoutingStrategies.Tunnel);
+                if (list.SelectedItem is T item && open?.Invoke(item) != true && rowOf(item).Expands)
+                {
+                    toggle(item);
+                }
+            }),
+            Source = acts.Source ?? (open is null ? null : () =>
+            {
+                if (list.SelectedItem is T item)
+                {
+                    open(item);
+                }
+            }),
+        });
     }
 
     /// <summary>Brings the row a choice was made on (the anchor a Shift range runs from) into view as it changes, once the
@@ -183,38 +195,26 @@ public static class TreeKeys
         }
     }
 
-    private static bool Take<T>(ListBox list, Key key, T item, Func<T, ITreeRow> rowOf, Action<T> toggle, Func<T, bool>? open)
+    private static bool Take<T>(ListBox list, Key key, T item, Func<T, ITreeRow> rowOf, Action<T> toggle)
         where T : class
     {
         ITreeRow row = rowOf(item);
-        switch (key)
+        if (key == Key.Right)
         {
-            case Key.Right:
-                if (row.Expands && !row.IsExpanded)
-                {
-                    toggle(item);
-                }
-                return true;
-            case Key.Left when row.IsExpanded:
+            if (row.Expands && !row.IsExpanded)
+            {
                 toggle(item);
-                return true;
-            case Key.Left:
-                if (Holder(list, item, rowOf) is int holder)
-                {
-                    Choose(list, holder);
-                }
-                return true;
-            case Key.Enter:
-                if (open?.Invoke(item) != true && row.Expands)
-                {
-                    toggle(item);
-                }
-                return true;
-            case Key.F4:
-                return open?.Invoke(item) == true;
-            default:
-                return false;
+            }
         }
+        else if (row.IsExpanded)
+        {
+            toggle(item);
+        }
+        else if (Holder(list, item, rowOf) is int holder)
+        {
+            Choose(list, holder);
+        }
+        return true;
     }
 
     /// <summary>The index of the row an item's row sits under: the nearest above the item's own place, less deep.</summary>

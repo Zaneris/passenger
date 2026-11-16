@@ -623,8 +623,7 @@ internal sealed class ChoicePopup : Border
                 list,
             },
         };
-        list.AddHandler(KeyDownEvent, OnKeyDown, RoutingStrategies.Tunnel);
-        list.DoubleTapped += (_, _) => Choose();
+        ListKeys.Act(list, new ListActs { Open = Choose, Keys = TakeDigit });
         list.SelectionChanged += (_, _) => Moved?.Invoke(this, list.SelectedItem as Choice);
         Dispatcher.UIThread.Post(() =>
         {
@@ -642,18 +641,15 @@ internal sealed class ChoicePopup : Border
     /// <summary>The choice the list has selected now, as Up and Down move it.</summary>
     public event EventHandler<Choice?>? Moved;
 
-    private void OnKeyDown(object? sender, KeyEventArgs e)
+    /// <summary>A choice's digit chooses it at once.</summary>
+    private bool TakeDigit(KeyEventArgs e)
     {
-        if (e.Key == Key.Enter)
+        if (Digit(e.Key) is not { } digit || list.ItemsSource is not IEnumerable<Choice> choices || choices.FirstOrDefault(c => c.Mnemonic == digit) is not { } marked)
         {
-            Choose();
-            e.Handled = true;
+            return false;
         }
-        else if (Digit(e.Key) is { } digit && list.ItemsSource is IEnumerable<Choice> choices && choices.FirstOrDefault(c => c.Mnemonic == digit) is { } marked)
-        {
-            Done?.Invoke(this, marked);
-            e.Handled = true;
-        }
+        Done?.Invoke(this, marked);
+        return true;
     }
 
     /// <summary>A choice's row: its digit when the list has them, its words, and its detail muted, in code's font for code.</summary>

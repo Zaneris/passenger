@@ -26,15 +26,7 @@ public sealed class ChangesWindow : IdeWindow
             ItemsSource = files,
         };
         ReusedRows.Use(list, () => Row(repository));
-        list.DoubleTapped += (_, _) => Open();
-        list.KeyDown += (_, e) =>
-        {
-            if (e.Key == Key.Enter && e.KeyModifiers == KeyModifiers.None)
-            {
-                Open();
-                e.Handled = true;
-            }
-        };
+        ListKeys.Act(list, new ListActs { Open = Open });
         TextBlock empty = new() { Text = "No differences", IsVisible = files.Count == 0, Classes = { StyleClasses.EmptyText } };
         Content = new Panel { Children = { list, empty } };
         KeyDown += (_, e) =>

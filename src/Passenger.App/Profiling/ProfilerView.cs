@@ -109,26 +109,13 @@ public sealed class ProfilerView : DockPanel
             ItemsSource = rows,
         };
         ReusedRows.Use(tree, Row);
-        tree.DoubleTapped += (_, _) =>
-        {
-            if (tree.SelectedItem is CallRow row)
-            {
-                OpenRow(row);
-            }
-        };
         TreeKeys.Attach<CallRow>(tree, Toggle, OpenRow);
         spots = new ListBox
         {
             Classes = { StyleClasses.Tree },
         };
         ReusedRows.Use(spots, Spot);
-        spots.DoubleTapped += (_, _) =>
-        {
-            if (spots.SelectedItem is HotSpot spot)
-            {
-                Open(spot.Name, spot.Code);
-            }
-        };
+        ListKeys.Act(spots, new ListActs { Open = OpenSpot, Source = OpenSpot });
         types = new ListBox
         {
             Classes = { StyleClasses.Tree },
@@ -141,14 +128,7 @@ public sealed class ProfilerView : DockPanel
             ItemsSource = traces,
         };
         ReusedRows.Use(backTraces, Row);
-        TreeKeys.Attach<CallRow>(backTraces, Toggle, OpenRow);
-        backTraces.DoubleTapped += (_, _) =>
-        {
-            if (backTraces.SelectedItem is CallRow row)
-            {
-                Open(row.Node.Name, row.Node.Code);
-            }
-        };
+        TreeKeys.Attach<CallRow>(backTraces, Toggle, row => Open(row.Node.Name, row.Node.Code));
         allocations = new PaneSplit(types, backTraces, "2*,1,3*");
         collectionsSummary = new TextBlock { Margin = new Thickness(12, 8), TextWrapping = TextWrapping.Wrap };
         collections = new ListBox
@@ -172,15 +152,7 @@ public sealed class ProfilerView : DockPanel
             Classes = { StyleClasses.Tree },
         };
         ReusedRows.Use(kept, KeptRow);
-        kept.DoubleTapped += (_, _) => OpenKept();
-        kept.KeyDown += (_, e) =>
-        {
-            if (e.Key == Key.Enter)
-            {
-                OpenKept();
-                e.Handled = true;
-            }
-        };
+        ListKeys.Act(kept, new ListActs { Open = OpenKept });
         keptSummary = new TextBlock { Margin = new Thickness(12, 8), TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center };
         Button reveal = new()
         {
@@ -317,6 +289,14 @@ public sealed class ProfilerView : DockPanel
         pages[(int)ProfilerPage.Snapshots].IsEnabled = true;
         int current = Array.FindIndex(pages, p => p.IsChecked == true);
         ShowPage(Snapshot is null && Memory is null && !ticking.IsEnabled && files.Count > 0 ? ProfilerPage.Snapshots : (ProfilerPage)Math.Max(0, current));
+    }
+
+    private void OpenSpot()
+    {
+        if (spots.SelectedItem is HotSpot spot)
+        {
+            Open(spot.Name, spot.Code);
+        }
     }
 
     private void OpenKept()

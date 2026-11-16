@@ -52,21 +52,8 @@ public sealed class StructureView : DockPanel
             }
             Chosen?.Invoke(this, list.SelectedItem as SymbolRow);
         };
-        list.Tapped += (_, _) =>
-        {
-            if (list.SelectedItem is SymbolRow row)
-            {
-                GoToRequested?.Invoke(this, row);
-            }
-        };
-        list.AddHandler(KeyDownEvent, (_, e) =>
-        {
-            if (e.Key == Key.Enter && list.SelectedItem is SymbolRow row)
-            {
-                GoToRequested?.Invoke(this, row);
-                e.Handled = true;
-            }
-        }, Avalonia.Interactivity.RoutingStrategies.Tunnel);
+        list.Tapped += (_, _) => GoToChosen();
+        ListKeys.Act(list, new ListActs { Open = GoToChosen, Source = GoToChosen });
         placeholder = new TextBlock { Classes = { StyleClasses.EmptyText } };
         ActionTips.SetWords(placeholder, AppActions.GoToFile, keys => $"The open file's outline shows here: open one with {ActionTips.Named("Go to File", keys)}");
         unoutlined = new TextBlock { Classes = { StyleClasses.EmptyText }, IsVisible = false };
@@ -112,6 +99,14 @@ public sealed class StructureView : DockPanel
 
     /// <summary>A member to go to.</summary>
     public event EventHandler<SymbolRow>? GoToRequested;
+
+    private void GoToChosen()
+    {
+        if (list.SelectedItem is SymbolRow row)
+        {
+            GoToRequested?.Invoke(this, row);
+        }
+    }
 
     /// <summary>A member whose usages to find, from its menu.</summary>
     public event EventHandler<SymbolRow>? UsagesRequested;

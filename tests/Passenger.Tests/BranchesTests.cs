@@ -413,8 +413,9 @@ public sealed class BranchesTests : IDisposable
         ChangesWindow changes = Assert.IsType<ChangesWindow>(window.Frontmost);
         Assert.Equal("Changes Between feature and Current Working Tree", changes.Title);
         Assert.Equal(["Feature.cs Deleted", "Notes.txt Added", "Shop.cs Modified"], changes.Files.Select(f => $"{f.Name} {f.Kind}").Order());
-        changes.Select(changes.Files.Single(f => f.Name == "Shop.cs"));
-        changes.Open();
+        ListBox changed = Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(changes).OfType<ListBox>().Single();
+        Ui.Click(Ui.Row(changed, changes.Files.Single(f => f.Name == "Shop.cs")));
+        Ui.Press(changes, "ENTER");
         Ui.Landed(() => window.Frontmost is DiffWindow, "Shop.cs as feature has it beside the file");
         DiffWindow diff = (DiffWindow)window.Frontmost;
         Assert.Equal(Shop, diff.View.Left.Document.Snapshot.ToString());
