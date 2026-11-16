@@ -9,7 +9,8 @@ namespace Passenger.App.Web;
 /// <c>web/schemas/</c> with those they refer to and never downloaded. A schema a file names itself (its <c>$schema</c>) is
 /// downloaded while Settings allow it, over HTTP or HTTPS, kept for the process, or read from a file on this machine's own
 /// disks (<see cref="FoundPaths.OfFileAddress"/>), never another machine's or a share's; <c>PASSENGER_SCHEMAS</c> names
-/// another place to ask for them. The JSON server asks here for every schema, a file's too. Called on any thread.</summary>
+/// another place to ask for them. The JSON server asks here for every schema, a file's too, and the YAML server, through
+/// Passenger's preload (<see cref="YamlPreload"/>), for every schema's file and one over HTTP. Called on any thread.</summary>
 public sealed class JsonSchemas(Func<bool> download)
 {
     [IdentifierHome]
@@ -38,8 +39,16 @@ public sealed class JsonSchemas(Func<bool> download)
     /// <summary>Where the carried schemas are, beside the app.</summary>
     public static string Folder => Path.Combine(WebLanguages.Carried, "schemas");
 
-    /// <summary>The Compose specification's schema, carried, as the YAML server reads it from disk.</summary>
+    /// <summary>The Compose specification's schema, carried, as the YAML server asks for it by its file's URL.</summary>
     public static string ComposeUri => new Uri(Path.Combine(Folder, "compose-spec.json")).AbsoluteUri;
+
+    /// <summary>Passenger's preload for the YAML server, carried beside the web language servers, which has it ask here for
+    /// each schema's file it would read itself (<c>web/passenger/yaml-schemas.mjs</c>).</summary>
+    public static string YamlPreload => Path.Combine(WebLanguages.Carried, "passenger", "yaml-schemas.mjs");
+
+    /// <summary>The Node.js the YAML server's preload runs on, beside what the server's package needs: one with
+    /// <c>module.registerHooks</c>.</summary>
+    public const string YamlPreloadNode = "^22.15.0 || >=23.5.0";
 
     /// <summary>The globs compose files take the Compose specification's schema by (<see cref="Containers.ComposeFiles.SchemaGlobs"/>).</summary>
     public static readonly string[] ComposeFiles = [.. Containers.ComposeFiles.SchemaGlobs];

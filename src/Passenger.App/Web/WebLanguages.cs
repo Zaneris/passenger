@@ -625,6 +625,7 @@ public sealed class WebLanguages : IAsyncDisposable
         made = new NodeServer(Name(kind), place.Project ?? folder, NodeAsync, restarts ?? new ServerRestarts())
         {
             Package = Path.Combine(Modules, Package(kind), "package.json"),
+            PreloadNeeds = kind == WebServerKind.Yaml ? JsonSchemas.YamlPreloadNode : null,
             Missing = () => Missing(kind),
             Command = node => Starting(kind, node),
             Elsewhere = kind == WebServerKind.GDScript ? () => GodotStart(place) : null,
@@ -695,13 +696,23 @@ public sealed class WebLanguages : IAsyncDisposable
         StateChanged?.Invoke(this, EventArgs.Empty);
     }
 
-    /// <summary>Why a server cannot start that this build is to blame for: its package, or the Dockerfile server's preload,
-    /// is not beside the app.</summary>
+    /// <summary>Why a server cannot start that this build is to blame for: its package, or Passenger's preload for the
+    /// Dockerfile or YAML server, is not beside the app.</summary>
     private static string? Missing(WebServerKind kind) =>
         kind == WebServerKind.GDScript ? null
         : !File.Exists(Script(kind)) ? $"its language server is missing from the app's folder ({Script(kind)})"
-        : kind == WebServerKind.Dockerfile && !File.Exists(DockerHubTags.Preload) ? $"Passenger's part of its language server is missing from the app's folder ({DockerHubTags.Preload})"
+        : Preload(kind) is { } preload && !File.Exists(preload) ? $"Passenger's part of its language server is missing from the app's folder ({preload})"
         : null;
+
+    /// <summary>Passenger's preload a server runs with, null for none: the Dockerfile server's, which keeps it from Docker Hub
+    /// unless Settings allows it (<see cref="DockerHubTags"/>), and the YAML server's, which has it ask Passenger for each
+    /// schema's file rather than read it itself (<see cref="JsonSchemas.YamlPreload"/>).</summary>
+    private static string? Preload(WebServerKind kind) => kind switch
+    {
+        WebServerKind.Dockerfile => DockerHubTags.Preload,
+        WebServerKind.Yaml => JsonSchemas.YamlPreload,
+        _ => null,
+    };
 
     /// <summary>A server that cannot run: its files keep their colours and say why in their banner, the status bar in a
     /// few words.</summary>
@@ -750,16 +761,20 @@ public sealed class WebLanguages : IAsyncDisposable
         _ => Path.Combine(Modules, "vscode-langservers-extracted", "lib", "json-language-server", "node", "jsonServerMain.js"),
     };
 
-    /// <summary>How a server starts: its script on Node.js in the folder, with the options its package documents. The
-    /// TypeScript server never installs type packages from npm (automatic type acquisition) behind the person's back, and
-    /// renames a name where it is declared and everywhere it is used from any of them (an import's too, which it would
-    /// otherwise rename alone, aliased), answering from its project once loaded rather than from the open files alone; nor
-    /// the Dockerfile server asks Docker Hub for image tags unless Settings allows it (its preload, <see cref="DockerHubTags"/>).</summary>
+    /// <summary>How a server starts: its script on Node.js in the folder, with the options its package documents and its
+    /// preload (<see cref="Preload"/>). The TypeScript server never installs type packages from npm (automatic type
+    /// acquisition) behind the person's back, and renames a name where it is declared and everywhere it is used from any of
+    /// them (an import's too, which it would otherwise rename alone, aliased), answering from its project once loaded rather
+    /// than from the open files alone.</summary>
     private ServerStart Starting(WebServerKind kind, string node)
     {
-        ProcessStartInfo process = ChildProcesses.Command(node, kind == WebServerKind.Dockerfile
-            ? ["--require", DockerHubTags.Preload, Script(kind), "--stdio"]
-            : [Script(kind), "--stdio"], folder);
+        ProcessStartInfo process = ChildProcesses.Command(node, kind switch
+        {
+            WebServerKind.Dockerfile => ["--require", DockerHubTags.Preload, Script(kind), "--stdio"],
+            // An ES module's preload, named by its URL, which --import takes where a Windows path is no specifier.
+            WebServerKind.Yaml => ["--import", new Uri(JsonSchemas.YamlPreload).AbsoluteUri, Script(kind), "--stdio"],
+            _ => [Script(kind), "--stdio"],
+        }, folder);
         if (kind == WebServerKind.Dockerfile && DockerHubTags.Told(asksDockerHub, DockerHub) is { } told)
         {
             process.Environment[DockerHubTags.Variable] = told;
@@ -812,9 +827,10 @@ public sealed class WebLanguages : IAsyncDisposable
     };
 
     /// <summary>The YAML server's settings: checks, completion, hover and formatting on; the Compose specification's schema,
-    /// carried and read from disk, for compose files; Compose's merge tags known; and nothing fetched by the server itself,
-    /// neither SchemaStore's catalogue nor Kubernetes' schemas (a schema a file names over HTTP is asked of
-    /// <see cref="JsonSchemas"/>, as the JSON server's are, once <c>yaml/registerContentRequest</c> has told it to).</summary>
+    /// carried, for compose files; Compose's merge tags known; and nothing fetched by the server itself, neither
+    /// SchemaStore's catalogue nor Kubernetes' schemas (a schema a file names over HTTP is asked of <see cref="JsonSchemas"/>,
+    /// as the JSON server's are, once <c>yaml/registerContentRequest</c> has told it to, and a schema's file through its
+    /// preload).</summary>
     private static readonly object YamlSettings = new
     {
         validate = true,

@@ -42,29 +42,41 @@ public sealed partial record NodeRuntime(string? Path, Version? Version, string?
     }
 
     /// <summary>Why this Node.js cannot run what a package's package.json says needs another (its <c>engines.node</c>, as
-    /// "&gt;=22.22.2", or eslint's "^20.19.0 || ^22.13.0 || &gt;=24"), or null when it can; <paramref name="what"/> names
-    /// what needs it ("the TypeScript language server").</summary>
-    public string? TooOldFor(string package, string what)
+    /// "&gt;=22.22.2", or eslint's "^20.19.0 || ^22.13.0 || &gt;=24"), or what Passenger runs with it needs beside
+    /// (<paramref name="alsoNeeds"/>, a range as npm writes one), or null when it can; <paramref name="what"/> names what
+    /// needs it ("the TypeScript language server").</summary>
+    public string? TooOldFor(string package, string what, string? alsoNeeds = null) =>
+        Unmet(Engines(package), what) ?? Unmet(alsoNeeds, what);
+
+    /// <summary>The Node.js a package's package.json says it needs; null where it says none or does not read.</summary>
+    private static string? Engines(string package)
     {
-        if (Version is not { } version || !File.Exists(package))
+        if (!File.Exists(package))
         {
             return null;
         }
         try
         {
             using JsonDocument read = JsonDocument.Parse(File.ReadAllText(package));
-            if (JsonMembers.Text(JsonMembers.Object(read.RootElement, "engines"), "node") is { } needs && !NpmRange.Meets(version, needs))
-            {
-                string wanted = Least().Match(needs) is { Success: true } least && least.Value.Trim() == needs.Trim() && Version.TryParse(Padded(least.Groups[1].Value), out Version? minimum)
-                    ? $"{minimum} or later" : needs.Trim();
-                return $"{what} needs Node.js {wanted}, and {Path} is {version}: update it, or name a later one in {SettingsPlace}";
-            }
+            return JsonMembers.Text(JsonMembers.Object(read.RootElement, "engines"), "node");
         }
         catch (Exception error) when (error is IOException or JsonException or InvalidOperationException)
         {
             // A package.json that does not read says nothing of what it needs.
+            return null;
         }
-        return null;
+    }
+
+    /// <summary>Why this Node.js is outside the range <paramref name="needs"/>, or null where it is in it or either is unknown.</summary>
+    private string? Unmet(string? needs, string what)
+    {
+        if (needs is null || Version is not { } version || NpmRange.Meets(version, needs))
+        {
+            return null;
+        }
+        string wanted = Least().Match(needs) is { Success: true } least && least.Value.Trim() == needs.Trim() && Version.TryParse(Padded(least.Groups[1].Value), out Version? minimum)
+            ? $"{minimum} or later" : needs.Trim();
+        return $"{what} needs Node.js {wanted}, and {Path} is {version}: update it, or name a later one in {SettingsPlace}";
     }
 
     private static string Padded(string version) => version.Count(c => c == '.') switch

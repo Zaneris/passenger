@@ -41,6 +41,8 @@
     <!-- Passenger's preload for the Dockerfile server, which keeps it from Docker Hub while Settings says so
          (Web/DockerHubTags.cs). -->
     <None Include="Web/docker-hub.cjs" Link="web/passenger/docker-hub.cjs" CopyToOutputDirectory="PreserveNewest" />
+    <!-- Passenger's preload for the YAML server, which has it ask Passenger for each schema's file (Web/JsonSchemas.cs). -->
+    <None Include="Web/yaml-schemas.mjs" Link="web/passenger/yaml-schemas.mjs" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>

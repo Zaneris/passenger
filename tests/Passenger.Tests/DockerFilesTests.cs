@@ -1360,7 +1360,8 @@ public sealed class DockerFilesTests : IClassFixture<DockerFilesTests.Shop>
         private static async Task<string?> TooOldAsync()
         {
             Passenger.App.Web.NodeRuntime node = await Passenger.App.Web.NodeRuntime.FindAsync(null);
-            return node.Problem ?? node.TooOldFor(Path.Combine(Passenger.App.Web.WebLanguages.Modules, "yaml-language-server", "package.json"), "the YAML language server");
+            return node.Problem ?? node.TooOldFor(Path.Combine(Passenger.App.Web.WebLanguages.Modules, "yaml-language-server", "package.json"), "the YAML language server",
+                Passenger.App.Web.JsonSchemas.YamlPreloadNode);
         }
 
         public void Dispose() => TestFolders.Delete(Folder);
