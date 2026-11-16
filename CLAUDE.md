@@ -536,7 +536,7 @@ a new name, and `just site-shots` retakes its images.
 - **An await's continuation on the window's thread runs before work `UiThread.Post` queued earlier** (Avalonia's context posts at Normal, `UiThread.Post` at Default): take in what's pending first, as `ProjectModels.Land` before `Keep`.
 - **An await of a task the window's thread completes continues on the thread pool**, even with ConfigureAwait(false):
   what must happen where the answer lands is an awaited `ContinueWith(…, ExecuteSynchronously)`; an await of work that
-  may have ended continues inline, so a view filling on its own turn awaits with `ConfigureAwaitOptions.ForceYielding`.
+  may have ended continues inline, so a view filling on its own turn awaits with `ConfigureAwaitOptions.ForceYielding`, and work begun while an object is made may have ended before it is handed over: check what it came to first (`OpenDocument.Load`).
 - **Work every window shares** (a cache of tasks, a process-wide gate) runs on the thread pool, never the asking thread:
   a headless window test's thread never runs again once its test is over.
 - **A window the IDE opens of its own accord** (a notification, an agent's question) shows with `ShowActivated` false,
