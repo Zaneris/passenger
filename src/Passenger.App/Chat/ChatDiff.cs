@@ -13,6 +13,9 @@ public static class ChatDiff
     /// <summary>The most lines a card shows of one change.</summary>
     public const int MostLines = 80;
 
+    /// <summary>The lines a card shows until Show more is pressed, so a new file of a hundred lines stays a card.</summary>
+    public const int FirstLines = 12;
+
     private const int Around = 2;
 
     /// <summary>How many lines the change adds and removes.</summary>
@@ -60,7 +63,25 @@ public static class ChatDiff
         {
             lines.Children.Add(new TextBlock { Classes = { StyleClasses.Muted }, Text = $"… {more} more lines", Margin = new Thickness(8, 4) });
         }
-        return new Border { Classes = { StyleClasses.Code }, Child = lines };
+        int folded = Math.Min(shown, MostLines) - FirstLines;
+        if (folded <= 0)
+        {
+            return new Border { Classes = { StyleClasses.Code }, Child = lines };
+        }
+        foreach (Control line in lines.Children.Skip(FirstLines))
+        {
+            line.IsVisible = false;
+        }
+        Button unfold = new() { Classes = { StyleClasses.Link }, Content = $"Show {folded} more lines", Margin = new Thickness(8, 2) };
+        unfold.Click += (_, _) =>
+        {
+            foreach (Control line in lines.Children)
+            {
+                line.IsVisible = true;
+            }
+            unfold.IsVisible = false;
+        };
+        return new Border { Classes = { StyleClasses.Code }, Child = new StackPanel { Children = { lines, unfold } } };
 
         void Add(string text, string? ground)
         {

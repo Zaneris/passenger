@@ -14,6 +14,10 @@ public sealed class ChatAgent(AcpSession session, Action end) : IAsyncDisposable
     /// <summary>The Claude adapter's mode that asks before every change ("Manual"); it starts in one that never asks.</summary>
     public const string ManualMode = "default";
 
+    /// <summary>The Claude adapter's mode that applies edits without asking and asks before commands ("Accept edits"),
+    /// Cursor's way: the panel takes each file for review first, to keep or undo.</summary>
+    public const string ReviewMode = "acceptEdits";
+
     public AcpSession Session { get; } = session;
 
     /// <summary>Starts the Claude adapter in <paramref name="folder"/>; what the start throws (no npx found), this throws.</summary>

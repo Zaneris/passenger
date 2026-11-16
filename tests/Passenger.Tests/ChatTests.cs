@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.ComponentModel;
 using System.IO.Pipelines;
 using System.Text;
@@ -64,7 +65,7 @@ public sealed class ChatTests
 
         Assert.Equal(folder, startedIn);
         Assert.Equal(folder, agent!.SessionFolder);
-        Assert.Equal("default", agent.Mode);
+        Assert.Equal("acceptEdits", agent.Mode);
         Assert.False(window.Chat.OffersConnect);
         window.Close();
     }
@@ -174,6 +175,68 @@ public sealed class ChatTests
     }
 
     [AvaloniaFact]
+    public void The_agents_edits_apply_and_wait_in_the_review_bar_with_their_counts()
+    {
+        MainWindow window = Reviewing(out StandInAgent agent, out string folder);
+        Send(window, "edit");
+        Ui.WaitFor(() => !window.Chat.Busy, () => $"the turn ended, where the conversation is {Shown(window)}");
+
+        Assert.Equal("hello\nworld\n", File.ReadAllText(Path.Combine(folder, "hello.txt")));
+        Assert.Equal(["hello.txt", "notes.md"], window.Chat.Review.Shown.Select(file => Path.GetFileName(file.Path)));
+        Assert.True(window.Chat.Review.IsVisible);
+        Assert.Equal(["+1 −0", "+1 −0"], window.Chat.Tools.Select(line => line.Counts));
+        Assert.True(window.Chat.Review.Shown[1].IsNew);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Undo_all_puts_each_file_back_as_it_was_before_the_agent()
+    {
+        MainWindow window = Reviewing(out StandInAgent agent, out string folder);
+        Send(window, "edit");
+        Ui.WaitFor(() => !window.Chat.Busy && window.Chat.Review.Shown.Count == 2, "the edits in review");
+
+        Ui.Click(InReview(window, "Undo all"));
+        Ui.WaitFor(() => window.Chat.Review.Shown.Count == 0, () => $"the review emptied, where it lists {window.Chat.Review.Shown.Count}");
+
+        Assert.Equal("hello\n", File.ReadAllText(Path.Combine(folder, "hello.txt")));
+        Assert.False(File.Exists(Path.Combine(folder, "notes.md")));
+        Assert.False(window.Chat.Review.IsVisible);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Undo_leaves_a_file_changed_since_the_agent_and_says_so()
+    {
+        MainWindow window = Reviewing(out StandInAgent agent, out string folder);
+        Send(window, "edit");
+        Ui.WaitFor(() => !window.Chat.Busy && window.Chat.Review.Shown.Count == 2, "the edits in review");
+        File.WriteAllText(Path.Combine(folder, "hello.txt"), "mine\n");
+
+        Ui.Click(InReview(window, "Undo all"));
+        Ui.WaitFor(() => window.Chat.Review.Shown.Count == 1, () => $"one file undone, where the review lists {window.Chat.Review.Shown.Count}");
+
+        Assert.Equal("mine\n", File.ReadAllText(Path.Combine(folder, "hello.txt")));
+        Assert.Equal("hello.txt", Path.GetFileName(window.Chat.Review.Shown.Single().Path));
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Keep_all_empties_the_review_and_leaves_the_files_as_the_agent_left_them()
+    {
+        MainWindow window = Reviewing(out StandInAgent agent, out string folder);
+        Send(window, "edit");
+        Ui.WaitFor(() => !window.Chat.Busy && window.Chat.Review.Shown.Count == 2, "the edits in review");
+
+        Ui.Click(InReview(window, "Keep all"));
+
+        Assert.Empty(window.Chat.Review.Shown);
+        Assert.Equal("hello\nworld\n", File.ReadAllText(Path.Combine(folder, "hello.txt")));
+        Assert.True(File.Exists(Path.Combine(folder, "notes.md")));
+        window.Close();
+    }
+
+    [AvaloniaFact]
     public void A_reply_shows_as_Markdown_once_whole()
     {
         MainWindow window = Connected(out StandInAgent agent);
@@ -240,6 +303,31 @@ public sealed class ChatTests
         return window;
     }
 
+    /// <summary>A window connected to a stand-in agent in a folder holding hello.txt, the agent writing only once the
+    /// window has taken the file for review, as Claude Code names a file before it writes it.</summary>
+    private static MainWindow Reviewing(out StandInAgent agent, out string folder)
+    {
+        string made = TestFolders.Create("chat");
+        File.WriteAllText(Path.Combine(made, "hello.txt"), "hello\n");
+        MainWindow window = Ui.OpenFolder(made, languageServer: false);
+        StandInAgent started = new();
+        ConcurrentDictionary<string, TaskCompletionSource> taken = new(StringComparer.Ordinal);
+        TaskCompletionSource Taken(string path) => taken.GetOrAdd(Path.GetFileName(path), _ => new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously));
+        window.ChatReview.Taken += path => Taken(path).TrySetResult();
+        started.BeforeWrite = path => Taken(path).Task;
+        window.StartChatAgent = _ => Task.FromResult(started.Agent);
+        window.ShowToolWindow(ToolWindowIds.Chat);
+        Ui.Settle();
+        Ui.Click(ConnectButton(window));
+        Ui.WaitFor(() => window.Chat.Said == "Connected to Claude Agent 0.107.3", "the agent connected");
+        agent = started;
+        folder = made;
+        return window;
+    }
+
+    private static Button InReview(MainWindow window, string content) =>
+        window.Chat.Review.GetVisualDescendants().OfType<Button>().First(b => Equals(b.Content, content));
+
     private static void Send(MainWindow window, string text)
     {
         window.Chat.Input.Text = text;
@@ -253,6 +341,7 @@ public sealed class ChatTests
 
     /// <summary>An agent in memory that answers as the Claude adapter did in real runs: initialize, session/new and
     /// set_mode; a prompt with its reply in three pieces, or by its first word: "wait" nothing until session/cancel;
+    /// "edit" hello.txt changed and notes.md made, each written once the window has taken it;
     /// "tool" a read's call with words before and after it; "write" a question with a new file's diff, then its words;
     /// "bold" Markdown.</summary>
     private sealed class StandInAgent
@@ -278,6 +367,9 @@ public sealed class ChatTests
 
         /// <summary>Whether the turn was cancelled.</summary>
         public bool Cancelled { get; private set; }
+
+        /// <summary>Waited on before it writes a file, by the file's path.</summary>
+        public Func<string, Task> BeforeWrite { get; set; } = _ => Task.CompletedTask;
 
         /// <summary>The answer to its question: an option's id, or "cancelled".</summary>
         public string? Answered { get; private set; }
@@ -311,7 +403,7 @@ public sealed class ChatTests
                         break;
                     case "session/new":
                         SessionFolder = parameters?["cwd"]?.GetValue<string>();
-                        await Answer(writer, id, """{"sessionId":"sess_1","modes":{"currentModeId":"auto","availableModes":[{"id":"default","name":"Manual"},{"id":"auto","name":"Auto"}]}}""");
+                        await Answer(writer, id, """{"sessionId":"sess_1","modes":{"currentModeId":"auto","availableModes":[{"id":"default","name":"Manual"},{"id":"acceptEdits","name":"Accept edits"},{"id":"auto","name":"Auto"}]}}""");
                         break;
                     case "session/set_mode":
                         Mode = parameters?["modeId"]?.GetValue<string>();
@@ -343,6 +435,14 @@ public sealed class ChatTests
                             waiting = id;
                             await Update(writer, """{"toolCallId":"call_2","sessionUpdate":"tool_call","status":"pending","title":"Preparing file…","kind":"edit","content":[]}""");
                             await writer.WriteLineAsync("""{"jsonrpc":"2.0","id":"ask_1","method":"session/request_permission","params":{"sessionId":"sess_1","toolCall":{"toolCallId":"call_2","status":"pending","title":"Write notes.md","kind":"edit","content":[{"type":"diff","path":"/work/notes.md","oldText":"","newText":"# Notes\n"}]},"options":[{"optionId":"allow-once","name":"Yes","kind":"allow_once"},{"optionId":"allow-always","name":"Yes, allow all edits during this session","kind":"allow_always"},{"optionId":"reject","name":"No","kind":"reject_once"}]}}""");
+                            break;
+                        }
+                        if (text == "edit" && SessionFolder is { } folder)
+                        {
+                            await Edit(writer, "call_3", Path.Combine(folder, "hello.txt"), "hello\nworld\n");
+                            await Edit(writer, "call_4", Path.Combine(folder, "notes.md"), "# Notes\n");
+                            await Say(writer, "Done.");
+                            await Answer(writer, id, """{"stopReason":"end_turn"}""");
                             break;
                         }
                         if (text == "bold")
@@ -382,6 +482,18 @@ public sealed class ChatTests
 
         /// <summary>Whether it has a question open, whose answer ends the turn rather than session/cancel.</summary>
         private bool Asked => Prompts.LastOrDefault() == "write";
+
+        /// <summary>An edit as the Claude adapter sends one in Accept edits mode: its call, then the file it names, then,
+        /// once written, done.</summary>
+        private async Task Edit(StreamWriter writer, string call, string path, string text)
+        {
+            string named = JsonValue.Create(path).ToJsonString();
+            await Update(writer, $$$"""{"toolCallId":"{{{call}}}","sessionUpdate":"tool_call","status":"pending","title":"Preparing file…","kind":"edit","content":[]}""");
+            await Update(writer, $$$"""{"toolCallId":"{{{call}}}","sessionUpdate":"tool_call_update","title":"Write {{{Path.GetFileName(path)}}}","locations":[{"path":{{{named}}}}]}""");
+            await BeforeWrite(path);
+            await File.WriteAllTextAsync(path, text);
+            await Update(writer, $$$"""{"toolCallId":"{{{call}}}","sessionUpdate":"tool_call_update","status":"completed"}""");
+        }
 
         private static Task Say(StreamWriter writer, string text) =>
             Update(writer, """{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":""" + JsonValue.Create(text).ToJsonString() + "}}");

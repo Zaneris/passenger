@@ -106,13 +106,21 @@ public sealed class ChatView : DockPanel
         agent.IsVisible = false;
         SetDock(agent, Dock.Top);
         SetDock(composer, Dock.Bottom);
+        SetDock(Review, Dock.Bottom);
         Children.Add(agent);
         Children.Add(composer);
+        Children.Add(Review);
         Children.Add(new Panel { Children = { idle, conversation } });
     }
 
     /// <summary>Connect was pressed.</summary>
     public event EventHandler? ConnectRequested;
+
+    /// <summary>An edit's diff was asked for from its line, by its tool call's id.</summary>
+    public event EventHandler<string>? EditDiffRequested;
+
+    /// <summary>The files the agent changed, waiting for review, above the box.</summary>
+    public ReviewBar Review { get; } = new();
 
     /// <summary>The person sent a message, its text given.</summary>
     public event EventHandler<string>? SendRequested;
@@ -222,6 +230,7 @@ public sealed class ChatView : DockPanel
         {
             Close();
             line = new ToolLine(call);
+            line.DiffRequested += (_, _) => EditDiffRequested?.Invoke(this, call.Id);
             tools[call.Id] = line;
             reply.Children.Add(line);
         }
@@ -230,6 +239,15 @@ public sealed class ChatView : DockPanel
             doing.Text = call.Status is "pending" or "in_progress" ? line.Title : "Thinking…";
         }
         ToEnd();
+    }
+
+    /// <summary>What an edit's tool call added and removed, on its line.</summary>
+    public void Counted(string toolCallId, int added, int removed)
+    {
+        if (tools.TryGetValue(toolCallId, out ToolLine? line))
+        {
+            line.Counted(added, removed);
+        }
     }
 
     /// <summary>The agent's question as a card in its reply; the click, or Stop, answers it.</summary>
@@ -338,7 +356,7 @@ public sealed class ChatView : DockPanel
     {
         StackPanel state = new() { Spacing = 8, Margin = new Thickness(0, 24, 0, 0) };
         state.Children.Add(new TextBlock { Text = "Ask about this folder, or have the agent change it.", TextWrapping = TextWrapping.Wrap });
-        state.Children.Add(new TextBlock { Classes = { StyleClasses.Muted }, FontSize = 11, Text = "It asks before each edit and command.", TextWrapping = TextWrapping.Wrap });
+        state.Children.Add(new TextBlock { Classes = { StyleClasses.Muted }, FontSize = 11, Text = "Its edits apply as it goes, for you to keep or undo; it asks before each command.", TextWrapping = TextWrapping.Wrap });
         foreach (string suggestion in Suggestions)
         {
             Button ask = new() { Content = suggestion, HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Left };

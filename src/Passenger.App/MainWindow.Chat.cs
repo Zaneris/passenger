@@ -1,17 +1,27 @@
+using System.Collections.Concurrent;
 using System.ComponentModel;
 using Avalonia.Threading;
 using Passenger.Acp;
 using Passenger.App.Chat;
+using Passenger.App.Vcs;
 using Passenger.Core;
+using Passenger.Text;
+using VcsDiff = Passenger.Vcs.FileDiff;
 
 namespace Passenger.App;
 
-/// <summary>The window's Chat: its tool window, and the coding agent it connects to in the open folder, ended with the
-/// window. The agent's updates come on its connection's thread and land on the window's, each held as background work.</summary>
+/// <summary>The window's Chat: its tool window, the coding agent it connects to in the open folder, ended with the
+/// window, and the review of the files the agent changed. The agent's updates come on its connection's thread and land
+/// on the window's, each held as background work.</summary>
 public partial class MainWindow
 {
+    private readonly ChatReview chatReview = new();
+    private readonly ConcurrentDictionary<string, string[]> chatEdits = new(StringComparer.Ordinal);
     private ChatAgent? chatAgent;
     private CancellationTokenSource? chatTurn;
+
+    /// <summary>The files the agent changed that wait for the person to keep or undo them.</summary>
+    public ChatReview ChatReview => chatReview;
 
     /// <summary>The Chat tool window, built as it is first shown or asked for.</summary>
     public ChatView Chat => (ChatView)Dock[ToolWindowIds.Chat].Content;
@@ -38,6 +48,33 @@ public partial class MainWindow
                 view.CancelQuestions();
                 chatTurn?.Cancel();
             };
+            view.Review.KeepRequested += (_, files) =>
+            {
+                foreach (ReviewedFile file in files)
+                {
+                    chatReview.Done(file.Path);
+                }
+                view.Review.Show(chatReview.Files);
+            };
+            view.Review.UndoRequested += (_, files) =>
+            {
+                Task undoing = UndoChatAsync(view, files);
+                BackgroundWork.Track(undoing);
+                IdeErrors.Observe(undoing);
+            };
+            view.Review.DiffRequested += (_, file) => IdeErrors.Observe(ShowChatDiffAsync(file));
+            view.EditDiffRequested += (_, id) =>
+            {
+                string[] paths = chatEdits.TryGetValue(id, out string[]? named) ? named : [];
+                if (chatReview.Files.FirstOrDefault(file => paths.Contains(file.Path, StringComparer.Ordinal)) is { } file)
+                {
+                    IdeErrors.Observe(ShowChatDiffAsync(file));
+                }
+                else
+                {
+                    status.Text = "That change was kept or undone, so it is no longer in review";
+                }
+            };
             return view;
         }, Docking.ToolAnchor.RightTop)
         {
@@ -47,8 +84,9 @@ public partial class MainWindow
         Closed += (_, _) => EndChatAgent();
     }
 
-    /// <summary>Starts the agent in the open folder and opens its session in Manual mode, so it asks before it changes
-    /// anything, saying each step and, failing, why.</summary>
+    /// <summary>Starts the agent in the open folder and opens its session in the agent's Accept edits mode, as Cursor
+    /// works: its edits apply as it goes, each taken for review first, and it asks before each command. An agent without
+    /// that mode runs in Manual, asking before each edit too. Says each step and, failing, why.</summary>
     private async Task ConnectChatAsync(ChatView view)
     {
         if (Folder is not { } folder)
@@ -65,7 +103,11 @@ public partial class MainWindow
             Follow(agent, view);
             AgentInfo info = await agent.Session.InitializeAsync();
             await agent.Session.NewSessionAsync(folder);
-            if (agent.Session.Modes.Any(mode => mode.Id == ChatAgent.ManualMode))
+            if (agent.Session.Modes.Any(mode => mode.Id == ChatAgent.ReviewMode))
+            {
+                await agent.Session.SetModeAsync(ChatAgent.ReviewMode);
+            }
+            else if (agent.Session.Modes.Any(mode => mode.Id == ChatAgent.ManualMode))
             {
                 await agent.Session.SetModeAsync(ChatAgent.ManualMode);
             }
@@ -120,9 +162,24 @@ public partial class MainWindow
     private void Follow(ChatAgent agent, ChatView view)
     {
         agent.Session.TextReceived += chunk => OnWindowThread(() => view.Streamed(chunk.Text));
-        agent.Session.ToolCallChanged += call => OnWindowThread(() => view.Tool(call));
+        agent.Session.ToolCallChanged += call =>
+        {
+            (string[] paths, bool done) = Reviewed(call);
+            OnWindowThread(() =>
+            {
+                view.Tool(call);
+                if (done)
+                {
+                    IReadOnlyList<ReviewedFile> files = chatReview.Files;
+                    ReviewedFile[] these = [.. files.Where(file => paths.Contains(file.Path, StringComparer.Ordinal))];
+                    view.Counted(call.Id, these.Sum(file => file.Added), these.Sum(file => file.Removed));
+                    view.Review.Show(files);
+                }
+            });
+        };
         agent.Session.AskPermission = async (request, _) =>
         {
+            Reviewed(request.ToolCall);
             ChatChange[] changes = [.. request.ToolCall.Diffs.Select(diff => ChatChange.Of(diff.Path, diff.OldText, diff.NewText))];
             TaskCompletionSource<Task<string?>> shown = new(TaskCreationOptions.RunContinuationsAsynchronously);
             OnWindowThread(() => shown.SetResult(view.Ask(request, changes)));
@@ -136,6 +193,117 @@ public partial class MainWindow
                 view.Say("The agent ended", error: true, offerConnect: true);
             }
         }), TaskScheduler.Default));
+    }
+
+    /// <summary>Takes the files an edit names for review before the agent writes them (it names them first), and their
+    /// text once the edit is done; on the agent's connection's thread. Which files, and whether the edit is done.</summary>
+    private (string[] Paths, bool Done) Reviewed(ToolCall call)
+    {
+        if (call.Kind is not ("edit" or "delete" or "move"))
+        {
+            return ([], false);
+        }
+        string[] named = [.. call.Locations.Concat(call.Diffs.Select(diff => diff.Path)).Select(PathNames.Canonical).Distinct(StringComparer.Ordinal)];
+        if (named.Length > 0 && chatEdits.TryAdd(call.Id, named))
+        {
+            foreach (string path in named)
+            {
+                Reading(() => chatReview.Before(path));
+            }
+        }
+        bool done = call.Status is "completed" or "failed";
+        string[] paths = chatEdits.TryGetValue(call.Id, out string[]? known) ? known : [];
+        if (done)
+        {
+            foreach (string path in paths)
+            {
+                Reading(() => chatReview.After(path));
+            }
+        }
+        return (paths, done && paths.Length > 0);
+
+        static void Reading(Action read)
+        {
+            try
+            {
+                read();
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+            {
+                // Unreadable, the file is left out of the review rather than undone wrongly.
+                IdeErrors.Write($"Chat review: {error.Message}");
+            }
+        }
+    }
+
+    /// <summary>What the agent changed in a file, as Passenger shows a diff: its text before the agent's first change
+    /// beside its text now, read-only.</summary>
+    private async Task ShowChatDiffAsync(ReviewedFile file)
+    {
+        string now = File.Exists(file.Path) ? await File.ReadAllTextAsync(file.Path) : string.Empty;
+        TextDocument mine = new(now);
+        TextSnapshot text = mine.Snapshot;
+        VcsDiff diff = await BackgroundWork.Run(() => VcsDiff.Compare(file.BeforeText, text));
+        string name = Path.GetFileName(file.Path);
+        ShowDiff(new DiffContent($"{name}: before the agent and now", $"chat\n{file.Path}", file.Path, null,
+            () => Diffs.ForFile(name, diff, mine, null, (file.IsNew ? "Before the agent (no file)" : "Before the agent", "Now"), file.Path, file.Path)));
+    }
+
+    /// <summary>Puts files back as they were before the agent changed them, as Local History reverts: an open file's text
+    /// as one undoable step, saved; a closed one's bytes written as they were; one the agent made, to the Trash. A file
+    /// changed since the agent's edit is left as it is, so nobody's later work is lost; the status bar says which.</summary>
+    private async Task UndoChatAsync(ChatView view, IReadOnlyList<ReviewedFile> files)
+    {
+        List<string> refused = [];
+        using IDisposable? activity = session.LocalHistory is { } history ? history.During("Undo the agent's changes") : null;
+        foreach (ReviewedFile file in files)
+        {
+            string name = Path.GetFileName(file.Path);
+            string? now = File.Exists(file.Path) ? await File.ReadAllTextAsync(file.Path) : null;
+            if ((now ?? string.Empty) != file.AfterText || (now is null) != file.Deleted)
+            {
+                refused.Add($"{name} (changed since)");
+                continue;
+            }
+            try
+            {
+                if (file.Before is not { } before)
+                {
+                    if (now is not null && !await DeleteAsync(file.Path, asked: true))
+                    {
+                        refused.Add(name);
+                        continue;
+                    }
+                }
+                else if (Editors.Find(file.Path) is { HoldsText: true } open)
+                {
+                    open.Revert(before);
+                    if (open.IsModified && !Editors.Save(open))
+                    {
+                        refused.Add(name);
+                        continue;
+                    }
+                }
+                else
+                {
+                    await BackgroundWork.Run(() => FileText.Restore(file.Path, before));
+                    if (Editors.Find(file.Path) is { } tab)
+                    {
+                        FollowDisk(tab);
+                    }
+                }
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+            {
+                refused.Add($"{name} ({error.Message})");
+                continue;
+            }
+            chatReview.Done(file.Path);
+        }
+        view.Review.Show(chatReview.Files);
+        status.Text = refused.Count == 0
+            ? files.Count == 1 ? $"Undid the agent's changes to {Path.GetFileName(files[0].Path)}" : $"Undid the agent's changes to {files.Count} files"
+            : $"Not undone: {string.Join(", ", refused)}";
     }
 
     /// <summary>Runs on the window's thread, held as background work until it has, so a test or a screenshot waits for it.</summary>
