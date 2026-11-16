@@ -244,7 +244,7 @@ public partial class MainWindow
 
     /// <summary>Run (or Debug) Unit Tests in context: the Unit Tests window's chosen rows when it has the keys, the
     /// projects chosen in the Explorer (a solution folder's, those under it) when it has them, else the test method or
-    /// class at the editor's caret.</summary>
+    /// class at the editor's caret, an outline's example row alone where the caret is on it, as its mark's menu runs it.</summary>
     private void RunTestsInContext(ActionContext context, bool debug, bool untilFailure = false)
     {
         if (!untilFailure && ChosenProjects(context) is { } projects)
@@ -260,6 +260,11 @@ public partial class MainWindow
                 return;
             }
             RunTests(() => session.Tests.RunAsync(Folder!, chosen, debug));
+            return;
+        }
+        if (!untilFailure && context.File is { } feature && testGutter.RowAt(feature, context.Caret.Line) is ({ } outline, { } row))
+        {
+            RunRowAt(outline, row, testGutter.RowsOf(feature), feature.Path, debug);
             return;
         }
         if (TestAtCaret(context) is { } test && context.File is { } file)

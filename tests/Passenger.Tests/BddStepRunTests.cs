@@ -134,6 +134,43 @@ public sealed class BddStepRunTests : IClassFixture<RestoredFolders>, IDisposabl
         }
     }
 
+    /// <summary>Run Tests at the caret on an outline's example row runs that row alone, as its mark's menu does, its outcome
+    /// on its line; at the caret on the outline's title, every row.</summary>
+    [AvaloniaFact]
+    public void Run_Tests_at_the_caret_on_an_example_row_runs_that_row_alone_and_on_the_outline_every_row()
+    {
+        MainWindow window = Ui.OpenFolder(folder, width: 1400, height: 900);
+        try
+        {
+            Assert.Null(window.OpenFile(FeatureFile));
+            Ui.Settle();
+            OpenDocument feature = window.EditorArea.Active!;
+            Ui.WaitFor(() => feature.TestMarks.Any(m => m.Line == 22) && feature.TestMarks.Any(m => m.Line == 23),
+                () => $"the example rows marked before a build: {Marks(feature)}");
+
+            window.EditorArea.CodeEditor.GoTo(new TextPosition(23, 4));
+            Ui.Run(window, AppActions.RunTests);
+            Ui.WaitFor(() => !window.Tests.IsBusy && window.Tests.RunOutcomes.Count > 0, () => $"the row's run to end ({window.Status})", TimeSpan.FromMinutes(4));
+            Assert.True(window.Tests.RunOutcomes is [{ State: TestState.Failed } only] && (only.DisplayName ?? only.Test.DisplayName).Contains("a: \"5\"", StringComparison.Ordinal),
+                $"Run Tests on the second example row is to run that row alone: {Outcomes(window)}");
+            Ui.WaitFor(() => feature.TestMarks.Contains(new TestMark(23, TestMarkKind.Failed)), () => $"the second row's failure on its line: {Marks(feature)}");
+            Assert.False(feature.TestMarks.Any(m => m.Line == 22 && m.Kind is TestMarkKind.Passed or TestMarkKind.Failed),
+                $"Run Tests on the second example row ran the first too: {Marks(feature)}");
+
+            window.EditorArea.CodeEditor.GoTo(new TextPosition(14, 3));
+            Ui.Run(window, AppActions.RunTests);
+            Ui.WaitFor(() => !window.Tests.IsBusy && window.Tests.RunOutcomes.Count >= 2, () => $"the outline's run to end ({window.Status}): {Outcomes(window)}", TimeSpan.FromMinutes(4));
+            Assert.True(window.Tests.RunOutcomes.Count == 2 && feature.TestMarks.Contains(new TestMark(22, TestMarkKind.Passed)) && feature.TestMarks.Contains(new TestMark(23, TestMarkKind.Failed)),
+                $"Run Tests on the outline's title is to run every row: {Outcomes(window)}; marks {Marks(feature)}");
+        }
+        finally
+        {
+            window.Close();
+        }
+
+        static string Outcomes(MainWindow window) => string.Join("; ", window.Tests.RunOutcomes.Select(o => $"{o.DisplayName ?? o.Test.DisplayName} {o.State}"));
+    }
+
     private static string Steps(OpenDocument feature) => string.Join(", ", feature.StepMarks.Select(m => $"{m.Line} {m.Outcome}{(m.Failure is null ? "" : $" ({m.Failure})")}"));
 
     private static string Marks(OpenDocument feature) => string.Join(", ", feature.TestMarks.Select(m => $"{m.Line} {m.Kind}"));
