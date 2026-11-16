@@ -66,7 +66,8 @@ public sealed partial record MacCatalystApp : IDeviceApp
         UpdateHandlerHook? handlers) => CarriedIn.Variables(Carried, environment, inspector, relay, handlers);
 
     /// <summary>The app's process started since <see cref="Since"/> ended where <paramref name="stop"/>, then <see cref="Carried"/>
-    /// taken out, whatever of it is there (the hook's socket is made before what is copied in). Never throws.</summary>
+    /// and the opener's <see cref="Pipes"/> taken out, whatever of them is there (the hook's socket is made before what is
+    /// copied in). Never throws.</summary>
     public async Task EndAsync(DevicePut? put, bool stop)
     {
         if (stop)
@@ -81,6 +82,7 @@ public sealed partial record MacCatalystApp : IDeviceApp
             }
         }
         CarriedIn.TakeOut(Carried, Package);
+        CarriedIn.TakeOut(Pipes, Package);
     }
 
     /// <summary>Nothing to put back: the app's environment is its start's alone.</summary>

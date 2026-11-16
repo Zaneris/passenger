@@ -44,19 +44,22 @@ public static partial class MacCatalystApps
             return (null, $"MSBuild did not say {name}'s bundle identifier, which names the container its sandbox keeps it in: {said.Said.FirstLine}");
         }
         string into;
+        string pipes;
         try
         {
             int start = Interlocked.Increment(ref carried);
+            string own = SocketFolders.Own(State.StateStore.DefaultRoot);
             into = sandboxed ? Path.Combine(MacCatalystApp.ContainerTemporary(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), package),
                     MacCatalystApp.CarriedName(Environment.ProcessId, start))
-                : Path.Combine(SocketFolders.Own(State.StateStore.DefaultRoot), $"{Environment.ProcessId}-{start}.catalyst");
+                : Path.Combine(own, $"{Environment.ProcessId}-{start}.catalyst");
+            pipes = Path.Combine(own, MacCatalystApp.PipesName(Environment.ProcessId, start));
         }
         catch (Exception unowned) when (unowned is IOException or UnauthorizedAccessException)
         {
             return (null, $"Could not run {name}: Passenger has no folder of its own to carry its inspector into: {unowned.Message}");
         }
         // The wall clock's, as the system keeps a process's start: the app's process is the one started since.
-        app = app with { Carried = into, Since = DateTime.UtcNow };
+        app = app with { Carried = into, Since = DateTime.UtcNow, Pipes = pipes };
         IReadOnlyList<string> opening = Opening(app, plan.Unseen, [.. plan.OwnArguments]);
         return (plan with
         {

@@ -37,6 +37,13 @@ public sealed partial record MacCatalystApp(string Bundle, string Executable)
     /// app's process is the one started since.</summary>
     public DateTime Since { get; init; }
 
+    /// <summary>The folder the opener makes for the pipes it hands the app its output through, a start's own, which the
+    /// start's end takes out however the opener ended (<see cref="MacCatalystApps.Opener"/>).</summary>
+    public string Pipes { get; init; } = string.Empty;
+
+    /// <summary>The name of the folder of a start's pipes, in Passenger's own socket folder.</summary>
+    public static string PipesName(int process, int start) => string.Create(System.Globalization.CultureInfo.InvariantCulture, $"{process}-{start}.pipes");
+
     /// <summary>The relay's socket in the app, under <see cref="Carried"/>: a name of one letter, as a socket's path is
     /// held to what its address holds and a container's path is long.</summary>
     public string RelaySocket => Path.Combine(Carried, "r");
@@ -99,9 +106,12 @@ public static partial class MacCatalystApps
 
 
     /// <summary>Opens the app with open's arguments, its output and errors through a FIFO each to the shell's own, and waits
-    /// for it to end (<c>-W</c>), ending as it ends: open's status, its FIFOs' readers let go where open failed.</summary>
+    /// for it to end (<c>-W</c>), ending as it ends: open's status, its FIFOs' readers let go where open failed. Its first
+    /// argument is the folder it makes for the FIFOs, which it takes out as it ends, and its start's end where it was killed.</summary>
     public const string Opener = """
-        d=$(mktemp -d "${TMPDIR:-/tmp}/passenger-app.XXXXXX") || exit 1
+        d=$1
+        shift
+        mkdir -m 700 "$d" || exit 1
         trap 'rm -rf "$d"' EXIT
         mkfifo "$d/out" "$d/err" || exit 1
         cat "$d/out" & o=$!
@@ -119,8 +129,9 @@ public static partial class MacCatalystApps
     public static readonly IReadOnlyList<string> IgnoringKeptWindows = ["-ApplePersistenceIgnoreState", "YES"];
 
     /// <summary>The shell's arguments that open <paramref name="app"/> afresh, a new instance however many run, with the
-    /// app's own <paramref name="arguments"/>; hidden and behind every window, opening none it kept, where
-    /// <paramref name="unseen"/>. How many come before the app's own is their count less the app's.</summary>
+    /// app's own <paramref name="arguments"/>, its output through FIFOs in its start's <see cref="MacCatalystApp.Pipes"/>;
+    /// hidden and behind every window, opening none it kept, where <paramref name="unseen"/>. How many come before the app's
+    /// own is their count less the app's.</summary>
     public static IReadOnlyList<string> Opening(MacCatalystApp app, bool unseen, IReadOnlyList<string> arguments) =>
-        ["-c", Opener, "sh", "-n", "-W", .. unseen ? (string[])["-g", "-j"] : [], "-a", app.Bundle, "--args", .. unseen ? IgnoringKeptWindows : [], .. arguments];
+        ["-c", Opener, "sh", app.Pipes, "-n", "-W", .. unseen ? (string[])["-g", "-j"] : [], "-a", app.Bundle, "--args", .. unseen ? IgnoringKeptWindows : [], .. arguments];
 }

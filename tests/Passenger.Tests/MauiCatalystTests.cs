@@ -77,6 +77,7 @@ public sealed class MauiCatalystTests : McpRig
             Ui.WaitFor(() => window.Debugger.Running.Count == 0, "the quiet session to end with the app");
             Ui.WaitFor(() => Running(opened) is null, () => $"the app to end once stopped; process {Running(opened)} still runs it", TimeSpan.FromSeconds(30));
             Ui.WaitFor(() => !Directory.Exists(carried), () => $"what the run carried into the app's container to be taken out once stopped; {carried} is still there", TimeSpan.FromSeconds(30));
+            Ui.WaitFor(() => !Directory.Exists(opened.Pipes), () => $"the killed opener's pipes to be taken out once stopped; {opened.Pipes} is still there", TimeSpan.FromSeconds(30));
         }
         finally
         {
@@ -135,6 +136,7 @@ public sealed class MauiCatalystTests : McpRig
             Ui.WaitFor(() => Running(opened) is null, () => $"the debugged app to end once stopped; process {Running(opened)} still runs it", TimeSpan.FromSeconds(30));
             Ui.WaitFor(() => !Directory.Exists(carried), () => $"what the session carried into the app's container to be taken out once stopped; {carried} is still there",
                 TimeSpan.FromSeconds(30));
+            Ui.WaitFor(() => !Directory.Exists(opened.Pipes), () => $"the killed opener's pipes to be taken out once stopped; {opened.Pipes} is still there", TimeSpan.FromSeconds(30));
         }
         finally
         {

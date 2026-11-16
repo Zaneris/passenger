@@ -3,21 +3,24 @@ using Passenger.Core;
 
 namespace Passenger.UnitTests.Run;
 
-/// <summary>How a Mac Catalyst app is opened: by the system's open through a shell that carries its output, a new instance
-/// waited for to its end, the app's own arguments after open's --args; and, where nobody sees the window that runs it,
+/// <summary>How a Mac Catalyst app is opened: by the system's open through a shell that carries its output through FIFOs
+/// in a folder of its start's own, a new instance waited for to its end, the app's own arguments after open's --args; and, where nobody sees the window that runs it,
 /// hidden and never brought in front, so its windows never reach the person's screen. A sandboxed app's start carries
 /// Passenger's relay and inspector into its container, where it listens on sockets, and names them in its variables.</summary>
 public class MacCatalystAppsTests
 {
     private static readonly MacCatalystApp App = new("/src/Shop/bin/Debug/net11.0-maccatalyst/maccatalyst-arm64/Shop.app",
-        "/src/Shop/bin/Debug/net11.0-maccatalyst/maccatalyst-arm64/Shop.app/Contents/MacOS/Shop");
+        "/src/Shop/bin/Debug/net11.0-maccatalyst/maccatalyst-arm64/Shop.app/Contents/MacOS/Shop")
+    {
+        Pipes = Path.Combine("/var/folders/xy/T/passenger-0123456789", MacCatalystApp.PipesName(4321, 2)),
+    };
 
     [Fact]
     public void An_app_nobody_sees_opens_hidden_behind_every_window_none_it_kept_reopened_with_its_own_arguments_after_opens()
     {
         IReadOnlyList<string> opening = MacCatalystApps.Opening(App, unseen: true, ["--verbose", "a b"]);
 
-        Assert.Equal(["-c", MacCatalystApps.Opener, "sh", "-n", "-W", "-g", "-j", "-a", App.Bundle, "--args", "-ApplePersistenceIgnoreState", "YES", "--verbose", "a b"], opening);
+        Assert.Equal(["-c", MacCatalystApps.Opener, "sh", App.Pipes, "-n", "-W", "-g", "-j", "-a", App.Bundle, "--args", "-ApplePersistenceIgnoreState", "YES", "--verbose", "a b"], opening);
     }
 
     [Fact]
@@ -25,7 +28,7 @@ public class MacCatalystAppsTests
     {
         IReadOnlyList<string> opening = MacCatalystApps.Opening(App, unseen: false, ["--verbose"]);
 
-        Assert.Equal(["-c", MacCatalystApps.Opener, "sh", "-n", "-W", "-a", App.Bundle, "--args", "--verbose"], opening);
+        Assert.Equal(["-c", MacCatalystApps.Opener, "sh", App.Pipes, "-n", "-W", "-a", App.Bundle, "--args", "--verbose"], opening);
     }
 
     [Fact]
@@ -44,6 +47,13 @@ public class MacCatalystAppsTests
 
         Assert.Equal(Path.Combine(home, "Library", "Containers", "com.shop", "Data", "tmp"), MacCatalystApp.ContainerTemporary(home, "com.shop"));
         Assert.Equal("passenger-4321-2", MacCatalystApp.CarriedName(4321, 2));
+    }
+
+    [Fact]
+    public void Each_start_hands_the_opener_a_folder_of_its_own_for_its_pipes_named_for_its_process_first()
+    {
+        Assert.Equal("4321-2.pipes", MacCatalystApp.PipesName(4321, 2));
+        Assert.NotEqual(MacCatalystApp.PipesName(4321, 2), MacCatalystApp.PipesName(4321, 3));
     }
 
     [Fact]
@@ -91,7 +101,7 @@ public class MacCatalystAppsTests
     {
         IReadOnlyList<string> opening = MacCatalystApps.Opening(App, unseen: false, []);
 
-        Assert.Equal(["-c", MacCatalystApps.Opener, "sh", "-n", "-W", "-a", App.Bundle, "--args"], opening);
+        Assert.Equal(["-c", MacCatalystApps.Opener, "sh", App.Pipes, "-n", "-W", "-a", App.Bundle, "--args"], opening);
         Assert.DoesNotContain("-g", opening);
         Assert.DoesNotContain("-j", opening);
     }
