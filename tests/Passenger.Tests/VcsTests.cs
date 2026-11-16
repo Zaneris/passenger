@@ -24,14 +24,24 @@ public sealed partial class VcsTests : IDisposable
     private const string Original = "class Shop\n{\n    int count;\n\n    void Add() { count++; }\n}\n";
 
     private readonly string folder = TestFolders.Create("git-");
+    private readonly string trash = TestFolders.Create("trash-");
 
-    public VcsTests() => TestFolders.Prepare(() =>
+    public VcsTests()
     {
-        File.WriteAllText(Path.Combine(folder, "Shop.cs"), Original);
-        TestGit.Init(folder);
-    }, folder);
+        TestFolders.Prepare(() =>
+        {
+            File.WriteAllText(Path.Combine(folder, "Shop.cs"), Original);
+            TestGit.Init(folder);
+        }, folder);
+        Trash.Folder = trash;
+    }
 
-    public void Dispose() => TestFolders.Delete(folder);
+    public void Dispose()
+    {
+        Trash.Folder = null;
+        TestFolders.Delete(folder);
+        TestFolders.Delete(trash);
+    }
 
     /// <summary>Git's commands start off the window's thread, since a fork costs a large process tens of milliseconds: the
     /// working tree's status and branch as it opens, an edit's bars, a commit and the log start none of theirs on
@@ -568,6 +578,56 @@ public sealed partial class VcsTests : IDisposable
         Assert.False(File.Exists(added), "The new file stayed after the program holding it let go");
         Ui.Landed(() => Text(window) == Original, "the open file at the last commit's text");
         Assert.Equal("Rolled back 2 files", window.Status);
+        window.Close();
+    }
+
+    /// <summary>Rollback of a changed file and an unversioned one puts the changed one back and moves the unversioned one to
+    /// the Trash in a command of its own, as its question says first: one Undo, asked once, brings the unversioned file back
+    /// out of the Trash, listed as unversioned again, the changed one staying as the last commit has it.</summary>
+    [AvaloniaFact]
+    public void Rollback_moves_an_unversioned_file_to_the_Trash_and_one_undo_brings_it_back()
+    {
+        string shop = Path.Combine(folder, "Shop.cs");
+        string added = Path.Combine(folder, "Prices.cs");
+        File.WriteAllText(shop, "sealed " + Original);
+        File.WriteAllText(added, "class Prices { }\n");
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        Ui.Landed(() => window.Vcs.Changes.Count == 2, "a changed file and a new one listed");
+        List<string> asked = [];
+        window.Confirm = (_, text, _) =>
+        {
+            asked.Add(text);
+            return Task.FromResult(true);
+        };
+        window.ShowToolWindow(ToolWindowIds.Commit);
+        Ui.Settle();
+        foreach (CommitRow row in window.CommitView.Rows.OfType<CommitRow>())
+        {
+            row.IsChosen = true;
+        }
+
+        RollbackChosen(window);
+        Ui.WaitFor(() => window.Status == "Rolled back 2 files" || window.Status?.Contains("could not", StringComparison.Ordinal) == true, () => $"the rollback: {window.Status}");
+        Assert.True(asked.Count == 1 && asked[0].Contains("Unversioned files are deleted to the Trash, and Undo brings them back.", StringComparison.Ordinal),
+            $"Rollback asked: {string.Join(" | ", asked)}");
+        Assert.True(File.ReadAllText(shop) == Original && !File.Exists(added), $"The rollback left Shop.cs changed or Prices.cs there: {window.Status}");
+        Assert.True(File.ReadAllText(Path.Combine(trash, "Prices.cs")) == "class Prices { }\n", "Rollback did not move Prices.cs to the Trash");
+
+        asked.Clear();
+        window.ShowToolWindow(ToolWindowIds.Explorer);
+        window.ExplorerView.Reveal(PathNames.Canonical(shop));
+        Ui.Settle();
+        Ui.ClickRow(window, window.ExplorerView.Tree.Rows.First(r => r.Path == PathNames.Canonical(shop)));
+        Ui.Run(window, EditorActions.Undo);
+        Ui.WaitFor(() => File.Exists(added), () => $"one Undo to bring Prices.cs back: {window.Status}");
+        Assert.True(asked.Count == 1 && asked[0].Contains("brings back Prices.cs", StringComparison.Ordinal), $"Undo of the rollback asked: {string.Join(" | ", asked)}");
+        Assert.Equal("class Prices { }\n", File.ReadAllText(added));
+        Assert.Equal(Original, File.ReadAllText(shop));
+        Assert.Empty(Directory.EnumerateFileSystemEntries(trash));
+        Task read = window.Vcs.RefreshAsync();
+        Ui.Landed(() => read.IsCompleted, "Git read again");
+        string listed = string.Join(", ", window.Vcs.Changes.Select(c => $"{c.Name} ({c.Kind})"));
+        Assert.True(listed == "Prices.cs (Unversioned)", $"After Undo Git lists [{listed}]");
         window.Close();
     }
 

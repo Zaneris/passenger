@@ -227,6 +227,11 @@ public sealed class VcsController : IDisposable
     /// Rollback, Update from VCS): what it changes is kept under that name until the hold is disposed.</summary>
     public Func<string, IDisposable?>? Activity { get; set; }
 
+    /// <summary>Moves the files an operation takes away that git has nothing of (a rollback's unversioned files) to the
+    /// Trash, as one command of Undo named as the operation, which brings them back: each that stayed, saying why. With
+    /// none, they stay, said so.</summary>
+    public Func<string, IReadOnlyList<string>, Task<IReadOnlyList<string>>>? MoveToTrash { get; set; }
+
     /// <summary>Done once the folder last opened is known to be in a working tree or not, so a question asked straight
     /// after a folder opens waits for that rather than hearing there is none.</summary>
     public Task Opened => opening?.Task ?? Task.CompletedTask;
@@ -1514,7 +1519,8 @@ public sealed class VcsController : IDisposable
     public Task<VcsOutcome> DropStashAsync(StashInfo stash) =>
         SwitchAsync(repository => repository.DropStashAsync(stash), $"Dropped {stash.Message}", "Git stash");
 
-    /// <summary>Puts files back as the last commit has them; the open ones take their text from disk again.</summary>
+    /// <summary>Puts files back as the last commit has them, the unversioned ones moved to the Trash once git has put
+    /// back the rest (<see cref="MoveToTrash"/>); the open ones take their text from disk again.</summary>
     public async Task<VcsOutcome> RollbackAsync(IReadOnlyList<FileChange> changes)
     {
         if (git is not { } repository)
@@ -1533,9 +1539,14 @@ public sealed class VcsController : IDisposable
             }
             using IDisposable? named = Activity?.Invoke("Rollback");
             GitResult rolled = await repository.RollbackAsync(changes);
+            List<string> unversioned = [.. changes.Where(c => c.Kind is ChangeKind.Unversioned).Select(c => c.Path)];
+            IReadOnlyList<string> stayed = unversioned.Count == 0 ? []
+                : MoveToTrash is { } trash ? await trash($"Rollback {Plural.Listed([.. changes.Select(c => c.Name)])}", unversioned)
+                : [.. unversioned.Select(p => $"{Path.GetFileName(p)} was left as it is: nothing here moves it to the Trash")];
             ReloadOpenFiles();
             await RefreshAsync();
-            return Report(rolled.Succeeded, rolled.Succeeded ? $"Rolled back {Plural.Of(changes.Count, "file")}" : rolled.Message);
+            string[] said = [.. rolled.Succeeded ? [] : new[] { rolled.Message }, .. stayed];
+            return said.Length == 0 ? Report(true, $"Rolled back {Plural.Of(changes.Count, "file")}") : Report(false, string.Join('\n', said));
         }, refused => refused);
     }
 

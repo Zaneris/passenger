@@ -163,6 +163,7 @@ public partial class MainWindow
         commitView?.Bind(vcs);
         gitView?.Bind(vcs);
         vcs.SaveFirst = Editors.SaveAllLandedAsync;
+        vcs.MoveToTrash = TrashForGitAsync;
         vcs.SignOffChanged += (_, _) =>
         {
             if (session == next)
@@ -869,12 +870,39 @@ public partial class MainWindow
         // The files are listed, so what goes back is seen before it does, and every file a rollback deletes is said to be.
         string what = changes.Count == 1 ? changes[0].Name : $"these {changes.Count} files";
         string kept = changes.Any(c => c.Kind is ChangeKind.Added) ? " Files added to Git stay on disk, unversioned." : string.Empty;
-        string lost = changes.Any(c => c.Kind is ChangeKind.Unversioned) ? " Unversioned files are deleted, and this cannot be undone."
-            : changes.All(c => c.Kind is ChangeKind.Added) ? string.Empty : " This cannot be undone.";
+        bool unversioned = changes.Any(c => c.Kind is ChangeKind.Unversioned);
+        bool tracked = changes.Any(c => c.Kind is not (ChangeKind.Unversioned or ChangeKind.Added));
+        string lost = (unversioned ? " Unversioned files are deleted to the Trash, and Undo brings them back." : string.Empty)
+            + (!tracked ? string.Empty : unversioned ? " The other changes cannot be undone." : " This cannot be undone.");
         string text = $"Roll back the changes to {what}?{kept}{lost}";
         if (await ConfirmAsync("Rollback Changes", text, "Rollback", ToolWindows.CommitView.FileList(changes, session.Vcs.Repository)))
         {
             await session.Vcs.RollbackAsync(changes);
+        }
+    }
+
+    /// <summary>How often Git's operation tries to move a file to the Trash, half a second apart: on Windows another program
+    /// holding it open (a virus scanner, an indexer) refuses it for that moment.</summary>
+    private const int GitTrashAttempts = 3;
+
+    /// <summary>Files Git's operation takes away that git has nothing of (a rollback's unversioned files), moved to the
+    /// Trash in one command of Undo named <paramref name="command"/>, which brings them back: each that stayed, saying why.</summary>
+    private async Task<IReadOnlyList<string>> TrashForGitAsync(string command, IReadOnlyList<string> paths)
+    {
+        using CommandHistory.Recording recording = Editors.Commands.RecordWrites(command);
+        IReadOnlyList<string> left = paths;
+        for (int attempt = 1; ; attempt++)
+        {
+            if (await TrashAsync(left, recording) is not { } refused)
+            {
+                return [status.Text ?? $"{Plural.Listed([.. left.Select(Path.GetFileName).OfType<string>()])} could not be moved to the Trash"];
+            }
+            if (refused.Count == 0 || attempt == GitTrashAttempts)
+            {
+                return [.. refused.Select(r => $"{Path.GetFileName(r.Path)} could not be moved to the Trash: {r.Why}")];
+            }
+            left = [.. refused.Select(r => r.Path)];
+            await Task.Delay(TimeSpan.FromMilliseconds(500));
         }
     }
 

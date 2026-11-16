@@ -1932,10 +1932,10 @@ public sealed partial class Git
     /// <summary>The branch moved to a commit: soft keeps the changes staged, mixed keeps them in the files, hard drops them.</summary>
     public Task<GitResult> ResetAsync(string hash, ResetMode mode) => RunAsync(Root, ["reset", $"--{mode.ToString().ToLowerInvariant()}", "--end-of-options", hash]);
 
-    /// <summary>Puts files back as the last commit has them (Rollback): an unversioned file is deleted, one added to the
-    /// index but in no commit kept on disk, unversioned; a submodule whose commit alone changed is checked out at the one
-    /// recorded, one whose own files changed left to its repository. A file another program holds is tried again
-    /// (<see cref="Attempts"/>); one it never lets go of, and a submodule left, are named in the result.</summary>
+    /// <summary>Puts files back as the last commit has them (Rollback): one added to the index but in no commit kept on
+    /// disk, unversioned; a submodule whose commit alone changed is checked out at the one recorded, one whose own files
+    /// changed left to its repository; an unversioned file, of which git has nothing, passed over. A file another program
+    /// holds is tried again (<see cref="Attempts"/>); one never let go of, and a submodule left, are named in the result.</summary>
     public async Task<GitResult> RollbackAsync(IReadOnlyList<FileChange> changes)
     {
         FileChange[] ownChanges = [.. changes.Where(c => c.Submodule.HasFlag(SubmoduleChange.Submodule) && c.Kind is ChangeKind.Modified
@@ -1950,13 +1950,6 @@ public sealed partial class Git
         GitResult unadded = staged.Length == 0 ? restored : await OnFilesAsync(["rm", "--cached", "-q", "-f", "--ignore-unmatch"], staged);
         restored = restored.Succeeded ? unadded : restored;
         List<string> kept = [.. ownChanges.Select(c => $"{c.Name} was left as it is: a submodule's own changes are rolled back in it")];
-        foreach (FileChange unversioned in changes.Where(c => c.Kind is ChangeKind.Unversioned))
-        {
-            if (await DeleteAsync(unversioned.Path) is { } refused)
-            {
-                kept.Add(refused);
-            }
-        }
         if (kept.Count == 0)
         {
             return restored;
@@ -1982,27 +1975,6 @@ public sealed partial class Git
             if (restored.Succeeded || attempt == Attempts)
             {
                 return restored;
-            }
-            await Task.Delay(Retry);
-        }
-    }
-
-    /// <summary>Deletes a new file, tried again as a restore is; why not, when it was never let go of.</summary>
-    private static async Task<string?> DeleteAsync(string path)
-    {
-        for (int attempt = 1; ; attempt++)
-        {
-            try
-            {
-                File.Delete(path);
-                return null;
-            }
-            catch (Exception refused) when (refused is IOException or UnauthorizedAccessException)
-            {
-                if (attempt == Attempts)
-                {
-                    return refused.Message;
-                }
             }
             await Task.Delay(Retry);
         }
