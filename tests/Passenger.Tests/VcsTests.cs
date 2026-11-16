@@ -1530,7 +1530,7 @@ public sealed partial class VcsTests : IDisposable
         {
             File.SetUnixFileMode(hook, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
         }
-        Git("config", "core.fsmonitor", Unix(hook));
+        Git("config", Passenger.Vcs.GitConfigKeys.CoreFsmonitor, Unix(hook));
         MainWindow window = new() { Width = 1200, Height = 800, Autosaves = false };
         Assert.True(Screenshot.Prepare(window, LaunchOptions.Parse([folder, "--file", shop]), []), "The screenshot's window never settled");
 
@@ -2511,7 +2511,7 @@ public sealed partial class VcsTests : IDisposable
         {
             File.SetUnixFileMode(hook, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
         }
-        Git("config", "core.fsmonitor", Unix(hook));
+        Git("config", Passenger.Vcs.GitConfigKeys.CoreFsmonitor, Unix(hook));
         MainWindow window = Open();
         Assert.Equal("main", window.Vcs.Branch);
         CodeEditor editor = window.EditorArea.CodeEditor;

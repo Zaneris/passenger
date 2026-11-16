@@ -40,13 +40,13 @@ public sealed record WebServerLost(string Said, Action? StartAgain);
 /// <summary>JavaScript, TypeScript, HTML, CSS, JSON, Dockerfiles, YAML and GDScript for the open folder: each kind's
 /// language server (the npm packages carried under <c>web/</c>, run on the machine's Node.js through ChildProcesses;
 /// GDScript's in Godot's editor, one for each Godot project a script is open in, the person's joined, a headless one started
-/// only when asked, <see cref="AskGodot"/>) started as the first file that needs it opens, every open file of its languages
-/// kept in step with it (a
-/// <see cref="WebDocument"/> each), and ended with the folder. Without a Node.js to run them (none found, or one too
-/// old), each file says why in its banner and the status bar, keeping its colours. A server that ends (as it starts too)
-/// or stops answering is started again with its files, a few times at most, then left stopped until a person starts it
-/// again. The project's own <c>node_modules/typescript</c> is the TypeScript server's when it has one. A UI-thread object:
-/// what a server says from its threads crosses through <see cref="UiThread"/>.</summary>
+/// only when asked, <see cref="AskGodot"/>, never in a folder not trusted) started as the first file that needs it opens,
+/// every open file of its languages kept in step with it (a <see cref="WebDocument"/> each), and ended with the folder.
+/// Without a Node.js to run them (none found, or one too old), each file says why in its banner and the status bar, keeping
+/// its colours. A server that ends (as it starts too) or stops answering is started again with its files, a few times at
+/// most, then left stopped until a person starts it again. The project's own <c>node_modules/typescript</c> is the
+/// TypeScript server's where it has one and the folder is trusted (<see cref="WorkspaceTrust"/>), else the carried one.
+/// A UI-thread object: what a server says from its threads crosses through <see cref="UiThread"/>.</summary>
 public sealed class WebLanguages : IAsyncDisposable
 {
     private readonly string folder;
@@ -76,6 +76,9 @@ public sealed class WebLanguages : IAsyncDisposable
     private bool asksDockerHub;
     private bool disposed;
 
+    /// <summary>Whether the folder was trusted as the servers started, which its trust given later starts TypeScript's again for.</summary>
+    private bool trusted;
+
     /// <summary>The variable that shortens how long GDScript's server waits, no GDScript open, before it is let go.</summary>
     [IdentifierHome]
     public const string GDScriptIdleVariable = "PASSENGER_GDSCRIPT_IDLE_MS";
@@ -103,6 +106,7 @@ public sealed class WebLanguages : IAsyncDisposable
         configured = now.NodeInterpreter;
         linting = Linting(now);
         asksDockerHub = now.DockerHubTags;
+        trusted = WorkspaceTrust.Trusts(folder);
         Schemas = new JsonSchemas(() => settings().DownloadJsonSchemas);
         Eslint = new EslintService(folder, settings, FindNodeAsync);
         Prettier = new PrettierService(folder, settings, FindNodeAsync);
@@ -158,6 +162,9 @@ public sealed class WebLanguages : IAsyncDisposable
 
     /// <summary>The servers' packages, carried beside the app.</summary>
     public static string Modules => Path.Combine(Carried, "node_modules");
+
+    /// <summary>The carried TypeScript's server, which a folder not trusted is served by.</summary>
+    public static string CarriedTsserver => Path.Combine(Modules, "typescript", "lib", "tsserver.js");
 
     /// <summary>Where the servers, their schemas and Passenger's scripts for them are carried: beside the app, or in a
     /// macOS bundle its Resources, since codesign takes a folder under Contents/MacOS named with a dot (a package's
@@ -498,7 +505,7 @@ public sealed class WebLanguages : IAsyncDisposable
     /// the project's own or, marked so, the one Passenger carries; null otherwise.</summary>
     public string? DetailOf(OpenDocument document) =>
         LanguageOf(document.Path) is { Kind: WebServerKind.TypeScript } && ServerOf(document)?.Session?.Server.TypeScript is { } typescript
-            ? $"TypeScript {typescript.Version}{(typescript.Source == "bundled" ? " (Passenger's)" : string.Empty)}"
+            ? $"TypeScript {typescript.Version}{(typescript.Source == "bundled" || !trusted ? " (Passenger's)" : string.Empty)}"
             : null;
 
     /// <summary>Whether a file's server cannot start (no Node.js, one too old, a server missing), so none will answer for it.</summary>
@@ -544,6 +551,26 @@ public sealed class WebLanguages : IAsyncDisposable
         {
             Replace(place, server);
         }
+    }
+
+    /// <summary>The folder came to be trusted: TypeScript's server, running or starting, starts again on the project's own
+    /// TypeScript, and ESLint and Prettier check and format its files from now on.</summary>
+    public void Trust()
+    {
+        UiThread.Check();
+        if (disposed || trusted)
+        {
+            return;
+        }
+        trusted = true;
+        Eslint.Reset();
+        IdeErrors.Observe(Prettier.ResetAsync());
+        ServerPlace place = new(WebServerKind.TypeScript, null);
+        if (servers.TryGetValue(place, out NodeServer? server))
+        {
+            Replace(place, server);
+        }
+        Recheck();
     }
 
     /// <summary>Settings' Complete image tags from Docker Hub changed: the Dockerfile server, running or starting, starts
@@ -602,16 +629,18 @@ public sealed class WebLanguages : IAsyncDisposable
     private Func<CancellationToken, Task<LanguageSession>> GodotStart(ServerPlace place)
     {
         (string? setting, IReadOnlyDictionary<string, string> environment) = (settings().GodotExecutable, GodotEnvironment);
-        bool headless = godotAsked.Contains(place) || GodotHeadlessAtOpen;
+        bool headless = (godotAsked.Contains(place) || GodotHeadlessAtOpen) && WorkspaceTrust.Trusts(place.Project ?? folder);
         return cancel => Godot.GodotScripts.StartAsync(place.Project, setting, environment, LogFolder, headless, cancel);
     }
 
     /// <summary>Godot's server of a script's project asked for, for what Passenger's own reading of it has no answer for:
-    /// started, a headless editor where the person's own serves none, unless one serves, is starting or cannot start.</summary>
+    /// started, a headless editor where the person's own serves none, unless one serves, is starting or cannot start, or
+    /// the project is in a folder not trusted.</summary>
     public void AskGodot(OpenDocument document)
     {
         UiThread.Check();
-        if (disposed || !documents.TryGetValue(document, out WebDocument? features) || features.Kind != WebServerKind.GDScript)
+        if (disposed || !documents.TryGetValue(document, out WebDocument? features) || features.Kind != WebServerKind.GDScript
+            || !WorkspaceTrust.Trusts(features.GodotProject ?? folder))
         {
             return;
         }
@@ -719,8 +748,9 @@ public sealed class WebLanguages : IAsyncDisposable
             {
                 hostInfo = "Passenger",
                 disableAutomaticTypingAcquisition = true,
-                // One tsserver: a second, for syntax, would answer a rename or usages from the open files while a project loads.
-                tsserver = new { logVerbosity = "off", useSyntaxServer = "never" },
+                // One tsserver (a second would answer from the open files alone), the project's own only in a folder trusted.
+                tsserver = trusted ? (object)new { logVerbosity = "off", useSyntaxServer = "never" }
+                    : new { logVerbosity = "off", useSyntaxServer = "never", path = CarriedTsserver },
                 preferences = new { includeCompletionsForModuleExports = true, includeCompletionsForImportStatements = true, providePrefixAndSuffixTextForRename = false },
             },
             WebServerKind.Html => new { provideFormatter = true, embeddedLanguages = new { css = true, javascript = true } },

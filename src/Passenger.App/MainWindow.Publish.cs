@@ -51,14 +51,14 @@ public partial class MainWindow
             }
         })
         {
-            WhyNot = c => GodotExportOf(c) is not null ? null : PublishTarget(c).Why,
+            WhyNot = c => Untrusted() ?? (GodotExportOf(c) is not null ? null : PublishTarget(c).Why),
             Menus = [new MenuPlace("Build", 2, 0)],
             Words = ["dotnet publish", "Publish Profile", "Deploy", "Export", "Godot Export Presets", "Container Image", MSBuildNames.PublishContainer, "aspire publish", "Docker Compose"],
             Works = A.Publish,
         });
         actions.Add(new IdeAction(A.PublishAgain, "Publish Again", "Build", c => IdeErrors.Observe(PublishAgainAsync(c)))
         {
-            WhyNot = c => AgainTarget(c).Why,
+            WhyNot = c => Untrusted() ?? AgainTarget(c).Why,
             Menus = [new MenuPlace("Build", 2, 1)],
             Words = ["Republish", "dotnet publish"],
             Works = A.Publish,

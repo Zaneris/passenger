@@ -2349,7 +2349,8 @@ public sealed partial class Git
         {
             return null;
         }
-        ProcessStartInfo start = ChildProcesses.Command(git, arguments, folder);
+        // In a folder the person has not trusted, git runs no program its repository's configuration names.
+        ProcessStartInfo start = ChildProcesses.Command(git, WorkspaceTrust.Trusts(folder) ? arguments : [.. await UntrustedGit.ArgumentsAsync(git, folder), .. arguments], folder);
         // Git never stops to ask on a terminal: it has none (ChildProcesses), and this keeps it from looking for one.
         start.Environment[GitVariables.TerminalPrompt] = "0";
         // A background status or diff never takes the index's lock, so a stash, commit or checkout then never fails on it.

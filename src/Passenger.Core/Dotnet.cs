@@ -116,7 +116,8 @@ public static partial class Dotnet
         {
             return Find();
         }
-        string key = $"{folder}\n{GlobalJsonOver(folder)}\n{first.Host}";
+        // Trusted later, the folder's global.json may name a dotnet of its own.
+        string key = $"{folder}\n{GlobalJsonOver(folder)}\n{first.Host}\n{WorkspaceTrust.Trusts(folder)}";
         if (Taken.TryGetValue(key, out DotnetFound? kept))
         {
             return kept;
@@ -139,14 +140,17 @@ public static partial class Dotnet
     /// <summary>The first installation dotnet's search for the folder's SDK reaches (<see cref="Searched"/>) that holds an
     /// SDK the global.json over <paramref name="folder"/> takes, any SDK without one, each read by <paramref name="read"/>
     /// once; a process the system translates passes over one with no x64 dotnet. With none, the first of
-    /// <paramref name="candidates"/>, or null for none; and whether it takes it.</summary>
-    internal static (DotnetFound? Found, bool Takes) Choose(IEnumerable<DotnetFound> candidates, string folder, Func<string, DotnetInstallation> read)
+    /// <paramref name="candidates"/>, or null for none; and whether it takes it. A global.json in a folder not trusted
+    /// (<paramref name="trusts"/>, else <see cref="WorkspaceTrust.Trusts"/>) names no dotnet: only those found are searched.</summary>
+    internal static (DotnetFound? Found, bool Takes) Choose(IEnumerable<DotnetFound> candidates, string folder, Func<string, DotnetInstallation> read,
+        Func<string, bool>? trusts = null)
     {
         GlobalJsonSdk? asked = GlobalJsonSdk.Read(GlobalJsonIn(folder)?.FullName);
         List<DotnetFound> found = [.. candidates];
         DotnetFound? first = found.FirstOrDefault();
         HashSet<string> seen = new(PathNames.Comparer);
-        foreach (DotnetFound each in Searched(found, asked))
+        bool named = asked is not null && (trusts ?? WorkspaceTrust.Trusts)(Path.GetDirectoryName(asked.Path)!);
+        foreach (DotnetFound each in named ? Searched(found, asked) : found)
         {
             if (!seen.Add(each.Root) || (Translated && each != first && !ProgramProcessors.Of(each.Host).Contains(Architecture.X64)))
             {

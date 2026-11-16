@@ -59,7 +59,8 @@ public sealed record PackageOutcome(bool Done, IReadOnlyList<string> Changed, IR
 }
 
 /// <summary>Adds, updates and removes a project's packages through dotnet add and remove package, so the SDK checks the
-/// package fits and writes a central version where it belongs. What the command says goes to the log.</summary>
+/// package fits and writes a central version where it belongs, none in a folder not trusted. What the command says goes
+/// to the log.</summary>
 public sealed class PackageManager
 {
     /// <summary>How many times a command is run that found its project file in another program's hands.</summary>
@@ -134,6 +135,12 @@ public sealed class PackageManager
         // A folder left stops the change under way; the next folder's changes run, retried as ever.
         stopped = false;
         string folder = Path.GetDirectoryName(arguments[1]) ?? Environment.CurrentDirectory;
+        // dotnet's restore runs the project's MSBuild and its packages' build targets.
+        if (!WorkspaceTrust.Trusts(folder))
+        {
+            Line?.Invoke(this, Refusals.Untrusted);
+            return false;
+        }
         for (int attempt = 1; ; attempt++)
         {
             // Each run its own start: a child's is its own once it has started.

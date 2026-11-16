@@ -123,7 +123,7 @@ public sealed class DotnetInstallationTests : IDisposable
         (DotnetFound?, bool) Asking(string paths)
         {
             File.WriteAllText(Path.Join(root, "work", "global.json"), $$"""{ "sdk": { "version": "11.0.100", "rollForward": "disable", "paths": {{paths}} } }""");
-            return Dotnet.Choose([system, home], folder, DotnetInstallation.Read);
+            return Dotnet.Choose([system, home], folder, DotnetInstallation.Read, trusts: _ => true);
         }
 
         Assert.Equal((own, true), Asking("""[ ".dotnet", "$host$" ]"""));
@@ -135,6 +135,26 @@ public sealed class DotnetInstallationTests : IDisposable
         // Without $host$ the installations found are never looked in, the one holding the SDK neither: dotnet finds none.
         Assert.Equal((system, false), Asking("""[ "missing" ]"""));
         Assert.Equal((system, false), Asking("[]"));
+    }
+
+    [Fact]
+    public void A_global_json_in_a_folder_not_trusted_names_no_dotnet_of_its_own_the_dotnets_found_searched_alone()
+    {
+        DotnetFound system = Installation("system", "10.0.403");
+        DotnetFound home = Installation(Path.Join("home", ".dotnet"), "11.0.100");
+        Installation(Path.Join("work", ".dotnet"), "11.0.100");
+        string folder = Directory.CreateDirectory(Path.Join(root, "work", "src")).FullName;
+        File.WriteAllText(Path.Join(root, "work", "global.json"), """{ "sdk": { "version": "11.0.100", "rollForward": "disable", "paths": [ ".dotnet" ] } }""");
+        List<string> asked = [];
+
+        (DotnetFound?, bool) chosen = Dotnet.Choose([system, home], folder, DotnetInstallation.Read, trusts: place =>
+        {
+            asked.Add(place);
+            return false;
+        });
+
+        Assert.Equal((home, true), chosen);
+        Assert.Equal([Path.Join(root, "work")], asked);
     }
 
     [Fact]

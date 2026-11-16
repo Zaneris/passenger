@@ -24,6 +24,24 @@ public static class Refusals
     /// <summary>The file shown is no Godot scene, nor a script a scene runs, of a Godot project the folder builds a game of.</summary>
     public const string NoGodotScene = "No scene of a Godot game is open: open a .tscn, or a script one of its nodes runs";
 
+    /// <summary>The folder open is not trusted, so Passenger runs none of its code (<see cref="WorkspaceTrust"/>): no build,
+    /// run, debug, test, profile, restore, Hot Reload, C# language server or previewer of its.</summary>
+    public const string Untrusted = WorkspaceTrust.Untrusted;
+
+    /// <summary>What trusting a folder lets Passenger run, as the trust question and the banner say it.</summary>
+    public const string TrustLets = "Trusted, Passenger runs its code as it works: design-time builds and restore as it opens, the analyzers and "
+        + "source generators its projects name, builds, runs, tests and debugging, its own TypeScript, ESLint and Prettier, and the programs its "
+        + "Git configuration names.";
+
+    /// <summary>What the banner over an untrusted folder says.</summary>
+    public const string UntrustedSaid = "This folder is not trusted: none of its code runs until you trust it";
+
+    /// <summary>An agent asked to trust a folder, which only the person does.</summary>
+    public const string TrustIsThePersons = "Only the person trusts a folder, with Trust Folder over the editors";
+
+    /// <summary>The folder open is trusted already.</summary>
+    public const string TrustedAlready = "The folder is trusted already";
+
     /// <summary>The window has no folder open (a solution, a project or a folder of files).</summary>
     public const string NoFolder = "No folder is open";
 

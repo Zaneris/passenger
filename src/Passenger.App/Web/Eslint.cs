@@ -50,11 +50,11 @@ public sealed class EslintService : IAsyncDisposable
     public static string Script => Path.Combine(WebLanguages.Modules, "vscode-langservers-extracted", "lib", "eslint-language-server", "eslintServer.js");
 
     /// <summary>The ESLint package that checks a file as Settings configure it, null for a file it does not check (Disabled,
-    /// outside "Run for files", or no package found).</summary>
+    /// outside "Run for files", no package found, or in a folder not trusted, whose configuration is code).</summary>
     public string? PackageFor(string path)
     {
         AppSettings now = settings();
-        if (now.Eslint == ToolConfiguration.Disabled || !ProjectPackages.Covers(now.EslintFiles, folder, path))
+        if (now.Eslint == ToolConfiguration.Disabled || !ProjectPackages.Covers(now.EslintFiles, folder, path) || !WorkspaceTrust.Trusts(path))
         {
             return null;
         }
@@ -65,7 +65,8 @@ public sealed class EslintService : IAsyncDisposable
     public string? Missing(string path)
     {
         AppSettings now = settings();
-        return now.Eslint == ToolConfiguration.Automatic && ProjectPackages.Covers(now.EslintFiles, folder, path) ? ProjectPackages.Missing(path, "eslint") : null;
+        return now.Eslint == ToolConfiguration.Automatic && ProjectPackages.Covers(now.EslintFiles, folder, path) && WorkspaceTrust.Trusts(path)
+            ? ProjectPackages.Missing(path, "eslint") : null;
     }
 
     public EslintDocument? For(OpenDocument document) => documents.GetValueOrDefault(document);

@@ -570,6 +570,11 @@ public sealed class NewProjectDialog : IdeWindow
                 Directory.CreateDirectory(plan.Root);
                 writes.Made(plan.Root);
             }
+            // A new solution's folder is the person's own code from its first file, trusted before anything is restored.
+            if (target is null)
+            {
+                WorkspaceTrust.Trust(PathNames.Canonical(plan.Root));
+            }
             if (plan.Solution is not null && !template.IsSolution)
             {
                 progress.Text = $"Creating the solution {SolutionName}…";

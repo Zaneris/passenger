@@ -49,7 +49,8 @@ public partial class MainWindow
                 // Done once dotnet watch has said what it made of the save; the status bar follows its later words.
                 IdeErrors.Observe(WorkingAsync(AppActions.ApplyHotReloadChanges, "Applying Hot Reload changes…", () => SaveForWatchAsync(TimeSpan.Zero)));
             }
-        }, _ => session.Debug.Running.Count > 0 || UnsavedGameScripts().Count > 0 ? null
+        }, _ => Untrusted() is { } untrusted ? untrusted
+            : session.Debug.Running.Count > 0 || UnsavedGameScripts().Count > 0 ? null
             : session.Debug.HotReload is not null || session.Debug.IsDebugging ? session.Debug.WhyNotApply()
             : buildRun.WatchesHotReload ? null
             : RunXamlEdited ? null

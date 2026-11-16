@@ -88,7 +88,10 @@ public partial class MainWindow
 
     /// <summary>A folder open whose tests can run: with a .NET SDK where a run builds first, and with none where it does not,
     /// as GUT's tests of a game of GDScript alone.</summary>
-    private string? NeedsTestBuild(ActionContext context) => NeedsFolder(context) ?? (WithoutSdk() is { } none && session.Tests.Builds ? none : null);
+    private string? NeedsTestBuild(ActionContext context) => NeedsFolder(context) ?? Untrusted() ?? (WithoutSdk() is { } none && session.Tests.Builds ? none : null);
+
+    /// <summary>Why nothing of the open folder's code runs: it is not trusted (<see cref="ProjectSession.Trusted"/>).</summary>
+    private string? Untrusted() => session.Folder is not null && !session.Trusted ? Refusals.Untrusted : null;
 
     /// <summary>Why Expand All or Collapse All cannot run: no tool window with rows to open or close has the keys.</summary>
     private static string? NoTree(ActionContext context, Action? does, string verb) =>
@@ -228,12 +231,12 @@ public partial class MainWindow
             KeysOf = () => AppActions.KeysIn(A.FocusEditor) is var keys && keys != A.FocusEditor ? keys : null,
         });
         Add(A.ToggleSolutionAnalysis, "Toggle Solution-Wide Analysis", "IDE", _ => ToggleSolutionAnalysis(),
-            _ => session.CSharp is null ? Refusals.NoCSharp : null, ("Code", 4, 0));
+            _ => session.CSharp is null ? session.WhyNoCSharp : null, ("Code", 4, 0));
         Add(A.RestartCSharpServer, "Restart C# Language Server", "IDE", _ =>
         {
             session.CSharp!.Restart();
             status.Text = "Starting the C# language server again";
-        }, _ => session.CSharp is null ? Refusals.NoCSharp : null, ("Code", 4, 1), words: ["Roslyn"]);
+        }, _ => session.CSharp is null ? session.WhyNoCSharp : null, ("Code", 4, 1), words: ["Roslyn"]);
     }
 
     /// <summary>The editor's actions, run where the keys are: a text box's own editing there, another editor (a diff's)
@@ -329,16 +332,16 @@ public partial class MainWindow
         Add(A.CleanSelected, "Clean Selected Projects", "Build", _ => Build(BuildKind.Clean, SelectedProjects()), NoneSelected, ("Build", 1, 2), works: A.Build);
 
         Add(A.RunProgram, "Run", "Run", _ => RunSelected(), _ => Unconfigured("run"), ("Run", 0, 0));
-        Add(A.Debug, "Debug", "Run", _ => DebugSelected(), _ => Configuration is { IsScript: true } script ? Refusals.ScriptOnlyRuns(script.Name) : Unconfigured("debug"),
+        Add(A.Debug, "Debug", "Run", _ => DebugSelected(), _ => Untrusted() ?? (Configuration is { IsScript: true } script ? Refusals.ScriptOnlyRuns(script.Name) : Unconfigured("debug")),
             ("Run", 0, 1));
-        Add(A.RunCurrentScene, "Run Current Scene", "Run", _ => IdeErrors.Observe(buildRun.RunCurrentSceneAsync()), _ => buildRun.WhyNotRunScene(), ("Run", 0, 2));
+        Add(A.RunCurrentScene, "Run Current Scene", "Run", _ => IdeErrors.Observe(buildRun.RunCurrentSceneAsync()), _ => Untrusted() ?? buildRun.WhyNotRunScene(), ("Run", 0, 2));
         Add(A.RunAnotherCopy, "Run Another Copy", "Run", _ => IdeErrors.Observe(buildRun.RunAnotherCopyAsync()),
-            _ => session.Configurations.Chosen is { } chosen ? buildRun.WhyNotRunAnotherCopy(chosen) : Unconfigured("run"), ("Run", 0, 2), works: A.RunProgram);
+            _ => Untrusted() ?? (session.Configurations.Chosen is { } chosen ? buildRun.WhyNotRunAnotherCopy(chosen) : Unconfigured("run")), ("Run", 0, 2), works: A.RunProgram);
         Add(A.DebugAnotherCopy, "Debug Another Copy", "Run", _ => IdeErrors.Observe(DebugAnotherCopyAsync()),
-            _ => session.Configurations.Chosen is { } chosen ? buildRun.WhyNotAnotherCopy(chosen) : Unconfigured("debug"), ("Run", 0, 2), works: A.Debug);
-        Add(A.RunInTerminal, "Run in the Terminal", "Run", c => StartInTerminal(c, debug: false), _ => buildRun.RunNeed is null ? Refusals.NoTerminalNeed("Run") : null,
+            _ => Untrusted() ?? (session.Configurations.Chosen is { } chosen ? buildRun.WhyNotAnotherCopy(chosen) : Unconfigured("debug")), ("Run", 0, 2), works: A.Debug);
+        Add(A.RunInTerminal, "Run in the Terminal", "Run", c => StartInTerminal(c, debug: false), _ => Untrusted() ?? (buildRun.RunNeed is null ? Refusals.NoTerminalNeed("Run") : null),
             words: ["Use external console", "Console.ReadKey"], works: A.RunProgram);
-        Add(A.DebugInTerminal, "Debug in the Terminal", "Run", c => StartInTerminal(c, debug: true), _ => buildRun.DebugNeed is null ? Refusals.NoTerminalNeed("Debug") : null,
+        Add(A.DebugInTerminal, "Debug in the Terminal", "Run", c => StartInTerminal(c, debug: true), _ => Untrusted() ?? (buildRun.DebugNeed is null ? Refusals.NoTerminalNeed("Debug") : null),
             words: ["Use external console", "Console.ReadKey"], works: A.Debug);
         // No key in Rider's Visual Studio keymaps.
         Add(A.EditConfigurations, "Edit Configurations…", "Run", _ => ShowRunConfigurations(), NeedsFolder, ("Run", 0, 5));
@@ -396,13 +399,13 @@ public partial class MainWindow
         }, Refusals.NeedsFile, ("Run", 2, 2));
         Add(A.ViewBreakpoints, "View Breakpoints and Exceptions…", "Debug", _ => ShowBreakpoints(null), menu: ("Run", 2, 3));
 
-        string? Unbuildable(ActionContext _) => Folder is null ? Refusals.NoFolderTo("build") : IsBuilding ? Refusals.Building
+        string? Unbuildable(ActionContext _) => Folder is null ? Refusals.NoFolderTo("build") : Untrusted() is { } untrusted ? untrusted : IsBuilding ? Refusals.Building
             : session.Workspace is { Solution: null, Projects.Count: 0, GodotGames.Count: > 0 } ? Refusals.NothingToBuildOfScripts : WithoutSdk();
 
         string? NoneSelected(ActionContext context) => Unbuildable(context)
             ?? (SelectedProjects().Count == 0 ? "No project is chosen in the Explorer or open in the editor" : null);
 
-        string? Unconfigured(string verb) => Configuration is null ? WithoutSdk() ?? session.NothingTo(verb)
+        string? Unconfigured(string verb) => Untrusted() is { } untrusted ? untrusted : Configuration is null ? WithoutSdk() ?? session.NothingTo(verb)
             : Configuration is { Kind: Run.RunKind.Project or Run.RunKind.Projects, RunsScriptGame: false } ? WithoutSdk() : null;
     }
 

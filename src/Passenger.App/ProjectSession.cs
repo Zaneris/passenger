@@ -226,16 +226,19 @@ public sealed class ProjectSession : IAsyncDisposable
     public static ProjectSession Open(SessionSetup setup, string folder, string? named, WorkspaceModel? withSolution, UnreadSolution? unread,
         ProjectState? kept = null)
     {
-        HeadStart? ahead = setup.HeadStart is { } head && PathNames.Same(head.Folder, folder)
+        bool trusted = WorkspaceTrust.Trusts(folder);
+        HeadStart? ahead = trusted && setup.HeadStart is { } head && PathNames.Same(head.Folder, folder)
             && (head.Named is null ? named is null : named is not null && PathNames.Same(head.Named, named)) ? head : null;
         ProjectSession session = new(setup, folder)
         {
             NamedSolution = named,
             LocalHistory = History.LocalHistory.Open(folder, setup.StateFolder, setup.HistoryKeeping),
             ahead = ahead,
+            Trusted = trusted,
         };
         // Where the log's timing of the language server's start (CSharpService) begins.
-        IdeErrors.Write($"Opened {folder}{(withSolution is { } read && read.OpenedAs != folder ? $" with {Path.GetFileName(read.OpenedAs)}" : string.Empty)}");
+        IdeErrors.Write($"Opened {folder}{(withSolution is { } read && read.OpenedAs != folder ? $" with {Path.GetFileName(read.OpenedAs)}" : string.Empty)}"
+            + (trusted ? string.Empty : ", not trusted: none of its code runs"));
         // The build configuration it kept, which its evaluations and design-time builds are made under from the start.
         if (kept is not null)
         {
@@ -279,6 +282,50 @@ public sealed class ProjectSession : IAsyncDisposable
     /// <summary>The folder open, canonical; null for a window with none.</summary>
     public string? Folder { get; }
 
+    /// <summary>Whether the folder is trusted (<see cref="WorkspaceTrust"/>), as it was as it opened or once trusted since
+    /// (<see cref="Trust"/>). Untrusted, the session runs none of its code: no evaluation or design-time build of its
+    /// projects, no C# language server, no reading of its build configurations; its builds, runs, tests and previews are
+    /// refused (<see cref="Refusals.Untrusted"/>). A session with no folder has none to guard.</summary>
+    public bool Trusted { get; private set; } = true;
+
+    /// <summary>The folder came to be trusted, and what the session held back began.</summary>
+    public event EventHandler? TrustChanged;
+
+    /// <summary>A trusted folder's projects outside it (a solution's beside it) are trusted with it while it is open, so what
+    /// works on them (a run, a migration) runs as it does for those inside.</summary>
+    private void LendTrust()
+    {
+        if (Trusted && Folder is { } open)
+        {
+            WorkspaceTrust.Lend(this, (workspace?.Projects ?? []).Select(p => p.Folder).Where(f => !PathNames.Within(f, open)));
+        }
+    }
+
+    /// <summary>Why the folder has no C# language server: it is not trusted, or it has none.</summary>
+    public string WhyNoCSharp => Trusted ? Refusals.NoCSharp : Refusals.Untrusted;
+
+    /// <summary>The folder came to be trusted: what the session held back begins as an open begins it, Git's status read
+    /// with the repository's configuration, the language server, the projects' evaluations (and so their design-time
+    /// builds), the build configurations read, and its web languages' own code. Once.</summary>
+    public void Trust()
+    {
+        UiThread.Check();
+        if (Trusted || IsEnded)
+        {
+            return;
+        }
+        Trusted = true;
+        LendTrust();
+        IdeErrors.Write($"Trusted {Folder}: its code runs from now on");
+        // Git's reads take the repository's own configuration from now on.
+        IdeErrors.Observe(Vcs.RefreshAsync());
+        StartCSharp();
+        Evaluate();
+        ReadBuildChoices();
+        Web?.Trust();
+        TrustChanged?.Invoke(this, EventArgs.Empty);
+    }
+
     /// <summary>The solution or project opened by name, which a folder with several keeps over the solution its name would
     /// pick.</summary>
     public string? NamedSolution { get; private set; }
@@ -292,6 +339,7 @@ public sealed class ProjectSession : IAsyncDisposable
         {
             workspace = value is null ? null : value with { Build = BuildChoices.Choice };
             FollowEvaluations();
+            LendTrust();
         }
     }
 
@@ -540,7 +588,7 @@ public sealed class ProjectSession : IAsyncDisposable
     /// <summary>What the folder offers to build as, read again: its solution's configurations, else its projects'.</summary>
     public void ReadBuildChoices()
     {
-        if (!IsEnded && Folder is { } folder && Workspace is { } now)
+        if (!IsEnded && Trusted && Folder is { } folder && Workspace is { } now)
         {
             IdeErrors.Observe(BuildChoices.ReadAsync(folder, now));
         }
@@ -1208,10 +1256,10 @@ public sealed class ProjectSession : IAsyncDisposable
     /// <summary>When the folder opened, which its first complete Solution view is timed from; 0 once it is.</summary>
     private long openedAt;
 
-    /// <summary>Has each project of the workspace evaluated that needs it, the file shown's first.</summary>
+    /// <summary>Has each project of the workspace evaluated that needs it, the file shown's first; none of a folder not trusted.</summary>
     public void Evaluate()
     {
-        if (!IsEnded && Workspace is { } following)
+        if (!IsEnded && Trusted && Workspace is { } following)
         {
             Models.Follow(following, setup.Editors.Active?.Path);
         }
@@ -1668,13 +1716,13 @@ public sealed class ProjectSession : IAsyncDisposable
     }
 
     /// <summary>The language server on the workspace, in place of the one before, the files open its too; none for a
-    /// folder with neither a solution nor a project, nor in a window that starts none.</summary>
+    /// folder with neither a solution nor a project, one not trusted, nor in a window that starts none.</summary>
     private void StartCSharp()
     {
         IdeErrors.Observe(CSharp?.DisposeAsync().AsTask() ?? Task.CompletedTask);
         CSharp = null;
         Tests.Finder.ServerLoading = false;
-        if (!IsEnded && setup.StartsLanguageServer && Workspace is { } opening && (opening.Solution is not null || opening.Projects.Count > 0))
+        if (!IsEnded && Trusted && setup.StartsLanguageServer && Workspace is { } opening && (opening.Solution is not null || opening.Projects.Count > 0))
         {
             Settings.AppSettings shown = setup.Settings();
             CSharp = new CSharpService(setup.WarmServer, ahead)
@@ -1876,6 +1924,7 @@ public sealed class ProjectSession : IAsyncDisposable
     /// debugger and Git take.</summary>
     private void LetGo()
     {
+        WorkspaceTrust.Lend(this, []);
         Builder.Dispose();
         Runner.Dispose();
         Debug.Dispose();

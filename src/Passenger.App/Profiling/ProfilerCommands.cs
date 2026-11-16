@@ -264,6 +264,10 @@ public sealed class ProfilerCommands
     private string? WhyNotProfile(ProjectSession folder, RunConfiguration? configuration = null)
     {
         RunConfiguration? chosen = configuration ?? folder.Configurations.Chosen;
+        if (folder.Folder is not null && !folder.Trusted)
+        {
+            return Refusals.Untrusted;
+        }
         return Busy(folder) ?? (chosen is not null && folder.Aspire.IsAspire(chosen) ? null : GoesOn(folder) ?? RunConsoleTaken(folder, chosen));
     }
 

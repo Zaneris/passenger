@@ -96,7 +96,8 @@ public sealed class EngineChecks : IDisposable
         }
     }
 
-    /// <summary>Checks an open file the engine has something to say of (a Dockerfile, a compose file), now and as it changes.</summary>
+    /// <summary>Checks an open file the engine has something to say of (a Dockerfile, a compose file), now and as it changes;
+    /// no Dockerfile of a folder not trusted, whose syntax line may name a frontend for BuildKit to run.</summary>
     public void Attach(OpenDocument document, WebDocument web)
     {
         UiThread.Check();
@@ -104,7 +105,8 @@ public sealed class EngineChecks : IDisposable
         {
             return;
         }
-        EngineCheck? check = Languages.Language.ForPath(document.Path) == Languages.Language.Dockerfile ? new DockerfileCheck(this, document, web)
+        EngineCheck? check = Languages.Language.ForPath(document.Path) == Languages.Language.Dockerfile
+            ? (WorkspaceTrust.Trusts(document.Path) ? new DockerfileCheck(this, document, web) : null)
             : ComposeFiles.IsCompose(document.Path) ? new ComposeCheck(this, document, web) : null;
         if (check is null)
         {

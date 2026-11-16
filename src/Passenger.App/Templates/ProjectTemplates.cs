@@ -180,9 +180,13 @@ public static partial class ProjectTemplates
 
     /// <summary><c>dotnet restore</c> of a project a template made, run in a folder, with EnableWindowsTargeting for one that
     /// targets Windows off it (<paramref name="windowsTargeting"/>), as its builds have it: null once restored, else what
-    /// dotnet said why not.</summary>
+    /// dotnet said why not, or why it was not run (in a folder not trusted, whose MSBuild files it would run).</summary>
     public static async Task<string?> RestoreAsync(string project, string folder, CancellationToken cancel = default, bool windowsTargeting = false)
     {
+        if (!WorkspaceTrust.Trusts(project))
+        {
+            return Refusals.Untrusted;
+        }
         IReadOnlyList<string> arguments = windowsTargeting ? ["restore", project, PropertySwitch.Of(MSBuildNames.EnableWindowsTargeting, "true")] : ["restore", project];
         Task<ChildResult> restore = ChildProcesses.RunAsync(ChildProcesses.DotnetCommand(arguments, folder), limit: TimeSpan.FromMinutes(10), cancel: cancel);
         BackgroundWork.Track(restore);

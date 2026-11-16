@@ -96,7 +96,7 @@ public sealed class XamlPreview : IDisposable
     internal XamlDocument Document => document;
 
     /// <summary>Starts the previewer of the file's framework on the project's last build, once the project's XAML has been
-    /// read; or says why there is none.</summary>
+    /// read; or says why there is none, the folder not trusted among them.</summary>
     public async Task StartAsync()
     {
         UiThread.Check();
@@ -109,6 +109,13 @@ public sealed class XamlPreview : IDisposable
         }
         if (start != starts)
         {
+            return;
+        }
+        // A previewer runs the project's built assemblies: none of a folder not trusted, the next edit asking again.
+        if (!WorkspaceTrust.Trusts(document.Document.Path))
+        {
+            lapsed = true;
+            Say(Refusals.Untrusted);
             return;
         }
         switch (builder.Dialect)

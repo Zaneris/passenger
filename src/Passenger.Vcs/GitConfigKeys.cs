@@ -31,6 +31,12 @@ public static class GitConfigKeys
     /// <summary>The gpgsm git signs X.509 with.</summary>
     public const string GpgX509Program = "gpg.x509.program";
 
+    /// <summary>The program git asks which files changed, or whether the built-in daemon does.</summary>
+    public const string CoreFsmonitor = "core.fsmonitor";
+
+    /// <summary>The folder git runs hooks from in the repository's own hooks' place.</summary>
+    public const string CoreHooksPath = "core.hooksPath";
+
     /// <summary>The committer's address.</summary>
     public const string UserEmail = "user.email";
 

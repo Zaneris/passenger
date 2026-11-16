@@ -628,15 +628,20 @@ public static class ProjectHosts
     private static readonly SemaphoreSlim Gate = new(1, 1);
     private static readonly List<ProjectHost> Running = [];
 
-    /// <summary>The host for a folder's SDK: one running already, else one started for it, which a folder deleted since
-    /// is refused (<see cref="ProjectHostFailed"/>). Found on the thread pool, whoever asks: what the gate is held over
-    /// (the SDK asked, a host started) is every window's.</summary>
+    /// <summary>The host for a folder's SDK: one running already, else one started for it, which a folder deleted since,
+    /// or one not trusted (<see cref="WorkspaceTrust"/>), whose projects MSBuild would run, is refused
+    /// (<see cref="ProjectHostFailed"/>). Found on the thread pool, whoever asks: what the gate is held over (the SDK asked,
+    /// a host started) is every window's.</summary>
     public static Task<ProjectHost> ForAsync(string folder, CancellationToken cancel = default) =>
         // Not held, each caller holding its own wait: on a caller's thread, one busy or never running again would keep the gate.
         BackgroundWork.Unheld(() => FindAsync(folder, cancel), cancel);
 
     private static async Task<ProjectHost> FindAsync(string folder, CancellationToken cancel)
     {
+        if (!WorkspaceTrust.Trusts(folder))
+        {
+            throw new ProjectHostFailed(WorkspaceTrust.Untrusted);
+        }
         await Gate.WaitAsync(cancel).ConfigureAwait(false);
         try
         {
