@@ -1,6 +1,7 @@
 using Avalonia.Controls;
 using Avalonia.Headless.XUnit;
 using Passenger.App;
+using Passenger.App.Mobile;
 using Passenger.App.Run.Devices;
 using Passenger.Core;
 using Passenger.Workspace;
@@ -9,11 +10,11 @@ namespace Passenger.Tests;
 
 /// <summary>The app <c>dotnet new maui</c> makes, opened in the window: its one run configuration is named for it, and the
 /// menu of where it runs offers this machine's head (Windows on Windows) beside Android, its devices and emulators or
-/// what Android lacks here. On Windows, Run with nothing chosen builds its Windows head and runs it as the WinUI app it
-/// is, on a desktop of its own, what it writes in the Run window, and Stop ends it; with Hot Reload, under dotnet watch,
-/// a saved edit reaches it as it runs. Skips, saying why, without MAUI's workload, whose template makes the app, or, for
-/// a run, without the workload of any head the app's restore reads. Its packages come from nuget.org, as no restore of
-/// the solution's brings them, so it is never one of the gate's.</summary>
+/// what Android lacks here. With all it needs here, it says nothing lacking and builds every head. On Windows, Run builds
+/// its Windows head and runs it as the WinUI app it is, what it writes in the Run window, and Stop ends it; with Hot
+/// Reload, under dotnet watch, a saved edit reaches it as it runs. Skips, saying why, without MAUI's workload, whose
+/// template makes the app, or, for a build, without the workload of any head the app's restore reads. Its packages come
+/// from nuget.org, as no restore of the solution's brings them, so it is never one of the gate's.</summary>
 public sealed class MauiTemplateRunTests
 {
     private static readonly TimeSpan Slow = TimeSpan.FromMinutes(15);
@@ -64,6 +65,58 @@ public sealed class MauiTemplateRunTests
                 Assert.True(window.Runner.IsRunning, $"The app ended once its page was up:\n{Output(window)}");
                 Ui.Run(window, AppActions.Stop);
                 Ui.WaitFor(() => window.Runner.Ended.IsCompleted, "the app to end once stopped", TimeSpan.FromMinutes(1));
+            }
+            finally
+            {
+                window.Close();
+            }
+        }
+        finally
+        {
+            TestFolders.Delete(folder);
+        }
+    }
+
+    /// <summary>Opened where this machine has all the app needs, the banner says nothing lacking and Build builds each head
+    /// the app targets here (on a Mac Android's, iOS's for the simulator and Mac Catalyst's) to its app. Where the banner
+    /// names something lacking, the build checks it: a JDK, the Android SDK or Xcode said lacking fails it, a simulator
+    /// runtime, which only a run needs, does not, and the test skips saying what this machine lacks.</summary>
+    [AvaloniaFact]
+    public void The_maui_templates_app_says_nothing_lacking_where_this_machine_has_all_it_needs_and_builds_every_head_here()
+    {
+        string folder = Made();
+        try
+        {
+            MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+            try
+            {
+                Ui.WaitFor(() => window.Session.Projects.Any(p => p.IsEvaluated), () => $"the app's project to evaluate: {Ui.Said(window)}", Slow);
+                Built(window);
+                MobileWant want = window.MobileWant;
+                string? said = window.MobileSaid;
+                IReadOnlyList<string> heads = window.Session.Projects.Single().TargetFrameworks;
+                Assert.True(window.Perform(AppActions.Build), $"The app's build could not begin: {window.Status}");
+                Ui.WaitFor(() => !window.IsBuilding, () => $"the app's build to end: {window.Status}", Slow);
+                bool built = window.Status?.StartsWith("Build succeeded", StringComparison.Ordinal) == true;
+                if (said is not null)
+                {
+                    Assert.False(built && (want.Java is not null || want.NoAndroidSdk || want.Xcode is not null),
+                        $"The banner says the app lacks what its heads build with, yet every head built: {said}");
+                    Assert.Skip(built ? $"Every head built, but this machine lacks what the app runs with, as the banner says: {said}"
+                        : $"This machine lacks what the app builds with, as the banner says: {said}\n{Ui.Said(window)}");
+                }
+                Assert.True(built, $"The banner said nothing lacking, yet the app's build failed: {Ui.Said(window)}");
+                string output = Path.Combine(folder, "MauiApp1", "bin", "Debug");
+                foreach (string head in heads)
+                {
+                    string place = Path.Combine(output, head);
+                    string[] made = Directory.Exists(place) ? [.. Directory.EnumerateFileSystemEntries(place, "*", SearchOption.AllDirectories).Select(Path.GetFileName).OfType<string>()] : [];
+                    string? platform = FrameworkNames.PlatformOf(head);
+                    string app = platform == FrameworkNames.Android ? $"{MauiApp.Package}-Signed.apk"
+                        : platform is not null && MobilePlatforms.IsApple(platform) ? "MauiApp1.app"
+                        : "MauiApp1.dll";
+                    Assert.True(made.Contains(app), $"The build said it succeeded, but {head}'s head made no {app} in {place}");
+                }
             }
             finally
             {
