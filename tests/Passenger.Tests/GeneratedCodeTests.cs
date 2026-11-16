@@ -2,6 +2,7 @@ using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Passenger.App;
 using Passenger.App.CSharp;
+using Passenger.App.Navigation;
 using Passenger.App.ToolWindows;
 using Passenger.App.Workspace;
 using Passenger.Core;
@@ -100,6 +101,42 @@ public sealed class GeneratedCodeTests : IClassFixture<GeneratedCodeTests.Genera
         try
         {
             Declared(window, "ShapeContext.Defa", "ShapeContext.g.cs", " Default ");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>Go to Symbol finds what only a source generator declares, after the person's own symbols: the class the
+    /// regular expression generator makes for a GeneratedRegex method, listed after the method the person declares (whose
+    /// generated part is the person's), and chosen it opens the generator's code read-only at the class.</summary>
+    [AvaloniaFact]
+    public void Go_to_symbol_lists_a_class_a_generator_declares_after_the_persons_symbols_and_opens_its_code_read_only()
+    {
+        MainWindow window = app.Open(app.PathOf("Patterns.cs"));
+        try
+        {
+            Ui.Run(window, AppActions.GoToSymbol);
+            SymbolPopup popup = Assert.IsType<SymbolPopup>(window.Popup);
+            window.KeyTextInput("Letters");
+            Ui.WaitFor(() => popup.IsSettled && popup.Rows.Any(r => r.Name == "Letters_0" && r.Kind == Passenger.Lsp.SymbolKind.Class),
+                () => $"the class the generator declares among the symbols: {string.Join(", ", popup.Rows.Select(r => $"{r.Name} {r.Where}"))}");
+            SymbolRow[] rows = [.. popup.Rows];
+            int own = Array.FindIndex(rows, r => r.Name.StartsWith("Letters(", StringComparison.Ordinal) || r.Name == "Letters");
+            int made = Array.FindIndex(rows, r => r.Name == "Letters_0" && r.Kind == Passenger.Lsp.SymbolKind.Class);
+            Assert.True(own == 0 && made > own && rows.Count(r => r.Name.StartsWith("Letters(", StringComparison.Ordinal) || r.Name == "Letters") == 1
+                && rows[own].Where == "Patterns.cs:9" && rows[made].Where?.StartsWith("RegexGenerator.g.cs (generated):", StringComparison.Ordinal) == true,
+                $"Go to Symbol listed {string.Join(", ", rows.Select(r => $"{r.Name} {r.Where}"))}: not the person's method alone first, then the generator's class");
+            for (int down = 0; down < made && popup.Selected != rows[made]; down++)
+            {
+                Ui.Press(window, "DOWN");
+            }
+            Assert.Equal(rows[made], popup.Selected);
+            Ui.Press(window, "ENTER");
+            OpenDocument shown = Shown(window, "RegexGenerator.g.cs", "Go to Symbol's Letters_0");
+            string at = shown.Text.Snapshot.GetLineText(window.EditorArea.CodeEditor.CaretPosition.Line);
+            Assert.True(at.Contains("class Letters_0", StringComparison.Ordinal), $"Go to Symbol's Letters_0 put the caret on '{at.Trim()}', not on the class");
         }
         finally
         {

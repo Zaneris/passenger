@@ -341,11 +341,35 @@ public sealed class Navigator
         SymbolPopup popup = new(title, placeholder, search, SelectedWord());
         parts.Popups.Show(popup, row =>
         {
-            if (row is not null)
+            if (row is { Generated: { } uri, ServerPosition: { } made })
+            {
+                IdeErrors.Observe(GoToGeneratedAsync(uri, made));
+            }
+            else if (row is not null)
             {
                 NavigateTo(row.Path, row.ServerPosition is { } at ? ServerPlaces.PositionOf(Editors, row.Path, at) : row.Position);
             }
         });
+    }
+
+    /// <summary>Goes to a place in a source generator's document: a Razor file's C# to its place in the Razor file, another
+    /// generator's to a read-only copy of its code (<see cref="GeneratedCode"/>).</summary>
+    private async Task GoToGeneratedAsync(string uri, Lsp.LspPosition at)
+    {
+        if (Session.CSharp is not { Session: { } server } csharp)
+        {
+            parts.Status.Text = Refusals.NoCSharp;
+            return;
+        }
+        Lsp.LspLocation asked = new(uri, new Lsp.LspRange(at, at));
+        Lsp.LspLocation place = (await csharp.Generated.CopiedAsync(await server.WrittenAsync([asked])))[0];
+        if (Lsp.DocumentUris.GeneratedName(place.Uri) is { } name)
+        {
+            parts.Status.Text = $"{name} could not be read from the C# language server";
+            return;
+        }
+        string path = Lsp.DocumentUris.ToPath(place.Uri);
+        NavigateTo(path, ServerPlaces.PositionOf(Editors, path, place.Range.Start));
     }
 
     /// <summary>What a search starts from: the editor's selection, if it is one word.</summary>
@@ -379,8 +403,18 @@ public sealed class Navigator
             open.TryAdd(document.Path, document.Text.Snapshot);
         }
         System.Collections.Concurrent.ConcurrentDictionary<string, Lsp.ServerLines?> files = symbolFiles;
-        return await BackgroundWork.Run(() => (IReadOnlyList<SymbolRow>)[.. found.Where(s => Lsp.DocumentUris.GeneratedName(s.Location.Uri) is null).Take(200).Select(symbol =>
+        // What only a source generator declares after the solution's own files' symbols, its place read as it is gone to.
+        return await BackgroundWork.Run(() => (IReadOnlyList<SymbolRow>)[.. Lsp.WorkspaceSymbols.Kept(found).OrderBy(Lsp.WorkspaceSymbols.Generated).Take(200).Select(symbol =>
         {
+            if (Lsp.DocumentUris.GeneratedName(symbol.Location.Uri) is { } made)
+            {
+                return new SymbolRow(symbol.Name, Container(symbol.ContainerName), $"{made} (generated):{symbol.Location.Range.Start.Line + 1}", symbol.Kind, made,
+                    new TextPosition(symbol.Location.Range.Start.Line, symbol.Location.Range.Start.Character))
+                {
+                    ServerPosition = symbol.Location.Range.Start,
+                    Generated = symbol.Location.Uri,
+                };
+            }
             string path = Lsp.DocumentUris.ToPath(symbol.Location.Uri);
             Lsp.ServerLines? lines = open.TryGetValue(path, out TextSnapshot? text)
                 ? ServerPlaces.Differing(text)

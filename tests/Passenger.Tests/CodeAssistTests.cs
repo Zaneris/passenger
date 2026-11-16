@@ -188,10 +188,11 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         window.Close();
     }
 
-    /// <summary>Go to Symbol lists the solution's own declarations, never what a source generator wrote for them: a
-    /// [GeneratedRegex] method is found in its own file, and nothing at a generated file's name.</summary>
+    /// <summary>Go to Symbol lists the solution's own declarations first, never a source generator's part of one of them: a
+    /// [GeneratedRegex] method is found in its own file alone, and what only the generator declares comes after, said to be
+    /// generated, nothing at a path no file is at.</summary>
     [AvaloniaFact]
-    public void Go_to_Symbol_lists_a_generated_methods_own_declaration_and_nothing_a_generator_wrote()
+    public void Go_to_Symbol_lists_a_generated_methods_own_declaration_alone_and_what_only_a_generator_wrote_after()
     {
         project.Write("Words.cs", "using System.Text.RegularExpressions;\n\nstatic partial class Words\n{\n"
             + "    [GeneratedRegex(@\"\\w+\")]\n    public static partial Regex Word();\n}\n");
@@ -203,7 +204,12 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
             window.KeyTextInput("Word");
             Ui.WaitFor(() => popup.IsSettled && popup.Rows.Any(r => r.Where?.StartsWith("Words.cs:", StringComparison.Ordinal) == true),
                 () => $"Word's own declaration among the server's symbols: [{string.Join(", ", popup.Rows.Select(r => $"{r.Name} {r.Where}"))}]");
-            Assert.DoesNotContain(popup.Rows, r => r.Where is { } where && (where.Contains(".g.cs", StringComparison.Ordinal) || where.StartsWith('/')));
+            SymbolRow[] rows = [.. popup.Rows];
+            string Listed() => string.Join(", ", rows.Select(r => $"{r.Name} {r.Where}"));
+            Assert.True(rows.Count(r => r.Name.StartsWith("Word(", StringComparison.Ordinal) || r.Name == "Word") == 1
+                && rows.SkipWhile(r => r.Generated is null).All(r => r.Generated is not null && r.Where?.Contains(".g.cs (generated):", StringComparison.Ordinal) == true),
+                $"Go to Symbol listed the method more than once, or a generator's symbol before the person's or unsaid: {Listed()}");
+            Assert.DoesNotContain(rows, r => r.Where is { } where && where.StartsWith('/'));
         }
         finally
         {

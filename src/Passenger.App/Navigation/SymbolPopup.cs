@@ -22,6 +22,10 @@ public sealed record SymbolRow(string Name, string? Detail, string? Where, Symbo
     /// changed since the row's <see cref="Position"/> was read from it.</summary>
     public Passenger.Lsp.LspPosition? ServerPosition { get; init; }
 
+    /// <summary>The server's URI of the source generator's document it is declared in, whose place is read as it is gone to;
+    /// null for one in a file of the folder's.</summary>
+    public string? Generated { get; init; }
+
     /// <summary>Whether going to it goes on from its place to what the code there names, as Go to Declaration does: a Godot
     /// scene's connection to its handler.</summary>
     public bool Leads { get; init; }

@@ -362,6 +362,27 @@ public sealed record SymbolInformation(string Name, SymbolKind Kind, LspLocation
     }
 }
 
+/// <summary>What workspace/symbol answers, as Passenger lists it.</summary>
+public static class WorkspaceSymbols
+{
+    /// <summary>The symbols found, but a source generator's declaration of one the solution's own files declare too (a partial
+    /// type's or member's other part), whose place is the person's.</summary>
+    public static IEnumerable<SymbolInformation> Kept(IReadOnlyList<SymbolInformation> found)
+    {
+        HashSet<(string, SymbolKind, string?)> own = [.. found.Where(s => !Generated(s)).Select(s => (s.Name, s.Kind, Within(s)))];
+        return found.Where(s => !Generated(s) || !own.Contains((s.Name, s.Kind, Within(s))));
+    }
+
+    /// <summary>What a symbol is in, as Roslyn's container names it before the file and project it adds ("in Type (File.cs -
+    /// P)" for a partial's part, "in Type (project P)"); null for a type in no other, whose container names only those.</summary>
+    private static string? Within(SymbolInformation symbol) =>
+        symbol.ContainerName is { } container && container.StartsWith("in ", StringComparison.Ordinal) && container.IndexOf(" (", 3, StringComparison.Ordinal) is int open and > 3
+            ? container[3..open] : null;
+
+    /// <summary>Whether a symbol's place is in a source generator's document, which no file on disk holds.</summary>
+    public static bool Generated(SymbolInformation symbol) => DocumentUris.GeneratedName(symbol.Location.Uri) is not null;
+}
+
 /// <summary>A symbol in a document's outline, its members as children. Range is the whole
 /// declaration; SelectionRange is its name.</summary>
 public sealed record DocumentSymbol(string Name, string? Detail, SymbolKind Kind, LspRange Range, LspRange SelectionRange, IReadOnlyList<DocumentSymbol>? Children = null)

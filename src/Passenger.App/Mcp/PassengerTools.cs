@@ -1042,7 +1042,8 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
     [McpServerTool(Name = McpTools.FindSymbol, Title = "Go to symbol", ReadOnly = true), Description(
         "The solution's own C# and Razor symbols (not packages') whose names match query by substring, initials or camel " +
         "humps (\"GH\" finds GetHashCode), as Go to Symbol finds them, the name itself first, then names starting with it, " +
-        "types before members; an indexer by this[] or Item. Other files' names are in their outline.")]
+        "types before members, then what only its source generators declare, in a read-only copy of their code; an indexer " +
+        "by this[] or Item. Other files' names are in their outline.")]
     public Task<IReadOnlyList<SymbolFound>> FindSymbol(
         string query,
         [Description("class, interface, struct, enum, method, property, field, event, constructor...")] string? kind = null,
@@ -1073,17 +1074,19 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             : [];
         IReadOnlyList<SymbolInformation> found = await session.SymbolsAsync(query);
         // Each target framework finds a symbol again; the server's order is not by match, so the name itself first, which no limit cuts.
-        List<SymbolInformation> kept = [.. found
-            .Where(s => DocumentUris.GeneratedName(s.Location.Uri) is null && (kind is null || SymbolKinds.Name(s.Kind).Equals(kind, StringComparison.OrdinalIgnoreCase)))
+        List<SymbolInformation> kept = [.. WorkspaceSymbols.Kept(found)
+            .Where(s => kind is null || SymbolKinds.Name(s.Kind).Equals(kind, StringComparison.OrdinalIgnoreCase))
             .DistinctBy(s => (s.Name, s.Kind, s.Location.Uri, s.Location.Range.Start.Line, s.Location.Range.Start.Character))
-            .OrderBy(s => NameMatch(s.Name, query))
+            .OrderBy(WorkspaceSymbols.Generated)
+            .ThenBy(s => NameMatch(s.Name, query))
             .ThenBy(s => SymbolKinds.Name(s.Kind) is "class" or "interface" or "struct" or "enum" ? 0 : 1)
             .Take(Math.Max(0, limit - indexers.Count))];
         if (indexers.Count == 0 && kept.Count == 0 && FailedLoads() is { Count: > 0 } failed)
         {
             throw new InvalidOperationException(Refusals.NoneWhileUnloaded($"No {kind ?? "symbol"} of the solution's own code matches {query}", failed));
         }
-        IReadOnlyList<Place> places = await Places([.. kept.Select(s => s.Location)], cancel);
+        // A Razor file's C# at its place in the Razor file, another generator's in a copy of its code.
+        IReadOnlyList<Place> places = await Places(await session.WrittenAsync([.. kept.Select(s => s.Location)], cancel), cancel);
         return (IReadOnlyList<SymbolFound>)[.. indexers,
             .. kept.Select((s, i) => new SymbolFound(s.Name, SymbolKinds.Name(s.Kind), s.Owner, places[i].Path, places[i].Line, places[i].Column))];
 
@@ -1147,7 +1150,9 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             string none = $"No {kind ?? "symbol"} of the solution's own code is named {name}";
             throw new InvalidOperationException(FailedLoads() is { Count: > 0 } failed ? Refusals.NoneWhileUnloaded(none, failed) : $"{none}: find_symbol finds names like it");
         }
-        IReadOnlyList<Place> places = await Lines([.. kept.Select(s => (DocumentUris.FromPath(s.Path!), new LspPosition(s.At!.Line, s.At.Character), true))], cancel);
+        // A symbol only a source generator declares is at its place in a copy of the generator's code.
+        IReadOnlyList<Place> places = await Places([.. kept.Select(s => new LspLocation(s.Path is { } path ? DocumentUris.FromPath(path) : s.Generated!,
+            new LspRange(new LspPosition(s.At!.Line, s.At.Character), new LspPosition(s.At.Line, s.At.Character))))], cancel);
         List<NamedPlace> named = [.. kept.Select((s, i) => new NamedPlace(s.Name, s.Shown, s.Kind, s.Id, s.Container, places[i].Path, places[i].Line, places[i].Column))];
         return new SymbolsNamed([.. named.Take(limit)], Math.Max(0, named.Count - limit) + (kind is null ? found.More : 0));
     }
@@ -1160,7 +1165,8 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         List<string> each = [];
         foreach (NamedPlace place in named.Symbols)
         {
-            (OpenDocument document, _) = await Code(place.Path, cancel);
+            // A symbol only a source generator declares is read in a copy of its code.
+            (OpenDocument document, _) = await CodeOrCopy(place.Path, cancel);
             each.Add($"{place}\n{await CardAsync(document, Offset(document, place.Line, place.Column), cancel)}".TrimEnd());
         }
         return string.Join("\n\n", each) + (named.More > 0 ? $"\n\nAnd {named.More} more: name one by its container, its parameters' types or its documentation id" : string.Empty);

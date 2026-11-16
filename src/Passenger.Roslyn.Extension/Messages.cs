@@ -180,7 +180,13 @@ public sealed record NamedSymbol(
     [property: JsonPropertyName("id")] string? Id,
     [property: JsonPropertyName("container")] string? Container,
     [property: JsonPropertyName("path")] string? Path,
-    [property: JsonPropertyName("at")] Place? At);
+    [property: JsonPropertyName("at")] Place? At)
+{
+    /// <summary>The server's URI of the source generator's document that declares it, where none of its declarations is in the
+    /// solution's own files (<see cref="At"/> its place there); null otherwise.</summary>
+    [JsonPropertyName("generated")]
+    public string? Generated { get; init; }
+}
 
 /// <summary>A place in a document as the server counts it: a line and a UTF-16 column, from zero.</summary>
 public sealed record Place([property: JsonPropertyName("line")] int Line, [property: JsonPropertyName("character")] int Character);

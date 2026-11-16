@@ -506,10 +506,26 @@ public sealed class McpNavigationTests : McpRig, IClassFixture<RestoredFolders>
         Write("Shapes.cs", Shapes);
         await using McpClient client = await Start(["--mcp", Folder]);
 
-        // The regex generator declares Words and Word again in a file on no disk, which the agent could never open.
+        // Words and Word at the person's places though the regex generator declares them again; its class after, in a copy.
         JsonElement[] found = [.. (await Call(client, McpTools.FindSymbol, new() { ["query"] = "Word" })).EnumerateArray()];
-        Assert.True(found.Length > 0 && found.All(s => s.GetProperty("path").GetString() == "Words.cs"),
-            $"find_symbol Word answered places beyond the solution's own files: {string.Join(", ", found.Select(s => s.GetRawText()))}");
+        int own = found.TakeWhile(s => s.GetProperty("path").GetString() == "Words.cs").Count();
+        JsonElement[] generated = found[own..];
+        Assert.True(own == 2 && generated.Any(s => s.GetProperty("name").GetString() == "Word_0") && generated.All(InGeneratorsCode)
+            && !generated.Any(s => s.GetProperty("name").GetString() is "Word" or "Words"),
+            $"find_symbol Word answered no place of the person's for Words and Word, then the generator's class in its code: {string.Join(", ", found.Select(s => s.GetRawText()))}");
+        JsonElement word = Assert.Single((await Call(client, McpTools.FindSymbol, new() { ["query"] = "Word", ["exact"] = true })).EnumerateArray());
+        Assert.Equal(("Words.cs", 6), (word.GetProperty("path").GetString(), word.GetProperty("line").GetInt32()));
+        JsonElement named = Assert.Single((await Call(client, McpTools.FindSymbol, new() { ["query"] = "Word_0", ["exact"] = true })).EnumerateArray());
+        Assert.True(InGeneratorsCode(named) && named.GetProperty("kind").GetString() == "class",
+            $"find_symbol of the class the generator declares, by its name, answered {named.GetRawText()}, not its place in the generator's code");
+        string card = (await Call(client, McpTools.SymbolInfo, new() { ["symbol"] = "Word_0" })).GetString()!;
+        Assert.True(card.Contains("RegexGenerator.g.cs", StringComparison.Ordinal) && card.Contains("Word_0", StringComparison.Ordinal),
+            $"symbol_info of the class the generator declares answered: {card}");
+
+        // A place in the regex generator's code, its line's text as a copy of that code the agent can open reads it.
+        static bool InGeneratorsCode(JsonElement symbol) => symbol.GetProperty("path").GetString() is { } path
+            && path.EndsWith($"{Path.DirectorySeparatorChar}RegexGenerator.g.cs", StringComparison.Ordinal) && File.Exists(path)
+            && File.ReadAllLines(path)[symbol.GetProperty("line").GetInt32() - 1].Contains(symbol.GetProperty("name").GetString()!, StringComparison.Ordinal);
 
         JsonElement used = await Call(client, McpTools.Usages, new() { ["path"] = "Words.cs", ["line"] = 6, ["column"] = 34 });
         (string Path, int Line, int Column, string Text)[] uses = [.. Used(used)];
