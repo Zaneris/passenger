@@ -250,9 +250,15 @@ public sealed partial class PassengerTools
         await Until(() => !Session.Index.IsWalking, IndexLimit, cancel);
         FilesFound searched = await window.FindInFilesAsync(query, chosen, cancel);
         IReadOnlyList<SearchMatch> found = searched.Matches;
-        return new FindInFilesResult(found.Count, found.Count >= FileSearch.MostMatches,
-            [.. found.Take(Math.Clamp(limit, 1, FileSearch.MostMatches)).Select(m => new Place(Relative(m.Path), m.Line + 1, m.Column + 1, m.LineText.Trim()))],
-            searched.Stopped.Count == 0 ? null : [.. searched.Stopped.Select(Relative)]);
+        FindInFilesResult result = new(found.Count, found.Count >= FileSearch.MostMatches, [], searched.Stopped.Count == 0 ? null : [.. searched.Stopped.Select(Relative)]);
+        List<Place> asked = [.. found.Take(Math.Clamp(limit, 1, FileSearch.MostMatches)).Select(m => new Place(Relative(m.Path), m.Line + 1, m.Column + 1, AgentAnswers.Line(m.LineText, m.Column + 1)))];
+        int kept = AgentAnswers.Fitting(asked, Size, Room(result));
+        return result with
+        {
+            Matches = kept == asked.Count ? asked : [.. asked.Take(kept)],
+            More = kept == found.Count ? null : AgentAnswers.More(found.Count - kept, "match", kept < asked.Count ? "directory, mask or a narrower text lists fewer at once"
+                : string.Create(System.Globalization.CultureInfo.InvariantCulture, $"a larger limit lists them, at most {FileSearch.MostMatches:N0}"), "matches"),
+        };
     });
 
     [McpServerTool(Name = McpTools.ReplaceInFiles, Title = "Replace in Files", Destructive = true), Description(
@@ -310,7 +316,7 @@ public sealed partial class PassengerTools
         {
             throw new InvalidOperationException($"Nothing was replaced; {string.Join("; ", said)}");
         }
-        string replaced = $"Replaced {FilesReplaced.Count(changed)}: {AgentAnswers.Named([.. changed.Select(m => m.Path).Distinct().Select(Relative)], "file", "local_history of a folder within names those there")}";
+        string replaced = $"Replaced {FilesReplaced.Count(changed)}: {AgentAnswers.Named([.. changed.Select(m => m.Path).Distinct().Select(Relative)], "file", FilesOfTheChange)}";
         return said.Count == 0 ? replaced : $"{replaced}; {string.Join("; ", said)}";
     });
 
@@ -453,9 +459,13 @@ public sealed partial class PassengerTools
         "change, a refactoring's, a Git operation's, a label's...) and files (at most 10). With set, what was there before it, which " +
         "local_history_revert puts back: a file's text (exists false where there was none), or the folder's files that differ " +
         "now.")]
-    public Task<LocalHistoryInfo> LocalHistoryOf(string? path = null, long? set = null, CancellationToken cancel = default) =>
+    public Task<LocalHistoryInfo> LocalHistoryOf(string? path = null, long? set = null, int? from = null, CancellationToken cancel = default) =>
         OnUi(cancel, async () =>
     {
+        if (from is not null && set is null)
+        {
+            throw new ArgumentException("from reads on a file's text before a change set: give set too", nameof(from));
+        }
         (History.LocalHistory history, string full) = HistoryOf(path);
         history.LookAgain();
         // Looked at every 50 ms: Local History's queue, drained off the UI thread, raises nothing as it empties.
@@ -469,9 +479,12 @@ public sealed partial class PassengerTools
         }
         if (set is not long chosen)
         {
-            (IReadOnlyList<HistoryRow> newest, string? older) = AgentAnswers.Listed(rows, MostHistoryRows, "change set",
-                "local_history of a file or folder within lists its own");
-            return new LocalHistoryInfo(Relative(full), [.. newest.Select(Row)]) { More = older };
+            List<HistoryRowInfo> newest = [.. rows.Take(MostHistoryRows).Select(Row)];
+            int kept = AgentAnswers.Fitting(newest, Size, Room(new LocalHistoryInfo(Relative(full), [])));
+            return new LocalHistoryInfo(Relative(full), [.. newest.Take(kept)])
+            {
+                More = kept == rows.Count ? null : AgentAnswers.More(rows.Count - kept, "change set", "local_history of a file or folder within lists its own"),
+            };
         }
         HistoryRow row = rows.FirstOrDefault(r => r.Set == chosen)
             ?? throw new ArgumentException($"No change set {chosen} is in the history of {Relative(full)}; local_history lists those there are");
@@ -492,7 +505,20 @@ public sealed partial class PassengerTools
         }
         byte[] bytes = await BackgroundWork.Run(() => history.Content(version), cancel)
             ?? throw new InvalidOperationException($"What {Relative(full)} held before change set {chosen} is no longer kept");
-        return new LocalHistoryInfo(Relative(full), [Row(row)]) { Exists = true, Text = FileText.FromBytes(bytes)?.Text ?? string.Empty };
+        LocalHistoryInfo before = new(Relative(full), [Row(row)]) { Exists = true };
+        string[] lines = (FileText.FromBytes(bytes)?.Text ?? string.Empty).Split('\n');
+        int first = (from ?? 1) - 1;
+        if (first < 0 || first >= lines.Length)
+        {
+            throw new ArgumentException($"from {from} is not a line of the text {Relative(full)} held before change set {chosen}, which has {Plural.Of(lines.Length, "line")}", nameof(from));
+        }
+        // A line takes its JSON's characters, its quotes standing for the escaped line break after it.
+        int shown = Math.Max(1, AgentAnswers.Fitting(lines[first..], Size, Room(before)));
+        return before with
+        {
+            Text = JsonWithin(string.Join('\n', lines[first..(first + shown)]), Room(before)),
+            More = first + shown == lines.Length ? null : AgentAnswers.More(lines.Length - first - shown, "line", $"from {first + shown + 1} reads on"),
+        };
 
         HistoryRowInfo Row(HistoryRow r)
         {
@@ -579,13 +605,10 @@ public sealed partial class PassengerTools
                 p.Diagnostic.Message, Relative(p.Path), p.At.Line + 1, p.At.Column + 1)))
             : null;
         (IReadOnlyList<Finding>[] kept, int[] left) = AgentAnswers.Severest<Finding>([toolset, build, .. solution is null ? [] : (IReadOnlyList<Finding>[])[solution]],
-            f => Rank(f.Severity) ?? 2, 4, AgentAnswers.MostFindings);
-        string[] nouns = ["error", "warning", "message", "hint"];
-        string[] counts = [.. left.Select((count, rank) => count == 0 ? null
-            : string.Create(System.Globalization.CultureInfo.InvariantCulture, $"{count:N0} {Plural.Noun(count, nouns[rank])}")).OfType<string>()];
+            f => Rank(f.Severity) ?? 2, 4, AgentAnswers.MostFindings, Size, Room(new ProblemsInfo([], [], solution is null ? null : [])));
         int leftOut = left.Sum();
         string? more = leftOut == 0 ? null : AgentAnswers.More(leftOut, "finding",
-            $"{Plural.Listed(counts)}; diagnostics with severity, project or a folder's path lists fewer at once, with a file's path that file's own");
+            $"{LeftOut(left)}; diagnostics with severity, project or a folder's path lists fewer at once, with a file's path that file's own");
         return new ProblemsInfo(kept[0], kept[1], solution is null ? null : kept[2]) { More = more };
 
         bool Within(string? path, string? owner) =>
@@ -620,7 +643,11 @@ public sealed record SettingChange(string Name, JsonElement Before, JsonElement 
 
 /// <summary>Find in Files' matches: how many it found (at most 1000, capped then), those returned, and the files a regex
 /// ran too long in, whose search stopped there.</summary>
-public sealed record FindInFilesResult(int Count, bool Capped, IReadOnlyList<Place> Matches, IReadOnlyList<string>? Stopped);
+public sealed record FindInFilesResult(int Count, bool Capped, IReadOnlyList<Place> Matches, IReadOnlyList<string>? Stopped)
+{
+    /// <summary>How many matches found were left out, and how to read them.</summary>
+    public string? More { get; init; }
+}
 
 /// <summary>A file's or folder's Local History; with a change set chosen, what was there before it.</summary>
 public sealed record LocalHistoryInfo(string Path, IReadOnlyList<HistoryRowInfo> Rows)
@@ -634,7 +661,7 @@ public sealed record LocalHistoryInfo(string Path, IReadOnlyList<HistoryRowInfo>
     /// <summary>A folder's files that are not now what they were before the set: added, deleted or modified since.</summary>
     public IReadOnlyList<VcsChange>? Files { get; init; }
 
-    /// <summary>How many more change sets, or files before the set, were left out, and how to read them.</summary>
+    /// <summary>How many more change sets, files before the set, or lines of its text were left out, and how to read them.</summary>
     public string? More { get; init; }
 }
 

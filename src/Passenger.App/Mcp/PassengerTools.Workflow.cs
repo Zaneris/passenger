@@ -226,7 +226,7 @@ public sealed partial class PassengerTools
         "expired, by whom and with which key). With a path, Show History's: the commits from HEAD " +
         "that changed that file (followed through renames) or folder, each with what it did there; with startLine and endLine " +
         "too, those that changed those lines.")]
-    public Task<IReadOnlyList<VcsCommit>> VcsLog(int count = 20, string? path = null, int? startLine = null, int? endLine = null,
+    public Task<ModelContextProtocol.Protocol.CallToolResult> VcsLog(int count = 20, string? path = null, int? startLine = null, int? endLine = null,
         CancellationToken cancel = default) => OnUi(cancel, async () =>
     {
         await Session.Vcs.Opened;
@@ -247,7 +247,7 @@ public sealed partial class PassengerTools
         {
             IReadOnlyList<CommitInfo> commits = await repository.LogAsync(most);
             signatures = await Session.Vcs.Signatures.ReadAsync(repository, [.. commits.Select(c => c.Hash)]);
-            return (IReadOnlyList<VcsCommit>)[.. commits.Select(c => Commit(c, null))];
+            return Held([.. commits.Select(c => Commit(c, null))], "commit", "a path narrows them to a file's or folder's");
         }
         string full = Resolve(path);
         // Lines past the file's end are no lines at all, never ones not committed yet.
@@ -262,19 +262,25 @@ public sealed partial class PassengerTools
         HistoryScope scope = await window.HistoryScopeAsync(full, lines);
         IReadOnlyList<HistoryCommit> history = await repository.HistoryAsync(scope, most);
         signatures = await Session.Vcs.Signatures.ReadAsync(repository, [.. history.Select(h => h.Commit.Hash)]);
-        return [.. history.Select(h => Commit(h.Commit, h.Changes))];
+        return Held([.. history.Select(h => Commit(h.Commit, h.Changes))], "commit", "a path within narrows them to its own");
 
-        VcsCommit Commit(CommitInfo commit, IReadOnlyList<FileChange>? changes) => new(
-            commit.Short,
-            commit.Subject,
-            commit.Author,
-            commit.Time.ToLocalTime().ToString("yyyy-MM-dd HH:mm", System.Globalization.CultureInfo.InvariantCulture),
-            commit.Refs,
-            changes?.Select(c => new VcsChange(Relative(c.Path), c.Kind.ToString().ToLowerInvariant(), c.From is { } from ? Relative(from) : null)).ToList())
+        VcsCommit Commit(CommitInfo commit, IReadOnlyList<FileChange>? changes)
         {
-            Signature = signatures.GetValueOrDefault(commit.Hash)?.Said,
-        };
+            (IReadOnlyList<FileChange> listed, string? more) = changes is null ? ([], null)
+                : AgentAnswers.Listed(changes, MostCommitFiles, "file", "vcs_log with a path within lists its own");
+            return new(commit.Short, commit.Subject, commit.Author,
+                commit.Time.ToLocalTime().ToString("yyyy-MM-dd HH:mm", System.Globalization.CultureInfo.InvariantCulture),
+                commit.Refs,
+                changes is null ? null : [.. listed.Select(c => new VcsChange(Relative(c.Path), c.Kind.ToString().ToLowerInvariant(), c.From is { } from ? Relative(from) : null))])
+            {
+                Signature = signatures.GetValueOrDefault(commit.Hash)?.Said,
+                More = more,
+            };
+        }
     });
+
+    /// <summary>How many of a commit's files vcs_log names with a path.</summary>
+    private const int MostCommitFiles = 20;
 
     [McpServerTool(Name = McpTools.VcsCheckout, Title = "Check out a branch", Destructive = true), Description(
         "Checks out a branch (with create, a new one from the head), as the branch menu does; open files take what is on disk after.")]
@@ -954,6 +960,9 @@ public sealed record VcsChange(string Path, string Kind, string? From, string? U
 /// <summary>A commit as vcs_log lists it; with a path, what it did there.</summary>
 public sealed record VcsCommit(string Hash, string Subject, string Author, string Date, IReadOnlyList<string> Refs, IReadOnlyList<VcsChange>? Changes = null)
 {
+    /// <summary>How many more of its files there were left out, and how to read them.</summary>
+    public string? More { get; init; }
+
     /// <summary>Its signature in a sentence that begins with what it is worth (Good, Unverified, Bad, Expired); null where
     /// it is unsigned.</summary>
     public string? Signature { get; init; }

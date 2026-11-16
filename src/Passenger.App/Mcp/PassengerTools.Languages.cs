@@ -340,7 +340,7 @@ public sealed partial class PassengerTools
             throw new InvalidOperationException(refused);
         }
         await SaveLandedAsync(cancel);
-        return $"Renamed {old} to {newName} in {Plural.Of(renamed.Files.Count, "file")}: {string.Join(", ", renamed.Files.Select(f => Relative(f.Path)))}";
+        return $"Renamed {old} to {newName} in {Plural.Of(renamed.Files.Count, "file")}: {AgentAnswers.Named([.. renamed.Files.Select(f => Relative(f.Path))], "file", FilesOfTheChange)}";
     }
 
     /// <summary>A XAML file's elements, indented, each with what names it (x:Class, x:Name, x:Key, a style's selector or
@@ -422,7 +422,7 @@ public sealed partial class PassengerTools
                 throw new InvalidOperationException(problem);
             }
             await SaveLandedAsync(CancellationToken.None);
-            return $"Applied '{fix.Title}' to {string.Join(", ", made.Files.Select(f => Relative(f.Path)).Distinct())}";
+            return $"Applied '{fix.Title}' to {AgentAnswers.Named([.. made.Files.Select(f => Relative(f.Path)).Distinct()], "file", FilesOfTheChange)}";
         }
         WorkspaceEdits.ApplyTo(Editors, document, now.Edits ?? [new TextEdit(now.Range.Start, now.Range.Length, now.Text)]);
         await SaveLandedAsync(CancellationToken.None);
@@ -486,7 +486,7 @@ public sealed partial class PassengerTools
                     throw new InvalidOperationException($"{what} was not applied: {refused}");
                 }
                 await SaveLandedAsync(CancellationToken.None);
-                return $"Applied {what} to {string.Join(", ", changes.Select(c => Relative(c.Path)).Distinct())}";
+                return $"Applied {what} to {AgentAnswers.Named([.. changes.Select(c => Relative(c.Path)).Distinct()], "file", FilesOfTheChange)}";
         }
         Func<string, string?> texts = Editors.Texts().Text;
         if (chosen.Made is ExtractableValue value)

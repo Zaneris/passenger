@@ -2442,6 +2442,9 @@ public static class TestGit
 
     public static Task<string> RunAsync(string folder, params string[] arguments) => RunAsync(folder, arguments, null);
 
+    /// <summary><see cref="RunAsync(string, string[])"/> with what git reads given it, off the UI thread.</summary>
+    public static Task<string> FeedAsync(string folder, string input, params string[] arguments) => RunAsync(folder, arguments, input);
+
     private static async Task<string> RunAsync(string folder, string[] arguments, string? input)
     {
         Passenger.Core.ChildResult result;

@@ -1469,8 +1469,10 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         Passenger.App.Mcp.Place declared = Assert.Single(Await(tools.Definition("Separated.cs", 14, 39), "the declaration an agent asks for"));
         Assert.Equal(("Separators.cs", 4, 23, "public static int Value()"), (declared.Path, declared.Line, declared.Column, declared.Text));
         Assert.Contains("14:38 public int Value() => Separators.Value();",
-            Assert.Single(Await(tools.Usages("Separators.cs", 4, 23), "the usages an agent asks for").Files, f => f.Path == "Separated.cs").Places);
-        Assert.Contains(Await(tools.FindSymbol("FirstSeparated"), "the symbol an agent looks for"), s => s.Line == 7);
+            Assert.Single(Await(tools.Usages("Separators.cs", 4, 23), "the usages an agent asks for").Files, f => f.Path == "Separated.cs").Places!);
+        ModelContextProtocol.Protocol.CallToolResult symbols = Await(tools.FindSymbol("FirstSeparated"), "the symbol an agent looks for");
+        Assert.Contains(System.Text.Json.JsonDocument.Parse(((ModelContextProtocol.Protocol.TextContentBlock)symbols.Content[0]).Text).RootElement.EnumerateArray(),
+            s => s.GetProperty("line").GetInt32() == 7);
         Assert.Contains("FirstSeparated (class, line 7)", Await(tools.Outline("Separated.cs"), "the outline an agent asks for"), StringComparison.Ordinal);
 
         // A parameter added to Separators.Value: its declaration on the editor's line 4, its call in Separated.cs on 14.

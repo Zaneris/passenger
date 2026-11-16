@@ -62,7 +62,8 @@ public sealed class McpIdeTests : McpRig, IClassFixture<RestoredFolders>
 
     /// <summary>A solution of thousands of warnings and an error answers Problems' lists within their limit, the error first,
     /// saying how many warnings it left out and how to ask for them: severity error gives the error alone, a folder's path the
-    /// lists within it, and each file's path its own, which together reach every warning.</summary>
+    /// lists within it, and each file's path its own, read on from the line its words name past the limit, which together
+    /// reach every warning.</summary>
     [Fact]
     public async Task Problems_of_thousands_of_warnings_answer_within_the_limit_errors_first_and_a_path_or_severity_reaches_the_rest()
     {
@@ -98,10 +99,28 @@ public sealed class McpIdeTests : McpRig, IClassFixture<RestoredFolders>
         Assert.True(folder.GetProperty("solution").EnumerateArray().All(p => p.GetProperty("path").GetString()!.StartsWith("Warnings", StringComparison.Ordinal)),
             $"A folder's lists named a file outside it: {folder.GetProperty("solution").GetRawText()[..Math.Min(400, folder.GetProperty("solution").GetRawText().Length)]}");
 
+        // Each file's own, its answer read on from the line its words name where it holds them past the limit.
         int reached = 0;
         for (int file = 0; file < Files; file++)
         {
-            reached += (await Call(client, McpTools.Diagnostics, new() { ["path"] = $"Warnings/W{file}.cs", ["severity"] = "warning" })).GetArrayLength();
+            for (int? from = null; ;)
+            {
+                Dictionary<string, object?> asked = new() { ["path"] = $"Warnings/W{file}.cs", ["severity"] = "warning" };
+                if (from is int line)
+                {
+                    asked["from"] = line;
+                }
+                CallToolResult own = await Result(client, McpTools.Diagnostics, asked);
+                using JsonDocument ownJson = JsonDocument.Parse(((TextContentBlock)own.Content[0]).Text);
+                reached += ownJson.RootElement.GetArrayLength();
+                if (own.Content is not [_, TextContentBlock { Text: var words }])
+                {
+                    break;
+                }
+                System.Text.RegularExpressions.Match next = System.Text.RegularExpressions.Regex.Match(words, @"severity warning with from (\d+) lists those from that line on$");
+                Assert.True(next.Success, $"W{file}.cs's warnings past the limit were said as: {words}");
+                from = int.Parse(next.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture);
+            }
         }
         Assert.Equal(warnings, reached);
     }

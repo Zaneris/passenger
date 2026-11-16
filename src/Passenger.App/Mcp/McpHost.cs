@@ -60,7 +60,10 @@ public static partial class McpHost
         "default the one paused, else the only one); resource, an Aspire resource (name or AppHostPath::name) or a compose " +
         "service of the run, as workspace lists them; symbol, in place of path, line and column, a C# symbol of the solution's " +
         "own code by name: Name, Type.Member or Namespace.Type, an overload as Member(string, int), or its documentation id " +
-        "(M:Namespace.Type.Member(System.String)).\n\n" +
+        "(M:Namespace.Type.Member(System.String)); within, a folder or file whose places alone usages or hierarchy lists; from, the line " +
+        "editor_text, outline, a file's diagnostics or its local_history reads on from. An answer that would run past 40,000 characters keeps what comes first " +
+        "(usages: every file it can, counted, the first files' places listed) and says how many it left out and how to ask for them, in its " +
+        "more or, after a list, in words; a place's line is shown around its column, 200 characters at most.\n\n" +
         "Begin with workspace: the folder and solution open, their projects, run configurations and open files (open opens another folder, " +
         "solution or file). Find your way by meaning rather than by text: find_symbol finds a type or member by name, outline lists a file's " +
         "types and members with their lines, and symbol_info, definition, usages and hierarchy follow the symbol at a line " +
@@ -111,7 +114,7 @@ public static partial class McpHost
 
     /// <summary>How a tool's answer is written as JSON: its text as written, quotes, angle brackets and the rest left as
     /// they are rather than as \u0022s, so code in an answer reads as code and costs an agent no more than it should.</summary>
-    private static readonly JsonSerializerOptions AnswerJson = new(McpJsonUtilities.DefaultOptions) { Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
+    internal static readonly JsonSerializerOptions AnswerJson = new(McpJsonUtilities.DefaultOptions) { Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
 
     /// <summary>How every connection and <c>--mcp-attach</c> create a tool of the build's: its answer as <see cref="AnswerJson"/>
     /// writes it, its schema the same in both.</summary>

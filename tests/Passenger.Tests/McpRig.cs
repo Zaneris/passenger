@@ -311,8 +311,8 @@ public abstract class McpRig : IDisposable
         Ui.Click(Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(dialog).OfType<Avalonia.Controls.Button>().First(b => (string?)b.Content == button));
     }
 
-    /// <summary>A tool's answer, read as the JSON it is; a tool's error fails the test with its words and
-    /// what Passenger said meanwhile.</summary>
+    /// <summary>A tool's answer, read as the JSON it is (a list's, before the words saying what it left out); a tool's
+    /// error fails the test with its words and what Passenger said meanwhile.</summary>
     protected async Task<JsonElement> Call(McpClient client, [IdentifierOf(typeof(McpTools))] string tool, Dictionary<string, object?>? arguments = null)
     {
         CallToolResult result = await Result(client, tool, arguments);
@@ -320,6 +320,10 @@ public abstract class McpRig : IDisposable
         if (result.IsError == true)
         {
             Assert.Fail($"{tool} failed: {text}{Said()}");
+        }
+        if (result.Content is [TextContentBlock { Text: ['[', ..] list }, TextContentBlock, ..])
+        {
+            text = list;
         }
         if (text.StartsWith('[') || text.StartsWith('{'))
         {
