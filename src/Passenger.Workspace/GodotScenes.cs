@@ -772,6 +772,31 @@ public sealed class GodotScenes
         return edits;
     }
 
+    /// <summary>A scene's or resource's bytes in Godot's binary format (<paramref name="res"/>, its res:// path before) once
+    /// files and folders move (<see cref="Moved"/>): each external resource naming one moved, or written from its folder where
+    /// its own move leaves it naming another, written anew from the top, its uid and every other byte kept
+    /// (<see cref="GodotBinaryResource.With"/>); the bytes given where none changed. Null for bytes Passenger can't rewrite,
+    /// <paramref name="unread"/> saying why for a binary resource of a format it doesn't know.</summary>
+    public static byte[]? MovedBinary(byte[] file, IReadOnlyList<(string From, string To)> moves, string res, out string? unread)
+    {
+        if (GodotBinaryResource.Read(file, out unread) is not { } read)
+        {
+            return null;
+        }
+        string now = Moved(moves, res) ?? res;
+        bool changed = false;
+        List<GodotBinaryExternal> externals = [];
+        foreach (GodotBinaryExternal external in read.Externals)
+        {
+            string was = GodotResPaths.Resolved(external.Path, res);
+            string went = Moved(moves, was) ?? was;
+            bool stays = GodotResPaths.ClimbsOut(was) || !was.StartsWith(GodotResPaths.Scheme, StringComparison.Ordinal) || GodotResPaths.Resolved(external.Path, now) == went;
+            externals.Add(stays ? external : external with { Path = went });
+            changed |= !stays;
+        }
+        return changed ? read.With(null, externals) : file;
+    }
+
     /// <summary>Whether a section of a text file is a Shader or shader include it writes itself, its <c>code</c> its own.</summary>
     private static bool IsShaderOf(GodotFile file, GodotSection section) => section.Tag == "sub_resource" ? section.Text("type") is "Shader" or "ShaderInclude"
         : section.Tag == "resource" && file.Header?.Text("type") is "Shader" or "ShaderInclude";

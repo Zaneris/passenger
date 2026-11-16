@@ -578,17 +578,19 @@ internal sealed partial class CSharpAssist
 
     /// <summary>The edits the Godot projects' files take once files and folders of theirs have moved (the Explorer's move or
     /// rename, already made): every res:// path naming a moved file, or a file inside a moved folder, written anew in each
-    /// scene, resource, GDScript, shader's <c>#include</c> and project.godot and in each C# string; by file at its path now, in the
-    /// server's places, each read as it stands as this is asked, whatever the index has heard. With the .uid and .import files
-    /// beside each moved file, which go with it, an .import's own path to its file following.</summary>
-    internal async Task<(IReadOnlyList<(string Path, IReadOnlyList<LspTextEdit> Edits)> Files, IReadOnlyList<(string From, string To)> Beside)> GodotFollowAsync(
-        IReadOnlyList<(string From, string To)> moved)
+    /// scene, resource, GDScript, shader's <c>#include</c> and project.godot and in each C# string, by file at its path now,
+    /// in the server's places, each read as it stands; the .uid and .import beside each moved file, which go with it; and
+    /// the binary scenes and resources rewritten (<see cref="GodotBinaryMoved"/>), and why any was left as it was.</summary>
+    internal async Task<(IReadOnlyList<(string Path, IReadOnlyList<LspTextEdit> Edits)> Files, IReadOnlyList<(string From, string To)> Beside,
+        IReadOnlyList<GodotRewritten> Binary, IReadOnlyList<string> Left)> GodotFollowAsync(IReadOnlyList<(string From, string To)> moved)
     {
         List<(string, IReadOnlyList<LspTextEdit>)> files = [];
         List<(string, string)> beside = [];
+        List<GodotRewritten> binary = [];
+        List<string> left = [];
         if (context.GodotScenes?.Invoke() is not { } index)
         {
-            return (files, beside);
+            return (files, beside, binary, left);
         }
         Func<string, string?> godotOf = index.GameOf;
         OpenTexts open = context.Editors.Texts();
@@ -638,6 +640,10 @@ internal sealed partial class CSharpAssist
                 ServerLines lines = ServerLines.Of(TextSnapshot.From(text));
                 files.Add((path, [.. edits.Select(e => new LspTextEdit(lines.RangeOf(new TextRange(e.Start, e.Length)), e.Text))]));
             }
+            IReadOnlyList<string> listed = index.FilesUnder(folder);
+            (IReadOnlyList<GodotRewritten> rewritten, IReadOnlyList<string> unread) = await BackgroundWork.Run(() => GodotBinaryMoved(folder, listed, moved, paths, Was));
+            binary.AddRange(rewritten);
+            left.AddRange(unread);
             if (context.CSharp?.Session is { } session)
             {
                 GodotPathsFound found;
@@ -656,7 +662,62 @@ internal sealed partial class CSharpAssist
                         GodotScenes.Moved(paths, u.Path)!))])));
             }
         }
-        return (files, beside);
+        return (files, beside, binary, left);
+    }
+
+    /// <summary>The scenes and resources in Godot's binary format of a project's files (<paramref name="listed"/>, by the index,
+    /// taken where the moves left each whether or not it has heard of them) rewritten for its files' and folders' moves
+    /// (<paramref name="paths"/>, by res:// path; <paramref name="was"/>, a res:// path before them): those whose bytes changed,
+    /// and why each Passenger cannot rewrite was left as it was. Off the window's thread; a file it cannot read passed over.</summary>
+    private static (IReadOnlyList<GodotRewritten> Rewritten, IReadOnlyList<string> Left) GodotBinaryMoved(string folder, IReadOnlyList<string> listed,
+        IReadOnlyList<(string From, string To)> moved, IReadOnlyList<(string From, string To)> paths, Func<string, string> was)
+    {
+        List<GodotRewritten> rewritten = [];
+        List<string> left = [];
+        IEnumerable<string> now = listed.Select(f => File.Exists(f) ? f : moved.FirstOrDefault(m => PathNames.Within(f, m.From)) is { From: not null } move ? PathNames.Moved(f, move.From, move.To) : f);
+        foreach (string path in now.Concat(moved.Select(m => m.To)).Where(f => !GodotFile.IsText(f) && !GodotUids.IsBeside(f)).Distinct(PathNames.Comparer))
+        {
+            try
+            {
+                if (GodotBinaryOf(path) is not { } bytes || GodotResPaths.Of(folder, path) is not { } res)
+                {
+                    continue;
+                }
+                byte[]? after = GodotScenes.MovedBinary(bytes, paths, was(res), out string? unread);
+                if (after is not null && after != bytes)
+                {
+                    string before = moved.FirstOrDefault(m => PathNames.Within(path, m.To)) is { To: not null } move ? PathNames.Moved(path, move.To, move.From) : path;
+                    rewritten.Add(new GodotRewritten(before, path, bytes, after));
+                }
+                else if (unread is not null)
+                {
+                    left.Add($"{PathNames.Relative(path, folder)} is left as it was: {unread}");
+                }
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+            {
+                // One gone or held since the listing names nothing the moves reach.
+            }
+        }
+        return (rewritten, left);
+    }
+
+    /// <summary>A file's bytes where they begin as Godot's binary format does; null for any other file, and a link.</summary>
+    private static byte[]? GodotBinaryOf(string path)
+    {
+        if (!File.Exists(path) || new FileInfo(path).LinkTarget is not null)
+        {
+            return null;
+        }
+        using (FileStream file = File.OpenRead(path))
+        {
+            Span<byte> start = stackalloc byte[4];
+            if (file.ReadAtLeast(start, start.Length, throwOnEndOfStream: false) < start.Length || !GodotBinaryResource.Starts(start))
+            {
+                return null;
+            }
+        }
+        return File.ReadAllBytes(path);
     }
 
     /// <summary>A copy made in a Godot project (<paramref name="source"/> to <paramref name="target"/>, a file or a folder) left
@@ -693,7 +754,7 @@ internal sealed partial class CSharpAssist
                     FileText? text = GodotFile.IsText(to) ? FileText.Load(to) : null;
                     FileText? uid = Read(Beside(from, to, ".uid"));
                     FileText? import = Read(Beside(from, to, ".import"));
-                    byte[]? binary = text is null && import is null ? Binary(to) : null;
+                    byte[]? binary = text is null && import is null ? GodotBinaryOf(to) : null;
                     read.Add((new GodotCopy(GodotResPaths.Of(folder, from) ?? from, GodotResPaths.Of(folder, to) ?? to, text?.Text, uid?.Text, import?.Text, binary),
                         to, text, uid, import));
                 }
@@ -726,24 +787,6 @@ internal sealed partial class CSharpAssist
             }
 
             static FileText? Read(string path) => path.Length > 0 && File.Exists(path) && new FileInfo(path).LinkTarget is null ? FileText.Load(path) : null;
-
-            // A file's bytes where they begin as Godot's binary format does.
-            static byte[]? Binary(string path)
-            {
-                if (new FileInfo(path).LinkTarget is not null)
-                {
-                    return null;
-                }
-                using (FileStream file = File.OpenRead(path))
-                {
-                    Span<byte> start = stackalloc byte[4];
-                    if (file.ReadAtLeast(start, start.Length, throwOnEndOfStream: false) < start.Length || !GodotBinaryResource.Starts(start))
-                    {
-                        return null;
-                    }
-                }
-                return File.ReadAllBytes(path);
-            }
 
             // Written over in a folder's copy where it changed, else made beside a file's copy.
             void Write(string path, FileText? had, string? was, string? now, bool makes)
@@ -790,3 +833,7 @@ internal sealed partial class CSharpAssist
         }
     }
 }
+
+/// <summary>A scene's or resource's bytes in Godot's binary format a move of files rewrote: where it stood before the
+/// command and stands after it, and its bytes before and after.</summary>
+internal sealed record GodotRewritten(string Was, string Path, byte[] Before, byte[] After);

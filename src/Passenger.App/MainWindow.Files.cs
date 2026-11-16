@@ -436,9 +436,14 @@ public partial class MainWindow
         {
             return failed;
         }
-        if (await FollowGodotAsync([.. moves.Select(m => (m.From, PathNames.Canonical(m.To)))], recording) is { } ungodot)
+        List<string> left = [];
+        if (await FollowGodotAsync([.. moves.Select(m => (m.From, PathNames.Canonical(m.To)))], recording, left) is { } ungodot)
         {
             status.Text = ungodot;
+        }
+        else if (left.Count > 0)
+        {
+            status.Text = string.Join("; ", left);
         }
         Explorer.Reveal(PathNames.Canonical(target));
         if (await recording.LandedAsync(waiting => status.Text = waiting) is [(string unfollowed, Exception refused), ..])

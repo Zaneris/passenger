@@ -12,7 +12,8 @@ namespace Passenger.Tests;
 /// leaves them: every copy given a uid of its own (a script's .uid, a scene's header, a binary scene's or resource's, an
 /// imported file's .import), a folder's scenes naming the files copied with them, a file's copy given its .uid, the
 /// originals as they were; Godot's headless editor then opens the project with no two files of one uid, and loads a copied
-/// scene from the copies. Without a Godot 4.4 or later, which keeps a script's uid beside it, each test skips saying why.</summary>
+/// scene from the copies. A file moved is named at its new place by the binary scenes and resources naming it, which Godot
+/// loads it from. Without a Godot 4.4 or later, which keeps a script's uid beside it, each test skips saying why.</summary>
 public sealed class GodotExplorerCopyTests : IDisposable
 {
     private const string Script = "extends Node2D\n\n\nfunc _ready() -> void:\n\tprint(\"player\")\n";
@@ -176,6 +177,84 @@ public sealed class GodotExplorerCopyTests : IDisposable
             window.Close();
         }
         Assert.Equal(newer, File.ReadAllBytes(Path.Combine(folder, "levels", "newer.res")));
+    }
+
+    /// <summary>A texture a compressed scene and a plain resource Godot's editor saved name, moved in the Explorer: each
+    /// names it at its new path, keeping its uid and every other byte, as one command Undo takes back whole and Redo makes
+    /// again, and Godot, finding each by the path written where it knows no uid, loads the scene with the texture from its
+    /// new place. A resource of a binary format Passenger doesn't know is left as it was, the move saying so.</summary>
+    [AvaloniaFact]
+    public void A_texture_moved_in_a_godot_project_is_followed_by_the_binary_scene_and_resource_naming_it()
+    {
+        TestFolders.Write(folder, "project.godot", "; Engine configuration file.\nconfig_version=5\n\n[application]\n\nconfig/name=\"Copies\"\n\n"
+            + "[editor_plugins]\n\nenabled=PackedStringArray(\"res://addons/maker/plugin.cfg\")\n");
+        TestFolders.Write(folder, "addons/maker/plugin.cfg", "[plugin]\n\nname=\"maker\"\ndescription=\"\"\nauthor=\"\"\nversion=\"1\"\nscript=\"plugin.gd\"\n");
+        TestFolders.Write(folder, "addons/maker/plugin.gd", Maker);
+        Assert.True(Godot(["--import"]) is { } first && first.Contains("Godot Engine", StringComparison.Ordinal), "Godot's first import wrote no log of its run");
+        string made = Godot(["--editor", "--quit-after", "6000"], new Dictionary<string, string> { ["COPIES_MAKE"] = "1" }) ?? string.Empty;
+        Assert.True(made.Contains("saved look 0", StringComparison.Ordinal) && made.Contains("saved level 0", StringComparison.Ordinal),
+            $"Godot's editor saved no binary resource and scene to move a texture under:\n{made}");
+        string level = Path.Combine(folder, "actors", "level.scn");
+        string look = Path.Combine(folder, "actors", "look.res");
+        Dictionary<string, byte[]> saved = new() { [level] = File.ReadAllBytes(level), [look] = File.ReadAllBytes(look) };
+        Assert.True(saved[level].AsSpan().StartsWith("RSCC"u8) && saved[look].AsSpan().StartsWith("RSRC"u8),
+            "Godot's editor saved the scene uncompressed or the resource compressed, so the move reads neither form it was to");
+        string icon = Path.Combine(folder, "actors", "icon.svg");
+        string moved = Path.Combine(folder, "levels", "icon.svg");
+        // The resource as a Godot whose binary format is 7 would write it: its format, after the magic and four numbers.
+        byte[] newer = [.. saved[look]];
+        newer[20] = 7;
+        File.WriteAllBytes(Path.Combine(folder, "actors", "newer.res"), newer);
+
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        try
+        {
+            GodotSceneTests.Choose(window, icon);
+            Ui.Run(window, EditorActions.Cut);
+            GodotSceneTests.Choose(window, Path.Combine(folder, "levels"));
+            Ui.Run(window, EditorActions.Paste);
+            Ui.WaitFor(() => window.Status is { } said && said.StartsWith("Moved icon.svg to levels; actors/newer.res is left as it was: Godot 4.", StringComparison.Ordinal)
+                && said.EndsWith("wrote it in the binary format 7, which Passenger doesn't rewrite", StringComparison.Ordinal),
+                () => $"the paste of icon.svg to say it was moved, and newer.res left as it was: {window.Status}");
+            AssertFollowed();
+            Assert.Equal(newer, File.ReadAllBytes(Path.Combine(folder, "actors", "newer.res")));
+            Assert.True(File.Exists(moved + ".import") && !File.Exists(icon + ".import"), "The texture's .import did not go with it");
+
+            window.Confirm = (_, _, _) => Task.FromResult(true);
+            GodotSceneTests.Choose(window, Path.Combine(folder, "levels"));
+            Ui.Run(window, EditorActions.Undo);
+            Ui.WaitFor(() => File.Exists(icon) && saved.All(s => File.ReadAllBytes(s.Key).AsSpan().SequenceEqual(s.Value)),
+                () => $"Undo to move the texture back and put the scene and resource as Godot saved them: {window.Status}");
+            GodotSceneTests.Choose(window, Path.Combine(folder, "actors"));
+            Ui.Run(window, EditorActions.Redo);
+            Ui.WaitFor(() => File.Exists(moved), () => $"Redo to move the texture again: {window.Status}");
+            AssertFollowed();
+        }
+        finally
+        {
+            window.Close();
+        }
+
+        // Godot then finds each resource the scene names by the path it writes, as it does where it knows no uid.
+        File.Delete(Path.Combine(folder, GodotUids.CacheFile));
+        string loader = TestFolders.Write(folder + "-home", "load.gd", Loader.Replace("res://levels/actors/level.scn", "res://actors/level.scn", StringComparison.Ordinal));
+        string loaded = Godot(["--script", loader]) ?? string.Empty;
+        Assert.True(loaded.Contains("loaded res://actors/player.gd res://actors/look.res res://levels/icon.svg res://levels/icon.svg", StringComparison.Ordinal),
+            $"Godot's load of the scene took the texture from elsewhere than where it moved:\n{loaded}");
+
+        // Each names the texture at its new path, its uid kept, and every other byte is as Godot saved it.
+        void AssertFollowed()
+        {
+            foreach ((string path, byte[] before) in saved)
+            {
+                GodotBinaryResource original = GodotBinaryResource.Read(before, out _)!;
+                byte[] now = File.ReadAllBytes(path);
+                IReadOnlyList<GodotBinaryExternal> named = [.. original.Externals.Select(e => e.Path == "res://actors/icon.svg" ? e with { Path = "res://levels/icon.svg" } : e)];
+                Assert.True(GodotBinaryResource.Read(now, out string? unread)?.Externals.SequenceEqual(named) == true,
+                    $"{Path.GetFileName(path)} does not name the texture at its new path, its uid kept: {unread ?? string.Join(", ", GodotBinaryResource.Read(now, out _)!.Externals)}");
+                Assert.True(original.With(null, named).AsSpan().SequenceEqual(now), $"{Path.GetFileName(path)} changed more than the texture's path");
+            }
+        }
     }
 
     /// <summary>A file or folder chosen in the Explorer, copied and pasted into the folder levels, its status waited for.</summary>
