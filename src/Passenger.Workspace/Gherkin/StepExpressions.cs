@@ -112,7 +112,7 @@ public static partial class StepExpressions
             [ParameterTypeConstants.IntParameterRegex] => "a whole number in digits",
             [ParameterTypeConstants.WordParameterRegex] => "one word, with no spaces",
             [{ } only] when only == ParameterTypeConstants.FloatParameterRegex => "a number in digits",
-            _ => $"text matching {string.Join(" or ", regexes)}",
+            _ => $"text matching {Plural.Either(regexes)}",
         };
     }
 

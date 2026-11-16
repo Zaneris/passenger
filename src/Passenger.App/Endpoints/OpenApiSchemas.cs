@@ -106,7 +106,7 @@ public static class OpenApiSchemas
             IReadOnlyList<string> types = TypesOf(schema);
             if (types.Count > 0 && !types.Any(type => IsA(value, type)))
             {
-                return Broken(breaks, at, $"{Either([.. types.OrderBy(t => t == "null").Select(Named)])} was expected, not {Describe(value)}");
+                return Broken(breaks, at, $"{Plural.Either([.. types.OrderBy(t => t == "null").Select(Named)])} was expected, not {Describe(value)}");
             }
             if (JsonMembers.Items(schema, "enum") is { Count: > 0 } allowed && !allowed.Any(item => JsonElement.DeepEquals(item, value)))
             {
@@ -281,9 +281,6 @@ public static class OpenApiSchemas
         "null" => value.ValueKind == JsonValueKind.Null,
         _ => true,
     };
-
-    /// <summary>Kinds as a break names them: "a string", "a string or null", "a whole number, a string or null".</summary>
-    private static string Either(IReadOnlyList<string> kinds) => kinds.Count == 1 ? kinds[0] : $"{string.Join(", ", kinds.Take(kinds.Count - 1))} or {kinds[^1]}";
 
     private static string Named(string type) => type switch
     {
