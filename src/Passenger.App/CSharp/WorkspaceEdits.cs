@@ -13,9 +13,9 @@ namespace Passenger.App.CSharp;
 
 /// <summary>Applies a workspace edit (a rename, a fix) across files: an open file is edited through its document, one undo
 /// step per file and through the editor when it is the one showing; a file not open is edited on disk, keeping its
-/// encoding and line endings; files the edit creates, renames or deletes are made so, an open one's tab going with it. An
-/// open file's edits are carried through what was typed since the request; one whose edited text changed meanwhile, or
-/// that the server answered for another version, is left alone and named in <c>dropped</c>.</summary>
+/// encoding and line endings; files the edit creates, renames or deletes are made so (a delete to the Trash), an open
+/// one's tab going with it. An open file's edits are carried through what was typed since the request; one whose edited
+/// text changed meanwhile, or that the server answered for another version, is left alone and named in <c>dropped</c>.</summary>
 public static class WorkspaceEdits
 {
     /// <summary>Every open document followed from now, for a request about to be sent; disposed once its answer is applied.</summary>
@@ -490,20 +490,16 @@ public static class WorkspaceEdits
         }
     }
 
-    /// <summary>Deletes a file or folder, closing the open files that went with it (saved before, <see cref="Refusal"/>); a
-    /// file's bytes go to the recording, which its Undo writes back.</summary>
+    /// <summary>Moves a file or folder to the Trash, as the Explorer's Delete does, closing the open files that went with it
+    /// (saved before, <see cref="Refusal"/>): the recording keeps where it went, which its Undo moves back. A folder holding
+    /// anything goes only where the edit asks for it <paramref name="recursive"/>ly.</summary>
     private static void Delete(EditorArea editors, string path, bool recursive, CommandHistory.Recording recording)
     {
-        if (Directory.Exists(path))
+        if (!recursive && Directory.Exists(path) && new DirectoryInfo(path).LinkTarget is null && Directory.EnumerateFileSystemEntries(path).Any())
         {
-            Directory.Delete(path, recursive);
+            throw new IOException($"{Path.GetFileName(path)} is a folder that is not empty");
         }
-        else
-        {
-            byte[] held = FileText.Read(path);
-            File.Delete(path);
-            recording.Deleted(path, held);
-        }
+        recording.Deleted(path, Trash.Move(path));
         foreach (OpenDocument document in editors.Documents.Where(d => PathNames.Within(d.Path, path)).ToList())
         {
             editors.CloseDeleted(document);

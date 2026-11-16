@@ -513,7 +513,7 @@ public partial class MainWindow
     /// already); their open files are saved first, and again just before they go with what was typed while it waited, so
     /// the Trash and Local History have what the editor showed, and close once gone, or keep their tabs where one could not
     /// go. The design-time builds of the projects in them are held off, those running waited out. Those of a shared project
-    /// leave its items file in a command Undo takes back whole, files and all. True once all went.</summary>
+    /// leave its items file in a command whose Undo takes all it deleted out of the Trash. True once all went.</summary>
     public async Task<bool> DeleteAsync(IReadOnlyList<string> paths, bool asked = false)
     {
         List<string> names = [.. paths.Select(Path.GetFileName).OfType<string>()];
@@ -536,8 +536,8 @@ public partial class MainWindow
         }
         List<string> gone = [];
         List<(string Path, string Why)> refused = [];
-        // What goes from a shared project's folder leaves its items file too, in a command whose Undo takes it back out of
-        // the Trash and writes the items file back.
+        // What goes from a shared project's folder leaves its items file too, in a command whose Undo takes all it deleted
+        // back out of the Trash and writes the items file back.
         using CommandHistory.Recording? sharing = InShared(paths) ? Editors.Commands.Record($"Delete {Plural.Listed(names)}") : null;
         for (int i = 0; i < paths.Count; i++)
         {
@@ -548,14 +548,9 @@ public partial class MainWindow
             }
             try
             {
-                bool shared = sharing is not null && SharedItemsOf(path) is not null;
-                bool folder = Directory.Exists(path);
                 Trashed? went = Trash.Move(path);
                 gone.Add(path);
-                if (shared)
-                {
-                    sharing!.Also(TrashedPart(path, folder, went));
-                }
+                sharing?.Deleted(path, went);
                 if (taken[i] is { } kept)
                 {
                     keeping!.Deleted(kept);
