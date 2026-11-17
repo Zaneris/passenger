@@ -574,6 +574,8 @@ public sealed class EslintPrettierTests : IClassFixture<EslintPrettierTests.Proj
         finally
         {
             window.Close();
+            // The window's servers worked in the folder it opened, which Windows deletes only once they have ended.
+            Ui.Ended(window);
             project.Reset();
         }
 
