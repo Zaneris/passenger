@@ -24,7 +24,41 @@ public sealed class AskedArgumentsTests
         Assert.Equal("file: \\u202Etxt.live", AskedArguments.Of([("file", "\u202Etxt.live")]));
         Assert.Equal("a\\u200Bb\\u2028c\\u0000d\\u0085e", AskedArguments.Escaped("a\u200Bb\u2028c\0d\u0085e"));
         Assert.Equal("o\\nk: plain", AskedArguments.Of([("o\nk", "plain")]));
-        Assert.Equal("C:\\Users\\café ✓", AskedArguments.Escaped("C:\\Users\\café ✓"));
+        Assert.Equal("café ✓ 😀", AskedArguments.Escaped("café ✓ 😀"));
+    }
+
+    /// <summary>A character past the Basic Multilingual Plane that shows nothing of itself (Unicode's tag characters, which
+    /// can spell out words no one sees, and its shorthand format controls) is shown by its code as one character, not passed
+    /// over as two halves that each look printable; a half of a pair alone is shown by its code too.</summary>
+    [Fact]
+    public void Characters_past_the_first_plane_that_hide_text_and_halves_of_a_pair_alone_are_shown_by_their_codes()
+    {
+        string tagged = "Notes.txt" + string.Concat("rm -rf ~".Select(c => char.ConvertFromUtf32(0xE0000 + c)));
+        Assert.Equal("path: Notes.txt\\U000E0072\\U000E006D\\U000E0020\\U000E002D\\U000E0072\\U000E0066\\U000E0020\\U000E007E",
+            AskedArguments.Of([("path", tagged)]));
+        Assert.Equal("a\\U000E0001b\\U000E007Fc\\U0001BCA0d\\U0001BCA3", AskedArguments.Escaped("a\U000E0001b\U000E007Fc\U0001BCA0d\U0001BCA3"));
+        Assert.Equal("a\\uD800b\\uDC00", AskedArguments.Escaped("a\uD800b\uDC00"));
+    }
+
+    /// <summary>The rest of what Unicode says to draw as nothing, which is no format character (variation selectors, the
+    /// Hangul fillers, the combining grapheme joiner), is shown by its code too.</summary>
+    [Fact]
+    public void Variation_selectors_and_fillers_that_draw_as_nothing_are_shown_by_their_codes()
+    {
+        Assert.Equal("x\\uFE0Fy\\U000E0100z\\U000E01EF", AskedArguments.Escaped("x\uFE0Fy\U000E0100z\U000E01EF"));
+        Assert.Equal("\\u3164\\uFFA0\\u115F\\u034F\\u180B", AskedArguments.Escaped("\u3164\uFFA0\u115F\u034F\u180B"));
+    }
+
+    /// <summary>A backslash is written twice, so a value's own backslash never reads as an escape: a line break and the two
+    /// characters \n differ in the question, as does a Windows path's every backslash.</summary>
+    [Fact]
+    public void A_backslash_is_written_twice_so_a_line_break_and_its_escape_written_out_differ()
+    {
+        Assert.Equal("a\\nb", AskedArguments.Escaped("a\nb"));
+        Assert.Equal("a\\\\nb", AskedArguments.Escaped("a\\nb"));
+        Assert.Equal("command: echo one\\\\necho two", AskedArguments.Of([("command", "echo one\\necho two")]));
+        Assert.Equal("C:\\\\Users\\\\café ✓", AskedArguments.Escaped("C:\\Users\\café ✓"));
+        Assert.Equal("\\\\u202E", AskedArguments.Escaped("\\u202E"));
     }
 
     /// <summary>A value longer than the question shows is cut there, saying where and how long it is; one exactly that long is
