@@ -536,11 +536,11 @@ a new name, and `just site-shots` retakes its images.
 - **The inspector** never touches `Dispatcher.UIThread` before the app makes it, never waits on Passenger, and readies
   its wire's types before the app's Main (System.Text.Json's lock against a thread the debugger stopped). MAUI's, compiled against MAUI's cross-platform assemblies, reads a member typed as a head's own view (`WindowOverlay.GraphicsView`) by name, or it throws `MissingMethodException` in the head, and guards every MAUI callback it runs in (an overlay's Draw), whose throw ends the app. A library's view previews in a program that runs it (`XamlPreview.ProgramsRunning`). An app the
   previewer loads needs `BuildAvaloniaApp()`, or HostApp aborts.
-- **MCP's tool list** is paid for by every agent session (53.8 KB, held under 62 KB by McpDebuggingTests): say each
+- **MCP's tool list** is paid for by every agent session (54 KB, held under 62 KB by McpDebuggingTests): say each
   thing once (shared parameters in `McpHost.Instructions`), add no tool another covers; an answer that can run long goes
   through `AgentAnswers` and says what it left out (`MostCharacters`, 40,000: a list through `PassengerTools.Held`, its words after it, an object's in its `more`; `within` and `from` said once in `McpHost.Instructions`; read on by `before` for vcs_log, `within` for usages, hierarchy and workspace, `from` for editor_text, outline, diagnostics, local_history and usages within a file; an answer of several lists sharing its room through `AgentAnswers.Shares`). `save_all` stays a tool of its own, never asked about on a person's
   window (#278). `debug_evaluate`, `debug_input` and `breakpoint_set` are `Destructive`: a `Destructive` tool asks the person
-  at each call until allowed for the session (`AgentToolDialog`, `AgentConnection.AllowAsync`), input into Passenger's
+  at each call until allowed for the session (`AgentToolDialog`, `AgentConnection.AllowAsync`), or every tool at once by `request_full_access` (kept and cleared with the same allowance, its Deny holding as long; `ConnectedTool.Asks` the one rule of which tools ask), input into Passenger's
   own windows asked apart (`PassengerTools.OwnWindows`); every question closes unanswered after 2 minutes; calls send progress every 10 s (OpenCode gives up after 60 s).
 - **An await's continuation on the window's thread runs before work `UiThread.Post` queued earlier** (Avalonia's context posts at Normal, `UiThread.Post` at Default): take in what's pending first, as `ProjectModels.Land` before `Keep`.
 - **An await of a task the window's thread completes continues on the thread pool**, even with ConfigureAwait(false):
