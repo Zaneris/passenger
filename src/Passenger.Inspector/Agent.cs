@@ -143,7 +143,8 @@ public static class Agent
 
         public async Task<Reply> AnswerAsync(Request request)
         {
-            Dispatcher ui = dispatcher!;
+            // The dispatcher the UI thread runs now: a process whose dispatcher was replaced on that thread is answered on the new one.
+            Dispatcher ui = Dispatcher.FromThread(main) ?? dispatcher!;
             Inspector served = inspector!;
             bool input = request.Method == Wire.Input;
             if (input)

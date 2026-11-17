@@ -351,7 +351,7 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
             Press(Question(window, "the question for the agent's click in Passenger's windows"), AgentToolDialog.AllowForSession);
             CallToolResult answered = Await(answering, "the agent's click on the trust question's Trust");
             Assert.True(answered.IsError == true && Text(answered).Contains(Refusals.TrustAnsweredByThePerson, StringComparison.Ordinal),
-                $"The agent's click on the trust question's Trust was answered: {Text(answered)}");
+                $"The agent's click on the trust question's Trust was answered: {Text(answered)}{Said()}");
             Assert.True(question.IsVisible && !window.Session.Trusted, "The agent's click answered the trust question the person is asked");
 
             Ui.ClickButton(question, WorkspaceTrustDialog.Untrusted);
@@ -363,7 +363,7 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
             CallToolResult clicked = Await(Waiting.Apart(() => Result(client, McpTools.AppClick,
                 new() { ["app"] = "ide", ["window"] = nameof(MainWindow), ["x"] = at.X, ["y"] = at.Y })), "the agent's click on the banner's Trust Folder");
             Assert.True(clicked.IsError == true && Text(clicked).Contains(Refusals.TrustIsThePersons, StringComparison.Ordinal),
-                $"The agent's click on the banner's Trust Folder was answered: {Text(clicked)}");
+                $"The agent's click on the banner's Trust Folder was answered: {Text(clicked)}{Said()}");
             Ui.Settle();
             Assert.False(window.Session.Trusted || WorkspaceTrust.Trusts(folder), "The agent's click on the banner trusted the person's folder");
             Assert.Equal((Refusals.UntrustedSaid, Refusals.TrustIsThePersons), (window.TrustSaid, window.Status));
