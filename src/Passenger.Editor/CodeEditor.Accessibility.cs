@@ -23,6 +23,9 @@ public sealed partial class CodeEditor
         /// <summary>The document whose changes are heard, which the editor may show another in place of.</summary>
         private TextDocument heard;
 
+        /// <summary>The text before the change being told, while it is told.</summary>
+        private TextSnapshot? before;
+
         public EditorText(CodeEditor editor)
         {
             this.editor = editor;
@@ -126,11 +129,30 @@ public sealed partial class CodeEditor
         /// <summary>Tells the document's changes, last to first as each is valid in the text the one before left.</summary>
         private void Heard(object? sender, DocumentChangedEventArgs e)
         {
-            for (int i = e.Edits.Count - 1; i >= 0; i--)
+            before = e.Before;
+            try
             {
-                TextEdit edit = e.Edits[i];
-                OnChanged(edit.Start, edit.Length, edit.Text.Length);
+                for (int i = e.Edits.Count - 1; i >= 0; i--)
+                {
+                    TextEdit edit = e.Edits[i];
+                    OnChanged(edit.Start, edit.Length, edit.Text.Length);
+                }
             }
+            finally
+            {
+                before = null;
+            }
+        }
+
+        /// <summary>Read from the text before the change, where each edit's place is as the document's change gives it.</summary>
+        public override string? ReadRemoved(AccessibleTextChange change, int most)
+        {
+            if (before is not { } text)
+            {
+                return null;
+            }
+            int start = Math.Clamp(change.Start, 0, text.Length);
+            return text.GetText(start, Math.Clamp(Math.Min(change.Removed, most), 0, text.Length - start));
         }
 
         /// <summary>Tells the caret's move, and another document shown as its whole text changed.</summary>

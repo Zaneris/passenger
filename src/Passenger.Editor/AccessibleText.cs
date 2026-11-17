@@ -82,6 +82,11 @@ public abstract class AccessibleText
     /// <summary>Raised as the text changes, once for each piece changed.</summary>
     public event EventHandler<AccessibleTextChange>? Changed;
 
+    /// <summary>The first <paramref name="most"/> characters a change removed, for a reader to echo, asked while
+    /// <see cref="Changed"/> is raised for it; null where the control keeps no text it showed before (another document
+    /// shown in its place, the terminal's oldest lines let go of).</summary>
+    public virtual string? ReadRemoved(AccessibleTextChange change, int most) => null;
+
     /// <summary>Raised as the caret moves or what is selected changes.</summary>
     public event EventHandler? CaretMoved;
 

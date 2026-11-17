@@ -36,9 +36,12 @@ public sealed partial class TerminalView
         /// <summary>The screen, its version and its oldest line the starts were found for.</summary>
         private (TerminalScreen? Screen, int Version, long First) indexed = (null, -1, -1);
 
-        /// <summary>The lines as last told: their starts then, the screen's top row, and each row's line and how often it had
-        /// been written.</summary>
+        /// <summary>The lines as last told: their starts then, the screen's top row, and each row's line, how often it had
+        /// been written and its text then.</summary>
         private Told told = new([0, 1], 1, null, 0, 0, []);
+
+        /// <summary>The lines as told before the change being told and the first line it reaches, while it is told.</summary>
+        private (Told Was, long From)? telling;
 
         /// <summary>The starts told before last, which the next lines' starts are taken into.</summary>
         private int[] spare = [];
@@ -46,7 +49,7 @@ public sealed partial class TerminalView
         /// <summary>The caret and what was selected as last told.</summary>
         private (int Caret, TextRange? Selected) toldCaret = (-1, null);
 
-        private sealed record Told(int[] Starts, int Count, TerminalScreen? Screen, long First, long ScreenTop, (TerminalLine Line, long Writes)[] Rows)
+        private sealed record Told(int[] Starts, int Count, TerminalScreen? Screen, long First, long ScreenTop, (TerminalLine Line, long Writes, string Text)[] Rows)
         {
             public int Length => Starts[Count] - 1;
 
@@ -249,7 +252,7 @@ public sealed partial class TerminalView
                 }
                 long changed = Math.Max(now.First, was.ScreenTop);
                 while (changed - was.ScreenTop < was.Rows.Length && changed < now.ScreenTop + now.Rows.Length
-                    && was.Rows[changed - was.ScreenTop] is var (line, writes) && ReferenceEquals(line, screen.LineAt(changed)) && writes == line.Writes)
+                    && was.Rows[changed - was.ScreenTop] is var (line, writes, _) && ReferenceEquals(line, screen.LineAt(changed)) && writes == line.Writes)
                 {
                     changed++;
                 }
@@ -257,7 +260,15 @@ public sealed partial class TerminalView
                 int removed = was.Length - gone - from;
                 if (removed != 0 || now.Length != from)
                 {
-                    OnChanged(from, Math.Max(0, removed), now.Length - from);
+                    telling = (was, changed);
+                    try
+                    {
+                        OnChanged(from, Math.Max(0, removed), now.Length - from);
+                    }
+                    finally
+                    {
+                        telling = null;
+                    }
                 }
             }
             spare = was.Starts;
@@ -270,7 +281,24 @@ public sealed partial class TerminalView
             }
         }
 
-        /// <summary>The lines as they stand, their starts copied into the array told before last.</summary>
+        /// <summary>The rows the change being told rewrote as they read before it, from the first it reaches: the scrollback's
+        /// lines are never written once scrolled off, so only the screen's rows are kept as told.</summary>
+        public override string? ReadRemoved(AccessibleTextChange change, int most)
+        {
+            if (telling is not var (was, from))
+            {
+                return null;
+            }
+            StringBuilder text = new();
+            for (long row = from - was.ScreenTop; row < was.Rows.Length && text.Length < most; row++)
+            {
+                text.Append(row > from - was.ScreenTop ? "\n" : string.Empty).Append(was.Rows[row].Text);
+            }
+            return text.Length > most ? text.ToString(0, most) : text.ToString();
+        }
+
+        /// <summary>The lines as they stand, their starts copied into the array told before last, each row's text read again
+        /// only where it was written since.</summary>
         private Told Seen()
         {
             Index();
@@ -280,7 +308,18 @@ public sealed partial class TerminalView
             {
                 return new Told(kept, lineCount, null, 0, 0, []);
             }
-            return new Told(kept, lineCount, screen, screen.FirstLine, screen.ScreenTop, [.. screen.Lines.Select(l => (l, l.Writes))]);
+            Told was = told;
+            (TerminalLine Line, long Writes, string Text)[] rows = new (TerminalLine, long, string)[screen.Rows];
+            for (int row = 0; row < rows.Length; row++)
+            {
+                TerminalLine line = screen.LineAt(screen.ScreenTop + row);
+                long before = screen.ScreenTop + row - was.ScreenTop;
+                rows[row] = ReferenceEquals(was.Screen, screen) && before >= 0 && before < was.Rows.Length
+                    && was.Rows[before] is var (wasLine, writes, text) && ReferenceEquals(wasLine, line) && writes == line.Writes
+                    ? (line, writes, text)
+                    : (line, line.Writes, line.Text());
+            }
+            return new Told(kept, lineCount, screen, screen.FirstLine, screen.ScreenTop, rows);
         }
 
         /// <summary>A place among the lines, by a line's number and a column, as an offset in the text.</summary>
