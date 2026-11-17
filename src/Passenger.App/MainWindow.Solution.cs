@@ -123,6 +123,17 @@ public partial class MainWindow
         }
     }
 
+    /// <summary>Adds projects already on disk to the open solution, at its top (a project the chat's agent made), as one
+    /// command Undo takes back whole, and shows the last one added.</summary>
+    public async Task AddProjectsToSolutionAsync(IReadOnlyList<string> projects)
+    {
+        using CommandHistory.Recording recording = Editors.Commands.RecordWrites($"Add {Plural.Listed([.. projects.Select(Path.GetFileNameWithoutExtension).OfType<string>()])} to the Solution");
+        if (await AddEachAsync(projects, (solution, project) => SolutionEdits.AddProject(solution, null, project), Path.GetFileNameWithoutExtension, recording, projects: true) is { } last)
+        {
+            Reveal(null, last);
+        }
+    }
+
     /// <summary>Add Existing Item: the files the person picks, listed in a solution folder.</summary>
     public async Task AddExistingItemsAsync(string into)
     {

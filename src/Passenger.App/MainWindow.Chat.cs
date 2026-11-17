@@ -86,7 +86,14 @@ public partial class MainWindow
                 IdeErrors.Observe(listing);
             };
             view.AccountRequested += (_, button) => ShowChatAccount(view, button);
-            view.SignInRequested += (_, method) => SignInToChat(view, method);
+            view.SignInRequested += (_, method) =>
+            {
+                if (chatAgent is { } agent)
+                {
+                    SignInToChat(view, agent, method);
+                }
+            };
+            view.CancelSignInRequested += (_, _) => CancelChatSignIn();
             view.Asking += (_, card) =>
             {
                 askedCards[card.CallId] = card;
@@ -564,8 +571,10 @@ public partial class MainWindow
         }
         catch (Exception error) when (error is AcpError or Win32Exception or IOException or InvalidOperationException)
         {
+            // What the agent last wrote to its errors says why it ended, where the connection only says that it did.
+            string? lastWords = chatAgent?.LastError is { } line ? (line.Length > 160 ? line[..160] + "…" : line) : null;
             EndChatAgent();
-            view.Say($"Could not start the agent: {error.Message}", error: true, offerConnect: true);
+            view.Say($"Could not start the agent: {error.Message}{(lastWords is { } why ? $" ({why})" : string.Empty)}", error: true, offerConnect: true);
         }
     }
 
@@ -644,48 +653,34 @@ public partial class MainWindow
             status.Text = $"Could not list the earlier chats: {error.Message}";
             return;
         }
-        MenuFlyout menu = new();
+        List<ChatListRow> rows = [];
         foreach (PastSession past in sessions.OrderByDescending(session => session.Updated))
         {
             bool now = past.Id == agent.Session.SessionId;
-            bool deleting = false;
-            string title = past.Title is { Length: > 0 } named ? named : "Untitled chat";
-            Button delete = ToolButtons.Of(IconKeys.Close, $"Delete the chat {title}", () =>
-            {
-                deleting = true;
-                menu.Hide();
-                Task gone = DeleteChatAsync(view, agent, past, title);
-                BackgroundWork.Track(gone);
-                IdeErrors.Observe(gone);
-            });
-            delete.Margin = new Avalonia.Thickness(16, 0, 0, 0);
-            DockPanel.SetDock(delete, Avalonia.Controls.Dock.Right);
-            string when = past.Updated is { } updated ? $"  ·  {updated.ToLocalTime():d MMM HH:mm}" : string.Empty;
-            TextBlock words = new() { Text = $"{(now ? "● " : string.Empty)}{ToolLine.OneLine(title)}{when}", VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center, MaxWidth = 420, TextTrimming = Avalonia.Media.TextTrimming.CharacterEllipsis };
-            MenuItem item = new() { Header = new DockPanel { Children = { delete, words } } };
-            ToolTip.SetTip(item, now ? $"{title} (shown now)" : title);
-            item.Click += (_, _) =>
-            {
-                if (!deleting && !now)
+            string title = past.Title is { Length: > 0 } named ? ToolLine.OneLine(named) : "Untitled chat";
+            rows.Add(new ChatListRow(title, past.Updated is { } updated ? $"{updated.ToLocalTime():d MMM yyyy, HH:mm}" : null, now,
+                () =>
                 {
-                    Task opening = LoadChatAsync(view, agent, folder, past.Id);
-                    BackgroundWork.Track(opening);
-                    IdeErrors.Observe(opening);
-                }
-            };
-            menu.Items.Add(item);
+                    if (!now)
+                    {
+                        Task opening = LoadChatAsync(view, agent, folder, past.Id);
+                        BackgroundWork.Track(opening);
+                        IdeErrors.Observe(opening);
+                    }
+                },
+                () =>
+                {
+                    Task gone = DeleteChatAsync(view, agent, past, title);
+                    BackgroundWork.Track(gone);
+                    IdeErrors.Observe(gone);
+                },
+                $"Delete the chat {title}: its transcript goes from this computer"));
         }
-        if (menu.Items.Count == 0)
-        {
-            menu.Items.Add(new MenuItem { Header = "No earlier chats in this folder", IsEnabled = false });
-        }
-        ChatHistoryMenu = menu;
-        menu.ShowAt(under);
+        ShowChatList(ChatHistoryList = new ChatList("Chats in this folder", "No earlier chats in this folder.", rows, popups.Close), under);
     }
 
     /// <summary>The History button's list as last shown, for a test to reach.</summary>
-    public MenuFlyout? ChatHistoryMenu { get; private set; }
-
+    public ChatList? ChatHistoryList { get; private set; }
     /// <summary>1 while a chat of before is told again: its edits and plans were reviewed in their day.</summary>
     private int replaying;
 
@@ -737,7 +732,8 @@ public partial class MainWindow
         }
     }
 
-    /// <summary>The account, clicked: Sign out while signed in, the agent's ways to sign in while not.</summary>
+    /// <summary>The account, clicked: who the agent is signed in as and on which plan, then Sign out; signed out, the
+    /// agent's ways to sign in, each saying what it bills.</summary>
     private void ShowChatAccount(ChatView view, Button under)
     {
         if (chatAgent is not { } agent)
@@ -747,15 +743,25 @@ public partial class MainWindow
         MenuFlyout menu = new();
         if (view.SignedOut)
         {
+            menu.Items.Add(new MenuItem { Header = "Not signed in to Claude", IsEnabled = false });
+            menu.Items.Add(new Separator());
             foreach (AuthMethod method in agent.Session.AuthMethods)
             {
-                MenuItem item = new() { Header = $"Sign in: {method.Name}" };
-                item.Click += (_, _) => SignInToChat(view, method);
+                MenuItem item = new() { Header = $"Sign in with {method.Name}" };
+                ToolTip.SetTip(item, method.Description ?? method.Name);
+                item.Click += (_, _) => SignInToChat(view, agent, method);
                 menu.Items.Add(item);
             }
         }
         else
         {
+            (string? who, string? plan) = view.AccountDetails;
+            menu.Items.Add(new MenuItem { Header = who is null ? "Signed in to Claude" : $"Signed in as {who}", IsEnabled = false });
+            if (plan is { Length: > 0 } && plan != who)
+            {
+                menu.Items.Add(new MenuItem { Header = plan, IsEnabled = false });
+            }
+            menu.Items.Add(new Separator());
             MenuItem signOut = new() { Header = "Sign out of Claude" };
             ToolTip.SetTip(signOut, "Signs Claude Code out of its account everywhere it runs, the terminal's claude too");
             signOut.Click += (_, _) =>
@@ -791,30 +797,57 @@ public partial class MainWindow
             return;
         }
         view.Clear();
-        view.SayNotSignedIn(agent.Session.AuthMethods, "Signed out of Claude. Sign in again with your own Claude account; it signs in in the Terminal, and Passenger never sees your login.");
+        view.SayNotSignedIn(agent.Session.AuthMethods, "Signed out of Claude. Sign in again with your own Claude account: it signs in in the Terminal and your browser, and Passenger never sees your login.");
     }
 
-    /// <summary>Runs the agent's sign-in in a tab of the Terminal window; once it ends, the chat connects again.</summary>
-    private void SignInToChat(ChatView view, AuthMethod method)
+    /// <summary>The sign-in running in the Terminal, null while none runs: one at a time, so no two install or write the
+    /// agent's login at once.</summary>
+    private Run.TerminalRun? signingIn;
+
+    /// <summary>Runs one of the agent's ways to sign in, in a tab of the Terminal window; the chat connects again once it
+    /// succeeds, and offers the ways again where it failed or was cancelled. A second while one runs shows the first.</summary>
+    private void SignInToChat(ChatView view, ChatAgent agent, AuthMethod method)
     {
+        if (signingIn is { IsRunning: true })
+        {
+            ShowToolWindow(ToolWindowIds.Terminal);
+            status.Text = "A sign-in is already running in the Terminal";
+            return;
+        }
         if (method.Command is not { } command)
         {
-            status.Text = $"The agent names no command for {method.Name}: run claude /login in the Terminal, then Connect";
+            status.Text = $"The agent names no command for {method.Name}: run claude /login in a terminal, then Connect";
             return;
         }
         System.Diagnostics.ProcessStartInfo start = ChildProcesses.Command(command, method.Args, Folder);
-        view.Say($"Finish signing in in the Terminal ({method.Name}); the chat connects again once it ends.", offerConnect: true);
+        view.SigningIn(method.Name);
         // Not held: it lasts as long as the person takes to sign in.
-        IdeErrors.Observe(ReconnectWhenSignedInAsync(view, ShowInTerminal("Claude sign-in", start)));
+        IdeErrors.Observe(SignedInAsync(view, agent, method, ShowInTerminal("Claude sign-in", start)));
     }
 
-    private async Task ReconnectWhenSignedInAsync(ChatView view, Task<Run.TerminalRun> starting)
+    private async Task SignedInAsync(ChatView view, ChatAgent agent, AuthMethod method, Task<Run.TerminalRun> starting)
     {
         Run.TerminalRun run = await starting;
-        await run.Ended;
-        await Dispatcher.UIThread.InvokeAsync(() => ConnectChatAsync(view));
+        await Dispatcher.UIThread.InvokeAsync(() => signingIn = run);
+        int code = await run.Ended;
+        await Dispatcher.UIThread.InvokeAsync(async () =>
+        {
+            signingIn = null;
+            if (code == 0 && !run.WasStopped)
+            {
+                await ConnectChatAsync(view);
+            }
+            else
+            {
+                view.SayNotSignedIn(agent.Session.AuthMethods, run.WasStopped
+                    ? "Sign-in cancelled. Sign in with your own Claude account to chat."
+                    : $"Signing in with {method.Name} did not finish (it ended with {code}); its Terminal tab says why. Try again:");
+            }
+        });
     }
 
+    /// <summary>Cancel sign-in: the sign-in running in the Terminal stops.</summary>
+    private void CancelChatSignIn() => signingIn?.Stop();
     /// <summary>Sets one of the agent's settings the person chose (mode, model, effort); the pickers show what the agent
     /// answers it now is, which puts a refused choice back.</summary>
     private async Task SetChatConfigAsync(ChatView view, string id, string value)
@@ -843,6 +876,8 @@ public partial class MainWindow
         }
         using CancellationTokenSource turn = new();
         chatTurn = turn;
+        // A file system's times are coarse: a project written in the turn's first moment counts as the turn's.
+        DateTime began = DateTime.UtcNow.AddSeconds(-2);
         view.Asked(text);
         try
         {
@@ -857,6 +892,7 @@ public partial class MainWindow
                 "refusal" => "The agent declined to answer",
                 _ => $"Stopped: {ended.StopReason}",
             });
+            await OfferNewProjectsAsync(view, began);
         }
         catch (AcpError error) when (error.IsAuthRequired)
         {
@@ -873,6 +909,49 @@ public partial class MainWindow
         {
             chatTurn = null;
         }
+    }
+
+    /// <summary>The projects the chat has offered to add to the solution, each offered once.</summary>
+    private readonly HashSet<string> offeredProjects = new(PathNames.Comparer);
+
+    /// <summary>A project the agent made in the turn (by an edit or a command, dotnet new) that the open solution does not
+    /// list: the Explorer's Solution view shows only the solution's projects, so the chat says why it is not there and
+    /// offers to add it, as one command Undo takes back.</summary>
+    private async Task OfferNewProjectsAsync(ChatView view, DateTime since)
+    {
+        if (Solution is not { } solution || Folder is not { } folder)
+        {
+            return;
+        }
+        HashSet<string> listed = new(solution.Projects.Select(project => PathNames.Canonical(project.Path)), PathNames.Comparer);
+        string[] made;
+        try
+        {
+            made = await BackgroundWork.Run(() => PathNames.FilesUnder(folder, sub => !Passenger.Workspace.IgnoredFolders.Is(sub))
+                .SelectMany(found => found.Files)
+                .Where(file => Path.GetExtension(file) is ".csproj" or ".fsproj" or ".vbproj" && File.GetLastWriteTimeUtc(file) >= since)
+                .ToArray());
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            return;
+        }
+        string[] missing = [.. made.Where(project => !listed.Contains(project) && offeredProjects.Add(project))];
+        if (missing.Length == 0)
+        {
+            return;
+        }
+        string names = Plural.Listed([.. missing.Select(Path.GetFileNameWithoutExtension).OfType<string>()]);
+        view.Suggest(
+            $"The agent made {names}, which {Path.GetFileName(solution.Path)} does not list, so the Explorer's Solution view does not show {(missing.Length == 1 ? "it" : "them")} (its Files view does).",
+            "Add to the solution",
+            $"Added {names} to the solution",
+            () =>
+            {
+                Task adding = AddProjectsToSolutionAsync(missing);
+                BackgroundWork.Track(adding);
+                IdeErrors.Observe(adding);
+            });
     }
 
     /// <summary>Shows what the agent says and does on the window's thread, and puts each question it asks before it acts
@@ -1108,14 +1187,14 @@ public partial class MainWindow
     }
 
     /// <summary>The Plans button's list as last shown, for a test to reach.</summary>
-    public MenuFlyout? ChatPlansMenu { get; private set; }
+    public ChatList? ChatPlansList { get; private set; }
 
     /// <summary>The folder's plans under the Plans button, the newest first, each opening as a page, with a button at its
     /// end that deletes it to the Trash.</summary>
     private void ShowChatPlans(Button under)
     {
-        MenuFlyout menu = new();
         IReadOnlyList<string> plans = Folder is { } root ? ChatPlans.List(root) : [];
+        List<ChatListRow> rows = [];
         foreach (string path in plans)
         {
             string title;
@@ -1127,38 +1206,24 @@ public partial class MainWindow
             {
                 title = Path.GetFileName(path);
             }
-            bool deleting = false;
-            Button delete = ToolButtons.Of(IconKeys.Close, $"Delete the plan {title} (to the Trash)", () =>
-            {
-                deleting = true;
-                menu.Hide();
-                Task gone = DeleteChatPlanAsync(path, title);
-                BackgroundWork.Track(gone);
-                IdeErrors.Observe(gone);
-            });
-            delete.Margin = new Avalonia.Thickness(16, 0, 0, 0);
-            DockPanel.SetDock(delete, Avalonia.Controls.Dock.Right);
-            TextBlock words = new() { Text = $"{title}  ·  {File.GetLastWriteTime(path):d MMM HH:mm}", VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center };
-            MenuItem item = new() { Header = new DockPanel { Children = { delete, words } } };
-            ToolTip.SetTip(item, PathNames.Shown(path, Folder));
-            item.Click += (_, _) =>
-            {
-                // A press on its delete button reaches the item too.
-                if (!deleting)
+            rows.Add(new ChatListRow(title, $"{File.GetLastWriteTime(path):d MMM yyyy, HH:mm}  ·  {Path.GetFileName(path)}",
+                trackedPlan is { } tracked && PathNames.Same(tracked, path),
+                () => OpenChatPlan(path),
+                () =>
                 {
-                    OpenChatPlan(path);
-                }
-            };
-            menu.Items.Add(item);
+                    Task gone = DeleteChatPlanAsync(path, title);
+                    BackgroundWork.Track(gone);
+                    IdeErrors.Observe(gone);
+                },
+                $"Delete the plan {title} (to the Trash)"));
         }
-        if (plans.Count == 0)
-        {
-            menu.Items.Add(new MenuItem { Header = "No plans yet: ask in the agent's Plan mode", IsEnabled = false });
-        }
-        ChatPlansMenu = menu;
-        menu.ShowAt(under);
+        ShowChatList(ChatPlansList = new ChatList("Plans", "No plans yet: ask in the agent's Plan mode.", rows, popups.Close), under);
     }
 
+    /// <summary>A Chat window's list over the window, under the header's button that asked for it, its right edge on the
+    /// button's.</summary>
+    private void ShowChatList(ChatList list, Button under) =>
+        popups.Show(list, popups.PointIn(under, new Avalonia.Point(under.Bounds.Width - PopupFrame.Medium, under.Bounds.Height + 4)));
     /// <summary>Deletes a plan to the Trash, from the Plans list: its tab closes, Local History keeps it, and the chat
     /// stops following its to-dos.</summary>
     private async Task DeleteChatPlanAsync(string path, string title)

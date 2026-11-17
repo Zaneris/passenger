@@ -103,7 +103,8 @@ public sealed class ChatView : DockPanel
             }
         }, RoutingStrategies.Tunnel);
 
-        idle = new StackPanel { Spacing = 12, Margin = new Thickness(16), VerticalAlignment = VerticalAlignment.Center, Children = { said, signIns, connect } };
+        cancelSignIn.Click += (_, _) => CancelSignInRequested?.Invoke(this, EventArgs.Empty);
+        idle = new StackPanel { Spacing = 12, Margin = new Thickness(16), VerticalAlignment = VerticalAlignment.Center, Children = { said, signIns, cancelSignIn, connect } };
         empty = EmptyState();
         working = new StackPanel
         {
@@ -248,6 +249,9 @@ public sealed class ChatView : DockPanel
         said.Text = text;
         said.Classes.Set(StyleClasses.Error, error);
         connect.IsVisible = offerConnect;
+        // What the chat says now is all it offers: the ways to sign in show only when it says it is signed out.
+        signIns.IsVisible = false;
+        cancelSignIn.IsVisible = false;
         idle.IsVisible = true;
         header.IsVisible = conversation.IsVisible = composer.IsVisible = false;
     }
@@ -299,6 +303,24 @@ public sealed class ChatView : DockPanel
         signIns.IsVisible = methods.Count > 0;
         account.Text = "Not signed in";
     }
+
+    private readonly Button cancelSignIn = new() { Content = "Cancel sign-in", HorizontalAlignment = HorizontalAlignment.Center, IsVisible = false };
+
+    /// <summary>Cancel sign-in was pressed while a sign-in runs.</summary>
+    public event EventHandler? CancelSignInRequested;
+
+    /// <summary>A sign-in runs in the Terminal: the chat says where to finish it, with Cancel; nothing else is offered
+    /// until it ends, so no second sign-in starts over it.</summary>
+    public void SigningIn(string method)
+    {
+        Say($"Signing in with {method}. Finish it in the browser that opened; the Terminal's Claude sign-in tab shows how it goes, and the chat connects once it is done.");
+        cancelSignIn.IsVisible = true;
+    }
+
+    /// <summary>Who the agent is signed in as, for the account's menu: their email or account's name, and the plan.</summary>
+    public (string? Who, string? Plan) AccountDetails => (signedInWho, signedIn);
+
+    private string? signedInWho;
 
     /// <summary>Starts the conversation afresh, for a new chat or one of before: its messages, questions and to-dos go.</summary>
     public void Clear()
@@ -599,6 +621,7 @@ public sealed class ChatView : DockPanel
     {
         AgentAccount? active = status.Accounts.FirstOrDefault(each => each.Active) ?? status.Accounts.FirstOrDefault();
         signedIn = status.State == "unauthenticated" ? "Not signed in" : active is null ? status.State : active.Label;
+        signedInWho = status.State == "unauthenticated" ? null : active?.Email ?? active?.Label;
         signedInTip = active is null
             ? $"The agent says it is {status.State}"
             : $"Signed in as {active.Email ?? active.Label} ({active.Label}), in the agent's own login.\nTo use another account, run claude /login in a terminal, then connect again.";
@@ -740,6 +763,36 @@ public sealed class ChatView : DockPanel
         Working(false, null);
         ToEnd();
     }
+
+    /// <summary>A note at the end of the conversation offering one thing to do about what the agent did ("ExpenseTracker.Api
+    /// is not in the solution", Add to the solution): a click does it once, the link then saying it is done.</summary>
+    public void Suggest(string text, string action, string done, Action act)
+    {
+        Button link = new() { Classes = { StyleClasses.Link }, Content = action, HorizontalAlignment = HorizontalAlignment.Left };
+        link.Click += (_, _) =>
+        {
+            link.IsEnabled = false;
+            link.Content = done;
+            act();
+        };
+        Border note = new()
+        {
+            Classes = { StyleClasses.Framed },
+            Padding = new Thickness(10, 8),
+            Child = new StackPanel
+            {
+                Spacing = 6,
+                Children = { new TextBlock { Classes = { StyleClasses.Muted }, Text = text, TextWrapping = TextWrapping.Wrap }, link },
+            },
+        };
+        (reply ?? messages).Children.Add(note);
+        empty.IsVisible = false;
+        ToEnd();
+    }
+
+    /// <summary>The links the conversation's notes offer now, for a test to reach.</summary>
+    public IEnumerable<Button> Offers => messages.GetLogicalDescendants().OfType<Border>()
+        .Select(note => note.Child).OfType<StackPanel>().SelectMany(panel => panel.Children.OfType<Button>()).Where(button => button.Classes.Contains(StyleClasses.Link));
 
     /// <summary>A note in the agent's reply as it goes ("Sent your edited plan"), muted, or as an error.</summary>
     public void Noted(string text, bool error = false)

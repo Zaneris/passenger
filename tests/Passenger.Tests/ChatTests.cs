@@ -511,21 +511,44 @@ public sealed class ChatTests
         Ui.WaitFor(() => agent.Sessions.Count == 2 && window.Chat.Conversation.Count == 0, () => $"a new chat, where the conversation is {Shown(window)}");
 
         Ui.Click(window.Chat.HistoryButton!);
-        Ui.WaitFor(() => window.ChatHistoryMenu is not null, "the earlier chats");
-        MenuItem[] listed = [.. window.ChatHistoryMenu!.Items.OfType<MenuItem>()];
+        Ui.WaitFor(() => window.ChatHistoryList is not null, "the earlier chats");
+        (Button Open, Button Delete)[] listed = [.. window.ChatHistoryList!.Rows];
         Assert.Equal(2, listed.Length);
-        MenuItem first = listed.Single(item => ((DockPanel)item.Header!).Children.OfType<TextBlock>().Single().Text!.StartsWith("Add a README", StringComparison.Ordinal));
-        Ui.Click(first);
+        Assert.True(listed[0].Delete.IsEffectivelyVisible, "A chat's delete button is out of sight");
+        Ui.Click(listed.Single(row => Words(row.Open).StartsWith("Add a README", StringComparison.Ordinal)).Open);
         Ui.WaitFor(() => agent.Loaded == "sess_1" && window.Chat.Conversation.Count == 2, () => $"the chat of before told again, where the conversation is {Shown(window)}");
         Assert.Equal([("You", "Add a README"), ("Claude Agent", "I added README.md.")], window.Chat.Conversation);
 
-        MenuFlyout? before = window.ChatHistoryMenu;
+        ChatList? before = window.ChatHistoryList;
         Ui.Click(window.Chat.HistoryButton!);
-        Ui.WaitFor(() => window.ChatHistoryMenu != before, "the earlier chats again");
-        MenuItem other = window.ChatHistoryMenu!.Items.OfType<MenuItem>().Single(item => !((DockPanel)item.Header!).Children.OfType<TextBlock>().Single().Text!.StartsWith("●", StringComparison.Ordinal));
-        Ui.Click(((DockPanel)other.Header!).Children.OfType<Button>().Single());
+        Ui.WaitFor(() => window.ChatHistoryList != before, "the earlier chats again");
+        (Button Open, Button Delete) other = window.ChatHistoryList!.Rows.Single(row => !Words(row.Open).Contains("Shown now", StringComparison.Ordinal));
+        Ui.Click(other.Delete);
         Ui.WaitFor(() => agent.Sessions.Count == 1, "the other chat deleted");
         Assert.Equal("sess_1", agent.Sessions.Single().Id);
+        window.Close();
+    }
+
+    /// <summary>What a list's row says, its title then what is under it, a line each.</summary>
+    private static string Words(Button row) => string.Join("\n", row.GetLogicalDescendants().OfType<TextBlock>().Select(text => text.Text));
+
+    [AvaloniaFact]
+    public void A_project_the_agent_made_that_the_solution_does_not_list_is_offered_to_the_solution()
+    {
+        string made = TestFolders.Create("chat");
+        File.WriteAllText(Path.Combine(made, "app.slnx"), "<Solution>\n</Solution>\n");
+        MainWindow window = Ui.OpenFolder(made, languageServer: false);
+        StandInAgent agent = new();
+        window.StartChatAgent = _ => Task.FromResult(agent.Agent);
+        window.ShowToolWindow(ToolWindowIds.Chat);
+        Ui.Settle();
+        Ui.Click(ConnectButton(window));
+        Ui.WaitFor(() => window.Chat.Said == "Connected to Claude Agent 0.107.3", "the agent connected");
+
+        Send(window, "project");
+        Ui.WaitFor(() => !window.Chat.Busy && window.Chat.Offers.Any(), () => $"the offer, where the conversation is {Shown(window)}");
+        Ui.Click(window.Chat.Offers.Single());
+        Ui.WaitFor(() => File.ReadAllText(Path.Combine(made, "app.slnx")).Contains("New.Api.csproj", StringComparison.Ordinal), "the project added to the solution");
         window.Close();
     }
 
@@ -541,13 +564,13 @@ public sealed class ChatTests
         Assert.True(File.Exists(plan), $"No plan at {plan}");
 
         Ui.Click(window.Chat.PlansButton!);
-        MenuItem listed = Assert.Single(window.ChatPlansMenu!.Items.OfType<MenuItem>());
-        Ui.Click(((DockPanel)listed.Header!).Children.OfType<Button>().Single());
+        (Button Open, Button Delete) listed = Assert.Single(window.ChatPlansList!.Rows);
+        Assert.Equal("Add a math class", Words(listed.Open).Split('\n')[0]);
+        Ui.Click(listed.Delete);
         Ui.WaitFor(() => !File.Exists(plan), "the plan deleted");
 
+        Assert.Empty(window.ChatPlansList!.Rows);
         Assert.DoesNotContain(window.EditorArea.Documents, document => document.Path.EndsWith("add-a-math-class.plan.md", StringComparison.Ordinal));
-        Ui.Click(window.Chat.PlansButton!);
-        Assert.DoesNotContain(window.ChatPlansMenu!.Items.OfType<MenuItem>(), item => item.IsEnabled);
         window.Close();
     }
 
@@ -1157,6 +1180,17 @@ public sealed class ChatTests
                             string named = JsonValue.Create(Path.Combine(asking, "hello.txt")).ToJsonString();
                             await Update(writer, $$$"""{"toolCallId":"call_7","sessionUpdate":"tool_call","status":"pending","title":"Edit hello.txt","kind":"edit","content":[],"locations":[{"path":{{{named}}}}]}""");
                             await writer.WriteLineAsync($$$"""{"jsonrpc":"2.0","id":"ask_edit","method":"session/request_permission","params":{"sessionId":"sess_1","toolCall":{"toolCallId":"call_7","status":"pending","title":"Edit hello.txt","kind":"edit","content":[{"type":"diff","path":{{{named}}},"oldText":"hello\n","newText":"hello\nworld\n"}]},"options":[{"optionId":"allow-once","name":"Yes","kind":"allow_once"},{"optionId":"allow-always","name":"Yes, allow all edits during this session","kind":"allow_always"},{"optionId":"reject","name":"No","kind":"reject_once"}]}}""");
+                            break;
+                        }
+                        if (text == "project" && SessionFolder is { } making)
+                        {
+                            // As dotnet new makes one in a command: no edit names it.
+                            await Update(writer, """{"toolCallId":"call_p","sessionUpdate":"tool_call","status":"in_progress","title":"dotnet new webapi -o New.Api","kind":"execute","content":[]}""");
+                            Directory.CreateDirectory(Path.Combine(making, "New.Api"));
+                            await File.WriteAllTextAsync(Path.Combine(making, "New.Api", "New.Api.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk.Web\">\n  <PropertyGroup>\n    <TargetFramework>net10.0</TargetFramework>\n  </PropertyGroup>\n</Project>\n");
+                            await Update(writer, """{"toolCallId":"call_p","sessionUpdate":"tool_call_update","status":"completed"}""");
+                            await Say(writer, "Made New.Api.");
+                            await Answer(writer, id, """{"stopReason":"end_turn"}""");
                             break;
                         }
                         if (text == "run")
