@@ -1,0 +1,231 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Passenger with a screen reader: accessibility in a free C# IDE</title>
+    <meta name="description" content="What Passenger, a free C# and .NET IDE, gives you with VoiceOver, Narrator, NVDA, JAWS or Orca, from the keyboard, and at readable contrast: system by system.">
+    <link rel="canonical" href="https://passenger-ide.net/accessibility">
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+    <link rel="icon" href="/favicon-32.png" type="image/png" sizes="32x32">
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="Passenger">
+    <meta property="og:locale" content="en_US">
+    <meta property="og:url" content="https://passenger-ide.net/accessibility">
+    <meta property="og:title" content="Passenger with a screen reader: accessibility in a free C# IDE">
+    <meta property="og:description" content="What Passenger, a free C# and .NET IDE, gives you with VoiceOver, Narrator, NVDA, JAWS or Orca, from the keyboard, and at readable contrast: system by system.">
+    <meta property="og:image" content="https://passenger-ide.net/images/social-77a92101.png">
+    <meta property="og:image:type" content="image/png">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta property="og:image:alt" content="C# code in Passenger's debugger, stopped at a breakpoint with each line's values beside it, beside the words: Built on .NET 11. The free IDE for C# and .NET.">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:site" content="@Zaneris">
+    <meta name="twitter:creator" content="@Zaneris">
+    <meta name="twitter:title" content="Passenger with a screen reader: accessibility in a free C# IDE">
+    <meta name="twitter:description" content="What Passenger, a free C# and .NET IDE, gives you with VoiceOver, Narrator, NVDA, JAWS or Orca, from the keyboard, and at readable contrast: system by system.">
+    <meta name="twitter:image" content="https://passenger-ide.net/images/social-77a92101.png">
+    <meta name="twitter:image:alt" content="C# code in Passenger's debugger, stopped at a breakpoint with each line's values beside it, beside the words: Built on .NET 11. The free IDE for C# and .NET.">
+    <meta name="theme-color" content="#0F131C" media="(prefers-color-scheme: dark)">
+    <meta name="theme-color" content="#FFFFFF" media="(prefers-color-scheme: light)">
+    <meta name="theme-color" content="#2F6BF2">
+    <link rel="stylesheet" href="/style.css">
+    <script src="/site.js" defer></script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to the content</a>
+<header class="top">
+    <div class="wrap">
+        <a class="brand" href="/"><img src="/favicon.svg" alt="" width="28" height="28">Passenger</a>
+        <nav aria-label="Pages">
+            <a class="wide" href="/">Home</a>
+            <a class="wide" href="#systems">Screen readers</a>
+            <a class="wide" href="#keyboard">Keyboard</a>
+            <a class="wide" href="#seeing">Seeing</a>
+            <a href="/#download">Download</a>
+            <a href="https://github.com/Zaneris/passenger">GitHub</a>
+        </nav>
+    </div>
+</header>
+
+<main id="main">
+    <div class="hero page-hero">
+        <div class="wrap">
+            <p class="kicker">Accessibility</p>
+            <h1>A C# IDE your screen reader can read</h1>
+            <p class="lede">From 0.4.0, a screen reader reads Passenger's code editor and terminal as it reads a text field,
+                hears what Passenger tells you, and finds its way round the window from the keyboard. This page says what
+                each system gets today, and what isn't there yet.</p>
+            <div class="actions">
+                <a class="button primary" href="/#download">Download Passenger</a>
+                <a class="button" href="https://github.com/Zaneris/passenger/issues">Tell us what gets in your way</a>
+            </div>
+        </div>
+    </div>
+
+    <div class="wrap page-body">
+        <section id="systems">
+            <h2>Your screen reader, system by system</h2>
+            <p class="intro">Passenger draws its own editor and terminal, so it gives each system's screen reader their text
+                itself, through the system's own accessibility interfaces.</p>
+            <div class="grid">
+                <div class="card">
+                    <h3>Windows: Narrator, NVDA and JAWS</h3>
+                    <p>The code editor and the terminal are read through UI Automation's text pattern, as a system text field
+                        is: by character, word, line and the whole text, following the caret and every selection, reviewing
+                        any line away from the caret, and finding text.</p>
+                    <p>What Passenger tells you, the code's popups and every tree are heard too.</p>
+                </div>
+                <div class="card">
+                    <h3>macOS: VoiceOver</h3>
+                    <p>The code editor and the terminal are read as a system text area: by character, word and line,
+                        following and announcing the selection, reviewing any line, and hearing what each key typed or
+                        deleted and where the caret went.</p>
+                    <p>What Passenger tells you, the code's popups and every tree are heard too.</p>
+                </div>
+                <div class="card">
+                    <h3>Linux: Orca, in part</h3>
+                    <p>Orca reads the line the caret is on in the code editor and the terminal, again as the caret moves to
+                        another line or the line changes, and every tree with each row's level and place.</p>
+                    <p>Reading by character and word and following the selection aren't there yet on Linux, and what
+                        Passenger tells you reaches Orca only as changed text, which it may not read out.</p>
+                </div>
+            </div>
+        </section>
+
+        <section id="heard">
+            <h2>Heard as you work</h2>
+            <p class="intro">What changes on the screen as you work is told to your screen reader, while the keys stay
+                where you are.</p>
+            <dl class="facts">
+                <div>
+                    <dt>What Passenger tells you</dt>
+                    <dd>The status bar's messages, a refusal or a failure at once, each stage of a long operation and what it
+                        came to, and a notification or an agent's question as it comes, each heard once, your keys staying
+                        where they were.</dd>
+                </div>
+                <div>
+                    <dt>Completion</dt>
+                    <dd>The item chosen as the list opens, narrows and moves (&ldquo;Completion, Equals, method, item 1 of
+                        4&rdquo;), and that it closed. Quick Documentation with the list open reads the chosen item's
+                        documentation.</dd>
+                </div>
+                <div>
+                    <dt>Parameter Info</dt>
+                    <dd>The signature as it shows, then the parameter the caret reaches as you type a comma or move through
+                        the call.</dd>
+                </div>
+                <div>
+                    <dt>Cards and fixes</dt>
+                    <dd>A card a key opens, Quick Documentation or Quick Evaluate Expression, is read as it shows, and the
+                        list of fixes and refactorings speaks as you move through it.</dd>
+                </div>
+                <div>
+                    <dt>Trees</dt>
+                    <dd>The Explorer and the Solution view, Unit Tests, Problems, Git's branches, Debug's variables and the
+                        profiler's calls are trees to a screen reader: each row's level, its place among the rows beside it,
+                        and whether it is open.</dd>
+                </div>
+            </dl>
+        </section>
+
+        <section id="keyboard">
+            <h2>Round the window from the keyboard</h2>
+            <p class="intro">Every part of the work above is reached from the keyboard, and so is every part of the
+                window.</p>
+            <dl class="facts">
+                <div>
+                    <dt>Regions</dt>
+                    <dd>Next Region (Ctrl+Alt+` on Windows and Linux, Ctrl+Cmd+` on the Mac) and Previous Region, the same
+                        with Shift, go round the toolbar, the tool windows, the editors and the status bar in the order they
+                        stand, each named as you enter it: &ldquo;Explorer, tool window&rdquo;, &ldquo;Notes.txt,
+                        editor&rdquo;.</dd>
+                </div>
+                <div>
+                    <dt>Every action by name</dt>
+                    <dd>Find Action runs any of the IDE's actions by its name, and Search Everywhere, Go to File and Go to
+                        Symbol find the rest.</dd>
+                </div>
+                <div>
+                    <dt>Lists</dt>
+                    <dd>Enter does what a double click does in every list, and Space ticks a row in the Commit
+                        window.</dd>
+                </div>
+                <div>
+                    <dt>Shortcuts at your pace</dt>
+                    <dd>Settings' Wait for a shortcut's second key gives a two-key shortcut up to a minute between its keys.
+                        The keys follow Visual Studio's, VS Code's or IntelliJ IDEA's keymap, and Vim mode is a setting away.</dd>
+                </div>
+            </dl>
+        </section>
+
+        <section id="seeing">
+            <h2>Easier to see</h2>
+            <p class="intro">For low vision, and for eyes that tire: contrast, size and motion.</p>
+            <dl class="facts">
+                <div>
+                    <dt>Readable contrast</dt>
+                    <dd>Passenger's own theme, dark and light, meets WCAG 2.2 AA wherever it draws: 4.5:1 for words, 3:1 for
+                        icons, the caret, focus rings and fields' edges, held by a test.</dd>
+                </div>
+                <div>
+                    <dt>Where you are</dt>
+                    <dd>The chosen row, the open tab and the open tool window carry an accent mark at 3:1 beside their
+                        tinted ground, never the tint alone.</dd>
+                </div>
+                <div>
+                    <dt>Larger</dt>
+                    <dd>Settings &rsaquo; Appearance's display scale draws the whole interface larger on top of your system's
+                        scaling, and the code's size and font are yours to choose.</dd>
+                </div>
+                <div>
+                    <dt>Steady</dt>
+                    <dd>Passenger follows your system's motion and caret settings on macOS, Windows and GNOME: with less
+                        motion asked, flings, the working ring and progress bars hold still, and carets stay steady or blink
+                        at your rate. Caret width sets how broad the caret is, the terminal's cursor too.</dd>
+                </div>
+            </dl>
+        </section>
+
+        <section id="limits">
+            <h2>Not there yet</h2>
+            <p class="intro">What a screen reader user still meets in 0.4.0. If something else stands in your way, please
+                <a href="https://github.com/Zaneris/passenger/issues">open an issue</a> naming your system and screen
+                reader.</p>
+            <ul class="limits">
+                <li><strong>On Linux</strong>, reading by character and word, following the selection, and hearing what
+                    Passenger tells you for certain.</li>
+                <li><strong>Sounds.</strong> Nothing yet sounds as the caret reaches a line with an error, a breakpoint or a
+                    change, or as a build or a test run ends
+                    (<a href="https://github.com/Zaneris/passenger/issues/1849">#1849</a>).</li>
+                <li><strong>Plain text of rich content.</strong> A hover card, a problem's details or a notification can't
+                    yet be opened as plain text to read line by line
+                    (<a href="https://github.com/Zaneris/passenger/issues/1850">#1850</a>).</li>
+                <li><strong>Colour alone.</strong> An error and a warning in the margin, a passing and a failing test, and a
+                    diff's added and removed lines are told apart mainly by colour, and there is no high-contrast theme yet,
+                    nor is Windows' high-contrast mode followed
+                    (<a href="https://github.com/Zaneris/passenger/issues/1851">#1851</a>).</li>
+            </ul>
+        </section>
+    </div>
+</main>
+
+<footer>
+    <div class="wrap">
+        <p>Passenger is free and open source under the MIT licence.</p>
+        <nav aria-label="More">
+            <a href="/">Home</a>
+            <a href="https://github.com/Zaneris/passenger">GitHub</a>
+            <a href="https://x.com/Zaneris">X (@Zaneris)</a>
+            <a href="/godot">Godot</a>
+            <a href="/containers">Containers and Aspire</a>
+            <a href="/agents">Agents</a>
+            <a href="/linux">Linux</a>
+            <a href="https://github.com/Zaneris/passenger/blob/main/LICENSE">Licence</a>
+            <a href="https://github.com/Zaneris/passenger/blob/main/THIRD_PARTY_NOTICES.md">Third-party notices</a>
+        </nav>
+    </div>
+</footer>
+</body>
+</html>

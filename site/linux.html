@@ -66,9 +66,11 @@
             Passenger carries its own faces, Inter for the window and JetBrains Mono for code, and draws the characters
             they lack (other scripts, many symbols, emoji) in the fonts fontconfig lists. On a Wayland desktop, Passenger runs through XWayland.</li>
         <li><strong>Node.js</strong>, only for JavaScript, TypeScript, HTML, CSS, JSON, Dockerfiles and YAML (22.22.2 or
-            later for TypeScript). Your distribution's package may be older; <a href="https://nodejs.org/en/download">nodejs.org</a>
+            later for TypeScript, 22.15 or later for YAML). Your distribution's package may be older; <a href="https://nodejs.org/en/download">nodejs.org</a>
             has current ones, and Settings &rsaquo; Node.js can name the one to use.</li>
         <li><strong>WebKitGTK 4.1</strong>, only for the HTML preview, which says so where it's missing.</li>
+        <li><strong>An x64 machine for Android apps</strong>, which .NET builds on x64 Linux but not on Arm64; Passenger
+            installs the Android SDK and a JDK once you agree.</li>
     </ul>
 <pre><span class="comment"># Ubuntu, Debian</span>
 sudo apt install git libx11-6 libice6 libsm6 libfontconfig1 fonts-dejavu-core
@@ -91,7 +93,8 @@ tar -xzf Passenger-linux-$arch.tar.gz</pre>
 <pre>./passenger/install.sh</pre>
     <p>For you alone, with no root needed. It copies Passenger to <code>~/.local/opt/passenger</code>, links
         <code>~/.local/bin/passenger-ide</code>, and adds Passenger to your applications menu with its icon, as one of the
-        programs that open <code>.sln</code>, <code>.slnx</code> and <code>.csproj</code> files. If
+        programs that open <code>.sln</code>, <code>.slnx</code> and <code>.csproj</code> files, and the solutions and
+        folders you open join your desktop's recent files. If
         <code>~/.local/bin</code> is not on your PATH yet, add it:</p>
 <pre>echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.profile</pre>
     <p>For everyone on the machine, run it with <code>sudo ./passenger/install.sh --system</code>, which uses
@@ -105,6 +108,9 @@ tar -xzf Passenger-linux-$arch.tar.gz</pre>
     <p>The toolbar is the window's title bar, as on Windows and macOS, with the window's buttons at its right. To have
         your window manager's own title bar instead, turn off Settings &rsaquo; Appearance &rsaquo; Merge main menu with
         window title. Under WSL and tiling window managers, the window manager's stays.</p>
+
+    <p>With Orca, Passenger reads the line the caret is on in the code editor and the terminal;
+        <a href="/accessibility">Accessibility</a> says what each system's screen reader gets.</p>
 
     <h2>Updating</h2>
     <p>Installed with <code>install.sh</code>, Passenger updates itself. It downloads a newer release in the background
@@ -167,6 +173,7 @@ sudo /opt/passenger/install.sh --uninstall --system</pre>
             <a href="/godot">Godot</a>
             <a href="/containers">Containers and Aspire</a>
             <a href="/agents">Agents</a>
+            <a href="/accessibility">Accessibility</a>
             <a href="https://github.com/Zaneris/passenger/blob/main/LICENSE">Licence</a>
             <a href="https://github.com/Zaneris/passenger/blob/main/THIRD_PARTY_NOTICES.md">Third-party notices</a>
         </nav>

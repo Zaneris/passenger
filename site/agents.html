@@ -81,6 +81,9 @@
                         would: a picture of each window, the tree of its controls with their text and state, and clicks,
                         typing, keys and scrolling sent to the window, which never takes your focus or moves your pointer. It
                         reads the app's binding errors and can break on a property's change.</p>
+                    <p>A .NET MAUI app it sees and taps where it runs, on an Android device or emulator, an iOS simulator or
+                        the Mac: its pages and their controls, a picture of its window, and taps that run as a finger's
+                        do.</p>
                     <h3>It plays the game it builds</h3>
                     <p>A Godot game is tried the same way: its scene tree and values, a picture of its frame, clicks and
                         keys, a breakpoint's stop in C# or GDScript, and every copy running. On macOS, on Windows, and on
@@ -125,7 +128,7 @@
                 <div>
                     <dt>The app</dt>
                     <dd>Its windows, controls and their details, pictures, clicks, typing, keys, scrolling and binding
-                        errors.</dd>
+                        errors, on the desktop or a device.</dd>
                 </div>
                 <div>
                     <dt>Godot</dt>
@@ -152,12 +155,17 @@
                     <p>The agent joins the Passenger window you have open over the folder it works in. Its breakpoints and
                         stops show in your editor, its runs in your Run window, and the status bar names what it is doing. Set
                         it up before Passenger is even running: the agent has its tools from the start, and its first call
-                        opens the folder in Passenger, starting it if need be. It never joins a window on another folder.</p>
+                        opens the folder in Passenger, starting it if need be. It never joins a window on another folder,
+                        and its tools reach only the folder you have open and, once you trust it, the projects its solution
+                        names beside it.</p>
                     <p>The window asks before it lets an agent in, through a socket in your own user's folder: Allow, Don't
                         allow, or Always for this folder (or turn on Settings &rsaquo; MCP Server &rsaquo; Enable MCP
-                        Server). Either way, the first time an agent uses a tool that changes anything, runs code in a paused
-                        program or opens another folder in your window, Passenger asks you. A question nobody answers closes
-                        after two minutes, and the agent is told so.</p>
+                        Server). Either way, Passenger asks you before each call of a tool that changes anything, runs code
+                        in a paused program or opens another folder in your window, showing what the agent gave it: Allow
+                        Once for that call, or Allow for This Session for every call of that tool until the agent
+                        disconnects. An agent about to make several changes can ask once for every tool, which Allow for
+                        This Session lets it use unasked until it disconnects; Deny keeps each tool asking. A question
+                        nobody answers closes after two minutes, and the agent is told so.</p>
                 </div>
                 <div>
                     <h3><code>--mcp FOLDER</code>: one of its own</h3>
@@ -281,6 +289,7 @@ args = ["--mcp-attach"]</pre>
             <a href="/godot">Godot</a>
             <a href="/containers">Containers and Aspire</a>
             <a href="/linux">Linux</a>
+            <a href="/accessibility">Accessibility</a>
             <a href="https://github.com/Zaneris/passenger/blob/main/LICENSE">Licence</a>
             <a href="https://github.com/Zaneris/passenger/blob/main/THIRD_PARTY_NOTICES.md">Third-party notices</a>
         </nav>

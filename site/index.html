@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Passenger: free C# and .NET IDE for Windows, macOS and Linux</title>
-    <meta name="description" content="A free, open-source C# and .NET IDE for Windows, macOS and Linux, with its own debugger, Hot Reload, a profiler, XAML previews and an MCP server for agents.">
+    <meta name="description" content="A free, open-source C# and .NET IDE for Windows, macOS and Linux: its own debugger, Hot Reload and profiler, .NET MAUI on devices, and an MCP server for agents.">
     <link rel="canonical" href="https://passenger-ide.net/">
     <link rel="icon" href="/favicon.svg" type="image/svg+xml">
     <link rel="icon" href="/favicon-32.png" type="image/png" sizes="32x32">
@@ -14,7 +14,7 @@
     <meta property="og:locale" content="en_US">
     <meta property="og:url" content="https://passenger-ide.net/">
     <meta property="og:title" content="Passenger: free C# and .NET IDE for Windows, macOS and Linux">
-    <meta property="og:description" content="A free, open-source C# and .NET IDE for Windows, macOS and Linux, with its own debugger, Hot Reload, a profiler, XAML previews and an MCP server for agents.">
+    <meta property="og:description" content="A free, open-source C# and .NET IDE for Windows, macOS and Linux: its own debugger, Hot Reload and profiler, .NET MAUI on devices, and an MCP server for agents.">
     <meta property="og:image" content="https://passenger-ide.net/images/social-77a92101.png">
     <meta property="og:image:type" content="image/png">
     <meta property="og:image:width" content="1200">
@@ -24,7 +24,7 @@
     <meta name="twitter:site" content="@Zaneris">
     <meta name="twitter:creator" content="@Zaneris">
     <meta name="twitter:title" content="Passenger: free C# and .NET IDE for Windows, macOS and Linux">
-    <meta name="twitter:description" content="A free, open-source C# and .NET IDE for Windows, macOS and Linux, with its own debugger, Hot Reload, a profiler, XAML previews and an MCP server for agents.">
+    <meta name="twitter:description" content="A free, open-source C# and .NET IDE for Windows, macOS and Linux: its own debugger, Hot Reload and profiler, .NET MAUI on devices, and an MCP server for agents.">
     <meta name="twitter:image" content="https://passenger-ide.net/images/social-77a92101.png">
     <meta name="twitter:image:alt" content="C# code in Passenger's debugger, stopped at a breakpoint with each line's values beside it, beside the words: Built on .NET 11. The free IDE for C# and .NET.">
     <meta name="theme-color" content="#0F131C" media="(prefers-color-scheme: dark)">
@@ -35,13 +35,13 @@
     "@context": "https://schema.org",
     "@type": "SoftwareApplication",
     "name": "Passenger",
-    "description": "A free, open-source C# and .NET IDE for Windows, macOS and Linux, with its own debugger, Hot Reload, a profiler, XAML previews and an MCP server for agents.",
+    "description": "A free, open-source C# and .NET IDE for Windows, macOS and Linux: its own debugger, Hot Reload and profiler, .NET MAUI on devices, and an MCP server for agents.",
     "url": "https://passenger-ide.net/",
     "applicationCategory": "DeveloperApplication",
     "operatingSystem": "Windows, macOS, Linux",
-    "softwareVersion": "0.3.4",
+    "softwareVersion": "0.4.0",
     "downloadUrl": "https://github.com/Zaneris/passenger/releases",
-    "releaseNotes": "https://github.com/Zaneris/passenger/releases/tag/v0.3.4",
+    "releaseNotes": "https://github.com/Zaneris/passenger/releases/tag/v0.4.0",
     "offers": {
         "@type": "Offer",
         "price": "0",
@@ -50,6 +50,7 @@
     "license": "https://opensource.org/licenses/MIT",
     "featureList": [
         "Debugger with Hot Reload",
+        ".NET MAUI, Android and iOS apps run, debugged and Hot Reloaded on a device, emulator or simulator",
         "CPU and memory profiler",
         "XAML tooling for Avalonia and WPF, with previews, the Live Visual Tree and XAML Hot Reload",
         "MCP server for coding agents",
@@ -58,7 +59,10 @@
         "Debugging and profiling .NET services in Docker Compose and Dockerfile containers",
         "Aspire AppHosts run, debugged and profiled, their metrics charted",
         "Blazor WebAssembly components debugged in the browser",
-        "Godot 4 games in C# and GDScript, run, debugged, profiled and Hot Reloaded"
+        "Godot 4 games in C# and GDScript, run, debugged, profiled and Hot Reloaded",
+        "Reqnroll and SpecFlow feature files matched to their steps, run and debugged",
+        "Vim mode",
+        "The code editor and terminal read by VoiceOver, Narrator, NVDA and JAWS"
     ],
     "image": "https://passenger-ide.net/images/social-77a92101.png",
     "screenshot": "https://passenger-ide.net/images/debugger-dark.webp",
@@ -85,6 +89,7 @@
     <div class="wrap">
         <a class="brand" href="/"><img src="/favicon.svg" alt="" width="28" height="28">Passenger</a>
         <nav aria-label="Sections">
+            <a class="wide" href="#mobile">Mobile</a>
             <a class="wide" href="#debugging">Debugger</a>
             <a class="wide" href="#profiling">Profiler</a>
             <a class="wide" href="#xaml">XAML</a>
@@ -92,6 +97,7 @@
             <a class="wide" href="#web">Web and data</a>
             <a class="wide" href="#services">Containers</a>
             <a class="wide" href="#dotnet11">.NET 11</a>
+            <a class="wide" href="/accessibility">Accessibility</a>
             <a href="#download">Download</a>
             <a href="https://github.com/Zaneris/passenger">GitHub</a>
         </nav>
@@ -101,13 +107,13 @@
 <main id="main">
     <div class="hero">
         <div class="wrap">
-            <a class="news" href="#dotnet11"><span class="tag">New in 0.3.2</span>
-                <span class="what">Ready for .NET 11: C# 15 and runtime async, from the editor to the debugger</span><span class="short">What's
+            <a class="news" href="#mobile"><span class="tag">New in 0.4.0</span>
+                <span class="what">.NET MAUI and mobile apps, run and debugged on a device, emulator or simulator</span><span class="short">What's
                 new</span><span class="arrow" aria-hidden="true">&rarr;</span></a>
             <h1><span class="lead">Debugger, profiler and Hot&nbsp;Reload, built&nbsp;in.</span> The free IDE for C# and .NET.</h1>
-            <p class="lede">Stop at a breakpoint and read every line's values, change the code while it runs, see where the
-                time and memory go, watch your XAML take shape as you type, and debug every service of a compose file or
-                an Aspire app. Your coding agent can use all of it too.</p>
+            <p class="lede">Stop at a breakpoint and read every line's values, change the code while it runs, on your
+                machine or a phone, see where the time and memory go, watch your XAML take shape as you type, and debug
+                every service of a compose file or an Aspire app. Your coding agent can use all of it too.</p>
             <div class="actions">
                 <a class="button primary" id="primary-download" href="#download">Download</a>
                 <a class="button" href="https://github.com/Zaneris/passenger">Source on GitHub</a>
@@ -133,6 +139,8 @@
             <ul class="checks">
                 <li><a href="#debugging"><strong>A debugger with Hot Reload</strong>
                     <span>Edits put in the running program, the values methods returned, Smart Step Into.</span></a></li>
+                <li><a href="#mobile"><strong>Mobile apps on devices</strong>
+                    <span>.NET MAUI, Android and iOS apps run, debugged and Hot Reloaded on a device, emulator or simulator.</span></a></li>
                 <li><a href="#profiling"><strong>CPU and memory profiling</strong>
                     <span>Call trees, flame graphs, and heap snapshots compared.</span></a></li>
                 <li><a href="#xaml"><strong>XAML previews and live trees</strong>
@@ -155,9 +163,54 @@
                     <span>Every version of your files Passenger has seen, and Git's conflicts merged.</span></a></li>
                 <li><a href="/godot"><strong>Godot 4 games</strong>
                     <span>C# and GDScript run, debugged, profiled and Hot Reloaded, checked against their scenes.</span></a></li>
-                <li><a href="#mobile"><strong>Mobile apps on devices</strong>
-                    <span>.NET 11 MAUI, Android and iOS apps run, debugged and Hot Reloaded on an emulator or simulator.</span></a></li>
+                <li><a href="#bdd"><strong>Reqnroll and SpecFlow</strong>
+                    <span>Each step matched to its definition with no build, each scenario run or debugged.</span></a></li>
             </ul>
+        </div>
+    </section>
+
+    <section id="mobile">
+        <div class="wrap">
+            <p class="kicker">Mobile</p>
+            <h2>.NET MAUI and mobile apps, on a device, emulator or simulator</h2>
+            <p class="intro">From .NET 11, .NET MAUI, Android and iOS apps run on CoreCLR, the runtime Passenger's own
+                debugger is built for. Choose where the app runs beside the run configuration, and Run, Debug and Hot
+                Reload work there as they do on the desktop.</p>
+            <div class="grid">
+                <div class="card">
+                    <h3>Android, iOS and Mac Catalyst</h3>
+                    <p>An Android device or emulator, an iOS simulator on a Mac, or the Mac itself for Mac Catalyst: Run
+                        installs and starts the app there, its log in the Run window. A MAUI app opened on Windows runs its
+                        Windows head from the same chooser.</p>
+                </div>
+                <div class="card">
+                    <h3>The same debugger, on the device</h3>
+                    <p>Breakpoints, steps and values, and C# Hot Reload calling your app's own update handlers after
+                        each edit, for MAUI, Avalonia and .NET for Android apps alike.</p>
+                </div>
+                <div class="card">
+                    <h3>MAUI's XAML, as you type</h3>
+                    <p>Completion, Go to Declaration, Find Usages and live checks, compiled bindings and .NET 11's C#
+                        expressions included, with MAUI's own source generator's warnings on their lines.</p>
+                </div>
+                <div class="card">
+                    <h3>Previewed before it runs</h3>
+                    <p>A MAUI 11 page, view or shell previews beside its XAML on Windows, macOS and Linux, as a phone,
+                        tablet or desktop, light or dark, and a click on an element finds its tag. Avalonia previews at a
+                        phone's or a tablet's size too.</p>
+                </div>
+                <div class="card">
+                    <h3>The running app, from its XAML</h3>
+                    <p>A running MAUI or Avalonia app's controls in the Live Visual Tree, each with its properties, and
+                        your coding agent sees and taps the app where it runs.</p>
+                </div>
+                <div class="card">
+                    <h3>What it needs, said</h3>
+                    <p>A missing workload, Android SDK, JDK or simulator runtime is said and installed, New Project lists
+                        the mobile templates, and a .NET 10 app is told each edit it needs for .NET 11, made in one step
+                        you can undo.</p>
+                </div>
+            </div>
         </div>
     </section>
 
@@ -388,8 +441,9 @@
                     <h3>EF Core migrations that run</h3>
                     <p>The Migrations window lists each context's migrations and whether the database has them: add, remove,
                         update, script and bundle. Before <code>dotnet&nbsp;ef</code> runs it finds what would stop it (the
-                        tool missing or of another version, the Design package, a provider behind) and offers the fix. During
-                        a compose run or an AppHost, it works on the database that run uses.</p>
+                        tool missing or of another version, the Design package, a provider behind) and offers the fix. Each
+                        action runs in the environment you choose, Staging or Production among them, and during a compose run
+                        or an AppHost it works on the database that run uses.</p>
                 </div>
                 <div class="card">
                     <h3>Endpoints from your code</h3>
@@ -497,38 +551,6 @@
         </div>
     </section>
 
-    <section id="mobile">
-        <div class="wrap">
-            <p class="kicker">Mobile</p>
-            <h2>.NET 11 mobile apps, on a device, emulator or simulator</h2>
-            <p class="intro">From .NET 11, .NET MAUI, Android and iOS apps run on CoreCLR, the runtime Passenger's own
-                debugger is built for. Choose where the app runs beside the run configuration, and Run, Debug and Hot
-                Reload work there as they do on the desktop.</p>
-            <div class="grid">
-                <div class="card">
-                    <h3>Android, iOS and Mac Catalyst</h3>
-                    <p>An Android device or emulator, an iOS simulator on a Mac, or the Mac itself for Mac Catalyst: Run
-                        installs and starts the app there, its log in the Run window.</p>
-                </div>
-                <div class="card">
-                    <h3>The same debugger, on the device</h3>
-                    <p>Breakpoints, steps and values, and C# Hot Reload calling your app's own update handlers after
-                        each edit.</p>
-                </div>
-                <div class="card">
-                    <h3>MAUI's XAML, previewed and live</h3>
-                    <p>Completion, checks and a preview of MAUI 11's XAML as you type, and a running MAUI or Avalonia
-                        app's controls in the Live Visual Tree.</p>
-                </div>
-                <div class="card">
-                    <h3>What it needs, said</h3>
-                    <p>A missing workload, Android SDK, JDK or simulator runtime is said and installed, and a .NET 10
-                        app is told each edit it needs for .NET 11.</p>
-                </div>
-            </div>
-        </div>
-    </section>
-
     <section id="tour">
         <div class="wrap">
             <p class="kicker">The rest</p>
@@ -567,10 +589,11 @@
             <div class="feature flip" id="git">
                 <div class="text">
                     <h3>Git</h3>
-                    <p>The Commit window with its changes, the log with its branch graph and branches, side-by-side diffs with
-                        the changed words marked, blame, change bars in the gutter that roll a change back, the history of a
-                        file, a folder or a selection, stashes, push, pull and fetch, conflicts resolved in a three-way
-                        merge, and commits signed with SSH, GPG or X.509.</p>
+                    <p>The Commit window with its changes, where ticking changes in a file's diff commits only those, the log
+                        with its branch graph and branches, side-by-side diffs with the changed words marked, blame, change
+                        bars in the gutter that roll a change back, the history of a file, a folder or a selection, stashes,
+                        push, pull and fetch with the commits to pull and push in the status bar, conflicts resolved in a
+                        three-way merge, and commits signed with SSH, GPG or X.509.</p>
                 </div>
                 <figure class="shot">
                     <picture>
@@ -695,8 +718,9 @@
                 </div>
                 <div class="card">
                     <h3>Build, run and publish</h3>
-                    <p>A Solution view as MSBuild evaluates it, builds with their errors in Problems, run configurations from
-                        your launch profiles, consoles whose stack frames link to their lines, and Publish to a folder, a
+                    <p>A Solution view as MSBuild evaluates it, shared projects included, builds in the configuration and
+                        platform you choose with their errors in Problems, run configurations from your launch profiles and
+                        a Node package's scripts, consoles whose stack frames link to their lines, and Publish to a folder, a
                         container image or an AppHost's own deploy steps.</p>
                 </div>
                 <div class="card" id="tests">
@@ -704,6 +728,13 @@
                     <p>xUnit, NUnit, MSTest and TUnit, through VSTest or Microsoft.Testing.Platform: found from the code before
                         any build, run marks in the gutter, any test debugged, and results kept across restarts. A failed
                         Avalonia headless test (xUnit v3) carries a picture of each window as it was.</p>
+                </div>
+                <div class="card" id="bdd">
+                    <h3>Reqnroll and SpecFlow</h3>
+                    <p>A <code>.feature</code> file checked as you type, each step matched to its definition with no build,
+                        completed, renamed and found everywhere, and an undefined one defined in a step. Run or debug a
+                        scenario from its line and every step shows how it went; a Step Library lists every
+                        definition.</p>
                 </div>
                 <div class="card" id="history">
                     <h3>Local History</h3>
@@ -713,12 +744,14 @@
                 <div class="card">
                     <h3>NuGet</h3>
                     <p>The feeds your <code>nuget.config</code> names, packages installed, updated and removed per project,
-                        central package management, and vulnerable versions marked with the lowest that fixes them.</p>
+                        central package management, and deprecated or vulnerable versions marked before they go in, with
+                        the version to use instead.</p>
                 </div>
                 <div class="card">
                     <h3>Terminal</h3>
                     <p>A terminal emulator of its own with a shell per tab, where vim, less and htop run full-screen. A console
-                        program can run and be debugged in it.</p>
+                        program can run and be debugged in it, and one drawn with Spectre.Console or Terminal.Gui runs
+                        there from the start.</p>
                 </div>
                 <div class="card">
                     <h3>Previews and tables</h3>
@@ -727,18 +760,24 @@
                 </div>
                 <div class="card">
                     <h3>Windows and layout</h3>
-                    <p>Tool windows docked or floating, editor tabs split or in windows of their own, and a window for each
-                        solution.</p>
+                    <p>Tool windows docked, floating or as tabs among your files, titled tabs, editor tabs split, down a side
+                        or in windows of their own, diffs beside your files, and the whole interface scaled larger.</p>
                 </div>
                 <div class="card">
                     <h3>New projects</h3>
                     <p>New Solution and New Project offer every template <code>dotnet&nbsp;new</code> has, with their
-                        options, and a Godot 4 game of Passenger's own.</p>
+                        options, the mobile ones with the workload they need, and a Godot 4 game of Passenger's own.</p>
                 </div>
                 <div class="card">
                     <h3>Updates</h3>
                     <p>Each new release downloads in the background and installs as Passenger closes, then shows what's
                         new, on Windows, macOS and Linux.</p>
+                </div>
+                <div class="card">
+                    <h3>Accessibility</h3>
+                    <p>VoiceOver, Narrator, NVDA and JAWS read the code editor and the terminal, a pair of keys goes round
+                        the window's regions, and Passenger's own theme meets WCAG 2.2 AA.</p>
+                    <a class="more" href="/accessibility">What each system gets</a>
                 </div>
             </div>
         </div>
@@ -747,20 +786,40 @@
     <section id="looks" class="looks">
         <div class="wrap">
             <p class="kicker">Make it yours</p>
-            <h2>Twelve looks, each dark and light</h2>
-            <p class="intro">Passenger's own in the app icon's blue, Harbour's teal on linen, and Sorbet, Nocturne, Saffron,
-                Bonbon, Ledger, Slate, Orbit, Nightjar, Moss and Phosphor, each checked for contrast and following your
-                system or your choice. Every file has an icon of its own, in each look's colours, and the editor's and
-                the terminal's fonts are yours to choose.</p>
+            <h2>Themes with character</h2>
+            <p class="intro">A theme sets more than colours: the layout, the code's and the window's fonts, its shapes, colours
+                for each language and a faint picture behind your code. Passenger carries its own theme and Cubicle, calm
+                and dense for long days, and Settings offers eleven more from Passenger's themes repository, each with a
+                character of its own.</p>
             <figure class="shot cycle">
                 <picture>
                     <source media="(prefers-reduced-motion: reduce) and (prefers-color-scheme: light)" srcset="/images/themes-still-light.webp" width="1864" height="1060">
                     <source media="(prefers-reduced-motion: reduce)" srcset="/images/themes-still-dark.webp" width="1864" height="1060">
                     <source media="(prefers-color-scheme: light)" srcset="/images/themes-light.webp" width="1864" height="1060">
                     <img src="/images/themes-dark.webp" width="1864" height="1060" loading="lazy" decoding="async"
-                         alt="Passenger's window changing look every two seconds through all twelve, each named in its title bar and Solution view: Passenger, Harbour, Sorbet, Nocturne, Saffron, Bonbon, Ledger, Slate, Orbit, Nightjar, Moss and Phosphor">
+                         alt="Passenger's window changing theme every two seconds, each named in its title bar and Solution view: Passenger, Harbour, Sorbet, Nocturne, Saffron, Bonbon, Ledger, Slate, Orbit, Nightjar, Moss and Phosphor">
                 </picture>
             </figure>
+            <div class="grid">
+                <div class="card">
+                    <h3>Pictures, fonts and layouts</h3>
+                    <p>Harbour's tide lines, Nocturne's crescent moon, Ledger's graph paper, Moss's ferns and Phosphor's
+                        scanlines, each theme with open fonts that suit it and the layout it opens on, its own colours
+                        checked for contrast.</p>
+                </div>
+                <div class="card">
+                    <h3>VS Code themes, from Open VSX</h3>
+                    <p>Browse VS Code Themes searches Open VSX and draws the theme you choose at once, and a Passenger
+                        theme can lay its shapes, fonts and pictures over a VS Code theme's colours. A theme is read as
+                        data, nothing of its extension run.</p>
+                </div>
+                <div class="card">
+                    <h3>Yours to add</h3>
+                    <p>Themes come from a folder, a GitHub repository or an address you add in Settings, kept once chosen,
+                        so they draw offline. Every file has an icon of its own in each theme's colours, and the editor's
+                        and the terminal's fonts are yours to choose.</p>
+                </div>
+            </div>
         </div>
     </section>
 
@@ -777,9 +836,9 @@
                         as Azure Artifacts', and package source mapping, as restore reads them.</dd>
                 </div>
                 <div>
-                    <dt>Vulnerable packages</dt>
-                    <dd>Versions with a known advisory marked from your feeds' audit data, with the lowest version that
-                        fixes them.</dd>
+                    <dt>Vulnerable and deprecated packages</dt>
+                    <dd>Versions with a known advisory, or deprecated by their owner, marked from your feeds' data before
+                        they go in, with the version to use instead.</dd>
                 </div>
                 <div>
                     <dt>Shared run configurations</dt>
@@ -788,8 +847,8 @@
                 </div>
                 <div>
                     <dt>Your <code>.editorconfig</code></dt>
-                    <dd>Indentation, line endings, charset and Reformat Code follow it, file by file, and the status bar
-                        says where a file's indent came from.</dd>
+                    <dd>Indentation, line endings, charset and Reformat Code follow it, file by file, the status bar says
+                        where a file's indent came from, and Settings shows what it sets over each option.</dd>
                 </div>
                 <div>
                     <dt>Signed commits</dt>
@@ -800,6 +859,11 @@
                     <dt>Agents for the whole team</dt>
                     <dd>A <code>.mcp.json</code> committed to the repository gives every Claude Code user there Passenger's
                         tools.</dd>
+                </div>
+                <div>
+                    <dt>Code that waits for your trust</dt>
+                    <dd>A folder opened for the first time asks whether you trust it; until you do, none of its code runs,
+                        its builds and Git's hooks included.</dd>
                 </div>
                 <div>
                     <dt>Nothing to sign up for</dt>
@@ -824,7 +888,7 @@
                 </details>
                 <details>
                     <summary>Is it ready for daily work?</summary>
-                    <p>Passenger is young (0.3.4), and its own development runs through it every day: the coding agents
+                    <p>Passenger is young (0.4.0), and its own development runs through it every day: the coding agents
                         that write much of it work through its MCP server. Its tests drive the whole IDE, a window with real
                         keys and clicks, on macOS, Windows and Linux, and a release ships only once its core tests pass
                         on all three. Each release's notes say what it does and its known limits, so you can judge for
@@ -833,8 +897,9 @@
                 <details>
                     <summary>Which systems and projects does it run on?</summary>
                     <p>Windows (x64 and Arm64), macOS (Apple Silicon and Intel), and Linux (x64 and Arm64), with a .NET SDK from 8 for your projects.
-                        It works with modern .NET (CoreCLR): console, ASP.NET Core, Blazor, Avalonia and WPF projects, Godot 4
-                        games in C# and GDScript, and the services of a compose file or an Aspire AppHost. .NET Framework, Mono and Unity aren't
+                        It works with modern .NET (CoreCLR): console, ASP.NET Core, Blazor, Avalonia, WPF and .NET MAUI
+                        projects, Android and iOS apps from .NET 11, Godot 4 games in C# and GDScript, and the services of a
+                        compose file or an Aspire AppHost. .NET Framework, Mono and Unity aren't
                         Passenger's.</p>
                 </details>
                 <details>
@@ -848,6 +913,13 @@
                     <p>In <a href="https://github.com/Zaneris/passenger/issues">GitHub's issues</a>: say what you did, what
                         you expected and what happened, with the log (Help, Show Log). Fixes land on <code>main</code> and ship
                         in the next release's notes.</p>
+                </details>
+                <details>
+                    <summary>Can I use it with a screen reader?</summary>
+                    <p>Yes, on Windows and macOS: Narrator, NVDA, JAWS and VoiceOver read the code editor and the terminal by
+                        character, word and line, and hear completion, status messages and the trees. On Linux, Orca reads the
+                        line the caret is on. <a href="/accessibility">What each system gets</a>, and what isn't there
+                        yet.</p>
                 </details>
                 <details>
                     <summary>Can my coding agent use it?</summary>
@@ -902,9 +974,12 @@
                         the .NET it carries, whatever the machine has.</li>
                     <li><strong><a href="https://git-scm.com/downloads">Git</a></strong>, for version control.</li>
                     <li><strong><a href="https://nodejs.org/">Node.js</a></strong>, for JavaScript, TypeScript, HTML, CSS,
-                        JSON, Dockerfiles and YAML: 22.22.2 or later for TypeScript. C#, XAML, GDScript and shaders do
-                        without it.</li>
+                        JSON, Dockerfiles and YAML: 22.22.2 or later for TypeScript, 22.15 or later for YAML. C#, XAML,
+                        GDScript and shaders do without it.</li>
                     <li><strong>Chrome, Edge or another Chromium browser</strong>, for debugging Blazor's WebAssembly.</li>
+                    <li><strong>For mobile apps</strong>, .NET's workload for each platform, with the Android SDK and a JDK
+                        for Android, which Passenger installs once you agree, and Xcode on a Mac for iOS and Mac
+                        Catalyst. Android apps build on Windows, macOS and x64 Linux.</li>
                     <li><strong>A container engine running Linux containers</strong> (Docker Desktop, Colima, OrbStack,
                         Rancher Desktop, Podman or a remote engine), only for compose files, Dockerfiles and an AppHost's
                         containers.</li>
@@ -929,6 +1004,7 @@
             <a href="/containers">Containers and Aspire</a>
             <a href="/agents">Agents</a>
             <a href="/linux">Linux</a>
+            <a href="/accessibility">Accessibility</a>
             <a href="https://github.com/Zaneris/passenger/blob/main/LICENSE">Licence</a>
             <a href="https://github.com/Zaneris/passenger/blob/main/THIRD_PARTY_NOTICES.md">Third-party notices</a>
         </nav>
