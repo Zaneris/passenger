@@ -157,7 +157,8 @@ public sealed record StashInfo(int Index, string Commit, string Message, DateTim
 
 /// <summary>What looking for a folder's working tree found: the tree, or none; and why there is none where git cannot say:
 /// it refused the one it found (a repository another user owns, as on a FAT or network drive, until safe.directory names
-/// it), in its words, or it is not installed (<paramref name="Missing"/>), which leaves a repository there unread.</summary>
+/// it), in its words, it was not run in a folder not trusted (<see cref="UntrustedGit"/>), or it is not installed
+/// (<paramref name="Missing"/>), which leaves a repository there unread.</summary>
 public sealed record GitLookup(Git? Tree, string? Refused, bool Missing = false);
 
 /// <summary>What `git` says, and whether it said it without failing; and why a question it asked of the person (a login,
@@ -197,6 +198,10 @@ public sealed partial class Git
         if (top.Code == Absent)
         {
             return new GitLookup(null, top.Error, Missing: true);
+        }
+        if (top.Code == Withheld)
+        {
+            return new GitLookup(null, top.Error);
         }
         if (top.Succeeded && Places(top.Output) is ({ } root, { } gitDir))
         {
@@ -254,9 +259,10 @@ public sealed partial class Git
         string parent = System.IO.Path.GetDirectoryName(destination)!;
         Directory.CreateDirectory(parent);
         // After "--" a URL that begins with a dash is a URL, never an option such as --upload-pack.
-        if (await StartAsync(parent, ["clone", "--progress", "--", url, destination]) is not { } start)
+        (ProcessStartInfo? start, GitResult? refused) = await StartAsync(parent, ["clone", "--progress", "--", url, destination], cloning: true);
+        if (start is null)
         {
-            return NotInstalled;
+            return refused ?? NotInstalled;
         }
         await using Prompting? prompting = Asking(start, asker, held, cancel);
         start.RedirectStandardOutput = true;
@@ -1959,9 +1965,10 @@ public sealed partial class Git
     public Task<GitResult> ResetAsync(string hash, ResetMode mode) => RunAsync(Root, ["reset", $"--{mode.ToString().ToLowerInvariant()}", "--end-of-options", hash]);
 
     /// <summary>Puts files back as the last commit has them (Rollback): one added to the index but in no commit kept on
-    /// disk, unversioned; a submodule whose commit alone changed is checked out at the one recorded, one whose own files
-    /// changed left to its repository; an unversioned file, of which git has nothing, passed over. A file another program
-    /// holds is tried again (<see cref="Attempts"/>); one never let go of, and a submodule left, are named in the result.</summary>
+    /// disk, unversioned; a submodule whose commit alone changed is checked out at the one recorded (in a folder not trusted
+    /// only recorded so in the index), one whose own files changed left to its repository; an unversioned file, of which
+    /// git has nothing, passed over. A file another program holds is tried again (<see cref="Attempts"/>); one never let go
+    /// of, and a submodule left, are named in the result.</summary>
     public async Task<GitResult> RollbackAsync(IReadOnlyList<FileChange> changes)
     {
         FileChange[] ownChanges = [.. changes.Where(c => c.Submodule.HasFlag(SubmoduleChange.Submodule) && c.Kind is ChangeKind.Modified
@@ -1970,12 +1977,18 @@ public sealed partial class Git
         FileChange[] restoring = [.. changes.Where(c => c.Kind is not (ChangeKind.Unversioned or ChangeKind.Added))];
         string[] tracked = [.. restoring.SelectMany(c => c.From is { } from ? new[] { c.Path, from } : [c.Path]).Select(Relative)];
         string[] staged = [.. changes.Where(c => c.Kind is ChangeKind.Added).Select(c => Relative(c.Path))];
-        bool submodules = restoring.Any(c => c.Submodule.HasFlag(SubmoduleChange.Submodule));
-        GitResult restored = tracked.Length == 0 ? new GitResult(0, string.Empty, string.Empty) : await RestoreAsync(tracked, submodules);
+        FileChange[] submodules = [.. restoring.Where(c => c.Submodule.HasFlag(SubmoduleChange.Submodule))];
+        // Untrusted, git checks no submodule out (UntrustedGit): what the last commit records goes back in the index alone.
+        bool checksOut = WorkspaceTrust.Trusts(Root);
+        GitResult restored = tracked.Length == 0 ? new GitResult(0, string.Empty, string.Empty) : await RestoreAsync(tracked, submodules.Length > 0 && checksOut);
         // -f takes out a file changed again since it was added too, which --cached leaves on disk as it is now.
         GitResult unadded = staged.Length == 0 ? restored : await OnFilesAsync(["rm", "--cached", "-q", "-f", "--ignore-unmatch"], staged);
         restored = restored.Succeeded ? unadded : restored;
-        List<string> kept = [.. ownChanges.Select(c => $"{c.Name} was left as it is: a submodule's own changes are rolled back in it")];
+        List<string> kept =
+        [
+            .. ownChanges.Select(c => $"{c.Name} was left as it is: a submodule's own changes are rolled back in it"),
+            .. checksOut ? [] : submodules.Select(c => $"{c.Name} was left checked out as it is: a submodule is checked out at the commit recorded only in a trusted folder"),
+        ];
         if (kept.Count == 0)
         {
             return restored;
@@ -2258,9 +2271,10 @@ public sealed partial class Git
         {
             return (Gone(folder), default);
         }
-        if (await StartAsync(folder, arguments) is not { } start)
+        (ProcessStartInfo? start, GitResult? refused) = await StartAsync(folder, arguments);
+        if (start is null)
         {
-            return (NotInstalled, default);
+            return (refused ?? NotInstalled, default);
         }
         ChildProcesses.WithVariables(start, environment);
         await using Prompting? prompting = Asking(start, asker, held, cancel);
@@ -2347,6 +2361,10 @@ public sealed partial class Git
     /// <summary>What a call gives in place of git's exit code when what git wrote could not be read: none git exits with.</summary>
     private const int Unread = -1;
 
+    /// <summary>What a call gives in place of git's exit code when git was not run in a folder not trusted, as it could not
+    /// be kept from running the programs the repository names: none git exits with.</summary>
+    private const int Withheld = -2;
+
     /// <summary>Why a call has no answer from git where what it wrote could not be read, in the system's words.</summary>
     internal static GitResult ReadFailure(IOException failed) => new(Unread, string.Empty, $"git's output could not be read: {failed.Message}");
 
@@ -2368,21 +2386,26 @@ public sealed partial class Git
     /// commit, a working tree): the answer no to a question, which the log leaves out.</summary>
     private const int NotThere = 128;
 
-    /// <summary>How git is started for every call, or null when it is not installed.</summary>
-    private static async Task<ProcessStartInfo?> StartAsync(string folder, IReadOnlyList<string> arguments)
+    /// <summary>How git is started for every call; else why not: it is not installed, or in a folder the person has not
+    /// trusted it could not be kept from running the programs the repository names (<see cref="UntrustedGit"/>). A clone
+    /// (<paramref name="cloning"/>) reads no repository's configuration where it starts, making its own of the person's.</summary>
+    private static async Task<(ProcessStartInfo? Start, GitResult? Unstarted)> StartAsync(string folder, IReadOnlyList<string> arguments, bool cloning = false)
     {
         if (await Programs.GitAsync() is not { } git)
         {
-            return null;
+            return (null, NotInstalled);
         }
-        // In a folder the person has not trusted, git runs no program its repository's configuration names.
-        ProcessStartInfo start = ChildProcesses.Command(git, WorkspaceTrust.Trusts(folder) ? arguments : [.. await UntrustedGit.ArgumentsAsync(git, folder), .. arguments], folder);
+        ProcessStartInfo start = ChildProcesses.Command(git, arguments, folder);
+        if (!cloning && !WorkspaceTrust.Trusts(folder) && await UntrustedGit.FitAsync(start, git, folder) is { } why)
+        {
+            return (null, Directory.Exists(folder) ? new GitResult(Withheld, string.Empty, why) : Gone(folder));
+        }
         // Git never stops to ask on a terminal: it has none (ChildProcesses), and this keeps it from looking for one.
         start.Environment[GitVariables.TerminalPrompt] = "0";
         // A background status or diff never takes the index's lock, so a stash, commit or checkout then never fails on it.
         start.Environment[GitVariables.OptionalLocks] = "0";
         MsysGpg.FitGit(start);
-        return start;
+        return (start, null);
     }
 }
 

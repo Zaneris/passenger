@@ -43,4 +43,20 @@ public static class GitVariables
 
     /// <summary>The folder a push's objects wait in while its pre-receive hook runs.</summary>
     public const string QuarantinePath = "GIT_QUARANTINE_PATH";
+
+    /// <summary>How many settings git takes from its environment (<see cref="ConfigKey"/>, <see cref="ConfigValue"/>), over
+    /// every configuration file's.</summary>
+    public const string ConfigCount = "GIT_CONFIG_COUNT";
+
+    /// <summary>The protocols git may reach a remote by, whatever its configuration says; empty, none.</summary>
+    public const string AllowProtocol = "GIT_ALLOW_PROTOCOL";
+
+    /// <summary>"1" has git take every pathspec as written, a magic one (:/) too.</summary>
+    public const string LiteralPathspecs = "GIT_LITERAL_PATHSPECS";
+
+    /// <summary>The key of the environment's setting at <paramref name="at"/>, from 0, kept whole as written.</summary>
+    public static string ConfigKey(int at) => $"GIT_CONFIG_KEY_{at}";
+
+    /// <summary>The value of the environment's setting at <paramref name="at"/>, from 0.</summary>
+    public static string ConfigValue(int at) => $"GIT_CONFIG_VALUE_{at}";
 }

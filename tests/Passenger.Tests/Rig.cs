@@ -127,7 +127,7 @@ public sealed class TestRun : IAsyncDisposable
         Environment.SetEnvironmentVariable("GIT_CONFIG_NOSYSTEM", "1");
         // Configuration given on git's command line through the environment, which would come before the file's.
         OwnEnvironment.Set("GIT_CONFIG_PARAMETERS", null);
-        OwnEnvironment.Set("GIT_CONFIG_COUNT", null);
+        OwnEnvironment.Set(GitVariables.ConfigCount, null);
         // Nor the person's ssh-agent, which ssh-keygen asks first for the key a commit is signed with.
         OwnEnvironment.Set("SSH_AUTH_SOCK", null);
         // Nor the person's GnuPG keyring and agent: gpg keeps a signing test's keys in the run's.

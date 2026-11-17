@@ -2,8 +2,9 @@ using System.Text.RegularExpressions;
 
 namespace Passenger.Vcs;
 
-/// <summary>The keys of git's config Passenger reads and writes for who commits and how a commit is signed, each written
-/// here once, so a misspelt one is a build error rather than a setting git never finds.</summary>
+/// <summary>The keys of git's config Passenger reads and writes for who commits and how a commit is signed, and those it
+/// gives a git in a folder not trusted (<see cref="UntrustedGit"/>), each written here once, so a misspelt one is a build
+/// error rather than a setting git never finds.</summary>
 [IdentifierHome]
 public static class GitConfigKeys
 {
@@ -36,6 +37,15 @@ public static class GitConfigKeys
 
     /// <summary>The folder git runs hooks from in the repository's own hooks' place.</summary>
     public const string CoreHooksPath = "core.hooksPath";
+
+    /// <summary>Whether a checkout, a switch, a reset or a restore checks each submodule out too.</summary>
+    public const string SubmoduleRecurse = "submodule.recurse";
+
+    /// <summary>Whether a commit, a merge or a fetch runs git's maintenance after it.</summary>
+    public const string MaintenanceAuto = "maintenance.auto";
+
+    /// <summary>How many loose objects have a command run a gc after it; 0, never.</summary>
+    public const string GcAuto = "gc.auto";
 
     /// <summary>The committer's address.</summary>
     public const string UserEmail = "user.email";
