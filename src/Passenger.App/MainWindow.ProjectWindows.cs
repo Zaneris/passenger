@@ -89,13 +89,13 @@ public partial class MainWindow
         actions!.Add(new IdeAction(AppActions.NextProjectWindow, "Next Solution Window", "Window", _ => PassengerApp.Step(this, 1))
         {
             WhyNot = _ => OtherWindows(),
-            Menus = [new MenuPlace("Window", 3, 0)],
+            Menus = [new MenuPlace("Window", 4, 0)],
             FromTerminal = true,
         });
         actions.Add(new IdeAction(AppActions.PreviousProjectWindow, "Previous Solution Window", "Window", _ => PassengerApp.Step(this, -1))
         {
             WhyNot = _ => OtherWindows(),
-            Menus = [new MenuPlace("Window", 3, 1)],
+            Menus = [new MenuPlace("Window", 4, 1)],
             FromTerminal = true,
         });
         PassengerApp.FrontChanged += OnFrontChanged;

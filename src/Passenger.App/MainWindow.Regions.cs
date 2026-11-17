@@ -27,14 +27,14 @@ public partial class MainWindow
         actions!.Add(new IdeAction(AppActions.NextRegion, "Next Region", "Window", _ => GoRound(1))
         {
             WhyNot = c => c.ByAgent ? Refusals.PersonsKeys : null,
-            Menus = [new MenuPlace("Window", 4, 0)],
+            Menus = [new MenuPlace("Window", 3, 0)],
             FromTerminal = true,
             Words = ["Next Pane", "Next Area", "Focus Next"],
         });
         actions.Add(new IdeAction(AppActions.PreviousRegion, "Previous Region", "Window", _ => GoRound(-1))
         {
             WhyNot = c => c.ByAgent ? Refusals.PersonsKeys : null,
-            Menus = [new MenuPlace("Window", 4, 1)],
+            Menus = [new MenuPlace("Window", 3, 1)],
             FromTerminal = true,
             Words = ["Previous Pane", "Previous Area", "Focus Previous"],
         });

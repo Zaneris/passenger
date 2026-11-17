@@ -342,8 +342,9 @@ public sealed class ProjectWindowsTests : ProjectWindowsFolders
         Assert.Equal(Shortcut.Parse(OperatingSystem.IsMacOS() ? "meta shift alt BACK_QUOTE" : "control alt OPEN_BRACKET"), AppActions.Keymap().ShortcutsFor(AppActions.PreviousProjectWindow)[0]);
 
         NativeMenuItemBase[] items = [.. Ui.Submenu(first.MenuBar, "Window").Items];
-        string[] tail = [.. items.TakeLast(5).Select(i => (i as NativeMenuItem)?.Header ?? "-")];
-        Assert.Equal(["Next Solution Window", "Previous Solution Window", "-", alphaName, betaName], tail);
+        // The keys' way round this window's regions, then the way between the windows, then the windows, each a group.
+        string[] tail = [.. items.TakeLast(8).Select(i => (i as NativeMenuItem)?.Header ?? "-")];
+        Assert.Equal(["Next Region", "Previous Region", "-", "Next Solution Window", "Previous Solution Window", "-", alphaName, betaName], tail);
         NativeMenuItem[] listed = [.. items.TakeLast(2).Cast<NativeMenuItem>()];
         Assert.True(listed[0].IsChecked && !listed[1].IsChecked, "The Window menu does not check the window it is in");
 

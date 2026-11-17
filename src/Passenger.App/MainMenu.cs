@@ -55,7 +55,7 @@ public static class MainMenu
         new("Code/Folding", 3, 0),
         new("Window/Layout Settings", 0, 0),
         new("Window/Editor Tabs", 1, 0),
-        new("Window/" + OpenSolutionWindows, 4, 0),
+        new("Window/" + OpenSolutionWindows, 5, 0),
     ];
 
     private static readonly MenuEntry Separator = new(null);
