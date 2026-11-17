@@ -312,15 +312,17 @@ public sealed class McpReachTests : McpRig
         }
     }
 
-    /// <summary>The C# language server's folder of library code in the temporary folder is an agent's to read where it is the
-    /// person's own, edit refusing a file there as read-only by where it lies; where a link stands in its place (as another
-    /// user of a shared /tmp may leave one) leading to a folder of the person's, nothing through it is read or changed.</summary>
+    /// <summary>The C# language server's folder of library code in the temporary folder it takes (on Linux one of the
+    /// person's own, never the shared /tmp) is an agent's to read where it is the person's own, edit refusing a file there as
+    /// read-only by where it lies; where a link stands in the temporary folder's place (as another user of a shared /tmp may
+    /// leave one) leading to a folder of the person's, nothing through it is read or changed.</summary>
     [Fact]
     public async Task An_agent_reads_the_language_servers_library_code_only_where_its_folder_is_the_persons_own()
     {
         (string folder, string elsewhere, string secret) = WorkAndHome();
         string root = Path.GetDirectoryName(folder)!;
-        string own = Directory.CreateDirectory(Path.Combine(root, "own-temporary", "MetadataAsSource", "Library")).FullName;
+        string serverTemporary = Passenger.Lsp.RoslynServerFolder.Temporary(Path.Combine(OwnState, "cache")) ?? Path.Combine(root, "own-temporary");
+        string own = Directory.CreateDirectory(Path.Combine(serverTemporary, "MetadataAsSource", "Library")).FullName;
         string stub = TestFolders.Write(own, "Greeter.cs", "namespace Library;\n\npublic class Greeter\n{\n}\n");
         await using (McpClient client = await Start(["--mcp", folder], environment: Temporary(Path.Combine(root, "own-temporary")), languageServer: false))
         {

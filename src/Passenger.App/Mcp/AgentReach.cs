@@ -5,6 +5,7 @@ using Passenger.App.Packages;
 using Passenger.App.Web;
 using Passenger.App.Xaml;
 using Passenger.Core;
+using Passenger.Lsp;
 using Passenger.Text;
 using Passenger.Workspace;
 
@@ -48,16 +49,17 @@ public static class AgentReach
     public static void Opened(string path) => Written.TryRemove(path, out _);
 
     /// <summary>Where the C# language server writes what Go to Declaration of a library's symbol opens (its metadata as code,
-    /// decompiled, or its source from its PDB or Source Link), in the temporary folder it takes from Passenger's environment,
-    /// made the person's own (<see cref="UserTemporary.Own"/>); null where it is not theirs (a link, another user's folder
-    /// on a shared /tmp), which no agent then reads in.</summary>
+    /// decompiled, or its source from its PDB or Source Link), in the temporary folder it takes (<see
+    /// cref="RoslynServerFolder.Temporary"/>, else Passenger's own), made the person's own (<see cref="UserTemporary.Own"/>);
+    /// null where it is not theirs (a link, another user's folder on a shared /tmp), which no agent then reads in.</summary>
     public static string? ServerStubs => Stubs.Value;
 
     private static readonly Lazy<string?> Stubs = new(() =>
     {
         try
         {
-            return PathNames.Canonical(UserTemporary.Own(Path.Combine(Path.GetTempPath(), "MetadataAsSource")));
+            string temporary = RoslynServerFolder.Temporary(CSharpService.ServerCache) ?? Path.GetTempPath();
+            return PathNames.Canonical(UserTemporary.Own(Path.Combine(temporary, "MetadataAsSource")));
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {

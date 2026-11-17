@@ -1578,6 +1578,11 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         Ui.WaitFor(() => window.EditorArea.Active?.IsDecompiled == true, "the decompiled source to open");
         Passenger.App.Workspace.OpenDocument decompiled = window.EditorArea.Active!;
         Assert.Equal("Int32.cs", decompiled.Name);
+        // On Linux, whose /tmp every user shares, in a temporary folder of the person's own.
+        if (Passenger.Lsp.RoslynServerFolder.Temporary(Passenger.App.CSharp.CSharpService.ServerCache) is { } own)
+        {
+            Assert.True(PathNames.IsUnder(decompiled.Path, PathNames.Canonical(own)), $"The language server wrote {decompiled.Path}, outside the temporary folder of the person's own it was given, {own}");
+        }
         Assert.Contains("struct Int32", decompiled.Text.Snapshot.ToString(), StringComparison.Ordinal);
         Assert.Contains("struct Int32", decompiled.Text.Snapshot.GetLineText(editor.CaretPosition.Line), StringComparison.Ordinal);
 

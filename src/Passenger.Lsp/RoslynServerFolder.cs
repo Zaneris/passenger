@@ -18,6 +18,31 @@ public static class RoslynServerFolder
     /// <summary>Where the app carries the server.</summary>
     public static string Carried => Path.Combine(AppContext.BaseDirectory, "roslyn");
 
+    /// <summary>The variable a program on Linux takes its temporary folder from.</summary>
+    public const string TemporaryVariable = "TMPDIR";
+
+    /// <summary>The temporary folder the server takes (TMPDIR), where it writes what Go to Declaration opens of a library
+    /// (MetadataAsSource): on Linux, whose /tmp every user shares, a folder of the person's own for the state's cache
+    /// (<see cref="UserTemporary.Of"/>, made theirs by <see cref="UserTemporary.Own"/>), so another user's folder there
+    /// neither takes its writes nor fails it; null where the server takes Passenger's own, the person's alone elsewhere,
+    /// or where none of theirs could be made.</summary>
+    public static string? Temporary(string stateCache)
+    {
+        if (!OperatingSystem.IsLinux())
+        {
+            return null;
+        }
+        try
+        {
+            return UserTemporary.Own(UserTemporary.Of(stateCache, "roslyn"));
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            PassengerLog.Write($"The C# language server takes the shared temporary folder: {error.Message}");
+            return null;
+        }
+    }
+
     /// <summary>The folder the server writes its caches to, under the one it runs from: never part of a copy or its stamp.</summary>
     private const string Written = "cache";
 
