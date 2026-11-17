@@ -1,4 +1,5 @@
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
 using Avalonia;
@@ -214,8 +215,93 @@ public sealed partial class UiaTextTests
         Assert.True(window.Handle == 0 && window.Provider == 0, "A window taken down still holds the element for UI Automation");
     }
 
+    /// <summary>Editors and a terminal a reader touched (asked their window for the element, kept a range of the text) are let
+    /// go of once closed, the range kept holding nothing of them and answering that its element is gone; on Windows
+    /// their windows are taken down too.</summary>
+    [AvaloniaFact]
+    public void Editors_and_a_terminal_a_reader_touched_are_let_go_of_once_closed_and_on_Windows_their_windows_with_them()
+    {
+        List<nint> kept = [];
+        try
+        {
+            List<(WeakReference<Control> Control, nint Window)> closed = [.. Enumerable.Range(0, 3).Select(_ => EditorTouchedThenClosed(kept)), TerminalTouchedThenClosed(kept)];
+            foreach ((WeakReference<Control> control, _) in closed)
+            {
+                Ui.Collected(control, "A control a reader touched, closed, is still alive: the reader's element keeps it, with its text, for as long as the process runs");
+            }
+            if (OperatingSystem.IsWindows())
+            {
+                Ui.WaitFor(() => closed.All(c => !IsWindow(c.Window)),
+                    () => $"{closed.Count(c => IsWindow(c.Window))} of the {closed.Count} closed controls' windows still stand, each holding its element for UI Automation");
+            }
+            foreach (nint pointer in kept)
+            {
+                UiaTextRange range = Uia.From<UiaTextRange>(pointer) ?? throw new Xunit.Sdk.XunitException("A range handed out is none of Passenger's");
+                (long held, string most) = HeldBytes.Of(range, o => o is Avalonia.Threading.Dispatcher);
+                Assert.True(held < 4096, $"A range a reader keeps of a closed control holds {held:N0} bytes, the most in {most}");
+                InvalidOperationException gone = Assert.Throws<InvalidOperationException>(() => range.GetText(-1));
+                Assert.True(gone.HResult == Uia.ElementNotAvailable, $"Reading a range of a closed control answered {gone.HResult:X8}, not that its element is gone");
+            }
+        }
+        finally
+        {
+            kept.ForEach(pointer => Marshal.Release(pointer));
+        }
+    }
+
+    /// <summary>An editor of a long text a reader touched, then closed: held here only weakly, with its window's handle.</summary>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static (WeakReference<Control>, nint) EditorTouchedThenClosed(List<nint> kept)
+    {
+        EditorRig rig = new(string.Concat(Enumerable.Repeat(Notes, 5_000)));
+        nint window = Touched(rig.Editor, rig.Editor.AccessibleText, kept);
+        rig.Window.Close();
+        Ui.Settle();
+        return (new WeakReference<Control>(rig.Editor), window);
+    }
+
+    /// <summary>A terminal a reader touched, then closed: held here only weakly, with its window's handle.</summary>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static (WeakReference<Control>, nint) TerminalTouchedThenClosed(List<nint> kept)
+    {
+        TerminalSession session = new(40, 5);
+        TerminalView view = new() { Session = session };
+        Window shown = new() { Width = 500, Height = 200, Content = view };
+        shown.Show();
+        Ui.Settle();
+        session.Say("one\r\ntwo words\r\n");
+        nint window = Touched(view, view.AccessibleText, kept);
+        shown.Close();
+        Ui.Settle();
+        return (new WeakReference<Control>(view), window);
+    }
+
+    /// <summary>Touches a control as a reader does: asks its window for the element (on Windows) and keeps a range of its
+    /// text; answers the window's handle, zero elsewhere.</summary>
+    private static nint Touched(Control control, AccessibleText text, List<nint> kept)
+    {
+        UiaTextElement element;
+        nint window = 0;
+        if (OperatingSystem.IsWindows())
+        {
+            element = UiaTextElement.Hosted(control, text) ?? throw new Xunit.Sdk.XunitException("Windows made no window for the element");
+            window = element.Window?.Handle ?? 0;
+            Assert.True(window != 0 && SendMessage(window, 0x003D, 0, Uia.RootObjectId) != 0, "The element's window answered UI Automation with no element");
+        }
+        else
+        {
+            element = UiaTextElement.Unhosted(control, text);
+        }
+        kept.Add(Uia.Of<ITextRangeProvider>(element.Range(0, 10)));
+        return window;
+    }
+
     [LibraryImport("user32.dll", EntryPoint = "SendMessageW")]
     private static partial nint SendMessage(nint window, uint message, nint wParam, nint lParam);
+
+    [LibraryImport("user32.dll", EntryPoint = "IsWindow")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool IsWindow(nint window);
 
     [LibraryImport("user32.dll", EntryPoint = "DestroyWindow")]
     [return: MarshalAs(UnmanagedType.Bool)]

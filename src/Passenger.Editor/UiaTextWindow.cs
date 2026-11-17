@@ -12,8 +12,8 @@ namespace Passenger.Editor.UiAutomation;
 /// <summary>The window of Passenger's own UI Automation finds a <see cref="UiaTextElement"/> by: a child of the window
 /// holding its control, laid over the control and kept there through every layout, never drawn (wholly transparent),
 /// passing every click through to the window beneath and the keys back to it; WM_GETOBJECT answered with the element.
-/// Taken out of the window while its control is out of it, as UI Automation reads it only where it stands. UI thread
-/// only.</summary>
+/// Taken out of the window while its control is out of it, as UI Automation reads it only where it stands, and taken down
+/// once its control is let go of (<see cref="LetGo"/>). UI thread only.</summary>
 [SupportedOSPlatform("windows")]
 internal sealed unsafe partial class UiaTextWindow
 {
@@ -41,8 +41,12 @@ internal sealed unsafe partial class UiaTextWindow
     private const uint HideWindow = 0x80;
     private const uint NoOwnerZOrder = 0x200;
 
-    /// <summary>Each window of Passenger's own by its handle, for the window procedure.</summary>
+    /// <summary>Each window of Passenger's own by its handle, for the window procedure, until Windows takes it down; each
+    /// holds its control only weakly.</summary>
     private static readonly Dictionary<nint, UiaTextWindow> windows = [];
+
+    /// <summary>What takes each control's windows down, kept beside the control.</summary>
+    private static readonly ConditionalWeakTable<Control, LetGo> lettingGo = [];
 
     private static ushort windowClass;
 
@@ -58,8 +62,8 @@ internal sealed unsafe partial class UiaTextWindow
     private PixelRect? placed;
 
     /// <summary>The window of Avalonia's it stands in, whose close takes it out first, as Windows takes down a window's
-    /// children with it.</summary>
-    private TopLevel? holding;
+    /// children with it; held weakly, as a client keeping the element keeps this.</summary>
+    private WeakReference<TopLevel>? holding;
 
     public UiaTextWindow(UiaTextElement element)
     {
@@ -70,6 +74,7 @@ internal sealed unsafe partial class UiaTextWindow
         windows[Handle] = this;
         Provider = Uia.Of<IRawElementProviderSimple>(element);
         Control owner = element.Owner;
+        lettingGo.GetValue(owner, static kept => new LetGo(kept.Dispatcher)).Add(this);
         owner.LayoutUpdated += (_, _) => Follow();
         owner.AttachedToVisualTree += (_, _) => Follow();
         owner.DetachedFromVisualTree += (_, _) => Follow();
@@ -97,11 +102,11 @@ internal sealed unsafe partial class UiaTextWindow
         }
         Control owner = element.Owner;
         TopLevel? top = TopLevel.GetTopLevel(owner);
-        if (!ReferenceEquals(top, holding))
+        if (!ReferenceEquals(top, Holding))
         {
-            holding?.Closed -= TakeOut;
-            holding = top;
-            holding?.Closed += TakeOut;
+            Holding?.Closed -= TakeOut;
+            holding = top is null ? null : new WeakReference<TopLevel>(top);
+            top?.Closed += TakeOut;
             nint holder = top is null ? 0 : HandleOf(top);
             Place(null);
             parent = holder == 0 ? Aside() : holder;
@@ -123,9 +128,13 @@ internal sealed unsafe partial class UiaTextWindow
     private void HandFocusBack()
     {
         SetFocus(parent);
-        Control owner = element.Owner;
-        owner.Dispatcher.Post(() => owner.Focus());
+        if (element.Holds(out Control? owner))
+        {
+            owner.Dispatcher.Post(() => owner.Focus());
+        }
     }
+
+    private TopLevel? Holding => holding is not null && holding.TryGetTarget(out TopLevel? top) ? top : null;
 
     /// <summary>Takes the window out of a window closing, held aside out of sight.</summary>
     private void TakeOut(object? sender, EventArgs e)
@@ -156,9 +165,21 @@ internal sealed unsafe partial class UiaTextWindow
         }
     }
 
-    /// <summary>Lets go of the element, its window taken down by Windows with the window it stood in.</summary>
+    /// <summary>Takes the window down once its control is let go of, Windows' WM_DESTROY letting go of the element.</summary>
+    private void TakeDown()
+    {
+        if (Handle != 0)
+        {
+            DestroyWindow(Handle);
+        }
+    }
+
+    /// <summary>Lets go of the element, its window taken down by Windows, with the window it stood in or once its control
+    /// is let go of.</summary>
     private void Destroyed()
     {
+        Holding?.Closed -= TakeOut;
+        holding = null;
         windows.Remove(Handle);
         Uia.UiaReturnRawElementProvider(Handle, 0, 0, 0);
         Uia.UiaDisconnectProvider(Provider);
@@ -237,6 +258,17 @@ internal sealed unsafe partial class UiaTextWindow
     /// Windows.</summary>
     private static void ReportLater(Exception failed) => Dispatcher.UIThread.Post(() => PassengerLog.Report(failed));
 
+    /// <summary>Takes a control's windows down on its UI thread once the control is let go of: kept beside the control
+    /// alone (<see cref="lettingGo"/>), it is finalized only after the control is collected.</summary>
+    private sealed class LetGo(Dispatcher dispatcher)
+    {
+        private readonly List<UiaTextWindow> made = [];
+
+        public void Add(UiaTextWindow window) => made.Add(window);
+
+        ~LetGo() => dispatcher.Post(() => made.ForEach(window => window.TakeDown()), DispatcherPriority.Background);
+    }
+
     [StructLayout(LayoutKind.Sequential)]
     private struct WindowClass
     {
@@ -263,6 +295,10 @@ internal sealed unsafe partial class UiaTextWindow
 
     [LibraryImport("user32.dll", EntryPoint = "DefWindowProcW")]
     private static partial nint DefWindowProc(nint handle, uint message, nint wParam, nint lParam);
+
+    [LibraryImport("user32.dll", EntryPoint = "DestroyWindow")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool DestroyWindow(nint handle);
 
     [LibraryImport("user32.dll", EntryPoint = "SetFocus")]
     private static partial nint SetFocus(nint handle);

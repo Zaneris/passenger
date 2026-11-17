@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Runtime.InteropServices.Marshalling;
@@ -19,7 +20,9 @@ namespace Passenger.Editor.UiAutomation;
 /// with the text pattern, its ranges (<see cref="UiaTextRange"/>) read from <see cref="AccessibleText"/> as asked, and the
 /// caret's line as its value. Avalonia's bridge has no text pattern, so the control's peer is Avalonia's own for a native
 /// window, held over the control (<see cref="UiaTextWindow"/>), whose element this is: focus and text are one element.
-/// UI Automation asks on threads of its own; each answer is read on the UI thread, where the control is.</summary>
+/// UI Automation asks on threads of its own; each answer is read on the UI thread, where the control is. A client keeps
+/// the element and its ranges as long as it likes, so they hold the control only weakly, answering
+/// UIA_E_ELEMENTNOTAVAILABLE once it is let go of.</summary>
 [GeneratedComClass]
 internal sealed partial class UiaTextElement :
     IRawElementProviderSimple,
@@ -44,8 +47,16 @@ internal sealed partial class UiaTextElement :
     /// <summary>The window UI Automation finds this element by, null where the element is read without one.</summary>
     private UiaTextWindow? window;
 
-    /// <summary>The control's peer in Avalonia's tree, null where the element is read without one.</summary>
-    private AutomationPeer? peer;
+    /// <summary>The control's peer in Avalonia's tree, which the control keeps; null where the element is read without
+    /// one.</summary>
+    private WeakReference<AutomationPeer>? peer;
+
+    private readonly WeakReference<Control> owner;
+
+    private readonly WeakReference<AccessibleText> text;
+
+    /// <summary>The control's UI thread, where each answer is read.</summary>
+    private readonly Dispatcher dispatcher;
 
     /// <summary>Whether the text changed since UI Automation was last told, so a key that changes it in pieces tells
     /// once.</summary>
@@ -53,8 +64,9 @@ internal sealed partial class UiaTextElement :
 
     private UiaTextElement(Control owner, AccessibleText text)
     {
-        Owner = owner;
-        Text = text;
+        this.owner = new WeakReference<Control>(owner);
+        this.text = new WeakReference<AccessibleText>(text);
+        dispatcher = owner.Dispatcher;
     }
 
     /// <summary>Follows the text and the control's name, to tell UI Automation as they change.</summary>
@@ -73,9 +85,14 @@ internal sealed partial class UiaTextElement :
         return this;
     }
 
-    public Control Owner { get; }
+    /// <summary>The control, refused as UIA_E_ELEMENTNOTAVAILABLE once it is let go of.</summary>
+    public Control Owner => owner.TryGetTarget(out Control? kept) ? kept : throw Gone();
 
-    public AccessibleText Text { get; }
+    /// <summary>The control's text, refused as UIA_E_ELEMENTNOTAVAILABLE once the control is let go of.</summary>
+    public AccessibleText Text => text.TryGetTarget(out AccessibleText? kept) ? kept : throw Gone();
+
+    /// <summary>Whether the control is still kept, and it.</summary>
+    internal bool Holds([NotNullWhen(true)] out Control? control) => owner.TryGetTarget(out control);
 
     /// <summary>Raised with each UI Automation event this element tells, whether or not anything listens.</summary>
     internal event Action<int>? Told;
@@ -86,10 +103,20 @@ internal sealed partial class UiaTextElement :
     [SupportedOSPlatform("windows")]
     public static AutomationPeer? PeerFor(Control owner, AccessibleText text)
     {
-        if (WindowPeer is not { } made || UiaTextWindow.HandleOf(owner) == 0)
+        if (WindowPeer is not { } made || UiaTextWindow.HandleOf(owner) == 0 || Hosted(owner, text) is not { window: { } window } element)
         {
             return null;
         }
+        AutomationPeer peer = (AutomationPeer)made.Invoke([new PlatformHandle(window.Handle, "HWND")]);
+        element.peer = new WeakReference<AutomationPeer>(peer);
+        return peer;
+    }
+
+    /// <summary>An element with a window of its own for UI Automation to find it by, listening; null where Windows made no
+    /// window (reported).</summary>
+    [SupportedOSPlatform("windows")]
+    internal static UiaTextElement? Hosted(Control owner, AccessibleText text)
+    {
         UiaTextElement element = new(owner, text);
         try
         {
@@ -100,10 +127,12 @@ internal sealed partial class UiaTextElement :
             PassengerLog.Report(failed);
             return null;
         }
-        element.peer = (AutomationPeer)made.Invoke([new PlatformHandle(element.window.Handle, "HWND")]);
-        element.Listening();
-        return element.peer;
+        return element.Listening();
     }
+
+    /// <summary>The window UI Automation finds this element by, null where it is read without one or Windows took it
+    /// down.</summary>
+    internal UiaTextWindow? Window => window;
 
     /// <summary>An element read without a window of its own, as a test reads it.</summary>
     internal static UiaTextElement Unhosted(Control owner, AccessibleText text) => new UiaTextElement(owner, text).Listening();
@@ -217,7 +246,7 @@ internal sealed partial class UiaTextElement :
     /// Automation calls it; zero for none.</summary>
     private nint Neighbour(int step)
     {
-        if (peer is null || NodeOf is null || ParentPeer() is not { } parent)
+        if (Peer is not { } own || NodeOf is null || ParentPeer(own) is not { } parent)
         {
             return 0;
         }
@@ -225,7 +254,7 @@ internal sealed partial class UiaTextElement :
         if (step != 0)
         {
             IReadOnlyList<AutomationPeer> children = parent.GetChildren();
-            int at = children.Select((child, i) => ReferenceEquals(child, peer) ? i : -1).FirstOrDefault(i => i >= 0, -1);
+            int at = children.Select((child, i) => ReferenceEquals(child, own) ? i : -1).FirstOrDefault(i => i >= 0, -1);
             found = at >= 0 && at + step >= 0 && at + step < children.Count ? children[at + step] : null;
         }
         if (found is null || NodeOf.Invoke(null, [found]) is not { } node)
@@ -246,9 +275,9 @@ internal sealed partial class UiaTextElement :
 
     /// <summary>The peer's parent: the peer of the nearest control holding the control, which takes it as its child as
     /// it lists its children.</summary>
-    private AutomationPeer? ParentPeer()
+    private AutomationPeer? ParentPeer(AutomationPeer own)
     {
-        if (peer?.GetParent() is { } parent)
+        if (own.GetParent() is { } parent)
         {
             return parent;
         }
@@ -256,8 +285,13 @@ internal sealed partial class UiaTextElement :
         {
             ControlAutomationPeer.CreatePeerForElement(holder).GetChildren();
         }
-        return peer?.GetParent();
+        return own.GetParent();
     }
+
+    private AutomationPeer? Peer => peer is not null && peer.TryGetTarget(out AutomationPeer? kept) ? kept : null;
+
+    /// <summary>What the element's questions answer once its control is let go of: UIA_E_ELEMENTNOTAVAILABLE.</summary>
+    private static InvalidOperationException Gone() => new("The control was let go of") { HResult = Uia.ElementNotAvailable };
 
     /// <summary>A range of the text from <paramref name="start"/> to <paramref name="end"/>.</summary>
     internal UiaTextRange Range(int start, int end) => new(this, start, end);
@@ -277,12 +311,11 @@ internal sealed partial class UiaTextElement :
     /// <summary>Reads an answer on the control's UI thread for UI Automation's thread, which waits for it.</summary>
     internal T OnUi<T>(Func<T> read)
     {
-        Dispatcher owner = Owner.Dispatcher;
-        if (owner.CheckAccess())
+        if (dispatcher.CheckAccess())
         {
             return read();
         }
-        Task<T> answer = owner.InvokeAsync(read).GetTask();
+        Task<T> answer = dispatcher.InvokeAsync(read).GetTask();
         // UI Automation's own thread waits as its caller does; the UI thread never waits for it.
         Blocking.Until(answer);
         return answer.IsCompletedSuccessfully ? answer.Result
@@ -331,7 +364,7 @@ internal sealed partial class UiaTextElement :
             return;
         }
         changeTold = false;
-        Owner.Dispatcher.Post(() =>
+        dispatcher.Post(() =>
         {
             changeTold = true;
             Tell(Uia.TextChangedEvent);
