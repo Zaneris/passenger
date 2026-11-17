@@ -153,6 +153,7 @@ public partial class MainWindow
         });
         Closed += (_, _) => EndChatAgent();
         reviewMarking = new Debounce(TimeSpan.FromMilliseconds(250), MarkReviewAsync);
+        projectLooking = new Debounce(TimeSpan.FromMilliseconds(400), () => AddNewProjectsAsync(Chat));
         // A file opened while the agent's changes to it wait, and every edit of one, is marked again once typing pauses.
         Editors.Opened += (_, document) =>
         {
@@ -886,9 +887,8 @@ public partial class MainWindow
         }
         using CancellationTokenSource turn = new();
         chatTurn = turn;
-        // A file system's times are coarse: a project written in the turn's first moment counts as the turn's.
-        DateTime began = DateTime.UtcNow.AddSeconds(-2);
         view.Asked(text);
+        projectsBefore = Folder is { } folder && Solution is not null ? await ProjectFilesAsync(folder) : null;
         try
         {
             TurnEnded ended = await agent.Session.PromptAsync(text, turn.Token);
@@ -902,7 +902,7 @@ public partial class MainWindow
                 "refusal" => "The agent declined to answer",
                 _ => $"Stopped: {ended.StopReason}",
             });
-            await OfferNewProjectsAsync(view, began);
+            await AddNewProjectsAsync(view);
         }
         catch (AcpError error) when (error.IsAuthRequired)
         {
@@ -918,52 +918,55 @@ public partial class MainWindow
         finally
         {
             chatTurn = null;
+            projectsBefore = null;
         }
     }
 
-    /// <summary>The projects the chat has offered to add to the solution, each offered once.</summary>
+    /// <summary>The projects the chat has added to the solution, each once.</summary>
     private readonly HashSet<string> offeredProjects = new(PathNames.Comparer);
 
-    /// <summary>A project the agent made in the turn (by an edit or a command, dotnet new) that the open solution does not
-    /// list: the Explorer's Solution view shows only the solution's projects, so the chat says why it is not there and
-    /// offers to add it, as one command Undo takes back.</summary>
-    private async Task OfferNewProjectsAsync(ChatView view, DateTime since)
+    /// <summary>The folder's project files as the turn began, null outside a turn: what the agent makes is any other.</summary>
+    private HashSet<string>? projectsBefore;
+
+    /// <summary>Looks again for projects the agent made once its steps pause, so one is in the solution as it is made.</summary>
+    private Debounce? projectLooking;
+
+    /// <summary>The folder's project files, walked off the window's thread; none where the folder cannot be read.</summary>
+    private static async Task<HashSet<string>> ProjectFilesAsync(string folder)
     {
-        if (Solution is not { } solution || Folder is not { } folder)
+        try
+        {
+            return await BackgroundWork.Run(() => new HashSet<string>(PathNames.FilesUnder(folder, sub => !Passenger.Workspace.IgnoredFolders.Is(sub))
+                .SelectMany(found => found.Files)
+                .Where(file => Path.GetExtension(file) is ".csproj" or ".fsproj" or ".vbproj"), PathNames.Comparer));
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            return new HashSet<string>(PathNames.Comparer);
+        }
+    }
+
+    /// <summary>A project the agent made in the turn (by an edit or a command, dotnet new) that the open solution does not
+    /// list goes in the solution as soon as it is made, so the Explorer's Solution view shows it, and each file the agent
+    /// writes in it, as the agent works, rather than once all is written; the reply says so, and Undo takes it back. A
+    /// project the folder had before the turn is left as it is.</summary>
+    private async Task AddNewProjectsAsync(ChatView view)
+    {
+        if (projectsBefore is not { } before || Solution is not { } solution || Folder is not { } folder)
         {
             return;
         }
         HashSet<string> listed = new(solution.Projects.Select(project => PathNames.Canonical(project.Path)), PathNames.Comparer);
-        string[] made;
-        try
-        {
-            made = await BackgroundWork.Run(() => PathNames.FilesUnder(folder, sub => !Passenger.Workspace.IgnoredFolders.Is(sub))
-                .SelectMany(found => found.Files)
-                .Where(file => Path.GetExtension(file) is ".csproj" or ".fsproj" or ".vbproj" && File.GetLastWriteTimeUtc(file) >= since)
-                .ToArray());
-        }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        HashSet<string> now = await ProjectFilesAsync(folder);
+        string[] made = [.. now.Where(project => !before.Contains(project) && !listed.Contains(project) && offeredProjects.Add(project))];
+        if (made.Length == 0)
         {
             return;
         }
-        string[] missing = [.. made.Where(project => !listed.Contains(project) && offeredProjects.Add(project))];
-        if (missing.Length == 0)
-        {
-            return;
-        }
-        string names = Plural.Listed([.. missing.Select(Path.GetFileNameWithoutExtension).OfType<string>()]);
-        view.Suggest(
-            $"The agent made {names}, which {Path.GetFileName(solution.Path)} does not list, so the Explorer's Solution view does not show {(missing.Length == 1 ? "it" : "them")} (its Files view does).",
-            "Add to the solution",
-            $"Added {names} to the solution",
-            () =>
-            {
-                Task adding = AddProjectsToSolutionAsync(missing);
-                BackgroundWork.Track(adding);
-                IdeErrors.Observe(adding);
-            });
+        await AddProjectsToSolutionAsync(made);
+        string names = Plural.Listed([.. made.Select(Path.GetFileNameWithoutExtension).OfType<string>()]);
+        view.Notice($"Added {names} to {Path.GetFileName(solution.Path)} as the agent made {(made.Length == 1 ? "it" : "them")}, so the Explorer shows {(made.Length == 1 ? "its" : "their")} files as they are written (Undo takes it back).");
     }
-
     /// <summary>Shows what the agent says and does on the window's thread, and puts each question it asks before it acts
     /// to the person as a card, its answer the one clicked: an edit with its diff, the file read for its text before
     /// where the agent sent none.</summary>
@@ -1007,6 +1010,11 @@ public partial class MainWindow
             OnWindowThread(() =>
             {
                 view.Tool(shown);
+                if (done || call.Status is "completed" or "failed")
+                {
+                    // A step done may have made a project (an edit, dotnet new): it goes in the solution now.
+                    projectLooking?.Restart();
+                }
                 if (done)
                 {
                     view.Counted(call.Id, these.Sum(file => file.Added), these.Sum(file => file.Removed),

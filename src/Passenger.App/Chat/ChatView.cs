@@ -331,11 +331,11 @@ public sealed class ChatView : DockPanel
         header.IsVisible = conversation.IsVisible = composer.IsVisible = false;
     }
 
-    /// <summary>A note at the end of the conversation, framed: what just happened that is no one's message ("You're signed
-    /// in as …").</summary>
+    /// <summary>A note, framed, in the agent's reply while it works, else at the end of the conversation: what just happened
+    /// that is no one's message ("You're signed in as …", "Added New.Api to the solution").</summary>
     public void Notice(string text)
     {
-        messages.Children.Add(new Border
+        (reply ?? messages).Children.Add(new Border
         {
             Classes = { StyleClasses.Framed },
             Padding = new Thickness(10, 8),
@@ -355,7 +355,7 @@ public sealed class ChatView : DockPanel
     }
 
     /// <summary>The notes the conversation shows, for a test to read.</summary>
-    public IEnumerable<string> Notices => messages.Children.OfType<Border>().Select(note => note.Child).OfType<StackPanel>()
+    public IEnumerable<string> Notices => messages.GetLogicalDescendants().OfType<Border>().Select(note => note.Child).OfType<StackPanel>()
         .SelectMany(panel => panel.Children.OfType<TextBlock>()).Select(text => text.Text ?? string.Empty);
 
     /// <summary>Who the agent is signed in as, for the account's menu: their email or account's name, and the plan.</summary>
@@ -810,36 +810,6 @@ public sealed class ChatView : DockPanel
         Working(false, null);
         ToEnd();
     }
-
-    /// <summary>A note at the end of the conversation offering one thing to do about what the agent did ("ExpenseTracker.Api
-    /// is not in the solution", Add to the solution): a click does it once, the link then saying it is done.</summary>
-    public void Suggest(string text, string action, string done, Action act)
-    {
-        Button link = new() { Classes = { StyleClasses.Link }, Content = action, HorizontalAlignment = HorizontalAlignment.Left };
-        link.Click += (_, _) =>
-        {
-            link.IsEnabled = false;
-            link.Content = done;
-            act();
-        };
-        Border note = new()
-        {
-            Classes = { StyleClasses.Framed },
-            Padding = new Thickness(10, 8),
-            Child = new StackPanel
-            {
-                Spacing = 6,
-                Children = { new TextBlock { Classes = { StyleClasses.Muted }, Text = text, TextWrapping = TextWrapping.Wrap }, link },
-            },
-        };
-        (reply ?? messages).Children.Add(note);
-        empty.IsVisible = false;
-        ToEnd();
-    }
-
-    /// <summary>The links the conversation's notes offer now, for a test to reach.</summary>
-    public IEnumerable<Button> Offers => messages.GetLogicalDescendants().OfType<Border>()
-        .Select(note => note.Child).OfType<StackPanel>().SelectMany(panel => panel.Children.OfType<Button>()).Where(button => button.Classes.Contains(StyleClasses.Link));
 
     /// <summary>A note in the agent's reply as it goes ("Sent your edited plan"), muted, or as an error.</summary>
     public void Noted(string text, bool error = false)

@@ -536,7 +536,7 @@ public sealed class ChatTests
     private static string Words(Button row) => string.Join("\n", row.GetLogicalDescendants().OfType<TextBlock>().Select(text => text.Text));
 
     [AvaloniaFact]
-    public void A_project_the_agent_made_that_the_solution_does_not_list_is_offered_to_the_solution()
+    public void A_project_the_agent_makes_goes_in_the_solution_as_it_is_made_not_at_the_turns_end()
     {
         string made = TestFolders.Create("chat");
         File.WriteAllText(Path.Combine(made, "app.slnx"), "<Solution>\n</Solution>\n");
@@ -549,9 +549,11 @@ public sealed class ChatTests
         Ui.WaitFor(() => window.Chat.Said == "Connected to Claude Agent 0.107.3", "the agent connected");
 
         Send(window, "project");
-        Ui.WaitFor(() => !window.Chat.Busy && window.Chat.Offers.Any(), () => $"the offer, where the conversation is {Shown(window)}");
-        Ui.Click(window.Chat.Offers.Single());
-        Ui.WaitFor(() => File.ReadAllText(Path.Combine(made, "app.slnx")).Contains("New.Api.csproj", StringComparison.Ordinal), "the project added to the solution");
+        Ui.WaitFor(() => !window.Chat.Busy, () => $"the turn ended, where the conversation is {Shown(window)}");
+
+        Assert.True(agent.ListedDuringTurn, "The project the agent made was not in the solution while it worked");
+        Assert.Contains("New.Api.csproj", File.ReadAllText(Path.Combine(made, "app.slnx")), StringComparison.Ordinal);
+        Assert.Contains(window.Chat.Notices, note => note.StartsWith("Added New.Api to app.slnx", StringComparison.Ordinal));
         window.Close();
     }
 
@@ -1192,6 +1194,9 @@ public sealed class ChatTests
                             Directory.CreateDirectory(Path.Combine(making, "New.Api"));
                             await File.WriteAllTextAsync(Path.Combine(making, "New.Api", "New.Api.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk.Web\">\n  <PropertyGroup>\n    <TargetFramework>net10.0</TargetFramework>\n  </PropertyGroup>\n</Project>\n");
                             await Update(writer, """{"toolCallId":"call_p","sessionUpdate":"tool_call_update","status":"completed"}""");
+                            // Goes on only once the solution lists it, or gives up: the IDE adds it as it is made, not at the turn's end.
+                            string listing = Directory.EnumerateFiles(making, "*.slnx").Single();
+                            ListedDuringTurn = Waiting.Until(() => File.ReadAllText(listing).Contains("New.Api.csproj", StringComparison.Ordinal), TimeSpan.FromSeconds(10));
                             await Say(writer, "Made New.Api.");
                             await Answer(writer, id, """{"stopReason":"end_turn"}""");
                             break;
@@ -1344,6 +1349,9 @@ public sealed class ChatTests
 
         /// <summary>Whether it has a question open, whose answer ends the turn rather than session/cancel.</summary>
         private bool Asked => Prompts.LastOrDefault() is "write" or "plan" or "ask" or "questions" or "run";
+
+        /// <summary>Whether the solution listed the project it made before it ended its turn.</summary>
+        public bool ListedDuringTurn { get; private set; }
 
         /// <summary>Whether the client said at initialize that it runs a sign-in in its own terminal.</summary>
         public bool OffersTerminalSignIn { get; private set; }
