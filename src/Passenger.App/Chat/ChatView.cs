@@ -103,8 +103,10 @@ public sealed class ChatView : DockPanel
             }
         }, RoutingStrategies.Tunnel);
 
-        cancelSignIn.Click += (_, _) => CancelSignInRequested?.Invoke(this, EventArgs.Empty);
-        idle = new StackPanel { Spacing = 12, Margin = new Thickness(16), VerticalAlignment = VerticalAlignment.Center, Children = { said, signIns, cancelSignIn, connect } };
+        SignIn.SignInRequested += (_, method) => SignInRequested?.Invoke(this, method);
+        SignIn.CancelRequested += (_, _) => CancelSignInRequested?.Invoke(this, EventArgs.Empty);
+        SignIn.TerminalRequested += (_, _) => SignInTerminalRequested?.Invoke(this, EventArgs.Empty);
+        idle = new StackPanel { Spacing = 12, Margin = new Thickness(16), VerticalAlignment = VerticalAlignment.Center, Children = { said, SignIn, connect } };
         empty = EmptyState();
         working = new StackPanel
         {
@@ -249,14 +251,13 @@ public sealed class ChatView : DockPanel
         said.Text = text;
         said.Classes.Set(StyleClasses.Error, error);
         connect.IsVisible = offerConnect;
-        // What the chat says now is all it offers: the ways to sign in show only when it says it is signed out.
-        signIns.IsVisible = false;
-        cancelSignIn.IsVisible = false;
+        // What the chat says now is all it offers: the sign-in shows only while it is signed out or signing in.
+        said.IsVisible = true;
+        SignIn.IsVisible = false;
         idle.IsVisible = true;
         header.IsVisible = conversation.IsVisible = composer.IsVisible = false;
     }
 
-    private readonly StackPanel signIns = new() { Spacing = 8, HorizontalAlignment = HorizontalAlignment.Center, IsVisible = false };
 
     /// <summary>The header's account, a button: Sign out while signed in, the ways to sign in while not.</summary>
     public Button AccountButton { get; }
@@ -282,40 +283,80 @@ public sealed class ChatView : DockPanel
     /// <summary>Whether the agent says it is signed in to no account.</summary>
     public bool SignedOut { get; private set; }
 
-    /// <summary>The agent is signed in to no account: the chat says so, with a button for each of its ways to sign in,
-    /// which runs in the Terminal; Passenger never sees the login.</summary>
-    public void SayNotSignedIn(IReadOnlyList<AuthMethod> methods, string? why = null)
-    {
-        SignedOut = true;
-        Say(why ?? "Claude Code is not signed in. Sign in with your own Claude account; it signs in in the Terminal, and Passenger never sees your login.", offerConnect: methods.Count == 0);
-        signIns.Children.Clear();
-        foreach (AuthMethod method in methods)
-        {
-            Button sign = new() { Content = method.Name, HorizontalAlignment = HorizontalAlignment.Center };
-            if (signIns.Children.Count == 0)
-            {
-                sign.Classes.Add(StyleClasses.Primary);
-            }
-            ToolTip.SetTip(sign, method.Description ?? method.Name);
-            sign.Click += (_, _) => SignInRequested?.Invoke(this, method);
-            signIns.Children.Add(sign);
-        }
-        signIns.IsVisible = methods.Count > 0;
-        account.Text = "Not signed in";
-    }
+    /// <summary>Signing in, as one flow: the ways to sign in while signed out, then its steps (<see cref="SignInPanel"/>).</summary>
+    public SignInPanel SignIn { get; } = new() { IsVisible = false };
 
-    private readonly Button cancelSignIn = new() { Content = "Cancel sign-in", HorizontalAlignment = HorizontalAlignment.Center, IsVisible = false };
-
-    /// <summary>Cancel sign-in was pressed while a sign-in runs.</summary>
+    /// <summary>Cancel was pressed while a sign-in runs.</summary>
     public event EventHandler? CancelSignInRequested;
 
-    /// <summary>A sign-in runs in the Terminal: the chat says where to finish it, with Cancel; nothing else is offered
-    /// until it ends, so no second sign-in starts over it.</summary>
+    /// <summary>Show in Terminal was pressed while a sign-in runs.</summary>
+    public event EventHandler? SignInTerminalRequested;
+
+    /// <summary>The agent is signed in to no account: the sign-in panel offers its ways to sign in, the first the button;
+    /// <paramref name="why"/> says what happened where something did (signed out, a sign-in that failed).</summary>
+    public void SayNotSignedIn(IReadOnlyList<AuthMethod> methods, string? why = null, bool error = false)
+    {
+        SignedOut = true;
+        signingInNow = false;
+        ShowSignIn();
+        SignIn.Offer(methods, why, error);
+        signedIn = "Not signed in";
+        ShowPlan();
+    }
+
+    /// <summary>A sign-in runs: the panel walks its steps, the browser's the one now; nothing else is offered until it
+    /// ends, so no second sign-in starts over it.</summary>
     public void SigningIn(string method)
     {
-        Say($"Signing in with {method}. Finish it in the browser that opened; the Terminal's Claude sign-in tab shows how it goes, and the chat connects once it is done.");
-        cancelSignIn.IsVisible = true;
+        ShowSignIn();
+        SignIn.SigningIn(method);
     }
+
+    /// <summary>The browser's sign-in finished: the panel says Passenger connects, and once the agent says who is signed
+    /// in, the conversation says so.</summary>
+    public void SignInConnecting()
+    {
+        signingInNow = true;
+        SignIn.Connecting();
+    }
+
+    /// <summary>Whether a sign-in just finished and the conversation is yet to say who it signed in.</summary>
+    private bool signingInNow;
+
+    private void ShowSignIn()
+    {
+        idle.IsVisible = true;
+        said.IsVisible = connect.IsVisible = false;
+        SignIn.IsVisible = true;
+        header.IsVisible = conversation.IsVisible = composer.IsVisible = false;
+    }
+
+    /// <summary>A note at the end of the conversation, framed: what just happened that is no one's message ("You're signed
+    /// in as …").</summary>
+    public void Notice(string text)
+    {
+        messages.Children.Add(new Border
+        {
+            Classes = { StyleClasses.Framed },
+            Padding = new Thickness(10, 8),
+            Child = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                Spacing = 8,
+                Children =
+                {
+                    new RowIcon { DataKey = IconKeys.Check, ForegroundKey = TokenKeys.Vcs_Added, Width = 14, Height = 14, VerticalAlignment = VerticalAlignment.Center },
+                    new TextBlock { Text = text, TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center },
+                },
+            },
+        });
+        empty.IsVisible = false;
+        ToEnd();
+    }
+
+    /// <summary>The notes the conversation shows, for a test to read.</summary>
+    public IEnumerable<string> Notices => messages.Children.OfType<Border>().Select(note => note.Child).OfType<StackPanel>()
+        .SelectMany(panel => panel.Children.OfType<TextBlock>()).Select(text => text.Text ?? string.Empty);
 
     /// <summary>Who the agent is signed in as, for the account's menu: their email or account's name, and the plan.</summary>
     public (string? Who, string? Plan) AccountDetails => (signedInWho, signedIn);
@@ -399,7 +440,7 @@ public sealed class ChatView : DockPanel
         agent.Text = described;
         ToolTip.SetTip(agent, said.Text);
         idle.IsVisible = false;
-        signIns.IsVisible = false;
+        SignIn.IsVisible = false;
         SignedOut = false;
         header.IsVisible = conversation.IsVisible = composer.IsVisible = true;
         empty.IsVisible = messages.Children.Count == 0;
@@ -622,6 +663,11 @@ public sealed class ChatView : DockPanel
         AgentAccount? active = status.Accounts.FirstOrDefault(each => each.Active) ?? status.Accounts.FirstOrDefault();
         signedIn = status.State == "unauthenticated" ? "Not signed in" : active is null ? status.State : active.Label;
         signedInWho = status.State == "unauthenticated" ? null : active?.Email ?? active?.Label;
+        if (signingInNow && status.State == "authenticated")
+        {
+            signingInNow = false;
+            Notice($"You're signed in as {signedInWho ?? "your Claude account"}{(active?.Label is { } plan && plan != signedInWho ? $" · {plan}" : string.Empty)}.");
+        }
         signedInTip = active is null
             ? $"The agent says it is {status.State}"
             : $"Signed in as {active.Email ?? active.Label} ({active.Label}), in the agent's own login.\nTo use another account, run claude /login in a terminal, then connect again.";
@@ -644,7 +690,8 @@ public sealed class ChatView : DockPanel
     private void ShowPlan()
     {
         List<string> said = signedIn is null ? [] : [signedIn];
-        said.AddRange(windows.Select(window => $"{Window(window.Name)} {Math.Round(window.Used * 100)}%"));
+        // Signed out, the plan's use is no one's.
+        said.AddRange((SignedOut ? [] : windows).Select(window => $"{Window(window.Name)} {Math.Round(window.Used * 100)}%"));
         account.Text = string.Join(" · ", said);
         string resets = string.Join("\n", windows.Where(window => window.Resets is not null)
             .Select(window => $"{Window(window.Name)}: {Math.Round(window.Used * 100)}% used, starts afresh {window.Resets!.Value.ToLocalTime():ddd HH:mm}"));

@@ -495,8 +495,11 @@ public sealed class ChatTests
         Ui.WaitFor(() => window.Chat.SignedOut, () => $"the chat signed out, where it says \"{window.Chat.Said}\"");
 
         Assert.True(agent.SignedOut);
-        Assert.StartsWith("Signed out of Claude", window.Chat.Said, StringComparison.Ordinal);
-        Assert.Contains(window.Chat.GetVisualDescendants().OfType<Button>(), b => Equals(b.Content, "Claude Subscription") && b.IsEffectivelyVisible);
+        // One flow: what happened and what signing in does, one way first, nothing else on the panel.
+        Assert.Equal(-1, window.Chat.SignIn.Step);
+        Assert.StartsWith("Sign in to Claude\nYou signed out.", window.Chat.SignIn.Said, StringComparison.Ordinal);
+        Assert.Contains(window.Chat.SignIn.GetVisualDescendants().OfType<Button>(), b => Equals(b.Content, "Continue with Claude Subscription") && b.IsEffectivelyVisible);
+        Assert.Equal("Not signed in", window.Chat.Account);
         window.Close();
     }
 

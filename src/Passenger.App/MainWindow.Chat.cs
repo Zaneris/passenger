@@ -94,6 +94,7 @@ public partial class MainWindow
                 }
             };
             view.CancelSignInRequested += (_, _) => CancelChatSignIn();
+            view.SignInTerminalRequested += (_, _) => ShowToolWindow(ToolWindowIds.Terminal);
             view.Asking += (_, card) =>
             {
                 askedCards[card.CallId] = card;
@@ -543,7 +544,7 @@ public partial class MainWindow
     /// <summary>Starts the agent in the open folder and opens its session in the agent's Accept edits mode, as Cursor
     /// works: its edits apply as it goes, each taken for review first, and it asks before each command. An agent without
     /// that mode runs in Manual, asking before each edit too. Says each step and, failing, why.</summary>
-    private async Task ConnectChatAsync(ChatView view)
+    private async Task ConnectChatAsync(ChatView view, bool signedIn = false)
     {
         if (Folder is not { } folder)
         {
@@ -551,7 +552,11 @@ public partial class MainWindow
             return;
         }
         EndChatAgent();
-        view.Say("Starting Claude Code…");
+        if (!signedIn)
+        {
+            // Just signed in, the sign-in's own steps say it connects.
+            view.Say("Starting Claude Code…");
+        }
         try
         {
             ChatAgent agent = await StartChatAgent(folder);
@@ -567,7 +572,9 @@ public partial class MainWindow
         catch (AcpError error) when (error.IsAuthRequired && chatAgent is { } agent)
         {
             // Signed out: the agent stays, its ways to sign in offered; a sign-in reconnects.
-            view.SayNotSignedIn(agent.Session.AuthMethods);
+            view.SayNotSignedIn(agent.Session.AuthMethods, signedIn
+                ? "Claude Code still says you are not signed in. Try again, and click Authorize in the browser when it asks."
+                : null, error: signedIn);
         }
         catch (Exception error) when (error is AcpError or Win32Exception or IOException or InvalidOperationException)
         {
@@ -797,7 +804,7 @@ public partial class MainWindow
             return;
         }
         view.Clear();
-        view.SayNotSignedIn(agent.Session.AuthMethods, "Signed out of Claude. Sign in again with your own Claude account: it signs in in the Terminal and your browser, and Passenger never sees your login.");
+        view.SayNotSignedIn(agent.Session.AuthMethods, "You signed out. Sign in again to keep chatting: it happens in your browser, and Passenger never sees your password or keys.");
     }
 
     /// <summary>The sign-in running in the Terminal, null while none runs: one at a time, so no two install or write the
@@ -835,13 +842,16 @@ public partial class MainWindow
             signingIn = null;
             if (code == 0 && !run.WasStopped)
             {
-                await ConnectChatAsync(view);
+                view.SignInConnecting();
+                await ConnectChatAsync(view, signedIn: true);
+            }
+            else if (run.WasStopped)
+            {
+                view.SayNotSignedIn(agent.Session.AuthMethods, "Sign-in cancelled. Sign in when you are ready.");
             }
             else
             {
-                view.SayNotSignedIn(agent.Session.AuthMethods, run.WasStopped
-                    ? "Sign-in cancelled. Sign in with your own Claude account to chat."
-                    : $"Signing in with {method.Name} did not finish (it ended with {code}); its Terminal tab says why. Try again:");
+                view.SayNotSignedIn(agent.Session.AuthMethods, $"Signing in with {method.Name} did not finish (it ended with {code}). Its Terminal tab says why; try again.", error: true);
             }
         });
     }
