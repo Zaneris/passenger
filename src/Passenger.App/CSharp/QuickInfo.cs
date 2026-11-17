@@ -9,13 +9,14 @@ namespace Passenger.App.CSharp;
 
 /// <summary>The card when the pointer rests, or Quick Documentation at the caret: the problems there, then a paused
 /// program's value (its rows to open, the card taking the pointer and the keys) or what the file's language says of the
-/// symbol; an inlay hint's own words over a hint.</summary>
+/// symbol; an inlay hint's own words over a hint. A card a key shows is read to a screen reader, one the pointer brings
+/// never.</summary>
 internal sealed class QuickInfo
 {
     private readonly AssistContext context;
     private readonly PopupPlacement popups;
     private readonly Func<bool> completing;
-    private readonly InfoCard hoverCard = new();
+    private readonly InfoCard hoverCard = new("Quick Documentation");
     private CancellationTokenSource? hovering;
 
     /// <summary>The pause after the pointer leaves a card of a paused program's value (its word, or the card itself) before
@@ -117,18 +118,19 @@ internal sealed class QuickInfo
             values.FocusRow();
             return;
         }
-        IdeErrors.Observe(Show(context.Caret, Editor.PointOf(context.Caret)));
+        IdeErrors.Observe(Show(context.Caret, Editor.PointOf(context.Caret), byKey: true));
     }
 
-    public async Task Show(int offset, Point point)
+    /// <summary>The card for an offset, hung at a point's left; told to a screen reader where a key asked for it.</summary>
+    public async Task Show(int offset, Point point, bool byKey = false)
     {
         using (BackgroundWork.Scope())
         {
-            await ShowCore(offset, point);
+            await ShowCore(offset, point, byKey);
         }
     }
 
-    private async Task ShowCore(int offset, Point point)
+    private async Task ShowCore(int offset, Point point, bool byKey)
     {
         hovering?.Cancel();
         CancellationTokenSource cancel = new();
@@ -177,7 +179,14 @@ internal sealed class QuickInfo
             return;
         }
         Place(offset, point, values, debuggerValue);
+        if (byKey)
+        {
+            Said();
+        }
     }
+
+    /// <summary>The card shown, its words told to a screen reader.</summary>
+    private void Said() => popups.Tell(hoverCard.Text, Urgency.Polite, hoverCard);
 
     /// <summary>Quick Evaluate Expression's card: a value read for an offset, shown as a hovered one is under its line, its
     /// row taking the keys at once, as Quick Documentation pressed again gives them.</summary>
@@ -192,6 +201,7 @@ internal sealed class QuickInfo
             return;
         }
         Place(offset, Editor.PointOf(Math.Min(offset, Editor.Document.Snapshot.Length)), values, value);
+        Said();
         // Once laid out, so the row itself has a container to take them.
         Avalonia.Threading.Dispatcher.UIThread.Post(() =>
         {

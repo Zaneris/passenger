@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using Passenger.App.Workspace;
 using Passenger.Core;
+using Passenger.Editor;
 using Passenger.Lsp;
 using Passenger.Text;
 
@@ -16,20 +17,45 @@ internal interface IOwnSignatures
 }
 
 /// <summary>Parameter Info: the card over the caret of the signature of the call it is in, its parameter there's
-/// documentation (else the signature's), shown after an opening bracket or a comma and gone after the closing one; a
-/// language's own (<see cref="Own"/>) first where it has one.</summary>
+/// documentation (else the signature's), shown after an opening bracket or a comma, following the caret moved through the
+/// call, and gone after the closing bracket or once the caret leaves it; a language's own (<see cref="Own"/>) first where
+/// it has one. A screen reader is told the signature as it shows, then the parameter the caret is at as it moves to another.</summary>
 internal sealed class ParameterInfo
 {
     private readonly AssistContext context;
     private readonly PopupPlacement popups;
-    private readonly InfoCard card = new();
+    private readonly InfoCard card = new("Parameter Info");
     private CancellationTokenSource? signing;
+
+    /// <summary>The signature and the parameter a screen reader was last told, until the card goes; a language's own card's
+    /// words in place of the signature.</summary>
+    private (string Signature, string? Parameter)? told;
+
+    /// <summary>The card asked for again once the caret moved through the call rests a moment.</summary>
+    private readonly Debounce following;
+
+    /// <summary>The text's version the caret was last seen moving in, so a caret moved alone is told from one moved by typing.</summary>
+    private int seen = -1;
 
     public ParameterInfo(AssistContext context, PopupPlacement popups)
     {
         this.context = context;
         this.popups = popups;
         popups.Add(card);
+        following = new Debounce(TimeSpan.FromMilliseconds(100), () => card.IsVisible ? Show() : Task.CompletedTask);
+    }
+
+    /// <summary>The caret moved: moved alone while the card shows, the card follows it to the parameter it is at, or goes
+    /// once it is out of the call; a move by typing is the typed character's (<see cref="AfterTyped"/>).</summary>
+    public void CaretMoved()
+    {
+        int version = context.Editor.Document.Version;
+        bool typing = version != seen;
+        seen = version;
+        if (card.IsVisible && !typing)
+        {
+            following.Restart();
+        }
     }
 
     public bool IsVisible => card.IsVisible;
@@ -64,7 +90,9 @@ internal sealed class ParameterInfo
         {
             signing?.Cancel();
         }
+        following.Stop();
         card.IsVisible = false;
+        told = null;
     }
 
     public async Task Show()
@@ -106,6 +134,11 @@ internal sealed class ParameterInfo
                     card.Clear();
                     parts.Into(card);
                     popups.Place(card, caret, above: true);
+                    Tell(card.Text, null, null);
+                }
+                else
+                {
+                    told = null;
                 }
                 return;
             }
@@ -128,9 +161,11 @@ internal sealed class ParameterInfo
             if (help is null || help.Signatures.Count == 0)
             {
                 card.IsVisible = false;
+                told = null;
                 return;
             }
-            SignatureInformation signature = help.Signatures[Math.Clamp(help.ActiveSignature ?? 0, 0, help.Signatures.Count - 1)];
+            int overload = Math.Clamp(help.ActiveSignature ?? 0, 0, help.Signatures.Count - 1);
+            SignatureInformation signature = help.Signatures[overload];
             card.Clear();
             card.AddCode(signature.Label);
             int active = signature.ActiveParameter ?? help.ActiveParameter ?? -1;
@@ -146,6 +181,7 @@ internal sealed class ParameterInfo
             }
             card.IsVisible = true;
             popups.Place(card, caret, above: true);
+            Tell(signature.Label, help.Signatures.Count > 1 ? $"overload {overload + 1} of {help.Signatures.Count}" : null, ParameterLabel(signature, active));
         }
         catch (OperationCanceledException)
         {
@@ -155,6 +191,39 @@ internal sealed class ParameterInfo
         {
             // No signature shown; the next bracket or comma asks again.
         }
+    }
+
+    /// <summary>Tells a screen reader the card shown: the whole signature (with which of its overloads, and the parameter
+    /// the caret is at) where another shows than it was told, else the parameter alone where the caret is at another.</summary>
+    private void Tell(string signature, string? overload, string? parameter)
+    {
+        string? said = told is not { } before || before.Signature != signature
+            ? string.Join(", ", new[] { "Parameter Info", signature, overload, parameter is null ? null : $"parameter {parameter}" }.OfType<string>())
+            : parameter is not null && parameter != before.Parameter ? $"parameter {parameter}" : null;
+        told = (signature, parameter);
+        if (said is not null)
+        {
+            popups.Tell(said, Urgency.Polite, card);
+        }
+    }
+
+    /// <summary>A signature's parameter as its label shows it ("int value"), whether the server gives its words or where
+    /// they stand in the signature's label; null where none is at that place.</summary>
+    private static string? ParameterLabel(SignatureInformation signature, int at)
+    {
+        if (signature.Parameters is not { } parameters || at < 0 || at >= parameters.Count)
+        {
+            return null;
+        }
+        JsonElement label = parameters[at].Label;
+        string? text = label.ValueKind switch
+        {
+            JsonValueKind.String => label.GetString(),
+            JsonValueKind.Array when label.GetArrayLength() == 2 && label[0].TryGetInt32(out int start) && label[1].TryGetInt32(out int end)
+                && 0 <= start && start <= end && end <= signature.Label.Length => signature.Label[start..end],
+            _ => null,
+        };
+        return string.IsNullOrWhiteSpace(text) ? null : text;
     }
 
     /// <summary>A card's parts as a language gives them, kept until the answer is known to be the one to show.</summary>
@@ -191,16 +260,9 @@ internal sealed class ParameterInfo
     /// (TypeScript) or by where it is in the signature's label.</summary>
     private static IEnumerable<string> ParameterNames(SignatureInformation signature)
     {
-        foreach (ParameterInformation parameter in signature.Parameters ?? [])
+        for (int at = 0; at < (signature.Parameters?.Count ?? 0); at++)
         {
-            JsonElement label = parameter.Label;
-            string text = label.ValueKind switch
-            {
-                JsonValueKind.String => label.GetString() ?? string.Empty,
-                JsonValueKind.Array when label.GetArrayLength() == 2 && label[0].TryGetInt32(out int start) && label[1].TryGetInt32(out int end)
-                    && 0 <= start && start <= end && end <= signature.Label.Length => signature.Label[start..end],
-                _ => string.Empty,
-            };
+            string text = ParameterLabel(signature, at) ?? string.Empty;
             int colon = text.IndexOf(':', StringComparison.Ordinal);
             // TypeScript's "name?: type" names it before the colon, C#'s "type name" last.
             Match name = Regex.Match(colon >= 0 ? text[..colon] : text, @"[\p{L}_][\p{L}\p{Nd}_]*", RegexOptions.RightToLeft);

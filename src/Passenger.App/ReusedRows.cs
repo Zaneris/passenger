@@ -63,10 +63,11 @@ public static class ReusedRows
     }
 
     /// <summary>A row a screen reader names by the first words it shows, read as it asks, where its list's container would
-    /// say its item's type.</summary>
+    /// say its item's type; a row that names itself (by the words it labels itself with) keeps its own.</summary>
     private static Control NamedByWords(Control row)
     {
-        if (row is not TextBlock && row.GetLogicalDescendants().OfType<TextBlock>().FirstOrDefault() is { } words)
+        if (row is not TextBlock && AutomationProperties.GetLabeledBy(row) is null && AutomationProperties.GetName(row) is null
+            && row.GetLogicalDescendants().OfType<TextBlock>().FirstOrDefault() is { } words)
         {
             AutomationProperties.SetLabeledBy(row, words);
         }

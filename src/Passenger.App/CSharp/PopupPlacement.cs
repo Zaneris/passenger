@@ -1,5 +1,7 @@
 using System.Runtime.CompilerServices;
 using Avalonia;
+using Avalonia.Automation;
+using Avalonia.Automation.Peers;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
@@ -11,7 +13,9 @@ namespace Passenger.App.CSharp;
 
 /// <summary>Where the code assistance's popups sit: on the layer over the active editor's window, placed at a line of
 /// the editor and kept inside it, and the one list of choices or rename box open at a time, which a press in its window
-/// outside it dismisses and whose answer is carried out as background work.</summary>
+/// outside it dismisses and whose answer is carried out as background work. Each is what a screen reader meets it as
+/// (<see cref="IHeardPopup"/>), and what it says reaches the reader through the window's <see cref="Announcer"/>
+/// (<see cref="Tell"/>).</summary>
 internal sealed class PopupPlacement
 {
     private readonly AssistContext context;
@@ -58,9 +62,36 @@ internal sealed class PopupPlacement
     public void Add(Control popup)
     {
         popup.IsVisible = false;
+        Heard(popup);
         cards.Add(popup);
         layer.Children.Add(popup);
     }
+
+    /// <summary>A popup as a screen reader meets it: the role and name it gives (<see cref="IHeardPopup"/>), set only where
+    /// they differ, so placing it again costs nothing.</summary>
+    private static void Heard(Control popup)
+    {
+        if (popup is not IHeardPopup heard)
+        {
+            return;
+        }
+        if (AutomationProperties.GetControlTypeOverride(popup) != heard.Role)
+        {
+            AutomationProperties.SetControlTypeOverride(popup, heard.Role);
+        }
+        if (AutomationProperties.GetName(popup) != heard.Called)
+        {
+            AutomationProperties.SetName(popup, heard.Called);
+        }
+    }
+
+    /// <summary>Tells a screen reader what a popup says (<see cref="Announcer.Tell"/>), words about one thing that changes
+    /// (<paramref name="about"/>: a list's choice) in place of those it told before and not yet heard.</summary>
+    public void Tell(string words, Urgency urgency, object about) => Announcer.Of(TopLevel.GetTopLevel(layer))?.Tell(words, urgency, about);
+
+    /// <summary>A list's choice as it is said: its words, its kind where it has one, and where it stands in the list.</summary>
+    public static string Chosen(string words, string? kind, int at, int count) =>
+        string.IsNullOrEmpty(kind) ? $"{words}, item {at + 1} of {count}" : $"{words}, {kind}, item {at + 1} of {count}";
 
     /// <summary>Whether the modal last asked for was refused to an agent's action, answered as dismissed without showing.</summary>
     private bool refused;
@@ -88,6 +119,7 @@ internal sealed class PopupPlacement
     /// is more room, moved in as far as it must to show whole, though it then hides some of the line.</summary>
     public void Place(Control popup, Point at, bool above)
     {
+        Heard(popup);
         at = InLayer(at);
         (popup as IHeldToEditor)?.Within(Widest);
         // A list shown again measures as its last rows did until a layout pass measures the rows it shows now.
@@ -202,7 +234,22 @@ internal sealed class PopupPlacement
         Open(popup, () => IdeErrors.Observe(Carried(what, () => done(null))));
         Place(popup, offset, above: false);
         popup.Done += (_, choice) => IdeErrors.Observe(Carried(what, () => done(choice)));
+        // Its choice is said as completion's is: by its title as it opens, and at once as the keys move it.
+        if (popup.ChosenAt >= 0)
+        {
+            Tell($"{popup.Title}, {ChoiceSaid(popup)}", Urgency.Polite, popup);
+        }
+        popup.Moved += (_, _) =>
+        {
+            if (popup.ChosenAt >= 0)
+            {
+                Tell(ChoiceSaid(popup), Urgency.Assertive, popup);
+            }
+        };
     }
+
+    private static string ChoiceSaid(ChoicePopup popup) =>
+        Chosen(popup.Titles[popup.ChosenAt], popup.Details[popup.ChosenAt], popup.ChosenAt, popup.Titles.Count);
 
     public void ShowModal(RenameBox box, int offset, Func<string?, Task> done)
     {
@@ -313,6 +360,15 @@ internal sealed class PopupPlacement
     private static bool KeysElsewhere(Control open) =>
         TopLevel.GetTopLevel(open) is { } window && window.FocusManager?.GetFocusedElement() is Visual focused
         && focused != window && focused != open && !open.IsVisualAncestorOf(focused);
+}
+
+/// <summary>A popup placed at a line as a screen reader meets it, given it as it is put on the layer or placed
+/// (<see cref="PopupPlacement.Place(Control, Point, bool)"/>): what kind of thing it is, and what it is called.</summary>
+internal interface IHeardPopup
+{
+    AutomationControlType Role { get; }
+
+    string Called { get; }
 }
 
 /// <summary>A popup placed at a line that is held to the editor (<see cref="PopupPlacement.Place(Control, Point, bool)"/>):

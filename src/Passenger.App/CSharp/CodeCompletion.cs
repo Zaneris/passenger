@@ -18,7 +18,7 @@ internal sealed partial class CodeCompletion
     private readonly AssistContext context;
     private readonly PopupPlacement popups;
     private readonly CompletionPopup completion = new();
-    private readonly InfoCard itemCard = new();
+    private readonly InfoCard itemCard = new("Documentation");
     private readonly Dictionary<CompletionItem, LiveTemplate> templatesOffered = [];
     private readonly Dictionary<CompletionItem, (PostfixTemplate Template, PostfixTarget Target)> postfixOffered = [];
 
@@ -29,6 +29,12 @@ internal sealed partial class CodeCompletion
     private CancellationTokenSource? describing;
     private Completion? open;
 
+    /// <summary>Whether the keys are moving the choice (Up, Down, Page Up, Page Down), which a screen reader is told at once.</summary>
+    private bool moving;
+
+    /// <summary>The item whose documentation was asked for (<see cref="SayDocumentation"/>), told as its card comes.</summary>
+    private CompletionItem? documentationAsked;
+
     public CodeCompletion(AssistContext context, PopupPlacement popups)
     {
         this.context = context;
@@ -36,7 +42,15 @@ internal sealed partial class CodeCompletion
         popups.Add(completion);
         popups.Add(itemCard);
         ListKeys.Act(completion.List, new ListActs { Open = () => IdeErrors.Observe(Commit()) });
-        completion.SelectedChanged += (_, _) => IdeErrors.Observe(DescribeSelected());
+        completion.SelectedChanged += (_, _) =>
+        {
+            // A list opening says its choice as it shows (ShowRows).
+            if (completion.IsVisible)
+            {
+                TellChosen(opening: false);
+            }
+            IdeErrors.Observe(DescribeSelected());
+        };
         completion.Swatch = item => open?.Own?.Swatch(item);
     }
 
@@ -104,16 +118,16 @@ internal sealed partial class CodeCompletion
             switch (action)
             {
                 case EditorActions.Up:
-                    completion.Move(-1);
+                    Move(-1);
                     return true;
                 case EditorActions.Down:
-                    completion.Move(1);
+                    Move(1);
                     return true;
                 case EditorActions.PageUp:
-                    completion.Move(-9);
+                    Move(-9);
                     return true;
                 case EditorActions.PageDown:
-                    completion.Move(9);
+                    Move(9);
                     return true;
                 case EditorActions.NewLine or EditorActions.Indent:
                     IdeErrors.Observe(Commit());
@@ -125,6 +139,88 @@ internal sealed partial class CodeCompletion
         }
         return action == EditorActions.Indent && !Editor.IsInSnippet && TryExpandTemplate();
     }
+
+    private void Move(int step)
+    {
+        moving = true;
+        try
+        {
+            completion.Move(step);
+        }
+        finally
+        {
+            moving = false;
+        }
+    }
+
+    /// <summary>Tells a screen reader the item chosen: its name, its kind and where it stands, at once as the keys move it,
+    /// after what it is saying as the list opens or narrows to another.</summary>
+    private void TellChosen(bool opening)
+    {
+        if (completion.Selected is not { } row)
+        {
+            return;
+        }
+        string said = PopupPlacement.Chosen(row.Item.Label, KindWords(row.Item.Kind), completion.ChosenAt, completion.Rows.Count);
+        popups.Tell(opening ? $"Completion, {said}" : said, moving ? Urgency.Assertive : Urgency.Polite, completion);
+    }
+
+    /// <summary>Tells a screen reader the chosen item's documentation, the words of the card beside the list, as Quick
+    /// Documentation asks while the list is open; once the card comes where it has yet to.</summary>
+    public void SayDocumentation()
+    {
+        if (!completion.IsVisible || completion.Selected is not { } row)
+        {
+            return;
+        }
+        if (itemCard.IsVisible)
+        {
+            popups.Tell(itemCard.Text, Urgency.Polite, itemCard);
+            return;
+        }
+        documentationAsked = row.Item;
+        IdeErrors.Observe(DescribeSelected());
+    }
+
+    /// <summary>The card beside the list came, or none will, for an item: its words told where they were asked for.</summary>
+    private void Described(CompletionItem item)
+    {
+        if (!ReferenceEquals(documentationAsked, item))
+        {
+            return;
+        }
+        documentationAsked = null;
+        popups.Tell(itemCard.IsVisible ? itemCard.Text : $"No documentation for {item.Label}", Urgency.Polite, itemCard);
+    }
+
+    /// <summary>What a kind of item is called, said after its name.</summary>
+    private static string? KindWords(CompletionItemKind? kind) => kind switch
+    {
+        CompletionItemKind.Method or CompletionItemKind.Function => "method",
+        CompletionItemKind.Constructor => "constructor",
+        CompletionItemKind.Field => "field",
+        CompletionItemKind.Variable => "variable",
+        CompletionItemKind.Class => "class",
+        CompletionItemKind.Interface => "interface",
+        CompletionItemKind.Module => "namespace",
+        CompletionItemKind.Property => "property",
+        CompletionItemKind.Unit => "unit",
+        CompletionItemKind.Value => "value",
+        CompletionItemKind.Enum => "enum",
+        CompletionItemKind.Keyword => "keyword",
+        CompletionItemKind.Snippet => "template",
+        CompletionItemKind.Color => "colour",
+        CompletionItemKind.File => "file",
+        CompletionItemKind.Reference => "reference",
+        CompletionItemKind.Folder => "folder",
+        CompletionItemKind.EnumMember => "enum member",
+        CompletionItemKind.Constant => "constant",
+        CompletionItemKind.Struct => "struct",
+        CompletionItemKind.Event => "event",
+        CompletionItemKind.Operator => "operator",
+        CompletionItemKind.TypeParameter => "type parameter",
+        _ => null,
+    };
 
     /// <summary>What was just typed narrows the open list, commits its item or closes it; then opens what the language
     /// opens for it. A list is open from the moment a language opens it, its first rows shown or not.</summary>
@@ -634,6 +730,10 @@ internal sealed partial class CodeCompletion
         completion.IsVisible = true;
         completion.Within(popups.Widest);
         popups.Place(completion, narrowing.List.Start, above: false);
+        if (opening)
+        {
+            TellChosen(opening: true);
+        }
         if (opening && narrowing.List.DescribedAsItOpens)
         {
             // The first item's documentation beside the list as it opens, which its selection came too early to show.
@@ -701,7 +801,7 @@ internal sealed partial class CodeCompletion
         if (open.Own is { } language)
         {
             int from = open.Start;
-            Close();
+            Close(committed: true);
             language.Commit(row.Item, from);
             return;
         }
@@ -712,7 +812,7 @@ internal sealed partial class CodeCompletion
         }
         int start = open.Start;
         string tail = open.Tail;
-        Close();
+        Close(committed: true);
         CompletionItem item = row.Item;
         if (templatesOffered.TryGetValue(item, out LiveTemplate? chosen))
         {
@@ -901,15 +1001,24 @@ internal sealed partial class CodeCompletion
         Editor.ApplyEdits([placed], SelectionSet.Single(placed.Start + into));
     }
 
-    public void Close()
+    public void Close() => Close(committed: false);
+
+    /// <summary>The list closed, said to a screen reader where it showed unless an item chosen from it closed it.</summary>
+    private void Close(bool committed)
     {
+        bool shown = completion.IsVisible;
         LetGoOfAsking();
         completing?.Cancel();
         describing?.Cancel();
+        documentationAsked = null;
         open = null;
         lastAsked = null;
         completion.IsVisible = false;
         itemCard.IsVisible = false;
+        if (shown && !committed)
+        {
+            popups.Tell("Completion closed", Urgency.Polite, completion);
+        }
         Closed?.Invoke(this, EventArgs.Empty);
     }
 
@@ -927,6 +1036,7 @@ internal sealed partial class CodeCompletion
                 itemCard.IsVisible = true;
                 popups.PlaceBeside(itemCard, completion);
             }
+            Described(chosen.Item);
             return;
         }
         if (!completion.IsVisible || completion.Selected is not { } row || context.Current?.Lsp is not { } lsp)
@@ -957,12 +1067,12 @@ internal sealed partial class CodeCompletion
             {
                 itemCard.AddMarkdown(documentation);
             }
-            if (itemCard.IsEmpty)
+            if (!itemCard.IsEmpty)
             {
-                return;
+                itemCard.IsVisible = true;
+                popups.PlaceBeside(itemCard, completion);
             }
-            itemCard.IsVisible = true;
-            popups.PlaceBeside(itemCard, completion);
+            Described(row.Item);
         }
         catch (OperationCanceledException)
         {
@@ -971,6 +1081,7 @@ internal sealed partial class CodeCompletion
         catch (LanguageServerFailed)
         {
             // No card beside the list.
+            Described(row.Item);
         }
     }
 

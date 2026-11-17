@@ -6,11 +6,14 @@ using Avalonia.Headless.XUnit;
 using Avalonia.VisualTree;
 using Passenger.App;
 using Passenger.App.Debugging;
+using Passenger.App.Editors;
 using Passenger.App.Migrations;
 using Passenger.App.Packages;
 using Passenger.App.Settings;
 using Passenger.App.Vcs;
+using Passenger.App.Workspace;
 using Passenger.Core;
+using Passenger.Editor;
 using Passenger.Packages;
 using Passenger.Vcs;
 
@@ -71,16 +74,8 @@ public sealed class AccessibilityTests : IDisposable
         MainWindow window = Ui.OpenFolder(folder, languageServer: false);
         try
         {
-            Announcer announcer = Announcer.Of(window) ?? throw new Xunit.Sdk.XunitException("The window has no announcer");
-            AutomationPeer region = ControlAutomationPeer.CreatePeerForElement(announcer.Region);
-            List<(string Words, AutomationLiveSetting Live)> heard = [];
-            region.PropertyChanged += (_, e) =>
-            {
-                if (e.Property == AutomationElementIdentifiers.NameProperty)
-                {
-                    heard.Add((region.GetName(), region.GetLiveSetting()));
-                }
-            };
+            List<(string Words, AutomationLiveSetting Live)> heard = Listen(window);
+            AutomationPeer region = ControlAutomationPeer.CreatePeerForElement(Announcer.Of(window)!.Region);
             AutomationPeer[] met = [.. Walk(ControlAutomationPeer.CreatePeerForElement(window))];
             Assert.True(met.Contains(region) && region.GetAutomationControlType() == AutomationControlType.Text,
                 $"A walk of the window never meets its announcing region, so no reader hears it: {Heard(met)}");
@@ -124,8 +119,52 @@ public sealed class AccessibilityTests : IDisposable
         }
     }
 
-    private static string Said(IEnumerable<(string Words, AutomationLiveSetting Live)> heard) =>
+    /// <summary>What a screen reader hears through a window's announcing region from now on, each as it was told.</summary>
+    internal static List<(string Words, AutomationLiveSetting Live)> Listen(TopLevel window)
+    {
+        Announcer announcer = Announcer.Of(window) ?? throw new Xunit.Sdk.XunitException("The window has no announcer");
+        AutomationPeer region = ControlAutomationPeer.CreatePeerForElement(announcer.Region);
+        List<(string Words, AutomationLiveSetting Live)> heard = [];
+        region.PropertyChanged += (_, e) =>
+        {
+            if (e.Property == AutomationElementIdentifiers.NameProperty)
+            {
+                heard.Add((region.GetName(), region.GetLiveSetting()));
+            }
+        };
+        return heard;
+    }
+
+    internal static string Said(IEnumerable<(string Words, AutomationLiveSetting Live)> heard) =>
         heard.Any() ? string.Join(", ", heard.Select(h => $"\"{h.Words}\" ({h.Live})")) : "nothing";
+
+    /// <summary>The colour picker a swatch opens is met as a group called Colour, placed at its line as every popup there
+    /// is, its hex a field named so.</summary>
+    [AvaloniaFact]
+    public void The_colour_picker_a_swatch_opens_is_a_group_called_colour_its_hex_a_named_field()
+    {
+        string palette = TestFolders.Write(folder, "Palette.cs", "class Palette\n{\n    static object Brand = Avalonia.Media.Color.FromRgb(0x33, 0x66, 0x99);\n}\n");
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        try
+        {
+            window.OpenFile(palette);
+            CodeEditor editor = window.EditorArea.CodeEditor;
+            OpenDocument shown = window.EditorArea.Active!;
+            Ui.WaitFor(() => shown.ColourMarks.Any(m => m.Line == 2), "the swatch of the colour FromRgb makes");
+            Ui.Click(editor, editor.GutterColumnPoint(editor.Gutter!.Marks, 2));
+            Ui.Settle();
+            Assert.Equal("#336699", window.PickingColour);
+            AutomationPeer[] met = [.. Walk(ControlAutomationPeer.CreatePeerForElement(window))];
+            AutomationPeer picker = met.FirstOrDefault(peer => peer.GetAutomationControlType() == AutomationControlType.Group && peer.GetName() == "Colour")
+                ?? throw new Xunit.Sdk.XunitException($"A walk of the window meets no group called Colour with the picker open, only: {Heard(met.Where(peer => peer.GetAutomationControlType() == AutomationControlType.Group))}");
+            AutomationPeer[] fields = [.. Walk(picker).Where(peer => peer.GetAutomationControlType() == AutomationControlType.Edit)];
+            Assert.True(fields is [{ } hex] && hex.GetName() == "Hex", $"The picker's fields are met as {Heard(fields)}, not one named Hex");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
 
     [AvaloniaFact]
     public void The_toolbar_and_stripes_icons_are_named_by_what_they_do_their_keys_left_in_the_tip()
@@ -243,13 +282,13 @@ public sealed class AccessibilityTests : IDisposable
         }
     }
 
-    private static IEnumerable<AutomationPeer> Walk(AutomationPeer peer) => peer.GetChildren().SelectMany(Walk).Prepend(peer);
+    internal static IEnumerable<AutomationPeer> Walk(AutomationPeer peer) => peer.GetChildren().SelectMany(Walk).Prepend(peer);
 
     private static AutomationPeer? Button(AutomationPeer within, string name) => Walk(within).FirstOrDefault(peer => IsButton(peer) && peer.GetName() == name);
 
     private static bool IsButton(AutomationPeer peer) => peer.GetAutomationControlType() == AutomationControlType.Button;
 
     /// <summary>What a walk met that has a name, for a failure to say.</summary>
-    private static string Heard(IEnumerable<AutomationPeer> met) =>
+    internal static string Heard(IEnumerable<AutomationPeer> met) =>
         string.Join(", ", met.Where(peer => peer.GetName().Length > 0).Select(peer => $"{peer.GetAutomationControlType()} \"{peer.GetName()}\""));
 }

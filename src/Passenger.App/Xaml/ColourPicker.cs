@@ -1,4 +1,6 @@
 using Avalonia;
+using Avalonia.Automation;
+using Avalonia.Automation.Peers;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
@@ -15,7 +17,7 @@ namespace Passenger.App.Xaml;
 /// Cancel or Escape leaves it; over a colour that cannot be written, Choose is greyed, saying why, and Enter gives nothing.
 /// Each colour it moves to is told as it moves (<see cref="Changing"/>). Its gradients are the colours being chosen; its
 /// chrome is the theme's. Over a narrow editor it is held to the editor's width (<see cref="Within"/>).</summary>
-public sealed class ColourPicker : Border, CSharp.IHeldToEditor
+public sealed class ColourPicker : Border, CSharp.IHeldToEditor, CSharp.IHeardPopup
 {
     private readonly ShadeSquare square;
     private readonly HueBar hue;
@@ -47,7 +49,7 @@ public sealed class ColourPicker : Border, CSharp.IHeldToEditor
         after = new Border { Width = 28, Height = 28 };
         before.Bind(Border.CornerRadiusProperty, before.GetResourceObservable(TokenKeys.ControlRadius, r => r is CornerRadius c ? new CornerRadius(c.TopLeft, 0, 0, c.BottomLeft) : default(CornerRadius)));
         after.Bind(Border.CornerRadiusProperty, after.GetResourceObservable(TokenKeys.ControlRadius, r => r is CornerRadius c ? new CornerRadius(0, c.TopRight, c.BottomRight, 0) : default(CornerRadius)));
-        hex = new TextBox { Classes = { StyleClasses.Search } }.InCodeFont();
+        hex = new TextBox { Classes = { StyleClasses.Search }, [AutomationProperties.NameProperty] = "Hex" }.InCodeFont();
         Button choose = new() { Content = "Choose", Classes = { StyleClasses.Primary }, IsDefault = chooses, IsEnabled = chooses };
         ToolTip.SetTip(choose, unchangeable);
         choose.Click += (_, _) => Chosen?.Invoke(this, Colour);
@@ -73,6 +75,10 @@ public sealed class ColourPicker : Border, CSharp.IHeldToEditor
             hex.SelectAll();
         }, DispatcherPriority.Loaded);
     }
+
+    AutomationControlType CSharp.IHeardPopup.Role => AutomationControlType.Group;
+
+    string CSharp.IHeardPopup.Called => "Colour";
 
     /// <summary>The colour chosen, or null when the picker was left.</summary>
     public event EventHandler<Argb?>? Chosen;

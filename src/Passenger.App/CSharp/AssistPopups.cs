@@ -1,4 +1,6 @@
 using Avalonia;
+using Avalonia.Automation;
+using Avalonia.Automation.Peers;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Controls.Templates;
@@ -13,8 +15,9 @@ namespace Passenger.App.CSharp;
 
 /// <summary>A card over the editor: hover information, a diagnostic's message, a signature. Code is
 /// set in the editor's font, prose in the interface's, a problem in its severity's colour. A paused program's value with
-/// members is its row of the stop's values (<see cref="AddValues"/>), which the card then takes the pointer and the keys for.</summary>
-internal sealed class InfoCard : Border, IHoverCard, IHeldToEditor
+/// members is its row of the stop's values (<see cref="AddValues"/>), which the card then takes the pointer and the keys for.
+/// A screen reader meets it as a tooltip called by what it is for (Parameter Info).</summary>
+internal sealed class InfoCard : Border, IHoverCard, IHeldToEditor, IHeardPopup
 {
     /// <summary>The most a card of words is wide; one of a value's rows takes a width of the popups' (<see cref="PopupFrame"/>).</summary>
     private const double WordsWidth = 640;
@@ -31,14 +34,19 @@ internal sealed class InfoCard : Border, IHoverCard, IHeldToEditor
     /// <summary>The most it is wide of itself, a card of words' or of a value's rows', before any narrower room holds it.</summary>
     private double widest = WordsWidth;
 
-    public InfoCard()
+    public InfoCard(string called)
     {
+        Called = called;
         Classes.Add(StyleClasses.Popup);
         Padding = new Thickness(10, 8);
         MaxWidth = WordsWidth;
         Child = parts;
         IsHitTestVisible = false;
     }
+
+    public AutomationControlType Role => AutomationControlType.ToolTip;
+
+    public string Called { get; }
 
     public bool IsEmpty => parts.Children.Count == 0;
 
@@ -259,7 +267,7 @@ internal sealed class CompletionSlot : System.ComponentModel.INotifyPropertyChan
 /// and handed the rows they show now: a key that narrows the list, a move past its edge and a scroll change the words in
 /// the places' controls, and a list of fewer rows hides the places it leaves, so a key lays out only the rows it changed,
 /// and no container is ever let go of, to be attached and styled again.</summary>
-internal sealed class CompletionPopup : Border
+internal sealed class CompletionPopup : Border, IHeardPopup
 {
     /// <summary>How many rows the list shows at once.</summary>
     private const int Shown = 10;
@@ -309,6 +317,8 @@ internal sealed class CompletionPopup : Border
             AutoScrollToSelectedItem = false,
             [ScrollViewer.VerticalScrollBarVisibilityProperty] = ScrollBarVisibility.Disabled,
         };
+        // The popup is the list a screen reader meets, its rows straight under it.
+        AutomationProperties.SetAccessibilityView(List, AccessibilityView.Raw);
         ReusedRows.Use(List, () => new CompletionRowView(this));
         List.ContainerPrepared += (_, e) => e.Container.IsVisible = slots[e.Index].Row is not null;
         List.SelectionChanged += (_, _) =>
@@ -344,6 +354,10 @@ internal sealed class CompletionPopup : Border
 
     public ListBox List { get; }
 
+    public AutomationControlType Role => AutomationControlType.List;
+
+    public string Called => "Completion";
+
     /// <summary>Held to a room narrower than it would be, even than its least width, its names and details ending in an
     /// ellipsis rather than past the editor's edge; as wide as its rows make it in a wider one.</summary>
     public void Within(double room)
@@ -359,6 +373,9 @@ internal sealed class CompletionPopup : Border
     public Func<Lsp.CompletionItem, IBrush?>? Swatch { get; set; }
 
     public CompletionRow? Selected => chosen >= 0 && chosen < rows.Count ? rows[chosen] : null;
+
+    /// <summary>Where the row chosen stands among <see cref="Rows"/>; -1 with none.</summary>
+    public int ChosenAt => Selected is null ? -1 : chosen;
 
     public IReadOnlyList<CompletionRow> Rows => rows;
 
@@ -562,6 +579,7 @@ internal sealed class CompletionRowView : DockPanel
         Children.Add(badge);
         Children.Add(label);
         Children.Add(detail);
+        AutomationProperties.SetLabeledBy(this, label);
         this.Showing<CompletionSlot>(slot =>
         {
             if (slot.Row is { } row)
@@ -583,7 +601,7 @@ internal sealed class CompletionRowView : DockPanel
 
 /// <summary>A titled list to choose from (fixes, definitions, usages, surround templates): Up and Down, Enter or a double
 /// click to choose, a choice's digit to choose it at once.</summary>
-internal sealed class ChoicePopup : Border
+internal sealed class ChoicePopup : Border, IHeardPopup
 {
     private readonly ListBox list;
 
@@ -613,6 +631,8 @@ internal sealed class ChoicePopup : Border
             ItemsSource = choices,
             SelectedIndex = choices.Count > 0 ? 0 : -1,
         };
+        // The popup is the list a screen reader meets, its rows straight under it.
+        AutomationProperties.SetAccessibilityView(list, AccessibilityView.Raw);
         ReusedRows.Use(list, () => ChoiceRow(numbered));
         Child = new StackPanel
         {
@@ -634,6 +654,13 @@ internal sealed class ChoicePopup : Border
             }
         }, DispatcherPriority.Loaded);
     }
+
+    public AutomationControlType Role => AutomationControlType.List;
+
+    public string Called => Title;
+
+    /// <summary>Where the choice selected stands among <see cref="Titles"/>; -1 with none.</summary>
+    public int ChosenAt => list.SelectedIndex;
 
     /// <summary>The choice made.</summary>
     public event EventHandler<Choice>? Done;
@@ -659,6 +686,7 @@ internal sealed class ChoicePopup : Border
         TextBlock text = new() { VerticalAlignment = VerticalAlignment.Center };
         TextBlock detail = new() { FontSize = 12, TextTrimming = TextTrimming.CharacterEllipsis, MaxWidth = 460, VerticalAlignment = VerticalAlignment.Center };
         StackPanel row = new() { Orientation = Orientation.Horizontal, Spacing = 10, Height = ListRow.Height, Children = { digit, text, detail } };
+        AutomationProperties.SetLabeledBy(row, text);
         string? detailFont = null;
         return row.Showing<Choice>(choice =>
         {
@@ -695,7 +723,7 @@ internal sealed record Choice(string Text, string Detail, object Value, bool Det
 /// own caption, names what a refactoring makes). For a
 /// type declared in files named after it, Also rename files to reflect this change is a check box under it, with the
 /// files it would rename, clicked while the keys stay with the name.</summary>
-internal sealed class RenameBox : Border
+internal sealed class RenameBox : Border, IHeardPopup
 {
     private readonly TextBox name;
     private readonly StackPanel body;
@@ -703,15 +731,18 @@ internal sealed class RenameBox : Border
 
     public RenameBox(string current, string caption = "Rename")
     {
+        Called = caption;
         Classes.Add(StyleClasses.Popup);
         Padding = new Thickness(8, 6);
         name = new TextBox { Text = current, Classes = { StyleClasses.Search }, MinWidth = 220 }.InCodeFont();
+        TextBlock captioned = new() { Text = caption, Classes = { StyleClasses.Muted }, FontSize = 11 };
+        AutomationProperties.SetLabeledBy(name, captioned);
         body = new StackPanel
         {
             Spacing = 4,
             Children =
             {
-                new TextBlock { Text = caption, Classes = { StyleClasses.Muted }, FontSize = 11 },
+                captioned,
                 name,
             },
         };
@@ -723,6 +754,11 @@ internal sealed class RenameBox : Border
             name.SelectAll();
         }, DispatcherPriority.Loaded);
     }
+
+    public AutomationControlType Role => AutomationControlType.Group;
+
+    /// <summary>What the box asks for, its caption.</summary>
+    public string Called { get; }
 
     /// <summary>The new name, or null when cancelled.</summary>
     public event EventHandler<string?>? Done;

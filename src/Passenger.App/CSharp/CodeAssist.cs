@@ -58,9 +58,10 @@ public sealed record FixConfirmed(Func<Task<string?>> Question, string Yes, Func
 
 /// <summary>What the language services add to the editor as you work, for the window to wire once: completion as you type
 /// (<see cref="CodeCompletion"/>), a card when the pointer rests (<see cref="QuickInfo"/>), signature help after an opening
-/// bracket or a comma (<see cref="ParameterInfo"/>), going to declarations and usages (<see cref="CodeNavigation"/>), and
-/// the code actions and refactorings (<see cref="CodeActions"/>), their popups placed at the caret
-/// (<see cref="PopupPlacement"/>); each file's language answers through the one ladder of <see cref="LanguageAssists"/>.</summary>
+/// bracket or a comma, following the caret through the call (<see cref="ParameterInfo"/>), going to declarations and
+/// usages (<see cref="CodeNavigation"/>), and the code actions and refactorings (<see cref="CodeActions"/>), their popups
+/// placed at the caret (<see cref="PopupPlacement"/>); each file's language answers through the one ladder of
+/// <see cref="LanguageAssists"/>.</summary>
 public sealed class CodeAssist
 {
     private readonly AssistContext context;
@@ -135,6 +136,7 @@ public sealed class CodeAssist
                 if (editor == Editor)
                 {
                     completion.CaretMoved();
+                    parameterInfo.CaretMoved();
                 }
             };
         });
@@ -586,7 +588,18 @@ public sealed class CodeAssist
         Code(AppActions.ParameterInfo, "Parameter Info", context => IdeErrors.Observe(parameterInfo.Show()), new("View", 1, 2));
         Code(AppActions.NextError, "Next Highlighted Error", _ => navigation.StepToMarker(forward: true), new("Navigate", 3, 0), server: false);
         Code(AppActions.PreviousError, "Previous Highlighted Error", _ => navigation.StepToMarker(forward: false), new("Navigate", 3, 1), server: false);
-        Code(AppActions.QuickDocumentation, "Quick Documentation", context => quickInfo.QuickDocumentation(), new("View", 1, 1), server: false);
+        // With the completion list open, the chosen item's documentation, which its card beside the list shows, is read out.
+        Code(AppActions.QuickDocumentation, "Quick Documentation", context =>
+        {
+            if (completion.IsOpen)
+            {
+                completion.SayDocumentation();
+            }
+            else
+            {
+                quickInfo.QuickDocumentation();
+            }
+        }, new("View", 1, 1), server: false);
 
         // One that edits the file shown (writes) greys on a read-only one, a file the language server serves too.
         void Code(string id, string title, Action<ActionContext> run, MenuPlace menu, bool server = true, bool syntax = false, bool xaml = false, bool markup = false, bool msbuild = false,

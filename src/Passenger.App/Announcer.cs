@@ -34,7 +34,8 @@ public sealed class LiveText : TextBlock
 
 /// <summary>The one place what a window tells the person reaches a screen reader (VoiceOver, Narrator, NVDA, Orca): what
 /// the status bar says, a work's stages and what it came to (<see cref="Working.Tell"/>), a window opened without the
-/// keys (a notification, an agent's question). Words told within a moment are gathered and heard once each, the most
+/// keys (a notification, an agent's question), a popup at the code (<see cref="CSharp.PopupPlacement.Tell"/>). Words told
+/// within a moment are gathered and heard once each, the most
 /// urgent way they were told, in the order told; a stage that changes only its numbers (a progress tick) is not heard.
 /// Each is heard through the window's one announcing region, a live region its words are put in, whose name change
 /// Avalonia's bridges turn into the system's own: UI Automation's LiveRegionChanged on Windows, AXLiveRegionChanged with an
@@ -58,7 +59,7 @@ public sealed class Announcer
         VerticalAlignment = VerticalAlignment.Bottom,
     };
 
-    private readonly List<(string Words, Urgency Urgency)> told = [];
+    private readonly List<(string Words, Urgency Urgency, object? About)> told = [];
     private readonly Debounce later;
 
     /// <summary>The last stage heard with its numbers left out, which a tick of it is not heard against.</summary>
@@ -99,15 +100,24 @@ public sealed class Announcer
     /// <summary>The window's announcing region, as a screen reader meets it: its name the words heard last.</summary>
     public Control Region => region;
 
-    /// <summary>Tells the person <paramref name="words"/>, heard within a moment unless said already then.</summary>
-    public void Tell(string? words, Urgency urgency)
+    /// <summary>Tells the person <paramref name="words"/>, heard within a moment unless said already then. Words
+    /// <paramref name="about"/> one thing that changes (a list's choice) stand in place of those told of it and not yet
+    /// heard, so only how it stands is heard.</summary>
+    public void Tell(string? words, Urgency urgency, object? about = null)
     {
         UiThread.Check();
         if (string.IsNullOrWhiteSpace(words))
         {
             return;
         }
-        told.Add((words, urgency));
+        for (int i = told.Count - 1; about is not null && i >= 0; i--)
+        {
+            if (ReferenceEquals(told[i].About, about))
+            {
+                told.RemoveAt(i);
+            }
+        }
+        told.Add((words, urgency, about));
         if (!later.IsWaiting)
         {
             later.Restart();
@@ -136,7 +146,7 @@ public sealed class Announcer
     private void Hear()
     {
         List<(string Words, Urgency Urgency)> heard = [];
-        foreach ((string words, Urgency urgency) in told)
+        foreach ((string words, Urgency urgency, _) in told)
         {
             int same = heard.FindIndex(h => h.Words == words);
             if (same < 0)
