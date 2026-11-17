@@ -37,7 +37,7 @@ public sealed class EditorConfig
         List<(string Folder, ConfigFile Config)> chain = [];
         foreach (string folder in Path.GetDirectoryName(path) is { } start ? FoldersUp.From(start) : [])
         {
-            if (Read(Path.Combine(folder, FileName)) is { } config)
+            if (FoldersUp.Found(folder, FileName) is { } file && Read(file) is { } config)
             {
                 chain.Add((folder, config));
                 if (config.Root)

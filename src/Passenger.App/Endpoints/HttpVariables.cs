@@ -41,7 +41,7 @@ public static partial class HttpVariables
     {
         foreach (string folder in Path.GetDirectoryName(httpFile) is { } start ? FoldersUp.From(start) : [])
         {
-            string[] found = [.. new[] { PublicFile, PrivateFile }.Select(n => Path.Combine(folder, n)).Where(File.Exists)];
+            string[] found = [.. new[] { PublicFile, PrivateFile }.Select(n => FoldersUp.Found(folder, n)).OfType<string>().Where(File.Exists)];
             if (found.Length > 0)
             {
                 return found;

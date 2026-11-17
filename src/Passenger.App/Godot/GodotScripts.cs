@@ -38,7 +38,7 @@ public static class GodotScripts
     {
         foreach (string folder in Path.GetDirectoryName(path) is { } start ? FoldersUp.From(start) : [])
         {
-            if (File.Exists(Path.Combine(folder, GodotProject.FileName)))
+            if (FoldersUp.Found(folder, GodotProject.FileName) is { } project && File.Exists(project))
             {
                 return folder;
             }

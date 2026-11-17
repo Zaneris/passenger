@@ -24,7 +24,7 @@ public sealed record TogetherBuild(string Project, IReadOnlyList<string> Project
         {
             foreach (string at in Path.GetDirectoryName(project) is { } start ? FoldersUp.From(start) : [])
             {
-                if (File.Exists(Path.Combine(at, "Directory.Build.rsp")))
+                if (FoldersUp.Found(at, "Directory.Build.rsp") is { } switches && File.Exists(switches))
                 {
                     return null;
                 }

@@ -336,7 +336,7 @@ public static class NodeProjects
     /// <summary>A package's folder and those above it a package manager looks in for its settings: within the folder open,
     /// and above it only while a folder holds a package.json, each one of the person's (<see cref="FoldersUp"/>).</summary>
     private static IEnumerable<string> ManagerFolders(string top, string folder) =>
-        FoldersUp.From(folder).TakeWhile(at => PathNames.Within(at, top) || File.Exists(Path.Combine(at, ManifestName)));
+        FoldersUp.From(folder).TakeWhile(at => PathNames.Within(at, top) || HasIn(at, ManifestName));
 
     /// <summary>Whether the manager of the package in <paramref name="folder"/> runs its scripts' hooks with them
     /// (<see cref="RunsHooks"/>): its version from the <c>packageManager</c> field or lockfile in the folder that named it,
@@ -357,13 +357,13 @@ public static class NodeProjects
         bool? setting = null;
         if (manager == NodeManager.Pnpm)
         {
-            string? workspace = ManagerFolders(top, folder).Select(at => Path.Combine(at, PnpmWorkspaceName)).FirstOrDefault(File.Exists);
-            setting = workspace is not null && ReadFile(workspace) is { } yaml ? YamlSwitch(yaml, "enablePrePostScripts", "enable-pre-post-scripts") : null;
+            string? workspace = ManagerFolders(top, folder).FirstOrDefault(at => HasIn(at, PnpmWorkspaceName));
+            setting = workspace is not null && ReadIn(workspace, PnpmWorkspaceName) is { } yaml ? YamlSwitch(yaml, "enablePrePostScripts", "enable-pre-post-scripts") : null;
         }
         if (setting is null && (manager == NodeManager.Npm || version is not >= 11))
         {
             string key = manager == NodeManager.Npm ? "ignore-scripts" : "enable-pre-post-scripts";
-            setting = ManagerFolders(top, folder).Select(at => ReadFile(Path.Combine(at, NpmrcName)) is { } npmrc ? NpmrcSwitch(npmrc, key) : null)
+            setting = ManagerFolders(top, folder).Select(at => ReadIn(at, NpmrcName) is { } npmrc ? NpmrcSwitch(npmrc, key) : null)
                 .FirstOrDefault(set => set is not null);
             setting = manager == NodeManager.Npm ? !setting : setting;
         }
@@ -375,33 +375,39 @@ public static class NodeProjects
     private static int? VersionIn(string folder, NodeManager manager, Dictionary<string, NodeManifest> read)
     {
         string manifest = Path.Combine(folder, ManifestName);
-        NodeManifest? made = read.TryGetValue(manifest, out NodeManifest? known) ? known : ReadFile(manifest) is { } text ? ReadManifest(text) : null;
+        NodeManifest? made = read.TryGetValue(manifest, out NodeManifest? known) ? known : ReadIn(folder, ManifestName) is { } text ? ReadManifest(text) : null;
         if (Named(made?.PackageManager) == manager)
         {
             return MajorOf(made!.PackageManager);
         }
-        if (manager == NodeManager.Yarn && File.Exists(Path.Combine(folder, YarnrcName)))
+        if (manager == NodeManager.Yarn && HasIn(folder, YarnrcName))
         {
             return 2;
         }
-        string? lockfile = Lockfiles.Where(l => l.Manager == manager).Select(l => Path.Combine(folder, l.Name)).FirstOrDefault(File.Exists);
+        string? lockfile = Lockfiles.Where(l => l.Manager == manager).Select(l => HasIn(folder, l.Name) ? Path.Combine(folder, l.Name) : null).FirstOrDefault(l => l is not null);
         return lockfile is not null && ReadHead(lockfile) is { } head ? LockfileMajor(manager, head) : null;
     }
 
     private static (NodeManager, string)? SaidIn(string folder, Dictionary<string, NodeManifest> read)
     {
         string manifest = Path.Combine(folder, ManifestName);
-        NodeManifest? made = read.TryGetValue(manifest, out NodeManifest? known) ? known : ReadFile(manifest) is { } text ? ReadManifest(text) : null;
+        NodeManifest? made = read.TryGetValue(manifest, out NodeManifest? known) ? known : ReadIn(folder, ManifestName) is { } text ? ReadManifest(text) : null;
         if (Named(made?.PackageManager) is { } named)
         {
             return (named, $"its packageManager field ({made!.PackageManager!.Split('+')[0]})");
         }
-        if (OfLockfiles(Lockfiles.Select(l => l.Name).Where(name => File.Exists(Path.Combine(folder, name)))) is ({ } locked, { } lockfile))
+        if (OfLockfiles(Lockfiles.Select(l => l.Name).Where(name => HasIn(folder, name))) is ({ } locked, { } lockfile))
         {
             return (locked, lockfile);
         }
-        return File.Exists(Path.Combine(folder, PnpmWorkspaceName)) ? (NodeManager.Pnpm, PnpmWorkspaceName) : null;
+        return HasIn(folder, PnpmWorkspaceName) ? (NodeManager.Pnpm, PnpmWorkspaceName) : null;
     }
+
+    /// <summary>Whether a file a package manager reads is in a folder of the walk up, the person's (<see cref="FoldersUp.Found"/>).</summary>
+    private static bool HasIn(string folder, string name) => FoldersUp.Found(folder, name) is { } file && File.Exists(file);
+
+    /// <summary>A file a package manager reads in a folder of the walk up, where it is there and the person's; null otherwise.</summary>
+    private static string? ReadIn(string folder, string name) => FoldersUp.Found(folder, name) is { } file ? ReadFile(file) : null;
 
     /// <summary>A file's first few kilobytes as text, null where it can't be read.</summary>
     private static string? ReadHead(string path)

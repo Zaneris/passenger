@@ -139,9 +139,9 @@ public static class EfTools
     {
         foreach (string at in FoldersUp.From(folder))
         {
-            foreach (string manifest in new[] { Path.Combine(at, ".config", "dotnet-tools.json"), Path.Combine(at, "dotnet-tools.json") })
+            foreach (string named in new[] { Path.Combine(".config", "dotnet-tools.json"), "dotnet-tools.json" })
             {
-                if (File.Exists(manifest))
+                if (FoldersUp.Found(at, named) is { } manifest && File.Exists(manifest))
                 {
                     yield return manifest;
                 }

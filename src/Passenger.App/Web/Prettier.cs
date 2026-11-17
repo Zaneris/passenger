@@ -82,8 +82,7 @@ public sealed class PrettierService : IAsyncDisposable
     {
         foreach (string at in Path.GetDirectoryName(path) is { } start ? FoldersUp.From(start) : [])
         {
-            string ignore = Path.Combine(at, ".prettierignore");
-            if (File.Exists(ignore))
+            if (FoldersUp.Found(at, ".prettierignore") is { } ignore && File.Exists(ignore))
             {
                 return ignore;
             }

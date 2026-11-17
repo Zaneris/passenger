@@ -38,8 +38,7 @@ public sealed class EditorConfigFolder
         }
         foreach (string above in !rooted && Path.GetDirectoryName(folder) is { } parent ? FoldersUp.From(parent) : [])
         {
-            string file = Path.Join(above, EditorConfig.FileName);
-            if (EditorConfig.WrittenIn(file) is { } written)
+            if (FoldersUp.Found(above, EditorConfig.FileName) is { } file && EditorConfig.WrittenIn(file) is { } written)
             {
                 keys.AddRange(written.Pairs.Select(p => new SetKey(file, p.Glob, p.Line, p.Key, p.Value)));
                 if (written.Root)

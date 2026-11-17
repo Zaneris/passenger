@@ -62,8 +62,7 @@ public static partial class Dotnet
     {
         foreach (string at in FoldersUp.From(folder))
         {
-            FileInfo file = new(Path.Combine(at, "global.json"));
-            if (file.Exists)
+            if (FoldersUp.Found(at, "global.json") is { } found && new FileInfo(found) is { Exists: true } file)
             {
                 return file;
             }

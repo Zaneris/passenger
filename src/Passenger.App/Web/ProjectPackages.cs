@@ -20,10 +20,9 @@ public static class ProjectPackages
     {
         foreach (string folder in Path.GetDirectoryName(file) is { } start ? FoldersUp.From(start) : [])
         {
-            string package = Path.Combine(folder, "node_modules", name);
-            if (File.Exists(Path.Combine(package, "package.json")))
+            if (FoldersUp.Found(folder, Path.Combine("node_modules", name, "package.json")) is { } manifest && File.Exists(manifest))
             {
-                return package;
+                return Path.GetDirectoryName(manifest);
             }
         }
         return null;
@@ -51,8 +50,7 @@ public static class ProjectPackages
         }
         foreach (string folder in Path.GetDirectoryName(file) is { } start ? FoldersUp.From(start) : [])
         {
-            string manifest = Path.Combine(folder, "package.json");
-            if (File.Exists(manifest) && Names(manifest, name))
+            if (FoldersUp.Found(folder, "package.json") is { } manifest && File.Exists(manifest) && Names(manifest, name))
             {
                 return manifest;
             }

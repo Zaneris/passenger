@@ -410,9 +410,10 @@ internal sealed partial class WebAssist(AssistContext context, PopupPlacement po
         {
             // A name rooted on a share or a device (as package.json's text may write one) is no package of these folders'.
             string candidate = Path.Combine(folder, "node_modules", name, "package.json");
-            if (Passenger.Core.FoundPaths.Askable(candidate) && File.Exists(candidate))
+            if (Passenger.Core.FoundPaths.Askable(candidate) && Passenger.Core.FoldersUp.Found(folder, Path.Combine("node_modules", name, "package.json")) is { } found
+                && File.Exists(found))
             {
-                return Passenger.Core.PathNames.Canonical(candidate);
+                return Passenger.Core.PathNames.Canonical(found);
             }
         }
         return null;

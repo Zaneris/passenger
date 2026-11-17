@@ -7,8 +7,8 @@ namespace Passenger.UnitTests.Packages;
 
 /// <summary>A nuget.config as Passenger reads and edits it, matching its names as NuGet does: one too deep for NuGet's reader
 /// said not to read, before it ends the process, in the folder asked and those above it, its packages then looked for where
-/// NuGet looks with no config; one in a parent every user may write, or above it, left out; and a feed's credentials found
-/// and changed whatever letter case their element and keys are written in.</summary>
+/// NuGet looks with no config; one in a parent another user owns, or above it, or one they put in the person's folder, left
+/// out; and a feed's credentials found and changed whatever letter case their element and keys are written in.</summary>
 public sealed class NuGetSettingsTests : IDisposable
 {
     private readonly string root = PathNames.Canonical(Directory.CreateTempSubdirectory("passenger-unit-").FullName);
@@ -31,45 +31,44 @@ public sealed class NuGetSettingsTests : IDisposable
         });
     }
 
-    /// <summary>A package source a nuget.config names in a parent every user may write is left out of the folder's settings,
-    /// and nothing above it read; one in the person's own parent is kept.</summary>
+    /// <summary>A package source a nuget.config names in a parent another user owns is left out of the folder's settings,
+    /// and nothing above it read, as is one in a config another user put in the person's own parent; the person's own
+    /// parent's config is kept.</summary>
     [Fact]
-    public void A_config_in_a_parent_every_user_may_write_is_left_out_and_one_in_the_persons_own_parent_kept()
+    public void A_config_in_a_parent_another_user_owns_or_one_they_put_beside_the_persons_is_left_out_and_the_persons_own_kept()
     {
-        Assert.SkipWhen(OperatingSystem.IsWindows(), "Windows' folders have no mode that lets every user write in them");
-        const UnixFileMode Shown = UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute | UnixFileMode.GroupRead
-            | UnixFileMode.GroupExecute | UnixFileMode.OtherRead | UnixFileMode.OtherExecute;
         string shared = Path.Combine(root, "shared");
         string own = Path.Combine(shared, "own");
         string project = Path.Combine(own, "project");
         Directory.CreateDirectory(project);
         File.WriteAllText(Path.Combine(shared, "nuget.config"),
             "<configuration><packageSources><add key=\"planted\" value=\"https://planted.invalid/v3/index.json\" /></packageSources></configuration>");
-        File.WriteAllText(Path.Combine(own, "nuget.config"),
+        string owned = Path.Combine(own, "nuget.config");
+        File.WriteAllText(owned,
             "<configuration><packageSources><add key=\"own\" value=\"https://own.invalid/v3/index.json\" /></packageSources></configuration>");
         File.WriteAllText(Path.Combine(root, "nuget.config"),
             "<configuration><packageSources><add key=\"above\" value=\"https://above.invalid/v3/index.json\" /></packageSources></configuration>");
 
-        Mode(Shown);
-        string[] read = [.. SettingsUtility.GetEnabledSources(NuGetSettings.Load(project)).Select(s => s.Name)];
+        string[] read = Sources();
         Assert.Contains("own", read);
         Assert.Contains("planted", read);
         Assert.Contains("above", read);
 
-        Mode(Shown | UnixFileMode.GroupWrite | UnixFileMode.OtherWrite);
-        read = [.. SettingsUtility.GetEnabledSources(NuGetSettings.Load(project)).Select(s => s.Name)];
-        Assert.Contains("own", read);
-        Assert.False(read.Contains("planted") || read.Contains("above"),
-            $"A source of {shared}, which every user may write, or of a folder above it is among the project's: {string.Join(", ", read)}");
-        Mode(Shown);
-
-        void Mode(UnixFileMode mode)
+        using (FoldersUp.HeldByAnother(shared))
         {
-            if (!OperatingSystem.IsWindows())
-            {
-                File.SetUnixFileMode(shared, mode);
-            }
+            read = Sources();
+            Assert.Contains("own", read);
+            Assert.False(read.Contains("planted") || read.Contains("above"),
+                $"A source of {shared}, which another user owns, or of a folder above it is among the project's: {string.Join(", ", read)}");
         }
+        using (FoldersUp.HeldByAnother(owned))
+        {
+            read = Sources();
+            Assert.False(read.Contains("own"), $"The source of {owned}, which another user put there, is among the project's: {string.Join(", ", read)}");
+            Assert.Contains("planted", read);
+        }
+
+        string[] Sources() => [.. SettingsUtility.GetEnabledSources(NuGetSettings.Load(project)).Select(s => s.Name)];
     }
 
     /// <summary>A folder whose nuget.config does not read, malformed or nested too deeply, names no package cache, so a

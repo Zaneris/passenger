@@ -797,7 +797,7 @@ public sealed class XamlService : IDisposable
         {
             try
             {
-                string? found = Directory.EnumerateFiles(at, "*.csproj").Order(StringComparer.Ordinal).FirstOrDefault();
+                string? found = Directory.EnumerateFiles(at, "*.csproj").Order(StringComparer.Ordinal).FirstOrDefault(f => FoldersUp.Found(at, Path.GetFileName(f)) is not null);
                 if (found is not null)
                 {
                     return found;

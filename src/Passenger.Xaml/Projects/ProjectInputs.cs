@@ -80,8 +80,7 @@ public sealed record ProjectInputs(
         }
         foreach (string at in FoldersUp.From(Folder))
         {
-            string props = Path.Combine(at, "Directory.Build.props");
-            if (File.Exists(props))
+            if (FoldersUp.Found(at, "Directory.Build.props") is { } props && File.Exists(props))
             {
                 return Property(Load(props), name);
             }
@@ -282,8 +281,7 @@ public sealed record ProjectInputs(
         string name = Path.GetFileNameWithoutExtension(projectPath);
         foreach (string at in FoldersUp.From(folder))
         {
-            string artifacts = Path.Combine(at, "artifacts", "obj", name, "project.assets.json");
-            if (File.Exists(artifacts))
+            if (FoldersUp.Found(at, Path.Combine("artifacts", "obj", name, "project.assets.json")) is { } artifacts && File.Exists(artifacts))
             {
                 return artifacts;
             }

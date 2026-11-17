@@ -19,7 +19,7 @@ namespace Passenger.Tests;
 /// tests' packages, pinned in NodePackages/ and put in place at build, never fetched from npm as the tests run) and its own
 /// eslint.config.js, .prettierrc and .prettierignore: problems as typed and their fixes, Fix ESLint Problems, Prettier on
 /// Reformat Code and on save, .prettierignore honoured, the banner offering npm install for what is not installed, and
-/// packages in a parent folder every user may write passed over. Each test opens its own window; one that cannot find
+/// packages in a node_modules another user made above passed over. Each test opens its own window; one that cannot find
 /// Node.js skips, saying so.</summary>
 public sealed class EslintPrettierTests : IClassFixture<EslintPrettierTests.Project>
 {
@@ -538,29 +538,31 @@ public sealed class EslintPrettierTests : IClassFixture<EslintPrettierTests.Proj
     }
 
     /// <summary>A folder whose package.json lists ESLint and Prettier, installed only in the node_modules of the folder above
-    /// it: while every user may write that folder they are passed over, the banner saying they are not installed, and once
-    /// it is the person's alone the parent's ESLint checks the folder's script.</summary>
+    /// it: while another user owns that node_modules (as one made at a drive's root may be) they are passed over, the
+    /// banner saying they are not installed, and once it is the person's the parent's ESLint checks the folder's script.</summary>
     [AvaloniaFact]
-    public void ESLint_and_Prettier_in_a_parent_every_user_may_write_are_passed_over_and_in_the_persons_own_parent_check_the_script()
+    public void ESLint_and_Prettier_in_a_node_modules_another_user_made_above_are_passed_over_and_in_the_persons_own_check_the_script()
     {
         Project.SkipWithoutNode();
-        Assert.SkipWhen(OperatingSystem.IsWindows(), "Windows' folders have no mode that lets every user write in them");
         string app = PathNames.Canonical(project.AddFolder("app", ("package.json", Project.Package), ("app.js", Project.App)));
-        string parent = PathNames.Canonical(project.Folder);
-        MainWindow window = Opened(true);
-        try
+        string modules = Path.Combine(PathNames.Canonical(project.Folder), "node_modules");
+        MainWindow window;
+        using (FoldersUp.HeldByAnother(modules))
         {
-            Ui.WaitFor(() => window.EditorArea.ActiveGroup.BannerText is not null, "the banner over the script");
-            Assert.Equal("ESLint and Prettier are not installed: package.json lists eslint and prettier, which are not in node_modules.",
-                window.EditorArea.ActiveGroup.BannerText);
-        }
-        finally
-        {
-            window.Close();
-            Shared(false);
+            window = Opened();
+            try
+            {
+                Ui.WaitFor(() => window.EditorArea.ActiveGroup.BannerText is not null, "the banner over the script");
+                Assert.Equal("ESLint and Prettier are not installed: package.json lists eslint and prettier, which are not in node_modules.",
+                    window.EditorArea.ActiveGroup.BannerText);
+            }
+            finally
+            {
+                window.Close();
+            }
         }
 
-        window = Opened(false);
+        window = Opened();
         try
         {
             CodeEditor editor = window.EditorArea.CodeEditor;
@@ -575,22 +577,12 @@ public sealed class EslintPrettierTests : IClassFixture<EslintPrettierTests.Proj
             project.Reset();
         }
 
-        MainWindow Opened(bool shared)
+        MainWindow Opened()
         {
-            Shared(shared);
             MainWindow opened = Ui.OpenFolder(app, autosaves: false);
             opened.OpenFile(Path.Combine(app, "app.js"));
             Ui.Settle();
             return opened;
-        }
-
-        void Shared(bool shared)
-        {
-            if (!OperatingSystem.IsWindows())
-            {
-                UnixFileMode mode = File.GetUnixFileMode(parent);
-                File.SetUnixFileMode(parent, shared ? mode | UnixFileMode.GroupWrite | UnixFileMode.OtherWrite : mode & ~(UnixFileMode.GroupWrite | UnixFileMode.OtherWrite));
-            }
         }
     }
 

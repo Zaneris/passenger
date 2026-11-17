@@ -30,7 +30,8 @@ public static class NuGetSettings
         ISettings settings = Settings.LoadDefaultSettings(root);
         IList<string> read = settings.GetConfigFilePaths();
         HashSet<string> persons = new(FoldersUp.From(root), PathNames.Comparer);
-        string[] kept = [.. read.Where(file => Path.GetDirectoryName(file) is not { } folder || persons.Contains(folder) || !Over(root, folder))];
+        string[] kept = [.. read.Where(file => Path.GetDirectoryName(file) is not { } folder || !Over(root, folder)
+            || (persons.Contains(folder) && FoldersUp.Found(folder, Path.GetFileName(file)) is not null))];
         return kept.Length == read.Count ? settings : Settings.LoadSettingsGivenConfigPaths(kept);
     }
 

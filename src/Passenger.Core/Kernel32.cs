@@ -41,6 +41,21 @@ public static partial class Kernel32
             : null;
     }
 
+    /// <summary>Whether the volume at a root (C:\, \\server\share\) keeps files' owners and access lists
+    /// (GetVolumeInformation's FILE_PERSISTENT_ACLS), as NTFS and ReFS do and FAT and exFAT do not; null when Windows will
+    /// not say.</summary>
+    public static unsafe bool? KeepsSecurity(string root)
+    {
+        const uint PersistentAcls = 0x8;
+        uint flags = 0;
+        return GetVolumeInformation(root, null, 0, null, null, &flags, null, 0) ? (flags & PersistentAcls) != 0 : null;
+    }
+
+    [LibraryImport("kernel32.dll", EntryPoint = "GetVolumeInformationW", SetLastError = true, StringMarshalling = StringMarshalling.Utf16)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static unsafe partial bool GetVolumeInformation(string root, char* name, uint nameSize, uint* serial, uint* longestName, uint* flags,
+        char* system, uint systemSize);
+
     /// <summary>When a process began, as a FILETIME; null when Windows will not say.</summary>
     public static long? BeganAt(SafeProcessHandle process) => GetProcessTimes(process, out long began, out _, out _, out _) ? began : null;
 

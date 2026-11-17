@@ -25,8 +25,7 @@ public sealed record EfDefaults(string? Project, string? StartupProject, string?
         }
         foreach (string at in FoldersUp.From(folder))
         {
-            string file = Path.Combine(at, ".config", "dotnet-ef.json");
-            if (File.Exists(file))
+            if (FoldersUp.Found(at, Path.Combine(".config", "dotnet-ef.json")) is { } file && File.Exists(file))
             {
                 return Read(file, at);
             }

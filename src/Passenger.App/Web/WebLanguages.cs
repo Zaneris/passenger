@@ -185,10 +185,13 @@ public sealed class WebLanguages : IAsyncDisposable
     {
         foreach (string at in FoldersUp.From(folder))
         {
-            if (TypeScriptFolders.Select(f => Path.Combine(at, f)).FirstOrDefault(Directory.Exists) is { } lib)
+            if (TypeScriptFolders.FirstOrDefault(f => Directory.Exists(Path.Join(at, f))) is { } lib)
             {
-                string server = Path.Combine(lib, "tsserver.js");
-                return File.Exists(server) && ProjectPackages.Version(Path.GetDirectoryName(lib)!) is not null ? server : null;
+                return FoldersUp.Found(at, Path.Combine(lib, "tsserver.js")) is { } server && File.Exists(server)
+                    && FoldersUp.Found(at, Path.Combine(Path.GetDirectoryName(lib)!, "package.json")) is { } package
+                    && ProjectPackages.Version(Path.GetDirectoryName(package)!) is not null
+                    ? server
+                    : null;
             }
         }
         return null;
