@@ -56,6 +56,23 @@ public sealed class TrustedFoldersTests
     }
 
     [Fact]
+    public void A_workspace_lends_a_folder_beside_its_own_never_a_disks_root_the_home_folder_a_folder_holding_it_or_its_own()
+    {
+        string open = At("repo", "app");
+        string home = PathNames.Canonical(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile));
+
+        Assert.True(WorkspaceTrust.Lends(At("repo", "lib"), open), "A project's folder beside the open folder could not be lent");
+        Assert.True(WorkspaceTrust.Lends(Path.Combine(home, "code", "lib"), open), "A project's folder in the home folder could not be lent");
+        Assert.False(WorkspaceTrust.Lends(Path.GetPathRoot(open)!, open), "A disk's root could be lent");
+        Assert.False(WorkspaceTrust.Lends(At("repo"), open), "The folder holding the open folder could be lent");
+        Assert.False(WorkspaceTrust.Lends(Top, open), "A folder above the open folder could be lent");
+        Assert.False(WorkspaceTrust.Lends(open, open), "The open folder could be lent to itself");
+        Assert.False(WorkspaceTrust.Lends(home, open), "The home folder could be lent");
+        Assert.False(WorkspaceTrust.Lends(Path.GetDirectoryName(home)!, open), "The folder holding the home folder could be lent");
+        Assert.False(WorkspaceTrust.Lends("relative", open), "A relative path could be lent");
+    }
+
+    [Fact]
     public void A_folder_taken_back_is_trusted_no_longer_with_every_folder_under_it_while_a_parent_still_trusted_keeps_it()
     {
         TrustedFolders trusted = TrustedFolders.None.With([At("work", "app"), At("other")]);

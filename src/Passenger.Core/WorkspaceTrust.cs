@@ -49,12 +49,26 @@ public static class WorkspaceTrust
     /// its code is the caller's to end. A folder above it still trusted, or one lent, keeps it trusted. A canonical path.</summary>
     public static void TakeBack(string folder) => Change(now => now.Without(folder));
 
-    /// <summary>The folders a trusted workspace reaches outside its own (a solution's projects beside it), trusted while it is
-    /// open, in place of those it lent before; none lets them go. Canonical paths.</summary>
-    public static void Lend(object workspace, IEnumerable<string> reached)
+    /// <summary>The folders a trusted workspace whose own folder is <paramref name="open"/> reaches outside it (its solution's
+    /// projects beside it), trusted while it is open, in place of those it lent before; none lets them go. Canonical paths;
+    /// one no workspace may lend (<see cref="Lends"/>) is refused, whoever asks.</summary>
+    public static void Lend(object workspace, string open, IEnumerable<string> reached)
     {
-        string[] folders = [.. reached];
+        string[] folders = [.. reached.Where(f => Lends(f, open))];
         Change(now => now.Lending(workspace, folders));
+    }
+
+    /// <summary>Whether a workspace whose own folder is <paramref name="open"/> may lend its trust to <paramref name="folder"/>,
+    /// a folder of one of its projects outside it: never a disk's root, the home folder or a folder holding it, nor a folder
+    /// holding <paramref name="open"/>, each of which would trust what the person never chose. Canonical paths.</summary>
+    public static bool Lends(string folder, string open)
+    {
+        if (!Path.IsPathFullyQualified(folder) || Path.GetDirectoryName(Path.TrimEndingDirectorySeparator(folder)) is null || PathNames.Within(open, folder))
+        {
+            return false;
+        }
+        string home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        return home.Length == 0 || !PathNames.Within(PathNames.Canonical(home), folder);
     }
 
     /// <summary>A folder held to the person's answer while the hold lasts, in a process that trusts every other: a test's

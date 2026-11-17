@@ -1,9 +1,12 @@
+using System.Collections.Concurrent;
 using Passenger.App.CSharp;
 using Passenger.App.MSBuild;
 using Passenger.App.Packages;
 using Passenger.App.Web;
 using Passenger.App.Xaml;
 using Passenger.Core;
+using Passenger.Text;
+using Passenger.Workspace;
 
 namespace Passenger.App.Mcp;
 
@@ -15,6 +18,35 @@ namespace Passenger.App.Mcp;
 /// path is canonical (<see cref="PathNames.Canonical"/>), so one through a link out of the folder is where it leads.</summary>
 public static class AgentReach
 {
+    /// <summary>The solutions and filters Passenger wrote for an agent's call, by canonical path, until written again outside
+    /// one (the person's save) or opened by the person: what each names beside the folder reaches no further than before
+    /// (<see cref="ProjectSession.Reached"/>).</summary>
+    private static readonly ConcurrentDictionary<string, byte> Written = new(PathNames.Comparer);
+
+    static AgentReach() => FileText.Writing += path =>
+    {
+        if (WorkspaceModel.IsSolution(path))
+        {
+            string canonical = PathNames.Canonical(path);
+            if (AgentCall.Current is not null)
+            {
+                Written[canonical] = 0;
+            }
+            else
+            {
+                Written.TryRemove(canonical, out _);
+            }
+        }
+    };
+
+    /// <summary>Whether an agent's call wrote a solution or filter (a canonical path) since the person last wrote or opened
+    /// it.</summary>
+    public static bool WroteFor(string path) => Written.ContainsKey(path);
+
+    /// <summary>A solution or filter the person opened (a canonical path): what it names is theirs to reach from now on, as
+    /// it would be in a Passenger started anew.</summary>
+    public static void Opened(string path) => Written.TryRemove(path, out _);
+
     /// <summary>Where the C# language server writes what Go to Declaration of a library's symbol opens (its metadata as code,
     /// decompiled, or its source from its PDB or Source Link), in the temporary folder it takes from Passenger's environment,
     /// made the person's own (<see cref="UserTemporary.Own"/>); null where it is not theirs (a link, another user's folder

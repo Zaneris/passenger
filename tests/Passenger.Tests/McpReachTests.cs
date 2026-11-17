@@ -214,6 +214,60 @@ public sealed class McpReachTests : McpRig
         }
     }
 
+    /// <summary>An agent's edit of its trusted solution naming a project file at the disk's root, one in a folder holding the
+    /// open folder and a real project beside it the person never added reaches and lends nothing new: a file beside the
+    /// solution and the real project's file are refused, that project's folder is never trusted, and the library the solution
+    /// named before is still read and trusted with it; opened again by the person, the solution's real project is theirs.</summary>
+    [AvaloniaFact]
+    public void An_agents_edit_of_its_solution_reaches_and_lends_nothing_beside_what_the_person_had()
+    {
+        (string folder, string library, string beside) = SolutionBeside();
+        string root = Path.GetDirectoryName(folder)!;
+        string elsewhere = Path.GetDirectoryName(TestFolders.Write(root, "Other/Other.csproj", TestProjects.Library()))!;
+        string kept = TestFolders.Write(root, "Other/Kept.cs", "namespace Other;\n");
+        string libraryFolder = Path.GetDirectoryName(library)!;
+        // Each trusted only as the solution lends it, in a process that trusts every other folder.
+        using IDisposable askedLibrary = WorkspaceTrust.Ask(libraryFolder);
+        using IDisposable askedElsewhere = WorkspaceTrust.Ask(elsewhere);
+        MainWindow window = AgentsWindow(folder, languageServer: false);
+        McpClient client = Await(Waiting.Apart(() => Start(["--mcp-attach", ProcessId, folder])), "the agent attaching");
+        try
+        {
+            Assert.True(WorkspaceTrust.Trusts(library), "The library the trusted solution names beside it was not trusted with it");
+            Task<CallToolResult> editing = Waiting.Apart(() => Result(client, McpTools.Edit, new()
+            {
+                ["path"] = "App.slnx",
+                ["oldText"] = "</Solution>",
+                ["newText"] = "  <Project Path=\"/x.csproj\" />\n  <Project Path=\"../../x.csproj\" />\n  <Project Path=\"../Other/Other.csproj\" />\n</Solution>",
+            }));
+            Press(Question(window, "the question for the agent's edit"), "Allow");
+            CallToolResult edited = Await(editing, "the agent's edit of the solution");
+            Assert.True(edited.IsError != true, $"The agent's edit of the solution answered: {Text(edited)}");
+            Ui.WaitFor(() => window.Projects.Any(p => p.Name == "Other"), () => $"the solution read again as the agent wrote it: {string.Join(", ", window.Projects.Select(p => p.Name))}");
+
+            foreach (string file in (string[])[beside, kept])
+            {
+                CallToolResult read = Await(Waiting.Apart(() => Result(client, McpTools.EditorText, new() { ["path"] = file })), $"the read of {file}");
+                Assert.True(read.IsError == true && Text(read).Contains(Refusals.OutOfReach(file, folder, changes: false), StringComparison.Ordinal),
+                    $"editor_text of {file}, which the agent's edit of the solution named the way to, answered: {Text(read)}");
+            }
+            Assert.Contains("public string Greet()", Text(Await(Waiting.Apart(() => Result(client, McpTools.EditorText, new() { ["path"] = library })), "the library's read")),
+                StringComparison.Ordinal);
+            Assert.Equal([libraryFolder], window.Session.Reached);
+            Assert.False(WorkspaceTrust.Trusts(kept), "The project the agent's edit added beside the solution was trusted with it");
+            Assert.True(WorkspaceTrust.Trusts(library), "The library the solution named before the agent's edit was no longer trusted with it");
+
+            window.OpenFolder(Path.Combine(folder, "App.slnx"));
+            Ui.WaitFor(() => window.Session.Reached.Contains(elsewhere), () => $"the person's open to reach the solution's real project; it reaches {string.Join(", ", window.Session.Reached)}");
+            Assert.True(WorkspaceTrust.Trusts(kept), "The solution's real project was not trusted with it once the person opened it");
+        }
+        finally
+        {
+            Gone(client);
+            window.Close();
+        }
+    }
+
     /// <summary>A package's file, restored to a package folder outside the open folder, where definition leads, and a source
     /// generator's code copied outside it, where usages lead, are an agent's to read; edit refuses each as read-only, leaving
     /// it as it was.</summary>

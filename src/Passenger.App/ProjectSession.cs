@@ -253,6 +253,7 @@ public sealed class ProjectSession : IAsyncDisposable
         // The folder as read ahead, its projects walked for already, when that read has landed.
         WorkspaceModel opening = ahead?.Read is { IsCompletedSuccessfully: true } walked ? walked.Result
             : withSolution ?? new WorkspaceModel(folder, null, []) { Unread = unread };
+        OpenedByPerson(opening);
         session.Workspace = session.Models.Apply(opening);
         session.TakeFilter(session.Workspace);
         session.TimeSolutionView();
@@ -295,17 +296,38 @@ public sealed class ProjectSession : IAsyncDisposable
     /// <summary>The folders a trusted folder's solution reaches outside it, its projects' beside it: trusted with it while
     /// it is open (<see cref="WorkspaceTrust.Lend"/>), and an agent's to work in as the folder is (<see cref="Mcp.AgentReach"/>).
     /// None while the folder is not trusted.</summary>
-    public IReadOnlyList<string> Reached => Trusted && Folder is { } open
-        ? [.. (workspace?.Projects ?? []).Select(p => p.Folder).Where(f => !PathNames.Within(f, open)).Distinct(PathNames.Comparer)]
-        : [];
+    public IReadOnlyList<string> Reached => Trusted ? beside : [];
+
+    /// <summary>The folders of the solution's real projects outside the open folder, as last worked out (<see cref="FollowReach"/>).</summary>
+    private IReadOnlyList<string> beside = [];
+
+    /// <summary>The folders the solution reaches outside the open folder, worked out again as it is read: each project's own
+    /// folder where its project file is there, one no workspace may lend passed over (<see cref="WorkspaceTrust.Lends"/>).
+    /// A solution Passenger wrote for an agent's call reaches no further than before (<see cref="Mcp.AgentReach.WroteFor"/>),
+    /// until the person writes it or opens it, so an agent's own edit never widens its reach or the trust lent.</summary>
+    private void FollowReach()
+    {
+        if (Folder is not { } open || workspace is not { } now)
+        {
+            beside = [];
+            return;
+        }
+        List<string> real = [.. now.Projects.Where(p => !PathNames.Within(p.Folder, open) && IsProjectFile(p.Path) && File.Exists(p.Path))
+            .Select(p => p.Folder).Where(f => WorkspaceTrust.Lends(f, open)).Distinct(PathNames.Comparer)];
+        IReadOnlyList<string> before = beside;
+        beside = now.ReadFrom.Any(r => Mcp.AgentReach.WroteFor(PathNames.Canonical(r.Path))) ? [.. real.Where(f => before.Contains(f, PathNames.Comparer))] : real;
+
+        // Any of MSBuild's project files (.csproj, .esproj, .sqlproj), never another file a solution names as one.
+        static bool IsProjectFile(string path) => Path.GetExtension(path) is { Length: > 5 } extension && extension.EndsWith("proj", StringComparison.OrdinalIgnoreCase);
+    }
 
     /// <summary>A trusted folder's projects outside it (a solution's beside it) are trusted with it while it is open, so what
     /// works on them (a run, a migration) runs as it does for those inside.</summary>
     private void LendTrust()
     {
-        if (Trusted && Folder is not null)
+        if (Trusted && Folder is { } open)
         {
-            WorkspaceTrust.Lend(this, Reached);
+            WorkspaceTrust.Lend(this, open, Reached);
         }
     }
 
@@ -346,7 +368,7 @@ public sealed class ProjectSession : IAsyncDisposable
             return;
         }
         Trusted = false;
-        WorkspaceTrust.Lend(this, []);
+        WorkspaceTrust.Lend(this, folder, []);
         IdeErrors.Write($"Trust taken back from {folder}: none of its code runs from now on");
         // Untrusted, it ends the server and starts none.
         StartCSharp();
@@ -410,6 +432,7 @@ public sealed class ProjectSession : IAsyncDisposable
         {
             workspace = value is null ? null : value with { Build = BuildChoices.Choice };
             FollowEvaluations();
+            FollowReach();
             LendTrust();
         }
     }
@@ -1676,7 +1699,21 @@ public sealed class ProjectSession : IAsyncDisposable
     public void Reopen(string? named, WorkspaceModel? withSolution, UnreadSolution? unread)
     {
         NamedSolution = named;
+        OpenedByPerson(withSolution);
         Read(withSolution, unread);
+    }
+
+    /// <summary>A solution opened outside an agent's call is the person's to reach from, what an agent wrote of it taken as
+    /// theirs, as it is in a Passenger started anew (<see cref="Mcp.AgentReach.Opened"/>).</summary>
+    private static void OpenedByPerson(WorkspaceModel? read)
+    {
+        if (Mcp.AgentCall.Current is null)
+        {
+            foreach (Passenger.Host.Stamp solution in read?.ReadFrom ?? [])
+            {
+                Mcp.AgentReach.Opened(PathNames.Canonical(solution.Path));
+            }
+        }
     }
 
     /// <summary>Takes the folder's solution, read now, with the programs beside it it had; or for a folder without one (or
@@ -1995,7 +2032,7 @@ public sealed class ProjectSession : IAsyncDisposable
     /// debugger and Git take.</summary>
     private void LetGo()
     {
-        WorkspaceTrust.Lend(this, []);
+        WorkspaceTrust.Lend(this, Folder ?? string.Empty, []);
         Builder.Dispose();
         Runner.Dispose();
         Debug.Dispose();
