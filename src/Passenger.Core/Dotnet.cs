@@ -8,9 +8,9 @@ namespace Passenger.Core;
 /// <summary>Where the .NET command line is, found with the login shell's PATH (<see cref="ShellEnvironment"/>).</summary>
 public static partial class Dotnet
 {
-    /// <summary>The SDK each folder's dotnet names, by the folder and the global.json over it as it stood when asked, kept
-    /// once named. Unheld, the ask being every caller's: on the first one's thread, one busy or never running again would
-    /// hold the rest.</summary>
+    /// <summary>The SDK each folder's dotnet names, by the folder, the global.json over it as it stood when asked and whether
+    /// the folder was trusted (a folder not trusted is asked from outside it), kept once named. Unheld, the ask being every
+    /// caller's: on the first one's thread, one busy or never running again would hold the rest.</summary>
     private static readonly SharedWork<string, string> Sdks = new(sdk => sdk.IsCompletedSuccessfully, PathNames.Comparer, unheld: true);
 
     /// <summary>What names a folder's SDK: <c>dotnet --version</c> run there, or a test's stand-in.</summary>
@@ -21,7 +21,7 @@ public static partial class Dotnet
     /// again after <see cref="ForgetSdks"/>; an <see cref="InvalidOperationException"/> saying why when it names none, which
     /// is asked again next time.</summary>
     public static Task<string> SdkAsync(string folder, CancellationToken cancel = default) =>
-        Sdks.Take($"{folder}\n{GlobalJsonOver(folder)}", () => AskSdkAsync(folder)).WaitAsync(cancel);
+        Sdks.Take($"{folder}\n{GlobalJsonOver(folder)}\n{WorkspaceTrust.Trusts(folder)}", () => AskSdkAsync(folder)).WaitAsync(cancel);
 
     /// <summary>Lets go of the SDKs named and the dotnet each folder takes, once one is installed or removed.</summary>
     public static void ForgetSdks()

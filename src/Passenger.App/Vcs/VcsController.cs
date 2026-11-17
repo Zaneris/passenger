@@ -392,7 +392,7 @@ public sealed class VcsController : IDisposable
         string? unwritten = null;
         if (!ignoring)
         {
-            ChildResult made = await ChildProcesses.RunAsync(ProjectTemplates.NewCommand(["gitignore", "--no-update-check"], folder), limit: TimeSpan.FromMinutes(2));
+            ChildResult made = await ChildProcesses.RunAsync(ProjectTemplates.NewCommand(["gitignore", "--output", folder, "--no-update-check"], folder), limit: TimeSpan.FromMinutes(2));
             wrote = made.Succeeded;
             unwritten = made.Succeeded ? null : made.Said;
         }

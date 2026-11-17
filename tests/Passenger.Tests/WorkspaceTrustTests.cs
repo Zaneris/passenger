@@ -327,6 +327,71 @@ public sealed class WorkspaceTrustTests
         return window;
     }
 
+    /// <summary>A folder not trusted whose global.json names an SDK it carries (its sdk.paths, a stand-in marking that it ran,
+    /// on the runtime of the .NET the run takes) never has it run: New Project reads the templates and makes a class library
+    /// there with the SDK Passenger takes everywhere else, the folder's dotnet run outside it; trusted, New Project's read of
+    /// the templates takes the SDK its global.json names, which runs.</summary>
+    [AvaloniaFact]
+    public void A_folder_not_trusted_never_runs_the_sdk_its_global_json_names_until_trusted()
+    {
+        string folder = PathNames.Canonical(TestFolders.Create("untrusted-sdk-"));
+        string marks = PathNames.Canonical(TestFolders.Create("untrusted-sdk-marks-"));
+        string ran = Path.Combine(marks, "ran.marker");
+        string version = Ui.Await(Dotnet.SdkAsync(marks), "the SDK the run takes");
+        string carried = Path.Combine(folder, ".sdk");
+        TestFolders.Write(marks, "Stand/Stand.csproj", $"""
+            <Project Sdk="Microsoft.NET.Sdk">
+              <PropertyGroup>
+                <OutputType>Exe</OutputType>
+                <TargetFramework>net{Environment.Version.Major}.0</TargetFramework>
+                <AssemblyName>dotnet</AssemblyName>
+                <UseAppHost>false</UseAppHost>
+              </PropertyGroup>
+            </Project>
+            """);
+        TestFolders.Write(marks, "Stand/Program.cs", $"System.IO.File.AppendAllText({System.Text.Json.JsonSerializer.Serialize(ran)}, string.Join(' ', args) + \"\\n\");\nSystem.Console.WriteLine(\"the folder's own SDK\");\n");
+        ChildResult built = Ui.Await(ChildProcesses.RunAsync(ChildProcesses.DotnetCommand(["build", Path.Combine(marks, "Stand", "Stand.csproj"), "-o",
+            Path.Combine(carried, "sdk", version), "-nologo", "-v:q"]), limit: Restore.Limit.Scaled()), "the carried SDK's build", Restore.Limit + TestFolders.Spare);
+        Assert.True(built.Succeeded, $"The carried SDK did not build: {built.Said}");
+        try
+        {
+            Directory.CreateSymbolicLink(Path.Combine(carried, "shared"), Path.Combine(Dotnet.Root(), "shared"));
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            Assert.Skip($"The carried SDK takes its runtime through a link this account may not make: {error.Message}");
+        }
+        TestFolders.Write(folder, "global.json", $$"""{ "sdk": { "version": "{{version}}", "rollForward": "disable", "paths": [ ".sdk" ] } }""" + "\n");
+        TestFolders.Write(folder, "Shop.slnx", "<Solution />\n");
+        using IDisposable asked = WorkspaceTrust.Ask(folder);
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        try
+        {
+            Ui.ClickButton(Asked(window), WorkspaceTrustDialog.Untrusted);
+            Ui.Settle();
+            Ui.Run(window, AppActions.NewProject);
+            Passenger.App.Templates.NewProjectDialog dialog = NewServiceSetupTests.Opened(window);
+            NewServiceSetupTests.Choose(dialog, "classlib");
+            dialog.ProjectName = "Lib";
+            dialog.Framework = TestProjects.Framework;
+            NewServiceSetupTests.Created(dialog, "the class library");
+
+            Assert.True(File.Exists(Path.Combine(folder, "Lib", "Lib.csproj")), $"No Lib.csproj was made: {window.Status}");
+            Assert.False(File.Exists(ran), $"The SDK the folder's global.json names ran in the folder not trusted, asked {(File.Exists(ran) ? File.ReadAllText(ran) : null)}");
+
+            Ui.ClickButton(window, window.Actions[AppActions.TrustFolder]!.Title);
+            Ui.Settle();
+            Ui.Run(window, AppActions.NewProject);
+            Ui.WaitFor(() => File.Exists(ran), () => $"New Project's read of the templates to run the SDK the folder's global.json names once it is trusted: {Ui.Said(window)}",
+                TimeSpan.FromMinutes(2));
+            Assert.Single(window.OwnedWindows.OfType<Passenger.App.Templates.NewProjectDialog>(), d => d.IsVisible).Close();
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     /// <summary>A folder opened in the window, once its opening has landed.</summary>
     private static void Open(MainWindow window, string folder)
     {

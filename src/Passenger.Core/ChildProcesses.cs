@@ -107,12 +107,38 @@ public static class ChildProcesses
     /// in English (the IDE reads what it says) and with no first-run banner. It builds in its own process and worker nodes,
     /// never in MSBuild's server, which would outlive it; a node left for the next build is the IDE's alone, so it ends with
     /// the IDE (<see cref="Lifeline"/>). A <see cref="FileNotFoundException"/> when there is none.</summary>
-    public static ProcessStartInfo DotnetCommand(IEnumerable<string> arguments, string? folder = null) =>
-        TakingDotnet(AsDotnet(Command(Dotnet.Host(folder), arguments, folder)), folder);
+    public static ProcessStartInfo DotnetCommand(IEnumerable<string> arguments, string? folder = null)
+    {
+        string[] given = [.. arguments];
+        return TakingDotnet(AsDotnet(Command(Dotnet.Host(folder), given, DotnetFolder(given, folder))), folder);
+    }
 
     /// <summary><see cref="DotnetCommand(IEnumerable{string}, string?)"/> of the dotnet at <paramref name="host"/>, an
     /// installation's own, in place of the folder's.</summary>
-    public static ProcessStartInfo DotnetCommand(string host, IEnumerable<string> arguments, string? folder) => AsDotnet(Command(host, arguments, folder));
+    public static ProcessStartInfo DotnetCommand(string host, IEnumerable<string> arguments, string? folder)
+    {
+        string[] given = [.. arguments];
+        return AsDotnet(Command(host, given, DotnetFolder(given, folder)));
+    }
+
+    /// <summary>Where a dotnet run for <paramref name="folder"/> works: there, but where the folder is not trusted and the
+    /// command runs an SDK (anything but a program's own, <see cref="RunsSdk"/>), which the dotnet takes from the global.json
+    /// over the folder it works in, whose sdk.paths may name the folder's own: there the person's home (above it, the disk's
+    /// root, where the folder holds the home folder), the folder named in the arguments where the command needs it.</summary>
+    private static string? DotnetFolder(IReadOnlyList<string> arguments, string? folder)
+    {
+        if (folder is null || WorkspaceTrust.Trusts(folder) || !RunsSdk(arguments))
+        {
+            return folder;
+        }
+        string home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        return home.Length > 0 && !PathNames.Within(PathNames.Canonical(home), PathNames.Canonical(folder)) ? home : Path.GetPathRoot(Path.GetFullPath(folder));
+    }
+
+    /// <summary>Whether dotnet runs an SDK for these arguments: every command but a program's own, named by its path (an
+    /// assembly, an app) or after <c>exec</c>.</summary>
+    internal static bool RunsSdk(IReadOnlyList<string> arguments) => arguments is not [var first, ..]
+        || !(first == "exec" || first.EndsWith(".dll", StringComparison.OrdinalIgnoreCase) || first.EndsWith(".exe", StringComparison.OrdinalIgnoreCase));
 
     /// <summary>A start for a folder whose projects take an installation of their own (<see cref="Dotnet.Apart"/>) given it as
     /// DOTNET_ROOT, so what it starts finds that installation's runtimes, and MSBuild's locator its SDKs, before any other.</summary>
@@ -215,7 +241,7 @@ public static class ChildProcesses
 
     /// <summary><see cref="DotnetQuestion(IEnumerable{string}, string)"/> of the dotnet at <paramref name="host"/>, an
     /// installation's own, in place of <see cref="Dotnet.Host"/>.</summary>
-    public static ProcessStartInfo DotnetQuestion(string host, IEnumerable<string> arguments, string folder) => Asked(AsDotnet(Command(host, arguments, folder)));
+    public static ProcessStartInfo DotnetQuestion(string host, IEnumerable<string> arguments, string folder) => Asked(DotnetCommand(host, arguments, folder));
 
     private static ProcessStartInfo Asked(ProcessStartInfo start)
     {
