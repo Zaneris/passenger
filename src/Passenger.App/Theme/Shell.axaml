@@ -298,6 +298,13 @@
         <Setter Property="Width" Value="{DynamicResource Passenger.DropDownWidth}" />
         <Setter Property="HorizontalAlignment" Value="Left" />
     </Style>
+    <!-- An editable drop-down's text centred in it as a chosen item's is, where Fluent's taller text box would put it at the
+         top. -->
+    <Style Selector="ComboBox /template/ TextBox#PART_EditableTextBox">
+        <Setter Property="MinHeight" Value="0" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+    </Style>
     <Style Selector="ComboBox:pointerover /template/ Border#Background">
         <Setter Property="BorderBrush" Value="{DynamicResource Passenger.FieldBorder}" />
     </Style>
@@ -958,18 +965,12 @@
         <Setter Property="Foreground" Value="{DynamicResource Passenger.AccentText}" />
     </Style>
 
-    <!-- A drop-down as tall as a search field beside it (Find in Files' scope and mask); an editable one's text centred
-         in it, where Fluent's taller text box would put it at the top. -->
+    <!-- A drop-down as tall as a search field beside it (Find in Files' scope and mask). -->
     <Style Selector="ComboBox.compact">
         <Setter Property="MinHeight" Value="{DynamicResource Passenger.ControlHeight}" />
         <Setter Property="Height" Value="{DynamicResource Passenger.ControlHeight}" />
         <Setter Property="FontSize" Value="12" />
         <Setter Property="Padding" Value="8,0,4,0" />
-        <Setter Property="VerticalContentAlignment" Value="Center" />
-    </Style>
-    <Style Selector="ComboBox.compact /template/ TextBox#PART_EditableTextBox">
-        <Setter Property="MinHeight" Value="0" />
-        <Setter Property="VerticalAlignment" Value="Center" />
         <Setter Property="VerticalContentAlignment" Value="Center" />
     </Style>
     <!-- A disabled editable drop-down's text has no ground of its own, or Fluent's disabled text box draws a second box
