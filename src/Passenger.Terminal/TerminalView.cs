@@ -155,6 +155,7 @@ public sealed partial class TerminalView : Control
         heldTop = null;
         RestartBlink();
         FollowInputMethod();
+        FollowAccessibleText();
     }
 
     public double FontSize
@@ -206,6 +207,7 @@ public sealed partial class TerminalView : Control
             heldTop = null;
             RestartBlink();
             FollowInputMethod();
+            FollowAccessibleText();
         }
     }
 
@@ -263,6 +265,7 @@ public sealed partial class TerminalView : Control
         anchor = (fromLine, fromColumn);
         active = (toLine, toColumn);
         InvalidateVisual();
+        FollowAccessibleText();
     }
 
     public void ClearSelection()
@@ -270,6 +273,7 @@ public sealed partial class TerminalView : Control
         anchor = null;
         active = null;
         InvalidateVisual();
+        FollowAccessibleText();
     }
 
     /// <summary>Scrolls the view through the scrollback: up a positive number of lines, down a negative one.</summary>
@@ -381,6 +385,7 @@ public sealed partial class TerminalView : Control
         session.Resize(columns, rows);
         InvalidateVisual();
         FollowInputMethod();
+        FollowAccessibleText();
     }
 
     /// <summary>New output shows at the bottom, but for a person reading back through the scrollback, whose top line
@@ -398,6 +403,7 @@ public sealed partial class TerminalView : Control
         }
         RestartBlink();
         FollowInputMethod();
+        FollowAccessibleText();
     }
 
     /// <summary>Whether a line's cell is drawn in a run with its neighbours: one code point a column wide that the
@@ -556,6 +562,7 @@ public sealed partial class TerminalView : Control
         selecting = true;
         e.Pointer.Capture(this);
         InvalidateVisual();
+        FollowAccessibleText();
         e.Handled = true;
     }
 
@@ -567,6 +574,7 @@ public sealed partial class TerminalView : Control
         {
             active = CellAt(e.GetPosition(this));
             InvalidateVisual();
+            FollowAccessibleText();
         }
         else if (session is not null)
         {

@@ -219,6 +219,58 @@ public sealed class TerminalLine
         return text.ToString();
     }
 
+    /// <summary>How many characters <see cref="Text"/> gives of the whole row, counted with no string made.</summary>
+    public int TextLength() => IndexOf(int.MaxValue);
+
+    /// <summary>Where a column's character starts in <see cref="Text"/> of the whole row: a wide character's second cell
+    /// its first's place, past the text's end the text's length.</summary>
+    public int IndexOf(int column)
+    {
+        Span<char> scratch = stackalloc char[2];
+        int last = Cells.Length - 1;
+        while (last >= 0 && Cells[last] is { Rune: 0 or ' ', Joined: 0 })
+        {
+            last--;
+        }
+        int to = column;
+        while (to > 0 && to < Cells.Length && Cells[to].Width == 0)
+        {
+            to--;
+        }
+        int index = 0;
+        for (int i = 0; i <= last && i < to; i++)
+        {
+            if (Cells[i].Width != 0)
+            {
+                index += TextOf(i, scratch).Length;
+            }
+        }
+        return index;
+    }
+
+    /// <summary>The column a character of <see cref="Text"/> of the whole row starts in; past the text's end, the columns
+    /// after it, one a character.</summary>
+    public int ColumnOf(int index)
+    {
+        Span<char> scratch = stackalloc char[2];
+        int at = 0;
+        int column = 0;
+        for (; column < Cells.Length; column++)
+        {
+            if (Cells[column].Width == 0)
+            {
+                continue;
+            }
+            int length = TextOf(column, scratch).Length;
+            if (index < at + length)
+            {
+                return column;
+            }
+            at += length;
+        }
+        return column + (index - at);
+    }
+
     /// <summary>How many cells the row's text takes, as a reflow keeps it: to the last cell written, but for spaces
     /// drawn as the background (zsh pads every prompt's line with them) and cells only erased.</summary>
     public int Length

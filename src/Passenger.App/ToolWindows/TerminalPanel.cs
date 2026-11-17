@@ -308,6 +308,7 @@ public sealed class TerminalPanel : DockPanel
             each.IsActive = each == tab;
         }
         view.Session = tab.Session;
+        Avalonia.Automation.AutomationProperties.SetName(view, tab.Name);
         if (focus)
         {
             FocusView();
