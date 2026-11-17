@@ -99,7 +99,7 @@ internal sealed partial class UiaTextElement :
 
     /// <summary>The peer for a control in a window of Windows' own: Avalonia's for a native window, over a window of
     /// Passenger's in which UI Automation finds this element; null where the control stands in none, Avalonia no longer
-    /// has that peer, or Windows made no window (reported).</summary>
+    /// has that peer, or Windows made no window (logged), so the control's own peer answers.</summary>
     [SupportedOSPlatform("windows")]
     public static AutomationPeer? PeerFor(Control owner, AccessibleText text)
     {
@@ -113,7 +113,7 @@ internal sealed partial class UiaTextElement :
     }
 
     /// <summary>An element with a window of its own for UI Automation to find it by, listening; null where Windows made no
-    /// window (reported).</summary>
+    /// window, which is logged, the control's own peer answering a reader then.</summary>
     [SupportedOSPlatform("windows")]
     internal static UiaTextElement? Hosted(Control owner, AccessibleText text)
     {
@@ -124,7 +124,7 @@ internal sealed partial class UiaTextElement :
         }
         catch (Win32Exception failed)
         {
-            PassengerLog.Report(failed);
+            PassengerLog.Write($"Windows made no window for a reader to find the {owner.GetType().Name}'s text by, so its own peer answers: {failed.Message} ({failed.NativeErrorCode})");
             return null;
         }
         return element.Listening();

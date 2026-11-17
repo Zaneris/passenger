@@ -199,11 +199,17 @@ internal sealed unsafe partial class UiaTextWindow
     /// <summary>The window every such window is held in out of sight, made the first time one is.</summary>
     private static nint Aside() => aside != 0 ? aside : aside = Made(ToolWindowStyle | NoActivateStyle, PopupStyle, 0);
 
-    /// <summary>A window of the class registered for these, of the styles given, in a parent.</summary>
+    /// <summary>A window of the class registered for these, of the styles given, in a parent; refused with no error code
+    /// where Windows makes no layered child window (a process whose manifest names no Windows from 8).</summary>
     private static nint Made(uint extendedStyle, uint style, nint parent)
     {
         nint made = CreateWindowEx(extendedStyle, (char*)Register(), null, style, 0, 0, 0, 0, parent, 0, GetModuleHandle(null), 0);
-        return made != 0 ? made : throw new Win32Exception(Marshal.GetLastPInvokeError());
+        if (made != 0)
+        {
+            return made;
+        }
+        int error = Marshal.GetLastPInvokeError();
+        throw error != 0 ? new Win32Exception(error) : new Win32Exception(error, "Windows made no window and gave no reason");
     }
 
     /// <summary>The window class every such window is made of, registered once.</summary>

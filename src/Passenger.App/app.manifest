@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <assembly manifestVersion="1.0" xmlns="urn:schemas-microsoft-com:asm.v1">
-  <!-- Windows only. Avalonia needs it for window transparency and embedded controls. -->
+  <!-- Windows only. Avalonia needs it for window transparency and embedded controls, and Windows makes a layered child
+       window (a reader's over an editor, UiaTextWindow) only for a process it names. -->
   <assemblyIdentity version="1.0.0.0" name="Passenger.App"/>
 
   <compatibility xmlns="urn:schemas-microsoft-com:compatibility.v1">
