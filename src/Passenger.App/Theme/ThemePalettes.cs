@@ -81,7 +81,8 @@ public static class ThemePalettes
         t["Frame"] = frame;
         t["Panel"] = panel;
         t["Field"] = field;
-        t["FieldBorder"] = G("FieldBorder", Mix(panel, text, 0.2));
+        uint edge = G("FieldBorder", Mix(panel, text, 0.2));
+        t["FieldBorder"] = given.ContainsKey("FieldBorder") ? edge : Legible(edge, [field, panel, popup], Mark, dark);
         t["List"] = list;
         t["Button"] = button;
         t["Popup"] = popup;
@@ -92,7 +93,7 @@ public static class ThemePalettes
         t["Divider"] = divider;
         t["Separator"] = G("Separator", Mix(panel, text, 0.1));
         t["StripeSeparator"] = Mix(frame, text, 0.22);
-        t["WindowEdge"] = t["FieldBorder"];
+        t["WindowEdge"] = edge;
 
         t["Text"] = L("Text", text, textGrounds, Text, dark);
         t["TextMuted"] = L("TextMuted", muted, textGrounds, Text, dark);
@@ -108,7 +109,7 @@ public static class ThemePalettes
         t["Error"] = L("Error", p.Red, marks, Text, dark);
         t["Warning"] = L("Warning", dark ? p.Yellow : p.Orange, marks, Text, dark);
         uint selection = Over(G("Editor.Selection", Mix(editor, p.Blue, dark ? 0.3 : 0.22)), editor);
-        t["TextSelection"] = Over(G("TextSelection", selection), field);
+        t["TextSelection"] = Legible(Over(G("TextSelection", selection), field), [t["Text"]], Text, !dark);
 
         t["Hover"] = hover;
         t["Selected"] = selected;
@@ -116,7 +117,7 @@ public static class ThemePalettes
         t["Accent"] = accent;
         t["AccentHover"] = Legible(accentHover, [accentText], Text, !IsDark(accentText));
         t["Focus"] = L("Focus", glance, [.. marks, field], Mark, dark);
-        t["CheckBorder"] = Mix(panel, text, 0.45);
+        t["CheckBorder"] = Legible(Mix(panel, text, 0.45), [panel, popup, list], Mark, dark);
         t["ScrollThumb"] = G("ScrollThumb", dark ? 0x59808080u : 0x33000000u);
         t["ScrollThumbHover"] = G("ScrollThumbHover", dark ? 0x8C808080u : 0x80000000u);
         t["ScrollTrackHover"] = 0x1A808080;
@@ -167,18 +168,19 @@ public static class ThemePalettes
         t["HotReload"] = Legible(p.Orange, [panel, frame], Mark, dark);
         t["Test.Passed"] = L("Test.Passed", t["Run"], [panel], Mark, dark);
         t["Test.Failed"] = L("Test.Failed", p.Red, [panel], Mark, dark);
-        t["Test.Skipped"] = G("Test.Skipped", Mix(muted, panel, 0.15));
+        t["Test.Skipped"] = L("Test.Skipped", Mix(muted, panel, 0.15), [panel], Mark, dark);
         t["Test.Running"] = Legible(p.Blue, [panel], Mark, dark);
         t["Test.NotRun"] = t["CheckBorder"];
 
-        t["Vcs.Added"] = G("Vcs.Added", p.Green);
-        t["Vcs.Modified"] = G("Vcs.Modified", p.Blue);
-        t["Vcs.Deleted"] = G("Vcs.Deleted", Mix(muted, panel, 0.15));
-        t["Vcs.Conflict"] = p.Red;
+        uint gutterGround = given.TryGetValue("Editor.Gutter", out uint ownGutter) && IsDark(ownGutter) == dark ? Over(ownGutter, editor) : editor;
+        t["Vcs.Added"] = L("Vcs.Added", p.Green, [gutterGround], Mark, dark);
+        t["Vcs.Modified"] = L("Vcs.Modified", p.Blue, [gutterGround], Mark, dark);
+        t["Vcs.Deleted"] = L("Vcs.Deleted", Mix(muted, panel, 0.15), [gutterGround], Mark, dark);
+        t["Vcs.Conflict"] = Legible(p.Red, [gutterGround], Mark, dark);
         uint[] files = [panel, row];
         t["Vcs.File.Modified"] = L("Vcs.File.Modified", p.Blue, files, Text, dark);
         t["Vcs.File.Added"] = L("Vcs.File.Added", p.Green, files, Text, dark);
-        t["Vcs.File.Deleted"] = G("Vcs.File.Deleted", Mix(muted, panel, 0.25));
+        t["Vcs.File.Deleted"] = L("Vcs.File.Deleted", Mix(muted, panel, 0.25), files, Text, dark);
         t["Vcs.File.Unversioned"] = L("Vcs.File.Unversioned", p.Orange, files, Text, dark);
         t["Vcs.File.Conflicted"] = L("Vcs.File.Conflicted", p.Red, files, Text, dark);
         uint[] lanes = [p.Blue, p.Green, p.Yellow, p.Purple, p.Red, p.Cyan];
@@ -202,8 +204,8 @@ public static class ThemePalettes
         uint terminal = given.TryGetValue("Terminal.Background", out uint ownTerminal) && IsDark(ownTerminal) == dark ? Opaque(ownTerminal) : editor;
         t["Terminal.Background"] = terminal;
         t["Terminal.Foreground"] = L("Terminal.Foreground", text, [terminal], Text, dark);
-        t["Terminal.Cursor"] = G("Terminal.Cursor", glance);
-        t["Terminal.Selection"] = Over(G("Terminal.Selection", selection), terminal);
+        t["Terminal.Cursor"] = L("Terminal.Cursor", glance, [terminal], Mark, dark);
+        t["Terminal.Selection"] = Legible(Over(G("Terminal.Selection", selection), terminal), [t["Terminal.Foreground"]], Text, !dark);
         uint[] ansi = [p.Red, p.Green, p.Yellow, p.Blue, p.Purple, p.Cyan];
         double up = dark ? 0.07 : -0.042;
         t["Terminal.Ansi0"] = G("Terminal.Ansi0", dark ? Mix(editor, text, 0.2) : Shift(text, -0.1));
@@ -216,8 +218,8 @@ public static class ThemePalettes
         t["Terminal.Ansi8"] = G("Terminal.Ansi8", Mix(editor, text, 0.42));
         t["Terminal.Ansi15"] = G("Terminal.Ansi15", dark ? Shift(text, 0.08) : Mix(editor, text, 0.32));
 
-        t["File.Folder"] = Mix(text, muted, 0.6);
-        t["File.SolutionFolder"] = p.Purple;
+        t["File.Folder"] = Legible(Mix(text, muted, 0.6), [panel], Mark, dark);
+        t["File.SolutionFolder"] = Legible(p.Purple, [panel], Mark, dark);
         t["File.Plain"] = t["File.Folder"];
         (string Name, uint Hue)[] icons =
         [
@@ -230,8 +232,8 @@ public static class ThemePalettes
         }
 
         t["Editor.Background"] = editor;
-        t["Editor.Gutter"] = given.TryGetValue("Editor.Gutter", out uint gutter) && IsDark(gutter) == dark ? Over(gutter, editor) : editor;
-        t["Editor.PopupBorder"] = G("Editor.PopupBorder", t["FieldBorder"]);
+        t["Editor.Gutter"] = gutterGround;
+        t["Editor.PopupBorder"] = G("Editor.PopupBorder", edge);
 
         // The editor's own colour scheme.
         uint current = Over(G("Editor.CurrentLine", Shift(editor, dark ? 0.025 : -0.018)), editor);
@@ -246,15 +248,17 @@ public static class ThemePalettes
         t["Editor.Caret"] = L("Editor.Caret", glance, code, Mark, dark);
         t["Editor.SearchMatch"] = Over(G("Editor.SearchMatch", Mix(editor, p.Yellow, dark ? 0.18 : 0.28)), editor);
         t["Editor.SearchCurrent"] = Over(G("Editor.SearchCurrent", Mix(editor, p.Yellow, dark ? 0.45 : 0.55)), editor);
-        t["Editor.Error"] = G("Editor.Error", p.Red);
-        t["Editor.Warning"] = G("Editor.Warning", dark ? p.Yellow : p.Orange);
-        t["Editor.Info"] = G("Editor.Info", muted);
-        t["Editor.Breakpoint"] = G("Editor.Breakpoint", p.Red);
+        // A problem's squiggle is a mark on the code, and a count of them in the gutter carries a badge's letters.
+        uint badge = t["BadgeText"];
+        t["Editor.Error"] = Legible(L("Editor.Error", p.Red, [editor], Mark, dark), [badge], Text, IsDark(badge));
+        t["Editor.Warning"] = Legible(L("Editor.Warning", dark ? p.Yellow : p.Orange, [editor], Mark, dark), [badge], Text, IsDark(badge));
+        t["Editor.Info"] = L("Editor.Info", muted, [editor], Mark, dark);
+        t["Editor.Breakpoint"] = L("Editor.Breakpoint", p.Red, [gutterGround], Mark, dark);
         t["Editor.BreakpointLine"] = Mix(editor, p.Red, 0.12);
         t["Editor.BreakpointMuted"] = t["Icon"];
-        t["Editor.Tracepoint"] = p.Yellow;
+        t["Editor.Tracepoint"] = Legible(p.Yellow, [gutterGround], Mark, dark);
         t["Editor.ExecutionLine"] = execution;
-        t["Editor.ExecutionPoint"] = glance;
+        t["Editor.ExecutionPoint"] = Legible(glance, [gutterGround], Mark, dark);
         t["Editor.ExceptionBack"] = Mix(editor, p.Red, 0.18);
         t["Editor.InlineValue"] = Legible(muted, [editor, execution], Text, dark);
         uint hintBack = Over(G("Editor.InlayHintBack", Mix(editor, text, 0.06)), editor);
@@ -267,16 +271,24 @@ public static class ThemePalettes
         t["Editor.MatchedBrace"] = Over(G("Editor.MatchedBrace", Mix(editor, p.Cyan, 0.2)), editor);
         t["Editor.SmartStepTarget"] = Mix(editor, p.Purple, 0.2);
         t["Editor.SmartStepChosen"] = Mix(editor, p.Purple, 0.38);
-        t["Editor.SmartStepBorder"] = p.Purple;
+        t["Editor.SmartStepBorder"] = Legible(p.Purple, [editor], Mark, dark);
         t["Editor.Whitespace"] = G("Editor.Whitespace", Mix(editor, text, 0.2));
         t["Editor.SoftWrapSign"] = Mix(editor, text, 0.38);
         t["Editor.LinkUnderline"] = G("Editor.LinkUnderline", p.Blue);
-        t["Editor.Bookmark"] = p.Blue;
+        t["Editor.Bookmark"] = Legible(p.Blue, [gutterGround], Mark, dark);
         foreach ((string name, uint? tone) in ((string, uint?)[])[("Added", p.Green), ("Modified", p.Blue), ("Deleted", null), ("Conflict", p.Red)])
         {
             uint other = tone ?? text;
             t[$"Diff.{name}"] = Over(G($"Diff.{name}", Mix(editor, other, (tone is null ? 0.08 : 0.15) - (dark ? 0 : 0.01))), editor);
             t[$"Diff.{name}Word"] = Over(G($"Diff.{name}Word", Mix(editor, other, (tone is null ? 0.18 : 0.32) - (dark ? 0 : 0.02))), editor);
+        }
+
+        // A wash under the code gives way where the code's words would not read on it.
+        foreach (string wash in (string[])["Editor.SelectionInactive", "Editor.SearchMatch", "Editor.SearchCurrent", "Editor.BreakpointLine", "Editor.ExceptionBack",
+            "Editor.UsageRead", "Editor.UsageWrite", "Editor.MatchedBrace", "Editor.SmartStepTarget", "Editor.SmartStepChosen", "Diff.Added", "Diff.Modified",
+            "Diff.Deleted", "Diff.Conflict", "Diff.AddedWord", "Diff.ModifiedWord", "Diff.DeletedWord", "Diff.ConflictWord"])
+        {
+            t[wash] = Legible(t[wash], [t["Editor.Text"]], Text, !dark);
         }
 
         foreach (string kind in SyntaxKinds)

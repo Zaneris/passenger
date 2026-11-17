@@ -3,9 +3,9 @@
 is given: a checkout of Zaneris/passenger-themes, or the copy the tests carry (tests/Passenger.Tests/Themes).
 
 Each theme is a few colours per variant (its grounds, words, accent and hues); every token Tokens.axaml gives is worked
-out from them here, then nudged in lightness until each pair UiRulesTests holds to WCAG AA passes, so a palette never
-has to be tuned token by token. The token list is read from Tokens.axaml, so a token added there and not here fails
-this script rather than leaving a theme without it. Adding a theme is a palette here, its file in that folder's index
+out from them here, then nudged in lightness until each pair Tokens.axaml declares (read:Text, read:Mark, read:Edge)
+passes, so a palette never has to be tuned token by token. The token list is read from Tokens.axaml, so a token added
+there and not here fails this script rather than leaving a theme without it. Adding a theme is a palette here, its file in that folder's index
 (passenger-themes.json beside them) and `just themes FOLDER`. The themes Passenger carries (BUILT_IN) are written the
 same way into its built-in source, src/Passenger.App/Theme/BuiltIn, when that is the folder given.
 """
@@ -371,7 +371,8 @@ def variant(theme, p, dark):
     t["Passenger.Frame"] = frame
     t["Passenger.Panel"] = panel
     t["Passenger.Field"] = field
-    t["Passenger.FieldBorder"] = mix(panel, text, 0.2)
+    edge = mix(panel, text, 0.2)
+    t["Passenger.FieldBorder"] = legible(edge, [field, panel, popup], 3.05, dark)
     t["Passenger.List"] = lst
     t["Passenger.Button"] = button
     t["Passenger.Popup"] = popup
@@ -388,7 +389,7 @@ def variant(theme, p, dark):
     t["Passenger.Divider"] = divider
     t["Passenger.Separator"] = mix(panel, text, 0.1)
     t["Passenger.StripeSeparator"] = mix(frame, text, 0.22)
-    t["Passenger.WindowEdge"] = t["Passenger.FieldBorder"]
+    t["Passenger.WindowEdge"] = edge
 
     tile = mix(editor, panel, 0.5)
     text_grounds.append(tile)
@@ -406,7 +407,7 @@ def variant(theme, p, dark):
     t["Passenger.Error"] = legible(hue("red"), marks, 4.6, dark)
     t["Passenger.Warning"] = legible(hue("yellow") if dark else hue("orange"), marks, 4.6, dark)
     selection = mix(editor, hue("blue"), 0.3 if dark else 0.22)
-    t["Passenger.TextSelection"] = selection
+    t["Passenger.TextSelection"] = legible(selection, [t["Passenger.Text"]], 4.6, not dark)
 
     t["Passenger.Hover"] = hover
     t["Passenger.Selected"] = selected
@@ -414,7 +415,7 @@ def variant(theme, p, dark):
     t["Passenger.Accent"] = accent
     t["Passenger.AccentHover"] = accent_hover
     t["Passenger.Focus"] = legible(glance, marks + [field], 3.1, dark)
-    t["Passenger.CheckBorder"] = mix(panel, text, 0.45)
+    t["Passenger.CheckBorder"] = legible(mix(panel, text, 0.45), [panel, popup, lst], 3.05, dark)
     t["Passenger.ScrollThumb"] = "#59808080" if dark else "#33000000"
     t["Passenger.ScrollThumbHover"] = "#8C808080" if dark else "#80000000"
     t["Passenger.ScrollTrackHover"] = "#1A808080"
@@ -465,18 +466,18 @@ def variant(theme, p, dark):
     t["Passenger.HotReload"] = legible(hue("orange"), [panel, frame], 3.1, dark)
     t["Passenger.Test.Passed"] = t["Passenger.Run"]
     t["Passenger.Test.Failed"] = legible(hue("red"), [panel], 3.1, dark)
-    t["Passenger.Test.Skipped"] = mix(muted, panel, 0.15)
+    t["Passenger.Test.Skipped"] = legible(mix(muted, panel, 0.15), [panel], 3.1, dark)
     t["Passenger.Test.Running"] = legible(hue("blue"), [panel], 3.1, dark)
     t["Passenger.Test.NotRun"] = t["Passenger.CheckBorder"]
 
-    t["Passenger.Vcs.Added"] = hue("green")
-    t["Passenger.Vcs.Modified"] = hue("blue")
-    t["Passenger.Vcs.Deleted"] = mix(muted, panel, 0.15)
-    t["Passenger.Vcs.Conflict"] = hue("red")
+    t["Passenger.Vcs.Added"] = legible(hue("green"), [editor], 3.1, dark)
+    t["Passenger.Vcs.Modified"] = legible(hue("blue"), [editor], 3.1, dark)
+    t["Passenger.Vcs.Deleted"] = legible(mix(muted, panel, 0.15), [editor], 3.1, dark)
+    t["Passenger.Vcs.Conflict"] = legible(hue("red"), [editor], 3.1, dark)
     files = [panel, row]
     t["Passenger.Vcs.File.Modified"] = legible(hue("blue"), files, 4.6, dark)
     t["Passenger.Vcs.File.Added"] = legible(hue("green"), files, 4.6, dark)
-    t["Passenger.Vcs.File.Deleted"] = mix(muted, panel, 0.25)
+    t["Passenger.Vcs.File.Deleted"] = legible(mix(muted, panel, 0.25), files, 4.6, dark)
     t["Passenger.Vcs.File.Unversioned"] = legible(hue("orange"), files, 4.6, dark)
     t["Passenger.Vcs.File.Conflicted"] = legible(hue("red"), files, 4.6, dark)
     for i, name in enumerate(["blue", "green", "yellow", "purple", "red", "cyan"]):
@@ -496,8 +497,8 @@ def variant(theme, p, dark):
     # The terminal on the editor's ground, its ANSI colours the palette's hues, bright ones a step further.
     t["Passenger.Terminal.Foreground"] = legible(text, [editor], 4.6, dark)
     t["Passenger.Terminal.Background"] = editor
-    t["Passenger.Terminal.Cursor"] = glance
-    t["Passenger.Terminal.Selection"] = selection
+    t["Passenger.Terminal.Cursor"] = legible(glance, [editor], 3.1, dark)
+    t["Passenger.Terminal.Selection"] = legible(selection, [t["Passenger.Terminal.Foreground"]], 4.6, not dark)
     ansi = ["red", "green", "yellow", "blue", "purple", "cyan"]
     up = 0.07 if dark else -0.07
     t["Passenger.Terminal.Ansi0"] = mix(editor, text, 0.2) if dark else shift(text, -0.1)
@@ -508,14 +509,14 @@ def variant(theme, p, dark):
     t["Passenger.Terminal.Ansi8"] = mix(editor, text, 0.42)
     t["Passenger.Terminal.Ansi15"] = shift(text, 0.08) if dark else mix(editor, text, 0.32)
 
-    t["Passenger.File.Folder"] = mix(text, muted, 0.6)
-    t["Passenger.File.SolutionFolder"] = hue("purple")
+    t["Passenger.File.Folder"] = legible(mix(text, muted, 0.6), [panel], 3.1, dark)
+    t["Passenger.File.SolutionFolder"] = legible(hue("purple"), [panel], 3.1, dark)
     t["Passenger.File.Plain"] = t["Passenger.File.Folder"]
     t.update(file_icons(hue, text, muted, panel, dark))
 
     t["Passenger.Editor.Background"] = editor
     t["Passenger.Editor.Gutter"] = editor
-    t["Passenger.Editor.PopupBorder"] = t["Passenger.FieldBorder"]
+    t["Passenger.Editor.PopupBorder"] = edge
 
     # The editor's own colour scheme.
     current = shift(editor, 0.025 if dark else -0.018)
@@ -530,15 +531,18 @@ def variant(theme, p, dark):
     t["Passenger.Editor.Caret"] = legible(glance, code_grounds, 3.1, dark)
     t["Passenger.Editor.SearchMatch"] = mix(editor, hue("yellow"), 0.18 if dark else 0.28)
     t["Passenger.Editor.SearchCurrent"] = mix(editor, hue("yellow"), 0.45 if dark else 0.55)
-    t["Passenger.Editor.Error"] = hue("red")
-    t["Passenger.Editor.Warning"] = hue("yellow") if dark else hue("orange")
-    t["Passenger.Editor.Info"] = muted
-    t["Passenger.Editor.Breakpoint"] = hue("red")
+    # A problem's squiggle is a mark on the code, and a count of them in the gutter carries a badge's letters.
+    badge = t["Passenger.BadgeText"]
+    t["Passenger.Editor.Error"] = legible(legible(hue("red"), [editor], 3.1, dark), [badge], 4.6, badge != "#FFFFFF")
+    t["Passenger.Editor.Warning"] = legible(legible(hue("yellow") if dark else hue("orange"), [editor], 3.1, dark), [badge], 4.6,
+                                            badge != "#FFFFFF")
+    t["Passenger.Editor.Info"] = legible(muted, [editor], 3.1, dark)
+    t["Passenger.Editor.Breakpoint"] = legible(hue("red"), [editor], 3.1, dark)
     t["Passenger.Editor.BreakpointLine"] = mix(editor, hue("red"), 0.12)
     t["Passenger.Editor.BreakpointMuted"] = t["Passenger.Icon"]
-    t["Passenger.Editor.Tracepoint"] = hue("yellow")
+    t["Passenger.Editor.Tracepoint"] = legible(hue("yellow"), [editor], 3.1, dark)
     t["Passenger.Editor.ExecutionLine"] = execution
-    t["Passenger.Editor.ExecutionPoint"] = glance
+    t["Passenger.Editor.ExecutionPoint"] = legible(glance, [editor], 3.1, dark)
     t["Passenger.Editor.ExceptionBack"] = mix(editor, hue("red"), 0.18)
     t["Passenger.Editor.InlineValue"] = legible(muted, [editor, execution], 4.6, dark)
     hint_back = mix(editor, text, 0.06)
@@ -551,15 +555,23 @@ def variant(theme, p, dark):
     t["Passenger.Editor.MatchedBrace"] = mix(editor, hue("cyan"), 0.2)
     t["Passenger.Editor.SmartStepTarget"] = mix(editor, hue("purple"), 0.2)
     t["Passenger.Editor.SmartStepChosen"] = mix(editor, hue("purple"), 0.38)
-    t["Passenger.Editor.SmartStepBorder"] = hue("purple")
+    t["Passenger.Editor.SmartStepBorder"] = legible(hue("purple"), [editor], 3.1, dark)
     t["Passenger.Editor.Whitespace"] = mix(editor, text, 0.2)
     t["Passenger.Editor.SoftWrapSign"] = mix(editor, text, 0.38)
     t["Passenger.Editor.LinkUnderline"] = hue("blue")
-    t["Passenger.Editor.Bookmark"] = hue("blue")
+    t["Passenger.Editor.Bookmark"] = legible(hue("blue"), [editor], 3.1, dark)
     for name, tone in (("Added", "green"), ("Modified", "blue"), ("Deleted", None), ("Conflict", "red")):
         other = hue(tone) if tone else text
         t[f"Passenger.Diff.{name}"] = mix(editor, other, (0.15 if tone else 0.08) if dark else (0.14 if tone else 0.07))
         t[f"Passenger.Diff.{name}Word"] = mix(editor, other, (0.32 if tone else 0.18) if dark else (0.3 if tone else 0.16))
+
+    # A wash under the code gives way where the code's words would not read on it.
+    for under_code in ["SelectionInactive", "SearchMatch", "SearchCurrent", "BreakpointLine", "ExceptionBack", "UsageRead", "UsageWrite",
+                  "MatchedBrace", "SmartStepTarget", "SmartStepChosen"]:
+        t[f"Passenger.Editor.{under_code}"] = legible(t[f"Passenger.Editor.{under_code}"], [t["Passenger.Editor.Text"]], 4.6, not dark)
+    for name in ("Added", "Modified", "Deleted", "Conflict"):
+        for key in (f"Passenger.Diff.{name}", f"Passenger.Diff.{name}Word"):
+            t[key] = legible(t[key], [t["Passenger.Editor.Text"]], 4.6, not dark)
 
     roles = theme["code"]
     pick = lambda role: hue(roles.get(role, role))
@@ -597,39 +609,36 @@ def solid(t, key):
     return [v]
 
 
+def declared_pairs():
+    """What each colour is read on, as Tokens.axaml declares it on its Dark dictionary's colours (read:Text at 4.5:1,
+    read:Mark and read:Edge at 3:1, a ground laid over another named Ground/Under, else over Panel), the fourth to sixth
+    braces read as the first is: the pairs UiRulesTests holds every theme to."""
+    import xml.etree.ElementTree as ElementTree
+    x, read = "{http://schemas.microsoft.com/winfx/2006/xaml}", "{urn:passenger:contrast}"
+    root = ElementTree.parse(os.path.join(THEME, "Tokens.axaml")).getroot()
+    dark = next(d for d in root.iter() if d.get(x + "Key") == "Dark")
+    pairs = []
+    for colour in dark:
+        key = colour.get(x + "Key", "")[len("Passenger."):]
+        for kind, least in (("Text", 4.5), ("Mark", 3), ("Edge", 3)):
+            for ground in (colour.get(read + kind) or "").split():
+                laid, _, under = ground.partition("/")
+                pairs.append((key, laid, under or "Panel", least))
+    braces = [p for p in pairs if p[0] == "Syntax.Brace1"]
+    return pairs + [(f"Syntax.Brace{level}",) + p[1:] for level in (4, 5, 6) for p in braces]
+
+
+PAIRS = declared_pairs()
+
+
 def check(name, which, t):
     """UiRulesTests' WCAG pairs, so a palette that cannot meet them fails here rather than in the tests."""
-    text, mark = 4.5, 3
-    pairs = []
-    for g in ["Panel", "Frame", "Field", "Popup", "List", "Hover", "HoverOnFrame", "Selected", "RowSelected",
-              "Editor.Background", "Banner", "Button", "Welcome.Tile"]:
-        pairs += [("Text", g, text), ("TextMuted", g, text)]
-    for g in ["Panel", "Frame", "Popup", "Editor.Background"]:
-        pairs += [("Link", g, text), ("Error", g, text), ("Warning", g, text), ("Focus", g, mark), ("Icon", g, mark)]
-    pairs += [("Focus", "Field", mark), ("LinkHover", "Panel", text), ("Accent", "Panel", mark),
-              ("AccentText", "Accent", text), ("AccentText", "AccentHover", text), ("AccentText", "Welcome.Badge", text),
-              ("Menu.SelectedText", "Menu.Selected", text), ("Tab.ActiveText", "Tab.Active", text),
-              ("Stripe.SelectedIcon", "Stripe.Selected", mark), ("Welcome.ChipIcon", "Welcome.Chip", mark)]
-    for f in ["Modified", "Added", "Unversioned", "Conflicted"]:
-        pairs += [(f"Vcs.File.{f}", "Panel", text), (f"Vcs.File.{f}", "RowSelected", text)]
-    for g in ["TitleBar", "TitleBar.Hover", "TitleBar.Pressed"]:
-        pairs += [("TitleBar.Text", g, text), ("TitleBar.Focus", g, mark)]
-    for m in ["Icon", "Run", "Stop", "HotReload"]:
-        pairs.append((f"TitleBar.{m}", "TitleBar", mark))
-    pairs += [("TitleBar.BadgeText", "TitleBar.Badge", text), ("Terminal.Foreground", "Terminal.Background", text)]
-    for g in ["Editor.Background", "Editor.CurrentLine", "Editor.Selection", "Editor.ExecutionLine"]:
-        pairs.append(("Editor.Text", g, text))
-    pairs += [("Editor.LineNumber", "Editor.Gutter", text), ("Editor.LineNumberCurrent", "Editor.Gutter", text),
-              ("Editor.InlineValue", "Editor.Background", text), ("Editor.InlineValue", "Editor.ExecutionLine", text),
-              ("Editor.InlayHint", "Editor.InlayHintBack", text), ("Editor.Caret", "Editor.Background", mark),
-              ("Editor.Caret", "Editor.CurrentLine", mark)]
-    for kind in SYNTAX_KINDS + PLAIN_KINDS:
-        pairs += [(f"Syntax.{kind}", "Editor.Background", text), (f"Syntax.{kind}", "Editor.CurrentLine", text)]
     below = []
-    for fore, ground, least in pairs:
-        under = "Passenger.TitleBar" if ground.startswith("TitleBar.") else "Passenger.Frame" if ground == "HoverOnFrame" else "Passenger.Panel"
-        grounds = solid(t, "Passenger.Hover" if ground == "HoverOnFrame" else "Passenger." + ground)
-        worst = min(ratio(f, over(g, u)) for f in solid(t, "Passenger." + fore) for g in grounds for u in solid(t, under))
+    for fore, ground, under, least in PAIRS:
+        if "Passenger." + fore not in t:
+            continue
+        worst = min(ratio(f, over(g, u)) for f in solid(t, "Passenger." + fore) for g in solid(t, "Passenger." + ground)
+                    for u in solid(t, "Passenger." + under))
         if worst < least:
             below.append(f"{name} {which}: {fore} on {ground} is {worst:.2f}:1, under {least}:1")
     if below:

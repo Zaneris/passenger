@@ -389,3 +389,8 @@ Passenger's themes repository, whose copy the tests carry in `tests/Passenger.Te
 are written by hand; Cubicle and the ten are written by `tools/themes.py` from its palettes (`just themes FOLDER`, the ten
 into a checkout of the repository or the tests' copy, Cubicle into the built-in source), so change a palette there rather
 than its file.
+
+Each colour in `Tokens.axaml` says what it is read on: `read:Text` the grounds its words stand on, `read:Mark` those an
+icon, a focus ring or the caret does, and `read:Edge` those a field's or a check box's edge stands between, or `read:None`
+why it needs none (what cannot be used now, a colour a program in the terminal asks for). Passenger's own themes are held
+to WCAG 2.2 AA on those grounds, text at 4.5:1 and marks and edges at 3:1, and `themes.py` writes its themes to them.

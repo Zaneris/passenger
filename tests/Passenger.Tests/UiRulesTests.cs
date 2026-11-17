@@ -12,6 +12,7 @@ using Avalonia.Platform;
 using Avalonia.Styling;
 using System.Buffers.Binary;
 using System.Text.RegularExpressions;
+using System.Xml.Linq;
 using Avalonia.Markup.Xaml.Styling;
 using Avalonia.Themes.Fluent;
 using Avalonia.VisualTree;
@@ -1566,27 +1567,53 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
     public void Text_icons_and_focus_rings_meet_WCAG_AA_on_what_they_are_drawn_on_dark_and_light(string look)
     {
         using IDisposable worn = CarriedThemes.Wearing(look);
+        // A VS Code theme's edges round its fields are its author's (input.border), so read:Edge holds Passenger's own alone.
+        bool own = !look.StartsWith(CarriedThemes.VsCodePrefix, StringComparison.Ordinal);
         List<string> below = [];
         foreach (ThemeVariant variant in (ThemeVariant[])[ThemeVariant.Dark, ThemeVariant.Light])
         {
-            foreach ((string fore, string ground, double least) in ContrastPairs)
+            foreach (ReadOn pair in ReadOnPairs.Where(p => own || !p.Edge))
             {
                 // The fourth to sixth brace colours are held where a theme gives them.
-                if (fore.StartsWith("Passenger.Syntax.Brace", StringComparison.Ordinal) && !Application.Current!.TryGetResource(fore, variant, out _))
+                if (ThemeFiles.Optional.ContainsKey(pair.Fore["Passenger.".Length..]) && !Application.Current!.TryGetResource(pair.Fore, variant, out _))
                 {
                     continue;
                 }
-                // A see-through ground is drawn over what it stands on: the title bar's hover over the bar, a row's over a tool window.
-                Color[] under = Colours(ground.StartsWith("Passenger.TitleBar.", StringComparison.Ordinal) ? TokenKeys.TitleBar : ground == "Passenger.HoverOnFrame" ? TokenKeys.Frame : TokenKeys.Panel, variant);
-                Color[] grounds = Colours(ground == "Passenger.HoverOnFrame" ? TokenKeys.Hover : ground, variant);
-                double worst = (from f in Colours(fore, variant) from g in grounds from u in under select Ratio(f, Over(g, u))).Min();
-                if (worst < least)
+                Color[] under = Colours(pair.Under, variant);
+                Color[] grounds = Colours(pair.Ground, variant);
+                double worst = (from f in Colours(pair.Fore, variant) from g in grounds from u in under select Ratio(f, Over(g, u))).Min();
+                if (worst < pair.Least)
                 {
-                    below.Add($"{variant}: {fore} on {ground} is {worst:0.00}:1, under {least}:1");
+                    below.Add($"{variant}: {pair.Fore} on {pair.Ground} is {worst:0.00}:1, under {pair.Least}:1");
                 }
             }
         }
-        Assert.True(below.Count == 0, $"In {look}, {below.Count} pairs fall below WCAG AA (text 4.5:1, icons, focus rings and the caret 3:1):\n" + string.Join("\n", below));
+        Assert.True(below.Count == 0, $"In {look}, {below.Count} pairs fall below WCAG AA, so what they draw is hard to read or to find (text 4.5:1, icons, focus rings, the caret and a field's edge 3:1):\n" + string.Join("\n", below));
+    }
+
+    /// <summary>Every colour Tokens.axaml gives says on Dark's what it is read on, is a ground another is read on, or says
+    /// why it needs neither (read:None), each ground it names a colour Tokens.axaml gives; Light's say nothing of their own,
+    /// as Dark's hold for both. So a colour added there is held to what it is drawn on from its first build.</summary>
+    [Fact]
+    public void Every_colour_says_what_it_is_read_on_or_why_it_needs_nothing()
+    {
+        XDocument tokens = TokensSource();
+        (string Key, XElement Colour)[] dark = [.. SourceColours(tokens, "Dark")];
+        HashSet<string> keys = [.. dark.Select(c => c.Key)];
+        HashSet<string> grounds = [.. ReadOnPairs.SelectMany(p => (string[])[p.Ground, p.Under])];
+        List<string> wrong = [];
+        foreach ((string key, XElement colour) in dark)
+        {
+            XAttribute[] said = [.. colour.Attributes().Where(a => a.Name.Namespace == ReadNamespace)];
+            wrong.AddRange(said.Where(a => a.Name.LocalName is not ("Text" or "Mark" or "Edge" or "None")).Select(a => $"{key} says read:{a.Name.LocalName}, which no rule reads"));
+            if (said.Length == 0 && !grounds.Contains(key))
+            {
+                wrong.Add($"{key} says neither what it is read on (read:Text, read:Mark, read:Edge) nor why it needs nothing (read:None), and nothing is read on it");
+            }
+        }
+        wrong.AddRange(grounds.Where(g => !keys.Contains(g)).Order(StringComparer.Ordinal).Select(g => $"{g} is named as a ground but is no colour Tokens.axaml gives"));
+        wrong.AddRange(SourceColours(tokens, "Light").Where(c => c.Colour.Attributes().Any(a => a.Name.Namespace == ReadNamespace)).Select(c => $"{c.Key} says in Light what it is read on, which Dark's says for both"));
+        Assert.True(wrong.Count == 0, $"{wrong.Count} colours are held to no contrast, or to one that cannot be read, so they may be unreadable unseen:\n" + string.Join("\n", wrong));
     }
 
     /// <summary>Passenger's themes repository and the source Passenger carries read whole: each theme an index lists reads
@@ -2623,77 +2650,49 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
         };
     }
 
-    /// <summary>What the window draws, word or mark, on what ground, and the least contrast WCAG AA asks of it: text 4.5:1,
-    /// an icon, a focus ring or the caret 3:1. Disabled text is exempt, as WCAG's inactive components are.</summary>
-    private static readonly (string Fore, string Ground, double Least)[] ContrastPairs = BuildPairs();
+    private static readonly XNamespace ReadNamespace = "urn:passenger:contrast";
+    private static readonly XNamespace XamlNamespace = "http://schemas.microsoft.com/winfx/2006/xaml";
 
-    private static (string, string, double)[] BuildPairs()
+    /// <summary>What each colour is read on, as Tokens.axaml declares it on its Dark dictionary's colours: read:Text at WCAG
+    /// AA's 4.5:1, read:Mark (an icon, a focus ring, the caret) and read:Edge (a control's edge) at 3:1, a ground laid over
+    /// another named <c>Ground/Under</c> and otherwise over Panel. The fourth to sixth braces, which a theme may give, are
+    /// read as the first is.</summary>
+    private static readonly ReadOn[] ReadOnPairs = DeclaredReadOn();
+
+    /// <summary>A colour, the ground it is read on and what that ground is laid over, the least contrast asked, and whether
+    /// it is a control's edge.</summary>
+    private sealed record ReadOn(string Fore, string Ground, string Under, double Least, bool Edge);
+
+    /// <summary>Tokens.axaml as written, its colours' declarations being attributes the compiler passes over.</summary>
+    private static XDocument TokensSource() =>
+        XDocument.Load(Path.Combine(Passenger.Tests.Debugging.Helpers.Debuggees.Root, "src", "Passenger.App", "Theme", "Tokens.axaml"));
+
+    /// <summary>The colours of one variant's dictionary in Tokens.axaml, each by its key.</summary>
+    private static IEnumerable<(string Key, XElement Colour)> SourceColours(XDocument tokens, string variant) =>
+        from dictionary in tokens.Descendants()
+        where dictionary.Name.LocalName == "ResourceDictionary" && (string?)dictionary.Attribute(XamlNamespace + "Key") == variant
+        from colour in dictionary.Elements()
+        where colour.Name.LocalName is "SolidColorBrush" or "LinearGradientBrush"
+        select ((string)colour.Attribute(XamlNamespace + "Key")!, colour);
+
+    private static ReadOn[] DeclaredReadOn()
     {
-        const double Text = 4.5;
-        const double Mark = 3;
-        List<(string, string, double)> pairs = [];
-        foreach (string ground in (string[])[TokenKeys.Panel, TokenKeys.Frame, TokenKeys.Field, TokenKeys.Popup, TokenKeys.List, TokenKeys.Hover, "Passenger.HoverOnFrame",
-            TokenKeys.Selected, TokenKeys.RowSelected, TokenKeys.Editor_Background, TokenKeys.Banner, TokenKeys.Button, TokenKeys.Welcome_Tile])
+        List<ReadOn> pairs = [];
+        foreach ((string key, XElement colour) in SourceColours(TokensSource(), "Dark"))
         {
-            pairs.Add((TokenKeys.Text, ground, Text));
-            pairs.Add((TokenKeys.TextMuted, ground, Text));
+            foreach ((string kind, double least) in (ReadOnlySpan<(string, double)>)[("Text", 4.5), ("Mark", 3), ("Edge", 3)])
+            {
+                foreach (string ground in ((string?)colour.Attribute(ReadNamespace + kind) ?? string.Empty).Split(' ', StringSplitOptions.RemoveEmptyEntries))
+                {
+                    string[] laid = ground.Split('/');
+                    pairs.Add(new ReadOn(key, "Passenger." + laid[0], "Passenger." + (laid.Length > 1 ? laid[1] : "Panel"), least, kind == "Edge"));
+                }
+            }
         }
-        foreach (string ground in (string[])[TokenKeys.Panel, TokenKeys.Frame, TokenKeys.Popup, TokenKeys.Editor_Background])
+        foreach (string optional in ThemeFiles.Optional.Where(o => o.Value == ThemeTokenKind.Colour).Select(o => o.Key))
         {
-            pairs.Add((TokenKeys.Link, ground, Text));
-            pairs.Add((TokenKeys.Error, ground, Text));
-            pairs.Add((TokenKeys.Warning, ground, Text));
-            pairs.Add((TokenKeys.Focus, ground, Mark));
-            pairs.Add((TokenKeys.Icon, ground, Mark));
-        }
-        pairs.Add((TokenKeys.Focus, TokenKeys.Field, Mark));
-        pairs.Add((TokenKeys.LinkHover, TokenKeys.Panel, Text));
-        pairs.Add((TokenKeys.Accent, TokenKeys.Panel, Mark));
-        pairs.Add((TokenKeys.AccentText, TokenKeys.Accent, Text));
-        pairs.Add((TokenKeys.AccentText, TokenKeys.AccentHover, Text));
-        pairs.Add((TokenKeys.AccentText, TokenKeys.Welcome_Badge, Text));
-        pairs.Add((TokenKeys.Menu_SelectedText, TokenKeys.Menu_Selected, Text));
-        pairs.Add((TokenKeys.Tab_ActiveText, TokenKeys.Tab_Active, Text));
-        pairs.Add((TokenKeys.Stripe_SelectedIcon, TokenKeys.Stripe_Selected, Mark));
-        pairs.Add((TokenKeys.Welcome_ChipIcon, TokenKeys.Welcome_Chip, Mark));
-        foreach (string file in (string[])["Modified", "Added", "Unversioned", "Conflicted"])
-        {
-            pairs.Add(($"Passenger.Vcs.File.{file}", TokenKeys.Panel, Text));
-            pairs.Add(($"Passenger.Vcs.File.{file}", TokenKeys.RowSelected, Text));
-        }
-        foreach (string colour in (string[])["Red", "Orange", "Yellow", "Green", "Cyan", "Blue", "Purple", "Pink", "Maroon", "Grey"])
-        {
-            pairs.Add(($"Passenger.FileIcon.{colour}", TokenKeys.Panel, Mark));
-        }
-        foreach (string ground in (string[])[TokenKeys.TitleBar, TokenKeys.TitleBar_Hover, TokenKeys.TitleBar_Pressed])
-        {
-            pairs.Add((TokenKeys.TitleBar_Text, ground, Text));
-            pairs.Add((TokenKeys.TitleBar_Focus, ground, Mark));
-        }
-        foreach (string mark in (string[])["Icon", "Run", "Stop", "HotReload"])
-        {
-            pairs.Add(($"Passenger.TitleBar.{mark}", TokenKeys.TitleBar, Mark));
-        }
-        pairs.Add((TokenKeys.TitleBar_BadgeText, TokenKeys.TitleBar_Badge, Text));
-        pairs.Add((TokenKeys.Terminal_Foreground, TokenKeys.Terminal_Background, Text));
-        foreach (string ground in (string[])[TokenKeys.Editor_Background, TokenKeys.Editor_CurrentLine, TokenKeys.Editor_Selection, TokenKeys.Editor_ExecutionLine])
-        {
-            pairs.Add((TokenKeys.Editor_Text, ground, Text));
-        }
-        pairs.Add((TokenKeys.Editor_LineNumber, TokenKeys.Editor_Gutter, Text));
-        pairs.Add((TokenKeys.Editor_LineNumberCurrent, TokenKeys.Editor_Gutter, Text));
-        pairs.Add((TokenKeys.Editor_InlineValue, TokenKeys.Editor_Background, Text));
-        pairs.Add((TokenKeys.Editor_InlineValue, TokenKeys.Editor_ExecutionLine, Text));
-        pairs.Add((TokenKeys.Editor_InlayHint, TokenKeys.Editor_InlayHintBack, Text));
-        pairs.Add((TokenKeys.Editor_Caret, TokenKeys.Editor_Background, Mark));
-        pairs.Add((TokenKeys.Editor_Caret, TokenKeys.Editor_CurrentLine, Mark));
-        foreach (string kind in (string[])["Keyword", "ControlKeyword", "Comment", "DocComment", "String", "StringEscape", "Number", "Preprocessor", "Class", "Interface",
-            "Struct", "Enum", "Delegate", "TypeParameter", "Method", "Property", "Event", "Field", "Constant", "EnumMember", "ErrorOutput", "UserInput", "Link",
-            "BuildError", "BuildWarning", "Brace1", "Brace2", "Brace3", "Tag", "AttributeName", "AttributeValue", "Entity", "JsonKey", "YamlKey", "Heading", "Code", "Quote", "LinkDestination",
-            "Parameter", "Local", "Namespace", "Operator", "Brace4", "Brace5", "Brace6"])
-        {
-            pairs.Add(($"Passenger.Syntax.{kind}", TokenKeys.Editor_Background, Text));
-            pairs.Add(($"Passenger.Syntax.{kind}", TokenKeys.Editor_CurrentLine, Text));
+            Assert.True(optional.StartsWith("Syntax.Brace", StringComparison.Ordinal), $"{optional} is a colour a theme may give that no rule says what it is read on");
+            pairs.AddRange(pairs.Where(p => p.Fore == TokenKeys.Syntax_Brace1).ToArray().Select(p => p with { Fore = "Passenger." + optional }));
         }
         return [.. pairs];
     }

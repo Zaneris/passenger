@@ -1,5 +1,8 @@
 <ResourceDictionary xmlns="https://github.com/avaloniaui"
-                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+                    xmlns:read="urn:passenger:contrast"
+                    mc:Ignorable="read">
     <!-- Passenger's own theme, the default: every colour the IDE paints, once in Dark and once in Light, and the few shapes
          a theme may draw its own way. A control names a token, never a colour, and every other theme gives every token
          again. Passenger.Editor.*, Passenger.Syntax.* and Passenger.SyntaxStyle.* are read by the code editor by name; a
@@ -32,6 +35,11 @@
     <Thickness x:Key="Passenger.ToolTitleMargin">14,0,0,0</Thickness>
     <Thickness x:Key="Passenger.DialogFooterPadding">16,10</Thickness>
 
+    <!-- What each colour is read on, said once on Dark's and holding Light's too: read:Text the grounds its words read on
+         at WCAG AA's 4.5:1, read:Mark those an icon, ring or caret reads on at 3:1, read:Edge those a control's edge stands
+         between at 3:1 in Passenger's own themes (a ground laid over another named Ground/Under, else over Panel), and
+         read:None why it needs none. UiRulesTests holds every theme to them and tools/themes.py writes its themes to them,
+         so a colour added here says what it is read on. -->
     <ResourceDictionary.ThemeDictionaries>
         <ResourceDictionary x:Key="Dark">
             <!-- The window's grounds: the frame round the edges (the stripes, the editor tabs' strip, the status bar, a
@@ -39,44 +47,44 @@
             <SolidColorBrush x:Key="Passenger.Frame" Color="#080B11" />
             <SolidColorBrush x:Key="Passenger.Panel" Color="#171C28" />
             <SolidColorBrush x:Key="Passenger.Field" Color="#0F131C" />
-            <SolidColorBrush x:Key="Passenger.FieldBorder" Color="#2F384B" />
+            <SolidColorBrush x:Key="Passenger.FieldBorder" Color="#656E81" read:Edge="Field Panel Popup" />
             <!-- A list or table in a dialog's page, and a plain button's ground (its edge is a field's). -->
             <SolidColorBrush x:Key="Passenger.List" Color="#10141E" />
             <SolidColorBrush x:Key="Passenger.Button" Color="#1F2638" />
             <!-- A menu's or a popup's ground and edge, the shadow round it, and the crown along a popup's top. -->
             <SolidColorBrush x:Key="Passenger.Popup" Color="#1D2434" />
-            <SolidColorBrush x:Key="Passenger.PopupBorder" Color="#2F384B" />
+            <SolidColorBrush x:Key="Passenger.PopupBorder" Color="#2F384B" read:None="a popup's edge, its ground and shadow setting it apart" />
             <BoxShadows x:Key="Passenger.PopupShadow">0 6 20 0 #80000000</BoxShadows>
-            <LinearGradientBrush x:Key="Passenger.Popup.Edge" StartPoint="0%,0%" EndPoint="100%,0%">
+            <LinearGradientBrush x:Key="Passenger.Popup.Edge" StartPoint="0%,0%" EndPoint="100%,0%" read:None="a popup's crown, for its look">
                 <GradientStop Offset="0" Color="#3D78F5" />
                 <GradientStop Offset="1" Color="#1FB5A5" />
             </LinearGradientBrush>
             <!-- An editor's notice above its text (a file not the project's own). -->
             <SolidColorBrush x:Key="Passenger.Banner" Color="#18233C" />
             <!-- Where a dragged tool window or tab would land. -->
-            <SolidColorBrush x:Key="Passenger.DropZone" Color="#2F6BF2" Opacity="0.22" />
+            <SolidColorBrush x:Key="Passenger.DropZone" Color="#2F6BF2" Opacity="0.22" read:None="a wash where a dragged window would land, while it drags" />
 
             <!-- Lines: the divider where two panes of one ground meet (two tool windows, two editor splits), the frame
                  showing between them; a rule between groups inside a page; the gap between a stripe's upper and lower
                  windows; the edge Linux shows round a window that draws its own frame. -->
-            <SolidColorBrush x:Key="Passenger.Divider" Color="#080B11" />
-            <SolidColorBrush x:Key="Passenger.Separator" Color="#262E3E" />
-            <SolidColorBrush x:Key="Passenger.StripeSeparator" Color="#38425A" />
-            <SolidColorBrush x:Key="Passenger.WindowEdge" Color="#2F384B" />
+            <SolidColorBrush x:Key="Passenger.Divider" Color="#080B11" read:None="a line between areas their grounds tell apart" />
+            <SolidColorBrush x:Key="Passenger.Separator" Color="#262E3E" read:None="a line between groups their words tell apart" />
+            <SolidColorBrush x:Key="Passenger.StripeSeparator" Color="#38425A" read:None="a line between areas their grounds tell apart" />
+            <SolidColorBrush x:Key="Passenger.WindowEdge" Color="#2F384B" read:None="the window's own edge on Linux, beside the desktop" />
 
             <!-- Words and icons: text, quieter text, what cannot be used now (and a disabled control's edge), icons,
                  links, words on the accent, a kind badge's letter on its colour, an error's and a warning's words. -->
-            <SolidColorBrush x:Key="Passenger.Text" Color="#E4E9F2" />
-            <SolidColorBrush x:Key="Passenger.TextMuted" Color="#9AA5BA" />
-            <SolidColorBrush x:Key="Passenger.TextDisabled" Color="#576178" />
-            <SolidColorBrush x:Key="Passenger.DisabledBorder" Color="#262E3E" />
-            <SolidColorBrush x:Key="Passenger.Icon" Color="#B9C3D7" />
-            <SolidColorBrush x:Key="Passenger.Link" Color="#80A8FF" />
-            <SolidColorBrush x:Key="Passenger.LinkHover" Color="#A6C2FF" />
-            <SolidColorBrush x:Key="Passenger.AccentText" Color="#FFFFFF" />
-            <SolidColorBrush x:Key="Passenger.BadgeText" Color="#0F131C" />
-            <SolidColorBrush x:Key="Passenger.Error" Color="#FF7A87" />
-            <SolidColorBrush x:Key="Passenger.Warning" Color="#F2B84B" />
+            <SolidColorBrush x:Key="Passenger.Text" Color="#E4E9F2" read:Text="Panel Frame Field Popup List Hover Hover/Frame Selected RowSelected Editor.Background Banner Button Welcome.Tile TextSelection" />
+            <SolidColorBrush x:Key="Passenger.TextMuted" Color="#9AA5BA" read:Text="Panel Frame Field Popup List Hover Hover/Frame Selected RowSelected Editor.Background Banner Button Welcome.Tile" />
+            <SolidColorBrush x:Key="Passenger.TextDisabled" Color="#576178" read:None="what cannot be used now, which WCAG exempts" />
+            <SolidColorBrush x:Key="Passenger.DisabledBorder" Color="#262E3E" read:None="what cannot be used now, which WCAG exempts" />
+            <SolidColorBrush x:Key="Passenger.Icon" Color="#B9C3D7" read:Mark="Panel Frame Popup Editor.Background" />
+            <SolidColorBrush x:Key="Passenger.Link" Color="#80A8FF" read:Text="Panel Frame Popup Editor.Background" />
+            <SolidColorBrush x:Key="Passenger.LinkHover" Color="#A6C2FF" read:Text="Panel" />
+            <SolidColorBrush x:Key="Passenger.AccentText" Color="#FFFFFF" read:Text="Accent AccentHover Welcome.Badge" />
+            <SolidColorBrush x:Key="Passenger.BadgeText" Color="#0F131C" read:Text="TextMuted Editor.Error Editor.Warning Syntax.Keyword Syntax.Class Syntax.Interface Syntax.Struct Syntax.Enum Syntax.TypeParameter Syntax.Method Syntax.Property Syntax.Field Syntax.Constant Syntax.EnumMember Syntax.Event Syntax.Heading" />
+            <SolidColorBrush x:Key="Passenger.Error" Color="#FF7A87" read:Text="Panel Frame Popup Editor.Background" />
+            <SolidColorBrush x:Key="Passenger.Warning" Color="#F2B84B" read:Text="Panel Frame Popup Editor.Background" />
             <!-- Text chosen in a text field. -->
             <SolidColorBrush x:Key="Passenger.TextSelection" Color="#22407F" />
 
@@ -86,17 +94,17 @@
             <SolidColorBrush x:Key="Passenger.Hover" Color="#14A6C2FF" />
             <SolidColorBrush x:Key="Passenger.Selected" Color="#24A6C2FF" />
             <SolidColorBrush x:Key="Passenger.RowSelected" Color="#1B3366" />
-            <SolidColorBrush x:Key="Passenger.Accent" Color="#2F6BF2" />
+            <SolidColorBrush x:Key="Passenger.Accent" Color="#2F6BF2" read:Mark="Panel" />
             <SolidColorBrush x:Key="Passenger.AccentHover" Color="#2A5FD9" />
-            <SolidColorBrush x:Key="Passenger.Focus" Color="#FFB547" />
-            <SolidColorBrush x:Key="Passenger.CheckBorder" Color="#6B7690" />
-            <SolidColorBrush x:Key="Passenger.ScrollThumb" Color="#59808080" />
-            <SolidColorBrush x:Key="Passenger.ScrollThumbHover" Color="#8C808080" />
-            <SolidColorBrush x:Key="Passenger.ScrollTrackHover" Color="#1A808080" />
+            <SolidColorBrush x:Key="Passenger.Focus" Color="#FFB547" read:Mark="Panel Frame Popup Editor.Background Field" />
+            <SolidColorBrush x:Key="Passenger.CheckBorder" Color="#6B7690" read:Edge="Panel Popup List" />
+            <SolidColorBrush x:Key="Passenger.ScrollThumb" Color="#59808080" read:None="a scrollbar's, faint until the pointer is over it, the wheel and keys scrolling too" />
+            <SolidColorBrush x:Key="Passenger.ScrollThumbHover" Color="#8C808080" read:None="a scrollbar's, under the pointer" />
+            <SolidColorBrush x:Key="Passenger.ScrollTrackHover" Color="#1A808080" read:None="a scrollbar's, under the pointer" />
             <!-- A menu's chosen item, solid in the accent, its words and keys white. -->
             <SolidColorBrush x:Key="Passenger.Menu.Selected" Color="#2F6BF2" />
-            <SolidColorBrush x:Key="Passenger.Menu.SelectedText" Color="#FFFFFF" />
-            <SolidColorBrush x:Key="Passenger.Menu.SelectedKeys" Color="#FFFFFF" />
+            <SolidColorBrush x:Key="Passenger.Menu.SelectedText" Color="#FFFFFF" read:Text="Menu.Selected" />
+            <SolidColorBrush x:Key="Passenger.Menu.SelectedKeys" Color="#FFFFFF" read:Text="Menu.Selected" />
 
             <!-- The title bar, the toolbar on it: the icon's ground, blue into teal, with its own words, icons, hover,
                  press, rule, run, stop and Hot Reload, focus ring, and the project's initials on the icon's amber dot. -->
@@ -104,37 +112,37 @@
                 <GradientStop Offset="0" Color="#1B3270" />
                 <GradientStop Offset="1" Color="#0E4552" />
             </LinearGradientBrush>
-            <SolidColorBrush x:Key="Passenger.TitleBar.Text" Color="#F2F6FF" />
-            <SolidColorBrush x:Key="Passenger.TitleBar.Icon" Color="#D6E2FF" />
+            <SolidColorBrush x:Key="Passenger.TitleBar.Text" Color="#F2F6FF" read:Text="TitleBar TitleBar.Hover/TitleBar TitleBar.Pressed/TitleBar" />
+            <SolidColorBrush x:Key="Passenger.TitleBar.Icon" Color="#D6E2FF" read:Mark="TitleBar" />
             <SolidColorBrush x:Key="Passenger.TitleBar.Hover" Color="#26FFFFFF" />
             <SolidColorBrush x:Key="Passenger.TitleBar.Pressed" Color="#33FFFFFF" />
-            <SolidColorBrush x:Key="Passenger.TitleBar.Rule" Color="#40FFFFFF" />
-            <SolidColorBrush x:Key="Passenger.TitleBar.Run" Color="#5EEAB0" />
-            <SolidColorBrush x:Key="Passenger.TitleBar.Stop" Color="#FF8A96" />
-            <SolidColorBrush x:Key="Passenger.TitleBar.HotReload" Color="#FFB27A" />
-            <SolidColorBrush x:Key="Passenger.TitleBar.Focus" Color="#FFB547" />
+            <SolidColorBrush x:Key="Passenger.TitleBar.Rule" Color="#40FFFFFF" read:None="a line between groups on the title bar" />
+            <SolidColorBrush x:Key="Passenger.TitleBar.Run" Color="#5EEAB0" read:Mark="TitleBar" />
+            <SolidColorBrush x:Key="Passenger.TitleBar.Stop" Color="#FF8A96" read:Mark="TitleBar" />
+            <SolidColorBrush x:Key="Passenger.TitleBar.HotReload" Color="#FFB27A" read:Mark="TitleBar" />
+            <SolidColorBrush x:Key="Passenger.TitleBar.Focus" Color="#FFB547" read:Mark="TitleBar TitleBar.Hover/TitleBar TitleBar.Pressed/TitleBar" />
             <SolidColorBrush x:Key="Passenger.TitleBar.Badge" Color="#FFB547" />
-            <SolidColorBrush x:Key="Passenger.TitleBar.BadgeText" Color="#1A1305" />
+            <SolidColorBrush x:Key="Passenger.TitleBar.BadgeText" Color="#1A1305" read:Text="TitleBar.Badge" />
             <!-- The merged title bar's window buttons on Windows and Linux: under the pointer, pressed, and Close's red. -->
-            <SolidColorBrush x:Key="Passenger.WindowButton.Hover" Color="#1AFFFFFF" />
-            <SolidColorBrush x:Key="Passenger.WindowButton.Pressed" Color="#33FFFFFF" />
-            <SolidColorBrush x:Key="Passenger.WindowButton.CloseHover" Color="#E81123" />
-            <SolidColorBrush x:Key="Passenger.WindowButton.ClosePressed" Color="#F1707A" />
-            <SolidColorBrush x:Key="Passenger.WindowButton.CloseGlyph" Color="#FFFFFF" />
+            <SolidColorBrush x:Key="Passenger.WindowButton.Hover" Color="#1AFFFFFF" read:None="the window buttons' hover and press, as the system draws them" />
+            <SolidColorBrush x:Key="Passenger.WindowButton.Pressed" Color="#33FFFFFF" read:None="the window buttons' hover and press, as the system draws them" />
+            <SolidColorBrush x:Key="Passenger.WindowButton.CloseHover" Color="#E81123" read:None="the window buttons' hover and press, as the system draws them" />
+            <SolidColorBrush x:Key="Passenger.WindowButton.ClosePressed" Color="#F1707A" read:None="the window buttons' hover and press, as the system draws them" />
+            <SolidColorBrush x:Key="Passenger.WindowButton.CloseGlyph" Color="#FFFFFF" read:None="the window buttons' hover and press, as the system draws them" />
 
             <!-- The open tool window's stripe button, the open editor tab, an unsaved file's dot. -->
             <SolidColorBrush x:Key="Passenger.Stripe.Selected" Color="#1F3A75" />
-            <SolidColorBrush x:Key="Passenger.Stripe.SelectedIcon" Color="#CFDDFF" />
+            <SolidColorBrush x:Key="Passenger.Stripe.SelectedIcon" Color="#CFDDFF" read:Mark="Stripe.Selected" />
             <SolidColorBrush x:Key="Passenger.Tab.Active" Color="#22304D" />
-            <SolidColorBrush x:Key="Passenger.Tab.ActiveText" Color="#F2F6FF" />
-            <SolidColorBrush x:Key="Passenger.Modified" Color="#FFB547" />
+            <SolidColorBrush x:Key="Passenger.Tab.ActiveText" Color="#F2F6FF" read:Text="Tab.Active" />
+            <SolidColorBrush x:Key="Passenger.Modified" Color="#FFB547" read:Mark="Frame Panel" />
 
             <!-- The start page: an action's tile, its edge, its icon's chip and the icon; a recent solution's badge. -->
             <SolidColorBrush x:Key="Passenger.Welcome.Tile" Color="#161C29" />
-            <SolidColorBrush x:Key="Passenger.Welcome.TileBorder" Color="#262F42" />
+            <SolidColorBrush x:Key="Passenger.Welcome.TileBorder" Color="#262F42" read:None="a tile's edge, its icon and words telling it" />
             <BoxShadows x:Key="Passenger.Welcome.TileShadow">0 0 0 0 #00000000</BoxShadows>
             <SolidColorBrush x:Key="Passenger.Welcome.Chip" Color="#1B3366" />
-            <SolidColorBrush x:Key="Passenger.Welcome.ChipIcon" Color="#9CBBFF" />
+            <SolidColorBrush x:Key="Passenger.Welcome.ChipIcon" Color="#9CBBFF" read:Mark="Welcome.Chip" />
             <!-- The icon's own ground, blue into teal, deepened so white initials read. -->
             <LinearGradientBrush x:Key="Passenger.Welcome.Badge" StartPoint="0%,0%" EndPoint="100%,100%">
                 <GradientStop Offset="0" Color="#2F6BF2" />
@@ -142,128 +150,128 @@
             </LinearGradientBrush>
 
             <!-- Running and testing: run and Hot Reload's icons; a test's mark by its outcome. -->
-            <SolidColorBrush x:Key="Passenger.Run" Color="#34D399" />
-            <SolidColorBrush x:Key="Passenger.HotReload" Color="#FF9D5C" />
-            <SolidColorBrush x:Key="Passenger.Test.Passed" Color="#34D399" />
-            <SolidColorBrush x:Key="Passenger.Test.Failed" Color="#FF6B7A" />
-            <SolidColorBrush x:Key="Passenger.Test.Skipped" Color="#8C97AC" />
-            <SolidColorBrush x:Key="Passenger.Test.Running" Color="#80A8FF" />
-            <SolidColorBrush x:Key="Passenger.Test.NotRun" Color="#6B7690" />
+            <SolidColorBrush x:Key="Passenger.Run" Color="#34D399" read:Mark="Panel Frame" />
+            <SolidColorBrush x:Key="Passenger.HotReload" Color="#FF9D5C" read:Mark="Panel Frame" />
+            <SolidColorBrush x:Key="Passenger.Test.Passed" Color="#34D399" read:Mark="Panel" />
+            <SolidColorBrush x:Key="Passenger.Test.Failed" Color="#FF6B7A" read:Mark="Panel" />
+            <SolidColorBrush x:Key="Passenger.Test.Skipped" Color="#8C97AC" read:Mark="Panel" />
+            <SolidColorBrush x:Key="Passenger.Test.Running" Color="#80A8FF" read:Mark="Panel" />
+            <SolidColorBrush x:Key="Passenger.Test.NotRun" Color="#6B7690" read:Mark="Panel" />
 
             <!-- Version control: the gutter's change bars, a file's name by how it changed, the log's lanes, a ref's tag
                  and words, a favourite branch's star, a signed commit's mark by what its signature is worth. -->
-            <SolidColorBrush x:Key="Passenger.Vcs.Added" Color="#2BA676" />
-            <SolidColorBrush x:Key="Passenger.Vcs.Modified" Color="#3A6FE0" />
-            <SolidColorBrush x:Key="Passenger.Vcs.Deleted" Color="#8C97AC" />
-            <SolidColorBrush x:Key="Passenger.Vcs.Conflict" Color="#E0566A" />
-            <SolidColorBrush x:Key="Passenger.Vcs.File.Modified" Color="#80A8FF" />
-            <SolidColorBrush x:Key="Passenger.Vcs.File.Added" Color="#5CCB8F" />
-            <SolidColorBrush x:Key="Passenger.Vcs.File.Deleted" Color="#7A869E" />
-            <SolidColorBrush x:Key="Passenger.Vcs.File.Unversioned" Color="#F2937A" />
-            <SolidColorBrush x:Key="Passenger.Vcs.File.Conflicted" Color="#FF7A87" />
-            <SolidColorBrush x:Key="Passenger.Graph.0" Color="#3D78F5" />
-            <SolidColorBrush x:Key="Passenger.Graph.1" Color="#34B87F" />
-            <SolidColorBrush x:Key="Passenger.Graph.2" Color="#F2A93B" />
-            <SolidColorBrush x:Key="Passenger.Graph.3" Color="#A57EE3" />
-            <SolidColorBrush x:Key="Passenger.Graph.4" Color="#E5566A" />
-            <SolidColorBrush x:Key="Passenger.Graph.5" Color="#1FB5A5" />
+            <SolidColorBrush x:Key="Passenger.Vcs.Added" Color="#2BA676" read:Mark="Editor.Gutter" />
+            <SolidColorBrush x:Key="Passenger.Vcs.Modified" Color="#3A6FE0" read:Mark="Editor.Gutter" />
+            <SolidColorBrush x:Key="Passenger.Vcs.Deleted" Color="#8C97AC" read:Mark="Editor.Gutter" />
+            <SolidColorBrush x:Key="Passenger.Vcs.Conflict" Color="#E0566A" read:Mark="Editor.Gutter" />
+            <SolidColorBrush x:Key="Passenger.Vcs.File.Modified" Color="#80A8FF" read:Text="Panel RowSelected" />
+            <SolidColorBrush x:Key="Passenger.Vcs.File.Added" Color="#5CCB8F" read:Text="Panel RowSelected" />
+            <SolidColorBrush x:Key="Passenger.Vcs.File.Deleted" Color="#929EB6" read:Text="Panel RowSelected" />
+            <SolidColorBrush x:Key="Passenger.Vcs.File.Unversioned" Color="#F2937A" read:Text="Panel RowSelected" />
+            <SolidColorBrush x:Key="Passenger.Vcs.File.Conflicted" Color="#FF7A87" read:Text="Panel RowSelected" />
+            <SolidColorBrush x:Key="Passenger.Graph.0" Color="#3D78F5" read:None="a branch's lane in the log, its commits' words telling them" />
+            <SolidColorBrush x:Key="Passenger.Graph.1" Color="#34B87F" read:None="a branch's lane in the log, its commits' words telling them" />
+            <SolidColorBrush x:Key="Passenger.Graph.2" Color="#F2A93B" read:None="a branch's lane in the log, its commits' words telling them" />
+            <SolidColorBrush x:Key="Passenger.Graph.3" Color="#A57EE3" read:None="a branch's lane in the log, its commits' words telling them" />
+            <SolidColorBrush x:Key="Passenger.Graph.4" Color="#E5566A" read:None="a branch's lane in the log, its commits' words telling them" />
+            <SolidColorBrush x:Key="Passenger.Graph.5" Color="#1FB5A5" read:None="a branch's lane in the log, its commits' words telling them" />
             <SolidColorBrush x:Key="Passenger.Vcs.Ref" Color="#263048" />
-            <SolidColorBrush x:Key="Passenger.Vcs.RefText" Color="#C5CEE0" />
-            <SolidColorBrush x:Key="Passenger.Vcs.Favorite" Color="#FFB547" />
-            <SolidColorBrush x:Key="Passenger.Vcs.Signature.Good" Color="#34D399" />
-            <SolidColorBrush x:Key="Passenger.Vcs.Signature.Unverified" Color="#8C97AC" />
-            <SolidColorBrush x:Key="Passenger.Vcs.Signature.Bad" Color="#FF6B7A" />
-            <SolidColorBrush x:Key="Passenger.Vcs.Signature.Expired" Color="#FFB547" />
+            <SolidColorBrush x:Key="Passenger.Vcs.RefText" Color="#C5CEE0" read:Text="Vcs.Ref" />
+            <SolidColorBrush x:Key="Passenger.Vcs.Favorite" Color="#FFB547" read:Mark="Panel" />
+            <SolidColorBrush x:Key="Passenger.Vcs.Signature.Good" Color="#34D399" read:Mark="Panel" />
+            <SolidColorBrush x:Key="Passenger.Vcs.Signature.Unverified" Color="#8C97AC" read:Mark="Panel" />
+            <SolidColorBrush x:Key="Passenger.Vcs.Signature.Bad" Color="#FF6B7A" read:Mark="Panel" />
+            <SolidColorBrush x:Key="Passenger.Vcs.Signature.Expired" Color="#FFB547" read:Mark="Panel" />
 
             <!-- The colour picker's rings over the colour chosen, and the checkerboard behind what is clear: the same in
                  every theme, as they stand on the colours being chosen rather than the window's. -->
-            <SolidColorBrush x:Key="Passenger.Picker.RingInner" Color="#FFFFFF" />
-            <SolidColorBrush x:Key="Passenger.Picker.RingOuter" Color="#000000" />
-            <SolidColorBrush x:Key="Passenger.Picker.Checker" Color="#CCCCCC" />
+            <SolidColorBrush x:Key="Passenger.Picker.RingInner" Color="#FFFFFF" read:None="drawn on the colour being chosen, the same in every theme" />
+            <SolidColorBrush x:Key="Passenger.Picker.RingOuter" Color="#000000" read:None="drawn on the colour being chosen, the same in every theme" />
+            <SolidColorBrush x:Key="Passenger.Picker.Checker" Color="#CCCCCC" read:None="drawn on the colour being chosen, the same in every theme" />
 
             <!-- The terminal: its words, ground, cursor and selection, and the sixteen ANSI colours. -->
-            <SolidColorBrush x:Key="Passenger.Terminal.Foreground" Color="#D3DAE6" />
+            <SolidColorBrush x:Key="Passenger.Terminal.Foreground" Color="#D3DAE6" read:Text="Terminal.Background Terminal.Selection" />
             <SolidColorBrush x:Key="Passenger.Terminal.Background" Color="#0F131C" />
-            <SolidColorBrush x:Key="Passenger.Terminal.Cursor" Color="#FFB547" />
+            <SolidColorBrush x:Key="Passenger.Terminal.Cursor" Color="#FFB547" read:Mark="Terminal.Background" />
             <SolidColorBrush x:Key="Passenger.Terminal.Selection" Color="#22407F" />
-            <SolidColorBrush x:Key="Passenger.Terminal.Ansi0" Color="#3F4148" />
-            <SolidColorBrush x:Key="Passenger.Terminal.Ansi1" Color="#F0524F" />
-            <SolidColorBrush x:Key="Passenger.Terminal.Ansi2" Color="#5C962C" />
-            <SolidColorBrush x:Key="Passenger.Terminal.Ansi3" Color="#A68A0D" />
-            <SolidColorBrush x:Key="Passenger.Terminal.Ansi4" Color="#3993D4" />
-            <SolidColorBrush x:Key="Passenger.Terminal.Ansi5" Color="#A771BF" />
-            <SolidColorBrush x:Key="Passenger.Terminal.Ansi6" Color="#00A3A3" />
-            <SolidColorBrush x:Key="Passenger.Terminal.Ansi7" Color="#9DA0A8" />
-            <SolidColorBrush x:Key="Passenger.Terminal.Ansi8" Color="#5F636B" />
-            <SolidColorBrush x:Key="Passenger.Terminal.Ansi9" Color="#FF4050" />
-            <SolidColorBrush x:Key="Passenger.Terminal.Ansi10" Color="#4FC414" />
-            <SolidColorBrush x:Key="Passenger.Terminal.Ansi11" Color="#E5BF00" />
-            <SolidColorBrush x:Key="Passenger.Terminal.Ansi12" Color="#1FB0FF" />
-            <SolidColorBrush x:Key="Passenger.Terminal.Ansi13" Color="#ED7EED" />
-            <SolidColorBrush x:Key="Passenger.Terminal.Ansi14" Color="#00E5E5" />
-            <SolidColorBrush x:Key="Passenger.Terminal.Ansi15" Color="#FFFFFF" />
+            <SolidColorBrush x:Key="Passenger.Terminal.Ansi0" Color="#3F4148" read:None="a colour a program in the terminal asks for" />
+            <SolidColorBrush x:Key="Passenger.Terminal.Ansi1" Color="#F0524F" read:None="a colour a program in the terminal asks for" />
+            <SolidColorBrush x:Key="Passenger.Terminal.Ansi2" Color="#5C962C" read:None="a colour a program in the terminal asks for" />
+            <SolidColorBrush x:Key="Passenger.Terminal.Ansi3" Color="#A68A0D" read:None="a colour a program in the terminal asks for" />
+            <SolidColorBrush x:Key="Passenger.Terminal.Ansi4" Color="#3993D4" read:None="a colour a program in the terminal asks for" />
+            <SolidColorBrush x:Key="Passenger.Terminal.Ansi5" Color="#A771BF" read:None="a colour a program in the terminal asks for" />
+            <SolidColorBrush x:Key="Passenger.Terminal.Ansi6" Color="#00A3A3" read:None="a colour a program in the terminal asks for" />
+            <SolidColorBrush x:Key="Passenger.Terminal.Ansi7" Color="#9DA0A8" read:None="a colour a program in the terminal asks for" />
+            <SolidColorBrush x:Key="Passenger.Terminal.Ansi8" Color="#5F636B" read:None="a colour a program in the terminal asks for" />
+            <SolidColorBrush x:Key="Passenger.Terminal.Ansi9" Color="#FF4050" read:None="a colour a program in the terminal asks for" />
+            <SolidColorBrush x:Key="Passenger.Terminal.Ansi10" Color="#4FC414" read:None="a colour a program in the terminal asks for" />
+            <SolidColorBrush x:Key="Passenger.Terminal.Ansi11" Color="#E5BF00" read:None="a colour a program in the terminal asks for" />
+            <SolidColorBrush x:Key="Passenger.Terminal.Ansi12" Color="#1FB0FF" read:None="a colour a program in the terminal asks for" />
+            <SolidColorBrush x:Key="Passenger.Terminal.Ansi13" Color="#ED7EED" read:None="a colour a program in the terminal asks for" />
+            <SolidColorBrush x:Key="Passenger.Terminal.Ansi14" Color="#00E5E5" read:None="a colour a program in the terminal asks for" />
+            <SolidColorBrush x:Key="Passenger.Terminal.Ansi15" Color="#FFFFFF" read:None="a colour a program in the terminal asks for" />
 
             <!-- A file's icon by its kind, in the Explorer, the tabs and the Go to popups. -->
-            <SolidColorBrush x:Key="Passenger.File.Folder" Color="#AEB4BF" />
-            <SolidColorBrush x:Key="Passenger.File.SolutionFolder" Color="#9F92DB" />
-            <SolidColorBrush x:Key="Passenger.File.Plain" Color="#AEB4BF" />
+            <SolidColorBrush x:Key="Passenger.File.Folder" Color="#AEB4BF" read:Mark="Panel" />
+            <SolidColorBrush x:Key="Passenger.File.SolutionFolder" Color="#9F92DB" read:Mark="Panel" />
+            <SolidColorBrush x:Key="Passenger.File.Plain" Color="#AEB4BF" read:Mark="Panel" />
             <!-- The file icons' colours: this theme's own hues (its red the editor's error, its pink between its red and
                  purple) through tools/themes.py's file_icons(). -->
-            <SolidColorBrush x:Key="Passenger.FileIcon.Red" Color="#FF6B7A" />
-            <SolidColorBrush x:Key="Passenger.FileIcon.Orange" Color="#E8975A" />
-            <SolidColorBrush x:Key="Passenger.FileIcon.Yellow" Color="#D9BC5F" />
-            <SolidColorBrush x:Key="Passenger.FileIcon.Green" Color="#6FBF73" />
-            <SolidColorBrush x:Key="Passenger.FileIcon.Cyan" Color="#5FB7C2" />
-            <SolidColorBrush x:Key="Passenger.FileIcon.Blue" Color="#6FA3EB" />
-            <SolidColorBrush x:Key="Passenger.FileIcon.Purple" Color="#B48BFF" />
-            <SolidColorBrush x:Key="Passenger.FileIcon.Pink" Color="#DB81BF" />
-            <SolidColorBrush x:Key="Passenger.FileIcon.Maroon" Color="#D96855" />
-            <SolidColorBrush x:Key="Passenger.FileIcon.Grey" Color="#A8B2C5" />
+            <SolidColorBrush x:Key="Passenger.FileIcon.Red" Color="#FF6B7A" read:Mark="Panel" />
+            <SolidColorBrush x:Key="Passenger.FileIcon.Orange" Color="#E8975A" read:Mark="Panel" />
+            <SolidColorBrush x:Key="Passenger.FileIcon.Yellow" Color="#D9BC5F" read:Mark="Panel" />
+            <SolidColorBrush x:Key="Passenger.FileIcon.Green" Color="#6FBF73" read:Mark="Panel" />
+            <SolidColorBrush x:Key="Passenger.FileIcon.Cyan" Color="#5FB7C2" read:Mark="Panel" />
+            <SolidColorBrush x:Key="Passenger.FileIcon.Blue" Color="#6FA3EB" read:Mark="Panel" />
+            <SolidColorBrush x:Key="Passenger.FileIcon.Purple" Color="#B48BFF" read:Mark="Panel" />
+            <SolidColorBrush x:Key="Passenger.FileIcon.Pink" Color="#DB81BF" read:Mark="Panel" />
+            <SolidColorBrush x:Key="Passenger.FileIcon.Maroon" Color="#D96855" read:Mark="Panel" />
+            <SolidColorBrush x:Key="Passenger.FileIcon.Grey" Color="#A8B2C5" read:Mark="Panel" />
 
             <!-- The editor's page and gutter (the theme's whatever the colour scheme), and the edge of a card the editor
                  draws over its code (a folded region's preview). -->
             <SolidColorBrush x:Key="Passenger.Editor.Background" Color="#0F131C" />
             <SolidColorBrush x:Key="Passenger.Editor.Gutter" Color="#0F131C" />
-            <SolidColorBrush x:Key="Passenger.Editor.PopupBorder" Color="#2F384B" />
+            <SolidColorBrush x:Key="Passenger.Editor.PopupBorder" Color="#2F384B" read:None="a card's edge over the code, its ground setting it apart" />
 
             <!-- Passenger Dark, the editor's own colour scheme: the code's words, line numbers, the current line,
                  selection and the amber caret, search matches, problems' squiggles, the debugger's marks, inlay hints,
                  usages, braces and whitespace. -->
-            <SolidColorBrush x:Key="Passenger.Editor.Text" Color="#D3DAE6" />
-            <SolidColorBrush x:Key="Passenger.Editor.LineNumber" Color="#7A869E" />
-            <SolidColorBrush x:Key="Passenger.Editor.LineNumberCurrent" Color="#FFB547" />
+            <SolidColorBrush x:Key="Passenger.Editor.Text" Color="#D3DAE6" read:Text="Editor.Background Editor.CurrentLine Editor.Selection Editor.SelectionInactive Editor.ExecutionLine Editor.SearchMatch Editor.SearchCurrent Editor.BreakpointLine Editor.ExceptionBack Editor.UsageRead Editor.UsageWrite Editor.MatchedBrace Editor.SmartStepTarget Editor.SmartStepChosen Diff.Added Diff.Modified Diff.Deleted Diff.Conflict Diff.AddedWord Diff.ModifiedWord Diff.DeletedWord Diff.ConflictWord" />
+            <SolidColorBrush x:Key="Passenger.Editor.LineNumber" Color="#7A869E" read:Text="Editor.Gutter" />
+            <SolidColorBrush x:Key="Passenger.Editor.LineNumberCurrent" Color="#FFB547" read:Text="Editor.Gutter" />
             <SolidColorBrush x:Key="Passenger.Editor.CurrentLine" Color="#161B27" />
             <SolidColorBrush x:Key="Passenger.Editor.Selection" Color="#22407F" />
             <SolidColorBrush x:Key="Passenger.Editor.SelectionInactive" Color="#1F2738" />
-            <SolidColorBrush x:Key="Passenger.Editor.Caret" Color="#FFB547" />
+            <SolidColorBrush x:Key="Passenger.Editor.Caret" Color="#FFB547" read:Mark="Editor.Background Editor.CurrentLine" />
             <SolidColorBrush x:Key="Passenger.Editor.SearchMatch" Color="#3B3320" />
-            <SolidColorBrush x:Key="Passenger.Editor.SearchCurrent" Color="#8C6A1C" />
-            <SolidColorBrush x:Key="Passenger.Editor.Error" Color="#FF6B7A" />
-            <SolidColorBrush x:Key="Passenger.Editor.Warning" Color="#F2B84B" />
-            <SolidColorBrush x:Key="Passenger.Editor.Info" Color="#8C97AC" />
-            <SolidColorBrush x:Key="Passenger.Editor.Breakpoint" Color="#F2506A" />
+            <SolidColorBrush x:Key="Passenger.Editor.SearchCurrent" Color="#795A0A" />
+            <SolidColorBrush x:Key="Passenger.Editor.Error" Color="#FF6B7A" read:Mark="Editor.Background" />
+            <SolidColorBrush x:Key="Passenger.Editor.Warning" Color="#F2B84B" read:Mark="Editor.Background" />
+            <SolidColorBrush x:Key="Passenger.Editor.Info" Color="#8C97AC" read:Mark="Editor.Background" />
+            <SolidColorBrush x:Key="Passenger.Editor.Breakpoint" Color="#F2506A" read:Mark="Editor.Gutter" />
             <SolidColorBrush x:Key="Passenger.Editor.BreakpointLine" Color="#2D1A25" />
-            <SolidColorBrush x:Key="Passenger.Editor.BreakpointMuted" Color="#B9C3D7" />
-            <SolidColorBrush x:Key="Passenger.Editor.Tracepoint" Color="#F2B84B" />
+            <SolidColorBrush x:Key="Passenger.Editor.BreakpointMuted" Color="#B9C3D7" read:None="a breakpoint turned off, as what cannot be used now" />
+            <SolidColorBrush x:Key="Passenger.Editor.Tracepoint" Color="#F2B84B" read:Mark="Editor.Gutter" />
             <SolidColorBrush x:Key="Passenger.Editor.ExecutionLine" Color="#172850" />
-            <SolidColorBrush x:Key="Passenger.Editor.ExecutionPoint" Color="#FFB547" />
+            <SolidColorBrush x:Key="Passenger.Editor.ExecutionPoint" Color="#FFB547" read:Mark="Editor.Gutter" />
             <SolidColorBrush x:Key="Passenger.Editor.ExceptionBack" Color="#3A1C27" />
-            <SolidColorBrush x:Key="Passenger.Editor.InlineValue" Color="#97A3B9" />
-            <SolidColorBrush x:Key="Passenger.Editor.InlayHint" Color="#9AA5BA" />
+            <SolidColorBrush x:Key="Passenger.Editor.InlineValue" Color="#97A3B9" read:Text="Editor.Background Editor.ExecutionLine" />
+            <SolidColorBrush x:Key="Passenger.Editor.InlayHint" Color="#9AA5BA" read:Text="Editor.InlayHintBack" />
             <SolidColorBrush x:Key="Passenger.Editor.InlayHintBack" Color="#1A2030" />
             <SolidColorBrush x:Key="Passenger.Editor.UsageRead" Color="#1D2A40" />
             <SolidColorBrush x:Key="Passenger.Editor.UsageWrite" Color="#35223A" />
-            <SolidColorBrush x:Key="Passenger.Editor.UsageReadMark" Color="#4F7FD9" />
-            <SolidColorBrush x:Key="Passenger.Editor.UsageWriteMark" Color="#C26BA8" />
+            <SolidColorBrush x:Key="Passenger.Editor.UsageReadMark" Color="#4F7FD9" read:None="a usage's tick by the scrollbar, beside its wash in the text" />
+            <SolidColorBrush x:Key="Passenger.Editor.UsageWriteMark" Color="#C26BA8" read:None="a usage's tick by the scrollbar, beside its wash in the text" />
             <SolidColorBrush x:Key="Passenger.Editor.MatchedBrace" Color="#2C3A57" />
             <!-- Smart Step Into's calls to choose from, the one chosen, and the box round it. -->
             <SolidColorBrush x:Key="Passenger.Editor.SmartStepTarget" Color="#3A2E5C" />
             <SolidColorBrush x:Key="Passenger.Editor.SmartStepChosen" Color="#5B3F8F" />
-            <SolidColorBrush x:Key="Passenger.Editor.SmartStepBorder" Color="#B58CF2" />
-            <SolidColorBrush x:Key="Passenger.Editor.Whitespace" Color="#3D4659" />
-            <SolidColorBrush x:Key="Passenger.Editor.SoftWrapSign" Color="#5B667C" />
-            <SolidColorBrush x:Key="Passenger.Editor.LinkUnderline" Color="#4F7FD9" />
-            <SolidColorBrush x:Key="Passenger.Editor.Bookmark" Color="#80A8FF" />
+            <SolidColorBrush x:Key="Passenger.Editor.SmartStepBorder" Color="#B58CF2" read:Mark="Editor.Background" />
+            <SolidColorBrush x:Key="Passenger.Editor.Whitespace" Color="#3D4659" read:None="spaces and tabs shown, quiet so the code reads first" />
+            <SolidColorBrush x:Key="Passenger.Editor.SoftWrapSign" Color="#5B667C" read:None="a wrapped line's sign, quiet so the code reads first" />
+            <SolidColorBrush x:Key="Passenger.Editor.LinkUnderline" Color="#4F7FD9" read:None="the line under a name to follow, its words in their own colour" />
+            <SolidColorBrush x:Key="Passenger.Editor.Bookmark" Color="#80A8FF" read:Mark="Editor.Gutter" />
             <!-- A diff's added, changed, removed and conflicting lines, and the words that changed inside them. -->
             <SolidColorBrush x:Key="Passenger.Diff.Added" Color="#16362E" />
             <SolidColorBrush x:Key="Passenger.Diff.Modified" Color="#1A2C52" />
@@ -276,50 +284,50 @@
             <!-- The code: keywords in the icon's blue, types in its teal, methods in its amber, strings a warm peach,
                  numbers lilac, members sky blue, comments a quiet slate in italics; the files beside the C# (XML's tags,
                  attributes and entities, JSON's and YAML's keys, Markdown's headings, code, quotes and links) alike. -->
-            <SolidColorBrush x:Key="Passenger.Syntax.Keyword" Color="#7EA7FF" />
-            <SolidColorBrush x:Key="Passenger.Syntax.ControlKeyword" Color="#7EA7FF" />
-            <SolidColorBrush x:Key="Passenger.Syntax.Comment" Color="#8290AA" />
-            <SolidColorBrush x:Key="Passenger.Syntax.DocComment" Color="#72B3A8" />
-            <SolidColorBrush x:Key="Passenger.Syntax.String" Color="#F2AA8C" />
-            <SolidColorBrush x:Key="Passenger.Syntax.StringEscape" Color="#FFD08A" />
-            <SolidColorBrush x:Key="Passenger.Syntax.Number" Color="#DDA5FF" />
-            <SolidColorBrush x:Key="Passenger.Syntax.Preprocessor" Color="#95A1B8" />
-            <SolidColorBrush x:Key="Passenger.Syntax.Class" Color="#4FD8C5" />
-            <SolidColorBrush x:Key="Passenger.Syntax.Interface" Color="#4FD8C5" />
-            <SolidColorBrush x:Key="Passenger.Syntax.Struct" Color="#93ECDF" />
-            <SolidColorBrush x:Key="Passenger.Syntax.Enum" Color="#93ECDF" />
-            <SolidColorBrush x:Key="Passenger.Syntax.Delegate" Color="#93ECDF" />
-            <SolidColorBrush x:Key="Passenger.Syntax.TypeParameter" Color="#4FD8C5" />
-            <SolidColorBrush x:Key="Passenger.Syntax.Method" Color="#FFC56E" />
-            <SolidColorBrush x:Key="Passenger.Syntax.Property" Color="#A1CDFF" />
-            <SolidColorBrush x:Key="Passenger.Syntax.Event" Color="#FFA3C8" />
-            <SolidColorBrush x:Key="Passenger.Syntax.Field" Color="#A1CDFF" />
-            <SolidColorBrush x:Key="Passenger.Syntax.Constant" Color="#A1CDFF" />
-            <SolidColorBrush x:Key="Passenger.Syntax.EnumMember" Color="#A1CDFF" />
-            <SolidColorBrush x:Key="Passenger.Syntax.Excluded" Color="#5B667C" />
-            <SolidColorBrush x:Key="Passenger.Syntax.ErrorOutput" Color="#FF7A87" />
-            <SolidColorBrush x:Key="Passenger.Syntax.UserInput" Color="#4FD8C5" />
-            <SolidColorBrush x:Key="Passenger.Syntax.Link" Color="#80A8FF" />
-            <SolidColorBrush x:Key="Passenger.Syntax.BuildError" Color="#FF7A87" />
-            <SolidColorBrush x:Key="Passenger.Syntax.BuildWarning" Color="#F2B84B" />
-            <SolidColorBrush x:Key="Passenger.Syntax.Brace1" Color="#FFC56E" />
-            <SolidColorBrush x:Key="Passenger.Syntax.Brace2" Color="#DDA5FF" />
-            <SolidColorBrush x:Key="Passenger.Syntax.Brace3" Color="#7EA7FF" />
-            <SolidColorBrush x:Key="Passenger.Syntax.Tag" Color="#7EA7FF" />
-            <SolidColorBrush x:Key="Passenger.Syntax.AttributeName" Color="#4FD8C5" />
-            <SolidColorBrush x:Key="Passenger.Syntax.AttributeValue" Color="#F2AA8C" />
-            <SolidColorBrush x:Key="Passenger.Syntax.Entity" Color="#FFD08A" />
-            <SolidColorBrush x:Key="Passenger.Syntax.JsonKey" Color="#A1CDFF" />
-            <SolidColorBrush x:Key="Passenger.Syntax.YamlKey" Color="#7EA7FF" />
-            <SolidColorBrush x:Key="Passenger.Syntax.Heading" Color="#FFC56E" />
-            <SolidColorBrush x:Key="Passenger.Syntax.Code" Color="#4FD8C5" />
-            <SolidColorBrush x:Key="Passenger.Syntax.Quote" Color="#95A1B8" />
-            <SolidColorBrush x:Key="Passenger.Syntax.LinkDestination" Color="#7EA7FF" />
+            <SolidColorBrush x:Key="Passenger.Syntax.Keyword" Color="#7EA7FF" read:Text="Editor.Background Editor.CurrentLine" />
+            <SolidColorBrush x:Key="Passenger.Syntax.ControlKeyword" Color="#7EA7FF" read:Text="Editor.Background Editor.CurrentLine" />
+            <SolidColorBrush x:Key="Passenger.Syntax.Comment" Color="#8290AA" read:Text="Editor.Background Editor.CurrentLine" />
+            <SolidColorBrush x:Key="Passenger.Syntax.DocComment" Color="#72B3A8" read:Text="Editor.Background Editor.CurrentLine" />
+            <SolidColorBrush x:Key="Passenger.Syntax.String" Color="#F2AA8C" read:Text="Editor.Background Editor.CurrentLine" />
+            <SolidColorBrush x:Key="Passenger.Syntax.StringEscape" Color="#FFD08A" read:Text="Editor.Background Editor.CurrentLine" />
+            <SolidColorBrush x:Key="Passenger.Syntax.Number" Color="#DDA5FF" read:Text="Editor.Background Editor.CurrentLine" />
+            <SolidColorBrush x:Key="Passenger.Syntax.Preprocessor" Color="#95A1B8" read:Text="Editor.Background Editor.CurrentLine" />
+            <SolidColorBrush x:Key="Passenger.Syntax.Class" Color="#4FD8C5" read:Text="Editor.Background Editor.CurrentLine" />
+            <SolidColorBrush x:Key="Passenger.Syntax.Interface" Color="#4FD8C5" read:Text="Editor.Background Editor.CurrentLine" />
+            <SolidColorBrush x:Key="Passenger.Syntax.Struct" Color="#93ECDF" read:Text="Editor.Background Editor.CurrentLine" />
+            <SolidColorBrush x:Key="Passenger.Syntax.Enum" Color="#93ECDF" read:Text="Editor.Background Editor.CurrentLine" />
+            <SolidColorBrush x:Key="Passenger.Syntax.Delegate" Color="#93ECDF" read:Text="Editor.Background Editor.CurrentLine" />
+            <SolidColorBrush x:Key="Passenger.Syntax.TypeParameter" Color="#4FD8C5" read:Text="Editor.Background Editor.CurrentLine" />
+            <SolidColorBrush x:Key="Passenger.Syntax.Method" Color="#FFC56E" read:Text="Editor.Background Editor.CurrentLine" />
+            <SolidColorBrush x:Key="Passenger.Syntax.Property" Color="#A1CDFF" read:Text="Editor.Background Editor.CurrentLine" />
+            <SolidColorBrush x:Key="Passenger.Syntax.Event" Color="#FFA3C8" read:Text="Editor.Background Editor.CurrentLine" />
+            <SolidColorBrush x:Key="Passenger.Syntax.Field" Color="#A1CDFF" read:Text="Editor.Background Editor.CurrentLine" />
+            <SolidColorBrush x:Key="Passenger.Syntax.Constant" Color="#A1CDFF" read:Text="Editor.Background Editor.CurrentLine" />
+            <SolidColorBrush x:Key="Passenger.Syntax.EnumMember" Color="#A1CDFF" read:Text="Editor.Background Editor.CurrentLine" />
+            <SolidColorBrush x:Key="Passenger.Syntax.Excluded" Color="#5B667C" read:None="code the build leaves out, greyed as what cannot be used now" />
+            <SolidColorBrush x:Key="Passenger.Syntax.ErrorOutput" Color="#FF7A87" read:Text="Editor.Background Editor.CurrentLine" />
+            <SolidColorBrush x:Key="Passenger.Syntax.UserInput" Color="#4FD8C5" read:Text="Editor.Background Editor.CurrentLine" />
+            <SolidColorBrush x:Key="Passenger.Syntax.Link" Color="#80A8FF" read:Text="Editor.Background Editor.CurrentLine" />
+            <SolidColorBrush x:Key="Passenger.Syntax.BuildError" Color="#FF7A87" read:Text="Editor.Background Editor.CurrentLine" />
+            <SolidColorBrush x:Key="Passenger.Syntax.BuildWarning" Color="#F2B84B" read:Text="Editor.Background Editor.CurrentLine" />
+            <SolidColorBrush x:Key="Passenger.Syntax.Brace1" Color="#FFC56E" read:Text="Editor.Background Editor.CurrentLine" />
+            <SolidColorBrush x:Key="Passenger.Syntax.Brace2" Color="#DDA5FF" read:Text="Editor.Background Editor.CurrentLine" />
+            <SolidColorBrush x:Key="Passenger.Syntax.Brace3" Color="#7EA7FF" read:Text="Editor.Background Editor.CurrentLine" />
+            <SolidColorBrush x:Key="Passenger.Syntax.Tag" Color="#7EA7FF" read:Text="Editor.Background Editor.CurrentLine" />
+            <SolidColorBrush x:Key="Passenger.Syntax.AttributeName" Color="#4FD8C5" read:Text="Editor.Background Editor.CurrentLine" />
+            <SolidColorBrush x:Key="Passenger.Syntax.AttributeValue" Color="#F2AA8C" read:Text="Editor.Background Editor.CurrentLine" />
+            <SolidColorBrush x:Key="Passenger.Syntax.Entity" Color="#FFD08A" read:Text="Editor.Background Editor.CurrentLine" />
+            <SolidColorBrush x:Key="Passenger.Syntax.JsonKey" Color="#A1CDFF" read:Text="Editor.Background Editor.CurrentLine" />
+            <SolidColorBrush x:Key="Passenger.Syntax.YamlKey" Color="#7EA7FF" read:Text="Editor.Background Editor.CurrentLine" />
+            <SolidColorBrush x:Key="Passenger.Syntax.Heading" Color="#FFC56E" read:Text="Editor.Background Editor.CurrentLine" />
+            <SolidColorBrush x:Key="Passenger.Syntax.Code" Color="#4FD8C5" read:Text="Editor.Background Editor.CurrentLine" />
+            <SolidColorBrush x:Key="Passenger.Syntax.Quote" Color="#95A1B8" read:Text="Editor.Background Editor.CurrentLine" />
+            <SolidColorBrush x:Key="Passenger.Syntax.LinkDestination" Color="#7EA7FF" read:Text="Editor.Background Editor.CurrentLine" />
             <!-- Parameters, locals, namespaces and operators: the code's plain words here, a theme giving them their own. -->
-            <SolidColorBrush x:Key="Passenger.Syntax.Parameter" Color="#D3DAE6" />
-            <SolidColorBrush x:Key="Passenger.Syntax.Local" Color="#D3DAE6" />
-            <SolidColorBrush x:Key="Passenger.Syntax.Namespace" Color="#D3DAE6" />
-            <SolidColorBrush x:Key="Passenger.Syntax.Operator" Color="#D3DAE6" />
+            <SolidColorBrush x:Key="Passenger.Syntax.Parameter" Color="#D3DAE6" read:Text="Editor.Background Editor.CurrentLine" />
+            <SolidColorBrush x:Key="Passenger.Syntax.Local" Color="#D3DAE6" read:Text="Editor.Background Editor.CurrentLine" />
+            <SolidColorBrush x:Key="Passenger.Syntax.Namespace" Color="#D3DAE6" read:Text="Editor.Background Editor.CurrentLine" />
+            <SolidColorBrush x:Key="Passenger.Syntax.Operator" Color="#D3DAE6" read:Text="Editor.Background Editor.CurrentLine" />
             <x:String x:Key="Passenger.SyntaxStyle.Comment">Italic</x:String>
             <x:String x:Key="Passenger.SyntaxStyle.DocComment">Italic</x:String>
         </ResourceDictionary>
@@ -327,7 +335,7 @@
             <SolidColorBrush x:Key="Passenger.Frame" Color="#E2E7F0" />
             <SolidColorBrush x:Key="Passenger.Panel" Color="#F2F5FA" />
             <SolidColorBrush x:Key="Passenger.Field" Color="#FFFFFF" />
-            <SolidColorBrush x:Key="Passenger.FieldBorder" Color="#C3CCDC" />
+            <SolidColorBrush x:Key="Passenger.FieldBorder" Color="#858E9E" />
             <SolidColorBrush x:Key="Passenger.List" Color="#FFFFFF" />
             <SolidColorBrush x:Key="Passenger.Button" Color="#FFFFFF" />
             <SolidColorBrush x:Key="Passenger.Popup" Color="#FFFFFF" />
@@ -364,7 +372,7 @@
             <SolidColorBrush x:Key="Passenger.Accent" Color="#2F6BF2" />
             <SolidColorBrush x:Key="Passenger.AccentHover" Color="#2459D6" />
             <SolidColorBrush x:Key="Passenger.Focus" Color="#B86A00" />
-            <SolidColorBrush x:Key="Passenger.CheckBorder" Color="#98A3B8" />
+            <SolidColorBrush x:Key="Passenger.CheckBorder" Color="#828DA2" />
             <SolidColorBrush x:Key="Passenger.ScrollThumb" Color="#33000000" />
             <SolidColorBrush x:Key="Passenger.ScrollThumbHover" Color="#80000000" />
             <SolidColorBrush x:Key="Passenger.ScrollTrackHover" Color="#1A808080" />
@@ -415,7 +423,7 @@
             <SolidColorBrush x:Key="Passenger.Test.Failed" Color="#D12F45" />
             <SolidColorBrush x:Key="Passenger.Test.Skipped" Color="#7A8499" />
             <SolidColorBrush x:Key="Passenger.Test.Running" Color="#2F6BF2" />
-            <SolidColorBrush x:Key="Passenger.Test.NotRun" Color="#98A3B8" />
+            <SolidColorBrush x:Key="Passenger.Test.NotRun" Color="#828DA2" />
 
             <SolidColorBrush x:Key="Passenger.Vcs.Added" Color="#2BA676" />
             <SolidColorBrush x:Key="Passenger.Vcs.Modified" Color="#2F6BF2" />
@@ -423,7 +431,7 @@
             <SolidColorBrush x:Key="Passenger.Vcs.Conflict" Color="#D12F45" />
             <SolidColorBrush x:Key="Passenger.Vcs.File.Modified" Color="#1F55D6" />
             <SolidColorBrush x:Key="Passenger.Vcs.File.Added" Color="#0B6E40" />
-            <SolidColorBrush x:Key="Passenger.Vcs.File.Deleted" Color="#8A94A8" />
+            <SolidColorBrush x:Key="Passenger.Vcs.File.Deleted" Color="#5C667A" />
             <SolidColorBrush x:Key="Passenger.Vcs.File.Unversioned" Color="#A8461C" />
             <SolidColorBrush x:Key="Passenger.Vcs.File.Conflicted" Color="#C8102E" />
             <SolidColorBrush x:Key="Passenger.Graph.0" Color="#2F6BF2" />
