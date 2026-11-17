@@ -6,7 +6,8 @@ namespace Passenger.Tests;
 /// <summary>Git in a folder the person has not trusted runs none of the programs its repository names, with real git: a
 /// filter whose name holds an '=', a submodule's own filter (its configuration in .git/modules) as a status, a stash and a
 /// rollback reach it, and a remote's upload-pack and receive-pack as a fetch, a push and a partial clone's read would run
-/// them; each runs once the folder is trusted, so it was there to run.</summary>
+/// them; each runs once the folder is trusted, so it was there to run. Nor does it work on a working tree the repository
+/// names elsewhere: a status and a rollback touch the folder's files alone.</summary>
 public sealed class UntrustedGitTests : IDisposable
 {
     private readonly string folder = PathNames.Canonical(TestFolders.Create("untrusted-git-"));
@@ -120,6 +121,40 @@ public sealed class UntrustedGitTests : IDisposable
         Assert.True(Ran("uploadpack"), "A partial clone's read never ran the remote's upload-pack once trusted, so the test proves nothing of the folder not trusted");
         await trusted.PushAsync(cancel: TestContext.Current.CancellationToken);
         Assert.True(Ran("receivepack"), "A push never ran the remote's receive-pack once trusted, so the test proves nothing of the folder not trusted");
+    }
+
+    [Fact]
+    public async Task A_working_tree_the_repository_names_elsewhere_is_left_alone_and_git_works_on_the_folder_until_it_is_trusted()
+    {
+        // Another repository's folder, where git finds that one's .git: as a person's home holding their own.
+        string elsewhere = Directory.CreateDirectory(Path.Combine(folder, "elsewhere")).FullName;
+        File.WriteAllText(Path.Combine(elsewhere, "a.txt"), "theirs\n");
+        await TestGit.InitAsync(elsewhere);
+        File.WriteAllText(Path.Combine(elsewhere, "a.txt"), "theirs, changed\n");
+        string tree = Directory.CreateDirectory(Path.Combine(folder, "tree")).FullName;
+        File.WriteAllText(Path.Combine(tree, "a.txt"), "ours\n");
+        await TestGit.InitAsync(tree);
+        File.WriteAllText(Path.Combine(tree, "a.txt"), "ours, changed\n");
+        await TestGit.RunAsync(tree, "config", "core.worktree", elsewhere.Replace('\\', '/'));
+
+        using (WorkspaceTrust.Ask(tree))
+        {
+            GitLookup found = await Git.OpenAsync(tree);
+            Git git = found.Tree ?? throw new InvalidOperationException($"No working tree was found at {tree}: {found.Refused}");
+            Assert.True(PathNames.Same(tree, git.Root), $"Git's working tree in a folder not trusted is {git.Root}, where the folder is {tree}");
+            Assert.True(found.WorkTreeNamed is { } named && PathNames.Same(elsewhere, PathNames.Canonical(named)),
+                $"The working tree the repository names, {elsewhere}, was not said: {found.WorkTreeNamed}");
+            FileChange changed = Assert.Single((await git.StatusAsync()).Changes);
+            Assert.Equal(Path.Combine(tree, "a.txt"), changed.Path);
+            GitResult rolledBack = await git.RollbackAsync([changed]);
+            Assert.True(rolledBack.Succeeded, $"The rollback in the folder failed: {rolledBack.Message}");
+            Assert.Equal("ours\n", File.ReadAllText(Path.Combine(tree, "a.txt")));
+            Assert.Equal("theirs, changed\n", File.ReadAllText(Path.Combine(elsewhere, "a.txt")));
+        }
+        GitLookup trusted = await Git.OpenAsync(tree);
+        Assert.True(trusted.Tree is { } taken && PathNames.Same(elsewhere, taken.Root),
+            $"Git took {trusted.Tree?.Root} for the working tree once trusted, not the one the repository names, so the test proves nothing of the folder not trusted");
+        Assert.Null(trusted.WorkTreeNamed);
     }
 
     /// <summary>A shell command for git's configuration that marks <paramref name="name"/> ran, then does <paramref name="then"/>.</summary>

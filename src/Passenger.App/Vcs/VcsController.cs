@@ -108,6 +108,10 @@ public sealed class VcsController : IDisposable
     /// <summary>Whether the next read looks for the working tree again though the window has one: Git's state moved.</summary>
     private bool lookAgain;
 
+    /// <summary>Whether the open folder was trusted as its working tree was looked for: a read once that changed looks for
+    /// it again, as git takes the tree a repository's settings name only in a folder trusted (<see cref="UntrustedGit"/>).</summary>
+    private bool foundTrusted;
+
     /// <summary>The branch checked out, or null on a detached head or outside a working tree.</summary>
     public string? Branch { get; private set; }
 
@@ -248,13 +252,16 @@ public sealed class VcsController : IDisposable
         int generation = ++opened;
         TaskCompletionSource lookup = new(TaskCreationOptions.RunContinuationsAsynchronously);
         opening = lookup;
+        GitLookup found;
         try
         {
-            GitLookup found = await Git.OpenAsync(folder);
+            bool trusted = WorkspaceTrust.Trusts(folder);
+            found = await Git.OpenAsync(folder);
             if (generation != opened)
             {
                 return;
             }
+            foundTrusted = trusted;
             Take(folder, found);
         }
         finally
@@ -265,6 +272,10 @@ public sealed class VcsController : IDisposable
         if (generation == opened && Refused is { } refused)
         {
             Message?.Invoke(this, refused);
+        }
+        else if (generation == opened && found.WorkTreeNamed is { } named && git is { } repository)
+        {
+            Message?.Invoke(this, $"Git works on {repository.Root} alone while it is not trusted: the repository's settings name its working tree at {named}");
         }
     }
 
@@ -483,7 +494,7 @@ public sealed class VcsController : IDisposable
     /// git could not read, unless it was just <paramref name="looked"/> for; another found is read whole.</summary>
     private async Task ReadOnceAsync(bool history, bool again, bool looked = false)
     {
-        if (!looked && (git is null || again))
+        if (!looked && (git is null || again || (lookIn is { } folder && WorkspaceTrust.Trusts(folder) != foundTrusted)))
         {
             looked = true;
             history |= await LookAgainAsync();
@@ -638,8 +649,14 @@ public sealed class VcsController : IDisposable
         }
         int generation = opened;
         Git? held = git;
+        bool trusted = WorkspaceTrust.Trusts(folder);
         GitLookup found = await Git.OpenAsync(folder);
-        if (generation != opened || git != held || Holds(found))
+        if (generation != opened || git != held)
+        {
+            return false;
+        }
+        foundTrusted = trusted;
+        if (Holds(found))
         {
             return false;
         }

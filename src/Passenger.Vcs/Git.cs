@@ -158,8 +158,9 @@ public sealed record StashInfo(int Index, string Commit, string Message, DateTim
 /// <summary>What looking for a folder's working tree found: the tree, or none; and why there is none where git cannot say:
 /// it refused the one it found (a repository another user owns, as on a FAT or network drive, until safe.directory names
 /// it), in its words, it was not run in a folder not trusted (<see cref="UntrustedGit"/>), or it is not installed
-/// (<paramref name="Missing"/>), which leaves a repository there unread.</summary>
-public sealed record GitLookup(Git? Tree, string? Refused, bool Missing = false);
+/// (<paramref name="Missing"/>), which leaves a repository there unread. In a folder not trusted, the tree is the folder
+/// the repository's .git is in, and <paramref name="WorkTreeNamed"/> the one its settings name elsewhere, unused.</summary>
+public sealed record GitLookup(Git? Tree, string? Refused, bool Missing = false, string? WorkTreeNamed = null);
 
 /// <summary>What `git` says, and whether it said it without failing; and why a question it asked of the person (a login,
 /// a key's passphrase) went unanswered, where one did.</summary>
@@ -194,6 +195,8 @@ public sealed partial class Git
     /// found, or why git is not there to look.</summary>
     public static async Task<GitLookup> OpenAsync(string folder)
     {
+        // What the lookup finds, its gits one after another, is what the window shows next: a screenshot waits for it whole.
+        using GitHold held = new();
         GitResult top = await RunAsync(folder, ["rev-parse", "--show-toplevel", "--absolute-git-dir"], answers: [NotThere]);
         if (top.Code == Absent)
         {
@@ -205,12 +208,30 @@ public sealed partial class Git
         }
         if (top.Succeeded && Places(top.Output) is ({ } root, { } gitDir))
         {
-            return new GitLookup(new Git(PathNames.Canonical(root), PathNames.Canonical(gitDir)), null);
+            return new GitLookup(new Git(PathNames.Canonical(root), PathNames.Canonical(gitDir)), null, WorkTreeNamed: await WorkTreeNamedAsync(folder));
         }
         // Git names the setting that would let it in only when it refuses a repository it found, in any language it speaks.
         return new GitLookup(null, top.Code == NotThere && top.Error.Contains("safe.directory", StringComparison.Ordinal)
             ? $"Git refuses this folder's repository: {OneLine(top.Error)}"
             : null);
+    }
+
+    /// <summary>In a folder not trusted, the working tree the repository's settings name where it is not the folder its .git
+    /// is in (<see cref="UntrustedGit.WorkTreeNamedAsync"/>); null where trusted, or they name none, or git cannot say.</summary>
+    private static async Task<string?> WorkTreeNamedAsync(string folder)
+    {
+        if (WorkspaceTrust.Trusts(folder) || await Programs.GitAsync() is not { } git)
+        {
+            return null;
+        }
+        try
+        {
+            return await UntrustedGit.WorkTreeNamedAsync(git, folder);
+        }
+        catch (Exception unread) when (ChildFailures.Of(unread))
+        {
+            return null;
+        }
     }
 
     /// <summary>The working tree's top and git's folder as rev-parse writes them, a line each: read whole but for the line
@@ -259,7 +280,7 @@ public sealed partial class Git
         string parent = System.IO.Path.GetDirectoryName(destination)!;
         Directory.CreateDirectory(parent);
         // After "--" a URL that begins with a dash is a URL, never an option such as --upload-pack.
-        (ProcessStartInfo? start, GitResult? refused) = await StartAsync(parent, ["clone", "--progress", "--", url, destination], cloning: true);
+        (ProcessStartInfo? start, GitResult? refused) = await StartAsync(parent, ["clone", "--progress", "--", url, destination]);
         if (start is null)
         {
             return refused ?? NotInstalled;
@@ -2214,9 +2235,15 @@ public sealed partial class Git
     /// runs now or has ended since a <see cref="Stopwatch"/> timestamp: what changed meanwhile may be its.</summary>
     public static bool WroteWorkTreeSince(long since) => Volatile.Read(ref writingWorkTree) > 0 || Volatile.Read(ref wroteWorkTree) >= since;
 
-    /// <summary>Whether a git command line writes the work tree's files: its command, the first word past the options before
-    /// it (-c and -C take a value), is one that does, and none of its words leaves them as they are.</summary>
-    private static bool WritesWorkTree(IReadOnlyList<string> arguments)
+    /// <summary>Whether a git command line writes the work tree's files: its command is one that does, and none of its
+    /// words leaves them as they are.</summary>
+    private static bool WritesWorkTree(IReadOnlyList<string> arguments) =>
+        CommandAt(arguments) is >= 0 and int at && WorkTreeWriters.TryGetValue(arguments[at], out string[]? leaving)
+        && !arguments.Skip(at + 1).Any(leaving.Contains);
+
+    /// <summary>Where a git command line's command is: the first word past the options before it (-c and -C take a
+    /// value); -1 where it has none.</summary>
+    private static int CommandAt(IReadOnlyList<string> arguments)
     {
         for (int i = 0; i < arguments.Count; i++)
         {
@@ -2226,10 +2253,10 @@ public sealed partial class Git
             }
             else if (!arguments[i].StartsWith('-'))
             {
-                return WorkTreeWriters.TryGetValue(arguments[i], out string[]? leaving) && !arguments.Skip(i + 1).Any(leaving.Contains);
+                return i;
             }
         }
-        return false;
+        return -1;
     }
 
     /// <summary>Runs git to its end, the one way every call but a clone runs it: <paramref name="input"/> written to it, what
@@ -2387,16 +2414,18 @@ public sealed partial class Git
     private const int NotThere = 128;
 
     /// <summary>How git is started for every call; else why not: it is not installed, or in a folder the person has not
-    /// trusted it could not be kept from running the programs the repository names (<see cref="UntrustedGit"/>). A clone
-    /// (<paramref name="cloning"/>) reads no repository's configuration where it starts, making its own of the person's.</summary>
-    private static async Task<(ProcessStartInfo? Start, GitResult? Unstarted)> StartAsync(string folder, IReadOnlyList<string> arguments, bool cloning = false)
+    /// trusted it could not be kept to the folder's files and from running the programs the repository names
+    /// (<see cref="UntrustedGit"/>). A clone or an init reads no repository's configuration where it starts, and makes
+    /// its own of the person's: it is fitted to no folder's trust.</summary>
+    private static async Task<(ProcessStartInfo? Start, GitResult? Unstarted)> StartAsync(string folder, IReadOnlyList<string> arguments)
     {
         if (await Programs.GitAsync() is not { } git)
         {
             return (null, NotInstalled);
         }
         ProcessStartInfo start = ChildProcesses.Command(git, arguments, folder);
-        if (!cloning && !WorkspaceTrust.Trusts(folder) && await UntrustedGit.FitAsync(start, git, folder) is { } why)
+        bool makes = CommandAt(arguments) is >= 0 and int at && arguments[at] is "clone" or "init";
+        if (!makes && !WorkspaceTrust.Trusts(folder) && await UntrustedGit.FitAsync(start, git, folder) is { } why)
         {
             return (null, Directory.Exists(folder) ? new GitResult(Withheld, string.Empty, why) : Gone(folder));
         }

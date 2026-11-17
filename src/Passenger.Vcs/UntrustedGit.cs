@@ -5,12 +5,13 @@ using Passenger.Core;
 
 namespace Passenger.Vcs;
 
-/// <summary>How git runs in a folder the person has not trusted (<see cref="WorkspaceTrust"/>): no program the repository
-/// names. Each key whose value git runs that its configuration (or a file it includes) sets, or a submodule's checked out
-/// in it, is given empty through git's environment, which keeps a key whole where -c splits it at its first '=': a filter
-/// is left undone, and a read that needs one of the others fails. No fsmonitor, hook or maintenance runs, no submodule is
-/// checked out, and no remote is reached, so nothing a remote's settings name runs (git takes the first upload-pack given,
-/// the repository's). The person's own configuration stands, but its hooks.</summary>
+/// <summary>How git runs in a folder the person has not trusted (<see cref="WorkspaceTrust"/>): on the folder's files alone,
+/// and running no program the repository names. Its working tree is the folder its .git is in, whatever core.worktree
+/// says. Each key whose value git runs that its configuration (or a file it includes) sets, or a submodule's checked out
+/// in it, is given empty through git's environment, which keeps a key whole where -c splits it at its first '='. No
+/// fsmonitor, hook or maintenance runs, no submodule is checked out, and no remote is reached, so nothing a remote's
+/// settings name runs (git takes the first upload-pack given, the repository's). The person's own configuration stands,
+/// but its hooks.</summary>
 internal static partial class UntrustedGit
 {
     /// <summary>The configuration every git in an untrusted folder runs with: no fsmonitor; hooks looked for where there are
@@ -31,9 +32,11 @@ internal static partial class UntrustedGit
 
     private static readonly TimeSpan Limit = TimeSpan.FromSeconds(30);
 
-    /// <summary>Fits a git to run in an untrusted folder: the settings it is given through its environment, after any the
-    /// environment gives already, and no protocol to reach a remote by. Null once fitted, else why git is not run: a
-    /// configuration could not be read, or this git takes none from its environment (one before 2.31).</summary>
+    /// <summary>Fits a git to run in an untrusted folder: its working tree the folder its .git is in, the settings it is
+    /// given through its environment, after any the environment gives already, and no protocol to reach a remote by. Null
+    /// once fitted, else why git is not run: a configuration could not be read, a submodule's working tree is named
+    /// elsewhere (where no git it starts can be told otherwise), or this git takes no settings from its environment (one
+    /// before 2.31).</summary>
     public static async Task<string?> FitAsync(ProcessStartInfo start, string git, string folder)
     {
         List<(string Key, string Value)> given = [.. Always];
@@ -51,15 +54,21 @@ internal static partial class UntrustedGit
             }
             ChildResult listed;
             ChildResult staged;
+            string? named = null;
             try
             {
-                listed = await ReadAsync(git, repository, ["config", "--list", "--show-scope", "--name-only", "-z"]);
+                listed = await ReadAsync(git, repository, OwnTop(repository), ["config", "--list", "--show-scope", "--name-only", "-z"]);
                 // A git that cannot read the index (or finds no repository) compares no submodule with it, so enters none.
-                staged = listed.Succeeded ? await ReadAsync(git, repository, ["ls-files", "--stage", "-z", ":/"]) : listed;
+                staged = listed.Succeeded ? await ReadAsync(git, repository, OwnTop(repository), ["ls-files", "--stage", "-z", ":/"]) : listed;
+                named = read.Count > 1 ? await WorkTreeNamedAsync(git, repository) : null;
             }
             catch (Exception unread) when (ChildFailures.Of(unread))
             {
                 return Unread(repository, unread.Message);
+            }
+            if (named is not null)
+            {
+                return $"git was not run: the folder is not trusted, and its submodule {repository} names its working tree at {named}";
             }
             if (!listed.Succeeded)
             {
@@ -84,18 +93,59 @@ internal static partial class UntrustedGit
         }
         Give(start.Environment, given);
         start.Environment[GitVariables.AllowProtocol] = string.Empty;
+        if (OwnTop(folder) is { } top)
+        {
+            start.Environment[GitVariables.WorkTree] = top;
+        }
         return null;
 
         static string Unread(string repository, string why) =>
             $"git was not run: the folder is not trusted, and the configuration of {repository} could not be read: {why}";
     }
 
-    /// <summary>What a git that runs nothing of the repository's writes in it: given <see cref="Always"/> and reaching no
-    /// remote, every pathspec read as git reads one unless told otherwise (:/, the tree's top).</summary>
-    private static async Task<ChildResult> ReadAsync(string git, string repository, IReadOnlyList<string> arguments)
+    /// <summary>The working tree a repository's own settings name (core.worktree) where it is not the folder its .git is
+    /// in, as git names it; null where they name none, or that folder, or git cannot say.</summary>
+    public static async Task<string?> WorkTreeNamedAsync(string git, string folder)
+    {
+        if (OwnTop(folder) is not { } own)
+        {
+            return null;
+        }
+        ChildResult top = await ReadAsync(git, folder, null, ["rev-parse", "--show-toplevel"]);
+        string named = top.Output.TrimEnd('\n', '\r');
+        return top.Succeeded && named.Length > 0 && !PathNames.Same(PathNames.Canonical(named), PathNames.Canonical(own)) ? named : null;
+    }
+
+    /// <summary>The folder a repository's .git (its folder, or a file naming one) is in, looked for from
+    /// <paramref name="folder"/> up as git looks: the working tree git has of its own; null where there is none, or a bare
+    /// repository is found first, which has none.</summary>
+    internal static string? OwnTop(string folder)
+    {
+        for (string? at = Path.TrimEndingDirectorySeparator(Path.GetFullPath(folder)); at is not null; at = Path.GetDirectoryName(at))
+        {
+            if (Path.Exists(Path.Combine(at, ".git")))
+            {
+                return at;
+            }
+            if (File.Exists(Path.Combine(at, "HEAD")) && Directory.Exists(Path.Combine(at, "objects")) && Directory.Exists(Path.Combine(at, "refs")))
+            {
+                return null;
+            }
+        }
+        return null;
+    }
+
+    /// <summary>What a git that runs nothing of the repository's writes in it: given <see cref="Always"/>, its working tree
+    /// <paramref name="workTree"/> where one is given, reaching no remote, every pathspec read as git reads one unless told
+    /// otherwise (:/, the tree's top).</summary>
+    private static async Task<ChildResult> ReadAsync(string git, string repository, string? workTree, IReadOnlyList<string> arguments)
     {
         ProcessStartInfo start = ChildProcesses.Command(git, arguments, repository);
         Give(start.Environment, Always);
+        if (workTree is not null)
+        {
+            start.Environment[GitVariables.WorkTree] = workTree;
+        }
         start.Environment[GitVariables.AllowProtocol] = string.Empty;
         start.Environment[GitVariables.TerminalPrompt] = "0";
         start.Environment.Remove(GitVariables.LiteralPathspecs);

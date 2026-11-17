@@ -23,7 +23,7 @@ public static class GitVariables
     /// <summary>The repository's git folder, which a hook is given.</summary>
     public const string Dir = "GIT_DIR";
 
-    /// <summary>The repository's working tree, which a hook may be given.</summary>
+    /// <summary>The repository's working tree, which a hook may be given, over what core.worktree says.</summary>
     public const string WorkTree = "GIT_WORK_TREE";
 
     /// <summary>The folder of the repository's objects.</summary>
