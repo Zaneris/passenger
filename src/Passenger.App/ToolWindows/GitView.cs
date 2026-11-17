@@ -8,12 +8,15 @@ using Passenger.Vcs;
 namespace Passenger.App.ToolWindows;
 
 /// <summary>The Git tool window: the Log, and a tab beside it for each history Show History opens (a file's, a
-/// folder's, some lines') and each comparison Compare with Current opens, its tabs in the window's header. Show History
-/// (or Compare) again for the same thing goes back to its tab; a tab's × closes it.</summary>
+/// folder's, some lines'), each comparison Compare with Current opens and each branch's files Show Diff with Working Tree
+/// lists, its tabs in the window's header. Asked again for the same thing it goes back to its tab; a tab's × closes it.</summary>
 public sealed class GitView : DockPanel
 {
     private VcsController vcs;
-    private readonly List<(HistoryScope? Scope, string Title, GitLogView View, Control Body)> histories = [];
+
+    /// <summary>The tabs after the Log: each one's view (a <see cref="GitLogView"/>, or a <see cref="WorkingTreeDiffView"/>)
+    /// and what it shows, the view with what is laid out around it.</summary>
+    private readonly List<(HistoryScope? Scope, string Title, Control View, Control Body)> histories = [];
     private readonly StackPanel tabs = new() { Orientation = Orientation.Horizontal, Spacing = 2, VerticalAlignment = VerticalAlignment.Center };
     private readonly ContentControl body = new();
 
@@ -29,8 +32,8 @@ public sealed class GitView : DockPanel
     /// <summary>The Log of every branch, the first tab.</summary>
     public GitLogView Log { get; }
 
-    /// <summary>The tab shown: the Log or a history.</summary>
-    public GitLogView Shown { get; private set; }
+    /// <summary>The tab shown: the Log, a history, a comparison's upper list or a branch's files beside the working tree.</summary>
+    public Control Shown { get; private set; }
 
     /// <summary>The tabs, for the tool window's header.</summary>
     public Control Tabs => tabs;
@@ -39,7 +42,7 @@ public sealed class GitView : DockPanel
     public IReadOnlyList<string> Titles => ["Log", .. histories.Select(h => h.Title)];
 
     /// <summary>The history open for this, if any.</summary>
-    public GitLogView? HistoryOf(HistoryScope scope) => histories.FirstOrDefault(h => h.Scope is not null && h.Scope == scope).View;
+    public GitLogView? HistoryOf(HistoryScope scope) => histories.FirstOrDefault(h => h.Scope is not null && h.Scope == scope).View as GitLogView;
 
     /// <summary>A file of a commit whose change to show, from any tab.</summary>
     public event EventHandler<(CommitInfo Commit, FileChange File)>? DiffRequested;
@@ -47,15 +50,18 @@ public sealed class GitView : DockPanel
     /// <summary>A file as a commit of its history had it, to compare with the file now (its path now first).</summary>
     public event EventHandler<(string Local, CommitInfo Commit, FileChange File)>? CompareRequested;
 
+    /// <summary>A branch's file to show beside the file as it is now, from its Show Diff with Working Tree tab.</summary>
+    public event EventHandler<(BranchInfo Branch, FileChange File)>? WorkingTreeDiffRequested;
+
     /// <summary>A commit's file to open as it is now, from any tab.</summary>
     public event EventHandler<string>? OpenRequested;
 
     /// <summary>One of the window's actions asked for by a tab's button.</summary>
     public event EventHandler<string>? ActionRequested;
 
-    /// <summary>Reads the shown tab's logs again: a comparison's two.</summary>
+    /// <summary>Reads the shown tab again: its log (a comparison's two), or its files.</summary>
     public Task RefreshAsync() => Task.WhenAll(Avalonia.LogicalTree.LogicalExtensions.GetSelfAndLogicalDescendants((Control)body.Content!)
-        .OfType<GitLogView>().Select(log => log.LoadAsync()));
+        .Select(tab => tab switch { GitLogView log => log.LoadAsync(), WorkingTreeDiffView files => files.LoadAsync(), _ => Task.CompletedTask }));
 
     public event EventHandler<CommitInfo>? NewBranchRequested;
 
@@ -76,7 +82,7 @@ public sealed class GitView : DockPanel
     public GitLogView ShowCompare(LogRange missing, LogRange extra)
     {
         string title = $"Compare {missing.From} and {missing.To}";
-        if (histories.FirstOrDefault(h => h.Scope is null && h.Title == title).View is { } open)
+        if (histories.FirstOrDefault(h => h.Scope is null && h.Title == title).View is GitLogView open)
         {
             Show(open);
             return open;
@@ -85,31 +91,55 @@ public sealed class GitView : DockPanel
         GitLogView bottom = Take(new GitLogView(vcs, range: extra));
         Grid body = new() { RowDefinitions = new RowDefinitions("Auto,*,1,Auto,*") };
         HairlineDivider between = new(GridResizeDirection.Rows) { [Grid.RowProperty] = 2 };
-        body.Children.Add(Explanation(missing, 0));
+        body.Children.Add(Explanation($"Commits that exist in {missing.To} but don't exist in {missing.From}", 0));
         Grid.SetRow(top, 1);
         body.Children.Add(top);
         body.Children.Add(between);
-        body.Children.Add(Explanation(extra, 3));
+        body.Children.Add(Explanation($"Commits that exist in {extra.To} but don't exist in {extra.From}", 3));
         Grid.SetRow(bottom, 4);
         body.Children.Add(bottom);
         histories.Add((null, title, top, body));
         Show(top);
         return top;
+    }
 
-        static Control Explanation(LogRange range, int row)
+    /// <summary>Show Diff with Working Tree: a tab of the files that differ between a branch and the working tree, the one
+    /// open for the branch if any, read again.</summary>
+    public WorkingTreeDiffView ShowWorkingTreeDiff(BranchInfo branch)
+    {
+        string title = $"Compare {branch.Name} and Working Tree";
+        if (histories.FirstOrDefault(h => h.Scope is null && h.Title == title).View is WorkingTreeDiffView open)
         {
-            TextBlock text = new() { Text = $"Commits that exist in {range.To} but don't exist in {range.From}", Margin = new Thickness(10, 6), FontSize = 12 };
-            text.Classes.Add(StyleClasses.Muted);
-            Grid.SetRow(text, row);
-            return text;
+            Show(open);
+            IdeErrors.Observe(open.LoadAsync());
+            return open;
         }
+        WorkingTreeDiffView files = new(vcs, branch);
+        files.DiffRequested += (_, change) => WorkingTreeDiffRequested?.Invoke(this, (branch, change));
+        files.OpenRequested += (_, path) => OpenRequested?.Invoke(this, path);
+        Grid body = new() { RowDefinitions = new RowDefinitions("Auto,*") };
+        body.Children.Add(Explanation($"Files that differ between {branch.Name} and the working tree", 0));
+        Grid.SetRow(files, 1);
+        body.Children.Add(files);
+        histories.Add((null, title, files, body));
+        Show(files);
+        return files;
+    }
+
+    /// <summary>What a tab's list holds, muted above it.</summary>
+    private static TextBlock Explanation(string text, int row)
+    {
+        TextBlock said = new() { Text = text, Margin = new Thickness(10, 6), FontSize = 12 };
+        said.Classes.Add(StyleClasses.Muted);
+        Grid.SetRow(said, row);
+        return said;
     }
 
     /// <summary>Shows another folder's working tree from now on, its session's in place of the last's: the histories and
     /// comparisons opened for the last one close, and the Log reads the new one's.</summary>
     public void Bind(VcsController next)
     {
-        foreach (GitLogView open in histories.Select(h => h.View).ToList())
+        foreach (Control open in histories.Select(h => h.View).ToList())
         {
             Close(open);
         }
@@ -118,8 +148,8 @@ public sealed class GitView : DockPanel
         Show(Log);
     }
 
-    /// <summary>Closes a history's tab, as its × does; the tab before it is shown when it was.</summary>
-    public void Close(GitLogView view)
+    /// <summary>Closes a tab after the Log, as its × does; the tab before it is shown when it was.</summary>
+    public void Close(Control view)
     {
         int at = histories.FindIndex(h => h.View == view);
         if (at < 0)
@@ -128,7 +158,15 @@ public sealed class GitView : DockPanel
         }
         Control closing = histories[at].Body;
         histories.RemoveAt(at);
-        view.Close();
+        switch (view)
+        {
+            case GitLogView log:
+                log.Close();
+                break;
+            case WorkingTreeDiffView files:
+                files.Close();
+                break;
+        }
         // A comparison's lower list goes with its tab.
         foreach (GitLogView inner in (closing as Panel)?.Children.OfType<GitLogView>() ?? [])
         {
@@ -163,7 +201,7 @@ public sealed class GitView : DockPanel
         return view;
     }
 
-    private void Show(GitLogView view)
+    private void Show(Control view)
     {
         Shown = view;
         // One tab in the tree at a time: one out of it reads its history again only when it is next shown.
@@ -175,13 +213,13 @@ public sealed class GitView : DockPanel
     {
         tabs.Children.Clear();
         tabs.Children.Add(Tab("Log", null, Log));
-        foreach ((HistoryScope? scope, string title, GitLogView view, Control _) in histories)
+        foreach ((HistoryScope? scope, string title, Control view, Control _) in histories)
         {
             tabs.Children.Add(Tab(title, scope is null ? null : vcs.Repository?.Relative(scope.Path), view));
         }
     }
 
-    private ToggleButton Tab(string title, string? tip, GitLogView view)
+    private ToggleButton Tab(string title, string? tip, Control view)
     {
         ToggleButton tab = ToolTabs.Tab(title, view == Shown, view == Log ? null : () => Close(view));
         if (tip is not null)

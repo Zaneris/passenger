@@ -5,8 +5,8 @@ using Passenger.Vcs;
 namespace Passenger.App;
 
 /// <summary>The Git log's branches panel's actions that ask the person something or open something: New Branch from and
-/// Rename (a name), Delete (asked first for a branch not merged or a remote's), Compare with Current (a tab of the Git
-/// window) and Show Diff with Working Tree (a window of the files that differ); and the favourites, kept with the folder.</summary>
+/// Rename (a name), Delete (asked first for a branch not merged or a remote's), Compare with Current and Show Diff with
+/// Working Tree (each a tab of the Git window); and the favourites, kept with the folder.</summary>
 public partial class MainWindow
 {
     /// <summary>The Git log's branches panel.</summary>
@@ -23,7 +23,7 @@ public partial class MainWindow
         panel.RenameRequested += (_, branch) => ShowRenameBranch(branch);
         panel.DeleteRequested += (_, branch) => IdeErrors.Observe(DeleteBranchAsync(branch));
         panel.CompareRequested += (_, branch) => CompareWithCurrent(branch);
-        panel.WorkingTreeDiffRequested += (_, branch) => IdeErrors.Observe(ShowWorkingTreeDiffAsync(branch));
+        panel.WorkingTreeDiffRequested += (_, branch) => ShowWorkingTreeDiff(branch);
         panel.FavoritesChanged += (_, favorites) => session.State?.GitBranches.Set(favorites);
     }
 
@@ -103,19 +103,16 @@ public partial class MainWindow
         return GitWindow.ShowCompare(new LogRange(currentRef, current, branch.Ref.FullName, branch.Name), new LogRange(branch.Ref.FullName, branch.Name, currentRef, current));
     }
 
-    /// <summary>Show Diff with Working Tree: the files that differ between a branch and the working tree, each opening
-    /// as the branch has it beside the file.</summary>
-    public async Task<ChangesWindow?> ShowWorkingTreeDiffAsync(BranchInfo branch)
+    /// <summary>Show Diff with Working Tree: a tab of the Git window listing the files that differ between a branch and the
+    /// working tree, each opening as the branch has it beside the file, where Settings opens diffs.</summary>
+    public WorkingTreeDiffView? ShowWorkingTreeDiff(BranchInfo branch)
     {
-        if (session.Vcs.Repository is not { } repository)
+        if (session.Vcs.Repository is null)
         {
             status.Text = session.Vcs.NoRepository;
             return null;
         }
-        IReadOnlyList<FileChange> files = await session.Vcs.ChangesSinceAsync(branch);
-        ChangesWindow window = new(branch.Name, files, repository);
-        window.DiffRequested += (_, change) => IdeErrors.Observe(CompareWithAsync(change.Path, branch.Ref.FullName, branch.Name, change.From ?? change.Path));
-        ShowOwn(window);
-        return window;
+        ShowToolWindow(ToolWindowIds.Git);
+        return GitWindow.ShowWorkingTreeDiff(branch);
     }
 }

@@ -17,7 +17,7 @@ public interface IOwnKeys
 }
 
 /// <summary>The IDE's keys and mouse gestures in each window it opens but a dialog (the main window, an editor, floating
-/// tool, diff, merge or changes window, a test's frame): the main window's one keymap before any control, Escape closing
+/// tool, diff or merge window, a test's frame): the main window's one keymap before any control, Escape closing
 /// what is over it first, a part's own keys left to it (<see cref="IOwnKeys"/>), its popups over it. Of the UI thread.</summary>
 /// <param name="main">The main window, whose popups' layer is its own.</param>
 /// <param name="keys">The main window's keymap, which runs in each.</param>

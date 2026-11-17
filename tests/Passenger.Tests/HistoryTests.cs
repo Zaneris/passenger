@@ -44,7 +44,7 @@ public sealed class HistoryTests : IDisposable
         MainWindow window = Open("src/Store.cs");
 
         Ui.ChooseFromEditorMenu(window, "Git", "Show History");
-        GitLogView history = window.GitWindow.Shown;
+        GitLogView history = Assert.IsType<GitLogView>(window.GitWindow.Shown);
         Ui.Landed(() => history.Rows.Count == 4, "the four commits that changed the file, under either name");
         Assert.Equal(["Twice", "Store, not shop", "Long count", "First"], history.Rows.Select(r => r.Commit.Subject));
         Assert.Equal(["Log", "Store.cs"], window.GitWindow.Titles);
@@ -92,7 +92,7 @@ public sealed class HistoryTests : IDisposable
 
         ExplorerNode src = window.ExplorerView.Tree.Rows.First(r => r.Name == "src");
         Ui.ChooseFromRowMenu(window, src, "Git", "Show History");
-        GitLogView history = window.GitWindow.Shown;
+        GitLogView history = Assert.IsType<GitLogView>(window.GitWindow.Shown);
         Ui.Landed(() => history.Rows.Count == 3, "the three commits that touched src");
         Assert.Equal(["Both", "B", "First"], history.Rows.Select(r => r.Commit.Subject));
         Assert.Equal(["Log", "src"], window.GitWindow.Titles);
@@ -140,7 +140,7 @@ public sealed class HistoryTests : IDisposable
             Ui.Press(window, "shift+DOWN");
         }
         Ui.ChooseFromEditorMenu(window, "Git", "Show History for Selection…");
-        GitLogView history = window.GitWindow.Shown;
+        GitLogView history = Assert.IsType<GitLogView>(window.GitWindow.Shown);
         Ui.Landed(() => history.Rows.Count > 0, "the commits that changed the lines");
         Assert.Equal(["Line 6", "Line 5", "First"], history.Rows.Select(r => r.Commit.Subject));
         Assert.Equal(["Log", "Lines.txt, lines 5–7"], window.GitWindow.Titles);
@@ -230,7 +230,7 @@ public sealed class HistoryTests : IDisposable
         Ui.Landed(() => window.Vcs.Changes.Any(c => c.Kind == ChangeKind.Renamed && c.Path == Full("Store.cs")), "the rename in Git's status");
 
         Ui.ChooseFromEditorMenu(window, "Git", "Show History");
-        GitLogView history = window.GitWindow.Shown;
+        GitLogView history = Assert.IsType<GitLogView>(window.GitWindow.Shown);
         Ui.Settle();
         Assert.True(history.Rows.Select(r => r.Commit.Subject).SequenceEqual(["Long count", "First"]),
             $"Show History of Store.cs, renamed from Shop.cs and not committed, listed [{string.Join(", ", history.Rows.Select(r => r.Commit.Subject))}]");
@@ -240,7 +240,7 @@ public sealed class HistoryTests : IDisposable
         window.EditorArea.CodeEditor.Focus();
         window.EditorArea.CodeEditor.GoTo(new TextPosition(2, 4));
         Ui.ChooseFromEditorMenu(window, "Git", "Show History for Selection…");
-        GitLogView lines = window.GitWindow.Shown;
+        GitLogView lines = Assert.IsType<GitLogView>(window.GitWindow.Shown);
         Ui.Landed(() => lines.Rows.Count > 0, $"the commits that changed line 3 of the renamed file, where the status bar says \"{window.Status}\"");
         Assert.Equal(["Long count", "First"], lines.Rows.Select(r => r.Commit.Subject));
 

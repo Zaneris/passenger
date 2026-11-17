@@ -66,7 +66,7 @@ public sealed class GitStatusBarTests : IDisposable
 
         Ui.Click(sync);
         Assert.True(window.DockHost.IsShown(ToolWindowIds.Git), "A click on the status bar's commits left the Git window hidden");
-        GitLogView incoming = window.GitWindow.Shown;
+        GitLogView incoming = Assert.IsType<GitLogView>(window.GitWindow.Shown);
         Assert.Equal("Compare main and origin/main", window.GitWindow.Titles[^1]);
         GitLogView outgoing = window.GitWindow.GetLogicalDescendants().OfType<GitLogView>().Single(l => l.Range?.To == "main");
         Ui.WaitFor(() => Subjects(incoming) == "Stock Price" && Subjects(outgoing) == "Notes",

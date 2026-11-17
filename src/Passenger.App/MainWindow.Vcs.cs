@@ -142,6 +142,8 @@ public partial class MainWindow
         ToolWindows.GitView view = gitView = new ToolWindows.GitView(session.Vcs);
         view.DiffRequested += (_, chosen) => IdeErrors.Observe(ShowCommitDiffAsync(chosen.Commit, chosen.File));
         view.CompareRequested += (_, chosen) => IdeErrors.Observe(CompareWithAsync(chosen.Local, chosen.Commit.Hash, chosen.Commit.Short, chosen.File.Path));
+        view.WorkingTreeDiffRequested += (_, chosen) =>
+            IdeErrors.Observe(CompareWithAsync(chosen.File.Path, chosen.Branch.Ref.FullName, chosen.Branch.Name, chosen.File.From ?? chosen.File.Path));
         view.OpenRequested += (_, path) => OpenFile(path);
         view.ActionRequested += (_, action) => Request(action);
         view.NewBranchRequested += (_, commit) =>

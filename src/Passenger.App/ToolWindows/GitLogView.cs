@@ -1,4 +1,3 @@
-using System.Collections.ObjectModel;
 using System.Globalization;
 using Avalonia;
 using Avalonia.Controls;
@@ -26,9 +25,8 @@ public sealed class GitLogView : DockPanel, IOwnKeys
 
     private VcsController vcs;
     private IReadOnlyList<GraphRow> rows = [];
-    private readonly ObservableCollection<FileChange> files = [];
     private readonly ListBox list;
-    private readonly ListBox fileList;
+    private readonly ChangedFileList files;
     private readonly TextBox details;
     private readonly TextBox filter;
     private readonly EmptyState placeholder;
@@ -101,41 +99,19 @@ public sealed class GitLogView : DockPanel, IOwnKeys
                 ListMenus.Item("Mixed: the changes since kept in the files", null, () => ResetRequested?.Invoke(this, (commit, ResetMode.Mixed))),
                 ListMenus.Item("Hard: the changes since dropped…", null, () => ResetRequested?.Invoke(this, (commit, ResetMode.Hard)))),
         ]);
-        fileList = new ListBox
-        {
-            Classes = { StyleClasses.Tree },
-            ItemsSource = files,
-        };
-        ReusedRows.Use(fileList, FileRow);
-        ListKeys.Act(fileList, new ListActs
-        {
-            Open = RequestDiff,
-            Source = () =>
-            {
-                if (fileList.SelectedItem is FileChange { Kind: not ChangeKind.Deleted } shown)
-                {
-                    OpenRequested?.Invoke(this, shown.Path);
-                }
-            },
-            Keys = e =>
-            {
-                bool diff = AppActions.Presses(AppActions.ShowDiff, e);
-                if (diff)
-                {
-                    RequestDiff();
-                }
-                return diff;
-            },
-        });
         // A commit's file offers what the Commit window's changed files do.
-        ListMenus.Attach(fileList, () => Selected is not { } commit || fileList.SelectedItem is not FileChange change ? [] :
+        files = new ChangedFileList(() => vcs.Repository, change => Selected is not { } commit ? [] :
         [
-            ListMenus.Item("Show Diff", "Enter", () => DiffRequested?.Invoke(this, (commit, change))),
             ListMenus.Item("Compare with Local", null, () => CompareRequested?.Invoke(this, (change.Path, commit, change)), change.Kind is not ChangeKind.Deleted),
-            ListMenus.Item("Jump to Source", "F4", () => OpenRequested?.Invoke(this, change.Path), change.Kind is not ChangeKind.Deleted),
-            new Separator(),
-            ListMenus.Item("Copy Path", null, () => IdeErrors.Observe(ListMenus.CopyAsync(this, change.Path))),
         ]);
+        files.DiffRequested += (_, change) =>
+        {
+            if (Selected is { } commit)
+            {
+                DiffRequested?.Invoke(this, (commit, change));
+            }
+        };
+        files.OpenRequested += (_, path) => OpenRequested?.Invoke(this, path);
         details = new TextBox
         {
             IsReadOnly = true,
@@ -175,7 +151,7 @@ public sealed class GitLogView : DockPanel, IOwnKeys
         Grid right = new() { RowDefinitions = new RowDefinitions("*,1,*") };
         HairlineDivider between = new(GridResizeDirection.Rows) { [Grid.RowProperty] = 1 };
         Grid.SetRow(details, 2);
-        right.Children.Add(fileList);
+        right.Children.Add(files.List);
         right.Children.Add(between);
         right.Children.Add(details);
         PaneSplit split = new(new Panel { Children = { list, placeholder } }, right, "3*,1,2*");
@@ -288,7 +264,7 @@ public sealed class GitLogView : DockPanel, IOwnKeys
     public IReadOnlyList<GraphRow> Rows => rows;
 
     /// <summary>The chosen commit's files.</summary>
-    public IReadOnlyList<FileChange> Files => files;
+    public IReadOnlyList<FileChange> Files => files.Files;
 
     public CommitInfo? Selected => (list.SelectedItem as GraphRow)?.Commit;
 
@@ -471,7 +447,7 @@ public sealed class GitLogView : DockPanel, IOwnKeys
         int reading = ++showing;
         if (Selected is not { } commit || vcs.Repository is not { } repository)
         {
-            files.Clear();
+            files.Files.Clear();
             details.Text = string.Empty;
             return;
         }
@@ -485,27 +461,18 @@ public sealed class GitLogView : DockPanel, IOwnKeys
         {
             return;
         }
-        files.Clear();
+        files.Files.Clear();
         foreach (FileChange change in changed)
         {
-            files.Add(change);
+            files.Files.Add(change);
         }
         string refs = commit.Refs.Count > 0 ? $"\n{string.Join(", ", commit.Refs)}" : string.Empty;
         string signed = signature is null ? string.Empty : $"\n{signature.Said}";
         details.Text = $"{message}\n\n{commit.Hash}{refs}\n{commit.Author} <{commit.Email}>\n{commit.Time.ToLocalTime():f}{signed}";
     }
 
-    /// <summary>Show Diff's keys, as the log's list of a commit's files takes them (<see cref="AppActions.KeysIn"/>), ahead
-    /// of what they run elsewhere while one is chosen.</summary>
-    public bool TakesKey(KeyEventArgs e) => fileList.IsKeyboardFocusWithin && fileList.SelectedItem is FileChange && AppActions.Presses(AppActions.ShowDiff, e);
-
-    private void RequestDiff()
-    {
-        if (Selected is { } commit && fileList.SelectedItem is FileChange change)
-        {
-            DiffRequested?.Invoke(this, (commit, change));
-        }
-    }
+    /// <summary>Show Diff's keys, as the log's list of a commit's files takes them (<see cref="ChangedFileList.TakesKey"/>).</summary>
+    public bool TakesKey(KeyEventArgs e) => files.TakesKey(e);
 
     /// <summary>A commit's row for whichever commit the list hands its container: its part of the graph, its refs as tags,
     /// the path it had the file at (under another name then), its subject, its signature's mark (read as the row is
@@ -614,14 +581,6 @@ public sealed class GitLogView : DockPanel, IOwnKeys
             1 => $"Yesterday {clock}",
             _ => local.ToString("d", CultureInfo.CurrentCulture) + " " + clock,
         };
-    }
-
-    /// <summary>A changed file's row for whichever file the list hands its container (<see cref="ChangedFileRow"/>), its
-    /// folder from the repository's top.</summary>
-    private Control FileRow()
-    {
-        ChangedFileRow row = new();
-        return row.Line.Showing<FileChange>(change => row.Show(change, vcs.Repository));
     }
 
     /// <summary>The lanes' colours as a theme gives them, and a pen of each.</summary>
