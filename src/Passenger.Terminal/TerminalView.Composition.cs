@@ -105,7 +105,7 @@ public sealed partial class TerminalView
         }
         if (IsFocused && cursorOn)
         {
-            context.FillRectangle(cursor, new Rect(Pad + (shown.CursorAt.Column * cellWidth), top + (shown.CursorAt.Row * cellHeight), 2, cellHeight));
+            context.FillRectangle(cursor, new Rect(Pad + (shown.CursorAt.Column * cellWidth), top + (shown.CursorAt.Row * cellHeight), CursorWidth, cellHeight));
         }
     }
 

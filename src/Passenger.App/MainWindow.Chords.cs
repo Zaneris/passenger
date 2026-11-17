@@ -4,14 +4,12 @@ using Passenger.Editor;
 namespace Passenger.App;
 
 /// <summary>A chord's first key, held: the status bar says it was pressed and what its second key can run, and it is
-/// forgotten after two seconds, on a click, when the focus moves and when the window is left, so a key pressed later is
-/// a key of its own rather than the end of a chord begun before.</summary>
+/// forgotten once the settings' wait for its second ends (<see cref="Passenger.App.Settings.AppSettings.ChordWaitSeconds"/>), on a
+/// click, when the focus moves and when the window is left, so a key pressed later is a key of its own rather than the end
+/// of a chord begun before.</summary>
 public partial class MainWindow
 {
-    /// <summary>How long a chord's first key waits for its second.</summary>
-    private static readonly TimeSpan ChordWait = TimeSpan.FromSeconds(2);
-
-    private readonly DispatcherTimer chordWait = new() { Interval = ChordWait };
+    private readonly DispatcherTimer chordWait = new() { Interval = TimeSpan.FromSeconds(new Passenger.App.Settings.AppSettings().ChordWaitSeconds) };
     private string? chordMessage;
     private (string? Text, Run.ProblemSeverity? Severity, StatusPlace? Place) beforeChord;
 

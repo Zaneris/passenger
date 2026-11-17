@@ -428,7 +428,8 @@ public sealed partial class SettingsDialog
         FilterByShortcut(null);
     }
 
-    /// <summary>Which options a shortcut filter keeps: every one but the Keymap page's actions it does not start.</summary>
+    /// <summary>Which options a shortcut filter keeps: every one but the Keymap page's actions it does not start and its own
+    /// settings, which no keystroke starts.</summary>
     private Func<Option, bool> ShortcutFiltered()
     {
         if (shortcutFilter is not { } filter)
@@ -436,7 +437,7 @@ public sealed partial class SettingsDialog
             return _ => true;
         }
         Keymap current = Current;
-        return option => option.Action is null || current.ShortcutsFor(option.Action).Any(s => s.StartsWith(filter));
+        return option => option.Action is null ? option.Page != KeymapPage : current.ShortcutsFor(option.Action).Any(s => s.StartsWith(filter));
     }
 
     /// <summary>Where an action is listed: its main menu's path, Editor Actions for the editor's own (its mouse's too),

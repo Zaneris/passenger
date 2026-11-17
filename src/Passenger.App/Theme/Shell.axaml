@@ -272,10 +272,12 @@
         <Setter Property="Padding" Value="8,6" />
     </Style>
     <!-- Selected text readable in both themes: Fluent's is the system's saturated blue, under black text in light. -->
+    <!-- A field's caret blinks as every caret does (Carets), never where the system keeps carets shown. -->
     <Style Selector="TextBox">
         <Setter Property="CornerRadius" Value="{DynamicResource Passenger.ControlRadius}" />
         <Setter Property="SelectionBrush" Value="{DynamicResource Passenger.TextSelection}" />
         <Setter Property="SelectionForegroundBrush" Value="{DynamicResource Passenger.Text}" />
+        <Setter Property="CaretBlinkInterval" Value="{DynamicResource Passenger.TextBoxCaretBlink}" />
     </Style>
     <!-- A field's placeholder, narrower than it, ends in an ellipsis rather than being cut at its edge. -->
     <Style Selector="TextBox /template/ TextBlock">

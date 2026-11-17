@@ -85,6 +85,11 @@ public static class Declared
 
     public static readonly NumberSetting IdleSeconds = new(s => s.IdleSeconds, (s, v) => s with { IdleSeconds = (int)v }, 1, 3600, 1);
 
+    public static readonly NumberSetting ChordWaitSeconds = new(s => s.ChordWaitSeconds, (s, v) => s with { ChordWaitSeconds = v }, 1, 60, 1,
+        new(D.KeymapPage, "Wait for a shortcut's second key", "keymap shortcut chord prefix first second key keystroke wait time timeout slow accessibility",
+            "How long the first key of a shortcut of two keys waits for the second before it is forgotten, the status bar saying what the second can run meanwhile."),
+        "seconds");
+
     public static readonly ToggleSetting CheckForUpdates = new(s => s.CheckForUpdates, (s, v) => s with { CheckForUpdates = v },
         new(D.UpdatesPage, "Check for updates", "updates check new version release newer download github automatic install restart",
             "Passenger asks GitHub for its latest release when it starts and once a day. When a newer one is out, an installed "
@@ -122,6 +127,10 @@ public static class Declared
 
     public static readonly NumberSetting EditorLineSpacing = new(s => s.EditorLineSpacing, (s, v) => s with { EditorLineSpacing = v }, 0.8, 3, 0.1,
         new(D.EditorPage, "Line spacing", "font line height"));
+
+    public static readonly NumberSetting CaretWidth = new(s => s.CaretWidth, (s, v) => s with { CaretWidth = v }, 1, 8, 1,
+        new(D.EditorPage, "Caret width", "caret cursor insertion point text cursor width thickness thick broad bold visibility accessibility terminal",
+            "How broad the editor's caret is, and the terminal's Line and Underline cursors."), "px");
 
     public static readonly ToggleSetting Ligatures = new(s => s.Ligatures, (s, v) => s with { Ligatures = v }, new(D.EditorPage, "Enable ligatures", "font arrows"));
 

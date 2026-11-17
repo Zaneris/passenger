@@ -7,6 +7,7 @@ using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Media.TextFormatting;
 using Avalonia.Threading;
+using Passenger.Core;
 using Passenger.Text;
 
 namespace Passenger.Editor;
@@ -30,6 +31,12 @@ public sealed partial class CodeEditor : Control
 
     public static readonly StyledProperty<FontFamily> FontFamilyProperty =
         AvaloniaProperty.Register<CodeEditor, FontFamily>(nameof(FontFamily), CodeFont);
+
+    public static readonly StyledProperty<CaretBlink> CaretBlinkProperty =
+        AvaloniaProperty.Register<CodeEditor, CaretBlink>(nameof(CaretBlink), CaretBlink.Default);
+
+    public static readonly StyledProperty<double> CaretWidthProperty =
+        AvaloniaProperty.Register<CodeEditor, double>(nameof(CaretWidth), Carets.DefaultWidth);
 
     /// <summary>Space between the gutter's edge and the line numbers, and after them.</summary>
     private const double GutterPadLeft = 14;
@@ -90,11 +97,12 @@ public sealed partial class CodeEditor : Control
         vertical.PropertyChanged += OnScrollBarChanged;
         horizontal.PropertyChanged += OnScrollBarChanged;
         // Started only while focused: a timer running holds the editor, and all it shows, from the dispatcher.
-        blink = new DispatcherTimer(DispatcherPriority.Background) { Interval = TimeSpan.FromMilliseconds(530) };
+        blink = new DispatcherTimer(DispatcherPriority.Background) { Interval = CaretBlink.Default.Shown };
         blink.Tick += (_, _) =>
         {
             caretOn = !caretOn;
             Blinks++;
+            blink.Interval = CaretBlink.While(caretOn);
             RedrawOverlay();
         };
         decorations = new DocumentDecorations(document);
@@ -120,6 +128,8 @@ public sealed partial class CodeEditor : Control
             RunWith(palette.LineNumber));
         annotationRuns = (ItalicRunWith(palette.Annotation), ItalicRunWith(palette.Error));
         CodeFonts.Follow(this, FontFamilyProperty);
+        Carets.FollowBlink(this, CaretBlinkProperty);
+        Carets.FollowWidth(this, CaretWidthProperty);
     }
 
     /// <summary>Raised when the view scrolls.</summary>
@@ -297,6 +307,20 @@ public sealed partial class CodeEditor : Control
     {
         get => GetValue(FontSizeProperty);
         set => SetValue(FontSizeProperty, value);
+    }
+
+    /// <summary>How the caret blinks while the editor has the keys: the one in force (<see cref="Carets"/>) unless given.</summary>
+    public CaretBlink CaretBlink
+    {
+        get => GetValue(CaretBlinkProperty);
+        set => SetValue(CaretBlinkProperty, value);
+    }
+
+    /// <summary>The line caret's width: the one in force (<see cref="Carets"/>) unless given.</summary>
+    public double CaretWidth
+    {
+        get => GetValue(CaretWidthProperty);
+        set => SetValue(CaretWidthProperty, value);
     }
 
     public double LineSpacing
@@ -697,6 +721,15 @@ public sealed partial class CodeEditor : Control
                 RefreshStyle();
             });
         }
+        else if (change.Property == CaretBlinkProperty)
+        {
+            RestartBlink();
+            RedrawOverlay();
+        }
+        else if (change.Property == CaretWidthProperty)
+        {
+            RedrawOverlay();
+        }
     }
 
     protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
@@ -810,9 +843,10 @@ public sealed partial class CodeEditor : Control
     private void RestartBlink()
     {
         caretOn = true;
-        if (IsFocused)
+        blink.Stop();
+        if (IsFocused && CaretBlink.Blinks)
         {
-            blink.Stop();
+            blink.Interval = CaretBlink.Shown;
             blink.Start();
         }
     }

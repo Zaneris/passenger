@@ -1,0 +1,25 @@
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:app="using:Passenger.App"
+        x:Class="Passenger.App.StillMotion">
+    <!-- What moves of itself stands still, laid over every other style while the system asks for less motion
+         (SystemMotion): a fling lands where the finger leaves it, and work under way is said by a still mark. -->
+
+    <!-- A touch's fling stops where the finger lets go, with no coast after it. -->
+    <Style Selector="ScrollViewer">
+        <Setter Property="IsScrollInertiaEnabled" Value="False" />
+    </Style>
+
+    <!-- The working ring stands as it is drawn. -->
+    <Style Selector="app|WorkingRing">
+        <Setter Property="Turns" Value="False" />
+    </Style>
+
+    <!-- A bar of work with no end known is a still band in its colour, in place of the blocks running along it. -->
+    <Style Selector="ProgressBar:indeterminate /template/ Panel#IndeterminateRoot">
+        <Setter Property="IsVisible" Value="False" />
+    </Style>
+    <Style Selector="ProgressBar:indeterminate /template/ Border#ProgressBarRoot">
+        <Setter Property="Background" Value="{Binding $parent[ProgressBar].Foreground}" />
+    </Style>
+</Styles>

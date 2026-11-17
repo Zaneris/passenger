@@ -320,6 +320,7 @@ public sealed partial class SettingsDialog : IdeWindow
         Add(Declared.EditorFontFamily);
         Add(Declared.EditorFontSize);
         Add(Declared.EditorLineSpacing);
+        Add(Declared.CaretWidth);
         Add(Declared.Ligatures);
         Add(Declared.ShowLineNumbers);
         Add(Declared.RainbowBraces);
@@ -454,6 +455,7 @@ public sealed partial class SettingsDialog : IdeWindow
         Add(Declared.TraceProtocols);
         Add(Declared.LogEveryProgram);
 
+        Add(Declared.ChordWaitSeconds);
         AddKeymap();
     }
 

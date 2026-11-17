@@ -43,6 +43,8 @@ public partial class App : Application
         Passenger.Editor.CodeFonts.Use(this, Passenger.Editor.CodeEditor.CodeFont);
         WindowFonts.Use(this, WindowFonts.Carried);
         InterfaceScale.Use(this, 1);
+        Passenger.Editor.Carets.UseBlink(this, CaretBlink.Default);
+        Passenger.Editor.Carets.UseWidth(this, Passenger.Editor.Carets.DefaultWidth);
         if (classHandlersAdded)
         {
             return;
@@ -67,6 +69,7 @@ public partial class App : Application
         // Whichever dispatcher is the UI thread's when a tracked task ends: a headless session can bring its own.
         BackgroundWork.Install(work => Dispatcher.UIThread.Post(work));
         IdeErrors.Install();
+        SystemMotion.LookAgain();
         // The screenshot mode has no lifetime and makes its own window.
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {

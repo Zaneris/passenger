@@ -6,6 +6,7 @@ using Avalonia.Input.Platform;
 using Avalonia.Media;
 using Avalonia.Media.Fonts.Tables.Cmap;
 using Avalonia.Threading;
+using Passenger.Core;
 using Passenger.Editor;
 
 namespace Passenger.Terminal;
@@ -30,6 +31,10 @@ public sealed partial class TerminalView : Control
 
     public static readonly StyledProperty<CursorShape> CursorStyleProperty =
         AvaloniaProperty.Register<TerminalView, CursorShape>(nameof(CursorStyle), CursorShape.Block);
+
+    public static readonly StyledProperty<CaretBlink> CursorBlinkProperty = CodeEditor.CaretBlinkProperty.AddOwner<TerminalView>();
+
+    public static readonly StyledProperty<double> CursorWidthProperty = CodeEditor.CaretWidthProperty.AddOwner<TerminalView>();
 
     private const double Pad = 6;
 
@@ -69,7 +74,8 @@ public sealed partial class TerminalView : Control
     public TerminalView()
     {
         // Blinking is continuous visual work, so it must not hold screenshots or background-work waits.
-        blink = new DispatcherTimer(TimeSpan.FromMilliseconds(530), DispatcherPriority.Background, (_, _) =>
+        blink = new DispatcherTimer(DispatcherPriority.Background) { Interval = CaretBlink.Default.Shown };
+        blink.Tick += (_, _) =>
         {
             if (!ShouldBlink)
             {
@@ -77,9 +83,10 @@ public sealed partial class TerminalView : Control
                 return;
             }
             cursorOn = !cursorOn;
+            Blinks++;
+            blink.Interval = CursorBlink.While(cursorOn);
             InvalidateVisual();
-        });
-        blink.Stop();
+        };
         Focusable = true;
         ClipToBounds = true;
         Cursor = new Cursor(StandardCursorType.Ibeam);
@@ -106,6 +113,8 @@ public sealed partial class TerminalView : Control
         };
         ContextMenu = Menu();
         CodeFonts.Follow(this, FontFamilyProperty);
+        Carets.FollowBlink(this, CursorBlinkProperty);
+        Carets.FollowWidth(this, CursorWidthProperty);
         AddHandler(TextInputMethodClientRequestedEvent, (_, e) => e.Client = InputMethod);
     }
 
@@ -182,6 +191,23 @@ public sealed partial class TerminalView : Control
     {
         get => GetValue(CursorStyleProperty);
         set => SetValue(CursorStyleProperty, value);
+    }
+
+    /// <summary>How the cursor blinks while it blinks at all: the one in force for every caret (<see cref="Carets"/>) unless given.</summary>
+    public CaretBlink CursorBlink
+    {
+        get => GetValue(CursorBlinkProperty);
+        set => SetValue(CursorBlinkProperty, value);
+    }
+
+    /// <summary>How many times the cursor has blinked, shown or hidden.</summary>
+    public long Blinks { get; private set; }
+
+    /// <summary>A line or underline cursor's breadth: the caret width in force (<see cref="Carets"/>) unless given.</summary>
+    public double CursorWidth
+    {
+        get => GetValue(CursorWidthProperty);
+        set => SetValue(CursorWidthProperty, value);
     }
 
     /// <summary>The shell drawn and typed to.</summary>
@@ -299,9 +325,14 @@ public sealed partial class TerminalView : Control
             FitSize();
             InvalidateVisual();
         }
-        else if (change.Property == CursorBlinkingProperty || change.Property == CursorStyleProperty || change.Property == IsVisibleProperty)
+        else if (change.Property == CursorBlinkingProperty || change.Property == CursorStyleProperty || change.Property == IsVisibleProperty
+            || change.Property == CursorBlinkProperty)
         {
             RestartBlink();
+        }
+        else if (change.Property == CursorWidthProperty)
+        {
+            InvalidateVisual();
         }
     }
 
@@ -325,7 +356,9 @@ public sealed partial class TerminalView : Control
         RestartBlink();
     }
 
-    private bool ShouldBlink => attached && IsEffectivelyVisible && IsFocused
+    /// <summary>Whether the cursor blinks now: a program's ask or the setting's, and never where the system's blink in force
+    /// keeps carets shown.</summary>
+    private bool ShouldBlink => attached && IsEffectivelyVisible && IsFocused && CursorBlink.Blinks
         && session is { IsRunning: true, Screen.CursorVisible: true }
         && TopLine == session.Screen.ScreenTop && (session.Screen.RequestedCursorBlinking ?? CursorBlinking);
 
@@ -335,6 +368,7 @@ public sealed partial class TerminalView : Control
         blink.Stop();
         if (ShouldBlink)
         {
+            blink.Interval = CursorBlink.Shown;
             blink.Start();
         }
         InvalidateVisual();

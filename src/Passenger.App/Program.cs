@@ -52,6 +52,7 @@ internal static class Program
             _ = Discord.DiscordIpc.Default;
             _ = ThemeSource.Repository.Reached;
             _ = Containers.BuildKitChecks.ByDefault;
+            _ = SystemMotion.Named;
             _ = Debugging.BrowserRun.Proxy;
             Mcp.McpProxy.CheckVariable();
             _ = Mcp.McpHost.StartsLanguageServer;

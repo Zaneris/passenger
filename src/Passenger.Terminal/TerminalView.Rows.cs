@@ -391,10 +391,12 @@ public sealed partial class TerminalView
         switch (screen.RequestedCursorShape ?? CursorStyle)
         {
             case CursorShape.Bar:
-                context.FillRectangle(cursor, new Rect(x, y, 2, cellHeight));
+                // On a whole unit, as the editor's caret is, so the line is as broad as set and as sharp.
+                context.FillRectangle(cursor, new Rect(Math.Round(x), y, Math.Min(CursorWidth, width), cellHeight));
                 break;
             case CursorShape.Underline:
-                context.FillRectangle(cursor, new Rect(x, y + cellHeight - 2, width, 2));
+                double thickness = Math.Min(CursorWidth, cellHeight);
+                context.FillRectangle(cursor, new Rect(x, y + cellHeight - thickness, width, thickness));
                 break;
             default:
                 context.FillRectangle(cursor, new Rect(x, y, width, cellHeight));

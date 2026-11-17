@@ -25,7 +25,11 @@ public partial class MainWindow
         Editors.ForEachEditor(editor => ApplyTo(editor, settingsStore.Effective));
         settingsStore.Changed += OnSettingsChanged;
         settingsStore.PreviewChanged += OnPreviewChanged;
-        Activated += (_, _) => settingsStore.LookAgain();
+        Activated += (_, _) =>
+        {
+            settingsStore.LookAgain();
+            SystemMotion.LookAgain();
+        };
         Themes.SaidChanged += OnThemesSaid;
         Themes.FontsChanged += OnThemeFonts;
         OnThemesSaid(null, EventArgs.Empty);
@@ -179,6 +183,7 @@ public partial class MainWindow
         {
             MoveDiffs(next.OpenDiffsIn);
         }
+        chordWait.Interval = TimeSpan.FromSeconds(next.ChordWaitSeconds);
         Explorer.NestFiles = next.NestFiles;
         Explorer.OpensOnClick = next.OpenFilesWithSingleClick;
         if (next.AlwaysSelectOpenedFile && !before.AlwaysSelectOpenedFile && Editors.Active?.Path is { } shown)

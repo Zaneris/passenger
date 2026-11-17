@@ -79,6 +79,9 @@ public sealed record AppSettings : IStateDocument<AppSettings>
     /// <see cref="OwnCodeSize"/> (<see cref="CodeSize"/>).</summary>
     public double? EditorFontSize { get; init; }
     public double EditorLineSpacing { get; init; } = 1.2;
+
+    /// <summary>How broad the editor's caret is, and the terminal's line and underline cursors, in the window's units.</summary>
+    public double CaretWidth { get; init; } = Passenger.Editor.Carets.DefaultWidth;
     public bool Ligatures { get; init; }
     public bool ShowLineNumbers { get; init; } = true;
 
@@ -214,6 +217,9 @@ public sealed record AppSettings : IStateDocument<AppSettings>
     public bool SaveWhenIdle { get; init; }
 
     public int IdleSeconds { get; init; } = 15;
+
+    /// <summary>How long the first key of a shortcut of two keys waits for its second before it is forgotten, in seconds.</summary>
+    public double ChordWaitSeconds { get; init; } = 2;
 
     /// <summary>"Reopen projects on startup": started with nothing named, the window opens the folder or solution
     /// opened last, rather than the Welcome screen.</summary>

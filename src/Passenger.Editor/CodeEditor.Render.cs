@@ -114,7 +114,7 @@ public sealed partial class CodeEditor
                 DrawBlockCaret(context, text, items[i].Caret, row, x, y, left);
                 continue;
             }
-            context.FillRectangle(palette.Caret, new Rect(Math.Round(left + x), y, 2, metrics.LineHeight));
+            context.FillRectangle(palette.Caret, new Rect(Math.Round(left + x), y, CaretWidth, metrics.LineHeight));
         }
     }
 

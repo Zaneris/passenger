@@ -193,7 +193,7 @@ public sealed class SettingsStore : IDisposable
 
     /// <summary>The process's share of the look, put in force once for every window: the theme, its dark or light and the
     /// code's colours only when their settings change, so one named on the command line stands until then; the code font and
-    /// the window's.</summary>
+    /// the window's; the carets' width.</summary>
     private static void VisualsInForce(AppSettings? before, AppSettings after)
     {
         if (Avalonia.Application.Current is { } app && (before is null || before.Theme != after.Theme))
@@ -205,6 +205,10 @@ public sealed class SettingsStore : IDisposable
             Themes.Apply(current, after.Look, after.ColourScheme);
         }
         FontsInForce(after);
+        if (Avalonia.Application.Current is { } careted && (before is null || before.CaretWidth != after.CaretWidth))
+        {
+            Passenger.Editor.Carets.UseWidth(careted, after.CaretWidth);
+        }
         if (Avalonia.Application.Current is { } scaled && (before is null || before.DisplayScale != after.DisplayScale))
         {
             InterfaceScale.Use(scaled, after.DisplayScale);

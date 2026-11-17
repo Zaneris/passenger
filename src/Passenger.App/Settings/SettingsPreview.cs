@@ -69,6 +69,7 @@ public sealed class SettingsPreview : IDisposable
         EditorFontFamily = Shown(from.EditorFontFamily, to.EditorFontFamily, saved.EditorFontFamily),
         EditorFontSize = Shown(from.EditorFontSize, to.EditorFontSize, saved.EditorFontSize),
         EditorLineSpacing = Shown(from.EditorLineSpacing, to.EditorLineSpacing, saved.EditorLineSpacing),
+        CaretWidth = Shown(from.CaretWidth, to.CaretWidth, saved.CaretWidth),
         Ligatures = Shown(from.Ligatures, to.Ligatures, saved.Ligatures),
         ShowLineNumbers = Shown(from.ShowLineNumbers, to.ShowLineNumbers, saved.ShowLineNumbers),
         RainbowBraces = Shown(from.RainbowBraces, to.RainbowBraces, saved.RainbowBraces),

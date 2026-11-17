@@ -41,6 +41,22 @@ internal static partial class MacObjC
     [LibraryImport(Runtime, EntryPoint = "objc_msgSend")]
     public static partial nint Send(nint receiver, nint selector, CGRect argument);
 
+    /// <summary>A message answering a BOOL.</summary>
+    [LibraryImport(Runtime, EntryPoint = "objc_msgSend")]
+    [return: MarshalAs(UnmanagedType.U1)]
+    public static partial bool IsTrue(nint receiver, nint selector);
+
+    /// <summary>A message answering a double, given one object.</summary>
+    [LibraryImport(Runtime, EntryPoint = "objc_msgSend")]
+    public static partial double Number(nint receiver, nint selector, nint argument);
+
+    /// <summary>Begins a pool the objects made until its end (<see cref="EndPool"/>) are let go with.</summary>
+    [LibraryImport(Runtime, EntryPoint = "objc_autoreleasePoolPush")]
+    public static partial nint BeginPool();
+
+    [LibraryImport(Runtime, EntryPoint = "objc_autoreleasePoolPop")]
+    public static partial void EndPool(nint pool);
+
     /// <summary>A point as CoreGraphics takes it, two doubles.</summary>
     [StructLayout(LayoutKind.Sequential)]
     public readonly record struct CGPoint(double X, double Y);
