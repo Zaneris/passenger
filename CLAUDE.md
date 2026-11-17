@@ -704,6 +704,7 @@ a new name, and `just site-shots` retakes its images.
   content: rows go through `ReusedRows`, made once with their containers (UiRulesTests).
 - **Avalonia's Button lets go of its press when it greys**, and a headless `MouseUp` runs queued work before the release:
   a list listed again greys nothing its choice enables until the choice is taken again (`BranchesPanel.listing`).
+- **Avalonia stamps headless input with when it is handled**, and its velocity tracker takes a move more than 40 ms after the last for a finger at rest: a test's fling moves with no frames between moves (`Ui.Stall`). Passenger's own windows are inspected once a test process (`LiveApp.Own` keeps the dispatcher it was made on), so only McpAvaloniaAppTests' test gives an agent input to them there.
 - **Avalonia's headless `KeyTextInput` and `KeyPress` run the window's queued work before the key**, so a count taken around one includes what came due before it: count from the key's change.
 - **Avalonia 12.1 counts a run of clicks per button**: a press of another button starts a new run (`ClickCount` 1); a
   control with no background is no pointer target.
@@ -832,7 +833,7 @@ naming the `WindowsDesktopRefVersion` to pin.
 
 **Debuggees** (`tests/Debuggees`): tests find their lines by code (`Debuggees.Line`), so changing a line's code means
 changing the tests that name it (a breakpoint binds the statement that starts first on its line, inside a lambda only
-where the line starts in one: give the lambda's column). `SelfDebuggingTests` finds its breakpoint by the code `Say(why,
+where the line starts in one: give the lambda's column). `SelfDebuggingTests` finds its breakpoint by the code `Refuse(why,
 RefusalPlace(action));` in MainWindow.Actions.cs. `StartHold` holds a launched program at its start;
 `PASSENGER_ENGINE_LOG=FILE` keeps the engine's log. A thread a debuggee starts just before a stop can hold that stop's
 evaluations: stop once it has run a round (#599). An evaluation past its time logs `WhereThreadsStand`, and a test of
