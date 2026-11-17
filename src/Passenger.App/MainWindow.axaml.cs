@@ -45,6 +45,9 @@ public partial class MainWindow : IdeWindow
     /// <summary>What the last action came to, and the file shown's place and properties.</summary>
     private readonly StatusBar status;
 
+    /// <summary>What the window tells the person, heard by a screen reader.</summary>
+    private readonly Announcer announcer;
+
     /// <summary>Going to places in the code, and back.</summary>
     private readonly Navigation.Navigator navigator;
 
@@ -67,8 +70,9 @@ public partial class MainWindow : IdeWindow
         UiThread.Own();
         InitializeComponent();
         session = ProjectSession.None(Setup());
+        announcer = new Announcer(this, Root);
         status = new StatusBar(StatusMessage, StatusText, StatusIcon, StatusWorking, VimModeText, CaretButton, CaretText, IndentButton, IndentText, LanguageText, LineSeparatorButton,
-            LineEndingText, EncodingButton, EncodingText);
+            LineEndingText, EncodingButton, EncodingText, announcer);
         popups = new PopupHost(Overlay, OverlayHost, Editors, () => session.Debug.Breakpoints);
         navigator = new Navigation.Navigator(new Navigation.NavigatorParts(Editors, () => session, popups, status, path => OpenFile(path), Editors.TextOf)
         {
@@ -526,7 +530,7 @@ public partial class MainWindow : IdeWindow
     {
         if (editor.ReadOnlyWhy is { } why)
         {
-            Say(why);
+            Refuse(why);
         }
     }
 

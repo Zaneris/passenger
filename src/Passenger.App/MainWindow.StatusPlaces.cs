@@ -18,14 +18,19 @@ public partial class MainWindow
 
     /// <summary>Says something in the status bar, with where a click on it goes; the same words said again keep the place
     /// they had (a failed build's words, said again as the reason Run or a test run did not start).</summary>
-    private void Say(string said, StatusPlace? more = null)
+    private void Say(string said, StatusPlace? more = null) => SayAs(said, more, Urgency.Polite);
+
+    /// <summary>Says why something the person asked for was refused, with the way on, heard at once.</summary>
+    private void Refuse(string why, StatusPlace? more = null) => SayAs(why, more, Urgency.Assertive);
+
+    private void SayAs(string said, StatusPlace? more, Urgency urgency)
     {
         if (more is null || (status.Text == said && status.Place is not null))
         {
-            status.Text = said;
+            status.Tell(said, urgency);
             return;
         }
-        status.Say(said, null, more);
+        status.Say(said, null, more, urgency);
     }
 
     /// <summary>A project's load problem in Problems' Toolset, Environment, its row chosen.</summary>

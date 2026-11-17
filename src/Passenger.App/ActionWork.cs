@@ -24,6 +24,9 @@ public sealed class ActionWork
     /// <summary>Raised as a work begins, says a new stage, or ends.</summary>
     public event EventHandler<WorkChange>? Changed;
 
+    /// <summary>Raised as a work tells what it came to (<see cref="Working.Tell"/>), whether it succeeded and in its words.</summary>
+    public event EventHandler<(bool Succeeded, string Said)>? Told;
+
     /// <summary>The work under way that said its stage last, which the status bar shows; null with none under way.</summary>
     public Working? Latest => under.Count > 0 ? under[^1] : null;
 
@@ -98,6 +101,8 @@ public sealed class ActionWork
         under.Add(work);
         Changed?.Invoke(this, new WorkChange(work, Ended: false));
     }
+
+    internal void Came(bool succeeded, string said) => Told?.Invoke(this, (succeeded, said));
 
     internal void Ended(Working work)
     {
@@ -198,8 +203,13 @@ public sealed class Working : IDisposable
 
     internal void Cancel() => stopping.Cancel();
 
-    /// <summary>Tells what the work came to, in its words, to the action an agent runs that began it, if one did.</summary>
-    public void Tell(bool succeeded, string said) => Heard?.Came(succeeded, said);
+    /// <summary>Tells what the work came to, in its words: to the window, and to the action an agent runs that began it, if
+    /// one did.</summary>
+    public void Tell(bool succeeded, string said)
+    {
+        owner.Came(succeeded, said);
+        Heard?.Came(succeeded, said);
+    }
 
     /// <summary>The work is done or handed over.</summary>
     public void Dispose()

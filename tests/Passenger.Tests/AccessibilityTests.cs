@@ -1,3 +1,4 @@
+using Avalonia.Automation;
 using Avalonia.Automation.Peers;
 using Avalonia.Automation.Provider;
 using Avalonia.Controls;
@@ -59,6 +60,72 @@ public sealed class AccessibilityTests : IDisposable
             window.Close();
         }
     }
+
+    /// <summary>What the window tells the person, as a screen reader hears it: the status bar's words are a live region,
+    /// and what is told is heard through the window's announcing region, whose name change is the live-region event each
+    /// system's bridge passes on: a refusal at once, a work's stage and its end once each, a progress tick never, and a
+    /// window that comes without the keys by its title and words.</summary>
+    [AvaloniaFact]
+    public void What_the_window_tells_is_heard_once_a_refusal_at_once_and_a_progress_tick_never()
+    {
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        try
+        {
+            Announcer announcer = Announcer.Of(window) ?? throw new Xunit.Sdk.XunitException("The window has no announcer");
+            AutomationPeer region = ControlAutomationPeer.CreatePeerForElement(announcer.Region);
+            List<(string Words, AutomationLiveSetting Live)> heard = [];
+            region.PropertyChanged += (_, e) =>
+            {
+                if (e.Property == AutomationElementIdentifiers.NameProperty)
+                {
+                    heard.Add((region.GetName(), region.GetLiveSetting()));
+                }
+            };
+            AutomationPeer[] met = [.. Walk(ControlAutomationPeer.CreatePeerForElement(window))];
+            Assert.True(met.Contains(region) && region.GetAutomationControlType() == AutomationControlType.Text,
+                $"A walk of the window never meets its announcing region, so no reader hears it: {Heard(met)}");
+            AutomationPeer statusWords = met.Single(peer => peer is ControlAutomationPeer { Owner.Name: "StatusText" });
+            Assert.True(statusWords.GetLiveSetting() == AutomationLiveSetting.Polite,
+                $"The status bar's words read as a {statusWords.GetLiveSetting()} live region, not a polite one");
+
+            string why = window.Actions.WhyNot(AppActions.GoToDeclaration, window.Actions.Context())
+                ?? throw new Xunit.Sdk.XunitException("Go to Declaration is not refused with no file open");
+            Ui.Run(window, AppActions.GoToDeclaration);
+            Ui.WaitFor(() => heard.Count > 0, "the refusal heard");
+            Assert.True(heard is [(var words, AutomationLiveSetting.Assertive)] && words == why,
+                $"Refused, Go to Declaration was heard as {Said(heard)}, not once at once as \"{why}\"");
+            Assert.True(statusWords.GetLiveSetting() == AutomationLiveSetting.Assertive, "The status bar's refusal does not read as an assertive live region");
+
+            heard.Clear();
+            Working work = window.Actions.Work.Begin("test.export", "Exporting Game: packing (10%)") ?? throw new Xunit.Sdk.XunitException("The work did not begin");
+            Ui.Settle();
+            work.Say("Exporting Game: packing (40%)");
+            Ui.Settle();
+            work.Say("Exporting Game: signing");
+            work.Tell(false, "Export failed: the signing key is missing");
+            work.Dispose();
+            Ui.Settle();
+            Assert.True(heard.SequenceEqual([("Exporting Game: packing (10%)", AutomationLiveSetting.Polite), ("Exporting Game: signing", AutomationLiveSetting.Polite),
+                ("Export failed: the signing key is missing", AutomationLiveSetting.Assertive)]),
+                $"A work's stages and end were heard as {Said(heard)}, not each once with the tick left out and the failure at once");
+
+            heard.Clear();
+            ConfirmDialog question = new("Delete", "Move notes.txt to the Trash?", "Delete") { ShowActivated = false };
+            question.Show(window);
+            Ui.Settle();
+            question.Close();
+            Ui.Settle();
+            Assert.True(heard is [("Delete. Move notes.txt to the Trash?", AutomationLiveSetting.Polite)],
+                $"A question shown without the keys was heard as {Said(heard)}, not by its title and words");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    private static string Said(IEnumerable<(string Words, AutomationLiveSetting Live)> heard) =>
+        heard.Any() ? string.Join(", ", heard.Select(h => $"\"{h.Words}\" ({h.Live})")) : "nothing";
 
     [AvaloniaFact]
     public void The_toolbar_and_stripes_icons_are_named_by_what_they_do_their_keys_left_in_the_tip()

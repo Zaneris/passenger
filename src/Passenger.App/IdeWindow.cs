@@ -148,6 +148,11 @@ public abstract class IdeWindow : Window
             following = FrameSize is null ? fitting : null;
         }
         base.OnOpened(e);
+        // A window that comes without the keys (a notification, an agent's question) is heard where the person is.
+        if (!ShowActivated)
+        {
+            Announcer.TellOpened(this);
+        }
     }
 
     /// <summary>The platform reports the frame of a window shown with none reported: the window is fitted again with
