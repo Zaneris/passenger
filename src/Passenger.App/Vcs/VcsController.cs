@@ -95,6 +95,11 @@ public sealed class VcsController : IDisposable
     /// <summary>What is said where Git is asked for and the window has none: why git cannot read one, where it cannot.</summary>
     public string NoRepository => Refused ?? Refusals.NoRepository;
 
+    /// <summary>Why nothing goes to a remote or comes from one (Push, Fetch, Update Project, a branch's Update and Push…, a
+    /// remote's branch deleted): the repository is in a folder not trusted, where git reaches no remote, as it could not
+    /// be kept from running what the repository's settings for one name (<see cref="UntrustedGit"/>); null otherwise.</summary>
+    public string? WhyNotRemote => git is { } repository && !WorkspaceTrust.Trusts(repository.Root) ? Refusals.Untrusted : null;
+
     /// <summary>The open folder, whose working tree each read looks for again while the window has none (git refused it,
     /// is not installed, or found none: one made since, by git init in a terminal or a clone, is taken), and a read after
     /// Git's own state moved looks for again where it has one (one removed, or another put in its place, is let go).</summary>
@@ -840,7 +845,7 @@ public sealed class VcsController : IDisposable
         {
             return new CommitResult(Report(false, NoRepository), null, null);
         }
-        if (WhyNotCommit(chosen.Count > 0, message, amend, chosen) is { } refused)
+        if (((push ? WhyNotRemote : null) ?? WhyNotCommit(chosen.Count > 0, message, amend, chosen)) is { } refused)
         {
             return new CommitResult(Report(false, refused), null, null);
         }
@@ -945,6 +950,10 @@ public sealed class VcsController : IDisposable
         {
             return Report(false, NoRepository);
         }
+        if (WhyNotRemote is { } untrusted)
+        {
+            return Report(false, untrusted);
+        }
         string? remote = null;
         if (!await repository.TracksAsync())
         {
@@ -1003,6 +1012,10 @@ public sealed class VcsController : IDisposable
         if (git is not { } repository)
         {
             return Report(false, NoRepository);
+        }
+        if (WhyNotRemote is { } untrusted)
+        {
+            return Report(false, untrusted);
         }
         if (Conflicts.Count > 0)
         {
@@ -1086,6 +1099,10 @@ public sealed class VcsController : IDisposable
         if (git is not { } repository)
         {
             return Report(false, NoRepository);
+        }
+        if (WhyNotRemote is { } untrusted)
+        {
+            return Report(false, untrusted);
         }
         if (!Begin(AppActions.Fetch, "Fetching…", out Working? work, stoppable: true))
         {
@@ -1456,6 +1473,10 @@ public sealed class VcsController : IDisposable
         {
             return Report(false, NoRepository);
         }
+        if (WhyNotRemote is { } untrusted)
+        {
+            return Report(false, untrusted);
+        }
         string? remote = null;
         if (branch.UpstreamRemote is null || branch.UpstreamBranch is null)
         {
@@ -1630,6 +1651,10 @@ public sealed class VcsController : IDisposable
     /// started, saying "<paramref name="what"/> stopped".</summary>
     private async Task<VcsOutcome> RemoteSwitchAsync(string id, string stage, string what, Func<Git, CancellationToken, GitAsker?, Task<GitResult>> change, string done, string activity)
     {
+        if (WhyNotRemote is { } untrusted)
+        {
+            return Report(false, untrusted);
+        }
         if (!Begin(id, stage, out Working? work, stoppable: true))
         {
             return Report(false, UnderWay(id));

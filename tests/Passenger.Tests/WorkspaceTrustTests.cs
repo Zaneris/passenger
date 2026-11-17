@@ -8,7 +8,8 @@ namespace Passenger.Tests;
 
 /// <summary>A folder the person has not trusted, as their own window opens it: the question asked once and kept, a parent
 /// trusted covering the folders in it, none of the folder's code run (its targets, its Git configuration's programs, the C#
-/// server, its own TypeScript) until Trust Folder, and then each; its trust taken back in Settings, and its answer forgotten.</summary>
+/// server, its own TypeScript) and no remote reached until Trust Folder, and then each; its trust taken back in Settings,
+/// and its answer forgotten.</summary>
 public sealed class WorkspaceTrustTests
 {
     [AvaloniaFact]
@@ -46,7 +47,8 @@ public sealed class WorkspaceTrustTests
             Assert.Equal(0, window.Session.Models.Evaluations);
             Assert.Equal(0, window.Session.DesignTimeBuilds.Builds);
             Assert.False(File.Exists(built), "A design-time build ran Directory.Build.targets' Exec in a folder not trusted");
-            foreach (string action in (string[])[AppActions.Build, AppActions.RunProgram, AppActions.Debug, AppActions.RunAllTests, AppActions.Profile])
+            foreach (string action in (string[])[AppActions.Build, AppActions.RunProgram, AppActions.Debug, AppActions.RunAllTests, AppActions.Profile,
+                AppActions.Push, AppActions.Fetch, AppActions.UpdateProject])
             {
                 Assert.Equal(Refusals.Untrusted, window.Actions.WhyNot(action, window.Actions.Context()));
             }
@@ -58,6 +60,7 @@ public sealed class WorkspaceTrustTests
             Assert.Null(window.TrustSaid);
             Assert.True(window.Session.Models.Evaluations > 0, "The projects were not evaluated once the folder was trusted");
             Assert.Null(window.Actions.WhyNot(AppActions.Build, window.Actions.Context()));
+            Assert.Null(window.Actions.WhyNot(AppActions.Fetch, window.Actions.Context()));
         }
         finally
         {

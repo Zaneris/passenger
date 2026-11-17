@@ -771,9 +771,9 @@ public partial class MainWindow
             IdeErrors.Observe(session.Vcs.RefreshAsync());
             CommitView.FocusMessage();
         }, new("Git", 0, 0));
-        Add(AppActions.Push, "Push…", context => IdeErrors.Observe(session.Vcs.PushAsync()), new("Git", 0, 1));
-        Add(AppActions.UpdateProject, "Update Project…", context => IdeErrors.Observe(session.Vcs.UpdateAsync()), new("Git", 0, 2));
-        Add(AppActions.Fetch, "Fetch", context => IdeErrors.Observe(session.Vcs.FetchAsync()), new("Git", 0, 3));
+        Add(AppActions.Push, "Push…", context => IdeErrors.Observe(session.Vcs.PushAsync()), new("Git", 0, 1), remote: true);
+        Add(AppActions.UpdateProject, "Update Project…", context => IdeErrors.Observe(session.Vcs.UpdateAsync()), new("Git", 0, 2), remote: true);
+        Add(AppActions.Fetch, "Fetch", context => IdeErrors.Observe(session.Vcs.FetchAsync()), new("Git", 0, 3), remote: true);
         Add(AppActions.Branches, "Branches…", _ => ShowBranches(), new("Git", 0, 4));
         Add(AppActions.Stash, "Stash Changes…", _ => ShowStash(), new("Git", 1, 0));
         Add(AppActions.Unstash, "Unstash Changes…", context => IdeErrors.Observe(ShowUnstashAsync()), new("Git", 1, 1));
@@ -812,10 +812,11 @@ public partial class MainWindow
 
         string? NeedsRepository(ActionContext context) => NeedsFolder(context) ?? (session.Vcs.Repository is null ? session.Vcs.NoRepository : null);
 
-        void Add(string id, string title, Action<ActionContext> run, MenuPlace menu, bool onFile = false) =>
+        void Add(string id, string title, Action<ActionContext> run, MenuPlace menu, bool onFile = false, bool remote = false) =>
             actions!.Add(new IdeAction(id, title, "Git", run)
             {
-                WhyNot = context => NeedsFolder(context) ?? (session.Vcs.Repository is null ? session.Vcs.NoRepository : onFile ? Refusals.NeedsFile(context) : null),
+                WhyNot = context => NeedsFolder(context) ?? (session.Vcs.Repository is null ? session.Vcs.NoRepository
+                    : onFile ? Refusals.NeedsFile(context) : remote ? session.Vcs.WhyNotRemote : null),
                 Menus = [menu],
             });
     }

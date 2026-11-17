@@ -242,7 +242,9 @@ public sealed class BranchesPanel : DockPanel
             string? notUpdated = WhyNotUpdate(branch);
             Add("Update", () => IdeErrors.Observe(vcs.UpdateBranchAsync(branch)), notUpdated is null);
             ToolTip.SetTip(items[^1], notUpdated);
-            Add("Push…", () => IdeErrors.Observe(vcs.PushBranchAsync(branch)));
+            string? notPushed = vcs.WhyNotRemote;
+            Add("Push…", () => IdeErrors.Observe(vcs.PushBranchAsync(branch)), notPushed is null);
+            ToolTip.SetTip(items[^1], notPushed);
             Separate();
             Add("Rename…", () => RenameRequested?.Invoke(this, branch));
         }
@@ -536,20 +538,22 @@ public sealed class BranchesPanel : DockPanel
     private static string? WhyNotFrom(BranchInfo? branch) => branch is null ? Refusals.NoRefChosen : null;
 
     /// <summary>Why Update Selected can't act: it brings a local branch up to the remote's branch it tracks, as
-    /// <see cref="VcsController.UpdateBranchAsync"/> does, and nothing else.</summary>
-    private static string? WhyNotUpdate(BranchInfo? branch) => branch switch
+    /// <see cref="VcsController.UpdateBranchAsync"/> does, and nothing else, where a remote can be reached.</summary>
+    private string? WhyNotUpdate(BranchInfo? branch) => branch switch
     {
         { Kind: RefKind.Local, Upstream: null } => Refusals.Untracked(branch.Name),
-        { Kind: RefKind.Local } => null,
+        { Kind: RefKind.Local } => vcs.WhyNotRemote,
         { Kind: RefKind.Remote } => Refusals.FetchedNotUpdated(branch.Name),
         _ => Refusals.NoLocalBranchChosen,
     };
 
-    /// <summary>Why Delete can't act: git deletes no branch while it is checked out.</summary>
-    private static string? WhyNotDelete(BranchInfo? branch) => branch switch
+    /// <summary>Why Delete can't act: git deletes no branch while it is checked out, and a remote's only where the remote
+    /// can be reached.</summary>
+    private string? WhyNotDelete(BranchInfo? branch) => branch switch
     {
         null => Refusals.NoRefChosen,
         { IsCurrent: true } => Refusals.CheckedOut(branch.Name),
+        { Kind: RefKind.Remote } => vcs.WhyNotRemote,
         _ => null,
     };
 

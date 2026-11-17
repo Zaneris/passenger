@@ -815,15 +815,17 @@ public sealed class CommitView : DockPanel, IOwnKeys
         LookForLostMoves();
     }
 
-    /// <summary>Commit and Commit and Push… greyed while no commit can be made, their tips saying why as a press would.</summary>
+    /// <summary>Commit and Commit and Push… greyed while no commit can be made (and the push while none can go), their tips
+    /// saying why as a press would.</summary>
     private void UpdateButtons()
     {
         string? why = vcs.Repository is null ? vcs.NoRepository : vcs.WhyNotCommit(rows.OfType<CommitGroup>().Any(g => g.IsChosen != false), Message, Amend);
         foreach (Button button in (Button[])[commit, commitAndPush])
         {
-            ToolButtons.Grey(button, why);
+            string? refused = button == commitAndPush ? why ?? vcs.WhyNotRemote : why;
+            ToolButtons.Grey(button, refused);
             // Off while a commit (or a stash, a rollback) runs, so a second press cannot start another on git's index lock.
-            button.IsEnabled = why is null && !vcs.IsBusy;
+            button.IsEnabled = refused is null && !vcs.IsBusy;
         }
     }
 
