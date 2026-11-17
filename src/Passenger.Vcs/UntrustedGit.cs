@@ -214,9 +214,13 @@ internal static partial class UntrustedGit
     }
 
     /// <summary>Settings given to git through its environment after those it gives already, which these outrank where both
-    /// name a key; a count git could not read is replaced, as git would refuse it.</summary>
+    /// name a key; a count git could not read is replaced, as git would refuse it. Taken away: an inherited `git -c`'s
+    /// settings, which git reads after these, and the file `git config` would read in place of every scope's, where a
+    /// listing would miss these and the repository's own, which every other command reads.</summary>
     internal static void Give(IDictionary<string, string?> environment, IReadOnlyList<(string Key, string Value)> settings)
     {
+        environment.Remove(GitVariables.ConfigParameters);
+        environment.Remove(GitVariables.Config);
         int first = environment.TryGetValue(GitVariables.ConfigCount, out string? count) && int.TryParse(count, NumberStyles.None, CultureInfo.InvariantCulture, out int given)
             ? given
             : 0;

@@ -48,6 +48,14 @@ public static class GitVariables
     /// every configuration file's.</summary>
     public const string ConfigCount = "GIT_CONFIG_COUNT";
 
+    /// <summary>The settings `git -c` gives, which every git it starts inherits, read after <see cref="ConfigCount"/>'s and
+    /// so over them.</summary>
+    public const string ConfigParameters = "GIT_CONFIG_PARAMETERS";
+
+    /// <summary>The one file `git config` reads and writes in place of every scope's, where it is given no --file; the
+    /// other commands read every scope's as ever.</summary>
+    public const string Config = "GIT_CONFIG";
+
     /// <summary>The protocols git may reach a remote by, whatever its configuration says; empty, none.</summary>
     public const string AllowProtocol = "GIT_ALLOW_PROTOCOL";
 
