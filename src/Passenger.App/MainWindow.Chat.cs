@@ -74,6 +74,10 @@ public partial class MainWindow
             {
                 askedCards[card.CallId] = card;
                 Propose(card);
+                if (card.PlanPath is { } page)
+                {
+                    WaitingPlan(card, PathNames.Canonical(page));
+                }
             };
             view.ChangeRequested += (_, change) => ShowProposal(change);
             view.PlansRequested += (_, button) => ShowChatPlans(button);
@@ -170,6 +174,17 @@ public partial class MainWindow
         foreach (Workspace.OpenDocument document in Editors.Documents.ToArray())
         {
             string path = PathNames.Canonical(document.Path);
+            if (waitingPlans.TryGetValue(path, out ApprovalCard? plan))
+            {
+                document.Decorations.SetReviewMarks([]);
+                document.AgentReview = new Workspace.AgentReview(
+                    "The agent waits for your answer to this plan: build it, or write in the chat what to change",
+                    () => plan.Build(),
+                    () => plan.Choose(allow: false),
+                    "Build",
+                    "Keep planning");
+                continue;
+            }
             if (ChatProposals.IsCopy(path))
             {
                 // A file the agent asks to make: every line of its copy is what it would add.
@@ -311,6 +326,30 @@ public partial class MainWindow
                         acceptedCopies.Add(original);
                     }
                 }
+            }
+            reviewMarking?.Restart();
+        });
+    }
+
+    /// <summary>The plans waiting for an answer, by their page's canonical path: the page's banner offers Build too.</summary>
+    private readonly Dictionary<string, ApprovalCard> waitingPlans = new(StringComparer.Ordinal);
+
+    /// <summary>A plan waits for its answer: its page says so with Build and Keep planning, until it is answered.</summary>
+    private void WaitingPlan(ApprovalCard card, string page)
+    {
+        waitingPlans[page] = card;
+        reviewMarking?.Restart();
+        IdeErrors.Observe(AnsweredPlanAsync(card, page));
+    }
+
+    private async Task AnsweredPlanAsync(ApprovalCard card, string page)
+    {
+        await card.Answer;
+        OnWindowThread(() =>
+        {
+            if (waitingPlans.TryGetValue(page, out ApprovalCard? waiting) && waiting == card)
+            {
+                waitingPlans.Remove(page);
             }
             reviewMarking?.Restart();
         });
@@ -649,7 +688,7 @@ public partial class MainWindow
             string page = saved.Path;
             OnWindowThread(() => OpenChatPlan(page, focus: false));
         }
-        return new ChatPlan(saved.Path, PathNames.Shown(saved.Path, root), ChatPlans.TitleOf(saved.Text));
+        return new ChatPlan(saved.Path, PathNames.Shown(saved.Path, root), ChatPlans.TitleOf(saved.Text), ChatPlans.SummaryOf(saved.Text));
     }
 
     /// <summary>Where the person changed a plan's file before Build, tells the agent to build their version: steered into
@@ -689,7 +728,6 @@ public partial class MainWindow
         try
         {
             await agent.Session.SteerAsync($"Keep planning: revise the plan in {plan.Shown} as I ask, then ask me again.\n\n{revision}");
-            OnWindowThread(() => view.Noted($"Asked to revise the plan: {revision}"));
         }
         catch (AcpError error)
         {

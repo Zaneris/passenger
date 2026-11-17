@@ -385,14 +385,14 @@ public sealed class ChatTests
         Assert.True(File.Exists(plan), $"No plan at {plan}");
         Assert.Equal(StandInAgent.Plan, File.ReadAllText(plan));
         ApprovalCard card = window.Chat.Questions.Single();
-        Assert.Contains(card.GetVisualDescendants().OfType<TextBlock>(), text => text.Text == "Plan: Add a math class");
+        Assert.Contains(card.GetVisualDescendants().OfType<TextBlock>(), text => text.Text == "Add a math class");
         // Shown at once as a page, with no click; Claude Code's own draft is a step, neither reviewed nor a second plan.
         Ui.WaitFor(() => window.EditorArea.Active?.Path?.EndsWith("add-a-math-class.plan.md", StringComparison.Ordinal) == true, () => $"the plan shown, where {window.EditorArea.Active?.Path} is");
         Assert.True(window.EditorArea.ShowsMarkdownPreview);
         Assert.Empty(window.Chat.Review.Shown);
         Assert.Contains(window.Chat.Tools, line => line.Title == "Draft the plan");
 
-        Ui.Click(InCard(card, "Yes, and use auto mode"));
+        Ui.Click(InCard(card, "Build"));
         Ui.WaitFor(() => !window.Chat.Busy, () => $"the turn ended, where the conversation is {Shown(window)}");
 
         Assert.Equal("exit-plan-auto", agent.PlanAnswer);
@@ -410,7 +410,7 @@ public sealed class ChatTests
         string plan = Path.Combine(folder, ".passenger", "plans", $"{DateTime.Now:yyyy-MM-dd}_add-a-math-class.plan.md");
         File.AppendAllText(plan, "3. Write the docs\n");
 
-        Ui.Click(InCard(window.Chat.Questions.Single(), "Yes, and use auto mode"));
+        Ui.Click(InCard(window.Chat.Questions.Single(), "Build"));
         Ui.WaitFor(() => !window.Chat.Busy, () => $"the turn ended, where the conversation is {Shown(window)}");
 
         string steered = Assert.Single(agent.Steered);
@@ -428,7 +428,7 @@ public sealed class ChatTests
         Send(window, "plan");
         Ui.WaitFor(() => window.Chat.Questions.Any(), "the plan's card");
 
-        Ui.Click(window.Chat.Questions.Single().GetVisualDescendants().OfType<Button>().First(b => Equals(b.Content, "Open plan")));
+        Ui.Click(window.Chat.Questions.Single().GetVisualDescendants().OfType<Button>().First(b => Equals(b.Content, "View Plan")));
         Ui.Settle();
 
         EditorGroup group = window.EditorArea.ActiveGroup;
@@ -442,33 +442,32 @@ public sealed class ChatTests
         Ui.Click(group.PreviewToggle);
         Ui.Settle();
         Assert.False(group.Editor.IsEffectivelyVisible, "The plan's source stays after its page came back");
-        Ui.Click(InCard(window.Chat.Questions.Single(), "No, keep planning"));
+        // The plan's page offers the answers too while it waits.
+        Ui.Click(window.EditorArea.ActiveGroup.ReviewLinks.Undo);
         Ui.WaitFor(() => !window.Chat.Busy, "the turn ended");
         Assert.Equal("reject", agent.PlanAnswer);
         window.Close();
     }
 
     [AvaloniaFact]
-    public void A_plans_answers_are_the_agents_numbered_and_Revise_keeps_planning_with_what_to_change_sent_first()
+    public void A_plans_card_is_Cursors_and_what_is_written_while_it_waits_revises_it_sent_first()
     {
         MainWindow window = Reviewing(out StandInAgent agent, out _);
         Send(window, "plan");
         Ui.WaitFor(() => window.Chat.Questions.Any(), "the plan's card");
         ApprovalCard card = window.Chat.Questions.Single();
-        Assert.Contains(card.GetVisualDescendants().OfType<TextBlock>(), text => text.Text == "1");
-        Assert.DoesNotContain(card.GetVisualDescendants().OfType<TextBlock>(), text => text.Text == "Build");
-        Button revise = card.GetVisualDescendants().OfType<Button>().Single(b => Equals(b.Content, "Revise"));
-        Assert.False(revise.IsEnabled, "Revise sends nothing to change");
+        Assert.Contains(card.GetVisualDescendants().OfType<TextBlock>(), text => text.Text == "Created Plan");
+        Assert.Contains(card.GetVisualDescendants().OfType<TextBlock>(), text => text.Text == "Build");
+        Assert.DoesNotContain(card.GetVisualDescendants().OfType<TextBlock>(), text => text.Text == "No, keep planning" && text.IsEffectivelyVisible);
 
-        card.GetVisualDescendants().OfType<TextBox>().Single().Text = "Use SQLite instead of Postgres";
-        Ui.Settle();
-        Ui.Click(revise);
+        Send(window, "Use SQLite instead of Postgres");
         Ui.WaitFor(() => !window.Chat.Busy, () => $"the turn ended, where the conversation is {Shown(window)}");
 
         Assert.Equal("reject", agent.PlanAnswer);
         Assert.Equal("Revising", card.State);
         Assert.Contains("Use SQLite instead of Postgres", Assert.Single(agent.Steered), StringComparison.Ordinal);
         Assert.Equal(["steer", "answer"], agent.Order);
+        Assert.Contains(window.Chat.Conversation, part => part.Who == "You" && part.Text == "Use SQLite instead of Postgres");
         window.Close();
     }
 
@@ -480,17 +479,17 @@ public sealed class ChatTests
         Ui.WaitFor(() => window.Chat.Questions.Any(), "the plan's card");
         ApprovalCard card = window.Chat.Questions.Single();
 
-        Ui.Click(card.GetVisualDescendants().OfType<Button>().First(b => Equals(b.Content, "Edit plan")));
+        Ui.Click(card.GetVisualDescendants().OfType<Button>().First(b => Equals(b.Content, "Edit Plan")));
         Ui.Settle();
         EditorGroup group = window.EditorArea.ActiveGroup;
         Assert.EndsWith("add-a-math-class.plan.md", window.EditorArea.Active?.Path, StringComparison.Ordinal);
         Assert.True(group.Editor.IsEffectivelyVisible, "Edit plan shows no source to edit");
         Assert.True(group.Markdown?.IsEffectivelyVisible == true, "Edit plan hides the plan's page");
 
-        Ui.Click(card.GetVisualDescendants().OfType<Button>().First(b => Equals(b.Content, "Open plan")));
+        Ui.Click(card.GetVisualDescendants().OfType<Button>().First(b => Equals(b.Content, "View Plan")));
         Ui.Settle();
         Assert.False(group.Editor.IsEffectivelyVisible, "Open plan still shows the source beside the page");
-        Ui.Click(InCard(card, "No, keep planning"));
+        Ui.Click(window.EditorArea.ActiveGroup.ReviewLinks.Undo);
         Ui.WaitFor(() => !window.Chat.Busy, "the turn ended");
         window.Close();
     }

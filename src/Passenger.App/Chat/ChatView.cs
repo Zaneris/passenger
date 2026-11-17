@@ -253,12 +253,29 @@ public sealed class ChatView : DockPanel
     public void Asked(string text)
     {
         empty.IsVisible = false;
+        Mine(text);
+        reply = Message(agentName);
+        Working(true, "Thinking…");
+        ToEnd();
+    }
+
+    /// <summary>The person's message under "You", in its frame.</summary>
+    private void Mine(string text)
+    {
         StackPanel mine = Message("You");
         SelectableTextBlock body = new() { Text = text, TextWrapping = TextWrapping.Wrap };
         mine.Children.Add(new Border { Classes = { StyleClasses.Framed }, Padding = new Thickness(10, 8), Child = body });
         parts.Add(new Part("You", new StringBuilder(text), body, null));
+    }
+
+    /// <summary>What the person wrote while a plan waited, as Cursor takes it: their message in the conversation, the
+    /// plan's card answered to keep planning with it, and the agent's reply going on below.</summary>
+    private void Revise(ApprovalCard card, string text)
+    {
+        Close();
+        Mine(text);
         reply = Message(agentName);
-        Working(true, "Thinking…");
+        card.Revise(text);
         ToEnd();
     }
 
@@ -433,6 +450,8 @@ public sealed class ChatView : DockPanel
         card.PlanEditRequested += (_, path) => PlanEditRequested?.Invoke(this, path);
         reply.Children.Add(card);
         asking.Add(card);
+        // A waiting plan takes what is written as what to change in it, so Send shows beside Stop.
+        send.IsVisible |= card.IsPlan;
         Asking?.Invoke(this, card);
         doing.Text = "Waiting for your answer";
         ToEnd();
@@ -491,6 +510,7 @@ public sealed class ChatView : DockPanel
         finally
         {
             asking.Remove(card);
+            send.IsVisible = !stop.IsVisible || asking.Any(open => open.IsPlan);
             if (asking.Count == 0 && working.IsVisible)
             {
                 doing.Text = "Thinking…";
@@ -521,8 +541,17 @@ public sealed class ChatView : DockPanel
     private void Send()
     {
         string text = input.Text?.Trim() ?? string.Empty;
-        if (text.Length == 0 || Busy || !composer.IsVisible)
+        if (text.Length == 0 || !composer.IsVisible)
         {
+            return;
+        }
+        if (Busy)
+        {
+            if (asking.FirstOrDefault(card => card.IsPlan) is { } plan)
+            {
+                input.Text = string.Empty;
+                Revise(plan, text);
+            }
             return;
         }
         input.Text = string.Empty;

@@ -23,6 +23,34 @@ public static partial class ChatPlans
         return title.Length > 0 ? title : "Plan";
     }
 
+    /// <summary>What a plan's card says of it, as Cursor's does: its first paragraph of words (no heading, list or code),
+    /// its Markdown marks left out, cut short past a few lines; empty where it has none.</summary>
+    public static string SummaryOf(string plan)
+    {
+        StringBuilder paragraph = new();
+        bool code = false;
+        foreach (string raw in plan.Split('\n'))
+        {
+            string line = raw.Trim();
+            code ^= line.StartsWith("```", StringComparison.Ordinal);
+            bool words = !code && line.Length > 0 && !line.StartsWith('#') && !line.StartsWith("```", StringComparison.Ordinal)
+                && !line.StartsWith('|') && !line.StartsWith('>') && !ListMark().IsMatch(line);
+            if (words)
+            {
+                paragraph.Append(paragraph.Length > 0 ? " " : string.Empty).Append(line);
+            }
+            else if (paragraph.Length > 0)
+            {
+                break;
+            }
+        }
+        string said = paragraph.ToString().Replace("**", string.Empty, StringComparison.Ordinal).Replace("`", string.Empty, StringComparison.Ordinal);
+        return said.Length <= 280 ? said : said[..said.LastIndexOf(' ', 279)] + "…";
+    }
+
+    [GeneratedRegex(@"^([-*+]|\d+[.)])\s")]
+    private static partial Regex ListMark();
+
     /// <summary>Whether a file is one of the drafts Claude Code writes its plan to as it plans (~/.claude/plans): the
     /// plan the person reads is the folder's copy, so the draft is neither a change to review nor a second plan.</summary>
     public static bool IsAgentDraft(string path) =>
