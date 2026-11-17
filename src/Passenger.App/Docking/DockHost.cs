@@ -681,6 +681,10 @@ public sealed class DockHost : Grid
 
     public bool IsShown([IdentifierOf(typeof(ToolWindowIds))] string id) => this[id].IsShown;
 
+    /// <summary>The windows shown docked at these places, in their order, each with the place that shows it.</summary>
+    internal IEnumerable<(ToolWindow Window, Control Place)> ShownAt(IEnumerable<ToolAnchor> places) =>
+        places.Select(anchor => panes[anchor]).Where(pane => pane.Window is not null && pane.IsEffectivelyVisible).Select(pane => (pane.Window!, (Control)pane));
+
     /// <summary>Moves a window to another place (at an index among its buttons there), shown if it was.</summary>
     public void Move(ToolWindow window, ToolAnchor anchor, int? index = null)
     {

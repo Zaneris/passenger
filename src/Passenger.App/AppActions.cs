@@ -428,6 +428,11 @@ public static class AppActions
     public const string PreviousError = "app.code.previousError";
     public const string FocusEditor = "app.focusEditor";
 
+    // The keys to the window's next and previous region (the toolbar, each tool window shown, the editor, the status bar),
+    // which no keymap of Rider's has an action for: Ctrl+Alt+` (Ctrl+Cmd+` on the Mac), Shift for back, in every keymap.
+    public const string NextRegion = "app.nextRegion";
+    public const string PreviousRegion = "app.previousRegion";
+
     // The debugger's, on the active editor and the session.
     public const string ToggleBreakpoint = "app.debug.toggleBreakpoint";
     public const string ToggleBreakpointEnabled = "app.debug.toggleBreakpointEnabled";
@@ -653,7 +658,9 @@ public static class AppActions
     public static Keymap Keymap(KeymapPreset preset, IReadOnlyDictionary<string, string[]> overrides)
     {
         // A chord no keymap here takes and a game is unlikely to want, as the game hears it while it has the keys.
-        Keymap keymap = Base(preset).Bind(GameKeys, "control F11");
+        Keymap keymap = Base(preset).Bind(GameKeys, "control F11")
+            .Bind(NextRegion, OperatingSystem.IsMacOS() ? "control meta BACK_QUOTE" : "control alt BACK_QUOTE")
+            .Bind(PreviousRegion, OperatingSystem.IsMacOS() ? "control meta shift BACK_QUOTE" : "control alt shift BACK_QUOTE");
         foreach ((string action, string[] shortcuts) in overrides)
         {
             List<Shortcut> keys = [];

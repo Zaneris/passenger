@@ -502,26 +502,15 @@ public sealed class EditorGroup : DockPanel
     private static bool InEditor(OpenDocument document) => document.Asset is null && !document.IsReleaseNotes && document.Diff is null && document.Tool is null;
 
     /// <summary>Gives the keys to what shows the file: a diff's file's side, its preview or rendered notes, which its keys
-    /// move through, else the editor.</summary>
-    public void FocusShown()
+    /// move through, else the editor; given them as by Tab (<paramref name="method"/>), it draws the ring round it. False
+    /// where it could not take them.</summary>
+    public bool FocusShown(NavigationMethod method = NavigationMethod.Unspecified) => preview switch
     {
-        if (preview is Vcs.DiffView diff)
-        {
-            diff.Right.Focus();
-        }
-        else if (preview is ToolTabView tool)
-        {
-            tool.Window.TakeKeys();
-        }
-        else if (preview is not null)
-        {
-            preview.Focus();
-        }
-        else
-        {
-            Editor.Focus();
-        }
-    }
+        Vcs.DiffView diff => diff.Right.Focus(method),
+        ToolTabView tool => tool.Window.TakeKeys(method),
+        not null => preview.Focus(method),
+        _ => Editor.Focus(method),
+    };
 
     /// <summary>Shows a file's text, its asset preview or rendered release notes, or a diff, keeping the carets and scroll of the
     /// text it replaces. A preview detaches the hidden text editor so editing commands cannot change the previous file; a view

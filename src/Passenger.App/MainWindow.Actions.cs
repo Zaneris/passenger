@@ -213,6 +213,7 @@ public partial class MainWindow
         AddTests();
 
         AddTabActions();
+        AddRegions();
 
         // The tool windows' frame, run from the terminal too.
         actions.Add(new IdeAction(A.MaximizeToolWindow, "Maximize Tool Window", "Tool Windows", _ => Dock.ToggleMaximize()) { Menus = [new("View", 3, 0)], FromTerminal = true });

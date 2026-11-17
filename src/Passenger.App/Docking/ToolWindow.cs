@@ -77,49 +77,50 @@ public sealed class ToolWindow([IdentifierOf(typeof(ToolWindowIds))] string id, 
         }, RoutingStrategies.Bubble, handledEventsToo: true);
 
     /// <summary>Gives its view the keys, as its action does once it shows: back to what in it had them last, still shown (a
-    /// list's row, or its item's row, still chosen: <see cref="ListKeys.Hold(RowWithKeys)"/>), else to the first of its
-    /// search boxes and lists (a list's chosen row, the first chosen where none is), else to the
-    /// first text it shows that takes them (a console), else to the view itself until they leave it, so what is typed next
-    /// never goes to the file.</summary>
-    internal void TakeKeys()
+    /// list's row, or its item's row, still chosen: <see cref="ListKeys.Hold(RowWithKeys, NavigationMethod)"/>), else to its
+    /// first search box or list (its chosen row, the first where none is), else to the first text that takes them (a
+    /// console), else to the view itself until they leave it, so what is typed next never goes to the file. Given them as by
+    /// Tab (<paramref name="method"/>), what takes them draws the ring round it; false where nothing in it could.</summary>
+    internal bool TakeKeys(NavigationMethod method = NavigationMethod.Unspecified)
     {
         Control view = Content;
         if (TopLevel.GetTopLevel(view) is null)
         {
-            return;
+            return false;
         }
         view.UpdateLayout();
-        if (hadRow is { } row ? Shown(row.List) && ListKeys.Hold(row) : hadKeys is { } had && Shown(had) && had.Focus())
+        if (hadRow is { } row ? Shown(row.List) && ListKeys.Hold(row, method) : hadKeys is { } had && Shown(had) && had.Focus(method))
         {
-            return;
+            return true;
         }
         List<Control> shown = [.. view.GetVisualDescendants().OfType<Control>().Where(c => c.IsEffectivelyVisible && c.IsEffectivelyEnabled)];
         foreach (Control each in shown)
         {
             switch (each)
             {
-                case TextBox { IsReadOnly: false, Focusable: true } search when search.Focus():
-                    return;
-                case ListBox { ItemCount: > 0 } list when ListKeys.Hold(list, chooseFirst: true):
-                    return;
+                case TextBox { IsReadOnly: false, Focusable: true } search when search.Focus(method):
+                    return true;
+                case ListBox { ItemCount: > 0 } list when ListKeys.Hold(list, chooseFirst: true, method):
+                    return true;
             }
         }
-        if (shown.FirstOrDefault(c => c.Focusable && c is not (Button or ComboBox or Thumb)) is { } text && text.Focus())
+        if (shown.FirstOrDefault(c => c.Focusable && c is not (Button or ComboBox or Thumb)) is { } text && text.Focus(method))
         {
-            return;
+            return true;
         }
         if (view.Focusable)
         {
-            view.Focus();
-            return;
+            return view.Focus(method);
         }
         // Focusable only while it holds them, so a press on its toolbar never takes them from the editor.
         view.Focusable = true;
         view.LostFocus += LetGo;
-        if (!view.Focus())
+        if (!view.Focus(method))
         {
             LetGo(view, new RoutedEventArgs());
+            return false;
         }
+        return true;
 
         void LetGo(object? sender, RoutedEventArgs e)
         {

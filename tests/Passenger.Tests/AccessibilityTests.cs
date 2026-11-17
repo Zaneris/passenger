@@ -2,11 +2,13 @@ using Avalonia.Automation;
 using Avalonia.Automation.Peers;
 using Avalonia.Automation.Provider;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Headless.XUnit;
 using Avalonia.Input;
 using Avalonia.VisualTree;
 using Passenger.App;
 using Passenger.App.Debugging;
+using Passenger.App.Docking;
 using Passenger.App.Editors;
 using Passenger.App.Explorer;
 using Passenger.App.Migrations;
@@ -293,6 +295,94 @@ public sealed class AccessibilityTests : IDisposable
         Assert.True(row.ExpandCollapseState == state && (row.GetProvider<IExpandCollapseProvider>() is null) == (state == ExpandCollapseState.LeafNode),
             $"{words} says it is {row.ExpandCollapseState} (opened or closed by a reader: {row.GetProvider<IExpandCollapseProvider>() is not null}), not {state}");
     }
+
+    /// <summary>Next Region and Previous Region take the keys round the window's regions in one order, by their own keys in
+    /// every keymap: each region told as it is entered, the keys landing inside it on something shown with its focus drawn
+    /// (the ring, or a text field's edge), and round again to where they began.</summary>
+    [AvaloniaFact]
+    public void Next_and_Previous_Region_take_the_keys_round_the_window_saying_each_region_in_every_keymap()
+    {
+        File.WriteAllText(Path.Combine(folder, "Notes.txt"), "one\ntwo\n");
+        TestGit.Init(folder);
+        File.WriteAllText(Path.Combine(folder, "Draft.txt"), "draft\n");
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        try
+        {
+            window.OpenFile("Notes.txt");
+            Button changes = window.FindControl<Button>("GitChangesButton")!;
+            Ui.WaitFor(() => changes.IsEffectivelyVisible, "the status bar's changed files, something there to take the keys");
+            DockHost dock = window.DockHost;
+            dock.Move(dock[ToolWindowIds.Bookmarks], ToolAnchor.RightTop);
+            dock.Show(ToolWindowIds.Bookmarks);
+            dock.Show(ToolWindowIds.Problems);
+            Ui.Settle();
+            string[] shown = [.. dock.Windows.Where(w => w.IsShown && w.Mode == ToolMode.Docked).Select(w => w.Id).Order(StringComparer.Ordinal)];
+            Assert.True(shown.SequenceEqual(new[] { ToolWindowIds.Bookmarks, ToolWindowIds.Explorer, ToolWindowIds.Problems }.Order(StringComparer.Ordinal)),
+                $"The window shows the tool windows {string.Join(", ", shown)}, not just the Explorer, Bookmarks and Problems this test goes round");
+            (string Said, Control Holder)[] round =
+            [
+                ("Notes.txt, editor", window.EditorArea),
+                ($"{dock[ToolWindowIds.Bookmarks].Title}, tool window", dock[ToolWindowIds.Bookmarks].Content),
+                ($"{dock[ToolWindowIds.Problems].Title}, tool window", dock[ToolWindowIds.Problems].Content),
+                ("Status bar", window.FindControl<Border>("StatusBarFrame")!),
+                ("Toolbar", window.FindControl<Border>("Toolbar")!),
+                ($"{dock[ToolWindowIds.Explorer].Title}, tool window", dock[ToolWindowIds.Explorer].Content),
+            ];
+            List<(string Words, AutomationLiveSetting Live)> heard = Listen(window);
+            (string Next, string Previous) keys = OperatingSystem.IsMacOS()
+                ? ("control meta BACK_QUOTE", "control meta shift BACK_QUOTE")
+                : ("control alt BACK_QUOTE", "control alt shift BACK_QUOTE");
+            foreach (KeymapPreset preset in (KeymapPreset[])[KeymapPreset.VisualStudio, KeymapPreset.VSCode, KeymapPreset.IntelliJ])
+            {
+                window.ApplySettings(window.Settings with { Keymap = preset });
+                window.EditorArea.CodeEditor.Focus();
+                Ui.Settle();
+                for (int step = 1; step <= round.Length; step++)
+                {
+                    Entered(window, keys.Next, round[step % round.Length], heard, $"{preset}'s Next Region");
+                }
+                for (int step = round.Length - 1; step >= 0; step--)
+                {
+                    Entered(window, keys.Previous, round[step], heard, $"{preset}'s Previous Region");
+                }
+            }
+            window.EditorArea.CodeEditor.Focus();
+            Ui.Settle();
+            heard.Clear();
+            window.Actions.Run(AppActions.NextRegion);
+            window.Actions.Run(AppActions.NextRegion);
+            Ui.Settle();
+            Assert.True(heard is [(var last, _)] && last == round[2].Said, $"Next Region pressed twice in quick turn was heard as {Said(heard)}, not as the region it came to");
+            Assert.True(window.Actions.Find("Next Region").Any(a => a.Id == AppActions.NextRegion) && window.Actions.Find("Previous Region").Any(a => a.Id == AppActions.PreviousRegion),
+                "Find Action finds no Next Region and Previous Region");
+            Assert.True(window.Actions.WhyNot(AppActions.NextRegion, window.Actions.Context().ForAgent()) == Refusals.PersonsKeys,
+                "An agent's ide_action may move the person's keys to another region");
+        }
+        finally
+        {
+            window.ApplySettings(window.Settings with { Keymap = KeymapPreset.VisualStudio });
+            window.Close();
+        }
+    }
+
+    /// <summary>Presses a region's key and holds the window to having entered <paramref name="region"/>: the keys inside it
+    /// on something shown with its focus drawn, and the region told.</summary>
+    private static void Entered(MainWindow window, string key, (string Said, Control Holder) region, List<(string Words, AutomationLiveSetting Live)> heard, string what)
+    {
+        heard.Clear();
+        Ui.Press(window, key);
+        Ui.Settle();
+        Control focused = window.FocusManager?.GetFocusedElement() as Control
+            ?? throw new Xunit.Sdk.XunitException($"{what} ({key}) left the keys on nothing, not in the region {region.Said}");
+        Assert.True(focused == region.Holder || region.Holder.IsVisualAncestorOf(focused),
+            $"{what} ({key}) left the keys on {focused.GetType().Name} ({focused.Name}), not in the region {region.Said}");
+        Assert.True(focused.IsEffectivelyVisible && (Ringed(focused) || focused is TextBox { IsFocused: true }),
+            $"{what} gave the keys to a {focused.GetType().Name} in {region.Said} that draws nothing to say it has them");
+        Assert.True(heard is [(var words, AutomationLiveSetting.Polite)] && words == region.Said, $"{what} into {region.Said} was heard as {Said(heard)}");
+    }
+
+    private static bool Ringed(Control focused) => AdornerLayer.GetAdornerLayer(focused) is { } layer
+        && layer.Children.OfType<FocusRing>().Any(r => r.IsVisible && AdornerLayer.GetAdornedElement(r) == focused);
 
     [AvaloniaFact]
     public void A_settings_field_is_named_by_its_label_and_the_project_button_by_the_project()

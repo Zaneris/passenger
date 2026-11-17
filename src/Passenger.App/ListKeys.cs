@@ -79,15 +79,16 @@ public static class ListKeys
     /// <summary>Gives a list's chosen row the keys, as a click on it does (the first chosen where none is and
     /// <paramref name="chooseFirst"/> asks): the row a Shift range runs from, else the first chosen. False where the list has
     /// no row chosen to give them to.</summary>
-    public static bool Hold(ListBox list, bool chooseFirst = false) => Hold(list, null, chooseFirst);
+    public static bool Hold(ListBox list, bool chooseFirst = false, NavigationMethod method = NavigationMethod.Unspecified) => Hold(list, null, chooseFirst, method);
 
     /// <summary>Gives the keys back to the row of a list that had them, where it is still shown and chosen, else to the row
-    /// of the item it showed, where that is chosen, else as <see cref="Hold(ListBox, bool)"/> does: so the next key goes on
+    /// of the item it showed, where that is chosen, else as <see cref="Hold(ListBox, bool, NavigationMethod)"/> does: so the next key goes on
     /// from where the person was, a Shift range's end rather than its start.</summary>
-    public static bool Hold(RowWithKeys had) => Hold(had.List, had, chooseFirst: false);
+    public static bool Hold(RowWithKeys had, NavigationMethod method = NavigationMethod.Unspecified) => Hold(had.List, had, chooseFirst: false, method);
 
-    /// <summary>A row out of sight has no container to take the keys until it is brought into view.</summary>
-    private static bool Hold(ListBox list, RowWithKeys? had, bool chooseFirst)
+    /// <summary>A row out of sight has no container to take the keys until it is brought into view; given them as by Tab
+    /// (<paramref name="method"/>), the row draws the ring round it.</summary>
+    private static bool Hold(ListBox list, RowWithKeys? had, bool chooseFirst, NavigationMethod method)
     {
         if (list.SelectedIndex < 0 && chooseFirst && list.ItemCount > 0)
         {
@@ -104,7 +105,7 @@ public static class ListKeys
             list.ScrollIntoView(index);
             list.UpdateLayout();
         }
-        return list.ContainerFromIndex(index)?.Focus() == true;
+        return list.ContainerFromIndex(index)?.Focus(method) == true;
 
         static int? Chosen(ListBox list, int? index) => index is int at && at >= 0 && at < list.ItemCount && list.Selection.IsSelected(at) ? at : null;
     }

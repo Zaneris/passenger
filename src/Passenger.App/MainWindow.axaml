@@ -161,7 +161,7 @@
         </DockPanel>
 
         <!-- The status bar: where the caret is and how the file is stored. -->
-        <Border Classes="statusBar" Grid.Row="2">
+        <Border Name="StatusBarFrame" Classes="statusBar" Grid.Row="2">
             <Panel>
             <DockPanel Margin="12,0">
                 <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="18" VerticalAlignment="Center">
