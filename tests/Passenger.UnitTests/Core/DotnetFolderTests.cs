@@ -2,9 +2,10 @@ using Passenger.Core;
 
 namespace Passenger.UnitTests.Core;
 
-/// <summary>Where a dotnet run for a folder works: an SDK's command for a folder not trusted (every folder, in this process)
-/// works outside it, in the person's home, so the global.json over the folder never names the SDK that runs; a program's
-/// own run (by its path, or after exec) works in the folder, which no global.json chooses anything for.</summary>
+/// <summary>Where a dotnet run for a folder works: an SDK's command for a folder not trusted (every folder, in this process),
+/// or one under a global.json in a folder not trusted, works outside it, in the person's home, so that global.json never
+/// names the SDK that runs; a program's own run (by its path, or after exec) works in the folder, which no global.json
+/// chooses anything for.</summary>
 public sealed class DotnetFolderTests
 {
     private static readonly string Host = Path.GetFullPath(Path.Combine(Path.DirectorySeparatorChar.ToString(), "dotnet-folder-tests", "dotnet"));
@@ -32,5 +33,32 @@ public sealed class DotnetFolderTests
         string above = Path.GetDirectoryName(Home)!;
         Assert.Equal(Path.GetPathRoot(above), ChildProcesses.DotnetCommand(Host, ["--version"], above).WorkingDirectory);
         Assert.Equal(string.Empty, ChildProcesses.DotnetCommand(Host, ["--version"], null).WorkingDirectory);
+    }
+
+    /// <summary>A trusted folder takes what the host reads there only where the nearest global.json over it, whose sdk.paths
+    /// name the SDK that runs, is in a folder trusted too: one in a folder above it not trusted sends its dotnet elsewhere,
+    /// one in the folder itself does not.</summary>
+    [Fact]
+    public void A_trusted_folder_takes_only_a_global_json_in_a_folder_trusted_too()
+    {
+        string repository = PathNames.Canonical(Directory.CreateTempSubdirectory("passenger-unit-").FullName);
+        try
+        {
+            string app = Directory.CreateDirectory(Path.Join(repository, "src", "App")).FullName;
+            bool Trusts(string folder) => PathNames.Within(folder, app);
+            Assert.True(Dotnet.TakesOnlyTrusted(app, Trusts), "A trusted folder with no global.json over it was found to take what a folder not trusted chose");
+            Assert.False(Dotnet.TakesOnlyTrusted(repository, Trusts), "A folder not trusted was found to take only what trusted folders chose");
+
+            File.WriteAllText(Path.Join(repository, "global.json"), """{ "sdk": { "paths": [ ".sdk" ] } }""");
+            Assert.False(Dotnet.TakesOnlyTrusted(app, Trusts), "A trusted folder takes the SDK a global.json in the folder above it, not trusted, names");
+            Assert.True(Dotnet.TakesOnlyTrusted(app, folder => PathNames.Within(folder, repository)), "A folder whose global.json's folder is trusted was found not to take it");
+
+            File.WriteAllText(Path.Join(app, "global.json"), """{ "sdk": { "rollForward": "latestMajor" } }""");
+            Assert.True(Dotnet.TakesOnlyTrusted(app, Trusts), "A trusted folder holding its own global.json was found to take the one above it");
+        }
+        finally
+        {
+            Directory.Delete(repository, recursive: true);
+        }
     }
 }

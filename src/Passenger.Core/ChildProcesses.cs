@@ -121,13 +121,14 @@ public static class ChildProcesses
         return AsDotnet(Command(host, given, DotnetFolder(given, folder)));
     }
 
-    /// <summary>Where a dotnet run for <paramref name="folder"/> works: there, but where the folder is not trusted and the
-    /// command runs an SDK (anything but a program's own, <see cref="RunsSdk"/>), which the dotnet takes from the global.json
-    /// over the folder it works in, whose sdk.paths may name the folder's own: there the person's home (above it, the disk's
-    /// root, where the folder holds the home folder), the folder named in the arguments where the command needs it.</summary>
+    /// <summary>Where a dotnet run for <paramref name="folder"/> works: there, but where the command runs an SDK (anything but
+    /// a program's own, <see cref="RunsSdk"/>), which the dotnet takes from the global.json over the folder it works in, whose
+    /// sdk.paths may name the folder's own, and the folder or that global.json's is not trusted (<see cref="Dotnet.TakesOnlyTrusted"/>):
+    /// there the person's home (above it, the disk's root, where the folder holds the home folder), the folder named in the
+    /// arguments where the command needs it.</summary>
     private static string? DotnetFolder(IReadOnlyList<string> arguments, string? folder)
     {
-        if (folder is null || WorkspaceTrust.Trusts(folder) || !RunsSdk(arguments))
+        if (folder is null || !RunsSdk(arguments) || Dotnet.TakesOnlyTrusted(folder))
         {
             return folder;
         }

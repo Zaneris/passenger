@@ -21,7 +21,7 @@ public static partial class Dotnet
     /// again after <see cref="ForgetSdks"/>; an <see cref="InvalidOperationException"/> saying why when it names none, which
     /// is asked again next time.</summary>
     public static Task<string> SdkAsync(string folder, CancellationToken cancel = default) =>
-        Sdks.Take($"{folder}\n{GlobalJsonOver(folder)}\n{WorkspaceTrust.Trusts(folder)}", () => AskSdkAsync(folder)).WaitAsync(cancel);
+        Sdks.Take($"{folder}\n{GlobalJsonOver(folder)}\n{TakesOnlyTrusted(folder)}", () => AskSdkAsync(folder)).WaitAsync(cancel);
 
     /// <summary>Lets go of the SDKs named and the dotnet each folder takes, once one is installed or removed.</summary>
     public static void ForgetSdks()
@@ -55,6 +55,29 @@ public static partial class Dotnet
     /// <summary>The global.json dotnet reads in a folder (the nearest over it) with its last write and length; empty for none.</summary>
     public static string GlobalJsonOver(string folder) =>
         GlobalJsonIn(folder) is { } file ? $"{file.FullName}\n{file.LastWriteTimeUtc.Ticks}\n{file.Length}" : string.Empty;
+
+    /// <summary>Whether a dotnet working in the folder takes nothing a folder not trusted chose: the folder is trusted, and so
+    /// is the one holding the global.json the host reads there, the nearest over it, whoever put it there (which
+    /// <see cref="GlobalJsonIn"/> may pass over), whose sdk.paths name the SDK that runs.</summary>
+    public static bool TakesOnlyTrusted(string folder) => TakesOnlyTrusted(folder, WorkspaceTrust.Trusts);
+
+    /// <summary><see cref="TakesOnlyTrusted(string)"/> by what <paramref name="trusts"/> trusts.</summary>
+    internal static bool TakesOnlyTrusted(string folder, Func<string, bool> trusts)
+    {
+        if (!trusts(folder))
+        {
+            return false;
+        }
+        // The host walks up from its working folder as the system names it, links resolved.
+        for (string? at = PathNames.Canonical(folder); !string.IsNullOrEmpty(at); at = Path.GetDirectoryName(at))
+        {
+            if (File.Exists(Path.Join(at, "global.json")))
+            {
+                return trusts(at);
+            }
+        }
+        return true;
+    }
 
     /// <summary>The global.json dotnet reads in a folder, the nearest over it in a folder of the person's
     /// (<see cref="FoldersUp"/>); null for none.</summary>
@@ -117,7 +140,7 @@ public static partial class Dotnet
             return Find();
         }
         // Trusted later, the folder's global.json may name a dotnet of its own.
-        string key = $"{folder}\n{GlobalJsonOver(folder)}\n{first.Host}\n{WorkspaceTrust.Trusts(folder)}";
+        string key = $"{folder}\n{GlobalJsonOver(folder)}\n{first.Host}\n{TakesOnlyTrusted(folder)}";
         if (Taken.TryGetValue(key, out DotnetFound? kept))
         {
             return kept;

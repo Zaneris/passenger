@@ -337,31 +337,7 @@ public sealed class WorkspaceTrustTests
         string folder = PathNames.Canonical(TestFolders.Create("untrusted-sdk-"));
         string marks = PathNames.Canonical(TestFolders.Create("untrusted-sdk-marks-"));
         string ran = Path.Combine(marks, "ran.marker");
-        string version = Ui.Await(Dotnet.SdkAsync(marks), "the SDK the run takes");
-        string carried = Path.Combine(folder, ".sdk");
-        TestFolders.Write(marks, "Stand/Stand.csproj", $"""
-            <Project Sdk="Microsoft.NET.Sdk">
-              <PropertyGroup>
-                <OutputType>Exe</OutputType>
-                <TargetFramework>net{Environment.Version.Major}.0</TargetFramework>
-                <AssemblyName>dotnet</AssemblyName>
-                <UseAppHost>false</UseAppHost>
-              </PropertyGroup>
-            </Project>
-            """);
-        TestFolders.Write(marks, "Stand/Program.cs", $"System.IO.File.AppendAllText({System.Text.Json.JsonSerializer.Serialize(ran)}, string.Join(' ', args) + \"\\n\");\nSystem.Console.WriteLine(\"the folder's own SDK\");\n");
-        ChildResult built = Ui.Await(ChildProcesses.RunAsync(ChildProcesses.DotnetCommand(["build", Path.Combine(marks, "Stand", "Stand.csproj"), "-o",
-            Path.Combine(carried, "sdk", version), "-nologo", "-v:q"]), limit: Restore.Limit.Scaled()), "the carried SDK's build", Restore.Limit + TestFolders.Spare);
-        Assert.True(built.Succeeded, $"The carried SDK did not build: {built.Said}");
-        try
-        {
-            Directory.CreateSymbolicLink(Path.Combine(carried, "shared"), Path.Combine(Dotnet.Root(), "shared"));
-        }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
-        {
-            Assert.Skip($"The carried SDK takes its runtime through a link this account may not make: {error.Message}");
-        }
-        TestFolders.Write(folder, "global.json", $$"""{ "sdk": { "version": "{{version}}", "rollForward": "disable", "paths": [ ".sdk" ] } }""" + "\n");
+        Carry(folder, marks, ran);
         TestFolders.Write(folder, "Shop.slnx", "<Solution />\n");
         using IDisposable asked = WorkspaceTrust.Ask(folder);
         MainWindow window = Ui.OpenFolder(folder, languageServer: false);
@@ -390,6 +366,76 @@ public sealed class WorkspaceTrustTests
         {
             window.Close();
         }
+    }
+
+    /// <summary>A trusted folder in one not trusted, whose global.json names an SDK it carries (its sdk.paths, a stand-in
+    /// marking that it ran), never has it run: New Project's read of the templates takes the SDK Passenger takes everywhere
+    /// else, the folder's dotnet run outside it; once the folder holding the global.json is trusted too, the read takes the
+    /// SDK it names, which runs.</summary>
+    [AvaloniaFact]
+    public void A_trusted_folder_never_runs_the_sdk_a_global_json_above_it_names_until_that_folder_is_trusted_too()
+    {
+        string repository = PathNames.Canonical(TestFolders.Create("untrusted-above-"));
+        string app = PathNames.Canonical(Directory.CreateDirectory(Path.Combine(repository, "src", "App")).FullName);
+        string marks = PathNames.Canonical(TestFolders.Create("untrusted-above-marks-"));
+        string ran = Path.Combine(marks, "ran.marker");
+        Carry(repository, marks, ran);
+        TestFolders.Write(app, "App.slnx", "<Solution />\n");
+        using IDisposable asked = WorkspaceTrust.Ask(repository);
+        WorkspaceTrust.Trust(app);
+        MainWindow window = Ui.OpenFolder(app, languageServer: false);
+        try
+        {
+            Assert.True(window.Session.Trusted && window.AskingTrust is null, "The folder trusted was opened as not trusted");
+            Ui.Run(window, AppActions.NewProject);
+            NewServiceSetupTests.Opened(window).Close();
+            Ui.Settle();
+            Assert.False(File.Exists(ran), $"The SDK the global.json in the folder above, not trusted, names ran for the folder trusted, asked {(File.Exists(ran) ? File.ReadAllText(ran) : null)}");
+
+            WorkspaceTrust.Trust(repository);
+            Ui.Settle();
+            Ui.Run(window, AppActions.NewProject);
+            Ui.WaitFor(() => File.Exists(ran), () => $"New Project's read of the templates to run the SDK the global.json above names once its folder is trusted: {Ui.Said(window)}",
+                TimeSpan.FromMinutes(2));
+            Assert.Single(window.OwnedWindows.OfType<Passenger.App.Templates.NewProjectDialog>(), d => d.IsVisible).Close();
+        }
+        finally
+        {
+            window.Close();
+            WorkspaceTrust.TakeBack(repository);
+        }
+    }
+
+    /// <summary>A stand-in SDK carried in <paramref name="folder"/>'s .sdk, at the version the run takes, which marks
+    /// <paramref name="ran"/> with its arguments as it runs (on the runtime of the .NET the run takes), and the global.json
+    /// there naming it by its sdk.paths; skips where this account may make no link to that runtime.</summary>
+    private static void Carry(string folder, string marks, string ran)
+    {
+        string version = Ui.Await(Dotnet.SdkAsync(marks), "the SDK the run takes");
+        string carried = Path.Combine(folder, ".sdk");
+        TestFolders.Write(marks, "Stand/Stand.csproj", $"""
+            <Project Sdk="Microsoft.NET.Sdk">
+              <PropertyGroup>
+                <OutputType>Exe</OutputType>
+                <TargetFramework>net{Environment.Version.Major}.0</TargetFramework>
+                <AssemblyName>dotnet</AssemblyName>
+                <UseAppHost>false</UseAppHost>
+              </PropertyGroup>
+            </Project>
+            """);
+        TestFolders.Write(marks, "Stand/Program.cs", $"System.IO.File.AppendAllText({System.Text.Json.JsonSerializer.Serialize(ran)}, string.Join(' ', args) + \"\\n\");\nSystem.Console.WriteLine(\"the folder's own SDK\");\n");
+        ChildResult built = Ui.Await(ChildProcesses.RunAsync(ChildProcesses.DotnetCommand(["build", Path.Combine(marks, "Stand", "Stand.csproj"), "-o",
+            Path.Combine(carried, "sdk", version), "-nologo", "-v:q"]), limit: Restore.Limit.Scaled()), "the carried SDK's build", Restore.Limit + TestFolders.Spare);
+        Assert.True(built.Succeeded, $"The carried SDK did not build: {built.Said}");
+        try
+        {
+            Directory.CreateSymbolicLink(Path.Combine(carried, "shared"), Path.Combine(Dotnet.Root(), "shared"));
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            Assert.Skip($"The carried SDK takes its runtime through a link this account may not make: {error.Message}");
+        }
+        TestFolders.Write(folder, "global.json", $$"""{ "sdk": { "version": "{{version}}", "rollForward": "disable", "paths": [ ".sdk" ] } }""" + "\n");
     }
 
     /// <summary>A folder opened in the window, once its opening has landed.</summary>
