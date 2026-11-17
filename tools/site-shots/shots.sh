@@ -56,6 +56,10 @@ export npm_config_cache="$work/npm/cache"
 export npm_config_userconfig="$work/npm/npmrc"
 export GIT_CONFIG_GLOBAL="$work/gitconfig"
 export GIT_CONFIG_NOSYSTEM=1
+# A Terminal a picture shows (a theme's layout opens one) prompts with its folder alone, never the person's name.
+mkdir -p "$work/zsh"
+printf "PROMPT='%%1~ %%# '\n" > "$work/zsh/.zshrc"
+export ZDOTDIR="$work/zsh"
 export DOTNET_CLI_TELEMETRY_OPTOUT=1
 export DOTNET_NOLOGO=1
 export AVALONIA_TELEMETRY_OPTOUT=1
@@ -403,8 +407,7 @@ encode() {
     echo "site-shots: $webp ($(($(wc -c < "$webp") / 1024)) KB)"
 }
 
-# Every look, in the picker's order: Passenger's own, the one the app carries, then passenger-themes' (their list in
-# tests/Passenger.Tests/Themes); and those over a dark VS Code theme, with no light look, which the light cycle passes over.
+# Every look, in the picker's order (passenger-themes' as tests/Passenger.Tests/Themes lists them); those with no light look.
 looks=(Passenger Cubicle Harbour Sorbet Nocturne Saffron Bonbon Ledger Slate Orbit Nightjar Moss Phosphor)
 dark_only=(Nocturne Slate Nightjar)
 # The themes scene: the same window in every look, each over a copy of the solution file named after its look, so its
