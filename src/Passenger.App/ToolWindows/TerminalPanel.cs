@@ -50,8 +50,9 @@ public sealed class TerminalPanel : DockPanel
     private readonly TerminalView view = new();
     private readonly Func<string> folder;
     private int opened;
+    private bool firstComing;
 
-    /// <param name="folder">Where a new shell starts: the open folder, else the home folder.</param>
+    /// <param name="folder">Where a new shell starts: the folder the window holds or is opening, else the home folder.</param>
     public TerminalPanel(Func<string> folder)
     {
         this.folder = folder;
@@ -67,9 +68,18 @@ public sealed class TerminalPanel : DockPanel
         Bind(BackgroundProperty, this.GetResourceObservable(TokenKeys.Terminal_Background));
         AttachedToVisualTree += (_, _) =>
         {
-            if (tabs.Count == 0)
+            if (tabs.Count == 0 && !firstComing)
             {
-                IdeErrors.Observe(NewSessionAsync());
+                // After what the window does as it shows, so a layout's Terminal starts in the folder it opens then.
+                firstComing = true;
+                UiThread.Post(() =>
+                {
+                    firstComing = false;
+                    if (tabs.Count == 0)
+                    {
+                        IdeErrors.Observe(NewSessionAsync());
+                    }
+                });
             }
             FocusView();
         };

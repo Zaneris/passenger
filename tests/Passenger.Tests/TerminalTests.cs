@@ -473,6 +473,33 @@ public sealed class TerminalTests
     }
 
     [AvaloniaFact]
+    public void A_terminal_shown_as_the_window_is_made_starts_its_shell_in_the_folder_the_window_starts_on()
+    {
+        string folder = TestFolders.Create("terminal-");
+        try
+        {
+            MainWindow window = new() { Width = 1200, Height = 800 };
+            // Shown before any folder is open, as a theme's layout or the person's kept one shows it.
+            window.ShowToolWindow(ToolWindowIds.Terminal);
+            window.TerminalPanel.Shell = OperatingSystem.IsWindows() ? ("cmd.exe", []) : ("/bin/sh", []);
+            Assert.True(Screenshot.Prepare(window, LaunchOptions.Parse([folder]), []), "The window never settled");
+            Ui.WaitFor(() => window.TerminalPanel.Active is { IsRunning: true }, "the shell to start");
+            TerminalSession shell = window.TerminalPanel.Active!;
+
+            Run(window, OperatingSystem.IsWindows() ? "echo %CD%" : "pwd");
+            string where = PathNames.Canonical(folder);
+            Ui.WaitFor(() => Screen(shell).Contains(where, StringComparison.Ordinal),
+                () => $"the shell shown as the window was made started outside the folder it opened on:\n{Screen(shell)}");
+            Assert.True(window.TerminalPanel.Tabs.Count == 1, $"{window.TerminalPanel.Tabs.Count} shells were started for the one window shown");
+            window.Close();
+        }
+        finally
+        {
+            TestFolders.Delete(folder);
+        }
+    }
+
+    [AvaloniaFact]
     public void The_terminal_window_runs_a_shell_that_takes_typed_commands_and_hides_when_it_exits()
     {
         string folder = TestFolders.Create("terminal-");

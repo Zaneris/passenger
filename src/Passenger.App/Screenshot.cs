@@ -106,10 +106,10 @@ public static class Screenshot
     /// still pending at the limit.</summary>
     public static bool Prepare(MainWindow window, LaunchOptions launch, IReadOnlyList<ScriptStep> steps)
     {
+        // Started as it shows, as the person's window is, so a layout's Terminal starts in the folder it opens.
         window.Show();
-        bool settled = Settle();
         window.Start(launch);
-        settled &= Settle();
+        bool settled = Settle();
         foreach (ScriptStep step in steps)
         {
             if (step is ScriptStep.Open open)
