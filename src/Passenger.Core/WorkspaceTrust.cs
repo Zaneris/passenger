@@ -18,6 +18,18 @@ public static class WorkspaceTrust
     /// every folder but one held to the person's answer (<see cref="Ask"/>).</summary>
     public static bool Trusts(string folder) => Volatile.Read(ref folders).Trusts(folder);
 
+    /// <summary>The gate every MSBuild question or target run of a folder's project goes through before it starts (the App's
+    /// MSBuildQuestions: a workload's question, a listing of devices, an installer), whoever asks and whatever the window
+    /// holds of the project (a kept evaluation): one on a path not trusted is refused, <see cref="UntrustedFolderException"/>
+    /// saying <see cref="Untrusted"/>.</summary>
+    public static void Check(string path)
+    {
+        if (!Trusts(path))
+        {
+            throw new UntrustedFolderException(path);
+        }
+    }
+
     /// <summary>Whether this process trusts every folder: nobody is here to ask.</summary>
     public static bool TrustsEverything => Volatile.Read(ref folders).Everything;
 
@@ -91,6 +103,13 @@ public static class WorkspaceTrust
             }
         }
     }
+}
+
+/// <summary>A run of a folder's code refused at <see cref="WorkspaceTrust.Check"/>: the path is not trusted.</summary>
+public sealed class UntrustedFolderException(string path) : InvalidOperationException(WorkspaceTrust.Untrusted)
+{
+    /// <summary>The path refused.</summary>
+    public string Path { get; } = path;
 }
 
 /// <summary>Folders trusted, each with every folder under it, and whether every other is too but those held to the

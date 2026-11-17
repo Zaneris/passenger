@@ -27,7 +27,8 @@ public sealed record MSBuildQuestion(IReadOnlyList<string> Targets)
 
 /// <summary>MSBuild's questions of a project, each asked of the .NET CLI as the IDE's own question (no telemetry), in the
 /// project's folder: its targets run with the globals given but their target framework, the question's own properties over
-/// them and the framework where one is given; its answer read once, by <see cref="MSBuildAnswer"/>.</summary>
+/// them and the framework where one is given; its answer read once, by <see cref="MSBuildAnswer"/>. A project not trusted
+/// is asked nothing (<see cref="WorkspaceTrust.Check"/>), whatever the window kept of its evaluation.</summary>
 public static class MSBuildQuestions
 {
     /// <summary>What MSBuild answers the question of the project, for <paramref name="framework"/> or the project as a
@@ -35,13 +36,21 @@ public static class MSBuildQuestions
     public static async Task<MSBuildAnswer> AskAsync(string project, string? framework, IReadOnlyDictionary<string, string> globals, MSBuildQuestion question,
         CancellationToken cancel)
     {
+        WorkspaceTrust.Check(project);
         ChildResult said = await ChildProcesses.RunAsync(ChildProcesses.DotnetQuestion(Arguments(project, framework, globals, question), Path.GetDirectoryName(project)!),
             cancel: cancel);
         return new MSBuildAnswer(said, question.Alone);
     }
 
-    /// <summary>The .NET CLI's arguments that ask the question, which a target run for its work rather than its answer (an
-    /// installer's) is given too.</summary>
+    /// <summary>The .NET CLI running the question's targets for their work rather than an answer (an installer's), in the
+    /// project's folder; refused where the project is not trusted.</summary>
+    public static System.Diagnostics.ProcessStartInfo Command(string project, string? framework, IReadOnlyDictionary<string, string> globals, MSBuildQuestion question)
+    {
+        WorkspaceTrust.Check(project);
+        return ChildProcesses.DotnetCommand(Arguments(project, framework, globals, question), Path.GetDirectoryName(project)!);
+    }
+
+    /// <summary>The .NET CLI's arguments that ask the question.</summary>
     public static IReadOnlyList<string> Arguments(string project, string? framework, IReadOnlyDictionary<string, string> globals, MSBuildQuestion question)
     {
         Dictionary<string, string> given = new(StringComparer.OrdinalIgnoreCase);

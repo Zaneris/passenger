@@ -24,7 +24,8 @@ public partial class MainWindow
     {
         actions!.Add(new IdeAction(A.ChooseRunTarget, "Choose Where It Runs…", "Run", _ => IdeErrors.Observe(ChooseRunTargetAsync()))
         {
-            WhyNot = _ => TargetProject() is null ? "The run configuration chosen runs no app on a device, an emulator or a simulator" : null,
+            // Listing a project's targets runs its workload's targets, which a folder not trusted never runs.
+            WhyNot = _ => Untrusted() ?? (TargetProject() is null ? "The run configuration chosen runs no app on a device, an emulator or a simulator" : null),
         });
     }
 
@@ -206,6 +207,10 @@ public partial class MainWindow
     internal async Task<string> ChooseRunTargetForAgentAsync(string? input)
     {
         UiThread.Check();
+        if (Untrusted() is { } untrusted)
+        {
+            throw new InvalidOperationException(untrusted);
+        }
         RunConfiguration? named = session.Configurations.All.Where(c => input?.StartsWith(c.Name + ":", StringComparison.OrdinalIgnoreCase) == true)
             .MaxBy(c => c.Name.Length);
         if (named is not null)

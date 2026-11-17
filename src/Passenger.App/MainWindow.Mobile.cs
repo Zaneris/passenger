@@ -71,8 +71,7 @@ public partial class MainWindow
         actions.Add(new IdeAction(AppActions.InstallAndroidDependencies, "Install Android SDK and Java…", "IDE", _ => IdeErrors.Observe(InstallAndroidAsync()))
         {
             WhyNot = context => context.ByAgent ? Refusals.AgentInstallsMobile
-                : !MobileWant.AndroidLacks ? Refusals.NothingAndroidLacking
-                : null,
+                : Untrusted() ?? (!MobileWant.AndroidLacks ? Refusals.NothingAndroidLacking : null),
             Menus = [new MenuPlace("Tools", 1, 3)],
             Words = ["Android SDK", "JDK", "Java", "sdkmanager", MSBuildNames.InstallAndroidDependencies],
             Works = AppActions.InstallAndroidDependencies,
@@ -123,16 +122,24 @@ public partial class MainWindow
                 AskMobile(again: false);
             }
         };
+        next.TrustChanged += (_, _) =>
+        {
+            if (session == next)
+            {
+                AskMobile(again: true);
+            }
+        };
         AskMobile(again: false);
     }
 
     /// <summary>Asks what the mobile projects need, off the window's thread, unless the projects and frameworks are those
-    /// asked of last and <paramref name="again"/> is false.</summary>
+    /// asked of last and <paramref name="again"/> is false. A folder not trusted is asked nothing, its projects as the
+    /// folder's cache kept them or not: MSBuild would run their targets.</summary>
     private void AskMobile(bool again)
     {
         UiThread.Check();
         ProjectSession asking = session;
-        List<ProjectModel> mobile = [.. asking.Projects.Where(p => p.IsEvaluated && MobilePlatforms.FrameworksOf(p.TargetFrameworks).Count > 0)];
+        List<ProjectModel> mobile = [.. asking.Projects.Where(p => asking.Trusted && p.IsEvaluated && MobilePlatforms.FrameworksOf(p.TargetFrameworks).Count > 0)];
         string key = string.Join('\n', mobile.Select(p => $"{p.Path}|{string.Join(';', p.TargetFrameworks)}"));
         if (!again && key == mobileAsked)
         {
@@ -544,9 +551,9 @@ public partial class MainWindow
             {
                 given[MSBuildNames.JavaSdkDirectory] = jdk;
             }
-            IReadOnlyList<string> arguments = MSBuildQuestions.Arguments(project.Path, framework, ProjectModels.Properties(session.Workspace, project),
+            ProcessStartInfo install = MSBuildQuestions.Command(project.Path, framework, ProjectModels.Properties(session.Workspace, project),
                 new MSBuildQuestion([MSBuildNames.InstallAndroidDependencies]) { Given = given });
-            (int code, IReadOnlyList<string> lines) = await RunInstallAsync(ChildProcesses.DotnetCommand(arguments, project.Folder), installing.Say, installing.Stopping);
+            (int code, IReadOnlyList<string> lines) = await RunInstallAsync(install, installing.Say, installing.Stopping);
             if (installing.IsStopped)
             {
                 Told(installing, false, "The Android SDK's install was stopped");

@@ -251,6 +251,79 @@ public sealed class WorkspaceTrustTests
         }
     }
 
+    /// <summary>A mobile project the folder's cache kept from a trusted open is shown as kept when the folder opens again
+    /// without the person trusting it, and asks MSBuild nothing: the workload's question the window asks of a mobile
+    /// project (a stand-in target marking that it ran) never runs, and Choose Where It Runs, whose listing restores the
+    /// project, is refused saying why; trusted, the question runs.</summary>
+    [AvaloniaFact]
+    public void A_mobile_project_kept_from_before_is_shown_in_a_folder_not_trusted_and_none_of_its_targets_run_until_trusted()
+    {
+        string folder = PathNames.Canonical(TestFolders.Create("untrusted-kept-"));
+        string marks = PathNames.Canonical(TestFolders.Create("untrusted-kept-marks-"));
+        string state = TestFolders.Create("untrusted-kept-state-");
+        string asked = Path.Combine(marks, "asked.marker");
+        // A solution's projects are the window's as it opens, before any walk of the folder.
+        TestFolders.Write(folder, "Droid.slnx", "<Solution>\n  <Project Path=\"Droid/Droid.csproj\" />\n</Solution>\n");
+        TestFolders.Write(folder, "Droid/Droid.csproj", $"""
+            <Project>
+              <Import Project="Sdk.props" Sdk="Microsoft.NET.Sdk" />
+              <PropertyGroup>
+                <TargetFramework>net{Passenger.App.Mobile.MobilePlatforms.FirstOnCoreClr}.0-android</TargetFramework>
+                <OutputType>Exe</OutputType>
+              </PropertyGroup>
+              <Import Project="Sdk.targets" Sdk="Microsoft.NET.Sdk" />
+              <Target Name="_GetRequiredWorkloads">
+                <Touch Files="{asked}" AlwaysCreate="true" />
+              </Target>
+            </Project>
+            """);
+        MainWindow trusted = Keeping(state, folder);
+        try
+        {
+            Ui.WaitFor(() => trusted.Projects.Any(p => p.IsEvaluated), () => $"the project to evaluate: {Ui.Said(trusted)}", TimeSpan.FromMinutes(2));
+            Ui.Await(trusted.MobileAsked(), "what the project needs to be asked", TimeSpan.FromMinutes(2));
+            Assert.True(File.Exists(asked), "The workload's question of the mobile project did not run in the folder trusted, so the test sees nothing");
+        }
+        finally
+        {
+            trusted.Close();
+        }
+        File.Delete(asked);
+
+        using IDisposable held = WorkspaceTrust.Ask(folder);
+        MainWindow window = Keeping(state, folder);
+        try
+        {
+            Ui.ClickButton(Asked(window), WorkspaceTrustDialog.Untrusted);
+            Ui.Settle();
+            Ui.Await(window.MobileAsked(), "what the project needs to be asked");
+            Assert.True(window.Projects.Any(p => p.Name == "Droid" && p.IsEvaluated), "The project the folder's cache kept was not shown as kept");
+            Assert.NotNull(window.Session.Configurations.Chosen);
+            Assert.Equal(0, window.Session.Models.Evaluations);
+            Assert.False(File.Exists(asked), "MSBuild ran the mobile project's target in the folder not trusted, from what its cache kept");
+            Assert.Equal(Refusals.Untrusted, window.Actions.WhyNot(AppActions.ChooseRunTarget, window.Actions.Context()));
+
+            Ui.ClickButton(window, window.Actions[AppActions.TrustFolder]!.Title);
+            Ui.WaitFor(() => File.Exists(asked), () => $"the workload's question to run once the folder is trusted: {Ui.Said(window)}", TimeSpan.FromMinutes(2));
+        }
+        finally
+        {
+            window.Close();
+            TestFolders.Delete(state);
+        }
+    }
+
+    /// <summary>A window that keeps its state in a folder of its own, on the folder given.</summary>
+    private static MainWindow Keeping(string state, string folder)
+    {
+        MainWindow window = new() { Width = 1000, Height = 800, StartsLanguageServer = false, StateFolder = state };
+        window.Show();
+        window.KeepLayout();
+        window.OpenFolder(folder);
+        Ui.Settle();
+        return window;
+    }
+
     /// <summary>A folder opened in the window, once its opening has landed.</summary>
     private static void Open(MainWindow window, string folder)
     {
