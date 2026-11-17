@@ -42,7 +42,7 @@ public static class Refusals
 
     /// <summary>What the banner over a folder no longer trusted says while what the person started there runs on.</summary>
     public static string UntrustedRunsOn(IReadOnlyList<string> running) =>
-        $"This folder is no longer trusted: {Plural.Listed(running)} {(running.Count == 1 ? "runs" : "run")} on until {(running.Count == 1 ? "it ends" : "they end")} or this window closes";
+        $"This folder is no longer trusted: {Plural.Listed(running)} {Plural.Agreeing(running.Count, "runs", "run")} on until {Plural.Agreeing(running.Count, "it ends", "they end")} or this window closes";
 
     /// <summary>A project template that restores what it makes, with no option to skip that, refused in a folder not trusted.</summary>
     public static string RestoresUntrusted(string template) =>

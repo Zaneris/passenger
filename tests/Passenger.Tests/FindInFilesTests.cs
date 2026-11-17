@@ -788,8 +788,9 @@ public sealed class FindInFilesTests : IDisposable
             Assert.Equal("class Alpha\n{\n    int total;\n}\n", File.ReadAllText(Path.Combine(folder, "Alpha.cs")));
 
             Task<string> replacing = new Passenger.App.Mcp.PassengerTools(window).ReplaceInFiles("count", "sum", wholeWords: true);
-            Exception refused = Assert.ThrowsAny<Exception>(() => Ui.Await(replacing, "replace_in_files' answer"));
-            Assert.Contains("profile.txt (outside the folder, where a link in it leads)", refused.Message, StringComparison.Ordinal);
+            string answer = Ui.Await(replacing, "replace_in_files' answer");
+            Assert.True(answer.Contains("not replaced: ", StringComparison.Ordinal) && answer.Contains("profile.txt", StringComparison.Ordinal),
+                $"replace_in_files did not say it left profile.txt, outside the folder through the link notes.txt: {answer}");
             Assert.True(File.ReadAllText(target) == kept, $"replace_in_files wrote profile.txt, outside the folder, through the link notes.txt: {File.ReadAllText(target)}");
             window.Close();
         }
