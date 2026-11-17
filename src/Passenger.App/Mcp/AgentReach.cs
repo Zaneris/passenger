@@ -16,8 +16,22 @@ namespace Passenger.App.Mcp;
 public static class AgentReach
 {
     /// <summary>Where the C# language server writes what Go to Declaration of a library's symbol opens (its metadata as code,
-    /// decompiled, or its source from its PDB or Source Link): the temporary folder it takes from Passenger's environment.</summary>
-    public static string ServerStubs => PathNames.Canonical(Path.Combine(Path.GetTempPath(), "MetadataAsSource"));
+    /// decompiled, or its source from its PDB or Source Link), in the temporary folder it takes from Passenger's environment,
+    /// made the person's own (<see cref="UserTemporary.Own"/>); null where it is not theirs (a link, another user's folder
+    /// on a shared /tmp), which no agent then reads in.</summary>
+    public static string? ServerStubs => Stubs.Value;
+
+    private static readonly Lazy<string?> Stubs = new(() =>
+    {
+        try
+        {
+            return PathNames.Canonical(UserTemporary.Own(Path.Combine(Path.GetTempPath(), "MetadataAsSource")));
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            return null;
+        }
+    });
 
     /// <summary>Whether an agent may change a file or folder (a canonical path): only the open folder's, and those of the
     /// folders its trusted solution reaches (<paramref name="reached"/>).</summary>
@@ -28,5 +42,5 @@ public static class AgentReach
     /// them made or installed to be read.</summary>
     public static bool Reads(string path, string? folder, IReadOnlyList<string> reached) => Changes(path, folder, reached) || PackageFolders.Holds(path) || MSBuildFiles.IsInstalled(path)
         || GeneratedCode.IsCopy(path) || RemoteStylesheets.IsCopy(path) || PathNames.IsUnder(path, PathNames.Canonical(LibrarySources.Folder))
-        || PathNames.IsUnder(path, ServerStubs);
+        || ServerStubs is { } stubs && PathNames.IsUnder(path, stubs);
 }

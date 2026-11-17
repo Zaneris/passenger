@@ -343,6 +343,7 @@ public sealed partial class PassengerTools
         {
             throw new ArgumentException("Give oldText, the text to replace as the file has it; to add text, give the line before it as oldText and that line with the new text after it as newText");
         }
+        Resolve(path, changes: true);
         OpenDocument document = await TextualAsync(path, cancel);
         TextSnapshot text = document.Text.Snapshot;
         string eol = document.Text.LineEnding;

@@ -39,7 +39,6 @@ public sealed class McpReachTests : McpRig
     {
         (string folder, string elsewhere, string secret) = WorkAndHome();
         await using McpClient client = await Start(["--mcp", folder], languageServer: false);
-        string refusal = Refusals.OutOfReach(secret, folder, changes: false);
         string dots = Path.Combine("..", "home", "id_stand_in");
         List<string> answered = [];
         foreach ((string tool, Dictionary<string, object?> arguments) in new (string, Dictionary<string, object?>)[]
@@ -55,6 +54,8 @@ public sealed class McpReachTests : McpRig
         })
         {
             CallToolResult refused = await Result(client, tool, arguments);
+            // edit, which changes the file, is refused as a change is.
+            string refusal = Refusals.OutOfReach(secret, folder, changes: tool == McpTools.Edit);
             if (refused.IsError != true || !Text(refused).Contains(refusal, StringComparison.Ordinal))
             {
                 answered.Add($"{tool} {JsonSerializer.Serialize(arguments)}: {Text(refused)}");
@@ -117,7 +118,6 @@ public sealed class McpReachTests : McpRig
             Assert.Skip($"A link in the folder to a file outside it takes a link this account may not make: {error.Message}");
         }
         await using McpClient client = await Start(["--mcp", folder], languageServer: false);
-        string refusal = Refusals.OutOfReach(secret, folder, changes: false);
         List<string> answered = [];
         foreach (string link in new[] { "key.txt", Path.Combine("keys", "id_stand_in"), Path.Combine(folder, "key.txt") })
         {
@@ -129,6 +129,7 @@ public sealed class McpReachTests : McpRig
             })
             {
                 CallToolResult refused = await Result(client, tool, arguments);
+                string refusal = Refusals.OutOfReach(secret, folder, changes: tool == McpTools.Edit);
                 if (refused.IsError != true || !Text(refused).Contains(refusal, StringComparison.Ordinal))
                 {
                     answered.Add($"{tool} {link}: {Text(refused)}");
@@ -202,7 +203,8 @@ public sealed class McpReachTests : McpRig
             Task<CallToolResult> editing = Waiting.Apart(() => Result(client, McpTools.Edit, new() { ["path"] = library, ["oldText"] = "\"Hello\"", ["newText"] = "\"written\"" }));
             Press(Question(window, "the question for the agent's edit"), "Allow");
             CallToolResult edited = Await(editing, "the edit beside");
-            Assert.True(edited.IsError == true && Text(edited).Contains(refusal, StringComparison.Ordinal), $"edit beside an untrusted folder answered: {Text(edited)}");
+            Assert.True(edited.IsError == true && Text(edited).Contains(Refusals.OutOfReach(library, folder, changes: true), StringComparison.Ordinal),
+                $"edit beside an untrusted folder answered: {Text(edited)}");
             Assert.Equal(written, File.ReadAllText(library));
         }
         finally
@@ -254,6 +256,45 @@ public sealed class McpReachTests : McpRig
             Assert.True(edited.IsError == true && Text(edited).Contains("is read-only, so nothing changed", StringComparison.Ordinal), $"edit of {file} answered: {Text(edited)}");
             Assert.Equal(before, File.ReadAllText(file));
         }
+    }
+
+    /// <summary>The C# language server's folder of library code in the temporary folder is an agent's to read where it is the
+    /// person's own, edit refusing a file there as read-only by where it lies; where a link stands in its place (as another
+    /// user of a shared /tmp may leave one) leading to a folder of the person's, nothing through it is read or changed.</summary>
+    [Fact]
+    public async Task An_agent_reads_the_language_servers_library_code_only_where_its_folder_is_the_persons_own()
+    {
+        (string folder, string elsewhere, string secret) = WorkAndHome();
+        string root = Path.GetDirectoryName(folder)!;
+        string own = Directory.CreateDirectory(Path.Combine(root, "own-temporary", "MetadataAsSource", "Library")).FullName;
+        string stub = TestFolders.Write(own, "Greeter.cs", "namespace Library;\n\npublic class Greeter\n{\n}\n");
+        await using (McpClient client = await Start(["--mcp", folder], environment: Temporary(Path.Combine(root, "own-temporary")), languageServer: false))
+        {
+            Assert.Contains("public class Greeter", (await Call(client, McpTools.EditorText, new() { ["path"] = stub })).GetString()!, StringComparison.Ordinal);
+            CallToolResult edited = await Result(client, McpTools.Edit, new() { ["path"] = stub, ["oldText"] = "Greeter", ["newText"] = "Written" });
+            Assert.True(edited.IsError == true && Text(edited).Contains("is read-only, so nothing changed", StringComparison.Ordinal), $"edit of the server's library code answered: {Text(edited)}");
+        }
+        if (OperatingSystem.IsWindows())
+        {
+            // The temporary folder is under the person's profile, which no other user writes.
+            return;
+        }
+        string linked = Directory.CreateDirectory(Path.Combine(root, "shared-temporary")).FullName;
+        Directory.CreateSymbolicLink(Path.Combine(linked, "MetadataAsSource"), elsewhere);
+        await using (McpClient client = await Start(["--mcp", folder], environment: Temporary(linked), languageServer: false))
+        {
+            string through = Path.Combine(linked, "MetadataAsSource", "id_stand_in");
+            CallToolResult read = await Result(client, McpTools.EditorText, new() { ["path"] = through });
+            Assert.True(read.IsError == true && Text(read).Contains(Refusals.OutOfReach(secret, folder, changes: false), StringComparison.Ordinal),
+                $"editor_text through a link in the server's place answered: {Text(read)}");
+            CallToolResult edited = await Result(client, McpTools.Edit, new() { ["path"] = through, ["oldText"] = "not a key", ["newText"] = "written" });
+            Assert.True(edited.IsError == true && Text(edited).Contains(Refusals.OutOfReach(secret, folder, changes: true), StringComparison.Ordinal),
+                $"edit through a link in the server's place answered: {Text(edited)}");
+        }
+        Assert.Equal(Key, File.ReadAllText(secret));
+
+        // Windows takes its temporary folder from TMP and TEMP, every other system from TMPDIR.
+        static Dictionary<string, string?> Temporary(string folder) => new() { ["TMPDIR"] = folder, ["TMP"] = folder, ["TEMP"] = folder };
     }
 
     /// <summary>settings_set refuses an agent each setting naming a program Passenger runs or code it loads, saying the

@@ -1198,6 +1198,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         "language by the project's Prettier where it formats it, else the language server. MSBuild files have none.")]
     public Task<string> Format(string path, CancellationToken cancel = default) => OnUi(cancel, async () =>
     {
+        Resolve(path, changes: true);
         OpenDocument document;
         LspDocument? lsp = null;
         if (Passenger.App.Xaml.XamlService.IsXaml(Resolve(path)) || Godot.GodotScriptTypes.IsScript(Resolve(path)) || Bdd.FeatureChecks.IsFeature(Resolve(path)))
@@ -4078,11 +4079,14 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
 
     /// <summary>A path an agent gave (<see cref="Named"/>), refused in the one sentence where the agent may not read it, or
     /// with <paramref name="changes"/> change it (<see cref="AgentReach"/>): every path a tool takes but those
-    /// <see cref="Named"/> lists.</summary>
+    /// <see cref="Named"/> lists. One it reads but never changes is read-only by where it lies (a package's, the SDK's, a
+    /// copy made to be read), whatever its path says.</summary>
     private string Resolve(string path, bool changes = false)
     {
         string full = Named(path);
-        return Reaches(full, changes) ? full : throw new InvalidOperationException(Refusals.OutOfReach(full, Session.Folder, changes));
+        return Reaches(full, changes) ? full
+            : throw new InvalidOperationException(changes && Reaches(full, changes: false) ? $"{Refusals.ReadOnly(Relative(full))}, so nothing changed"
+                : Refusals.OutOfReach(full, Session.Folder, changes));
     }
 
     /// <summary>Whether the agent may read a file or folder (a canonical path), or with <paramref name="changes"/> change it,
