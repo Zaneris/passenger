@@ -112,15 +112,22 @@ internal sealed unsafe partial class UiaTextWindow
             parent = holder == 0 ? Aside() : holder;
             SetParent(Handle, parent);
         }
-        if (top is null || parent == aside || !owner.IsEffectivelyVisible || owner.TranslatePoint(default, top) is not { } origin)
+        Place(top is null || parent == aside || !owner.IsEffectivelyVisible ? null : Over(owner, top));
+    }
+
+    /// <summary>Where a control stands in its top level, in the top level's pixels: its bounds through every transform
+    /// between them (the interface's scale among them), at least a pixel each way; null where it stands in another.</summary>
+    internal static PixelRect? Over(Control owner, TopLevel top)
+    {
+        if (owner.TransformToVisual(top) is not { } toTop)
         {
-            Place(null);
-            return;
+            return null;
         }
+        Rect over = new Rect(owner.Bounds.Size).TransformToAABB(toTop);
         double scale = top.RenderScaling;
-        Size size = owner.Bounds.Size;
-        Place(new PixelRect((int)Math.Round(origin.X * scale), (int)Math.Round(origin.Y * scale),
-            Math.Max(1, (int)Math.Round(size.Width * scale)), Math.Max(1, (int)Math.Round(size.Height * scale))));
+        int left = (int)Math.Round(over.Left * scale);
+        int upper = (int)Math.Round(over.Top * scale);
+        return new PixelRect(left, upper, Math.Max(1, (int)Math.Round(over.Right * scale) - left), Math.Max(1, (int)Math.Round(over.Bottom * scale) - upper));
     }
 
     /// <summary>Gives the keys UI Automation gave this window (focusing its element) to the window beneath, and so to the

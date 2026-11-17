@@ -7,7 +7,10 @@ using Avalonia.Automation;
 using Avalonia.Automation.Peers;
 using Avalonia.Controls;
 using Avalonia.Headless.XUnit;
+using Avalonia.Input;
 using Avalonia.Platform;
+using Avalonia.VisualTree;
+using Passenger.App;
 using Passenger.Editor;
 using Passenger.Editor.UiAutomation;
 using Passenger.Terminal;
@@ -213,6 +216,50 @@ public sealed partial class UiaTextTests
             DestroyWindow(handle);
         }
         Assert.True(window.Handle == 0 && window.Provider == 0, "A window taken down still holds the element for UI Automation");
+    }
+
+    /// <summary>The window UI Automation finds the editor's element by covers the editor whatever the interface's scale: at
+    /// 1.5 and at 0.8 its place in the window holding it reaches every corner of the editor and nothing beside it, as the
+    /// window's hit testing finds them.</summary>
+    [AvaloniaFact]
+    public void On_Windows_the_elements_window_covers_its_editor_at_every_interface_scale()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Assert.Skip("Only Windows has UI Automation's windows to lay over a control");
+            return;
+        }
+        string folder = TestFolders.Create("uia-scale-");
+        string notes = Path.Combine(folder, "notes.txt");
+        File.WriteAllText(notes, Notes);
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        try
+        {
+            window.OpenFile(notes);
+            Ui.Settle();
+            CodeEditor editor = window.EditorArea.CodeEditor;
+            foreach (double scale in new[] { 1.5, 0.8 })
+            {
+                window.ApplySettings(window.Settings with { DisplayScale = scale });
+                Ui.Settle();
+                PixelRect over = UiaTextWindow.Over(editor, window) ?? throw new Xunit.Sdk.XunitException($"At {scale} the editor stands nowhere in its window");
+                double pixels = window.RenderScaling;
+                Rect placed = new(over.X / pixels, over.Y / pixels, over.Width / pixels, over.Height / pixels);
+                // Only the editor's own visuals and those holding it are hit, so a bar laid over it is passed by.
+                bool OnEditor(Point point) => window.InputHitTest(point, v => v == editor || editor.IsVisualAncestorOf(v) || v.IsVisualAncestorOf(editor)) is Visual hit
+                    && (hit == editor || editor.IsVisualAncestorOf(hit));
+                Point[] inside = [placed.TopLeft + new Point(2, 2), placed.TopRight + new Point(-2, 2), placed.BottomLeft + new Point(2, -2), placed.BottomRight + new Point(-2, -2)];
+                Point[] outside = [placed.TopLeft + new Point(-2, -2), placed.BottomRight + new Point(2, 2)];
+                Assert.True(inside.All(OnEditor) && !outside.Any(OnEditor),
+                    $"At {scale} the element's window stands at {placed} over an editor of {editor.Bounds.Size}: a reader's window covers {string.Join(", ", inside.Select(p => OnEditor(p) ? "the editor" : $"not the editor at {p}"))} and {string.Join(", ", outside.Select(p => OnEditor(p) ? $"the editor at {p}" : "not the editor"))} beside it");
+            }
+        }
+        finally
+        {
+            window.ApplySettings(window.Settings with { DisplayScale = 1 });
+            window.Close();
+            TestFolders.Delete(folder);
+        }
     }
 
     /// <summary>Editors and a terminal a reader touched (asked their window for the element, kept a range of the text) are let
