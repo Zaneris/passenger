@@ -435,7 +435,7 @@
 
 
     <!-- An outcome filter on the Unit Tests window's toolbar: the outcome's mark and how many tests have it, the ones
-         chosen on a raised band. -->
+         chosen on a raised band with the chosen mark under it. -->
     <Style Selector="ToggleButton.outcome">
         <Setter Property="Height" Value="24" />
         <Setter Property="MinWidth" Value="0" />
@@ -634,7 +634,7 @@
             </FocusAdornerTemplate>
         </Setter>
     </Style>
-    <!-- A toolbar toggle (Mute Breakpoints): a tool button that stays pressed while it is on. -->
+    <!-- A toolbar toggle (Mute Breakpoints): a tool button that stays pressed while it is on, the chosen mark under it. -->
     <Style Selector="ToggleButton.tool">
         <Setter Property="Width" Value="30" />
         <Setter Property="Height" Value="{DynamicResource Passenger.ControlHeight}" />
@@ -736,12 +736,13 @@
 
     <!-- What is chosen, the one way in every list, tree, drop-down, tab strip and stripe: its ground, and beside it the
          chosen mark (ChosenMark), a bar along its start or under a tab that reads at 3:1 on the page and the ground alike.
-         Each row, choice and tab is the theme's template with the mark beside its presenter; a Border laid out by hand
-         holds one through ChosenMark.Hold, an open tab's or a chosen row's (its chosen class) shown as a template's is. -->
+         Each row, choice, tab and toolbar toggle is the theme's template with the mark beside its presenter; a Border laid
+         out by hand holds one through ChosenMark.Hold, an open tab's or a chosen row's (its chosen class) shown as a
+         template's is. -->
     <Style Selector="ListBoxItem">
         <Setter Property="Template" Value="{x:Static app:ChosenMark.Rows}" />
     </Style>
-    <Style Selector="ComboBoxItem, ToggleButton.stripe, ToggleButton.panelTab, ToggleButton.segment">
+    <Style Selector="ComboBoxItem, ToggleButton.stripe, ToggleButton.panelTab, ToggleButton.segment, ToggleButton.tool, ToggleButton.outcome">
         <Setter Property="Template" Value="{x:Static app:ChosenMark.Choices}" />
     </Style>
     <Style Selector="app|ChosenMark">
@@ -751,7 +752,7 @@
     <Style Selector=":is(ListBoxItem):selected /template/ app|ChosenMark, ToggleButton:checked /template/ app|ChosenMark, Border.tab.active > Panel > app|ChosenMark, Border.chosen > Panel > app|ChosenMark">
         <Setter Property="IsVisible" Value="True" />
     </Style>
-    <Style Selector="ToggleButton.panelTab /template/ app|ChosenMark, ToggleButton.segment /template/ app|ChosenMark, Border.tab > Panel > app|ChosenMark">
+    <Style Selector="ToggleButton.panelTab /template/ app|ChosenMark, ToggleButton.segment /template/ app|ChosenMark, ToggleButton.tool /template/ app|ChosenMark, ToggleButton.outcome /template/ app|ChosenMark, Border.tab > Panel > app|ChosenMark">
         <Setter Property="Side" Value="Bottom" />
     </Style>
     <!-- Tabs down a side, as a list's rows. -->

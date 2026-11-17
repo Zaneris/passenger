@@ -9,12 +9,12 @@ using Avalonia.Media;
 
 namespace Passenger.App;
 
-/// <summary>The mark beside what is chosen, the one way every list, tree, drop-down, tab strip and stripe shows its choice:
-/// a bar in the chosen mark's colour (Passenger.ChosenMark) along its host's start, or under it in a strip of tabs, on the
-/// host's straight edge clear of its rounded corners, so the choice reads at 3:1 on the page and on its ground whatever
-/// that ground does. It spans its host whole; Shell.axaml shows it while the host is chosen and says which side it takes.
-/// A row or tab is given it by its template (<see cref="Rows"/>, <see cref="Choices"/>, <see cref="Template"/>) or, laid
-/// out by hand as a Border, by <see cref="Hold"/>.</summary>
+/// <summary>The mark beside what is chosen, the one way every list, tree, drop-down, tab strip, stripe and toolbar toggle
+/// shows its choice: a bar in the chosen mark's colour (Passenger.ChosenMark) along its host's start, or under it in a strip
+/// of tabs or on a toolbar, on the host's straight edge clear of its rounded corners, so the choice reads at 3:1 on the page
+/// and on its ground whatever that ground does. It spans its host whole; Shell.axaml shows it while the host is chosen and
+/// says which side it takes. A row, tab or toggle is given it by its template (<see cref="Rows"/>, <see cref="Choices"/>,
+/// <see cref="Template"/>) or, laid out by hand as a Border, by <see cref="Hold"/>.</summary>
 public sealed class ChosenMark : Control
 {
     /// <summary>How broad the bar is.</summary>
@@ -39,8 +39,8 @@ public sealed class ChosenMark : Control
     /// restyles) beside the mark.</summary>
     public static IControlTemplate Rows { get; } = Template(null, foreground: false);
 
-    /// <summary>A drop-down's choice, a stripe's button or a strip's tab: as <see cref="Rows"/>, the presenter taking its
-    /// host's foreground as the theme's does.</summary>
+    /// <summary>A drop-down's choice, a stripe's button, a strip's tab or a toolbar's toggle: as <see cref="Rows"/>, the
+    /// presenter taking its host's foreground as the theme's does.</summary>
     public static IControlTemplate Choices { get; } = Template(null, foreground: true);
 
     public IBrush? Fill

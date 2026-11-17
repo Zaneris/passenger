@@ -1,4 +1,5 @@
 using Avalonia;
+using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Controls.Presenters;
 using Avalonia.Controls.Primitives;
@@ -170,12 +171,12 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
     }
 
     /// <summary>Every choice the window shows (a list's or a tree's chosen row, the open editor tab, a tool window's open
-    /// tab, a stripe's open window's button) is shown by the one chosen mark beside its ground, in the chosen mark's colour on
-    /// the side its kind takes, and nothing unchosen shows one, under each look dark and light; every row, tab and stripe
-    /// button holds exactly one mark, so none draws its choice another way, by a ground alone a person with low vision may
-    /// not tell from the page.</summary>
+    /// tab, a stripe's open window's button, a toolbar's toggle that is on: Problems' severities, Mute Breakpoints) is shown by
+    /// the one chosen mark beside its ground, in the chosen mark's colour on the side its kind takes, and nothing unchosen
+    /// shows one, under each look dark and light; every row, tab, stripe button and toolbar toggle holds exactly one mark, so
+    /// none draws its choice another way, by a ground alone a person with low vision may not tell from the page.</summary>
     [AvaloniaFact]
-    public void Every_chosen_row_tab_and_stripe_button_shows_the_chosen_mark_beside_its_ground_and_nothing_else_does()
+    public void Every_chosen_row_tab_stripe_button_and_toolbar_toggle_shows_the_chosen_mark_beside_its_ground_and_nothing_else_does()
     {
         MainWindow window = Open(1200, 800);
         try
@@ -184,13 +185,20 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
             window.OpenFile(project.PathOf("Notes.txt"));
             Assert.True(window.Perform(AppActions.ShowProblems), "Problems did not show");
             Ui.Settle();
+            Ui.Click(Toggle(window, "Show Warnings"));
             window.ExplorerView.Choose(window.ExplorerView.Tree.Rows.First(r => r.Name == "Notes.txt"));
             Ui.Settle();
-            foreach (ThemeVariant variant in (ThemeVariant[])[ThemeVariant.Dark, ThemeVariant.Light])
-            {
-                window.RequestedThemeVariant = variant;
-                UnderEachLook(window, () => ChoicesMarked(window, variant));
-            }
+            UnderEachVariant(window, variant => ChoicesMarked(window, variant, ["row", "stripe button", "tool window tab", "editor tab", "toolbar toggle"], ["toolbar toggle"]));
+
+            Assert.True(window.Perform(AppActions.ShowDebug), "Debug did not show");
+            Ui.Settle();
+            ToggleButton mute = Toggle(window, "Mute Breakpoints");
+            Ui.Click(mute);
+            Assert.True(mute.IsChecked == true, "Mute Breakpoints did not turn on");
+            UnderEachVariant(window, variant => ChoicesMarked(window, variant, ["toolbar toggle"], []));
+            Ui.Click(mute);
+            Assert.True(mute.IsChecked == false, "Mute Breakpoints did not turn off");
+            UnderEachVariant(window, variant => ChoicesMarked(window, variant, [], ["toolbar toggle"]));
         }
         finally
         {
@@ -199,13 +207,31 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
         }
     }
 
-    private static void ChoicesMarked(MainWindow window, ThemeVariant variant)
+    /// <summary>A toolbar's toggle shown in the window, by the name a screen reader says for it.</summary>
+    private static ToggleButton Toggle(MainWindow window, string name) =>
+        window.GetVisualDescendants().OfType<ToggleButton>().FirstOrDefault(t => t.IsEffectivelyVisible && AutomationProperties.GetName(t) == name)
+        ?? throw new Xunit.Sdk.XunitException($"No toggle named {name} shows");
+
+    /// <summary>Holds the window to a check under each look, dark and light.</summary>
+    private static void UnderEachVariant(MainWindow window, Action<ThemeVariant> check)
+    {
+        foreach (ThemeVariant variant in (ThemeVariant[])[ThemeVariant.Dark, ThemeVariant.Light])
+        {
+            window.RequestedThemeVariant = variant;
+            UnderEachLook(window, () => check(variant));
+        }
+    }
+
+    /// <summary>Holds every choice shown to the chosen mark, failing where a kind <paramref name="chosen"/> names was seen
+    /// nowhere chosen, or one <paramref name="unchosen"/> names nowhere unchosen, so it went unchecked.</summary>
+    private static void ChoicesMarked(MainWindow window, ThemeVariant variant, string[] chosen, string[] unchosen)
     {
         Color ink = Brush(window, TokenKeys.ChosenMark);
         ILookup<Control?, ChosenMark> marks = window.GetVisualDescendants().OfType<ChosenMark>()
             .ToLookup(m => m.TemplatedParent as Control ?? m.GetVisualParent()?.GetVisualParent() as Control);
         List<string> wrong = [];
         HashSet<string> seen = [];
+        HashSet<string> passed = [];
         foreach (Control host in window.GetVisualDescendants().OfType<Control>().Where(c => c.IsEffectivelyVisible && c.Bounds.Width > 0))
         {
             (string What, bool Chosen, Dock Side)? kind = host switch
@@ -213,6 +239,7 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
                 ListBoxItem row => ("row", row.IsSelected, Dock.Left),
                 ToggleButton stripe when stripe.Classes.Contains(StyleClasses.Stripe) => ("stripe button", stripe.IsChecked == true, Dock.Left),
                 ToggleButton tab when tab.Classes.Contains(StyleClasses.PanelTab) || tab.Classes.Contains(StyleClasses.Segment) => ("tool window tab", tab.IsChecked == true, Dock.Bottom),
+                ToggleButton toggle when toggle.Classes.Contains(StyleClasses.Tool) || toggle.Classes.Contains(StyleClasses.Outcome) => ("toolbar toggle", toggle.IsChecked == true, Dock.Bottom),
                 Border tab when tab.Classes.Contains(StyleClasses.Tab) => ("editor tab", tab.Classes.Contains(StyleClasses.Active), Dock.Bottom),
                 Border row when row.Classes.Contains(StyleClasses.Chosen) => ("row laid out by hand", true, Dock.Left),
                 _ => null,
@@ -229,6 +256,10 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
                 continue;
             }
             ChosenMark mark = own[0];
+            if (!k.Chosen)
+            {
+                passed.Add(k.What);
+            }
             if (mark.IsEffectivelyVisible != k.Chosen)
             {
                 wrong.Add($"{where} is {(k.Chosen ? "chosen and shows no" : "not chosen and shows its")} chosen mark");
@@ -247,12 +278,12 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
         }
         foreach (ChosenMark stray in marks.Where(g => g.Key is null).SelectMany(g => g).Where(m => m.IsEffectivelyVisible))
         {
-            wrong.Add($"{variant}: a chosen mark shows in {stray.GetVisualParent()?.GetType().Name} with no row, tab or stripe button it marks");
+            wrong.Add($"{variant}: a chosen mark shows in {stray.GetVisualParent()?.GetType().Name} with no row, tab, stripe button or toggle it marks");
         }
         Assert.True(wrong.Count == 0, $"{wrong.Count} choices are drawn otherwise than by the chosen mark beside their ground, so a person may not tell what is chosen:\n"
             + string.Join("\n", wrong));
-        string[] kinds = ["row", "stripe button", "tool window tab", "editor tab"];
-        Assert.True(kinds.All(seen.Contains), $"{variant}: only {string.Join(", ", seen)} were seen chosen of {string.Join(", ", kinds)}, so the rest went unchecked");
+        Assert.True(chosen.All(seen.Contains), $"{variant}: only {string.Join(", ", seen)} were seen chosen of {string.Join(", ", chosen)}, so the rest went unchecked");
+        Assert.True(unchosen.All(passed.Contains), $"{variant}: only {string.Join(", ", passed)} were seen unchosen of {string.Join(", ", unchosen)}, so the rest went unchecked");
     }
 
     /// <summary>The grounds a choice stands on (a chosen row's, the open tab's and the open window's stripe button's) are named
