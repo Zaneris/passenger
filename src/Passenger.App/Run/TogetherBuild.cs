@@ -22,7 +22,7 @@ public sealed record TogetherBuild(string Project, IReadOnlyList<string> Project
     {
         foreach (string project in projects)
         {
-            for (string? at = Path.GetDirectoryName(project); at is not null; at = Path.GetDirectoryName(at))
+            foreach (string at in Path.GetDirectoryName(project) is { } start ? FoldersUp.From(start) : [])
             {
                 if (File.Exists(Path.Combine(at, "Directory.Build.rsp")))
                 {

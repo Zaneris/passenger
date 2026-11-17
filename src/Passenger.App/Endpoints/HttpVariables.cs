@@ -35,11 +35,11 @@ public static partial class HttpVariables
         return names;
     }
 
-    /// <summary>The env files that hold for an .http file: the nearest folder's from it up to the root that has any,
-    /// the public first and the private over it.</summary>
+    /// <summary>The env files that hold for an .http file: the nearest folder's from it up to the root that has any, in the
+    /// person's folders (<see cref="FoldersUp"/>), the public first and the private over it.</summary>
     public static IReadOnlyList<string> FilesFor(string httpFile, string? root)
     {
-        for (string? folder = Path.GetDirectoryName(httpFile); folder is not null; folder = Path.GetDirectoryName(folder))
+        foreach (string folder in Path.GetDirectoryName(httpFile) is { } start ? FoldersUp.From(start) : [])
         {
             string[] found = [.. new[] { PublicFile, PrivateFile }.Select(n => Path.Combine(folder, n)).Where(File.Exists)];
             if (found.Length > 0)

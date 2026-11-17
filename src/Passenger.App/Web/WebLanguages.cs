@@ -45,8 +45,8 @@ public sealed record WebServerLost(string Said, Action? StartAgain);
 /// Without a Node.js to run them (none found, or one too old), each file says why in its banner and the status bar, keeping
 /// its colours. A server that ends (as it starts too) or stops answering is started again with its files, a few times at
 /// most, then left stopped until a person starts it again. The project's own <c>node_modules/typescript</c> is the
-/// TypeScript server's where it has one and the folder is trusted (<see cref="WorkspaceTrust"/>), else the carried one.
-/// A UI-thread object: what a server says from its threads crosses through <see cref="UiThread"/>.</summary>
+/// TypeScript server's where it has one in the person's folders and the folder is trusted (<see cref="WorkspaceTrust"/>),
+/// else the carried one. A UI-thread object: what a server says from its threads crosses through <see cref="UiThread"/>.</summary>
 public sealed class WebLanguages : IAsyncDisposable
 {
     private readonly string folder;
@@ -78,6 +78,9 @@ public sealed class WebLanguages : IAsyncDisposable
 
     /// <summary>Whether the folder is trusted as the servers know it, which its trust given or taken back later starts TypeScript's again for.</summary>
     private bool trusted;
+
+    /// <summary>Whether TypeScript's server last started on the project's own TypeScript (<see cref="OwnTsserver"/>).</summary>
+    private bool ownTypeScript;
 
     /// <summary>The variable that shortens how long GDScript's server waits, no GDScript open, before it is let go.</summary>
     [IdentifierHome]
@@ -165,6 +168,31 @@ public sealed class WebLanguages : IAsyncDisposable
 
     /// <summary>The carried TypeScript's server, which a folder not trusted is served by.</summary>
     public static string CarriedTsserver => Path.Combine(Modules, "typescript", "lib", "tsserver.js");
+
+    /// <summary>The folders under a folder a project's own TypeScript is looked for in, in the order its server looks.</summary>
+    private static readonly string[] TypeScriptFolders =
+    [
+        Path.Combine("node_modules", "typescript", "lib"),
+        Path.Combine(".vscode", "pnpify", "typescript", "lib"),
+        Path.Combine(".yarn", "sdks", "typescript", "lib"),
+        Path.Combine(".pnpm", "sdks", "typescript", "lib"),
+    ];
+
+    /// <summary>The project's own tsserver.js, looked for from the folder up as TypeScript's server would, but in the person's
+    /// folders alone (<see cref="FoldersUp"/>), and named to it so it looks no further: the nearest folder's TypeScript, where
+    /// it has a tsserver.js and says its version; null where it has none or there is none, which the carried one serves.</summary>
+    internal static string? OwnTsserver(string folder)
+    {
+        foreach (string at in FoldersUp.From(folder))
+        {
+            if (TypeScriptFolders.Select(f => Path.Combine(at, f)).FirstOrDefault(Directory.Exists) is { } lib)
+            {
+                string server = Path.Combine(lib, "tsserver.js");
+                return File.Exists(server) && ProjectPackages.Version(Path.GetDirectoryName(lib)!) is not null ? server : null;
+            }
+        }
+        return null;
+    }
 
     /// <summary>Where the servers, their schemas and Passenger's scripts for them are carried: beside the app, or in a
     /// macOS bundle its Resources, since codesign takes a folder under Contents/MacOS named with a dot (a package's
@@ -505,7 +533,7 @@ public sealed class WebLanguages : IAsyncDisposable
     /// the project's own or, marked so, the one Passenger carries; null otherwise.</summary>
     public string? DetailOf(OpenDocument document) =>
         LanguageOf(document.Path) is { Kind: WebServerKind.TypeScript } && ServerOf(document)?.Session?.Server.TypeScript is { } typescript
-            ? $"TypeScript {typescript.Version}{(typescript.Source == "bundled" || !trusted ? " (Passenger's)" : string.Empty)}"
+            ? $"TypeScript {typescript.Version}{(typescript.Source == "bundled" || !trusted || !ownTypeScript ? " (Passenger's)" : string.Empty)}"
             : null;
 
     /// <summary>Whether a file's server cannot start (no Node.js, one too old, a server missing), so none will answer for it.</summary>
@@ -779,6 +807,11 @@ public sealed class WebLanguages : IAsyncDisposable
         {
             process.Environment[DockerHubTags.Variable] = told;
         }
+        string? own = kind == WebServerKind.TypeScript && trusted ? OwnTsserver(folder) : null;
+        if (kind == WebServerKind.TypeScript)
+        {
+            ownTypeScript = own is not null;
+        }
         object? options = kind switch
         {
             WebServerKind.TypeScript => new
@@ -786,8 +819,7 @@ public sealed class WebLanguages : IAsyncDisposable
                 hostInfo = "Passenger",
                 disableAutomaticTypingAcquisition = true,
                 // One tsserver (a second would answer from the open files alone), the project's own only in a folder trusted.
-                tsserver = trusted ? (object)new { logVerbosity = "off", useSyntaxServer = "never" }
-                    : new { logVerbosity = "off", useSyntaxServer = "never", path = CarriedTsserver },
+                tsserver = new { logVerbosity = "off", useSyntaxServer = "never", path = own ?? CarriedTsserver },
                 preferences = new { includeCompletionsForModuleExports = true, includeCompletionsForImportStatements = true, providePrefixAndSuffixTextForRename = false },
             },
             WebServerKind.Html => new { provideFormatter = true, embeddedLanguages = new { css = true, javascript = true } },

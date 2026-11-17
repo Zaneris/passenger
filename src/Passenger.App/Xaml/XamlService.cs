@@ -789,14 +789,15 @@ public sealed class XamlService : IDisposable
         }
     }
 
-    /// <summary>A file's project: the nearest folder at or above it with a C# project file.</summary>
+    /// <summary>A file's project: the nearest folder at or above it with a C# project file, in the person's folders
+    /// (<see cref="FoldersUp"/>).</summary>
     private static string? ProjectFile(string path)
     {
-        for (DirectoryInfo? at = new FileInfo(path).Directory; at is not null; at = at.Parent)
+        foreach (string at in Path.GetDirectoryName(Path.GetFullPath(path)) is { } start ? FoldersUp.From(start) : [])
         {
             try
             {
-                string? found = at.EnumerateFiles("*.csproj").Select(f => f.FullName).Order(StringComparer.Ordinal).FirstOrDefault();
+                string? found = Directory.EnumerateFiles(at, "*.csproj").Order(StringComparer.Ordinal).FirstOrDefault();
                 if (found is not null)
                 {
                     return found;

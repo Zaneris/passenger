@@ -76,10 +76,11 @@ public sealed class PrettierService : IAsyncDisposable
     /// <summary>Whether a save formats the file with Prettier first ("Run on save").</summary>
     public bool OnSave(string path) => settings().PrettierOnSave && Covers(path) && PackageFor(path) is not null;
 
-    /// <summary>The nearest .prettierignore from the file's folder up, for when Settings names none.</summary>
+    /// <summary>The nearest .prettierignore from the file's folder up, in the person's folders (<see cref="FoldersUp"/>),
+    /// for when Settings names none.</summary>
     public static string? IgnoreFile(string path)
     {
-        for (string? at = Path.GetDirectoryName(path); at is not null; at = Path.GetDirectoryName(at))
+        foreach (string at in Path.GetDirectoryName(path) is { } start ? FoldersUp.From(start) : [])
         {
             string ignore = Path.Combine(at, ".prettierignore");
             if (File.Exists(ignore))

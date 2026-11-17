@@ -403,10 +403,10 @@ internal sealed partial class WebAssist(AssistContext context, PopupPlacement po
     internal static bool IsPackageJson(OpenDocument document) => Path.GetFileName(document.Path).Equals("package.json", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>The installed package's package.json, found as Node.js resolves a package: node_modules beside the
-    /// package.json, then in each folder above it.</summary>
+    /// package.json, then in each folder above it of the person's (<see cref="Passenger.Core.FoldersUp"/>).</summary>
     private static string? Installed(string packageJson, string name)
     {
-        for (string? folder = Path.GetDirectoryName(packageJson); folder is not null; folder = Path.GetDirectoryName(folder))
+        foreach (string folder in Path.GetDirectoryName(packageJson) is { } start ? Passenger.Core.FoldersUp.From(start) : [])
         {
             // A name rooted on a share or a device (as package.json's text may write one) is no package of these folders'.
             string candidate = Path.Combine(folder, "node_modules", name, "package.json");

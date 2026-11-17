@@ -70,17 +70,17 @@ public sealed record ProjectInputs(
     /// (<c>Microsoft.NETCore.App</c>, <c>Microsoft.WindowsDesktop.App.WPF</c>).</summary>
     public IReadOnlyList<string> FrameworkReferences { get; init; } = [];
 
-    /// <summary>A property as the project sets it: its own file's, else the nearest Directory.Build.props' above it; null
-    /// when neither sets it plainly (without other properties in it).</summary>
+    /// <summary>A property as the project sets it: its own file's, else the nearest Directory.Build.props' above it in the
+    /// person's folders (<see cref="FoldersUp"/>); null when neither sets it plainly (without other properties in it).</summary>
     public string? PropertyValue(string name)
     {
         if (Property(Load(ProjectPath), name) is { } own)
         {
             return own;
         }
-        for (DirectoryInfo? at = new(Folder); at is not null; at = at.Parent)
+        foreach (string at in FoldersUp.From(Folder))
         {
-            string props = Path.Combine(at.FullName, "Directory.Build.props");
+            string props = Path.Combine(at, "Directory.Build.props");
             if (File.Exists(props))
             {
                 return Property(Load(props), name);
@@ -269,8 +269,8 @@ public sealed record ProjectInputs(
     private static string? Property(XDocument? project, string name) =>
         Elements(project, name).Select(e => e.Value.Trim()).LastOrDefault(v => v.Length > 0 && !v.Contains("$(", StringComparison.Ordinal));
 
-    /// <summary>The project's <c>project.assets.json</c>: in its <c>obj/</c>, or under an artifacts folder above it
-    /// (<c>UseArtifactsOutput</c>'s <c>artifacts/obj/&lt;project&gt;/</c>).</summary>
+    /// <summary>The project's <c>project.assets.json</c>: in its <c>obj/</c>, or under an artifacts folder above it in the
+    /// person's folders (<c>UseArtifactsOutput</c>'s <c>artifacts/obj/&lt;project&gt;/</c>, <see cref="FoldersUp"/>).</summary>
     public static string? FindAssets(string projectPath)
     {
         string folder = Path.GetDirectoryName(projectPath)!;
@@ -280,9 +280,9 @@ public sealed record ProjectInputs(
             return own;
         }
         string name = Path.GetFileNameWithoutExtension(projectPath);
-        for (DirectoryInfo? at = new(folder); at is not null; at = at.Parent)
+        foreach (string at in FoldersUp.From(folder))
         {
-            string artifacts = Path.Combine(at.FullName, "artifacts", "obj", name, "project.assets.json");
+            string artifacts = Path.Combine(at, "artifacts", "obj", name, "project.assets.json");
             if (File.Exists(artifacts))
             {
                 return artifacts;

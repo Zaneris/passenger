@@ -7,9 +7,10 @@ using Passenger.Core;
 namespace Passenger.Text;
 
 /// <summary>What the .editorconfig files over a file say of it (editorconfig.org): each from the file's folder up to the
-/// first marked <c>root = true</c>, the farthest read first, so the nearest file's sections, and a file's later ones, win
-/// where they match the file; <c>unset</c> takes a property back. Read afresh each time, so a change on disk is seen. A
-/// section whose glob cannot be used (<see cref="Refused"/>) matches no file, the log naming it once.</summary>
+/// first marked <c>root = true</c>, in the person's folders (<see cref="FoldersUp"/>), the farthest read first, so the
+/// nearest file's sections, and a file's later ones, win where they match the file; <c>unset</c> takes a property back.
+/// Read afresh each time, so a change on disk is seen. A section whose glob cannot be used (<see cref="Refused"/>) matches
+/// no file, the log naming it once.</summary>
 public sealed class EditorConfig
 {
     public const string FileName = ".editorconfig";
@@ -34,7 +35,7 @@ public sealed class EditorConfig
     public static EditorConfig For(string path)
     {
         List<(string Folder, ConfigFile Config)> chain = [];
-        for (string? folder = Path.GetDirectoryName(path); folder is not null; folder = Path.GetDirectoryName(folder))
+        foreach (string folder in Path.GetDirectoryName(path) is { } start ? FoldersUp.From(start) : [])
         {
             if (Read(Path.Combine(folder, FileName)) is { } config)
             {

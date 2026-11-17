@@ -318,7 +318,7 @@ public static class NodeProjects
     private static (NodeManager Manager, string Source, string? SaidAt) ManagerFor(string top, string folder, Dictionary<string, NodeManifest> read,
         Dictionary<string, (NodeManager, string)?> saidIn)
     {
-        foreach (string at in FoldersUp(top, folder))
+        foreach (string at in ManagerFolders(top, folder))
         {
             if (!saidIn.TryGetValue(at, out (NodeManager, string)? said))
             {
@@ -334,14 +334,9 @@ public static class NodeProjects
     }
 
     /// <summary>A package's folder and those above it a package manager looks in for its settings: within the folder open,
-    /// and above it only while a folder holds a package.json.</summary>
-    private static IEnumerable<string> FoldersUp(string top, string folder)
-    {
-        for (string? at = folder; at is not null && (PathNames.Within(at, top) || File.Exists(Path.Combine(at, ManifestName))); at = Path.GetDirectoryName(at))
-        {
-            yield return at;
-        }
-    }
+    /// and above it only while a folder holds a package.json, each one of the person's (<see cref="FoldersUp"/>).</summary>
+    private static IEnumerable<string> ManagerFolders(string top, string folder) =>
+        FoldersUp.From(folder).TakeWhile(at => PathNames.Within(at, top) || File.Exists(Path.Combine(at, ManifestName)));
 
     /// <summary>Whether the manager of the package in <paramref name="folder"/> runs its scripts' hooks with them
     /// (<see cref="RunsHooks"/>): its version from the <c>packageManager</c> field or lockfile in the folder that named it,
@@ -362,13 +357,13 @@ public static class NodeProjects
         bool? setting = null;
         if (manager == NodeManager.Pnpm)
         {
-            string? workspace = FoldersUp(top, folder).Select(at => Path.Combine(at, PnpmWorkspaceName)).FirstOrDefault(File.Exists);
+            string? workspace = ManagerFolders(top, folder).Select(at => Path.Combine(at, PnpmWorkspaceName)).FirstOrDefault(File.Exists);
             setting = workspace is not null && ReadFile(workspace) is { } yaml ? YamlSwitch(yaml, "enablePrePostScripts", "enable-pre-post-scripts") : null;
         }
         if (setting is null && (manager == NodeManager.Npm || version is not >= 11))
         {
             string key = manager == NodeManager.Npm ? "ignore-scripts" : "enable-pre-post-scripts";
-            setting = FoldersUp(top, folder).Select(at => ReadFile(Path.Combine(at, NpmrcName)) is { } npmrc ? NpmrcSwitch(npmrc, key) : null)
+            setting = ManagerFolders(top, folder).Select(at => ReadFile(Path.Combine(at, NpmrcName)) is { } npmrc ? NpmrcSwitch(npmrc, key) : null)
                 .FirstOrDefault(set => set is not null);
             setting = manager == NodeManager.Npm ? !setting : setting;
         }

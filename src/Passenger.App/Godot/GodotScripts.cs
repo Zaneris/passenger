@@ -32,10 +32,11 @@ public static class GodotScripts
     /// person's editor (<see cref="GodotIdeLink"/>).</summary>
     public static bool Headless(int port) => HeadlessPorts.ContainsKey(port);
 
-    /// <summary>The Godot project a file is in: the nearest folder above it holding a project.godot; null for none.</summary>
+    /// <summary>The Godot project a file is in: the nearest folder above it holding a project.godot, in the person's folders
+    /// (<see cref="FoldersUp"/>); null for none.</summary>
     public static string? ProjectOf(string path)
     {
-        for (string? folder = Path.GetDirectoryName(path); folder is not null; folder = Path.GetDirectoryName(folder))
+        foreach (string folder in Path.GetDirectoryName(path) is { } start ? FoldersUp.From(start) : [])
         {
             if (File.Exists(Path.Combine(folder, GodotProject.FileName)))
             {

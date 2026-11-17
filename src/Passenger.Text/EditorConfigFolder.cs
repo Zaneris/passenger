@@ -3,9 +3,9 @@ using Passenger.Core;
 namespace Passenger.Text;
 
 /// <summary>What the .editorconfig files over a folder's files set, key by key: those in the folder and below it, as the
-/// caller lists them, then those above it up to the first marked <c>root = true</c> (none where the folder's own is),
-/// each read through <see cref="EditorConfig"/>, each file's keys in its own order. Which files a key is set for is its
-/// section's glob's to say (<see cref="SetKey.Concerns"/>).</summary>
+/// caller lists them, then those above it in the person's folders (<see cref="FoldersUp"/>) up to the first marked
+/// <c>root = true</c> (none where the folder's own is), each read through <see cref="EditorConfig"/>, each file's keys in
+/// its own order. Which files a key is set for is its section's glob's to say (<see cref="SetKey.Concerns"/>).</summary>
 public sealed class EditorConfigFolder
 {
     /// <summary>Nothing set: no folder, or no .editorconfig over it.</summary>
@@ -36,7 +36,7 @@ public sealed class EditorConfigFolder
                 rooted |= written.Root && PathNames.Same(Path.GetDirectoryName(file) ?? file, folder);
             }
         }
-        for (string? above = rooted ? null : Path.GetDirectoryName(folder); above is not null; above = Path.GetDirectoryName(above))
+        foreach (string above in !rooted && Path.GetDirectoryName(folder) is { } parent ? FoldersUp.From(parent) : [])
         {
             string file = Path.Join(above, EditorConfig.FileName);
             if (EditorConfig.WrittenIn(file) is { } written)

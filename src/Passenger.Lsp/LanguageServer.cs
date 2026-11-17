@@ -270,8 +270,9 @@ public sealed class LanguageServer : IAsyncDisposable
     /// with nothing. Raised on any thread.</summary>
     public event EventHandler<ServerMessage>? Said;
 
-    /// <summary>The TypeScript server says which TypeScript it runs: its version, and where it is from (<c>workspace</c>,
-    /// the project's own node_modules; <c>bundled</c>, the one carried beside it). Raised on any thread.</summary>
+    /// <summary>The TypeScript server says which TypeScript it runs: its version, and where it is from (<c>user-setting</c>,
+    /// the one it was named; <c>workspace</c>, the project's own node_modules; <c>bundled</c>, the one carried beside it).
+    /// Raised on any thread.</summary>
     public event EventHandler<(string Version, string? Source)>? TypeScriptVersion;
 
     /// <summary>The TypeScript the server last said it runs, null until it has (or for another server).</summary>

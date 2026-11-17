@@ -533,9 +533,9 @@ public sealed class XamlPreview : IDisposable
             found.AddRange(Directory.EnumerateFiles(bin, name, SearchOption.AllDirectories).Where(f => chosen is null || ProjectInputs.InFolderOf(f, chosen, bin)));
         }
         string project = Path.GetFileNameWithoutExtension(inputs.ProjectPath);
-        for (DirectoryInfo? at = new(inputs.Folder); at is not null; at = at.Parent)
+        foreach (string at in FoldersUp.From(inputs.Folder))
         {
-            string artifacts = Path.Combine(at.FullName, "artifacts", "bin", project);
+            string artifacts = Path.Combine(at, "artifacts", "bin", project);
             if (Directory.Exists(artifacts))
             {
                 found.AddRange(Directory.EnumerateFiles(artifacts, name, SearchOption.AllDirectories).Where(f => chosen is null || ProjectInputs.InFolderOf(f, chosen, artifacts)));

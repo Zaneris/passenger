@@ -14,15 +14,16 @@ public sealed record EfDefaults(string? Project, string? StartupProject, string?
     /// dotnet ef.</summary>
     public bool Beyond { get; init; }
 
-    /// <summary>The defaults the tool would read running in a folder; null for a tool before EF Core 11, which reads none, or
-    /// a folder with no such file, or one that does not read.</summary>
+    /// <summary>The defaults the tool would read running in a folder, from a file in the person's folders
+    /// (<see cref="FoldersUp"/>); null for a tool before EF Core 11, which reads none, or a folder with no such file, or one
+    /// that does not read.</summary>
     public static EfDefaults? Find(string folder, EfTool? tool)
     {
         if (tool is null || !ReadsDefaults(tool))
         {
             return null;
         }
-        for (string? at = folder; at is not null; at = Path.GetDirectoryName(at))
+        foreach (string at in FoldersUp.From(folder))
         {
             string file = Path.Combine(at, ".config", "dotnet-ef.json");
             if (File.Exists(file))

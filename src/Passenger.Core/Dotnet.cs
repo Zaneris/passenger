@@ -56,10 +56,11 @@ public static partial class Dotnet
     public static string GlobalJsonOver(string folder) =>
         GlobalJsonIn(folder) is { } file ? $"{file.FullName}\n{file.LastWriteTimeUtc.Ticks}\n{file.Length}" : string.Empty;
 
-    /// <summary>The global.json dotnet reads in a folder, the nearest over it; null for none.</summary>
+    /// <summary>The global.json dotnet reads in a folder, the nearest over it in a folder of the person's
+    /// (<see cref="FoldersUp"/>); null for none.</summary>
     public static FileInfo? GlobalJsonIn(string folder)
     {
-        for (string? at = folder; at is not null; at = Path.GetDirectoryName(at))
+        foreach (string at in FoldersUp.From(folder))
         {
             FileInfo file = new(Path.Combine(at, "global.json"));
             if (file.Exists)

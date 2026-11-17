@@ -90,6 +90,34 @@ internal static unsafe partial class UnixFileMetadata
         return read == 0 ? *(ushort*)(status + 4) & TypeBits : null;
     }
 
+    /// <summary>The owner, group and permissions of what a path names, links followed, read without opening it; null where
+    /// nothing is there or it could not be read, on Windows, and on a Linux whose C library has no statx.</summary>
+    public static (uint Owner, uint Group, UnixFileMode Mode)? HolderOf(string path)
+    {
+        const uint Wanted = WantedType | 0x2 | 0x8 | 0x10;
+        const int Permissions = 0xFFF;
+        byte* status = stackalloc byte[256];
+        if (OperatingSystem.IsLinux())
+        {
+            try
+            {
+                return StatX(AtWorkingFolder, path, 0, Wanted, status) == 0 && (*(uint*)status & Wanted) == Wanted
+                    ? (*(uint*)(status + 20), *(uint*)(status + 24), (UnixFileMode)(*(ushort*)(status + 28) & Permissions))
+                    : null;
+            }
+            catch (EntryPointNotFoundException)
+            {
+                return null;
+            }
+        }
+        if (!OperatingSystem.IsMacOS())
+        {
+            return null;
+        }
+        int read = RuntimeInformation.ProcessArchitecture == Architecture.X64 ? MacFollowedStatusX64(path, status) : MacFollowedStatus(path, status);
+        return read == 0 ? (*(uint*)(status + 16), *(uint*)(status + 20), (UnixFileMode)(*(ushort*)(status + 4) & Permissions)) : null;
+    }
+
     /// <summary>Gives the file being written, open as <paramref name="written"/> at <paramref name="writtenPath"/>, what the
     /// file at <paramref name="path"/> keeps, before any byte is in it; whatever the system refuses is left as the new file
     /// has it, and the save goes on.</summary>
