@@ -841,7 +841,11 @@ public partial class MainWindow
         }
     }
 
-    /// <summary>The folder's plans under the Plans button, the newest first, each opening as a page.</summary>
+    /// <summary>The Plans button's list as last shown, for a test to reach.</summary>
+    public MenuFlyout? ChatPlansMenu { get; private set; }
+
+    /// <summary>The folder's plans under the Plans button, the newest first, each opening as a page, with a button at its
+    /// end that deletes it to the Trash.</summary>
     private void ShowChatPlans(Button under)
     {
         MenuFlyout menu = new();
@@ -857,16 +861,53 @@ public partial class MainWindow
             {
                 title = Path.GetFileName(path);
             }
-            MenuItem item = new() { Header = $"{title}  ·  {File.GetLastWriteTime(path):d MMM HH:mm}" };
+            bool deleting = false;
+            Button delete = ToolButtons.Of(IconKeys.Close, $"Delete the plan {title} (to the Trash)", () =>
+            {
+                deleting = true;
+                menu.Hide();
+                Task gone = DeleteChatPlanAsync(path, title);
+                BackgroundWork.Track(gone);
+                IdeErrors.Observe(gone);
+            });
+            delete.Margin = new Avalonia.Thickness(16, 0, 0, 0);
+            DockPanel.SetDock(delete, Avalonia.Controls.Dock.Right);
+            TextBlock words = new() { Text = $"{title}  ·  {File.GetLastWriteTime(path):d MMM HH:mm}", VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center };
+            MenuItem item = new() { Header = new DockPanel { Children = { delete, words } } };
             ToolTip.SetTip(item, PathNames.Shown(path, Folder));
-            item.Click += (_, _) => OpenChatPlan(path);
+            item.Click += (_, _) =>
+            {
+                // A press on its delete button reaches the item too.
+                if (!deleting)
+                {
+                    OpenChatPlan(path);
+                }
+            };
             menu.Items.Add(item);
         }
         if (plans.Count == 0)
         {
             menu.Items.Add(new MenuItem { Header = "No plans yet: ask in the agent's Plan mode", IsEnabled = false });
         }
+        ChatPlansMenu = menu;
         menu.ShowAt(under);
+    }
+
+    /// <summary>Deletes a plan to the Trash, from the Plans list: its tab closes, Local History keeps it, and the chat
+    /// stops following its to-dos.</summary>
+    private async Task DeleteChatPlanAsync(string path, string title)
+    {
+        string full = PathNames.Canonical(path);
+        if (await DeleteAsync(full, asked: true))
+        {
+            editedPlans.Remove(full);
+            waitingPlans.Remove(full);
+            if (trackedPlan is { } tracked && PathNames.Same(tracked, full))
+            {
+                trackedPlan = null;
+            }
+            status.Text = $"Deleted the plan {title} (it is in the Trash)";
+        }
     }
 
     /// <summary>Takes the files an edit names for review before the agent writes them (it names them first), and their

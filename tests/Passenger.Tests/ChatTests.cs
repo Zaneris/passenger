@@ -485,6 +485,28 @@ public sealed class ChatTests
     }
 
     [AvaloniaFact]
+    public void A_plan_in_the_Plans_list_is_deleted_to_the_Trash_by_its_own_button()
+    {
+        MainWindow window = Reviewing(out _, out string folder);
+        Send(window, "plan");
+        Ui.WaitFor(() => window.Chat.Questions.Any(), "the plan's card");
+        Ui.Click(window.EditorArea.ActiveGroup.ReviewLinks.Undo);
+        Ui.WaitFor(() => !window.Chat.Busy, "the turn ended");
+        string plan = Path.Combine(folder, ".passenger", "plans", $"{DateTime.Now:yyyy-MM-dd}_add-a-math-class.plan.md");
+        Assert.True(File.Exists(plan), $"No plan at {plan}");
+
+        Ui.Click(window.Chat.PlansButton!);
+        MenuItem listed = Assert.Single(window.ChatPlansMenu!.Items.OfType<MenuItem>());
+        Ui.Click(((DockPanel)listed.Header!).Children.OfType<Button>().Single());
+        Ui.WaitFor(() => !File.Exists(plan), "the plan deleted");
+
+        Assert.DoesNotContain(window.EditorArea.Documents, document => document.Path.EndsWith("add-a-math-class.plan.md", StringComparison.Ordinal));
+        Ui.Click(window.Chat.PlansButton!);
+        Assert.DoesNotContain(window.ChatPlansMenu!.Items.OfType<MenuItem>(), item => item.IsEnabled);
+        window.Close();
+    }
+
+    [AvaloniaFact]
     public void A_commands_question_is_one_line_with_Run_and_Reject_and_gives_way_to_its_line_once_answered()
     {
         MainWindow window = Connected(out StandInAgent agent);
