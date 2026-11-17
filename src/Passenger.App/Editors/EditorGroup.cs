@@ -260,9 +260,16 @@ public sealed class EditorGroup : DockPanel
             markdown ??= new MarkdownPreview(Editor, area);
             Side = markdown;
             markdown.Show(document);
+            ShowPageAlone(area.ReadsAsPage(document));
         }
         else
         {
+            if (pageAlone)
+            {
+                ShowPageAlone(false);
+                // The editor shows again only for a file it shows; a view in its place keeps it hidden.
+                Editor.IsVisible = document is not null;
+            }
             if (Side is MarkdownPreview)
             {
                 Side = null;
@@ -301,6 +308,23 @@ public sealed class EditorGroup : DockPanel
             }
             html?.Show(null);
         }
+    }
+
+    /// <summary>Whether the group shows its Markdown file's preview alone, its editor out of sight.</summary>
+    private bool pageAlone;
+
+    /// <summary>The preview over the group's whole width with the editor hidden, so its keys edit nothing unseen; else the
+    /// editor and the preview side by side.</summary>
+    private void ShowPageAlone(bool alone)
+    {
+        // Applied whatever it was: showing another file makes the editor visible again.
+        pageAlone = alone;
+        body.ColumnDefinitions = new ColumnDefinitions(alone ? "0,0,*" : divider is null ? "*,0,0" : "*,1,*");
+        if (divider is not null)
+        {
+            divider.IsVisible = !alone;
+        }
+        Editor.IsVisible = !alone;
     }
 
     /// <summary>The action the strip's preview toggle runs for the file shown, null while it shows none.</summary>
@@ -440,6 +464,10 @@ public sealed class EditorGroup : DockPanel
         else if (preview is not null)
         {
             preview.Focus();
+        }
+        else if (pageAlone && markdown is not null)
+        {
+            markdown.Focus();
         }
         else
         {

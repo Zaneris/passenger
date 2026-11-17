@@ -28,6 +28,12 @@ public static partial class ChatPlans
     public static bool IsAgentDraft(string path) =>
         PathNames.IsUnder(PathNames.Canonical(path), PathNames.Canonical(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".claude", "plans")));
 
+    /// <summary>Whether a file is one of <paramref name="root"/>'s plans, which reads as a page alone, its source behind
+    /// the preview's toggle.</summary>
+    public static bool IsPlan(string path, string? root) =>
+        root is not null && path.EndsWith(".plan.md", StringComparison.OrdinalIgnoreCase)
+        && PathNames.IsUnder(PathNames.Canonical(path), PathNames.Canonical(FolderOf(root)));
+
     [GeneratedRegex(@"^plan\s*[:\-–—]\s*", RegexOptions.IgnoreCase)]
     private static partial Regex PlanWord();
 

@@ -37,6 +37,7 @@ public partial class MainWindow
             Words = ["Preview HTML", "Web Page Preview"],
         });
         Editors.Root = () => Folder;
+        Editors.ReadsAsPage = document => Passenger.App.Chat.ChatPlans.IsPlan(document.Path, Folder);
         Editors.FileLinkClicked += (_, path) => OpenLinkedFile(path);
     }
 

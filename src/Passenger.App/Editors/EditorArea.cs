@@ -112,6 +112,10 @@ public sealed partial class EditorArea : UserControl
     /// (<see cref="CSharp.CompilationSymbols"/>), as the window knows its projects. Asked on the UI thread.</summary>
     public Func<string, CSharpParseOptions> ParseOptions { get; set; } = _ => CSharpParsing.Default;
 
+    /// <summary>Whether a Markdown file reads as its preview alone while previews show, its editor out of sight (an agent's
+    /// plan); the preview's toggle shows its source.</summary>
+    public Func<OpenDocument, bool> ReadsAsPage { get; set; } = _ => false;
+
     private bool showsMarkdownPreview = true;
 
     /// <summary>Whether a Markdown file shows its preview beside its editor, in every group showing one.</summary>

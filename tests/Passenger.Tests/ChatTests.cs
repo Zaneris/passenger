@@ -10,6 +10,7 @@ using Avalonia.VisualTree;
 using Passenger.Acp;
 using Passenger.App;
 using Passenger.App.Chat;
+using Passenger.App.Editors;
 using Passenger.App.Workspace;
 using Passenger.Text;
 
@@ -349,7 +350,7 @@ public sealed class ChatTests
     }
 
     [AvaloniaFact]
-    public void Open_plan_opens_the_plans_file_as_a_page_beside_its_Markdown()
+    public void Open_plan_opens_the_plans_file_as_a_page_alone_its_source_behind_the_preview_toggle()
     {
         MainWindow window = Reviewing(out StandInAgent agent, out string folder);
         Send(window, "plan");
@@ -358,8 +359,17 @@ public sealed class ChatTests
         Ui.Click(window.Chat.Questions.Single().GetVisualDescendants().OfType<Button>().First(b => Equals(b.Content, "Open plan")));
         Ui.Settle();
 
+        EditorGroup group = window.EditorArea.ActiveGroup;
         Assert.EndsWith("add-a-math-class.plan.md", window.EditorArea.Active?.Path, StringComparison.Ordinal);
-        Assert.True(window.EditorArea.ShowsMarkdownPreview);
+        Assert.True(group.Markdown?.IsEffectivelyVisible == true, "The plan reads as no page");
+        Assert.False(group.Editor.IsEffectivelyVisible, "The plan's source shows beside its page, the same words twice");
+
+        Ui.Click(group.PreviewToggle);
+        Ui.Settle();
+        Assert.True(group.Editor.IsEffectivelyVisible, "The preview's toggle shows no source of the plan to edit");
+        Ui.Click(group.PreviewToggle);
+        Ui.Settle();
+        Assert.False(group.Editor.IsEffectivelyVisible, "The plan's source stays after its page came back");
         Ui.Click(InCard(window.Chat.Questions.Single(), "No, keep planning"));
         Ui.WaitFor(() => !window.Chat.Busy, "the turn ended");
         Assert.Equal("reject", agent.PlanAnswer);
