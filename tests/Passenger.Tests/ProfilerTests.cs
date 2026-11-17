@@ -554,7 +554,7 @@ public sealed class ProfilerTests : IClassFixture<ProfilerTests.Waits>, IDisposa
     /// before the crash: the status bar says it ended before its trace was whole, the profiler window shows the run over,
     /// with no Get Snapshot or Kill, and no IDE error is caught. Its trace cut anywhere past its header, down to none of
     /// its events (where TraceEvent's index of it holds none), opens saying it was cut short, and within its header is no
-    /// snapshot.</summary>
+    /// snapshot; each cut is let go of once read, so the next is written over it at once.</summary>
     [AvaloniaFact]
     public void A_profiled_program_that_crashes_at_once_ends_its_run_saying_its_trace_was_cut_short()
     {
@@ -601,18 +601,20 @@ public sealed class ProfilerTests : IClassFixture<ProfilerTests.Waits>, IDisposa
         }
     }
 
-    /// <summary>Whether TraceEvent's EventPipe reader takes a trace's header, all it reads before the trace's events.</summary>
+    /// <summary>Whether TraceEvent's EventPipe reader takes a trace's header up to its Trace block, which tells the trace's
+    /// pointer size: read through a stream the test holds, so the trace is let go of whatever the reader makes of it.</summary>
     private static bool HeaderWhole(string trace)
     {
+        using FileStream file = new(trace, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+        using Microsoft.Diagnostics.Tracing.EventPipeEventSource source = new(file);
         try
         {
-            using Microsoft.Diagnostics.Tracing.EventPipeEventSource source = new(trace);
-            return true;
+            source.Process();
         }
-        catch (FormatException)
+        catch (Exception broken) when (TraceFailures.Broken(broken))
         {
-            return false;
         }
+        return source.PointerSize != 0;
     }
 
     /// <summary>A profiled program that has not reached the profiler (its diagnostics off, so it never comes to the

@@ -581,12 +581,21 @@ public sealed class Snapshot
         {
             return OfFrames(nettrace);
         }
-        string? cutShort = CutShortIn(nettrace);
+        ReadThrough through = ReadThroughOnce(nettrace);
+        if (through is { CutShort: { } cut, AnyEvent: false })
+        {
+            return OfNoEvents(nettrace, cut, through.Began);
+        }
+        string? cutShort = through.CutShort;
         // Each read's index of its own, never beside the trace: a folder it cannot write, or another read of it, is no matter.
-        string etlx = TraceLog.CreateFromEventPipeDataFile(nettrace, Path.Combine(Path.GetTempPath(), $"passenger-{Guid.NewGuid():N}.etlx"),
-            new TraceLogOptions { ContinueOnError = true });
+        string etlx = Path.Combine(Path.GetTempPath(), $"passenger-{Guid.NewGuid():N}.etlx");
         try
         {
+            using (FileStream trace = Opened(nettrace))
+            using (EventPipeEventSource source = new(trace))
+            {
+                TraceLog.CreateFromEventTraceLogFile(source, etlx, new TraceLogOptions { ContinueOnError = true });
+            }
             using TraceLog log = new(etlx);
             FrameNames names = new(log);
             List<int[]> stacks = [];
@@ -706,32 +715,62 @@ public sealed class Snapshot
         }
     }
 
-    /// <summary>Why a trace stops short of its end, read through once with nothing listening, or null for a whole one:
-    /// TraceEvent's index of it holds what came before the break and says nothing of one. A trace cut short within its
-    /// header is left to the index's reading, which throws for it.</summary>
-    private static string? CutShortIn(string nettrace)
+    /// <summary>What a trace's read through once, with only a mark listening, found: why it stops short of its end, or null
+    /// for a whole one; whether it gave any event; and when it began.</summary>
+    private readonly record struct ReadThrough(string? CutShort, bool AnyEvent, DateTime Began);
+
+    /// <summary>A trace read through once: TraceEvent's index of it holds what came before a break and says nothing of one.
+    /// A trace cut within its header, its Trace block unread (its pointer size unknown), is no snapshot: what TraceEvent
+    /// threw for it goes on to the caller, no index made of it.</summary>
+    private static ReadThrough ReadThroughOnce(string nettrace)
     {
+        using FileStream trace = Opened(nettrace);
+        using EventPipeEventSource source = new(trace);
+        bool anyEvent = false;
+        source.AllEvents += _ => anyEvent = true;
         try
         {
-            using EventPipeEventSource source = new(nettrace);
             source.Process();
-            return null;
+            return new ReadThrough(null, anyEvent, source.SessionStartTime.ToUniversalTime());
         }
-        catch (Exception broken) when (TraceFailures.Broken(broken))
+        catch (Exception broken) when (TraceFailures.Broken(broken) && source.PointerSize != 0)
         {
-            return broken.Message;
+            return new ReadThrough(broken.Message, anyEvent, source.SessionStartTime.ToUniversalTime());
         }
     }
+
+    /// <summary>A trace opened for TraceEvent's reading, which closes it however the read ends: shared with every other
+    /// reader and writer and with its deletion, so the person may write over, move or delete it as it is read.</summary>
+    private static FileStream Opened(string nettrace) =>
+        new(nettrace, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
 
     /// <summary>A run of a Godot game's frames alone (<see cref="FramesAlone"/>): its trace empty, its frames beside it, timed
     /// from the first one's arrival.</summary>
     private static Snapshot OfFrames(string nettrace)
     {
-        GameProfile? game = GameProfile.ReadBeside(nettrace, null);
+        Snapshot frames = OfFramesBeside(nettrace, null);
+        frames.framesAlone = true;
+        return frames;
+    }
+
+    /// <summary>A run whose trace was cut short before it gave any event, perhaps at its header's last byte, short of which
+    /// an index of it knows no start: nothing an index would hold, so read with none, a game's frames beside it timed from
+    /// the trace's start.</summary>
+    private static Snapshot OfNoEvents(string nettrace, string cutShort, DateTime began)
+    {
+        Snapshot none = OfFramesBeside(nettrace, at => (at - began).TotalMilliseconds);
+        none.cutShort = cutShort;
+        return none;
+    }
+
+    /// <summary>A run of no events: the game's frames beside its trace, if any, and nothing else.</summary>
+    private static Snapshot OfFramesBeside(string nettrace, Func<DateTime, double>? traceMs)
+    {
+        GameProfile? game = GameProfile.ReadBeside(nettrace, traceMs);
         IReadOnlyList<GameFrame> played = game?.Frames ?? [];
         double first = played.Select(f => f.StartMs).DefaultIfEmpty(0).Min();
         double end = played.Select(f => f.EndMs).DefaultIfEmpty(0).Max();
-        return new Snapshot([], [], [], [], new Dictionary<int, string>(), [], [], [], game, first, end, nettrace, null) { framesAlone = true };
+        return new Snapshot([], [], [], [], new Dictionary<int, string>(), [], [], [], game, first, end, nettrace, null);
     }
 
     /// <summary>Stacks compared by their frames, so one caught again is the one kept, and looked up by a walk's frames
