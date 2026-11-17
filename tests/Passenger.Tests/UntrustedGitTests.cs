@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text;
 using System.Text.RegularExpressions;
 using Passenger.Core;
 using Passenger.Vcs;
@@ -222,9 +223,10 @@ public sealed class UntrustedGitTests : IDisposable
 /// <summary>The person's own filter, required, in the system's configuration as Git for Windows sets git-lfs there (and
 /// `git lfs install` in the person's), and a hook of theirs, run in a folder not trusted by none of a status, a commit and
 /// a rollback, which still succeed, and each once the folder is trusted, the filter then reading the repository's own
-/// git-lfs settings as git-lfs would. Nor do a filter and a hook that `git -c` gave above Passenger run there, and a
-/// file that GIT_CONFIG names, which `git config` would read alone, keeps git from none of its work. Alone, as the
-/// system's configuration and git's environment are the process's for its length.</summary>
+/// git-lfs settings as git-lfs would; a file stored through that filter is refused a commit until then, with real git-lfs
+/// too where it is installed. Nor do a filter and a hook that `git -c` gave above Passenger run there, and a file that
+/// GIT_CONFIG names, which `git config` would read alone, keeps git from none of its work. Alone, as the system's
+/// configuration and git's environment are the process's for its length.</summary>
 [Collection(Alone.Name)]
 public sealed class UntrustedGitPersonsFilterTests : IDisposable
 {
@@ -251,48 +253,101 @@ public sealed class UntrustedGitPersonsFilterTests : IDisposable
     {
         string tree = Directory.CreateDirectory(Path.Combine(folder, "tree")).FullName;
         string file = Path.Combine(tree, "a.txt");
+        string plain = Path.Combine(tree, "b.txt");
         File.WriteAllText(file, "one\n");
-        File.WriteAllText(Path.Combine(tree, ".gitattributes"), "* filter=lfs\n");
+        File.WriteAllText(plain, "one\n");
+        File.WriteAllText(Path.Combine(tree, ".gitattributes"), "a.txt filter=lfs\n");
         await TestGit.InitAsync(tree);
         // A program git-lfs would run on the repository's files, named by the repository.
         await TestGit.RunAsync(tree, "config", "lfs.extension.x.clean", "cat");
-        // The person's git-lfs, which records the repository's settings it would act on.
+        // The person's git-lfs, which records the repository's settings it would act on and stores what it is given apart.
         string persons = Path.Combine(folder, "gitconfig");
         string read = Path.Combine(marks, "read").Replace('\\', '/');
-        string standIn = $"sh -c 'git config --get-regexp \"^lfs\\.\" >> \"{read}\"; cat'";
-        await TestGit.RunAsync(folder, "config", "--file", persons, "filter.lfs.clean", standIn);
-        await TestGit.RunAsync(folder, "config", "--file", persons, "filter.lfs.smudge", standIn);
+        string clean = $"sh -c 'git config --get-regexp \"^lfs\\.\" >> \"{read}\"; cat > /dev/null; echo stored by the filter'";
+        await TestGit.RunAsync(folder, "config", "--file", persons, "filter.lfs.clean", clean);
+        await TestGit.RunAsync(folder, "config", "--file", persons, "filter.lfs.smudge", "cat");
         await TestGit.RunAsync(folder, "config", "--file", persons, "filter.lfs.required", "true");
         await TestGit.RunAsync(folder, "config", "--file", persons, "hook.mine.event", "pre-commit");
         await TestGit.RunAsync(folder, "config", "--file", persons, "hook.mine.command", UntrustedGitTests.Marking(marks, "hook", "exit 0"));
         OwnEnvironment.Set("GIT_CONFIG_NOSYSTEM", null);
         OwnEnvironment.Set("GIT_CONFIG_SYSTEM", persons);
         File.WriteAllText(file, "two\n");
+        File.WriteAllText(plain, "two\n");
 
         using (WorkspaceTrust.Ask(tree))
         {
             Git git = await OpenAsync(tree);
-            Assert.Equal(file, Assert.Single((await git.StatusAsync()).Changes).Path);
-            GitResult committed = await git.CommitAsync([file], "Two");
+            IReadOnlyList<FileChange> changes = (await git.StatusAsync()).Changes;
+            Assert.Equal<string>([file, plain], [.. changes.Select(c => c.Path).Order(StringComparer.Ordinal)]);
+            FileChange filtered = changes.Single(c => c.Path == file);
+            Assert.Equal("lfs", filtered.Filter);
+            Assert.Contains("not trusted: a.txt is stored through Git's lfs filter", filtered.Uncommittable, StringComparison.Ordinal);
+            Assert.Null(changes.Single(c => c.Path == plain).Uncommittable);
+            GitResult refused = await git.CommitAsync([file, plain], "Two");
+            Assert.False(refused.Succeeded, "A file stored through the person's filter was committed in a folder not trusted, as the disk has it");
+            Assert.Contains("a.txt is stored through Git's lfs filter, which runs only once the folder is trusted", refused.Message, StringComparison.Ordinal);
+            GitResult committed = await git.CommitAsync([plain], "Two");
             Assert.True(committed.Succeeded, $"The commit in a folder not trusted failed: {committed.Message}");
-            File.WriteAllText(file, "three\n");
+            Assert.Equal("one\n", Encoding.UTF8.GetString(await git.BytesAtAsync("HEAD", file) ?? []));
             GitResult rolledBack = await git.RollbackAsync([Assert.Single((await git.StatusAsync()).Changes)]);
             Assert.True(rolledBack.Succeeded, $"The rollback in a folder not trusted failed: {rolledBack.Message}");
-            Assert.Equal("two\n", File.ReadAllText(file));
+            Assert.Equal("one\n", File.ReadAllText(file));
             Assert.False(File.Exists(Path.Combine(marks, "read")), "Git in a folder not trusted ran the person's filter, which would act on the repository's git-lfs settings");
             Assert.False(File.Exists(Path.Combine(marks, "hook")), "A commit in a folder not trusted ran the person's hook");
         }
         Git trusted = await OpenAsync(tree);
+        // As long as what the index has, which git compares only through the filter.
+        File.WriteAllText(file, "six\n");
         UntrustedGitTests.Touch(file);
-        await trusted.StatusAsync();
+        Assert.Null(Assert.Single((await trusted.StatusAsync()).Changes).Uncommittable);
         Assert.True(File.Exists(Path.Combine(marks, "read")), "The person's filter never ran at a status once trusted, so the test proves nothing of the folder not trusted");
         Assert.Contains("lfs.extension.x.clean", File.ReadAllText(Path.Combine(marks, "read")), StringComparison.Ordinal);
+        GitResult stored = await trusted.CommitAsync([file], "Six");
+        Assert.True(stored.Succeeded, $"The commit of the file stored through the filter failed once the folder was trusted: {stored.Message}");
+        Assert.Equal("stored by the filter\n", await TestGit.RunAsync(tree, "cat-file", "blob", "HEAD:a.txt"));
         if (await UntrustedGitTests.WhyNoHooksFromConfigurationAsync(folder) is null)
         {
-            File.WriteAllText(file, "four\n");
-            await trusted.CommitAsync([file], "Four");
             Assert.True(File.Exists(Path.Combine(marks, "hook")), "The person's hook never ran at a commit once trusted, so the test proves nothing of the folder not trusted");
         }
+    }
+
+    [Fact]
+    public async Task A_file_git_lfs_stores_is_refused_a_commit_until_the_folder_is_trusted_and_then_goes_in_as_its_pointer()
+    {
+        string tree = Directory.CreateDirectory(Path.Combine(folder, "tree")).FullName;
+        File.WriteAllText(Path.Combine(tree, "a.txt"), "one\n");
+        File.WriteAllText(Path.Combine(tree, ".gitattributes"), "*.bin filter=lfs diff=lfs merge=lfs -text\n");
+        await TestGit.InitAsync(tree);
+        ChildResult lfs = await ChildProcesses.RunAsync(ChildProcesses.Command("git", ["lfs", "version"], tree), limit: TimeSpan.FromMinutes(1).Scaled(),
+            cancel: TestContext.Current.CancellationToken, answers: [1]);
+        Assert.SkipWhen(!lfs.Succeeded, $"git-lfs is not installed here, so no file is stored through it: {lfs.Error.Trim()}");
+        // As `git lfs install --system` and Git for Windows set it.
+        string persons = Path.Combine(folder, "gitconfig");
+        await TestGit.RunAsync(folder, "config", "--file", persons, "filter.lfs.clean", "git-lfs clean -- %f");
+        await TestGit.RunAsync(folder, "config", "--file", persons, "filter.lfs.smudge", "git-lfs smudge -- %f");
+        await TestGit.RunAsync(folder, "config", "--file", persons, "filter.lfs.process", "git-lfs filter-process");
+        await TestGit.RunAsync(folder, "config", "--file", persons, "filter.lfs.required", "true");
+        OwnEnvironment.Set("GIT_CONFIG_NOSYSTEM", null);
+        OwnEnvironment.Set("GIT_CONFIG_SYSTEM", persons);
+        string picture = Path.Combine(tree, "picture.bin");
+        File.WriteAllText(picture, "A picture's own bytes\n");
+
+        using (WorkspaceTrust.Ask(tree))
+        {
+            Git git = await OpenAsync(tree);
+            FileChange added = Assert.Single((await git.StatusAsync()).Changes);
+            Assert.Equal((picture, ChangeKind.Unversioned, "lfs"), (added.Path, added.Kind, added.Filter));
+            GitResult refused = await git.CommitAsync([picture], "A picture");
+            Assert.False(refused.Succeeded, "A file git-lfs stores was committed whole in a folder not trusted, where git-lfs's pointer would have gone in");
+            Assert.Contains("picture.bin is stored through Git's lfs filter", refused.Message, StringComparison.Ordinal);
+            Assert.Null(await git.BytesAtAsync("HEAD", picture));
+        }
+        Git trusted = await OpenAsync(tree);
+        Assert.Null(Assert.Single((await trusted.StatusAsync()).Changes).Filter);
+        GitResult committed = await trusted.CommitAsync([picture], "A picture");
+        Assert.True(committed.Succeeded, $"The commit of a file git-lfs stores failed once the folder was trusted: {committed.Message}");
+        string stored = await TestGit.RunAsync(tree, "cat-file", "blob", "HEAD:picture.bin");
+        Assert.StartsWith("version https://git-lfs.github.com/spec/v1", stored, StringComparison.Ordinal);
     }
 
     [Fact]

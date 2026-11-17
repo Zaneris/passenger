@@ -148,15 +148,21 @@ public sealed partial class PassengerTools
         VcsController vcs = Session.Vcs;
         await vcs.Opened;
         await vcs.RefreshAsync();
+        // Every changed file by default, but those no commit takes here, each said with why.
+        List<FileChange> passed = paths is null && lines is not { Count: > 0 } ? [.. vcs.Changes.Where(c => c.Kind is not ChangeKind.Unversioned && c.Uncommittable is not null)] : [];
         List<FileChange> chosen = paths is null
             ? lines is { Count: > 0 } ? [] : [.. vcs.Changes.Where(c => c.Kind is not ChangeKind.Unversioned && c.Uncommittable is null)]
             : [.. paths.Select(given => Resolve(given)).Select(p => vcs.Changes.FirstOrDefault(c => c.Path == p) ?? throw new ArgumentException($"{Relative(p)} has no changes to commit"))];
         Dictionary<string, PartialCommit> partial = new(PathNames.Comparer);
-        List<string> left = [];
+        List<string> left = [.. passed.Select(c => $"{Relative(c.Path)} ({c.Uncommittable})")];
         foreach ((string given, string ranges) in lines ?? [])
         {
             string full = Resolve(given);
             FileChange change = vcs.Changes.FirstOrDefault(c => PathNames.Same(c.Path, full)) ?? throw new ArgumentException($"{Relative(full)} has no changes to commit");
+            if (change.Uncommittable is { } uncommittable)
+            {
+                throw new ArgumentException(uncommittable);
+            }
             if (!chosen.Contains(change))
             {
                 chosen.Add(change);
@@ -177,6 +183,7 @@ public sealed partial class PassengerTools
             // A rebase stopped for conflicts goes on by its own action, which an agent runs by its id.
             throw new InvalidOperationException(vcs.Merge is { Operation: MergeOperation.Rebase, Stop: null }
                 ? $"{result.Commit.Message} (ide_action {AppActions.ContinueRebase} and {AppActions.AbortRebase})"
+                : chosen.Count == 0 && passed.Count > 0 && result.Commit.Message == Refusals.NoFilesChosenToCommit ? $"{result.Commit.Message}: {Plural.Listed(left)}"
                 : result.Commit.Message);
         }
         string made = result.Made is { } head ? $"{head.Short} {head.Subject}" : result.Commit.Message;

@@ -379,6 +379,45 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
         }
     }
 
+    /// <summary>An agent's commit in a window whose folder is not trusted is refused a file Git stores through a filter,
+    /// which does not run there, saying why before anything is committed; a commit of every changed file leaves that one
+    /// out, saying which and why, and commits the file beside it.</summary>
+    [AvaloniaFact]
+    public void An_agents_commit_in_a_folder_not_trusted_leaves_out_a_file_stored_through_a_git_filter_saying_why()
+    {
+        string folder = PathNames.Canonical(TestFolders.Create("mcp-untrusted-filter-"));
+        DeleteAtEnd(folder);
+        File.WriteAllText(Path.Combine(folder, "Notes.txt"), "one\n");
+        File.WriteAllText(Path.Combine(folder, "Picture.bin"), "one\n");
+        File.WriteAllText(Path.Combine(folder, ".gitattributes"), "*.bin filter=keep\n");
+        TestGit.Init(folder);
+        TestGit.Run(folder, "config", "filter.keep.clean", "cat");
+        File.WriteAllText(Path.Combine(folder, "Notes.txt"), "two\n");
+        File.WriteAllText(Path.Combine(folder, "Picture.bin"), "two\n");
+        const string Why = "The folder is not trusted: Picture.bin is stored through Git's keep filter, which runs only once the folder is trusted";
+        using IDisposable asked = WorkspaceTrust.Ask(folder);
+        MainWindow window = AgentsWindow(folder, languageServer: false);
+        Ui.WaitFor(() => window.AskingTrust is { IsVisible: true }, "the trust question");
+        Ui.ClickButton(window.AskingTrust!, WorkspaceTrustDialog.Untrusted);
+        McpClient client = Await(Waiting.Apart(() => Start(["--mcp-attach", ProcessId, folder])), "the agent attaching");
+        try
+        {
+            Task<CallToolResult> naming = Waiting.Apart(() => Result(client, McpTools.VcsCommit, new() { ["message"] = "The picture", ["paths"] = new[] { "Picture.bin" } }));
+            Press(Question(window, "the question for the agent's vcs_commit"), AgentToolDialog.AllowForSession);
+            CallToolResult refused = Await(naming, "the agent's commit of Picture.bin");
+            Assert.True(refused.IsError == true && Text(refused).Contains(Why, StringComparison.Ordinal), $"An agent's commit of Picture.bin in a folder not trusted answered: {Text(refused)}");
+            string made = Await(Waiting.Apart(() => Call(client, McpTools.VcsCommit, new() { ["message"] = "The notes" })), "the agent's commit").GetString()!;
+            Assert.EndsWith($" The notes; left uncommitted: Picture.bin ({Why})", made, StringComparison.Ordinal);
+            Assert.Equal("two\n", TestGit.Run(folder, "show", "HEAD:Notes.txt"));
+            Assert.Equal("one\n", TestGit.Run(folder, "show", "HEAD:Picture.bin"));
+        }
+        finally
+        {
+            Gone(client);
+            window.Close();
+        }
+    }
+
     /// <summary>A file whose grammar failed reading it can never tell the lines inside its strings, so Convert Indentation is
     /// refused at once saying the grammar failed, where the agent waited out its minute for a reading that never came and
     /// was then told the file was still being read.</summary>

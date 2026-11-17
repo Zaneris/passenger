@@ -1,5 +1,9 @@
+using Avalonia.Controls;
 using Avalonia.Headless.XUnit;
+using Avalonia.VisualTree;
 using Passenger.App;
+using Passenger.App.ToolWindows;
+using Passenger.App.Vcs;
 using Passenger.App.Settings;
 using Passenger.Core;
 using Passenger.Vcs;
@@ -443,6 +447,47 @@ public sealed class WorkspaceTrustTests
     {
         window.OpenFolder(folder);
         Ui.Settle();
+    }
+
+    /// <summary>In a folder not trusted, a file Git stores through a filter (git-lfs's, here the repository's own) would go
+    /// into a commit as the disk has it, its filter not running: the Commit window lists it with no box, saying why, and a
+    /// commit of it is refused, the file beside it offered as ever; once the folder is trusted it is offered too.</summary>
+    [AvaloniaFact]
+    public void A_file_stored_through_a_git_filter_is_offered_for_commit_only_once_the_folder_is_trusted()
+    {
+        string folder = PathNames.Canonical(TestFolders.Create("untrusted-filter-"));
+        File.WriteAllText(Path.Combine(folder, "Notes.txt"), "one\n");
+        File.WriteAllText(Path.Combine(folder, "Picture.bin"), "one\n");
+        File.WriteAllText(Path.Combine(folder, ".gitattributes"), "*.bin filter=keep\n");
+        TestGit.Init(folder);
+        TestGit.Run(folder, "config", "filter.keep.clean", "cat");
+        File.WriteAllText(Path.Combine(folder, "Notes.txt"), "two\n");
+        File.WriteAllText(Path.Combine(folder, "Picture.bin"), "two\n");
+        const string Why = "The folder is not trusted: Picture.bin is stored through Git's keep filter, which runs only once the folder is trusted";
+        using IDisposable asked = WorkspaceTrust.Ask(folder);
+        MainWindow window = Ui.OpenFolder(folder);
+        try
+        {
+            Ui.ClickButton(Asked(window), WorkspaceTrustDialog.Untrusted);
+            window.Perform(AppActions.ShowCommit);
+            CommitView commit = window.CommitView;
+            Ui.Landed(() => commit.Rows.OfType<CommitRow>().Count() == 2, "Notes.txt and Picture.bin listed as changed");
+            CommitRow picture = commit.Rows.OfType<CommitRow>().Single(r => r.Change.Name == "Picture.bin");
+            Assert.False(picture.CanChoose, "Picture.bin, which its filter would store, is offered for commit in a folder not trusted, where the filter does not run");
+            Assert.Equal(Why, picture.Change.Uncommittable);
+            Assert.Equal(["Notes.txt"], commit.Chosen.Select(c => c.Name));
+            Assert.Contains(commit.GetVisualDescendants().OfType<TextBlock>(), t => t.Text == Why && t.IsEffectivelyVisible);
+            CommitResult refused = Ui.Landed(window.Vcs.CommitAsync([picture.Change], "The picture", amend: false, push: false), "the commit's answer");
+            Assert.Equal(Why, refused.Commit.Message);
+
+            Ui.ClickButton(window, window.Actions[AppActions.TrustFolder]!.Title);
+            Ui.Landed(() => commit.Rows.OfType<CommitRow>().Any(r => r.Change.Name == "Picture.bin" && r.CanChoose), "Picture.bin offered for commit once the folder is trusted");
+        }
+        finally
+        {
+            window.Close();
+            TestFolders.Delete(folder);
+        }
     }
 
     /// <summary>The trust question the window asks now, failing where it asks none.</summary>

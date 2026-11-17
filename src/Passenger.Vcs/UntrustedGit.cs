@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Globalization;
+using System.Text;
 using System.Text.RegularExpressions;
 using Passenger.Core;
 
@@ -11,7 +12,8 @@ namespace Passenger.Vcs;
 /// in it, is given empty through git's environment, which keeps a key whole where -c splits it at its first '='. No
 /// fsmonitor, hook or maintenance runs, no submodule is checked out, and no remote is reached, so nothing a remote's
 /// settings name runs (git takes the first upload-pack given, the repository's). The person's own configuration stands,
-/// but its hooks and filters: a filter of theirs (git-lfs's) would run on the repository's files with its settings.</summary>
+/// but its hooks and filters: a filter of theirs (git-lfs's) would run on the repository's files with its settings. So
+/// a file git stores through a filter is committed only once the folder is trusted (<see cref="FilteredAsync"/>).</summary>
 internal static partial class UntrustedGit
 {
     /// <summary>The configuration every git in an untrusted folder runs with: no fsmonitor; hooks looked for where there are
@@ -135,10 +137,83 @@ internal static partial class UntrustedGit
         return null;
     }
 
+    /// <summary>Which of <paramref name="names"/> (from the working tree's top, as git takes them on its input) git would
+    /// store through a filter, by their place in the list, each with its filter's name: those whose filter attribute, as
+    /// git reads it, names a driver that a configuration gives a clean or process command. In a folder not trusted none
+    /// of those runs, so such a file would go in as the disk has it, never as its filter stores it (git-lfs's pointer).
+    /// Null where git could not say.</summary>
+    public static async Task<IReadOnlyDictionary<int, string>?> FilteredAsync(string git, string repository, IReadOnlyList<string> names)
+    {
+        Dictionary<int, string> filtered = [];
+        if (names.Count == 0)
+        {
+            return filtered;
+        }
+        StringBuilder input = new();
+        foreach (string name in names)
+        {
+            input.Append(name).Append('\0');
+        }
+        try
+        {
+            string? top = OwnTop(repository);
+            ChildResult attributes = await ReadAsync(git, repository, top, ["check-attr", "-z", "--stdin", "filter"], input.ToString());
+            // Each name's path, attribute and value, in the order given.
+            string[] fields = attributes.Output.Split('\0');
+            if (!attributes.Succeeded || fields.Length < (names.Count * 3) + 1)
+            {
+                return null;
+            }
+            Dictionary<int, string> named = [];
+            for (int at = 0; at < names.Count; at++)
+            {
+                // Git's words for no filter set, -filter, and filter alone, which names no driver.
+                if (fields[(at * 3) + 2] is not ("unspecified" or "unset" or "set") and { } driver)
+                {
+                    named[at] = driver;
+                }
+            }
+            if (named.Count == 0)
+            {
+                return filtered;
+            }
+            ChildResult listed = await ReadAsync(git, repository, top, ["config", "--list", "--name-only", "-z"]);
+            if (!listed.Succeeded)
+            {
+                return null;
+            }
+            HashSet<string> drivers = new(StringComparer.Ordinal);
+            foreach (string key in listed.Output.Split('\0'))
+            {
+                if (Storing().Match(key) is { Success: true } storing)
+                {
+                    drivers.Add(storing.Groups[1].Value);
+                }
+            }
+            foreach ((int at, string driver) in named)
+            {
+                if (drivers.Contains(driver))
+                {
+                    filtered[at] = driver;
+                }
+            }
+            return filtered;
+        }
+        catch (Exception unread) when (ChildFailures.Of(unread))
+        {
+            return null;
+        }
+    }
+
+    /// <summary>Why a file is not stored in a folder not trusted: git would store it through its filter, which runs only
+    /// once the folder is trusted.</summary>
+    public static string Unfiltered(string name, string filter) =>
+        $"The folder is not trusted: {name} is stored through Git's {filter} filter, which runs only once the folder is trusted";
+
     /// <summary>What a git that runs nothing of the repository's writes in it: given <see cref="Always"/>, its working tree
     /// <paramref name="workTree"/> where one is given, reaching no remote, every pathspec read as git reads one unless told
-    /// otherwise (:/, the tree's top).</summary>
-    private static async Task<ChildResult> ReadAsync(string git, string repository, string? workTree, IReadOnlyList<string> arguments)
+    /// otherwise (:/, the tree's top), <paramref name="input"/> written to it.</summary>
+    private static async Task<ChildResult> ReadAsync(string git, string repository, string? workTree, IReadOnlyList<string> arguments, string? input = null)
     {
         ProcessStartInfo start = ChildProcesses.Command(git, arguments, repository);
         Give(start.Environment, Always);
@@ -150,7 +225,7 @@ internal static partial class UntrustedGit
         start.Environment[GitVariables.TerminalPrompt] = "0";
         start.Environment.Remove(GitVariables.LiteralPathspecs);
         // 128: no repository is there, or its index cannot be read.
-        return await ChildProcesses.RunAsync(start, limit: Limit, answers: [128]);
+        return await ChildProcesses.RunAsync(start, input, limit: Limit, answers: [128]);
     }
 
     /// <summary>The settings a configuration's listing (`git config --list --show-scope --name-only -z`, given
@@ -243,6 +318,10 @@ internal static partial class UntrustedGit
         + @"|lfs\.extension\..+\.(?:clean|smudge)|lfs\.customtransfer\..+\.(?:path|args)|lfs\.(?:.+\.)?standalonetransferagent)$",
         RegexOptions.CultureInvariant | RegexOptions.IgnoreCase)]
     private static partial Regex Runs();
+
+    /// <summary>A key of a filter's that names the program a file is stored through, its driver's name the first group.</summary>
+    [GeneratedRegex(@"^filter\.(.+)\.(?:clean|process)$", RegexOptions.CultureInvariant | RegexOptions.IgnoreCase)]
+    private static partial Regex Storing();
 
     /// <summary>A key of a filter's that names a program, its driver's name the first group.</summary>
     [GeneratedRegex(@"^filter\.(.+)\.(?:clean|smudge|process)$", RegexOptions.CultureInvariant | RegexOptions.IgnoreCase)]

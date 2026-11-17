@@ -25,10 +25,15 @@ public sealed record FileChange(string Path, ChangeKind Kind, string? From = nul
 {
     public string Name => System.IO.Path.GetFileName(Path);
 
+    /// <summary>In a folder not trusted, the filter git would store the file through, which runs only once the folder is
+    /// trusted (<see cref="UntrustedGit.FilteredAsync"/>); null where it has none, or the folder is trusted.</summary>
+    public string? Filter { get; init; }
+
     /// <summary>Why the change cannot be committed here, or null when it can: a submodule whose own files changed while its
-    /// commit did not, which only a commit in the submodule takes.</summary>
-    public string? Uncommittable => IsSubmoduleContent
-        ? $"{Name} is a submodule: its own {OwnChanges} are committed in it, not here"
+    /// commit did not, which only a commit in the submodule takes; or a file stored through a filter, in a folder not
+    /// trusted, where it would go in as the disk has it.</summary>
+    public string? Uncommittable => IsSubmoduleContent ? $"{Name} is a submodule: its own {OwnChanges} are committed in it, not here"
+        : Filter is { } filter ? UntrustedGit.Unfiltered(Name, filter)
         : null;
 
     private bool IsSubmoduleContent => Submodule.HasFlag(SubmoduleChange.Submodule) && !Submodule.HasFlag(SubmoduleChange.Commit) && Kind is ChangeKind.Modified;
@@ -376,7 +381,63 @@ public sealed partial class Git
                 conflicts[i] = conflicts[i] with { IsBinary = read.Stages[i].Any(blob => binaryBlobs.GetValueOrDefault(blob)) };
             }
         }
+        await MarkFilteredAsync(read.Changes);
         return new GitStatus(read.Branch, read.Head, read.Changes, conflicts, read.Upstream, read.Even);
+    }
+
+    /// <summary>Marks each change a commit would store through a filter, in a folder not trusted, with the filter's name: a
+    /// file there, not a submodule (<see cref="FilteredAsync"/>). Where git cannot say, none is marked, and a commit asks
+    /// again.</summary>
+    private async Task MarkFilteredAsync(List<FileChange> changes)
+    {
+        if (WorkspaceTrust.Trusts(Root))
+        {
+            return;
+        }
+        List<int> stored = [.. Enumerable.Range(0, changes.Count).Where(at => changes[at] is
+            { Kind: ChangeKind.Modified or ChangeKind.Added or ChangeKind.Renamed or ChangeKind.Unversioned, Submodule: SubmoduleChange.None })];
+        if (await FilteredAsync([.. stored.Select(at => Relative(changes[at].Path))]) is not { Count: > 0 } filtered)
+        {
+            return;
+        }
+        foreach (int at in stored)
+        {
+            if (filtered.TryGetValue(Relative(changes[at].Path), out string? filter))
+            {
+                changes[at] = changes[at] with { Filter = filter };
+            }
+        }
+    }
+
+    /// <summary>Of <paramref name="relative"/> (from the tree's top), each file git would store through a filter, with the
+    /// filter's name, in a folder not trusted, where none runs (<see cref="UntrustedGit.FilteredAsync"/>); none where the
+    /// folder is trusted, and null where git could not say.</summary>
+    private async Task<IReadOnlyDictionary<string, string>?> FilteredAsync(IReadOnlyList<string> relative)
+    {
+        if (relative.Count == 0 || WorkspaceTrust.Trusts(Root))
+        {
+            return new Dictionary<string, string>();
+        }
+        // What git answers is what the window shows next: a screenshot waits for it.
+        using GitHold held = new();
+        if (await Programs.GitAsync() is not { } git)
+        {
+            return null;
+        }
+        bool composed = relative.Any(name => !Ascii.IsValid(name)) && await ComposesAsync();
+        IReadOnlyDictionary<int, string>? filtered = await UntrustedGit.FilteredAsync(git, Root, [.. relative.Select(name => GitForm(name, composed))]);
+        return filtered?.ToDictionary(found => relative[found.Key], found => found.Value, StringComparer.Ordinal);
+    }
+
+    /// <summary>Why files cannot be committed as they are, in a folder not trusted: the first git would store through a
+    /// filter, or git could not say which those are; null where none is, or the folder is trusted.</summary>
+    private async Task<GitResult?> UnfilteredAsync(IReadOnlyList<string> relative)
+    {
+        IReadOnlyDictionary<string, string>? filtered = await FilteredAsync(relative);
+        return filtered is null
+            ? new GitResult(1, string.Empty, "The folder is not trusted, and git could not say which of the files it would store through a filter, which runs only once the folder is trusted")
+            : relative.FirstOrDefault(filtered.ContainsKey) is { } first ? new GitResult(1, string.Empty, UntrustedGit.Unfiltered(System.IO.Path.GetFileName(first), filtered[first]))
+            : null;
     }
 
     /// <summary>The setting that has a status look for renames however many files were added and deleted (a limit of 0 is
@@ -1494,6 +1555,10 @@ public sealed partial class Git
     public async Task<GitResult> CommitAsync(IReadOnlyList<string> paths, string message, bool amend = false, bool merging = false, IReadOnlyList<string>? excluded = null,
         CommitSigning? signing = null, GitAsker? asker = null, IReadOnlyDictionary<string, PartialCommit>? partial = null)
     {
+        if (await UnfilteredAsync([.. paths.Select(Relative).Distinct().Where(StillThere)]) is { } unfiltered)
+        {
+            return unfiltered;
+        }
         if (partial is { Count: > 0 })
         {
             return merging ? new GitResult(1, string.Empty, "A merge commits whole files: choose whole files while it is under way")
