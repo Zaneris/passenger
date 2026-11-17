@@ -45,7 +45,7 @@ public sealed class McpGDScriptFixTests : McpRig
             Assert.Equal(offered, listed);
 
             Task<JsonElement> prefixing = Waiting.Apart(() => Call(client, McpTools.ApplyCodeAction, new(place) { ["title"] = "Prefix 'unused' with an underscore" }));
-            Press(Question(window, "the question for the agent's first fix"), "Allow");
+            Press(Question(window, "the question for the agent's first fix"), AgentToolDialog.AllowForSession);
             Assert.Equal("Applied 'Prefix 'unused' with an underscore' to main.gd", Await(prefixing, "the underscore's fix").GetString());
             Assert.Equal(Script.Replace("var unused", "var _unused", StringComparison.Ordinal), File.ReadAllText(script));
             Undo(window, document);

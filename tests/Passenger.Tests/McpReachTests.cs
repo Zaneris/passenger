@@ -201,7 +201,7 @@ public sealed class McpReachTests : McpRig
             CallToolResult read = Await(Waiting.Apart(() => Result(client, McpTools.EditorText, new() { ["path"] = Path.Combine("..", "Lib", "Greeter.cs") })), "the read beside");
             Assert.True(read.IsError == true && Text(read).Contains(refusal, StringComparison.Ordinal), $"editor_text beside an untrusted folder answered: {Text(read)}");
             Task<CallToolResult> editing = Waiting.Apart(() => Result(client, McpTools.Edit, new() { ["path"] = library, ["oldText"] = "\"Hello\"", ["newText"] = "\"written\"" }));
-            Press(Question(window, "the question for the agent's edit"), "Allow");
+            Press(Question(window, "the question for the agent's edit"), AgentToolDialog.AllowForSession);
             CallToolResult edited = Await(editing, "the edit beside");
             Assert.True(edited.IsError == true && Text(edited).Contains(Refusals.OutOfReach(library, folder, changes: true), StringComparison.Ordinal),
                 $"edit beside an untrusted folder answered: {Text(edited)}");
@@ -240,7 +240,7 @@ public sealed class McpReachTests : McpRig
                 ["oldText"] = "</Solution>",
                 ["newText"] = "  <Project Path=\"/x.csproj\" />\n  <Project Path=\"../../x.csproj\" />\n  <Project Path=\"../Other/Other.csproj\" />\n</Solution>",
             }));
-            Press(Question(window, "the question for the agent's edit"), "Allow");
+            Press(Question(window, "the question for the agent's edit"), AgentToolDialog.AllowForSession);
             CallToolResult edited = Await(editing, "the agent's edit of the solution");
             Assert.True(edited.IsError != true, $"The agent's edit of the solution answered: {Text(edited)}");
             Ui.WaitFor(() => window.Projects.Any(p => p.Name == "Other"), () => $"the solution read again as the agent wrote it: {string.Join(", ", window.Projects.Select(p => p.Name))}");

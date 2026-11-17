@@ -31,7 +31,7 @@ public sealed partial class PassengerTools
         GodotGame? meant = app switch
         {
             null => !Session.Inspecting.Any(a => a.App.State is LiveAppState.Waiting or LiveAppState.Connected) ? chosen : null,
-            "ide" => null,
+            OwnWindows => null,
             "run" => RunApp() is null && chosen.Debugged is null && Session.Profiled is null ? chosen : null,
             "debug" => DebugApp() is null && chosen.Debugged is not null ? chosen : null,
             "profile" => Session.ProfiledApp is null && Session.Profiled is not null && chosen.Debugged is null ? chosen : null,

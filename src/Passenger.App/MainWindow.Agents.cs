@@ -9,9 +9,9 @@ namespace Passenger.App;
 
 /// <summary>Agents in the window: its own socket, open to them from its start (<c>--no-mcp</c> aside), on which an
 /// agent works once let in: by Enable MCP Server (turning it off shuts them out), by the folder's Always, or by the
-/// person's Allow when its first call comes; the person's leave before an agent's first use of a tool that changes
-/// something, and before it opens another folder here; and the status bar's word on who is on the window and what they
-/// run there.</summary>
+/// person's Allow when its first call comes; the person's leave before an agent's call of a tool that changes something,
+/// once or for the session, and before it opens another folder here; and the status bar's word on who is on the window and
+/// what they run there.</summary>
 public partial class MainWindow
 {
     private readonly List<string> agentWork = [];
@@ -160,7 +160,7 @@ public partial class MainWindow
     /// agent's call waits on goes, the call refused saying so (<see cref="Admission.FolderChanged"/>), so an answer only
     /// ever allows what it named where it named it; the agents let in on the folder it leaves are shut out, each asked again
     /// at its next call, unless the window lets agents in unasked where it goes; the agent whose own open it is
-    /// (<paramref name="opener"/>) stays. Those that stay are asked again before their first use of each tool there.</summary>
+    /// (<paramref name="opener"/>) stays. Those that stay are asked again for each tool there.</summary>
     private void AgentsGoTo(string? folder, Mcp.AgentConnection? opener)
     {
         foreach (Window asking in agentDialogs.Where(d => d.IsVisible).ToList())
@@ -209,28 +209,26 @@ public partial class MainWindow
         return await AskForAgentAsync(dialog, () => Answered(dialog.Answered), $"{agent} waits for you: open {name} here?", cancel);
     }
 
-    /// <summary>Asks the person whether an agent may use a tool that changes something, showing what it asked with: no
-    /// answer within <see cref="AgentAnswerLimit"/>, or every call waiting giving up, takes the question away.</summary>
-    internal async Task<Admission> AllowAgentAsync(string agent, string tool, string title, IReadOnlyList<(string Name, string Value)> arguments, CancellationToken cancel)
+    /// <summary>Asks the person whether an agent's call of a tool that changes something may go on, showing what it asked
+    /// with (<see cref="AgentToolDialog"/>): Allow Once, Allow for This Session, or Deny; no answer within
+    /// <see cref="AgentAnswerLimit"/>, or <paramref name="cancel"/>, takes the question away.</summary>
+    internal async Task<Admission> AllowAgentAsync(string agent, string tool, string title, bool ownWindows, IReadOnlyList<(string Name, string Value)> arguments, CancellationToken cancel)
     {
         UiThread.Check();
         string what = char.ToLowerInvariant(title[0]) + title[1..];
-        ConfirmDialog dialog = new($"Allow {tool}?",
-            $"{agent}, connected through Passenger's MCP server, wants to {what} (its {tool} tool). Once allowed, it may use that tool again without asking in this folder until it disconnects.",
-            "Allow", "Deny", arguments.Count == 0 ? null : AgentArguments(arguments))
-        {
-            EnterAgrees = false,
-        };
-        IdeErrors.Write($"Agents: {agent} asks to use {tool} in the window on {Folder ?? "no folder"}");
+        AgentToolDialog dialog = new(agent, tool, what, ownWindows, arguments.Count == 0 ? null : AgentArguments(arguments));
+        string named = ownWindows ? $"{tool} in Passenger's windows" : tool;
+        IdeErrors.Write($"Agents: {agent} asks to use {named} in the window on {Folder ?? "no folder"}");
         string? folder = Folder;
-        Admission said = await AskForAgentAsync(dialog, () => Answered(dialog.Answered), $"{agent} waits for you: allow {tool}?", cancel);
+        Admission said = await AskForAgentAsync(dialog, () => dialog.Answered, $"{agent} waits for you: allow {named}?", cancel);
         IdeErrors.Write($"Agents: {agent} {(said switch
         {
-            Admission.Allowed => "allowed",
-            Admission.NotAllowed => "not allowed",
-            Admission.FolderChanged => "not answered before the window left whether it may use",
-            _ => $"not answered within {AgentConnection.Limit(this)} whether it may use",
-        })} {tool} on {folder ?? "no folder"}");
+            Admission.Allowed => $"allowed {named} for the session",
+            Admission.AllowedOnce => $"allowed {named} once",
+            Admission.NotAllowed => $"not allowed {named}",
+            Admission.FolderChanged => $"not answered before the window left whether it may use {named}",
+            _ => $"not answered within {AgentConnection.Limit(this)} whether it may use {named}",
+        })} on {folder ?? "no folder"}");
         return said;
     }
 

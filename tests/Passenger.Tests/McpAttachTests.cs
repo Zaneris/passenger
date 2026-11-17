@@ -395,7 +395,7 @@ public sealed class McpAttachTests : McpRig, IClassFixture<RestoredFolders>
         try
         {
             Task<CallToolResult> refused = Waiting.Apart(() => Result(client, McpTools.Open, new() { ["path"] = elsewhere }));
-            ConfirmDialog asked = DialogButtonsTests.Check(Question(window, "the question for the agent's open"));
+            Window asked = DialogButtonsTests.Check(Question(window, "the question for the agent's open"));
             Assert.Contains(Texts(asked), t => t.StartsWith("Test Agent wants to open ", StringComparison.Ordinal) && t.EndsWith($" here, replacing {window.Folder}.", StringComparison.Ordinal));
             Press(asked, AgentAdmissionDialog.DontAllow);
             CallToolResult no = Await(refused, "the open the person did not allow");
@@ -442,7 +442,7 @@ public sealed class McpAttachTests : McpRig, IClassFixture<RestoredFolders>
         {
             Task<JsonElement> editing = Waiting.Apart(() => Call(client, McpTools.Edit, Note("first")));
             Press(Admission(window, "the window to ask whether the agent may work there"), AgentAdmissionDialog.Allow);
-            Press(Question(window, "the question for the agent's edit"), "Allow");
+            Press(Question(window, "the question for the agent's edit"), AgentToolDialog.AllowForSession);
             Await(editing, "the edit in the first folder");
             Assert.Equal("notes first\n", File.ReadAllText(Path.Combine(first, "Notes.txt")));
             WaitFor(() => window.Agents == 1, "the window to count the agent it let in");
@@ -461,17 +461,17 @@ public sealed class McpAttachTests : McpRig, IClassFixture<RestoredFolders>
 
             Task<JsonElement> editingSecond = Waiting.Apart(() => Call(client, McpTools.Edit, Note("second")));
             Press(Admission(window, "the window to ask at the agent's next call"), AgentAdmissionDialog.Allow);
-            Press(Question(window, "the question for the agent's edit in the second folder"), "Allow");
+            Press(Question(window, "the question for the agent's edit in the second folder"), AgentToolDialog.AllowForSession);
             Await(editingSecond, "the edit in the second folder");
             Assert.Equal("notes second\n", File.ReadAllText(Path.Combine(second, "Notes.txt")));
             Task<JsonElement> opening = Waiting.Apart(() => Call(client, McpTools.Open, new() { ["path"] = third }));
             Press(Question(window, "the question for the agent's open"), AgentAdmissionDialog.Allow);
             Assert.Equal(PathNames.Canonical(third), Await(opening, "the agent's open the person allowed").GetProperty("folder").GetString());
             Task<JsonElement> editingThird = Waiting.Apart(() => Call(client, McpTools.Edit, Note("third")));
-            ConfirmDialog allowing = Question(window, "the question for the agent's first edit in the folder it opened");
+            Window allowing = Question(window, "the question for the agent's first edit in the folder it opened");
             Assert.Contains("Allow edit?", Texts(allowing));
             Assert.DoesNotContain(window.OwnedWindows.OfType<AgentAdmissionDialog>(), d => d.IsVisible);
-            Press(allowing, "Allow");
+            Press(allowing, AgentToolDialog.AllowForSession);
             Await(editingThird, "the edit in the folder the agent opened");
             Assert.Equal("notes third\n", File.ReadAllText(Path.Combine(third, "Notes.txt")));
             Assert.Equal(1, window.Agents);
@@ -498,7 +498,7 @@ public sealed class McpAttachTests : McpRig, IClassFixture<RestoredFolders>
         try
         {
             Task<CallToolResult> editing = Waiting.Apart(() => Result(client, McpTools.Edit, Note("asked")));
-            ConfirmDialog asked = Question(window, "the question for the agent's edit in the first folder");
+            Window asked = Question(window, "the question for the agent's edit in the first folder");
             window.OpenFolder(second);
             Ui.Settle();
             Assert.False(asked.IsVisible, "The question for the agent's edit in the folder left stayed open over the folder opened, where an Allow would make it");
@@ -508,7 +508,7 @@ public sealed class McpAttachTests : McpRig, IClassFixture<RestoredFolders>
             Assert.Equal(("notes\n", "notes\n"), (File.ReadAllText(Path.Combine(first, "Notes.txt")), File.ReadAllText(Path.Combine(second, "Notes.txt"))));
 
             Task<JsonElement> again = Waiting.Apart(() => Call(client, McpTools.Edit, Note("opened")));
-            Press(Question(window, "the question for the agent's edit in the folder opened"), "Allow");
+            Press(Question(window, "the question for the agent's edit in the folder opened"), AgentToolDialog.AllowForSession);
             Await(again, "the agent's edit in the folder opened");
             Assert.Equal(("notes\n", "notes opened\n"), (File.ReadAllText(Path.Combine(first, "Notes.txt")), File.ReadAllText(Path.Combine(second, "Notes.txt"))));
         }
@@ -543,14 +543,90 @@ public sealed class McpAttachTests : McpRig, IClassFixture<RestoredFolders>
             Assert.Equal(0, window.Agents);
             Press(admission, AgentAdmissionDialog.Allow);
 
-            ConfirmDialog asked = DialogButtonsTests.Check(Question(window, "the question for the agent's edit"));
+            Window asked = DialogButtonsTests.Check(Question(window, "the question for the agent's edit"));
             EnterLeavesWaiting(window, editor, asked, editing, "typed\n\n\n");
             Assert.Equal("notes\n", File.ReadAllText(Path.Combine(folder, "Notes.txt")));
-            Press(asked, "Allow");
+            Press(asked, AgentToolDialog.AllowForSession);
             Await(editing, "the agent's edit, allowed");
             Assert.Equal("notes allowed\n", File.ReadAllText(Path.Combine(folder, "Notes.txt")));
             Assert.True(ReferenceEquals(editor, window.FocusManager?.GetFocusedElement()),
                 $"Once the person answered, the keys are with {window.FocusManager?.GetFocusedElement()?.GetType().Name ?? "nothing"}, not back in the editor");
+        }
+        finally
+        {
+            Gone(client);
+            window.Close();
+        }
+    }
+
+    /// <summary>A call of a tool that changes something is the person's to allow once or for the session: Allow Once, the
+    /// accent's answer that no key gives, lets the call its question shows go on alone, another call of the tool waiting with
+    /// it asked its own with its own arguments, and the next edit asked again; Allow for This Session lets every later edit go
+    /// on unasked. app_click's input to Passenger's own windows (app ide) is asked apart, though app_click is allowed for the
+    /// session, so no allowance for an app's input drives the person's IDE.</summary>
+    [AvaloniaFact]
+    public void An_agents_edit_allowed_once_is_asked_again_at_its_next_and_one_allowed_for_the_session_is_not_its_input_to_passenger_asked_apart()
+    {
+        string folder = Plain("mcp-once-");
+        string more = TestFolders.Write(folder, "More.txt", "more\n");
+        string later = TestFolders.Write(folder, "Later.txt", "later\n");
+        string notes = Path.Combine(folder, "Notes.txt");
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        McpClient client = Await(Waiting.Apart(() => Start(["--mcp-attach", ProcessId])), "the agent attaching");
+        try
+        {
+            // Two edits at once: the question shows one call, Allow Once lets that one alone go on, and the other asks its own.
+            Task<CallToolResult> editingNotes = Waiting.Apart(() => Result(client, McpTools.Edit, new() { ["path"] = "Notes.txt", ["oldText"] = "notes", ["newText"] = "allowed" }));
+            Task<CallToolResult> editingMore = Waiting.Apart(() => Result(client, McpTools.Edit, new() { ["path"] = "More.txt", ["oldText"] = "more", ["newText"] = "allowed" }));
+            Press(Admission(window, "the window to ask whether the agent may work there"), AgentAdmissionDialog.Allow);
+            AgentToolDialog first = DialogButtonsTests.Check(Assert.IsType<AgentToolDialog>(Question(window, "the question for the agent's first edit")));
+            Button[] answers = [.. Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(first).OfType<Button>().Where(b => b.Content is string)];
+            string[] order = OperatingSystem.IsMacOS() ? [AgentToolDialog.Deny, AgentToolDialog.AllowForSession, AgentToolDialog.AllowOnce]
+                : [AgentToolDialog.AllowOnce, AgentToolDialog.AllowForSession, AgentToolDialog.Deny];
+            Assert.Equal(order, answers.Select(b => (string)b.Content!));
+            Assert.True(answers.Single(b => b.Classes.Contains(StyleClasses.Primary)).Content is AgentToolDialog.AllowOnce && !answers.Any(b => b.IsDefault),
+                "Allow Once is not the question's one accented answer, or one of its answers is Enter's");
+            bool notesFirst = Texts(first).Any(t => t.Contains("path: Notes.txt", StringComparison.Ordinal));
+            Assert.True(notesFirst || Texts(first).Any(t => t.Contains("path: More.txt", StringComparison.Ordinal)),
+                $"The question shows neither edit's arguments: {string.Join(" | ", Texts(first))}");
+            Press(first, AgentToolDialog.AllowOnce);
+            (Task<CallToolResult> allowed, Task<CallToolResult> waited, string other) = notesFirst
+                ? (editingNotes, editingMore, "path: More.txt")
+                : (editingMore, editingNotes, "path: Notes.txt");
+            CallToolResult once = Await(allowed, "the edit allowed once");
+            Assert.False(once.IsError == true, $"The edit allowed once was refused: {Text(once)}");
+            Window second = Question(window, "the question for the other edit, which waited with the first");
+            Assert.True(Texts(second).Any(t => t.Contains(other, StringComparison.Ordinal)), $"The other edit's question said: {string.Join(" | ", Texts(second))}");
+            Assert.False(waited.IsCompleted, "The edit that waited with the one allowed once went on without its own question");
+            Press(second, AgentToolDialog.Deny);
+            Assert.Contains("did not allow edit", Text(Await(waited, "the edit denied")), StringComparison.Ordinal);
+            Assert.Equal(notesFirst ? ("allowed\n", "more\n") : ("notes\n", "allowed\n"), (File.ReadAllText(notes), File.ReadAllText(more)));
+
+            Task<CallToolResult> again = Waiting.Apart(() => Result(client, McpTools.Edit, new() { ["path"] = "Later.txt", ["oldText"] = "later", ["newText"] = "session" }));
+            Window asking = Question(window, "the question for the agent's next edit, as the one before was allowed once");
+            Assert.Contains("Allow edit?", Texts(asking));
+            Press(asking, AgentToolDialog.AllowForSession);
+            CallToolResult session = Await(again, "the edit allowed for the session");
+            Assert.False(session.IsError == true, $"The edit allowed for the session was refused: {Text(session)}");
+            Unasked(window, client, McpTools.Edit, new() { ["path"] = "Later.txt", ["oldText"] = "session", ["newText"] = "unasked" });
+            Assert.Equal("unasked\n", File.ReadAllText(later));
+
+            // app_click on an app, allowed for the session, answers that none runs; its input to Passenger's own windows asks apart.
+            Task<CallToolResult> clicking = Waiting.Apart(() => Result(client, McpTools.AppClick, new() { ["x"] = 10, ["y"] = 10 }));
+            Window app = Question(window, "the question for the agent's click in an app");
+            Assert.Contains("Allow app_click?", Texts(app));
+            Press(app, AgentToolDialog.AllowForSession);
+            Assert.Contains("No Avalonia, WPF or MAUI app", Text(Await(clicking, "the click in an app")), StringComparison.Ordinal);
+            Task<CallToolResult> clickingOwn = Waiting.Apart(() => Result(client, McpTools.AppClick, new() { ["app"] = "ide", ["control"] = "#RunConfigButton" }));
+            Window own = Question(window, "the question for the agent's click in Passenger's own windows");
+            string[] said = Texts(own);
+            Assert.True(said.Contains("Allow app_click in Passenger's windows?") && said.Any(t => t.Contains("the app being Passenger's own windows", StringComparison.Ordinal))
+                && said.Any(t => t.Contains("app: ide", StringComparison.Ordinal)),
+                $"The question for the agent's click in Passenger's own windows said: {string.Join(" | ", said)}");
+            Press(own, AgentToolDialog.Deny);
+            CallToolResult refused = Await(clickingOwn, "the click in Passenger's own windows the person denied");
+            Assert.True(refused.IsError == true && Text(refused).Contains("did not allow app_click in Passenger's own windows (app ide)", StringComparison.Ordinal),
+                $"The agent's click in Passenger's own windows, denied, was answered: {Text(refused)}");
         }
         finally
         {
@@ -1179,15 +1255,15 @@ public sealed class McpAttachTimingTests : McpRig, IClassFixture<RestoredFolders
             Heard leave = new();
             Task<CallToolResult> unallowed = Waiting.Apart(() => Result(client, McpTools.Build, heard: leave));
             said = null;
-            WaitFor(() => window.OwnedWindows.OfType<ConfirmDialog>().Any(d => d.IsVisible) && (said = window.AgentStatus) is not null,
+            WaitFor(() => window.OwnedWindows.OfType<AgentToolDialog>().Any(d => d.IsVisible) && (said = window.AgentStatus) is not null,
                 "the window to ask whether the agent may build");
             Assert.Equal("Test Agent waits for you: allow build?", said);
-            Assert.Contains(Texts(window.OwnedWindows.OfType<ConfirmDialog>().Single(d => d.IsVisible)),
+            Assert.Contains(Texts(window.OwnedWindows.OfType<AgentToolDialog>().Single(d => d.IsVisible)),
                 t => t.StartsWith("Test Agent, connected through Passenger's MCP server, wants to build", StringComparison.Ordinal));
             CallToolResult notAllowed = Await(unallowed, "the build nobody allowed");
             Assert.True(notAllowed.IsError == true && Text(notAllowed).Contains($"Nobody at {where} answered within {Durations.Said(limit)} whether Test Agent may use build. A later call asks again.", StringComparison.Ordinal),
                 $"The build nobody allowed was answered: {Text(notAllowed)}");
-            WaitFor(() => !window.OwnedWindows.OfType<ConfirmDialog>().Any(d => d.IsVisible) && window.AgentStatus == "Agent connected",
+            WaitFor(() => !window.OwnedWindows.OfType<AgentToolDialog>().Any(d => d.IsVisible) && window.AgentStatus == "Agent connected",
                 "the question nobody answered to close and the status bar to stop saying the agent waits");
             Assert.False(window.Builder.IsRunning, "A build nobody allowed ran");
             IReadOnlyList<ModelContextProtocol.ProgressNotificationValue> told = leave.Told;

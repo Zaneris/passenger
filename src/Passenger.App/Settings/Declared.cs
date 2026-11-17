@@ -479,8 +479,9 @@ public static class Declared
     public static readonly ToggleSetting McpServer = new(s => s.McpServer, (s, v) => s with { McpServer = v },
         new(D.McpPage, "Enable MCP Server", D.McpWords,
             "Agents started with passenger --mcp-attach can use this window without asking to: read and change files, build, run and "
-            + "debug, use Git, NuGet and the terminal. Off, the window asks before letting each agent in. Either way, an agent asks "
-            + "before it first uses each tool that changes anything beyond saving, stopping and stepping."));
+            + "debug, use Git, NuGet and the terminal. Off, the window asks before letting each agent in. Either way, the window asks "
+            + "before each call of a tool that changes anything beyond saving, stopping and stepping, unless you allowed that tool for the "
+            + "agent's session."));
 
     public static readonly ChoiceSetting<DiscordShown> DiscordShows = new(s => s.DiscordShows, (s, v) => s with { DiscordShows = v },
         Named<DiscordShown>(D.DiscordChoices));

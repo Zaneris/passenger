@@ -281,23 +281,28 @@ public abstract class McpRig : IDisposable
         }
     }
 
-    /// <summary>The window's question to the person, once it is asked.</summary>
-    protected ConfirmDialog Question(MainWindow window, string what)
+    /// <summary>The window's question to the person on an agent's behalf, once it is asked: whether a tool's call may go on
+    /// (<see cref="AgentToolDialog"/>), or another folder open.</summary>
+    protected Avalonia.Controls.Window Question(MainWindow window, string what)
     {
-        WaitFor(() => window.OwnedWindows.OfType<ConfirmDialog>().Any(), what);
-        return window.OwnedWindows.OfType<ConfirmDialog>().Single();
+        WaitFor(() => Questions(window).Any(), what);
+        return Questions(window).Single();
     }
 
+    /// <summary>The questions the window asks the person on an agent's behalf: a tool's call, or another folder opened.</summary>
+    protected static IEnumerable<Avalonia.Controls.Window> Questions(MainWindow window) =>
+        window.OwnedWindows.Where(w => w is AgentToolDialog or ConfirmDialog);
+
     /// <summary>An agent's call the window first asks the person about, its question naming the tool and what it would do;
-    /// allowed, the call's answer.</summary>
+    /// allowed for the session, the call's answer.</summary>
     protected JsonElement Asked(MainWindow window, McpClient client, [IdentifierOf(typeof(McpTools))] string tool, string what, Dictionary<string, object?>? arguments = null)
     {
         Task<JsonElement> calling = Waiting.Apart(() => Call(client, tool, arguments));
-        ConfirmDialog asked = Question(window, $"the question for the agent's {tool}");
+        Avalonia.Controls.Window asked = Question(window, $"the question for the agent's {tool}");
         string[] said = Texts(asked);
         Assert.True(said.Contains($"Allow {tool}?") && said.Any(t => t.Contains($"wants to {what} (its {tool} tool)", StringComparison.Ordinal)),
             $"The question for the agent's {tool} said: {string.Join(" | ", said)}");
-        Press(asked, "Allow");
+        Press(asked, AgentToolDialog.AllowForSession);
         return Await(calling, $"the agent's {tool}");
     }
 
@@ -305,9 +310,9 @@ public abstract class McpRig : IDisposable
     protected JsonElement Unasked(MainWindow window, McpClient client, [IdentifierOf(typeof(McpTools))] string tool, Dictionary<string, object?>? arguments = null)
     {
         Task<JsonElement> calling = Waiting.Apart(() => Call(client, tool, arguments));
-        WaitFor(() => calling.IsCompleted || window.OwnedWindows.OfType<ConfirmDialog>().Any(), $"the agent's {tool}", AgentLimit);
-        Assert.True(!window.OwnedWindows.OfType<ConfirmDialog>().Any(),
-            $"The agent's {tool} asked the person: {string.Join(" | ", window.OwnedWindows.OfType<ConfirmDialog>().SelectMany(Texts))}");
+        WaitFor(() => calling.IsCompleted || Questions(window).Any(), $"the agent's {tool}", AgentLimit);
+        Assert.True(!Questions(window).Any(),
+            $"The agent's {tool} asked the person: {string.Join(" | ", Questions(window).SelectMany(Texts))}");
         return Await(calling, $"the agent's {tool}");
     }
 

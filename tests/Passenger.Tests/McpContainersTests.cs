@@ -114,10 +114,10 @@ public sealed class McpContainersTests : McpRig, IClassFixture<RestoredFolders>
         {
             Task<JsonElement> running = Waiting.Apart(() => Call(client, McpTools.ContainerExec, new() { ["container"] = name, ["command"] = "echo $((6*7)) > /tmp/answer; cat /tmp/answer" }));
             Press(Admission(window, "the window to ask whether the agent may work there"), AgentAdmissionDialog.Allow);
-            ConfirmDialog asked = Question(window, "the question for the agent's command in the container");
+            Avalonia.Controls.Window asked = Question(window, "the question for the agent's command in the container");
             Assert.Contains("Allow container_exec?", Texts(asked));
             Assert.False(Docker.Run("exec", name, "sh", "-c", "test -e /tmp/answer && echo there || echo absent") == "there", "The command ran before the person allowed it");
-            Press(asked, "Allow");
+            Press(asked, AgentToolDialog.AllowForSession);
             JsonElement ran = Await(running, "the command in the container");
             Assert.Equal(0, ran.GetProperty("exitCode").GetInt32());
             Assert.Equal("42\n", ran.GetProperty("output").GetString());
@@ -155,7 +155,7 @@ public sealed class McpContainersTests : McpRig, IClassFixture<RestoredFolders>
         {
             Task<JsonElement> running = Waiting.Apart(() => Call(client, McpTools.Run, new() { ["configuration"] = web.Name }));
             Press(Admission(window, "the window to ask whether the agent may work there"), AgentAdmissionDialog.Allow);
-            Press(Question(window, "the question for the agent's run"), "Allow");
+            Press(Question(window, "the question for the agent's run"), AgentToolDialog.AllowForSession);
             WaitFor(() => running.IsCompleted || window.CertificateQuestion is not null, "the agent's run", TimeSpan.FromMinutes(5));
             Assert.Null(window.CertificateQuestion);
             const string Said = "web over HTTP for this run: the development certificate is not trusted, and an agent's call started this run, and asks no one";

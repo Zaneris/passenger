@@ -239,8 +239,9 @@ public sealed class McpAvaloniaAppTests : McpRig, IClassFixture<AgentAppFolder>
         await Call(client, McpTools.Stop);
     }
 
-    /// <summary>On the person's window an agent asks before its first click or key in their app or in Passenger itself, and
-    /// once allowed both still never answers the questions Passenger asks the person for it, nor reaches Settings; the window,
+    /// <summary>On the person's window an agent asks before its first click or key in their app, and apart before its first
+    /// in Passenger itself, which the app's Allow for This Session never covers; once allowed both still never answers the
+    /// questions Passenger asks the person for it, nor reaches Settings; the window,
     /// closed, goes at once, held by nothing the inspector of Passenger's own windows started in the agent's call (#1445).
     /// Passenger's own windows are inspected once a process, so this is the run's one test of them in the test process itself.</summary>
     [AvaloniaFact]
@@ -271,12 +272,12 @@ public sealed class McpAvaloniaAppTests : McpRig, IClassFixture<AgentAppFolder>
             McpClient agent = client;
 
             Assert.Contains("Button#Count", Text(Await(Waiting.Apart(() => Call(agent, McpTools.AppTree, new() { ["filter"] = "#Count" })), "the app's tree")), StringComparison.Ordinal);
-            Assert.Empty(window.OwnedWindows.OfType<ConfirmDialog>());
+            Assert.Empty(Questions(window));
 
             Task<JsonElement> clicking = Waiting.Apart(() => Call(agent, McpTools.AppClick, new() { ["control"] = "#Count" }));
-            ConfirmDialog asked = Question(window, "the question for the agent's click");
+            Window asked = Question(window, "the question for the agent's click");
             Assert.Contains("Allow app_click?", Texts(asked));
-            Press(asked, "Allow");
+            Press(asked, AgentToolDialog.AllowForSession);
             Assert.StartsWith("Clicked Button#Count", Text(Await(clicking, "the click")), StringComparison.Ordinal);
             Assert.Contains("\"Clicked once\"", Text(Await(Waiting.Apart(() => Call(agent, McpTools.AppTree, new() { ["control"] = "#Counter" })), "the counter")), StringComparison.Ordinal);
 
@@ -284,22 +285,28 @@ public sealed class McpAvaloniaAppTests : McpRig, IClassFixture<AgentAppFolder>
             // The tree names an element by its type, #name, any .classes, then its text.
             Assert.Matches($"TextBlock#ProjectName(\\.[\\w-]+)* \"{System.Text.RegularExpressions.Regex.Escape(project.Text!)}\"",
                 Text(Await(Waiting.Apart(() => Call(agent, McpTools.AppTree, new() { ["app"] = "ide", ["filter"] = "#ProjectName" })), "Passenger's tree")));
-            Await(Waiting.Apart(() => Call(agent, McpTools.AppClick, new() { ["app"] = "ide", ["control"] = "#RunConfigButton" })), "the click on Passenger's run configurations");
+            // Input to Passenger's own windows is asked apart from the app's, which the session allows.
+            Task<JsonElement> clickingOwn = Waiting.Apart(() => Call(agent, McpTools.AppClick, new() { ["app"] = "ide", ["control"] = "#RunConfigButton" }));
+            Window own = Question(window, "the question for the agent's click in Passenger's windows");
+            Assert.Contains("Allow app_click in Passenger's windows?", Texts(own));
+            Press(own, AgentToolDialog.AllowForSession);
+            Await(clickingOwn, "the click on Passenger's run configurations");
             Dictionary<string, object?> menu = new() { ["app"] = "ide", ["filter"] = "MenuItem \"AgentApp\"" };
             Assert.Contains("MenuItem \"AgentApp\"", Text(Await(Waiting.Apart(() => Call(agent, McpTools.AppTree, menu)), "the run configurations' menu")), StringComparison.Ordinal);
             Task<JsonElement> escaping = Waiting.Apart(() => Call(agent, McpTools.AppKey, new() { ["app"] = "ide", ["keys"] = "Escape" }));
-            Press(Question(window, "the question for the agent's keys"), "Allow");
+            Press(Question(window, "the question for the agent's keys"), AgentToolDialog.AllowForSession);
             string escaped = Text(Await(escaping, "the Escape"));
             string after = Text(Await(Waiting.Apart(() => Call(agent, McpTools.AppTree, menu)), "the menu closed"));
             Assert.True(after.StartsWith("Nothing in Passenger matches", StringComparison.Ordinal), $"Escape ({escaped}) left the menu open: {after}");
 
             Task<CallToolResult> building = Waiting.Apart(() => Result(agent, McpTools.Build));
-            ConfirmDialog question = Question(window, "the question for the agent's build");
-            CallToolResult clicked = Await(Waiting.Apart(() => Result(agent, McpTools.AppClick, new() { ["app"] = "ide", ["window"] = "ConfirmDialog", ["control"] = "Button \"Allow\"" })),
-                "the agent's click on the question's Allow");
+            Window question = Question(window, "the question for the agent's build");
+            CallToolResult clicked = Await(Waiting.Apart(() => Result(agent, McpTools.AppClick,
+                new() { ["app"] = "ide", ["window"] = nameof(AgentToolDialog), ["control"] = $"Button \"{AgentToolDialog.AllowOnce}\"" })),
+                "the agent's click on the question's Allow Once");
             Assert.True(clicked.IsError == true && Text(clicked).Contains("only they answer it", StringComparison.Ordinal),
                 $"The agent's click on the question its own build waits on was answered: {Text(clicked)}");
-            CallToolResult entered = Await(Waiting.Apart(() => Result(agent, McpTools.AppKey, new() { ["app"] = "ide", ["window"] = "ConfirmDialog", ["keys"] = "Enter" })),
+            CallToolResult entered = Await(Waiting.Apart(() => Result(agent, McpTools.AppKey, new() { ["app"] = "ide", ["window"] = nameof(AgentToolDialog), ["keys"] = "Enter" })),
                 "the agent's Enter in the question");
             Assert.True(entered.IsError == true && Text(entered).Contains("only they answer it", StringComparison.Ordinal),
                 $"The agent's Enter in the question its own build waits on was answered: {Text(entered)}");

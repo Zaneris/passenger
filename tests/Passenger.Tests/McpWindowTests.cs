@@ -103,7 +103,7 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
         try
         {
             Task<JsonElement> installing = Waiting.Apart(() => Call(client, McpTools.NugetInstall, new() { ["project"] = "Lib", ["id"] = "Passenger.Sample" }));
-            Press(Question(window, "the question for the agent's install"), "Allow");
+            Press(Question(window, "the question for the agent's install"), AgentToolDialog.AllowForSession);
             JsonElement installed = Await(installing, "the agent's install");
             Assert.Equal(["Lib.csproj"], installed.GetProperty("changed").EnumerateArray().Select(f => f.GetString()!));
             Assert.True(worked.Contains("Installing Passenger.Sample 1.0.0 in Lib…"), $"The agent's install did not show as the NuGet window's work; it showed: {string.Join(" | ", worked)}");
@@ -153,9 +153,9 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
             Task held = window.EditorArea.Commands.HoldNextWrite(release.Task);
             Task<JsonElement> replacing = Waiting.Apart(() => Call(client, McpTools.ReplaceInFiles,
                 new() { ["text"] = "tally", ["replacement"] = "count", ["wholeWords"] = true, ["scope"] = "directory", ["directory"] = "." }));
-            ConfirmDialog asked = Question(window, "the question for the agent's replace");
+            Avalonia.Controls.Window asked = Question(window, "the question for the agent's replace");
             // Pumped, not settled: the replace holds the window's background work while its write of Notes.txt is held.
-            Ui.Click(Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(asked).OfType<Avalonia.Controls.Button>().First(b => (string?)b.Content == "Allow"), settle: false);
+            Ui.Click(Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(asked).OfType<Avalonia.Controls.Button>().First(b => (string?)b.Content == AgentToolDialog.AllowForSession), settle: false);
             Ui.PumpUntil(() => held.IsCompleted, "the agent's write of Notes.txt to be held", AgentLimit);
             window.EditorArea.CodeEditor.Focus();
             window.KeyTextInput("// saved meanwhile ");
@@ -200,7 +200,7 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
             JsonElement found = Assert.Single(Await(Waiting.Apart(() => Call(client, McpTools.NugetSearch, new() { ["query"] = "sample", ["feed"] = "local" })), "the agent's search").EnumerateArray());
             Assert.Equal("Passenger.Sample", found.GetProperty("id").GetString());
             Task<JsonElement> installing = Waiting.Apart(() => Call(client, McpTools.NugetInstall, new() { ["project"] = "Lib", ["id"] = "Passenger.Sample" }));
-            Press(Question(window, "the question for the agent's install"), "Allow");
+            Press(Question(window, "the question for the agent's install"), AgentToolDialog.AllowForSession);
             JsonElement installed = Await(installing, "the agent's install");
             Assert.Equal(["Lib.csproj"], installed.GetProperty("changed").EnumerateArray().Select(f => f.GetString()!));
             Assert.False(window.DockHost[ToolWindowIds.NuGet].IsBuilt, "The agent's package search or install built the hidden NuGet window's view");
@@ -241,7 +241,7 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
             try
             {
                 Task<JsonElement> committing = Waiting.Apart(() => Call(client, McpTools.VcsCommit, new() { ["message"] = "Two as a number", ["push"] = true }));
-                Press(Question(window, "the question for the agent's commit"), "Allow");
+                Press(Question(window, "the question for the agent's commit"), AgentToolDialog.AllowForSession);
                 string answer = Await(committing, "the agent's commit and push").GetString()!;
                 Assert.Equal("Nothing to run: no executable project", pressed);
                 Assert.True(answer.EndsWith(" Two as a number; Pushed main", StringComparison.Ordinal),
@@ -268,7 +268,7 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
         try
         {
             Task<CallToolResult> misspelt = Waiting.Apart(() => Result(client, McpTools.IdeAction, new() { ["action"] = "app.biuld" }));
-            Press(Question(window, "the question for the agent's action"), "Allow");
+            Press(Question(window, "the question for the agent's action"), AgentToolDialog.AllowForSession);
             CallToolResult unknown = Await(misspelt, "the misspelt action");
             string said = Text(unknown);
             Assert.True(unknown.IsError == true, $"An action no action has was answered as run: {said}");
@@ -316,7 +316,7 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
             Assert.Equal(Refusals.Untrusted, workspace.GetProperty("trust").GetString());
 
             Task<CallToolResult> trusting = Waiting.Apart(() => Result(client, McpTools.IdeAction, new() { ["action"] = AppActions.TrustFolder }));
-            Press(Question(window, "the question for the agent's action"), "Allow");
+            Press(Question(window, "the question for the agent's action"), AgentToolDialog.AllowForSession);
             CallToolResult trust = Await(trusting, "the agent's Trust Folder");
             Assert.True(trust.IsError == true && Text(trust).Contains(Refusals.TrustIsThePersons, StringComparison.Ordinal),
                 $"An agent's Trust Folder answered: {Text(trust)}");
@@ -355,7 +355,7 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
 
             client = Await(Waiting.Apart(() => Start(["--mcp-attach", ProcessId])), "the agent attaching");
             Task<CallToolResult> converting = Waiting.Apart(() => Result(client, McpTools.IdeAction, new() { ["action"] = AppActions.ConvertIndentationToTabs }));
-            Press(Question(window, "the question for the agent's action"), "Allow");
+            Press(Question(window, "the question for the agent's action"), AgentToolDialog.AllowForSession);
             CallToolResult refused = Await(converting, "Convert Indentation on tool.py");
             string said = Text(refused);
             Assert.True(refused.IsError == true && said.Contains(Refusals.GrammarFailed("tool.py", "Python", grammar.Failure.Message), StringComparison.Ordinal),
@@ -389,7 +389,7 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
         try
         {
             Task<JsonElement> saving = Waiting.Apart(() => Call(client, McpTools.IdeAction, new() { ["action"] = AppActions.SaveAsLaunchProfile, ["input"] = "Twice" }));
-            Press(Question(window, "the question for the agent's action"), "Allow");
+            Press(Question(window, "the question for the agent's action"), AgentToolDialog.AllowForSession);
             Assert.Equal("Saved as the launch profile Twice in Sum's Properties/launchSettings.json, made for it: it is now Sum: Twice, generated from that profile",
                 Await(saving, "the agent's Save as Launch Profile").GetString());
             Assert.True(window.Configurations.SingleOrDefault(c => c.Name == "Sum: Twice") is { Generated: true, Arguments: "--twice" },
@@ -857,7 +857,7 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
         try
         {
             Task<CallToolResult> asking = Waiting.Apart(() => Result(client, McpTools.IdeAction, new() { ["action"] = "tests.fault" }));
-            Press(Question(window, "the question for the agent's action"), "Allow");
+            Press(Question(window, "the question for the agent's action"), AgentToolDialog.AllowForSession);
             CallToolResult faulted = Await(asking, "the action that fails");
             string said = Text(faulted);
             Assert.True(faulted.IsError == true && said.Contains("NullReferenceException: The fault's own words", StringComparison.Ordinal),
@@ -887,7 +887,7 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
         try
         {
             Task<CallToolResult> asking = Waiting.Apart(() => Result(client, McpTools.IdeAction, new() { ["action"] = "tests.held" }));
-            Press(Question(window, "the question for the agent's action"), "Allow");
+            Press(Question(window, "the question for the agent's action"), AgentToolDialog.AllowForSession);
             CallToolResult failed = Await(asking, "the action that fails");
             Assert.True(failed.IsError == true && Text(failed).Contains("The file is held by another program", StringComparison.Ordinal),
                 $"An agent's call that failed was answered without the failure's words: {Text(failed)}");
@@ -920,7 +920,7 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
         try
         {
             Task<JsonElement> removing = Waiting.Apart(() => Call(client, McpTools.BreakpointSet, new() { ["exception"] = ExceptionBreakpoint.AnyException, ["remove"] = true }));
-            Press(Question(window, "the question for the agent's breakpoint"), "Allow");
+            Press(Question(window, "the question for the agent's breakpoint"), AgentToolDialog.AllowForSession);
             JsonElement answer = Await(removing, "the agent's remove of Any exception");
             JsonElement listed = answer.EnumerateArray().Single(b => b.TryGetProperty("exception", out JsonElement type) && type.GetString() == ExceptionBreakpoint.AnyException);
             Assert.False(listed.GetProperty("enabled").GetBoolean(), $"The agent's remove answered Any exception still on: {listed}");
@@ -963,7 +963,7 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
         WaitFor(() => window.Agents == 1 || agent.IsCompleted, "the window to show the agent", AgentLimit);
         int shown = window.Agents;
         // A breakpoint is asked about first: its condition or log message runs in the person's later sessions too.
-        Press(Question(window, "the question for the agent's breakpoint"), "Allow");
+        Press(Question(window, "the question for the agent's breakpoint"), AgentToolDialog.AllowForSession);
         looked.TrySetResult();
         WaitFor(() => agent.IsCompleted, "the agent's calls", AgentLimit);
         Assert.Equal(1, shown);
@@ -1046,7 +1046,7 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
         try
         {
             Task<CallToolResult> denied = Waiting.Apart(() => Result(client, McpTools.Run, run));
-            ConfirmDialog asked = Question(window, "the question for the agent's run");
+            Avalonia.Controls.Window asked = Question(window, "the question for the agent's run");
             string[] said = Texts(asked);
             Assert.Contains("Allow run?", said);
             Assert.Contains(said, t => t.Contains("wants to run a configuration", StringComparison.Ordinal));
@@ -1059,7 +1059,7 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
 
             using CancellationTokenSource giveUp = CancellationTokenSource.CreateLinkedTokenSource(Cancel);
             Task<CallToolResult> allowed = Waiting.Apart(() => CallGivingUp(client, McpTools.Run, run, giveUp.Token));
-            Press(Question(window, "the question asked again"), "Allow");
+            Press(Question(window, "the question asked again"), AgentToolDialog.AllowForSession);
             WaitFor(() => window.Runner.IsRunning && window.AgentStatus == "Agent: Run a configuration", "the agent's run in the status bar");
 
             giveUp.Cancel();
@@ -1070,8 +1070,8 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
             WaitFor(() => !window.Runner.IsRunning, "the program stopped");
 
             Task<CallToolResult> again = Waiting.Apart(() => Result(client, McpTools.Run, run));
-            WaitFor(() => window.Runner.IsRunning || window.OwnedWindows.OfType<ConfirmDialog>().Any(), "the run allowed before");
-            Assert.Empty(window.OwnedWindows.OfType<ConfirmDialog>());
+            WaitFor(() => window.Runner.IsRunning || Questions(window).Any(), "the run allowed before");
+            Assert.Empty(Questions(window));
             WaitFor(() => window.AgentStatus == "Agent: Run a configuration", "the second run in the status bar");
             Gone(client);
             WaitFor(() => window.AgentStatus is null, "the window to stop waiting on the run of the agent that went");
@@ -1187,7 +1187,7 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
         try
         {
             Task<JsonElement> committing = Waiting.Apart(() => Call(client, McpTools.VcsCommit, new() { ["message"] = "Two", ["push"] = true }));
-            Press(Question(window, "the question for the agent's vcs_commit"), "Allow");
+            Press(Question(window, "the question for the agent's vcs_commit"), AgentToolDialog.AllowForSession);
             WaitFor(() => window.GitQuestion is { IsVisible: true }, "the window to ask the person for the login the push needs");
             Passenger.App.Vcs.GitQuestionDialog asked = window.GitQuestion!;
             Assert.Equal($"Sign in to {remote.Place}", asked.Title);
@@ -1239,7 +1239,7 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
         try
         {
             Task<JsonElement> running = Waiting.Apart(() => Call(client, McpTools.TerminalRun, new() { ["command"] = "echo agent-shell", ["waitSeconds"] = 5 }));
-            Press(Question(window, "the question for the agent's terminal command"), "Allow");
+            Press(Question(window, "the question for the agent's terminal command"), AgentToolDialog.AllowForSession);
             string answer = Await(running, "the agent's terminal command").GetString()!;
             Assert.Contains("agent-shell", answer, StringComparison.Ordinal);
             Ui.Settle();
@@ -1285,7 +1285,7 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
         try
         {
             Task<JsonElement> first = Waiting.Apart(() => Call(client, McpTools.TerminalRun, new() { ["command"] = "echo agent-one", ["waitSeconds"] = 5 }));
-            Press(Question(window, "the question for the agent's terminal command"), "Allow");
+            Press(Question(window, "the question for the agent's terminal command"), AgentToolDialog.AllowForSession);
             WaitFor(() => terminal.AgentShell is not null || first.IsCompleted, "the Agent Shell to start for the agent's first command");
             Assert.True(terminal.AgentShell is not null, $"The agent's command ran in no Agent Shell, the person's program's screen:\n{TerminalTests.Screen(persons.Session)}");
             Heard heard = new();

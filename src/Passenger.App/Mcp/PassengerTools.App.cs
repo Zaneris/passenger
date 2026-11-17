@@ -25,6 +25,9 @@ public sealed partial class PassengerTools
     /// an app that runs, or using it, asks nothing of them.</summary>
     private Task<T> OnApp<T>(CancellationToken cancel, Func<Task<T>> work) => OnUi(cancel, work, projects: false);
 
+    /// <summary>An app_ tool's app naming Passenger's own windows, every one of this process's.</summary>
+    internal const string OwnWindows = "ide";
+
     /// <summary>How long a tool waits for an app launched a moment ago to show its UI.</summary>
     private static readonly TimeSpan AppUiLimit = TimeSpan.FromSeconds(60);
 
@@ -374,7 +377,7 @@ public sealed partial class PassengerTools
             null => Session.InspectedApps,
             "run" => [RunApp() ?? throw new InvalidOperationException("Run has started no Avalonia, WPF or MAUI app in this folder")],
             "debug" => [DebugApp() ?? throw new InvalidOperationException("Debug has started no Avalonia, WPF or MAUI app in this folder")],
-            "ide" => [LiveApp.Own()],
+            OwnWindows => [LiveApp.Own()],
             _ => [NamedApp(app)],
         };
         List<LiveApp> chosen = [.. apps];
@@ -385,7 +388,7 @@ public sealed partial class PassengerTools
         }
         return Task.FromResult<IReadOnlyList<AppBindingError>>([.. chosen.SelectMany(live =>
         {
-            string which = Session.Inspecting.FirstOrDefault(a => a.App == live) is { } inspected ? AppName(inspected) : "ide";
+            string which = Session.Inspecting.FirstOrDefault(a => a.App == live) is { } inspected ? AppName(inspected) : OwnWindows;
             IEnumerable<AppBindingError> listed = live.Bindings.Select(failure =>
             {
                 BindingProblem placed = Builds.Placed(live, failure);
@@ -412,7 +415,7 @@ public sealed partial class PassengerTools
             "debug" => DebugApp() ?? throw new InvalidOperationException(Runs(RunningKind.Debug)
                 ? $"What is being debugged is not {Inspectable}"
                 : "Debug has started no Avalonia, WPF or MAUI app; debug_start starts one"),
-            "ide" => LiveApp.Own(),
+            OwnWindows => LiveApp.Own(),
             _ => NamedApp(app),
         };
         if (Session.Debug.SessionOf(chosen) is { State: DebugState.Paused })

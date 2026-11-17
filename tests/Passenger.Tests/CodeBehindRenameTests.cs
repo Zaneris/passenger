@@ -474,7 +474,7 @@ public sealed class CodeBehindRenameTests : McpRig
     private JsonElement Allowed(MainWindow window, McpClient client, [IdentifierOf(typeof(McpTools))] string tool, Dictionary<string, object?> arguments)
     {
         Task<JsonElement> calling = Waiting.Apart(() => Call(client, tool, arguments));
-        Press(Question(window, $"the question for the agent's {tool}"), "Allow");
+        Press(Question(window, $"the question for the agent's {tool}"), AgentToolDialog.AllowForSession);
         return Await(calling, $"the agent's {tool}");
     }
 

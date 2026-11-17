@@ -150,7 +150,7 @@ public sealed class McpHotReloadTests : McpRig, IClassFixture<RestoredFolders>
 
             client = Await(Waiting.Apart(() => Start(["--mcp-attach", ProcessId])), "the agent attaching");
             Task<JsonElement> applying = Waiting.Apart(() => Call(client, McpTools.HotReload));
-            Press(Question(window, "the question for the agent's hot_reload"), "Allow");
+            Press(Question(window, "the question for the agent's hot_reload"), AgentToolDialog.AllowForSession);
             JsonElement applied = Await(applying, "the agent's hot_reload");
             Assert.True(applied.GetProperty("result").GetString() == "applied" && applied.GetProperty("methods").GetInt32() == 1, $"The agent's edit was not applied: {applied}");
             Assert.True(worked.Contains("Applying Hot Reload changes…"), $"The agent's apply did not show as Apply Hot Reload Changes' work; it showed: {string.Join(" | ", worked)}");
