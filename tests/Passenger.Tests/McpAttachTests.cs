@@ -637,7 +637,7 @@ public sealed class McpAttachTests : McpRig, IClassFixture<RestoredFolders>
 
     /// <summary>An agent's request_full_access asks once for every tool that changes something, naming what they do and
     /// listing them, its one Allow accented and no key answering it: allowed for the session, the edit whose question waited
-    /// goes on, and an edit, a build and a click in Passenger's own windows go on unasked, until the agent opens another
+    /// goes on, and an edit, a build and a click in an app go on unasked, until the agent opens another
     /// folder, where each tool asks again; denied there, a later request is refused unasked while an edit still asks at its
     /// call. The agent's own Passenger answers that nothing asks.</summary>
     [AvaloniaFact]
@@ -681,8 +681,9 @@ public sealed class McpAttachTests : McpRig, IClassFixture<RestoredFolders>
             Unasked(window, client, McpTools.Edit, Note("unasked"));
             Assert.Equal("notes unasked waited\n", File.ReadAllText(Path.Combine(folder, "Notes.txt")));
             Unasked(window, client, McpTools.Build);
-            string clicked = Unasked(window, client, McpTools.AppClick, new() { ["app"] = "ide", ["control"] = "#AgentButton" }).GetString()!;
-            Assert.StartsWith("Clicked", clicked, StringComparison.Ordinal);
+            // In an app, none running: no test but McpAvaloniaAppTests' inspects Passenger's own windows in the test process.
+            string clicked = Text(UnaskedResult(window, client, McpTools.AppClick, new() { ["x"] = 10, ["y"] = 10 }));
+            Assert.Contains("No Avalonia, WPF or MAUI app", clicked, StringComparison.Ordinal);
             Assert.Contains("allowed already", Text(UnaskedResult(window, client, McpTools.RequestFullAccess)), StringComparison.Ordinal);
 
             // The agent's own open, still the person's to allow, leaves every tool asking again in the folder it opens.
