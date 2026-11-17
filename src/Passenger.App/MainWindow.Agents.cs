@@ -301,9 +301,9 @@ public partial class MainWindow
     }
 
     /// <summary>Why an agent's input through the inspector (app_click, app_key, app_type and app_scroll on app ide) may not
-    /// reach one of Passenger's own top levels, else null: a question Passenger asks the person on an agent's behalf, or
-    /// Settings, where the person alone says what agents may do; a popup or dialog of either is it. The process's, as the
-    /// inspector loaded into it is (<see cref="LiveTree.LiveApp.Own"/>).</summary>
+    /// reach one of Passenger's own top levels, else null: a question Passenger asks the person on an agent's behalf, the
+    /// question whether to trust a folder, or Settings, where the person alone says what agents may do; a popup or dialog
+    /// of any is it. The process's, as the inspector loaded into it is (<see cref="LiveTree.LiveApp.Own"/>).</summary>
     internal static string? KeptFromAgents(object reached)
     {
         UiThread.Check();
@@ -312,6 +312,10 @@ public partial class MainWindow
             if (at is Settings.SettingsDialog)
             {
                 return "Settings is the person's alone: no agent's input reaches it (settings_set changes what an agent may)";
+            }
+            if (at is WorkspaceTrustDialog)
+            {
+                return Refusals.TrustAnsweredByThePerson;
             }
             if (at is Window asking && PassengerApp.Windows.Any(w => w.agentDialogs.Contains(asking)))
             {

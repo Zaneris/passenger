@@ -43,8 +43,14 @@ public sealed class WorkspaceTrustDialog : IdeWindow
     /// <summary>The person's answer, once they gave one; null while it asks, or closed unanswered.</summary>
     public TrustAnswer? Answered { get; private set; }
 
+    /// <summary>The person's answer, which an agent's input never gives (<see cref="AgentAsks.PersonsAlone"/>): the question
+    /// stays for the person.</summary>
     private void Answer(TrustAnswer said)
     {
+        if (AgentAsks.PersonsAlone(Refusals.TrustAnsweredByThePerson))
+        {
+            return;
+        }
         Answered = said;
         Close(said);
     }

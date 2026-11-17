@@ -8,11 +8,13 @@ namespace Passenger.App;
 /// window's thread and off it: an agent's tool call (<see cref="Beside"/>) shows a tool window or a file behind, never
 /// bringing a window forward or taking the keys; an action an agent runs (ide_action, <see cref="Act"/>) opens no popup,
 /// menu or modal dialog and moves no keys from where the person has them, as it runs or in the work it starts (the one
-/// check of each, <see cref="Install"/>); a window that asks, opened by that work later, comes without the keys.</summary>
+/// check of each, <see cref="Install"/>); a window that asks, opened by that work later, comes without the keys; and its
+/// input into Passenger's own windows (<see cref="Input"/>) does nothing only the person does (<see cref="PersonsAlone"/>).</summary>
 public static class AgentAsks
 {
     private static readonly AsyncLocal<bool> beside = new();
     private static readonly AsyncLocal<Acting?> acting = new();
+    private static readonly AsyncLocal<Acting?> inputting = new();
 
     /// <summary>Whether this flow is an attached agent's tool call, or work it started.</summary>
     public static bool Beside => beside.Value;
@@ -54,6 +56,46 @@ public static class AgentAsks
             acting.Value = was;
             beside.Value = wasBeside;
         }
+    }
+
+    /// <summary>Delivers an attached agent's input into Passenger's own windows (app_click, app_key, app_type and app_scroll
+    /// on app ide, <see cref="LiveTree.LiveApp.Own"/>), its flow and the work it starts marked so; null once delivered, else
+    /// why something only the person does was refused as it was (<see cref="PersonsAlone"/>). On the window's thread.</summary>
+    public static string? Input(Action deliver)
+    {
+        Acting? was = inputting.Value;
+        Acting input = new();
+        inputting.Value = input;
+        try
+        {
+            deliver();
+            return input.Refused;
+        }
+        finally
+        {
+            input.Running = false;
+            inputting.Value = was;
+        }
+    }
+
+    /// <summary>Whether this flow is an attached agent's input into Passenger's own windows, or work it started
+    /// (<see cref="Input"/>).</summary>
+    public static bool Inputting => inputting.Value is not null;
+
+    /// <summary>Whether what only the person does (trusting a folder) is refused here: in an attached agent's input into
+    /// Passenger's own windows or the work it started (<see cref="Input"/>), the agent told <paramref name="why"/> where its
+    /// input is still being delivered; false in any other flow.</summary>
+    public static bool PersonsAlone(string why)
+    {
+        if (inputting.Value is not { } input)
+        {
+            return false;
+        }
+        if (input.Running)
+        {
+            input.Refused ??= why;
+        }
+        return true;
     }
 
     /// <summary>Refuses a popup in an agent's action's flow, the action ending there as one canceled, the agent told why
@@ -121,7 +163,8 @@ public static class AgentAsks
         }
     }
 
-    /// <summary>One agent's action: whether it is still running on the window's thread, and what it was refused meanwhile.</summary>
+    /// <summary>One agent's action or input: whether it is still running on the window's thread, and what it was refused
+    /// meanwhile.</summary>
     private sealed class Acting
     {
         public bool Running { get; set; } = true;

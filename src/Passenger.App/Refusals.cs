@@ -48,8 +48,12 @@ public static class Refusals
     public static string RestoresUntrusted(string template) =>
         $"{template} restores the project it makes and cannot be told not to, which would run this folder's MSBuild files: trust the folder first";
 
-    /// <summary>An agent asked to trust a folder, which only the person does.</summary>
+    /// <summary>An agent asked to trust a folder, which only the person does: through an action, or by its input into
+    /// Passenger's windows.</summary>
     public const string TrustIsThePersons = "Only the person trusts a folder, with Trust Folder over the editors";
+
+    /// <summary>An agent's input reaching the question whether to trust a folder, which only the person answers.</summary>
+    public const string TrustAnsweredByThePerson = "Only the person answers whether to trust a folder: no agent's input reaches the question";
 
     /// <summary>The folder open is trusted already.</summary>
     public const string TrustedAlready = "The folder is trusted already";

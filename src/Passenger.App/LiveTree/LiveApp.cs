@@ -189,8 +189,9 @@ public sealed class LiveApp : ILiveTreeSource, IDisposable
             {
                 Assembly inspector = AssemblyLoadContext.Default.LoadFromAssemblyPath(InspectorPath);
                 Type agent = inspector.GetType("Passenger.Inspector.Agent", throwOnError: true)!;
-                // Only the person answers Passenger's questions for agents and changes its Settings: no agent's input reaches them.
-                agent.GetMethod("Guard", BindingFlags.Public | BindingFlags.Static)!.Invoke(null, [(Func<object, string?>)MainWindow.KeptFromAgents]);
+                // Only the person answers Passenger's questions for agents, changes its Settings and trusts a folder: no agent's input does.
+                agent.GetMethod("Guard", BindingFlags.Public | BindingFlags.Static)!
+                    .Invoke(null, [(Func<object, string?>)MainWindow.KeptFromAgents, (Func<Action, string?>)AgentAsks.Input]);
                 agent.GetMethod("Start", BindingFlags.Public | BindingFlags.Static)!
                     .Invoke(null, [socket, Thread.CurrentThread, typeof(Avalonia.AvaloniaObject).Assembly.GetName().Version!.ToString(), null, false, false]);
             }

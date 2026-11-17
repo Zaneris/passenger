@@ -571,7 +571,7 @@ public sealed class NewProjectDialog : IdeWindow
                 writes.Made(plan.Root);
             }
             // A new solution's folder is the person's own code from its first file, trusted before anything is restored.
-            if (target is null)
+            if (target is null && !AgentAsks.PersonsAlone(Refusals.TrustIsThePersons))
             {
                 WorkspaceTrust.Trust(PathNames.Canonical(plan.Root));
             }
@@ -966,8 +966,8 @@ public sealed class NewProjectDialog : IdeWindow
         {
             return $"{what} already exists in this location: {root} is not empty";
         }
-        // Where the folder is not trusted the project is made without its restore, which a template that cannot skip it would run.
-        if (target is not null && Variant() is { Restores: true, SkipRestoreOption: null } && !WorkspaceTrust.Trusts(root))
+        // A folder not trusted (a new solution's an agent's input makes too) takes no restore, which a template that cannot skip it would run.
+        if ((target is not null || AgentAsks.Inputting) && Variant() is { Restores: true, SkipRestoreOption: null } && !WorkspaceTrust.Trusts(root))
         {
             return Refusals.RestoresUntrusted(template.Name);
         }

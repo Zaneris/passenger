@@ -84,7 +84,17 @@ internal sealed class Inspector : Inspecting<Visual>
 
     protected override Picture Capture(Visual element, Request request) => Pictures.Take(element, request);
 
-    protected override InputDone Do(InputAction input) => driver.Do(input);
+    /// <summary>An agent's input, delivered through the app where it marks an agent's input itself (<see cref="Agent.Guard"/>),
+    /// refused with the app's why where what it reached is the person's alone.</summary>
+    protected override InputDone Do(InputAction input)
+    {
+        if (Agent.Delivering is not { } delivering)
+        {
+            return driver.Do(input);
+        }
+        InputDone? done = null;
+        return delivering(() => done = driver.Do(input)) is { } refused ? throw new Refusal(refused) : done!;
+    }
 
     protected override void Watch(int breakpoint, Visual element, string property, string? hitCondition) => breaks.Watch(breakpoint, element, property, hitCondition);
 

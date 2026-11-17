@@ -26,9 +26,18 @@ public static class Agent
     /// <summary>Why the app keeps a top level from an agent's input, else null (<see cref="Guard"/>).</summary>
     internal static Func<object, string?>? Refusing { get; private set; }
 
+    /// <summary>Delivers an agent's input as the app marks it, answering why the app refused what it reached, else null
+    /// (<see cref="Guard"/>).</summary>
+    internal static Func<Action, string?>? Delivering { get; private set; }
+
     /// <summary>Keeps the agent's input from the top levels the app names a reason for, called with each one input
-    /// would reach. Set before <see cref="Start"/>, on the app's UI thread.</summary>
-    public static void Guard(Func<object, string?> refusing) => Refusing = refusing;
+    /// would reach, and has the app deliver each input itself (<paramref name="delivering"/>), so what it reaches knows it
+    /// for an agent's. Set before <see cref="Start"/>, on the app's UI thread.</summary>
+    public static void Guard(Func<object, string?> refusing, Func<Action, string?> delivering)
+    {
+        Refusing = refusing;
+        Delivering = delivering;
+    }
 
     /// <summary>The file the program previews, as Avalonia's designer (<see cref="Wire.PreviewVariable"/>), whose loads are
     /// made to record where they make each element; null for an app.</summary>

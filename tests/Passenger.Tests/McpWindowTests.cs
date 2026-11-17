@@ -330,6 +330,55 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
         }
     }
 
+    /// <summary>An agent's input into the person's window never trusts its folder: its click on the trust question's Trust
+    /// never reaches the question, and its click at the point of the banner's Trust Folder, where the person's click trusts
+    /// the folder, leaves it untrusted; the agent is told why each time, the status bar saying it too, and the person's
+    /// own click then trusts it.</summary>
+    [AvaloniaFact]
+    public void An_agents_input_into_the_persons_window_never_trusts_its_folder_and_is_told_why()
+    {
+        string folder = PathNames.Canonical(TestFolders.Create("mcp-input-trust-"));
+        File.WriteAllText(Path.Combine(folder, "Notes.txt"), "notes\n");
+        using IDisposable asked = WorkspaceTrust.Ask(folder);
+        MainWindow window = AgentsWindow(folder, languageServer: false);
+        Ui.WaitFor(() => window.AskingTrust is { IsVisible: true }, "the trust question");
+        WorkspaceTrustDialog question = window.AskingTrust!;
+        McpClient client = Await(Waiting.Apart(() => Start(["--mcp-attach", ProcessId, folder])), "the agent attaching");
+        try
+        {
+            Task<CallToolResult> answering = Waiting.Apart(() => Result(client, McpTools.AppClick,
+                new() { ["app"] = "ide", ["window"] = nameof(WorkspaceTrustDialog), ["control"] = $"Button \"{WorkspaceTrustDialog.Trust}\"" }));
+            Press(Question(window, "the question for the agent's click in Passenger's windows"), AgentToolDialog.AllowForSession);
+            CallToolResult answered = Await(answering, "the agent's click on the trust question's Trust");
+            Assert.True(answered.IsError == true && Text(answered).Contains(Refusals.TrustAnsweredByThePerson, StringComparison.Ordinal),
+                $"The agent's click on the trust question's Trust was answered: {Text(answered)}");
+            Assert.True(question.IsVisible && !window.Session.Trusted, "The agent's click answered the trust question the person is asked");
+
+            Ui.ClickButton(question, WorkspaceTrustDialog.Untrusted);
+            Ui.WaitFor(() => window.TrustSaid == Refusals.UntrustedSaid, "the banner over the folder opened without trusting it");
+            string title = window.Actions[AppActions.TrustFolder]!.Title;
+            Avalonia.Controls.Button link = window.GetVisualDescendants().OfType<Avalonia.Controls.Button>().Single(b => (b.Content as string) == title && b.IsEffectivelyVisible);
+            Avalonia.Point at = Avalonia.VisualExtensions.TranslatePoint(link, new Avalonia.Point(link.Bounds.Width / 2, link.Bounds.Height / 2), window)
+                ?? throw new InvalidOperationException("The banner's Trust Folder is not in the window");
+            CallToolResult clicked = Await(Waiting.Apart(() => Result(client, McpTools.AppClick,
+                new() { ["app"] = "ide", ["window"] = nameof(MainWindow), ["x"] = at.X, ["y"] = at.Y })), "the agent's click on the banner's Trust Folder");
+            Assert.True(clicked.IsError == true && Text(clicked).Contains(Refusals.TrustIsThePersons, StringComparison.Ordinal),
+                $"The agent's click on the banner's Trust Folder was answered: {Text(clicked)}");
+            Ui.Settle();
+            Assert.False(window.Session.Trusted || WorkspaceTrust.Trusts(folder), "The agent's click on the banner trusted the person's folder");
+            Assert.Equal((Refusals.UntrustedSaid, Refusals.TrustIsThePersons), (window.TrustSaid, window.Status));
+
+            Ui.Click(link);
+            Ui.WaitFor(() => window.Session.Trusted && window.TrustSaid is null, "the person's own click on Trust Folder to trust the folder");
+        }
+        finally
+        {
+            Gone(client);
+            window.Close();
+            TestFolders.Delete(folder);
+        }
+    }
+
     /// <summary>A file whose grammar failed reading it can never tell the lines inside its strings, so Convert Indentation is
     /// refused at once saying the grammar failed, where the agent waited out its minute for a reading that never came and
     /// was then told the file was still being read.</summary>

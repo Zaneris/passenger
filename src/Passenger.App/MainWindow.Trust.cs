@@ -155,10 +155,16 @@ public partial class MainWindow
     }
 
     /// <summary>Trusts a folder, with every folder under it, kept in the person's state where the window keeps it: every
-    /// window's session of it begins what it held back (<see cref="FollowTrust"/>).</summary>
+    /// window's session of it begins what it held back (<see cref="FollowTrust"/>). Refused where an agent's input into the
+    /// window asked for it, or started the work that does (<see cref="AgentAsks.PersonsAlone"/>), the status bar saying why.</summary>
     private void TrustFolder(string folder)
     {
         UiThread.Check();
+        if (AgentAsks.PersonsAlone(Refusals.TrustIsThePersons))
+        {
+            Refuse(Refusals.TrustIsThePersons);
+            return;
+        }
         if (keepsWorkspace)
         {
             state!.Trust.Set(state.Trust.Value.With(folder));
