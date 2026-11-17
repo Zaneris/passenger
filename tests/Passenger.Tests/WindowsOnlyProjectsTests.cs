@@ -67,6 +67,10 @@ public sealed class WindowsOnlyProjectsTests : IClassFixture<WindowsOnlyProjects
             ExplorerTree tree = window.ExplorerView.Tree;
             Ui.WaitFor(() => tree.Rows.Count(r => r.Kind == NodeKind.Project && r.Detail?.EndsWith(Framework, StringComparison.Ordinal) == true) == 2,
                 "both projects evaluated in the Solution view");
+            // Loaded first: a load that comes clean after one with a problem says so in the status bar, over a refusal.
+            Ui.WaitFor(() => window.CSharpService is { IsReady: true, ProjectProblems.Count: 0 },
+                () => $"the projects loaded without problems ({window.CSharpService?.State}: "
+                    + $"{string.Join("; ", window.CSharpService?.ProjectProblems.Select(p => $"{p.Project}: {p.Message}") ?? [])})", TimeSpan.FromMinutes(3));
             ExplorerNode gallery = Assert.Single(tree.Rows, r => r.Kind == NodeKind.Project && r.Name == "Gallery");
             ExplorerNode forms = Assert.Single(tree.Rows, r => r.Kind == NodeKind.Project && r.Name == "Forms");
             Assert.Equal(["Gallery", "Forms"], window.Configurations.Select(c => c.Name));
