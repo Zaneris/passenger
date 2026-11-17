@@ -254,19 +254,18 @@ internal sealed class Driver(Inspector inspector) : Driving<Visual, TopLevel>
         shows,
         Shown.Focused() is Visual focused ? Inspector.Named(focused) : null);
 
-    /// <summary>The modifiers held, Primary being the platform's command key (Cmd on macOS, Ctrl elsewhere).</summary>
+    /// <summary>The modifiers held, Primary as the system's command key (<see cref="HeldModifiers.Held"/>).</summary>
     private static RawInputModifiers Held(IReadOnlyList<Modifier>? modifiers)
     {
         RawInputModifiers held = RawInputModifiers.None;
         foreach (Modifier modifier in modifiers ?? [])
         {
-            held |= modifier switch
+            held |= modifier.Held() switch
             {
                 Modifier.Control => RawInputModifiers.Control,
                 Modifier.Shift => RawInputModifiers.Shift,
                 Modifier.Alt => RawInputModifiers.Alt,
                 Modifier.Meta => RawInputModifiers.Meta,
-                Modifier.Primary => Raw(Hotkeys.Command),
                 _ => throw new Refusal($"No modifier {modifier}"),
             };
         }
@@ -330,15 +329,14 @@ internal sealed class Driver(Inspector inspector) : Driving<Visual, TopLevel>
     }
 
     /// <summary>The platform's own keys for what typing needs, from the app's hotkey configuration (Avalonia's platform
-    /// settings, as its text boxes read them): the command modifier, Select All, and the end of a text box's text.</summary>
+    /// settings, as its text boxes read them): Select All, and the end of a text box's text.</summary>
     private static class Hotkeys
     {
         private static Avalonia.Input.Platform.PlatformHotkeyConfiguration? Configuration =>
             AvaloniaLocator.Current.GetService<Avalonia.Platform.IPlatformSettings>()?.HotkeyConfiguration;
 
-        public static KeyModifiers Command => Configuration?.CommandModifiers ?? KeyModifiers.Control;
-
-        public static (Key, RawInputModifiers) SelectAll => Chord(Configuration?.SelectAll.FirstOrDefault(), new KeyGesture(Key.A, Command));
+        public static (Key, RawInputModifiers) SelectAll => Chord(Configuration?.SelectAll.FirstOrDefault(),
+            new KeyGesture(Key.A, Configuration?.CommandModifiers ?? KeyModifiers.Control));
 
         public static (Key, RawInputModifiers) End => Chord(Configuration?.MoveCursorToTheEndOfDocument.FirstOrDefault(), new KeyGesture(Key.End, KeyModifiers.Control));
 

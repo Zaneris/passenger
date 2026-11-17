@@ -208,6 +208,11 @@ public sealed class McpUnseenAppTests : McpRig, IClassFixture<DesktopAgentAppFol
 
         Assert.StartsWith("Clicked Button#Count @", Text(await Call(client, McpTools.AppClick, new() { ["control"] = "#Count" })), StringComparison.Ordinal);
         Assert.Contains("\"Clicked once\"", Text(await Call(client, McpTools.AppTree, new() { ["control"] = "#Counter" })), StringComparison.Ordinal);
+        // Its text boxes take its system's command key on the headless platform as on its screen, the one primary holds.
+        Assert.Contains("it shows \"Ada\"", Text(await Call(client, McpTools.AppType, new() { ["control"] = "#NameBox", ["text"] = "Ada" })), StringComparison.Ordinal);
+        string replaced = Text(await Call(client, McpTools.AppKey, new() { ["control"] = "#NameBox", ["keys"] = "primary+A G" }));
+        Assert.True(replaced.Contains("it shows \"g\"", StringComparison.Ordinal),
+            $"primary+A, {(OperatingSystem.IsMacOS() ? "Cmd" : "Ctrl")}+A, did not select the text box's text for G to replace: {replaced}");
 
         await Call(client, McpTools.Edit, new() { ["path"] = "MainWindow.axaml", ["oldText"] = "Text=\"Nobody greeted\"", ["newText"] = "Text=\"Greeted unseen\"" });
         JsonElement reloaded = await Call(client, McpTools.HotReload);

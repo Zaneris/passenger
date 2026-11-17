@@ -648,15 +648,15 @@ internal sealed class Driver(Inspector inspector) : Driving<DependencyObject, Vi
         shows,
         KeyTarget(top) is DependencyObject focused && focused != top ? Inspector.Named(focused) : null);
 
-    /// <summary>The modifiers held, Primary being Ctrl, WPF's command key.</summary>
+    /// <summary>The modifiers held, Primary as the system's command key (<see cref="HeldModifiers.Held"/>), Windows' Ctrl.</summary>
     private static ModifierKeys Held(IReadOnlyList<Modifier>? modifiers)
     {
         ModifierKeys held = ModifierKeys.None;
         foreach (Modifier modifier in modifiers ?? [])
         {
-            held |= modifier switch
+            held |= modifier.Held() switch
             {
-                Modifier.Control or Modifier.Primary => ModifierKeys.Control,
+                Modifier.Control => ModifierKeys.Control,
                 Modifier.Shift => ModifierKeys.Shift,
                 Modifier.Alt => ModifierKeys.Alt,
                 Modifier.Meta => ModifierKeys.Windows,

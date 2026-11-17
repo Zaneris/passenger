@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using Avalonia.Input;
+using Passenger.Core;
 
 namespace Passenger.Editor;
 
@@ -67,8 +68,8 @@ public readonly record struct Keystroke(Key Key, KeyModifiers Modifiers)
         _ => null,
     };
 
-    /// <summary>The modifier the platform's commands take: Cmd on macOS, Ctrl elsewhere.</summary>
-    public static KeyModifiers Command => OperatingSystem.IsMacOS() ? KeyModifiers.Meta : KeyModifiers.Control;
+    /// <summary>The modifier the system's commands take (<see cref="CommandKey"/>): Cmd on macOS, Ctrl elsewhere.</summary>
+    public static KeyModifiers Command => CommandKey.IsCmd ? KeyModifiers.Meta : KeyModifiers.Control;
 
     /// <summary>Whether the key is on the numeric keypad (its operators, decimal point and digits), a key of its own
     /// beside the one that types the same character.</summary>

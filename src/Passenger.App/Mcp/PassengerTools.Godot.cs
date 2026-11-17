@@ -302,14 +302,15 @@ public sealed partial class PassengerTools
 
     private static long GameModifiers(IReadOnlyList<string>? names) => GameModifiers(Modifiers(names) ?? []);
 
-    /// <summary>Modifiers as the helper takes them, Primary the command key of the system the game runs on.</summary>
-    private static long GameModifiers(IEnumerable<Modifier> held) => held.Aggregate(0L, (flags, one) => flags | (long)(one switch
+    /// <summary>Modifiers as the helper takes them, Primary the command key of the system the game runs on, this one
+    /// (<see cref="HeldModifiers.Held"/>).</summary>
+    private static long GameModifiers(IEnumerable<Modifier> held) => held.Aggregate(0L, (flags, one) => flags | (long)(one.Held() switch
     {
         Modifier.Shift => GodotAgent.Shift,
         Modifier.Control => GodotAgent.Control,
         Modifier.Alt => GodotAgent.Alt,
         Modifier.Meta => GodotAgent.Meta,
-        _ => OperatingSystem.IsMacOS() ? GodotAgent.Meta : GodotAgent.Control,
+        _ => throw new ArgumentException($"No modifier {one}"),
     }));
 
     private async Task<string> GameClickAsync(GodotGame game, string? control, double? x, double? y, string? window, string button, int count, IReadOnlyList<string>? modifiers)

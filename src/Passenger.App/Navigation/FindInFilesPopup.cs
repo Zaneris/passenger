@@ -571,7 +571,7 @@ public sealed class FindInFilesPopup : UserControl, IAnswers<SearchMatch?>
                 Done?.Invoke(this, null);
                 e.Handled = true;
                 break;
-            case Key.Enter when e.KeyModifiers == (OperatingSystem.IsMacOS() ? KeyModifiers.Meta : KeyModifiers.Control):
+            case Key.Enter when e.KeyModifiers == Keystroke.Command:
                 KeepInFindWindow();
                 e.Handled = true;
                 break;

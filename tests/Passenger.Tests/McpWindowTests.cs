@@ -565,9 +565,7 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
             Assert.True(exited.IsError == true && Text(exited).Contains(Refusals.QuitIsThePersons, StringComparison.Ordinal), $"The agent's Exit answered: {Text(exited)}");
             Assert.True(window.IsVisible, "The agent's Exit closed the person's window");
 
-            // Find Action's keys in the keymap of the system Passenger runs on, where the headless platform's primary is Ctrl.
-            CallToolResult found = Allowed(McpTools.AppKey, new() { ["app"] = "ide", ["keys"] = OperatingSystem.IsMacOS() ? "cmd+shift+A" : "ctrl+shift+A" },
-                "the agent's keys for Find Action");
+            CallToolResult found = Allowed(McpTools.AppKey, new() { ["app"] = "ide", ["keys"] = "primary+shift+A" }, "the agent's keys for Find Action");
             CallToolResult typed = Allowed(McpTools.AppType, new() { ["app"] = "ide", ["text"] = "Exit" }, "the agent's typing in Find Action");
             CallToolResult entered = Allowed(McpTools.AppKey, new() { ["app"] = "ide", ["keys"] = "Enter" }, "the agent's Enter on Find Action's Exit");
             Assert.True(entered.IsError == true && Text(entered).Contains(Refusals.QuitIsThePersons, StringComparison.Ordinal),

@@ -51,6 +51,8 @@
     <Compile Include="../Passenger.Core/ApartThreads.cs" Link="ApartThreads.cs" />
     <!-- Passenger's requests read as every JSON-lines peer reads its messages. -->
     <Compile Include="../Passenger.Core/JsonLines.cs" Link="JsonLines.cs" />
+    <!-- The system's command key, which an agent's primary holds. -->
+    <Compile Include="../Passenger.Core/CommandKey.cs" Link="CommandKey.cs" />
     <!-- C#'s keywords for the types of the values shown. -->
     <Compile Include="../Passenger.Core/PrimitiveTypes.cs" Link="PrimitiveTypes.cs" />
     <!-- A handler's name read as C# reads a name, for what XAML Hot Reload says of one the class lacks. -->

@@ -292,8 +292,9 @@ public sealed partial class PassengerTools
     [McpServerTool(Name = McpTools.AppKey, Title = "Press keys in the app", Destructive = true), Description(
         "Presses keys as a keyboard would, chords split by spaces, a chord's keys joined by + (\"Enter\", \"Tab Tab Space\", " +
         "\"ctrl+A Delete\", \"primary+S\"), into control, given the focus first, else what has it. Keys by Avalonia's names, " +
-        "which WPF shares (Escape, Back, PageDown, F5, A, D1 or 1); modifiers ctrl, shift, alt, cmd (meta), primary (Cmd on " +
-        "macOS, Ctrl elsewhere). Key bindings and commands run; a printable key nothing takes types its character.")]
+        "which WPF shares (Escape, Back, PageDown, F5, A, D1 or 1); modifiers ctrl, shift, alt, cmd (meta), primary (the " +
+        "command key of the app's system: Cmd on macOS and iOS, Ctrl elsewhere). Key bindings and commands run; a printable " +
+        "key nothing takes types its character.")]
     public Task<string> AppKey(
         string keys,
         string? app = null,

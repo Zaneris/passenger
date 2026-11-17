@@ -258,8 +258,8 @@ public static class InputKinds
 /// <summary>A key and the modifiers held with it.</summary>
 public sealed record Chord(string Key, IReadOnlyList<Modifier> Modifiers);
 
-/// <summary>A modifier held with a key, a click or a scroll; Primary is the platform's command key (Cmd on macOS, Ctrl
-/// elsewhere, and in a WPF app).</summary>
+/// <summary>A modifier held with a key, a click or a scroll; Primary is the command key of the system the window's
+/// program runs on (<see cref="HeldModifiers.Held"/>).</summary>
 [JsonConverter(typeof(JsonStringEnumConverter<Modifier>))]
 public enum Modifier
 {
@@ -268,6 +268,16 @@ public enum Modifier
     Alt,
     Meta,
     Primary,
+}
+
+/// <summary>What the modifiers an agent names hold.</summary>
+public static class HeldModifiers
+{
+    /// <summary>The modifier held for one an agent names, read where the input is given: Primary as the command key of the
+    /// system that program runs on (<see cref="Passenger.Core.CommandKey"/>), Meta on Apple's and Control elsewhere,
+    /// whether its windows are on a screen or headless; any other as it is.</summary>
+    public static Modifier Held(this Modifier modifier) =>
+        modifier != Modifier.Primary ? modifier : Passenger.Core.CommandKey.IsCmd ? Modifier.Meta : Modifier.Control;
 }
 
 /// <summary>What an input did: its window, where in it the pointer acted, the element there (the one that took it, or the

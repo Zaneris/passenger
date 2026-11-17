@@ -266,6 +266,27 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
             $"app_key with a modifier of no name answered: {Text(refused)}");
     }
 
+    /// <summary>An agent's primary is the command key Passenger's keymap takes on the system it runs on, Cmd on a Mac and
+    /// Ctrl elsewhere, in a Passenger drawn on no screen as on one: primary+shift+A opens Find Action.</summary>
+    [Fact]
+    public async Task An_agents_primary_is_the_command_key_of_passengers_keymap_on_its_system_so_primary_shift_A_opens_find_action()
+    {
+        string folder = PathNames.Canonical(TestFolders.Create("mcp-primary-"));
+        DeleteAtEnd(folder);
+        File.WriteAllText(Path.Combine(folder, "Notes.txt"), "one\n");
+        await using McpClient client = await Start(["--mcp", folder], languageServer: false);
+        Dictionary<string, object?> findAction = new() { ["app"] = "ide", ["filter"] = "ActionPopup" };
+        string before = Text(await Call(client, McpTools.AppTree, findAction));
+        Assert.StartsWith("Nothing in Passenger matches ActionPopup", before, StringComparison.Ordinal);
+
+        string pressed = Text(await Call(client, McpTools.AppKey, new() { ["app"] = "ide", ["keys"] = "primary+shift+A" }));
+        string found = before;
+        Assert.True(await Waiting.UntilAsync(async () => !(found = Text(await Call(client, McpTools.AppTree, findAction))).StartsWith("Nothing in", StringComparison.Ordinal),
+            TimeSpan.FromMinutes(1), Cancel, TimeSpan.FromMilliseconds(100)),
+            $"primary+shift+A, the keymap's Find Action with {(OperatingSystem.IsMacOS() ? "Cmd" : "Ctrl")} as primary, did not open it ({pressed}): {found}");
+        Assert.Contains("ActionPopup", found, StringComparison.Ordinal);
+    }
+
     /// <summary>A folder whose .slnx does not read: workspace names it with where its reader stopped and why, and no
     /// solution open.</summary>
     [Fact]
