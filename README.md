@@ -306,8 +306,10 @@ There are two ways in, each a flag on Passenger's own executable:
   call opens the folder in Passenger, starting it if need be, and it never joins a window on another folder. The window
   asks you before it lets an agent in (Allow, Don't allow, or Always for this folder), unless you have turned on
   Settings | MCP Server | Enable MCP Server, and asks again before each call of a tool that changes anything: Allow Once
-  for that call, or Allow for This Session for every call of that tool until the agent disconnects. A question not
-  answered within two minutes comes back to the agent as nobody having answered.
+  for that call, or Allow for This Session for every call of that tool until the agent disconnects. An agent about to
+  make several changes can ask once for every tool, which Allow for This Session lets it use unasked until it
+  disconnects; Deny keeps each tool asking. A question not answered within two minutes comes back to the agent as nobody
+  having answered.
 - **`--mcp FOLDER`** starts a Passenger of the agent's own with no window, over a folder or solution, for work it does
   alone. It asks nothing, so it suits an agent you leave to work while you are away.
 

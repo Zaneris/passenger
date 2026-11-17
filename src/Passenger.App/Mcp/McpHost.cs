@@ -92,8 +92,9 @@ public static partial class McpHost
         "into that folder always, the window asks them to let the agent in. The person is also asked before a call of a tool that " +
         "changes something (edit, rename, build, run, debug_start, breakpoint_set, debug_evaluate, vcs_commit, the app_ tools' input and the " +
         "like; reading, save_all, stop and stepping never ask), allowing that call alone or the tool until the agent disconnects, an app_ " +
-        "tool's input to app ide apart from an app's; and before it opens another folder in their window. A call waits for each answer 2 " +
-        "minutes at most, telling its progress meanwhile when asked to; one refused or left unanswered says so, and a later call asks " +
+        "tool's input to app ide apart from an app's; and before it opens another folder in their window. An agent about to change " +
+        "several things asks once with request_full_access, which the person may answer by allowing every tool until it disconnects. " +
+        "A call waits for each answer 2 minutes at most, telling its progress meanwhile when asked to; one refused or left unanswered says so, and a later call asks " +
         "again. A file the agent opens or edits there comes in a tab behind the person's, whose tab, caret and keys stay as they were. " +
         "Where the person has not trusted the folder, build, run, debug_start, tests_run, profile, hot_reload and nuget_install " +
         "are refused until they trust it, and C# answers wait for that too. " +

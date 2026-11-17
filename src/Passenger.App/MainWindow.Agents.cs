@@ -10,8 +10,8 @@ namespace Passenger.App;
 /// <summary>Agents in the window: its own socket, open to them from its start (<c>--no-mcp</c> aside), on which an
 /// agent works once let in: by Enable MCP Server (turning it off shuts them out), by the folder's Always, or by the
 /// person's Allow when its first call comes; the person's leave before an agent's call of a tool that changes something,
-/// once or for the session, and before it opens another folder here; and the status bar's word on who is on the window and
-/// what they run there.</summary>
+/// once or for the session, or for every tool at once at the agent's request, and before it opens another folder here; and
+/// the status bar's word on who is on the window and what they run there.</summary>
 public partial class MainWindow
 {
     private readonly List<string> agentWork = [];
@@ -212,12 +212,25 @@ public partial class MainWindow
     /// <summary>Asks the person whether an agent's call of a tool that changes something may go on, showing what it asked
     /// with (<see cref="AgentToolDialog"/>): Allow Once, Allow for This Session, or Deny; no answer within
     /// <see cref="AgentAnswerLimit"/>, or <paramref name="cancel"/>, takes the question away.</summary>
-    internal async Task<Admission> AllowAgentAsync(string agent, string tool, string title, bool ownWindows, IReadOnlyList<(string Name, string Value)> arguments, CancellationToken cancel)
+    internal Task<Admission> AllowAgentAsync(string agent, string tool, string title, bool ownWindows, IReadOnlyList<(string Name, string Value)> arguments, CancellationToken cancel)
     {
         UiThread.Check();
         string what = char.ToLowerInvariant(title[0]) + title[1..];
-        AgentToolDialog dialog = new(agent, tool, what, ownWindows, arguments.Count == 0 ? null : AgentArguments(arguments));
-        string named = ownWindows ? $"{tool} in Passenger's windows" : tool;
+        return AllowAgentAsync(agent, ownWindows ? $"{tool} in Passenger's windows" : tool,
+            new AgentToolDialog(agent, tool, what, ownWindows, arguments.Count == 0 ? null : AgentBlock(Mcp.AskedArguments.Of(arguments))), cancel);
+    }
+
+    /// <summary>Asks the person whether an agent may use every tool that changes something, <paramref name="tools"/>, without
+    /// a question at each call for its session (<see cref="AgentToolDialog"/>): Allow for This Session or Deny; no answer
+    /// within <see cref="AgentAnswerLimit"/>, or <paramref name="cancel"/>, takes the question away.</summary>
+    internal Task<Admission> AllowAgentEveryToolAsync(string agent, IEnumerable<string> tools, CancellationToken cancel)
+    {
+        UiThread.Check();
+        return AllowAgentAsync(agent, "every tool", new AgentToolDialog(agent, AgentBlock(string.Join(", ", tools))), cancel);
+    }
+
+    private async Task<Admission> AllowAgentAsync(string agent, string named, AgentToolDialog dialog, CancellationToken cancel)
+    {
         IdeErrors.Write($"Agents: {agent} asks to use {named} in the window on {Folder ?? "no folder"}");
         string? folder = Folder;
         Admission said = await AskForAgentAsync(dialog, () => dialog.Answered, $"{agent} waits for you: allow {named}?", cancel);
@@ -346,13 +359,15 @@ public partial class MainWindow
         }
     }
 
-    private static Control AgentArguments(IReadOnlyList<(string Name, string Value)> arguments)
+    /// <summary>What an agent's question shows in code's type (a call's arguments, the tools it would allow), scrolling
+    /// past a height.</summary>
+    private static Control AgentBlock(string text)
     {
-        Border frame = CodeBlock.Of(Mcp.AskedArguments.Of(arguments));
+        Border frame = CodeBlock.Of(text);
         frame.MaxHeight = 200;
-        Control text = frame.Child!;
+        Control shown = frame.Child!;
         frame.Child = null;
-        frame.Child = new ScrollViewer { Content = text, HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled };
+        frame.Child = new ScrollViewer { Content = shown, HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled };
         return frame;
     }
 }

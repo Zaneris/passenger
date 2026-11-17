@@ -635,6 +635,103 @@ public sealed class McpAttachTests : McpRig, IClassFixture<RestoredFolders>
         }
     }
 
+    /// <summary>An agent's request_full_access asks once for every tool that changes something, naming what they do and
+    /// listing them, its one Allow accented and no key answering it: allowed for the session, the edit whose question waited
+    /// goes on, and an edit, a build and a click in Passenger's own windows go on unasked, until the agent opens another
+    /// folder, where each tool asks again; denied there, a later request is refused unasked while an edit still asks at its
+    /// call. The agent's own Passenger answers that nothing asks.</summary>
+    [AvaloniaFact]
+    public void An_agents_request_for_every_tool_lets_each_go_on_unasked_once_allowed_and_denied_holds_for_the_session()
+    {
+        string folder = Plain("mcp-every-");
+        string other = Plain("mcp-every-other-");
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        McpClient client = Await(Waiting.Apart(() => Start(["--mcp-attach", ProcessId])), "the agent attaching");
+        try
+        {
+            Task<CallToolResult> waiting = Waiting.Apart(() => Result(client, McpTools.Edit, Note("waited")));
+            Press(Admission(window, "the window to ask whether the agent may work there"), AgentAdmissionDialog.Allow);
+            Window edit = Question(window, "the question for the agent's edit");
+            Task<CallToolResult> requesting = Waiting.Apart(() => Result(client, McpTools.RequestFullAccess));
+            WaitFor(() => EveryTool(window) is not null, "the question for every tool");
+            AgentToolDialog asked = DialogButtonsTests.Check(EveryTool(window)!);
+            string[] said = Texts(asked);
+            Assert.True(said.Contains(AgentToolDialog.AllowEveryTool) && said.Any(t => t.StartsWith("Test Agent, connected through Passenger's MCP server, asks to use the tools below", StringComparison.Ordinal)
+                && t.Contains("click or type in the apps it runs and in Passenger's own windows", StringComparison.Ordinal)),
+                $"The question for every tool said: {string.Join(" | ", said)}");
+            string[] listed = Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(asked).OfType<SelectableTextBlock>().Single().Text!.Split(", ");
+            Assert.True(((string[])[McpTools.Edit, McpTools.Build, McpTools.AppClick, McpTools.VcsCommit, McpTools.DebugEvaluate, McpTools.TerminalRun]).All(listed.Contains)
+                && !((string[])[McpTools.Workspace, McpTools.SaveAll, McpTools.Stop, McpTools.DebugStep, McpTools.Open, McpTools.RequestFullAccess]).Any(listed.Contains),
+                $"The question for every tool lists the tools that ask otherwise than they do: {string.Join(", ", listed)}");
+            Button[] answers = [.. Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(asked).OfType<Button>().Where(b => b.Content is string)];
+            string[] order = OperatingSystem.IsMacOS() ? [AgentToolDialog.Deny, AgentToolDialog.AllowForSession] : [AgentToolDialog.AllowForSession, AgentToolDialog.Deny];
+            Assert.Equal(order, answers.Select(b => (string)b.Content!));
+            Assert.True(answers.Single(b => b.Classes.Contains(StyleClasses.Primary)).Content is AgentToolDialog.AllowForSession && !answers.Any(b => b.IsDefault),
+                "Allow for This Session is not the question's one accented answer, or one of its answers is Enter's");
+            Ui.Click(window.FindControl<Button>("AgentButton")!);
+            Assert.True(asked.IsActive, "Choosing the status bar's words left the question for every tool, the last asked, behind");
+            Ui.Press(asked, "enter");
+            Assert.True(asked.IsVisible && !requesting.IsCompleted, "An Enter in the question for every tool answered it");
+
+            Press(asked, AgentToolDialog.AllowForSession);
+            CallToolResult allowed = Await(requesting, "the request for every tool, allowed");
+            Assert.True(allowed.IsError != true && Text(allowed).Contains("allowed every tool", StringComparison.Ordinal), $"The request for every tool, allowed, was answered: {Text(allowed)}");
+            CallToolResult waited = Await(waiting, "the edit whose question waited as every tool was allowed");
+            Assert.True(waited.IsError != true && !edit.IsVisible, $"The edit asked about before every tool was allowed was answered: {Text(waited)}");
+            Unasked(window, client, McpTools.Edit, Note("unasked"));
+            Assert.Equal("notes unasked waited\n", File.ReadAllText(Path.Combine(folder, "Notes.txt")));
+            Unasked(window, client, McpTools.Build);
+            string clicked = Unasked(window, client, McpTools.AppClick, new() { ["app"] = "ide", ["control"] = "#AgentButton" }).GetString()!;
+            Assert.StartsWith("Clicked", clicked, StringComparison.Ordinal);
+            Assert.Contains("allowed already", Text(UnaskedResult(window, client, McpTools.RequestFullAccess)), StringComparison.Ordinal);
+
+            // The agent's own open, still the person's to allow, leaves every tool asking again in the folder it opens.
+            Task<JsonElement> opening = Waiting.Apart(() => Call(client, McpTools.Open, new() { ["path"] = other }));
+            Press(Question(window, "the question for the agent's open"), AgentAdmissionDialog.Allow);
+            Assert.Equal(PathNames.Canonical(other), Await(opening, "the agent's open the person allowed").GetProperty("folder").GetString());
+            Task<CallToolResult> editingOther = Waiting.Apart(() => Result(client, McpTools.Edit, Note("other")));
+            Window again = Question(window, "the question for the agent's edit in the folder it opened");
+            Assert.Contains("Allow edit?", Texts(again));
+            Press(again, AgentToolDialog.Deny);
+            Assert.Contains("did not allow edit", Text(Await(editingOther, "the edit denied in the folder opened")), StringComparison.Ordinal);
+
+            Task<CallToolResult> requestingThere = Waiting.Apart(() => Result(client, McpTools.RequestFullAccess));
+            Window everyThere = Question(window, "the question for every tool in the folder the agent opened");
+            Assert.Contains(AgentToolDialog.AllowEveryTool, Texts(everyThere));
+            Press(everyThere, AgentToolDialog.Deny);
+            CallToolResult denied = Await(requestingThere, "the request for every tool, denied");
+            Assert.True(denied.IsError == true && Text(denied).Contains("denied every tool at once", StringComparison.Ordinal), $"The request for every tool, denied, was answered: {Text(denied)}");
+            CallToolResult refused = UnaskedResult(window, client, McpTools.RequestFullAccess);
+            Assert.True(refused.IsError == true && Text(refused).Contains("not asked again", StringComparison.Ordinal), $"The request after every tool was denied was answered: {Text(refused)}");
+            Task<CallToolResult> stillAsked = Waiting.Apart(() => Result(client, McpTools.Edit, Note("asked")));
+            Window asking = Question(window, "the question for the agent's edit after every tool was denied");
+            Assert.Contains("Allow edit?", Texts(asking));
+            Press(asking, AgentToolDialog.AllowOnce);
+            CallToolResult once = Await(stillAsked, "the edit allowed once after every tool was denied");
+            Assert.False(once.IsError == true, $"The edit allowed once was refused: {Text(once)}");
+            Assert.Equal("notes asked\n", File.ReadAllText(Path.Combine(other, "Notes.txt")));
+        }
+        finally
+        {
+            Gone(client);
+            window.Close();
+        }
+
+        // The agent's own Passenger has nobody to ask.
+        McpClient own = Await(Waiting.Apart(() => Start(["--mcp", folder], languageServer: false)), "the agent's own Passenger starting");
+        try
+        {
+            Assert.Equal(AgentConnection.NothingAsks, Await(Waiting.Apart(() => Call(own, McpTools.RequestFullAccess)), "the request on the agent's own Passenger").GetString());
+        }
+        finally
+        {
+            Gone(own);
+        }
+
+        static AgentToolDialog? EveryTool(MainWindow window) =>
+            window.OwnedWindows.OfType<AgentToolDialog>().FirstOrDefault(d => d.IsVisible && d.Title == AgentToolDialog.AllowEveryTool);
+    }
+
     /// <summary>An agent's ide_action shows what it shows without the person's keys or a window brought forward: Problems
     /// shown for it leaves an Enter the person types going into their file, and its Focus Editor, whose whole work is to
     /// move the keys, is refused with a floating tool window in front, which stays there.</summary>

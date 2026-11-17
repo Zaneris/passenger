@@ -307,9 +307,15 @@ public abstract class McpRig : IDisposable
     }
 
     /// <summary>An agent's call answered without a question to the person.</summary>
-    protected JsonElement Unasked(MainWindow window, McpClient client, [IdentifierOf(typeof(McpTools))] string tool, Dictionary<string, object?>? arguments = null)
+    protected JsonElement Unasked(MainWindow window, McpClient client, [IdentifierOf(typeof(McpTools))] string tool, Dictionary<string, object?>? arguments = null) =>
+        Unasked(window, tool, Waiting.Apart(() => Call(client, tool, arguments)));
+
+    /// <summary>An agent's call answered without a question to the person, its answer whole, an error's included.</summary>
+    protected CallToolResult UnaskedResult(MainWindow window, McpClient client, [IdentifierOf(typeof(McpTools))] string tool, Dictionary<string, object?>? arguments = null) =>
+        Unasked(window, tool, Waiting.Apart(() => Result(client, tool, arguments)));
+
+    private T Unasked<T>(MainWindow window, string tool, Task<T> calling)
     {
-        Task<JsonElement> calling = Waiting.Apart(() => Call(client, tool, arguments));
         WaitFor(() => calling.IsCompleted || Questions(window).Any(), $"the agent's {tool}", AgentLimit);
         Assert.True(!Questions(window).Any(),
             $"The agent's {tool} asked the person: {string.Join(" | ", Questions(window).SelectMany(Texts))}");

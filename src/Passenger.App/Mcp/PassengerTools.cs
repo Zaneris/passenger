@@ -20,7 +20,7 @@ namespace Passenger.App.Mcp;
 /// the language server's knowledge of the code, builds and runs, the debugger, and the IDE itself
 /// (screenshots, actions, typing), each run on the UI thread as the window's own commands are. Lines and
 /// columns count from one, as an editor shows them; a relative path is the open folder's. A tool not ReadOnly says
-/// whether it is Destructive: a person's window asks before an agent first uses one that is not declared harmless.
+/// whether it is Destructive: a person's window asks before an agent's call of one that is not declared harmless.
 /// What a folder has and runs a tool asks of the window's session (<see cref="ProjectSession"/>) as the call finds it, and
 /// what it starts it starts through the session's controllers; the window itself only for what is the window's: opening
 /// a folder in it, its editors, its terminal, its actions and what it draws. No tool reads the status bar.
@@ -119,6 +119,16 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         await Session.Models.Idle.WaitAsync(cancel);
         return HeldWorkspace(await RunsWorkspace(Snapshot(), cancel));
     });
+
+    [McpServerTool(Name = McpTools.RequestFullAccess, Title = "Ask for every tool", Destructive = false), Description(
+        "On a person's window, asks them once to let every tool go on without a question at each call until the agent disconnects " +
+        "or the window opens another folder, and answers whether they did; denied, a later request is refused unasked, each tool still asking.")]
+    public Task<string> RequestFullAccess(CancellationToken cancel = default) => OnUi(cancel, async () =>
+    {
+        (string said, bool refused) = connection is null ? (AgentConnection.NothingAsks, false) : await connection.AllowEveryToolAsync(window, AgentCall.Current, cancel);
+        cancel.ThrowIfCancellationRequested();
+        return refused ? throw new InvalidOperationException(said) : said;
+    }, projects: false);
 
     [McpServerTool(Name = McpTools.Workspace, Title = "The workspace", ReadOnly = true), Description(
         "The open folder and solution (or solution filter), its projects (output type, frameworks and the one chosen, unloaded marked; a shared one with sharedBy), run " +

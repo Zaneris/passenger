@@ -54,6 +54,7 @@ public static class McpTools
     public const string Refactor = "refactor";
     public const string Rename = "rename";
     public const string ReplaceInFiles = "replace_in_files";
+    public const string RequestFullAccess = "request_full_access";
     public const string Run = "run";
     public const string SaveAll = "save_all";
     public const string Settings = "settings";

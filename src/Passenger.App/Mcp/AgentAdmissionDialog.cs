@@ -25,9 +25,9 @@ public sealed class AgentAdmissionDialog : IdeWindow
         [
             DialogFooter.Paragraph($"It asked through Passenger's MCP server. Allowed, it can read and search {where}, see the window, save files, stop "
                 + "what runs and step through what is debugged; Passenger asks you before each other kind of change, such as an edit, a "
-                + "build, a run, a breakpoint or code run in the debugged program, which you allow once or for its session. Enable MCP "
-                + "Server in Settings lets agents in without asking, and Settings' MCP Server page lists the folders allowed always, each "
-                + "to take back."),
+                + "build, a run, a breakpoint or code run in the debugged program, which you allow once or for its session, or every "
+                + "tool at once when it asks. Enable MCP Server in Settings lets agents in without asking, and Settings' MCP Server page "
+                + "lists the folders allowed always, each to take back."),
         ], DialogFooter.Answers(allow, dontAllow), always);
     }
 
