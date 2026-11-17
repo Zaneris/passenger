@@ -3,10 +3,12 @@ using Avalonia.Automation.Peers;
 using Avalonia.Automation.Provider;
 using Avalonia.Controls;
 using Avalonia.Headless.XUnit;
+using Avalonia.Input;
 using Avalonia.VisualTree;
 using Passenger.App;
 using Passenger.App.Debugging;
 using Passenger.App.Editors;
+using Passenger.App.Explorer;
 using Passenger.App.Migrations;
 using Passenger.App.Packages;
 using Passenger.App.Settings;
@@ -194,14 +196,102 @@ public sealed class AccessibilityTests : IDisposable
         MainWindow window = Ui.OpenFolder(folder, languageServer: false);
         try
         {
-            AutomationPeer[] rows = [.. Walk(ControlAutomationPeer.CreatePeerForElement(window)).Where(peer => peer.GetAutomationControlType() == AutomationControlType.ListItem)];
-            Assert.True(rows.Any(row => row.GetName() == "notes.txt"), $"No row is named notes.txt, only: {Heard(rows)}");
+            AutomationPeer[] rows = [.. Walk(ControlAutomationPeer.CreatePeerForElement(window)).Where(peer => peer.GetAutomationControlType() == AutomationControlType.TreeItem)];
+            Assert.True(rows.Any(row => row.GetName().StartsWith("notes.txt, level 2", StringComparison.Ordinal)), $"No row is named notes.txt with its level, only: {Heard(rows)}");
             Assert.False(rows.Any(row => row.GetName().StartsWith("Passenger.", StringComparison.Ordinal)), $"A row is named by its item's type: {Heard(rows)}");
         }
         finally
         {
             window.Close();
         }
+    }
+
+    /// <summary>A tree's row as a screen reader meets it: a tree item of a tree, named by its words with its level, and its
+    /// place among the rows beside it where the system's own bridge does not say it (all but Linux's AT-SPI, which reads the
+    /// place the row gives the system); open or closed where rows go under it, neither where none do, telling a reader as
+    /// it opens by its key and as the reader itself closes and opens it, its rows then said one level deeper.</summary>
+    [AvaloniaFact]
+    public void A_trees_row_says_its_level_its_place_and_whether_it_is_open_telling_a_reader_as_that_changes()
+    {
+        Directory.CreateDirectory(Path.Combine(folder, "Models"));
+        foreach (string name in (string[])["Order.cs", "Price.cs", "Stock.cs"])
+        {
+            File.WriteAllText(Path.Combine(folder, "Models", name), $"// {name}\n");
+        }
+        File.WriteAllText(Path.Combine(folder, "Notes.txt"), "notes\n");
+        File.WriteAllText(Path.Combine(folder, "Readme.md"), "# Readme\n");
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        try
+        {
+            ExplorerTree model = window.ExplorerView.Tree;
+            TreeList tree = window.GetVisualDescendants().OfType<TreeList>().First(list => ReferenceEquals(list.ItemsSource, model.Rows));
+            AutomationPeer whole = ControlAutomationPeer.CreatePeerForElement(tree);
+            Assert.True(whole.GetAutomationControlType() == AutomationControlType.Tree, $"A screen reader meets the Explorer as a {whole.GetAutomationControlType()}, not a tree");
+            ExplorerNode models = model.Rows.Single(r => r.Name == "Models");
+            TreeList.TreeRowPeer root = PeerOf(tree, model.Rows[0]);
+            RowSays(root, Path.GetFileName(PathNames.Canonical(folder)), 1, 1, 1, ExpandCollapseState.Expanded);
+            TreeList.TreeRowPeer folderRow = PeerOf(tree, models);
+            RowSays(folderRow, "Models", 2, 1, 3, ExpandCollapseState.Collapsed);
+            RowSays(PeerOf(tree, model.Rows.Single(r => r.Name == "Notes.txt")), "Notes.txt", 2, 2, 3, ExpandCollapseState.LeafNode);
+            RowSays(PeerOf(tree, model.Rows.Single(r => r.Name == "Readme.md")), "Readme.md", 2, 3, 3, ExpandCollapseState.LeafNode);
+
+            List<ExpandCollapseState> told = [];
+            folderRow.PropertyChanged += (_, e) =>
+            {
+                if (e.Property == ExpandCollapsePatternIdentifiers.ExpandCollapseStateProperty && e.NewValue is ExpandCollapseState now)
+                {
+                    told.Add(now);
+                }
+            };
+            tree.SelectedItem = models;
+            tree.ContainerFromItem(models)!.Focus(NavigationMethod.Pointer);
+            Ui.Press(window, "Right");
+            Ui.Settle();
+            Assert.True(models.IsExpanded && told.SequenceEqual([ExpandCollapseState.Expanded]),
+                $"Right opened Models ({models.IsExpanded}) and a reader was told {string.Join(", ", told)}, not that it opened");
+            RowSays(folderRow, "Models", 2, 1, 3, ExpandCollapseState.Expanded);
+            RowSays(PeerOf(tree, model.Rows.Single(r => r.Name == "Order.cs")), "Order.cs", 3, 1, 3, ExpandCollapseState.LeafNode);
+            RowSays(PeerOf(tree, model.Rows.Single(r => r.Name == "Stock.cs")), "Stock.cs", 3, 3, 3, ExpandCollapseState.LeafNode);
+            RowSays(PeerOf(tree, model.Rows.Single(r => r.Name == "Readme.md")), "Readme.md", 2, 3, 3, ExpandCollapseState.LeafNode);
+
+            IExpandCollapseProvider opens = folderRow.GetProvider<IExpandCollapseProvider>()
+                ?? throw new Xunit.Sdk.XunitException("A reader finds no way to open or close the Models row");
+            opens.Collapse();
+            Ui.Settle();
+            Assert.True(!models.IsExpanded && model.Rows.All(r => r.Name != "Order.cs") && told.SequenceEqual([ExpandCollapseState.Expanded, ExpandCollapseState.Collapsed]),
+                $"A reader's Collapse left Models open ({models.IsExpanded}) or was told {string.Join(", ", told)}");
+            opens.Expand();
+            Ui.Settle();
+            Assert.True(models.IsExpanded && told[^1] == ExpandCollapseState.Expanded, $"A reader's Expand left Models closed, telling {string.Join(", ", told)}");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>The peer a reader asks of the row showing <paramref name="item"/>, brought into view.</summary>
+    private static TreeList.TreeRowPeer PeerOf(TreeList tree, object item)
+    {
+        tree.ScrollIntoView(item);
+        tree.UpdateLayout();
+        Control row = tree.ContainerFromItem(item) ?? throw new Xunit.Sdk.XunitException($"The tree shows no row for {item}");
+        return Assert.IsType<TreeList.TreeRowPeer>(ControlAutomationPeer.CreatePeerForElement(row));
+    }
+
+    /// <summary>Holds a row's peer to what a reader hears of it and what its system is given.</summary>
+    private static void RowSays(TreeList.TreeRowPeer row, string words, int level, int position, int size, ExpandCollapseState state)
+    {
+        string heard = OperatingSystem.IsLinux() ? $"{words}, level {level}" : $"{words}, level {level}, {position} of {size}";
+        Control owner = row.Owner;
+        Assert.True(row.GetAutomationControlType() == AutomationControlType.TreeItem && row.GetName() == heard,
+            $"A reader meets {words} as a {row.GetAutomationControlType()} named \"{row.GetName()}\", not a tree item named \"{heard}\"");
+        Assert.True((row.Level, row.PositionInSet, row.SizeOfSet) == (level, position, size)
+            && (AutomationProperties.GetPositionInSet(owner), AutomationProperties.GetSizeOfSet(owner)) == (position, size),
+            $"{words} says level {row.Level}, {row.PositionInSet} of {row.SizeOfSet}, and gives the system {AutomationProperties.GetPositionInSet(owner)} of "
+            + $"{AutomationProperties.GetSizeOfSet(owner)}, where it stands at level {level}, {position} of {size}");
+        Assert.True(row.ExpandCollapseState == state && (row.GetProvider<IExpandCollapseProvider>() is null) == (state == ExpandCollapseState.LeafNode),
+            $"{words} says it is {row.ExpandCollapseState} (opened or closed by a reader: {row.GetProvider<IExpandCollapseProvider>() is not null}), not {state}");
     }
 
     [AvaloniaFact]

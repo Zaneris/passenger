@@ -51,7 +51,7 @@ public enum LiveTreePage
 public sealed class LiveTreeView : DockPanel
 {
     private readonly TreeRows<LiveTreeRow> rows = [];
-    private readonly ListBox tree;
+    private readonly TreeList tree;
     private readonly TextBlock placeholder;
     private readonly TextBlock status;
     private readonly TextBlock monitors;
@@ -134,7 +134,7 @@ public sealed class LiveTreeView : DockPanel
         banner.Bind(Border.BackgroundProperty, banner.GetResourceObservable(TokenKeys.Banner));
         Children.Add(banner);
 
-        tree = new ListBox
+        tree = new TreeList
         {
             Classes = { StyleClasses.Tree },
             ItemsSource = rows,

@@ -38,9 +38,9 @@ internal static class FramesTable
 
     /// <summary>The tree table of <paramref name="rows"/>, each made once by <paramref name="row"/> and stretched to the
     /// table's width so its numbers stand under their titles.</summary>
-    public static ListBox Table(IEnumerable rows, Func<Control> row)
+    public static TreeList Table(IEnumerable rows, Func<Control> row)
     {
-        ListBox table = new() { Classes = { StyleClasses.Tree }, ItemsSource = rows };
+        TreeList table = new() { Classes = { StyleClasses.Tree }, ItemsSource = rows };
         ReusedRows.Use(table, row);
         table.Styles.Add(new Style(x => x.OfType<ListBoxItem>())
         {

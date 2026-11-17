@@ -11,20 +11,21 @@ namespace Passenger.App;
 /// F4 opens what it stands for. Right and Left are the tree's on every row, never the list's to scroll by. The list scrolls
 /// to its chosen row only as the choice changes (<see cref="FollowChoices"/>), so a row opened or closed stays where it was
 /// clicked, and the keys stay on the chosen row, a Shift range running from the row it was begun on, however the rows
-/// change above or among them.</summary>
+/// change above or among them. Its list is a <see cref="TreeList"/>, which a screen reader meets as a tree.</summary>
 public static class TreeKeys
 {
     /// <summary>Gives a list of rows the tree's keys: <paramref name="toggle"/> opens or closes a row, <paramref name="open"/>
     /// opens what it stands for, false where it stands for nothing; <paramref name="acts"/> what else its rows do, its
     /// Open in place of the tree's Enter and double click.</summary>
-    public static void Attach<T>(ListBox list, Action<T> toggle, Func<T, bool>? open = null, ListActs? acts = null)
+    public static void Attach<T>(TreeList list, Action<T> toggle, Func<T, bool>? open = null, ListActs? acts = null)
         where T : class, ITreeRow =>
         Attach<T>(list, row => row, toggle, open, acts);
 
     /// <summary>The same for a list whose items hold their rows, read by <paramref name="rowOf"/>.</summary>
-    public static void Attach<T>(ListBox list, Func<T, ITreeRow> rowOf, Action<T> toggle, Func<T, bool>? open = null, ListActs? acts = null)
+    public static void Attach<T>(TreeList list, Func<T, ITreeRow> rowOf, Action<T> toggle, Func<T, bool>? open = null, ListActs? acts = null)
         where T : class
     {
+        list.Rows(rowOf, toggle);
         FollowChoices(list);
         acts ??= new ListActs();
         ListKeys.Act(list, acts with
@@ -36,6 +37,7 @@ public static class TreeKeys
                 if (list.SelectedItem is T item && open?.Invoke(item) != true && rowOf(item).Expands)
                 {
                     toggle(item);
+                    list.Retell();
                 }
             }),
             Source = acts.Source ?? (open is null ? null : () =>
@@ -195,7 +197,7 @@ public static class TreeKeys
         }
     }
 
-    private static bool Take<T>(ListBox list, Key key, T item, Func<T, ITreeRow> rowOf, Action<T> toggle)
+    private static bool Take<T>(TreeList list, Key key, T item, Func<T, ITreeRow> rowOf, Action<T> toggle)
         where T : class
     {
         ITreeRow row = rowOf(item);
@@ -204,11 +206,13 @@ public static class TreeKeys
             if (row.Expands && !row.IsExpanded)
             {
                 toggle(item);
+                list.Retell();
             }
         }
         else if (row.IsExpanded)
         {
             toggle(item);
+            list.Retell();
         }
         else if (Holder(list, item, rowOf) is int holder)
         {

@@ -89,7 +89,7 @@ public sealed record GitBranchesState : IStateDocument<GitBranchesState>
 public sealed class BranchesPanel : DockPanel
 {
     private VcsController vcs;
-    private readonly ListBox list;
+    private readonly TreeList list;
     private readonly TextBox search;
     private readonly Dictionary<string, bool> expanded = [];
     private readonly Button newBranch;
@@ -107,7 +107,7 @@ public sealed class BranchesPanel : DockPanel
     public BranchesPanel(VcsController git)
     {
         vcs = git;
-        list = new ListBox
+        list = new TreeList
         {
             Classes = { StyleClasses.Tree },
             ItemsSource = rows,

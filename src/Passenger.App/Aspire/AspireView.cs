@@ -86,7 +86,7 @@ public sealed class AspireView : DockPanel, IDisposable
         ToolFlow.SetFills(status, new ToolLayout.Fills(120));
         bar.Children.Add(status);
 
-        ResourceList = new ListBox
+        ResourceList = new TreeList
         {
             Classes = { StyleClasses.Tree },
         };
@@ -149,7 +149,7 @@ public sealed class AspireView : DockPanel, IDisposable
     public ComboBox AppSelector { get; }
 
     /// <summary>The resources, each a row (<see cref="AspireRow"/>) at its depth.</summary>
-    public ListBox ResourceList { get; }
+    public TreeList ResourceList { get; }
 
     /// <summary>The chosen resource's Details tab.</summary>
     public AspireDetailsPane Details { get; }

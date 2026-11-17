@@ -15,11 +15,8 @@ namespace Passenger.App.Debugging;
 /// opens in a tab); F2 types a new value in its row; Delete takes a watch away; a value that did not end with the other
 /// threads held runs again with every thread let go from its link; and its menu is the Variables and Watches menu. What a
 /// row asks for it raises, for the debugger to do.</summary>
-public sealed class VariablesList : ListBox
+public sealed class VariablesList : TreeList
 {
-    // Styled as the ListBox it is, so the theme's ListBox.tree reaches it.
-    protected override Type StyleKeyOverride => typeof(ListBox);
-
     public VariablesList(VariablesTree tree)
     {
         Tree = tree;

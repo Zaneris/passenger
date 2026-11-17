@@ -65,7 +65,7 @@ public sealed class HierarchyView : DockPanel
     private const int ExpandAllDepth = 5;
 
     private readonly TreeRows<HierarchyRow> rows = [];
-    private readonly ListBox list;
+    private readonly TreeList list;
     private readonly TextBlock title;
     private readonly ToggleButton first;
     private readonly ToggleButton second;
@@ -92,7 +92,7 @@ public sealed class HierarchyView : DockPanel
         bar = ToolBars.Top(top);
         bar.IsVisible = false;
         Children.Add(bar);
-        list = new ListBox
+        list = new TreeList
         {
             Classes = { StyleClasses.Tree },
             ItemsSource = rows,

@@ -69,11 +69,11 @@ public enum ProfilerPage
 public sealed class ProfilerView : DockPanel
 {
     private readonly TreeRows<CallRow> rows = [];
-    private readonly ListBox tree;
+    private readonly TreeList tree;
     private readonly ListBox spots;
     private readonly TreeRows<CallRow> traces = [];
     private readonly ListBox types;
-    private readonly ListBox backTraces;
+    private readonly TreeList backTraces;
     private readonly PaneSplit allocations;
     private readonly TextBlock collectionsSummary;
     private readonly ListBox collections;
@@ -108,7 +108,7 @@ public sealed class ProfilerView : DockPanel
 
     public ProfilerView()
     {
-        tree = new ListBox
+        tree = new TreeList
         {
             Classes = { StyleClasses.Tree },
             ItemsSource = rows,
@@ -127,7 +127,7 @@ public sealed class ProfilerView : DockPanel
         };
         ReusedRows.Use(types, Allocated);
         types.SelectionChanged += (_, _) => ShowBackTraces();
-        backTraces = new ListBox
+        backTraces = new TreeList
         {
             Classes = { StyleClasses.Tree },
             ItemsSource = traces,

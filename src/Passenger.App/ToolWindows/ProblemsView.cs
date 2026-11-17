@@ -22,7 +22,7 @@ public sealed class ProblemsView : DockPanel
     ];
 
     private readonly ProblemsModel model;
-    private readonly ListBox list;
+    private readonly TreeList list;
     private readonly TextBlock empty;
     private readonly TextBox search;
     private readonly Dictionary<ProblemsTab, ToggleButton> tabs = [];
@@ -55,7 +55,7 @@ public sealed class ProblemsView : DockPanel
         }
         bar.Children.AddRange([ToolFlow.Spring(), shown, search]);
         Border topBar = ToolBars.Top(bar);
-        list = new ListBox
+        list = new TreeList
         {
             Classes = { StyleClasses.Tree },
             ItemsSource = model.ShownRows,

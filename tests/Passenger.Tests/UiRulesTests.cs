@@ -2152,10 +2152,10 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
     [Fact]
     public void Every_lists_keys_and_double_click_are_heard_through_ListKeys()
     {
-        Regex declared = new(@"\bListBox\??\s+(\w+)\b(?!\s*\()|\b(\w+)\s*=\s*new\s+ListBox\b|<ListBox\b[^>]*\bName=""(\w+)""");
-        Regex subclass = new(@"\bclass\s+\w+\s*:\s*ListBox\b");
+        Regex declared = new(@"\b(?:ListBox|TreeList)\??\s+(\w+)\b(?!\s*\()|\b(\w+)\s*=\s*new\s+(?:ListBox|TreeList)\b|<(?:ListBox|app:TreeList)\b[^>]*\bName=""(\w+)""");
+        Regex subclass = new(@"\bclass\s+\w+\s*:\s*(?:ListBox|TreeList)\b");
         Regex heard = new(@"(?:\b([\w.]+)\.)?(?:(?:KeyDown|KeyUp|DoubleTapped)\s*[+-]=|AddHandler\(\s*(?:[\w.]+\.)?(?:KeyDownEvent|KeyUpEvent|DoubleTappedEvent)\b|override\s+void\s+(?:OnKeyDown|OnKeyUp|OnDoubleTapped)\()");
-        Regex attribute = new(@"<ListBox\b[^>]*\b(?:KeyDown|KeyUp|DoubleTapped)=""");
+        Regex attribute = new(@"<(?:ListBox|app:TreeList)\b[^>]*\b(?:KeyDown|KeyUp|DoubleTapped)=""");
         (string Path, string Text)[] files = [.. UiFiles()];
         Dictionary<string, HashSet<string>> lists = files.ToDictionary(f => f.Path,
             f => declared.Matches(f.Text).SelectMany(m => m.Groups.Values.Skip(1)).Where(g => g.Success).Select(g => g.Value).ToHashSet(StringComparer.Ordinal));

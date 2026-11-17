@@ -45,7 +45,7 @@ public sealed class ContainersView : DockPanel
     private const string TelemetryTab = RunWindows.TelemetryTab;
 
     private readonly ContainersParts parts;
-    private readonly ListBox list;
+    private readonly TreeList list;
     private readonly System.Collections.ObjectModel.ObservableCollection<RunItem<ContainerRow>> items = [];
     private readonly TextBlock empty;
     private readonly TextBlock nothingChosen;
@@ -106,7 +106,7 @@ public sealed class ContainersView : DockPanel
             tools.Children.Add(ToolButtons.Of(action, icon, parts.Title(action), Request));
         }
 
-        list = new ListBox
+        list = new TreeList
         {
             Classes = { StyleClasses.Tree },
             ItemsSource = items,

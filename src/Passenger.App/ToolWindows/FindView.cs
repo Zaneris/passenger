@@ -76,7 +76,7 @@ public sealed class FindView : DockPanel
     private readonly List<Search> searches = [];
     private readonly TreeRows<FindRow> rows = [];
     private readonly StackPanel tabs = new() { Orientation = Orientation.Horizontal, Spacing = 2, VerticalAlignment = VerticalAlignment.Center };
-    private readonly ListBox list;
+    private readonly TreeList list;
     private readonly CodeEditor preview;
     private readonly TextBlock placeholder;
 
@@ -119,7 +119,7 @@ public sealed class FindView : DockPanel
         });
         tabBar.IsVisible = false;
         Children.Add(tabBar);
-        list = new ListBox
+        list = new TreeList
         {
             Classes = { StyleClasses.Tree },
             ItemsSource = rows,

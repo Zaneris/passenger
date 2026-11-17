@@ -1,5 +1,6 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:app="using:Passenger.App"
              x:Class="Passenger.App.Explorer.ExplorerView">
     <DockPanel Background="{DynamicResource Passenger.Panel}">
         <DockPanel Name="OwnHeader" DockPanel.Dock="Top" Margin="12,6,8,2">
@@ -19,7 +20,7 @@
             <Panel Name="Surface" Grid.Row="1">
                 <TextBlock Name="Hint" Classes="muted" Text="Nothing open"
                            HorizontalAlignment="Center" VerticalAlignment="Center" />
-                <ListBox Name="Rows" Classes="tree" IsVisible="False" SelectionMode="Multiple" />
+                <app:TreeList Name="Rows" Classes="tree" IsVisible="False" SelectionMode="Multiple" />
             </Panel>
         </Grid>
     </DockPanel>

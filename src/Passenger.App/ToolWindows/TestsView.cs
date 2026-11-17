@@ -37,7 +37,7 @@ public sealed class TestsView : DockPanel
         (TestState.Running, "Running Tests", IconKeys.TestRunning, TokenKeys.Test_Running),
     ];
 
-    private readonly ListBox tree;
+    private readonly TreeList tree;
     private readonly TextDocument detailsText = new();
     private readonly DockPanel result;
 
@@ -60,7 +60,7 @@ public sealed class TestsView : DockPanel
     public TestsView(TestTree model)
     {
         Model = model;
-        tree = new ListBox
+        tree = new TreeList
         {
             Classes = { StyleClasses.Tree },
             ItemsSource = model.Rows,

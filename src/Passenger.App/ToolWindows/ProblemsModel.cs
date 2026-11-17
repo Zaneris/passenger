@@ -33,10 +33,15 @@ public enum ProblemsTab
 }
 
 /// <summary>A row of Problems: a group (a project or a file, with its count) or a problem, at its depth. A problem of the
-/// current file moves with its text as it is typed, and its row with it, redrawing only where it is.</summary>
-public sealed class ProblemRow(int depth, string label, string? detail, Problem? problem) : Observable
+/// current file moves with its text as it is typed, and its row with it, redrawing only where it is. A group's rows are
+/// always shown, so a row neither opens nor closes.</summary>
+public sealed class ProblemRow(int depth, string label, string? detail, Problem? problem) : Observable, ITreeRow
 {
     public int Depth { get; } = depth;
+
+    bool ITreeRow.Expands => false;
+
+    bool ITreeRow.IsExpanded => false;
 
     public string Label { get; } = label;
 

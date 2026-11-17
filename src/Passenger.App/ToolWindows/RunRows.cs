@@ -152,7 +152,7 @@ public static class RunRows
         });
 
     /// <summary>A list of such rows opens and closes a row by a double click, and takes a tree's keys (<see cref="TreeKeys"/>).</summary>
-    public static void Toggles<T>(ListBox list, Action<T> toggle)
+    public static void Toggles<T>(TreeList list, Action<T> toggle)
         where T : class, ITreeRow
     {
         TreeKeys.Attach<RunItem<T>>(list, item => item.Data, item => toggle(item.Data));

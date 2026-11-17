@@ -73,7 +73,7 @@ public sealed class MemoryView : DockPanel
     private readonly ListBox deltas;
     private readonly ListBox objects;
     private readonly TreeRows<RetentionRow> pathRows = [];
-    private readonly ListBox paths;
+    private readonly TreeList paths;
     private readonly ListBox keyPaths;
     private readonly ToggleButton[] setTabs;
     private readonly DockPanel typePage;
@@ -179,7 +179,7 @@ public sealed class MemoryView : DockPanel
         objectsPage = Framed(objectTable, objects);
 
         ColumnTitles pathTable = ColumnTitles.OfNumbers(("Path", 0), ("Objects", NumberWidth), ("Retained bytes", NumberWidth + 16));
-        paths = List(() =>
+        paths = List<TreeList>(() =>
         {
             TextBlock[] numbers = Numbers(2);
             return pathTable.Row([PathStep(), .. numbers]).Showing<RetentionRow>(row => Put(numbers, $"{row.Node.Objects:N0}", Sizes.Said(row.Node.RetainedBytes)));
@@ -627,9 +627,12 @@ public sealed class MemoryView : DockPanel
         return button;
     }
 
-    private static ListBox List(Func<Control> row)
+    private static ListBox List(Func<Control> row) => List<ListBox>(row);
+
+    private static T List<T>(Func<Control> row)
+        where T : ListBox, new()
     {
-        ListBox list = new() { Classes = { StyleClasses.Tree } };
+        T list = new() { Classes = { StyleClasses.Tree } };
         ReusedRows.Use(list, row);
         // Rows fill the list's width, so their columns line up under the header's.
         list.Styles.Add(new Style(x => x.OfType<ListBoxItem>())

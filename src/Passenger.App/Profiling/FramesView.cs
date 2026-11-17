@@ -40,7 +40,7 @@ public sealed class FramesView : DockPanel
     private readonly FrameChart chart;
     private readonly TextBlock summary;
     private readonly TreeRows<LayoutRow> rows = [];
-    private readonly ListBox table;
+    private readonly TreeList table;
     private readonly TextBlock placeholder;
     private readonly BandOverTable shown;
     private IReadOnlyList<UiFrame> frames = [];
