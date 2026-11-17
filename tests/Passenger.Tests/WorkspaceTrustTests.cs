@@ -490,6 +490,78 @@ public sealed class WorkspaceTrustTests
         }
     }
 
+    /// <summary>In a folder not trusted, git would write out a file it stores through a filter (git-lfs's, here the
+    /// repository's own) as it keeps it, and a stash would keep the file whole: Rollback of it, Stash Changes and Checkout
+    /// of a branch changing it are greyed, saying why, and refused, the file's bytes as they were, the file beside it
+    /// rolled back as ever; once the folder is trusted each is offered.</summary>
+    [AvaloniaFact]
+    public void Rollback_stash_and_checkout_writing_out_a_file_stored_through_a_git_filter_are_offered_only_once_the_folder_is_trusted()
+    {
+        string folder = PathNames.Canonical(TestFolders.Create("untrusted-filter-writes-"));
+        string picture = Path.Combine(folder, "Picture.bin");
+        File.WriteAllText(Path.Combine(folder, "Notes.txt"), "one\n");
+        File.WriteAllText(picture, "one\n");
+        File.WriteAllText(Path.Combine(folder, ".gitattributes"), "*.bin filter=keep\n");
+        TestGit.Init(folder);
+        TestGit.Run(folder, "config", "filter.keep.clean", "cat");
+        TestGit.Run(folder, "config", "filter.keep.smudge", "cat");
+        TestGit.Run(folder, "switch", "-q", "-c", "pictured");
+        File.WriteAllText(picture, "pictured\n");
+        TestGit.Run(folder, "commit", "-q", "-a", "-m", "The picture changed");
+        TestGit.Run(folder, "switch", "-q", "main");
+        File.WriteAllText(Path.Combine(folder, "Notes.txt"), "two\n");
+        File.WriteAllText(picture, "two\n");
+        const string Why = "The folder is not trusted: Picture.bin is stored through Git's keep filter, which runs only once the folder is trusted";
+        using IDisposable asked = WorkspaceTrust.Ask(folder);
+        MainWindow window = Ui.OpenFolder(folder, width: 1300, height: 900);
+        try
+        {
+            Ui.ClickButton(Asked(window), WorkspaceTrustDialog.Untrusted);
+            window.Perform(AppActions.ShowCommit);
+            CommitView commit = window.CommitView;
+            Ui.Landed(() => commit.Rows.OfType<CommitRow>().Count() == 2, "Notes.txt and Picture.bin listed as changed");
+            Button rollback = commit.GetVisualDescendants().OfType<Button>().First(b => Avalonia.Automation.AutomationProperties.GetName(b) == "Rollback");
+            ListBox rows = commit.GetVisualDescendants().OfType<ListBox>().First();
+            rows.SelectedItem = commit.Rows.OfType<CommitRow>().Single(r => r.Change.Name == "Picture.bin");
+            Ui.Settle();
+            Assert.False(rollback.IsEnabled, "Rollback of Picture.bin is offered in a folder not trusted, where git would write it out as it keeps it");
+            Assert.Equal($"Rollback: {Why}", ToolTip.GetTip(rollback));
+            Assert.Equal(Why, window.Actions.WhyNot(AppActions.Stash, window.Actions.Context()));
+            VcsOutcome refused = Ui.Landed(window.Vcs.RollbackAsync([.. commit.Rows.OfType<CommitRow>().Select(r => r.Change)]), "the rollback's answer");
+            Assert.Equal((false, Why), (refused.Succeeded, refused.Message));
+            Assert.Equal("two\n", File.ReadAllText(picture));
+            rows.SelectedItem = commit.Rows.OfType<CommitRow>().Single(r => r.Change.Name == "Notes.txt");
+            Ui.Settle();
+            Assert.True(rollback.IsEnabled, "Rollback of Notes.txt, stored through no filter, is greyed in a folder not trusted");
+            Assert.True(Ui.Landed(window.Vcs.RollbackAsync([commit.Rows.OfType<CommitRow>().Single(r => r.Change.Name == "Notes.txt").Change]), "Notes.txt rolled back").Succeeded);
+
+            window.Perform(AppActions.ShowGit);
+            Ui.Landed(() => window.GitBranches.Rows.Count > 0, "the branches panel");
+            BranchInfo pictured = window.GitBranches.Branches.Single(b => b.Name == "pictured");
+            MenuItem checkout = window.GitBranches.Menu(pictured).OfType<MenuItem>().Single(i => (string?)i.Header == "Checkout");
+            Ui.Landed(() => !checkout.IsEnabled, "Checkout of pictured greyed");
+            Assert.Equal(Why, ToolTip.GetTip(checkout));
+            VcsOutcome switched = Ui.Landed(window.Vcs.CheckoutRefAsync(pictured, window.GitBranches.Branches), "the checkout's answer");
+            Assert.Equal((false, Why), (switched.Succeeded, switched.Message));
+            Assert.Equal(("main", "two\n"), (window.Vcs.Branch, File.ReadAllText(picture)));
+
+            Ui.ClickButton(window, window.Actions[AppActions.TrustFolder]!.Title);
+            Ui.Landed(() => window.Actions.WhyNot(AppActions.Stash, window.Actions.Context()) is null, "Stash Changes offered once the folder is trusted");
+            MenuItem trusted = window.GitBranches.Menu(pictured).OfType<MenuItem>().Single(i => (string?)i.Header == "Checkout");
+            Ui.Settle();
+            Assert.True(trusted.IsEnabled, "Checkout of pictured is still greyed once the folder is trusted");
+            window.Perform(AppActions.ShowCommit);
+            rows.SelectedItem = commit.Rows.OfType<CommitRow>().Single(r => r.Change.Name == "Picture.bin");
+            Ui.Settle();
+            Assert.True(rollback.IsEnabled, "Rollback of Picture.bin is still greyed once the folder is trusted");
+        }
+        finally
+        {
+            window.Close();
+            TestFolders.Delete(folder);
+        }
+    }
+
     /// <summary>The trust question the window asks now, failing where it asks none.</summary>
     private static WorkspaceTrustDialog Asked(MainWindow window)
     {

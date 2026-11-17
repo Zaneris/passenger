@@ -221,10 +221,10 @@ public sealed class UntrustedGitTests : IDisposable
 }
 
 /// <summary>The person's own filter, required, in the system's configuration as Git for Windows sets git-lfs there (and
-/// `git lfs install` in the person's), and a hook of theirs, run in a folder not trusted by none of a status, a commit and
-/// a rollback, which still succeed, and each once the folder is trusted, the filter then reading the repository's own
-/// git-lfs settings as git-lfs would; a file stored through that filter is refused a commit until then, with real git-lfs
-/// too where it is installed. Nor do a filter and a hook that `git -c` gave above Passenger run there, and a file that
+/// `git lfs install` in the person's), and a hook of theirs, run in a folder not trusted by none of a status and a commit,
+/// which still succeed, and each once the folder is trusted, the filter then reading the repository's own git-lfs
+/// settings as git-lfs would; a file stored through that filter is refused a commit, a rollback, a stash, an unstash and a
+/// checkout writing it out until then, its bytes left as they were, with real git-lfs too where it is installed. Nor do a filter and a hook that `git -c` gave above Passenger run there, and a file that
 /// GIT_CONFIG names, which `git config` would read alone, keeps git from none of its work. Alone, as the system's
 /// configuration and git's environment are the process's for its length.</summary>
 [Collection(Alone.Name)]
@@ -290,8 +290,9 @@ public sealed class UntrustedGitPersonsFilterTests : IDisposable
             Assert.True(committed.Succeeded, $"The commit in a folder not trusted failed: {committed.Message}");
             Assert.Equal("one\n", Encoding.UTF8.GetString(await git.BytesAtAsync("HEAD", file) ?? []));
             GitResult rolledBack = await git.RollbackAsync([Assert.Single((await git.StatusAsync()).Changes)]);
-            Assert.True(rolledBack.Succeeded, $"The rollback in a folder not trusted failed: {rolledBack.Message}");
-            Assert.Equal("one\n", File.ReadAllText(file));
+            Assert.False(rolledBack.Succeeded, "A file stored through the person's filter was rolled back in a folder not trusted, written out as git keeps it");
+            Assert.Contains("a.txt is stored through Git's lfs filter, which runs only once the folder is trusted", rolledBack.Message, StringComparison.Ordinal);
+            Assert.Equal("two\n", File.ReadAllText(file));
             Assert.False(File.Exists(Path.Combine(marks, "read")), "Git in a folder not trusted ran the person's filter, which would act on the repository's git-lfs settings");
             Assert.False(File.Exists(Path.Combine(marks, "hook")), "A commit in a folder not trusted ran the person's hook");
         }
@@ -309,6 +310,99 @@ public sealed class UntrustedGitPersonsFilterTests : IDisposable
         {
             Assert.True(File.Exists(Path.Combine(marks, "hook")), "The person's hook never ran at a commit once trusted, so the test proves nothing of the folder not trusted");
         }
+    }
+
+    [Fact]
+    public async Task A_rollback_stash_unstash_checkout_merge_or_cherry_pick_writing_out_a_file_stored_through_a_filter_is_refused_until_the_folder_is_trusted()
+    {
+        string tree = Directory.CreateDirectory(Path.Combine(folder, "tree")).FullName;
+        string picture = Path.Combine(tree, "picture.bin");
+        string notes = Path.Combine(tree, "notes.txt");
+        File.WriteAllText(picture, "one\n");
+        File.WriteAllText(notes, "one\n");
+        File.WriteAllText(Path.Combine(tree, ".gitattributes"), "*.bin filter=lfs\n");
+        await TestGit.InitAsync(tree);
+        // Made before the person's filter is configured, so no git of the test's own runs it.
+        await TestGit.RunAsync(tree, "switch", "-q", "-c", "pictured");
+        File.WriteAllText(picture, "pictured\n");
+        await TestGit.RunAsync(tree, "commit", "-q", "-a", "-m", "The picture changed");
+        string pictured = (await TestGit.RunAsync(tree, "rev-parse", "HEAD")).Trim();
+        await TestGit.RunAsync(tree, "switch", "-q", "-c", "noted", "main");
+        File.WriteAllText(notes, "noted\n");
+        await TestGit.RunAsync(tree, "commit", "-q", "-a", "-m", "The notes changed");
+        await TestGit.RunAsync(tree, "switch", "-q", "main");
+        File.WriteAllText(picture, "stashed\n");
+        await TestGit.RunAsync(tree, "stash", "push", "-q", "-m", "The picture set aside");
+        // The person's filter, identity both ways, marking each run.
+        string persons = Path.Combine(folder, "gitconfig");
+        await TestGit.RunAsync(folder, "config", "--file", persons, "filter.lfs.clean", UntrustedGitTests.Marking(marks, "clean", "cat"));
+        await TestGit.RunAsync(folder, "config", "--file", persons, "filter.lfs.smudge", UntrustedGitTests.Marking(marks, "smudge", "cat"));
+        await TestGit.RunAsync(folder, "config", "--file", persons, "filter.lfs.required", "true");
+        OwnEnvironment.Set("GIT_CONFIG_NOSYSTEM", null);
+        OwnEnvironment.Set("GIT_CONFIG_SYSTEM", persons);
+        const string Why = "The folder is not trusted: picture.bin is stored through Git's lfs filter, which runs only once the folder is trusted";
+
+        using (WorkspaceTrust.Ask(tree))
+        {
+            Git git = await OpenAsync(tree);
+            Assert.Equal(Why, await git.WhyNotCheckedOutAsync("pictured"));
+            GitResult checkedOut = await git.CheckoutAsync("pictured");
+            Assert.Equal((false, Why), (checkedOut.Succeeded, checkedOut.Message));
+            Assert.Equal("main", await git.BranchAsync());
+            Assert.Equal("one\n", File.ReadAllText(picture));
+            GitResult merged = await git.MergeAsync("pictured");
+            Assert.Equal((false, Why), (merged.Succeeded, merged.Message));
+            GitResult picked = await git.CherryPickAsync(pictured);
+            Assert.Equal((false, Why), (picked.Succeeded, picked.Message));
+            Assert.Equal("one\n", File.ReadAllText(picture));
+            // A branch whose files differ only where no filter stores them is checked out as ever.
+            Assert.Null(await git.WhyNotCheckedOutAsync("noted"));
+            GitResult noted = await git.CheckoutAsync("noted");
+            Assert.True(noted.Succeeded, $"A checkout writing out no file stored through a filter was refused in a folder not trusted: {noted.Message}");
+            Assert.Equal("noted\n", File.ReadAllText(notes));
+            Assert.True((await git.CheckoutAsync("main")).Succeeded, "The checkout back to main failed");
+
+            StashInfo stash = Assert.Single(await git.StashesAsync());
+            Assert.Equal(Why, await git.WhyNotUnstashedAsync(stash));
+            GitResult applied = await git.UnstashAsync(stash, pop: true);
+            Assert.Equal((false, Why), (applied.Succeeded, applied.Message));
+            Assert.Equal("one\n", File.ReadAllText(picture));
+            Assert.Single(await git.StashesAsync());
+
+            File.WriteAllText(picture, "two\n");
+            File.WriteAllText(notes, "two\n");
+            IReadOnlyList<FileChange> changes = (await git.StatusAsync()).Changes;
+            FileChange changed = changes.Single(c => c.Path == picture);
+            Assert.Equal(Why, changed.Unfiltered);
+            Assert.Equal(Why, await git.WhyNotStashedAsync());
+            GitResult stashed = await git.StashAsync("Both set aside");
+            Assert.Equal((false, Why), (stashed.Succeeded, stashed.Message));
+            Assert.Single(await git.StashesAsync());
+            GitResult rolledBack = await git.RollbackAsync(changes);
+            Assert.Equal((false, Why), (rolledBack.Succeeded, rolledBack.Message));
+            Assert.Equal(("two\n", "two\n"), (File.ReadAllText(picture), File.ReadAllText(notes)));
+            GitResult notesBack = await git.RollbackAsync([changes.Single(c => c.Path == notes)]);
+            Assert.True(notesBack.Succeeded, $"The rollback of a file stored through no filter failed in a folder not trusted: {notesBack.Message}");
+            Assert.Equal(("two\n", "one\n"), (File.ReadAllText(picture), File.ReadAllText(notes)));
+            Assert.False(File.Exists(Path.Combine(marks, "clean")) || File.Exists(Path.Combine(marks, "smudge")), "Git in a folder not trusted ran the person's filter");
+        }
+        Git trusted = await OpenAsync(tree);
+        FileChange filtered = Assert.Single((await trusted.StatusAsync()).Changes);
+        Assert.Null(filtered.Unfiltered);
+        Assert.Null(await trusted.WhyNotStashedAsync());
+        GitResult rolled = await trusted.RollbackAsync([filtered]);
+        Assert.True(rolled.Succeeded, $"The rollback of the file stored through the filter failed once the folder was trusted: {rolled.Message}");
+        Assert.Equal("one\n", File.ReadAllText(picture));
+        Assert.True(File.Exists(Path.Combine(marks, "smudge")), "The person's smudge filter never ran at a rollback once trusted, so the test proves nothing of the folder not trusted");
+        GitResult unstashed = await trusted.UnstashAsync(Assert.Single(await trusted.StashesAsync()), pop: true);
+        Assert.True(unstashed.Succeeded, $"The unstash of the file stored through the filter failed once the folder was trusted: {unstashed.Message}");
+        Assert.Equal("stashed\n", File.ReadAllText(picture));
+        GitResult restashed = await trusted.StashAsync("The picture again");
+        Assert.True(restashed.Succeeded, $"The stash of the file stored through the filter failed once the folder was trusted: {restashed.Message}");
+        Assert.True(File.Exists(Path.Combine(marks, "clean")), "The person's clean filter never ran at a stash once trusted, so the test proves nothing of the folder not trusted");
+        GitResult switched = await trusted.CheckoutAsync("pictured");
+        Assert.True(switched.Succeeded, $"The checkout writing out the file stored through the filter failed once the folder was trusted: {switched.Message}");
+        Assert.Equal("pictured\n", File.ReadAllText(picture));
     }
 
     [Fact]

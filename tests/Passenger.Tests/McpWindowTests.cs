@@ -418,6 +418,51 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
         }
     }
 
+    /// <summary>An agent's stash and checkout in a window whose folder is not trusted are refused, saying why, before
+    /// anything is saved or written, where git would store or write out a file it stores through a filter, which does not
+    /// run there: the file's bytes, the branch and the stashes stay as they were.</summary>
+    [AvaloniaFact]
+    public void An_agents_stash_and_checkout_in_a_folder_not_trusted_are_refused_where_git_would_write_out_a_file_stored_through_a_filter()
+    {
+        string folder = PathNames.Canonical(TestFolders.Create("mcp-untrusted-filter-writes-"));
+        DeleteAtEnd(folder);
+        string picture = Path.Combine(folder, "Picture.bin");
+        File.WriteAllText(Path.Combine(folder, "Notes.txt"), "one\n");
+        File.WriteAllText(picture, "one\n");
+        File.WriteAllText(Path.Combine(folder, ".gitattributes"), "*.bin filter=keep\n");
+        TestGit.Init(folder);
+        TestGit.Run(folder, "config", "filter.keep.clean", "cat");
+        TestGit.Run(folder, "config", "filter.keep.smudge", "cat");
+        TestGit.Run(folder, "switch", "-q", "-c", "pictured");
+        File.WriteAllText(picture, "pictured\n");
+        TestGit.Run(folder, "commit", "-q", "-a", "-m", "The picture changed");
+        TestGit.Run(folder, "switch", "-q", "main");
+        File.WriteAllText(picture, "two\n");
+        const string Why = "The folder is not trusted: Picture.bin is stored through Git's keep filter, which runs only once the folder is trusted";
+        using IDisposable asked = WorkspaceTrust.Ask(folder);
+        MainWindow window = AgentsWindow(folder, languageServer: false);
+        Ui.WaitFor(() => window.AskingTrust is { IsVisible: true }, "the trust question");
+        Ui.ClickButton(window.AskingTrust!, WorkspaceTrustDialog.Untrusted);
+        McpClient client = Await(Waiting.Apart(() => Start(["--mcp-attach", ProcessId, folder])), "the agent attaching");
+        try
+        {
+            Task<CallToolResult> stashing = Waiting.Apart(() => Result(client, McpTools.VcsStash, new() { ["action"] = "push", ["message"] = "Set aside" }));
+            Press(Question(window, "the question for the agent's vcs_stash"), AgentToolDialog.AllowForSession);
+            CallToolResult stash = Await(stashing, "the agent's stash");
+            Assert.True(stash.IsError == true && Text(stash).Contains(Why, StringComparison.Ordinal), $"An agent's stash of Picture.bin in a folder not trusted answered: {Text(stash)}");
+            Task<CallToolResult> checking = Waiting.Apart(() => Result(client, McpTools.VcsCheckout, new() { ["branch"] = "pictured" }));
+            Press(Question(window, "the question for the agent's vcs_checkout"), AgentToolDialog.AllowForSession);
+            CallToolResult checkout = Await(checking, "the agent's checkout");
+            Assert.True(checkout.IsError == true && Text(checkout).Contains(Why, StringComparison.Ordinal), $"An agent's checkout of pictured in a folder not trusted answered: {Text(checkout)}");
+            Assert.Equal(("main\n", string.Empty, "two\n"), (TestGit.Run(folder, "branch", "--show-current"), TestGit.Run(folder, "stash", "list"), File.ReadAllText(picture)));
+        }
+        finally
+        {
+            Gone(client);
+            window.Close();
+        }
+    }
+
     /// <summary>A file whose grammar failed reading it can never tell the lines inside its strings, so Convert Indentation is
     /// refused at once saying the grammar failed, where the agent waited out its minute for a reading that never came and
     /// was then told the file was still being read.</summary>

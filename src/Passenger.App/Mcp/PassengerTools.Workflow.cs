@@ -328,6 +328,11 @@ public sealed partial class PassengerTools
             string[] locals = [.. refs.Where(r => r.Kind == RefKind.Local).Select(r => r.Name)];
             throw new InvalidOperationException($"No branch {branch} is here: create true makes it from the head; the local branches are {AgentAnswers.Named(locals, "branch", "vcs_log lists every branch's commits")}");
         }
+        // Refused before anything is saved: a checkout writing out a file git stores through a filter that cannot run here.
+        if (!create && await vcs.WhyNotCheckoutAsync(branch) is { } refused)
+        {
+            throw new InvalidOperationException(refused);
+        }
         AgentCall.Say($"Checking out {branch}");
         VcsOutcome switched = create ? await vcs.NewBranchAsync(branch) : await vcs.CheckoutAsync(branch);
         if (switched.Problem is { } failed)
@@ -370,6 +375,15 @@ public sealed partial class PassengerTools
                 throw new InvalidOperationException(byCommit
                     ? $"No stash in the list has commit {commit}: it was popped or dropped since the list was read, or never was a stash"
                     : $"No stash {index}; there are {before.Count}");
+            }
+            // Refused before anything is saved: a stash or unstash of a file stored through a filter that cannot run here.
+            if (action == "push")
+            {
+                await vcs.RefreshAsync();
+            }
+            if ((action == "push" ? vcs.WhyNotStash : action is "pop" or "apply" ? await vcs.WhyNotUnstashAsync(stash!) : null) is { } refused)
+            {
+                throw new InvalidOperationException(refused);
             }
             await SaveLandedAsync(cancel);
             VcsOutcome done = action switch

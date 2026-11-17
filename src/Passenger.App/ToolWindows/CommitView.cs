@@ -130,6 +130,7 @@ public sealed class CommitView : DockPanel, IOwnKeys
     private int signingReads;
     private readonly Button commit;
     private readonly Button commitAndPush;
+    private readonly Button rollback;
     private readonly EmptyState placeholder;
     private readonly Border form;
     private readonly StackPanel underWay;
@@ -158,6 +159,7 @@ public sealed class CommitView : DockPanel, IOwnKeys
     public CommitView(VcsController git)
     {
         vcs = git;
+        rollback = ToolButtons.Of(IconKeys.Rollback, "Rollback", RollbackChosenOrSelected);
         list = new ListBox
         {
             Classes = { StyleClasses.Tree },
@@ -177,7 +179,7 @@ public sealed class CommitView : DockPanel, IOwnKeys
             ListMenus.Item("Show Diff", "Enter", () => DiffRequested?.Invoke(this, chosen.Change.Path)),
             ListMenus.Item("Jump to Source", "F4", () => OpenRequested?.Invoke(this, chosen.Change.Path), chosen.Change.Kind is not ChangeKind.Deleted),
             new Separator(),
-            ListMenus.Item("Rollback…", null, () => RollbackRequested?.Invoke(this, [.. ChosenChanges(chosen)])),
+            Greyed(ListMenus.Item("Rollback…", null, () => RollbackRequested?.Invoke(this, [.. ChosenChanges(chosen)])), vcs.WhyNotRollback([.. ChosenChanges(chosen)])),
             ListMenus.Item("Delete…", null, () => DeleteRequested?.Invoke(this, chosen.Change.Path), chosen.Change.Kind is not ChangeKind.Deleted),
             ListMenus.Item("Add to .gitignore", null, () => IgnoreRequested?.Invoke(this, chosen.Change.Path), chosen.Change.Kind is ChangeKind.Unversioned),
             new Separator(),
@@ -189,6 +191,7 @@ public sealed class CommitView : DockPanel, IOwnKeys
             {
                 ChoiceMoved?.Invoke(this, chosen.Change.Path);
             }
+            UpdateRollback();
         };
         // A double click and Enter show the diff, F4 the file, Space flips the chosen rows' boxes.
         ListKeys.Act(list, new ListActs
@@ -315,7 +318,7 @@ public sealed class CommitView : DockPanel, IOwnKeys
             Children =
             {
                 ToolButtons.Of(AppActions.CommitRefresh, IconKeys.Rerun, "Refresh", action => ActionRequested?.Invoke(this, action)),
-                ToolButtons.Of(IconKeys.Rollback, "Rollback", RollbackChosenOrSelected),
+                rollback,
                 ToolButtons.Of(AppActions.ShowDiff, IconKeys.Diff, "Show Diff", _ =>
                 {
                     if (list.SelectedItem is CommitRow row)
@@ -664,16 +667,41 @@ public sealed class CommitView : DockPanel, IOwnKeys
     }
 
     /// <summary>Rollback of the files selected, else of those chosen: refused where a chosen file goes in only in part, as
-    /// a rollback puts back whole files.</summary>
+    /// a rollback puts back whole files, or where git cannot write one out here (<see cref="RollbackOf"/>).</summary>
     private void RollbackChosenOrSelected()
     {
-        CommitRow[] selected = [.. list.SelectedItems?.OfType<CommitRow>() ?? []];
-        if (selected.Length == 0 && rows.OfType<CommitRow>().FirstOrDefault(r => r.Partial is not null) is { } part)
+        (IReadOnlyList<FileChange> changes, string? refused) = RollbackOf();
+        if (refused is not null)
         {
-            RollbackRefused?.Invoke(this, $"Rollback puts back whole files, and only some changes to {part.Change.Name} are chosen: select the files to roll back");
+            RollbackRefused?.Invoke(this, refused);
             return;
         }
-        RollbackRequested?.Invoke(this, selected.Length > 0 ? [.. selected.Select(r => r.Change)] : Chosen);
+        RollbackRequested?.Invoke(this, changes);
+    }
+
+    /// <summary>What Rollback puts back, the files selected else those chosen, or why it puts back none of them.</summary>
+    private (IReadOnlyList<FileChange> Changes, string? Refused) RollbackOf()
+    {
+        if (list.SelectedItems?.OfType<CommitRow>().Any() != true && rows.OfType<CommitRow>().FirstOrDefault(r => r.Partial is not null) is { } part)
+        {
+            return ([], $"Rollback puts back whole files, and only some changes to {part.Change.Name} are chosen: select the files to roll back");
+        }
+        IReadOnlyList<FileChange> changes = RollbackTargets();
+        return (changes, vcs.WhyNotRollback(changes));
+    }
+
+    private IReadOnlyList<FileChange> RollbackTargets() =>
+        list.SelectedItems?.OfType<CommitRow>().ToArray() is { Length: > 0 } selected ? [.. selected.Select(r => r.Change)] : Chosen;
+
+    /// <summary>Rollback greyed where it would put back a file git cannot write out here, its tip saying why.</summary>
+    private void UpdateRollback() => ToolButtons.Grey(rollback, vcs.WhyNotRollback(RollbackTargets()));
+
+    /// <summary>A menu item greyed for <paramref name="why"/>, which its tip says.</summary>
+    private static MenuItem Greyed(MenuItem item, string? why)
+    {
+        item.IsEnabled = item.IsEnabled && why is null;
+        ToolTip.SetTip(item, why);
+        return item;
     }
 
     /// <summary>Lists the status again in place: a file still changed as it was keeps its row, its box and whether it is
@@ -827,6 +855,7 @@ public sealed class CommitView : DockPanel, IOwnKeys
             // Off while a commit (or a stash, a rollback) runs, so a second press cannot start another on git's index lock.
             button.IsEnabled = refused is null && !vcs.IsBusy;
         }
+        UpdateRollback();
     }
 
     private const string MergeConflicts = "Merge Conflicts";

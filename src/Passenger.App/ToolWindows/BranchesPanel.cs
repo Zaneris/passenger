@@ -215,6 +215,7 @@ public sealed class BranchesPanel : DockPanel
         if (!isCurrent)
         {
             Add("Checkout", () => IdeErrors.Observe(vcs.CheckoutRefAsync(branch, Branches)));
+            IdeErrors.Observe(GreyWhenRefusedAsync((MenuItem)items[^1], vcs.WhyNotCheckoutRefAsync(branch, Branches)));
         }
         Add($"New Branch from {it}…", () => NewBranchRequested?.Invoke(this, branch));
         if (branch.Kind == RefKind.Local && !isCurrent)
@@ -257,6 +258,17 @@ public sealed class BranchesPanel : DockPanel
             items.RemoveAt(items.Count - 1);
         }
         return items;
+    }
+
+    /// <summary>A menu's item greyed once what it does is found refused (a checkout writing out a file git cannot here), its
+    /// tip saying why.</summary>
+    private static async Task GreyWhenRefusedAsync(MenuItem item, Task<string?> refused)
+    {
+        if (await refused is { } why)
+        {
+            item.IsEnabled = false;
+            ToolTip.SetTip(item, why);
+        }
     }
 
     /// <summary>A name quoted for a menu, a long one cut short.</summary>

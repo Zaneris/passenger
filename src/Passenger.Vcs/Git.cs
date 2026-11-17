@@ -29,12 +29,16 @@ public sealed record FileChange(string Path, ChangeKind Kind, string? From = nul
     /// trusted (<see cref="UntrustedGit.FilteredAsync"/>); null where it has none, or the folder is trusted.</summary>
     public string? Filter { get; init; }
 
+    /// <summary>Why git neither stores nor writes out the file here (a commit, a stash, a rollback): in a folder not
+    /// trusted, it is stored through a filter, which runs only once the folder is trusted; null where it is not.</summary>
+    public string? Unfiltered => Filter is { } filter ? UntrustedGit.Unfiltered(Name, filter) : null;
+
     /// <summary>Why the change cannot be committed here, or null when it can: a submodule whose own files changed while its
     /// commit did not, which only a commit in the submodule takes; or a file stored through a filter, in a folder not
-    /// trusted, where it would go in as the disk has it.</summary>
+    /// trusted, where it would go in as the disk has it (its deletion stores nothing).</summary>
     public string? Uncommittable => IsSubmoduleContent ? $"{Name} is a submodule: its own {OwnChanges} are committed in it, not here"
-        : Filter is { } filter ? UntrustedGit.Unfiltered(Name, filter)
-        : null;
+        : Kind is ChangeKind.Deleted ? null
+        : Unfiltered;
 
     private bool IsSubmoduleContent => Submodule.HasFlag(SubmoduleChange.Submodule) && !Submodule.HasFlag(SubmoduleChange.Commit) && Kind is ChangeKind.Modified;
 
@@ -385,9 +389,9 @@ public sealed partial class Git
         return new GitStatus(read.Branch, read.Head, read.Changes, conflicts, read.Upstream, read.Even);
     }
 
-    /// <summary>Marks each change a commit would store through a filter, in a folder not trusted, with the filter's name: a
-    /// file there, not a submodule (<see cref="FilteredAsync"/>). Where git cannot say, none is marked, and a commit asks
-    /// again.</summary>
+    /// <summary>Marks each change git would store or write out through a filter, in a folder not trusted, with the filter's
+    /// name: a file there, not a submodule (<see cref="FilteredAsync"/>). Where git cannot say, none is marked, and what
+    /// would store or write it asks again.</summary>
     private async Task MarkFilteredAsync(List<FileChange> changes)
     {
         if (WorkspaceTrust.Trusts(Root))
@@ -395,7 +399,7 @@ public sealed partial class Git
             return;
         }
         List<int> stored = [.. Enumerable.Range(0, changes.Count).Where(at => changes[at] is
-            { Kind: ChangeKind.Modified or ChangeKind.Added or ChangeKind.Renamed or ChangeKind.Unversioned, Submodule: SubmoduleChange.None })];
+            { Kind: ChangeKind.Modified or ChangeKind.Added or ChangeKind.Renamed or ChangeKind.Deleted or ChangeKind.Unversioned, Submodule: SubmoduleChange.None })];
         if (await FilteredAsync([.. stored.Select(at => Relative(changes[at].Path))]) is not { Count: > 0 } filtered)
         {
             return;
@@ -409,6 +413,8 @@ public sealed partial class Git
         }
     }
 
+    private static readonly IReadOnlyDictionary<string, string> NoneFiltered = new Dictionary<string, string>();
+
     /// <summary>Of <paramref name="relative"/> (from the tree's top), each file git would store through a filter, with the
     /// filter's name, in a folder not trusted, where none runs (<see cref="UntrustedGit.FilteredAsync"/>); none where the
     /// folder is trusted, and null where git could not say.</summary>
@@ -416,29 +422,203 @@ public sealed partial class Git
     {
         if (relative.Count == 0 || WorkspaceTrust.Trusts(Root))
         {
-            return new Dictionary<string, string>();
+            return NoneFiltered;
         }
         // What git answers is what the window shows next: a screenshot waits for it.
+        using GitHold held = new();
+        if (await Programs.GitAsync() is not { } git || await UntrustedGit.DriversAsync(git, Root) is not { } drivers)
+        {
+            return null;
+        }
+        return await FilteredByAsync(git, drivers, relative, []);
+    }
+
+    /// <summary><see cref="FilteredAsync(IReadOnlyList{string})"/> through <paramref name="drivers"/>, as the working tree's
+    /// attributes have them and, where a .gitattributes is among the files, as each of <paramref name="sources"/> has them
+    /// too, whose files git writes out under its own.</summary>
+    private async Task<IReadOnlyDictionary<string, string>?> FilteredByAsync(string git, IReadOnlySet<string> drivers, IReadOnlyList<string> relative,
+        IReadOnlyList<string> sources)
+    {
+        if (relative.Count == 0 || drivers.Count == 0)
+        {
+            return NoneFiltered;
+        }
+        bool composed = relative.Any(name => !Ascii.IsValid(name)) && await ComposesAsync();
+        string[] named = [.. relative.Select(name => GitForm(name, composed))];
+        bool attributed = relative.Any(name => name == ".gitattributes" || name.EndsWith("/.gitattributes", StringComparison.Ordinal));
+        Dictionary<string, string> filtered = new(StringComparer.Ordinal);
+        foreach (string? source in (string?[])[null, .. attributed ? sources : []])
+        {
+            if (await UntrustedGit.FilteredAsync(git, Root, named, drivers, source) is not { } found)
+            {
+                return null;
+            }
+            foreach ((int at, string filter) in found)
+            {
+                filtered.TryAdd(relative[at], filter);
+            }
+        }
+        return filtered;
+    }
+
+    /// <summary>Why git cannot store or write out files here, in a folder not trusted: the first that <paramref name="paths"/>
+    /// names (from the tree's top, asked only where a configuration gives a filter a program) git stores through a
+    /// filter, which runs only once the folder is trusted, or git could not say which those are; null where none is, or
+    /// the folder is trusted. Where a .gitattributes is among them, the files are asked of <paramref name="sources"/>' too.</summary>
+    private async Task<GitResult?> UnfilteredAsync(Func<Task<IReadOnlyList<string>?>> paths, params IReadOnlyList<string> sources)
+    {
+        if (WorkspaceTrust.Trusts(Root))
+        {
+            return null;
+        }
         using GitHold held = new();
         if (await Programs.GitAsync() is not { } git)
         {
             return null;
         }
-        bool composed = relative.Any(name => !Ascii.IsValid(name)) && await ComposesAsync();
-        IReadOnlyDictionary<int, string>? filtered = await UntrustedGit.FilteredAsync(git, Root, [.. relative.Select(name => GitForm(name, composed))]);
-        return filtered?.ToDictionary(found => relative[found.Key], found => found.Value, StringComparer.Ordinal);
-    }
-
-    /// <summary>Why files cannot be committed as they are, in a folder not trusted: the first git would store through a
-    /// filter, or git could not say which those are; null where none is, or the folder is trusted.</summary>
-    private async Task<GitResult?> UnfilteredAsync(IReadOnlyList<string> relative)
-    {
-        IReadOnlyDictionary<string, string>? filtered = await FilteredAsync(relative);
-        return filtered is null
-            ? new GitResult(1, string.Empty, "The folder is not trusted, and git could not say which of the files it would store through a filter, which runs only once the folder is trusted")
+        IReadOnlySet<string>? drivers = await UntrustedGit.DriversAsync(git, Root);
+        if (drivers is { Count: 0 })
+        {
+            return null;
+        }
+        IReadOnlyList<string>? relative = drivers is null ? null : await paths();
+        IReadOnlyDictionary<string, string>? filtered = relative is null ? null : await FilteredByAsync(git, drivers!, relative, sources);
+        return filtered is null || relative is null ? Unsaid
             : relative.FirstOrDefault(filtered.ContainsKey) is { } first ? new GitResult(1, string.Empty, UntrustedGit.Unfiltered(System.IO.Path.GetFileName(first), filtered[first]))
             : null;
     }
+
+    /// <summary><see cref="UnfilteredAsync(Func{Task{IReadOnlyList{string}?}}, IReadOnlyList{string})"/> of files named.</summary>
+    private Task<GitResult?> UnfilteredAsync(IReadOnlyList<string> relative) => UnfilteredAsync(() => Task.FromResult<IReadOnlyList<string>?>(relative));
+
+    /// <summary>Whether git here may store or write out a file as it keeps it where a filter would: the folder is not trusted
+    /// and a configuration gives a filter a program, or git could not say; what would resolve the revisions an operation
+    /// moves between is asked only then.</summary>
+    private async Task<bool> MayFilterAsync() =>
+        !WorkspaceTrust.Trusts(Root) && await Programs.GitAsync() is { } git && await UntrustedGit.DriversAsync(git, Root) is not { Count: 0 };
+
+    private static readonly GitResult Unsaid =
+        new(1, string.Empty, "The folder is not trusted, and git could not say which of the files it stores through a filter, which runs only once the folder is trusted");
+
+    /// <summary>The files (from the tree's top) that differ between two revisions (or a range, "A...B", alone), or between
+    /// one and the working tree; null where git could not say.</summary>
+    private async Task<IReadOnlyList<string>?> DifferingAsync(params string[] revisions)
+    {
+        GitResult diff = await RunAsync(Root, ["diff", "--name-only", "--no-renames", "-z", "--end-of-options", .. revisions, "--"], answers: [NotThere]);
+        return diff.Succeeded ? diff.Output.Split('\0', StringSplitOptions.RemoveEmptyEntries) : null;
+    }
+
+    /// <summary>Every file of a revision's tree (from its top); null where it names none.</summary>
+    private async Task<IReadOnlyList<string>?> FilesOfAsync(string revision)
+    {
+        GitResult files = await RunAsync(Root, ["ls-tree", "-r", "-z", "--name-only", "--full-tree", "--end-of-options", revision], answers: [NotThere]);
+        return files.Succeeded ? files.Output.Split('\0', StringSplitOptions.RemoveEmptyEntries) : null;
+    }
+
+    /// <summary>The commit a revision names (a branch, a tag, a hash), or null where it names none.</summary>
+    private async Task<string?> CommitOfAsync(string revision)
+    {
+        if (revision.StartsWith('-'))
+        {
+            return null;
+        }
+        GitResult named = await RunAsync(Root, ["rev-parse", "-q", "--verify", $"{revision}^{{commit}}"], answers: [1, NotThere]);
+        return named.Succeeded && named.Output.Trim() is { Length: > 0 } hash ? hash : null;
+    }
+
+    /// <summary>The files a move of the working tree from HEAD to <paramref name="target"/> writes out (a checkout, a
+    /// reset): those that differ between the two, or every file of the target where HEAD names no commit yet; null where
+    /// git could not say.</summary>
+    private async Task<IReadOnlyList<string>?> SwitchedAsync(string target) =>
+        await DifferingAsync("HEAD", target) ?? (await CommitOfAsync("HEAD") is null ? await FilesOfAsync(target) : null);
+
+    /// <summary>Why a move of the working tree to a revision (a branch, a tag, a commit) cannot be made here: in a folder
+    /// not trusted, a file it writes out is stored through a filter, which runs only once the folder is trusted
+    /// (<see cref="UnfilteredAsync(Func{Task{IReadOnlyList{string}?}}, IReadOnlyList{string})"/>); null where it can, or
+    /// the revision names no commit, which git refuses itself.</summary>
+    public async Task<string?> WhyNotSwitchedAsync(string target)
+    {
+        // What git answers is what the window shows next (an action greyed): a screenshot waits for it.
+        using GitHold held = new();
+        return (await UnfilteredSwitchAsync(target))?.Message;
+    }
+
+    private async Task<GitResult?> UnfilteredSwitchAsync(string target) => await MayFilterAsync() && await CommitOfAsync(target) is { } commit
+        ? await UnfilteredAsync(() => SwitchedAsync(commit), commit)
+        : null;
+
+    /// <summary>What <c>git switch</c> checks out for a branch's name: the local branch, else each remote's branch of that
+    /// name, one of which it would make a local branch tracking.</summary>
+    private async Task<IReadOnlyList<string>> BranchesNamedAsync(string branch)
+    {
+        if (await CommitOfAsync($"refs/heads/{branch}") is { } local)
+        {
+            return [local];
+        }
+        GitResult remotes = await RunAsync(Root, ["for-each-ref", "--format=%(refname)", "refs/remotes"]);
+        return remotes.Succeeded
+            ? [.. remotes.Output.Split('\n', StringSplitOptions.RemoveEmptyEntries).Where(name => name.EndsWith($"/{branch}", StringComparison.Ordinal))]
+            : [];
+    }
+
+    /// <summary>Why a branch cannot be checked out by its name here (<see cref="WhyNotSwitchedAsync"/>, of the local branch,
+    /// or of each remote's of that name it would be made from); null where it can.</summary>
+    public async Task<string?> WhyNotCheckedOutAsync(string branch)
+    {
+        // What git answers is what the window shows next (an action greyed): a screenshot waits for it.
+        using GitHold held = new();
+        return (await UnfilteredCheckoutAsync(branch))?.Message;
+    }
+
+    private async Task<GitResult?> UnfilteredCheckoutAsync(string branch)
+    {
+        if (!await MayFilterAsync())
+        {
+            return null;
+        }
+        foreach (string target in await BranchesNamedAsync(branch))
+        {
+            if (await UnfilteredSwitchAsync(target) is { } refused)
+            {
+                return refused;
+            }
+        }
+        return null;
+    }
+
+    /// <summary>Why the uncommitted changes cannot be stashed here: in a folder not trusted, git would store a file among
+    /// them, and write it out again from HEAD, through a filter, which runs only once the folder is trusted; null where they
+    /// can be.</summary>
+    public async Task<string?> WhyNotStashedAsync()
+    {
+        // What git answers is what the window shows next (an action greyed): a screenshot waits for it.
+        using GitHold held = new();
+        return (await UnfilteredStashAsync())?.Message;
+    }
+
+    private Task<GitResult?> UnfilteredStashAsync() => UnfilteredAsync(async () =>
+    {
+        GitResult untracked = await RunAsync(Root, ["ls-files", "-z", "--others", "--exclude-standard"]);
+        IReadOnlyList<string>? tracked = await DifferingAsync("HEAD") ?? (await CommitOfAsync("HEAD") is null ? [] : null);
+        return tracked is null || !untracked.Succeeded ? null : [.. tracked, .. untracked.Output.Split('\0', StringSplitOptions.RemoveEmptyEntries)];
+    });
+
+    /// <summary>Why a stash cannot be applied here: in a folder not trusted, a file it writes out is stored through a filter,
+    /// which runs only once the folder is trusted; null where it can be, or the stash is no longer listed.</summary>
+    public async Task<string?> WhyNotUnstashedAsync(StashInfo stash)
+    {
+        // What git answers is what the window shows next (an action greyed): a screenshot waits for it.
+        using GitHold held = new();
+        return (await UnfilteredUnstashAsync(stash))?.Message;
+    }
+
+    private Task<GitResult?> UnfilteredUnstashAsync(StashInfo stash) => UnfilteredAsync(async () =>
+    {
+        // A stash's commit holds the files as they were, its first parent the head it was made on, its third the new files.
+        IReadOnlyList<string>? changed = await DifferingAsync($"{stash.Commit}^1", stash.Commit);
+        IReadOnlyList<string>? added = await CommitOfAsync($"{stash.Commit}^3") is { } untracked ? await FilesOfAsync(untracked) : [];
+        return changed is null || added is null ? null : [.. changed, .. added];
+    }, stash.Commit);
 
     /// <summary>The setting that has a status look for renames however many files were added and deleted (a limit of 0 is
     /// none), for that read alone: past its limit git lists the moves it would otherwise find as deletions and additions.</summary>
@@ -732,6 +912,10 @@ public sealed partial class Git
     {
         string[] kept = [.. conflicts.Where(c => theirs ? c.HasTheirs : c.HasOurs).Select(c => Relative(c.Path))];
         string[] deleted = [.. conflicts.Where(c => !(theirs ? c.HasTheirs : c.HasOurs)).Select(c => Relative(c.Path))];
+        if (await UnfilteredAsync(kept) is { } unfiltered)
+        {
+            return unfiltered;
+        }
         if (kept.Length > 0)
         {
             GitResult taken = await OnFilesAsync(["checkout", theirs ? "--theirs" : "--ours"], kept);
@@ -749,7 +933,8 @@ public sealed partial class Git
     }
 
     /// <summary>Marks a conflicted file resolved with what is on disk now (the merge's result written there).</summary>
-    public Task<GitResult> MarkResolvedAsync(string path) => RunAsync(Root, ["add", "--", Literal(Relative(path))]);
+    public async Task<GitResult> MarkResolvedAsync(string path) =>
+        await UnfilteredAsync([Relative(path)]) ?? await RunAsync(Root, ["add", "--", Literal(Relative(path))]);
 
     /// <summary>Abort Merge, Abort Rebase and the like: the tree back as it was before the operation began.</summary>
     public Task<GitResult> AbortAsync(MergeOperation operation) => RunAsync(Root, [operation switch
@@ -1922,18 +2107,42 @@ public sealed partial class Git
     /// <summary>Checks a branch out. What follows --end-of-options (here and wherever a name or a hash comes from outside) is
     /// a name, never an option, whoever gave it: an agent's "--orphan=x" is a branch git does not have, not an order to
     /// empty the working tree.</summary>
-    public Task<GitResult> CheckoutAsync(string branch) => RunAsync(Root, ["switch", "--end-of-options", branch]);
+    public async Task<GitResult> CheckoutAsync(string branch) =>
+        await UnfilteredCheckoutAsync(branch) ?? await RunAsync(Root, ["switch", "--end-of-options", branch]);
 
     /// <summary>A remote's branch checked out as a local branch of the same name that tracks it.</summary>
-    public Task<GitResult> CheckoutTrackingAsync(string remoteBranch) => RunAsync(Root, ["switch", "--track", "--end-of-options", remoteBranch]);
+    public async Task<GitResult> CheckoutTrackingAsync(string remoteBranch) =>
+        await UnfilteredSwitchAsync(remoteBranch) ?? await RunAsync(Root, ["switch", "--track", "--end-of-options", remoteBranch]);
 
-    /// <summary>Another branch merged into the current one, git's own message for the merge commit.</summary>
-    public Task<GitResult> MergeAsync(string branch, Signer? signer = null) => RunSignedAsync(["merge", "--no-edit", "--end-of-options", branch], signer);
+    /// <summary>Another branch merged into the current one, git's own message for the merge commit. In a folder not trusted,
+    /// refused where it writes out a file git stores through a filter: one the branch changed since the two went apart.</summary>
+    public async Task<GitResult> MergeAsync(string branch, Signer? signer = null) =>
+        await UnfilteredMergeAsync(branch) ?? await RunSignedAsync(["merge", "--no-edit", "--end-of-options", branch], signer);
+
+    private async Task<GitResult?> UnfilteredMergeAsync(string branch) => await MayFilterAsync() && await CommitOfAsync(branch) is { } commit
+        ? await UnfilteredAsync(() => DifferingAsync($"HEAD...{commit}"), commit)
+        : null;
 
     /// <summary>The current branch rebased onto another; or, given <paramref name="branch"/>, that branch checked out and
-    /// rebased onto <paramref name="onto"/> (Checkout and Rebase onto Current, "git rebase HEAD branch").</summary>
-    public Task<GitResult> RebaseAsync(string onto, string? branch = null, Signer? signer = null) =>
-        RunSignedAsync(["rebase", "--end-of-options", onto, .. branch is null ? Array.Empty<string>() : [branch]], signer, NoEditor);
+    /// rebased onto <paramref name="onto"/> (Checkout and Rebase onto Current, "git rebase HEAD branch"). In a folder not
+    /// trusted, refused where it writes out a file git stores through a filter: one that differs between the head, the
+    /// branch and <paramref name="onto"/>, or one a commit it replays changed.</summary>
+    public async Task<GitResult> RebaseAsync(string onto, string? branch = null, Signer? signer = null) =>
+        await UnfilteredRebaseAsync(onto, branch)
+        ?? await RunSignedAsync(["rebase", "--end-of-options", onto, .. branch is null ? Array.Empty<string>() : [branch]], signer, NoEditor);
+
+    private async Task<GitResult?> UnfilteredRebaseAsync(string onto, string? branch)
+    {
+        if (!await MayFilterAsync() || await CommitOfAsync(onto) is not { } upon || await CommitOfAsync(branch ?? "HEAD") is not { } rebased)
+        {
+            return null;
+        }
+        return await UnfilteredAsync(async () =>
+        {
+            IReadOnlyList<string>?[] differing = [await DifferingAsync("HEAD", rebased), await DifferingAsync("HEAD", upon), await DifferingAsync($"{upon}...{rebased}")];
+            return differing.Any(paths => paths is null) ? null : [.. differing.SelectMany(paths => paths!).Distinct(StringComparer.Ordinal)];
+        }, upon, rebased);
+    }
 
     public Task<GitResult> RenameBranchAsync(string from, string to) => RunAsync(Root, ["branch", "-m", "--end-of-options", from, to]);
 
@@ -1996,6 +2205,10 @@ public sealed partial class Git
     public async Task<GitResult> StashAsync(string message)
     {
         string? before = await StashTopAsync();
+        if (await UnfilteredStashAsync() is { } unfiltered)
+        {
+            return unfiltered;
+        }
         GitResult stashed = await RunAsync(Root, ["stash", "push", "--include-untracked", .. message.Length > 0 ? new[] { "-m", message } : []]);
         if (!stashed.Succeeded || await StashTopAsync() != before)
         {
@@ -2018,7 +2231,7 @@ public sealed partial class Git
     /// <summary>Applies a stash to the files, and with <paramref name="pop"/> drops it once it applied: the stash of its
     /// commit, wherever the list has it now, one no longer listed refused saying so.</summary>
     public async Task<GitResult> UnstashAsync(StashInfo stash, bool pop) => await StashNowAsync(stash) is { } now
-        ? await RunAsync(Root, ["stash", pop ? "pop" : "apply", pop ? Place(now) : now.Commit])
+        ? await UnfilteredUnstashAsync(now) ?? await RunAsync(Root, ["stash", pop ? "pop" : "apply", pop ? Place(now) : now.Commit])
         : Gone(stash);
 
     /// <summary>Throws a stash away: the one of its commit, wherever the list has it now, one no longer listed refused
@@ -2037,18 +2250,34 @@ public sealed partial class Git
     public Task<GitResult> NewBranchAsync(string name) => RunAsync(Root, ["switch", "-c", name]);
 
     /// <summary>A branch made at a commit and checked out.</summary>
-    public Task<GitResult> NewBranchAtAsync(string name, string hash) => RunAsync(Root, ["switch", "-c", name, "--end-of-options", hash]);
+    public async Task<GitResult> NewBranchAtAsync(string name, string hash) =>
+        await UnfilteredSwitchAsync(hash) ?? await RunAsync(Root, ["switch", "-c", name, "--end-of-options", hash]);
 
     /// <summary>A commit checked out on its own, with no branch (a detached head).</summary>
-    public Task<GitResult> CheckoutRevisionAsync(string hash) => RunAsync(Root, ["switch", "--detach", "--end-of-options", hash]);
+    public async Task<GitResult> CheckoutRevisionAsync(string hash) =>
+        await UnfilteredSwitchAsync(hash) ?? await RunAsync(Root, ["switch", "--detach", "--end-of-options", hash]);
 
-    public Task<GitResult> CherryPickAsync(string hash, Signer? signer = null) => RunSignedAsync(["cherry-pick", "--end-of-options", hash], signer);
+    public async Task<GitResult> CherryPickAsync(string hash, Signer? signer = null) =>
+        await UnfilteredPickAsync(hash) ?? await RunSignedAsync(["cherry-pick", "--end-of-options", hash], signer);
 
     /// <summary>A commit undone by a new one, with git's own message.</summary>
-    public Task<GitResult> RevertAsync(string hash, Signer? signer = null) => RunSignedAsync(["revert", "--no-edit", "--end-of-options", hash], signer);
+    public async Task<GitResult> RevertAsync(string hash, Signer? signer = null) =>
+        await UnfilteredPickAsync(hash) ?? await RunSignedAsync(["revert", "--no-edit", "--end-of-options", hash], signer);
 
-    /// <summary>The branch moved to a commit: soft keeps the changes staged, mixed keeps them in the files, hard drops them.</summary>
-    public Task<GitResult> ResetAsync(string hash, ResetMode mode) => RunAsync(Root, ["reset", $"--{mode.ToString().ToLowerInvariant()}", "--end-of-options", hash]);
+    /// <summary>Why a commit's changes cannot be applied or undone here (a cherry-pick, a revert): in a folder not trusted, a
+    /// file it changed is stored through a filter, which runs only once the folder is trusted.</summary>
+    private async Task<GitResult?> UnfilteredPickAsync(string hash) => await MayFilterAsync() && await CommitOfAsync(hash) is { } commit
+        ? await UnfilteredAsync(async () => await DifferingAsync($"{commit}^", commit) ?? await FilesOfAsync(commit), commit)
+        : null;
+
+    /// <summary>The branch moved to a commit: soft keeps the changes staged, mixed keeps them in the files, hard drops them,
+    /// in a folder not trusted refused where it writes out a file git stores through a filter.</summary>
+    public async Task<GitResult> ResetAsync(string hash, ResetMode mode) =>
+        await UnfilteredResetAsync(hash, mode) ?? await RunAsync(Root, ["reset", $"--{mode.ToString().ToLowerInvariant()}", "--end-of-options", hash]);
+
+    private async Task<GitResult?> UnfilteredResetAsync(string hash, ResetMode mode) => mode is ResetMode.Hard && await MayFilterAsync() && await CommitOfAsync(hash) is { } commit
+        ? await UnfilteredAsync(() => DifferingAsync(commit), commit)
+        : null;
 
     /// <summary>Puts files back as the last commit has them (Rollback): one added to the index but in no commit kept on
     /// disk, unversioned; a submodule whose commit alone changed is checked out at the one recorded (in a folder not trusted
@@ -2063,6 +2292,10 @@ public sealed partial class Git
         FileChange[] restoring = [.. changes.Where(c => c.Kind is not (ChangeKind.Unversioned or ChangeKind.Added))];
         string[] tracked = [.. restoring.SelectMany(c => c.From is { } from ? new[] { c.Path, from } : [c.Path]).Select(Relative)];
         string[] staged = [.. changes.Where(c => c.Kind is ChangeKind.Added).Select(c => Relative(c.Path))];
+        if (await UnfilteredAsync(tracked) is { } unfiltered)
+        {
+            return unfiltered;
+        }
         FileChange[] submodules = [.. restoring.Where(c => c.Submodule.HasFlag(SubmoduleChange.Submodule))];
         // Untrusted, git checks no submodule out (UntrustedGit): what the last commit records goes back in the index alone.
         bool checksOut = WorkspaceTrust.Trusts(Root);

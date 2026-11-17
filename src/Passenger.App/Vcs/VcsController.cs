@@ -100,6 +100,37 @@ public sealed class VcsController : IDisposable
     /// be kept from running what the repository's settings for one name (<see cref="UntrustedGit"/>); null otherwise.</summary>
     public string? WhyNotRemote => git is { } repository && !WorkspaceTrust.Trusts(repository.Root) ? Refusals.Untrusted : null;
 
+    /// <summary>Why Rollback cannot put <paramref name="changes"/> back: in a folder not trusted, git would write out one it
+    /// stores through a filter, which runs only once the folder is trusted (<see cref="FileChange.Unfiltered"/>), as the last
+    /// status read them; null where it can. A file added or unversioned is put back without git writing it.</summary>
+    public string? WhyNotRollback(IReadOnlyList<FileChange> changes) =>
+        changes.Where(c => c.Kind is not (ChangeKind.Unversioned or ChangeKind.Added)).Select(c => c.Unfiltered).FirstOrDefault(why => why is not null);
+
+    /// <summary>Why the changes cannot be stashed: in a folder not trusted, git would store one it stores through a filter,
+    /// and write it out again from the head, as the last status read them; null where they can be.</summary>
+    public string? WhyNotStash => Changes.Select(c => c.Unfiltered).FirstOrDefault(why => why is not null);
+
+    /// <summary>Why a branch cannot be checked out by its name (a local one, or a remote's one would be made from): in a
+    /// folder not trusted, git would write out a file it stores through a filter; null where it can.</summary>
+    public async Task<string?> WhyNotCheckoutAsync(string branch) => git is { } repository ? await repository.WhyNotCheckedOutAsync(branch) : null;
+
+    /// <summary><see cref="WhyNotCheckoutAsync"/> of the branches panel's Checkout (<see cref="CheckoutRefAsync"/>).</summary>
+    public async Task<string?> WhyNotCheckoutRefAsync(BranchInfo branch, IReadOnlyList<BranchInfo> all)
+    {
+        if (git is not { } repository)
+        {
+            return null;
+        }
+        string? local = branch.Kind == RefKind.Local ? branch.Name
+            : branch.Kind == RefKind.Remote && all.Any(b => b.Kind == RefKind.Local && b.Name == LocalNameOf(branch)) ? LocalNameOf(branch)
+            : null;
+        return local is not null ? await repository.WhyNotCheckedOutAsync(local) : await repository.WhyNotSwitchedAsync(branch.Ref.FullName);
+    }
+
+    /// <summary>Why a stash cannot be applied: in a folder not trusted, git would write out a file it stores through a
+    /// filter; null where it can.</summary>
+    public async Task<string?> WhyNotUnstashAsync(StashInfo stash) => git is { } repository ? await repository.WhyNotUnstashedAsync(stash) : null;
+
     /// <summary>The open folder, whose working tree each read looks for again while the window has none (git refused it,
     /// is not installed, or found none: one made since, by git init in a terminal or a clone, is taken), and a read after
     /// Git's own state moved looks for again where it has one (one removed, or another put in its place, is let go).</summary>
@@ -1401,11 +1432,14 @@ public sealed class VcsController : IDisposable
         {
             return SwitchAsync(repository => repository.CheckoutRevisionAsync(branch.Ref.FullName), $"Checked out {branch.Name}", "Git checkout");
         }
-        string local = branch.Name[(branch.Name.IndexOf('/', StringComparison.Ordinal) + 1)..];
+        string local = LocalNameOf(branch);
         return all.Any(b => b.Kind == RefKind.Local && b.Name == local)
             ? CheckoutAsync(local)
             : SwitchAsync(repository => repository.CheckoutTrackingAsync(branch.Name), $"Checked out new branch {local} from {branch.Name}", "Git checkout");
     }
+
+    /// <summary>The local branch a remote's branch is checked out as: its name past the remote's.</summary>
+    private static string LocalNameOf(BranchInfo branch) => branch.Name[(branch.Name.IndexOf('/', StringComparison.Ordinal) + 1)..];
 
     /// <summary>New Branch from: a branch made where another (or a tag) is, checked out.</summary>
     public Task<VcsOutcome> NewBranchFromAsync(string name, BranchInfo from) =>
@@ -1528,8 +1562,9 @@ public sealed class VcsController : IDisposable
 
     /// <summary>Stash Changes: every uncommitted change, new files too, put away under a message; the open files
     /// take the head's text again.</summary>
-    public Task<VcsOutcome> StashAsync(string message) =>
-        SwitchAsync(repository => repository.StashAsync(message.Trim()), "Stashed the changes", "Git stash");
+    public Task<VcsOutcome> StashAsync(string message) => WhyNotStash is { } unfiltered
+        ? Task.FromResult(Report(false, unfiltered))
+        : SwitchAsync(repository => repository.StashAsync(message.Trim()), "Stashed the changes", "Git stash");
 
     public async Task<IReadOnlyList<StashInfo>> StashesAsync() => git is { } repository ? await repository.StashesAsync() : [];
 
@@ -1568,6 +1603,10 @@ public sealed class VcsController : IDisposable
         if (changes.Count == 0)
         {
             return Report(false, "No files are chosen to roll back");
+        }
+        if (WhyNotRollback(changes) is { } unfiltered)
+        {
+            return Report(false, unfiltered);
         }
         return await OneAtATimeAsync(async () =>
         {

@@ -308,9 +308,9 @@ public partial class MainWindow
     /// <summary>Stash Changes: what is open saved first, then every change put away under the message given.</summary>
     public NamePopup? ShowStash()
     {
-        if (session.Vcs.Repository is null)
+        if ((session.Vcs.Repository is null ? session.Vcs.NoRepository : session.Vcs.WhyNotStash) is { } refused)
         {
-            status.Text = session.Vcs.NoRepository;
+            status.Text = refused;
             return null;
         }
         NamePopup popup = new("Stash Changes", string.Empty, async message => (await session.Vcs.StashAsync(message)).Problem);
@@ -777,7 +777,7 @@ public partial class MainWindow
         Add(AppActions.UpdateProject, "Update Project…", context => IdeErrors.Observe(session.Vcs.UpdateAsync()), new("Git", 0, 2), remote: true);
         Add(AppActions.Fetch, "Fetch", context => IdeErrors.Observe(session.Vcs.FetchAsync()), new("Git", 0, 3), remote: true);
         Add(AppActions.Branches, "Branches…", _ => ShowBranches(), new("Git", 0, 4));
-        Add(AppActions.Stash, "Stash Changes…", _ => ShowStash(), new("Git", 1, 0));
+        Add(AppActions.Stash, "Stash Changes…", _ => ShowStash(), new("Git", 1, 0), whyNot: () => session.Vcs.WhyNotStash);
         Add(AppActions.Unstash, "Unstash Changes…", context => IdeErrors.Observe(ShowUnstashAsync()), new("Git", 1, 1));
         Add(AppActions.ShowDiff, "Show Diff", context => IdeErrors.Observe(ShowDiffAsync(context.File!.Path)), new("Git", 2, 0), onFile: true);
         Add(AppActions.Annotate, "Annotate with Git Blame", context => IdeErrors.Observe(ToggleAnnotationsAsync(context.File!)), new("Git", 2, 1), onFile: true);
@@ -814,11 +814,11 @@ public partial class MainWindow
 
         string? NeedsRepository(ActionContext context) => NeedsFolder(context) ?? (session.Vcs.Repository is null ? session.Vcs.NoRepository : null);
 
-        void Add(string id, string title, Action<ActionContext> run, MenuPlace menu, bool onFile = false, bool remote = false) =>
+        void Add(string id, string title, Action<ActionContext> run, MenuPlace menu, bool onFile = false, bool remote = false, Func<string?>? whyNot = null) =>
             actions!.Add(new IdeAction(id, title, "Git", run)
             {
                 WhyNot = context => NeedsFolder(context) ?? (session.Vcs.Repository is null ? session.Vcs.NoRepository
-                    : onFile ? Refusals.NeedsFile(context) : remote ? session.Vcs.WhyNotRemote : null),
+                    : onFile ? Refusals.NeedsFile(context) : remote ? session.Vcs.WhyNotRemote : whyNot?.Invoke()),
                 Menus = [menu],
             });
     }
@@ -865,9 +865,9 @@ public partial class MainWindow
 
     private async Task RollbackAsync(IReadOnlyList<FileChange> changes)
     {
-        if (changes.Count == 0)
+        if ((changes.Count == 0 ? "No files are chosen to roll back" : session.Vcs.WhyNotRollback(changes)) is { } refused)
         {
-            status.Text = "No files are chosen to roll back";
+            status.Text = refused;
             return;
         }
         // The files are listed, so what goes back is seen before it does, and every file a rollback deletes is said to be.
