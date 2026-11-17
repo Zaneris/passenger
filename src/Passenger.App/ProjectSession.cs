@@ -655,6 +655,9 @@ public sealed class ProjectSession : IAsyncDisposable
     /// <summary>The target framework chosen for each multi-targeted project, which its XAML, its preview and its C# follow.</summary>
     public TargetFrameworkChoices Frameworks { get; } = new();
 
+    /// <summary>The environment the Migrations window runs dotnet ef in for each startup project.</summary>
+    public Migrations.EfEnvironmentChoices MigrationEnvironments { get; } = new();
+
     /// <summary>Where each project of devices, emulators or simulators runs, and each one's targets as last listed.</summary>
     public Run.Devices.DeviceChoices Targets { get; } = new();
 
@@ -1549,6 +1552,7 @@ public sealed class ProjectSession : IAsyncDisposable
         }
         State = kept;
         Frameworks.Keep(kept.Workspace);
+        MigrationEnvironments.Keep(kept.Workspace);
         Targets.Keep(kept.Workspace);
         BuildChoices.Keep(kept.Workspace);
         Configurations.Keep(kept.RunConfigurations, Projects);

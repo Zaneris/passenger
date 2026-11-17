@@ -45,6 +45,26 @@ public sealed class McpMigrationsTests : McpRig
         Assert.Contains("CREATE TABLE \"Products\"", File.ReadAllText(file), StringComparison.Ordinal);
     }
 
+    /// <summary>An agent's choice of the environment dotnet ef runs in, by ide_action with its name as input: none answers
+    /// the one in force and those offered, a name chooses it for every command after, and one that names no environment is
+    /// refused saying why.</summary>
+    [Fact]
+    public async Task An_agent_chooses_the_environment_dotnet_ef_runs_in_by_name_and_one_that_names_none_is_refused()
+    {
+        string folder = await ShopApp.MakeAsync(design: true, tool: ShopApp.Version);
+        await using McpClient client = await Start(["--mcp", folder], languageServer: false);
+
+        string environments = Text(await Call(client, McpTools.IdeAction, new() { ["action"] = AppActions.MigrationsEnvironment }));
+        Assert.True(environments.Contains("Offered: Development;", StringComparison.Ordinal) && environments.Contains("started from Shop in Development (the default)", StringComparison.Ordinal),
+            $"The environment action with no input answered: {environments}");
+        string staging = Text(await Call(client, McpTools.IdeAction, new() { ["action"] = AppActions.MigrationsEnvironment, ["input"] = "Staging" }));
+        Assert.True(staging.StartsWith("dotnet ef runs Shop in Staging\n", StringComparison.Ordinal) && staging.Contains("started from Shop in Staging:", StringComparison.Ordinal),
+            $"Choosing Staging answered: {staging}");
+        Assert.Contains("started from Shop in Staging:", Text(await Call(client, McpTools.IdeAction, new() { ["action"] = AppActions.MigrationsRefresh })), StringComparison.Ordinal);
+        CallToolResult unnamed = await Result(client, McpTools.IdeAction, new() { ["action"] = AppActions.MigrationsEnvironment, ["input"] = "Staging Two" });
+        Assert.True(unnamed.IsError == true && Text(unnamed).Contains("\"Staging Two\" names no environment", StringComparison.Ordinal), $"A name with a space answered: {Text(unnamed)}");
+    }
+
     /// <summary>An agent's nuget_install of one of EF Core's packages is never asked about: it moves the project's others with
     /// it, as the window's update does, and leaves the provider it leaves behind as it was, its answer naming what moved and
     /// the provider's version that supports the EF Core asked.</summary>

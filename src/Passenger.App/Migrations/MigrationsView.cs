@@ -8,15 +8,17 @@ using Passenger.Workspace;
 
 namespace Passenger.App.Migrations;
 
-/// <summary>The Migrations window: the project, startup project and context chosen across its top, its commands down its
-/// side, what keeps dotnet ef from working each with its fix as buttons, then the context's migrations, oldest first, each
-/// with whether the database has it. A view of <see cref="MigrationsController"/>, which it asks to choose and fix, built as
-/// the window is first shown over what the controller found meanwhile; its buttons and row menu ask for the window's actions.</summary>
+/// <summary>The Migrations window: the project, startup project, environment (one typed taken too) and context chosen
+/// across its top, its commands down its side, what keeps dotnet ef from working each with its fix as buttons, then the
+/// context's migrations, oldest first, each with whether the database has it. A view of <see cref="MigrationsController"/>,
+/// which it asks to choose and fix, built as the window is first shown over what the controller found meanwhile; its
+/// buttons and row menu ask for the window's actions.</summary>
 public sealed class MigrationsView : DockPanel
 {
     private readonly MigrationsController controller;
     private readonly ComboBox projects;
     private readonly ComboBox startups;
+    private readonly ComboBox environments;
     private readonly ComboBox contexts;
     private readonly StackPanel gaps;
     private readonly ListBox list;
@@ -31,6 +33,9 @@ public sealed class MigrationsView : DockPanel
         this.controller = controller;
         projects = Chooser("MigrationsProject", "The project whose contexts and migrations are listed");
         startups = Chooser("MigrationsStartup", "The project dotnet ef starts to make the context, as its run does");
+        environments = Chooser("MigrationsEnvironment", "The environment dotnet ef runs the startup project in, whose appsettings.{Environment}.json "
+            + "its configuration reads: none chosen, the one its run configuration names. A name typed is taken too.");
+        environments.IsEditable = true;
         contexts = Chooser("MigrationsContext", "The context whose migrations are listed");
         projects.SelectionChanged += (_, _) =>
         {
@@ -46,6 +51,33 @@ public sealed class MigrationsView : DockPanel
                 controller.ChooseStartup(chosen.Path);
             }
         };
+        // Taken as the list closes on a choice, or as Enter or leaving the field takes what is typed; Escape puts it back.
+        environments.DropDownOpened += (_, _) => controller.ReadEnvironments();
+        environments.DropDownClosed += (_, _) => Take();
+        environments.LostFocus += (_, _) =>
+        {
+            if (!environments.IsDropDownOpen)
+            {
+                Take();
+            }
+        };
+        environments.KeyDown += (_, e) =>
+        {
+            if (e.KeyModifiers != Avalonia.Input.KeyModifiers.None || environments.IsDropDownOpen)
+            {
+                return;
+            }
+            if (e.Key == Avalonia.Input.Key.Enter)
+            {
+                Take();
+                e.Handled = true;
+            }
+            else if (e.Key == Avalonia.Input.Key.Escape && environments.Text != controller.Environment?.Name)
+            {
+                ShowEnvironment();
+                e.Handled = true;
+            }
+        };
         contexts.SelectionChanged += (_, _) =>
         {
             if (!showing && contexts.SelectedItem is EfContext chosen)
@@ -59,7 +91,7 @@ public sealed class MigrationsView : DockPanel
         WrapPanel top = new()
         {
             Margin = new Thickness(8, 2),
-            Children = { Labelled("Project", projects), Labelled("Startup", startups), Labelled("Context", contexts), against },
+            Children = { Labelled("Project", projects), Labelled("Startup", startups), Labelled("Environment", environments), Labelled("Context", contexts), against },
         };
         Border topBar = ToolBars.Top(top);
 
@@ -96,6 +128,13 @@ public sealed class MigrationsView : DockPanel
     /// <summary>Opens the startup project's or the context's chooser, as a gap's Choose fix asks.</summary>
     public void OpenChooser(EfFixKind kind) => (kind == EfFixKind.ChooseContext ? contexts : startups).IsDropDownOpen = true;
 
+    /// <summary>Opens the environment chooser with the keys in its field, where a name may be typed too.</summary>
+    public void OpenEnvironments()
+    {
+        environments.Focus();
+        environments.IsDropDownOpen = true;
+    }
+
     /// <summary>A button or a menu item asked for one of the window's actions.</summary>
     public event EventHandler<string>? ActionRequested;
 
@@ -122,6 +161,12 @@ public sealed class MigrationsView : DockPanel
             startups.ItemsSource = controller.Startups;
             startups.SelectedItem = controller.Startup;
             startups.IsEnabled = controller.Startups.Count > 1;
+            environments.IsEnabled = controller.Startup is not null;
+            // Left alone while it is typed into, which Enter or leaving the field takes.
+            if (!environments.IsKeyboardFocusWithin || environments.IsDropDownOpen)
+            {
+                ShowEnvironment();
+            }
             contexts.ItemsSource = controller.Contexts;
             contexts.SelectedItem = controller.Contexts.FirstOrDefault(c => c.Name == controller.Context);
             contexts.IsEnabled = controller.Contexts.Count > 1;
@@ -147,6 +192,42 @@ public sealed class MigrationsView : DockPanel
             : controller.Migrations.Count == 0 ? $"{controller.Context ?? controller.Project?.Name} has no migrations: Add Migration… makes its first"
             : string.Empty;
         placeholder.IsVisible = placeholder.Text.Length > 0;
+    }
+
+    /// <summary>The environment chooser as the controller stands: its offers, and the one dotnet ef runs in shown in its field.</summary>
+    private void ShowEnvironment()
+    {
+        bool was = showing;
+        showing = true;
+        try
+        {
+            if (environments.ItemsSource is not IReadOnlyList<EfEnvironment> offered || !offered.SequenceEqual(controller.Environments))
+            {
+                environments.ItemsSource = controller.Environments;
+            }
+            environments.SelectedItem = controller.Environments.FirstOrDefault(e => e.Name == controller.Environment?.Name);
+            environments.Text = controller.Environment?.Name ?? string.Empty;
+        }
+        finally
+        {
+            showing = was;
+        }
+    }
+
+    /// <summary>The environment chosen or typed taken as the one dotnet ef runs in: a listed one by its own spelling, a name
+    /// typed as typed; what names none put back, the status saying why.</summary>
+    private void Take()
+    {
+        if (showing || controller.Startup is null)
+        {
+            return;
+        }
+        string typed = environments.Text?.Trim() ?? string.Empty;
+        string name = environments.SelectedItem is EfEnvironment listed && listed.Name.Equals(typed, StringComparison.OrdinalIgnoreCase) ? listed.Name : typed;
+        if (name.Length == 0 || name == controller.Environment?.Name || controller.ChooseEnvironment(name) is not null)
+        {
+            ShowEnvironment();
+        }
     }
 
     private Control GapRow(EfGap gap)
@@ -207,7 +288,15 @@ public sealed class MigrationsView : DockPanel
         ReusedRows.Use(chooser, () =>
         {
             TextBlock shown = new();
-            return shown.Showing<object>(item => shown.Text = item switch { ProjectModel project => project.Name, EfContext context => context.Name, _ => string.Empty });
+            TextBlock note = MutedText.Of(string.Empty);
+            note.Margin = new Thickness(8, 0, 0, 0);
+            StackPanel row = new() { Orientation = Orientation.Horizontal, Children = { shown, note } };
+            return row.Showing<object>(item =>
+            {
+                shown.Text = item switch { ProjectModel project => project.Name, EfContext context => context.Name, EfEnvironment environment => environment.Name, _ => string.Empty };
+                note.Text = (item as EfEnvironment)?.Note ?? string.Empty;
+                note.IsVisible = note.Text.Length > 0;
+            });
         });
         ToolTip.SetTip(chooser, tip);
         return chooser;

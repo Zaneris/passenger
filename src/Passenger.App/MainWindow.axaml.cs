@@ -940,6 +940,7 @@ public partial class MainWindow : IdeWindow
         RecentFiles = [.. session.RecentFiles],
         UnloadedProjects = [.. session.KeptUnloaded],
         TargetFrameworks = session.Frameworks.Kept,
+        MigrationEnvironments = session.MigrationEnvironments.Kept,
         RunTargets = session.Targets.Kept,
         Build = session.BuildChoices.Kept,
         Folds = session.Folds.Capture(Editors.Documents),

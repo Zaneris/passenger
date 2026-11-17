@@ -483,6 +483,168 @@ public sealed class MigrationsTests
         }
     }
 
+    /// <summary>The Environment chooser offers what the startup project's settings files and launch profiles name, the run
+    /// configuration's first, said as such. Staging chosen is what every dotnet ef runs in, given in its environment alone:
+    /// the factory added reads the connection appsettings.Staging.json alone names, and Add and Update make Staging's
+    /// database through it. Kept with the folder, its migrations are listed from that database once opened again. A name
+    /// typed is taken, one that names no environment put back.</summary>
+    [AvaloniaFact]
+    public void The_environment_chosen_beside_the_startup_project_is_the_one_dotnet_ef_runs_in_kept_with_the_folder_and_a_typed_one_taken()
+    {
+        string folder = ShopApp.Make(design: true, tool: ShopApp.Version, program: Unregistered);
+        TestFolders.Write(folder, "Properties/launchSettings.json", """
+            {
+              "profiles": {
+                "Shop": {
+                  "commandName": "Project",
+                  "environmentVariables": {
+                    "ASPNETCORE_ENVIRONMENT": "Development"
+                  }
+                }
+              }
+            }
+
+            """);
+        TestFolders.Write(folder, "appsettings.Development.json", "{\n  \"ConnectionStrings\": {\n    \"Audit\": \"Data Source=audit.db\"\n  }\n}\n");
+        TestFolders.Write(folder, "appsettings.Staging.json", "{\n  \"ConnectionStrings\": {\n    \"ShopContext\": \"Data Source=staging.db\"\n  }\n}\n");
+        string settings = TestFolders.Create("migrations-settings-");
+        // The environment each dotnet ef command was given, and whether its command line named one.
+        List<string> given = [];
+        string under = Passenger.Core.PathNames.Canonical(folder);
+        EventHandler<Passenger.Core.ChildStart> heard = (_, child) =>
+        {
+            if (child.Start is { } start && start.ArgumentList.Any(a => a.Contains(under, StringComparison.Ordinal))
+                && start.ArgumentList.Any(a => a is "--startup-project" or "--startup-assembly"))
+            {
+                lock (given)
+                {
+                    string? Variable(string name) => start.Environment.TryGetValue(name, out string? value) ? value : null;
+                    given.Add($"{Variable(Passenger.Core.AspNetCoreVariables.AspNetCoreEnvironment)}/{Variable(Passenger.Core.AspNetCoreVariables.DotnetEnvironment)}"
+                        + (start.ArgumentList.Any(a => a is "--environment" or "-e") ? " on its command line" : string.Empty));
+                }
+            }
+        };
+        Passenger.Core.ChildProcesses.Started += heard;
+        try
+        {
+            MainWindow window = Keeping(settings, folder);
+            try
+            {
+                window.ShowToolWindow(ToolWindowIds.Migrations);
+                Ui.WaitFor(() => Gaps(window).Contains("dotnet ef cannot make ShopContext", StringComparison.Ordinal) && window.Migrations.Busy is null,
+                    () => $"why the context cannot be made ({window.Status}; gaps: {Gaps(window)})", Slow);
+                ComboBox chooser = Environments(window);
+                Ui.WaitFor(() => Offered(chooser) == "Development (the run configuration's), Staging", () => $"Development and Staging offered, where the chooser offers {Offered(chooser)}");
+                Assert.Equal("Development", chooser.Text);
+                Assert.True(Taken(given).All(g => g == "Development/Development"), $"Listing in the run configuration's environment gave dotnet ef {string.Join(", ", Taken(given))}");
+
+                Open(chooser);
+                ComboBoxItem first = Assert.IsType<ComboBoxItem>(chooser.ContainerFromIndex(0));
+                string said = string.Join(" ", first.GetVisualDescendants().OfType<TextBlock>().Where(t => t.IsEffectivelyVisible).Select(t => t.Text));
+                Assert.True(said == "Development the run configuration's", $"The default's row says \"{said}\", not that it is the run configuration's");
+                Ui.Click(Assert.IsType<ComboBoxItem>(chooser.ContainerFromIndex(1)));
+                Ui.WaitFor(() => window.Migrations.Environment?.Name == "Staging" && window.Migrations.Busy is null && Gaps(window).Contains("dotnet ef cannot make ShopContext", StringComparison.Ordinal),
+                    () => $"Staging chosen and the context listed again in it ({window.Status}; gaps: {Gaps(window)})", Slow);
+                Assert.Equal("Staging", chooser.Text);
+
+                Ui.ClickButton(window.MigrationsView, "Add a Design-Time Factory for ShopContext");
+                string factory = Path.Combine(folder, "ShopContextFactory.cs");
+                Ui.WaitFor(() => File.Exists(factory), "the factory written");
+                Assert.True(File.ReadAllText(factory).Contains("ConnectionString(\"ShopContext\")", StringComparison.Ordinal),
+                    $"The factory does not read ShopContext, the connection appsettings.Staging.json alone names:\n{File.ReadAllText(factory)}");
+                // Through the factory, which finds ShopContext's connection in Staging alone: in Development it throws.
+                Add(window, "Initial");
+                Tool(window, AppActions.UpdateDatabase);
+                Ui.WaitFor(() => Rows(window) is [("Initial", true)], () => $"Initial applied to Staging's database ({window.Status}; gaps: {Gaps(window)})", Slow);
+                Assert.True(File.Exists(Path.Combine(folder, "staging.db")), "Update Database made no staging.db, the database appsettings.Staging.json names");
+                Assert.True(Taken(given).All(g => g == "Staging/Staging"), $"dotnet ef was given {string.Join(", ", Taken(given))} with Staging chosen");
+            }
+            finally
+            {
+                window.Close();
+            }
+
+            MainWindow again = Keeping(settings, folder);
+            try
+            {
+                Assert.Equal("Staging", again.Migrations.Environment?.Name);
+                again.ShowToolWindow(ToolWindowIds.Migrations);
+                Ui.WaitFor(() => again.Migrations.Listed && again.Migrations.Busy is null, () => $"the migrations listed in the folder opened again ({again.Status}; gaps: {Gaps(again)})", Slow);
+                Assert.Equal([("Initial", (bool?)true)], Rows(again));
+                ComboBox chooser = Environments(again);
+                Assert.Equal("Staging", chooser.Text);
+                Assert.True(Taken(given).All(g => g == "Staging/Staging"), $"dotnet ef was given {string.Join(", ", Taken(given))} in the folder opened again");
+
+                Type(again, chooser, "Staging Two");
+                Ui.WaitFor(() => again.Status?.Contains("\"Staging Two\" names no environment", StringComparison.Ordinal) == true, () => $"the name typed refused ({again.Status})");
+                Assert.Equal(("Staging", "Staging"), (again.Migrations.Environment?.Name, chooser.Text));
+                Type(again, chooser, "QA");
+                Ui.WaitFor(() => again.Migrations.Environment?.Name == "QA" && again.Migrations.Busy is null, () => $"QA taken and listed in ({again.Status}; gaps: {Gaps(again)})", Slow);
+                Assert.True(Taken(given) is { Count: > 0 } ran && ran.All(g => g == "QA/QA"), $"dotnet ef was given {string.Join(", ", Taken(given))} with QA typed");
+                Ui.Press(again, "TAB");
+                Ui.WaitFor(() => Offered(chooser) == "Development (the run configuration's), Staging, QA", () => $"QA offered once typed, where the chooser offers {Offered(chooser)}");
+            }
+            finally
+            {
+                again.Close();
+            }
+        }
+        finally
+        {
+            Passenger.Core.ChildProcesses.Started -= heard;
+            TestFolders.Delete(settings);
+        }
+    }
+
+    /// <summary>The environments a chooser offers, as its rows say them.</summary>
+    private static string Offered(ComboBox chooser) =>
+        string.Join(", ", chooser.Items.OfType<EfEnvironment>().Select(e => e.Note is { } note ? $"{e.Name} ({note})" : e.Name));
+
+    private static ComboBox Environments(MainWindow window)
+    {
+        Ui.Settle();
+        return window.MigrationsView.GetVisualDescendants().OfType<ComboBox>().Single(c => c.Name == "MigrationsEnvironment");
+    }
+
+    /// <summary>The environments dotnet ef was given since last asked, each as ASPNETCORE_ENVIRONMENT/DOTNET_ENVIRONMENT.</summary>
+    private static List<string> Taken(List<string> given)
+    {
+        lock (given)
+        {
+            List<string> taken = [.. given];
+            given.Clear();
+            return taken;
+        }
+    }
+
+    /// <summary>An editable drop-down's list opened by a click on its glyph, beside its field, as a person opens it.</summary>
+    private static void Open(ComboBox chooser)
+    {
+        Ui.Click(chooser, new Avalonia.Point(chooser.Bounds.Width - 12, chooser.Bounds.Height / 2));
+        Ui.WaitFor(() => chooser.IsDropDownOpen, "the environments' list to open");
+    }
+
+    /// <summary>A name typed into an editable drop-down's field, over what it held, and Enter.</summary>
+    private static void Type(MainWindow window, ComboBox chooser, string name)
+    {
+        TextBox field = chooser.GetVisualDescendants().OfType<TextBox>().First(t => t.IsEffectivelyVisible);
+        Ui.Click(field);
+        field.SelectAll();
+        window.KeyTextInput(name);
+        Ui.Press(window, "ENTER");
+    }
+
+    /// <summary>A window that keeps its state in a folder of its own, on the folder given.</summary>
+    private static MainWindow Keeping(string settings, string folder)
+    {
+        MainWindow window = new() { Width = 1200, Height = 800, StateFolder = settings, StartsLanguageServer = false };
+        window.Show();
+        window.KeepLayout();
+        window.OpenFolder(folder);
+        Ui.Settle();
+        return window;
+    }
+
     [AvaloniaFact]
     public void The_NuGet_windows_update_of_EF_Core_past_its_provider_warns_and_updates_the_set_with_the_provider_together()
     {

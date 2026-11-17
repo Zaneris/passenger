@@ -116,6 +116,16 @@ public partial class MainWindow
             Menus = [new MenuPlace("Tools/Migrations", 2, 1)],
             Words = ["dotnet ef migrations bundle", "efbundle"],
         });
+        actions.Add(new IdeAction(A.MigrationsEnvironment, "Choose Migrations Environment…", "Migrations", c =>
+        {
+            ShowToolWindow(ToolWindowIds.Migrations);
+            MigrationsView.OpenEnvironments();
+        })
+        {
+            WhyNot = context => none(context) ?? (controller.Startup is null ? Refusals.NoEfCore : null),
+            Menus = [new MenuPlace("Tools/Migrations", 3, 0)],
+            Words = [Core.AspNetCoreVariables.AspNetCoreEnvironment, Core.AspNetCoreVariables.DotnetEnvironment, "appsettings", "Staging", "Production"],
+        });
         actions.Add(new IdeAction(A.MigrationsFix, "Fix What Migrations Lack", "Migrations", c =>
         {
             if (FirstFix() is { } fix)
@@ -260,9 +270,9 @@ public partial class MainWindow
     }
 
     /// <summary>A Migrations action an agent runs (ide_action), with what it would ask the person as <paramref name="input"/>:
-    /// Refresh's context, Add's name, Update's or Update to's migration (0 for none), Script's FROM..TO. Answers what it came
-    /// to with the context's migrations and what keeps dotnet ef from working, each with where its fixes are; refused, says
-    /// why and where the fix is.</summary>
+    /// Refresh's context, Add's name, Update's or Update to's migration (0 for none), Script's FROM..TO, the environment's
+    /// name (none answering the one in force and those offered). Answers what it came to with the context's migrations and
+    /// what keeps dotnet ef from working, each with where its fixes are; refused, says why and where the fix is.</summary>
     public async Task<string> MigrationsForAgentAsync(string action, string? input, CancellationToken cancel)
     {
         MigrationsController controller = migrations!;
@@ -303,6 +313,11 @@ public partial class MainWindow
             case A.BundleMigrations:
                 done = await controller.BundleAsync(action, cancel);
                 break;
+            case A.MigrationsEnvironment:
+                done = given is null ? new EfDone(true, $"Offered: {Core.Plural.Listed([.. controller.Environments.Select(e => e.Name)])}; input one, or another name, to choose it")
+                    : controller.ChooseEnvironment(given) is { } unchosen ? new EfDone(false, unchosen)
+                    : new EfDone(true, $"dotnet ef runs {controller.Startup?.Name} in {controller.Environment?.Name}");
+                break;
             case A.MigrationsFix:
                 EfFix fix = controller.Gaps.Concat(controller.Failure is { } failed ? [failed] : []).SelectMany(g => g.Fixes)
                     .FirstOrDefault(f => f.Kind is not (EfFixKind.ChooseStartup or EfFixKind.ChooseContext))
@@ -324,6 +339,7 @@ public partial class MainWindow
         if (controller.Project is { } project)
         {
             lines.Add($"{controller.Context ?? "Its context"} of {project.Name}, started from {controller.Startup?.Name ?? project.Name}"
+                + (controller.Environment is { } environment ? $" in {environment.Name}{(environment.Note is { } note ? $" ({note})" : string.Empty)}" : string.Empty)
                 + (controller.Contexts.Count > 1 ? $" (contexts: {string.Join(", ", controller.Contexts.Select(c => c.Name))})" : string.Empty)
                 + (controller.Listed ? $": {Core.Plural.Of(controller.Migrations.Count, "migration")}" : ": not listed yet")
                 + (controller.Database is { } database ? $", against {database}" : string.Empty));

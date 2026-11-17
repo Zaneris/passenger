@@ -50,8 +50,8 @@ public sealed record EfContext(string Name, string FullName);
 public sealed record EfDone(bool Done, string Said);
 
 /// <summary>What a command runs against: the project holding the context and its migrations, the startup project dotnet ef
-/// makes it from (with the framework, folder and environment of the run configuration that runs it: the database the run
-/// uses), the context, and the tool.</summary>
+/// makes it from (with the framework, folder and variables of the run configuration that runs it, the database the run
+/// uses, and the environment chosen in the window), the context, and the tool.</summary>
 internal sealed record EfSetting(ProjectModel Project, ProjectModel Startup, string? Framework, string Folder, IReadOnlyDictionary<string, string> Environment,
     string? Context, EfTool Tool, string Runtime)
 {
@@ -91,6 +91,18 @@ public sealed partial class MigrationsController(MigrationsParts parts)
     public IReadOnlyList<ProjectModel> Startups { get; private set; } = [];
 
     public ProjectModel? Startup { get; private set; }
+
+    /// <summary>The environments offered for the startup project: the one dotnet ef runs it in where none is chosen first,
+    /// with what names it, then those its settings files and launch profiles name, then the one chosen where it is none of
+    /// these.</summary>
+    public IReadOnlyList<EfEnvironment> Environments { get; private set; } = [];
+
+    /// <summary>The environment every dotnet ef the window starts runs the startup project in (<see cref="EnvironmentOf"/>);
+    /// null with no startup project.</summary>
+    public EfEnvironment? Environment => Startup is { } startup ? EnvironmentOf(startup) : null;
+
+    /// <summary>The environments the startup project's files name, as last read (<see cref="EfEnvironmentChoices.Named"/>).</summary>
+    private IReadOnlyList<string> named = [];
 
     /// <summary>The chosen project's contexts, once dotnet ef has listed them.</summary>
     public IReadOnlyList<EfContext> Contexts { get; private set; } = [];
@@ -136,6 +148,15 @@ public sealed partial class MigrationsController(MigrationsParts parts)
     {
         UiThread.Check();
         bound = session;
+        // A choice made or the folder's kept ones taken: what was listed was of another environment.
+        session.MigrationEnvironments.Changed += (_, _) =>
+        {
+            if (bound == session)
+            {
+                Forget();
+                Follow();
+            }
+        };
         Pending = [];
         Project = null;
         Startup = null;
@@ -143,6 +164,7 @@ public sealed partial class MigrationsController(MigrationsParts parts)
         projectChosen = false;
         startupChosen = false;
         defaults = null;
+        named = [];
         Forget();
         Follow();
     }
@@ -167,6 +189,10 @@ public sealed partial class MigrationsController(MigrationsParts parts)
         Project = Chosen(Projects, wasProject, projectChosen, defaults?.Project);
         Startups = Project is null ? [] : StartupsOf(Project, all);
         Startup = Chosen(Startups, wasStartup, startupChosen, defaults?.StartupProject);
+        if (!PathNames.Same(Startup?.Path ?? string.Empty, wasStartup?.Path ?? string.Empty))
+        {
+            named = [];
+        }
         if (!PathNames.Same(Project?.Path ?? string.Empty, wasProject?.Path ?? string.Empty))
         {
             Context = null;
@@ -185,7 +211,79 @@ public sealed partial class MigrationsController(MigrationsParts parts)
         {
             BackgroundWork.Track(FindDeclaredAsync(project));
         }
+        ReadEnvironments();
+        Offer();
         Changed?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>The environments the startup project's files name read again off the UI thread, offered once they land while
+    /// it is still the one chosen.</summary>
+    public void ReadEnvironments()
+    {
+        if (Startup is { } startup)
+        {
+            BackgroundWork.Track(ReadEnvironmentsAsync(startup));
+        }
+    }
+
+    private async Task ReadEnvironmentsAsync(ProjectModel startup)
+    {
+        IReadOnlyList<string> read = await BackgroundWork.Run(() => EfEnvironmentChoices.Named(startup));
+        if (Startup == startup && !read.SequenceEqual(named, StringComparer.Ordinal))
+        {
+            named = read;
+            Offer();
+            Changed?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    /// <summary>The environments offered made again from the startup project's choice, its run configuration and its files.</summary>
+    private void Offer()
+    {
+        if (Startup is not { } startup)
+        {
+            Environments = [];
+            return;
+        }
+        EfEnvironment otherwise = DefaultOf(startup);
+        string? chosen = parts.Session().MigrationEnvironments.Of(startup);
+        EfEnvironment[] offered = [otherwise, .. named.Append(chosen).OfType<string>().Where(n => n != otherwise.Name).Distinct(StringComparer.Ordinal)
+            .Select(n => new EfEnvironment(n))];
+        if (!offered.SequenceEqual(Environments))
+        {
+            Environments = offered;
+        }
+    }
+
+    /// <summary>The one place deciding the environment dotnet ef runs a startup project in: the one chosen for it in the
+    /// window, else the default (<see cref="DefaultOf"/>).</summary>
+    private EfEnvironment EnvironmentOf(ProjectModel startup) =>
+        parts.Session().MigrationEnvironments.Of(startup) is { } chosen ? new EfEnvironment(chosen) : DefaultOf(startup);
+
+    /// <summary>The environment a startup project runs in where none is chosen, as its run does: the one its run configuration
+    /// names, else the one Passenger's own environment names (which a run inherits), else Development, as dotnet ef takes it.</summary>
+    private EfEnvironment DefaultOf(ProjectModel startup) =>
+        RunsOf(startup) is { } runs && AspNetCoreVariables.EnvironmentOf(runs.Environment.GetValueOrDefault, string.Empty) is { Length: > 0 } configured
+            ? new EfEnvironment(configured, "the run configuration's")
+            : AspNetCoreVariables.EnvironmentOf(System.Environment.GetEnvironmentVariable, string.Empty) is { Length: > 0 } inherited
+            ? new EfEnvironment(inherited, "Passenger's own")
+            : new EfEnvironment("Development", "the default");
+
+    /// <summary>Chooses the environment dotnet ef runs the startup project in, kept with the folder: the default's name goes
+    /// back to none chosen, following the run configuration. Null once chosen, else why not, said.</summary>
+    public string? ChooseEnvironment(string name)
+    {
+        UiThread.Check();
+        if (Startup is not { } startup)
+        {
+            return Said(new EfDone(false, Refusals.NoEfCore)).Said;
+        }
+        if (EfEnvironmentChoices.WhyNot(name) is { } why)
+        {
+            return Said(new EfDone(false, why)).Said;
+        }
+        parts.Session().MigrationEnvironments.Choose(startup, name == DefaultOf(startup).Name ? null : name);
+        return null;
     }
 
     /// <summary>Of projects, the one chosen before while it is still there if the person chose it, else the one the tool's
@@ -779,9 +877,10 @@ public sealed partial class MigrationsController(MigrationsParts parts)
         {
             return (null, $"dotnet ef is not installed here: {EfGaps.PinFix(runtime).Title} first");
         }
-        // A compose run's or an AppHost's database, as this machine reaches it, in place of what the configuration gives.
-        EfRunDatabase? database = session.ContainerRun is { IsStopped: false } containers ? await EfDatabases.OfComposeAsync(containers, startup, work.Stopping) : null;
-        database ??= EfDatabases.OfAspire(session.Aspire, startup);
+        // The run's database where the environment is the run's: a compose run's or an AppHost's, as this machine reaches it.
+        bool chosen = session.MigrationEnvironments.Of(startup) is not null;
+        EfRunDatabase? database = !chosen && session.ContainerRun is { IsStopped: false } containers ? await EfDatabases.OfComposeAsync(containers, startup, work.Stopping) : null;
+        database ??= chosen ? null : EfDatabases.OfAspire(session.Aspire, startup);
         if (database is not null)
         {
             environment = new Dictionary<string, string>(environment.Concat(database.Environment).GroupBy(e => e.Key).Select(g => g.Last()));
@@ -1001,7 +1100,7 @@ public sealed partial class MigrationsController(MigrationsParts parts)
             case EfFixKind.AlignProvider:
                 return await AlignAsync(startup, runtime, work);
             case EfFixKind.AddFactory:
-                return await AddFactoryAsync(work);
+                return await AddFactoryAsync();
             case EfFixKind.ScriptPlain:
                 return null;
             case EfFixKind.AddMigration:
@@ -1119,9 +1218,9 @@ public sealed partial class MigrationsController(MigrationsParts parts)
 
     /// <summary>A design-time factory for the context, beside the project's file, from a template: the provider's own
     /// <c>Use…</c> with the connection string of the context's name (<see cref="EfConnections"/>), read from the startup
-    /// project's configuration as dotnet ef runs, in the environment its run gives it; where nothing tells that name, the
-    /// context's own, said.</summary>
-    private async Task<string?> AddFactoryAsync(Working work)
+    /// project's configuration as dotnet ef runs, in the environment the window runs it in; where nothing tells that name,
+    /// the context's own, said.</summary>
+    private async Task<string?> AddFactoryAsync()
     {
         if (Project is not { } project || Startup is not { } startup)
         {
@@ -1140,9 +1239,7 @@ public sealed partial class MigrationsController(MigrationsParts parts)
             return $"{Path.GetFileName(file)} is already there";
         }
         CSharpParseOptions options = CompilationSymbols.Of(project);
-        // dotnet ef runs the startup project in Development where its run names no environment.
-        IReadOnlyDictionary<string, string> runs = (await RunOfAsync(startup, work)).Environment;
-        string environment = AspNetCoreVariables.EnvironmentOf(name => runs.GetValueOrDefault(name) ?? System.Environment.GetEnvironmentVariable(name), "Development");
+        string environment = EnvironmentOf(startup).Name;
         (string Name, string Told)? told = await BackgroundWork.Run(() => EfConnections.NameOf(context.Name,
             new[] { startup, project }.Distinct().SelectMany(p => FolderWalk.ProjectFiles(p, ".cs")).Distinct(PathNames.Comparer).Select(f => (f, Code(f))),
             options, EfConnections.Configured(startup.Folder, environment)));
@@ -1198,26 +1295,43 @@ public sealed partial class MigrationsController(MigrationsParts parts)
     }
 
     /// <summary>What the run of the startup project would have: the framework, working folder (which a build may make) and
-    /// environment of the run configuration that runs it (the chosen one first), so dotnet ef reaches the database the run
-    /// uses; the project's folder and the process's own environment without one.</summary>
+    /// variables of the run configuration that runs it (the chosen one first), so dotnet ef reaches the database the run
+    /// uses, the project's folder without one; its environment the one the window runs dotnet ef in (<see cref="EnvironmentOf"/>).</summary>
     private async Task<(string? Framework, string Folder, IReadOnlyDictionary<string, string> Environment)> RunOfAsync(ProjectModel startup, Working work)
     {
-        ProjectSession session = parts.Session();
         string? framework = startup.TargetFrameworks.Count > 1 ? startup.TargetFrameworks[0] : null;
-        RunConfigurations configurations = session.Configurations;
-        RunConfiguration? runs = configurations.Chosen is { Kind: RunKind.Project } chosen && PathNames.Same(chosen.Project, startup.Path) ? chosen
-            : configurations.All.FirstOrDefault(c => c.Kind == RunKind.Project && c.Program.Length == 0 && PathNames.Same(c.Project, startup.Path));
+        RunConfiguration? runs = RunsOf(startup);
         // The framework the tool's defaults name, where the startup project targets it, as dotnet ef takes it.
-        string? named = defaults?.Framework is { } given && startup.TargetFrameworks.Contains(given, StringComparer.OrdinalIgnoreCase) ? given : null;
+        string? given = defaults?.Framework is { } framed && startup.TargetFrameworks.Contains(framed, StringComparer.OrdinalIgnoreCase) ? framed : null;
+        string environment = EnvironmentOf(startup).Name;
         if (runs is null)
         {
-            return (named ?? framework, startup.Folder, new Dictionary<string, string>());
+            return (given ?? framework, startup.Folder, In(new Dictionary<string, string>(), environment));
         }
         work.Say($"Reading how {runs.Name} runs…");
         (LaunchPlan? plan, _) = await parts.Builds().ResolvePlanAsync(runs, null, work.Stopping);
-        return plan is null ? (named ?? framework, startup.Folder, runs.Environment)
-            : (named ?? plan.Framework ?? framework, plan.WorkingDirectory, plan.Environment);
+        return plan is null ? (given ?? framework, startup.Folder, In(runs.Environment, environment))
+            : (given ?? plan.Framework ?? framework, plan.WorkingDirectory, In(plan.Environment, environment));
     }
+
+    /// <summary>The run configuration that runs the startup project: the chosen one where it does, else the first that runs
+    /// the project itself; null with none.</summary>
+    private RunConfiguration? RunsOf(ProjectModel startup)
+    {
+        RunConfigurations configurations = parts.Session().Configurations;
+        return configurations.Chosen is { Kind: RunKind.Project } chosen && PathNames.Same(chosen.Project, startup.Path) ? chosen
+            : configurations.All.FirstOrDefault(c => c.Kind == RunKind.Project && c.Program.Length == 0 && PathNames.Same(c.Project, startup.Path));
+    }
+
+    /// <summary>A run's variables with the environment given as both ASP.NET Core and the .NET host read it, in place of any
+    /// the run names.</summary>
+    private static Dictionary<string, string> In(IReadOnlyDictionary<string, string> variables, string environment) =>
+        new(variables.Where(v => !v.Key.Equals(AspNetCoreVariables.AspNetCoreEnvironment, StringComparison.OrdinalIgnoreCase)
+            && !v.Key.Equals(AspNetCoreVariables.DotnetEnvironment, StringComparison.OrdinalIgnoreCase)), StringComparer.Ordinal)
+        {
+            [AspNetCoreVariables.AspNetCoreEnvironment] = environment,
+            [AspNetCoreVariables.DotnetEnvironment] = environment,
+        };
 
     /// <summary>Runs dotnet ef with the setting's projects, framework and context, never building (its ef.dll alone where
     /// the setting has its launch), its lines in the Build window as they come; EF's warning that the tool is older than the

@@ -166,8 +166,8 @@ connection string its AppHost never gives it is marked, with a fix that adds the
 The Requests window shows each request a running web app serves and the database commands it ran, with their times and
 rows, an N+1 or a slow query marked, for Run, Debug and Profile and for the services of a compose run or an AppHost:
 Passenger reads ASP.NET Core's and EF Core's own events, only while you look. The Migrations window lists each
-DbContext's migrations and whether the database has them, and fixes what would stop `dotnet ef` (the tool, the Design
-package, a provider behind) before it runs. The Endpoints window lists your `.http` files' requests and each web
+DbContext's migrations and whether the database has them, in the environment you choose (its run's, Staging, one you
+type), and fixes what would stop `dotnet ef` (the tool, the Design package, a provider behind) before it runs. The Endpoints window lists your `.http` files' requests and each web
 project's routes, read from its code with no build, and makes requests from the app's OpenAPI document. Turn on Collect
 logs and traces and a run's OpenTelemetry logs and traces show beside its console.
 
