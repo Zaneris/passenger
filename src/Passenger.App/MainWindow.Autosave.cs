@@ -61,13 +61,18 @@ public partial class MainWindow
         }
     }
 
-    /// <summary>Saves before anything else hears of the close, so the language server and the rest go only once the
-    /// edits are on disk; a file that cannot be written keeps the window open, its edits with it, and asks whether to make
-    /// it writable or close without it (<see cref="CloseUnsavedAsync"/>). A save still landing holds the close until it
-    /// has (<see cref="CloseLandedAsync"/>), a program Hot Reload changed that it would stop is asked about (<see
+    /// <summary>Saves before anything else hears of the close (but an agent's input closing the last window, <see
+    /// cref="LastCloseRefused"/>); a file that cannot be written keeps the window open and asks whether to make it writable
+    /// or close without it (<see cref="CloseUnsavedAsync"/>). A save still landing holds the close until it has (<see
+    /// cref="CloseLandedAsync"/>), a program Hot Reload changed that it would stop is asked about (<see
     /// cref="CloseHeldAsync"/>), and so are the containers of runs Detach let go of (<see cref="CloseLetGoAsync"/>).</summary>
     protected override void OnClosing(WindowClosingEventArgs e)
     {
+        if (LastCloseRefused())
+        {
+            e.Cancel = true;
+            return;
+        }
         // Passenger's quit (File, Exit; Restart to Update) and the system's (the application menu's Quit) keep each solution.
         bool quit = PassengerApp.Quitting || e.CloseReason is WindowCloseReason.ApplicationShutdown or WindowCloseReason.OSShutdown;
         if (Autosaves && !(Editors.SaveAll(new HashSet<OpenDocument>(conflicted.Concat(leftUnsaved))) && conflicted.Count == 0))

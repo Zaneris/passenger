@@ -143,7 +143,7 @@ public partial class MainWindow
         Add(A.Save, "Save", "IDE", context => IdeErrors.Observe(SaveExplicitly(all: false)), Refusals.NeedsUnsaved, ("File", 1, 0));
         Add(A.SaveAll, "Save All", "IDE", context => IdeErrors.Observe(SaveExplicitly(all: true)), _ => Editors.Documents.Any(d => d.IsModified) ? null : "Every file is saved", ("File", 1, 1));
         // Quit is the application menu's on macOS; either closes every window.
-        Add(A.Exit, "Exit", "IDE", _ => PassengerApp.Quit(), menu: OperatingSystem.IsMacOS() ? null : ("File", 4, 0));
+        Add(A.Exit, "Exit", "IDE", _ => Exit(), c => c.ByAgent ? Refusals.QuitIsThePersons : null, OperatingSystem.IsMacOS() ? null : ("File", 4, 0));
         Add(A.FindAction, "Find Action…", "IDE", _ => ShowFindAction(), menu: ("Help", 0, 0));
 
         // Unit Tests, Problems, the Explorer and the Step Library take Find's keys for their filters, a console its text.

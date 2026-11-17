@@ -536,6 +536,62 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
         }
     }
 
+    /// <summary>An attached agent never quits the person's Passenger: its ide_action of Exit is refused, so is Exit chosen
+    /// in Find Action by its keys, and, where the window draws its own buttons, its click on Close of the last window; the
+    /// agent is told why each time, the status bar saying it too, and the window stays open.</summary>
+    [AvaloniaFact]
+    public void An_attached_agent_never_quits_the_persons_passenger_and_is_told_why()
+    {
+        string folder = PathNames.Canonical(Plain("mcp-quit-"));
+        MainWindow window = AgentsWindow(folder, languageServer: false);
+        // The person works in a file, which has the keys the agent's then reach.
+        window.OpenFile(Path.Combine(folder, "Notes.txt"));
+        Ui.Settle();
+        McpClient client = Await(Waiting.Apart(() => Start(["--mcp-attach", ProcessId, folder])), "the agent attaching");
+        // Each tool asks the person once, allowed for the session.
+        CallToolResult Allowed(string tool, Dictionary<string, object?> arguments, string what)
+        {
+            Task<CallToolResult> calling = Waiting.Apart(() => Result(client, tool, arguments));
+            WaitFor(() => calling.IsCompleted || Questions(window).Any(), what);
+            if (Questions(window).FirstOrDefault() is { } asked)
+            {
+                Press(asked, AgentToolDialog.AllowForSession);
+            }
+            return Await(calling, what);
+        }
+        try
+        {
+            CallToolResult exited = Allowed(McpTools.IdeAction, new() { ["action"] = AppActions.Exit }, "the agent's Exit");
+            Assert.True(exited.IsError == true && Text(exited).Contains(Refusals.QuitIsThePersons, StringComparison.Ordinal), $"The agent's Exit answered: {Text(exited)}");
+            Assert.True(window.IsVisible, "The agent's Exit closed the person's window");
+
+            // Find Action's keys in the keymap of the system Passenger runs on, where the headless platform's primary is Ctrl.
+            CallToolResult found = Allowed(McpTools.AppKey, new() { ["app"] = "ide", ["keys"] = OperatingSystem.IsMacOS() ? "cmd+shift+A" : "ctrl+shift+A" },
+                "the agent's keys for Find Action");
+            CallToolResult typed = Allowed(McpTools.AppType, new() { ["app"] = "ide", ["text"] = "Exit" }, "the agent's typing in Find Action");
+            CallToolResult entered = Allowed(McpTools.AppKey, new() { ["app"] = "ide", ["keys"] = "Enter" }, "the agent's Enter on Find Action's Exit");
+            Assert.True(entered.IsError == true && Text(entered).Contains(Refusals.QuitIsThePersons, StringComparison.Ordinal),
+                $"The agent's Enter on Find Action's Exit answered: {Text(entered)} (Find Action's keys: {Text(found)}; the typing: {Text(typed)})");
+            Ui.Settle();
+            Assert.True(window.IsVisible, "The agent's Exit from Find Action closed the person's window");
+            Assert.Equal(Refusals.QuitIsThePersons, window.Status);
+
+            if (Avalonia.Controls.ControlExtensions.FindControl<Avalonia.Controls.Button>(window, "CloseButton") is { IsEffectivelyVisible: true })
+            {
+                CallToolResult closed = Allowed(McpTools.AppClick, new() { ["app"] = "ide", ["control"] = "#CloseButton" }, "the agent's click on the window's Close");
+                Assert.True(closed.IsError == true && Text(closed).Contains(Refusals.QuitIsThePersons, StringComparison.Ordinal),
+                    $"The agent's click on the last window's Close answered: {Text(closed)}");
+                Ui.Settle();
+                Assert.True(window.IsVisible, "The agent's click on Close closed the person's last window");
+            }
+        }
+        finally
+        {
+            Gone(client);
+            window.Close();
+        }
+    }
+
     /// <summary>A file whose grammar failed reading it can never tell the lines inside its strings, so Convert Indentation is
     /// refused at once saying the grammar failed, where the agent waited out its minute for a reading that never came and
     /// was then told the file was still being read.</summary>
