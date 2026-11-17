@@ -38,7 +38,7 @@ public partial class App : Application
             NativeMenu.SetMenu(this, new NativeMenu());
         }
         Themes.TakeAccentFromTokens(this);
-        Passenger.Editor.FallbackFonts.Install(PlatformFallback.Named);
+        Passenger.Editor.FallbackFonts.Install(PlatformFallback.Named, FaceTracking.Set);
         Passenger.Editor.CodeFonts.Install(PlatformWidths.Monospaced);
         Passenger.Editor.CodeFonts.Use(this, Passenger.Editor.CodeEditor.CodeFont);
         WindowFonts.Use(this, WindowFonts.Carried);

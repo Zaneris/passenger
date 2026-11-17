@@ -28,6 +28,7 @@ public sealed class FallbackFonts : IFontCollection
     private static FontManager? installedIn;
 
     private readonly Platform platform;
+    private readonly Action<GlyphTypeface> made;
     private readonly Found found = new();
 
     /// <summary>Each family's face at each style, as its own collection gives it: null for none.</summary>
@@ -37,7 +38,7 @@ public sealed class FallbackFonts : IFontCollection
     /// bucket's face lacks; null where the platform named no face that serves.</summary>
     private readonly ConcurrentDictionary<Asked, Answer?> answers = new();
 
-    private FallbackFonts(Platform platform) => this.platform = platform;
+    private FallbackFonts(Platform platform, Action<GlyphTypeface> made) => (this.platform, this.made) = (platform, made);
 
     /// <summary>The platform's own fallback: the installed face it names for a character in a language (a BCP 47 tag), asked
     /// by a family at a style, as the system's collection gives that face; null for none.</summary>
@@ -48,8 +49,9 @@ public sealed class FallbackFonts : IFontCollection
     public const string EmojiLanguage = "und-Zsye";
 
     /// <summary>Puts the collection in the font manager in force, asking the platform's fallback through
-    /// <paramref name="platform"/>: once for each font manager, before anything draws in a family it names.</summary>
-    public static void Install(Platform platform)
+    /// <paramref name="platform"/> and handing each face it gives to <paramref name="made"/> before giving it, a family's or a
+    /// fallback's: once for each font manager, before anything draws in a family it names.</summary>
+    public static void Install(Platform platform, Action<GlyphTypeface> made)
     {
         FontManager manager = FontManager.Current;
         lock (Installing)
@@ -58,7 +60,7 @@ public sealed class FallbackFonts : IFontCollection
             {
                 return;
             }
-            FallbackFonts fonts = new(platform);
+            FallbackFonts fonts = new(platform, made);
             manager.AddFontCollection(fonts);
             manager.AddFontCollection(fonts.found);
             installedIn = manager;
@@ -109,7 +111,7 @@ public sealed class FallbackFonts : IFontCollection
         {
             // A carried family from Passenger's own files, else the installed one as its plain name gives it.
             Typeface typeface = new(Carried.TryGetValue(familyName, out FontFamily? embedded) ? embedded : new FontFamily(familyName), style, weight, stretch);
-            glyphTypeface = named.GetOrAdd(key, FontManager.Current.TryGetGlyphTypeface(typeface, out GlyphTypeface? face) ? face : null);
+            glyphTypeface = named.GetOrAdd(key, FontManager.Current.TryGetGlyphTypeface(typeface, out GlyphTypeface? face) ? Made(face) : null);
         }
         return glyphTypeface is not null;
     }
@@ -169,7 +171,14 @@ public sealed class FallbackFonts : IFontCollection
         {
             return null;
         }
-        return new Answer(glyphs, new Typeface(found.Serve(glyphs), style.Style, style.Weight, style.Stretch));
+        return new Answer(Made(glyphs), new Typeface(found.Serve(glyphs), style.Style, style.Weight, style.Stretch));
+    }
+
+    /// <summary>A face about to be given, handed first to what the installer sets on each.</summary>
+    private GlyphTypeface Made(GlyphTypeface face)
+    {
+        made(face);
+        return face;
     }
 
     /// <summary>Whether a face can shape a script: by its OpenType tables' word, or by Apple's own shaping table, 'morx', which

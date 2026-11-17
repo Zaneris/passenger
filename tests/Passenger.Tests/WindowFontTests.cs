@@ -1,3 +1,4 @@
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless.XUnit;
 using Avalonia.Media;
@@ -8,6 +9,7 @@ using Passenger.App;
 using Passenger.App.Settings;
 using Passenger.App.ToolWindows;
 using Passenger.Core;
+using Passenger.Editor;
 using Passenger.Vcs;
 
 namespace Passenger.Tests;
@@ -168,6 +170,132 @@ public sealed partial class WindowFontTests : IDisposable
             window.ApplySettings(window.Settings with { WindowFontFamily = null });
             window.Close();
         }
+    }
+
+    /// <summary>On macOS every face Passenger draws in is tracked as the system tracks a face it made by name: 中文测试 in
+    /// PingFang SC, whose one loose track HarfBuzz alone sets at every size, is shaped at 12 and 24 points as wide as CoreText
+    /// sets it, four ems; the Explorer's row of a file so named, its Chinese drawn in the face macOS's fallback names behind
+    /// the window's Inter, and the editor's caret after those letters in its code font's fallback stand where CoreText sets
+    /// them too, and a click on the third letter's right half puts the caret after it.</summary>
+    [AvaloniaFact]
+    public void On_macos_pingfangs_chinese_is_as_wide_in_the_window_and_the_editor_as_the_systems_own_apps_set_it()
+    {
+        Assert.SkipUnless(OperatingSystem.IsMacOS(), "The tracking the system's own apps set is macOS's text drawing's");
+        GlyphTypeface? pingFang = WindowFonts.Named("PingFang SC") is { } named && FontManager.Current.TryGetGlyphTypeface(new Typeface(named), out GlyphTypeface? face)
+            && Family(face) == "PingFang SC" ? face : null;
+        Assert.SkipWhen(pingFang is null, "PingFang SC is not installed");
+        foreach (double size in (double[])[12, 24])
+        {
+            double shaped = TextShaper.Current.ShapeText(Chinese, new TextShaperOptions(pingFang, size)).Sum(g => g.GlyphAdvance);
+            double alone = HarfBuzzAlone(pingFang, Chinese, size).Sum();
+            double native = NativeWidth(Chinese, size, Family(pingFang));
+            Assert.True(Math.Abs(shaped - native) < 0.01,
+                $"{Chinese} at {size} pt in PingFang SC is shaped {shaped:0.###} wide, HarfBuzz alone {alone:0.###}, where the system's own apps set it {native:0.###}");
+        }
+        string path = Path.Combine(folder, $"{Chinese}.cs");
+        File.WriteAllText(path, $"{Chinese}\n");
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        try
+        {
+            TextBlock row = Words(window.ExplorerView.Rows(), $"{Chinese}.cs");
+            ShapedTextRun run = row.TextLayout.TextLines.SelectMany(line => line.TextRuns).OfType<ShapedTextRun>().First(r => r.Text.Span.SequenceEqual(Chinese));
+            GlyphTypeface fallback = run.GlyphRun.GlyphTypeface;
+            double drawn = run.ShapedBuffer.Sum(g => g.GlyphAdvance);
+            double native = NativeWidth(Chinese, row.FontSize, Family(fallback));
+            Assert.True(Math.Abs(drawn - native) < 0.01,
+                $"The Explorer's row draws {Chinese} at {row.FontSize} px in {Family(fallback)} {drawn:0.###} wide, where the system's own apps set it {native:0.###}");
+
+            window.OpenFile(path);
+            Ui.Settle();
+            CodeEditor editor = window.EditorArea.CodeEditor;
+            GlyphTypeface? codeFallback = FontManager.Current.TryMatchCharacter(Chinese[0], FontStyle.Normal, FontWeight.Normal, FontStretch.Normal, editor.FontFamily, null, out Typeface matched)
+                && FontManager.Current.TryGetGlyphTypeface(matched, out GlyphTypeface? found) ? found : null;
+            Assert.True(codeFallback is not null, $"No face draws {Chinese} for the editor's {editor.FontFamily}");
+            double caret = editor.PointOf(Chinese.Length).X - editor.PointOf(0).X;
+            native = NativeWidth(Chinese, editor.FontSize, Family(codeFallback));
+            Assert.True(Math.Abs(caret - native) < 0.01,
+                $"The editor's caret after {Chinese} at {editor.FontSize} px in {Family(codeFallback)} stands {caret:0.###} from the line's start, where the system's own apps set those letters {native:0.###} wide");
+            double third = editor.PointOf(2).X + ((editor.PointOf(3).X - editor.PointOf(2).X) * 0.75);
+            Ui.Click(editor, new Point(third, editor.PointOf(0).Y + (editor.LineHeight / 2)));
+            Assert.True(editor.Selections.Primary.Caret == 3, $"A click on the third letter's right half put the caret at {editor.Selections.Primary.Caret}, not after it");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>On macOS a face HarfBuzz sets no tracking in is shaped glyph for glyph as HarfBuzz alone shapes it: the carried
+    /// Inter and the editor's code font, with no 'trak' table, and Hoefler Text, whose tracks go with no 'STAT' table.</summary>
+    [AvaloniaFact]
+    public void On_macos_a_face_harfbuzz_sets_no_tracking_in_is_shaped_as_harfbuzz_alone_shapes_it()
+    {
+        Assert.SkipUnless(OperatingSystem.IsMacOS(), "The tracking the system's own apps set is macOS's text drawing's");
+        const string Phrase = "Element.cs Explorer refresh";
+        List<FontFamily> families = [WindowFonts.Carried, CodeEditor.CodeFont];
+        if (WindowFonts.Named("Hoefler Text") is { } hoefler)
+        {
+            families.Add(hoefler);
+        }
+        foreach (FontFamily family in families)
+        {
+            Assert.True(FontManager.Current.TryGetGlyphTypeface(new Typeface(family), out GlyphTypeface? face), $"No face draws {family}");
+            foreach (double size in (double[])[12, 13, 24])
+            {
+                double[] shaped = [.. TextShaper.Current.ShapeText(Phrase, new TextShaperOptions(face, size)).Select(g => g.GlyphAdvance)];
+                double[] alone = HarfBuzzAlone(face, Phrase, size);
+                Assert.True(shaped.Length == alone.Length && shaped.Zip(alone).All(pair => Math.Abs(pair.First - pair.Second) < 1e-9),
+                    $"'{Phrase}' at {size} px in {Family(face)} is shaped [{string.Join(", ", shaped.Select(a => a.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture)))}], "
+                    + $"where HarfBuzz alone shapes it [{string.Join(", ", alone.Select(a => a.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture)))}]");
+            }
+        }
+    }
+
+    /// <summary>On macOS a family with tracks but no 'STAT' table, Hoefler Text, chosen sets the window's words untracked, as
+    /// the system's own apps set them, within a pixel: no letter spacing of its normal track.</summary>
+    [AvaloniaFact]
+    public void On_macos_a_font_with_tracks_but_no_style_table_sets_the_windows_words_untracked_as_the_systems_own_apps_do()
+    {
+        Assert.SkipUnless(OperatingSystem.IsMacOS(), "The tracking the system's own apps set is macOS's text drawing's");
+        const string Chosen = "Hoefler Text";
+        Assert.SkipWhen(WindowFonts.Named(Chosen) is null, $"{Chosen} is not installed");
+        File.WriteAllText(Path.Combine(folder, "Element.cs"), "class Element { }\n");
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        try
+        {
+            window.ApplySettings(window.Settings with { WindowFontFamily = Chosen });
+            Ui.Settle();
+            TextBlock row = Words(window.ExplorerView.Rows(), "Element.cs");
+            Ui.WaitFor(() => Family(Face(row)) == FamilyOf(WindowFonts.Named(Chosen)!), $"the Explorer's row drawn in {Chosen}");
+            Assert.True(row.LetterSpacing == 0, $"'{row.Text}' at {row.FontSize} px in {Chosen} has letter spacing {row.LetterSpacing:0.###} px, which macOS never sets without a 'STAT' table");
+            double native = NativeWidth(row.Text!, row.FontSize, Chosen);
+            double drawn = row.TextLayout.WidthIncludingTrailingWhitespace;
+            Assert.True(Math.Abs(drawn - native) <= 1, $"'{row.Text}' at {row.FontSize} px in {Chosen} is {drawn:0.##} wide in the window and {native:0.##} as the system's own apps set it");
+        }
+        finally
+        {
+            window.ApplySettings(window.Settings with { WindowFontFamily = null });
+            window.Close();
+        }
+    }
+
+    private const string Chinese = "中文测试";
+
+    /// <summary>The advances HarfBuzz alone gives words in a face at a size: from a font of its own over the face's tables,
+    /// as Avalonia's shaper sets one up, with nothing of Passenger's set on it.</summary>
+    private static double[] HarfBuzzAlone(GlyphTypeface face, string words, double size)
+    {
+        using HarfBuzzSharp.Face tables = new((_, tag) => face.PlatformTypeface.TryGetTable(OpenTypeTag.Parse(tag.ToString()), out ReadOnlyMemory<byte> table)
+            ? HarfBuzzSharp.Blob.FromStream(new MemoryStream(table.ToArray()))
+            : null) { UnitsPerEm = face.Metrics.DesignEmHeight };
+        using HarfBuzzSharp.Font font = new(tables);
+        font.SetFunctionsOpenType();
+        using HarfBuzzSharp.Buffer buffer = new();
+        buffer.AddUtf16(words);
+        buffer.GuessSegmentProperties();
+        font.Shape(buffer);
+        font.GetScale(out int scale, out _);
+        return [.. buffer.GlyphPositions.Select(position => position.XAdvance * size / scale)];
     }
 
     /// <summary>How wide CoreText sets words at a size in an installed family, else in the system's UI font, as the system's
