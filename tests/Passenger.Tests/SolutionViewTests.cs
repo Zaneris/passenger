@@ -792,13 +792,13 @@ public sealed class SolutionViewTests : IDisposable
 
         Ui.ClickRow(window, Show(window, a));
         Ui.Press(window, OperatingSystem.IsMacOS() ? "meta D" : "control D");
-        Ui.Landed(() => window.Frontmost is DiffWindow, "the diff window");
-        DiffView view = ((DiffWindow)window.Frontmost).View;
+        IDiffHost diff = OpenDiffs.Landed(window, "the diff of the file and the one picked");
+        DiffView view = OpenDiffs.ViewOf(diff);
         Assert.Equal("one\ntwo\nthree\n", view.Left.Document.Snapshot.ToString());
         Assert.Equal("one\n2\nthree\nfour\n", view.Right.Document.Snapshot.ToString());
         Assert.Equal([new DiffHunk(1, 1, 1, 1), new DiffHunk(3, 0, 3, 1)], view.Hunks);
-        Assert.Equal("a.txt vs b.txt", window.Frontmost.Title);
-        window.Frontmost.Close();
+        Assert.Equal("a.txt vs b.txt", OpenDiffs.TitleOf(diff));
+        diff.Close();
         Ui.Settle();
 
         ExplorerNode second = Show(window, b);
@@ -808,11 +808,11 @@ public sealed class SolutionViewTests : IDisposable
         window.ExplorerView.Rows().RaiseEvent(new ContextRequestedEventArgs());
         Ui.Settle();
         Ui.Choose(window.ExplorerView.OpenMenu ?? throw new Xunit.Sdk.XunitException("The menu key opened no menu on the two files"), "Tools", "Compare Files");
-        Ui.Landed(() => window.Frontmost is DiffWindow, "the diff window of the two files chosen");
-        view = ((DiffWindow)window.Frontmost).View;
+        diff = OpenDiffs.Landed(window, "the diff of the two files chosen");
+        view = OpenDiffs.ViewOf(diff);
         Assert.Equal("one\ntwo\nthree\n", view.Left.Document.Snapshot.ToString());
         Assert.Equal("one\n2\nthree\nfour\n", view.Right.Document.Snapshot.ToString());
-        window.Frontmost.Close();
+        diff.Close();
         Ui.Settle();
 
         if (!OperatingSystem.IsWindows())

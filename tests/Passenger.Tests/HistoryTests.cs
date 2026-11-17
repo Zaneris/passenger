@@ -58,11 +58,11 @@ public sealed class HistoryTests : IDisposable
         Assert.Equal((Full("src/Store.cs"), ChangeKind.Renamed, Full("src/Shop.cs")), (history.Files[0].Path, history.Files[0].Kind, history.Files[0].From));
 
         DoubleClick(history, "Long count");
-        Ui.Landed(() => window.OwnedWindows.OfType<DiffWindow>().Any(), "the commit's diff of the file");
-        DiffWindow diff = window.OwnedWindows.OfType<DiffWindow>().Single();
-        Assert.Equal(Shop, diff.View.Left.Document.Snapshot.ToString());
-        Assert.Equal(Shop.Replace("int count", "long count", StringComparison.Ordinal), diff.View.Right.Document.Snapshot.ToString());
-        Assert.Single(diff.View.Hunks);
+        IDiffHost diff = OpenDiffs.Landed(window, "the commit's diff of the file");
+        DiffView view = OpenDiffs.ViewOf(diff);
+        Assert.Equal(Shop, view.Left.Document.Snapshot.ToString());
+        Assert.Equal(Shop.Replace("int count", "long count", StringComparison.Ordinal), view.Right.Document.Snapshot.ToString());
+        Assert.Single(view.Hunks);
         diff.Close();
 
         window.GitWindow.ShowLog();
@@ -148,10 +148,9 @@ public sealed class HistoryTests : IDisposable
         history.Select(Commit(history, "Line 5"));
         history.FocusRows();
         Ui.Press(window, "ENTER");
-        Ui.Landed(() => window.OwnedWindows.OfType<DiffWindow>().Any(), "Line 5's diff of the file");
-        DiffWindow diff = window.OwnedWindows.OfType<DiffWindow>().Single();
-        Assert.Contains("line 5\n", diff.View.Left.Document.Snapshot.ToString(), StringComparison.Ordinal);
-        Assert.Contains("line 5, changed\n", diff.View.Right.Document.Snapshot.ToString(), StringComparison.Ordinal);
+        IDiffHost diff = OpenDiffs.Landed(window, "Line 5's diff of the file");
+        Assert.Contains("line 5\n", OpenDiffs.ViewOf(diff).Left.Document.Snapshot.ToString(), StringComparison.Ordinal);
+        Assert.Contains("line 5, changed\n", OpenDiffs.ViewOf(diff).Right.Document.Snapshot.ToString(), StringComparison.Ordinal);
         diff.Close();
 
         editor.GoTo(new TextPosition(0, 2));
@@ -177,6 +176,7 @@ public sealed class HistoryTests : IDisposable
         Git("add", "-A");
         Git("commit", "-q", "-m", "New");
         MainWindow window = Open("Shop.cs");
+        Passenger.App.Workspace.OpenDocument shop = window.EditorArea.Active!;
         window.EditorArea.CodeEditor.GoTo(new TextPosition(0, 0));
         window.KeyTextInput("sealed ");
 
@@ -187,12 +187,12 @@ public sealed class HistoryTests : IDisposable
         window.KeyTextInput("side");
         Ui.Settle();
         Ui.Press(window, "ENTER");
-        Ui.Landed(() => window.OwnedWindows.OfType<DiffWindow>().Any(), "the diff against side");
-        DiffWindow diff = window.OwnedWindows.OfType<DiffWindow>().Single();
-        Assert.Equal("Shop.cs: side and your version", diff.Title);
-        Assert.Equal(side, diff.View.Left.Document.Snapshot.ToString());
-        Assert.True(ReferenceEquals(window.EditorArea.Active!.Text, diff.View.Right.Document), "The diff's right side is a copy of the open file, not the file");
-        Assert.Equal(2, diff.View.Hunks.Count);
+        IDiffHost diff = OpenDiffs.Landed(window, "the diff against side");
+        DiffView view = OpenDiffs.ViewOf(diff);
+        Assert.Equal("Shop.cs: side and your version", OpenDiffs.TitleOf(diff));
+        Assert.Equal(side, view.Left.Document.Snapshot.ToString());
+        Assert.True(ReferenceEquals(shop.Text, view.Right.Document), "The diff's right side is a copy of the open file, not the file");
+        Assert.Equal(2, view.Hunks.Count);
         diff.Close();
 
         window.OpenFile(Path.Combine(folder, "New.cs"));
@@ -203,7 +203,7 @@ public sealed class HistoryTests : IDisposable
         Ui.Settle();
         Ui.Press(window, "ENTER");
         Ui.Landed(() => window.Status == "New.cs is not in side", "the status bar saying side has no New.cs");
-        Assert.Empty(window.OwnedWindows.OfType<DiffWindow>());
+        OpenDiffs.None(window, "Compare with Branch opened a diff of a file the branch lacks");
         window.Close();
     }
 
@@ -250,9 +250,8 @@ public sealed class HistoryTests : IDisposable
         window.KeyTextInput("side");
         Ui.Settle();
         Ui.Press(window, "ENTER");
-        Ui.Landed(() => window.OwnedWindows.OfType<DiffWindow>().Any(), $"the diff against side, where the status bar says \"{window.Status}\"");
-        DiffWindow diff = window.OwnedWindows.OfType<DiffWindow>().Single();
-        Assert.Equal(side, diff.View.Left.Document.Snapshot.ToString());
+        IDiffHost diff = OpenDiffs.Landed(window, "the diff against side");
+        Assert.Equal(side, OpenDiffs.ViewOf(diff).Left.Document.Snapshot.ToString());
         diff.Close();
         window.Close();
     }

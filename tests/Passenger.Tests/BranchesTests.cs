@@ -416,9 +416,8 @@ public sealed class BranchesTests : IDisposable
         ListBox changed = Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(changes).OfType<ListBox>().Single();
         Ui.Click(Ui.Row(changed, changes.Files.Single(f => f.Name == "Shop.cs")));
         Ui.Press(changes, "ENTER");
-        Ui.Landed(() => window.Frontmost is DiffWindow, "Shop.cs as feature has it beside the file");
-        DiffWindow diff = (DiffWindow)window.Frontmost;
-        Assert.Equal(Shop, diff.View.Left.Document.Snapshot.ToString());
+        IDiffHost diff = OpenDiffs.Landed(window, "Shop.cs as feature has it beside the file");
+        Assert.Equal(Shop, OpenDiffs.ViewOf(diff).Left.Document.Snapshot.ToString());
         diff.Close();
         changes.Close();
         window.Close();

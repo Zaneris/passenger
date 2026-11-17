@@ -503,7 +503,7 @@ public static class Declared
     public static readonly ChoiceSetting<Passenger.Editor.KeymapPreset> Keymap = new(s => s.Keymap, (s, v) => s with { Keymap = v });
 
     public static readonly ChoiceSetting<DiffPlace> OpenDiffsIn = new(s => s.OpenDiffsIn, (s, v) => s with { OpenDiffsIn = v },
-        [(DiffPlace.Window, "A separate window"), (DiffPlace.Tab, "An editor tab")],
+        [(DiffPlace.Tab, "An editor tab"), (DiffPlace.Window, "A separate window")],
         new(D.VersionControlPage, "Open diffs in", "diff diffs show diff compare with revision branch commit log files window tab editor separate git vcs",
             "Where Show Diff, Compare With, a commit's file in the Git log and Compare Files show the two versions. Changed, the "
             + "diffs open now move there."));

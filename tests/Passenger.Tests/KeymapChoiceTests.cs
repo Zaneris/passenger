@@ -685,9 +685,9 @@ public sealed class KeymapChoiceTests : IDisposable
             Ui.Settle();
             Ui.ClickRow(window, window.ExplorerView.Tree.Rows.First(r => r.Path == Passenger.Core.PathNames.Canonical(lines)));
             Ui.Press(window, $"{Cmd} D");
-            Ui.Landed(() => window.Frontmost is Passenger.App.Vcs.DiffWindow, "the diff of lines.txt and other.txt");
-            Assert.Equal("lines.txt vs other.txt", window.Frontmost.Title);
-            window.Frontmost.Close();
+            Passenger.App.Vcs.IDiffHost diff = OpenDiffs.Landed(window, "the diff of lines.txt and other.txt");
+            Assert.Equal("lines.txt vs other.txt", OpenDiffs.TitleOf(diff));
+            diff.Close();
             Ui.Settle();
             Assert.True(Text(window) == Duplicated, $"{Cmd} D in the Explorer changed the editor's text to \"{Text(window)}\", where it compares files there");
         }

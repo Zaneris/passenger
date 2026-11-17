@@ -154,15 +154,14 @@ public sealed class GitLogTests : IDisposable
         // Enter on the row a click gave the keys shows its diff, as a double click does.
         Ui.Click(Ui.Row(files, log.Files.First(f => f.Name == "Shop.cs")));
         Ui.Press(window, "ENTER");
-        Ui.Landed(() => window.Frontmost is DiffWindow, "the diff of Shop.cs in the merge, by Enter on its row");
-        ((DiffWindow)window.Frontmost).Close();
+        OpenDiffs.Landed(window, "the diff of Shop.cs in the merge, by Enter on its row").Close();
         Ui.Settle();
         Ui.DoubleClick(Ui.Row(files, log.Files.First(f => f.Name == "Shop.cs")));
-        Ui.Landed(() => window.Frontmost is DiffWindow, "the diff of Shop.cs in the merge");
-        DiffView diff = ((DiffWindow)window.Frontmost).View;
+        IDiffHost shown = OpenDiffs.Landed(window, "the diff of Shop.cs in the merge");
+        DiffView diff = OpenDiffs.ViewOf(shown);
         Assert.True(diff.Left.Document.Snapshot.ToString() == Shop, $"The merge's diff of Shop.cs has on its left \"{diff.Left.Document.Snapshot}\", not the first parent's text");
         Assert.Equal(merged, diff.Right.Document.Snapshot.ToString());
-        ((DiffWindow)window.Frontmost).Close();
+        shown.Close();
         window.Close();
     }
 

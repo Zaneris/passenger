@@ -41,7 +41,7 @@ public sealed class PartialCommitTests : IDisposable
             CommitRow row = window.CommitView.Rows.OfType<CommitRow>().Single(r => r.Change.Name == "Notes.txt");
             window.CommitView.Rows.OfType<CommitRow>().Single(r => r.Change.Name == "Other.txt").IsChosen = false;
             IDiffHost host = Ui.Landed(window.ShowDiffAsync(PathOf("Notes.txt")), "the diff")!;
-            DiffView view = host.View!;
+            DiffView view = OpenDiffs.ViewOf(host);
             CheckBox[] boxes = Boxes(view);
             Assert.Equal(2, boxes.Length);
             Ui.Click(boxes[1]);
@@ -79,7 +79,7 @@ public sealed class PartialCommitTests : IDisposable
             Ui.Landed(() => window.CommitView.Rows.OfType<CommitRow>().Count() == 2, "the changed files");
             window.CommitView.Rows.OfType<CommitRow>().Single(r => r.Change.Name == "Other.txt").IsChosen = false;
             IDiffHost host = Ui.Landed(window.ShowDiffAsync(PathOf("Notes.txt")), "the diff")!;
-            Ui.Click(Boxes(host.View!)[1]);
+            Ui.Click(Boxes(OpenDiffs.ViewOf(host))[1]);
             host.Close();
             window.CommitView.Message = "The first change";
             Assert.True(Ui.Landed(window.CommitView.CommitAsync(false), "the partial commit"), window.Status);
@@ -114,7 +114,7 @@ public sealed class PartialCommitTests : IDisposable
             Ui.Landed(() => window.CommitView.Rows.OfType<CommitRow>().Any(r => r.Change.Name == "Many.txt"), "the changed files");
             CommitRow row = window.CommitView.Rows.OfType<CommitRow>().Single(r => r.Change.Name == "Many.txt");
             IDiffHost host = Ui.Landed(window.ShowDiffAsync(PathOf("Many.txt")), "the diff")!;
-            DiffView view = host.View!;
+            DiffView view = OpenDiffs.ViewOf(host);
             Assert.Equal(500, view.Hunks.Count);
             Assert.InRange(Boxes(view).Length, 1, 100);
             view.Right.GoTo(new TextPosition(1999, 0));
@@ -151,7 +151,7 @@ public sealed class PartialCommitTests : IDisposable
             window.Perform(AppActions.ShowCommit);
             Ui.Landed(() => window.CommitView.Rows.OfType<CommitRow>().Count() == 2, "the changed files");
             IDiffHost host = Ui.Landed(window.ShowDiffAsync(PathOf("Notes.txt")), "the diff")!;
-            Ui.Click(Boxes(host.View!)[1]);
+            Ui.Click(Boxes(OpenDiffs.ViewOf(host))[1]);
             host.Close();
             window.CommitView.Message = "The first change";
             Assert.True(Ui.Landed(window.CommitView.CommitAsync(false), "the partial commit"), window.Status);
@@ -179,7 +179,7 @@ public sealed class PartialCommitTests : IDisposable
             window.OpenFile(PathOf("Notes.txt"));
             Ui.Settle();
             IDiffHost host = Ui.Landed(window.ShowDiffAsync(PathOf("Notes.txt")), "the diff")!;
-            DiffView view = host.View!;
+            DiffView view = OpenDiffs.ViewOf(host);
             Assert.True(view.IsEditable, "The diff of the open file is read-only");
             Ui.Click(Boxes(view)[1]);
             Assert.Null(row.CheckState);
@@ -188,7 +188,7 @@ public sealed class PartialCommitTests : IDisposable
             {
                 Ui.Click(view.Right);
                 view.Right.GoTo(new TextPosition(line, 0));
-                window.KeyTextInput(typed);
+                OpenDiffs.KeysOf(host).KeyTextInput(typed);
                 Ui.Settle();
             }
             Assert.Equal("YONE\ntwo\nZthree\nfour\nXFIVE\n", view.Right.Document.Snapshot.ToString());
@@ -217,7 +217,7 @@ public sealed class PartialCommitTests : IDisposable
             window.Perform(AppActions.ShowCommit);
             Ui.Landed(() => window.CommitView.Rows.OfType<CommitRow>().Count() == 2, "the changed files");
             IDiffHost host = Ui.Landed(window.ShowDiffAsync(PathOf("Notes.txt")), "the diff")!;
-            Ui.Click(Boxes(host.View!)[1]);
+            Ui.Click(Boxes(OpenDiffs.ViewOf(host))[1]);
             host.Close();
             window.Perform(AppActions.ShowCommit);
             Ui.Settle();
@@ -249,7 +249,7 @@ public sealed class PartialCommitTests : IDisposable
             window.Perform(AppActions.ShowCommit);
             Ui.Landed(() => window.Vcs.Merge.CommitsWhole && window.CommitView.Rows.OfType<CommitRow>().Any(r => r.Change.Name == "Notes.txt"), "the merge and its changes");
             IDiffHost host = Ui.Landed(window.ShowDiffAsync(PathOf("Notes.txt")), "the diff")!;
-            Assert.Empty(Boxes(host.View!));
+            Assert.Empty(Boxes(OpenDiffs.ViewOf(host)));
             host.Close();
         }
         finally
@@ -267,7 +267,7 @@ public sealed class PartialCommitTests : IDisposable
             window.Perform(AppActions.ShowCommit);
             Ui.Landed(() => window.CommitView.Rows.OfType<CommitRow>().Count() == 2, "the changes");
             IDiffHost host = Ui.Landed(window.ShowDiffAsync(PathOf("Notes.txt")), "the diff")!;
-            Ui.Click(Boxes(host.View!)[1]);
+            Ui.Click(Boxes(OpenDiffs.ViewOf(host))[1]);
             host.Close();
             File.Delete(PathOf("Notes.txt"));
             Ui.AwaitPumped(window.Vcs.RefreshAsync(), "the deletion read");

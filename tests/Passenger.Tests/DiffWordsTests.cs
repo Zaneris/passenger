@@ -41,8 +41,8 @@ public sealed class DiffWordsTests : IDisposable
         string now = Text(window);
 
         Task<IDiffHost?> opening = window.ShowDiffAsync(window.EditorArea.Active!.Path);
-        DiffWindow diff = (DiffWindow)Ui.Landed(opening, "the diff open")!;
-        DiffView view = diff.View;
+        IDiffHost diff = Ui.Landed(opening, "the diff open")!;
+        DiffView view = OpenDiffs.ViewOf(diff);
         Assert.Equal(DiffHighlighting.Words, view.Highlighting);
         Assert.Equal([new DiffHunk(2, 1, 2, 1)], view.Hunks);
         Assert.Equal(["int"], Marked(Original, view.Words.Left));
@@ -85,8 +85,8 @@ public sealed class DiffWordsTests : IDisposable
         string now = Text(window);
 
         Task<IDiffHost?> opening = window.ShowDiffAsync(window.EditorArea.Active!.Path);
-        DiffWindow diff = (DiffWindow)Ui.Landed(opening, "the diff open")!;
-        DiffView view = diff.View;
+        IDiffHost diff = Ui.Landed(opening, "the diff open")!;
+        DiffView view = OpenDiffs.ViewOf(diff);
         // "public " is new (green, on the file's side alone); "++" became " += 2".
         Assert.Equal(["++"], Marked(Original, view.Words.Left));
         Assert.Equal(["public ", " += 2"], Marked(now, view.Words.Right));
@@ -111,12 +111,13 @@ public sealed class DiffWordsTests : IDisposable
 
         // The next diff opens as chosen last; Ctrl+Shift+D (Cmd+Shift+D), Rider's key, opens its settings.
         opening = window.ShowDiffAsync(window.EditorArea.Active!.Path);
-        diff = (DiffWindow)Ui.Landed(opening, "the diff open again")!;
-        Assert.Equal(DiffHighlighting.None, diff.View.Highlighting);
-        diff.View.Right.Focus();
-        Ui.Press(diff, OperatingSystem.IsMacOS() ? "meta shift D" : "control shift D");
-        Assert.True(diff.View.SettingsButton.ContextMenu?.IsOpen, "Ctrl+Shift+D (Cmd+Shift+D) did not open the diff's settings");
-        diff.View.SettingsButton.ContextMenu!.Close();
+        diff = Ui.Landed(opening, "the diff open again")!;
+        view = OpenDiffs.ViewOf(diff);
+        Assert.Equal(DiffHighlighting.None, view.Highlighting);
+        view.Right.Focus();
+        Ui.Press(OpenDiffs.KeysOf(diff), OperatingSystem.IsMacOS() ? "meta shift D" : "control shift D");
+        Assert.True(view.SettingsButton.ContextMenu?.IsOpen, "Ctrl+Shift+D (Cmd+Shift+D) did not open the diff's settings");
+        view.SettingsButton.ContextMenu!.Close();
         diff.Close();
         window.Close();
     }
@@ -171,8 +172,8 @@ public sealed class DiffWordsTests : IDisposable
 
         // The comparison the bars came from is the diff's; its 1,667 changes' words are worked out off the window's thread.
         Task<IDiffHost?> opening = window.ShowDiffAsync(window.EditorArea.Active!.Path);
-        DiffWindow shown = (DiffWindow)Ui.Landed(opening, "the diff open")!;
-        DiffView view = shown.View;
+        IDiffHost shown = Ui.Landed(opening, "the diff open")!;
+        DiffView view = OpenDiffs.ViewOf(shown);
         Ui.Settle();
         Assert.True(view.Words.Right.Count == 1667, $"Once its work had landed the diff marked {view.Words.Right.Count} words of the 1,667 changed");
         Assert.All(Marked(view.Right.Document.Snapshot.ToString(), view.Words.Right), w => Assert.Equal("Measure", w));
@@ -183,8 +184,8 @@ public sealed class DiffWordsTests : IDisposable
         window.OpenFile(generated);
         Ui.Landed(() => Marks(window).Count == 1, "one bar over the whole rewrite");
         opening = window.ShowDiffAsync(window.EditorArea.Active!.Path);
-        shown = (DiffWindow)Ui.Landed(opening, "the rewrite's diff open")!;
-        Assert.Empty(shown.View.Words.Right);
+        shown = Ui.Landed(opening, "the rewrite's diff open")!;
+        Assert.Empty(OpenDiffs.ViewOf(shown).Words.Right);
         shown.Close();
         window.Close();
     }

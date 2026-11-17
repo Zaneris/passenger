@@ -2051,6 +2051,54 @@ public static class Ui
     }
 }
 
+/// <summary>A window's diffs wherever Settings' Open diffs in shows them, in a tab of the editors
+/// (<see cref="Passenger.App.Vcs.DiffTab"/>) or in a window of their own (<see cref="Passenger.App.Vcs.DiffWindow"/>): a test
+/// finds, reads and works a diff through these, never taking it to be either, so what it checks holds of both.</summary>
+public static class OpenDiffs
+{
+    /// <summary>The diffs open: the editors' tabs, then the windows over the IDE's.</summary>
+    public static IReadOnlyList<Passenger.App.Vcs.IDiffHost> In(Passenger.App.MainWindow window) =>
+        [.. window.EditorArea.Diffs.Select(d => d.Diff!), .. window.OwnedWindows.OfType<Passenger.App.Vcs.DiffWindow>().Where(w => w.IsVisible)];
+
+    /// <summary>The diff the person sees: the diff window over the others, else the diff tab the editors show; null for none.</summary>
+    public static Passenger.App.Vcs.IDiffHost? Shown(Passenger.App.MainWindow window) =>
+        window.OwnedWindows.OfType<Passenger.App.Vcs.DiffWindow>().LastOrDefault(w => w.IsVisible) ?? (Passenger.App.Vcs.IDiffHost?)window.EditorArea.Active?.Diff;
+
+    /// <summary>The diff an action opened (a key, a double click, a menu's choice), once the window's work has landed;
+    /// fails saying <paramref name="what"/> never showed.</summary>
+    public static Passenger.App.Vcs.IDiffHost Landed(Passenger.App.MainWindow window, string what)
+    {
+        Ui.Landed(() => Shown(window) is not null, $"{what}, where the status bar says \"{window.Status}\"");
+        return Shown(window)!;
+    }
+
+    /// <summary>Its view, as its window or the group showing its tab has it; fails where none shows it.</summary>
+    public static Passenger.App.Vcs.DiffView ViewOf(Passenger.App.Vcs.IDiffHost diff) => diff.View
+        ?? throw new Xunit.Sdk.XunitException($"The diff \"{diff.Shown.Title}\" is in a tab no group shows in front, so nothing in it can be seen or worked");
+
+    /// <summary>Where its keys go: its own window, or the window whose editors show its tab.</summary>
+    public static TopLevel KeysOf(Passenger.App.Vcs.IDiffHost diff) => TopLevel.GetTopLevel(ViewOf(diff))
+        ?? throw new Xunit.Sdk.XunitException($"The diff \"{diff.Shown.Title}\" is in no window, so no key can reach it");
+
+    /// <summary>Its title as the person reads it: its window's, or its tab's.</summary>
+    public static string TitleOf(Passenger.App.Vcs.IDiffHost diff) => diff switch
+    {
+        Passenger.App.Vcs.DiffWindow shown => shown.Title ?? string.Empty,
+        Passenger.App.Vcs.DiffTab tab => tab.Document.Title,
+        _ => throw new ArgumentException($"A diff is shown in a window or a tab, not in a {diff.GetType().Name}", nameof(diff)),
+    };
+
+    /// <summary>Whether it is still open.</summary>
+    public static bool IsOpen(Passenger.App.MainWindow window, Passenger.App.Vcs.IDiffHost diff) => In(window).Contains(diff);
+
+    /// <summary>Fails where a diff is open, naming each, as <paramref name="why"/> says it should not be.</summary>
+    public static void None(Passenger.App.MainWindow window, string why)
+    {
+        IReadOnlyList<Passenger.App.Vcs.IDiffHost> open = In(window);
+        Assert.True(open.Count == 0, $"{why}: {string.Join(", ", open.Select(TitleOf))} open");
+    }
+}
+
 /// <summary>The project files tests write, as short as dotnet new's: each targets <see cref="Framework"/>, so moving the tests
 /// to the next .NET changes one line.</summary>
 public static class TestProjects

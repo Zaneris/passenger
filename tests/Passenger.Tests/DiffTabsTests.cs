@@ -238,10 +238,11 @@ public sealed class DiffTabsTests : IDisposable
     public void Open_diffs_in_on_Settings_Version_Control_page_moves_the_diffs_open_between_a_window_and_a_tab()
     {
         MainWindow window = Ui.OpenFolder(folder);
+        window.ApplySettings(window.Settings with { OpenDiffsIn = DiffPlace.Window });
         window.OpenFile(Path.Combine(folder, "Shop.cs"));
         Ui.Settle();
         string shop = window.EditorArea.Active!.Path;
-        DiffWindow shown = (DiffWindow)Ui.Landed(window.ShowDiffAsync(shop), "the diff in its window")!;
+        DiffWindow shown = Assert.IsType<DiffWindow>(Ui.Landed(window.ShowDiffAsync(shop), "the diff in its window"));
         Assert.Same(shown, window.Frontmost);
         Assert.Empty(window.EditorArea.Diffs);
 
@@ -455,8 +456,6 @@ public sealed class DiffTabsTests : IDisposable
         {
             Ui.DoubleClick(row);
         }
-        Ui.Landed(() => window.EditorArea.Diffs.Count > 0 || window.OwnedWindows.OfType<DiffWindow>().Any(),
-            $"Shop.cs's diff, from {(byEnter ? "Enter on its row" : "a double-click on its row")} in the Commit window");
-        return window.EditorArea.Diffs.FirstOrDefault()?.Diff ?? (IDiffHost)window.OwnedWindows.OfType<DiffWindow>().First();
+        return OpenDiffs.Landed(window, $"Shop.cs's diff, from {(byEnter ? "Enter on its row" : "a double-click on its row")} in the Commit window");
     }
 }
