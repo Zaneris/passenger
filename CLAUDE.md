@@ -704,7 +704,7 @@ a new name, and `just site-shots` retakes its images.
   content: rows go through `ReusedRows`, made once with their containers (UiRulesTests).
 - **Avalonia's Button lets go of its press when it greys**, and a headless `MouseUp` runs queued work before the release:
   a list listed again greys nothing its choice enables until the choice is taken again (`BranchesPanel.listing`).
-- **Avalonia stamps headless input with when it is handled**, and its velocity tracker takes a move more than 40 ms after the last for a finger at rest: a test's fling moves with no frames between moves (`Ui.Stall`). The inspector of Passenger's own windows answers on its UI thread's current dispatcher, as each headless test makes a new one.
+- **Avalonia stamps headless input with when it is handled**, and its velocity tracker takes a move more than 40 ms after the last, or a release 40 ms after it, for a finger at rest: a test's touch fling goes through `Ui.Fling`, stamped a frame apart with no frame between. The inspector of Passenger's own windows answers on its UI thread's current dispatcher, as each headless test makes a new one.
 - **Avalonia's headless `KeyTextInput` and `KeyPress` run the window's queued work before the key**, so a count taken around one includes what came due before it: count from the key's change.
 - **Avalonia 12.1 counts a run of clicks per button**: a press of another button starts a new run (`ClickCount` 1); a
   control with no background is no pointer target.

@@ -127,7 +127,7 @@ public sealed class SystemMotionTests
     [AvaloniaFact]
     public void With_less_motion_a_touchs_fling_stops_where_the_finger_lets_go()
     {
-        (double Coast, TimeSpan Apart) Fling()
+        double Fling()
         {
             StackPanel rows = new();
             for (int i = 0; i < 400; i++)
@@ -138,19 +138,7 @@ public sealed class SystemMotionTests
             Window window = new() { Width = 400, Height = 600, Content = scroller };
             window.Show();
             Ui.Settle();
-            IHeadlessTouchPointer finger = window.TouchBegin(new Point(200, 500));
-            TimeSpan apart = TimeSpan.Zero;
-            for (int step = 1; step <= 6; step++)
-            {
-                long moved = System.Diagnostics.Stopwatch.GetTimestamp();
-                // Close, with none of the window's frames between: a move handled over 40 ms after the last is a finger at rest.
-                Ui.Stall(TimeSpan.FromMilliseconds(8), "a finger's move");
-                window.TouchMove(finger, new Point(200, 500 - step * 60));
-                TimeSpan taken = System.Diagnostics.Stopwatch.GetElapsedTime(moved);
-                apart = taken > apart ? taken : apart;
-            }
-            window.TouchEnd(finger, new Point(200, 140));
-            Ui.Draw();
+            Ui.Fling(window, new Point(200, 500), new Point(200, 140), moves: 6);
             double let = scroller.Offset.Y;
             for (int frame = 0; frame < 30; frame++)
             {
@@ -159,14 +147,14 @@ public sealed class SystemMotionTests
             double coast = scroller.Offset.Y - let;
             Assert.True(let > 0, "The finger's drag never scrolled the list");
             window.Close();
-            return (coast, apart);
+            return coast;
         }
 
-        (double full, TimeSpan apart) = Fling();
-        Assert.True(full > 0, $"With full motion a fling never coasted (its moves up to {Durations.Said(apart)} apart), so one that stops proves nothing");
+        double full = Fling();
+        Assert.True(full > 0, "With full motion a fling never coasted, so one that stops proves nothing");
         using (SystemMotion.StandIn(Still))
         {
-            double still = Fling().Coast;
+            double still = Fling();
             Assert.True(still == 0, $"With less motion asked a fling coasted {still:0} px after the finger let go");
         }
     }

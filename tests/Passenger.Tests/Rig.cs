@@ -6,6 +6,7 @@ using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.Input;
+using Avalonia.Input.Raw;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Passenger.App.State;
@@ -1204,6 +1205,38 @@ public static class Ui
             ?? throw new InvalidOperationException($"Avalonia's headless window no longer tells its window it was left through Deactivated ({shown.GetType().Name})");
         ((Action?)deactivated.GetValue(shown))?.Invoke();
         Settle();
+    }
+
+    /// <summary>A finger's fling: put down on the window at <paramref name="from"/>, drawn to <paramref name="to"/> in
+    /// <paramref name="moves"/> moves and let go there, given through the window's own way in as its platform gives touch,
+    /// each stamped a frame after the last with no frame drawn between, as Avalonia's velocity tracker takes a finger at
+    /// rest from a move stamped over 40 ms after the last or a release over 40 ms after it, which a slow machine's frames
+    /// between headless moves make of every fling.</summary>
+    public static void Fling(Window window, Point from, Point to, int moves)
+    {
+        object shown = window.PlatformImpl ?? throw new InvalidOperationException($"{window.Title} has no window of the platform's to touch");
+        Assembly avalonia = typeof(RawInputModifiers).Assembly;
+        Type touch = avalonia.GetType("Avalonia.Input.Raw.RawTouchEventArgs") ?? throw Unreachable("RawTouchEventArgs");
+        Type finger = avalonia.GetType("Avalonia.Input.TouchDevice") ?? throw Unreachable("TouchDevice");
+        object root = shown.GetType().GetProperty("InputRoot")?.GetValue(shown) ?? throw Unreachable("its window's InputRoot");
+        Delegate input = shown.GetType().GetProperty("Input")?.GetValue(shown) as Delegate ?? throw Unreachable("its window's Input");
+        using IDisposable device = (IDisposable)(Activator.CreateInstance(finger) ?? throw Unreachable("a TouchDevice made"));
+        ulong stamp = 0;
+        void Give(RawPointerEventType type, Point at)
+        {
+            stamp += 16;
+            input.DynamicInvoke(Activator.CreateInstance(touch, device, stamp, root, type, at, RawInputModifiers.None, 1L));
+        }
+        Give(RawPointerEventType.TouchBegin, from);
+        for (int move = 1; move <= moves; move++)
+        {
+            Give(RawPointerEventType.TouchUpdate, from + (to - from) * move / moves);
+        }
+        Give(RawPointerEventType.TouchEnd, to);
+        Draw();
+
+        static InvalidOperationException Unreachable(string what) =>
+            new($"Avalonia's touch input is no longer reachable as a platform gives it: {what} is gone");
     }
 
     /// <summary>Closes a window as the application's shutdown does (the application menu's Quit on macOS): its owned windows
