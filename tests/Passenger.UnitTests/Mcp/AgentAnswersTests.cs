@@ -192,6 +192,19 @@ public sealed class AgentAnswersTests : IDisposable
         Assert.Equal((0, 3), AgentAnswers.Grouped(groups, g => g, _ => 10, 33));
     }
 
+    /// <summary>Room shared among lists gives each that needs no more than an equal share of what the smaller ones leave all
+    /// it needs, and splits the rest equally among those needing more; two lists needing more than half take half each.</summary>
+    [Fact]
+    public void Room_shared_among_lists_gives_the_small_ones_all_they_need_and_splits_the_rest_among_those_needing_more()
+    {
+        Assert.Equal([40_000, 50, 300, 10_000], AgentAnswers.Shares([70_000, 50, 300, 10_000], 50_350));
+        Assert.Equal([10_000, 50, 300, 10_000], AgentAnswers.Shares([70_000, 50, 300, 60_000], 20_350));
+        Assert.Equal([500, 500], AgentAnswers.Shares([2_000, 3_000], 1_000));
+        Assert.Equal([200, 800], AgentAnswers.Shares([200, 3_000], 1_000));
+        Assert.Equal([0, 0, 0], AgentAnswers.Shares([10, 20, 30], -5));
+        Assert.Equal([333, 333, 334], AgentAnswers.Shares([1_000, 1_000, 1_000], 1_000));
+    }
+
     /// <summary>A place's line past the length an answer shows is cut around its column, "…" where cut, never between a
     /// pair's surrogates; a short one is shown trimmed.</summary>
     [Fact]

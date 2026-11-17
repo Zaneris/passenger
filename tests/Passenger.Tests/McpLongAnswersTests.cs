@@ -14,7 +14,7 @@ namespace Passenger.Tests;
 /// reaching the rest: a symbol used thousands of times, its callers, a text found thousands of times, a name thousands of
 /// methods match, a file of thousands of members and warnings, a build of them, a file's text before a change, a long
 /// history read on past each answer, a commit of a thousand files, a thousand tests, the IDE's actions, and a solution of
-/// hundreds of projects and thousands of routes.</summary>
+/// hundreds of programs, their run configurations and thousands of routes.</summary>
 public sealed class McpLongAnswersTests : McpRig, IClassFixture<RestoredFolders>
 {
     public McpLongAnswersTests(RestoredFolders folders)
@@ -138,7 +138,10 @@ public sealed class McpLongAnswersTests : McpRig, IClassFixture<RestoredFolders>
         static string[] Subjects(CallToolResult listed) => [.. Json(listed).EnumerateArray().Select(c => c.GetProperty("subject").GetString()!)];
     }
 
-    private const int WideLibraries = 400;
+    private const int WidePrograms = 400;
+
+    /// <summary>The launch profiles each of the wide solution's programs has, a run configuration each.</summary>
+    private static readonly string[] Profiles = ["Development", "Staging", "Production", "Integration", "Performance"];
 
     private const int RouteFiles = 20;
 
@@ -149,7 +152,7 @@ public sealed class McpLongAnswersTests : McpRig, IClassFixture<RestoredFolders>
     {
         string wide = await WideSolutionAsync();
         await using McpClient client = await Start(["--mcp", Path.Combine(wide, "Web.slnf")]);
-        const int Projects = WideLibraries + 1;
+        const int Projects = WidePrograms + 1;
         const int Routes = RouteFiles * RoutesEach;
 
         // Every project it can named, the first whole, and the first routes, each list given its share of the room.
@@ -166,10 +169,10 @@ public sealed class McpLongAnswersTests : McpRig, IClassFixture<RestoredFolders>
 
         // Within a project's folder that project whole, and within a file of routes all of its routes and no project.
         string lastNamed = projects[^1].GetProperty("path").GetString()!;
-        JsonElement library = Json(await Held(client, McpTools.Workspace, new() { ["within"] = Path.GetDirectoryName(lastNamed) }, whole: true));
-        JsonElement only = Assert.Single(library.GetProperty("projects").EnumerateArray());
-        Assert.True(only.GetProperty("path").GetString() == lastNamed && only.GetProperty("targetFrameworks").GetArrayLength() == 1 && !library.TryGetProperty("more", out _),
-            $"workspace within {Path.GetDirectoryName(lastNamed)} answered: {library}");
+        JsonElement program = Json(await Held(client, McpTools.Workspace, new() { ["within"] = Path.GetDirectoryName(lastNamed) }, whole: true));
+        JsonElement only = Assert.Single(program.GetProperty("projects").EnumerateArray());
+        Assert.True(only.GetProperty("path").GetString() == lastNamed && only.GetProperty("targetFrameworks").GetArrayLength() == 1 && !program.TryGetProperty("more", out _),
+            $"workspace within {Path.GetDirectoryName(lastNamed)} answered: {program}");
         string file = Path.Combine("Web", "Routes", $"R{RouteFiles - 1}.cs");
         JsonElement routesOf = Json(await Held(client, McpTools.Workspace, new() { ["routes"] = true, ["within"] = file }, whole: true));
         Assert.True(routesOf.GetProperty("projects").GetArrayLength() == 0 && routesOf.GetProperty("routes").GetArrayLength() == RoutesEach
@@ -177,17 +180,56 @@ public sealed class McpLongAnswersTests : McpRig, IClassFixture<RestoredFolders>
             $"workspace's routes within {file} answered {routesOf.GetProperty("projects").GetArrayLength()} projects and {routesOf.GetProperty("routes").GetArrayLength()} routes, not its {RoutesEach}");
     }
 
-    /// <summary>A solution of hundreds of libraries, never restored, and a web app of thousands of routes in files of their
-    /// own, restored, which a solution filter opens alone.</summary>
+    [Fact]
+    public async Task A_solution_of_hundreds_of_programs_holds_its_run_configurations_and_open_files_to_the_limit_and_within_lists_those_of_a_folder_or_file_whole()
+    {
+        string wide = await WideSolutionAsync();
+        await using McpClient client = await Start(["--mcp", Path.Combine(wide, "Wide.slnx")], languageServer: false);
+        int configured = WidePrograms * Profiles.Length + 1;
+        string tool = Path.Combine("Tools", "Tool7");
+        string opened = Path.Combine(tool, "Program.cs");
+        string web = Path.Combine("Web", "Program.cs");
+        await Held(client, McpTools.Open, new() { ["path"] = web });
+        JsonElement open = Json(await Held(client, McpTools.Open, new() { ["path"] = opened }));
+        Assert.True(open.TryGetProperty("more", out _), $"open's answer of a solution of {WidePrograms + 1} programs said nothing it left out: {open.ToString()[..400]}");
+
+        // Every project it can named and the first run configurations, each list given its share of the room, the open files whole.
+        JsonElement workspace = Json(await Held(client, McpTools.Workspace, new()));
+        string more = workspace.GetProperty("more").GetString()!;
+        Match said = Regex.Match(more, @"^(?:([\d,]+) projects? named alone(?:, | and ))?(?:([\d,]+) more projects? left out(?:, | and ))?([\d,]+) more run configurations? left out: within, a folder or file, lists the projects and run configurations there whole$");
+        int projects = workspace.GetProperty("projects").GetArrayLength();
+        int configurations = workspace.GetProperty("runConfigurations").GetArrayLength();
+        string[] files = [.. workspace.GetProperty("openFiles").EnumerateArray().Select(f => f.GetString()!)];
+        Assert.True(said.Success && projects + (said.Groups[2].Success ? Number(said.Groups[2].Value) : 0) == WidePrograms + 1
+            && configurations > 0 && configurations + Number(said.Groups[3].Value) == configured && files.Order().SequenceEqual(new[] { opened, web }.Order()),
+            $"workspace of {WidePrograms + 1} programs and {configured:N0} run configurations listed {projects} projects, {configurations} run configurations and the open files {string.Join(", ", files)}, saying: {more}");
+
+        // Within a program's folder that program, its run configurations and its open file whole, and within its project file the program and its run configurations.
+        JsonElement within = Json(await Held(client, McpTools.Workspace, new() { ["within"] = tool }, whole: true));
+        Assert.True(Assert.Single(within.GetProperty("projects").EnumerateArray()).GetProperty("name").GetString() == "Tool7"
+            && within.GetProperty("runConfigurations").EnumerateArray().Select(c => c.GetString()).Order().SequenceEqual(Profiles.Select(p => $"Tool7: {p}").Order())
+            && within.GetProperty("openFiles").EnumerateArray().Select(f => f.GetString()).SequenceEqual([opened]) && !within.TryGetProperty("more", out _),
+            $"workspace within {tool} answered: {within}");
+        string project = Path.Combine(tool, "Tool7.csproj");
+        JsonElement ofProject = Json(await Held(client, McpTools.Workspace, new() { ["within"] = project }, whole: true));
+        Assert.True(ofProject.GetProperty("projects").GetArrayLength() == 1 && ofProject.GetProperty("runConfigurations").GetArrayLength() == Profiles.Length
+            && ofProject.GetProperty("openFiles").GetArrayLength() == 0, $"workspace within {project} answered: {ofProject}");
+    }
+
+    /// <summary>A solution of hundreds of programs of five launch profiles each, never restored, and a web app of thousands
+    /// of routes in files of their own, restored, which a solution filter opens alone.</summary>
     private async Task<string> WideSolutionAsync()
     {
         string wide = PathNames.Canonical(TestFolders.Create("mcp-wide-"));
         DeleteAtEnd(wide);
         StringBuilder solution = new("<Solution>\n  <Project Path=\"Web/Web.csproj\" />\n");
-        for (int library = 0; library < WideLibraries; library++)
+        string profiles = $"{{\n  \"profiles\": {{\n{string.Join(",\n", Profiles.Select(p => $"    \"{p}\": {{ \"commandName\": \"Project\", \"environmentVariables\": {{ \"DOTNET_ENVIRONMENT\": \"{p}\" }} }}"))}\n  }}\n}}\n";
+        for (int program = 0; program < WidePrograms; program++)
         {
-            TestFolders.Write(wide, $"Libraries/Library{library}/Library{library}.csproj", TestProjects.Library());
-            solution.Append(CultureInfo.InvariantCulture, $"  <Project Path=\"Libraries/Library{library}/Library{library}.csproj\" />\n");
+            TestFolders.Write(wide, $"Tools/Tool{program}/Tool{program}.csproj", TestProjects.Console());
+            TestFolders.Write(wide, $"Tools/Tool{program}/Program.cs", $"System.Console.WriteLine(\"Tool {program}\");\n");
+            TestFolders.Write(wide, $"Tools/Tool{program}/Properties/launchSettings.json", profiles);
+            solution.Append(CultureInfo.InvariantCulture, $"  <Project Path=\"Tools/Tool{program}/Tool{program}.csproj\" />\n");
         }
         TestFolders.Write(wide, "Wide.slnx", solution.Append("</Solution>\n").ToString());
         TestFolders.Write(wide, "Web.slnf", "{\n  \"solution\": {\n    \"path\": \"Wide.slnx\",\n    \"projects\": [ \"Web\\\\Web.csproj\" ]\n  }\n}\n");

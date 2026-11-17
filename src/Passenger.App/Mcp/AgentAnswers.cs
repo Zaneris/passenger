@@ -128,6 +128,23 @@ public static class AgentAnswers
         return kept;
     }
 
+    /// <summary>How <paramref name="room"/> characters are shared among lists needing more together (<paramref name="needs"/>,
+    /// each one's characters): a list needing no more than an equal share of what those needing less leave takes all it
+    /// needs, and those needing more split the rest equally.</summary>
+    public static int[] Shares(IReadOnlyList<int> needs, int room)
+    {
+        int[] shares = new int[needs.Count];
+        int left = Math.Max(0, room);
+        int sharing = needs.Count;
+        foreach (int list in Enumerable.Range(0, needs.Count).OrderBy(i => needs[i]))
+        {
+            shares[list] = Math.Min(needs[list], left / sharing);
+            left -= shares[list];
+            sharing--;
+        }
+        return shares;
+    }
+
     /// <summary>A list's first entries within <paramref name="room"/> characters, by each one's <paramref name="size"/>, and
     /// words saying how many more it left out and how to read them (<paramref name="how"/>), null when it left none.</summary>
     public static (IReadOnlyList<T> Kept, string? More) Within<T>(IReadOnlyList<T> items, Func<T, int> size, int room, string noun, string how)

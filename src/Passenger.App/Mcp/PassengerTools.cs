@@ -128,11 +128,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
     public Task<Workspace> GetWorkspace(bool routes = false, string? within = null, CancellationToken cancel = default) => OnUi(cancel, async () =>
     {
         string? inside = Within(within);
-        Workspace answered = await RunsWorkspace(Snapshot(), cancel);
-        if (inside is not null)
-        {
-            answered = answered with { Projects = [.. answered.Projects.Where(p => Inside(p.Path, inside))] };
-        }
+        Workspace answered = await RunsWorkspace(Snapshot(inside), cancel);
         if (!routes)
         {
             return HeldWorkspace(answered);
@@ -152,38 +148,67 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         });
     });
 
-    /// <summary>workspace's answer held within <see cref="AgentAnswers.MostCharacters"/>: its projects and routes whole where
-    /// they fit; else each list given its share of the room, half each where both run past theirs, the first projects whole
-    /// and those after named alone where room is short (<see cref="AgentAnswers.Grouped"/>), the first routes whole and the
-    /// rest left out, its more saying how many and that within lists those of a folder or file.</summary>
+    /// <summary>workspace's answer held within <see cref="AgentAnswers.MostCharacters"/>: its projects, run configurations,
+    /// open files and routes whole where they fit; else each list in turn given its share of the room left beside those
+    /// after it (<see cref="AgentAnswers.Shares"/>), the first projects whole and those after named alone where room is
+    /// short (<see cref="AgentAnswers.Grouped"/>), the first of each other list whole and the rest left out, its more saying
+    /// how many and that within lists those of a folder or file.</summary>
     private static Workspace HeldWorkspace(Workspace answered)
     {
         IReadOnlyList<ProjectInfo> projects = answered.Projects;
         IReadOnlyList<RouteInfo> routes = answered.Routes ?? [];
-        int room = Room(answered with { Projects = [], Routes = answered.Routes is null ? null : [] });
-        int projectsTake = projects.Sum(p => Size(p) + 1);
-        int routesTake = routes.Sum(r => Size(r) + 1);
-        if (projectsTake + routesTake <= room)
+        int room = Room(answered with { Projects = [], RunConfigurations = [], OpenFiles = [], Routes = answered.Routes is null ? null : [] });
+        int[] needs = [Need(projects), Need(answered.RunConfigurations), Need(answered.OpenFiles), Need(routes)];
+        if (needs.Sum() <= room)
         {
             return answered;
         }
-        int share = routesTake <= room / 2 ? room - routesTake : Math.Min(projectsTake, room / 2);
-        (int whole, int named) = AgentAnswers.Grouped(projects, Size, p => Size(Named(p)), share);
+        (int whole, int named) = AgentAnswers.Grouped(projects, Size, p => Size(Named(p)), Share(0));
         ProjectInfo[] kept = [.. projects.Take(whole), .. projects.Skip(whole).Take(named).Select(Named)];
-        int routesKept = AgentAnswers.Fitting(routes, Size, room - kept.Sum(p => Size(p) + 1));
+        room -= Need(kept);
+        int configurations = Kept(answered.RunConfigurations, 1);
+        int files = Kept(answered.OpenFiles, 2);
+        int routesKept = Kept(routes, 3);
         int projectsLeft = projects.Count - kept.Length;
+        int configurationsLeft = answered.RunConfigurations.Count - configurations;
+        int filesLeft = answered.OpenFiles.Count - files;
+        int routesLeft = routes.Count - routesKept;
         string?[] said =
         [
             named == 0 ? null : string.Create(System.Globalization.CultureInfo.InvariantCulture, $"{named:N0} {Plural.Noun(named, "project")} named alone"),
             projectsLeft == 0 ? null : Left(projectsLeft, "project"),
-            routesKept == routes.Count ? null : Left(routes.Count - routesKept, "route"),
+            configurationsLeft == 0 ? null : Left(configurationsLeft, "run configuration"),
+            filesLeft == 0 ? null : Left(filesLeft, "open file"),
+            routesLeft == 0 ? null : Left(routesLeft, "route"),
+        ];
+        string?[] cut =
+        [
+            named + projectsLeft == 0 ? null : "projects",
+            configurationsLeft == 0 ? null : "run configurations",
+            filesLeft == 0 ? null : "open files",
+            routesLeft == 0 ? null : "routes",
         ];
         return answered with
         {
             Projects = kept,
+            RunConfigurations = [.. answered.RunConfigurations.Take(configurations)],
+            OpenFiles = [.. answered.OpenFiles.Take(files)],
             Routes = answered.Routes is null ? null : [.. routes.Take(routesKept)],
-            More = $"{Plural.Listed([.. said.OfType<string>()])}: within, a folder or file, lists {(answered.Routes is null ? "the projects" : "the projects and routes")} there whole",
+            More = $"{Plural.Listed([.. said.OfType<string>()])}: within, a folder or file, lists the {Plural.Listed([.. cut.OfType<string>()])} there whole",
         };
+
+        // A list's share of the room left, beside the lists after it.
+        int Share(int list) => AgentAnswers.Shares(needs[list..], room)[0];
+
+        // How many of a list's first entries its share takes, the room they fill no longer left.
+        int Kept<T>(IReadOnlyList<T> list, int at)
+        {
+            int count = AgentAnswers.Fitting(list, Size, Share(at));
+            room -= Need(list.Take(count));
+            return count;
+        }
+
+        static int Need<T>(IEnumerable<T> list) => list.Sum(entry => Size(entry) + 1);
 
         // A project named alone, its kind and frameworks left to within.
         static ProjectInfo Named(ProjectInfo project) => new(project.Name, project.Path, null, null);
@@ -3971,7 +3996,9 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
     /// <summary>A diff's tab as the workspace names it: a diff of its file, never the file's own tab.</summary>
     private string DiffNamed(OpenDocument tab) => $"diff of {Relative(tab.Path)} ({tab.Diff!.Shown.Title})";
 
-    private Workspace Snapshot()
+    /// <summary>The workspace as it stands; with <paramref name="inside"/>, a folder or file, only the projects, run
+    /// configurations (by their projects' and files' places) and open files there.</summary>
+    private Workspace Snapshot(string? inside = null)
     {
         ProjectSession session = Session;
         OpenDocument? active = Editors.Active;
@@ -3980,19 +4007,19 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         return new Workspace(
             session.Folder,
             session.Workspace?.Filter?.Path ?? session.Solution?.Path,
-            [.. (session.Workspace?.Projects ?? []).Select(p => new ProjectInfo(p.Name, Relative(p.Path), p.IsAndroidApp ? "Exe" : p.OutputType, p.TargetFrameworks)
+            [.. (session.Workspace?.Projects ?? []).Where(p => Here(p.Path)).Select(p => new ProjectInfo(p.Name, Relative(p.Path), p.IsAndroidApp ? "Exe" : p.OutputType, p.TargetFrameworks)
             {
                 Unloaded = session.Unloaded.Contains(p.Path) ? true : null,
                 ChosenFramework = session.Frameworks.Of(p),
-            }), .. (session.Workspace?.SharedProjects ?? []).Select(p => new ProjectInfo(Path.GetFileNameWithoutExtension(p), Relative(p), null, [])
+            }), .. (session.Workspace?.SharedProjects ?? []).Where(Here).Select(p => new ProjectInfo(Path.GetFileNameWithoutExtension(p), Relative(p), null, [])
             {
                 SharedBy = [.. ImportersOf(session, p)],
             })],
-            [.. session.Configurations.All.Select(c => c.Name)],
+            [.. session.Configurations.All.Where(c => inside is null || PlacesOf(c).Any(Here)).Select(c => c.Name)],
             session.Configurations.Chosen?.Name,
             session.CSharp is not { } csharp ? "none" : csharp.IsReady ? "ready" : csharp.State,
-            [.. Editors.Documents.Where(d => d.IsModified || Editors.HasTab(d) || !kept.Keeps(d)).Select(d => Relative(d.Path) + (d.IsModified ? " (unsaved)" : "")),
-                .. Editors.Diffs.Select(DiffNamed)],
+            [.. Editors.Documents.Where(d => (d.IsModified || Editors.HasTab(d) || !kept.Keeps(d)) && Here(d.Path)).Select(d => Relative(d.Path) + (d.IsModified ? " (unsaved)" : "")),
+                .. Editors.Diffs.Where(d => Here(d.Path)).Select(DiffNamed)],
             active is null ? null : $"{(active.Diff is null ? Relative(active.Path) : DiffNamed(active))}:{caret!.Value.Line + 1}:{caret.Value.Column + 1}",
             Session.Debug.Session?.State.ToString().ToLowerInvariant() ?? "not debugging")
         {
@@ -4010,7 +4037,15 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
                     .. session.Configurations.ProfileProblems]
                 : null,
         };
+
+        bool Here(string path) => inside is null || PathNames.Within(path, inside);
     }
+
+    /// <summary>The files a run configuration starts from: its project's (a script's package.json), its Dockerfile, its
+    /// Compose files and the projects a multi-project one starts, each canonical as the window holds them.</summary>
+    private static IEnumerable<string> PlacesOf(RunConfiguration configuration) =>
+        new[] { configuration.Project, configuration.Dockerfile }.Concat(configuration.ComposeFiles).Concat(configuration.Starts.Select(s => s.Project))
+            .Where(place => place.Length > 0);
 
     /// <summary>The projects importing a shared project's items, by name, as last evaluated.</summary>
     private static IEnumerable<string> ImportersOf(ProjectSession session, string shared)
@@ -4217,8 +4252,8 @@ public sealed record Workspace(
     /// under the folder are open; null with none.</summary>
     public string? UnreadSolution { get; init; }
 
-    /// <summary>How many projects the answer named alone or left out, and routes it left out, and how to read them; null
-    /// where it holds them all.</summary>
+    /// <summary>How many projects the answer named alone or left out, and run configurations, open files and routes it left
+    /// out, and how to read them; null where it holds them all.</summary>
     public string? More { get; init; }
 }
 
