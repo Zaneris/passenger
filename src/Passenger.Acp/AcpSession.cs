@@ -62,6 +62,11 @@ public sealed class AcpSession : IAsyncDisposable
     /// and then the agent is told cancelled at once, whatever the person does.</summary>
     public Func<PermissionRequest, CancellationToken, Task<string?>>? AskPermission { get; set; }
 
+    /// <summary>Asks the person the agent's questions; returns their answers, or null where they skipped. Set before
+    /// <see cref="InitializeAsync"/>, or the agent is told forms are not shown. The token is cancelled when the turn is
+    /// stopped, and the agent is told cancelled.</summary>
+    public Func<QuestionsRequest, CancellationToken, Task<QuestionsAnswer?>>? AskQuestions { get; set; }
+
     /// <summary>Reads a file for the agent. Set before <see cref="InitializeAsync"/>, or the agent reads files itself.</summary>
     public Func<FileReadRequest, Task<string>>? ReadFile { get; set; }
 
@@ -72,13 +77,19 @@ public sealed class AcpSession : IAsyncDisposable
     public async Task<AgentInfo> InitializeAsync(CancellationToken cancel = default)
     {
         connection.Start();
+        JsonObject capabilities = new()
+        {
+            ["fs"] = new JsonObject { ["readTextFile"] = ReadFile is not null, ["writeTextFile"] = WriteFile is not null },
+        };
+        if (AskQuestions is not null)
+        {
+            // Claude's adapter asks AskUserQuestion's questions only of a client that shows forms.
+            capabilities["elicitation"] = new JsonObject { ["form"] = new JsonObject() };
+        }
         JsonNode result = await connection.RequestAsync("initialize", new JsonObject
         {
             ["protocolVersion"] = 1,
-            ["clientCapabilities"] = new JsonObject
-            {
-                ["fs"] = new JsonObject { ["readTextFile"] = ReadFile is not null, ["writeTextFile"] = WriteFile is not null },
-            },
+            ["clientCapabilities"] = capabilities,
         }, cancel);
         JsonNode? info = result["agentInfo"];
         Agent = new AgentInfo(Text(info?["name"]) ?? "unknown agent", Text(info?["title"]), Text(info?["version"]));
@@ -164,12 +175,18 @@ public sealed class AcpSession : IAsyncDisposable
     {
         CancellationTokenSource thisTurn = new();
         Interlocked.Exchange(ref turn, thisTurn).Dispose();
-        using CancellationTokenRegistration stopping = stop.Register(() => _ = CancelAsync());
-        JsonNode result = await connection.RequestAsync("session/prompt", new JsonObject
+        // Stop's session/cancel is kept, and heard once the turn ends, so a failure to send it is not lost.
+        Task cancelling = Task.CompletedTask;
+        JsonNode result;
+        using (stop.Register(() => cancelling = CancelAsync()))
         {
-            ["sessionId"] = RequireSession(),
-            ["prompt"] = new JsonArray(new JsonObject { ["type"] = "text", ["text"] = text }),
-        });
+            result = await connection.RequestAsync("session/prompt", new JsonObject
+            {
+                ["sessionId"] = RequireSession(),
+                ["prompt"] = new JsonArray(new JsonObject { ["type"] = "text", ["text"] = text }),
+            });
+        }
+        await cancelling;
         return new TurnEnded(Text(result["stopReason"]) ?? "end_turn");
     }
 
@@ -251,6 +268,8 @@ public sealed class AcpSession : IAsyncDisposable
         {
             case "session/request_permission":
                 return await AnswerPermissionAsync(parameters);
+            case "elicitation/create" when AskQuestions is not null && Text(parameters?["mode"]) is null or "form":
+                return await AnswerQuestionsAsync(parameters);
             case "fs/read_text_file" when ReadFile is not null:
                 string content = await ReadFile(new FileReadRequest(
                     Text(parameters?["path"]) ?? "", OptionalInt(parameters?["line"]), OptionalInt(parameters?["limit"])));
@@ -295,6 +314,66 @@ public sealed class AcpSession : IAsyncDisposable
             ? new JsonObject { ["outcome"] = "cancelled" }
             : new JsonObject { ["outcome"] = "selected", ["optionId"] = chosen };
         return new JsonObject { ["outcome"] = outcome };
+    }
+
+    /// <summary>A form the agent asks to be filled in (Claude Code's AskUserQuestion): each field of choices a question,
+    /// its "_custom" companion the answer in the person's own words, any other field a question answered in words alone.
+    /// Answered "accept" with the answers, "decline" where the person skipped, "cancel" where the turn was stopped.</summary>
+    private async Task<JsonNode> AnswerQuestionsAsync(JsonNode? parameters)
+    {
+        string message = Text(parameters?["message"]) ?? string.Empty;
+        JsonObject fields = parameters?["requestedSchema"]?["properties"] as JsonObject ?? [];
+        List<AgentQuestion> questions = [];
+        foreach ((string id, JsonNode? field) in fields)
+        {
+            if (field is null || (id.EndsWith("_custom", StringComparison.Ordinal) && fields.ContainsKey(id[..^"_custom".Length])))
+            {
+                continue;
+            }
+            bool multiple = Text(field["type"]) == "array";
+            JsonArray choices = (multiple ? field["items"]?["anyOf"] : field["oneOf"]) as JsonArray ?? [];
+            List<QuestionChoice> listed = [];
+            foreach (JsonNode? choice in choices)
+            {
+                if ((Text(choice?["const"]) ?? Text(choice?["title"])) is string label)
+                {
+                    listed.Add(new QuestionChoice(label, Text(choice?["description"])));
+                }
+            }
+            string own = $"{id}_custom";
+            questions.Add(new AgentQuestion(id, Text(field["title"]), Text(field["description"]) ?? message, multiple, listed, fields.ContainsKey(own) ? own : null));
+        }
+        CancellationToken stopped = turn.Token;
+        QuestionsAnswer? answer;
+        try
+        {
+            answer = await AskQuestions!(new QuestionsRequest(Text(parameters?["toolCallId"]), message, questions), stopped).WaitAsync(stopped);
+        }
+        catch (OperationCanceledException)
+        {
+            return new JsonObject { ["action"] = "cancel" };
+        }
+        if (answer is null)
+        {
+            return new JsonObject { ["action"] = "decline" };
+        }
+        JsonObject content = [];
+        foreach (AgentQuestion question in questions)
+        {
+            if (answer.Picked.TryGetValue(question.Id, out IReadOnlyList<string>? picked) && picked.Count > 0)
+            {
+                content[question.Id] = question.Multiple ? new JsonArray([.. picked.Select(label => (JsonNode)JsonValue.Create(label))]) : picked[0];
+            }
+            if (question.OwnWordsId is { } own && answer.OwnWords.TryGetValue(own, out string? words) && words.Length > 0)
+            {
+                content[own] = words;
+            }
+            else if (question.Choices.Count == 0 && answer.OwnWords.TryGetValue(question.Id, out string? said) && said.Length > 0)
+            {
+                content[question.Id] = said;
+            }
+        }
+        return new JsonObject { ["action"] = "accept", ["content"] = content };
     }
 
     /// <summary>Folds an update into what is known of its tool call: an update carries only the fields that changed.</summary>

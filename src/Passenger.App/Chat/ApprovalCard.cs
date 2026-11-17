@@ -134,7 +134,8 @@ public sealed class ApprovalCard : Border
                 item.Click += (_, _) => Decide(option);
                 others.Items.Add(item);
             }
-            Button more = new() { Classes = { StyleClasses.Primary }, Content = new RowIcon { DataKey = IconKeys.ChevronDown, Width = 12, Height = 12 }, Flyout = others };
+            Button more = new() { Classes = { StyleClasses.Primary }, Content = new RowIcon { DataKey = IconKeys.ChevronDown, Width = 12, Height = 12 } };
+            more.Click += (_, _) => others.ShowAt(more);
             ToolTip.SetTip(more, "The agent's other answers");
             actions.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Spacing = 1, Children = { go, more } });
         }

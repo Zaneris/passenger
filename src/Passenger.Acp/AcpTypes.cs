@@ -72,3 +72,19 @@ public sealed record FileWriteRequest(string Path, string Content);
 
 /// <summary>Why a turn ended: end_turn, max_tokens, max_turn_requests, refusal or cancelled.</summary>
 public sealed record TurnEnded(string StopReason);
+
+/// <summary>Questions the agent asks the person before it goes on (Claude Code's AskUserQuestion), as ACP's form
+/// elicitation carries them: what it says over them, and each question in turn.</summary>
+public sealed record QuestionsRequest(string? ToolCallId, string Message, IReadOnlyList<AgentQuestion> Questions);
+
+/// <summary>One question: the field its answer goes in, its short header, its words, whether several choices may be
+/// picked, its choices (none for a question answered in words alone), and the field for an answer in the person's own
+/// words, where it offers one.</summary>
+public sealed record AgentQuestion(string Id, string? Header, string Text, bool Multiple, IReadOnlyList<QuestionChoice> Choices, string? OwnWordsId);
+
+/// <summary>A choice: its label, which is what the answer records, and what it means.</summary>
+public sealed record QuestionChoice(string Label, string? Description);
+
+/// <summary>The person's answers, by each question's field: the labels picked, and an answer in their own words, by
+/// its own field.</summary>
+public sealed record QuestionsAnswer(IReadOnlyDictionary<string, IReadOnlyList<string>> Picked, IReadOnlyDictionary<string, string> OwnWords);

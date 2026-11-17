@@ -126,6 +126,58 @@ public sealed class ChatTests
     }
 
     [AvaloniaFact]
+    public void The_agents_questions_are_pinned_above_the_box_lettered_one_at_a_time_and_Send_answers_them()
+    {
+        MainWindow window = Connected(out StandInAgent agent);
+        Assert.True(agent.OffersForms, "Passenger never tells the agent it shows forms, so Claude asks no questions");
+        Send(window, "questions");
+        Ui.WaitFor(() => window.Chat.Questioning is not null, () => $"the questions, where the conversation is {Shown(window)}");
+
+        QuestionsCard card = window.Chat.Questioning!;
+        Assert.Contains(card.GetVisualDescendants().OfType<TextBlock>(), text => text.Text == "1 of 2");
+        Assert.Contains(card.GetVisualDescendants().OfType<TextBlock>(), text => text.Text == "1. What should this new account be?");
+        Assert.Contains(card.GetVisualDescendants().OfType<TextBlock>(), text => text.Text == "A");
+        Assert.Contains(card.GetVisualDescendants().OfType<TextBlock>(), text => text.Text == "Other…");
+        Assert.Equal("Waiting for your answer", window.Chat.Doing);
+
+        Ui.Click(Choice(card, "Seeded login"));
+        Ui.Click(card.GetVisualDescendants().OfType<Button>().First(b => Equals(b.Content, "Continue")));
+        Assert.Equal(1, card.At);
+        Ui.Click(Choice(card, "Admin"));
+        Ui.Click(Choice(card, "User"));
+        Ui.Click(Choice(card, "Other…"));
+        card.GetVisualDescendants().OfType<TextBox>().Single(box => box.IsEffectivelyVisible).Text = "Read-only for now";
+        Ui.Click(card.GetVisualDescendants().OfType<Button>().First(b => Equals(b.Content, "Send")));
+        Ui.WaitFor(() => !window.Chat.Busy, () => $"the turn ended, where the conversation is {Shown(window)}");
+
+        JsonNode answer = JsonNode.Parse(agent.QuestionsAnswered!)!;
+        Assert.Equal("accept", answer["action"]!.GetValue<string>());
+        Assert.Equal("Seeded login", answer["content"]!["question_0"]!.GetValue<string>());
+        Assert.Equal(["Admin", "User"], answer["content"]!["question_1"]!.AsArray().Select(pick => pick!.GetValue<string>()));
+        Assert.Equal("Read-only for now", answer["content"]!["question_1_custom"]!.GetValue<string>());
+        Assert.Null(window.Chat.Questioning);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Skip_answers_none_of_the_agents_questions()
+    {
+        MainWindow window = Connected(out StandInAgent agent);
+        Send(window, "questions");
+        Ui.WaitFor(() => window.Chat.Questioning is not null, "the questions");
+
+        Ui.Click(window.Chat.Questioning!.GetVisualDescendants().OfType<Button>().First(b => Equals(b.Content, "Skip")));
+        Ui.WaitFor(() => !window.Chat.Busy, () => $"the turn ended, where the conversation is {Shown(window)}");
+
+        Assert.Equal("decline", JsonNode.Parse(agent.QuestionsAnswered!)!["action"]!.GetValue<string>());
+        window.Close();
+    }
+
+    /// <summary>A choice's row in the questions card, by its label.</summary>
+    private static Button Choice(QuestionsCard card, string label) =>
+        card.GetVisualDescendants().OfType<Button>().First(b => b.Content is DockPanel row && row.GetLogicalDescendants().OfType<TextBlock>().Any(text => text.Text == label));
+
+    [AvaloniaFact]
     public void Reads_go_under_Explored_and_a_finished_turns_steps_fold_under_Worked_for_its_last_words_in_sight()
     {
         MainWindow window = Connected(out _);
@@ -911,6 +963,7 @@ public sealed class ChatTests
                 switch (message["method"]?.GetValue<string>())
                 {
                     case "initialize":
+                        OffersForms = parameters?["clientCapabilities"]?["elicitation"]?["form"] is not null;
                         await Answer(writer, id, """{"protocolVersion":1,"agentInfo":{"name":"@agentclientprotocol/claude-agent-acp","title":"Claude Agent","version":"0.107.3"},"authMethods":[]}""");
                         break;
                     case "session/new":
@@ -972,6 +1025,14 @@ public sealed class ChatTests
                             string named = JsonValue.Create(Path.Combine(asking, "hello.txt")).ToJsonString();
                             await Update(writer, $$$"""{"toolCallId":"call_7","sessionUpdate":"tool_call","status":"pending","title":"Edit hello.txt","kind":"edit","content":[],"locations":[{"path":{{{named}}}}]}""");
                             await writer.WriteLineAsync($$$"""{"jsonrpc":"2.0","id":"ask_edit","method":"session/request_permission","params":{"sessionId":"sess_1","toolCall":{"toolCallId":"call_7","status":"pending","title":"Edit hello.txt","kind":"edit","content":[{"type":"diff","path":{{{named}}},"oldText":"hello\n","newText":"hello\nworld\n"}]},"options":[{"optionId":"allow-once","name":"Yes","kind":"allow_once"},{"optionId":"allow-always","name":"Yes, allow all edits during this session","kind":"allow_always"},{"optionId":"reject","name":"No","kind":"reject_once"}]}}""");
+                            break;
+                        }
+                        if (text == "questions")
+                        {
+                            // As the Claude adapter asks AskUserQuestion's questions of a client that shows forms.
+                            waiting = id;
+                            await Update(writer, """{"toolCallId":"call_q","sessionUpdate":"tool_call","status":"pending","title":"AskUserQuestion","kind":"other","content":[]}""");
+                            await writer.WriteLineAsync("""{"jsonrpc":"2.0","id":"ask_q","method":"elicitation/create","params":{"mode":"form","sessionId":"sess_1","toolCallId":"call_q","message":"Please answer the following questions.","requestedSchema":{"type":"object","properties":{"question_0":{"type":"string","title":"Account","description":"What should this new account be?","oneOf":[{"const":"Seeded login","title":"Seeded login","description":"Another development login"},{"const":"New role","title":"New role"},{"const":"An API","title":"An API"}]},"question_0_custom":{"type":"string","title":"Other"},"question_1":{"type":"array","title":"Roles","description":"Which roles should it have?","items":{"anyOf":[{"const":"Admin","title":"Admin"},{"const":"User","title":"User"}]}},"question_1_custom":{"type":"string","title":"Other"}}}}}""");
                             break;
                         }
                         if (text == "swap" && SessionFolder is { } swapped)
@@ -1070,6 +1131,16 @@ public sealed class ChatTests
                             waiting = null;
                         }
                         break;
+                    case null when message["id"]?.ToJsonString() == "\"ask_q\"":
+                        QuestionsAnswered = message["result"]?.ToJsonString();
+                        if (waiting is not null)
+                        {
+                            await Update(writer, """{"toolCallId":"call_q","sessionUpdate":"tool_call_update","status":"completed"}""");
+                            await Say(writer, "Thanks.");
+                            await Answer(writer, waiting, """{"stopReason":"end_turn"}""");
+                            waiting = null;
+                        }
+                        break;
                     case string when message["id"] is not null:
                         await writer.WriteLineAsync($$$"""{"jsonrpc":"2.0","id":{{{id}}},"error":{"code":-32601,"message":"not played"}}""");
                         break;
@@ -1078,7 +1149,13 @@ public sealed class ChatTests
         }
 
         /// <summary>Whether it has a question open, whose answer ends the turn rather than session/cancel.</summary>
-        private bool Asked => Prompts.LastOrDefault() is "write" or "plan" or "ask";
+        private bool Asked => Prompts.LastOrDefault() is "write" or "plan" or "ask" or "questions";
+
+        /// <summary>Whether the client said at initialize that it shows forms (ACP's elicitation).</summary>
+        public bool OffersForms { get; private set; }
+
+        /// <summary>The answer to its questions, as the client sent it.</summary>
+        public string? QuestionsAnswered { get; private set; }
 
         /// <summary>An edit as the Claude adapter sends one in Accept edits mode: its call, then the file it names, then,
         /// once written, done.</summary>

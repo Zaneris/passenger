@@ -13,11 +13,17 @@ public sealed class JsonRpcConnection : IAsyncDisposable
     private readonly StreamReader reader;
     private readonly StreamWriter writer;
     private readonly ConcurrentDictionary<int, TaskCompletionSource<JsonNode>> pending = new();
-    private readonly ConcurrentDictionary<Task, byte> answering = new();
+    private readonly ConcurrentDictionary<object, Task> answering = new();
     private readonly SemaphoreSlim writeLock = new(1, 1);
     private readonly TaskCompletionSource ended = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private int nextId;
     private int started;
+
+    /// <summary>The loop reading the agent's stream, awaited as the connection is let go so its fault is heard.</summary>
+    private Task reading = Task.CompletedTask;
+
+    /// <summary>Set as the connection is let go, so the read its closing breaks off is no fault.</summary>
+    private volatile bool closing;
 
     public JsonRpcConnection(Stream fromAgent, Stream toAgent)
     {
@@ -44,7 +50,7 @@ public sealed class JsonRpcConnection : IAsyncDisposable
     {
         if (Interlocked.Exchange(ref started, 1) == 0)
         {
-            _ = Task.Run(ReadLoopAsync);
+            reading = Task.Run(ReadLoopAsync);
         }
     }
 
@@ -117,9 +123,12 @@ public sealed class JsonRpcConnection : IAsyncDisposable
                 string? method = message["method"]?.GetValue<string>();
                 if (method is not null && hasId)
                 {
-                    Task answer = AnswerAsync(message["id"]!.DeepClone(), method, message["params"]);
-                    answering[answer] = 0;
-                    _ = answer.ContinueWith(done => answering.TryRemove(done, out _), TaskScheduler.Default);
+                    object key = new();
+                    Task answer = AnsweredAsync(key, message["id"]!.DeepClone(), method, message["params"]);
+                    if (!answer.IsCompleted)
+                    {
+                        answering.TryAdd(key, answer);
+                    }
                 }
                 else if (method is not null)
                 {
@@ -131,9 +140,10 @@ public sealed class JsonRpcConnection : IAsyncDisposable
                 }
             }
         }
-        catch (Exception error) when (error is IOException or ObjectDisposedException)
+        catch (Exception error) when (error is IOException or ObjectDisposedException || (closing && error is InvalidOperationException))
         {
-            // The agent went away; the requests still waiting are failed below.
+            // The agent went away, or the connection is let go under a read (a pipe refuses it); the requests still
+            // waiting are failed below.
         }
         finally
         {
@@ -165,6 +175,20 @@ public sealed class JsonRpcConnection : IAsyncDisposable
         else
         {
             reply.TrySetResult(message["result"] ?? new JsonObject());
+        }
+    }
+
+    /// <summary>Answers one question, then lets go of it: the answers still going are what letting go of the
+    /// connection waits for.</summary>
+    private async Task AnsweredAsync(object key, JsonNode id, string method, JsonNode? parameters)
+    {
+        try
+        {
+            await AnswerAsync(id, method, parameters);
+        }
+        finally
+        {
+            answering.TryRemove(key, out _);
         }
     }
 
@@ -202,9 +226,19 @@ public sealed class JsonRpcConnection : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
-        await Task.WhenAll(answering.Keys).WaitAsync(TimeSpan.FromSeconds(1)).ContinueWith(_ => { }, TaskScheduler.Default);
+        Task answers = Task.WhenAll(answering.Values);
+        if (await Task.WhenAny(answers, Task.Delay(TimeSpan.FromSeconds(1))) == answers)
+        {
+            await answers;
+        }
+        closing = true;
         writer.Dispose();
         reader.Dispose();
+        // The stream closed, the loop ends; a fault of its own is heard here.
+        if (await Task.WhenAny(reading, Task.Delay(TimeSpan.FromSeconds(1))) == reading)
+        {
+            await reading;
+        }
         writeLock.Dispose();
     }
 }

@@ -143,7 +143,10 @@ public sealed class ChatView : DockPanel
         SetDock(Todos, Dock.Top);
         Children.Add(header);
         Children.Add(Todos);
+        SetDock(questionsHost, Dock.Bottom);
         Children.Add(composer);
+        // The agent's questions stand right above the box, as Cursor's do.
+        Children.Add(questionsHost);
         Children.Add(Review);
         Children.Add(new Panel { Children = { idle, conversation } });
     }
@@ -512,6 +515,35 @@ public sealed class ChatView : DockPanel
         }
     }
 
+    private readonly Panel questionsHost = new();
+
+    /// <summary>The agent's questions waiting above the box, null while none wait.</summary>
+    public QuestionsCard? Questioning => questionsHost.Children.OfType<QuestionsCard>().FirstOrDefault(card => !card.Answer.IsCompleted);
+
+    /// <summary>The agent's questions before it goes on, pinned above the box until answered, skipped or stopped.</summary>
+    public async Task<QuestionsAnswer?> AskQuestions(QuestionsRequest request)
+    {
+        QuestionsCard card = new(request);
+        questionsHost.Children.Clear();
+        questionsHost.Children.Add(card);
+        if (working.IsVisible)
+        {
+            doing.Text = "Waiting for your answer";
+        }
+        try
+        {
+            return await card.Answer;
+        }
+        finally
+        {
+            questionsHost.Children.Remove(card);
+            if (working.IsVisible && asking.Count == 0)
+            {
+                doing.Text = "Thinking…";
+            }
+        }
+    }
+
     /// <summary>The agent's question as a card in its reply; the click, or Stop, answers it.</summary>
     public Task<string?> Ask(PermissionRequest request, IReadOnlyList<ChatChange> changes, ChatPlan? plan = null)
     {
@@ -542,6 +574,7 @@ public sealed class ChatView : DockPanel
         {
             card.Cancel();
         }
+        Questioning?.Cancel();
         Close();
         FoldWorked();
         if (note is not null && reply is not null)
@@ -576,6 +609,7 @@ public sealed class ChatView : DockPanel
         {
             card.Cancel();
         }
+        Questioning?.Cancel();
     }
 
     private async Task<string?> AnswerOf(ApprovalCard card)

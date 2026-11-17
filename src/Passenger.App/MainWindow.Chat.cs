@@ -628,6 +628,13 @@ public partial class MainWindow
                 }
             });
         };
+        // Claude Code's questions before it goes on, pinned above the box as Cursor's.
+        agent.Session.AskQuestions = async (request, _) =>
+        {
+            TaskCompletionSource<Task<QuestionsAnswer?>> shown = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            OnWindowThread(() => shown.SetResult(view.AskQuestions(request)));
+            return await await shown.Task;
+        };
         agent.Session.AskPermission = async (request, _) =>
         {
             Reviewed(request.ToolCall);
