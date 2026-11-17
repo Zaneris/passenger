@@ -28,7 +28,7 @@ command -v cwebp > /dev/null || { echo "site-shots: cwebp is not on the PATH (br
 
 all_scenes=(editor debugger git find-in-files profiler xaml project-files web live-tree agent themes aspire requests
     godot-scene godot-values godot-live-tree godot-profile blazor-wasm usages resx gdscript godot-shader godot-tests
-    aspire-metrics)
+    aspire-metrics maui)
 # Taken only when named: a window someone could see, on the screen (game.py) or in the Windows VM (vm-shots.sh).
 windowed_scenes=(godot-game html-preview)
 # Taken only when named (just first-start-shots): the app's own pictures, never the site's.
@@ -339,6 +339,40 @@ EOF2
     web_app_prepared=1
 }
 
+# The maui scene's app: a page of the greenhouse's plants on a phone.
+maui_app="$tmp/passenger-site-shots/GreenhouseMobile"
+maui_prepared=
+# .NET MAUI's template given maui/'s page, restored and left unbuilt, as the scene's Build for XAML Preview builds it for
+# no platform; for iOS and Mac Catalyst alone, since its Android head would need a JDK, whose lack a banner would say
+# over the picture where none is installed.
+maui_ready() {
+    if [[ -n $maui_prepared ]] || [[ -n ${SITE_SHOTS_REUSE:-} && -d "$maui_app/.git" ]]; then
+        maui_prepared=1
+        return
+    fi
+    rm -rf "$maui_app"
+    mkdir -p "$maui_app"
+    cp "$repo/tools/site-shots/maui/nuget.config" "$maui_app/"
+    dotnet new maui -n Greenhouse.Mobile -o "$maui_app" --no-restore > /dev/null
+    local project="$maui_app/Greenhouse.Mobile.csproj"
+    sed -i '' -e 's|<TargetFrameworks>\(net[0-9.]*\)-android</TargetFrameworks>|<TargetFrameworks>\1-ios;\1-maccatalyst</TargetFrameworks>|' \
+        -e "/IsOSPlatform('linux')/d" "$project"
+    if grep -q -- '-android' "$project"; then
+        echo "site-shots: the MAUI template's frameworks are no longer as the maui scene expects them: $project" >&2
+        exit 1
+    fi
+    dotnet restore "$project" -nologo -v:q
+    cp "$repo/tools/site-shots/maui/"*.xaml "$repo/tools/site-shots/maui/"*.cs "$maui_app/"
+    export GIT_AUTHOR_NAME="Rosa Field" GIT_AUTHOR_EMAIL="rosa@greenhouse.example"
+    export GIT_COMMITTER_NAME="Rosa Field" GIT_COMMITTER_EMAIL="rosa@greenhouse.example"
+    git -C "$maui_app" init -q -b main
+    git -C "$maui_app" add -- .
+    GIT_AUTHOR_DATE="2026-11-02T09:00:00+00:00" GIT_COMMITTER_DATE="2026-11-02T09:00:00+00:00" \
+        git -C "$maui_app" commit -q -m "The greenhouse's plants on a phone"
+    unset GIT_AUTHOR_NAME GIT_AUTHOR_EMAIL GIT_COMMITTER_NAME GIT_COMMITTER_EMAIL
+    maui_prepared=1
+}
+
 # One picture: a fresh state of its own (layout, breakpoints, logs), the window at the site's size, the scene's steps.
 shot() {
     local name=$1 theme=$2
@@ -531,6 +565,13 @@ scene() {
             # Show Usages of the plant's watering interval, every use in the solution in a popup at the caret.
             shot "$name" "$theme" --file src/Greenhouse.Core/Plant.cs --caret 7:20 \
                 --key "meta+shift+A" --type "Show Usages" --key enter --wait 3000 ;;
+        maui)
+            # A MAUI page beside XAML Preview, built for no platform as a person's Build for XAML Preview builds it.
+            maui_ready
+            solution="$maui_app" shot "$name" "$theme" --file MainPage.xaml --caret 1:1 --key "meta+shift+F12" \
+                $(printf -- '--key down %.0s' {1..15}) --key end \
+                --key "meta+shift+A" --type "XAML Preview" --key enter --wait 1000 --drag 600,500,740,500 \
+                --key "meta+shift+A" --type "Build for XAML Preview" --key enter --wait 60000 ;;
         resx)
             # The app's strings as a table of keys, values and comments.
             shot "$name" "$theme" --file src/Greenhouse.App/Resources/Strings.resx --wait 2000 ;;

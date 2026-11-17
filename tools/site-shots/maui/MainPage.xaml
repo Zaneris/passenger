@@ -1,0 +1,37 @@
+<ContentPage x:Class="Greenhouse.Mobile.MainPage"
+             xmlns:local="clr-namespace:Greenhouse.Mobile"
+             x:DataType="local:PlantsViewModel"
+             Title="Greenhouse">
+    <ContentPage.BindingContext>
+        <local:PlantsViewModel />
+    </ContentPage.BindingContext>
+    <Grid RowDefinitions="Auto,*,Auto" Padding="20" RowSpacing="16">
+        <VerticalStackLayout Spacing="4">
+            <Label Text="Greenhouse" FontSize="30" FontAttributes="Bold" />
+            <Label Text="{Binding Summary}" Opacity="0.6" />
+        </VerticalStackLayout>
+        <CollectionView Grid.Row="1" ItemsSource="{Binding Plants}">
+            <CollectionView.ItemTemplate>
+                <DataTemplate x:DataType="local:Plant">
+                    <Border Padding="16,12" Margin="0,0,0,10"
+                            StrokeShape="RoundRectangle 12">
+                        <Grid ColumnDefinitions="*,Auto" RowSpacing="6"
+                              RowDefinitions="Auto,Auto,Auto">
+                            <Label Text="{Binding Name}" FontSize="18"
+                                   FontAttributes="Bold" />
+                            <Label Grid.Row="1" Opacity="0.6"
+                                   Text="{Binding Schedule}" />
+                            <ProgressBar Grid.Row="2" Grid.ColumnSpan="2"
+                                         Progress="{Binding Moisture}" />
+                            <Label Grid.Column="1" Text="Thirsty"
+                                   IsVisible="{Binding Thirsty}"
+                                   TextColor="{StaticResource Magenta}" />
+                        </Grid>
+                    </Border>
+                </DataTemplate>
+            </CollectionView.ItemTemplate>
+        </CollectionView>
+        <Button Grid.Row="2" Text="Water the thirsty ones"
+                Command="{Binding WaterCommand}" />
+    </Grid>
+</ContentPage>
