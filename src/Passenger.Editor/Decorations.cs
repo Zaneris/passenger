@@ -15,8 +15,9 @@ public enum LineAnnotationLook
 
 /// <summary>Lines an agent removed, drawn where they stood: as rows of their own above <see cref="Line"/> (from zero; the
 /// line count for those after the last line), on the deleted colour, part of no document: never selected, copied or typed
-/// over, and given no number.</summary>
-public readonly record struct RemovedLines(int Line, IReadOnlyList<string> Text);
+/// over, and given no number. <see cref="Added"/>, they are lines an agent asks to add, not yet written, on the added
+/// colour.</summary>
+public readonly record struct RemovedLines(int Line, IReadOnlyList<string> Text, bool Added = false);
 
 /// <summary>Text drawn after a line's (from zero) code, part of no document: never selected, copied or
 /// typed over.</summary>

@@ -180,6 +180,12 @@ public sealed class ChatView : DockPanel
     /// <summary>A plan's file was asked to be opened as a page, by its path.</summary>
     public event EventHandler<string>? PlanRequested;
 
+    /// <summary>A question's card was shown, before it is answered: an edit's is shown in its file's own editor too.</summary>
+    public event EventHandler<ApprovalCard>? Asking;
+
+    /// <summary>A file an edit waiting for its answer changes was clicked, to see the change in the file.</summary>
+    public event EventHandler<ChatChange>? ChangeRequested;
+
     /// <summary>The list of the folder's plans was asked for, under the button given.</summary>
     public event EventHandler<Button>? PlansRequested;
 
@@ -420,8 +426,10 @@ public sealed class ChatView : DockPanel
         Close();
         ApprovalCard card = new(request, changes, Browse, plan);
         card.PlanRequested += (_, path) => PlanRequested?.Invoke(this, path);
+        card.FileRequested += (_, change) => ChangeRequested?.Invoke(this, change);
         reply.Children.Add(card);
         asking.Add(card);
+        Asking?.Invoke(this, card);
         doing.Text = "Waiting for your answer";
         ToEnd();
         return AnswerOf(card);

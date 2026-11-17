@@ -1625,8 +1625,9 @@ public sealed class OpenDocument : Observable
 public sealed record NoticeAction(string Text, Action Run);
 
 /// <summary>An agent's changes to a file in review, as its banner offers them: what it says ("Claude Agent changed this
-/// file · +12 −3") and what Keep and Undo do.</summary>
-public sealed record AgentReview(string Said, Action Keep, Action Undo);
+/// file · +12 −3") and what Keep and Undo do.
+/// An edit the agent asks to make, not yet written, offers Accept and Reject in their place.</summary>
+public sealed record AgentReview(string Said, Action Keep, Action Undo, string KeepWord = "Keep", string UndoWord = "Undo");
 
 /// <summary>A file's length and last write time on disk, and when they were found.</summary>
 public readonly record struct DiskStamp(long Length, DateTime Written, DateTime Found)

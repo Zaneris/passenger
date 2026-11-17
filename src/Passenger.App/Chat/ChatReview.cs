@@ -59,6 +59,20 @@ public sealed class ChatReview
         }
     }
 
+    /// <summary>An edit the person answered before it was written, accepted or rejected, is reviewed already: it leaves
+    /// the file's review, and the file with it where no other edit of the agent's waits there.</summary>
+    public void Answered(string path)
+    {
+        string full = PathNames.Canonical(path);
+        lock (gate)
+        {
+            if (files.TryGetValue(full, out Entry? entry) && --entry.Edits <= 0)
+            {
+                files.Remove(full);
+            }
+        }
+    }
+
     /// <summary>The file is kept, or was undone: it leaves the review.</summary>
     public void Done(string path)
     {

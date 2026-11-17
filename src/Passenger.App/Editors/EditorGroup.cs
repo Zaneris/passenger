@@ -630,6 +630,8 @@ public sealed class EditorGroup : DockPanel
         bannerLink.IsVisible = document.Notice is not null && document.NoticeAction is not null;
         bannerLink.Content = document.NoticeAction?.Text;
         reviewKeep.IsVisible = reviewUndo.IsVisible = document.AgentReview is not null;
+        reviewKeep.Content = document.AgentReview?.KeepWord ?? "Keep";
+        reviewUndo.Content = document.AgentReview?.UndoWord ?? "Undo";
     }
 
     /// <summary>The banner's Keep and Undo of an agent's changes in review, shown while the file has them.</summary>

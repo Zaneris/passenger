@@ -487,6 +487,7 @@ public sealed partial class CodeEditor
         {
             int first = map.RemovedRow(k);
             IReadOnlyList<string> lines = map.Shown[k].Text;
+            IBrush ground = map.Shown[k].Added ? palette.DiffAdded : palette.DiffDeleted;
             if (first > bottom || first + lines.Count < top)
             {
                 continue;
@@ -494,7 +495,7 @@ public sealed partial class CodeEditor
             for (int i = Math.Max(0, top - first); i < lines.Count && first + i <= bottom; i++)
             {
                 double y = ((first + i) * metrics.LineHeight) - scroll.Y;
-                context.FillRectangle(palette.DiffDeleted, new Rect(gutter, y, Math.Max(0, size.Width - gutter), metrics.LineHeight));
+                context.FillRectangle(ground, new Rect(gutter, y, Math.Max(0, size.Width - gutter), metrics.LineHeight));
                 FormattedText words = new(lines[i].Replace("\t", tab, StringComparison.Ordinal), System.Globalization.CultureInfo.InvariantCulture,
                     FlowDirection.LeftToRight, typeface, FontSize, palette.Text);
                 context.DrawText(words, new Point(left, y + ((metrics.LineHeight - words.Height) / 2)));

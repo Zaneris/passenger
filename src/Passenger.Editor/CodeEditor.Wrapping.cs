@@ -1370,7 +1370,7 @@ public sealed partial class CodeEditor
                     .Where(r => r.Text.Count > 0 && r.Line >= 0 && (r.Line >= lines || !folds.IsHidden(r.Line)))
                     .GroupBy(r => Math.Min(r.Line, lines))
                     .OrderBy(g => g.Key)
-                    .Select(g => new RemovedLines(g.Key, [.. g.SelectMany(r => r.Text)]))];
+                    .Select(g => new RemovedLines(g.Key, [.. g.SelectMany(r => r.Text)], g.First().Added))];
                 removedAbove = [.. Shown.Select(r => r.Line)];
                 removedBefore = new int[Shown.Count + 1];
                 for (int k = 0; k < Shown.Count; k++)

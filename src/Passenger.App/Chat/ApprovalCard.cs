@@ -20,31 +20,37 @@ public sealed class ApprovalCard : Border
 
     private readonly ChatPlan? plan;
 
+    private readonly PermissionRequest request;
+
     public ApprovalCard(PermissionRequest request, IReadOnlyList<ChatChange> changes, Action<Uri> browse, ChatPlan? plan = null)
     {
         this.plan = plan;
+        this.request = request;
+        Changes = plan is null ? changes : [];
         Classes.Add(StyleClasses.Framed);
         Padding = new Thickness(10, 8);
         chip.Bind(TextBlock.ForegroundProperty, chip.GetResourceObservable(TokenKeys.Warning));
         StackPanel body = new() { Spacing = 8 };
         body.Children.Add(Heading(request.ToolCall, changes));
-        foreach (Control part in plan is null ? Shown(request.ToolCall, changes, browse) : PlanShown(plan))
+        foreach (Control part in plan is null ? Shown(request.ToolCall, changes, browse, change => FileRequested?.Invoke(this, change)) : PlanShown(plan))
         {
             body.Children.Add(part);
         }
 
         // One under another, each its width: an agent's answers are sentences ("Yes, allow all edits during this session").
-        StackPanel buttons = new() { Spacing = 6 };
+        // An edit's are Cursor's, Accept and Reject in a row, the agent's own words in their tips.
+        bool edit = Changes.Count > 0;
+        Panel buttons = edit ? new WrapPanel { ItemSpacing = 6, LineSpacing = 6 } : new StackPanel { Spacing = 6 };
         PermissionOption? build = plan is null ? null : request.Options.FirstOrDefault(option => option.Kind.StartsWith("allow", StringComparison.Ordinal));
         foreach (PermissionOption option in request.Options)
         {
             Button button = new()
             {
-                Content = new TextBlock { Text = option == build ? "Build" : option.Name, TextWrapping = TextWrapping.Wrap },
+                Content = new TextBlock { Text = option == build ? "Build" : edit ? EditWord(option) : option.Name, TextWrapping = TextWrapping.Wrap },
                 HorizontalAlignment = HorizontalAlignment.Left,
                 Tag = option.Id,
             };
-            if (option == build)
+            if (option == build || (edit && EditWord(option) != option.Name))
             {
                 ToolTip.SetTip(button, option.Name);
             }
@@ -75,6 +81,36 @@ public sealed class ApprovalCard : Border
 
     /// <summary>The plan's file was asked to be opened as a page.</summary>
     public event EventHandler<string>? PlanRequested;
+
+    /// <summary>A changed file's link was clicked, to see the change in the file's own editor.</summary>
+    public event EventHandler<ChatChange>? FileRequested;
+
+    /// <summary>The edits the question asks to make, none for a command or a plan.</summary>
+    public IReadOnlyList<ChatChange> Changes { get; }
+
+    /// <summary>Answers as Accept or Reject would, from the file's own banner: the agent's once-only answer of that kind,
+    /// else its first of that kind; whether there was one to give.</summary>
+    public bool Choose(bool allow)
+    {
+        string once = allow ? "allow_once" : "reject_once";
+        string kind = allow ? "allow" : "reject";
+        if (Answer.IsCompleted
+            || (request.Options.FirstOrDefault(option => option.Kind == once)
+                ?? request.Options.FirstOrDefault(option => option.Kind.StartsWith(kind, StringComparison.Ordinal))) is not { } chosen)
+        {
+            return false;
+        }
+        Decide(chosen);
+        return true;
+    }
+
+    /// <summary>An edit's answer in Cursor's words: its once-only ones Accept and Reject, any other as the agent says it.</summary>
+    private static string EditWord(PermissionOption option) => option.Kind switch
+    {
+        "allow_once" => "Accept",
+        "reject_once" => "Reject",
+        _ => option.Name,
+    };
 
     /// <summary>The id of the option clicked, or null once cancelled.</summary>
     public Task<string?> Answer => answered.Task;
@@ -145,17 +181,20 @@ public sealed class ApprovalCard : Border
     }
 
     /// <summary>What the question is about: each change's path and diff, a command's text, or the agent's words (a plan).</summary>
-    private static IEnumerable<Control> Shown(ToolCall call, IReadOnlyList<ChatChange> changes, Action<Uri> browse)
+    private static IEnumerable<Control> Shown(ToolCall call, IReadOnlyList<ChatChange> changes, Action<Uri> browse, Action<ChatChange> open)
     {
         foreach (ChatChange change in changes)
         {
-            yield return new TextBlock
+            // The file's path is its link: the change shown in the file's own editor, to accept or reject there.
+            Button link = new()
             {
-                Classes = { StyleClasses.Muted },
-                FontSize = 11,
-                Text = change.IsNew ? $"{change.Path} (new)" : change.Path,
-                TextTrimming = TextTrimming.CharacterEllipsis,
+                Classes = { StyleClasses.Link },
+                Content = new TextBlock { Text = change.IsNew ? $"{change.Path} (new)" : change.Path, FontSize = 11, TextTrimming = TextTrimming.CharacterEllipsis },
+                HorizontalAlignment = HorizontalAlignment.Left,
             };
+            ToolTip.SetTip(link, "Open the file with the change shown in it");
+            link.Click += (_, _) => open(change);
+            yield return link;
             yield return ChatDiff.View(change);
         }
         if (call.Kind == "execute")

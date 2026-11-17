@@ -138,7 +138,7 @@ public sealed class ChatTests
         Assert.Contains(card.GetVisualDescendants().OfType<TextBlock>(), text => text.Text == "+1");
         Assert.Null(agent.Answered);
 
-        Ui.Click(InCard(card, "Yes"));
+        Ui.Click(InCard(card, "Accept"));
         Ui.WaitFor(() => !window.Chat.Busy, () => $"the turn ended, where the conversation is {Shown(window)}");
 
         Assert.Equal("allow-once", agent.Answered);
@@ -154,7 +154,7 @@ public sealed class ChatTests
         Send(window, "write");
         Ui.WaitFor(() => window.Chat.Questions.Any(), "the question asked");
 
-        Ui.Click(InCard(window.Chat.Questions.Single(), "No"));
+        Ui.Click(InCard(window.Chat.Questions.Single(), "Reject"));
         Ui.WaitFor(() => !window.Chat.Busy, () => $"the turn ended, where the conversation is {Shown(window)}");
 
         Assert.Equal("reject", agent.Answered);
@@ -445,6 +445,54 @@ public sealed class ChatTests
     }
 
     [AvaloniaFact]
+    public void An_edit_asked_first_shows_in_its_file_unwritten_and_the_banners_Accept_answers_it()
+    {
+        MainWindow window = Reviewing(out StandInAgent agent, out string folder);
+        Send(window, "ask");
+        Ui.WaitFor(() => Reviewed(window, "hello.txt")?.AgentReview is { KeepWord: "Accept" }, () => $"the edit shown in hello.txt, where the conversation is {Shown(window)}");
+
+        OpenDocument hello = Reviewed(window, "hello.txt")!;
+        Assert.Equal("hello\n", hello.Text.Snapshot.ToString());
+        Passenger.Editor.RemovedLines coming =Assert.Single(hello.Decorations.ReviewRemoved);
+        Assert.True(coming.Added, "The line the agent asks to add is drawn as a removed one");
+        Assert.Equal(["world"], coming.Text);
+        Assert.Equal(1, coming.Line);
+        ApprovalCard card = window.Chat.Questions.Single();
+        Ui.Click(card.GetVisualDescendants().OfType<Button>().First(b => b.Content is TextBlock { Text: { } text } && text.EndsWith("hello.txt", StringComparison.Ordinal)));
+        Ui.Settle();
+        Assert.Same(hello, window.EditorArea.Active);
+
+        Ui.Click(window.EditorArea.ActiveGroup.ReviewLinks.Keep);
+        Ui.WaitFor(() => !window.Chat.Busy, () => $"the turn ended, where the conversation is {Shown(window)}");
+
+        Assert.Equal("allow-once", agent.Answered);
+        Assert.Equal("Accepted", card.State);
+        Assert.Equal("hello\nworld\n", File.ReadAllText(Path.Combine(folder, "hello.txt")));
+        // Accepted before it was written, it was reviewed then: no Keep or Undo asked of it again.
+        Ui.WaitFor(() => hello.AgentReview is null && hello.Decorations.ReviewRemoved.Count == 0, "the edit's marks gone once answered");
+        Assert.Empty(window.Chat.Review.Shown);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void An_edit_asked_first_and_rejected_in_its_file_leaves_the_file_as_it_was()
+    {
+        MainWindow window = Reviewing(out StandInAgent agent, out string folder);
+        Send(window, "ask");
+        Ui.WaitFor(() => Reviewed(window, "hello.txt")?.AgentReview is { UndoWord: "Reject" }, "the edit shown in hello.txt");
+
+        Ui.Click(window.EditorArea.ActiveGroup.ReviewLinks.Undo);
+        Ui.WaitFor(() => !window.Chat.Busy, () => $"the turn ended, where the conversation is {Shown(window)}");
+
+        Assert.Equal("reject", agent.Answered);
+        Assert.Equal("Rejected", window.Chat.Questions.Single().State);
+        Assert.Equal("hello\n", File.ReadAllText(Path.Combine(folder, "hello.txt")));
+        Ui.WaitFor(() => Reviewed(window, "hello.txt")?.AgentReview is null, "the edit's banner gone once answered");
+        Assert.Empty(window.Chat.Review.Shown);
+        window.Close();
+    }
+
+    [AvaloniaFact]
     public void A_reply_shows_as_Markdown_once_whole()
     {
         MainWindow window = Connected(out StandInAgent agent);
@@ -715,6 +763,15 @@ public sealed class ChatTests
                             await writer.WriteLineAsync("""{"jsonrpc":"2.0","id":"ask_1","method":"session/request_permission","params":{"sessionId":"sess_1","toolCall":{"toolCallId":"call_2","status":"pending","title":"Write notes.md","kind":"edit","content":[{"type":"diff","path":"/work/notes.md","oldText":"","newText":"# Notes\n"}]},"options":[{"optionId":"allow-once","name":"Yes","kind":"allow_once"},{"optionId":"allow-always","name":"Yes, allow all edits during this session","kind":"allow_always"},{"optionId":"reject","name":"No","kind":"reject_once"}]}}""");
                             break;
                         }
+                        if (text == "ask" && SessionFolder is { } asking)
+                        {
+                            // As the Claude adapter asks in Manual mode: the call naming its file, then the question with its diff.
+                            waiting = id;
+                            string named = JsonValue.Create(Path.Combine(asking, "hello.txt")).ToJsonString();
+                            await Update(writer, $$$"""{"toolCallId":"call_7","sessionUpdate":"tool_call","status":"pending","title":"Edit hello.txt","kind":"edit","content":[],"locations":[{"path":{{{named}}}}]}""");
+                            await writer.WriteLineAsync($$$"""{"jsonrpc":"2.0","id":"ask_edit","method":"session/request_permission","params":{"sessionId":"sess_1","toolCall":{"toolCallId":"call_7","status":"pending","title":"Edit hello.txt","kind":"edit","content":[{"type":"diff","path":{{{named}}},"oldText":"hello\n","newText":"hello\nworld\n"}]},"options":[{"optionId":"allow-once","name":"Yes","kind":"allow_once"},{"optionId":"allow-always","name":"Yes, allow all edits during this session","kind":"allow_always"},{"optionId":"reject","name":"No","kind":"reject_once"}]}}""");
+                            break;
+                        }
                         if (text == "swap" && SessionFolder is { } swapped)
                         {
                             await Edit(writer, "call_6", Path.Combine(swapped, "hello.txt"), "hi\n");
@@ -793,6 +850,24 @@ public sealed class ChatTests
                             waiting = null;
                         }
                         break;
+                    case null when message["id"]?.ToJsonString() == "\"ask_edit\"" && SessionFolder is { } edited:
+                        JsonNode? said = message["result"]?["outcome"];
+                        Answered = said?["outcome"]?.GetValue<string>() == "cancelled" ? "cancelled" : said?["optionId"]?.GetValue<string>();
+                        bool allowed = Answered is "allow-once" or "allow-always";
+                        if (allowed)
+                        {
+                            string hello = Path.Combine(edited, "hello.txt");
+                            await BeforeWrite(hello);
+                            await File.WriteAllTextAsync(hello, "hello\nworld\n");
+                        }
+                        if (waiting is not null)
+                        {
+                            await Update(writer, $$$"""{"toolCallId":"call_7","sessionUpdate":"tool_call_update","status":"{{{(allowed ? "completed" : "failed")}}}"}""");
+                            await Say(writer, allowed ? "Added world." : "Left it.");
+                            await Answer(writer, waiting, """{"stopReason":"end_turn"}""");
+                            waiting = null;
+                        }
+                        break;
                     case string when message["id"] is not null:
                         await writer.WriteLineAsync($$$"""{"jsonrpc":"2.0","id":{{{id}}},"error":{"code":-32601,"message":"not played"}}""");
                         break;
@@ -801,7 +876,7 @@ public sealed class ChatTests
         }
 
         /// <summary>Whether it has a question open, whose answer ends the turn rather than session/cancel.</summary>
-        private bool Asked => Prompts.LastOrDefault() is "write" or "plan";
+        private bool Asked => Prompts.LastOrDefault() is "write" or "plan" or "ask";
 
         /// <summary>An edit as the Claude adapter sends one in Accept edits mode: its call, then the file it names, then,
         /// once written, done.</summary>
