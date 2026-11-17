@@ -228,7 +228,7 @@ public sealed class ChatTests
     /// <summary>hello.txt opened from its edit's line, its one stretch's Keep and Undo shown at its end.</summary>
     private static EditorGroup HelloWithItsStretch(MainWindow window)
     {
-        Ui.Click(window.Chat.Tools.First(tool => tool.Title == "Write hello.txt").GetVisualDescendants().OfType<Button>().First(b => b.IsVisible));
+        Ui.Click(window.Chat.Tools.First(tool => tool.Title == "Write hello.txt").Snippet!);
         Ui.WaitFor(() => window.EditorArea.ActiveGroup.HunkBars.Count == 1 && Path.GetFileName(window.EditorArea.Active?.Path) == "hello.txt", "hello.txt's stretch with its Keep and Undo");
         EditorGroup group = window.EditorArea.ActiveGroup;
         Assert.True(group.HunkBars.Single().Bar.IsEffectivelyVisible, "The stretch's Keep and Undo are out of sight");
@@ -527,7 +527,12 @@ public sealed class ChatTests
         Ui.WaitFor(() => !window.Chat.Busy && window.Chat.Review.Shown.Count == 2, "both edits in review");
 
         ToolLine line = window.Chat.Tools.First(tool => tool.Title == "Write hello.txt");
-        Ui.Click(line.GetVisualDescendants().OfType<Button>().First(b => b.IsVisible));
+        // A done edit shows as its snippet, as Cursor's: the file's name and counts, then its changed lines numbered.
+        Button snippet = line.Snippet!;
+        Assert.Contains(snippet.GetVisualDescendants().OfType<TextBlock>(), text => text.Text == "hello.txt");
+        Assert.Contains(snippet.GetVisualDescendants().OfType<TextBlock>(), text => text.Text == "world");
+        Assert.Contains(snippet.GetVisualDescendants().OfType<TextBlock>(), text => text.Text == "2");
+        Ui.Click(snippet);
         Ui.WaitFor(() => window.EditorArea.Active?.Decorations.ReviewMarks.Count > 0, "hello.txt's changes marked");
 
         Assert.Equal("hello.txt", Path.GetFileName(window.EditorArea.Active?.Path));

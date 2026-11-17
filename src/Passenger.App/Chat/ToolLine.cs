@@ -44,7 +44,25 @@ public sealed class ToolLine : DockPanel
     public string Status => status;
 
     /// <summary>What the edit added and removed, once counted: "+115 −0".</summary>
-    public string? Counts => added.IsVisible ? $"{added.Text} {removed.Text}" : null;
+    public string? Counts => counted ? $"{added.Text} {removed.Text}" : null;
+
+    private bool counted;
+
+    /// <summary>The done edit's snippet in its place, null while it shows none.</summary>
+    public Button? Snippet { get; private set; }
+
+    /// <summary>Shows a done edit as Cursor does, its snippet (<see cref="ChatDiff.Snippet"/>) in place of its line; a
+    /// click on it opens the file.</summary>
+    public void ShowSnippet(Button snippet)
+    {
+        foreach (Control child in Children)
+        {
+            child.IsVisible = false;
+        }
+        snippet.Click += (_, _) => DiffRequested?.Invoke(this, EventArgs.Empty);
+        Snippet = snippet;
+        Children.Add(snippet);
+    }
 
     /// <summary>The call as it stands now.</summary>
     public void Show(ToolCall call)
@@ -69,6 +87,7 @@ public sealed class ToolLine : DockPanel
     /// <summary>Shows what the edit added and removed, its title then opening its file.</summary>
     public void Counted(int add, int remove)
     {
+        counted = true;
         added.Text = $"+{add}";
         removed.Text = $"−{remove}";
         added.IsVisible = removed.IsVisible = true;

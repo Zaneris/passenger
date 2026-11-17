@@ -25,6 +25,90 @@ public static class ChatDiff
         return (hunks.Sum(hunk => hunk.NewCount), hunks.Sum(hunk => hunk.OldCount));
     }
 
+    /// <summary>The most lines a snippet of a done edit shows.</summary>
+    public const int SnippetLines = 4;
+
+    /// <summary>A done edit as Cursor shows it in the reply: the file's icon, name and what it added and removed, then the
+    /// first lines it changed, each with its number and its added or deleted ground, in the editor's font. The whole of it
+    /// is a button, which opens the file.</summary>
+    public static Button Snippet(ChatChange change, int added, int removed)
+    {
+        string name = System.IO.Path.GetFileName(change.Path);
+        RowIcon icon = new()
+        {
+            Data = Explorer.FileIcons.ForFile(change.Path),
+            Foreground = Explorer.FileIcons.BrushForFile(change.Path),
+            Width = 14,
+            Height = 14,
+            Margin = new Thickness(0, 0, 6, 0),
+            VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center,
+        };
+        StackPanel heading = new() { Orientation = Avalonia.Layout.Orientation.Horizontal, Spacing = 6, Margin = new Thickness(8, 4) };
+        heading.Children.Add(icon);
+        heading.Children.Add(new TextBlock { Text = name, VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center });
+        heading.Children.Add(Coloured($"+{added}", TokenKeys.Vcs_Added));
+        if (removed > 0)
+        {
+            heading.Children.Add(Coloured($"−{removed}", TokenKeys.Vcs_Deleted));
+        }
+        StackPanel lines = new();
+        string[] before = LineDiff.Lines(change.Before);
+        string[] after = LineDiff.Lines(change.After);
+        if (LineDiff.Hunks(before, after).FirstOrDefault() is { } hunk)
+        {
+            int shown = 0;
+            if (hunk.OldStart > 0 && hunk.NewStart > 0)
+            {
+                Row(hunk.NewStart, " ", after[hunk.NewStart - 1], null);
+            }
+            for (int i = 0; i < hunk.OldCount && shown < SnippetLines; i++)
+            {
+                Row(hunk.OldStart + i + 1, "-", before[hunk.OldStart + i], TokenKeys.Diff_Deleted);
+            }
+            for (int i = 0; i < hunk.NewCount && shown < SnippetLines; i++)
+            {
+                Row(hunk.NewStart + i + 1, "+", after[hunk.NewStart + i], TokenKeys.Diff_Added);
+            }
+
+            void Row(int number, string mark, string text, string? ground)
+            {
+                shown++;
+                TextBlock place = new TextBlock { Classes = { StyleClasses.Muted }, Text = number.ToString(System.Globalization.CultureInfo.InvariantCulture), Width = 36, TextAlignment = TextAlignment.Right, Margin = new Thickness(0, 0, 8, 0), FontSize = 12 }.InCodeFont();
+                DockPanel.SetDock(place, Dock.Left);
+                TextBlock marked = new TextBlock { Text = mark, Width = 14, FontSize = 12 }.InCodeFont();
+                DockPanel.SetDock(marked, Dock.Left);
+                TextBlock words = new TextBlock { Text = text, FontSize = 12, TextTrimming = TextTrimming.CharacterEllipsis }.InCodeFont();
+                DockPanel row = new() { Children = { place, marked, words } };
+                if (ground is not null)
+                {
+                    row.Bind(Panel.BackgroundProperty, row.GetResourceObservable(ground));
+                }
+                lines.Children.Add(row);
+            }
+        }
+        Border frame = new()
+        {
+            Classes = { StyleClasses.Framed },
+            Child = new StackPanel { Children = { heading, new Border { Classes = { StyleClasses.Code }, Child = lines, IsVisible = lines.Children.Count > 0 } } },
+        };
+        Button snippet = new()
+        {
+            Classes = { StyleClasses.TextLink },
+            Content = frame,
+            HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Stretch,
+            HorizontalContentAlignment = Avalonia.Layout.HorizontalAlignment.Stretch,
+        };
+        ToolTip.SetTip(snippet, $"Open {change.Path} with the agent's changes marked");
+        return snippet;
+    }
+
+    private static TextBlock Coloured(string text, string colour)
+    {
+        TextBlock counted = new() { Text = text, FontSize = 11, VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center };
+        counted.Bind(TextBlock.ForegroundProperty, counted.GetResourceObservable(colour));
+        return counted;
+    }
+
     /// <summary>The change's lines, framed in the editor's font.</summary>
     public static Control View(ChatChange change)
     {

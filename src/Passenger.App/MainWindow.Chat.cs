@@ -613,7 +613,8 @@ public partial class MainWindow
                 view.Tool(shown);
                 if (done)
                 {
-                    view.Counted(call.Id, these.Sum(file => file.Added), these.Sum(file => file.Removed));
+                    view.Counted(call.Id, these.Sum(file => file.Added), these.Sum(file => file.Removed),
+                        these is [{ } one] ? new ChatChange(one.Path, one.BeforeText, one.AfterText, one.IsNew) : null);
                     ShowReview(view);
                     if (!answered)
                     {

@@ -428,12 +428,16 @@ public sealed class ChatView : DockPanel
         return mode.Choices[(at + 1) % mode.Choices.Count].Value;
     }
 
-    /// <summary>What an edit's tool call added and removed, on its line.</summary>
-    public void Counted(string toolCallId, int added, int removed)
+    /// <summary>What an edit's tool call added and removed, on its line, and, for one file, its snippet in the line's place.</summary>
+    public void Counted(string toolCallId, int added, int removed, ChatChange? change = null)
     {
         if (tools.TryGetValue(toolCallId, out ToolLine? line))
         {
             line.Counted(added, removed);
+            if (change is not null && line.Snippet is null)
+            {
+                line.ShowSnippet(ChatDiff.Snippet(change, added, removed));
+            }
         }
     }
 
