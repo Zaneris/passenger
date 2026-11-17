@@ -6,8 +6,8 @@ namespace Passenger.Debugger.Relay;
 
 /// <summary>A module's image in another process's memory, and its metadata found there, read a piece at a time: the
 /// image is either laid out as the file is or mapped by section, so both places of the CLI header are tried, and the one
-/// whose metadata starts with its signature is taken. An image is read only as long as its own headers lay it out, each
-/// read within what one answer of the relay carries.</summary>
+/// whose metadata starts with its signature is taken. An image is read only as long as its own headers lay it out, and its
+/// metadata only where it lies within the image, each read within what one answer of the relay carries.</summary>
 internal static class ModuleImages
 {
     private const uint MetadataSignature = 0x424A5342;
@@ -27,10 +27,9 @@ internal static class ModuleImages
             return process.TryReadMemory(new CORDB_ADDRESS(at), (uint)count, bytes, out nuint read) >= 0 && read == (nuint)count ? bytes : null;
         }, out why, piece);
 
-    /// <summary>The image at <paramref name="image"/>, said to take <paramref name="length"/> bytes, read a piece at a time,
-    /// each no longer than what came before it nor than <paramref name="piece"/>, so what is held grows only with what came;
-    /// null, saying why, where its headers are no PE image's, the length runs past what they lay out, or a piece cannot be
-    /// read.</summary>
+    /// <summary>The image at <paramref name="image"/>, said to take <paramref name="length"/> bytes, read a piece at a time
+    /// (<see cref="Pieces"/>); null, saying why, where its headers are no PE image's, the length runs past what they lay out,
+    /// or a piece cannot be read.</summary>
     public static byte[]? Image(ulong image, uint length, Func<ulong, int, byte[]?> read, out string? why, int piece = Piece)
     {
         byte[]? headers = read(image, (int)Math.Min(length, HeadersRead));
@@ -44,25 +43,83 @@ internal static class ModuleImages
             why = string.Create(CultureInfo.InvariantCulture, $"it is said to take {length:N0} bytes, past the {layout.Longest:N0} its headers lay out");
             return null;
         }
-        List<byte[]> pieces = [headers];
-        long at = headers.Length;
-        while (at < length)
+        if (Pieces(image, length, headers, read, piece, out long came) is not { } whole)
         {
-            int count = (int)Math.Min(Math.Min(piece, Math.Max(at, HeadersRead)), length - at);
-            if (read(image + (ulong)at, count) is not { } more || more.Length != count)
+            why = string.Create(CultureInfo.InvariantCulture, $"its memory could not be read past {came:N0} of its {length:N0} bytes");
+            return null;
+        }
+        why = null;
+        return whole;
+    }
+
+    /// <summary>The metadata of the image at <paramref name="image"/>, said to take <paramref name="length"/> bytes: where
+    /// its CLI header says, in the image laid out as its file or mapped by section, the place whose first piece starts with
+    /// the metadata's signature, read a piece at a time (<see cref="Pieces"/>). Null where none is found, or, saying why
+    /// (<paramref name="refused"/>), where the size its CLI header gives runs past the image or its memory ends first.</summary>
+    public static byte[]? Metadata(ulong image, uint length, Func<ulong, int, byte[]?> read, out string? refused, int piece = Piece)
+    {
+        refused = null;
+        if (read(image, (int)Math.Min(length, HeadersRead)) is not { } headers || LayoutOf(headers) is not { } layout)
+        {
+            return null;
+        }
+        long end = Math.Min(length, layout.Longest);
+        foreach (bool mapped in (bool[])[true, false])
+        {
+            if (Place(layout.CliRva, mapped, layout.Sections) is not { } cliAt || (long)cliAt + 16 > end || read(image + cliAt, 16) is not { Length: 16 } cli)
             {
-                why = string.Create(CultureInfo.InvariantCulture, $"its memory could not be read past {at:N0} of its {length:N0} bytes");
+                continue;
+            }
+            uint metadataRva = BinaryPrimitives.ReadUInt32LittleEndian(cli.AsSpan(8));
+            uint metadataSize = BinaryPrimitives.ReadUInt32LittleEndian(cli.AsSpan(12));
+            if (metadataSize < 4 || Place(metadataRva, mapped, layout.Sections) is not { } metadataAt || (long)metadataAt + 4 > end)
+            {
+                continue;
+            }
+            int first = (int)Math.Min(Math.Min(metadataSize, HeadersRead), end - (long)metadataAt);
+            if (read(image + metadataAt, first) is not { } start || start.Length != first || BinaryPrimitives.ReadUInt32LittleEndian(start) != MetadataSignature)
+            {
+                continue;
+            }
+            if ((long)metadataAt + metadataSize > end)
+            {
+                refused = string.Create(CultureInfo.InvariantCulture,
+                    $"its CLI header says its metadata takes {metadataSize:N0} bytes from {metadataAt:N0}, past the image's {end:N0}");
+                return null;
+            }
+            if (Pieces(image + metadataAt, metadataSize, start, read, piece, out long came) is not { } metadata)
+            {
+                refused = string.Create(CultureInfo.InvariantCulture, $"its memory could not be read past {came:N0} of its metadata's {metadataSize:N0} bytes");
+                return null;
+            }
+            return metadata;
+        }
+        return null;
+    }
+
+    /// <summary>The <paramref name="length"/> bytes at <paramref name="at"/>, the first of them read already
+    /// (<paramref name="first"/>) and the rest a piece at a time, each no longer than what came before it nor than
+    /// <paramref name="piece"/>, so what is held grows only with what came; null where a piece cannot be read,
+    /// <paramref name="came"/> saying how many bytes did.</summary>
+    private static byte[]? Pieces(ulong at, long length, byte[] first, Func<ulong, int, byte[]?> read, int piece, out long came)
+    {
+        List<byte[]> pieces = [first];
+        came = first.Length;
+        while (came < length)
+        {
+            int count = (int)Math.Min(Math.Min(piece, Math.Max(came, HeadersRead)), length - came);
+            if (read(at + (ulong)came, count) is not { } more || more.Length != count)
+            {
                 return null;
             }
             pieces.Add(more);
-            at += count;
+            came += count;
         }
-        why = null;
         if (pieces.Count == 1)
         {
-            return headers;
+            return first;
         }
-        byte[] whole = new byte[at];
+        byte[] whole = new byte[came];
         int filled = 0;
         foreach (byte[] each in pieces)
         {
@@ -70,33 +127,6 @@ internal static class ModuleImages
             filled += each.Length;
         }
         return whole;
-    }
-
-    /// <summary>The metadata of the image at <paramref name="image"/>, or null where none is found.</summary>
-    public static byte[]? Metadata(ulong image, uint length, Func<ulong, int, byte[]?> read)
-    {
-        if (read(image, (int)Math.Min(length, HeadersRead)) is not { } headers || LayoutOf(headers) is not { } layout)
-        {
-            return null;
-        }
-        foreach (bool mapped in (bool[])[true, false])
-        {
-            if (Place(layout.CliRva, mapped, layout.Sections) is not { } cliAt || read(image + cliAt, 16) is not { Length: 16 } cli)
-            {
-                continue;
-            }
-            uint metadataRva = BinaryPrimitives.ReadUInt32LittleEndian(cli.AsSpan(8));
-            int metadataSize = BinaryPrimitives.ReadInt32LittleEndian(cli.AsSpan(12));
-            if (metadataSize <= 0 || metadataSize > length || Place(metadataRva, mapped, layout.Sections) is not { } metadataAt)
-            {
-                continue;
-            }
-            if (read(image + metadataAt, metadataSize) is { } metadata && metadata.Length == metadataSize && BinaryPrimitives.ReadUInt32LittleEndian(metadata) == MetadataSignature)
-            {
-                return metadata;
-            }
-        }
-        return null;
     }
 
     /// <summary>A PE image's headers as read: where its CLI header lies, its sections (each one's place mapped, its size

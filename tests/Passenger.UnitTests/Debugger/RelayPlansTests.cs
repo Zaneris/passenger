@@ -98,7 +98,7 @@ public class RelayPlansTests
     }
 
     [Fact]
-    public void A_modules_metadata_is_found_in_its_image_laid_out_as_its_file_or_mapped_by_section()
+    public void A_modules_metadata_is_found_in_its_image_laid_out_as_its_file_or_mapped_by_section_and_read_in_pieces_each_no_longer_than_what_came_before()
     {
         byte[] file = File.ReadAllBytes(typeof(RelayPlansTests).Assembly.Location);
         using System.Reflection.PortableExecutable.PEReader reader = new(new MemoryStream(file));
@@ -112,9 +112,24 @@ public class RelayPlansTests
         foreach ((string layout, byte[] image) in (IEnumerable<(string, byte[])>)[("as its file", file), ("mapped", mapped)])
         {
             const ulong at = 0x7000_0000;
+            const int Piece = 16 * 1024;
+            ulong metadataAt = 0;
+            List<int> reads = [];
             byte[]? read = ModuleImages.Metadata(at, (uint)image.Length, (address, count) =>
-                address >= at && address - at + (ulong)count <= (ulong)image.Length ? image.AsSpan((int)(address - at), count).ToArray() : null);
-            Assert.True(read is not null && read.SequenceEqual(expected), $"The metadata of an image laid out {layout} was not found");
+            {
+                if (metadataAt == 0 && count >= 4 && address >= at && address - at + (ulong)count <= (ulong)image.Length && image.AsSpan((int)(address - at), 4).SequenceEqual("BSJB"u8))
+                {
+                    metadataAt = address;
+                }
+                if (metadataAt != 0 && address >= metadataAt)
+                {
+                    reads.Add(count);
+                }
+                return address >= at && address - at + (ulong)count <= (ulong)image.Length ? image.AsSpan((int)(address - at), count).ToArray() : null;
+            }, out string? refused, Piece);
+            Assert.True(read is not null && read.SequenceEqual(expected), $"The metadata of an image laid out {layout} was not found: {refused}");
+            Assert.True(reads.Count > 2 && reads.Skip(1).Select((count, i) => count <= Piece && count <= reads.Take(i + 1).Sum()).All(held => held),
+                $"The metadata of an image laid out {layout} was read in pieces of {string.Join(", ", reads)} bytes, one longer than {Piece:N0} or than what came before it");
         }
     }
 

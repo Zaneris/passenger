@@ -276,6 +276,43 @@ public class RelayReferencesTests
         Assert.True(app.BrokenBy is null, $"The session did not go on past the refused module: {app.BrokenBy}");
     }
 
+    [Theory]
+    [InlineData(false, "past the image's")]
+    [InlineData(true, "could not be read past")]
+    public void A_modules_metadata_its_header_says_takes_100_MB_is_refused_once_saying_why_with_nothing_held_for_it_and_the_session_goes_on(bool laidOut, string why)
+    {
+        // The app's memory holds the image and 8 KB after it, then ends; the image's CLI header says its metadata takes 100 MB.
+        (byte[] plugin, _) = Plugin();
+        byte[] image = [.. plugin, .. new byte[8192]];
+        const uint Claimed = 100 << 20;
+        using (PEReader pe = new(ImmutableArray.Create(plugin)))
+        {
+            BinaryPrimitives.WriteUInt32LittleEndian(image.AsSpan(pe.PEHeaders.CorHeaderStartOffset + 12), Claimed);
+        }
+        uint? size = null;
+        if (laidOut)
+        {
+            // The module says it takes 200 MB and its headers lay that out: only its memory says otherwise.
+            size = 2 * Claimed;
+            BinaryPrimitives.WriteUInt32LittleEndian(image.AsSpan(BinaryPrimitives.ReadInt32LittleEndian(image.AsSpan(0x3C)) + 24 + 56), size.Value);
+        }
+        App app = new() { ModuleName = "/data/user/0/com.shop/files/plugins/Plugin.dll", Image = image, ImageSize = size };
+        List<string> said = [];
+        RelaySession session = new(app, new DeviceModules(null), said.Add);
+        ICorDebugModule module = Module(session);
+        Guid import = typeof(IMetaDataImport).GUID;
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        int first = module.TryGetMetaDataInterface(ref import, out object? _);
+        long held = GC.GetAllocatedBytesForCurrentThread() - before;
+        int reads = app.Reads;
+        int again = module.TryGetMetaDataInterface(ref import, out object? _);
+        Assert.True(first < 0 && again == first, $"Metadata its header says takes {Claimed:N0} bytes, in an image of {image.Length:N0}, was opened: 0x{first:X8}, then 0x{again:X8}");
+        Assert.True(said.Count(each => each.Contains(why, StringComparison.Ordinal)) == 1 && app.Reads == reads,
+            $"The refused module's memory was read again ({app.Reads - reads} reads) or its refusal ({why}) said other than once: {string.Join(" | ", said)}");
+        Assert.True(held < 1 << 20, $"Reading metadata said to take {Claimed:N0} bytes, in an image of {image.Length:N0}, took {held:N0} bytes, as if its header's word were its size");
+        Assert.True(app.BrokenBy is null && GenericValue(session).TryGetType(out _) == 0, $"The session did not go on past the refused module: {app.BrokenBy}");
+    }
+
     private static ICorDebugModule Module(RelaySession session) =>
         (ICorDebugModule)new StrategyBasedComWrappers().GetOrCreateObjectForComInstance(
             session.Take(new RemotePointer(App.ModuleAt, App.ModuleAt), RemoteInterfaces.Of(typeof(ICorDebugModule))), CreateObjectFlags.UniqueInstance);
@@ -531,6 +568,12 @@ public class RelayReferencesTests
                 Reads++;
                 ulong at = args[0].Value - ImageAt;
                 int count = (int)args[1].Value;
+                if (count > RelayConnection.LongestFrame - 64)
+                {
+                    // An answer carrying them would run past the relay's longest frame, which ends the session.
+                    Broken($"it was asked to read {count:N0} bytes, more than any answer of its carries");
+                    return new RelayReply(unchecked((int)0x80004005), [[], new byte[8]], []);
+                }
                 return args[0].Value >= ImageAt && at + (ulong)count <= (ulong)image.Length
                     ? new RelayReply(0, [image.AsSpan((int)at, count).ToArray(), BitConverter.GetBytes((ulong)count)], [])
                     : new RelayReply(unchecked((int)0x80004005), [new byte[count], new byte[8]], []);

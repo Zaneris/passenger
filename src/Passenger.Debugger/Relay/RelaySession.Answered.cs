@@ -236,8 +236,9 @@ internal sealed unsafe partial class RelaySession
 
     /// <summary>The metadata of a module the host has no copy of (loaded from bytes, or from somewhere the build did not
     /// put it), read out of its image in the app's memory and opened on the host, so no metadata pointer of the app's
-    /// reaches the engine. A dynamic module has no image to read; one whose metadata is not laid out as a module's
-    /// (<see cref="DeviceMetadata"/>) is refused, said once, and answered as corrupt from then on.</summary>
+    /// reaches the engine. A dynamic module has no image to read; one whose metadata its image does not hold whole
+    /// (<see cref="ModuleImages.Metadata"/>) or is not laid out as a module's (<see cref="DeviceMetadata"/>) is refused, said
+    /// once, and answered as corrupt from then on.</summary>
     private int MetadataFromApp(StandIn module, Guid* iid, nint* result)
     {
         *result = 0;
@@ -263,7 +264,13 @@ internal sealed unsafe partial class RelaySession
             }
             ulong image = BinaryPrimitives.ReadUInt64LittleEndian(where.Outs[0]);
             uint length = BinaryPrimitives.ReadUInt32LittleEndian(size.Outs[0]);
-            byte[]? metadata = ModuleImages.Metadata(image, length, (address, count) => ReadMemory(processPointer, address, count));
+            byte[]? metadata = ModuleImages.Metadata(image, length, (address, count) => ReadMemory(processPointer, address, count), out string? unread);
+            if (unread is not null)
+            {
+                _metadataRefused[module.Owner.Identity] = true;
+                _log?.Invoke($"The metadata of the module at 0x{image:x} is not read, so nothing is read of its types: {unread}");
+                return CLDB_E_FILE_CORRUPT;
+            }
             if (metadata is null)
             {
                 _log?.Invoke($"No metadata found in the module's image at 0x{image:x} ({length} bytes)");
