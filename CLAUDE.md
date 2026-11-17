@@ -728,8 +728,7 @@ a new name, and `just site-shots` retakes its images.
   both and the Linux natives; the tests' Avalonia apps keep Avalonia's, `tests/AvaloniaGraphs/Avalonia12`): a move checks
   that every member Avalonia.Skia, Avalonia.HarfBuzz and Avalonia.Controls.Maui call still resolves. Svg.Skia's `SKSvg`
   disposes its picture, so a picture is never let go while a frame may still draw it.
-- **HarfBuzz applies a font's 'trak' itself** (at 12 pt when told no size, a lone track too: PingFang's CJK 2% wider than Core Text sets it, accepted, harfbuzz/harfbuzz#6671), where Core Text takes the
-  normal track alone: the window's letter spacing makes up only the difference (`FontTracking.Shaped`).
+- **HarfBuzz applies a font's 'trak' itself** where the face has `STAT` too, at 12 pt whatever the size (Avalonia gives it none), a lone track too; macOS, by name, applies only a `STAT` face's normal track at the size (harfbuzz/harfbuzz#6671): each face `FallbackFonts` gives has HarfBuzz's tracking taken off its advances (`FaceTracking.Set`, the hook `FallbackFonts.Install` takes), and the window's letter spacing is the normal track alone (`FaceTracking.SpacingAt`). Avalonia 12 lets no app implement its text shaper (`ITextShaperImpl` is not client-implementable).
 - **Avalonia's Skia context of a bitmap above 96 DPI** reads its transform back with the DPI in it once a clip or layer
   is popped (AvaloniaUI#20693), so a transform pushed after (every text run's) is scaled twice: an immediate drawing at a
   scale goes into a 96-DPI bitmap under a scale transform (`Pictures.Take`).
