@@ -540,14 +540,23 @@ public sealed class ChatTests
         window.EditorArea.Documents.FirstOrDefault(document => ChatProposals.IsCopy(document.Path));
 
     [AvaloniaFact]
-    public void The_agents_to_dos_are_pinned_above_the_box()
+    public void The_agents_to_dos_are_pinned_at_the_top_one_line_that_opens_and_name_the_plan_being_built()
     {
         MainWindow window = Reviewing(out StandInAgent agent, out _);
         Send(window, "plan");
-        Ui.WaitFor(() => window.Chat.Todos.IsVisible, "the to-dos");
+        Ui.WaitFor(() => window.Chat.Todos.IsVisible && window.Chat.Questions.Any(), "the to-dos and the plan's card");
 
-        Assert.Equal("To-dos 1/3", window.Chat.Todos.Count);
-        Assert.Equal(["completed", "in_progress", "pending"], window.Chat.Todos.Entries.Select(entry => entry.Status));
+        TodoBar todos = window.Chat.Todos;
+        Assert.Equal("1 of 3 To-dos Completed", todos.Count);
+        Assert.Equal(["completed", "in_progress", "pending"], todos.Entries.Select(entry => entry.Status));
+        Assert.True(todos.Bounds.Y < window.Chat.Review.Bounds.Y || !window.Chat.Review.IsVisible, "The to-dos are not pinned at the top");
+        Assert.False(todos.IsOpen, "The to-dos list their steps before they are asked to");
+        Ui.Click(todos.GetVisualDescendants().OfType<Button>().First());
+        Assert.True(todos.IsOpen);
+
+        Ui.Click(InCard(window.Chat.Questions.Single(), "Build"));
+        Ui.WaitFor(() => !window.Chat.Busy, "the turn ended");
+        Assert.Equal("Add a math class", todos.Built);
         window.Close();
     }
 

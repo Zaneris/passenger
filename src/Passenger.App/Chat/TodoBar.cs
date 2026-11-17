@@ -6,15 +6,19 @@ using Passenger.Acp;
 
 namespace Passenger.App.Chat;
 
-/// <summary>The agent's to-do list above the box, as Cursor pins it: "To-dos 2/5" and the step it is on, then each step
-/// with a ring while it is worked on, a check once done (its words struck through) and a circle while it waits; Show and
-/// Hide fold the list. Each update of the agent's replaces the whole list; an empty one hides the bar.</summary>
+/// <summary>The agent's to-do list pinned at the top of the conversation, as Cursor pins it while it builds: "Build" and
+/// the plan's title once a plan is built, then "1 of 3 To-dos Completed" and the step it is on, which a click opens into
+/// each step with a ring while it is worked on, a check once done (its words struck through) and a circle while it
+/// waits. Each update of the agent's replaces the whole list; an empty one hides it.</summary>
 public sealed class TodoBar : Border
 {
-    private readonly TextBlock count = new() { FontWeight = FontWeight.SemiBold, VerticalAlignment = VerticalAlignment.Center };
-    private readonly TextBlock current = new() { Classes = { StyleClasses.Muted }, Margin = new Thickness(8, 0), TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center };
-    private readonly Button fold = new() { Classes = { StyleClasses.Link }, Content = "Hide", VerticalAlignment = VerticalAlignment.Center };
-    private readonly StackPanel steps = new() { Spacing = 2, Margin = new Thickness(0, 4, 0, 0) };
+    private readonly TextBlock built = new() { FontWeight = FontWeight.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center };
+    private readonly DockPanel building;
+    private readonly TextBlock count = new() { VerticalAlignment = VerticalAlignment.Center };
+    private readonly TextBlock current = new() { Classes = { StyleClasses.Muted }, Margin = new Thickness(8, 0, 0, 0), TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center };
+    private readonly RowIcon chevron = new() { DataKey = IconKeys.ChevronRight, ForegroundKey = TokenKeys.TextMuted, Width = 12, Height = 12, Margin = new Thickness(0, 0, 6, 0), VerticalAlignment = VerticalAlignment.Center };
+    private readonly StackPanel steps = new() { Spacing = 2, Margin = new Thickness(18, 4, 0, 0) };
+    private readonly ScrollViewer list;
     private IReadOnlyList<PlanEntry> entries = [];
 
     public TodoBar()
@@ -23,25 +27,49 @@ public sealed class TodoBar : Border
         Padding = new Thickness(8, 6);
         Margin = new Thickness(12, 0, 12, 6);
         IsVisible = false;
-        fold.Click += (_, _) =>
-        {
-            steps.IsVisible = !steps.IsVisible;
-            fold.Content = steps.IsVisible ? "Hide" : "Show";
-        };
-        DockPanel heading = new();
-        DockPanel.SetDock(fold, Dock.Right);
+        TextBlock word = new() { Text = "Build", FontWeight = FontWeight.SemiBold, Margin = new Thickness(0, 0, 8, 0), VerticalAlignment = VerticalAlignment.Center };
+        RowIcon icon = new() { DataKey = IconKeys.DocumentText, ForegroundKey = TokenKeys.TextMuted, Width = 14, Height = 14, Margin = new Thickness(0, 0, 6, 0), VerticalAlignment = VerticalAlignment.Center };
+        DockPanel.SetDock(word, Dock.Left);
+        DockPanel.SetDock(icon, Dock.Left);
+        building = new DockPanel { IsVisible = false, Margin = new Thickness(0, 0, 0, 4), Children = { word, icon, built } };
+        list = new ScrollViewer { MaxHeight = 160, Content = steps, IsVisible = false };
+        DockPanel.SetDock(chevron, Dock.Left);
         DockPanel.SetDock(count, Dock.Left);
-        heading.Children.Add(fold);
-        heading.Children.Add(count);
-        heading.Children.Add(current);
-        Child = new StackPanel { Children = { heading, new ScrollViewer { MaxHeight = 160, Content = steps } } };
+        Button fold = new()
+        {
+            Classes = { StyleClasses.TextLink },
+            Content = new DockPanel { Children = { chevron, count, current } },
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+        };
+        fold.Click += (_, _) => Open(!list.IsVisible);
+        Child = new StackPanel { Children = { building, fold, list } };
     }
 
-    /// <summary>What its heading says: "To-dos 2/5".</summary>
+    /// <summary>What its line says: "1 of 3 To-dos Completed".</summary>
     public string Count => count.Text ?? string.Empty;
+
+    /// <summary>The plan being built, as its line names it; null while none is.</summary>
+    public string? Built => building.IsVisible ? built.Text : null;
 
     /// <summary>The steps it lists, each with its status.</summary>
     public IReadOnlyList<PlanEntry> Entries => entries;
+
+    /// <summary>Whether it lists its steps, rather than its one line.</summary>
+    public bool IsOpen => list.IsVisible;
+
+    /// <summary>A plan is being built: its title over the steps, as Cursor's "Build · Seed a second User account".</summary>
+    public void Building(string title)
+    {
+        built.Text = title;
+        building.IsVisible = true;
+    }
+
+    /// <summary>Opens the list of steps, or folds it to its one line.</summary>
+    public void Open(bool listed)
+    {
+        list.IsVisible = listed;
+        chevron.DataKey = listed ? IconKeys.ChevronDown : IconKeys.ChevronRight;
+    }
 
     /// <summary>The agent's list as it is now.</summary>
     public void Show(IReadOnlyList<PlanEntry> list)
@@ -49,9 +77,9 @@ public sealed class TodoBar : Border
         entries = list;
         IsVisible = list.Count > 0;
         int done = list.Count(entry => entry.Status == "completed");
-        count.Text = $"To-dos {done}/{list.Count}";
+        count.Text = $"{done} of {list.Count} To-dos Completed";
         PlanEntry? working = list.FirstOrDefault(entry => entry.Status == "in_progress") ?? list.FirstOrDefault(entry => entry.Status == "pending");
-        current.Text = working is null ? "All done" : working.Content;
+        current.Text = working?.Content;
         steps.Children.Clear();
         foreach (PlanEntry entry in list)
         {

@@ -646,6 +646,7 @@ public partial class MainWindow
             }
             if (plan is not null && answer is not null && request.Options.Any(option => option.Id == answer && option.Kind.StartsWith("allow", StringComparison.Ordinal)))
             {
+                OnWindowThread(() => view.Todos.Building(plan.Title));
                 await BuildEditedPlanAsync(agent, view, request.ToolCall.Id, plan);
             }
             return answer;

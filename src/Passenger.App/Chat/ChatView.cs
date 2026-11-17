@@ -139,11 +139,12 @@ public sealed class ChatView : DockPanel
         SetDock(header, Dock.Top);
         SetDock(composer, Dock.Bottom);
         SetDock(Review, Dock.Bottom);
-        SetDock(Todos, Dock.Bottom);
+        // Pinned at the top while the agent works through its to-dos, as Cursor pins its build.
+        SetDock(Todos, Dock.Top);
         Children.Add(header);
+        Children.Add(Todos);
         Children.Add(composer);
         Children.Add(Review);
-        Children.Add(Todos);
         Children.Add(new Panel { Children = { idle, conversation } });
     }
 
