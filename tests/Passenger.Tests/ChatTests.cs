@@ -193,6 +193,52 @@ public sealed class ChatTests
     }
 
     [AvaloniaFact]
+    public void A_stretchs_own_Keep_in_the_editor_keeps_it_and_the_file_leaves_the_review()
+    {
+        MainWindow window = Reviewing(out _, out string folder);
+        Send(window, "edit");
+        Ui.WaitFor(() => !window.Chat.Busy && window.Chat.Review.Shown.Count == 2, "both edits in review");
+        EditorGroup group = HelloWithItsStretch(window);
+
+        Ui.Click(InBar(group.HunkBars.Single().Bar, "Keep"));
+        Ui.WaitFor(() => window.Chat.Review.Shown.Count == 1, () => $"hello.txt kept, where the review lists {window.Chat.Review.Shown.Count}");
+
+        Assert.Equal("notes.md", Path.GetFileName(window.Chat.Review.Shown.Single().Path));
+        Assert.Equal("hello\nworld\n", File.ReadAllText(Path.Combine(folder, "hello.txt")));
+        Ui.WaitFor(() => Reviewed(window, "hello.txt")?.AgentReview is null && group.HunkBars.Count == 0, "hello.txt's marks gone once kept");
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void A_stretchs_own_Undo_in_the_editor_puts_it_back_and_saves_the_file()
+    {
+        MainWindow window = Reviewing(out _, out string folder);
+        Send(window, "edit");
+        Ui.WaitFor(() => !window.Chat.Busy && window.Chat.Review.Shown.Count == 2, "both edits in review");
+        EditorGroup group = HelloWithItsStretch(window);
+
+        Ui.Click(InBar(group.HunkBars.Single().Bar, "Undo"));
+        Ui.WaitFor(() => window.Chat.Review.Shown.Count == 1, () => $"hello.txt undone, where the review lists {window.Chat.Review.Shown.Count}");
+
+        Assert.Equal("hello\n", File.ReadAllText(Path.Combine(folder, "hello.txt")));
+        Assert.Equal("hello\n", Reviewed(window, "hello.txt")!.Text.Snapshot.ToString());
+        window.Close();
+    }
+
+    /// <summary>hello.txt opened from its edit's line, its one stretch's Keep and Undo shown at its end.</summary>
+    private static EditorGroup HelloWithItsStretch(MainWindow window)
+    {
+        Ui.Click(window.Chat.Tools.First(tool => tool.Title == "Write hello.txt").GetVisualDescendants().OfType<Button>().First(b => b.IsVisible));
+        Ui.WaitFor(() => window.EditorArea.ActiveGroup.HunkBars.Count == 1 && Path.GetFileName(window.EditorArea.Active?.Path) == "hello.txt", "hello.txt's stretch with its Keep and Undo");
+        EditorGroup group = window.EditorArea.ActiveGroup;
+        Assert.True(group.HunkBars.Single().Bar.IsEffectivelyVisible, "The stretch's Keep and Undo are out of sight");
+        return group;
+    }
+
+    private static Button InBar(Control bar, string content) =>
+        bar.GetVisualDescendants().OfType<Button>().First(b => Equals(b.Content, content));
+
+    [AvaloniaFact]
     public void The_review_bar_is_one_line_that_lists_its_files_on_a_click_and_Review_steps_through_them()
     {
         MainWindow window = Reviewing(out _, out _);

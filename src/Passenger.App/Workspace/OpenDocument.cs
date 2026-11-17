@@ -1629,7 +1629,15 @@ public sealed record NoticeAction(string Text, Action Run);
 /// <summary>An agent's changes to a file in review, as its banner offers them: what it says ("Claude Agent changed this
 /// file · +12 −3") and what Keep and Undo do.
 /// An edit the agent asks to make, not yet written, offers Accept and Reject in their place.</summary>
-public sealed record AgentReview(string Said, Action Keep, Action Undo, string KeepWord = "Keep", string UndoWord = "Undo");
+public sealed record AgentReview(string Said, Action Keep, Action Undo, string KeepWord = "Keep", string UndoWord = "Undo")
+{
+    /// <summary>Each stretch the agent changed, kept or undone alone at its end in the editor, as Cursor offers them.</summary>
+    public IReadOnlyList<ReviewHunk> Hunks { get; init; } = [];
+}
+
+/// <summary>A stretch of an agent's change in review: the line (from zero) its Keep and Undo stand under, or, where it only
+/// removed lines, above, and what each does.</summary>
+public sealed record ReviewHunk(int Line, bool Below, Action Keep, Action Undo);
 
 /// <summary>A file's length and last write time on disk, and when they were found.</summary>
 public readonly record struct DiskStamp(long Length, DateTime Written, DateTime Found)

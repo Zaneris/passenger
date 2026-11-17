@@ -1,3 +1,4 @@
+using System.Text;
 using Passenger.Core;
 using Passenger.Text;
 
@@ -73,6 +74,25 @@ public sealed class ChatReview
         }
     }
 
+    /// <summary>Part of the agent's change to a file was kept or undone: the review counts from <paramref name="then"/>
+    /// to <paramref name="now"/>, and the file leaves it once they are the same.</summary>
+    public void Rebase(string path, string then, string now)
+    {
+        string full = PathNames.Canonical(path);
+        lock (gate)
+        {
+            if (!files.TryGetValue(full, out Entry? entry))
+            {
+                return;
+            }
+            entry.Rebase(then, now);
+            if (then.ReplaceLineEndings("\n") == now.ReplaceLineEndings("\n"))
+            {
+                files.Remove(full);
+            }
+        }
+    }
+
     /// <summary>The file is kept, or was undone: it leaves the review.</summary>
     public void Done(string path)
     {
@@ -85,7 +105,17 @@ public sealed class ChatReview
     /// <summary>A file in review: its bytes then, text then and now, and what is told of it.</summary>
     private sealed class Entry(string path, byte[]? before, int order)
     {
+        private byte[]? before = before;
+
         public int Order { get; } = order;
+
+        /// <summary>Takes part of the change as kept or undone: the text the review counts from, and the text now.</summary>
+        public void Rebase(string then, string now)
+        {
+            byte[] preamble = before is [0xEF, 0xBB, 0xBF, ..] ? [0xEF, 0xBB, 0xBF] : [];
+            before = [.. preamble, .. Encoding.UTF8.GetBytes(then)];
+            After = now;
+        }
 
         public int Edits { get; set; } = 1;
 

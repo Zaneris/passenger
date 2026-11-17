@@ -259,6 +259,13 @@ public sealed partial class CodeEditor
     /// <summary>The bottom of a line's last row in the content.</summary>
     private double BottomOf(int line) => (RowOf(line) + Rows.RowsOf(line)) * metrics.LineHeight;
 
+    /// <summary>A line's top (from zero; the line count for the end of the text) where the editor shows it now, scrolled,
+    /// in its own coordinates: for what a host lays over a line.</summary>
+    public double ShownTopOf(int line) => line >= Document.Snapshot.LineCount ? ShownBottomOf(line) : TopOf(Math.Max(0, line)) - scroll.Y;
+
+    /// <summary>The bottom of a line's last row where the editor shows it now, scrolled, in its own coordinates.</summary>
+    public double ShownBottomOf(int line) => BottomOf(Math.Clamp(line, 0, Document.Snapshot.LineCount - 1)) - scroll.Y;
+
     /// <summary>The row at a height in the control.</summary>
     private int RowAtY(double y) => (int)Math.Floor((y + scroll.Y) / metrics.LineHeight);
 

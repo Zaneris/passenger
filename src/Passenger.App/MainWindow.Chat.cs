@@ -222,10 +222,18 @@ public partial class MainWindow
                 continue;
             }
             document.Decorations.SetReviewMarks(added, removed);
+            string shownText = text.ToString();
             document.AgentReview = new Workspace.AgentReview(
                 $"The agent changed this file ({Path.GetFileName(path)}: +{file.Added} −{file.Removed}), to keep or undo",
                 () => KeepChatFile(file),
-                () => UndoChatFile(file));
+                () => UndoChatFile(file))
+            {
+                Hunks = [.. LineDiff.Hunks(LineDiff.Lines(file.BeforeText), LineDiff.Lines(shownText)).Select(hunk => new Workspace.ReviewHunk(
+                    hunk.NewCount > 0 ? hunk.NewStart + hunk.NewCount - 1 : hunk.NewStart,
+                    hunk.NewCount > 0,
+                    () => KeepChatHunk(document, file, shownText, hunk),
+                    () => UndoChatHunk(document, file, shownText, hunk)))],
+            };
         }
     }
 
@@ -373,6 +381,52 @@ public partial class MainWindow
         {
             status.Text = $"{Path.GetFileName(full)} is not there";
         }
+    }
+
+    /// <summary>Keeps one stretch of the agent's change, from its Keep in the editor: the review counts from the text
+    /// before with that stretch as the agent left it. Nothing happens where the file changed since it was marked.</summary>
+    private void KeepChatHunk(Workspace.OpenDocument document, ReviewedFile file, string marked, DiffHunk hunk)
+    {
+        if (document.Text.Snapshot.ToString() != marked)
+        {
+            reviewMarking?.Restart();
+            return;
+        }
+        string[] then = LineDiff.Lines(file.BeforeText);
+        string[] now = LineDiff.Lines(marked);
+        string[] kept = [.. then[..hunk.OldStart], .. now[hunk.NewStart..(hunk.NewStart + hunk.NewCount)], .. then[(hunk.OldStart + hunk.OldCount)..]];
+        chatReview.Rebase(file.Path, Joined(kept, marked, file.BeforeText.EndsWith('\n') || hunk.OldStart + hunk.OldCount == then.Length), marked);
+        ShowReview(Chat);
+    }
+
+    /// <summary>Undoes one stretch of the agent's change, from its Undo in the editor: the file takes that stretch back as
+    /// it was, as one undoable step, saved, and the review counts to the text that leaves.</summary>
+    private void UndoChatHunk(Workspace.OpenDocument document, ReviewedFile file, string marked, DiffHunk hunk)
+    {
+        if (document.Text.Snapshot.ToString() != marked)
+        {
+            reviewMarking?.Restart();
+            return;
+        }
+        string[] then = LineDiff.Lines(file.BeforeText);
+        string[] now = LineDiff.Lines(marked);
+        string[] undone = [.. now[..hunk.NewStart], .. then[hunk.OldStart..(hunk.OldStart + hunk.OldCount)], .. now[(hunk.NewStart + hunk.NewCount)..]];
+        string text = Joined(undone, marked, marked.EndsWith('\n') || (hunk.NewStart + hunk.NewCount == now.Length && file.BeforeText.EndsWith('\n')));
+        document.Revert([.. document.HasBom ? document.Encoding.GetPreamble() : [], .. document.Encoding.GetBytes(text)]);
+        if (document.IsModified && !Editors.Save(document))
+        {
+            status.Text = $"Could not save {Path.GetFileName(file.Path)} with that change undone";
+            return;
+        }
+        chatReview.Rebase(file.Path, file.BeforeText, document.Text.Snapshot.ToString());
+        ShowReview(Chat);
+    }
+
+    /// <summary>Lines joined as <paramref name="like"/> breaks them ("\r\n" or "\n"), ending in a break where asked.</summary>
+    private static string Joined(string[] lines, string like, bool endsInBreak)
+    {
+        string separator = like.Contains("\r\n", StringComparison.Ordinal) ? "\r\n" : "\n";
+        return lines.Length == 0 ? string.Empty : string.Join(separator, lines) + (endsInBreak ? separator : string.Empty);
     }
 
     /// <summary>Keeps the agent's changes to a file, from its banner.</summary>
