@@ -206,7 +206,8 @@ public sealed class McpGodotTests : McpRig, IClassFixture<GodotGameFolder>
         JsonElement window = Assert.Single((await Call(client, McpTools.AppWindows)).GetProperty("windows").EnumerateArray());
         Assert.Equal("Window", window.GetProperty("type").GetString());
 
-        JsonElement main = await Call(client, McpTools.AppDetails, new() { ["control"] = "#Main", ["properties"] = "Greeting" });
+        // A node is found by a class its own derives from, its script's by the engine class the script extends.
+        JsonElement main = await Call(client, McpTools.AppDetails, new() { ["control"] = "Node#Main", ["properties"] = "Greeting" });
         JsonElement greeting = Assert.Single(main.GetProperty("properties").EnumerateArray(), p => p.GetProperty("name").GetString() == "Greeting");
         Assert.Equal("frame", greeting.GetProperty("value").GetString());
         Assert.EndsWith("Main.cs", main.GetProperty("xaml").GetString(), StringComparison.Ordinal);
@@ -214,7 +215,7 @@ public sealed class McpGodotTests : McpRig, IClassFixture<GodotGameFolder>
             StringComparison.Ordinal);
         await Until(async () => Text(await Call(client, McpTools.Output)).Contains("hello ", StringComparison.Ordinal), "the game to print the greeting set");
 
-        string clicked = await Game(client, McpTools.AppClick, new() { ["control"] = "#Toggle" });
+        string clicked = await Game(client, McpTools.AppClick, new() { ["control"] = "BaseButton#Toggle" });
         Assert.StartsWith("Clicked Button#Toggle @", clicked, StringComparison.Ordinal);
         await Until(async () => Text(await Call(client, McpTools.Output)).Contains("toggled on", StringComparison.Ordinal), $"the game to hear its button clicked ({clicked})");
         string typed = await Game(client, McpTools.AppType, new() { ["control"] = "#Field", ["text"] = "Ada" });

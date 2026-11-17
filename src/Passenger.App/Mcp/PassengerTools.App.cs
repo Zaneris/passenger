@@ -88,7 +88,7 @@ public sealed partial class PassengerTools
         "up a level) unless templates is true, and what a hidden element holds is counted unless hidden is true. control " +
         "starts the tree at an element, depth levels deep; filter lists only the elements a query finds, each with where it " +
         "is. Every window, unless one is named.\n" +
-        "Every app_ tool names an element (control, filter) by @N, an id shown here, or by a query: a type, #name, .class and " +
+        "Every app_ tool names an element (control, filter) by @N, an id shown here, or by a query: a type (or one it derives from), #name, .class and " +
         "\"text\" it shows (Button#Save, \"Save\", TextBlock.title), steps joined by / for one inside another (#Panel/Button), " +
         "[n] for the nth match; a template's part only by its #name or @N.")]
     public Task<string> AppTree(
@@ -115,7 +115,7 @@ public sealed partial class PassengerTools
             tree = await live!.AgentTreeAsync(properties ?? []);
         }
         string name = game?.Name ?? live!.Name;
-        List<AppNode> nodes = AppQuery.Flatten(tree.Roots);
+        List<AppNode> nodes = AppQuery.Flatten(tree);
         if (nodes.Count == 0)
         {
             return $"{name} has no window open";
@@ -561,7 +561,7 @@ public sealed partial class PassengerTools
     private async Task<(List<AppNode> Nodes, AppNode Window)> TreeOf(LiveApp live, string? window, CancellationToken cancel)
     {
         cancel.ThrowIfCancellationRequested();
-        List<AppNode> nodes = AppQuery.Flatten((await live.AgentTreeAsync([])).Roots);
+        List<AppNode> nodes = AppQuery.Flatten(await live.AgentTreeAsync([]));
         if (nodes.Count == 0)
         {
             throw new InvalidOperationException($"{live.Name} has no window open");

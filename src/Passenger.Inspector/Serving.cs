@@ -228,11 +228,15 @@ internal abstract class Inspecting<T>(Connection connection) where T : class
         });
     }
 
+    /// <summary>The tree asked for, watched from now; with an agent's look, also what each type it names derives from.</summary>
     private AppTree Watched(Request request)
     {
         watched = true;
         told = false;
-        return Tree(request);
+        AppTree tree = Tree(request);
+        return request.Layout == true
+            ? tree with { Bases = Words.BasesOf(AppTree.Walk(tree.Roots).Select(walked => Find(walked.Element.Id)?.GetType()).OfType<Type>()) }
+            : tree;
     }
 
     /// <summary>A property breakpoint's watch begun (again, with its hit count) or ended.</summary>
@@ -544,6 +548,26 @@ internal static class Words
         string name = type.Name;
         int tick = name.IndexOf('`', StringComparison.Ordinal);
         return tick < 0 ? name : name[..tick];
+    }
+
+    /// <summary>Each of the types given and those they derive from, as the tree names them, with the names of the types
+    /// each derives from directly, object left out; two of one name give theirs together.</summary>
+    public static Dictionary<string, IReadOnlyList<string>> BasesOf(IEnumerable<Type> types)
+    {
+        Dictionary<string, List<string>> bases = new(StringComparer.Ordinal);
+        HashSet<Type> seen = [];
+        foreach (Type type in types)
+        {
+            for (Type? at = type; at is { BaseType: { } parent } && parent != typeof(object) && seen.Add(at); at = parent)
+            {
+                List<string> derivedFrom = bases.TryGetValue(TypeName(at), out List<string>? known) ? known : bases[TypeName(at)] = [];
+                if (!derivedFrom.Contains(TypeName(parent)))
+                {
+                    derivedFrom.Add(TypeName(parent));
+                }
+            }
+        }
+        return bases.ToDictionary(entry => entry.Key, entry => (IReadOnlyList<string>)entry.Value, StringComparer.Ordinal);
     }
 
     /// <summary>An element as a sentence names it: its type, then #name when it has one.</summary>

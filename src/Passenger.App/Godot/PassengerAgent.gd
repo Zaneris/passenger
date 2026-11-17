@@ -195,14 +195,19 @@ func _read_named(node: Node, property: String) -> Array:
     return [node.get(property)] if property in node else []
 
 
-## Each node's id, box, text and flags, and the values of those of its properties named.
+## Each node's id, box, text and flags, and the values of those of its properties named; then each class or script the
+## nodes are of, and those they derive from, by what it derives from directly ([derived, base] pairs, a script by its path).
 func layout(ask: int, names: Array) -> void:
     var nodes: Array = []
-    _walk(get_tree().root, nodes, names)
-    _say(ask, true, [nodes])
+    var bases: Dictionary = {}
+    _walk(get_tree().root, nodes, names, bases)
+    var derived: Array = []
+    for each in bases:
+        derived.append([each, bases[each]])
+    _say(ask, true, [nodes, derived])
 
 
-func _walk(node: Node, nodes: Array, names: Array) -> void:
+func _walk(node: Node, nodes: Array, names: Array, bases: Dictionary) -> void:
     if node == self:
         return
     var box := _box(node)
@@ -211,9 +216,30 @@ func _walk(node: Node, nodes: Array, names: Array) -> void:
         var read := _read_named(node, property)
         if not read.is_empty():
             named.append([property, read[0]])
+    _derived(node, bases)
     nodes.append([node.get_instance_id(), box[0], box[1], box[2], box[3], box[4], _text(node), _flags(node), named])
     for child in node.get_children():
-        _walk(child, nodes, names)
+        _walk(child, nodes, names, bases)
+
+
+## What a node's scripts and engine classes derive from directly, each script by its path.
+func _derived(node: Node, bases: Dictionary) -> void:
+    var script = node.get_script()
+    while script is Script and not String(script.resource_path).is_empty() and not bases.has(script.resource_path):
+        var above = script.get_base_script()
+        var path: String = script.resource_path
+        if above is Script and not String(above.resource_path).is_empty():
+            bases[path] = above.resource_path
+        else:
+            bases[path] = node.get_class()
+        script = above
+    var named: String = node.get_class()
+    while not bases.has(named):
+        var parent: String = ClassDB.get_parent_class(named)
+        if parent.is_empty():
+            break
+        bases[named] = parent
+        named = parent
 
 
 func windows(ask: int) -> void:

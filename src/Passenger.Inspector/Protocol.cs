@@ -378,6 +378,10 @@ public sealed record BindingFailure(int Id, string Level, string Control, string
 [JsonConverter(typeof(AppTreeJson))]
 public sealed record AppTree(IReadOnlyList<Element> Roots)
 {
+    /// <summary>With an agent's look, each type the tree names by the types it derives from directly (more than one where
+    /// types of one name derive from others), as the tree names them, so a query by a type finds what derives from it.</summary>
+    public IReadOnlyDictionary<string, IReadOnlyList<string>>? Bases { get; init; }
+
     /// <summary>The elements of <paramref name="level"/> and all they hold, each before what it holds, in tree order, with
     /// its depth (<paramref name="depth"/> for the level's own) and whether what it holds is walked: where it holds any and
     /// <paramref name="into"/>, asked as it is reached, says so (always by default). A walk with its own stack, so no tree
@@ -550,6 +554,7 @@ internal sealed class AppTreeJson : JsonConverter<AppTree>
 {
     private const string Elements = "elements";
     private const string Held = "held";
+    private const string Bases = "bases";
 
     public override void Write(Utf8JsonWriter writer, AppTree value, JsonSerializerOptions options)
     {
@@ -568,6 +573,20 @@ internal sealed class AppTreeJson : JsonConverter<AppTree>
             writer.WriteNumberValue(count);
         }
         writer.WriteEndArray();
+        if (value.Bases is { } bases)
+        {
+            writer.WriteStartObject(Bases);
+            foreach ((string type, IReadOnlyList<string> derivedFrom) in bases)
+            {
+                writer.WriteStartArray(type);
+                foreach (string each in derivedFrom)
+                {
+                    writer.WriteStringValue(each);
+                }
+                writer.WriteEndArray();
+            }
+            writer.WriteEndObject();
+        }
         writer.WriteEndObject();
     }
 
@@ -575,6 +594,7 @@ internal sealed class AppTreeJson : JsonConverter<AppTree>
     {
         List<Element> elements = [];
         List<int> held = [];
+        Dictionary<string, IReadOnlyList<string>>? bases = null;
         Expect(ref reader, JsonTokenType.StartObject);
         while (reader.Read() && reader.TokenType == JsonTokenType.PropertyName)
         {
@@ -597,13 +617,38 @@ internal sealed class AppTreeJson : JsonConverter<AppTree>
                     }
                 }
             }
+            else if (name == Bases)
+            {
+                bases = BasesRead(ref reader);
+            }
             else
             {
                 reader.Skip();
             }
         }
         Expect(ref reader, JsonTokenType.EndObject);
-        return new AppTree(Assembled(elements, held));
+        return new AppTree(Assembled(elements, held)) { Bases = bases };
+    }
+
+    /// <summary>Each type a tree names with the names of the types it derives from directly.</summary>
+    private static Dictionary<string, IReadOnlyList<string>> BasesRead(ref Utf8JsonReader reader)
+    {
+        Dictionary<string, IReadOnlyList<string>> bases = new(StringComparer.Ordinal);
+        Expect(ref reader, JsonTokenType.StartObject);
+        while (reader.Read() && reader.TokenType == JsonTokenType.PropertyName)
+        {
+            string type = reader.GetString()!;
+            reader.Read();
+            Expect(ref reader, JsonTokenType.StartArray);
+            List<string> derivedFrom = [];
+            while (reader.Read() && reader.TokenType != JsonTokenType.EndArray)
+            {
+                derivedFrom.Add(reader.TokenType == JsonTokenType.String ? reader.GetString()! : throw new JsonException($"An app's tree named what {type} derives from by no name"));
+            }
+            bases[type] = derivedFrom;
+        }
+        Expect(ref reader, JsonTokenType.EndObject);
+        return bases;
     }
 
     private static void Expect(ref Utf8JsonReader reader, JsonTokenType token)

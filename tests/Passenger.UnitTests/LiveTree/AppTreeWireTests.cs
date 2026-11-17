@@ -74,6 +74,10 @@ public sealed class AppTreeWireTests
         Assert.NotNull(read);
         Assert.Equal(Each(tree), Each(read));
         Assert.Equal(Shape(tree), Shape(read));
+        Assert.Null(read.Bases);
+
+        AppTree told = tree with { Bases = new Dictionary<string, IReadOnlyList<string>> { ["TreeList"] = ["ListBox"], ["Row"] = ["ListBoxItem", "Row"] } };
+        Assert.Equal(told.Bases, Read(Sent(told))?.Bases);
     }
 
     [Fact]

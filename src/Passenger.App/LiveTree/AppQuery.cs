@@ -9,6 +9,12 @@ namespace Passenger.App.LiveTree;
 /// (its own and every ancestor's IsVisible).</summary>
 public sealed record AppNode(Element Element, AppNode? Parent, Element Window, bool Shows)
 {
+    private static readonly IReadOnlySet<string> NoBases = new HashSet<string>();
+
+    /// <summary>The types its element's type derives from, as the tree names them, by which a query by a type finds it as by
+    /// its own; none where the tree told none.</summary>
+    public IReadOnlySet<string> Bases { get; init; } = NoBases;
+
     public bool IsInside(AppNode other)
     {
         for (AppNode? at = Parent; at is not null; at = at.Parent)
@@ -24,8 +30,8 @@ public sealed record AppNode(Element Element, AppNode? Parent, Element Window, b
 
 /// <summary>How an agent names the elements of an app (<c>app_tree</c>'s filter, the other tools' control) and how the tree
 /// is written for it. A query is steps joined by '/', each step finding elements inside the last one's: <c>@12</c> (an id
-/// the tree shows), or a type, <c>#name</c>, <c>.class</c>es and <c>"text"</c> (what it shows) in any mix, with
-/// <c>[n]</c> for the nth of its matches from 1; a bare word no type has is taken as a name. A step finds the outermost
+/// the tree shows), or a type (one derived from it too), <c>#name</c>, <c>.class</c>es and <c>"text"</c> (what it shows)
+/// in any mix, with <c>[n]</c> for the nth of its matches from 1; a bare word no type has is taken as a name. A step finds the outermost
 /// elements matching it, so <c>"Save"</c> is the button, not the text inside it, and a template's parts only by #name or id.
 /// Also where an element is in a tree, and whether two trees are the same. Every walk keeps a stack of its own
 /// (<see cref="AppTree.Walk"/>), so no tree is too deep for the thread that walks it.</summary>
@@ -34,21 +40,50 @@ public static class AppQuery
     /// <summary>The lines an answer may carry before it says how many more there are.</summary>
     public const int MostLines = 1500;
 
-    /// <summary>Every element of the windows given, in tree order, each window before what it holds.</summary>
-    public static List<AppNode> Flatten(IReadOnlyList<Element> windows)
+    /// <summary>Every element of an app's tree, in tree order, each window before what it holds, each knowing the types its
+    /// own derives from as the tree tells them.</summary>
+    public static List<AppNode> Flatten(AppTree tree) => Flatten(tree.Roots, tree.Bases);
+
+    /// <summary>Every element of the windows given, in tree order, each window before what it holds; with
+    /// <paramref name="bases"/> (each type by those it derives from directly), each knowing the types its own derives from.</summary>
+    public static List<AppNode> Flatten(IReadOnlyList<Element> windows, IReadOnlyDictionary<string, IReadOnlyList<string>>? bases = null)
     {
         List<AppNode> all = [];
         // The nodes from a window down to the one made last.
         List<AppNode> line = [];
+        Dictionary<string, IReadOnlySet<string>> derived = new(StringComparer.Ordinal);
         foreach ((Element element, int depth, _) in AppTree.Walk(windows))
         {
             line.RemoveRange(depth, line.Count - depth);
             AppNode? parent = depth > 0 ? line[^1] : null;
             AppNode node = new(element, parent, parent?.Window ?? element, (parent?.Shows ?? true) && element.Visible);
+            if (bases is not null && bases.ContainsKey(element.Type))
+            {
+                node = node with { Bases = derived.TryGetValue(element.Type, out IReadOnlySet<string>? known) ? known : derived[element.Type] = DerivedFrom(element.Type, bases) };
+            }
             line.Add(node);
             all.Add(node);
         }
         return all;
+    }
+
+    /// <summary>Every type a type derives from, by the types each derives from directly, without the type itself.</summary>
+    private static HashSet<string> DerivedFrom(string type, IReadOnlyDictionary<string, IReadOnlyList<string>> bases)
+    {
+        HashSet<string> found = new(StringComparer.OrdinalIgnoreCase);
+        Stack<string> left = new([type]);
+        while (left.TryPop(out string? at))
+        {
+            foreach (string parent in bases.TryGetValue(at, out IReadOnlyList<string>? direct) ? direct : [])
+            {
+                if (found.Add(parent))
+                {
+                    left.Push(parent);
+                }
+            }
+        }
+        found.Remove(type);
+        return found;
     }
 
     /// <summary>The elements from a root down to the first with an id, in tree order; null where none has it.</summary>
@@ -94,12 +129,12 @@ public static class AppQuery
             Step step = steps[i];
             HashSet<AppNode> under = new(found, ReferenceEqualityComparer.Instance);
             IEnumerable<AppNode> scope = i == 0 ? nodes : nodes.Where(n => Inside(n, under));
-            List<AppNode> matches = [.. scope.Where(n => step.Matches(n.Element, templates))];
+            List<AppNode> matches = [.. scope.Where(n => step.Matches(n, templates))];
             // A bare word that is no type of the tree's is a name.
             if (matches.Count == 0 && step is { Type: { } word, Name: null, Classes.Count: 0, Shown: null, Id: null })
             {
                 Step named = step with { Type = null, Name = word };
-                matches = [.. scope.Where(n => named.Matches(n.Element, templates))];
+                matches = [.. scope.Where(n => named.Matches(n, templates))];
             }
             HashSet<AppNode> matched = new(matches, ReferenceEqualityComparer.Instance);
             List<AppNode> outermost = [.. matches.Where(m => !Inside(m, matched))];
@@ -437,13 +472,17 @@ public static class AppQuery
     private sealed record Step(string? Type = null, string? Name = null, IReadOnlyList<string>? Classes = null, string? Shown = null,
         int? Index = null, long? Id = null, string? Written = null)
     {
-        public bool Matches(Element element, bool templates) =>
-            Id is long id
+        /// <summary>Whether it finds a node: by its type, that or one its type derives from.</summary>
+        public bool Matches(AppNode node, bool templates)
+        {
+            Element element = node.Element;
+            return Id is long id
                 ? element.Id == id
                 : (templates || !element.FromTemplate || Name is not null)
-                    && (Type is null || string.Equals(element.Type, Type, StringComparison.OrdinalIgnoreCase))
+                    && (Type is null || string.Equals(element.Type, Type, StringComparison.OrdinalIgnoreCase) || node.Bases.Contains(Type))
                     && (Name is null || element.Name == Name)
                     && (Classes is null || Classes.All(element.Classes.Contains))
                     && (Shown is null || string.Equals(element.Text?.Trim(), Shown.Trim(), StringComparison.OrdinalIgnoreCase));
+        }
     }
 }

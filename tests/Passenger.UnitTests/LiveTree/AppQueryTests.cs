@@ -88,4 +88,51 @@ public sealed class AppQueryTests
         Assert.Equal(["Save", "Other"], AppQuery.Find(nodes, "Button").Select(n => n.Element.Name));
         Assert.Equal("Button#Save \"Save\" @4 in Border#Inner @3 in Border#Outer @2 in Window @1", AppQuery.Where(AppQuery.One(nodes, "\"Save\"")));
     }
+
+    /// <summary>A query by a type finds an element of a type derived from it as of its own, however far down, by what the
+    /// tree tells each type derives from directly; a tree that tells nothing finds each by its own type alone.</summary>
+    [Fact]
+    public void A_query_by_a_type_finds_an_element_of_a_type_derived_from_it()
+    {
+        Element lib = new(4, "TextBlock", null, [], false, false, true, []) { Text = "Lib" };
+        Element tree = new(3, "TreeList", "Rows", [], false, false, true, [lib]);
+        Element plain = new(2, "ListBox", "Plain", [], false, false, true, []);
+        Element window = new(1, "Window", null, [], false, false, true, [plain, tree]);
+        Dictionary<string, IReadOnlyList<string>> bases = new()
+        {
+            ["TreeList"] = ["ListBox"],
+            ["ListBox"] = ["SelectingItemsControl"],
+            ["SelectingItemsControl"] = ["ItemsControl"],
+            ["Window"] = ["ContentControl"],
+        };
+        List<AppNode> nodes = AppQuery.Flatten(new AppTree([window]) { Bases = bases });
+
+        Assert.Equal(4, AppQuery.One(nodes, "ListBox#Rows/\"Lib\"").Element.Id);
+        Assert.Equal([2L, 3L], AppQuery.Find(nodes, "ListBox").Select(n => n.Element.Id));
+        Assert.Equal([2L, 3L], AppQuery.Find(nodes, "itemscontrol").Select(n => n.Element.Id));
+        Assert.Equal([3L], AppQuery.Find(nodes, "TreeList").Select(n => n.Element.Id));
+        Assert.Empty(AppQuery.Find(AppQuery.Flatten([window]), "ListBox#Rows"));
+    }
+
+    /// <summary>What each type derives from, as the inspector tells it: every type up from those given, object left out, and
+    /// two types of one name telling theirs together.</summary>
+    [Fact]
+    public void The_inspector_tells_each_type_by_the_types_it_derives_from_directly()
+    {
+        Dictionary<string, IReadOnlyList<string>> bases = Words.BasesOf([typeof(Leaf), typeof(Middle), typeof(Other.Middle)]);
+        Assert.Equal(["Leaf", "Middle"], bases.Keys.Order(StringComparer.Ordinal));
+        Assert.Equal(["Middle"], bases["Leaf"]);
+        Assert.Equal(["Base", "Middle"], bases["Middle"]);
+    }
+
+    private class Base;
+
+    private class Middle : Base;
+
+    private sealed class Leaf : Middle;
+
+    private static class Other
+    {
+        public sealed class Middle : AppQueryTests.Middle;
+    }
 }

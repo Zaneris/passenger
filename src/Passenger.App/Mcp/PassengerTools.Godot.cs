@@ -69,22 +69,29 @@ public sealed partial class PassengerTools
         using IDisposable asking = GodotGame.Within(GameLimit);
         GodotNode root = await game.SceneTreeAsync();
         Dictionary<long, List<object?>> drawn = [];
+        Dictionary<string, IReadOnlyList<string>>? bases = null;
         string? unplaced = null;
         try
         {
-            if (await game.AskAsync("layout", properties.Select(p => (object?)p).ToList()) is [List<object?> nodes])
+            if (await game.AskAsync("layout", properties.Select(p => (object?)p).ToList()) is [List<object?> nodes, ..] answer)
             {
                 foreach (List<object?> node in nodes.OfType<List<object?>>().Where(n => n is [long, ..] && n.Count >= 9))
                 {
                     drawn[(long)node[0]!] = node;
                 }
+                // Each script and engine class by what it derives from directly, as the tree names their types.
+                bases = answer is [_, List<object?> derived]
+                    ? derived.OfType<List<object?>>().Where(pair => pair is [string, string])
+                        .GroupBy(pair => TypeOf((string)pair[0]!), StringComparer.Ordinal)
+                        .ToDictionary(names => names.Key, names => (IReadOnlyList<string>)[.. names.Select(pair => TypeOf((string)pair[1]!)).Distinct()], StringComparer.Ordinal)
+                    : null;
             }
         }
         catch (LiveAppException failed)
         {
             unplaced = failed.Message;
         }
-        return (new AppTree([Of(root)]), unplaced, root);
+        return (new AppTree([Of(root)]) { Bases = bases }, unplaced, root);
 
         Element Of(GodotNode node)
         {
@@ -126,7 +133,7 @@ public sealed partial class PassengerTools
     /// <summary>The game's tree, flattened, and its window named (else its root).</summary>
     private async Task<(List<AppNode> Nodes, AppNode Window)> GameTreeOf(GodotGame game, string? window)
     {
-        List<AppNode> nodes = AppQuery.Flatten((await GameTreeAsync(game, [])).Tree.Roots);
+        List<AppNode> nodes = AppQuery.Flatten((await GameTreeAsync(game, [])).Tree);
         return (nodes, await GameWindowAsync(game, nodes, window));
     }
 
@@ -172,7 +179,7 @@ public sealed partial class PassengerTools
     {
         using IDisposable asking = GodotGame.Within(GameLimit);
         (AppTree tree, _, GodotNode root) = await GameTreeAsync(game, []);
-        List<AppNode> nodes = AppQuery.Flatten(tree.Roots);
+        List<AppNode> nodes = AppQuery.Flatten(tree);
         AppNode chosen = await GameWindowAsync(game, nodes, window);
         List<AppNode> found = AppQuery.Find(Within(nodes, window is null ? null : chosen), control);
         if (found.Count == 0)
