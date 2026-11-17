@@ -254,10 +254,64 @@ public sealed class ChatView : DockPanel
     public void Asked(string text)
     {
         empty.IsVisible = false;
+        turnBegan = DateTime.UtcNow;
         Mine(text);
         reply = Message(agentName);
         Working(true, "Thinking…");
         ToEnd();
+    }
+
+    /// <summary>What an explored group's line says: "Exploring" while one runs, else "Explored", then the files read
+    /// (three, then how many more) and how many searches.</summary>
+    private static string Explored(IReadOnlyList<ToolLine> lines)
+    {
+        bool running = lines.Any(line => line.Status is "pending" or "in_progress");
+        string[] read = [.. lines.Where(line => line.Kind == "read").Select(line => line.Named ?? line.Title).Distinct(StringComparer.Ordinal)];
+        int searches = lines.Count(line => line.Kind == "search");
+        List<string> said = [.. read.Take(3)];
+        if (read.Length > 3)
+        {
+            said.Add($"{read.Length - 3} more");
+        }
+        if (searches > 0)
+        {
+            said.Add(searches == 1 ? "1 search" : $"{searches} searches");
+        }
+        return $"{(running ? "Exploring" : "Explored")} {string.Join(", ", said)}";
+    }
+
+    /// <summary>When the turn began, for how long it worked.</summary>
+    private DateTime turnBegan = DateTime.UtcNow;
+
+    /// <summary>A finished turn's steps fold under "Worked for 9s", as Cursor folds them: everything before its last words,
+    /// but the snippets of the files it changed, which stay in sight. A turn with nothing before its last words folds
+    /// nothing.</summary>
+    private void FoldWorked()
+    {
+        if (reply is null)
+        {
+            return;
+        }
+        Control[] children = [.. reply.Children.Skip(1)];
+        int last = Array.FindLastIndex(children, child => parts.Any(part => part.Holder == child));
+        int end = last == children.Length - 1 ? last : children.Length;
+        Control[] steps = [.. children.Take(end).Where(child => child is not ToolLine { Snippet: not null })];
+        if (steps.Length == 0)
+        {
+            return;
+        }
+        TimeSpan worked = DateTime.UtcNow - turnBegan;
+        ChatFold fold = new(explores: false)
+        {
+            Said = worked.TotalSeconds < 60 ? $"Worked for {Math.Max(1, (int)worked.TotalSeconds)}s" : $"Worked for {(int)worked.TotalMinutes}m {worked.Seconds}s",
+        };
+        int at = reply.Children.IndexOf(steps[0]);
+        foreach (Control step in steps)
+        {
+            reply.Children.Remove(step);
+            fold.Body.Children.Add(step);
+        }
+        reply.Children.Insert(at, fold);
     }
 
     /// <summary>The person's message under "You", in its frame.</summary>
@@ -321,7 +375,24 @@ public sealed class ChatView : DockPanel
             line = new ToolLine(call);
             line.DiffRequested += (_, _) => EditDiffRequested?.Invoke(this, call.Id);
             tools[call.Id] = line;
-            reply.Children.Add(line);
+            if (call.Kind is "read" or "search")
+            {
+                // Reads and searches one after another go under one line, as Cursor's "Explored hello.py, 1 search".
+                if (reply.Children.LastOrDefault() is not ChatFold { Explores: true } group)
+                {
+                    group = new ChatFold(explores: true);
+                    reply.Children.Add(group);
+                }
+                group.Body.Children.Add(line);
+            }
+            else
+            {
+                reply.Children.Add(line);
+            }
+        }
+        if (line.Parent?.Parent is ChatFold { Explores: true } explored)
+        {
+            explored.Said = Explored(explored.Body.Children.OfType<ToolLine>().ToArray());
         }
         if (asking.Count == 0)
         {
@@ -472,6 +543,7 @@ public sealed class ChatView : DockPanel
             card.Cancel();
         }
         Close();
+        FoldWorked();
         if (note is not null && reply is not null)
         {
             TextBlock body = new() { Classes = { error ? StyleClasses.Error : StyleClasses.Muted }, Text = note, TextWrapping = TextWrapping.Wrap };

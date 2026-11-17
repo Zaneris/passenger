@@ -6,6 +6,7 @@ using System.Text.Json.Nodes;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Headless.XUnit;
+using Avalonia.LogicalTree;
 using Avalonia.VisualTree;
 using Passenger.Acp;
 using Passenger.App;
@@ -121,6 +122,28 @@ public sealed class ChatTests
         Assert.Equal("Read hello.py", line.Title);
         Assert.Equal("completed", line.Status);
         Assert.Equal([("You", "tool"), ("Claude Agent", "Reading it."), ("Claude Agent", "It prints hello.")], window.Chat.Conversation);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Reads_go_under_Explored_and_a_finished_turns_steps_fold_under_Worked_for_its_last_words_in_sight()
+    {
+        MainWindow window = Connected(out _);
+        Send(window, "tool");
+        Ui.WaitFor(() => !window.Chat.Busy, () => $"the turn ended, where the conversation is {Shown(window)}");
+
+        ChatFold[] folds = [.. window.Chat.GetVisualDescendants().OfType<ChatFold>()];
+        ChatFold explored = Assert.Single(folds, fold => fold.Explores);
+        Assert.Equal("Explored hello.py", explored.Said);
+        ChatFold worked = Assert.Single(folds, fold => !fold.Explores);
+        Assert.StartsWith("Worked for ", worked.Said, StringComparison.Ordinal);
+        Assert.False(worked.IsOpen, "A finished turn's steps show before they are asked for");
+        Assert.Contains(explored, worked.Body.GetVisualDescendants().OfType<ChatFold>().Concat(worked.Body.Children.OfType<ChatFold>()));
+        Assert.Contains(window.Chat.GetVisualDescendants().OfType<TextBlock>(), text => (text.Text ?? text.Inlines?.Text) == "It prints hello." && text.IsEffectivelyVisible);
+        Assert.Contains(worked.Body.GetLogicalDescendants().OfType<TextBlock>(), text => (text.Text ?? text.Inlines?.Text) == "Reading it.");
+
+        Ui.Click(worked.Children.OfType<Button>().Single());
+        Assert.True(worked.IsOpen);
         window.Close();
     }
 

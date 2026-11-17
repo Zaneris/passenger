@@ -34,6 +34,12 @@ public sealed class ToolLine : DockPanel
     /// <summary>The edit's file was asked for, by a click on its title.</summary>
     public event EventHandler? DiffRequested;
 
+    /// <summary>What the call does: read, search, edit, execute and the rest.</summary>
+    public string Kind { get; private set; } = string.Empty;
+
+    /// <summary>The name of the first file it names, null while it names none.</summary>
+    public string? Named { get; private set; }
+
     /// <summary>Its call's id.</summary>
     public string Id { get; }
 
@@ -68,6 +74,8 @@ public sealed class ToolLine : DockPanel
     public void Show(ToolCall call)
     {
         title.Text = call.Title.Length > 0 ? call.Title : call.Kind;
+        Kind = call.Kind.Length > 0 ? call.Kind : Kind;
+        Named = call.Locations.Count > 0 ? Path.GetFileName(call.Locations[0]) : Named;
         link.Content = title.Text;
         ToolTip.SetTip(this, call.Locations.Count > 0 ? string.Join("\n", call.Locations) : null);
         if (call.Status == status)
