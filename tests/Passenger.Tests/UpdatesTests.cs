@@ -354,6 +354,45 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
         window.Close();
     }
 
+    /// <summary>An attached agent's click on the status bar's Restart to Update in the person's window restarts nothing: it
+    /// is told why, the status bar saying it too, the window stays open and the update still waits for the person.</summary>
+    [AvaloniaFact]
+    public void An_agents_click_on_Restart_to_Update_in_the_persons_window_restarts_nothing_and_is_told_why()
+    {
+        using IDisposable theme = TestsTheme();
+        InstalledCopy copy = InstalledCopy.Make(images, TestFolders.Create("installed-"));
+        string newer = Bumped(1, 0);
+        github.Answer = Release($"v{newer}", files: copy.Update(newer));
+        MainWindow window = Started(copy.Updater());
+        window.WatchForUpdates();
+        Ui.WaitFor(() => Notice(window) == $"Restart to update to Passenger {newer}", $"the status bar to offer Restart to Update to v{newer}");
+        string folder = PathNames.Canonical(Plain("restart-agent-"));
+        window.OpenFolder(folder);
+        window.ApplySettings(window.Settings with { McpServer = true });
+        Ui.Settle();
+        Assert.True(window.AgentSocket is not null, $"The window does not listen for agents: {window.Status}");
+        McpClient client = Await(Waiting.Apart(() => Start(["--mcp-attach", ProcessId, folder])), "the agent attaching");
+        try
+        {
+            Task<CallToolResult> clicking = Waiting.Apart(() => Result(client, McpTools.AppClick, new() { ["app"] = "ide", ["control"] = "#UpdateButton" }));
+            Press(Question(window, "the question for the agent's click in Passenger's windows"), AgentToolDialog.AllowForSession);
+            CallToolResult clicked = Await(clicking, "the agent's click on the status bar's Restart to Update");
+            Assert.True(clicked.IsError == true && Text(clicked).Contains(Refusals.RestartIsThePersons, StringComparison.Ordinal),
+                $"The agent's click on the status bar's Restart to Update was answered: {Text(clicked)}");
+            Ui.Settle();
+            Assert.True(window.IsVisible, "The agent's click on Restart to Update closed the person's window");
+            Assert.Equal(Refusals.RestartIsThePersons, window.Status);
+            Assert.True(Notice(window) == $"Restart to update to Passenger {newer}" && window.UpdateReady?.Version == newer,
+                $"After the agent's click the update no longer waits for the person: {UpdatesSaid(window)}");
+            Assert.True(copy.InstalledVersion is null || copy.InstalledVersion == Product.Version, $"The agent's click installed the update, as {copy.InstalledVersion}");
+        }
+        finally
+        {
+            Gone(client);
+            window.Close();
+        }
+    }
+
     [AvaloniaFact]
     public void An_installed_Passenger_downloads_a_newer_release_in_the_background_checks_it_and_offers_Restart_to_Update()
     {

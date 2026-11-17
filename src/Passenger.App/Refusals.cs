@@ -649,6 +649,11 @@ public static class Refusals
         "No Android device is connected and no emulator is made: connect a device with USB debugging on, or make an emulator in Android Studio's Device Manager"
         + (avdManager is null ? string.Empty : $" or with the Android SDK's avdmanager ({avdManager} create avd)");
 
+    /// <summary>An agent's Restart to Update, by its ide_action or its input into Passenger's window: the person restarts
+    /// Passenger, which closes their windows.</summary>
+    public const string RestartIsThePersons = "Only the person restarts Passenger into its update, which closes their windows and ends what runs there: "
+        + "ask them to, with the update's notice in the status bar";
+
     /// <summary>An agent's install of what a mobile project needs: the person installs it, accepting what it asks.</summary>
     public const string AgentInstallsMobile = "Only the person installs what a mobile project needs (a workload downloads from NuGet, the Android SDK asks them to accept "
         + "its licences): ask them to, with the banner over Passenger's window";

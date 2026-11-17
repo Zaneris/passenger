@@ -102,9 +102,11 @@ public partial class MainWindow
         {
             Menus = OperatingSystem.IsMacOS() ? [] : [new MenuPlace("Help", 3, 1)],
         });
-        actions.Add(new IdeAction(AppActions.RestartToUpdate, "Restart to Update", "Help", _ => IdeErrors.Observe(UpdatesOwner.RestartToUpdateAsync()))
+        actions.Add(new IdeAction(AppActions.RestartToUpdate, "Restart to Update", "Help", _ => RestartToUpdate())
         {
-            WhyNot = _ => UpdatesOwner.readyRelease is null ? "No update is downloaded and ready to install" : null,
+            WhyNot = context => AskedByAgent(context) ? Refusals.RestartIsThePersons
+                : UpdatesOwner.readyRelease is null ? "No update is downloaded and ready to install"
+                : null,
         });
         // The agents an install would cut off come and go: the notice says who, as the pointer comes to it.
         UpdateButton.PointerEntered += (_, _) =>
@@ -430,6 +432,16 @@ public partial class MainWindow
             default:
                 ShowUpdate(release, release.Link);
                 break;
+        }
+    }
+
+    /// <summary>Restart to Update asked in this window, wherever it was asked (its notice, the status bar, Find Action):
+    /// refused to an agent's input (<see cref="RefusedToAgentsInput"/>), else the window watching for updates restarts.</summary>
+    private void RestartToUpdate()
+    {
+        if (!RefusedToAgentsInput(Refusals.RestartIsThePersons))
+        {
+            IdeErrors.Observe(UpdatesOwner.RestartToUpdateAsync());
         }
     }
 
