@@ -170,7 +170,8 @@ public sealed class McpDebuggingTests : McpRig, IClassFixture<RestoredFolders>
         Process passenger = LastPassenger();
         string? own = DotnetProcesses.RuntimeFolder(passenger.Id);
         Assert.True(own is not null, $"Passenger's own runtime (process {passenger.Id}) could not be read.{Said()}");
-        IReadOnlyList<DotnetProcess> under = DotnetProcesses.Under(passenger.Id);
+        // As the system lists what it started: no debugger lists Roslyn's server on Linux, its runtime's pipes in its own TMPDIR.
+        IReadOnlyList<DotnetProcess> under = [.. Processes.Descendants(passenger.Id).Select(DotnetProcesses.Describe).OfType<DotnetProcess>()];
         foreach ((string helper, string assembly) in new[]
         {
             ("Roslyn's server", RoslynServerFolder.Assembly), ("The project host", "Passenger.Host.dll"), ("The debug adapter", "Passenger.DebugAdapter.dll"),
