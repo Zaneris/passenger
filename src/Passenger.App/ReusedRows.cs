@@ -6,7 +6,6 @@ using Avalonia.Controls;
 using Avalonia.Controls.Presenters;
 using Avalonia.Controls.Primitives;
 using Avalonia.Controls.Templates;
-using Avalonia.Data;
 using Avalonia.LogicalTree;
 using Avalonia.Styling;
 using Avalonia.VisualTree;
@@ -33,32 +32,14 @@ public static class ReusedRows
     /// the first time a presenter shows it, and handed it as its DataContext.</summary>
     public static void Use(ItemsControl strip, Func<Control> tab) => strip.ItemTemplate = new Kept(tab);
 
-    /// <summary>A list's containers given a template of the list's own whose presenter holds a row made once, standing
-    /// where the theme's template has its presenter (the drop-down's binding its foreground too, as the theme's does).</summary>
+    /// <summary>A list's containers given a template of the list's own whose presenter holds a row made once, the theme's
+    /// template with its chosen mark (<see cref="ChosenMark.Template"/>; the drop-down's binding its foreground too, as the
+    /// theme's does).</summary>
     private static void Contain<TContainer>(ItemsControl list, Func<Control> row, bool foreground)
         where TContainer : ContentControl
     {
         Style style = new(x => x.OfType<TContainer>());
-        style.Setters.Add(new Setter(TemplatedControl.TemplateProperty, new FuncControlTemplate<TContainer>((_, _) =>
-        {
-            ContentPresenter presenter = new()
-            {
-                Name = "PART_ContentPresenter",
-                [!ContentPresenter.BackgroundProperty] = new TemplateBinding(TemplatedControl.BackgroundProperty),
-                [!ContentPresenter.BorderBrushProperty] = new TemplateBinding(TemplatedControl.BorderBrushProperty),
-                [!ContentPresenter.BorderThicknessProperty] = new TemplateBinding(TemplatedControl.BorderThicknessProperty),
-                [!ContentPresenter.CornerRadiusProperty] = new TemplateBinding(TemplatedControl.CornerRadiusProperty),
-                [!ContentPresenter.PaddingProperty] = new TemplateBinding(TemplatedControl.PaddingProperty),
-                [!ContentPresenter.VerticalContentAlignmentProperty] = new TemplateBinding(ContentControl.VerticalContentAlignmentProperty),
-                [!ContentPresenter.HorizontalContentAlignmentProperty] = new TemplateBinding(ContentControl.HorizontalContentAlignmentProperty),
-                Content = NamedByWords(row()),
-            };
-            if (foreground)
-            {
-                presenter[!ContentPresenter.ForegroundProperty] = new TemplateBinding(TemplatedControl.ForegroundProperty);
-            }
-            return presenter;
-        })));
+        style.Setters.Add(new Setter(TemplatedControl.TemplateProperty, ChosenMark.Template(() => NamedByWords(row()), foreground)));
         list.Styles.Add(style);
     }
 

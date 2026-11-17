@@ -122,7 +122,7 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
 
     private static void ToolWindowTabs(MainWindow window)
     {
-        Color accent = Brush(window, TokenKeys.Accent);
+        Color mark = Brush(window, TokenKeys.ChosenMark);
         (string Where, double Height, double Size, Thickness Padding, Thickness Border)? first = null;
         int seen = 0;
         foreach (string action in (string[])[AppActions.ShowProblems, AppActions.ShowGit, AppActions.ShowDebug, AppActions.ShowTerminal, AppActions.ShowLocalHistory, AppActions.ShowAspire])
@@ -156,18 +156,118 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
                 string where = $"{action}'s tab '{Words(tab)}'";
                 first ??= (where, tab.Bounds.Height, tab.FontSize, tab.Padding, tab.BorderThickness);
                 Assert.True(tab.Bounds.Height == first.Value.Height && tab.FontSize == first.Value.Size && tab.Padding == first.Value.Padding
-                    && tab.BorderThickness == first.Value.Border && tab.BorderThickness.Bottom > 0 && tab.CornerRadius == default,
+                    && tab.BorderThickness == first.Value.Border && tab.CornerRadius == default,
                     $"{where} is {tab.Bounds.Height:0.#} px tall in {tab.FontSize} pt with padding {tab.Padding} and a border of {tab.BorderThickness}, "
                     + $"where {first.Value.Where} is {first.Value.Height:0.#} px in {first.Value.Size} pt: tool windows' tabs differ");
-                if (tab.IsChecked == true)
-                {
-                    ContentPresenter frame = tab.GetVisualDescendants().OfType<ContentPresenter>().First(p => p.Name == "PART_ContentPresenter");
-                    Assert.True(frame.BorderBrush is ISolidColorBrush underline && underline.Color == accent,
-                        $"{where} is open and not underlined in the accent, as Rider's tool window tabs are");
-                }
+                ChosenMark underline = tab.GetVisualDescendants().OfType<ChosenMark>().Single();
+                Assert.True(underline.IsEffectivelyVisible == (tab.IsChecked == true) && underline.Side == Dock.Bottom
+                    && underline.Fill is ISolidColorBrush ink && ink.Color == mark && (tab.IsChecked != true || Math.Abs(underline.Bar.Width - tab.Bounds.Width) < 0.5),
+                    $"{where} is {(tab.IsChecked == true ? "open" : "closed")} and its chosen mark {(underline.IsEffectivelyVisible ? "shows" : "is hidden")} "
+                    + $"along its {underline.Side} {underline.Bar.Width:0.#} wide, where the open tab alone is underlined across its width in the chosen mark");
             }
         }
         Assert.True(seen >= 5, $"Only {seen} tool window tabs were found in Problems, Git, Debug, the Terminal and Aspire");
+    }
+
+    /// <summary>Every choice the window shows (a list's or a tree's chosen row, the open editor tab, a tool window's open
+    /// tab, a stripe's open window's button) is shown by the one chosen mark beside its ground, in the chosen mark's colour on
+    /// the side its kind takes, and nothing unchosen shows one, under each look dark and light; every row, tab and stripe
+    /// button holds exactly one mark, so none draws its choice another way, by a ground alone a person with low vision may
+    /// not tell from the page.</summary>
+    [AvaloniaFact]
+    public void Every_chosen_row_tab_and_stripe_button_shows_the_chosen_mark_beside_its_ground_and_nothing_else_does()
+    {
+        MainWindow window = Open(1200, 800);
+        try
+        {
+            window.OpenFile(project.PathOf("Program.cs"));
+            window.OpenFile(project.PathOf("Notes.txt"));
+            Assert.True(window.Perform(AppActions.ShowProblems), "Problems did not show");
+            Ui.Settle();
+            window.ExplorerView.Choose(window.ExplorerView.Tree.Rows.First(r => r.Name == "Notes.txt"));
+            Ui.Settle();
+            foreach (ThemeVariant variant in (ThemeVariant[])[ThemeVariant.Dark, ThemeVariant.Light])
+            {
+                window.RequestedThemeVariant = variant;
+                UnderEachLook(window, () => ChoicesMarked(window, variant));
+            }
+        }
+        finally
+        {
+            window.RequestedThemeVariant = null;
+            window.Close();
+        }
+    }
+
+    private static void ChoicesMarked(MainWindow window, ThemeVariant variant)
+    {
+        Color ink = Brush(window, TokenKeys.ChosenMark);
+        ILookup<Control?, ChosenMark> marks = window.GetVisualDescendants().OfType<ChosenMark>()
+            .ToLookup(m => m.TemplatedParent as Control ?? m.GetVisualParent()?.GetVisualParent() as Control);
+        List<string> wrong = [];
+        HashSet<string> seen = [];
+        foreach (Control host in window.GetVisualDescendants().OfType<Control>().Where(c => c.IsEffectivelyVisible && c.Bounds.Width > 0))
+        {
+            (string What, bool Chosen, Dock Side)? kind = host switch
+            {
+                ListBoxItem row => ("row", row.IsSelected, Dock.Left),
+                ToggleButton stripe when stripe.Classes.Contains(StyleClasses.Stripe) => ("stripe button", stripe.IsChecked == true, Dock.Left),
+                ToggleButton tab when tab.Classes.Contains(StyleClasses.PanelTab) || tab.Classes.Contains(StyleClasses.Segment) => ("tool window tab", tab.IsChecked == true, Dock.Bottom),
+                Border tab when tab.Classes.Contains(StyleClasses.Tab) => ("editor tab", tab.Classes.Contains(StyleClasses.Active), Dock.Bottom),
+                Border row when row.Classes.Contains(StyleClasses.Chosen) => ("row laid out by hand", true, Dock.Left),
+                _ => null,
+            };
+            if (kind is not { } k)
+            {
+                continue;
+            }
+            string where = $"{variant}: a {k.What} ({Words(host)})";
+            ChosenMark[] own = [.. marks[host]];
+            if (own.Length != 1)
+            {
+                wrong.Add($"{where} holds {own.Length} chosen marks, so its choice is drawn another way");
+                continue;
+            }
+            ChosenMark mark = own[0];
+            if (mark.IsEffectivelyVisible != k.Chosen)
+            {
+                wrong.Add($"{where} is {(k.Chosen ? "chosen and shows no" : "not chosen and shows its")} chosen mark");
+            }
+            else if (k.Chosen)
+            {
+                seen.Add(k.What);
+                Rect bar = mark.Bar;
+                if (mark.Side != k.Side || mark.Fill is not ISolidColorBrush { Color: Color fill } || fill != ink || Math.Min(bar.Width, bar.Height) < ChosenMark.Breadth
+                    || !new Rect(mark.Bounds.Size).Contains(bar))
+                {
+                    wrong.Add($"{where} shows its mark along its {mark.Side} as {bar} in {mark.Fill}, where a {k.What}'s is {ChosenMark.Breadth} broad along its {k.Side} "
+                        + $"in the chosen mark's {ink}");
+                }
+            }
+        }
+        foreach (ChosenMark stray in marks.Where(g => g.Key is null).SelectMany(g => g).Where(m => m.IsEffectivelyVisible))
+        {
+            wrong.Add($"{variant}: a chosen mark shows in {stray.GetVisualParent()?.GetType().Name} with no row, tab or stripe button it marks");
+        }
+        Assert.True(wrong.Count == 0, $"{wrong.Count} choices are drawn otherwise than by the chosen mark beside their ground, so a person may not tell what is chosen:\n"
+            + string.Join("\n", wrong));
+        string[] kinds = ["row", "stripe button", "tool window tab", "editor tab"];
+        Assert.True(kinds.All(seen.Contains), $"{variant}: only {string.Join(", ", seen)} were seen chosen of {string.Join(", ", kinds)}, so the rest went unchecked");
+    }
+
+    /// <summary>The grounds a choice stands on (a chosen row's, the open tab's and the open window's stripe button's) are named
+    /// by the theme's styles alone, which draw the chosen mark beside them: a row or tab chosen by hand takes the chosen
+    /// class, never its ground bound by hand without its mark.</summary>
+    [Fact]
+    public void No_list_or_tab_draws_its_choice_by_a_ground_of_its_own()
+    {
+        Regex ground = new(@"\bTokenKeys\.(?:RowSelected|Tab_Active|Stripe_Selected)\b|Passenger\.(?:RowSelected|Tab\.Active|Stripe\.Selected)\b");
+        string[] found = [.. from file in UiFiles(theme: false)
+                             from line in file.Text.Split('\n').Select((text, at) => (Text: text, At: at + 1))
+                             where ground.IsMatch(line.Text)
+                             select $"{file.Path}:{line.At}: {line.Text.Trim()}"];
+        Assert.True(found.Length == 0, $"{found.Length} places draw a choice by its ground alone, with no chosen mark beside it: give the row the chosen class "
+            + $"(ChosenMark.Hold), or the list its rows through the theme's template:\n{string.Join("\n", found)}");
     }
 
     /// <summary>The two windows that list a run's services, Containers and Aspire, have one layout: their tabs are of one
@@ -2117,7 +2217,8 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
     {
         Regex made = new(@"\b(?:FuncDataTemplate|FuncTreeDataTemplate|IDataTemplate|IRecyclingDataTemplate|ITreeDataTemplate|DataTemplates)\b(?:<(?:[^<>]|<[^<>]*>)+>)?|<(?:DataTemplate|TreeDataTemplate)\b|\bFuncControlTemplate<(?:ListBoxItem|ComboBoxItem|TreeViewItem)>");
         Regex given = new(@"\b(?:SelectionBox)?ItemTemplate\s*=\s*""?[\w.{} ]*(?:<(?:[^<>]|<[^<>]*>)+>)?|<\w+\.(?:SelectionBox)?ItemTemplate>");
-        Regex container = new(@"<Style Selector=""[^""]*(?:ListBoxItem|ComboBoxItem)""[^>]*>(?:(?!</Style>).)*?Property=""(?:Content)?Template""", RegexOptions.Singleline);
+        // The theme's own row template with its chosen mark (ChosenMark.Rows) shows the item as the theme's does.
+        Regex container = new(@"<Style Selector=""[^""]*(?:ListBoxItem|ComboBoxItem)""[^>]*>(?:(?!</Style>).)*?Property=""(?:Content)?Template""(?!\s+Value=""\{x:Static app:ChosenMark\.)", RegexOptions.Singleline);
         List<string> found = [];
         foreach ((string path, string text) in UiFiles(theme: true).Where(f => !f.Path.EndsWith("/ReusedRows.cs", StringComparison.Ordinal)))
         {
@@ -2819,7 +2920,7 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
     private static IEnumerable<Visual> ToolWindowParts(MainWindow window) =>
         window.DockHost.GetVisualDescendants().Where(v => v.IsEffectivelyVisible && !window.EditorArea.IsVisualAncestorOf(v) && v != window.EditorArea);
 
-    private static string Words(ToggleButton tab) => string.Join(" ", tab.GetVisualDescendants().OfType<TextBlock>().Select(t => t.Text));
+    private static string Words(Control host) => string.Join(" ", host.GetVisualDescendants().OfType<TextBlock>().Select(t => t.Text));
 
     /// <summary>A tab's name, read from what it shows whether it is shown now or not (a hidden one has no template applied).</summary>
     private static string TabName(ToggleButton tab) => tab.Content is TextBlock { Text: { } text } ? text : tab.Content as string ?? string.Empty;

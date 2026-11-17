@@ -896,27 +896,24 @@ public sealed class EditorGroup : DockPanel
         ToolButtons.Tip(pin, "Unpin Tab");
         Panel ends = new() { Width = 16, Height = 16, Children = { modified, close } };
         bool down = tabsPlace != EditorTabsPlace.Top;
-        Border border = new()
-        {
-            Classes = { StyleClasses.Tab },
-            // Down a side, the name takes the column's width left over, its close at the column's edge.
-            Child = down
-                ? new DockPanel
+        Border border = new() { Classes = { StyleClasses.Tab } };
+        // Down a side, the name takes the column's width left over, its close at the column's edge.
+        ChosenMark.Hold(border, down
+            ? new DockPanel
+            {
+                VerticalAlignment = VerticalAlignment.Center,
+                Children =
                 {
-                    VerticalAlignment = VerticalAlignment.Center,
-                    Children =
-                    {
-                        Docked(icon, Dock.Left, 0), Docked(ends, Dock.Right, 6), Docked(pin, Dock.Right, 6), Docked(name, Dock.Left, 6),
-                    },
-                }
-                : new StackPanel
-                {
-                    Orientation = Orientation.Horizontal,
-                    Spacing = 6,
-                    VerticalAlignment = VerticalAlignment.Center,
-                    Children = { icon, name, pin, ends },
+                    Docked(icon, Dock.Left, 0), Docked(ends, Dock.Right, 6), Docked(pin, Dock.Right, 6), Docked(name, Dock.Left, 6),
                 },
-        };
+            }
+            : new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                Spacing = 6,
+                VerticalAlignment = VerticalAlignment.Center,
+                Children = { icon, name, pin, ends },
+            });
         OpenDocument? Shown() => (border.DataContext as EditorTab)?.Document;
         close.Click += (_, e) =>
         {

@@ -503,7 +503,7 @@
     <Style Selector="ToggleButton.stripe:pointerover /template/ ContentPresenter#PART_ContentPresenter">
         <Setter Property="Background" Value="{DynamicResource Passenger.Hover}" />
     </Style>
-    <!-- The open window's button on a chip of the accent's, its icon in the accent. -->
+    <!-- The open window's button on a chip of the accent's, its icon in the accent, the chosen mark at its start. -->
     <Style Selector="ToggleButton.stripe:checked /template/ ContentPresenter#PART_ContentPresenter">
         <Setter Property="Background" Value="{DynamicResource Passenger.Stripe.Selected}" />
     </Style>
@@ -734,7 +734,36 @@
         <Setter Property="Height" Value="10" />
     </Style>
 
-    <!-- A tree drawn as a flat list (the Explorer): compact rows, selection as a filled band. -->
+    <!-- What is chosen, the one way in every list, tree, drop-down, tab strip and stripe: its ground, and beside it the
+         chosen mark (ChosenMark), a bar along its start or under a tab that reads at 3:1 on the page and the ground alike.
+         Each row, choice and tab is the theme's template with the mark beside its presenter; a Border laid out by hand
+         holds one through ChosenMark.Hold, an open tab's or a chosen row's (its chosen class) shown as a template's is. -->
+    <Style Selector="ListBoxItem">
+        <Setter Property="Template" Value="{x:Static app:ChosenMark.Rows}" />
+    </Style>
+    <Style Selector="ComboBoxItem, ToggleButton.stripe, ToggleButton.panelTab, ToggleButton.segment">
+        <Setter Property="Template" Value="{x:Static app:ChosenMark.Choices}" />
+    </Style>
+    <Style Selector="app|ChosenMark">
+        <Setter Property="Fill" Value="{DynamicResource Passenger.ChosenMark}" />
+        <Setter Property="IsVisible" Value="False" />
+    </Style>
+    <Style Selector=":is(ListBoxItem):selected /template/ app|ChosenMark, ToggleButton:checked /template/ app|ChosenMark, Border.tab.active > Panel > app|ChosenMark, Border.chosen > Panel > app|ChosenMark">
+        <Setter Property="IsVisible" Value="True" />
+    </Style>
+    <Style Selector="ToggleButton.panelTab /template/ app|ChosenMark, ToggleButton.segment /template/ app|ChosenMark, Border.tab > Panel > app|ChosenMark">
+        <Setter Property="Side" Value="Bottom" />
+    </Style>
+    <!-- Tabs down a side, as a list's rows. -->
+    <Style Selector="Border.sideTabs Border.tab > Panel > app|ChosenMark">
+        <Setter Property="Side" Value="Left" />
+    </Style>
+    <!-- A row of a table laid out by hand, chosen. -->
+    <Style Selector="Border.chosen">
+        <Setter Property="Background" Value="{DynamicResource Passenger.RowSelected}" />
+    </Style>
+
+    <!-- A tree drawn as a flat list (the Explorer): compact rows, the chosen on a filled band with its mark. -->
     <Style Selector="ListBox.tree">
         <Setter Property="Background" Value="Transparent" />
         <Setter Property="Padding" Value="4,0" />
@@ -770,8 +799,8 @@
     </Style>
 
     <!-- An editor tab on the frame: the open one filled (a pill on its strip in Passenger's theme, a card of the editor's
-         own colour joined to it in Harbour's, as the theme's shapes say), the one under the pointer lit, a modified one
-         with a dot that turns into the close button under the pointer. -->
+         own colour joined to it in Harbour's, as the theme's shapes say) with the chosen mark under it, the one under the
+         pointer lit, a modified one with a dot that turns into the close button under the pointer. -->
     <Style Selector="Border.tab">
         <Setter Property="Margin" Value="{DynamicResource Passenger.TabMargin}" />
         <Setter Property="Padding" Value="{DynamicResource Passenger.TabPadding}" />
@@ -1004,15 +1033,14 @@
     </Style>
 
     <!-- Every tool window's tab (ToolTabs), one look: its name in the text's colour, a band under the pointer, the open one
-         underlined in the accent. The underline's room is kept on every tab, so opening one moves no words. -->
+         underlined by the chosen mark, which stands over the tab's foot, so opening one moves no words. -->
     <Style Selector="ToggleButton.panelTab">
         <Setter Property="Height" Value="{DynamicResource Passenger.ControlHeight}" />
         <Setter Property="TextBlock.TextTrimming" Value="CharacterEllipsis" />
         <Setter Property="MinWidth" Value="0" />
-        <Setter Property="Padding" Value="12,3,12,0" />
+        <Setter Property="Padding" Value="12,3" />
         <Setter Property="CornerRadius" Value="0" />
-        <Setter Property="BorderThickness" Value="0,0,0,3" />
-        <Setter Property="BorderBrush" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="0" />
         <Setter Property="Background" Value="Transparent" />
         <Setter Property="FontSize" Value="13" />
         <Setter Property="VerticalContentAlignment" Value="Center" />
@@ -1020,29 +1048,25 @@
     </Style>
     <Style Selector="ToggleButton.panelTab:pointerover /template/ ContentPresenter#PART_ContentPresenter">
         <Setter Property="Background" Value="{DynamicResource Passenger.Hover}" />
-        <Setter Property="BorderBrush" Value="Transparent" />
         <Setter Property="Foreground" Value="{DynamicResource Passenger.Text}" />
     </Style>
     <Style Selector="ToggleButton.panelTab:pressed /template/ ContentPresenter#PART_ContentPresenter">
         <Setter Property="Background" Value="{DynamicResource Passenger.Hover}" />
         <Setter Property="Foreground" Value="{DynamicResource Passenger.Text}" />
     </Style>
-    <!-- A tab with nothing behind it yet is dimmed, not filled; before :checked, so the open one keeps its underline. -->
+    <!-- A tab with nothing behind it yet is dimmed, not filled. -->
     <Style Selector="ToggleButton.panelTab:disabled /template/ ContentPresenter#PART_ContentPresenter">
         <Setter Property="Background" Value="Transparent" />
         <Setter Property="Foreground" Value="{DynamicResource Passenger.TextDisabled}" />
     </Style>
     <Style Selector="ToggleButton.panelTab:checked /template/ ContentPresenter#PART_ContentPresenter">
         <Setter Property="Background" Value="Transparent" />
-        <Setter Property="BorderBrush" Value="{DynamicResource Passenger.Accent}" />
         <Setter Property="Foreground" Value="{DynamicResource Passenger.Text}" />
     </Style>
     <Style Selector="ToggleButton.panelTab:checked:pointerover /template/ ContentPresenter#PART_ContentPresenter">
         <Setter Property="Background" Value="{DynamicResource Passenger.Hover}" />
-        <Setter Property="BorderBrush" Value="{DynamicResource Passenger.Accent}" />
     </Style>
-    <!-- One of a few choices side by side (Find in Files' scopes): the chosen on a raised band. Not a tool window's tab,
-         which is underlined. -->
+    <!-- One of a few choices side by side (Find in Files' scopes): the chosen on a raised band, the chosen mark under it. -->
     <Style Selector="ToggleButton.segment">
         <Setter Property="Height" Value="24" />
         <Setter Property="TextBlock.TextTrimming" Value="CharacterEllipsis" />

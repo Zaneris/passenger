@@ -531,6 +531,9 @@ def variant(theme, p, dark):
         tab = editor
     t["Passenger.Tab.Active"] = tab
     t["Passenger.Tab.ActiveText"] = legible(text, [tab], 4.6, dark)
+    # The mark beside every choice, read on the page and on each chosen ground beside it.
+    t["Passenger.ChosenMark"] = legible(accent, [panel, frame, popup, lst, over(hover, panel), row, over(selected, panel),
+                                                 over(selected, frame), over(selected, popup), tab, stripe], 3.1, dark)
     t["Passenger.Modified"] = legible(glance, [frame, panel], 3.1, dark)
 
     t["Passenger.Welcome.Tile"] = tile

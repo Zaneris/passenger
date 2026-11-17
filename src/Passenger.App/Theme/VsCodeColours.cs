@@ -41,6 +41,7 @@ public static class VsCodeColours
         ("Stripe.SelectedIcon", ["activityBar.foreground"]),
         ("Tab.Active", ["tab.activeBackground"]),
         ("Tab.ActiveText", ["tab.activeForeground"]),
+        ("ChosenMark", ["activityBar.activeBorder", "tab.activeBorderTop", "tab.activeBorder"]),
         ("Modified", ["editorCursor.foreground"]),
         ("Run", ["debugIcon.startForeground", "testing.iconPassed"]),
         ("Test.Passed", ["testing.iconPassed"]),

@@ -89,11 +89,13 @@
             <SolidColorBrush x:Key="Passenger.TextSelection" Color="#22407F" />
 
             <!-- What the pointer is over and what is pressed or chosen: a wash over whatever ground is under it, so it
-                 shows on the frame, a tool window and a popup alike; a chosen row; the accent (a default button, a
-                 ticked box); the ring round what has the keys; an unticked box's edge; a scrollbar's thumb and track. -->
+                 shows on the frame, a tool window and a popup alike; a chosen row; the mark beside every choice, a row's,
+                 a tab's and a stripe button's (ChosenMark); the accent (a default button, a ticked box); the ring round
+                 what has the keys; an unticked box's edge; a scrollbar's thumb and track. -->
             <SolidColorBrush x:Key="Passenger.Hover" Color="#14A6C2FF" />
             <SolidColorBrush x:Key="Passenger.Selected" Color="#24A6C2FF" />
             <SolidColorBrush x:Key="Passenger.RowSelected" Color="#1B3366" />
+            <SolidColorBrush x:Key="Passenger.ChosenMark" Color="#5B8DFF" read:Mark="Panel Frame Popup List Hover RowSelected Selected Selected/Frame Selected/Popup Tab.Active Stripe.Selected" />
             <SolidColorBrush x:Key="Passenger.Accent" Color="#2F6BF2" read:Mark="Panel" />
             <SolidColorBrush x:Key="Passenger.AccentHover" Color="#2A5FD9" />
             <SolidColorBrush x:Key="Passenger.Focus" Color="#FFB547" read:Mark="Panel Frame Popup Editor.Background Field" />
@@ -369,6 +371,7 @@
             <SolidColorBrush x:Key="Passenger.Hover" Color="#121F3A70" />
             <SolidColorBrush x:Key="Passenger.Selected" Color="#211F3A70" />
             <SolidColorBrush x:Key="Passenger.RowSelected" Color="#DBE6FF" />
+            <SolidColorBrush x:Key="Passenger.ChosenMark" Color="#1F55D6" />
             <SolidColorBrush x:Key="Passenger.Accent" Color="#2F6BF2" />
             <SolidColorBrush x:Key="Passenger.AccentHover" Color="#2459D6" />
             <SolidColorBrush x:Key="Passenger.Focus" Color="#B86A00" />

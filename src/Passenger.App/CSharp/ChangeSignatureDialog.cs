@@ -123,14 +123,7 @@ public sealed class ChangeSignatureDialog : RefactoringDialog
         chosen = row;
         foreach (ParameterRow each in rows)
         {
-            if (each == row)
-            {
-                each.View.Bind(Border.BackgroundProperty, each.View.GetResourceObservable(TokenKeys.RowSelected));
-            }
-            else
-            {
-                each.View.Background = Brushes.Transparent;
-            }
+            each.View.Classes.Set(StyleClasses.Chosen, each == row);
         }
         Update();
     }
@@ -289,7 +282,8 @@ public sealed class ChangeSignatureDialog : RefactoringDialog
             Grid.SetColumn(parts[i], i);
             cells.Children.Add(parts[i]);
         }
-        Border view = new() { Child = cells };
+        Border view = new();
+        ChosenMark.Hold(view, cells);
         ParameterRow row = new(from, modifiers, typeBox, nameBox, defaultBox, view);
         view.AddHandler(GotFocusEvent, (_, _) =>
         {

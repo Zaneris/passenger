@@ -156,6 +156,8 @@ public static class ThemePalettes
         uint tab = given.TryGetValue("Tab.Active", out uint ownTab) && IsDark(ownTab) == dark ? Opaque(ownTab) : editor;
         t["Tab.Active"] = tab;
         t["Tab.ActiveText"] = L("Tab.ActiveText", text, [tab], Text, dark);
+        t["ChosenMark"] = L("ChosenMark", accent,
+            [panel, frame, popup, list, Over(hover, panel), row, Over(selected, panel), Over(selected, frame), Over(selected, popup), tab, stripe], Mark, dark);
         t["Modified"] = L("Modified", glance, [frame, panel], Mark, dark);
 
         t["Welcome.Tile"] = tile;

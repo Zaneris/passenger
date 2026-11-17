@@ -276,12 +276,8 @@ internal sealed class ToolPane : DockPanel
         }
         RowIcon icon = new() { Width = 14, Height = 14, DataKey = window.Icon };
         TextBlock name = new() { Classes = { StyleClasses.TabName }, Text = window.Title, VerticalAlignment = VerticalAlignment.Center };
-        Border tab = new()
-        {
-            Classes = { StyleClasses.Tab },
-            Tag = window.Id,
-            Child = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, VerticalAlignment = VerticalAlignment.Center, Children = { icon, name } },
-        };
+        Border tab = new() { Classes = { StyleClasses.Tab }, Tag = window.Id };
+        ChosenMark.Hold(tab, new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, VerticalAlignment = VerticalAlignment.Center, Children = { icon, name } });
         Avalonia.Automation.AutomationProperties.SetName(tab, window.Title);
         // Tool windows live as long as the dock, as their tabs do.
         window.PropertyChanged += (_, e) =>
