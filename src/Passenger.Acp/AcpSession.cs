@@ -55,6 +55,9 @@ public sealed class AcpSession : IAsyncDisposable
     /// <summary>The session's settings as last told.</summary>
     public IReadOnlyList<ConfigOption> Config { get; private set; } = [];
 
+    /// <summary>A piece of the person's words, as the agent tells a conversation of before again.</summary>
+    public event Action<TextChunk>? UserTextReceived;
+
     /// <summary>The session's mode changed, by the agent (leaving plan mode) or by a setting: its id now.</summary>
     public event Action<string>? ModeChanged;
 
@@ -89,11 +92,26 @@ public sealed class AcpSession : IAsyncDisposable
             // Claude's adapter asks AskUserQuestion's questions only of a client that shows forms.
             capabilities["elicitation"] = new JsonObject { ["form"] = new JsonObject() };
         }
+        // The host runs a sign-in in its own terminal, so the agent names its sign-in commands.
+        capabilities["auth"] = new JsonObject { ["terminal"] = true };
+        capabilities["_meta"] = new JsonObject { ["terminal-auth"] = true };
         JsonNode result = await connection.RequestAsync("initialize", new JsonObject
         {
             ["protocolVersion"] = 1,
             ["clientCapabilities"] = capabilities,
         }, cancel);
+        List<AuthMethod> methods = [];
+        foreach (JsonNode? method in result["authMethods"] as JsonArray ?? [])
+        {
+            if (Text(method?["id"]) is not string id)
+            {
+                continue;
+            }
+            JsonNode? terminal = method?["_meta"]?["terminal-auth"];
+            List<string> args = [.. (terminal?["args"] as JsonArray ?? method?["args"] as JsonArray ?? []).Select(Text).OfType<string>()];
+            methods.Add(new AuthMethod(id, Text(method?["name"]) ?? id, Text(method?["description"]), Text(terminal?["command"]), args));
+        }
+        AuthMethods = methods;
         JsonNode? info = result["agentInfo"];
         Agent = new AgentInfo(Text(info?["name"]) ?? "unknown agent", Text(info?["title"]), Text(info?["version"]));
         return Agent;
@@ -108,6 +126,37 @@ public sealed class AcpSession : IAsyncDisposable
             ["mcpServers"] = new JsonArray(),
         }, cancel);
         SessionId = Text(result["sessionId"]) ?? throw new AcpError(AcpError.InternalError, "session/new returned no sessionId");
+        TakeSession(result);
+        return SessionId;
+    }
+
+    /// <summary>Opens a conversation of before in <paramref name="folder"/>: the agent tells it again as updates (the
+    /// person's words as <see cref="UserTextReceived"/>), then answers.</summary>
+    public async Task LoadSessionAsync(string sessionId, string folder, CancellationToken cancel = default)
+    {
+        SessionId = sessionId;
+        JsonNode result = await connection.RequestAsync("session/load", new JsonObject
+        {
+            ["sessionId"] = sessionId,
+            ["cwd"] = folder,
+            ["mcpServers"] = new JsonArray(),
+        }, cancel);
+        TakeSession(result);
+    }
+
+    /// <summary>Deletes a conversation of before from the agent's history.</summary>
+    public Task DeleteSessionAsync(string sessionId, CancellationToken cancel = default) =>
+        connection.RequestAsync("session/delete", new JsonObject { ["sessionId"] = sessionId }, cancel);
+
+    /// <summary>Signs the agent out of its account; it says so in an account update.</summary>
+    public Task LogoutAsync(CancellationToken cancel = default) => connection.RequestAsync("logout", new JsonObject(), cancel);
+
+    /// <summary>The ways the agent offers to sign in, from its answer to initialize.</summary>
+    public IReadOnlyList<AuthMethod> AuthMethods { get; private set; } = [];
+
+    /// <summary>A session's modes and settings, from its opening's answer.</summary>
+    private void TakeSession(JsonNode result)
+    {
         JsonNode? modes = result["modes"];
         CurrentModeId = Text(modes?["currentModeId"]);
         List<SessionMode> available = [];
@@ -121,7 +170,6 @@ public sealed class AcpSession : IAsyncDisposable
 
         Modes = available;
         TakeConfig(result["configOptions"]);
-        return SessionId;
     }
 
     /// <summary>Sets one of the session's settings (mode, model, effort…) to one of its choices.</summary>
@@ -220,6 +268,12 @@ public sealed class AcpSession : IAsyncDisposable
         string kind = Text(update["sessionUpdate"]) ?? "";
         switch (kind)
         {
+            case "user_message_chunk":
+                if (Text(update["content"]?["text"]) is string said)
+                {
+                    UserTextReceived?.Invoke(new TextChunk(said));
+                }
+                break;
             case "agent_message_chunk":
                 if (Text(update["content"]?["text"]) is string chunk)
                 {

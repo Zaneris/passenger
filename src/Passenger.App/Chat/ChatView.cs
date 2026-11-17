@@ -103,7 +103,7 @@ public sealed class ChatView : DockPanel
             }
         }, RoutingStrategies.Tunnel);
 
-        idle = new StackPanel { Spacing = 12, Margin = new Thickness(16), VerticalAlignment = VerticalAlignment.Center, Children = { said, connect } };
+        idle = new StackPanel { Spacing = 12, Margin = new Thickness(16), VerticalAlignment = VerticalAlignment.Center, Children = { said, signIns, connect } };
         empty = EmptyState();
         working = new StackPanel
         {
@@ -132,9 +132,21 @@ public sealed class ChatView : DockPanel
         Button plans = ToolButtons.Of(IconKeys.DocumentText, "Plans: the agent's plans in this folder", () => PlansRequested?.Invoke(this, PlansButton!));
         PlansButton = plans;
         SetDock(plans, Dock.Right);
-        SetDock(account, Dock.Right);
+        // The account is a button: signed in, it offers Sign out; signed out, the ways to sign in.
+        AccountButton = new Button { Classes = { StyleClasses.TextLink }, Content = account, VerticalAlignment = VerticalAlignment.Center };
+        AccountButton.Click += (_, _) => AccountRequested?.Invoke(this, AccountButton);
+        Button history = ToolButtons.Of(IconKeys.History, "History: earlier chats in this folder", () => HistoryRequested?.Invoke(this, HistoryButton!));
+        HistoryButton = history;
+        Button fresh = ToolButtons.Of(IconKeys.Add, "New chat", () => NewChatRequested?.Invoke(this, EventArgs.Empty));
+        NewChatButton = fresh;
+        SetDock(plans, Dock.Right);
+        SetDock(history, Dock.Right);
+        SetDock(fresh, Dock.Right);
+        SetDock(AccountButton, Dock.Right);
         header.Children.Add(plans);
-        header.Children.Add(account);
+        header.Children.Add(history);
+        header.Children.Add(fresh);
+        header.Children.Add(AccountButton);
         header.Children.Add(agent);
         SetDock(header, Dock.Top);
         SetDock(composer, Dock.Bottom);
@@ -240,6 +252,123 @@ public sealed class ChatView : DockPanel
         header.IsVisible = conversation.IsVisible = composer.IsVisible = false;
     }
 
+    private readonly StackPanel signIns = new() { Spacing = 8, HorizontalAlignment = HorizontalAlignment.Center, IsVisible = false };
+
+    /// <summary>The header's account, a button: Sign out while signed in, the ways to sign in while not.</summary>
+    public Button AccountButton { get; }
+
+    /// <summary>The header's History button, which lists the folder's earlier chats.</summary>
+    public Button? HistoryButton { get; private set; }
+
+    /// <summary>The header's New chat button.</summary>
+    public Button? NewChatButton { get; private set; }
+
+    /// <summary>The account was clicked, to sign out or in.</summary>
+    public event EventHandler<Button>? AccountRequested;
+
+    /// <summary>History was clicked, to list the folder's earlier chats.</summary>
+    public event EventHandler<Button>? HistoryRequested;
+
+    /// <summary>New chat was clicked.</summary>
+    public event EventHandler? NewChatRequested;
+
+    /// <summary>One of the agent's ways to sign in was chosen.</summary>
+    public event EventHandler<AuthMethod>? SignInRequested;
+
+    /// <summary>Whether the agent says it is signed in to no account.</summary>
+    public bool SignedOut { get; private set; }
+
+    /// <summary>The agent is signed in to no account: the chat says so, with a button for each of its ways to sign in,
+    /// which runs in the Terminal; Passenger never sees the login.</summary>
+    public void SayNotSignedIn(IReadOnlyList<AuthMethod> methods, string? why = null)
+    {
+        SignedOut = true;
+        Say(why ?? "Claude Code is not signed in. Sign in with your own Claude account; it signs in in the Terminal, and Passenger never sees your login.", offerConnect: methods.Count == 0);
+        signIns.Children.Clear();
+        foreach (AuthMethod method in methods)
+        {
+            Button sign = new() { Content = method.Name, HorizontalAlignment = HorizontalAlignment.Center };
+            if (signIns.Children.Count == 0)
+            {
+                sign.Classes.Add(StyleClasses.Primary);
+            }
+            ToolTip.SetTip(sign, method.Description ?? method.Name);
+            sign.Click += (_, _) => SignInRequested?.Invoke(this, method);
+            signIns.Children.Add(sign);
+        }
+        signIns.IsVisible = methods.Count > 0;
+        account.Text = "Not signed in";
+    }
+
+    /// <summary>Starts the conversation afresh, for a new chat or one of before: its messages, questions and to-dos go.</summary>
+    public void Clear()
+    {
+        foreach (ApprovalCard card in asking.ToArray())
+        {
+            card.Cancel();
+        }
+        Questioning?.Cancel();
+        messages.Children.Clear();
+        parts.Clear();
+        tools.Clear();
+        reply = null;
+        words = null;
+        Todos.Show([]);
+        Working(false, null);
+        empty.IsVisible = true;
+    }
+
+    /// <summary>A piece of the person's words of a chat of before, as the agent tells it again: their message, the
+    /// agent's reply to it begun below.</summary>
+    public void Replayed(string text)
+    {
+        empty.IsVisible = false;
+        if (parts.LastOrDefault() is { Who: "You" } mine && reply is { Children.Count: 1 })
+        {
+            mine.Text.Append(text);
+            mine.Body.Text = mine.Text.ToString();
+            return;
+        }
+        Close();
+        foreach (ToolLine line in tools.Values)
+        {
+            line.Settle();
+        }
+        DropEmptyReply();
+        Mine(text);
+        reply = Message(agentName);
+    }
+
+    /// <summary>A reply begun with nothing in it but who would say it goes.</summary>
+    private void DropEmptyReply()
+    {
+        if (reply is { Children.Count: 1 } empty)
+        {
+            messages.Children.Remove(empty);
+        }
+    }
+
+    /// <summary>The chat of before is told whole: its last reply ends, nothing turning.</summary>
+    public void ReplayEnded()
+    {
+        Close();
+        foreach (ToolLine line in tools.Values)
+        {
+            line.Settle();
+        }
+        DropEmptyReply();
+        reply = null;
+        empty.IsVisible = messages.Children.Count == 0;
+        ToEnd();
+    }
+
+    /// <summary>Begins telling a chat of before again: its first reply has somewhere to go before any message of the person's.</summary>
+    public void Replaying()
+    {
+        Clear();
+        reply = Message(agentName);
+    }
+
     /// <summary>Shows the conversation with the agent <paramref name="name"/> (its version after it, as <paramref name="described"/>).</summary>
     public void Connected(string name, string described)
     {
@@ -248,6 +377,8 @@ public sealed class ChatView : DockPanel
         agent.Text = described;
         ToolTip.SetTip(agent, said.Text);
         idle.IsVisible = false;
+        signIns.IsVisible = false;
+        SignedOut = false;
         header.IsVisible = conversation.IsVisible = composer.IsVisible = true;
         empty.IsVisible = messages.Children.Count == 0;
         input.Focus();
@@ -467,7 +598,7 @@ public sealed class ChatView : DockPanel
     public void ShowAccount(AccountStatus status)
     {
         AgentAccount? active = status.Accounts.FirstOrDefault(each => each.Active) ?? status.Accounts.FirstOrDefault();
-        signedIn = active is null ? status.State : active.Label;
+        signedIn = status.State == "unauthenticated" ? "Not signed in" : active is null ? status.State : active.Label;
         signedInTip = active is null
             ? $"The agent says it is {status.State}"
             : $"Signed in as {active.Email ?? active.Label} ({active.Label}), in the agent's own login.\nTo use another account, run claude /login in a terminal, then connect again.";

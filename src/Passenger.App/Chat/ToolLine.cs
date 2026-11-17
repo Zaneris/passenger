@@ -70,14 +70,24 @@ public sealed class ToolLine : DockPanel
         Children.Add(snippet);
     }
 
+    /// <summary>A title's first line, "…" after it where more follows.</summary>
+    public static string OneLine(string text)
+    {
+        string trimmed = text.Trim();
+        int end = trimmed.IndexOfAny(['\r', '\n']);
+        return end < 0 ? trimmed : trimmed[..end].TrimEnd() + " …";
+    }
+
     /// <summary>The call as it stands now.</summary>
     public void Show(ToolCall call)
     {
-        title.Text = call.Title.Length > 0 ? call.Title : call.Kind;
+        string whole = call.Title.Length > 0 ? call.Title : call.Kind;
+        // A command of many lines (a script) shows its first, the whole of it in the tip.
+        title.Text = OneLine(whole);
         Kind = call.Kind.Length > 0 ? call.Kind : Kind;
         Named = call.Locations.Count > 0 ? Path.GetFileName(call.Locations[0]) : Named;
         link.Content = title.Text;
-        ToolTip.SetTip(this, call.Locations.Count > 0 ? string.Join("\n", call.Locations) : null);
+        ToolTip.SetTip(this, call.Locations.Count > 0 ? string.Join("\n", call.Locations) : title.Text != whole ? whole : null);
         if (call.Status == status)
         {
             return;

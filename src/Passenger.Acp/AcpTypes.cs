@@ -88,3 +88,7 @@ public sealed record QuestionChoice(string Label, string? Description);
 /// <summary>The person's answers, by each question's field: the labels picked, and an answer in their own words, by
 /// its own field.</summary>
 public sealed record QuestionsAnswer(IReadOnlyDictionary<string, IReadOnlyList<string>> Picked, IReadOnlyDictionary<string, string> OwnWords);
+
+/// <summary>A way the agent offers to sign in, run in a terminal: its name, what it is, and the command and arguments
+/// that run it (null where the agent names none).</summary>
+public sealed record AuthMethod(string Id, string Name, string? Description, string? Command, IReadOnlyList<string> Args);

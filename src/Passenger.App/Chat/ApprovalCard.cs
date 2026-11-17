@@ -175,7 +175,8 @@ public sealed class ApprovalCard : Border
     private StackPanel CommandCard(ToolCall call)
     {
         RowIcon icon = new() { DataKey = IconKeys.Terminal, ForegroundKey = TokenKeys.TextMuted, Width = 14, Height = 14, Margin = new Thickness(0, 0, 8, 0), VerticalAlignment = VerticalAlignment.Center };
-        TextBlock command = new TextBlock { Text = call.Title, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center, FontSize = 12 }.InCodeFont();
+        // A script of many lines shows its first three, the whole of it in the tip.
+        TextBlock command = new TextBlock { Text = call.Title.Trim(), TextWrapping = TextWrapping.Wrap, MaxLines = 3, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center, FontSize = 12 }.InCodeFont();
         ToolTip.SetTip(command, call.Title);
         chip.Margin = new Thickness(8, 0, 0, 0);
         DockPanel.SetDock(chip, Dock.Right);

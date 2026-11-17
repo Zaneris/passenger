@@ -252,4 +252,7 @@ public sealed class AcpError(int code, string message) : Exception(message)
     public const int ConnectionClosed = -32099;
 
     public int Code { get; } = code;
+
+    /// <summary>Whether the agent refused because it is signed in to no account (ACP's authRequired).</summary>
+    public bool IsAuthRequired => Code == Refused && Message.Contains("Authentication required", StringComparison.OrdinalIgnoreCase);
 }

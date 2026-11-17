@@ -73,6 +73,20 @@ public partial class MainWindow
             };
             view.PlanRequested += (_, path) => OpenChatPlan(path);
             view.PlanEditRequested += (_, path) => EditChatPlan(path);
+            view.NewChatRequested += (_, _) =>
+            {
+                Task fresh = NewChatAsync(view);
+                BackgroundWork.Track(fresh);
+                IdeErrors.Observe(fresh);
+            };
+            view.HistoryRequested += (_, button) =>
+            {
+                Task listing = ShowChatHistoryAsync(view, button);
+                BackgroundWork.Track(listing);
+                IdeErrors.Observe(listing);
+            };
+            view.AccountRequested += (_, button) => ShowChatAccount(view, button);
+            view.SignInRequested += (_, method) => SignInToChat(view, method);
             view.Asking += (_, card) =>
             {
                 askedCards[card.CallId] = card;
@@ -537,28 +551,268 @@ public partial class MainWindow
             chatAgent = agent;
             Follow(agent, view);
             AgentInfo info = await agent.Session.InitializeAsync();
+            chatAgentInfo = info;
             await agent.Session.NewSessionAsync(folder);
-            if (agent.Session.Config.Any(option => option.Id == "mode" && option.Choices.Any(choice => choice.Value == ChatAgent.ReviewMode)))
-            {
-                await agent.Session.SetConfigAsync("mode", ChatAgent.ReviewMode);
-            }
-            else if (agent.Session.Modes.Any(mode => mode.Id == ChatAgent.ReviewMode))
-            {
-                await agent.Session.SetModeAsync(ChatAgent.ReviewMode);
-            }
-            else if (agent.Session.Modes.Any(mode => mode.Id == ChatAgent.ManualMode))
-            {
-                await agent.Session.SetModeAsync(ChatAgent.ManualMode);
-            }
-            string name = info.Title ?? info.Name;
-            view.Connected(name, $"{name}{(info.Version is { } version ? " " + version : "")}");
+            await ReviewModeAsync(agent);
+            ShowConnected(view, info);
             view.ShowConfig(agent.Session.Config);
+        }
+        catch (AcpError error) when (error.IsAuthRequired && chatAgent is { } agent)
+        {
+            // Signed out: the agent stays, its ways to sign in offered; a sign-in reconnects.
+            view.SayNotSignedIn(agent.Session.AuthMethods);
         }
         catch (Exception error) when (error is AcpError or Win32Exception or IOException or InvalidOperationException)
         {
             EndChatAgent();
             view.Say($"Could not start the agent: {error.Message}", error: true, offerConnect: true);
         }
+    }
+
+    private AgentInfo? chatAgentInfo;
+
+    /// <summary>The chat shown connected to the agent, as its answer to initialize names it.</summary>
+    private static void ShowConnected(ChatView view, AgentInfo info)
+    {
+        string name = info.Title ?? info.Name;
+        view.Connected(name, $"{name}{(info.Version is { } version ? " " + version : "")}");
+    }
+
+    /// <summary>A new session runs in the agent's Accept edits mode, as Cursor works: its edits apply as it goes, each
+    /// taken for review first, and it asks before each command. An agent without that mode runs in Manual.</summary>
+    private static async Task ReviewModeAsync(ChatAgent agent)
+    {
+        if (agent.Session.Config.Any(option => option.Id == "mode" && option.Choices.Any(choice => choice.Value == ChatAgent.ReviewMode)))
+        {
+            await agent.Session.SetConfigAsync("mode", ChatAgent.ReviewMode);
+        }
+        else if (agent.Session.Modes.Any(mode => mode.Id == ChatAgent.ReviewMode))
+        {
+            await agent.Session.SetModeAsync(ChatAgent.ReviewMode);
+        }
+        else if (agent.Session.Modes.Any(mode => mode.Id == ChatAgent.ManualMode))
+        {
+            await agent.Session.SetModeAsync(ChatAgent.ManualMode);
+        }
+    }
+
+    /// <summary>New chat: a new session with the agent in the open folder, the conversation shown afresh; refused while
+    /// the agent works.</summary>
+    private async Task NewChatAsync(ChatView view)
+    {
+        if (chatAgent is not { } agent || Folder is not { } folder)
+        {
+            return;
+        }
+        if (view.Busy)
+        {
+            status.Text = "Stop the agent's turn before starting a new chat";
+            return;
+        }
+        view.Clear();
+        try
+        {
+            await agent.Session.NewSessionAsync(folder);
+            await ReviewModeAsync(agent);
+            view.ShowConfig(agent.Session.Config);
+        }
+        catch (AcpError error) when (error.IsAuthRequired)
+        {
+            view.SayNotSignedIn(agent.Session.AuthMethods);
+        }
+        catch (AcpError error)
+        {
+            status.Text = $"Could not start a new chat: {error.Message}";
+        }
+    }
+
+    /// <summary>The folder's earlier chats under the History button, the newest first: one opens on a click, told again
+    /// whole, and goes from the agent's history by the button at its end. The chat shown now is marked.</summary>
+    private async Task ShowChatHistoryAsync(ChatView view, Button under)
+    {
+        if (chatAgent is not { } agent || Folder is not { } folder)
+        {
+            return;
+        }
+        IReadOnlyList<PastSession> sessions;
+        try
+        {
+            sessions = await agent.Session.ListSessionsAsync(folder);
+        }
+        catch (AcpError error)
+        {
+            status.Text = $"Could not list the earlier chats: {error.Message}";
+            return;
+        }
+        MenuFlyout menu = new();
+        foreach (PastSession past in sessions.OrderByDescending(session => session.Updated))
+        {
+            bool now = past.Id == agent.Session.SessionId;
+            bool deleting = false;
+            string title = past.Title is { Length: > 0 } named ? named : "Untitled chat";
+            Button delete = ToolButtons.Of(IconKeys.Close, $"Delete the chat {title}", () =>
+            {
+                deleting = true;
+                menu.Hide();
+                Task gone = DeleteChatAsync(view, agent, past, title);
+                BackgroundWork.Track(gone);
+                IdeErrors.Observe(gone);
+            });
+            delete.Margin = new Avalonia.Thickness(16, 0, 0, 0);
+            DockPanel.SetDock(delete, Avalonia.Controls.Dock.Right);
+            string when = past.Updated is { } updated ? $"  ·  {updated.ToLocalTime():d MMM HH:mm}" : string.Empty;
+            TextBlock words = new() { Text = $"{(now ? "● " : string.Empty)}{ToolLine.OneLine(title)}{when}", VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center, MaxWidth = 420, TextTrimming = Avalonia.Media.TextTrimming.CharacterEllipsis };
+            MenuItem item = new() { Header = new DockPanel { Children = { delete, words } } };
+            ToolTip.SetTip(item, now ? $"{title} (shown now)" : title);
+            item.Click += (_, _) =>
+            {
+                if (!deleting && !now)
+                {
+                    Task opening = LoadChatAsync(view, agent, folder, past.Id);
+                    BackgroundWork.Track(opening);
+                    IdeErrors.Observe(opening);
+                }
+            };
+            menu.Items.Add(item);
+        }
+        if (menu.Items.Count == 0)
+        {
+            menu.Items.Add(new MenuItem { Header = "No earlier chats in this folder", IsEnabled = false });
+        }
+        ChatHistoryMenu = menu;
+        menu.ShowAt(under);
+    }
+
+    /// <summary>The History button's list as last shown, for a test to reach.</summary>
+    public MenuFlyout? ChatHistoryMenu { get; private set; }
+
+    /// <summary>1 while a chat of before is told again: its edits and plans were reviewed in their day.</summary>
+    private int replaying;
+
+    /// <summary>Opens a chat of before, the agent telling it again into a conversation shown afresh.</summary>
+    private async Task LoadChatAsync(ChatView view, ChatAgent agent, string folder, string sessionId)
+    {
+        if (view.Busy)
+        {
+            status.Text = "Stop the agent's turn before opening another chat";
+            return;
+        }
+        view.Replaying();
+        Interlocked.Exchange(ref replaying, 1);
+        try
+        {
+            await agent.Session.LoadSessionAsync(sessionId, folder);
+            // Its updates land before its answer's continuation runs on.
+            await Dispatcher.UIThread.InvokeAsync(static () => { });
+            view.ShowConfig(agent.Session.Config);
+        }
+        catch (AcpError error)
+        {
+            status.Text = $"Could not open that chat: {error.Message}";
+        }
+        finally
+        {
+            Interlocked.Exchange(ref replaying, 0);
+            view.ReplayEnded();
+        }
+    }
+
+    /// <summary>Deletes a chat from the agent's history; the one shown gives way to a new chat.</summary>
+    private async Task DeleteChatAsync(ChatView view, ChatAgent agent, PastSession past, string title)
+    {
+        bool shown = past.Id == agent.Session.SessionId;
+        try
+        {
+            await agent.Session.DeleteSessionAsync(past.Id);
+            status.Text = $"Deleted the chat {ToolLine.OneLine(title)}";
+        }
+        catch (AcpError error)
+        {
+            status.Text = $"Could not delete that chat: {error.Message}";
+            return;
+        }
+        if (shown)
+        {
+            await NewChatAsync(view);
+        }
+    }
+
+    /// <summary>The account, clicked: Sign out while signed in, the agent's ways to sign in while not.</summary>
+    private void ShowChatAccount(ChatView view, Button under)
+    {
+        if (chatAgent is not { } agent)
+        {
+            return;
+        }
+        MenuFlyout menu = new();
+        if (view.SignedOut)
+        {
+            foreach (AuthMethod method in agent.Session.AuthMethods)
+            {
+                MenuItem item = new() { Header = $"Sign in: {method.Name}" };
+                item.Click += (_, _) => SignInToChat(view, method);
+                menu.Items.Add(item);
+            }
+        }
+        else
+        {
+            MenuItem signOut = new() { Header = "Sign out of Claude" };
+            ToolTip.SetTip(signOut, "Signs Claude Code out of its account everywhere it runs, the terminal's claude too");
+            signOut.Click += (_, _) =>
+            {
+                Task leaving = SignOutOfChatAsync(view, agent);
+                BackgroundWork.Track(leaving);
+                IdeErrors.Observe(leaving);
+            };
+            menu.Items.Add(signOut);
+        }
+        ChatAccountMenu = menu;
+        menu.ShowAt(under);
+    }
+
+    /// <summary>The account's menu as last shown, for a test to reach.</summary>
+    public MenuFlyout? ChatAccountMenu { get; private set; }
+
+    /// <summary>Signs the agent out of its account, as claude /logout does; the chat then offers the ways to sign in.</summary>
+    private async Task SignOutOfChatAsync(ChatView view, ChatAgent agent)
+    {
+        if (view.Busy)
+        {
+            status.Text = "Stop the agent's turn before signing out";
+            return;
+        }
+        try
+        {
+            await agent.Session.LogoutAsync();
+        }
+        catch (AcpError error)
+        {
+            status.Text = $"Could not sign out: {error.Message}";
+            return;
+        }
+        view.Clear();
+        view.SayNotSignedIn(agent.Session.AuthMethods, "Signed out of Claude. Sign in again with your own Claude account; it signs in in the Terminal, and Passenger never sees your login.");
+    }
+
+    /// <summary>Runs the agent's sign-in in a tab of the Terminal window; once it ends, the chat connects again.</summary>
+    private void SignInToChat(ChatView view, AuthMethod method)
+    {
+        if (method.Command is not { } command)
+        {
+            status.Text = $"The agent names no command for {method.Name}: run claude /login in the Terminal, then Connect";
+            return;
+        }
+        System.Diagnostics.ProcessStartInfo start = ChildProcesses.Command(command, method.Args, Folder);
+        view.Say($"Finish signing in in the Terminal ({method.Name}); the chat connects again once it ends.", offerConnect: true);
+        // Not held: it lasts as long as the person takes to sign in.
+        IdeErrors.Observe(ReconnectWhenSignedInAsync(view, ShowInTerminal("Claude sign-in", start)));
+    }
+
+    private async Task ReconnectWhenSignedInAsync(ChatView view, Task<Run.TerminalRun> starting)
+    {
+        Run.TerminalRun run = await starting;
+        await run.Ended;
+        await Dispatcher.UIThread.InvokeAsync(() => ConnectChatAsync(view));
     }
 
     /// <summary>Sets one of the agent's settings the person chose (mode, model, effort); the pickers show what the agent
@@ -604,6 +858,12 @@ public partial class MainWindow
                 _ => $"Stopped: {ended.StopReason}",
             });
         }
+        catch (AcpError error) when (error.IsAuthRequired)
+        {
+            await Dispatcher.UIThread.InvokeAsync(static () => { });
+            view.Answered("Claude Code is not signed in", error: true);
+            view.SayNotSignedIn(agent.Session.AuthMethods);
+        }
         catch (AcpError error)
         {
             await Dispatcher.UIThread.InvokeAsync(static () => { });
@@ -621,6 +881,7 @@ public partial class MainWindow
     private void Follow(ChatAgent agent, ChatView view)
     {
         agent.Session.TextReceived += chunk => OnWindowThread(() => view.Streamed(chunk.Text));
+        agent.Session.UserTextReceived += chunk => OnWindowThread(() => view.Replayed(chunk.Text));
         agent.Session.ConfigChanged += config => OnWindowThread(() => view.ShowConfig(config));
         agent.Session.CommandsChanged += commands => OnWindowThread(() => view.ShowCommands(commands));
         agent.Session.AccountChanged += account => OnWindowThread(() => view.ShowAccount(account));
@@ -633,8 +894,13 @@ public partial class MainWindow
         });
         agent.Session.ToolCallChanged += call =>
         {
-            Planned(call);
-            (string[] paths, bool done) = Reviewed(call);
+            // A chat of before told again: its edits and plans were reviewed in their day.
+            bool told = Volatile.Read(ref replaying) == 1;
+            if (!told)
+            {
+                Planned(call);
+            }
+            (string[] paths, bool done) = told ? ([], false) : Reviewed(call);
             // Claude Code's draft of its plan is its own: the plan shown is the folder's copy, so the draft is a step, not a file.
             ToolCall shown = call.Kind == "edit" && call.Locations.Count > 0 && call.Locations.All(ChatPlans.IsAgentDraft)
                 ? call with { Title = ChatPlans.DraftTitle }

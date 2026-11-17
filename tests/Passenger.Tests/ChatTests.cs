@@ -485,6 +485,51 @@ public sealed class ChatTests
     }
 
     [AvaloniaFact]
+    public void Sign_out_leaves_the_chat_offering_the_agents_ways_to_sign_in_in_the_Terminal()
+    {
+        MainWindow window = Connected(out StandInAgent agent);
+        Assert.True(agent.OffersTerminalSignIn, "Passenger never tells the agent it runs a sign-in, so a signed-out agent offers none");
+
+        Ui.Click(window.Chat.AccountButton);
+        Ui.Click(window.ChatAccountMenu!.Items.OfType<MenuItem>().Single(item => Equals(item.Header, "Sign out of Claude")));
+        Ui.WaitFor(() => window.Chat.SignedOut, () => $"the chat signed out, where it says \"{window.Chat.Said}\"");
+
+        Assert.True(agent.SignedOut);
+        Assert.StartsWith("Signed out of Claude", window.Chat.Said, StringComparison.Ordinal);
+        Assert.Contains(window.Chat.GetVisualDescendants().OfType<Button>(), b => Equals(b.Content, "Claude Subscription") && b.IsEffectivelyVisible);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void New_chat_starts_afresh_and_History_opens_a_chat_of_before_told_again_and_deletes_one()
+    {
+        MainWindow window = Connected(out StandInAgent agent);
+        Send(window, "hello");
+        Ui.WaitFor(() => !window.Chat.Busy, "the first turn ended");
+
+        Ui.Click(window.Chat.NewChatButton!);
+        Ui.WaitFor(() => agent.Sessions.Count == 2 && window.Chat.Conversation.Count == 0, () => $"a new chat, where the conversation is {Shown(window)}");
+
+        Ui.Click(window.Chat.HistoryButton!);
+        Ui.WaitFor(() => window.ChatHistoryMenu is not null, "the earlier chats");
+        MenuItem[] listed = [.. window.ChatHistoryMenu!.Items.OfType<MenuItem>()];
+        Assert.Equal(2, listed.Length);
+        MenuItem first = listed.Single(item => ((DockPanel)item.Header!).Children.OfType<TextBlock>().Single().Text!.StartsWith("Add a README", StringComparison.Ordinal));
+        Ui.Click(first);
+        Ui.WaitFor(() => agent.Loaded == "sess_1" && window.Chat.Conversation.Count == 2, () => $"the chat of before told again, where the conversation is {Shown(window)}");
+        Assert.Equal([("You", "Add a README"), ("Claude Agent", "I added README.md.")], window.Chat.Conversation);
+
+        MenuFlyout? before = window.ChatHistoryMenu;
+        Ui.Click(window.Chat.HistoryButton!);
+        Ui.WaitFor(() => window.ChatHistoryMenu != before, "the earlier chats again");
+        MenuItem other = window.ChatHistoryMenu!.Items.OfType<MenuItem>().Single(item => !((DockPanel)item.Header!).Children.OfType<TextBlock>().Single().Text!.StartsWith("●", StringComparison.Ordinal));
+        Ui.Click(((DockPanel)other.Header!).Children.OfType<Button>().Single());
+        Ui.WaitFor(() => agent.Sessions.Count == 1, "the other chat deleted");
+        Assert.Equal("sess_1", agent.Sessions.Single().Id);
+        window.Close();
+    }
+
+    [AvaloniaFact]
     public void A_plan_in_the_Plans_list_is_deleted_to_the_Trash_by_its_own_button()
     {
         MainWindow window = Reviewing(out _, out string folder);
@@ -1016,11 +1061,46 @@ public sealed class ChatTests
                 {
                     case "initialize":
                         OffersForms = parameters?["clientCapabilities"]?["elicitation"]?["form"] is not null;
-                        await Answer(writer, id, """{"protocolVersion":1,"agentInfo":{"name":"@agentclientprotocol/claude-agent-acp","title":"Claude Agent","version":"0.107.3"},"authMethods":[]}""");
+                        OffersTerminalSignIn = parameters?["clientCapabilities"]?["_meta"]?["terminal-auth"] is not null;
+                        await Answer(writer, id, """{"protocolVersion":1,"agentInfo":{"name":"@agentclientprotocol/claude-agent-acp","title":"Claude Agent","version":"0.107.3"},"authMethods":[{"id":"claude-ai-login","name":"Claude Subscription","description":"Use Claude subscription","type":"terminal","args":["--cli","auth","login","--claudeai"],"_meta":{"terminal-auth":{"command":"node","args":["agent.js","--cli","auth","login","--claudeai"],"label":"Claude Login"}}}]}""");
+                        break;
+                    case "session/new" when SignedOut:
+                        await writer.WriteLineAsync($$$"""{"jsonrpc":"2.0","id":{{{id}}},"error":{"code":-32000,"message":"Authentication required"}}""");
+                        break;
+                    case "logout":
+                        SignedOut = true;
+                        await Answer(writer, id, "{}");
+                        await writer.WriteLineAsync("""{"jsonrpc":"2.0","method":"auth/status_update","params":{"state":"unauthenticated"}}""");
+                        break;
+                    case "session/list":
+                        string listed = string.Join(",", Sessions.Select(session => $$$"""{"sessionId":"{{{session.Id}}}","cwd":"x","title":{{{JsonValue.Create(session.Title).ToJsonString()}}},"updatedAt":"2026-11-17T10:00:00Z"}"""));
+                        await Answer(writer, id, $$$"""{"sessions":[{{{listed}}}]}""");
+                        break;
+                    case "session/delete":
+                        string gone = parameters?["sessionId"]?.GetValue<string>() ?? string.Empty;
+                        lock (sessions)
+                        {
+                            sessions.RemoveAll(session => session.Id == gone);
+                        }
+                        await Answer(writer, id, "{}");
+                        break;
+                    case "session/load":
+                        string asked = parameters?["sessionId"]?.GetValue<string>() ?? string.Empty;
+                        Loaded = asked;
+                        // As the adapter tells a chat of before again: the person's words, then the agent's.
+                        await Update(writer, """{"sessionUpdate":"user_message_chunk","content":{"type":"text","text":"Add a README"}}""");
+                        await Say(writer, "I added README.md.");
+                        await Answer(writer, id, """{"modes":{"currentModeId":"acceptEdits","availableModes":[{"id":"default","name":"Manual"},{"id":"acceptEdits","name":"Accept edits"},{"id":"plan","name":"Plan"}]},"configOptions":""" + Config() + "}");
                         break;
                     case "session/new":
                         SessionFolder = parameters?["cwd"]?.GetValue<string>();
-                        await Answer(writer, id, """{"sessionId":"sess_1","modes":{"currentModeId":"auto","availableModes":[{"id":"default","name":"Manual"},{"id":"acceptEdits","name":"Accept edits"},{"id":"plan","name":"Plan"}]},"configOptions":""" + Config() + "}");
+                        string made;
+                        lock (sessions)
+                        {
+                            made = $"sess_{sessions.Count + 1}";
+                            sessions.Add((made, sessions.Count == 0 ? "Add a README" : "Untitled"));
+                        }
+                        await Answer(writer, id, $$$"""{"sessionId":"{{{made}}}","modes":{"currentModeId":"auto","availableModes":[{"id":"default","name":"Manual"},{"id":"acceptEdits","name":"Accept edits"},{"id":"plan","name":"Plan"}]},"configOptions":{{{Config()}}}}""");
                         await writer.WriteLineAsync("""{"jsonrpc":"2.0","method":"auth/status_update","params":{"state":"authenticated","accounts":[{"label":"Claude Pro","active":true,"email":"person@example.com"}]}}""");
                         await Update(writer, """{"sessionUpdate":"available_commands_update","availableCommands":[{"name":"code-review","description":"Review the current diff"},{"name":"compact","description":"Clear the conversation but keep a summary"},{"name":"init","description":"Write a CLAUDE.md"}]}""");
                         await Update(writer, """{"sessionUpdate":"usage_update","used":40000,"size":1000000,"_meta":{"_claude/rateLimit":{"unifiedWindows":{"five_hour":{"utilization":0.3,"resetsAt":1794848400},"seven_day":{"utilization":0.04,"resetsAt":1795428000}}}}}""");
@@ -1227,6 +1307,29 @@ public sealed class ChatTests
 
         /// <summary>Whether it has a question open, whose answer ends the turn rather than session/cancel.</summary>
         private bool Asked => Prompts.LastOrDefault() is "write" or "plan" or "ask" or "questions" or "run";
+
+        /// <summary>Whether the client said at initialize that it runs a sign-in in its own terminal.</summary>
+        public bool OffersTerminalSignIn { get; private set; }
+
+        /// <summary>Whether it was signed out: a new session is refused as ACP's authRequired.</summary>
+        public bool SignedOut { get; private set; }
+
+        /// <summary>The chat of before last opened, by its id.</summary>
+        public string? Loaded { get; private set; }
+
+        private readonly List<(string Id, string Title)> sessions = [];
+
+        /// <summary>Its sessions, the oldest first.</summary>
+        public IReadOnlyList<(string Id, string Title)> Sessions
+        {
+            get
+            {
+                lock (sessions)
+                {
+                    return [.. sessions];
+                }
+            }
+        }
 
         /// <summary>Whether the client said at initialize that it shows forms (ACP's elicitation).</summary>
         public bool OffersForms { get; private set; }
