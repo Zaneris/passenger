@@ -338,7 +338,7 @@ Projects in `src/`; `find_symbol` finds the rest from the names here. A pointer'
   `MainWindow.GodotHeadlessAtOpen`); a function's argument count only `GodotScriptDeclared.Takes`; what stands before a dot only
   `GDScriptAnalysis.ValueBefore`, never `NodeAt(dot - 1)`; `GDScriptFormatter`
   refuses unless `Differs` finds the same tokens, comments and tree, and Reformat Code never runs `OrderParts`. Godot's
-  generator assigns every field in generated code, so a field's values come from the code's own documents. A copy in a Godot project is left as Godot's Duplicate leaves it, new uids and copies repointed (`CSharpAssist.GodotCopiedAsync`, `GodotUids.Copied`), never a second reader of .uid files; a binary scene's or resource's uid and external resources are read and written only through `GodotBinaryResource` (formats 1–6, RSCC through .NET's own Zstandard). Edits placed
+  generator assigns every field in generated code, so a field's values come from the code's own documents. A move rewrites the binary scenes and resources naming what moved through `GodotScenes.MovedBinary`, in the move's command (`MainWindow.RewriteGodotAsync`). A copy in a Godot project is left as Godot's Duplicate leaves it, new uids and copies repointed (`CSharpAssist.GodotCopiedAsync`, `GodotUids.Copied`), never a second reader of .uid files; a binary scene's or resource's uid and external resources are read and written only through `GodotBinaryResource` (formats 1–6, RSCC through .NET's own Zstandard). Edits placed
   in text Passenger read carry that text (`PlacedEdits`), checked before anything is written. A GDScript refactoring
   moving code asks `GDScriptEffects`: a call's arguments run before what it is called on, and an object's script
   variable with no getter is read only as what takes it runs. Text typed for a scene is checked by `GodotVariantText`
@@ -346,7 +346,7 @@ Projects in `src/`; `find_symbol` finds the rest from the names here. A pointer'
   `GodotKeeping`. Shader marks are Passenger's port of Godot's front end (`GodotShaderChecker`). The person's Godot
   editor is asked through IDE messaging (`GodotIdeLink`), never Passenger's headless editors.
 - **Web languages.** A web server's rename keeps a stylesheet name's sigil (`CodeActions.SigilOf`). `WebLanguages`: one Node.js server per kind but GDScript's (Godot's editor over TCP, one per Godot
-  project: `ServerPlace`), every per-kind switch naming each kind; a schema's file is read only through `JsonSchemas.ContentAsync` (`FoundPaths.OfFileAddress`), the JSON server fetching none itself; `JsonSchemas` and `PageStylesheets` reach the web
+  project: `ServerPlace`), every per-kind switch naming each kind; a schema's file is read only through `JsonSchemas.ContentAsync` (`FoundPaths.OfFileAddress`), the JSON server fetching none itself, the YAML server's reads handed to it by Passenger's preload (`module.registerHooks`, Node.js 22.15+/23.5+, `NodeServer.PreloadNeeds`); `JsonSchemas` and `PageStylesheets` reach the web
   only while Settings allows; a page's `<base href>` says nothing of the app's mount, so a link is the browser's address
   first, `LinkedSheet.Mounted` second; in a macOS bundle the servers live under `Contents/Resources/web`. One tsserver,
   never `useSyntaxServer` (it answers rename and usages from the open files alone); `typescript` stays on 6.x (7 carries
