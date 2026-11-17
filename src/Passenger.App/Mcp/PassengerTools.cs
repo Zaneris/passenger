@@ -1198,7 +1198,10 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         "language by the project's Prettier where it formats it, else the language server. MSBuild files have none.")]
     public Task<string> Format(string path, CancellationToken cancel = default) => OnUi(cancel, async () =>
     {
-        Resolve(path, changes: true);
+        if (Resolve(path) is { } full && !Reaches(full, changes: true))
+        {
+            throw new InvalidOperationException(CSharp.CodeActions.Reformatted.Refused("Reformat Code", Refusals.ReadOnly(Path.GetFileName(full))).Said);
+        }
         OpenDocument document;
         LspDocument? lsp = null;
         if (Passenger.App.Xaml.XamlService.IsXaml(Resolve(path)) || Godot.GodotScriptTypes.IsScript(Resolve(path)) || Bdd.FeatureChecks.IsFeature(Resolve(path)))
