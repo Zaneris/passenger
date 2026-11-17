@@ -4,7 +4,8 @@ namespace Passenger.UnitTests.Workspace;
 
 /// <summary>Whether a C# file of no directive begins with top-level statements, which makes it a program as <c>dotnet run</c>
 /// takes it: its first member past using directives, extern aliases, attributes, modifiers, comments and preprocessor lines
-/// is code, never a type's or namespace's declaration.</summary>
+/// is code, never a type's or namespace's declaration; in a file a merge left in conflict, past its markers and the sides
+/// after ||||||| and ======= too, which the compiler reads as no code.</summary>
 public class TopLevelStatementsTests
 {
     [Theory]
@@ -24,6 +25,9 @@ public class TopLevelStatementsTests
     [InlineData("Action a = delegate { };\n")]
     [InlineData("delegate { }.Invoke();\n")]
     [InlineData("if (args.Length > 0) { return 1; }\nreturn 0;\nclass Helper { }\n")]
+    [InlineData("<<<<<<< HEAD\nConsole.WriteLine(1);\n=======\nclass Shop { short count; }\n>>>>>>> feature\n")]
+    [InlineData("<<<<<<<HEAD\nclass Shop { }\n")]
+    [InlineData(">>>>>>> feature\nclass Shop { }\n")]
     public void Code_that_begins_with_a_statement_is_a_programs(string code) =>
         Assert.True(ProgramFiles.BeginsWithStatement(code, 0), $"Code beginning with a statement was taken for declarations alone:\n{code}");
 
@@ -42,6 +46,10 @@ public class TopLevelStatementsTests
     [InlineData("public delegate void Changed(object sender);\n")]
     [InlineData("/* using Fake; Console.WriteLine(); */\nstruct Point { }\n")]
     [InlineData("using नमस्ते.गिनती;\nusing सूची = नमस्ते.Tools;\n\nnamespace नमस्ते;\n\nclass गिनती { }\n")]
+    [InlineData("<<<<<<< HEAD\nclass Shop { long count; }\n=======\nclass Shop { short count; }\n>>>>>>> feature\n")]
+    [InlineData("<<<<<<< HEAD\nclass Shop { long count; }\n||||||| base\nConsole.WriteLine(1);\n=======\nConsole.WriteLine(2);\n>>>>>>> feature\n")]
+    [InlineData("<<<<<<< HEAD\r\n=======\r\nConsole.WriteLine(1);\r\n>>>>>>> feature\r\nclass Shop { }\r\n")]
+    [InlineData("|||||||\nConsole.WriteLine(1);\n>>>>>>> feature\nclass Shop { }\n")]
     public void Code_that_declares_types_or_nothing_is_no_programs(string code) =>
         Assert.False(ProgramFiles.BeginsWithStatement(code, 0), $"Code declaring types or nothing was taken for a program:\n{code}");
 }

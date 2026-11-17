@@ -246,8 +246,8 @@ public static class ProgramFiles
     }
 
     /// <summary>The next token from <paramref name="at"/>, moving past it: a word (a keyword or an identifier), a literal,
-    /// or one other character; null at the end. Whitespace, comments and preprocessor lines (a <c>#!</c> line too) are
-    /// passed over.</summary>
+    /// or one other character; null at the end. Whitespace, comments, preprocessor lines (a <c>#!</c> line too) and a
+    /// merge's conflict markers with the lines the compiler reads as no code after them are passed over.</summary>
     private static string? Token(string code, ref int at)
     {
         while (at < code.Length)
@@ -268,6 +268,19 @@ public static class ProgramFiles
             {
                 int end = code.IndexOf("*/", at + 2, StringComparison.Ordinal);
                 at = end < 0 ? code.Length : end + 2;
+            }
+            else if (ConflictMarker(code, at) is { } marker and not '>')
+            {
+                at = NextLine(code, at);
+                while (at < code.Length && Hides(marker, ConflictMarker(code, at)))
+                {
+                    at = NextLine(code, at);
+                }
+                // The marker ending a side read as no code is none either; one beginning no such side is read as code.
+                if (marker is '|' or '=' && ConflictMarker(code, at) == '>')
+                {
+                    at = NextLine(code, at);
+                }
             }
             else
             {
@@ -310,6 +323,44 @@ public static class ProgramFiles
         }
         at++;
         return code[begin..at];
+    }
+
+    /// <summary>The character of a version control conflict marker beginning a line, as the compiler reads one: seven of
+    /// <c>&lt;</c>, <c>|</c>, <c>=</c> or <c>&gt;</c> at the line's very start, a space after <c>&lt;</c>'s and
+    /// <c>&gt;</c>'s; null for anything else.</summary>
+    private static char? ConflictMarker(string code, int at)
+    {
+        const int Length = 7;
+        if (at + Length > code.Length || code[at] is not ('<' or '|' or '=' or '>') || at > 0 && code[at - 1] is not ('\n' or '\r'))
+        {
+            return null;
+        }
+        char marker = code[at];
+        for (int i = 1; i < Length; i++)
+        {
+            if (code[at + i] != marker)
+            {
+                return null;
+            }
+        }
+        return marker is '|' or '=' || at + Length < code.Length && code[at + Length] == ' ' ? marker : null;
+    }
+
+    /// <summary>Whether the compiler reads no code in a line marked <paramref name="line"/> (null for none) after a
+    /// <paramref name="marker"/> line: the base's side after <c>|||||||</c>, up to a line marked <c>=</c> or <c>&gt;</c>,
+    /// and the other side's after <c>=======</c>, up to one marked <c>&gt;</c>.</summary>
+    private static bool Hides(char marker, char? line) => marker switch
+    {
+        '|' => line is not ('=' or '>'),
+        '=' => line is not '>',
+        _ => false,
+    };
+
+    /// <summary>Where the line after the one <paramref name="at"/> is in begins, or the text's end.</summary>
+    private static int NextLine(string code, int at)
+    {
+        int end = code.IndexOfAny(['\n', '\r'], at);
+        return end < 0 ? code.Length : end + (code[end] == '\r' && end + 1 < code.Length && code[end + 1] == '\n' ? 2 : 1);
     }
 
     /// <summary>Whether only whitespace comes before a place on its line.</summary>
