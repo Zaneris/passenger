@@ -1641,11 +1641,16 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
             ThemeRead<ThemeFile> read = CarriedThemes.ReadTheme(look);
             Assert.True(read.Read is not null && read.Problems.Count == 0 && read.Read.Name == look,
                 $"{look}.json does not read whole as {look}, so choosing {look} would fail: {read.Refused}{string.Join("\n", read.Problems)}");
-            ResourceDictionary theme = ThemeResources.Dictionary(read.Read);
+            // A theme laid over a VS Code theme gives its colours through its base.
+            ResourceDictionary theme = ThemeResources.Dictionary(CarriedThemes.Theme(look)!);
             files.Add(($"{look}.json", theme));
-            Assert.True(keys.SequenceEqual(Keys(theme, ThemeVariant.Dark)) && keys.SequenceEqual(Keys(theme, ThemeVariant.Light)),
+            // A theme over a VS Code theme gives its base's colours for both; any may add ThemeFiles.Optional's tokens.
+            string[] Named(IEnumerable<object> held) => [.. held.Select(k => k.ToString()!).Where(k => k.StartsWith("Passenger.", StringComparison.Ordinal) && !ThemeFiles.Optional.ContainsKey(k["Passenger.".Length..]))];
+            string[] Given(ThemeVariant variant) => [.. Named(theme.Keys).Where(k => !shapes.Contains(k))
+                .Concat(theme.ThemeDictionaries.TryGetValue(variant, out IThemeVariantProvider? held) ? Named(((ResourceDictionary)held).Keys) : []).Distinct().Order(StringComparer.Ordinal)];
+            Assert.True(keys.SequenceEqual(Given(ThemeVariant.Dark)) && keys.SequenceEqual(Given(ThemeVariant.Light)),
                 $"{look} does not give every colour Tokens.axaml gives, in Dark and Light, and no other: a colour it lacks shows Passenger's own under it");
-            Assert.True(shapes.SequenceEqual(theme.Keys.Select(k => k.ToString()!).Order(StringComparer.Ordinal)), $"{look} does not give every shape Tokens.axaml gives");
+            Assert.True(shapes.SequenceEqual(Named(theme.Keys).Where(k => !keys.Contains(k)).Order(StringComparer.Ordinal)), $"{look} does not give every shape Tokens.axaml gives");
         }
         foreach (string choice in index.Read.CodeColours.Select(Path.GetFileNameWithoutExtension).OfType<string>())
         {

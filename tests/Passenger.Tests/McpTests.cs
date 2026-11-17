@@ -1367,13 +1367,13 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         Dictionary<string, object> cubicle = new() { ["source"] = ThemeSource.BuiltIn.Name, ["name"] = "Cubicle" };
         JsonElement carried = Assert.Single((await Call(client, McpTools.SettingsSet, new() { ["changes"] = new Dictionary<string, object> { ["look"] = cubicle } })).EnumerateArray());
         Assert.Equal((ThemeSource.BuiltIn.Name, "Cubicle"), (carried.GetProperty("after").GetProperty("source").GetString(), carried.GetProperty("after").GetProperty("name").GetString()));
-        Dictionary<string, object> slate = new() { ["source"] = ThemeSource.RepositoryName, ["name"] = "Slate" };
-        JsonElement changed = Assert.Single((await Call(client, McpTools.SettingsSet, new() { ["changes"] = new Dictionary<string, object> { ["look"] = slate } })).EnumerateArray());
-        Assert.Equal("Slate", changed.GetProperty("after").GetProperty("name").GetString());
+        Dictionary<string, object> orbit = new() { ["source"] = ThemeSource.RepositoryName, ["name"] = "Orbit" };
+        JsonElement changed = Assert.Single((await Call(client, McpTools.SettingsSet, new() { ["changes"] = new Dictionary<string, object> { ["look"] = orbit } })).EnumerateArray());
+        Assert.Equal("Orbit", changed.GetProperty("after").GetProperty("name").GetString());
         // Kept in the agent's Passenger's own state, as KeptThemes keeps one in the run's.
-        string kept = Path.Combine(OwnState, Path.GetRelativePath(Passenger.App.State.StateStore.DefaultRoot, KeptThemes.PathOf(ThemeSource.Repository, false, "Slate")));
+        string kept = Path.Combine(OwnState, Path.GetRelativePath(Passenger.App.State.StateStore.DefaultRoot, KeptThemes.PathOf(ThemeSource.Repository, false, "Orbit")));
         Assert.True(await Waiting.UntilAsync(() => File.Exists(kept), TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken),
-            $"Slate set by an agent was not fetched from the themes repository and kept as {kept}");
+            $"Orbit set by an agent was not fetched from the themes repository and kept as {kept}");
     }
 
     /// <summary>settings_set of a theme its source does not list, a name mistyped or Cubicle named from the themes repository,

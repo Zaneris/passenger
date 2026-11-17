@@ -1,7 +1,7 @@
 {
   "format": 1,
   "name": "Harbour",
-  "description": "Warm and quiet: the app icon's teal on linen by day and a warm charcoal by night, its amber for what wants a glance. Rounder than Passenger's own, the open editor tab a card in the editor's colour joined to it, round badges and chips, and popups with no crown.",
+  "description": "Warm and quiet: the app icon's teal on linen by day and a warm charcoal by night, its amber for what wants a glance. Rounder than Passenger's own, the open editor tab a card in the editor's colour joined to it, round badges and chips, and popups with no crown, its parameters in italics and six colours for its brackets. The tide comes in along the editor's foot and the Welcome screen, a low sun glinting on it.",
   "tokens": {
     "ControlRadius": 8,
     "ToolRadius": 8,
@@ -20,6 +20,8 @@
     "ToolTitleMargin": [14, 0, 0, 0],
     "DialogFooterPadding": [16, 10, 16, 10]
   },
+  "fonts": {"code": {"family": "Source Code Pro"}, "window": {"family": "Atkinson Hyperlegible"}},
+  "background": {"image": "pictures/harbour.webp", "opacity": 0.14, "places": ["welcome", "editor"], "fit": "cover", "align": "bottom", "light": {"opacity": 0.2}},
   "dark": {
     "Frame": "#151311",
     "Panel": "#221F1B",
@@ -89,7 +91,7 @@
     "Welcome.TileShadow": "0 2 10 0 #59000000",
     "Welcome.Chip": "#1E3D39",
     "Welcome.ChipIcon": "#6EDCCB",
-    "Welcome.Badge": "#2CB5A3",
+    "Welcome.Badge": {"start": [0, 0], "end": [1, 1], "stops": [{"offset": 0, "colour": "#2CB5A3"}, {"offset": 1, "colour": "#2D8BB7"}]},
     "Run": "#5CCB8F",
     "HotReload": "#F2A266",
     "Test.Passed": "#5CCB8F",
@@ -244,7 +246,11 @@
     "Syntax.Namespace": "#E2DACE",
     "Syntax.Operator": "#E2DACE",
     "SyntaxStyle.Comment": "Italic",
-    "SyntaxStyle.DocComment": "Italic"
+    "SyntaxStyle.DocComment": "Italic",
+    "Syntax.Brace4": "#4FCDBA",
+    "Syntax.Brace5": "#F3A476",
+    "Syntax.Brace6": "#BCD28E",
+    "SyntaxStyle.Parameter": "Italic"
   },
   "light": {
     "Frame": "#EEE8DC",
@@ -315,7 +321,7 @@
     "Welcome.TileShadow": "0 2 10 0 #1F3A2A14",
     "Welcome.Chip": "#E0F2EE",
     "Welcome.ChipIcon": "#0B6A62",
-    "Welcome.Badge": "#0F766E",
+    "Welcome.Badge": {"start": [0, 0], "end": [1, 1], "stops": [{"offset": 0, "colour": "#0F766E"}, {"offset": 1, "colour": "#1A6895"}]},
     "Run": "#2E8A50",
     "HotReload": "#B85A1A",
     "Test.Passed": "#2E8A50",
@@ -470,6 +476,10 @@
     "Syntax.Namespace": "#2A2520",
     "Syntax.Operator": "#2A2520",
     "SyntaxStyle.Comment": "Italic",
-    "SyntaxStyle.DocComment": "Italic"
+    "SyntaxStyle.DocComment": "Italic",
+    "Syntax.Brace4": "#0B7064",
+    "Syntax.Brace5": "#AD4519",
+    "Syntax.Brace6": "#4B761E",
+    "SyntaxStyle.Parameter": "Italic"
   }
 }

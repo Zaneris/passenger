@@ -53,10 +53,16 @@ public static class CarriedThemes
     /// <summary>A code colour scheme of the copy as read, by its file's name.</summary>
     public static ThemeRead<ThemeFile> ReadScheme(string name) => ThemeFiles.ReadCodeColours($"{name}.json", File.ReadAllBytes(Path.Combine(Folder, $"{name}.json")), ThemeResources.Kinds);
 
-    /// <summary>A theme of the copy or one Passenger carries, whole; null for <see cref="Own"/>.</summary>
+    /// <summary>A theme of the copy or one Passenger carries, whole; null for <see cref="Own"/>. One the repository lays over a
+    /// VS Code theme by its Open VSX id, which the tests cannot reach, is laid over <see cref="StandInBase"/> in its place.</summary>
     public static ThemeFile? Theme(string name) => name == Own ? null
         : name.StartsWith(VsCodePrefix, StringComparison.Ordinal) ? VsCodeColours.ToTheme(ReadVsCode(name[VsCodePrefix.Length..]))
-        : ReadTheme(name).Read ?? throw new InvalidOperationException($"{name}.json does not read: {ReadTheme(name).Refused}");
+        : ReadTheme(name).Read is { } read ? (read.Base is null ? read : ThemeFiles.Over(VsCodeColours.ToTheme(ReadVsCode(StandInBase)), read))
+        : throw new InvalidOperationException($"{name}.json does not read: {ReadTheme(name).Refused}");
+
+    /// <summary>The VS Code colour theme the tests lay a repository theme over in place of the one it names on Open VSX: a
+    /// small dark one written for them, so a check of such a theme holds what it sets over its base.</summary>
+    public const string StandInBase = "Lantern";
 
     /// <summary>Wears a theme of the copy for a test, laid as Themes lays a kept one, Passenger's own put back after it, pass or fail.</summary>
     public static IDisposable Wearing(string name)
@@ -75,6 +81,11 @@ public static class CarriedThemes
         foreach (string file in themes.Concat(schemes))
         {
             File.Copy(Path.Combine(Folder, file), Path.Combine(folder, file), overwrite: true);
+        }
+        foreach (string image in themes.SelectMany(t => ReadTheme(Path.GetFileNameWithoutExtension(t)).Read?.Images ?? []))
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(Path.Combine(folder, image))!);
+            File.Copy(Path.Combine(Folder, image), Path.Combine(folder, image), overwrite: true);
         }
         File.WriteAllText(Path.Combine(folder, ThemeFiles.IndexFile), JsonSerializer.Serialize(new { format = 1, themes, codeColours = schemes }));
     }

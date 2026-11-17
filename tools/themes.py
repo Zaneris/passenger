@@ -137,8 +137,18 @@ def legible(fore, grounds, least, dark):
 
 THEMES = {
     "Sorbet": dict(
-        about="soft pastels on a dusky plum by night and a pale lavender paper by day, a mauve accent and peach for the caret",
-        shape="card", italic=True,
+        about="soft pastels on a dusky plum by night and a pale lavender paper by day, a mauve accent and "
+              "peach for the caret; round as a scoop, peach, mauve and mint light in its corners, its "
+              "comments and parameters in italics",
+        shape="soft", italic=True,
+        bar=[('purple', 0.18), ('pink', 0.22)],
+        badge="pink",
+        braces=["green", "pink", "cyan"],
+        parameter="Italic",
+        fonts={"code": {"family": "Victor Mono"}, "window": {"family": "Nunito"}},
+        background={"image": "pictures/sorbet.webp", "opacity": 0.22, "places": ["welcome", "frame", "toolWindows"], "fit": "cover", "light": {"opacity": 0.3}},
+        layout={"open": ["explorer"], "sizes": {"left": 250}, "editorTabs": "top", "toolWindows": "icons", "closedWindows": "leave"},
+        languages={"markdown": {"Heading": "pink", "Code": "cyan"}},
         dark=dict(ground="#1C1B29", text="#D2D8F2", muted="#A4AAC8", accent="#C3A2F5", glance="#F5BE8A",
                   red="#F28AA6", orange="#F7B08A", yellow="#F3DCAA", green="#A4DFA0", cyan="#92DDD1", blue="#8DB2F7",
                   purple="#C7A8F5", pink="#F2C0E2", comment="#7F84A0", member="#B6BEFA"),
@@ -149,20 +159,28 @@ THEMES = {
                   method="blue", member="member", event="pink", tag="blue", attribute="yellow", heading="red"),
     ),
     "Nocturne": dict(
-        about="a violet night of hot pink keywords, lemon strings and mint calls, its day a lilac-tinted page",
-        shape="pill", italic=True,
-        dark=dict(ground="#24252F", text="#F4F4EE", muted="#AEB2D0", accent="#B395F5", glance="#FF7CC6",
-                  red="#FF6464", orange="#FFB56E", yellow="#EEF390", green="#5CF184", cyan="#8EE4F8", blue="#93A9F5",
-                  purple="#BB96F7", pink="#FF7CC6", comment="#717EB0", member="#CBC4F2"),
-        light=dict(ground="#FAF9FC", text="#2B2840", muted="#5B5775", accent="#7148CC", glance="#BF2F7C",
-                   red="#C8253A", orange="#B35600", yellow="#8A6A00", green="#1C7D3A", cyan="#0A7590", blue="#3155C8",
-                   purple="#6E44C9", pink="#B5266F", comment="#6F6A8C", member="#5A4A9E"),
-        code=dict(keyword="pink", string="yellow", escape="pink", number="purple", type="cyan", struct="cyan",
-                  method="green", member="member", event="orange", tag="pink", attribute="green", heading="purple"),
+        about="a violet night of hot pink keywords, lemon strings and mint calls, its colours those of "
+              "Dracula Theme by the Dracula Theme team (dracula-theme.theme-dracula on Open VSX, MIT), under "
+              "pill shapes, a crescent moon and stars across the Welcome screen, the frame and the tool "
+              "windows, and the Explorer on the right",
+        shape="pill",
+        vscode={"id": "dracula-theme.theme-dracula", "theme": "Dracula Theme", "version": "2.25.1"},
+        fonts={"code": {"family": "Fira Code"}},
+        background={"image": "pictures/nocturne.webp", "opacity": 0.24, "places": ["welcome", "frame", "toolWindows"], "fit": "cover"},
+        layout={"places": {"rightTop": ["explorer", "commit"]}, "open": ["explorer"], "sizes": {"right": 270}},
     ),
     "Saffron": dict(
-        about="ink-dark slate with saffron and tangerine, sky-blue types and lime strings; by day the same on chalk",
+        about="ink-dark slate with saffron and tangerine, sky-blue types and lime strings; by day the same on"
+              " chalk. A sunburst rises behind the Welcome screen and the window's frame, and the title bar "
+              "glows from ink into ember",
         shape="pill", italic=True,
+        bar=[('orange', 0.12), ('yellow', 0.24)],
+        badge="red",
+        braces=["green", "pink", "cyan"],
+        parameter="Italic",
+        fonts={"code": {"family": "Fira Code"}, "window": {"family": "Fira Sans"}},
+        background={"image": "pictures/saffron.webp", "opacity": 0.2, "places": ["welcome", "frame"], "fit": "cover", "align": "bottom right"},
+        languages={"json": {"JsonKey": "orange"}, "xaml": {"Tag": "orange", "AttributeName": "yellow"}},
         dark=dict(ground="#0E1219", text="#C4C2BA", muted="#8E939D", accent="#E8B04D", glance="#E8B04D",
                   red="#F0717A", orange="#FF9442", yellow="#FFB65A", green="#A8D553", cyan="#95E3C8", blue="#5CBDF7",
                   purple="#D3A9FC", pink="#F29668", comment="#646B78", member="#F07A7F"),
@@ -173,8 +191,18 @@ THEMES = {
                   method="yellow", member="member", event="pink", tag="blue", attribute="yellow", heading="orange"),
     ),
     "Bonbon": dict(
-        about="a cool grey night lit with candy pink, butter, mint and sky, its day a blush-white page",
-        shape="pill", italic=False,
+        about="a cool grey night lit with candy pink, butter, mint and sky, its day a blush-white page; round"
+              " and soft, with sprinkles tossed across the tool windows and the Welcome screen and the "
+              "terminal open below",
+        shape="soft", italic=False,
+        bar=[('pink', 0.16), ('purple', 0.2)],
+        badge="purple",
+        braces=["green", "cyan", "orange"],
+        parameter="Italic",
+        fonts={"code": {"family": "JetBrains Mono", "size": 14}, "window": {"family": "Nunito"}},
+        background={"image": "pictures/bonbon.webp", "opacity": 0.18, "places": ["welcome", "toolWindows"], "fit": "tile", "light": {"opacity": 0.26}},
+        layout={"places": {"bottomLeft": ["terminal", "run", "build"]}, "open": ["explorer", "terminal"], "sizes": {"left": 260, "bottom": 200}, "toolWindows": "tabs", "stripeIcons": "untabbed"},
+        languages={"markdown": {"Heading": "pink"}},
         dark=dict(ground="#23262D", text="#C6CCD6", muted="#9AA1AE", accent="#F27AB0", glance="#F27AB0",
                   red="#F0808C", orange="#F7B48C", yellow="#FAD48C", green="#A8E0A0", cyan="#8FE3E8", blue="#7FC4FA",
                   purple="#C3A6FF", pink="#F28BC2", comment="#727A8A", member="#F0A0A8"),
@@ -185,8 +213,14 @@ THEMES = {
                   method="blue", member="member", event="purple", tag="pink", attribute="yellow", heading="pink"),
     ),
     "Ledger": dict(
-        about="plain neutral greys with a clear blue accent, coral keywords and navy or ice strings: quiet, for long days",
-        shape="card", italic=False,
+        about="plain neutral greys with a clear blue accent, coral keywords and navy or ice strings: quiet, "
+              "for long days. Dense and square-cornered on a ledger's graph paper, its tool windows laid out "
+              "for the day's accounts",
+        shape="square", italic=False,
+        braces=["green", "cyan", "pink"],
+        fonts={"code": {"family": "IBM Plex Mono", "size": 13}, "window": {"family": "IBM Plex Sans"}},
+        background={"image": "pictures/ledger.webp", "opacity": 0.12, "places": ["welcome", "toolWindows"], "fit": "tile", "light": {"opacity": 0.16}},
+        layout={"places": {"leftTop": ["explorer", "commit"], "leftBottom": ["structure", "bookmarks"], "bottomLeft": ["build", "run", "debug", "tests", "terminal", "find"], "bottomRight": ["problems"]}, "open": ["explorer", "structure", "build", "problems"], "sizes": {"left": 280, "bottom": 220}, "toolWindows": "tabs", "stripeIcons": "untabbed", "findResults": "window"},
         dark=dict(ground="#0E1218", text="#E4E9F0", muted="#9099A3", accent="#2468D0", glance="#4D94F7",
                   red="#FA7D74", orange="#FCA65A", yellow="#E3B341", green="#82E390", cyan="#76D3E0", blue="#7EBEFA",
                   purple="#D0AAFC", pink="#F49AC6", comment="#8F97A1", member="#7EBEFA", string="#A8D2FA"),
@@ -197,20 +231,29 @@ THEMES = {
                   method="purple", member="member", event="pink", tag="green", attribute="blue", heading="blue"),
     ),
     "Slate": dict(
-        about="a soft blue-grey with lilac keywords, sage strings, cornflower calls and wheat types, day and night alike",
-        shape="pill", italic=True,
-        dark=dict(ground="#262A31", text="#B2B8C3", muted="#8C939F", accent="#4F8FE8", glance="#5EA9EB",
-                  red="#DF6E78", orange="#D29B6A", yellow="#E3BF7E", green="#97C17A", cyan="#58B4C0", blue="#62ADED",
-                  purple="#C47BDB", pink="#D87DB8", comment="#68707C", member="#DF6E78"),
-        light=dict(ground="#FAFAFA", text="#383A42", muted="#5C5F69", accent="#3A6FE0", glance="#3A6FE0",
-                   red="#C9483D", orange="#966707", yellow="#A67200", green="#468F45", cyan="#0B78AB", blue="#3A6FE0",
-                   purple="#A429A2", pink="#B03A8A", comment="#8E9098", member="#C9483D"),
-        code=dict(keyword="purple", string="green", escape="cyan", number="orange", type="yellow", struct="yellow",
-                  method="blue", member="member", event="pink", tag="red", attribute="orange", heading="red"),
+        about="a soft blue-grey with lilac keywords, sage strings, cornflower calls and wheat types, its "
+              "colours those of One Dark Pro by Binaryify (zhuangtongfa.material-theme on Open VSX, MIT), "
+              "under card shapes, a survey map's contours behind the code, and the terminal and problems open"
+              " below",
+        shape="card",
+        vscode={"id": "zhuangtongfa.material-theme", "theme": "One Dark Pro", "version": "3.20.6"},
+        fonts={"code": {"family": "JetBrains Mono"}},
+        background={"image": "pictures/slate.webp", "opacity": 0.1, "places": ["editor", "welcome"], "fit": "cover"},
+        layout={"places": {"bottomLeft": ["terminal", "build", "run"], "bottomRight": ["problems"]}, "open": ["explorer", "terminal", "problems"], "sizes": {"left": 260, "bottom": 220}, "toolWindows": "tabs"},
     ),
     "Orbit": dict(
-        about="deep space with signal teal, aqua and periwinkle and a warm sand for strings; by day a pale observatory",
+        about="deep space with signal teal, aqua and periwinkle and a warm sand for strings; by day a pale "
+              "observatory. Orbits circle a sun off the corner of every editor, the title bar runs teal into "
+              "periwinkle, and the editor's tabs stand down its side",
         shape="pill", italic=False,
+        bar=[('green', 0.16), ('purple', 0.2)],
+        badge="purple",
+        braces=["green", "orange", "cyan"],
+        parameter="Italic",
+        fonts={"code": {"family": "JetBrains Mono"}, "window": {"family": "Space Grotesk"}},
+        background={"image": "pictures/orbit.webp", "opacity": 0.18, "places": ["editor", "welcome", "frame"], "fit": "cover", "light": {"opacity": 0.2}},
+        layout={"places": {"rightTop": ["explorer", "structure"]}, "open": ["explorer"], "sizes": {"right": 280}, "editorTabs": "left"},
+        languages={"markdown": {"Heading": "green", "Code": "yellow"}},
         dark=dict(ground="#16181D", text="#EDEFF7", muted="#9A9FAD", accent="#4CEFC6", glance="#FFD18F",
                   red="#F2667F", orange="#FFB37A", yellow="#FCD196", green="#4CEFC6", cyan="#0AD6EC", blue="#58B5FC",
                   purple="#B0ACFC", pink="#F8A6C0", comment="#858A98", member="#EDEFF7"),
@@ -221,20 +264,27 @@ THEMES = {
                   method="cyan", member="green", event="orange", tag="green", attribute="blue", heading="cyan"),
     ),
     "Nightjar": dict(
-        about="a navy night sky of violet keywords, apricot strings and seafoam members; its day a cool white page",
-        shape="card", italic=True,
-        dark=dict(ground="#03182A", text="#D4DCEA", muted="#93A3B8", accent="#8A62CF", glance="#FFCB8B",
-                  red="#EF5A5A", orange="#F58D6E", yellow="#FBC98C", green="#ADD86A", cyan="#80D9C9", blue="#84ABFC",
-                  purple="#C690E8", pink="#E58FC6", comment="#6E8890", member="#80D9C9", string="#E9C38E"),
-        light=dict(ground="#FBFBFB", text="#403F53", muted="#5E5D70", accent="#7A3FB8", glance="#9A5A00",
-                   red="#C83B3B", orange="#B35A2E", yellow="#8A5A00", green="#4F7F12", cyan="#0A8A8F", blue="#3F6DCF",
-                   purple="#9446C0", pink="#A2097C", comment="#8A8F92", member="#0A8A8F", string="#B85A57"),
-        code=dict(keyword="purple", string="string", escape="cyan", number="orange", type="yellow", struct="yellow",
-                  method="blue", member="member", event="pink", tag="cyan", attribute="purple", heading="blue"),
+        about="a navy night sky of violet keywords, apricot strings and seafoam members, its colours those of"
+              " Night Owl by Sarah Drasner (sdras.night-owl on Open VSX, MIT), under card shapes, a nightjar "
+              "crossing the moon on the Welcome screen and behind the tool windows, and the editor's tabs down its "
+              "side",
+        shape="card",
+        vscode={"id": "sdras.night-owl", "theme": "Night Owl", "version": "2.1.1"},
+        fonts={"code": {"family": "Victor Mono"}},
+        background={"image": "pictures/nightjar.webp", "opacity": 0.16, "places": ["welcome", "toolWindows"], "fit": "cover", "align": "top right"},
+        layout={"open": ["explorer"], "editorTabs": "left", "sizes": {"left": 250}},
     ),
     "Moss": dict(
-        about="a green-grey woodland, sage and leaf with honey strings and clay types, easy on the eye night and day",
+        about="a green-grey woodland, sage and leaf with honey strings and clay types, easy on the eye night "
+              "and day; ferns grow from the editor's foot, and it opens calm, the Explorer alone",
         shape="card", italic=True,
+        bar=[('green', 0.14), ('cyan', 0.16)],
+        badge="cyan",
+        braces=["orange", "cyan", "pink"],
+        parameter="Italic",
+        fonts={"code": {"family": "Source Code Pro"}, "window": {"family": "Source Sans 3"}},
+        background={"image": "pictures/moss.webp", "opacity": 0.13, "places": ["editor", "welcome", "toolWindows"], "fit": "cover", "align": "bottom", "light": {"opacity": 0.18}},
+        layout={"open": ["explorer"], "sizes": {"left": 280}, "closedWindows": "leave", "findResults": "popup"},
         dark=dict(ground="#1D2321", text="#D3DCD5", muted="#9AA69E", accent="#8DBF7E", glance="#E7C77A",
                   red="#E5847A", orange="#E9A97D", yellow="#E5C890", green="#9CCB86", cyan="#86CBB8", blue="#8EC6D8",
                   purple="#C2A6D8", pink="#D5A0D0", comment="#77857D", member="#B9D3C0"),
@@ -245,8 +295,15 @@ THEMES = {
                   method="blue", member="member", event="purple", tag="green", attribute="yellow", heading="green"),
     ),
     "Phosphor": dict(
-        about="a near-black terminal glass with electric lime, cyan and violet; by day crisp ink on white",
-        shape="pill", italic=False,
+        about="a near-black terminal glass with electric lime, cyan and violet; by day crisp ink on white. "
+              "Sharp-cornered, a screen's scanlines behind the code and a lime glow round its popups by "
+              "night, the terminal open below",
+        shape="glass", italic=False,
+        glow="0 0 22 0 #4D9FE04A",
+        braces=["purple", "orange", "pink"],
+        fonts={"code": {"family": "Cascadia Code", "size": 14}, "window": {"family": "Cascadia Mono"}},
+        background={"image": "pictures/phosphor.webp", "opacity": 0.08, "places": ["editor", "toolWindows", "frame"], "fit": "tile", "light": "none"},
+        layout={"places": {"bottomLeft": ["terminal", "run", "build", "debug"], "bottomRight": ["problems"]}, "open": ["explorer", "terminal"], "sizes": {"bottom": 300}, "toolWindows": "tabs"},
         dark=dict(ground="#121518", text="#DDE3E6", muted="#929BA3", accent="#B8EE52", glance="#C8F560",
                   red="#FF6F7D", orange="#FF9E64", yellow="#F2D35E", green="#C8F560", cyan="#73D8FF", blue="#7AA8FF",
                   purple="#B49CFF", pink="#FF7FB0", comment="#6A7480", member="#9FE8D8"),
@@ -282,9 +339,9 @@ BUILT_IN = {
     ),
 }
 
-# The shapes a theme draws its own way: Passenger's pills and crowned popups, Harbour's cards joined to the editor, or
-# Cubicle's square, dense frame, its open tab joined to the editor under a line of blue; and its margins, Passenger's own
-# but in the square shape, which tightens them.
+# The shapes a theme draws its own way: Passenger's pills and crowned popups, Harbour's cards joined to the editor,
+# Cubicle's square, dense frame, its open tab joined to the editor under a line of blue, soft round sweets, or a terminal's
+# sharp glass, its open tab underlined; and its margins, which the square and glass tighten and the soft loosen.
 SHAPES = {
     "pill": [("CornerRadius", "Passenger.ControlRadius", "6"), ("CornerRadius", "Passenger.ToolRadius", "8"),
              ("CornerRadius", "Passenger.PopupRadius", "10"), ("CornerRadius", "Passenger.CardRadius", "10"),
@@ -302,6 +359,22 @@ SHAPES = {
              ("BoxShadows", "Passenger.TabShadow", "0 0 0 0 #00000000"), ("Thickness", "Passenger.PopupEdge", "1"),
              ("x:Double", "Passenger.EditorTextPadding", "6"), ("x:Double", "Passenger.ToolHeaderHeight", "38"),
              ("Thickness", "Passenger.ToolTitleMargin", "14,0,0,0"), ("Thickness", "Passenger.DialogFooterPadding", "16,10")],
+    "soft": [("CornerRadius", "Passenger.ControlRadius", "10"), ("CornerRadius", "Passenger.ToolRadius", "12"),
+             ("CornerRadius", "Passenger.PopupRadius", "16"), ("CornerRadius", "Passenger.CardRadius", "18"),
+             ("CornerRadius", "Passenger.BadgeRadius", "99"), ("CornerRadius", "Passenger.ChipRadius", "99"),
+             ("x:Double", "Passenger.TabStripHeight", "40"), ("Thickness", "Passenger.TabMargin", "3,6"),
+             ("Thickness", "Passenger.TabPadding", "14,0,8,0"), ("CornerRadius", "Passenger.TabRadius", "99"),
+             ("BoxShadows", "Passenger.TabShadow", "0 2 6 0 #26000000"), ("Thickness", "Passenger.PopupEdge", "1"),
+             ("x:Double", "Passenger.EditorTextPadding", "8"), ("x:Double", "Passenger.ToolHeaderHeight", "40"),
+             ("Thickness", "Passenger.ToolTitleMargin", "16,0,0,0"), ("Thickness", "Passenger.DialogFooterPadding", "18,12")],
+    "glass": [("CornerRadius", "Passenger.ControlRadius", "0"), ("CornerRadius", "Passenger.ToolRadius", "0"),
+              ("CornerRadius", "Passenger.PopupRadius", "0"), ("CornerRadius", "Passenger.CardRadius", "0"),
+              ("CornerRadius", "Passenger.BadgeRadius", "0"), ("CornerRadius", "Passenger.ChipRadius", "0"),
+              ("x:Double", "Passenger.TabStripHeight", "32"), ("Thickness", "Passenger.TabMargin", "0"),
+              ("Thickness", "Passenger.TabPadding", "12,0,8,0"), ("CornerRadius", "Passenger.TabRadius", "0"),
+              ("BoxShadows", "Passenger.TabShadow", "inset 0 -2 0 0 #FF79B83A"), ("Thickness", "Passenger.PopupEdge", "1"),
+              ("x:Double", "Passenger.EditorTextPadding", "6"), ("x:Double", "Passenger.ToolHeaderHeight", "32"),
+              ("Thickness", "Passenger.ToolTitleMargin", "10,0,0,0"), ("Thickness", "Passenger.DialogFooterPadding", "12,8")],
     "square": [("CornerRadius", "Passenger.ControlRadius", "2"), ("CornerRadius", "Passenger.ToolRadius", "2"),
                ("CornerRadius", "Passenger.PopupRadius", "2"), ("CornerRadius", "Passenger.CardRadius", "2"),
                ("CornerRadius", "Passenger.BadgeRadius", "2"), ("CornerRadius", "Passenger.ChipRadius", "2"),
@@ -377,7 +450,7 @@ def variant(theme, p, dark):
     t["Passenger.Button"] = button
     t["Passenger.Popup"] = popup
     t["Passenger.PopupBorder"] = mix(popup, text, 0.16)
-    t["Passenger.PopupShadow"] = "0 6 20 0 #80000000" if dark else "0 6 20 0 #2E000000"
+    t["Passenger.PopupShadow"] = theme.get("glow") if dark and "glow" in theme else "0 6 20 0 #80000000" if dark else "0 6 20 0 #2E000000"
     second = hue("cyan") if hue("cyan") != accent else hue("blue")
     t["Passenger.Popup.Edge"] = ("gradient", accent, mix(second, accent, 0.2)) if theme["shape"] == "pill" \
         else t["Passenger.PopupBorder"]
@@ -423,18 +496,24 @@ def variant(theme, p, dark):
     t["Passenger.Menu.SelectedText"] = accent_text
     t["Passenger.Menu.SelectedKeys"] = accent_text
 
-    # The title bar is the frame, its words the window's own.
-    bar_hover, bar_pressed = (shift(frame, 0.05), shift(frame, 0.08)) if dark else (shift(frame, -0.05), shift(frame, -0.08))
-    bars = [frame, bar_hover, bar_pressed]
-    t["Passenger.TitleBar"] = frame
+    # The title bar is the frame, or a sweep from it into the theme's hues, its words the window's own.
+    if "bar" in theme:
+        stops = [mix(frame, hue(name), share * (1 if dark else 0.7)) for name, share in theme["bar"]]
+        bar_hover, bar_pressed = ("#1FFFFFFF", "#33FFFFFF") if dark else ("#14000000", "#24000000")
+        bars = stops + [over(w, s) for w in (bar_hover, bar_pressed) for s in stops]
+        t["Passenger.TitleBar"] = ("gradient", stops[0], stops[-1])
+    else:
+        bar_hover, bar_pressed = (shift(frame, 0.05), shift(frame, 0.08)) if dark else (shift(frame, -0.05), shift(frame, -0.08))
+        bars = [frame, bar_hover, bar_pressed]
+        t["Passenger.TitleBar"] = frame
     t["Passenger.TitleBar.Text"] = legible(text, bars, 4.6, dark)
-    t["Passenger.TitleBar.Icon"] = legible(t["Passenger.Icon"], [frame], 3.1, dark)
+    t["Passenger.TitleBar.Icon"] = legible(t["Passenger.Icon"], bars[:2], 3.1, dark)
     t["Passenger.TitleBar.Hover"] = bar_hover
     t["Passenger.TitleBar.Pressed"] = bar_pressed
     t["Passenger.TitleBar.Rule"] = t["Passenger.StripeSeparator"]
-    t["Passenger.TitleBar.Run"] = legible(hue("green"), [frame], 3.1, dark)
-    t["Passenger.TitleBar.Stop"] = legible(hue("red"), [frame], 3.1, dark)
-    t["Passenger.TitleBar.HotReload"] = legible(hue("orange"), [frame], 3.1, dark)
+    t["Passenger.TitleBar.Run"] = legible(hue("green"), bars[:2], 3.1, dark)
+    t["Passenger.TitleBar.Stop"] = legible(hue("red"), bars[:2], 3.1, dark)
+    t["Passenger.TitleBar.HotReload"] = legible(hue("orange"), bars[:2], 3.1, dark)
     t["Passenger.TitleBar.Focus"] = legible(glance, bars, 3.1, dark)
     t["Passenger.TitleBar.Badge"] = accent
     t["Passenger.TitleBar.BadgeText"] = accent_text
@@ -460,7 +539,12 @@ def variant(theme, p, dark):
         else ("0 2 10 0 #59000000" if dark else "0 2 10 0 #1F000000")
     t["Passenger.Welcome.Chip"] = row
     t["Passenger.Welcome.ChipIcon"] = t["Passenger.Stripe.SelectedIcon"]
-    t["Passenger.Welcome.Badge"] = accent
+    # The project's badge sweeps from the accent into another of the theme's hues, its letters reading on both.
+    if "badge" in theme:
+        other = legible(mix(accent, hue(theme["badge"]), 0.6), [accent_text], 4.6, accent_text != white)
+        t["Passenger.Welcome.Badge"] = ("gradient", accent, other)
+    else:
+        t["Passenger.Welcome.Badge"] = accent
 
     t["Passenger.Run"] = legible(hue("green"), [panel, frame], 3.1, dark)
     t["Passenger.HotReload"] = legible(hue("orange"), [panel, frame], 3.1, dark)
@@ -598,6 +682,13 @@ def variant(theme, p, dark):
     style = "Italic" if theme["italic"] else "Normal"
     t["Passenger.SyntaxStyle.Comment"] = ("string", style)
     t["Passenger.SyntaxStyle.DocComment"] = ("string", style)
+    # The fourth to sixth brace colours, a parameter's style, and the code's colours in a language over the theme's own.
+    for level, name in enumerate(theme.get("braces", []), 4):
+        t[f"Passenger.Syntax.Brace{level}"] = legible(hue(name), code_grounds, 4.6, dark)
+    if "parameter" in theme:
+        t["Passenger.SyntaxStyle.Parameter"] = ("string", theme["parameter"])
+    t["languages"] = {language: {f"Syntax.{kind}": legible(hue(name), code_grounds, 4.6, dark) for kind, name in kinds.items()}
+                      for language, kinds in theme.get("languages", {}).items()}
     check(theme["name"], "Dark" if dark else "Light", t)
     return t
 
@@ -683,24 +774,41 @@ def members(entries):
     return ",\n".join(f"    {json.dumps(key[len('Passenger.'):])}: {value}" for key, value in entries)
 
 
+OPTIONAL = {"Passenger.Syntax.Brace4": "SolidColorBrush", "Passenger.Syntax.Brace5": "SolidColorBrush",
+            "Passenger.Syntax.Brace6": "SolidColorBrush", "Passenger.SyntaxStyle.Parameter": "x:String"}
+
+
 def write(folder, name, theme):
     theme["name"] = name
     order = token_order()
     about = theme["about"]
     lines = ["{", '  "format": 1,', f'  "name": {json.dumps(name)},',
-             f'  "description": {json.dumps(about[0].upper() + about[1:] + ".")},', '  "tokens": {',
-             members((key, value_of(kind, value)) for kind, key, value in SHAPES[theme["shape"]]), "  },"]
-    for member in ("fonts", "layout"):
+             f'  "description": {json.dumps(about[0].upper() + about[1:] + ".")},']
+    if "vscode" in theme:
+        lines.append(f'  "vscode": {json.dumps(theme["vscode"])},')
+    lines += ['  "tokens": {', members((key, value_of(kind, value)) for kind, key, value in SHAPES[theme["shape"]]), "  },"]
+    for member in ("fonts", "layout", "background"):
         if member in theme:
             lines.append(f'  "{member}": {json.dumps(theme[member])},')
-    for which, dark in (("Dark", True), ("Light", False)):
+    variants = [] if "vscode" in theme else [("Dark", True), ("Light", False)]
+    languages = {}
+    sections = []
+    for which, dark in variants:
         tokens = variant(theme, theme[which.lower()], dark)
+        for language, given in tokens.pop("languages").items():
+            languages.setdefault(language, {})[which.lower()] = given
         missing = [key for _, key in order if key not in tokens]
-        extra = [key for key in tokens if key not in {k for _, k in order}]
+        extra = [key for key in tokens if key not in {k for _, k in order} and key not in OPTIONAL]
         if missing or extra:
             raise SystemExit(f"{name} {which}: Tokens.axaml has {missing} that this script does not give, and it gives {extra} that Tokens.axaml lacks")
-        lines += [f'  "{which.lower()}": {{', members((key, value_of(kind, tokens[key])) for kind, key in order),
-                  "  }," if dark else "  }"]
+        listed = [(kind, key) for kind, key in order] + [(kind, key) for key, kind in OPTIONAL.items() if key in tokens]
+        sections.append((which.lower(), members((key, value_of(kind, tokens[key])) for kind, key in listed)))
+    if languages:
+        lines.append(f'  "languages": {json.dumps(languages)},')
+    for i, (which, body) in enumerate(sections):
+        lines += [f'  "{which}": {{', body, "  }," if i < len(sections) - 1 else "  }"]
+    if not sections:
+        lines[-1] = lines[-1].rstrip(",")
     lines += ["}", ""]
     with open(os.path.join(folder, f"{name}.json"), "w", encoding="utf-8", newline="\n") as f:
         f.write("\n".join(lines))

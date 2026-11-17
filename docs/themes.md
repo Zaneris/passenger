@@ -388,7 +388,10 @@ smaller code size, to show what a theme can set. Harbour, the ten generated them
 Passenger's themes repository, whose copy the tests carry in `tests/Passenger.Tests/Themes`. Harbour.json and Reef.json
 are written by hand; Cubicle and the ten are written by `tools/themes.py` from its palettes (`just themes FOLDER`, the ten
 into a checkout of the repository or the tests' copy, Cubicle into the built-in source), so change a palette there rather
-than its file.
+than its file. The same recipe draws the repository's pictures (`tools/theme-pictures.py`, into its `pictures/`) from plain
+geometry and seeded randomness, and three of the ten, Nocturne, Slate and Nightjar, are laid over VS Code themes by their
+Open VSX ids (Dracula Theme, One Dark Pro and Night Owl), giving their shapes, fonts, pictures and layouts over the base's
+colours; the tests lay those over their own small VS Code theme, Lantern, as they cannot reach Open VSX.
 
 Each colour in `Tokens.axaml` says what it is read on: `read:Text` the grounds its words stand on, `read:Mark` those an
 icon, a focus ring or the caret does, and `read:Edge` those a field's or a check box's edge stands between, or `read:None`

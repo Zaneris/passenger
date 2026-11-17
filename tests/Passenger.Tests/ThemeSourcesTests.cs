@@ -104,7 +104,7 @@ public sealed class ThemeSourcesTests : IDisposable
             }
             string file = Path.Combine(served, exchange.Path.Replace("/themes/", string.Empty, StringComparison.Ordinal));
             return exchange.Path.StartsWith("/themes/", StringComparison.Ordinal) && File.Exists(file)
-                ? exchange.ReplyAsync(200, "application/json", File.ReadAllBytes(file))
+                ? exchange.ReplyAsync(200, file.EndsWith(".webp", StringComparison.Ordinal) ? "image/webp" : "application/json", File.ReadAllBytes(file))
                 : exchange.ReplyAsync(404, "text/plain", "none");
         });
         string address = $"{web.Root}/themes/";
@@ -127,7 +127,8 @@ public sealed class ThemeSourcesTests : IDisposable
             Ui.Settle();
             Assert.Equal(new SourcedTheme(address, "Sorbet"), window.Settings.Look);
             Assert.Equal(Frame("Sorbet", window.ActualThemeVariant), Drawn(window));
-            Assert.Equal(2, Asked().Length);
+            // Its picture is fetched with it, to be kept beside it.
+            Assert.Equal(["/themes/passenger-themes.json", "/themes/Sorbet.json", "/themes/pictures/sorbet.webp"], Asked());
             window.Close();
             web.Dispose();
             web = null;
@@ -244,29 +245,29 @@ public sealed class ThemeSourcesTests : IDisposable
     [AvaloniaFact]
     public void A_theme_chosen_in_0_3_is_the_same_from_the_themes_repository_said_while_it_is_fetched_and_one_out_of_reach_is_said_never_dropped()
     {
-        foreach ((bool code, string name) in ((bool, string)[])[(false, "Nightjar"), (true, ThemeSource.FormerScheme)])
+        foreach ((bool code, string name) in ((bool, string)[])[(false, "Orbit"), (true, ThemeSource.FormerScheme)])
         {
             TestFolders.Delete(Path.GetDirectoryName(KeptThemes.PathOf(ThemeSource.Repository, code, name))!);
         }
         // A start with neither kept, holding nothing this process read of them before.
         Themes.Apply(Application.Current!, null, null);
         Themes.Reload();
-        File.WriteAllText(Path.Combine(settings, StateStore.SettingsFile), """{ "version": 3, "look": "Nightjar", "colourScheme": "Rider", "editorFontSize": 14 }""");
+        File.WriteAllText(Path.Combine(settings, StateStore.SettingsFile), """{ "version": 3, "look": "Orbit", "colourScheme": "Rider", "editorFontSize": 14 }""");
         MainWindow window = Open();
         try
         {
             window.KeepSettings();
-            Assert.Equal(SourcedTheme.Repository("Nightjar"), window.Settings.Look);
+            Assert.Equal(SourcedTheme.Repository("Orbit"), window.Settings.Look);
             Assert.Equal(SourcedTheme.Repository(ThemeSource.FormerScheme), window.Settings.ColourScheme);
             Assert.Equal(14, window.Settings.EditorFontSize);
-            string fetching = $"Nightjar is being fetched from {ThemeSource.RepositoryName}";
-            Assert.True(Themes.Said?.StartsWith(fetching, StringComparison.Ordinal) == true, $"The window does not say Nightjar is fetched as it comes from its new home: {Themes.Said}");
+            string fetching = $"Orbit is being fetched from {ThemeSource.RepositoryName}";
+            Assert.True(Themes.Said?.StartsWith(fetching, StringComparison.Ordinal) == true, $"The window does not say Orbit is fetched as it comes from its new home: {Themes.Said}");
             Assert.StartsWith(fetching, window.Status);
             Ui.Settle();
-            Assert.Equal(Frame("Nightjar", window.ActualThemeVariant), Drawn(window));
+            Assert.Equal(Frame("Orbit", window.ActualThemeVariant), Drawn(window));
             Assert.Null(Themes.Said);
-            Assert.True(KeptThemes.Holds(ThemeSource.Repository, false, "Nightjar") && KeptThemes.Holds(ThemeSource.Repository, true, ThemeSource.FormerScheme),
-                "Nightjar and the code colour scheme fetched are not kept, so the next start would fetch them again");
+            Assert.True(KeptThemes.Holds(ThemeSource.Repository, false, "Orbit") && KeptThemes.Holds(ThemeSource.Repository, true, ThemeSource.FormerScheme),
+                "Orbit and the code colour scheme fetched are not kept, so the next start would fetch them again");
             window.Close();
 
             // A theme whose source answers no one is said, the settings keeping it for when it can be had.

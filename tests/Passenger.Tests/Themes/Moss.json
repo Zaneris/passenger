@@ -1,7 +1,7 @@
 {
   "format": 1,
   "name": "Moss",
-  "description": "A green-grey woodland, sage and leaf with honey strings and clay types, easy on the eye night and day.",
+  "description": "A green-grey woodland, sage and leaf with honey strings and clay types, easy on the eye night and day; ferns grow from the editor's foot, and it opens calm, the Explorer alone.",
   "tokens": {
     "ControlRadius": 8,
     "ToolRadius": 8,
@@ -20,6 +20,9 @@
     "ToolTitleMargin": [14, 0, 0, 0],
     "DialogFooterPadding": [16, 10, 16, 10]
   },
+  "fonts": {"code": {"family": "Source Code Pro"}, "window": {"family": "Source Sans 3"}},
+  "layout": {"open": ["explorer"], "sizes": {"left": 280}, "closedWindows": "leave", "findResults": "popup"},
+  "background": {"image": "pictures/moss.webp", "opacity": 0.13, "places": ["editor", "welcome", "toolWindows"], "fit": "cover", "align": "bottom", "light": {"opacity": 0.18}},
   "dark": {
     "Frame": "#141A18",
     "Panel": "#252C29",
@@ -62,11 +65,11 @@
     "Menu.Selected": "#8DBF7E",
     "Menu.SelectedText": "#0D1311",
     "Menu.SelectedKeys": "#0D1311",
-    "TitleBar": "#141A18",
+    "TitleBar": {"start": [0, 0], "end": [1, 0], "stops": [{"offset": 0, "colour": "#242F26"}, {"offset": 1, "colour": "#24322E"}]},
     "TitleBar.Text": "#D3DCD5",
     "TitleBar.Icon": "#B6C1B9",
-    "TitleBar.Hover": "#202624",
-    "TitleBar.Pressed": "#272D2B",
+    "TitleBar.Hover": "#1FFFFFFF",
+    "TitleBar.Pressed": "#33FFFFFF",
     "TitleBar.Rule": "#383F3C",
     "TitleBar.Run": "#9CCB86",
     "TitleBar.Stop": "#E5847A",
@@ -89,7 +92,7 @@
     "Welcome.TileShadow": "0 2 10 0 #59000000",
     "Welcome.Chip": "#3C4C3C",
     "Welcome.ChipIcon": "#ADCCA6",
-    "Welcome.Badge": "#8DBF7E",
+    "Welcome.Badge": {"start": [0, 0], "end": [1, 0], "stops": [{"offset": 0, "colour": "#8DBF7E"}, {"offset": 1, "colour": "#89C6A2"}]},
     "Run": "#9CCB86",
     "HotReload": "#E9A97D",
     "Test.Passed": "#9CCB86",
@@ -244,7 +247,11 @@
     "Syntax.Namespace": "#D3DCD5",
     "Syntax.Operator": "#D3DCD5",
     "SyntaxStyle.Comment": "Italic",
-    "SyntaxStyle.DocComment": "Italic"
+    "SyntaxStyle.DocComment": "Italic",
+    "Syntax.Brace4": "#E9A97D",
+    "Syntax.Brace5": "#86CBB8",
+    "Syntax.Brace6": "#D5A0D0",
+    "SyntaxStyle.Parameter": "Italic"
   },
   "light": {
     "Frame": "#DEDFDA",
@@ -288,16 +295,16 @@
     "Menu.Selected": "#4E7D3C",
     "Menu.SelectedText": "#FFFFFF",
     "Menu.SelectedKeys": "#FFFFFF",
-    "TitleBar": "#DEDFDA",
+    "TitleBar": {"start": [0, 0], "end": [1, 0], "stops": [{"offset": 0, "colour": "#CFD5C9"}, {"offset": 1, "colour": "#CBD3CD"}]},
     "TitleBar.Text": "#2C3530",
     "TitleBar.Icon": "#404A44",
-    "TitleBar.Hover": "#CECFCA",
-    "TitleBar.Pressed": "#C4C5C0",
+    "TitleBar.Hover": "#14000000",
+    "TitleBar.Pressed": "#24000000",
     "TitleBar.Rule": "#B3B6B1",
     "TitleBar.Run": "#4C7A33",
     "TitleBar.Stop": "#B5463A",
     "TitleBar.HotReload": "#A2551B",
-    "TitleBar.Focus": "#8A6215",
+    "TitleBar.Focus": "#7E5601",
     "TitleBar.Badge": "#4E7D3C",
     "TitleBar.BadgeText": "#FFFFFF",
     "WindowButton.Hover": "#1A000000",
@@ -315,7 +322,7 @@
     "Welcome.TileShadow": "0 2 10 0 #1F000000",
     "Welcome.Chip": "#D2DBCC",
     "Welcome.ChipIcon": "#3F5C38",
-    "Welcome.Badge": "#4E7D3C",
+    "Welcome.Badge": {"start": [0, 0], "end": [1, 0], "stops": [{"offset": 0, "colour": "#4E7D3C"}, {"offset": 1, "colour": "#3A7B58"}]},
     "Run": "#4C7A33",
     "HotReload": "#A2551B",
     "Test.Passed": "#4C7A33",
@@ -470,6 +477,10 @@
     "Syntax.Namespace": "#2C3530",
     "Syntax.Operator": "#2C3530",
     "SyntaxStyle.Comment": "Italic",
-    "SyntaxStyle.DocComment": "Italic"
+    "SyntaxStyle.DocComment": "Italic",
+    "Syntax.Brace4": "#A2551B",
+    "Syntax.Brace5": "#287866",
+    "Syntax.Brace6": "#8B428A",
+    "SyntaxStyle.Parameter": "Italic"
   }
 }
