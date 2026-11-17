@@ -170,7 +170,7 @@ public sealed partial class CodeEditor
         frameFocused = focused;
         frameBraced = MatchedBraces;
         frameMarked = TintsOf(first, last);
-        frameTints = ChangeBackgrounds ? ChangeTints(first, last) : null;
+        frameTints = TintsChanges ? ChangeTints(first, last) : null;
         frameSize = size;
         frameGutter = gutter;
         double widest = 0;
@@ -217,7 +217,7 @@ public sealed partial class CodeEditor
             {
                 kept.Showing = true;
                 kept.Index = i;
-                Place(kept, firstRow + i);
+                Place(kept, rowsAt[i]);
                 ulong key = KeyOf(shown[i], views[i]);
                 if (key != kept.Key)
                 {
@@ -251,7 +251,7 @@ public sealed partial class CodeEditor
             slot.Index = i;
             slot.Drawn = now;
             slot.Key = KeyOf(shown[i], views[i]);
-            Place(slot, firstRow + i);
+            Place(slot, rowsAt[i]);
             slot.Visual.Redraw();
         }
         foreach (RowSlot slot in slots)
@@ -405,13 +405,14 @@ public sealed partial class CodeEditor
         {
             if (frameFocused && caretOn)
             {
-                DrawCarets(context, text, frameStart, frameEnd, frameRow, frameRow + rowsShown.Count - 1, left);
+                DrawCarets(context, text, frameStart, frameEnd, rowsAt.Count > 0 ? rowsAt[0] : frameRow, rowsAt.Count > 0 ? rowsAt[^1] : frameRow - 1, left);
             }
             DrawSnippet(context, text, left);
-            if (ChangeBackgrounds && rowsShown.Count > 0)
+            if (TintsChanges && rowsShown.Count > 0)
             {
                 DrawChangeRules(context, rowsShown[0].Line, rowsShown[^1].Line, gutter, size.Width);
             }
+            DrawRemovedLines(context, gutter, size, left);
         }
         DrawFoldPreview(context);
     }

@@ -24,6 +24,7 @@
     <PackageReference Include="StreamJsonRpc" />
     <ProjectReference Include="../../src/Passenger.Core/Passenger.Core.csproj" />
     <ProjectReference Include="../../src/Passenger.Dap/Passenger.Dap.csproj" />
+    <ProjectReference Include="../../src/Passenger.Acp/Passenger.Acp.csproj" />
     <ProjectReference Include="../../src/Passenger.Debugger/Passenger.Debugger.csproj" />
     <ProjectReference Include="../../src/Passenger.Packages/Passenger.Packages.csproj" />
     <ProjectReference Include="../../src/Passenger.Profiler/Passenger.Profiler.csproj" />

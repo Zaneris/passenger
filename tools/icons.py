@@ -130,6 +130,8 @@ ICONS = [
     ("Containers", "Box Multiple", "20_regular"),
     # The Aspire window's stripe button: an AppHost over the resources it runs.
     ("Aspire", "Cube Tree", "20_regular"),
+    # The Chat window's stripe button: a conversation with a coding agent over ACP.
+    ("Chat", "Chat", "20_regular"),
     # Attach to a service as it runs: the debugger plugged in, beside Detach's plug unplugged.
     ("Attach", "Plug Connected", "20_regular"),
     # The Migrations window's stripe button: a database, whose migrations it lists and applies.

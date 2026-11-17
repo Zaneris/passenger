@@ -63,6 +63,8 @@ public sealed class EditorGroup : DockPanel
     private HairlineDivider? divider;
     private Control? side;
     private readonly Banner banner = new();
+    private readonly Button reviewKeep;
+    private readonly Button reviewUndo;
     private readonly Button bannerLink;
     private EditorTab? active;
 
@@ -125,12 +127,22 @@ public sealed class EditorGroup : DockPanel
         bannerLink = banner.Link(null, () => active?.Document.NoticeAction?.Run());
         bannerLink.Name = "BannerLink";
         bannerLink.IsVisible = false;
+        // An agent's changes in review: Keep rightmost, Undo before it, as Cursor offers them over the file.
+        reviewKeep = banner.Link("Keep", () => active?.Document.AgentReview?.Keep());
+        reviewUndo = banner.Link("Undo", () => active?.Document.AgentReview?.Undo());
+        reviewKeep.Name = "ReviewKeep";
+        reviewUndo.Name = "ReviewUndo";
+        reviewKeep.IsVisible = reviewUndo.IsVisible = false;
         Children.Add(tabBar);
         Children.Add(banner);
         Children.Add(Find);
         // The editor beside a pane of its file's own (a XAML file's preview), divided by a hairline that resizes them.
         body = new Grid { ColumnDefinitions = new ColumnDefinitions("*,0,0") };
         body.Children.Add(Editor);
+        // Over the editor, an agent's Keep and Undo at the end of each stretch it changed; the canvas itself takes no clicks.
+        body.Children.Add(hunkActions);
+        Editor.ScrollChanged += (_, _) => PlaceHunks();
+        Editor.SizeChanged += (_, _) => PlaceHunks();
         Children.Add(body);
         // The group the person works in is the area's active one; while a table lies over the editor, the table takes its focus.
         Editor.GotFocus += (_, _) =>
@@ -252,9 +264,16 @@ public sealed class EditorGroup : DockPanel
             markdown ??= new MarkdownPreview(Editor, area);
             Side = markdown;
             markdown.Show(document);
+            ShowPageAlone(area.ReadsAsPage(document));
         }
         else
         {
+            if (pageAlone)
+            {
+                ShowPageAlone(false);
+                // The editor shows again only for a file it shows; a view in its place keeps it hidden.
+                Editor.IsVisible = document is not null;
+            }
             if (Side is MarkdownPreview)
             {
                 Side = null;
@@ -293,6 +312,23 @@ public sealed class EditorGroup : DockPanel
             }
             html?.Show(null);
         }
+    }
+
+    /// <summary>Whether the group shows its Markdown file's preview alone, its editor out of sight.</summary>
+    private bool pageAlone;
+
+    /// <summary>The preview over the group's whole width with the editor hidden, so its keys edit nothing unseen; else the
+    /// editor and the preview side by side.</summary>
+    private void ShowPageAlone(bool alone)
+    {
+        // Applied whatever it was: showing another file makes the editor visible again.
+        pageAlone = alone;
+        body.ColumnDefinitions = new ColumnDefinitions(alone ? "0,0,*" : divider is null ? "*,0,0" : "*,1,*");
+        if (divider is not null)
+        {
+            divider.IsVisible = !alone;
+        }
+        Editor.IsVisible = !alone;
     }
 
     /// <summary>The action the strip's preview toggle runs for the file shown, null while it shows none.</summary>
@@ -432,6 +468,10 @@ public sealed class EditorGroup : DockPanel
         else if (preview is not null)
         {
             preview.Focus();
+        }
+        else if (pageAlone && markdown is not null)
+        {
+            markdown.Focus();
         }
         else
         {
@@ -589,11 +629,58 @@ public sealed class EditorGroup : DockPanel
     private void ShowBanner(OpenDocument document)
     {
         // A diff's own bar says what it is.
-        string[] said = [.. new[] { document.IsReadOnly && document.Diff is null ? document.Origin : null, document.Notice, document.EncodingWarning }.OfType<string>()];
+        string[] said = [.. new[] { document.AgentReview?.Said, document.IsReadOnly && document.Diff is null ? document.Origin : null, document.Notice, document.EncodingWarning }.OfType<string>()];
         banner.Say(said.Length > 0 ? string.Join("  ·  ", said) : null);
         bannerLink.IsVisible = document.Notice is not null && document.NoticeAction is not null;
         bannerLink.Content = document.NoticeAction?.Text;
+        reviewKeep.IsVisible = reviewUndo.IsVisible = document.AgentReview is not null;
+        reviewKeep.Content = document.AgentReview?.KeepWord ?? "Keep";
+        reviewUndo.Content = document.AgentReview?.UndoWord ?? "Undo";
+        ShowHunks(document);
     }
+
+    private readonly Canvas hunkActions = new();
+    private readonly List<(ReviewHunk Hunk, Control Bar)> hunks = [];
+
+    /// <summary>Each stretch of the agent's change in review gets its own Undo and Keep at its end, as Cursor's do.</summary>
+    private void ShowHunks(OpenDocument document)
+    {
+        hunkActions.Children.Clear();
+        hunks.Clear();
+        IReadOnlyList<ReviewHunk> shown = InEditor(document) ? document.AgentReview?.Hunks ?? [] : [];
+        foreach (ReviewHunk hunk in shown)
+        {
+            Button undo = new() { Content = "Undo", Classes = { StyleClasses.HunkAction } };
+            Button keep = new() { Content = "Keep", Classes = { StyleClasses.Primary, StyleClasses.HunkAction } };
+            ToolTip.SetTip(undo, "Undo this change of the agent's");
+            ToolTip.SetTip(keep, "Keep this change of the agent's");
+            undo.Click += (_, _) => hunk.Undo();
+            keep.Click += (_, _) => hunk.Keep();
+            StackPanel bar = new() { Orientation = Orientation.Horizontal, Spacing = 4, Children = { undo, keep } };
+            hunkActions.Children.Add(bar);
+            hunks.Add((hunk, bar));
+        }
+        PlaceHunks();
+    }
+
+    /// <summary>The hunks' bars where their lines show now, at the editor's right; one out of sight hidden.</summary>
+    private void PlaceHunks()
+    {
+        double height = Editor.Bounds.Height;
+        foreach ((ReviewHunk hunk, Control bar) in hunks)
+        {
+            double y = hunk.Below ? Editor.ShownBottomOf(hunk.Line) : Editor.ShownTopOf(hunk.Line);
+            bar.IsVisible = Editor.IsVisible && y >= 0 && y < height - 8;
+            Canvas.SetTop(bar, y);
+            Canvas.SetRight(bar, 28);
+        }
+    }
+
+    /// <summary>The Keep and Undo bars of the stretches of the file shown, in its order.</summary>
+    public IReadOnlyList<(ReviewHunk Hunk, Control Bar)> HunkBars => hunks;
+
+    /// <summary>The banner's Keep and Undo of an agent's changes in review, shown while the file has them.</summary>
+    public (Button Keep, Button Undo) ReviewLinks => (reviewKeep, reviewUndo);
 
     /// <summary>What the banner over the file shown says, null while it shows none.</summary>
     public string? BannerText => banner.Said;
@@ -747,7 +834,7 @@ public sealed class EditorGroup : DockPanel
             case nameof(OpenDocument.Highlighter):
                 Editor.Highlighter = document.Highlighter;
                 break;
-            case nameof(OpenDocument.Notice) or nameof(OpenDocument.NoticeAction) or nameof(OpenDocument.EncodingWarning):
+            case nameof(OpenDocument.Notice) or nameof(OpenDocument.NoticeAction) or nameof(OpenDocument.EncodingWarning) or nameof(OpenDocument.AgentReview):
                 ShowBanner(document);
                 break;
             case nameof(OpenDocument.ProjectContexts):

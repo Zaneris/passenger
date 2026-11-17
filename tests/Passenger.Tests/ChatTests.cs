@@ -1,0 +1,1412 @@
+using System.Collections.Concurrent;
+using System.ComponentModel;
+using System.IO.Pipelines;
+using System.Text;
+using System.Text.Json.Nodes;
+using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
+using Avalonia.Headless.XUnit;
+using Avalonia.LogicalTree;
+using Avalonia.VisualTree;
+using Passenger.Acp;
+using Passenger.App;
+using Passenger.App.Chat;
+using Passenger.App.Editors;
+using Passenger.App.Workspace;
+using Passenger.Text;
+
+namespace Passenger.Tests;
+
+/// <summary>The Chat window: shown and hidden from its stripe button and shown by its action, as each tool window is, and
+/// Connect starting its agent in the open folder, a message sent and its reply streamed, its tool lines, its questions
+/// as cards the person answers, Markdown, and Stop, a stand-in in memory answering as the Claude adapter does.</summary>
+public sealed class ChatTests
+{
+    [AvaloniaFact]
+    public void Its_stripe_button_shows_the_chat_window_and_hides_it_again()
+    {
+        MainWindow window = Open();
+        Ui.Click(Button(window));
+        Assert.True(window.DockHost.IsShown(ToolWindowIds.Chat));
+        Assert.IsType<ChatView>(window.Chat);
+        Assert.True(Button(window).IsChecked);
+
+        Ui.Click(Button(window));
+        Assert.False(window.DockHost.IsShown(ToolWindowIds.Chat));
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Its_action_shows_the_chat_window_saying_no_agent_is_connected()
+    {
+        MainWindow window = Open();
+        window.Actions.Run(AppActions.ShowChat);
+        Ui.Settle();
+        Assert.True(window.DockHost.IsShown(ToolWindowIds.Chat));
+        Assert.Equal("No agent connected", window.Chat.Said);
+        Assert.True(window.Chat.OffersConnect);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Connect_starts_the_agent_in_the_open_folder_and_says_which_agent_is_connected()
+    {
+        string folder = TestFolders.Create("chat");
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        StandInAgent? agent = null;
+        string? startedIn = null;
+        window.StartChatAgent = at =>
+        {
+            startedIn = at;
+            agent = new StandInAgent();
+            return Task.FromResult(agent.Agent);
+        };
+        window.ShowToolWindow(ToolWindowIds.Chat);
+        Ui.Settle();
+
+        Ui.Click(ConnectButton(window));
+        Ui.WaitFor(() => window.Chat.Said == "Connected to Claude Agent 0.107.3", () => $"the agent connected, where the window says \"{window.Chat.Said}\"");
+
+        Assert.Equal(folder, startedIn);
+        Assert.Equal(folder, agent!.SessionFolder);
+        Assert.Equal("acceptEdits", agent.Mode);
+        Assert.False(window.Chat.OffersConnect);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Enter_sends_the_message_and_the_reply_streams_in_piece_by_piece()
+    {
+        MainWindow window = Connected(out StandInAgent agent);
+
+        Ui.Click(window.Chat.Input);
+        foreach (char c in "Add a README")
+        {
+            Ui.Type(window, c == ' ' ? "SPACE" : c.ToString(), c.ToString());
+        }
+        Ui.Press(window, "ENTER");
+        Ui.WaitFor(() => !window.Chat.Busy && window.Chat.Conversation.Count == 2, () => $"the turn ended, where the conversation is {Shown(window)}");
+
+        Assert.Equal("Add a README", agent.Prompts.Single());
+        Assert.Equal([("You", "Add a README"), ("Claude Agent", "I'll add a README.")], window.Chat.Conversation);
+        Assert.Equal(string.Empty, window.Chat.Input.Text);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Stop_ends_the_agents_turn_and_says_it_stopped()
+    {
+        MainWindow window = Connected(out StandInAgent agent);
+        window.Chat.Input.Text = "wait for stop";
+        Ui.Click(Named(window, "Send"));
+        Ui.WaitFor(() => window.Chat.Busy && agent.Prompts.Count == 1, "the agent working");
+        Assert.Equal("Thinking…", window.Chat.Doing);
+
+        Ui.Click(Named(window, "Stop"));
+        Ui.WaitFor(() => !window.Chat.Busy, () => $"the turn stopped, where the conversation is {Shown(window)}");
+
+        Assert.True(agent.Cancelled);
+        Assert.Equal(("", "Stopped"), window.Chat.Conversation[^1]);
+        Assert.Null(window.Chat.Doing);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void A_tools_line_updates_in_place_and_the_words_after_it_come_below_it()
+    {
+        MainWindow window = Connected(out StandInAgent agent);
+        Send(window, "tool");
+        Ui.WaitFor(() => !window.Chat.Busy, () => $"the turn ended, where the conversation is {Shown(window)}");
+
+        ToolLine line = Assert.Single(window.Chat.Tools);
+        Assert.Equal("Read hello.py", line.Title);
+        Assert.Equal("completed", line.Status);
+        Assert.Equal([("You", "tool"), ("Claude Agent", "Reading it."), ("Claude Agent", "It prints hello.")], window.Chat.Conversation);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void The_agents_questions_are_pinned_above_the_box_lettered_one_at_a_time_and_Send_answers_them()
+    {
+        MainWindow window = Connected(out StandInAgent agent);
+        Assert.True(agent.OffersForms, "Passenger never tells the agent it shows forms, so Claude asks no questions");
+        Send(window, "questions");
+        Ui.WaitFor(() => window.Chat.Questioning is not null, () => $"the questions, where the conversation is {Shown(window)}");
+
+        QuestionsCard card = window.Chat.Questioning!;
+        Assert.Contains(card.GetVisualDescendants().OfType<TextBlock>(), text => text.Text == "1 of 2");
+        Assert.Contains(card.GetVisualDescendants().OfType<TextBlock>(), text => text.Text == "1. What should this new account be?");
+        Assert.Contains(card.GetVisualDescendants().OfType<TextBlock>(), text => text.Text == "A");
+        Assert.Contains(card.GetVisualDescendants().OfType<TextBlock>(), text => text.Text == "Other…");
+        Assert.Equal("Waiting for your answer", window.Chat.Doing);
+
+        Ui.Click(Choice(card, "Seeded login"));
+        Ui.Click(card.GetVisualDescendants().OfType<Button>().First(b => Equals(b.Content, "Continue")));
+        Assert.Equal(1, card.At);
+        Ui.Click(Choice(card, "Admin"));
+        Ui.Click(Choice(card, "User"));
+        Ui.Click(Choice(card, "Other…"));
+        card.GetVisualDescendants().OfType<TextBox>().Single(box => box.IsEffectivelyVisible).Text = "Read-only for now";
+        Ui.Click(card.GetVisualDescendants().OfType<Button>().First(b => Equals(b.Content, "Send")));
+        Ui.WaitFor(() => !window.Chat.Busy, () => $"the turn ended, where the conversation is {Shown(window)}");
+
+        JsonNode answer = JsonNode.Parse(agent.QuestionsAnswered!)!;
+        Assert.Equal("accept", answer["action"]!.GetValue<string>());
+        Assert.Equal("Seeded login", answer["content"]!["question_0"]!.GetValue<string>());
+        Assert.Equal(["Admin", "User"], answer["content"]!["question_1"]!.AsArray().Select(pick => pick!.GetValue<string>()));
+        Assert.Equal("Read-only for now", answer["content"]!["question_1_custom"]!.GetValue<string>());
+        Assert.Null(window.Chat.Questioning);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Skip_answers_none_of_the_agents_questions()
+    {
+        MainWindow window = Connected(out StandInAgent agent);
+        Send(window, "questions");
+        Ui.WaitFor(() => window.Chat.Questioning is not null, "the questions");
+
+        Ui.Click(window.Chat.Questioning!.GetVisualDescendants().OfType<Button>().First(b => Equals(b.Content, "Skip")));
+        Ui.WaitFor(() => !window.Chat.Busy, () => $"the turn ended, where the conversation is {Shown(window)}");
+
+        Assert.Equal("decline", JsonNode.Parse(agent.QuestionsAnswered!)!["action"]!.GetValue<string>());
+        window.Close();
+    }
+
+    /// <summary>A choice's row in the questions card, by its label.</summary>
+    private static Button Choice(QuestionsCard card, string label) =>
+        card.GetVisualDescendants().OfType<Button>().First(b => b.Content is DockPanel row && row.GetLogicalDescendants().OfType<TextBlock>().Any(text => text.Text == label));
+
+    [AvaloniaFact]
+    public void Reads_go_under_Explored_and_a_finished_turns_steps_fold_under_Worked_for_its_last_words_in_sight()
+    {
+        MainWindow window = Connected(out _);
+        Send(window, "tool");
+        Ui.WaitFor(() => !window.Chat.Busy, () => $"the turn ended, where the conversation is {Shown(window)}");
+
+        ChatFold[] folds = [.. window.Chat.GetVisualDescendants().OfType<ChatFold>()];
+        ChatFold explored = Assert.Single(folds, fold => fold.Explores);
+        Assert.Equal("Explored hello.py", explored.Said);
+        ChatFold worked = Assert.Single(folds, fold => !fold.Explores);
+        Assert.StartsWith("Worked for ", worked.Said, StringComparison.Ordinal);
+        Assert.False(worked.IsOpen, "A finished turn's steps show before they are asked for");
+        Assert.Contains(explored, worked.Body.GetVisualDescendants().OfType<ChatFold>().Concat(worked.Body.Children.OfType<ChatFold>()));
+        Assert.Contains(window.Chat.GetVisualDescendants().OfType<TextBlock>(), text => (text.Text ?? text.Inlines?.Text) == "It prints hello." && text.IsEffectivelyVisible);
+        Assert.Contains(worked.Body.GetLogicalDescendants().OfType<TextBlock>(), text => (text.Text ?? text.Inlines?.Text) == "Reading it.");
+
+        Ui.Click(worked.Children.OfType<Button>().Single());
+        Assert.True(worked.IsOpen);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void An_edit_waits_on_a_card_with_its_diff_and_Accept_answers_allow_once()
+    {
+        MainWindow window = Connected(out StandInAgent agent);
+        Send(window, "write");
+        Ui.WaitFor(() => window.Chat.Questions.Any(), () => $"the question asked, where the conversation is {Shown(window)}");
+
+        ApprovalCard card = window.Chat.Questions.Single();
+        Assert.Equal("Needs approval", card.State);
+        Assert.Equal("Waiting for your answer", window.Chat.Doing);
+        Assert.Contains(card.GetVisualDescendants().OfType<TextBlock>(), text => text.Text == "+ # Notes");
+        Assert.Contains(card.GetVisualDescendants().OfType<TextBlock>(), text => text.Text == "+1");
+        Assert.Null(agent.Answered);
+
+        Ui.Click(InCard(card, "Accept"));
+        Ui.WaitFor(() => !window.Chat.Busy, () => $"the turn ended, where the conversation is {Shown(window)}");
+
+        Assert.Equal("allow-once", agent.Answered);
+        Assert.Equal("Accepted", card.State);
+        Assert.Equal(("Claude Agent", "Wrote notes.md."), window.Chat.Conversation[^1]);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Rejecting_an_edit_tells_the_agent_no()
+    {
+        MainWindow window = Connected(out StandInAgent agent);
+        Send(window, "write");
+        Ui.WaitFor(() => window.Chat.Questions.Any(), "the question asked");
+
+        Ui.Click(InCard(window.Chat.Questions.Single(), "Reject"));
+        Ui.WaitFor(() => !window.Chat.Busy, () => $"the turn ended, where the conversation is {Shown(window)}");
+
+        Assert.Equal("reject", agent.Answered);
+        Assert.Equal("Rejected", window.Chat.Questions.Single().State);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Stop_while_asked_answers_the_question_cancelled()
+    {
+        MainWindow window = Connected(out StandInAgent agent);
+        Send(window, "write");
+        Ui.WaitFor(() => window.Chat.Questions.Any(), "the question asked");
+
+        Ui.Click(Named(window, "Stop"));
+        Ui.WaitFor(() => agent.Answered is not null, "the agent answered");
+
+        Assert.Equal("cancelled", agent.Answered);
+        Assert.Equal("Cancelled", window.Chat.Questions.Single().State);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void The_agents_edits_apply_and_wait_in_the_review_bar_with_their_counts()
+    {
+        MainWindow window = Reviewing(out StandInAgent agent, out string folder);
+        Send(window, "edit");
+        Ui.WaitFor(() => !window.Chat.Busy, () => $"the turn ended, where the conversation is {Shown(window)}");
+
+        Assert.Equal("hello\nworld\n", File.ReadAllText(Path.Combine(folder, "hello.txt")));
+        Assert.Equal(["hello.txt", "notes.md"], window.Chat.Review.Shown.Select(file => Path.GetFileName(file.Path)));
+        Assert.True(window.Chat.Review.IsVisible);
+        Assert.Equal(["+1 −0", "+1 −0"], window.Chat.Tools.Select(line => line.Counts));
+        Assert.True(window.Chat.Review.Shown[1].IsNew);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void A_stretchs_own_Keep_in_the_editor_keeps_it_and_the_file_leaves_the_review()
+    {
+        MainWindow window = Reviewing(out _, out string folder);
+        Send(window, "edit");
+        Ui.WaitFor(() => !window.Chat.Busy && window.Chat.Review.Shown.Count == 2, "both edits in review");
+        EditorGroup group = HelloWithItsStretch(window);
+
+        Ui.Click(InBar(group.HunkBars.Single().Bar, "Keep"));
+        Ui.WaitFor(() => window.Chat.Review.Shown.Count == 1, () => $"hello.txt kept, where the review lists {window.Chat.Review.Shown.Count}");
+
+        Assert.Equal("notes.md", Path.GetFileName(window.Chat.Review.Shown.Single().Path));
+        Assert.Equal("hello\nworld\n", File.ReadAllText(Path.Combine(folder, "hello.txt")));
+        Ui.WaitFor(() => Reviewed(window, "hello.txt")?.AgentReview is null && group.HunkBars.Count == 0, "hello.txt's marks gone once kept");
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void A_stretchs_own_Undo_in_the_editor_puts_it_back_and_saves_the_file()
+    {
+        MainWindow window = Reviewing(out _, out string folder);
+        Send(window, "edit");
+        Ui.WaitFor(() => !window.Chat.Busy && window.Chat.Review.Shown.Count == 2, "both edits in review");
+        EditorGroup group = HelloWithItsStretch(window);
+
+        Ui.Click(InBar(group.HunkBars.Single().Bar, "Undo"));
+        Ui.WaitFor(() => window.Chat.Review.Shown.Count == 1, () => $"hello.txt undone, where the review lists {window.Chat.Review.Shown.Count}");
+
+        Assert.Equal("hello\n", File.ReadAllText(Path.Combine(folder, "hello.txt")));
+        Assert.Equal("hello\n", Reviewed(window, "hello.txt")!.Text.Snapshot.ToString());
+        window.Close();
+    }
+
+    /// <summary>hello.txt opened from its edit's line, its one stretch's Keep and Undo shown at its end.</summary>
+    private static EditorGroup HelloWithItsStretch(MainWindow window)
+    {
+        Ui.Click(window.Chat.Tools.First(tool => tool.Title == "Write hello.txt").Snippet!);
+        Ui.WaitFor(() => window.EditorArea.ActiveGroup.HunkBars.Count == 1 && Path.GetFileName(window.EditorArea.Active?.Path) == "hello.txt", "hello.txt's stretch with its Keep and Undo");
+        EditorGroup group = window.EditorArea.ActiveGroup;
+        Assert.True(group.HunkBars.Single().Bar.IsEffectivelyVisible, "The stretch's Keep and Undo are out of sight");
+        return group;
+    }
+
+    private static Button InBar(Control bar, string content) =>
+        bar.GetVisualDescendants().OfType<Button>().First(b => Equals(b.Content, content));
+
+    [AvaloniaFact]
+    public void The_review_bar_is_one_line_that_lists_its_files_on_a_click_and_Review_steps_through_them()
+    {
+        MainWindow window = Reviewing(out _, out _);
+        Send(window, "edit");
+        Ui.WaitFor(() => !window.Chat.Busy && window.Chat.Review.Shown.Count == 2, "both edits in review");
+        ReviewBar review = window.Chat.Review;
+        Assert.False(review.IsOpen, "The review bar lists its files before it is asked to");
+        Assert.Contains(review.GetVisualDescendants().OfType<TextBlock>(), text => text.Text == "2 Files" && text.IsEffectivelyVisible);
+        Assert.DoesNotContain(review.GetVisualDescendants().OfType<Button>(), b => Equals(b.Content, "notes.md (new)") && b.IsEffectivelyVisible);
+
+        Ui.Click(review.GetVisualDescendants().OfType<Button>().First(b => b.Content is DockPanel));
+        Ui.Settle();
+        Assert.True(review.IsOpen);
+        Assert.Contains(review.GetVisualDescendants().OfType<Button>(), b => Equals(b.Content, "notes.md (new)") && b.IsEffectivelyVisible);
+
+        Ui.Click(InReview(window, "Review"));
+        Ui.Settle();
+        string first = Path.GetFileName(window.EditorArea.Active?.Path ?? string.Empty);
+        Ui.Click(InReview(window, "Review"));
+        Ui.Settle();
+        string second = Path.GetFileName(window.EditorArea.Active?.Path ?? string.Empty);
+        Assert.Equal(["hello.txt", "notes.md"], new[] { first, second }.Order());
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Undo_all_puts_each_file_back_as_it_was_before_the_agent()
+    {
+        MainWindow window = Reviewing(out StandInAgent agent, out string folder);
+        Send(window, "edit");
+        Ui.WaitFor(() => !window.Chat.Busy && window.Chat.Review.Shown.Count == 2, "the edits in review");
+
+        Ui.Click(InReview(window, "Undo"));
+        Ui.WaitFor(() => window.Chat.Review.Shown.Count == 0, () => $"the review emptied, where it lists {window.Chat.Review.Shown.Count}");
+
+        Assert.Equal("hello\n", File.ReadAllText(Path.Combine(folder, "hello.txt")));
+        Assert.False(File.Exists(Path.Combine(folder, "notes.md")));
+        Assert.False(window.Chat.Review.IsVisible);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Undo_leaves_a_file_changed_since_the_agent_and_says_so()
+    {
+        MainWindow window = Reviewing(out StandInAgent agent, out string folder);
+        Send(window, "edit");
+        Ui.WaitFor(() => !window.Chat.Busy && window.Chat.Review.Shown.Count == 2, "the edits in review");
+        File.WriteAllText(Path.Combine(folder, "hello.txt"), "mine\n");
+
+        Ui.Click(InReview(window, "Undo"));
+        Ui.WaitFor(() => window.Chat.Review.Shown.Count == 1, () => $"one file undone, where the review lists {window.Chat.Review.Shown.Count}");
+
+        Assert.Equal("mine\n", File.ReadAllText(Path.Combine(folder, "hello.txt")));
+        Assert.Equal("hello.txt", Path.GetFileName(window.Chat.Review.Shown.Single().Path));
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Keep_all_empties_the_review_and_leaves_the_files_as_the_agent_left_them()
+    {
+        MainWindow window = Reviewing(out StandInAgent agent, out string folder);
+        Send(window, "edit");
+        Ui.WaitFor(() => !window.Chat.Busy && window.Chat.Review.Shown.Count == 2, "the edits in review");
+
+        Ui.Click(InReview(window, "Keep"));
+
+        Assert.Empty(window.Chat.Review.Shown);
+        Assert.Equal("hello\nworld\n", File.ReadAllText(Path.Combine(folder, "hello.txt")));
+        Assert.True(File.Exists(Path.Combine(folder, "notes.md")));
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void The_agents_settings_are_pickers_under_the_box_and_choosing_one_sets_it()
+    {
+        MainWindow window = Connected(out StandInAgent agent);
+        Ui.WaitFor(() => window.Chat.Settings.Count == 3, "the three pickers");
+
+        Assert.Equal(["mode", "model", "effort"], window.Chat.Settings.Keys);
+        Assert.Equal("Accept edits", Chosen(window.Chat.Settings["mode"]));
+        Assert.Equal("Opus 5.5", Chosen(window.Chat.Settings["model"]));
+
+        window.Chat.Settings["model"].SelectedIndex = 1;
+        Ui.WaitFor(() => agent.Model == "sonnet", "the model set");
+        Ui.Settle();
+        Assert.Equal("Sonnet 5.5", Chosen(window.Chat.Settings["model"]));
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Shift_Tab_in_the_box_moves_to_the_agents_next_mode()
+    {
+        MainWindow window = Connected(out StandInAgent agent);
+        Ui.WaitFor(() => window.Chat.Settings.ContainsKey("mode"), "the mode picker");
+
+        Ui.Click(window.Chat.Input);
+        Ui.Press(window, "shift TAB");
+        Ui.WaitFor(() => agent.Mode == "plan", () => $"the next mode set, where it is {agent.Mode}");
+        Ui.Settle();
+        Assert.Equal("Plan", Chosen(window.Chat.Settings["mode"]));
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void A_slash_lists_the_agents_commands_and_Enter_writes_the_chosen_one()
+    {
+        MainWindow window = Connected(out StandInAgent agent);
+        Ui.WaitFor(() => window.Chat.Commands.Commands.Count == 3, "the agent's commands");
+
+        Ui.Click(window.Chat.Input);
+        window.Chat.Input.Text = "/co";
+        window.Chat.Input.CaretIndex = 3;
+        Ui.Settle();
+        Assert.True(window.Chat.Commands.IsOpen);
+        Assert.Equal(["code-review", "compact"], window.Chat.Commands.Shown);
+
+        Ui.Press(window, "DOWN");
+        Ui.Press(window, "ENTER");
+        Assert.Equal("/compact ", window.Chat.Input.Text);
+        Assert.False(window.Chat.Commands.IsOpen);
+        Assert.Empty(agent.Prompts);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void The_header_says_the_account_and_the_plans_use_and_the_box_the_context_used()
+    {
+        MainWindow window = Connected(out _);
+        Ui.WaitFor(() => window.Chat.Account.Contains("week", StringComparison.Ordinal), () => $"the plan's use, where the header says {window.Chat.Account}");
+
+        Assert.Equal("Claude Pro · 5h 30% · week 4%", window.Chat.Account);
+        Assert.Equal("4% context", window.Chat.ContextUsed);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void A_plan_is_saved_to_the_folders_plans_and_the_agents_first_answer_builds_it()
+    {
+        MainWindow window = Reviewing(out StandInAgent agent, out string folder);
+        Send(window, "plan");
+        Ui.WaitFor(() => window.Chat.Questions.Any(), () => $"the plan's card, where the conversation is {Shown(window)}");
+
+        string plan = Path.Combine(folder, ".passenger", "plans", $"{DateTime.Now:yyyy-MM-dd}_add-a-math-class.plan.md");
+        Assert.True(File.Exists(plan), $"No plan at {plan}");
+        // The plan keeps the agent's to-dos as a checklist at its end, ticked as each is done.
+        string written = File.ReadAllText(plan);
+        Assert.StartsWith(StandInAgent.Plan.TrimEnd(), written, StringComparison.Ordinal);
+        Assert.Contains("- [x] Read the code", written, StringComparison.Ordinal);
+        Assert.Contains("- [ ] Add tests", written, StringComparison.Ordinal);
+        ApprovalCard card = window.Chat.Questions.Single();
+        Assert.Contains(card.GetVisualDescendants().OfType<TextBlock>(), text => text.Text == "Add a math class");
+        // Shown at once as a page, with no click; Claude Code's own draft is a step, neither reviewed nor a second plan.
+        Ui.WaitFor(() => window.EditorArea.Active?.Path?.EndsWith("add-a-math-class.plan.md", StringComparison.Ordinal) == true, () => $"the plan shown, where {window.EditorArea.Active?.Path} is");
+        Assert.True(window.EditorArea.ShowsMarkdownPreview);
+        Assert.Empty(window.Chat.Review.Shown);
+        // Claude Code drafts twice; the reply shows the drafting once.
+        Assert.Single(window.Chat.Tools, line => line.Title == "Draft the plan" && line.IsVisible);
+
+        Ui.Click(InCard(card, "Build"));
+        Ui.WaitFor(() => !window.Chat.Busy, () => $"the turn ended, where the conversation is {Shown(window)}");
+
+        // Build is Cursor's: the session turns to Accept edits once it leaves plan mode, so the round's edits wait for review.
+        Assert.Equal("exit-plan-default", agent.PlanAnswer);
+        Ui.WaitFor(() => agent.Mode == "acceptEdits", () => $"the session in Accept edits, where it is in {agent.Mode}");
+        Assert.Equal("Building", card.State);
+        Assert.Empty(agent.Steered);
+        Assert.DoesNotContain(window.Chat.Tools, line => line.Status is "pending" or "in_progress");
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Sign_out_leaves_the_chat_offering_the_agents_ways_to_sign_in_in_the_Terminal()
+    {
+        MainWindow window = Connected(out StandInAgent agent);
+        Assert.True(agent.OffersTerminalSignIn, "Passenger never tells the agent it runs a sign-in, so a signed-out agent offers none");
+
+        Ui.Click(window.Chat.AccountButton);
+        Ui.Click(window.ChatAccountMenu!.Items.OfType<MenuItem>().Single(item => Equals(item.Header, "Sign out of Claude")));
+        Ui.WaitFor(() => window.Chat.SignedOut, () => $"the chat signed out, where it says \"{window.Chat.Said}\"");
+
+        Assert.True(agent.SignedOut);
+        // One flow: what happened and what signing in does, one way first, nothing else on the panel.
+        Assert.Equal(-1, window.Chat.SignIn.Step);
+        Assert.StartsWith("Sign in to Claude\nYou signed out.", window.Chat.SignIn.Said, StringComparison.Ordinal);
+        Assert.Contains(window.Chat.SignIn.GetVisualDescendants().OfType<Button>(), b => Equals(b.Content, "Continue with Claude Subscription") && b.IsEffectivelyVisible);
+        Assert.Equal("Not signed in", window.Chat.Account);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void New_chat_starts_afresh_and_History_opens_a_chat_of_before_told_again_and_deletes_one()
+    {
+        MainWindow window = Connected(out StandInAgent agent);
+        Send(window, "hello");
+        Ui.WaitFor(() => !window.Chat.Busy, "the first turn ended");
+
+        Ui.Click(window.Chat.NewChatButton!);
+        Ui.WaitFor(() => agent.Sessions.Count == 2 && window.Chat.Conversation.Count == 0, () => $"a new chat, where the conversation is {Shown(window)}");
+
+        Ui.Click(window.Chat.HistoryButton!);
+        Ui.WaitFor(() => window.ChatHistoryList is not null, "the earlier chats");
+        (Button Open, Button Delete)[] listed = [.. window.ChatHistoryList!.Rows];
+        Assert.Equal(2, listed.Length);
+        Assert.True(listed[0].Delete.IsEffectivelyVisible, "A chat's delete button is out of sight");
+        Ui.Click(listed.Single(row => Words(row.Open).StartsWith("Add a README", StringComparison.Ordinal)).Open);
+        Ui.WaitFor(() => agent.Loaded == "sess_1" && window.Chat.Conversation.Count == 2, () => $"the chat of before told again, where the conversation is {Shown(window)}");
+        Assert.Equal([("You", "Add a README"), ("Claude Agent", "I added README.md.")], window.Chat.Conversation);
+
+        ChatList? before = window.ChatHistoryList;
+        Ui.Click(window.Chat.HistoryButton!);
+        Ui.WaitFor(() => window.ChatHistoryList != before, "the earlier chats again");
+        (Button Open, Button Delete) other = window.ChatHistoryList!.Rows.Single(row => !Words(row.Open).Contains("Shown now", StringComparison.Ordinal));
+        Ui.Click(other.Delete);
+        Ui.WaitFor(() => agent.Sessions.Count == 1, "the other chat deleted");
+        Assert.Equal("sess_1", agent.Sessions.Single().Id);
+        window.Close();
+    }
+
+    /// <summary>What a list's row says, its title then what is under it, a line each.</summary>
+    private static string Words(Button row) => string.Join("\n", row.GetLogicalDescendants().OfType<TextBlock>().Select(text => text.Text));
+
+    [AvaloniaFact]
+    public void A_project_the_agent_makes_goes_in_the_solution_as_it_is_made_not_at_the_turns_end()
+    {
+        string made = TestFolders.Create("chat");
+        File.WriteAllText(Path.Combine(made, "app.slnx"), "<Solution>\n</Solution>\n");
+        MainWindow window = Ui.OpenFolder(made, languageServer: false);
+        StandInAgent agent = new();
+        window.StartChatAgent = _ => Task.FromResult(agent.Agent);
+        window.ShowToolWindow(ToolWindowIds.Chat);
+        Ui.Settle();
+        Ui.Click(ConnectButton(window));
+        Ui.WaitFor(() => window.Chat.Said == "Connected to Claude Agent 0.107.3", "the agent connected");
+
+        Send(window, "project");
+        Ui.WaitFor(() => !window.Chat.Busy, () => $"the turn ended, where the conversation is {Shown(window)}");
+
+        Assert.True(agent.ListedDuringTurn, "The project the agent made was not in the solution while it worked");
+        Assert.Contains("New.Api.csproj", File.ReadAllText(Path.Combine(made, "app.slnx")), StringComparison.Ordinal);
+        Assert.Contains(window.Chat.Notices, note => note.StartsWith("Added New.Api to app.slnx", StringComparison.Ordinal));
+        // The note stays in sight once the turn's steps fold under "Worked for".
+        Assert.Contains(window.Chat.GetVisualDescendants().OfType<TextBlock>(), text => text.Text?.StartsWith("Added New.Api to app.slnx", StringComparison.Ordinal) == true && text.IsEffectivelyVisible);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void A_plan_in_the_Plans_list_is_deleted_to_the_Trash_by_its_own_button()
+    {
+        MainWindow window = Reviewing(out _, out string folder);
+        Send(window, "plan");
+        Ui.WaitFor(() => window.Chat.Questions.Any(), "the plan's card");
+        Ui.Click(window.EditorArea.ActiveGroup.ReviewLinks.Undo);
+        Ui.WaitFor(() => !window.Chat.Busy, "the turn ended");
+        string plan = Path.Combine(folder, ".passenger", "plans", $"{DateTime.Now:yyyy-MM-dd}_add-a-math-class.plan.md");
+        Assert.True(File.Exists(plan), $"No plan at {plan}");
+
+        Ui.Click(window.Chat.PlansButton!);
+        (Button Open, Button Delete) listed = Assert.Single(window.ChatPlansList!.Rows);
+        Assert.Equal("Add a math class", Words(listed.Open).Split('\n')[0]);
+        Ui.Click(listed.Delete);
+        Ui.WaitFor(() => !File.Exists(plan), "the plan deleted");
+
+        Assert.Empty(window.ChatPlansList!.Rows);
+        Assert.DoesNotContain(window.EditorArea.Documents, document => document.Path.EndsWith("add-a-math-class.plan.md", StringComparison.Ordinal));
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void A_commands_question_is_one_line_with_Run_and_Reject_and_gives_way_to_its_line_once_answered()
+    {
+        MainWindow window = Connected(out StandInAgent agent);
+        Send(window, "run");
+        Ui.WaitFor(() => window.Chat.Questions.Any(), () => $"the command's card, where the conversation is {Shown(window)}");
+
+        ApprovalCard card = window.Chat.Questions.Single();
+        ToolLine line = window.Chat.Tools.Single(tool => tool.Title == "dotnet build");
+        Assert.False(line.IsVisible, "The command shows twice, as its line and its card");
+        Assert.Contains(card.GetVisualDescendants().OfType<TextBlock>(), text => text.Text == "Build the project");
+        Assert.DoesNotContain(card.GetVisualDescendants().OfType<TextBlock>(), text => text.Text?.StartsWith("Yes, and don't ask again", StringComparison.Ordinal) == true);
+
+        Ui.Click(InCard(card, "Run"));
+        Ui.WaitFor(() => !window.Chat.Busy, () => $"the turn ended, where the conversation is {Shown(window)}");
+
+        Assert.Equal("allow-once", agent.Answered);
+        Assert.False(card.IsVisible, "The answered command's card still stands beside its line");
+        Assert.True(line.IsEffectivelyVisible || line.Parent?.Parent is ChatFold, "The command's line is gone");
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void A_plan_edited_before_it_is_built_is_sent_to_the_agent_as_it_is_now()
+    {
+        MainWindow window = Reviewing(out StandInAgent agent, out string folder);
+        Send(window, "plan");
+        Ui.WaitFor(() => window.Chat.Questions.Any(), "the plan's card");
+        string plan = Path.Combine(folder, ".passenger", "plans", $"{DateTime.Now:yyyy-MM-dd}_add-a-math-class.plan.md");
+        File.AppendAllText(plan, "3. Write the docs\n");
+
+        Ui.Click(InCard(window.Chat.Questions.Single(), "Build"));
+        Ui.WaitFor(() => !window.Chat.Busy, () => $"the turn ended, where the conversation is {Shown(window)}");
+
+        string steered = Assert.Single(agent.Steered);
+        Assert.Contains("3. Write the docs", steered, StringComparison.Ordinal);
+        Assert.Contains("add-a-math-class.plan.md", steered, StringComparison.Ordinal);
+        Assert.Equal(["steer", "answer"], agent.Order);
+        Assert.Contains(window.Chat.Conversation, part => part.Text.StartsWith("Sent your edited plan from", StringComparison.Ordinal));
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Open_plan_opens_the_plans_file_as_a_page_alone_its_source_behind_the_preview_toggle()
+    {
+        MainWindow window = Reviewing(out StandInAgent agent, out string folder);
+        Send(window, "plan");
+        Ui.WaitFor(() => window.Chat.Questions.Any(), "the plan's card");
+
+        Ui.Click(window.Chat.Questions.Single().GetVisualDescendants().OfType<Button>().First(b => Equals(b.Content, "View Plan")));
+        Ui.Settle();
+
+        EditorGroup group = window.EditorArea.ActiveGroup;
+        Assert.EndsWith("add-a-math-class.plan.md", window.EditorArea.Active?.Path, StringComparison.Ordinal);
+        Assert.True(group.Markdown?.IsEffectivelyVisible == true, "The plan reads as no page");
+        Assert.False(group.Editor.IsEffectivelyVisible, "The plan's source shows beside its page, the same words twice");
+
+        Ui.Click(group.PreviewToggle);
+        Ui.Settle();
+        Assert.True(group.Editor.IsEffectivelyVisible, "The preview's toggle shows no source of the plan to edit");
+        Ui.Click(group.PreviewToggle);
+        Ui.Settle();
+        Assert.False(group.Editor.IsEffectivelyVisible, "The plan's source stays after its page came back");
+        // The plan's page offers the answers too while it waits.
+        Ui.Click(window.EditorArea.ActiveGroup.ReviewLinks.Undo);
+        Ui.WaitFor(() => !window.Chat.Busy, "the turn ended");
+        Assert.Equal("reject", agent.PlanAnswer);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void A_plans_card_is_Cursors_and_what_is_written_while_it_waits_revises_it_sent_first()
+    {
+        MainWindow window = Reviewing(out StandInAgent agent, out _);
+        Send(window, "plan");
+        Ui.WaitFor(() => window.Chat.Questions.Any(), "the plan's card");
+        ApprovalCard card = window.Chat.Questions.Single();
+        Assert.Contains(card.GetVisualDescendants().OfType<TextBlock>(), text => text.Text == "Created Plan");
+        Assert.Contains(card.GetVisualDescendants().OfType<TextBlock>(), text => text.Text == "Build");
+        Assert.DoesNotContain(card.GetVisualDescendants().OfType<TextBlock>(), text => text.Text == "No, keep planning" && text.IsEffectivelyVisible);
+
+        Send(window, "Use SQLite instead of Postgres");
+        Ui.WaitFor(() => !window.Chat.Busy, () => $"the turn ended, where the conversation is {Shown(window)}");
+
+        Assert.Equal("reject", agent.PlanAnswer);
+        Assert.Equal("Revising", card.State);
+        Assert.Contains("Use SQLite instead of Postgres", Assert.Single(agent.Steered), StringComparison.Ordinal);
+        Assert.Equal(["steer", "answer"], agent.Order);
+        Assert.Contains(window.Chat.Conversation, part => part.Who == "You" && part.Text == "Use SQLite instead of Postgres");
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Edit_plan_shows_the_plans_source_beside_its_page_and_Open_plan_the_page_alone_again()
+    {
+        MainWindow window = Reviewing(out StandInAgent agent, out _);
+        Send(window, "plan");
+        Ui.WaitFor(() => window.Chat.Questions.Any(), "the plan's card");
+        ApprovalCard card = window.Chat.Questions.Single();
+
+        Ui.Click(card.GetVisualDescendants().OfType<Button>().First(b => Equals(b.Content, "Edit Plan")));
+        Ui.Settle();
+        EditorGroup group = window.EditorArea.ActiveGroup;
+        Assert.EndsWith("add-a-math-class.plan.md", window.EditorArea.Active?.Path, StringComparison.Ordinal);
+        Assert.True(group.Editor.IsEffectivelyVisible, "Edit plan shows no source to edit");
+        Assert.True(group.Markdown?.IsEffectivelyVisible == true, "Edit plan hides the plan's page");
+
+        Ui.Click(card.GetVisualDescendants().OfType<Button>().First(b => Equals(b.Content, "View Plan")));
+        Ui.Settle();
+        Assert.False(group.Editor.IsEffectivelyVisible, "Open plan still shows the source beside the page");
+        Ui.Click(window.EditorArea.ActiveGroup.ReviewLinks.Undo);
+        Ui.WaitFor(() => !window.Chat.Busy, "the turn ended");
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void A_new_file_asked_for_opens_as_its_copy_all_added_and_its_banners_Accept_answers_it()
+    {
+        MainWindow window = Connected(out StandInAgent agent);
+        Send(window, "write");
+        Ui.WaitFor(() => Proposed(window) is { AgentReview.KeepWord: "Accept" }, () => $"the new file's copy shown, where the conversation is {Shown(window)}");
+
+        OpenDocument copy = Proposed(window)!;
+        Assert.Equal("notes.md", Path.GetFileName(copy.Path));
+        Assert.True(copy.IsReadOnly, "The copy of a file not yet made can be typed over");
+        Assert.Equal("# Notes\n", copy.Text.Snapshot.ToString());
+        Assert.Equal(ChangeMarkKind.Added, Assert.Single(copy.Decorations.ReviewMarks).Kind);
+        ApprovalCard card = window.Chat.Questions.Single();
+        Ui.Click(InCard(card, "Write notes.md"));
+        Ui.Settle();
+        Assert.Same(copy, window.EditorArea.Active);
+        Assert.Empty(window.OwnedWindows.OfType<Passenger.App.Vcs.DiffWindow>());
+
+        Ui.Click(window.EditorArea.ActiveGroup.ReviewLinks.Keep);
+        Ui.WaitFor(() => !window.Chat.Busy, () => $"the turn ended, where the conversation is {Shown(window)}");
+        Assert.Equal("allow-once", agent.Answered);
+        Ui.WaitFor(() => Proposed(window) is null, "the copy closed once answered");
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void An_edits_line_opens_its_file_in_the_editor_with_its_changes_marked()
+    {
+        MainWindow window = Reviewing(out _, out _);
+        Send(window, "edit");
+        Ui.WaitFor(() => !window.Chat.Busy && window.Chat.Review.Shown.Count == 2, "both edits in review");
+
+        ToolLine line = window.Chat.Tools.First(tool => tool.Title == "Write hello.txt");
+        // A done edit shows as its snippet, as Cursor's: the file's name and counts, then its changed lines numbered.
+        Button snippet = line.Snippet!;
+        Assert.Contains(snippet.GetVisualDescendants().OfType<TextBlock>(), text => text.Text == "hello.txt");
+        Assert.Contains(snippet.GetVisualDescendants().OfType<TextBlock>(), text => text.Text == "world");
+        Assert.Contains(snippet.GetVisualDescendants().OfType<TextBlock>(), text => text.Text == "2");
+        Ui.Click(snippet);
+        Ui.WaitFor(() => window.EditorArea.Active?.Decorations.ReviewMarks.Count > 0, "hello.txt's changes marked");
+
+        Assert.Equal("hello.txt", Path.GetFileName(window.EditorArea.Active?.Path));
+        Assert.Empty(window.OwnedWindows.OfType<Passenger.App.Vcs.DiffWindow>());
+        window.Close();
+    }
+
+    /// <summary>The copy open of a file the agent asks to make, if one is.</summary>
+    private static OpenDocument? Proposed(MainWindow window) =>
+        window.EditorArea.Documents.FirstOrDefault(document => ChatProposals.IsCopy(document.Path));
+
+    [AvaloniaFact]
+    public void The_agents_to_dos_are_pinned_at_the_top_one_line_that_opens_and_name_the_plan_being_built()
+    {
+        MainWindow window = Reviewing(out StandInAgent agent, out _);
+        Send(window, "plan");
+        Ui.WaitFor(() => window.Chat.Todos.IsVisible && window.Chat.Questions.Any(), "the to-dos and the plan's card");
+
+        TodoBar todos = window.Chat.Todos;
+        Assert.Equal("1 of 3 To-dos Completed", todos.Count);
+        Assert.Equal(["completed", "in_progress", "pending"], todos.Entries.Select(entry => entry.Status));
+        Assert.True(todos.Bounds.Y < window.Chat.Review.Bounds.Y || !window.Chat.Review.IsVisible, "The to-dos are not pinned at the top");
+        Assert.False(todos.IsOpen, "The to-dos list their steps before they are asked to");
+        Ui.Click(todos.GetVisualDescendants().OfType<Button>().First());
+        Assert.True(todos.IsOpen);
+
+        Ui.Click(InCard(window.Chat.Questions.Single(), "Build"));
+        Ui.WaitFor(() => !window.Chat.Busy, "the turn ended");
+        Assert.Equal("Add a math class", todos.Built);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void An_edited_file_opens_behind_with_its_added_lines_tinted_and_its_banner()
+    {
+        MainWindow window = Reviewing(out StandInAgent agent, out string folder);
+        Send(window, "edit");
+        Ui.WaitFor(() => !window.Chat.Busy && Reviewed(window, "hello.txt")?.AgentReview is not null, () => $"hello.txt in review in its editor, where the conversation is {Shown(window)}");
+
+        OpenDocument hello = Reviewed(window, "hello.txt")!;
+        Assert.Equal([new ChangeMark(1, 1, ChangeMarkKind.Added)], hello.Decorations.ReviewMarks);
+        Assert.Empty(hello.Decorations.ReviewRemoved);
+        Assert.StartsWith("The agent changed this file (hello.txt: +1 −0)", hello.AgentReview!.Said, StringComparison.Ordinal);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void A_replaced_line_shows_where_it_stood_as_a_row_above_the_line_that_took_its_place()
+    {
+        MainWindow window = Reviewing(out StandInAgent agent, out string folder);
+        window.OpenFile(Path.Combine(folder, "hello.txt"));
+        Ui.Settle();
+        Passenger.Editor.CodeEditor editor = window.EditorArea.CodeEditor;
+        double before = editor.PointOf(0).Y;
+
+        Send(window, "swap");
+        Ui.WaitFor(() => !window.Chat.Busy && Reviewed(window, "hello.txt")?.Decorations.ReviewRemoved.Count == 1, () => $"the removed line marked, where the conversation is {Shown(window)}");
+        Ui.Settle();
+
+        OpenDocument hello = Reviewed(window, "hello.txt")!;
+        Assert.Equal("hi\n", hello.Text.Snapshot.ToString());
+        Assert.Equal(0, hello.Decorations.ReviewRemoved[0].Line);
+        Assert.Equal(["hello"], hello.Decorations.ReviewRemoved[0].Text);
+        Assert.Equal([new ChangeMark(0, 1, ChangeMarkKind.Added)], hello.Decorations.ReviewMarks);
+        // The removed line's row stands above the first line, which moves down a row.
+        Assert.True(editor.PointOf(0).Y >= before + (editor.LineHeight * 0.9), $"The first line stayed at {editor.PointOf(0).Y}, from {before}");
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void The_files_banner_Keep_ends_its_review_and_Undo_puts_it_back()
+    {
+        MainWindow window = Reviewing(out StandInAgent agent, out string folder);
+        Send(window, "edit");
+        Ui.WaitFor(() => !window.Chat.Busy && Reviewed(window, "hello.txt")?.AgentReview is not null && Reviewed(window, "notes.md")?.AgentReview is not null, "both files in review");
+
+        Reviewed(window, "notes.md")!.AgentReview!.Keep();
+        Ui.WaitFor(() => Reviewed(window, "notes.md")?.AgentReview is null, "notes.md kept");
+        Assert.Empty(Reviewed(window, "notes.md")!.Decorations.ReviewMarks);
+        Assert.Equal(["hello.txt"], window.Chat.Review.Shown.Select(file => Path.GetFileName(file.Path)));
+
+        Reviewed(window, "hello.txt")!.AgentReview!.Undo();
+        Ui.WaitFor(() => window.Chat.Review.Shown.Count == 0 && Reviewed(window, "hello.txt")?.AgentReview is null, "hello.txt undone");
+        Assert.Equal("hello\n", File.ReadAllText(Path.Combine(folder, "hello.txt")));
+        Assert.Equal("hello\n", Reviewed(window, "hello.txt")!.Text.Snapshot.ToString());
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void An_edit_asked_first_shows_in_its_file_unwritten_and_the_banners_Accept_answers_it()
+    {
+        MainWindow window = Reviewing(out StandInAgent agent, out string folder);
+        Send(window, "ask");
+        Ui.WaitFor(() => Reviewed(window, "hello.txt")?.AgentReview is { KeepWord: "Accept" }, () => $"the edit shown in hello.txt, where the conversation is {Shown(window)}");
+
+        OpenDocument hello = Reviewed(window, "hello.txt")!;
+        Assert.Equal("hello\n", hello.Text.Snapshot.ToString());
+        Passenger.Editor.RemovedLines coming =Assert.Single(hello.Decorations.ReviewRemoved);
+        Assert.True(coming.Added, "The line the agent asks to add is drawn as a removed one");
+        Assert.Equal(["world"], coming.Text);
+        Assert.Equal(1, coming.Line);
+        ApprovalCard card = window.Chat.Questions.Single();
+        Ui.Click(card.GetVisualDescendants().OfType<Button>().First(b => b.Content is TextBlock { Text: { } text } && text.EndsWith("hello.txt", StringComparison.Ordinal)));
+        Ui.Settle();
+        Assert.Same(hello, window.EditorArea.Active);
+
+        Ui.Click(window.EditorArea.ActiveGroup.ReviewLinks.Keep);
+        Ui.WaitFor(() => !window.Chat.Busy, () => $"the turn ended, where the conversation is {Shown(window)}");
+
+        Assert.Equal("allow-once", agent.Answered);
+        Assert.Equal("Accepted", card.State);
+        Assert.Equal("hello\nworld\n", File.ReadAllText(Path.Combine(folder, "hello.txt")));
+        // Accepted before it was written, it was reviewed then: no Keep or Undo asked of it again.
+        Ui.WaitFor(() => hello.AgentReview is null && hello.Decorations.ReviewRemoved.Count == 0, "the edit's marks gone once answered");
+        Assert.Empty(window.Chat.Review.Shown);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void An_edit_asked_first_and_rejected_in_its_file_leaves_the_file_as_it_was()
+    {
+        MainWindow window = Reviewing(out StandInAgent agent, out string folder);
+        Send(window, "ask");
+        Ui.WaitFor(() => Reviewed(window, "hello.txt")?.AgentReview is { UndoWord: "Reject" }, "the edit shown in hello.txt");
+
+        Ui.Click(window.EditorArea.ActiveGroup.ReviewLinks.Undo);
+        Ui.WaitFor(() => !window.Chat.Busy, () => $"the turn ended, where the conversation is {Shown(window)}");
+
+        Assert.Equal("reject", agent.Answered);
+        Assert.Equal("Rejected", window.Chat.Questions.Single().State);
+        Assert.Equal("hello\n", File.ReadAllText(Path.Combine(folder, "hello.txt")));
+        Ui.WaitFor(() => Reviewed(window, "hello.txt")?.AgentReview is null, "the edit's banner gone once answered");
+        Assert.Empty(window.Chat.Review.Shown);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void A_reply_shows_as_Markdown_once_whole()
+    {
+        MainWindow window = Connected(out StandInAgent agent);
+        Send(window, "bold");
+        Ui.WaitFor(() => !window.Chat.Busy, () => $"the turn ended, where the conversation is {Shown(window)}");
+
+        Assert.Equal(("Claude Agent", "Use **this** one."), window.Chat.Conversation[^1]);
+        Assert.DoesNotContain(window.Chat.GetVisualDescendants().OfType<TextBlock>(), text => (text.Text ?? string.Empty).Contains("**", StringComparison.Ordinal));
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void A_suggestion_of_the_empty_conversation_fills_the_box()
+    {
+        MainWindow window = Connected(out _);
+        Ui.Click(Named(window, "Explain how this project is structured"));
+        Assert.Equal("Explain how this project is structured", window.Chat.Input.Text);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void An_agent_that_cannot_start_says_why_and_offers_connect_again()
+    {
+        MainWindow window = Ui.OpenFolder(TestFolders.Create("chat"), languageServer: false);
+        window.StartChatAgent = _ => Task.FromException<ChatAgent>(new Win32Exception("npx was not found"));
+        window.ShowToolWindow(ToolWindowIds.Chat);
+        Ui.Settle();
+
+        Ui.Click(ConnectButton(window));
+        Ui.WaitFor(() => window.Chat.Said.StartsWith("Could not start", StringComparison.Ordinal), () => $"the failure said, where the window says \"{window.Chat.Said}\"");
+
+        Assert.Equal("Could not start the agent: npx was not found", window.Chat.Said);
+        Assert.True(window.Chat.OffersConnect);
+        window.Close();
+    }
+
+    private static MainWindow Open()
+    {
+        MainWindow window = new() { Width = 1200, Height = 800, StateFolder = Passenger.App.State.StateStore.DefaultRoot };
+        window.Show();
+        Ui.Settle();
+        return window;
+    }
+
+    private static ToggleButton Button(MainWindow window) =>
+        window.DockHost.GetVisualDescendants().OfType<ToggleButton>().First(b => Equals(b.Tag, ToolWindowIds.Chat));
+
+    private static Button ConnectButton(MainWindow window) => Named(window, "Connect to Claude Code");
+
+    private static Button Named(MainWindow window, string content) =>
+        window.Chat.GetVisualDescendants().OfType<Button>().First(b => Equals(b.Content, content) && b.IsEffectivelyVisible);
+
+    /// <summary>A window on a folder of its own with the Chat window connected to a stand-in agent.</summary>
+    private static MainWindow Connected(out StandInAgent agent)
+    {
+        MainWindow window = Ui.OpenFolder(TestFolders.Create("chat"), languageServer: false);
+        StandInAgent started = new();
+        window.StartChatAgent = _ => Task.FromResult(started.Agent);
+        window.ShowToolWindow(ToolWindowIds.Chat);
+        Ui.Settle();
+        Ui.Click(ConnectButton(window));
+        Ui.WaitFor(() => window.Chat.Said == "Connected to Claude Agent 0.107.3", () => $"the agent connected, where the window says \"{window.Chat.Said}\"");
+        agent = started;
+        return window;
+    }
+
+    /// <summary>A window connected to a stand-in agent in a folder holding hello.txt, the agent writing only once the
+    /// window has taken the file for review, as Claude Code names a file before it writes it.</summary>
+    private static MainWindow Reviewing(out StandInAgent agent, out string folder)
+    {
+        string made = TestFolders.Create("chat");
+        File.WriteAllText(Path.Combine(made, "hello.txt"), "hello\n");
+        MainWindow window = Ui.OpenFolder(made, languageServer: false);
+        StandInAgent started = new();
+        ConcurrentDictionary<string, TaskCompletionSource> taken = new(StringComparer.Ordinal);
+        TaskCompletionSource Taken(string path) => taken.GetOrAdd(Path.GetFileName(path), _ => new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously));
+        window.ChatReview.Taken += path => Taken(path).TrySetResult();
+        started.BeforeWrite = path => Taken(path).Task;
+        window.StartChatAgent = _ => Task.FromResult(started.Agent);
+        window.ShowToolWindow(ToolWindowIds.Chat);
+        Ui.Settle();
+        Ui.Click(ConnectButton(window));
+        Ui.WaitFor(() => window.Chat.Said == "Connected to Claude Agent 0.107.3", "the agent connected");
+        agent = started;
+        folder = made;
+        return window;
+    }
+
+    /// <summary>The open file of that name, if it is open.</summary>
+    private static OpenDocument? Reviewed(MainWindow window, string name) =>
+        window.EditorArea.Documents.FirstOrDefault(document => Path.GetFileName(document.Path) == name);
+
+    private static Button InReview(MainWindow window, string content) =>
+        window.Chat.Review.GetVisualDescendants().OfType<Button>().First(b => Equals(b.Content, content));
+
+    private static string? Chosen(ComboBox picker) => (picker.SelectedItem as ComboBoxItem)?.Content as string;
+
+    private static void Send(MainWindow window, string text)
+    {
+        window.Chat.Input.Text = text;
+        Ui.Click(Named(window, "Send"));
+    }
+
+    /// <summary>The card's button of those words, a numbered answer's too.</summary>
+    private static Button InCard(ApprovalCard card, string content) =>
+        card.GetVisualDescendants().OfType<Button>().First(b => b.Content is TextBlock { Text: { } text } ? text == content
+            : b.Content is Panel panel && panel.Children.OfType<TextBlock>().Any(words => words.Text == content));
+
+    private static string Shown(MainWindow window) => string.Join(" | ", window.Chat.Conversation.Select(part => $"{part.Who}: {part.Text}"));
+
+    /// <summary>An agent in memory that answers as the Claude adapter did in real runs: initialize, session/new and
+    /// set_mode; a prompt with its reply in three pieces, or by its first word: "wait" nothing until session/cancel;
+    /// "edit" hello.txt changed and notes.md made, each written once the window has taken it;
+    /// "tool" a read's call with words before and after it; "write" a question with a new file's diff, then its words;
+    /// "bold" Markdown.</summary>
+    private sealed class StandInAgent
+    {
+        private readonly Pipe toSession = new();
+        private readonly Pipe fromSession = new();
+        private readonly List<string> prompts = [];
+
+        public StandInAgent()
+        {
+            Agent = new ChatAgent(AcpSession.Over(toSession.Reader.AsStream(), fromSession.Writer.AsStream()), () => toSession.Writer.Complete());
+            // Unheld: it answers for as long as the session lives, which no wait for the IDE to be quiet may wait out.
+            Passenger.Core.UnawaitedWork.Observe(Passenger.Core.BackgroundWork.Unheld(AnswerAsync));
+        }
+
+        public ChatAgent Agent { get; }
+
+        /// <summary>The folder the session was opened in.</summary>
+        public string? SessionFolder { get; private set; }
+
+        /// <summary>The mode the session was set to.</summary>
+        public string? Mode { get; private set; }
+
+        /// <summary>The model the session was set to.</summary>
+        public string Model { get; private set; } = "opus";
+
+        /// <summary>Whether the turn was cancelled.</summary>
+        public bool Cancelled { get; private set; }
+
+        /// <summary>The plan it asks to build, as the Claude adapter sends a plan's Markdown.</summary>
+        public const string Plan = "# Plan: Add a math class\n\n1. Write MathOperations.cs\n2. Add tests\n";
+
+        private readonly List<string> steered = [];
+        private readonly List<string> order = [];
+
+        /// <summary>The messages steered into its turn.</summary>
+        public IReadOnlyList<string> Steered
+        {
+            get
+            {
+                lock (steered)
+                {
+                    return [.. steered];
+                }
+            }
+        }
+
+        /// <summary>What came, in turn, of a steer and the plan's answer.</summary>
+        public IReadOnlyList<string> Order
+        {
+            get
+            {
+                lock (steered)
+                {
+                    return [.. order];
+                }
+            }
+        }
+
+        /// <summary>The answer to its plan: an option's id, or "cancelled".</summary>
+        public string? PlanAnswer { get; private set; }
+
+        /// <summary>Waited on before it writes a file, by the file's path.</summary>
+        public Func<string, Task> BeforeWrite { get; set; } = _ => Task.CompletedTask;
+
+        /// <summary>The answer to its question: an option's id, or "cancelled".</summary>
+        public string? Answered { get; private set; }
+
+        public IReadOnlyList<string> Prompts
+        {
+            get
+            {
+                lock (prompts)
+                {
+                    return [.. prompts];
+                }
+            }
+        }
+
+        private async Task AnswerAsync()
+        {
+            try
+            {
+                await AnsweringAsync();
+            }
+            catch (InvalidOperationException)
+            {
+                // The window ended the agent while it answered, as a closed connection ends a real one.
+            }
+        }
+
+        private async Task AnsweringAsync()
+        {
+            UTF8Encoding utf8 = new(encoderShouldEmitUTF8Identifier: false);
+            using StreamReader reader = new(fromSession.Reader.AsStream(), utf8);
+            await using StreamWriter writer = new(toSession.Writer.AsStream(), utf8) { NewLine = "\n", AutoFlush = true };
+            string? waiting = null;
+            while (await reader.ReadLineAsync() is string line)
+            {
+                JsonNode message = JsonNode.Parse(line)!;
+                string id = message["id"]?.ToJsonString() ?? "null";
+                JsonNode? parameters = message["params"];
+                switch (message["method"]?.GetValue<string>())
+                {
+                    case "initialize":
+                        OffersForms = parameters?["clientCapabilities"]?["elicitation"]?["form"] is not null;
+                        OffersTerminalSignIn = parameters?["clientCapabilities"]?["_meta"]?["terminal-auth"] is not null;
+                        await Answer(writer, id, """{"protocolVersion":1,"agentInfo":{"name":"@agentclientprotocol/claude-agent-acp","title":"Claude Agent","version":"0.107.3"},"authMethods":[{"id":"claude-ai-login","name":"Claude Subscription","description":"Use Claude subscription","type":"terminal","args":["--cli","auth","login","--claudeai"],"_meta":{"terminal-auth":{"command":"node","args":["agent.js","--cli","auth","login","--claudeai"],"label":"Claude Login"}}}]}""");
+                        break;
+                    case "session/new" when SignedOut:
+                        await writer.WriteLineAsync($$$"""{"jsonrpc":"2.0","id":{{{id}}},"error":{"code":-32000,"message":"Authentication required"}}""");
+                        break;
+                    case "logout":
+                        SignedOut = true;
+                        await Answer(writer, id, "{}");
+                        await writer.WriteLineAsync("""{"jsonrpc":"2.0","method":"auth/status_update","params":{"state":"unauthenticated"}}""");
+                        break;
+                    case "session/list":
+                        string listed = string.Join(",", Sessions.Select(session => $$$"""{"sessionId":"{{{session.Id}}}","cwd":"x","title":{{{JsonValue.Create(session.Title).ToJsonString()}}},"updatedAt":"2026-11-17T10:00:00Z"}"""));
+                        await Answer(writer, id, $$$"""{"sessions":[{{{listed}}}]}""");
+                        break;
+                    case "session/delete":
+                        string gone = parameters?["sessionId"]?.GetValue<string>() ?? string.Empty;
+                        lock (sessions)
+                        {
+                            sessions.RemoveAll(session => session.Id == gone);
+                        }
+                        await Answer(writer, id, "{}");
+                        break;
+                    case "session/load":
+                        string asked = parameters?["sessionId"]?.GetValue<string>() ?? string.Empty;
+                        Loaded = asked;
+                        // As the adapter tells a chat of before again: the person's words, then the agent's.
+                        await Update(writer, """{"sessionUpdate":"user_message_chunk","content":{"type":"text","text":"Add a README"}}""");
+                        await Say(writer, "I added README.md.");
+                        await Answer(writer, id, """{"modes":{"currentModeId":"acceptEdits","availableModes":[{"id":"default","name":"Manual"},{"id":"acceptEdits","name":"Accept edits"},{"id":"plan","name":"Plan"}]},"configOptions":""" + Config() + "}");
+                        break;
+                    case "session/new":
+                        SessionFolder = parameters?["cwd"]?.GetValue<string>();
+                        string made;
+                        lock (sessions)
+                        {
+                            made = $"sess_{sessions.Count + 1}";
+                            sessions.Add((made, sessions.Count == 0 ? "Add a README" : "Untitled"));
+                        }
+                        await Answer(writer, id, $$$"""{"sessionId":"{{{made}}}","modes":{"currentModeId":"auto","availableModes":[{"id":"default","name":"Manual"},{"id":"acceptEdits","name":"Accept edits"},{"id":"plan","name":"Plan"}]},"configOptions":{{{Config()}}}}""");
+                        await writer.WriteLineAsync("""{"jsonrpc":"2.0","method":"auth/status_update","params":{"state":"authenticated","accounts":[{"label":"Claude Pro","active":true,"email":"person@example.com"}]}}""");
+                        await Update(writer, """{"sessionUpdate":"available_commands_update","availableCommands":[{"name":"code-review","description":"Review the current diff"},{"name":"compact","description":"Clear the conversation but keep a summary"},{"name":"init","description":"Write a CLAUDE.md"}]}""");
+                        await Update(writer, """{"sessionUpdate":"usage_update","used":40000,"size":1000000,"_meta":{"_claude/rateLimit":{"unifiedWindows":{"five_hour":{"utilization":0.3,"resetsAt":1794848400},"seven_day":{"utilization":0.04,"resetsAt":1795428000}}}}}""");
+                        break;
+                    case "session/set_config_option":
+                        string setting = parameters?["configId"]?.GetValue<string>() ?? string.Empty;
+                        string chosen = parameters?["value"]?.GetValue<string>() ?? string.Empty;
+                        if (setting == "mode")
+                        {
+                            Mode = chosen;
+                        }
+                        else if (setting == "model")
+                        {
+                            Model = chosen;
+                        }
+                        await Answer(writer, id, """{"configOptions":""" + Config() + "}");
+                        break;
+                    case "session/set_mode":
+                        Mode = parameters?["modeId"]?.GetValue<string>();
+                        await Answer(writer, id, "{}");
+                        break;
+                    case "session/prompt":
+                        string text = parameters?["prompt"]?[0]?["text"]?.GetValue<string>() ?? string.Empty;
+                        lock (prompts)
+                        {
+                            prompts.Add(text);
+                        }
+                        if (text.StartsWith("wait", StringComparison.Ordinal))
+                        {
+                            waiting = id;
+                            break;
+                        }
+                        if (text == "tool")
+                        {
+                            await Say(writer, "Reading it.");
+                            await Update(writer, """{"toolCallId":"call_1","sessionUpdate":"tool_call","status":"pending","title":"Read File","kind":"read","content":[]}""");
+                            await Update(writer, """{"toolCallId":"call_1","sessionUpdate":"tool_call_update","title":"Read hello.py","locations":[{"path":"/work/hello.py"}]}""");
+                            await Update(writer, """{"toolCallId":"call_1","sessionUpdate":"tool_call_update","status":"completed"}""");
+                            await Say(writer, "It prints hello.");
+                            await Answer(writer, id, """{"stopReason":"end_turn"}""");
+                            break;
+                        }
+                        if (text == "write")
+                        {
+                            waiting = id;
+                            await Update(writer, """{"toolCallId":"call_2","sessionUpdate":"tool_call","status":"pending","title":"Preparing file…","kind":"edit","content":[]}""");
+                            await writer.WriteLineAsync("""{"jsonrpc":"2.0","id":"ask_1","method":"session/request_permission","params":{"sessionId":"sess_1","toolCall":{"toolCallId":"call_2","status":"pending","title":"Write notes.md","kind":"edit","content":[{"type":"diff","path":"/work/notes.md","oldText":"","newText":"# Notes\n"}]},"options":[{"optionId":"allow-once","name":"Yes","kind":"allow_once"},{"optionId":"allow-always","name":"Yes, allow all edits during this session","kind":"allow_always"},{"optionId":"reject","name":"No","kind":"reject_once"}]}}""");
+                            break;
+                        }
+                        if (text == "ask" && SessionFolder is { } asking)
+                        {
+                            // As the Claude adapter asks in Manual mode: the call naming its file, then the question with its diff.
+                            waiting = id;
+                            string named = JsonValue.Create(Path.Combine(asking, "hello.txt")).ToJsonString();
+                            await Update(writer, $$$"""{"toolCallId":"call_7","sessionUpdate":"tool_call","status":"pending","title":"Edit hello.txt","kind":"edit","content":[],"locations":[{"path":{{{named}}}}]}""");
+                            await writer.WriteLineAsync($$$"""{"jsonrpc":"2.0","id":"ask_edit","method":"session/request_permission","params":{"sessionId":"sess_1","toolCall":{"toolCallId":"call_7","status":"pending","title":"Edit hello.txt","kind":"edit","content":[{"type":"diff","path":{{{named}}},"oldText":"hello\n","newText":"hello\nworld\n"}]},"options":[{"optionId":"allow-once","name":"Yes","kind":"allow_once"},{"optionId":"allow-always","name":"Yes, allow all edits during this session","kind":"allow_always"},{"optionId":"reject","name":"No","kind":"reject_once"}]}}""");
+                            break;
+                        }
+                        if (text == "project" && SessionFolder is { } making)
+                        {
+                            // As dotnet new makes one in a command: no edit names it.
+                            await Update(writer, """{"toolCallId":"call_p","sessionUpdate":"tool_call","status":"in_progress","title":"dotnet new webapi -o New.Api","kind":"execute","content":[]}""");
+                            Directory.CreateDirectory(Path.Combine(making, "New.Api"));
+                            await File.WriteAllTextAsync(Path.Combine(making, "New.Api", "New.Api.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk.Web\">\n  <PropertyGroup>\n    <TargetFramework>net10.0</TargetFramework>\n  </PropertyGroup>\n</Project>\n");
+                            await Update(writer, """{"toolCallId":"call_p","sessionUpdate":"tool_call_update","status":"completed"}""");
+                            // Goes on only once the solution lists it, or gives up: the IDE adds it as it is made, not at the turn's end.
+                            string listing = Directory.EnumerateFiles(making, "*.slnx").Single();
+                            ListedDuringTurn = Waiting.Until(() => File.ReadAllText(listing).Contains("New.Api.csproj", StringComparison.Ordinal), TimeSpan.FromSeconds(10));
+                            await Say(writer, "Made New.Api.");
+                            await Answer(writer, id, """{"stopReason":"end_turn"}""");
+                            break;
+                        }
+                        if (text == "run")
+                        {
+                            waiting = id;
+                            await Update(writer, """{"toolCallId":"call_r","sessionUpdate":"tool_call","status":"pending","title":"dotnet build","kind":"execute","content":[]}""");
+                            await writer.WriteLineAsync("""{"jsonrpc":"2.0","id":"ask_run","method":"session/request_permission","params":{"sessionId":"sess_1","toolCall":{"toolCallId":"call_r","status":"pending","title":"dotnet build","kind":"execute","content":[{"type":"content","content":{"type":"text","text":"Build the project"}}]},"options":[{"optionId":"allow-once","name":"Yes","kind":"allow_once"},{"optionId":"allow-always","name":"Yes, and don't ask again for dotnet build commands","kind":"allow_always"},{"optionId":"reject","name":"No","kind":"reject_once"}]}}""");
+                            break;
+                        }
+                        if (text == "questions")
+                        {
+                            // As the Claude adapter asks AskUserQuestion's questions of a client that shows forms.
+                            waiting = id;
+                            await Update(writer, """{"toolCallId":"call_q","sessionUpdate":"tool_call","status":"pending","title":"AskUserQuestion","kind":"other","content":[]}""");
+                            await writer.WriteLineAsync("""{"jsonrpc":"2.0","id":"ask_q","method":"elicitation/create","params":{"mode":"form","sessionId":"sess_1","toolCallId":"call_q","message":"Please answer the following questions.","requestedSchema":{"type":"object","properties":{"question_0":{"type":"string","title":"Account","description":"What should this new account be?","oneOf":[{"const":"Seeded login","title":"Seeded login","description":"Another development login"},{"const":"New role","title":"New role"},{"const":"An API","title":"An API"}]},"question_0_custom":{"type":"string","title":"Other"},"question_1":{"type":"array","title":"Roles","description":"Which roles should it have?","items":{"anyOf":[{"const":"Admin","title":"Admin"},{"const":"User","title":"User"}]}},"question_1_custom":{"type":"string","title":"Other"}}}}}""");
+                            break;
+                        }
+                        if (text == "swap" && SessionFolder is { } swapped)
+                        {
+                            await Edit(writer, "call_6", Path.Combine(swapped, "hello.txt"), "hi\n");
+                            await Answer(writer, id, """{"stopReason":"end_turn"}""");
+                            break;
+                        }
+                        if (text == "edit" && SessionFolder is { } folder)
+                        {
+                            await Edit(writer, "call_3", Path.Combine(folder, "hello.txt"), "hello\nworld\n");
+                            await Edit(writer, "call_4", Path.Combine(folder, "notes.md"), "# Notes\n");
+                            await Say(writer, "Done.");
+                            await Answer(writer, id, """{"stopReason":"end_turn"}""");
+                            break;
+                        }
+                        if (text == "plan")
+                        {
+                            waiting = id;
+                            string content = JsonValue.Create(Plan).ToJsonString();
+                            // Claude Code drafts its plan in its own folder first; nothing is written there here.
+                            string draft = JsonValue.Create(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".claude", "plans", "stand-in-draft.md")).ToJsonString();
+                            await Update(writer, $$$"""{"toolCallId":"call_draft","sessionUpdate":"tool_call","status":"pending","title":"Write","kind":"edit","content":[],"locations":[{"path":{{{draft}}}}]}""");
+                            await Update(writer, """{"toolCallId":"call_draft","sessionUpdate":"tool_call_update","status":"completed"}""");
+                            // Claude Code writes its draft again, and leaves that call untold as done.
+                            await Update(writer, $$$"""{"toolCallId":"call_draft2","sessionUpdate":"tool_call","status":"pending","title":"Edit","kind":"edit","content":[],"locations":[{"path":{{{draft}}}}]}""");
+                            await Update(writer, """{"sessionUpdate":"plan","entries":[{"content":"Read the code","priority":"high","status":"completed"},{"content":"Write MathOperations.cs","priority":"high","status":"in_progress"},{"content":"Add tests","priority":"medium","status":"pending"}]}""");
+                            await Update(writer, $$$"""{"toolCallId":"call_5","sessionUpdate":"tool_call","status":"pending","title":"Approve Plan","kind":"switch_mode","content":[{"type":"content","content":{"type":"text","text":{{{content}}}}}]}""");
+                            await writer.WriteLineAsync($$$"""{"jsonrpc":"2.0","id":"ask_plan","method":"session/request_permission","params":{"sessionId":"sess_1","toolCall":{"toolCallId":"call_5","title":"Ready to code?","kind":"switch_mode","content":[{"type":"content","content":{"type":"text","text":{{{content}}}}}]},"options":[{"optionId":"exit-plan-auto","name":"Yes, and use auto mode","kind":"allow_always"},{"optionId":"exit-plan-default","name":"Yes, manually approve edits","kind":"allow_once"},{"optionId":"reject","name":"No, keep planning","kind":"reject_once"}]}}""");
+                            break;
+                        }
+                        if (text == "bold")
+                        {
+                            await Say(writer, "Use **this** one.");
+                            await Answer(writer, id, """{"stopReason":"end_turn"}""");
+                            break;
+                        }
+                        foreach (string piece in new[] { "I'll ", "add a ", "README." })
+                        {
+                            await writer.WriteLineAsync("""{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"sess_1","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":""" + JsonValue.Create(piece).ToJsonString() + "}}}}");
+                        }
+                        await Answer(writer, id, """{"stopReason":"end_turn"}""");
+                        break;
+                    case "session/cancel" when waiting is not null && Answered is null && !Asked:
+                        Cancelled = true;
+                        await Answer(writer, waiting, """{"stopReason":"cancelled"}""");
+                        waiting = null;
+                        break;
+                    case "_session/steering":
+                        lock (steered)
+                        {
+                            steered.Add(parameters?["prompt"]?[0]?["text"]?.GetValue<string>() ?? string.Empty);
+                            order.Add("steer");
+                        }
+                        await Answer(writer, id, """{"outcome":"injected"}""");
+                        break;
+                    case null when message["id"]?.ToJsonString() == "\"ask_plan\"":
+                        JsonNode? decided = message["result"]?["outcome"];
+                        lock (steered)
+                        {
+                            order.Add("answer");
+                        }
+                        PlanAnswer = decided?["outcome"]?.GetValue<string>() == "cancelled" ? "cancelled" : decided?["optionId"]?.GetValue<string>();
+                        if (PlanAnswer == "exit-plan-default")
+                        {
+                            // As the adapter leaves plan mode for the answer's mode.
+                            Mode = "default";
+                            await Update(writer, """{"sessionUpdate":"current_mode_update","currentModeId":"default"}""");
+                        }
+                        if (waiting is not null)
+                        {
+                            await Update(writer, """{"toolCallId":"call_5","sessionUpdate":"tool_call_update","status":"completed","title":"Exited Plan Mode"}""");
+                            await Say(writer, PlanAnswer == "reject" ? "I'll keep planning." : "Building.");
+                            await Answer(writer, waiting, """{"stopReason":"end_turn"}""");
+                            waiting = null;
+                        }
+                        break;
+                    case null when message["id"]?.ToJsonString() == "\"ask_1\"":
+                        JsonNode? outcome = message["result"]?["outcome"];
+                        Answered = outcome?["outcome"]?.GetValue<string>() == "cancelled" ? "cancelled" : outcome?["optionId"]?.GetValue<string>();
+                        if (waiting is not null)
+                        {
+                            await Update(writer, """{"toolCallId":"call_2","sessionUpdate":"tool_call_update","status":"completed"}""");
+                            await Say(writer, "Wrote notes.md.");
+                            await Answer(writer, waiting, """{"stopReason":"end_turn"}""");
+                            waiting = null;
+                        }
+                        break;
+                    case null when message["id"]?.ToJsonString() == "\"ask_edit\"" && SessionFolder is { } edited:
+                        JsonNode? said = message["result"]?["outcome"];
+                        Answered = said?["outcome"]?.GetValue<string>() == "cancelled" ? "cancelled" : said?["optionId"]?.GetValue<string>();
+                        bool allowed = Answered is "allow-once" or "allow-always";
+                        if (allowed)
+                        {
+                            string hello = Path.Combine(edited, "hello.txt");
+                            await BeforeWrite(hello);
+                            await File.WriteAllTextAsync(hello, "hello\nworld\n");
+                        }
+                        if (waiting is not null)
+                        {
+                            await Update(writer, $$$"""{"toolCallId":"call_7","sessionUpdate":"tool_call_update","status":"{{{(allowed ? "completed" : "failed")}}}"}""");
+                            await Say(writer, allowed ? "Added world." : "Left it.");
+                            await Answer(writer, waiting, """{"stopReason":"end_turn"}""");
+                            waiting = null;
+                        }
+                        break;
+                    case null when message["id"]?.ToJsonString() == "\"ask_run\"":
+                        Answered = message["result"]?["outcome"]?["optionId"]?.GetValue<string>();
+                        if (waiting is not null)
+                        {
+                            await Update(writer, """{"toolCallId":"call_r","sessionUpdate":"tool_call_update","status":"completed"}""");
+                            await Say(writer, "Built.");
+                            await Answer(writer, waiting, """{"stopReason":"end_turn"}""");
+                            waiting = null;
+                        }
+                        break;
+                    case null when message["id"]?.ToJsonString() == "\"ask_q\"":
+                        QuestionsAnswered = message["result"]?.ToJsonString();
+                        if (waiting is not null)
+                        {
+                            await Update(writer, """{"toolCallId":"call_q","sessionUpdate":"tool_call_update","status":"completed"}""");
+                            await Say(writer, "Thanks.");
+                            await Answer(writer, waiting, """{"stopReason":"end_turn"}""");
+                            waiting = null;
+                        }
+                        break;
+                    case string when message["id"] is not null:
+                        await writer.WriteLineAsync($$$"""{"jsonrpc":"2.0","id":{{{id}}},"error":{"code":-32601,"message":"not played"}}""");
+                        break;
+                }
+            }
+        }
+
+        /// <summary>Whether it has a question open, whose answer ends the turn rather than session/cancel.</summary>
+        private bool Asked => Prompts.LastOrDefault() is "write" or "plan" or "ask" or "questions" or "run";
+
+        /// <summary>Whether the solution listed the project it made before it ended its turn.</summary>
+        public bool ListedDuringTurn { get; private set; }
+
+        /// <summary>Whether the client said at initialize that it runs a sign-in in its own terminal.</summary>
+        public bool OffersTerminalSignIn { get; private set; }
+
+        /// <summary>Whether it was signed out: a new session is refused as ACP's authRequired.</summary>
+        public bool SignedOut { get; private set; }
+
+        /// <summary>The chat of before last opened, by its id.</summary>
+        public string? Loaded { get; private set; }
+
+        private readonly List<(string Id, string Title)> sessions = [];
+
+        /// <summary>Its sessions, the oldest first.</summary>
+        public IReadOnlyList<(string Id, string Title)> Sessions
+        {
+            get
+            {
+                lock (sessions)
+                {
+                    return [.. sessions];
+                }
+            }
+        }
+
+        /// <summary>Whether the client said at initialize that it shows forms (ACP's elicitation).</summary>
+        public bool OffersForms { get; private set; }
+
+        /// <summary>The answer to its questions, as the client sent it.</summary>
+        public string? QuestionsAnswered { get; private set; }
+
+        /// <summary>An edit as the Claude adapter sends one in Accept edits mode: its call, then the file it names, then,
+        /// once written, done.</summary>
+        private async Task Edit(StreamWriter writer, string call, string path, string text)
+        {
+            string named = JsonValue.Create(path).ToJsonString();
+            await Update(writer, $$$"""{"toolCallId":"{{{call}}}","sessionUpdate":"tool_call","status":"pending","title":"Preparing file…","kind":"edit","content":[]}""");
+            await Update(writer, $$$"""{"toolCallId":"{{{call}}}","sessionUpdate":"tool_call_update","title":"Write {{{Path.GetFileName(path)}}}","locations":[{"path":{{{named}}}}]}""");
+            await BeforeWrite(path);
+            await File.WriteAllTextAsync(path, text);
+            await Update(writer, $$$"""{"toolCallId":"{{{call}}}","sessionUpdate":"tool_call_update","status":"completed"}""");
+        }
+
+        /// <summary>Its settings as the Claude adapter lists them, cut to a few choices, at their values now.</summary>
+        private string Config() =>
+            $$$"""[{"id":"mode","name":"Mode","category":"mode","type":"select","currentValue":"{{{Mode ?? "auto"}}}","options":[{"value":"default","name":"Manual"},{"value":"acceptEdits","name":"Accept edits"},{"value":"plan","name":"Plan"}]},{"id":"model","name":"Model","category":"model","type":"select","currentValue":"{{{Model}}}","options":[{"value":"opus","name":"Opus 5.5"},{"value":"sonnet","name":"Sonnet 5.5"}]},{"id":"effort","name":"Effort","category":"thought_level","type":"select","currentValue":"high","options":[{"value":"low","name":"Low"},{"value":"high","name":"High"}]}]""";
+
+        private static Task Say(StreamWriter writer, string text) =>
+            Update(writer, """{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":""" + JsonValue.Create(text).ToJsonString() + "}}");
+
+        private static Task Update(StreamWriter writer, string update) =>
+            writer.WriteLineAsync("""{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"sess_1","update":""" + update + "}}");
+
+        private static Task Answer(StreamWriter writer, string id, string result) =>
+            writer.WriteLineAsync($$$"""{"jsonrpc":"2.0","id":{{{id}}},"result":{{{result}}}}""");
+    }
+}

@@ -509,10 +509,11 @@ public partial class MainWindow
     }
 
     /// <summary>Shows a diff where Settings opens them (Open diffs in): in a window of its own over this one, or in a tab of
-    /// the active group, the tab open for the same versions taking it afresh (<see cref="DiffTab.Take"/>).</summary>
-    private IDiffHost ShowDiff(DiffContent shown)
+    /// the active group, the tab open for the same versions taking it afresh (<see cref="DiffTab.Take"/>); a tab always
+    /// where <paramref name="inTab"/> asks (the chat's, which never opens a window over the person's work).</summary>
+    private IDiffHost ShowDiff(DiffContent shown, bool inTab = false)
     {
-        if (settings.OpenDiffsIn == DiffPlace.Tab)
+        if (inTab || settings.OpenDiffsIn == DiffPlace.Tab)
         {
             if (Editors.Diffs.Select(d => d.Diff!).FirstOrDefault(d => d.Shown.Key == shown.Key) is { } open)
             {

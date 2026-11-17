@@ -112,6 +112,10 @@ public sealed partial class EditorArea : UserControl
     /// (<see cref="CSharp.CompilationSymbols"/>), as the window knows its projects. Asked on the UI thread.</summary>
     public Func<string, CSharpParseOptions> ParseOptions { get; set; } = _ => CSharpParsing.Default;
 
+    /// <summary>Whether a Markdown file reads as its preview alone while previews show, its editor out of sight (an agent's
+    /// plan); the preview's toggle shows its source.</summary>
+    public Func<OpenDocument, bool> ReadsAsPage { get; set; } = _ => false;
+
     private bool showsMarkdownPreview = true;
 
     /// <summary>Whether a Markdown file shows its preview beside its editor, in every group showing one.</summary>
@@ -537,6 +541,24 @@ public sealed partial class EditorArea : UserControl
                 released = true;
                 area.LetGo(document);
             }
+        }
+    }
+
+    /// <summary>Closes a file's tab in every group of this window that has it (a copy that no longer stands for anything).</summary>
+    public void CloseEverywhere(OpenDocument document)
+    {
+        foreach (EditorGroup group in AllGroups.Where(group => group.Has(document)).ToArray())
+        {
+            CloseTab(group, document);
+        }
+    }
+
+    /// <summary>Each group shows its file's preview again as <see cref="ReadsAsPage"/> now says.</summary>
+    public void FollowPreviews()
+    {
+        foreach (EditorGroup group in AllGroups)
+        {
+            group.FollowSidePreview();
         }
     }
 

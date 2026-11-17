@@ -134,6 +134,9 @@ public static class AppActions
     public const string ShowEndpoints = "app.showEndpoints";
     public const string TestEndpoint = "app.endpoints.test";
 
+    // The Chat window, a coding agent's conversation over the Agent Client Protocol: no key of Rider's.
+    public const string ShowChat = "app.chat.show";
+
     /// <summary>Requests for a web project's .http file from its app's OpenAPI document: no key of Rider's.</summary>
     public const string GenerateOpenApiRequests = "app.endpoints.openApiRequests";
 

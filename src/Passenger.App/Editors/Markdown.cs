@@ -444,6 +444,7 @@ internal static partial class Markdown
         Heading heading => MarkdownText.Of(Inlines(heading.Text), page, Headings[Math.Clamp(heading.Level, 1, 6) - 1]),
         Paragraph paragraph => ParagraphOf(Inlines(paragraph.Text), page),
         Listing listing => List(listing, page, depth),
+        Code code when page.DrawsDiagrams && code.Info.Equals("mermaid", StringComparison.OrdinalIgnoreCase) => new MarkdownDiagram(code),
         Code code => MarkdownCode.Of(code),
         Quote quote => QuoteOf(quote, page, depth),
         Table table => TableOf(table, page),

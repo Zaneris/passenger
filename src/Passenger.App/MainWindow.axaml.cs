@@ -91,6 +91,7 @@ public partial class MainWindow : IdeWindow
         AddBookmarks();
         AddGamePane();
         AddEndpoints();
+        AddChat();
         AddGodotEditor();
         AddGodotProject();
         AddGodotExport();

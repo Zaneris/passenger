@@ -1,0 +1,944 @@
+using System.Text;
+using Avalonia;
+using Avalonia.Controls;
+using Avalonia.Input;
+using Avalonia.Interactivity;
+using Avalonia.Layout;
+using Avalonia.LogicalTree;
+using Avalonia.Media;
+using Passenger.Acp;
+using Passenger.App.Editors;
+
+namespace Passenger.App.Chat;
+
+/// <summary>The Chat window: a conversation with a coding agent the person runs on their own account, over the Agent
+/// Client Protocol; Passenger holds no key and no login for it. Until an agent is connected it says what it is doing and
+/// offers Connect. Once one is, each message shows under who said it, the agent's reply as its parts come, in order:
+/// its words (Markdown once a part is whole), a line per tool it runs, and a card per question it asks before it acts.
+/// A ring and what the agent is doing show until its turn ends; Enter sends, Shift+Enter starts a new line, Stop ends
+/// the turn.</summary>
+public sealed class ChatView : DockPanel
+{
+    /// <summary>What the empty conversation offers to ask, as Stoat's does.</summary>
+    private static readonly string[] Suggestions =
+    [
+        "Explain how this project is structured",
+        "Find likely bugs and explain them",
+        "Add tests for the main code",
+    ];
+
+    private readonly TextBlock said = new()
+    {
+        Classes = { StyleClasses.EmptyText },
+        Text = "No agent connected",
+        TextWrapping = TextWrapping.Wrap,
+        HorizontalAlignment = HorizontalAlignment.Center,
+    };
+
+    private readonly Button connect = new()
+    {
+        Content = "Connect to Claude Code",
+        Classes = { StyleClasses.Primary },
+        HorizontalAlignment = HorizontalAlignment.Center,
+    };
+
+    private readonly StackPanel idle;
+    private readonly TextBlock agent = new() { Classes = { StyleClasses.Muted }, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center };
+    private readonly TextBlock account = new() { Classes = { StyleClasses.Muted }, FontSize = 11, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0) };
+    private readonly DockPanel header = new() { Margin = new Thickness(12, 8), IsVisible = false };
+    private readonly WrapPanel pickers = new() { Orientation = Orientation.Horizontal };
+    private readonly Dictionary<string, ComboBox> settings = new(StringComparer.Ordinal);
+    private readonly TextBlock context = new() { Classes = { StyleClasses.Muted }, FontSize = 11, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0) };
+    private readonly CommandMenu menu;
+    private IReadOnlyList<ConfigOption> config = [];
+    private bool showingConfig;
+    private string? signedIn;
+    private string signedInTip = string.Empty;
+    private IReadOnlyList<UsageWindow> windows = [];
+    private readonly StackPanel messages = new() { Spacing = 14 };
+    private readonly StackPanel empty;
+    private readonly TextBlock doing = new() { Classes = { StyleClasses.Muted }, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
+    private readonly StackPanel working;
+    private readonly ScrollViewer conversation;
+    private readonly TextBox input = new()
+    {
+        AcceptsReturn = true,
+        TextWrapping = TextWrapping.Wrap,
+        MaxHeight = 160,
+        PlaceholderText = "Ask the agent",
+    };
+
+    private readonly Button send = new() { Content = "Send", Classes = { StyleClasses.Primary }, VerticalAlignment = VerticalAlignment.Bottom };
+    private readonly Button stop = new() { Content = "Stop", IsVisible = false, VerticalAlignment = VerticalAlignment.Bottom };
+    private readonly StackPanel composer;
+    private readonly List<Part> parts = [];
+    private readonly Dictionary<string, ToolLine> tools = [];
+    private readonly List<ApprovalCard> asking = [];
+    private StackPanel? reply;
+    private Part? words;
+    private string agentName = "Agent";
+
+    public ChatView()
+    {
+        connect.Click += (_, _) => ConnectRequested?.Invoke(this, EventArgs.Empty);
+        send.Click += (_, _) => Send();
+        stop.Click += (_, _) => StopRequested?.Invoke(this, EventArgs.Empty);
+        menu = new CommandMenu(input);
+        // Tunnelled, so the list, Enter (send) and Shift+Tab (next mode) come before the box takes the key.
+        input.AddHandler(KeyDownEvent, (_, e) =>
+        {
+            if (menu.Press(e))
+            {
+                e.Handled = true;
+            }
+            else if (e.Key == Key.Enter && e.KeyModifiers == KeyModifiers.None)
+            {
+                e.Handled = true;
+                Send();
+            }
+            else if (e.Key == Key.Tab && e.KeyModifiers == KeyModifiers.Shift && NextMode() is { } next)
+            {
+                e.Handled = true;
+                ConfigChosen?.Invoke(this, ("mode", next));
+            }
+        }, RoutingStrategies.Tunnel);
+
+        SignIn.SignInRequested += (_, method) => SignInRequested?.Invoke(this, method);
+        SignIn.CancelRequested += (_, _) => CancelSignInRequested?.Invoke(this, EventArgs.Empty);
+        SignIn.TerminalRequested += (_, _) => SignInTerminalRequested?.Invoke(this, EventArgs.Empty);
+        idle = new StackPanel { Spacing = 12, Margin = new Thickness(16), VerticalAlignment = VerticalAlignment.Center, Children = { said, SignIn, connect } };
+        empty = EmptyState();
+        working = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 8,
+            IsVisible = false,
+            Children = { new WorkingRing { Width = 12, Height = 12, VerticalAlignment = VerticalAlignment.Center }, doing },
+        };
+        conversation = new ScrollViewer
+        {
+            IsVisible = false,
+            Content = new StackPanel { Spacing = 14, Margin = new Thickness(12), Children = { empty, messages, working } },
+        };
+        DockPanel buttons = new() { Margin = new Thickness(8, 0, 0, 0) };
+        buttons.Children.Add(send);
+        buttons.Children.Add(stop);
+        DockPanel writing = new();
+        SetDock(buttons, Dock.Right);
+        writing.Children.Add(buttons);
+        writing.Children.Add(input);
+        DockPanel below = new();
+        SetDock(context, Dock.Right);
+        below.Children.Add(context);
+        below.Children.Add(pickers);
+        composer = new StackPanel { Spacing = 6, Margin = new Thickness(12, 8, 12, 12), IsVisible = false, Children = { writing, below, menu.Popup } };
+        Button plans = ToolButtons.Of(IconKeys.DocumentText, "Plans: the agent's plans in this folder", () => PlansRequested?.Invoke(this, PlansButton!));
+        PlansButton = plans;
+        SetDock(plans, Dock.Right);
+        // The account is a button: signed in, it offers Sign out; signed out, the ways to sign in.
+        AccountButton = new Button { Classes = { StyleClasses.TextLink }, Content = account, VerticalAlignment = VerticalAlignment.Center };
+        AccountButton.Click += (_, _) => AccountRequested?.Invoke(this, AccountButton);
+        Button history = ToolButtons.Of(IconKeys.History, "History: earlier chats in this folder", () => HistoryRequested?.Invoke(this, HistoryButton!));
+        HistoryButton = history;
+        Button fresh = ToolButtons.Of(IconKeys.Add, "New chat", () => NewChatRequested?.Invoke(this, EventArgs.Empty));
+        NewChatButton = fresh;
+        SetDock(plans, Dock.Right);
+        SetDock(history, Dock.Right);
+        SetDock(fresh, Dock.Right);
+        SetDock(AccountButton, Dock.Right);
+        header.Children.Add(plans);
+        header.Children.Add(history);
+        header.Children.Add(fresh);
+        header.Children.Add(AccountButton);
+        header.Children.Add(agent);
+        SetDock(header, Dock.Top);
+        SetDock(composer, Dock.Bottom);
+        SetDock(Review, Dock.Bottom);
+        // Pinned at the top while the agent works through its to-dos, as Cursor pins its build.
+        SetDock(Todos, Dock.Top);
+        Children.Add(header);
+        Children.Add(Todos);
+        SetDock(questionsHost, Dock.Bottom);
+        Children.Add(composer);
+        // The agent's questions stand right above the box, as Cursor's do.
+        Children.Add(questionsHost);
+        Children.Add(Review);
+        Children.Add(new Panel { Children = { idle, conversation } });
+    }
+
+    /// <summary>Connect was pressed.</summary>
+    public event EventHandler? ConnectRequested;
+
+    /// <summary>A setting was chosen: its id ("mode", "model", "effort") and the value chosen.</summary>
+    public event EventHandler<(string Id, string Value)>? ConfigChosen;
+
+    /// <summary>The slash command list over the box.</summary>
+    public CommandMenu Commands => menu;
+
+    /// <summary>What the header says of the account and the plan's use: "Claude Pro · 5h 30% · week 4%".</summary>
+    public string Account => account.Text ?? string.Empty;
+
+    /// <summary>What it says of the context used: "4% context".</summary>
+    public string ContextUsed => context.Text ?? string.Empty;
+
+    /// <summary>The pickers of the agent's settings, by setting id.</summary>
+    public IReadOnlyDictionary<string, ComboBox> Settings => settings;
+
+    /// <summary>An edit's diff was asked for from its line, by its tool call's id.</summary>
+    public event EventHandler<string>? EditDiffRequested;
+
+    /// <summary>The files the agent changed, waiting for review, above the box.</summary>
+    public ReviewBar Review { get; } = new();
+
+    /// <summary>The agent's to-do list, above the review.</summary>
+    public TodoBar Todos { get; } = new();
+
+    /// <summary>The header's button that lists the plans.</summary>
+    public Button? PlansButton { get; private set; }
+
+    /// <summary>A plan's file was asked to be opened as a page, by its path.</summary>
+    public event EventHandler<string>? PlanRequested;
+
+    /// <summary>A plan's file was asked to be opened to edit, its source beside its page.</summary>
+    public event EventHandler<string>? PlanEditRequested;
+
+    /// <summary>A question's card was shown, before it is answered: an edit's is shown in its file's own editor too.</summary>
+    public event EventHandler<ApprovalCard>? Asking;
+
+    /// <summary>A file an edit waiting for its answer changes was clicked, to see the change in the file.</summary>
+    public event EventHandler<ChatChange>? ChangeRequested;
+
+    /// <summary>The list of the folder's plans was asked for, under the button given.</summary>
+    public event EventHandler<Button>? PlansRequested;
+
+    /// <summary>The person sent a message, its text given.</summary>
+    public event EventHandler<string>? SendRequested;
+
+    /// <summary>Stop was pressed while the agent works.</summary>
+    public event EventHandler? StopRequested;
+
+    /// <summary>Opens a link in a reply.</summary>
+    public Action<Uri> Browse { get; set; } = _ => { };
+
+    /// <summary>What it says of the agent now: "No agent connected", "Starting Claude Code…", "Connected to Claude Agent 0.107.3".</summary>
+    public string Said => said.Text ?? string.Empty;
+
+    /// <summary>Whether Connect is offered: while no agent is connected or starting.</summary>
+    public bool OffersConnect => idle.IsVisible && connect.IsVisible;
+
+    /// <summary>Whether the agent is working on a message: Stop shows in Send's place.</summary>
+    public bool Busy => stop.IsVisible;
+
+    /// <summary>What the ring's line says while the agent works: "Thinking…", a tool's title, "Waiting for your answer".</summary>
+    public string? Doing => working.IsVisible ? doing.Text : null;
+
+    /// <summary>The words of the conversation so far: who said each ("You", the agent, or "" for a note) and what.</summary>
+    public IReadOnlyList<(string Who, string Text)> Conversation => [.. parts.Select(part => (part.Who, part.Text.ToString()))];
+
+    /// <summary>The agent's tool lines in order.</summary>
+    public IEnumerable<ToolLine> Tools => tools.Values;
+
+    /// <summary>The questions asked so far, each as its card.</summary>
+    public IEnumerable<ApprovalCard> Questions => messages.GetLogicalDescendants().OfType<ApprovalCard>();
+
+    /// <summary>The box the person writes in.</summary>
+    public TextBox Input => input;
+
+    /// <summary>Says <paramref name="text"/> with no agent connected, as an error where it is one, with Connect offered
+    /// while no agent is starting.</summary>
+    public void Say(string text, bool error = false, bool offerConnect = false)
+    {
+        said.Text = text;
+        said.Classes.Set(StyleClasses.Error, error);
+        connect.IsVisible = offerConnect;
+        // What the chat says now is all it offers: the sign-in shows only while it is signed out or signing in.
+        said.IsVisible = true;
+        SignIn.IsVisible = false;
+        idle.IsVisible = true;
+        header.IsVisible = conversation.IsVisible = composer.IsVisible = false;
+    }
+
+
+    /// <summary>The header's account, a button: Sign out while signed in, the ways to sign in while not.</summary>
+    public Button AccountButton { get; }
+
+    /// <summary>The header's History button, which lists the folder's earlier chats.</summary>
+    public Button? HistoryButton { get; private set; }
+
+    /// <summary>The header's New chat button.</summary>
+    public Button? NewChatButton { get; private set; }
+
+    /// <summary>The account was clicked, to sign out or in.</summary>
+    public event EventHandler<Button>? AccountRequested;
+
+    /// <summary>History was clicked, to list the folder's earlier chats.</summary>
+    public event EventHandler<Button>? HistoryRequested;
+
+    /// <summary>New chat was clicked.</summary>
+    public event EventHandler? NewChatRequested;
+
+    /// <summary>One of the agent's ways to sign in was chosen.</summary>
+    public event EventHandler<AuthMethod>? SignInRequested;
+
+    /// <summary>Whether the agent says it is signed in to no account.</summary>
+    public bool SignedOut { get; private set; }
+
+    /// <summary>Signing in, as one flow: the ways to sign in while signed out, then its steps (<see cref="SignInPanel"/>).</summary>
+    public SignInPanel SignIn { get; } = new() { IsVisible = false };
+
+    /// <summary>Cancel was pressed while a sign-in runs.</summary>
+    public event EventHandler? CancelSignInRequested;
+
+    /// <summary>Show in Terminal was pressed while a sign-in runs.</summary>
+    public event EventHandler? SignInTerminalRequested;
+
+    /// <summary>The agent is signed in to no account: the sign-in panel offers its ways to sign in, the first the button;
+    /// <paramref name="why"/> says what happened where something did (signed out, a sign-in that failed).</summary>
+    public void SayNotSignedIn(IReadOnlyList<AuthMethod> methods, string? why = null, bool error = false)
+    {
+        SignedOut = true;
+        signingInNow = false;
+        ShowSignIn();
+        SignIn.Offer(methods, why, error);
+        signedIn = "Not signed in";
+        ShowPlan();
+    }
+
+    /// <summary>A sign-in runs: the panel walks its steps, the browser's the one now; nothing else is offered until it
+    /// ends, so no second sign-in starts over it.</summary>
+    public void SigningIn(string method)
+    {
+        ShowSignIn();
+        SignIn.SigningIn(method);
+    }
+
+    /// <summary>The browser's sign-in finished: the panel says Passenger connects, and once the agent says who is signed
+    /// in, the conversation says so.</summary>
+    public void SignInConnecting()
+    {
+        signingInNow = true;
+        SignIn.Connecting();
+    }
+
+    /// <summary>Whether a sign-in just finished and the conversation is yet to say who it signed in.</summary>
+    private bool signingInNow;
+
+    private void ShowSignIn()
+    {
+        idle.IsVisible = true;
+        said.IsVisible = connect.IsVisible = false;
+        SignIn.IsVisible = true;
+        header.IsVisible = conversation.IsVisible = composer.IsVisible = false;
+    }
+
+    /// <summary>A note, framed, in the agent's reply while it works, else at the end of the conversation: what just happened
+    /// that is no one's message ("You're signed in as …", "Added New.Api to the solution").</summary>
+    public void Notice(string text)
+    {
+        (reply ?? messages).Children.Add(new Border
+        {
+            Classes = { StyleClasses.Framed },
+            Padding = new Thickness(10, 8),
+            Tag = NoticeTag,
+            // Docked, so the words take the width left beside the check and wrap in it.
+            Child = new DockPanel
+            {
+                Children =
+                {
+                    Docked(new RowIcon { DataKey = IconKeys.Check, ForegroundKey = TokenKeys.Vcs_Added, Width = 14, Height = 14, Margin = new Thickness(0, 2, 8, 0), VerticalAlignment = VerticalAlignment.Top }),
+                    new TextBlock { Text = text, TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center },
+                },
+            },
+        });
+        empty.IsVisible = false;
+        ToEnd();
+    }
+
+    private static Control Docked(Control left)
+    {
+        DockPanel.SetDock(left, Dock.Left);
+        return left;
+    }
+
+    /// <summary>What marks a note as one, so a finished turn's fold leaves it in sight.</summary>
+    private const string NoticeTag = "notice";
+
+    /// <summary>The notes the conversation shows, for a test to read.</summary>
+    public IEnumerable<string> Notices => messages.GetLogicalDescendants().OfType<Border>().Where(note => note.Tag is NoticeTag).Select(note => note.Child).OfType<DockPanel>()
+        .SelectMany(panel => panel.Children.OfType<TextBlock>()).Select(text => text.Text ?? string.Empty);
+
+    /// <summary>Who the agent is signed in as, for the account's menu: their email or account's name, and the plan.</summary>
+    public (string? Who, string? Plan) AccountDetails => (signedInWho, signedIn);
+
+    private string? signedInWho;
+
+    /// <summary>Starts the conversation afresh, for a new chat or one of before: its messages, questions and to-dos go.</summary>
+    public void Clear()
+    {
+        foreach (ApprovalCard card in asking.ToArray())
+        {
+            card.Cancel();
+        }
+        Questioning?.Cancel();
+        messages.Children.Clear();
+        parts.Clear();
+        tools.Clear();
+        reply = null;
+        words = null;
+        Todos.Show([]);
+        Working(false, null);
+        empty.IsVisible = true;
+    }
+
+    /// <summary>A piece of the person's words of a chat of before, as the agent tells it again: their message, the
+    /// agent's reply to it begun below.</summary>
+    public void Replayed(string text)
+    {
+        empty.IsVisible = false;
+        if (parts.LastOrDefault() is { Who: "You" } mine && reply is { Children.Count: 1 })
+        {
+            mine.Text.Append(text);
+            mine.Body.Text = mine.Text.ToString();
+            return;
+        }
+        Close();
+        foreach (ToolLine line in tools.Values)
+        {
+            line.Settle();
+        }
+        DropEmptyReply();
+        Mine(text);
+        reply = Message(agentName);
+    }
+
+    /// <summary>A reply begun with nothing in it but who would say it goes.</summary>
+    private void DropEmptyReply()
+    {
+        if (reply is { Children.Count: 1 } empty)
+        {
+            messages.Children.Remove(empty);
+        }
+    }
+
+    /// <summary>The chat of before is told whole: its last reply ends, nothing turning.</summary>
+    public void ReplayEnded()
+    {
+        Close();
+        foreach (ToolLine line in tools.Values)
+        {
+            line.Settle();
+        }
+        DropEmptyReply();
+        reply = null;
+        empty.IsVisible = messages.Children.Count == 0;
+        ToEnd();
+    }
+
+    /// <summary>Begins telling a chat of before again: its first reply has somewhere to go before any message of the person's.</summary>
+    public void Replaying()
+    {
+        Clear();
+        reply = Message(agentName);
+    }
+
+    /// <summary>Shows the conversation with the agent <paramref name="name"/> (its version after it, as <paramref name="described"/>).</summary>
+    public void Connected(string name, string described)
+    {
+        agentName = name;
+        said.Text = $"Connected to {described}";
+        agent.Text = described;
+        ToolTip.SetTip(agent, said.Text);
+        idle.IsVisible = false;
+        SignIn.IsVisible = false;
+        SignedOut = false;
+        header.IsVisible = conversation.IsVisible = composer.IsVisible = true;
+        empty.IsVisible = messages.Children.Count == 0;
+        input.Focus();
+    }
+
+    /// <summary>The person's message, then the agent's reply begun, the ring turning until its turn ends.</summary>
+    public void Asked(string text)
+    {
+        empty.IsVisible = false;
+        turnBegan = DateTime.UtcNow;
+        Mine(text);
+        reply = Message(agentName);
+        Working(true, "Thinking…");
+        ToEnd();
+    }
+
+    /// <summary>What an explored group's line says: "Exploring" while one runs, else "Explored", then the files read
+    /// (three, then how many more) and how many searches.</summary>
+    private static string Explored(IReadOnlyList<ToolLine> lines)
+    {
+        bool running = lines.Any(line => line.Status is "pending" or "in_progress");
+        string[] read = [.. lines.Where(line => line.Kind == "read").Select(line => line.Named ?? line.Title).Distinct(StringComparer.Ordinal)];
+        int searches = lines.Count(line => line.Kind == "search");
+        List<string> said = [.. read.Take(3)];
+        if (read.Length > 3)
+        {
+            said.Add($"{read.Length - 3} more");
+        }
+        if (searches > 0)
+        {
+            said.Add(searches == 1 ? "1 search" : $"{searches} searches");
+        }
+        return $"{(running ? "Exploring" : "Explored")} {string.Join(", ", said)}";
+    }
+
+    /// <summary>When the turn began, for how long it worked.</summary>
+    private DateTime turnBegan = DateTime.UtcNow;
+
+    /// <summary>A finished turn's steps fold under "Worked for 9s", as Cursor folds them: everything before its last words,
+    /// but the snippets of the files it changed, which stay in sight. A turn with nothing before its last words folds
+    /// nothing.</summary>
+    private void FoldWorked()
+    {
+        if (reply is null)
+        {
+            return;
+        }
+        Control[] children = [.. reply.Children.Skip(1)];
+        int last = Array.FindLastIndex(children, child => parts.Any(part => part.Holder == child));
+        int end = last == children.Length - 1 ? last : children.Length;
+        // The files it changed and what the IDE did for it (a project added to the solution) stay in sight.
+        Control[] steps = [.. children.Take(end).Where(child => child is not ToolLine { Snippet: not null } and not Border { Tag: NoticeTag })];
+        if (steps.Length == 0)
+        {
+            return;
+        }
+        TimeSpan worked = DateTime.UtcNow - turnBegan;
+        ChatFold fold = new(explores: false)
+        {
+            Said = worked.TotalSeconds < 60 ? $"Worked for {Math.Max(1, (int)worked.TotalSeconds)}s" : $"Worked for {(int)worked.TotalMinutes}m {worked.Seconds}s",
+        };
+        int at = reply.Children.IndexOf(steps[0]);
+        foreach (Control step in steps)
+        {
+            reply.Children.Remove(step);
+            fold.Body.Children.Add(step);
+        }
+        reply.Children.Insert(at, fold);
+    }
+
+    /// <summary>The person's message under "You", in its frame.</summary>
+    private void Mine(string text)
+    {
+        StackPanel mine = Message("You");
+        SelectableTextBlock body = new() { Text = text, TextWrapping = TextWrapping.Wrap };
+        mine.Children.Add(new Border { Classes = { StyleClasses.Framed }, Padding = new Thickness(10, 8), Child = body });
+        parts.Add(new Part("You", new StringBuilder(text), body, null));
+    }
+
+    /// <summary>What the person wrote while a plan waited, as Cursor takes it: their message in the conversation, the
+    /// plan's card answered to keep planning with it, and the agent's reply going on below.</summary>
+    private void Revise(ApprovalCard card, string text)
+    {
+        Close();
+        Mine(text);
+        reply = Message(agentName);
+        card.Revise(text);
+        ToEnd();
+    }
+
+    /// <summary>A piece of the agent's words, added to the end of its current part.</summary>
+    public void Streamed(string text)
+    {
+        if (reply is null)
+        {
+            return;
+        }
+        if (words is null)
+        {
+            SelectableTextBlock body = new() { TextWrapping = TextWrapping.Wrap };
+            StackPanel holder = new() { Children = { body } };
+            reply.Children.Add(holder);
+            words = new Part(agentName, new StringBuilder(), body, holder);
+            parts.Add(words);
+        }
+        words.Text.Append(text);
+        words.Body.Text = words.Text.ToString();
+        if (asking.Count == 0)
+        {
+            doing.Text = "Thinking…";
+        }
+        ToEnd();
+    }
+
+    /// <summary>A tool call's line, added or updated in place; the ring's line says what runs.</summary>
+    public void Tool(ToolCall call)
+    {
+        if (reply is null)
+        {
+            return;
+        }
+        if (tools.TryGetValue(call.Id, out ToolLine? line))
+        {
+            line.Show(call);
+        }
+        else
+        {
+            Close();
+            line = new ToolLine(call);
+            line.DiffRequested += (_, _) => EditDiffRequested?.Invoke(this, call.Id);
+            tools[call.Id] = line;
+            if (call.Kind is "read" or "search")
+            {
+                // Reads and searches one after another go under one line, as Cursor's "Explored hello.py, 1 search".
+                if (reply.Children.LastOrDefault() is not ChatFold { Explores: true } group)
+                {
+                    group = new ChatFold(explores: true);
+                    reply.Children.Add(group);
+                }
+                group.Body.Children.Add(line);
+            }
+            else
+            {
+                reply.Children.Add(line);
+            }
+        }
+        if (line.Title == ChatPlans.DraftTitle)
+        {
+            // Claude Code writes its draft more than once; the reply shows the drafting as one line, the latest.
+            foreach (ToolLine earlier in reply.Children.OfType<ToolLine>().Where(other => other != line && other.Title == ChatPlans.DraftTitle))
+            {
+                earlier.IsVisible = false;
+            }
+        }
+        if (asking.Any(card => card.CallId == call.Id && !card.IsPlan))
+        {
+            // Its question's card shows it while it waits.
+            line.IsVisible = false;
+        }
+        if (line.Parent?.Parent is ChatFold { Explores: true } explored)
+        {
+            explored.Said = Explored(explored.Body.Children.OfType<ToolLine>().ToArray());
+        }
+        if (asking.Count == 0)
+        {
+            doing.Text = call.Status is "pending" or "in_progress" ? line.Title : "Thinking…";
+        }
+        ToEnd();
+    }
+
+    /// <summary>The agent's settings it lets the person choose, each a picker under the box (mode, model, effort, in
+    /// that order where the agent has them), set to its current value; choosing one tells <see cref="ConfigChosen"/>.</summary>
+    public void ShowConfig(IReadOnlyList<ConfigOption> options)
+    {
+        config = options;
+        showingConfig = true;
+        try
+        {
+            foreach (string id in new[] { "mode", "model", "effort" })
+            {
+                if (options.FirstOrDefault(option => option.Id == id) is not { Choices.Count: > 0 } option)
+                {
+                    continue;
+                }
+                if (!settings.TryGetValue(id, out ComboBox? picker))
+                {
+                    picker = new ComboBox { FontSize = 12, Margin = new Thickness(0, 0, 6, 0), MaxWidth = 170 };
+                    picker.SelectionChanged += (_, _) =>
+                    {
+                        if (!showingConfig && picker.SelectedItem is ComboBoxItem { Tag: string value })
+                        {
+                            ConfigChosen?.Invoke(this, (id, value));
+                        }
+                    };
+                    settings[id] = picker;
+                    pickers.Children.Add(picker);
+                }
+                picker.ItemsSource = option.Choices.Select(choice => new ComboBoxItem
+                {
+                    Content = choice.Name,
+                    Tag = choice.Value,
+                    [ToolTip.TipProperty] = choice.Description,
+                }).ToList();
+                picker.SelectedIndex = option.Choices.ToList().FindIndex(choice => choice.Value == option.Current);
+                ToolTip.SetTip(picker, id == "mode" ? $"{option.Name} (Shift+Tab moves to the next)" : option.Name);
+            }
+        }
+        finally
+        {
+            showingConfig = false;
+        }
+    }
+
+    /// <summary>The slash commands and skills the agent offers, for the list "/" opens.</summary>
+    public void ShowCommands(IReadOnlyList<AgentCommand> commands) => menu.Commands = commands;
+
+    /// <summary>Who the agent is signed in as, in the header: its plan, and its email in the tip with how to switch.</summary>
+    public void ShowAccount(AccountStatus status)
+    {
+        AgentAccount? active = status.Accounts.FirstOrDefault(each => each.Active) ?? status.Accounts.FirstOrDefault();
+        signedIn = status.State == "unauthenticated" ? "Not signed in" : active is null ? status.State : active.Label;
+        signedInWho = status.State == "unauthenticated" ? null : active?.Email ?? active?.Label;
+        if (signingInNow && status.State == "authenticated")
+        {
+            signingInNow = false;
+            Notice($"You're signed in as {signedInWho ?? "your Claude account"}{(active?.Label is { } plan && plan != signedInWho ? $" · {plan}" : string.Empty)}.");
+        }
+        signedInTip = active is null
+            ? $"The agent says it is {status.State}"
+            : $"Signed in as {active.Email ?? active.Label} ({active.Label}), in the agent's own login.\nTo use another account, run claude /login in a terminal, then connect again.";
+        ShowPlan();
+    }
+
+    /// <summary>How much of the context the session has used, under the box, and of the plan's windows, in the header.</summary>
+    public void ShowUsage(UsageUpdated usage)
+    {
+        if (usage.Size > 0)
+        {
+            context.Text = $"{Math.Round(100.0 * usage.Used / usage.Size)}% context";
+            ToolTip.SetTip(context, $"{usage.Used:N0} of {usage.Size:N0} tokens of the conversation's context");
+        }
+        windows = usage.Windows;
+        ShowPlan();
+    }
+
+    /// <summary>The header's account and plan use, its tip who is signed in and when each window starts afresh.</summary>
+    private void ShowPlan()
+    {
+        List<string> said = signedIn is null ? [] : [signedIn];
+        // Signed out, the plan's use is no one's.
+        said.AddRange((SignedOut ? [] : windows).Select(window => $"{Window(window.Name)} {Math.Round(window.Used * 100)}%"));
+        account.Text = string.Join(" · ", said);
+        string resets = string.Join("\n", windows.Where(window => window.Resets is not null)
+            .Select(window => $"{Window(window.Name)}: {Math.Round(window.Used * 100)}% used, starts afresh {window.Resets!.Value.ToLocalTime():ddd HH:mm}"));
+        ToolTip.SetTip(account, $"{signedInTip}\n{resets}".Trim());
+
+        static string Window(string name) => name switch
+        {
+            "five_hour" => "5h",
+            "seven_day" => "week",
+            _ => name.Replace('_', ' '),
+        };
+    }
+
+    /// <summary>The agent's mode after the current one, round to the first, as Shift+Tab moves.</summary>
+    private string? NextMode()
+    {
+        if (config.FirstOrDefault(option => option.Id == "mode") is not { Choices.Count: > 1 } mode)
+        {
+            return null;
+        }
+        int at = mode.Choices.ToList().FindIndex(choice => choice.Value == mode.Current);
+        return mode.Choices[(at + 1) % mode.Choices.Count].Value;
+    }
+
+    /// <summary>What an edit's tool call added and removed, on its line, and, for one file, its snippet in the line's place.</summary>
+    public void Counted(string toolCallId, int added, int removed, ChatChange? change = null)
+    {
+        if (tools.TryGetValue(toolCallId, out ToolLine? line))
+        {
+            line.Counted(added, removed);
+            if (change is not null && line.Snippet is null)
+            {
+                line.ShowSnippet(ChatDiff.Snippet(change, added, removed));
+            }
+        }
+    }
+
+    private readonly Panel questionsHost = new();
+
+    /// <summary>The agent's questions waiting above the box, null while none wait.</summary>
+    public QuestionsCard? Questioning => questionsHost.Children.OfType<QuestionsCard>().FirstOrDefault(card => !card.Answer.IsCompleted);
+
+    /// <summary>The agent's questions before it goes on, pinned above the box until answered, skipped or stopped.</summary>
+    public async Task<QuestionsAnswer?> AskQuestions(QuestionsRequest request)
+    {
+        QuestionsCard card = new(request);
+        questionsHost.Children.Clear();
+        questionsHost.Children.Add(card);
+        if (working.IsVisible)
+        {
+            doing.Text = "Waiting for your answer";
+        }
+        try
+        {
+            return await card.Answer;
+        }
+        finally
+        {
+            questionsHost.Children.Remove(card);
+            if (working.IsVisible && asking.Count == 0)
+            {
+                doing.Text = "Thinking…";
+            }
+        }
+    }
+
+    /// <summary>The agent's question as a card in its reply; the click, or Stop, answers it.</summary>
+    public Task<string?> Ask(PermissionRequest request, IReadOnlyList<ChatChange> changes, ChatPlan? plan = null)
+    {
+        if (reply is null)
+        {
+            return Task.FromResult<string?>(null);
+        }
+        Close();
+        ApprovalCard card = new(request, changes, Browse, plan);
+        card.PlanRequested += (_, path) => PlanRequested?.Invoke(this, path);
+        card.FileRequested += (_, change) => ChangeRequested?.Invoke(this, change);
+        card.PlanEditRequested += (_, path) => PlanEditRequested?.Invoke(this, path);
+        reply.Children.Add(card);
+        asking.Add(card);
+        if (!card.IsPlan && tools.TryGetValue(card.CallId, out ToolLine? asked))
+        {
+            // One line a step: the card stands for the call while it waits, and gives way to its line once answered.
+            asked.IsVisible = false;
+        }
+        // A waiting plan takes what is written as what to change in it, so Send shows beside Stop.
+        send.IsVisible |= card.IsPlan;
+        Asking?.Invoke(this, card);
+        doing.Text = "Waiting for your answer";
+        ToEnd();
+        return AnswerOf(card);
+    }
+
+    /// <summary>The agent's turn is over: open questions are cancelled, and <paramref name="note"/>, where there is one,
+    /// says how it ended ("Stopped").</summary>
+    public void Answered(string? note = null, bool error = false)
+    {
+        foreach (ApprovalCard card in asking.ToArray())
+        {
+            card.Cancel();
+        }
+        Questioning?.Cancel();
+        Close();
+        foreach (ToolLine line in tools.Values)
+        {
+            line.Settle();
+        }
+        FoldWorked();
+        if (note is not null && reply is not null)
+        {
+            TextBlock body = new() { Classes = { error ? StyleClasses.Error : StyleClasses.Muted }, Text = note, TextWrapping = TextWrapping.Wrap };
+            reply.Children.Add(body);
+            parts.Add(new Part(string.Empty, new StringBuilder(note), body, null));
+        }
+        reply = null;
+        Working(false, null);
+        ToEnd();
+    }
+
+    /// <summary>A note in the agent's reply as it goes ("Sent your edited plan"), muted, or as an error.</summary>
+    public void Noted(string text, bool error = false)
+    {
+        if (reply is null)
+        {
+            return;
+        }
+        Close();
+        TextBlock body = new() { Classes = { error ? StyleClasses.Error : StyleClasses.Muted }, Text = text, TextWrapping = TextWrapping.Wrap };
+        reply.Children.Add(body);
+        parts.Add(new Part(string.Empty, new StringBuilder(text), body, null));
+        ToEnd();
+    }
+
+    /// <summary>Stop was pressed: each open question is answered cancelled at once.</summary>
+    public void CancelQuestions()
+    {
+        foreach (ApprovalCard card in asking.ToArray())
+        {
+            card.Cancel();
+        }
+        Questioning?.Cancel();
+    }
+
+    private async Task<string?> AnswerOf(ApprovalCard card)
+    {
+        try
+        {
+            return await card.Answer;
+        }
+        finally
+        {
+            asking.Remove(card);
+            if (!card.IsPlan && tools.TryGetValue(card.CallId, out ToolLine? line))
+            {
+                card.IsVisible = false;
+                line.IsVisible = true;
+            }
+            send.IsVisible = !stop.IsVisible || asking.Any(open => open.IsPlan);
+            if (asking.Count == 0 && working.IsVisible)
+            {
+                doing.Text = "Thinking…";
+            }
+        }
+    }
+
+    /// <summary>Ends the part of the agent's words being written: it is shown as Markdown from here on.</summary>
+    private void Close()
+    {
+        if (words is not { Holder: { } holder } part)
+        {
+            return;
+        }
+        words = null;
+        holder.Children.Clear();
+        Markdown.Render(Markdown.Parse(part.Text.ToString()), holder, Browse);
+    }
+
+    private void Working(bool busy, string? what)
+    {
+        send.IsVisible = !busy;
+        stop.IsVisible = busy;
+        working.IsVisible = busy;
+        doing.Text = what;
+    }
+
+    private void Send()
+    {
+        string text = input.Text?.Trim() ?? string.Empty;
+        if (text.Length == 0 || !composer.IsVisible)
+        {
+            return;
+        }
+        if (Busy)
+        {
+            if (asking.FirstOrDefault(card => card.IsPlan) is { } plan)
+            {
+                input.Text = string.Empty;
+                Revise(plan, text);
+            }
+            return;
+        }
+        input.Text = string.Empty;
+        SendRequested?.Invoke(this, text);
+    }
+
+    /// <summary>A message's column under who said it, added to the conversation.</summary>
+    private StackPanel Message(string who)
+    {
+        StackPanel message = new() { Spacing = 6, Children = { Who(who) } };
+        messages.Children.Add(message);
+        return message;
+    }
+
+    private static TextBlock Who(string who) => new() { Classes = { StyleClasses.Muted }, Text = who, FontWeight = FontWeight.SemiBold, FontSize = 11 };
+
+    private StackPanel EmptyState()
+    {
+        StackPanel state = new() { Spacing = 8, Margin = new Thickness(0, 24, 0, 0) };
+        state.Children.Add(new TextBlock { Text = "Ask about this folder, or have the agent change it.", TextWrapping = TextWrapping.Wrap });
+        state.Children.Add(new TextBlock { Classes = { StyleClasses.Muted }, FontSize = 11, Text = "Its edits apply as it goes, for you to keep or undo; it asks before each command.", TextWrapping = TextWrapping.Wrap });
+        foreach (string suggestion in Suggestions)
+        {
+            Button ask = new() { Content = suggestion, HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Left };
+            ask.Click += (_, _) =>
+            {
+                input.Text = suggestion;
+                input.CaretIndex = suggestion.Length;
+                input.Focus();
+            };
+            state.Children.Add(ask);
+        }
+        return state;
+    }
+
+    private void ToEnd() => conversation.ScrollToEnd();
+
+    /// <summary>Words of the conversation: who said them, their text, the control showing them while they stream, and
+    /// what holds that control, which a part of the agent's words is rendered into once whole.</summary>
+    private sealed record Part(string Who, StringBuilder Text, TextBlock Body, StackPanel? Holder);
+}
