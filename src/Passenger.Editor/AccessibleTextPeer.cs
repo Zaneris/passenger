@@ -33,6 +33,12 @@ public sealed class AccessibleTextPeer : ControlAutomationPeer, IValueProvider
         text.CaretLineChanged += (_, _) => RaisePropertyChangedEvent(ValuePatternIdentifiers.ValueProperty, null, Value);
     }
 
+    /// <summary>The peer a control drawing its own text gives a screen reader: on Windows, where the control stands in a
+    /// window of the system's, the element UI Automation reads its text pattern from
+    /// (<see cref="UiAutomation.UiaTextElement"/>); elsewhere this peer.</summary>
+    public static AutomationPeer For(Control owner, AccessibleText text) =>
+        (OperatingSystem.IsWindows() ? UiAutomation.UiaTextElement.PeerFor(owner, text) : null) ?? new AccessibleTextPeer(owner, text);
+
     /// <summary>The text as a system's bridge reads it.</summary>
     public AccessibleText Text { get; }
 

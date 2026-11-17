@@ -14,7 +14,7 @@ public sealed partial class CodeEditor
     /// <summary>The text as each system's screen-reader bridge reads it.</summary>
     public AccessibleText AccessibleText => accessibleText ??= new EditorText(this);
 
-    protected override AutomationPeer OnCreateAutomationPeer() => new AccessibleTextPeer(this, AccessibleText);
+    protected override AutomationPeer OnCreateAutomationPeer() => AccessibleTextPeer.For(this, AccessibleText);
 
     private sealed class EditorText : AccessibleText
     {

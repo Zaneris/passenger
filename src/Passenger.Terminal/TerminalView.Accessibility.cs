@@ -18,7 +18,7 @@ public sealed partial class TerminalView
     /// <summary>The text as each system's screen-reader bridge reads it.</summary>
     public AccessibleText AccessibleText => accessibleText ??= new TerminalText(this);
 
-    protected override AutomationPeer OnCreateAutomationPeer() => new AccessibleTextPeer(this, AccessibleText);
+    protected override AutomationPeer OnCreateAutomationPeer() => AccessibleTextPeer.For(this, AccessibleText);
 
     /// <summary>Tells a reader what output, a selection or a session shown changed.</summary>
     private void FollowAccessibleText() => accessibleText?.Follow();

@@ -3,6 +3,8 @@
        files, languages or the IDE around it. -->
   <PropertyGroup>
     <RootNamespace>Passenger.Editor</RootNamespace>
+    <!-- UI Automation's text pattern on Windows: generated COM interfaces and P/Invokes (UiaInterop.cs). -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
   <ItemGroup>
@@ -10,6 +12,12 @@
     <!-- InFlight, whose watch names background work's holds. -->
     <ProjectReference Include="../Passenger.Core/Passenger.Core.csproj" />
     <ProjectReference Include="../Passenger.Text/Passenger.Text.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The tests read UI Automation's providers as UI Automation calls them (UiaTextTests). -->
+    <InternalsVisibleTo Include="Passenger.Tests" />
+    <InternalsVisibleTo Include="Passenger.UnitTests" />
   </ItemGroup>
 
   <ItemGroup>
