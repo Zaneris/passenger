@@ -6,7 +6,7 @@ namespace Passenger.App;
 /// <summary>The platform's Trash (the Recycle Bin on Windows), where a deleted file can still be found: an item moved there
 /// is told where it went (<see cref="Trashed"/>), from where <see cref="PutBack"/> moves it back as it was, links, modes
 /// and empty folders too, as Undo of a delete does.</summary>
-public static class Trash
+public static partial class Trash
 {
     /// <summary>A folder to use as the Trash instead of the platform's. The process's, as the system's Trash is every
     /// window's.</summary>
@@ -77,22 +77,60 @@ public static class Trash
     public static bool Holds(Trashed trashed) => Stands(trashed.At);
 
     /// <summary>The Recycle Bin, through the shell's own delete, which says nothing of where it put the item: that is found
-    /// among the records it made meanwhile (<see cref="RecycleBin.Find"/>).</summary>
+    /// among the records it made meanwhile (<see cref="RecycleBin.Find"/>). The shell shows nothing, asks nothing and
+    /// tells its refusal only here, as no person may be there to answer it (an agent's change, a window nobody sees).</summary>
     [System.Runtime.Versioning.SupportedOSPlatform("windows")]
-    private static Trashed? MoveToRecycleBin(string path)
+    private static unsafe Trashed? MoveToRecycleBin(string path)
     {
         string full = Path.GetFullPath(path);
-        HashSet<string> before = RecycleBin.Records(full);
-        if (Directory.Exists(full))
+        if (!Stands(full))
         {
-            Microsoft.VisualBasic.FileIO.FileSystem.DeleteDirectory(full, Microsoft.VisualBasic.FileIO.UIOption.OnlyErrorDialogs, Microsoft.VisualBasic.FileIO.RecycleOption.SendToRecycleBin);
+            throw new FileNotFoundException($"{Path.GetFileName(full)} is not there", full);
         }
-        else
+        HashSet<string> before = RecycleBin.Records(full);
+        // The shell takes a list of paths, each ended by a NUL and the list by another.
+        fixed (char* from = full + "\0\0")
         {
-            Microsoft.VisualBasic.FileIO.FileSystem.DeleteFile(full, Microsoft.VisualBasic.FileIO.UIOption.OnlyErrorDialogs, Microsoft.VisualBasic.FileIO.RecycleOption.SendToRecycleBin);
+            ShellFileOperation operation = new()
+            {
+                Function = Delete,
+                From = from,
+                Flags = AllowUndo | NoConnectedElements | Silent | NoConfirmation | NoErrorUi | NoConfirmMakeFolder,
+            };
+            int failed = SHFileOperationW(ref operation);
+            if (failed != 0 || operation.AnyOperationsAborted != 0)
+            {
+                string why = $"{Path.GetFileName(full)} did not go to the Recycle Bin: the shell refused it (error 0x{failed:X})";
+                throw failed == 5 ? new UnauthorizedAccessException(why) : new IOException(why);
+            }
         }
         return RecycleBin.Find(full, before) is { } found ? new Trashed(path, found.Item, found.Record) : null;
     }
+
+    private const uint Delete = 0x0003;
+    private const ushort Silent = 0x0004;
+    private const ushort NoConfirmation = 0x0010;
+    private const ushort AllowUndo = 0x0040;
+    private const ushort NoConfirmMakeFolder = 0x0200;
+    private const ushort NoErrorUi = 0x0400;
+    private const ushort NoConnectedElements = 0x2000;
+
+    /// <summary>SHFILEOPSTRUCTW, as a 64-bit Windows lays it out.</summary>
+    [StructLayout(LayoutKind.Sequential)]
+    private unsafe struct ShellFileOperation
+    {
+        public nint Window;
+        public uint Function;
+        public char* From;
+        public char* To;
+        public ushort Flags;
+        public int AnyOperationsAborted;
+        public nint NameMappings;
+        public char* ProgressTitle;
+    }
+
+    [LibraryImport("shell32.dll")]
+    private static partial int SHFileOperationW(ref ShellFileOperation operation);
 
     /// <summary>Foundation, where NSFileManager is: the runtime's own native library loads it today, which nothing promises.</summary>
     private static readonly Lazy<nint> Foundation = new(() => NativeLibrary.Load("/System/Library/Frameworks/Foundation.framework/Foundation"));
