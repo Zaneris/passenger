@@ -19,6 +19,8 @@
         <!-- A submenu overlaps its item's menu as Fluent's does, its items being inset (MenuItem's margin below), less the
              room for its shadow. -->
         <x:Double x:Key="MenuFlyoutSubItemPopupHorizontalOffset">-16</x:Double>
+        <!-- A text box's caret blink until Carets.UseBlink puts the system's in force in the application's resources. -->
+        <x:TimeSpan x:Key="Passenger.TextBoxCaretBlink">0:0:0.53</x:TimeSpan>
     </Styles.Resources>
 
     <!-- Words are shown as written, a name's underscores too: Passenger gives no access keys, so no control takes an

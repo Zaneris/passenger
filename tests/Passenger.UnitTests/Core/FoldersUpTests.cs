@@ -27,6 +27,12 @@ public sealed class FoldersUpTests : IDisposable
         FoldersUp.WhyNot(owner, group, mode, Me, g => g == MyGroup, u => u == Bob ? "bob" : $"uid {u}", g => g == Staff ? "staff" : $"gid {g}");
 
     [Fact]
+    public void A_walk_from_no_folder_reads_nothing()
+    {
+        Assert.True(!FoldersUp.From(string.Empty).Any(), "A walk from no folder (a tool's tab, a name with no folder before it) read a folder, where it throws on Windows");
+    }
+
+    [Fact]
     public void The_persons_own_folders_are_read_whatever_their_mode_and_roots_where_no_other_may_write()
     {
         Assert.Null(Unix(Me, Staff, Shown));

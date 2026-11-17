@@ -39,10 +39,10 @@ public static class FoldersUp
     private static string? personsSid;
 
     /// <summary>The folder and each above it that is there, nearest first, as <see cref="Path.GetDirectoryName(string)"/>
-    /// names them, up to the first that is not the person's.</summary>
+    /// names them, up to the first that is not the person's; none for no folder (a name with none before it).</summary>
     public static IEnumerable<string> From(string folder)
     {
-        for (string? at = folder; at is not null; at = Path.GetDirectoryName(at))
+        for (string? at = folder; !string.IsNullOrEmpty(at); at = Path.GetDirectoryName(at))
         {
             (bool there, string? why) = WhyNotPersons(at);
             if (why is not null)
