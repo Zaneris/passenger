@@ -4,9 +4,9 @@ using Passenger.Vcs;
 namespace Passenger.UnitTests.Vcs;
 
 /// <summary>What a git in a folder not trusted is given, read from git's own listings apart from any git: each program
-/// key the repository sets given empty (a filter's whose name holds an '=' whole), none of the person's; a git that took
-/// nothing from its environment found out; the submodules an index holds; and settings given after those the environment
-/// gives already.</summary>
+/// key the repository sets given empty (a filter's whose name holds an '=' whole), none of the person's but their filters
+/// and hooks; a git that took nothing from its environment found out; the submodules an index holds; and settings given
+/// after those the environment gives already.</summary>
 public sealed class UntrustedGitTests
 {
     /// <summary>What `git config --list --show-scope --name-only -z` writes with <see cref="UntrustedGit"/>'s own settings
@@ -24,6 +24,49 @@ public sealed class UntrustedGitTests
         [
             ("filter.a=b.clean", ""), ("filter.a=b.required", "false"), ("diff.Shown.textconv", ""), ("gpg.ssh.defaultkeycommand", ""), ("alias.st", ""),
             ("filter.a=b.smudge", ""), ("core.sshcommand", ""),
+        ], UntrustedGit.Overrides(listed));
+    }
+
+    [Fact]
+    public void Each_filter_has_its_programs_given_empty_and_is_made_not_required_wherever_it_is_set()
+    {
+        // As Git for Windows' own configuration sets git-lfs, and `git lfs install` the person's.
+        string listed = "system\0filter.lfs.clean\0system\0filter.lfs.smudge\0system\0filter.lfs.process\0system\0filter.lfs.required\0"
+            + "global\0filter.Mine.process\0command\0filter.given.clean\0local\0filter.lfs.smudge\0" + Given;
+
+        Assert.Equal(
+        [
+            ("filter.lfs.clean", ""), ("filter.lfs.required", "false"), ("filter.lfs.smudge", ""), ("filter.lfs.process", ""),
+            ("filter.Mine.process", ""), ("filter.Mine.required", "false"), ("filter.given.clean", ""), ("filter.given.required", "false"),
+        ], UntrustedGit.Overrides(listed));
+    }
+
+    [Fact]
+    public void Each_hook_a_configuration_declares_is_turned_off_by_its_name_as_listed_wherever_it_is_set()
+    {
+        string listed = "local\0hook.Lint.Check.event\0local\0hook.Lint.Check.event\0local\0hook.Lint.Check.command\0global\0hook.mine.command\0"
+            + "local\0hook.a=b.event\0local\0hook..command\0local\0hook.command\0system\0hook.pre-commit.jobs\0local\0hooks.allowed\0" + Given;
+
+        Assert.Equal(
+        [
+            ("hook.Lint.Check.enabled", "false"), ("hook.mine.enabled", "false"), ("hook.a=b.enabled", "false"), ("hook..enabled", "false"),
+            ("hook.enabled", "false"), ("hook.pre-commit.enabled", "false"),
+        ], UntrustedGit.Overrides(listed));
+    }
+
+    [Fact]
+    public void The_programs_git_lfs_and_git_archive_send_email_and_svn_take_from_the_repository_are_given_empty_and_the_persons_left()
+    {
+        string listed = "local\0lfs.extension.x.clean\0local\0lfs.extension.x.smudge\0local\0lfs.extension.x.priority\0local\0lfs.customtransfer.x.path\0"
+            + "local\0lfs.customtransfer.x.args\0local\0lfs.customtransfer.x.concurrent\0local\0lfs.standalonetransferagent\0"
+            + "worktree\0lfs.https://example.invalid/a.git.standalonetransferagent\0local\0lfs.url\0global\0lfs.customtransfer.mine.path\0"
+            + "local\0tar.tar.xz.command\0local\0sendemail.sendmailcmd\0local\0sendemail.work.sendmailcmd\0local\0svn.authorsprog\0" + Given;
+
+        Assert.Equal(
+        [
+            ("lfs.extension.x.clean", ""), ("lfs.extension.x.smudge", ""), ("lfs.customtransfer.x.path", ""), ("lfs.customtransfer.x.args", ""),
+            ("lfs.standalonetransferagent", ""), ("lfs.https://example.invalid/a.git.standalonetransferagent", ""), ("tar.tar.xz.command", ""),
+            ("sendemail.sendmailcmd", ""), ("sendemail.work.sendmailcmd", ""), ("svn.authorsprog", ""),
         ], UntrustedGit.Overrides(listed));
     }
 

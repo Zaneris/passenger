@@ -11,7 +11,7 @@ namespace Passenger.Vcs;
 /// in it, is given empty through git's environment, which keeps a key whole where -c splits it at its first '='. No
 /// fsmonitor, hook or maintenance runs, no submodule is checked out, and no remote is reached, so nothing a remote's
 /// settings name runs (git takes the first upload-pack given, the repository's). The person's own configuration stands,
-/// but its hooks.</summary>
+/// but its hooks and filters: a filter of theirs (git-lfs's) would run on the repository's files with its settings.</summary>
 internal static partial class UntrustedGit
 {
     /// <summary>The configuration every git in an untrusted folder runs with: no fsmonitor; hooks looked for where there are
@@ -154,14 +154,15 @@ internal static partial class UntrustedGit
     }
 
     /// <summary>The settings a configuration's listing (`git config --list --show-scope --name-only -z`, given
-    /// <see cref="Always"/> through the environment) has given empty: each key of the repository's own (local, worktree)
-    /// whose value git runs, a filter's made not required. Null where it lists <see cref="Always"/> nowhere as given on the
-    /// command: a git that takes no setting from its environment.</summary>
+    /// <see cref="Always"/> through the environment) has given: each key of the repository's own (local, worktree) whose
+    /// value git runs given empty; and wherever set, each filter's programs given empty and the filter made not required,
+    /// and each hook its configuration declares turned off. Null where it lists <see cref="Always"/> nowhere as given on
+    /// the command: a git that takes no setting from its environment.</summary>
     internal static IReadOnlyList<(string Key, string Value)>? Overrides(string listed)
     {
         string[] entries = listed.Split('\0');
         HashSet<string> commanded = new(StringComparer.OrdinalIgnoreCase);
-        HashSet<string> emptied = new(StringComparer.Ordinal);
+        HashSet<string> given = new(StringComparer.Ordinal);
         List<(string Key, string Value)> overrides = [];
         for (int at = 0; at + 1 < entries.Length; at += 2)
         {
@@ -170,16 +171,30 @@ internal static partial class UntrustedGit
             {
                 commanded.Add(key);
             }
-            else if (entries[at] is "local" or "worktree" && Runs().IsMatch(key) && emptied.Add(key))
+            if (Filter().Match(key) is { Success: true } filter)
             {
-                overrides.Add((key, string.Empty));
-                if (Filter().Match(key) is { Success: true } filter && emptied.Add($"filter.{filter.Groups[1].Value}.required"))
-                {
-                    overrides.Add(($"filter.{filter.Groups[1].Value}.required", "false"));
-                }
+                Set(key, string.Empty);
+                Set($"filter.{filter.Groups[1].Value}.required", "false");
+            }
+            else if (Hook().Match(key) is { Success: true } hook)
+            {
+                // Turned off by its name as listed, which git tells apart by case, whichever of its keys is set.
+                Set($"{hook.Groups[1].Value}.enabled", "false");
+            }
+            else if (entries[at] is "local" or "worktree" && Runs().IsMatch(key))
+            {
+                Set(key, string.Empty);
             }
         }
         return Always.All(setting => commanded.Contains(setting.Key)) ? overrides : null;
+
+        void Set(string key, string value)
+        {
+            if (given.Add(key))
+            {
+                overrides.Add((key, value));
+            }
+        }
     }
 
     /// <summary>The paths of the submodules an index holds, as `git ls-files --stage -z` writes its entries (mode, object,
@@ -213,16 +228,24 @@ internal static partial class UntrustedGit
         environment[GitVariables.ConfigCount] = (first + settings.Count).ToString(CultureInfo.InvariantCulture);
     }
 
-    /// <summary>A key, as `git config --name-only` writes it, whose value git runs as a program (git-config's own list), but
-    /// those of a remote and its transport, which no git here reaches.</summary>
-    [GeneratedRegex(@"^(?:filter\..+\.(?:clean|smudge|process)|diff\..+\.(?:textconv|command)|diff\.external|merge\..+\.driver|(?:diff|merge)tool\..+\.(?:cmd|path)"
+    /// <summary>A key, as `git config --name-only` writes it, whose value git runs as a program (git-config's own list, and
+    /// those of git-archive, git-send-email and git-svn), or git-lfs does (its extensions and custom transfers, whose
+    /// arguments a shell reads), but those of a remote and its transport, which no git here reaches.</summary>
+    [GeneratedRegex(@"^(?:diff\..+\.(?:textconv|command)|diff\.external|merge\..+\.driver|(?:diff|merge)tool\..+\.(?:cmd|path)"
         + @"|core\.(?:sshcommand|pager|editor|askpass|gitproxy|alternaterefscommand)|pager\..+|sequence\.editor|interactive\.difffilter|credential\.(?:.+\.)?helper"
         + @"|gpg\.(?:.+\.)?program|gpg\.ssh\.defaultkeycommand|trailer\..+\.(?:cmd|command)|alias\..+|uploadpack\.packobjectshook|submodule\..+\.update"
-        + @"|(?:browser|man)\..+\.(?:cmd|path)|guitool\..+\.cmd|(?:web|help|instaweb)\.browser|instaweb\.httpd|imap\.tunnel"
-        + @"|sendemail\.(?:.+\.)?(?:smtpserver|tocmd|cccmd|headercmd))$",
+        + @"|(?:browser|man)\..+\.(?:cmd|path)|guitool\..+\.cmd|(?:web|help|instaweb)\.browser|instaweb\.httpd|imap\.tunnel|tar\..+\.command|svn\.authorsprog"
+        + @"|sendemail\.(?:.+\.)?(?:smtpserver|sendmailcmd|tocmd|cccmd|headercmd)"
+        + @"|lfs\.extension\..+\.(?:clean|smudge)|lfs\.customtransfer\..+\.(?:path|args)|lfs\.(?:.+\.)?standalonetransferagent)$",
         RegexOptions.CultureInvariant | RegexOptions.IgnoreCase)]
     private static partial Regex Runs();
 
+    /// <summary>A key of a filter's that names a program, its driver's name the first group.</summary>
     [GeneratedRegex(@"^filter\.(.+)\.(?:clean|smudge|process)$", RegexOptions.CultureInvariant | RegexOptions.IgnoreCase)]
     private static partial Regex Filter();
+
+    /// <summary>A key of a hook's, the section and the hook's name before its last part the first group: hook.NAME.command,
+    /// or hook.command for the hook of no name.</summary>
+    [GeneratedRegex(@"^(hook(?:\..*)?)\.[^.]+$", RegexOptions.CultureInvariant | RegexOptions.IgnoreCase)]
+    private static partial Regex Hook();
 }

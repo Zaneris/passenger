@@ -1,3 +1,5 @@
+using System.Globalization;
+using System.Text.RegularExpressions;
 using Passenger.Core;
 using Passenger.Vcs;
 
@@ -5,9 +7,10 @@ namespace Passenger.Tests;
 
 /// <summary>Git in a folder the person has not trusted runs none of the programs its repository names, with real git: a
 /// filter whose name holds an '=', a submodule's own filter (its configuration in .git/modules) as a status, a stash and a
-/// rollback reach it, and a remote's upload-pack and receive-pack as a fetch, a push and a partial clone's read would run
-/// them; each runs once the folder is trusted, so it was there to run. Nor does it work on a working tree the repository
-/// names elsewhere: a status and a rollback touch the folder's files alone.</summary>
+/// rollback reach it, a hook its configuration declares as a commit and a move reach it, and a remote's upload-pack and
+/// receive-pack as a fetch, a push and a partial clone's read would run them; each runs once the folder is trusted, so it
+/// was there to run. Nor does it work on a working tree the repository names elsewhere: a status and a rollback touch the
+/// folder's files alone.</summary>
 public sealed class UntrustedGitTests : IDisposable
 {
     private readonly string folder = PathNames.Canonical(TestFolders.Create("untrusted-git-"));
@@ -91,6 +94,40 @@ public sealed class UntrustedGitTests : IDisposable
     }
 
     [Fact]
+    public async Task A_hook_the_repositorys_configuration_declares_runs_at_a_commit_or_a_move_only_once_the_folder_is_trusted()
+    {
+        string? why = await WhyNoHooksFromConfigurationAsync(folder);
+        Assert.SkipWhen(why is not null, why ?? string.Empty);
+        string tree = Directory.CreateDirectory(Path.Combine(folder, "tree")).FullName;
+        string first = Path.Combine(tree, "a.txt");
+        File.WriteAllText(first, "one\n");
+        await TestGit.InitAsync(tree);
+        // Named with a dot and capitals, which git keeps as written.
+        await TestGit.RunAsync(tree, "config", "hook.Lint.Check.event", "pre-commit");
+        await TestGit.RunAsync(tree, "config", "--add", "hook.Lint.Check.event", "commit-msg");
+        await TestGit.RunAsync(tree, "config", "--add", "hook.Lint.Check.event", "post-index-change");
+        await TestGit.RunAsync(tree, "config", "hook.Lint.Check.command", Marking("hook", "exit 0"));
+        File.WriteAllText(first, "two\n");
+
+        string moved = Path.Combine(tree, "b.txt");
+        using (WorkspaceTrust.Ask(tree))
+        {
+            Git git = await OpenAsync(tree);
+            GitResult committed = await git.CommitAsync([first], "Two");
+            Assert.True(committed.Succeeded, $"The commit in a folder not trusted failed: {committed.Message}");
+            File.Move(first, moved);
+            GitResult indexed = await git.MoveInIndexAsync([(first, moved)]);
+            Assert.True(indexed.Succeeded, $"The move in a folder not trusted failed: {indexed.Message}");
+            Assert.False(Ran("hook"), "A commit or a move in a folder not trusted ran the hook its repository's configuration declares");
+        }
+        Git trusted = await OpenAsync(tree);
+        File.WriteAllText(moved, "three\n");
+        GitResult again = await trusted.CommitAsync([moved], "Three");
+        Assert.True(again.Succeeded, $"The commit in the folder trusted failed: {again.Message}");
+        Assert.True(Ran("hook"), "The hook never ran at a commit once trusted, so the test proves nothing of the folder not trusted");
+    }
+
+    [Fact]
     public async Task A_fetch_a_push_and_a_partial_clones_read_run_the_remotes_upload_and_receive_pack_only_once_the_folder_is_trusted()
     {
         string origin = Directory.CreateDirectory(Path.Combine(folder, "origin")).FullName;
@@ -157,14 +194,102 @@ public sealed class UntrustedGitTests : IDisposable
         Assert.Null(trusted.WorkTreeNamed);
     }
 
+    /// <summary>Why this git runs no hook its configuration declares (hook.NAME.command, from git 2.54); null where it does.</summary>
+    internal static async Task<string?> WhyNoHooksFromConfigurationAsync(string folder)
+    {
+        string said = await TestGit.RunAsync(folder, "--version");
+        return Regex.Match(said, @"(\d+)\.(\d+)") is { Success: true } version
+            && new Version(int.Parse(version.Groups[1].Value, CultureInfo.InvariantCulture), int.Parse(version.Groups[2].Value, CultureInfo.InvariantCulture)) < new Version(2, 54)
+            ? $"{said.Trim()} runs no hook its configuration declares, which git does from 2.54"
+            : null;
+    }
+
     /// <summary>A shell command for git's configuration that marks <paramref name="name"/> ran, then does <paramref name="then"/>.</summary>
-    private string Marking(string name, string then) => $"sh -c 'echo ran >> \"{Path.Combine(marks, name).Replace('\\', '/')}\"; {then}'";
+    private string Marking(string name, string then) => Marking(marks, name, then);
+
+    /// <summary>A shell command that marks <paramref name="name"/> ran in <paramref name="marks"/>, then does <paramref name="then"/>.</summary>
+    internal static string Marking(string marks, string name, string then) => $"sh -c 'echo ran >> \"{Path.Combine(marks, name).Replace('\\', '/')}\"; {then}'";
 
     private bool Ran(string name) => File.Exists(Path.Combine(marks, name));
 
     /// <summary>A file given a time after its last, so a status reads its content again, through any filter it names.</summary>
-    private static void Touch(string path) => File.SetLastWriteTimeUtc(path, File.GetLastWriteTimeUtc(path) + TimeSpan.FromMinutes(1));
+    internal static void Touch(string path) => File.SetLastWriteTimeUtc(path, File.GetLastWriteTimeUtc(path) + TimeSpan.FromMinutes(1));
 
-    private static async Task<Git> OpenAsync(string tree) =>
+    internal static async Task<Git> OpenAsync(string tree) =>
         (await Git.OpenAsync(tree)).Tree ?? throw new InvalidOperationException($"No working tree was found at {tree}");
+}
+
+/// <summary>The person's own filter, required, in the system's configuration as Git for Windows sets git-lfs there (and
+/// `git lfs install` in the person's), and a hook of theirs, run in a folder not trusted by none of a status, a commit and
+/// a rollback, which still succeed, and each once the folder is trusted, the filter then reading the repository's own
+/// git-lfs settings as git-lfs would. Alone, as the system's configuration is the process's for its length.</summary>
+[Collection(Alone.Name)]
+public sealed class UntrustedGitPersonsFilterTests : IDisposable
+{
+    private readonly string folder = PathNames.Canonical(TestFolders.Create("untrusted-git-persons-"));
+
+    private readonly string marks = PathNames.Canonical(TestFolders.Create("untrusted-git-persons-marks-"));
+
+    private readonly string? noSystem = Environment.GetEnvironmentVariable("GIT_CONFIG_NOSYSTEM");
+
+    private readonly string? system = Environment.GetEnvironmentVariable("GIT_CONFIG_SYSTEM");
+
+    public void Dispose()
+    {
+        OwnEnvironment.Set("GIT_CONFIG_SYSTEM", system);
+        OwnEnvironment.Set("GIT_CONFIG_NOSYSTEM", noSystem);
+        TestFolders.Delete(folder);
+        TestFolders.Delete(marks);
+    }
+
+    [Fact]
+    public async Task The_persons_own_required_filter_and_hook_run_at_a_status_a_commit_or_a_rollback_only_once_the_folder_is_trusted()
+    {
+        string tree = Directory.CreateDirectory(Path.Combine(folder, "tree")).FullName;
+        string file = Path.Combine(tree, "a.txt");
+        File.WriteAllText(file, "one\n");
+        File.WriteAllText(Path.Combine(tree, ".gitattributes"), "* filter=lfs\n");
+        await TestGit.InitAsync(tree);
+        // A program git-lfs would run on the repository's files, named by the repository.
+        await TestGit.RunAsync(tree, "config", "lfs.extension.x.clean", "cat");
+        // The person's git-lfs, which records the repository's settings it would act on.
+        string persons = Path.Combine(folder, "gitconfig");
+        string read = Path.Combine(marks, "read").Replace('\\', '/');
+        string standIn = $"sh -c 'git config --get-regexp \"^lfs\\.\" >> \"{read}\"; cat'";
+        await TestGit.RunAsync(folder, "config", "--file", persons, "filter.lfs.clean", standIn);
+        await TestGit.RunAsync(folder, "config", "--file", persons, "filter.lfs.smudge", standIn);
+        await TestGit.RunAsync(folder, "config", "--file", persons, "filter.lfs.required", "true");
+        await TestGit.RunAsync(folder, "config", "--file", persons, "hook.mine.event", "pre-commit");
+        await TestGit.RunAsync(folder, "config", "--file", persons, "hook.mine.command", UntrustedGitTests.Marking(marks, "hook", "exit 0"));
+        OwnEnvironment.Set("GIT_CONFIG_NOSYSTEM", null);
+        OwnEnvironment.Set("GIT_CONFIG_SYSTEM", persons);
+        File.WriteAllText(file, "two\n");
+
+        using (WorkspaceTrust.Ask(tree))
+        {
+            Git git = await OpenAsync(tree);
+            Assert.Equal(file, Assert.Single((await git.StatusAsync()).Changes).Path);
+            GitResult committed = await git.CommitAsync([file], "Two");
+            Assert.True(committed.Succeeded, $"The commit in a folder not trusted failed: {committed.Message}");
+            File.WriteAllText(file, "three\n");
+            GitResult rolledBack = await git.RollbackAsync([Assert.Single((await git.StatusAsync()).Changes)]);
+            Assert.True(rolledBack.Succeeded, $"The rollback in a folder not trusted failed: {rolledBack.Message}");
+            Assert.Equal("two\n", File.ReadAllText(file));
+            Assert.False(File.Exists(Path.Combine(marks, "read")), "Git in a folder not trusted ran the person's filter, which would act on the repository's git-lfs settings");
+            Assert.False(File.Exists(Path.Combine(marks, "hook")), "A commit in a folder not trusted ran the person's hook");
+        }
+        Git trusted = await OpenAsync(tree);
+        UntrustedGitTests.Touch(file);
+        await trusted.StatusAsync();
+        Assert.True(File.Exists(Path.Combine(marks, "read")), "The person's filter never ran at a status once trusted, so the test proves nothing of the folder not trusted");
+        Assert.Contains("lfs.extension.x.clean", File.ReadAllText(Path.Combine(marks, "read")), StringComparison.Ordinal);
+        if (await UntrustedGitTests.WhyNoHooksFromConfigurationAsync(folder) is null)
+        {
+            File.WriteAllText(file, "four\n");
+            await trusted.CommitAsync([file], "Four");
+            Assert.True(File.Exists(Path.Combine(marks, "hook")), "The person's hook never ran at a commit once trusted, so the test proves nothing of the folder not trusted");
+        }
+    }
+
+    private static Task<Git> OpenAsync(string tree) => UntrustedGitTests.OpenAsync(tree);
 }
