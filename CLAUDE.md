@@ -395,7 +395,7 @@ Projects in `src/`; `find_symbol` finds the rest from the names here. A pointer'
   running a cloud CLI; metrics only while shown. MetricsEventSource's CollectionStart and Stop reach TraceEvent as
   `Collection/Start` and `Collection/Stop`, and a histogram's count is the interval's.
 - **Web apps' data.** The Requests window reads only while someone looks; Migrations takes connection strings by
-  environment only; Endpoints sends nothing but on Test or Send, and a send taking the person's environment asks first.
+  environment only, and runs dotnet ef in the environment `MigrationsController.EnvironmentOf` decides (the window's choice per startup project, `EfEnvironmentChoices`, else the run configuration's), given as ASPNETCORE_ENVIRONMENT and DOTNET_ENVIRONMENT, never `--environment`; Endpoints sends nothing but on Test or Send, and a send taking the person's environment asks first.
   An app's OpenAPI document is asked only at its origin (`OpenApiAddresses`), and what's made from one with no app asked
   comes from `AppDocuments`, never a process-wide cache. `ResourceFiles` is the one reader and writer of `.resx` and
   `xlf/*.xlf`, a table's change one edit of the open text. A configuration read is checked against the programs running
