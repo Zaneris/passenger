@@ -544,6 +544,24 @@ public sealed partial class EditorArea : UserControl
         }
     }
 
+    /// <summary>Closes a file's tab in every group of this window that has it (a copy that no longer stands for anything).</summary>
+    public void CloseEverywhere(OpenDocument document)
+    {
+        foreach (EditorGroup group in AllGroups.Where(group => group.Has(document)).ToArray())
+        {
+            CloseTab(group, document);
+        }
+    }
+
+    /// <summary>Each group shows its file's preview again as <see cref="ReadsAsPage"/> now says.</summary>
+    public void FollowPreviews()
+    {
+        foreach (EditorGroup group in AllGroups)
+        {
+            group.FollowSidePreview();
+        }
+    }
+
     /// <summary>Closes a tab of one group: the file stays open if another group has it, in any window. Reopen Closed Tab
     /// brings it back where it stood.</summary>
     public bool CloseTab(EditorGroup group, OpenDocument document)

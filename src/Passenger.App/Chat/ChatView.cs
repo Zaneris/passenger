@@ -180,6 +180,9 @@ public sealed class ChatView : DockPanel
     /// <summary>A plan's file was asked to be opened as a page, by its path.</summary>
     public event EventHandler<string>? PlanRequested;
 
+    /// <summary>A plan's file was asked to be opened to edit, its source beside its page.</summary>
+    public event EventHandler<string>? PlanEditRequested;
+
     /// <summary>A question's card was shown, before it is answered: an edit's is shown in its file's own editor too.</summary>
     public event EventHandler<ApprovalCard>? Asking;
 
@@ -427,6 +430,7 @@ public sealed class ChatView : DockPanel
         ApprovalCard card = new(request, changes, Browse, plan);
         card.PlanRequested += (_, path) => PlanRequested?.Invoke(this, path);
         card.FileRequested += (_, change) => ChangeRequested?.Invoke(this, change);
+        card.PlanEditRequested += (_, path) => PlanEditRequested?.Invoke(this, path);
         reply.Children.Add(card);
         asking.Add(card);
         Asking?.Invoke(this, card);

@@ -1079,6 +1079,26 @@
         <Setter Property="Foreground" Value="{DynamicResource Passenger.LinkHover}" />
     </Style>
 
+    <!-- Words that open what they name (a file the chat's agent changes): in the text's colour, the link's under the pointer. -->
+    <Style Selector="Button.textLink">
+        <Setter Property="TextBlock.TextTrimming" Value="CharacterEllipsis" />
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Padding" Value="0" />
+        <Setter Property="MinHeight" Value="0" />
+        <Setter Property="HorizontalContentAlignment" Value="Left" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="Foreground" Value="{DynamicResource Passenger.Text}" />
+    </Style>
+    <Style Selector="Button.textLink:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="Foreground" Value="{DynamicResource Passenger.LinkHover}" />
+    </Style>
+    <Style Selector="Button.textLink:pressed /template/ ContentPresenter#PART_ContentPresenter">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="Foreground" Value="{DynamicResource Passenger.LinkHover}" />
+    </Style>
+
     <!-- A file's name in the colour of how version control says it changed. -->
     <Style Selector="TextBlock.vcsModified">
         <Setter Property="Foreground" Value="{DynamicResource Passenger.Vcs.File.Modified}" />

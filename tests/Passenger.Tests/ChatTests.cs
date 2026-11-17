@@ -303,7 +303,7 @@ public sealed class ChatTests
     }
 
     [AvaloniaFact]
-    public void A_plan_is_saved_to_the_folders_plans_and_Build_answers_the_agents_first_way_to_build()
+    public void A_plan_is_saved_to_the_folders_plans_and_the_agents_first_answer_builds_it()
     {
         MainWindow window = Reviewing(out StandInAgent agent, out string folder);
         Send(window, "plan");
@@ -320,7 +320,7 @@ public sealed class ChatTests
         Assert.Empty(window.Chat.Review.Shown);
         Assert.Contains(window.Chat.Tools, line => line.Title == "Draft the plan");
 
-        Ui.Click(InCard(card, "Build"));
+        Ui.Click(InCard(card, "Yes, and use auto mode"));
         Ui.WaitFor(() => !window.Chat.Busy, () => $"the turn ended, where the conversation is {Shown(window)}");
 
         Assert.Equal("exit-plan-auto", agent.PlanAnswer);
@@ -330,7 +330,7 @@ public sealed class ChatTests
     }
 
     [AvaloniaFact]
-    public void A_plan_edited_before_Build_is_sent_to_the_agent_as_it_is_now()
+    public void A_plan_edited_before_it_is_built_is_sent_to_the_agent_as_it_is_now()
     {
         MainWindow window = Reviewing(out StandInAgent agent, out string folder);
         Send(window, "plan");
@@ -338,7 +338,7 @@ public sealed class ChatTests
         string plan = Path.Combine(folder, ".passenger", "plans", $"{DateTime.Now:yyyy-MM-dd}_add-a-math-class.plan.md");
         File.AppendAllText(plan, "3. Write the docs\n");
 
-        Ui.Click(InCard(window.Chat.Questions.Single(), "Build"));
+        Ui.Click(InCard(window.Chat.Questions.Single(), "Yes, and use auto mode"));
         Ui.WaitFor(() => !window.Chat.Busy, () => $"the turn ended, where the conversation is {Shown(window)}");
 
         string steered = Assert.Single(agent.Steered);
@@ -375,6 +375,98 @@ public sealed class ChatTests
         Assert.Equal("reject", agent.PlanAnswer);
         window.Close();
     }
+
+    [AvaloniaFact]
+    public void A_plans_answers_are_the_agents_numbered_and_Revise_keeps_planning_with_what_to_change_sent_first()
+    {
+        MainWindow window = Reviewing(out StandInAgent agent, out _);
+        Send(window, "plan");
+        Ui.WaitFor(() => window.Chat.Questions.Any(), "the plan's card");
+        ApprovalCard card = window.Chat.Questions.Single();
+        Assert.Contains(card.GetVisualDescendants().OfType<TextBlock>(), text => text.Text == "1");
+        Assert.DoesNotContain(card.GetVisualDescendants().OfType<TextBlock>(), text => text.Text == "Build");
+        Button revise = card.GetVisualDescendants().OfType<Button>().Single(b => Equals(b.Content, "Revise"));
+        Assert.False(revise.IsEnabled, "Revise sends nothing to change");
+
+        card.GetVisualDescendants().OfType<TextBox>().Single().Text = "Use SQLite instead of Postgres";
+        Ui.Settle();
+        Ui.Click(revise);
+        Ui.WaitFor(() => !window.Chat.Busy, () => $"the turn ended, where the conversation is {Shown(window)}");
+
+        Assert.Equal("reject", agent.PlanAnswer);
+        Assert.Equal("Revising", card.State);
+        Assert.Contains("Use SQLite instead of Postgres", Assert.Single(agent.Steered), StringComparison.Ordinal);
+        Assert.Equal(["steer", "answer"], agent.Order);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Edit_plan_shows_the_plans_source_beside_its_page_and_Open_plan_the_page_alone_again()
+    {
+        MainWindow window = Reviewing(out StandInAgent agent, out _);
+        Send(window, "plan");
+        Ui.WaitFor(() => window.Chat.Questions.Any(), "the plan's card");
+        ApprovalCard card = window.Chat.Questions.Single();
+
+        Ui.Click(card.GetVisualDescendants().OfType<Button>().First(b => Equals(b.Content, "Edit plan")));
+        Ui.Settle();
+        EditorGroup group = window.EditorArea.ActiveGroup;
+        Assert.EndsWith("add-a-math-class.plan.md", window.EditorArea.Active?.Path, StringComparison.Ordinal);
+        Assert.True(group.Editor.IsEffectivelyVisible, "Edit plan shows no source to edit");
+        Assert.True(group.Markdown?.IsEffectivelyVisible == true, "Edit plan hides the plan's page");
+
+        Ui.Click(card.GetVisualDescendants().OfType<Button>().First(b => Equals(b.Content, "Open plan")));
+        Ui.Settle();
+        Assert.False(group.Editor.IsEffectivelyVisible, "Open plan still shows the source beside the page");
+        Ui.Click(InCard(card, "No, keep planning"));
+        Ui.WaitFor(() => !window.Chat.Busy, "the turn ended");
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void A_new_file_asked_for_opens_as_its_copy_all_added_and_its_banners_Accept_answers_it()
+    {
+        MainWindow window = Connected(out StandInAgent agent);
+        Send(window, "write");
+        Ui.WaitFor(() => Proposed(window) is { AgentReview.KeepWord: "Accept" }, () => $"the new file's copy shown, where the conversation is {Shown(window)}");
+
+        OpenDocument copy = Proposed(window)!;
+        Assert.Equal("notes.md", Path.GetFileName(copy.Path));
+        Assert.True(copy.IsReadOnly, "The copy of a file not yet made can be typed over");
+        Assert.Equal("# Notes\n", copy.Text.Snapshot.ToString());
+        Assert.Equal(ChangeMarkKind.Added, Assert.Single(copy.Decorations.ReviewMarks).Kind);
+        ApprovalCard card = window.Chat.Questions.Single();
+        Ui.Click(InCard(card, "Write notes.md"));
+        Ui.Settle();
+        Assert.Same(copy, window.EditorArea.Active);
+        Assert.Empty(window.OwnedWindows.OfType<Passenger.App.Vcs.DiffWindow>());
+
+        Ui.Click(window.EditorArea.ActiveGroup.ReviewLinks.Keep);
+        Ui.WaitFor(() => !window.Chat.Busy, () => $"the turn ended, where the conversation is {Shown(window)}");
+        Assert.Equal("allow-once", agent.Answered);
+        Ui.WaitFor(() => Proposed(window) is null, "the copy closed once answered");
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void An_edits_line_opens_its_file_in_the_editor_with_its_changes_marked()
+    {
+        MainWindow window = Reviewing(out _, out _);
+        Send(window, "edit");
+        Ui.WaitFor(() => !window.Chat.Busy && window.Chat.Review.Shown.Count == 2, "both edits in review");
+
+        ToolLine line = window.Chat.Tools.First(tool => tool.Title == "Write hello.txt");
+        Ui.Click(line.GetVisualDescendants().OfType<Button>().First(b => b.IsVisible));
+        Ui.WaitFor(() => window.EditorArea.Active?.Decorations.ReviewMarks.Count > 0, "hello.txt's changes marked");
+
+        Assert.Equal("hello.txt", Path.GetFileName(window.EditorArea.Active?.Path));
+        Assert.Empty(window.OwnedWindows.OfType<Passenger.App.Vcs.DiffWindow>());
+        window.Close();
+    }
+
+    /// <summary>The copy open of a file the agent asks to make, if one is.</summary>
+    private static OpenDocument? Proposed(MainWindow window) =>
+        window.EditorArea.Documents.FirstOrDefault(document => ChatProposals.IsCopy(document.Path));
 
     [AvaloniaFact]
     public void The_agents_to_dos_are_pinned_above_the_box()
@@ -596,8 +688,10 @@ public sealed class ChatTests
         Ui.Click(Named(window, "Send"));
     }
 
+    /// <summary>The card's button of those words, a numbered answer's too.</summary>
     private static Button InCard(ApprovalCard card, string content) =>
-        card.GetVisualDescendants().OfType<Button>().First(b => b.Content is TextBlock { Text: { } text } && text == content);
+        card.GetVisualDescendants().OfType<Button>().First(b => b.Content is TextBlock { Text: { } text } ? text == content
+            : b.Content is Panel panel && panel.Children.OfType<TextBlock>().Any(words => words.Text == content));
 
     private static string Shown(MainWindow window) => string.Join(" | ", window.Chat.Conversation.Select(part => $"{part.Who}: {part.Text}"));
 

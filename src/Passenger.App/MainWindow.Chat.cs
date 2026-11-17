@@ -27,6 +27,16 @@ public partial class MainWindow
     /// <summary>The edit waiting for its answer in each file, by its canonical path: shown in the file's own editor, its
     /// banner's Accept and Reject answering its card. On the window's thread.</summary>
     private readonly Dictionary<string, (ApprovalCard Card, ChatChange Change)> chatProposals = new(StringComparer.Ordinal);
+
+    /// <summary>The copy shown of each file the agent asks to make (<see cref="ChatProposals"/>), by the file's canonical
+    /// path, and the file each copy stands for. On the window's thread.</summary>
+    private readonly Dictionary<string, string> proposalCopies = new(StringComparer.Ordinal);
+
+    /// <summary>The cards asked, by their call, for what their answer carries (a plan's revision). Any thread.</summary>
+    private readonly ConcurrentDictionary<string, ApprovalCard> askedCards = new(StringComparer.Ordinal);
+
+    /// <summary>The plans the person edits, shown as their source beside their page rather than as a page alone.</summary>
+    private readonly HashSet<string> editedPlans = new(StringComparer.Ordinal);
     private ChatAgent? chatAgent;
     private CancellationTokenSource? chatTurn;
 
@@ -59,7 +69,12 @@ public partial class MainWindow
                 chatTurn?.Cancel();
             };
             view.PlanRequested += (_, path) => OpenChatPlan(path);
-            view.Asking += (_, card) => Propose(card);
+            view.PlanEditRequested += (_, path) => EditChatPlan(path);
+            view.Asking += (_, card) =>
+            {
+                askedCards[card.CallId] = card;
+                Propose(card);
+            };
             view.ChangeRequested += (_, change) => ShowProposal(change);
             view.PlansRequested += (_, button) => ShowChatPlans(button);
             view.ConfigChosen += (_, chosen) =>
@@ -82,17 +97,12 @@ public partial class MainWindow
                 BackgroundWork.Track(undoing);
                 IdeErrors.Observe(undoing);
             };
-            view.Review.DiffRequested += (_, file) => IdeErrors.Observe(ShowChatDiffAsync(file));
+            view.Review.DiffRequested += (_, file) => OpenChangedFile(file.Path);
             view.EditDiffRequested += (_, id) =>
             {
-                string[] paths = chatEdits.TryGetValue(id, out string[]? named) ? named : [];
-                if (chatReview.Files.FirstOrDefault(file => paths.Contains(file.Path, StringComparer.Ordinal)) is { } file)
+                if (chatEdits.TryGetValue(id, out string[]? named) && named.Length > 0)
                 {
-                    IdeErrors.Observe(ShowChatDiffAsync(file));
-                }
-                else
-                {
-                    status.Text = "That change was kept or undone, so it is no longer in review";
+                    OpenChangedFile(named[0]);
                 }
             };
             return view;
@@ -149,6 +159,27 @@ public partial class MainWindow
         foreach (Workspace.OpenDocument document in Editors.Documents.ToArray())
         {
             string path = PathNames.Canonical(document.Path);
+            if (ChatProposals.IsCopy(path))
+            {
+                // A file the agent asks to make: every line of its copy is what it would add.
+                if (proposalCopies.TryGetValue(path, out string? original) && chatProposals.TryGetValue(original, out (ApprovalCard Card, ChatChange Change) made))
+                {
+                    int lines = ChatDiff.Count(made.Change).Added;
+                    document.Decorations.SetReviewMarks(lines > 0 ? [new ChangeMark(0, lines, ChangeMarkKind.Added)] : []);
+                    document.AgentReview = new Workspace.AgentReview(
+                        $"The agent asks to make this file ({Path.GetFileName(original)}: +{lines}), not written until you accept it",
+                        () => made.Card.Choose(allow: true),
+                        () => made.Card.Choose(allow: false),
+                        "Accept",
+                        "Reject");
+                }
+                else
+                {
+                    document.Decorations.SetReviewMarks([]);
+                    document.AgentReview = null;
+                }
+                continue;
+            }
             if (document.HoldsText && chatProposals.TryGetValue(path, out (ApprovalCard Card, ChatChange Change) asked))
             {
                 TextSnapshot now = document.Text.Snapshot;
@@ -230,16 +261,17 @@ public partial class MainWindow
         {
             string path = PathNames.Canonical(change.Path);
             chatProposals[path] = (card, change);
-            if (!change.IsNew && Editors.Find(path) is null && File.Exists(path))
+            if (Shown(change) is { } shown && Editors.Find(shown) is null)
             {
-                AgentAsks.Act(() => Editors.Open(path, focus: false));
+                AgentAsks.Act(() => Editors.Open(shown, focus: false));
             }
         }
         reviewMarking?.Restart();
         IdeErrors.Observe(UnproposeAsync(card));
     }
 
-    /// <summary>Once a question is answered or cancelled, its edit leaves the files' editors.</summary>
+    /// <summary>Once a question is answered or cancelled, its edit leaves the files' editors, and a new file's copy closes;
+    /// one accepted opens in its place once the agent wrote it.</summary>
     private async Task UnproposeAsync(ApprovalCard card)
     {
         await card.Answer;
@@ -249,39 +281,87 @@ public partial class MainWindow
             {
                 chatProposals.Remove(path);
             }
+            foreach ((string copy, string original) in proposalCopies.Where(entry => !chatProposals.ContainsKey(entry.Value)).ToArray())
+            {
+                proposalCopies.Remove(copy);
+                if (Editors.Find(copy) is { } open)
+                {
+                    Editors.CloseEverywhere(open);
+                    if (card.State == "Accepted")
+                    {
+                        acceptedCopies.Add(original);
+                    }
+                }
+            }
             reviewMarking?.Restart();
         });
     }
 
-    /// <summary>A waiting edit's file, clicked in its card: brought to the front with the change marked in it, or, for a
-    /// new file or one no longer holding what the edit replaces, the change as Passenger shows a diff.</summary>
-    private void ShowProposal(ChatChange change)
+    /// <summary>The new files whose copy was shown and whose making was accepted, to open once the agent wrote them.</summary>
+    private readonly HashSet<string> acceptedCopies = new(StringComparer.Ordinal);
+
+    /// <summary>What shows a waiting edit in the editor: its file, or for a file the agent asks to make, the copy of what
+    /// it would hold, written now; null where neither can be had.</summary>
+    private string? Shown(ChatChange change)
     {
         string path = PathNames.Canonical(change.Path);
         if (!change.IsNew && File.Exists(path))
         {
-            string now = Editors.Find(path) is { HoldsText: true } open ? open.Text.Snapshot.ToString() : File.ReadAllText(path);
-            if (change.Applied(now) is not null)
-            {
-                if (Editors.Open(path, focus: true) is { } problem)
-                {
-                    status.Text = problem;
-                }
-                return;
-            }
+            return path;
         }
-        IdeErrors.Observe(ShowProposalDiffAsync(change));
+        try
+        {
+            string copy = ChatProposals.Write(path, change.After);
+            proposalCopies[copy] = path;
+            if (Editors.Find(copy) is { } open && open.ChangedOnDisk())
+            {
+                open.Reload(overUnsaved: true);
+            }
+            return copy;
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            status.Text = $"Could not show {Path.GetFileName(path)}: {error.Message}";
+            return null;
+        }
     }
 
-    /// <summary>A waiting edit as Passenger shows a diff: what it replaces beside what it writes, read-only.</summary>
-    private async Task ShowProposalDiffAsync(ChatChange change)
+    /// <summary>A waiting edit's file, clicked in its card: brought to the front in the main editor with the change marked
+    /// in it, a new file as the copy of what it would hold.</summary>
+    private void ShowProposal(ChatChange change)
     {
-        TextDocument proposed = new(change.After);
-        TextSnapshot text = proposed.Snapshot;
-        VcsDiff diff = await BackgroundWork.Run(() => VcsDiff.Compare(change.Before, text));
-        string name = Path.GetFileName(change.Path);
-        ShowDiff(new DiffContent($"{name}: the agent's proposed change", $"chat proposal\n{change.Path}", change.Path, null,
-            () => Diffs.ForFile(name, diff, proposed, null, (change.IsNew ? "Now (no file)" : "Now", "Proposed"), change.Path, change.Path)));
+        if (Shown(change) is not { } shown)
+        {
+            return;
+        }
+        if (Editors.Open(shown, focus: true) is { } problem)
+        {
+            status.Text = problem;
+        }
+        reviewMarking?.Restart();
+    }
+
+    /// <summary>A file the agent changed, clicked in the chat: opened in the main editor, its changes in review marked in
+    /// it; one the agent deleted as Passenger's diff of it, in a tab.</summary>
+    private void OpenChangedFile(string path)
+    {
+        string full = PathNames.Canonical(path);
+        if (File.Exists(full))
+        {
+            if (Editors.Open(full, focus: true) is { } problem)
+            {
+                status.Text = problem;
+            }
+            reviewMarking?.Restart();
+        }
+        else if (chatReview.Files.FirstOrDefault(file => file.Path == full) is { } file)
+        {
+            IdeErrors.Observe(ShowChatDiffAsync(file));
+        }
+        else
+        {
+            status.Text = $"{Path.GetFileName(full)} is not there";
+        }
     }
 
     /// <summary>Keeps the agent's changes to a file, from its banner.</summary>
@@ -435,6 +515,11 @@ public partial class MainWindow
                     {
                         OpenBehind(these);
                     }
+                    // A new file the person accepted from its copy opens where its copy stood.
+                    foreach (string path in paths.Where(path => acceptedCopies.Remove(path) && File.Exists(path)))
+                    {
+                        Editors.Open(path, focus: false);
+                    }
                 }
             });
         };
@@ -446,9 +531,14 @@ public partial class MainWindow
             TaskCompletionSource<Task<string?>> shown = new(TaskCreationOptions.RunContinuationsAsynchronously);
             OnWindowThread(() => shown.SetResult(view.Ask(request, changes, plan)));
             string? answer = await await shown.Task;
+            askedCards.TryRemove(request.ToolCall.Id, out ApprovalCard? asked);
             if (plan is null && changes.Length > 0)
             {
                 answeredEdits[request.ToolCall.Id] = true;
+            }
+            if (plan is not null && asked?.Revision is { } revision)
+            {
+                await ReviseChatPlanAsync(agent, view, plan, revision);
             }
             if (plan is not null && answer is not null && request.Options.Any(option => option.Id == answer && option.Kind.StartsWith("allow", StringComparison.Ordinal)))
             {
@@ -527,9 +617,37 @@ public partial class MainWindow
         static string Normalized(string text) => text.Replace("\r\n", "\n", StringComparison.Ordinal).Trim();
     }
 
-    /// <summary>A plan's file as a page: shown in the editor with the Markdown preview beside it, its diagrams drawn; with
-    /// <paramref name="focus"/> its editor takes the keys, as a click on Open plan asks.</summary>
+    /// <summary>Asked to revise the plan, as Claude Code's "tell Claude what to change": the person's words steered into
+    /// the turn, so they come before the answer that keeps planning, and said in the chat.</summary>
+    private static async Task ReviseChatPlanAsync(ChatAgent agent, ChatView view, ChatPlan plan, string revision)
+    {
+        try
+        {
+            await agent.Session.SteerAsync($"Keep planning: revise the plan in {plan.Shown} as I ask, then ask me again.\n\n{revision}");
+            OnWindowThread(() => view.Noted($"Asked to revise the plan: {revision}"));
+        }
+        catch (AcpError error)
+        {
+            OnWindowThread(() => view.Noted($"Could not send what to revise: {error.Message}", error: true));
+        }
+    }
+
+    /// <summary>A plan's file as a page alone, its diagrams drawn; with <paramref name="focus"/> it takes the keys, as a click
+    /// on Open plan asks.</summary>
     private void OpenChatPlan(string path, bool focus = true)
+    {
+        editedPlans.Remove(PathNames.Canonical(path));
+        ShowChatPlan(path, focus);
+    }
+
+    /// <summary>A plan's file to edit before answering: its source in the editor, its page beside it.</summary>
+    private void EditChatPlan(string path)
+    {
+        editedPlans.Add(PathNames.Canonical(path));
+        ShowChatPlan(path, focus: true);
+    }
+
+    private void ShowChatPlan(string path, bool focus)
     {
         if (Editors.Open(path, focus) is { } problem)
         {
@@ -539,6 +657,11 @@ public partial class MainWindow
         if (!Editors.ShowsMarkdownPreview)
         {
             ToggleMarkdownPreview();
+        }
+        Editors.FollowPreviews();
+        if (focus)
+        {
+            Editors.ActiveGroup.FocusShown();
         }
     }
 
@@ -621,7 +744,7 @@ public partial class MainWindow
         VcsDiff diff = await BackgroundWork.Run(() => VcsDiff.Compare(file.BeforeText, text));
         string name = Path.GetFileName(file.Path);
         ShowDiff(new DiffContent($"{name}: before the agent and now", $"chat\n{file.Path}", file.Path, null,
-            () => Diffs.ForFile(name, diff, mine, null, (file.IsNew ? "Before the agent (no file)" : "Before the agent", "Now"), file.Path, file.Path)));
+            () => Diffs.ForFile(name, diff, mine, null, (file.IsNew ? "Before the agent (no file)" : "Before the agent", "Now"), file.Path, file.Path)), inTab: true);
     }
 
     /// <summary>Puts files back as they were before the agent changed them, as Local History reverts: an open file's text

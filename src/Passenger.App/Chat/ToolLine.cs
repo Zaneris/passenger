@@ -8,12 +8,12 @@ namespace Passenger.App.Chat;
 
 /// <summary>One tool call of the agent's as a line in its reply, updated in place as the call goes: a ring turning while
 /// it is pending or running, then a check, or a cross where it failed, beside its title ("Read hello.py"). An edit's line
-/// is Cursor's file pill once done: its title a link to the change's diff, with what it added and removed.</summary>
+/// is Cursor's file pill once done: its title opens the file in the editor, its changes marked, with what it added and removed.</summary>
 public sealed class ToolLine : DockPanel
 {
     private readonly Panel mark = new() { Width = 14, Height = 14, Margin = new Thickness(0, 0, 8, 0), VerticalAlignment = VerticalAlignment.Center };
     private readonly TextBlock title = new() { Classes = { StyleClasses.Muted }, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center };
-    private readonly Button link = new() { Classes = { StyleClasses.Link }, IsVisible = false, VerticalAlignment = VerticalAlignment.Center };
+    private readonly Button link = new() { Classes = { StyleClasses.TextLink }, IsVisible = false, VerticalAlignment = VerticalAlignment.Center };
     private readonly TextBlock added = Coloured(TokenKeys.Vcs_Added);
     private readonly TextBlock removed = Coloured(TokenKeys.Vcs_Deleted);
     private string status = string.Empty;
@@ -31,7 +31,7 @@ public sealed class ToolLine : DockPanel
         Show(call);
     }
 
-    /// <summary>The edit's diff was asked for, by a click on its title.</summary>
+    /// <summary>The edit's file was asked for, by a click on its title.</summary>
     public event EventHandler? DiffRequested;
 
     /// <summary>Its call's id.</summary>
@@ -66,7 +66,7 @@ public sealed class ToolLine : DockPanel
         });
     }
 
-    /// <summary>Shows what the edit added and removed, its title then a link to its diff.</summary>
+    /// <summary>Shows what the edit added and removed, its title then opening its file.</summary>
     public void Counted(int add, int remove)
     {
         added.Text = $"+{add}";

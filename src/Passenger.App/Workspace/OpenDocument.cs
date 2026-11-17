@@ -1271,10 +1271,11 @@ public sealed class OpenDocument : Observable
     /// <summary>Whether the editor shows it read-only, under a bar that says why: decompiled, the licence, notices or release
     /// notes the app carries, a workbook, an asset preview, a diff's tab, a binary file shown as its bytes, an MSBuild file of the .NET
     /// SDK or any file of a package as NuGet restored it, a copy of a container's file or of what the engine says of one, a
-    /// copy of a source generator's code, or a stylesheet a page links on the web as it was downloaded.</summary>
+    /// copy of a source generator's code, a stylesheet a page links on the web as it was downloaded, or a file the chat's
+    /// agent asks to make, not yet written.</summary>
     public bool IsReadOnly => Asset is not null || Diff is not null || IsDecompiled || IsWorkbook || IsBinary || Product.Carries(Path) || IsReleaseNotes
         || MSBuild.MSBuildFiles.IsInstalled(Path) || Packages.PackageFolders.Holds(Path) || Containers.ContainerFilesPane.IsCopy(Path)
-        || Endpoints.RequestLog.IsCommandCopy(Path) || CSharp.GeneratedCode.IsCopy(Path) || Web.RemoteStylesheets.IsCopy(Path);
+        || Endpoints.RequestLog.IsCommandCopy(Path) || CSharp.GeneratedCode.IsCopy(Path) || Web.RemoteStylesheets.IsCopy(Path) || Chat.ChatProposals.IsCopy(Path);
 
     /// <summary>The text refuses every change while the file is read-only, whatever asks it: the one place that holds it so.</summary>
     private void FollowReadOnly() => Text.IsReadOnly = IsReadOnly;
@@ -1324,6 +1325,7 @@ public sealed class OpenDocument : Observable
         : Endpoints.RequestLog.IsCommandCopy(Path) ? "SQL a running app issued, or an EF Core query's the debugger read, copied to read, read-only"
         : CSharp.GeneratedCode.IsCopy(Path) ? "Code a source generator made, as the C# language server has it, read-only"
         : Web.RemoteStylesheets.IsCopy(Path) ? "A stylesheet a page links on the web, as it was downloaded, read-only"
+        : Chat.ChatProposals.IsCopy(Path) ? "A file the agent asks to make, not written until you accept it, read-only"
         : Path.Contains("SourceLink", StringComparison.OrdinalIgnoreCase) || Path.Contains("Embedded", StringComparison.OrdinalIgnoreCase)
         ? "Source from the library's Source Link or PDB, read-only"
         : "Decompiled code: the language server made this from the assembly, so it is read-only";

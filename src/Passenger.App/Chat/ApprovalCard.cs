@@ -10,8 +10,8 @@ namespace Passenger.App.Chat;
 /// <summary>A question the agent asks before it acts, as a card in its reply: an edit with its diff, a command with its
 /// text, or a plan to start building, and one button per answer the agent offers, in its own words. The agent waits for
 /// the click; nothing is answered for the person, no button is the default on Enter, and the card takes no keys. Once
-/// answered, or cancelled by Stop, the buttons give way to what was decided. A plan's card is Cursor's: the plan's title,
-/// a link that opens its file as a page, and Build, the agent's first way to build it, its words in the tip.</summary>
+/// answered, or cancelled by Stop, the buttons give way to what was decided. A plan's card is Claude Code's: the plan's
+/// title, links that open its file as a page or to edit, the agent's answers numbered, and a box to say what to revise.</summary>
 public sealed class ApprovalCard : Border
 {
     private readonly TaskCompletionSource<string?> answered = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -32,29 +32,33 @@ public sealed class ApprovalCard : Border
         chip.Bind(TextBlock.ForegroundProperty, chip.GetResourceObservable(TokenKeys.Warning));
         StackPanel body = new() { Spacing = 8 };
         body.Children.Add(Heading(request.ToolCall, changes));
-        foreach (Control part in plan is null ? Shown(request.ToolCall, changes, browse, change => FileRequested?.Invoke(this, change)) : PlanShown(plan))
+        foreach (Control part in plan is null ? Shown(request.ToolCall, changes, browse) : PlanShown(plan))
         {
             body.Children.Add(part);
         }
 
         // One under another, each its width: an agent's answers are sentences ("Yes, allow all edits during this session").
-        // An edit's are Cursor's, Accept and Reject in a row, the agent's own words in their tips.
+        // An edit's are Cursor's, Accept and Reject in a row, the agent's own words in their tips. A plan's are Claude
+        // Code's, numbered as its terminal lists them, the first the one it suggests, and a box to say what to revise.
         bool edit = Changes.Count > 0;
         Panel buttons = edit ? new WrapPanel { ItemSpacing = 6, LineSpacing = 6 } : new StackPanel { Spacing = 6 };
-        PermissionOption? build = plan is null ? null : request.Options.FirstOrDefault(option => option.Kind.StartsWith("allow", StringComparison.Ordinal));
+        int number = 0;
         foreach (PermissionOption option in request.Options)
         {
             Button button = new()
             {
-                Content = new TextBlock { Text = option == build ? "Build" : edit ? EditWord(option) : option.Name, TextWrapping = TextWrapping.Wrap },
-                HorizontalAlignment = HorizontalAlignment.Left,
+                Content = plan is null
+                    ? new TextBlock { Text = edit ? EditWord(option) : option.Name, TextWrapping = TextWrapping.Wrap }
+                    : Numbered(++number, option.Name),
+                HorizontalAlignment = plan is null ? HorizontalAlignment.Left : HorizontalAlignment.Stretch,
+                HorizontalContentAlignment = HorizontalAlignment.Left,
                 Tag = option.Id,
             };
-            if (option == build || (edit && EditWord(option) != option.Name))
+            if (edit && EditWord(option) != option.Name)
             {
                 ToolTip.SetTip(button, option.Name);
             }
-            if (build is null ? option.Kind == "allow_once" : option == build)
+            if (plan is null ? option.Kind == "allow_once" : number == 1)
             {
                 button.Classes.Add(StyleClasses.Primary);
             }
@@ -62,6 +66,10 @@ public sealed class ApprovalCard : Border
             buttons.Children.Add(button);
         }
         choices.Children.Add(buttons);
+        if (plan is not null && request.Options.FirstOrDefault(option => option.Kind.StartsWith("reject", StringComparison.Ordinal)) is { } keepPlanning)
+        {
+            choices.Children.Add(Revising(keepPlanning));
+        }
         if (plan is null && request.Options.Any(option => option.Kind is "allow_always" or "reject_always"))
         {
             choices.Children.Add(new TextBlock
@@ -82,8 +90,43 @@ public sealed class ApprovalCard : Border
     /// <summary>The plan's file was asked to be opened as a page.</summary>
     public event EventHandler<string>? PlanRequested;
 
-    /// <summary>A changed file's link was clicked, to see the change in the file's own editor.</summary>
+    /// <summary>The plan's file was asked to be opened for editing, its source beside its page.</summary>
+    public event EventHandler<string>? PlanEditRequested;
+
+    /// <summary>A changed file was clicked, by its title, to see the change in the file's own editor.</summary>
     public event EventHandler<ChatChange>? FileRequested;
+
+    /// <summary>What the person asked the agent to change in its plan, sent with the answer to keep planning; null for none.</summary>
+    public string? Revision { get; private set; }
+
+    /// <summary>An answer as Claude Code's terminal lists it: its number, muted, then its words.</summary>
+    private static DockPanel Numbered(int number, string words)
+    {
+        TextBlock place = new() { Classes = { StyleClasses.Muted }, Text = number.ToString(System.Globalization.CultureInfo.InvariantCulture), Width = 18 };
+        DockPanel.SetDock(place, Dock.Left);
+        return new DockPanel { Children = { place, new TextBlock { Text = words, TextWrapping = TextWrapping.Wrap } } };
+    }
+
+    /// <summary>Claude Code's "tell Claude what to change": a box for what to revise and Revise, which keeps planning with it.</summary>
+    private DockPanel Revising(PermissionOption keepPlanning)
+    {
+        TextBox words = new() { PlaceholderText = "Tell the agent what to change in the plan", TextWrapping = TextWrapping.Wrap, AcceptsReturn = true, MaxHeight = 120 };
+        Button revise = new() { Content = "Revise", IsEnabled = false, Margin = new Thickness(6, 0, 0, 0), VerticalAlignment = VerticalAlignment.Top };
+        words.TextChanged += (_, _) => revise.IsEnabled = !string.IsNullOrWhiteSpace(words.Text);
+        revise.Click += (_, _) =>
+        {
+            if (!string.IsNullOrWhiteSpace(words.Text) && !Answer.IsCompleted)
+            {
+                Revision = words.Text.Trim();
+                Decide(keepPlanning);
+            }
+        };
+        DockPanel.SetDock(revise, Dock.Right);
+        return new DockPanel { Children = { revise, words } };
+    }
+
+    /// <summary>The id of the agent's call the question asks about.</summary>
+    public string CallId => request.ToolCall.Id;
 
     /// <summary>The edits the question asks to make, none for a command or a plan.</summary>
     public IReadOnlyList<ChatChange> Changes { get; }
@@ -132,7 +175,7 @@ public sealed class ApprovalCard : Border
         if (answered.TrySetResult(option.Id))
         {
             bool allowed = option.Kind.StartsWith("allow", StringComparison.Ordinal);
-            Settle(plan is null ? allowed ? "Accepted" : "Rejected" : allowed ? "Building" : "Planning on",
+            Settle(plan is null ? allowed ? "Accepted" : "Rejected" : allowed ? "Building" : Revision is not null ? "Revising" : "Planning on",
                 allowed ? TokenKeys.Vcs_Added : TokenKeys.TextMuted);
         }
     }
@@ -162,6 +205,15 @@ public sealed class ApprovalCard : Border
             VerticalAlignment = VerticalAlignment.Center,
         };
         ToolTip.SetTip(title, title.Text);
+        Control named = title;
+        if (changes.Count > 0)
+        {
+            // An edit's title opens its file, as Cursor's does: the change shown in the file's own editor.
+            Button open = new() { Classes = { StyleClasses.TextLink }, Content = title, VerticalAlignment = VerticalAlignment.Center };
+            ToolTip.SetTip(open, $"Open {(changes[0].IsNew ? $"{changes[0].Path} (new)" : changes[0].Path)} with the change shown in it");
+            open.Click += (_, _) => FileRequested?.Invoke(this, changes[0]);
+            named = open;
+        }
         if (changes.Count > 0)
         {
             int added = 0;
@@ -176,25 +228,15 @@ public sealed class ApprovalCard : Border
             left.Children.Add(Counted($"−{removed}", TokenKeys.Vcs_Deleted));
         }
         heading.Children.Add(left);
-        heading.Children.Add(title);
+        heading.Children.Add(named);
         return heading;
     }
 
     /// <summary>What the question is about: each change's path and diff, a command's text, or the agent's words (a plan).</summary>
-    private static IEnumerable<Control> Shown(ToolCall call, IReadOnlyList<ChatChange> changes, Action<Uri> browse, Action<ChatChange> open)
+    private static IEnumerable<Control> Shown(ToolCall call, IReadOnlyList<ChatChange> changes, Action<Uri> browse)
     {
         foreach (ChatChange change in changes)
         {
-            // The file's path is its link: the change shown in the file's own editor, to accept or reject there.
-            Button link = new()
-            {
-                Classes = { StyleClasses.Link },
-                Content = new TextBlock { Text = change.IsNew ? $"{change.Path} (new)" : change.Path, FontSize = 11, TextTrimming = TextTrimming.CharacterEllipsis },
-                HorizontalAlignment = HorizontalAlignment.Left,
-            };
-            ToolTip.SetTip(link, "Open the file with the change shown in it");
-            link.Click += (_, _) => open(change);
-            yield return link;
             yield return ChatDiff.View(change);
         }
         if (call.Kind == "execute")
@@ -212,16 +254,19 @@ public sealed class ApprovalCard : Border
     /// <summary>What a plan's card shows of it: a link to its file and where that is, and that an edit is built.</summary>
     private IEnumerable<Control> PlanShown(ChatPlan shown)
     {
-        Button open = new() { Classes = { StyleClasses.Link }, Content = "Open plan", HorizontalAlignment = HorizontalAlignment.Left };
+        Button open = new() { Classes = { StyleClasses.Link }, Content = "Open plan" };
         open.Click += (_, _) => PlanRequested?.Invoke(this, shown.Path);
-        yield return open;
+        Button edit = new() { Classes = { StyleClasses.Link }, Content = "Edit plan" };
+        ToolTip.SetTip(edit, "Edit the plan's file, its page beside it");
+        edit.Click += (_, _) => PlanEditRequested?.Invoke(this, shown.Path);
+        yield return new StackPanel { Orientation = Orientation.Horizontal, Spacing = 16, Children = { open, edit } };
         yield return new TextBlock { Classes = { StyleClasses.Muted }, FontSize = 11, Text = shown.Shown, TextTrimming = TextTrimming.CharacterEllipsis };
         yield return new TextBlock
         {
             Classes = { StyleClasses.Muted },
             FontSize = 11,
             TextWrapping = TextWrapping.Wrap,
-            Text = "Change the file before Build and the agent builds your version.",
+            Text = "Edit the plan before you answer and the agent builds your version.",
         };
     }
 
