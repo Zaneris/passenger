@@ -369,15 +369,23 @@ encode() {
     echo "site-shots: $webp ($(($(wc -c < "$webp") / 1024)) KB)"
 }
 
-# Every look, in Themes.cs' order.
-looks=(Passenger Harbour Sorbet Nocturne Saffron Bonbon Ledger Slate Orbit Nightjar Moss Phosphor)
+# Every look, in the picker's order: Passenger's own, the one the app carries, then passenger-themes' (their list in
+# tests/Passenger.Tests/Themes); and those over a dark VS Code theme, with no light look, which the light cycle passes over.
+looks=(Passenger Cubicle Harbour Sorbet Nocturne Saffron Bonbon Ledger Slate Orbit Nightjar Moss Phosphor)
+dark_only=(Nocturne Slate Nightjar)
 # The themes scene: the same window in every look, each over a copy of the solution file named after its look, so its
 # title bar and Solution view name it; then those frames as one animated picture, Passenger's own first, every frame a
 # key frame so each is whole wherever a viewer joins; and Passenger's own look still, for those who ask for less motion.
 themes() {
-    local theme=$1 look lower state
+    local theme=$1 look lower state shown=()
     mkdir -p "$work/png/themes"
     for look in "${looks[@]}"; do
+        if [[ $theme == light && " ${dark_only[*]} " == *" $look "* ]]; then
+            continue
+        fi
+        shown+=("$look")
+    done
+    for look in "${shown[@]}"; do
         lower=$(tr '[:upper:]' '[:lower:]' <<< "$look")
         state="$tmp/passenger-site-shots/state/themes-$lower-$theme"
         rm -rf "$state"
@@ -394,7 +402,7 @@ themes() {
         rm -f "$folder/$look.slnx"
     done
     local frames=()
-    for look in "${looks[@]}"; do
+    for look in "${shown[@]}"; do
         frames+=("$work/png/themes/$(tr '[:upper:]' '[:lower:]' <<< "$look")-$theme.png")
     done
     img2webp -loop 0 -kmin 0 -kmax 1 -lossy -q 78 -m 6 -d 1800 "${frames[@]}" -o "$images/themes-$theme.webp" > /dev/null
