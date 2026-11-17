@@ -26,6 +26,9 @@ public sealed partial class CodeEditor
         /// <summary>The text before the change being told, while it is told.</summary>
         private TextSnapshot? before;
 
+        /// <summary>The rows on screen as last asked where a range is drawn.</summary>
+        private readonly List<RowSpan> rowsAsked = [];
+
         public EditorText(CodeEditor editor)
         {
             this.editor = editor;
@@ -64,22 +67,45 @@ public sealed partial class CodeEditor
             editor.ApplyEdits([new TextEdit(start, Math.Clamp(range.Length, 0, Snapshot.Length - start), text)]);
         }
 
+        /// <summary>A rectangle for each row on screen holding a piece of the range, an empty piece's as wide as nothing:
+        /// only the rows in view are visited, so a range of the whole text costs what one of a screen does.</summary>
         public override IReadOnlyList<Rect> BoundsOf(TextRange range)
         {
             TextSnapshot text = Snapshot;
             int start = Math.Clamp(range.Start, 0, text.Length);
             int end = Math.Clamp(range.End, start, text.Length);
+            int firstLine = text.GetLineFromOffset(start);
+            int lastLine = text.GetLineFromOffset(end);
+            editor.WrapOnScreen();
+            (int firstRow, int lastRow) = editor.RowsInView;
+            double height = editor.metrics.LineHeight;
+            Rect shown = new(editor.Bounds.Size);
+            List<RowSpan> onScreen = editor.RowsOnScreen(text, firstRow, lastRow, rowsAsked);
             List<Rect> rows = [];
-            for (int line = text.GetLineFromOffset(start), last = text.GetLineFromOffset(end); line <= last; line++)
+            for (int i = 0; i < onScreen.Count; i++)
             {
-                LineSpan span = text.GetLine(line);
-                if (!editor.IsHidden(line))
+                RowSpan span = onScreen[i];
+                if (span.Line < firstLine || span.Line > lastLine)
                 {
-                    RowsOf(text, Math.Max(start, span.Start), Math.Min(end, span.End), rows);
+                    continue;
+                }
+                LineSpan line = text.GetLine(span.Line);
+                int from = Math.Max(start, line.Start);
+                int to = Math.Min(end, line.End);
+                // The range's piece of the line starts on this row, or runs on into it.
+                if (span.Start <= from ? from >= span.End && !span.IsLast : span.Start >= to)
+                {
+                    continue;
+                }
+                double left = editor.Place(text, Math.Max(from, span.Start), beforeWrap: false).X;
+                double right = editor.Place(text, Math.Min(to, span.End), beforeWrap: true).X;
+                Rect row = new(editor.TextLeft - editor.scroll.X + left, ((firstRow + i) * height) - editor.scroll.Y, Math.Max(0, right - left), height);
+                if (row.Intersects(shown) || (row.Width == 0 && shown.Contains(row.TopLeft)))
+                {
+                    rows.Add(row);
                 }
             }
-            Rect shown = new(editor.Bounds.Size);
-            return [.. rows.Where(r => r.Intersects(shown) || (r.Width == 0 && shown.Contains(r.TopLeft)))];
+            return rows;
         }
 
         public override int OffsetAt(Point point) => editor.OffsetAt(point);
@@ -104,26 +130,6 @@ public sealed partial class CodeEditor
             int start = Math.Clamp(range.Start, 0, Snapshot.Length);
             editor.Reveal(Math.Clamp(range.End, start, Snapshot.Length));
             editor.Reveal(start);
-        }
-
-        /// <summary>A rectangle for each row soft wrap makes of a piece of one line, an empty piece's as wide as nothing.</summary>
-        private void RowsOf(TextSnapshot text, int from, int to, List<Rect> rows)
-        {
-            double height = editor.metrics.LineHeight;
-            int at = from;
-            while (true)
-            {
-                (RowSpan span, int row) = editor.RowOfOffset(text, at, beforeWrap: false);
-                int rowEnd = Math.Min(to, span.End);
-                double left = editor.Place(text, at, beforeWrap: false).X;
-                double right = editor.Place(text, rowEnd, beforeWrap: true).X;
-                rows.Add(new Rect(editor.TextLeft - editor.scroll.X + left, (row * height) - editor.scroll.Y, Math.Max(0, right - left), height));
-                if (rowEnd >= to || span.IsLast || span.End <= at)
-                {
-                    return;
-                }
-                at = span.End;
-            }
         }
 
         /// <summary>Tells the document's changes, last to first as each is valid in the text the one before left.</summary>

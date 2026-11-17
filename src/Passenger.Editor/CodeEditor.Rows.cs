@@ -157,7 +157,7 @@ public sealed partial class CodeEditor
         gutterLabels.Begin(now, keepFrom);
         gutterFrame?.Keep(now, keepFrom);
 
-        List<RowSpan> shown = RowsOnScreen(text, row, Math.Max(0, (int)((scroll.Y + size.Height) / lineHeight)));
+        List<RowSpan> shown = RowsOnScreen(text, row, Math.Max(0, (int)((scroll.Y + size.Height) / lineHeight)), rowsShown);
         int first = shown.Count > 0 ? shown[0].Line : 0;
         int last = shown.Count > 0 ? shown[^1].Line : -1;
         LineView[] lineViews = ViewsOf(text, shown, scroll.X - TextPadLeft, Math.Max(0, size.Width - gutter));

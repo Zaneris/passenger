@@ -211,4 +211,78 @@ public sealed class AccessibleTextTests : IDisposable
             window.Close();
         }
     }
+
+    /// <summary>A reader asking where the whole text is drawn, as UI Automation and VoiceOver ask of a Select All, costs what
+    /// asking it of a screen's text does: in 100,000 lines against 200, in one line soft wrap makes thousands of rows of
+    /// against one of a hundred, and in a terminal's full scrollback against a screen's output, the question allocates on
+    /// the UI thread what the smaller one does, each answer the rows on screen.</summary>
+    [AvaloniaFact]
+    public void Where_the_whole_text_is_drawn_costs_a_reader_what_a_screens_text_does()
+    {
+        static string Lines(int count) => string.Concat(Enumerable.Range(0, count).Select(i => $"    public int Field{i} = {i} * 2; // a comment {i}\n"));
+        static string Words(int count) => string.Join(' ', Enumerable.Range(0, count).Select(i => $"word{i}")) + "\n";
+        (long Bytes, int Rows) Editor(string text, bool wrapped)
+        {
+            EditorRig rig = new(text);
+            try
+            {
+                rig.Editor.SoftWrap = wrapped;
+                Ui.Settle();
+                return Asked(rig.Editor.AccessibleText);
+            }
+            finally
+            {
+                rig.Window.Close();
+            }
+        }
+        (long Bytes, int Rows) Terminal(int lines)
+        {
+            TerminalSession session = new(40, 20);
+            TerminalView view = new() { Session = session };
+            Window window = new() { Width = 500, Height = 500, Content = view };
+            window.Show();
+            try
+            {
+                session.Say(string.Concat(Enumerable.Range(0, lines).Select(i => $"line {i}\r\n")));
+                Ui.Settle();
+                return Asked(view.AccessibleText);
+            }
+            finally
+            {
+                window.Close();
+            }
+        }
+
+        (long Bytes, int Rows)[] costs =
+        [
+            Editor(Lines(200), wrapped: false), Editor(Lines(100_000), wrapped: false),
+            Editor(Words(1_000), wrapped: true), Editor(Words(50_000), wrapped: true),
+            Terminal(40), Terminal(TerminalScreen.ScrollbackLimit + 100),
+        ];
+        string[] cases = ["100,000 lines", "a line of thousands of rows", "a terminal's full scrollback"];
+        for (int k = 0; k < cases.Length; k++)
+        {
+            ((long small, int smallRows), (long large, int largeRows)) = (costs[2 * k], costs[(2 * k) + 1]);
+            TestContext.Current.TestOutputHelper?.WriteLine($"Where the whole text is drawn: {small:N0} bytes for {smallRows} rows in the smaller text, {large:N0} for {largeRows} in {cases[k]}");
+            Assert.True(largeRows == smallRows && smallRows > 10, $"Where the whole of {cases[k]} is drawn was answered in {largeRows} rows, against {smallRows} in the smaller text");
+            Assert.True(large <= small + 1024,
+                $"Where the whole of {cases[k]} is drawn allocated {large:N0} bytes on the UI thread, against {small:N0} in the smaller text: rows out of view were laid out to be passed over");
+        }
+    }
+
+    /// <summary>The least a question of where the whole text is drawn allocates over a few askings, and the rows it answered.</summary>
+    private static (long Bytes, int Rows) Asked(AccessibleText text)
+    {
+        long least = long.MaxValue;
+        int rows = 0;
+        for (int round = 0; round < 4; round++)
+        {
+            GC.Collect(1, GCCollectionMode.Forced, blocking: true);
+            GC.WaitForPendingFinalizers();
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            rows = text.BoundsOf(new TextRange(0, text.Length)).Count;
+            least = Math.Min(least, GC.GetAllocatedBytesForCurrentThread() - before);
+        }
+        return (least, rows);
+    }
 }

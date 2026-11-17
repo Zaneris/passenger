@@ -335,11 +335,10 @@ public sealed partial class CodeEditor
     /// <summary>The rows a frame shows, found again for each.</summary>
     private readonly List<RowSpan> rowsShown = [];
 
-    /// <summary>The rows from <paramref name="firstRow"/> to <paramref name="lastRow"/>, in order, stepping over folded lines
-    /// rather than visiting them.</summary>
-    private List<RowSpan> RowsOnScreen(TextSnapshot text, int firstRow, int lastRow)
+    /// <summary>The rows from <paramref name="firstRow"/> to <paramref name="lastRow"/>, in order, into
+    /// <paramref name="shown"/>, stepping over folded lines rather than visiting them.</summary>
+    private List<RowSpan> RowsOnScreen(TextSnapshot text, int firstRow, int lastRow, List<RowSpan> shown)
     {
-        List<RowSpan> shown = rowsShown;
         shown.Clear();
         RowMap map = Rows;
         FoldLines folds = map.Folds;

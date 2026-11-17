@@ -147,6 +147,8 @@ public sealed partial class TerminalView
 
         public override void Replace(TextRange range, string text) => throw new InvalidOperationException("The terminal's text is its programs' to change");
 
+        /// <summary>A rectangle for each row on screen holding a piece of the range: only the rows in view are visited, so a
+        /// range of the whole scrollback costs what one of a screen does.</summary>
         public override IReadOnlyList<Rect> BoundsOf(TextRange range)
         {
             if (Screen is not { } screen)
@@ -155,16 +157,12 @@ public sealed partial class TerminalView
             }
             Index();
             List<Rect> rows = [];
-            int first = LineOf(range.Start);
-            int last = LineOf(Math.Max(range.Start, range.End));
             long top = view.TopLine;
+            int first = (int)Math.Max(LineOf(range.Start), top - screen.FirstLine);
+            int last = (int)Math.Min(LineOf(Math.Max(range.Start, range.End)), top + screen.Rows - 1 - screen.FirstLine);
             for (int line = first; line <= last; line++)
             {
                 long number = screen.FirstLine + line;
-                if (number < top || number >= top + screen.Rows)
-                {
-                    continue;
-                }
                 TerminalLine row = screen.LineAt(number);
                 int from = row.ColumnOf(Math.Max(0, range.Start - starts[line]));
                 int to = row.ColumnOf(Math.Max(0, Math.Min(range.End, starts[line + 1] - 1) - starts[line]));

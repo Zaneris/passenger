@@ -651,10 +651,19 @@ public sealed partial class CodeEditor : Control
         get
         {
             int count = document.Snapshot.LineCount;
-            int firstRow = Math.Max(0, (int)(scroll.Y / metrics.LineHeight));
-            int lastRow = Math.Max(firstRow, (int)((scroll.Y + Math.Max(Bounds.Height, metrics.LineHeight)) / metrics.LineHeight));
+            (int firstRow, int lastRow) = RowsInView;
             RowMap rows = Rows;
             return (Math.Clamp(rows.LineOfRow(firstRow).Line, 0, Math.Max(0, count - 1)), Math.Clamp(rows.LineOfRow(lastRow).Line, 0, Math.Max(0, count - 1)));
+        }
+    }
+
+    /// <summary>The first and last rows (from zero) the view reaches, the last perhaps past the text's.</summary>
+    private (int First, int Last) RowsInView
+    {
+        get
+        {
+            int first = Math.Max(0, (int)(scroll.Y / metrics.LineHeight));
+            return (first, Math.Max(first, (int)((scroll.Y + Math.Max(Bounds.Height, metrics.LineHeight)) / metrics.LineHeight)));
         }
     }
 
