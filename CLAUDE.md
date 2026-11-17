@@ -95,7 +95,7 @@ tests run with a 4 MB `System.GC.Gen0MaxBudget`, so a young collection fits a 14
   `DotnetCommand`, `HelperCommand` (Passenger's helpers on Passenger's runtime, never the machine's), `ConservingMemory`
   for Roslyn's server and the project host but never the debug adapter, whose program would inherit it, `DotnetQuestion`
   for the .NET CLI's questions (no telemetry, so it lets go of its folder), `Kill` for it and all it started (a group killed again until empty: a kill passes over a process forked as it kills); a .cmd or .bat runs through cmd.exe there and in the Terminal (`WindowsCommandLine.ThroughCmd`), never a cmd.exe line of a caller's own. Give each
-  its folder as the disk names it, PWD too. On Windows every child shares the IDE's UTF-8 console (`SharedConsole`).
+  its folder as the disk names it, PWD too; an SDK command for a folder not trusted works outside it (`DotnetFolder`, as the muxer runs the SDK a global.json's `sdk.paths` names), so its arguments name the folder (`--output`). On Windows every child shares the IDE's UTF-8 console (`SharedConsole`).
   Read a child through `ChildProcesses.Output`/`Errors`/`Hear`, never `Begin*ReadLine` (banned: its disposal faults a
   read under it). Started elsewhere: the terminal's shell (Porta.Pty; on macOS `MacPseudoTerminal`, held until its reader reads, through dash to take its terminal), vstest.console, Velopack's Update.exe, an agent's
   `--mcp-attach` Passenger (`StartApart`), the system web view's helpers; a program run in the terminal is `Adopt`ed.
@@ -489,7 +489,7 @@ a new name, and `just site-shots` retakes its images.
   value (`CSharpService.OwnScope`), never null; a running server can't take an option left out.
 - **Roslyn's server writes its MEF caches beside its DLLs**, so in a macOS bundle (a file added breaks the seal, #450)
   or a read-only folder it runs from a copy in `cache/roslyn/` (`RoslynServerFolder`); nothing a Passenger runs may
-  write inside the app.
+  write inside the app. On Linux its TMPDIR is the person's own (`RoslynServerFolder.Temporary`).
 - **The debugger's engine.** The runtime's `DebuggerError` ends a session: its process answers nothing after it, so a launched program is ended and nothing more is asked of it (`ManagedDebugger.HandleDebuggerError`, `TerminatedEvent.Failure`; `PASSENGER_ENGINE_FAIL_AT_MODULE` holds it in a test). `EngineLock` is not re-entrant; a read of the stop waits behind continue, steps, pause and
   disconnect. Never leave `_stepper` set but inactive (async stepping reads it as a queued StepComplete). Under load the runtime may hand a stepping thread's breakpoints over only after it ran on past them, in one batch with its step's end: an async step's own breakpoint is told by the breakpoint, never by where its thread stands (`PASSENGER_ENGINE_LATE_YIELD` holds it so in a test). Abort an
   evaluation past its time only where the abort takes, never rudely (one left pending fires later inside a lock, #238).
