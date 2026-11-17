@@ -302,8 +302,9 @@ public partial class MainWindow
 
     /// <summary>Why an agent's input through the inspector (app_click, app_key, app_type and app_scroll on app ide) may not
     /// reach one of Passenger's own top levels, else null: a question Passenger asks the person on an agent's behalf, the
-    /// question whether to trust a folder, or Settings, where the person alone says what agents may do; a popup or dialog
-    /// of any is it. The process's, as the inspector loaded into it is (<see cref="LiveTree.LiveApp.Own"/>).</summary>
+    /// question whether to trust a folder, one whose answer only the person gives (<see cref="ConfirmDialog.PersonsAlone"/>),
+    /// or Settings, where the person alone says what agents may do; a popup or dialog of any is it. The process's, as the
+    /// inspector loaded into it is (<see cref="LiveTree.LiveApp.Own"/>).</summary>
     internal static string? KeptFromAgents(object reached)
     {
         UiThread.Check();
@@ -317,12 +318,33 @@ public partial class MainWindow
             {
                 return Refusals.TrustAnsweredByThePerson;
             }
+            if (at is ConfirmDialog { PersonsAlone: { } persons })
+            {
+                return persons;
+            }
             if (at is Window asking && PassengerApp.Windows.Any(w => w.agentDialogs.Contains(asking)))
             {
                 return $"\"{asking.Title}\" is Passenger's question to the person on an agent's behalf: only they answer it, never an agent's input";
             }
         }
         return null;
+    }
+
+    /// <summary>Whether an agent asks for an action: its ide_action on a person's window (<see cref="ActionContext.ByAgent"/>), or
+    /// anything in its own Passenger, which nobody is at, whose ide_action runs as the window's own.</summary>
+    private bool AskedByAgent(ActionContext context) => context.ByAgent || AgentsOwn;
+
+    /// <summary>Whether what only the person does (trusting a folder, an install, a change of their shell) was asked for by
+    /// an agent's input into the window, or work it started (<see cref="AgentAsks.PersonsAlone"/>): refused, the agent and
+    /// the status bar told <paramref name="why"/>.</summary>
+    private bool RefusedToAgentsInput(string why)
+    {
+        if (!AgentAsks.PersonsAlone(why))
+        {
+            return false;
+        }
+        Refuse(why);
+        return true;
     }
 
     internal void AgentWorkStarted(string title)

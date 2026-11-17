@@ -58,13 +58,14 @@ public partial class MainWindow
 
     private Func<string, string, string, Task<bool>>? confirm;
 
-    /// <summary>Asks as <see cref="Confirm"/> does, with what it applies to under the question (Rollback's files). In an
-    /// agent's own IDE nobody is there to ask: an action the agent ran (<see cref="ActionWork.Hear"/>) is its asking, so
-    /// what that action asks is agreed to.</summary>
-    private Task<bool> ConfirmAsync(string title, string text, string yes, Control? detail) =>
+    /// <summary>Asks as <see cref="Confirm"/> does, with what it applies to under the question (Rollback's files), one only
+    /// the person answers saying why (<see cref="ConfirmDialog.PersonsAlone"/>). In an agent's own IDE nobody is there to
+    /// ask: an action the agent ran (<see cref="ActionWork.Hear"/>) is its asking, so what that action asks is agreed to,
+    /// but for what only the person answers.</summary>
+    private Task<bool> ConfirmAsync(string title, string text, string yes, Control? detail, string? personsAlone = null) =>
         confirm is { } answer ? answer(title, text, yes)
-        : AgentsOwn && ActionWork.Heard is not null ? Task.FromResult(true)
-        : new ConfirmDialog(title, text, yes, detail: detail).ShowDialog<bool>(this);
+        : AgentsOwn && ActionWork.Heard is not null && personsAlone is null ? Task.FromResult(true)
+        : new ConfirmDialog(title, text, yes, detail: detail) { PersonsAlone = personsAlone }.ShowDialog<bool>(this);
 
     /// <summary>Asks the person for a value a fix sets (an AppHost parameter's), as <see cref="Confirm"/> asks, with a box for
     /// it under the question, its characters masked for a secret; null when they cancel or give none.</summary>

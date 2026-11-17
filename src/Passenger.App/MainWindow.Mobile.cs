@@ -61,7 +61,7 @@ public partial class MainWindow
     {
         actions!.Add(new IdeAction(AppActions.InstallWorkloads, "Install Workloads…", "IDE", context => IdeErrors.Observe(InstallWorkloadsAsync()))
         {
-            WhyNot = context => context.ByAgent ? Refusals.AgentInstallsMobile
+            WhyNot = context => AskedByAgent(context) ? Refusals.AgentInstallsMobile
                 : MobileWant.Workloads.Count == 0 ? Refusals.NoWorkloadLacking
                 : null,
             Menus = [new MenuPlace("Tools", 1, 2)],
@@ -70,7 +70,7 @@ public partial class MainWindow
         });
         actions.Add(new IdeAction(AppActions.InstallAndroidDependencies, "Install Android SDK and Java…", "IDE", _ => IdeErrors.Observe(InstallAndroidAsync()))
         {
-            WhyNot = context => context.ByAgent ? Refusals.AgentInstallsMobile
+            WhyNot = context => AskedByAgent(context) ? Refusals.AgentInstallsMobile
                 : Untrusted() ?? (!MobileWant.AndroidLacks ? Refusals.NothingAndroidLacking : null),
             Menus = [new MenuPlace("Tools", 1, 3)],
             Words = ["Android SDK", "JDK", "Java", "sdkmanager", MSBuildNames.InstallAndroidDependencies],
@@ -409,14 +409,18 @@ public partial class MainWindow
     }
 
     /// <summary>dotnet workload install of <paramref name="ids"/> into the .NET Passenger builds with, Install Workloads' and
-    /// New Project's one way: refused where this user may not write it, asked of the person where it <paramref name="asks"/>,
-    /// its stages and lines said and handed on, the projects loaded again after. A .NET with no workload set installs its
-    /// newest first (dotnet workload update); downloads go to disk where the temporary folder is in memory
-    /// (<see cref="WorkloadInstalls"/>). Whether they were installed, and what it came to, as the status bar says it.</summary>
+    /// New Project's one way: refused to an agent's input and where this user may not write it, asked of the person where it
+    /// <paramref name="asks"/>, its stages and lines said and handed on, the projects loaded again after. A .NET with no
+    /// workload set installs its newest first (dotnet workload update); downloads go to disk where the temporary folder is in
+    /// memory (<see cref="WorkloadInstalls"/>). Whether they were installed, and what it came to, as the status bar says it.</summary>
     public async Task<(bool Installed, string Said)> InstallWorkloadsAsync(IReadOnlyList<string> ids, bool asks, Action<string>? stages, Action<string>? lines,
         CancellationToken stop)
     {
         UiThread.Check();
+        if (RefusedToAgentsInput(Refusals.AgentInstallsMobile))
+        {
+            return (false, Refusals.AgentInstallsMobile);
+        }
         string named = $"{Plural.Noun(ids.Count, "workload")} {Plural.Listed([.. ids])}";
         if (work.Begin(AppActions.InstallWorkloads, asks ? "Asking to install the .NET workloads" : $"Installing the .NET {named}") is not { } installing)
         {
@@ -446,9 +450,10 @@ public partial class MainWindow
             {
                 return Came(false, Refusals.WorkloadsNeedAdministrator(root, command));
             }
-            if (asks && !await Confirm($"Install the .NET {named}?",
+            if (asks && !await ConfirmAsync($"Install the .NET {named}?",
                 $"Passenger runs {command} with the .NET in {PathNames.Shown(root, null)}, which downloads them from NuGet. "
-                + $"{Plural.Listed([.. MobileWant.Projects])} then {Plural.Agreeing(MobileWant.Projects.Count, "loads", "load")} again.", "Install"))
+                + $"{Plural.Listed([.. MobileWant.Projects])} then {Plural.Agreeing(MobileWant.Projects.Count, "loads", "load")} again.", "Install", null,
+                Refusals.AgentInstallsMobile))
             {
                 return Came(false, $"The .NET {named} {Plural.Agreeing(ids.Count, "was", "were")} not installed");
             }
@@ -499,12 +504,12 @@ public partial class MainWindow
 
     /// <summary>Install Android SDK and Java: Google's licences of what is to be installed shown and accepted by the
     /// person, then the Android workload's InstallAndroidDependencies on a project lacking them, into the SDK folder
-    /// found or the usual one, and the projects loaded again.</summary>
+    /// found or the usual one, and the projects loaded again. Refused to an agent's input.</summary>
     private async Task InstallAndroidAsync()
     {
         UiThread.Check();
         MobileWant want = MobileWant;
-        if (!want.AndroidLacks || want.AndroidSdk is not { } sdk
+        if (RefusedToAgentsInput(Refusals.AgentInstallsMobile) || !want.AndroidLacks || want.AndroidSdk is not { } sdk
             || session.Projects.FirstOrDefault(p => want.Projects.Contains(p.Name, StringComparer.Ordinal)
                 && p.TargetFrameworks.Any(f => MobilePlatforms.Of(f) == FrameworkNames.Android)) is not { } project
             || work.Begin(AppActions.InstallAndroidDependencies, "Reading the Android SDK's licences") is not { } installing)
@@ -645,7 +650,7 @@ public partial class MainWindow
             TextWrapping = Avalonia.Media.TextWrapping.Wrap,
             Height = 260,
         };
-        return new ConfirmDialog(title, text, "Accept and Install", "Decline", shown) { EnterAgrees = false }.ShowDialog<bool>(this);
+        return new ConfirmDialog(title, text, "Accept and Install", "Decline", shown) { EnterAgrees = false, PersonsAlone = Refusals.AgentInstallsMobile }.ShowDialog<bool>(this);
     }
 
     /// <summary>An install's program run, each line it writes <paramref name="heard"/> on the window's thread, ended once

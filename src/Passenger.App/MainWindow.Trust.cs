@@ -181,13 +181,12 @@ public partial class MainWindow
     /// <summary>Trusts a folder, with every folder under it, one in a Git repository with the whole repository
     /// (<see cref="WorkspaceTrust.FolderToTrust"/>), kept in the person's state where the window keeps it: every window's
     /// session of it begins what it held back (<see cref="FollowTrust"/>). Refused where an agent's input into the window
-    /// asked for it, or started the work that does (<see cref="AgentAsks.PersonsAlone"/>), the status bar saying why.</summary>
+    /// asked for it, or started the work that does (<see cref="RefusedToAgentsInput"/>), the status bar saying why.</summary>
     private void TrustFolder(string folder)
     {
         UiThread.Check();
-        if (AgentAsks.PersonsAlone(Refusals.TrustIsThePersons))
+        if (RefusedToAgentsInput(Refusals.TrustIsThePersons))
         {
-            Refuse(Refusals.TrustIsThePersons);
             return;
         }
         string trusted = WorkspaceTrust.FolderToTrust(folder);

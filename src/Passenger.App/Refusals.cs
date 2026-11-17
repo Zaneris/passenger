@@ -252,6 +252,11 @@ public static class Refusals
     public const string AgentInstalls = "An agent's own Passenger, which nobody is at, never installs software: ask the person, who does it with the banner over "
         + "Passenger's window, or Tools, Install .NET SDK…";
 
+    /// <summary>An agent's input into Passenger's window asking to install the .NET SDK, or answering the person's question
+    /// whether to: only the person installs it there, an agent asking them through ide_action.</summary>
+    public const string InstallIsThePersons = "Only the person installs the .NET SDK by Passenger's window, never an agent's input: "
+        + "an agent's ide_action of Install .NET SDK… asks the person at their window";
+
     /// <summary>An agent's Add .NET to the Shell's PATH: the person's shell is theirs to change.</summary>
     public const string AgentChangesPath = "An agent never changes the person's shell PATH: ask the person, who does it with the banner over Passenger's window, "
         + "or Tools, Add .NET to the Shell's PATH…";

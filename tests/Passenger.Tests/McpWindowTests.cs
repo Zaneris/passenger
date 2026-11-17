@@ -9,6 +9,7 @@ using Passenger.App.Debugging;
 using Passenger.App.Editors;
 using Passenger.App;
 using Passenger.App.Mcp;
+using Passenger.App.Mobile;
 using Passenger.App.Run;
 using Passenger.App.Settings;
 using Passenger.Core;
@@ -458,6 +459,78 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
         }
         finally
         {
+            Gone(client);
+            window.Close();
+        }
+    }
+
+    /// <summary>An agent's input into the person's window never installs what a project needs: its click on the banner's
+    /// Install Workloads… installs nothing and asks the person nothing, and its click on Install in the question the
+    /// person's own click asked never answers it; the agent is told why each time, the status bar saying it too, and the
+    /// question waits for the person, whose Cancel installs nothing.</summary>
+    [AvaloniaFact]
+    public void An_agents_input_into_the_persons_window_never_installs_what_a_project_needs_and_is_told_why()
+    {
+        string folder = PathNames.Canonical(TestFolders.Create("mcp-input-install-"));
+        DeleteAtEnd(folder);
+        (string name, string platform) = OperatingSystem.IsMacOS() ? ("Tv", "tvos") : ("Droid", "android");
+        File.WriteAllText(Path.Combine(folder, $"{name}.csproj"), $"""
+            <Project Sdk="Microsoft.NET.Sdk">
+              <PropertyGroup>
+                <TargetFramework>net{MobilePlatforms.FirstOnCoreClr}.0-{platform}</TargetFramework>
+                <OutputType>Exe</OutputType>
+              </PropertyGroup>
+            </Project>
+            """);
+        MainWindow window = AgentsWindow(folder, languageServer: false);
+        WaitFor(() => window.Projects.Any(p => p.IsEvaluated), "the project to evaluate", TimeSpan.FromMinutes(3));
+        Ui.Await(window.MobileAsked(), "what the project needs to be asked", TimeSpan.FromMinutes(3));
+        if (window.MobileWant.Workloads.Count == 0)
+        {
+            window.Close();
+            Assert.Skip($"This .NET has the {platform} workload, so nothing is lacking to install");
+        }
+        List<IReadOnlyList<string>> installed = [];
+        MainWindow.WorkloadStandIn = new WorkloadStandIn(folder, arguments =>
+        {
+            installed.Add(arguments);
+            return ChildProcesses.DotnetCommand(["--version"]);
+        });
+        McpClient client = Await(Waiting.Apart(() => Start(["--mcp-attach", ProcessId, folder])), "the agent attaching");
+        try
+        {
+            string title = window.Actions[AppActions.InstallWorkloads]!.Title;
+            Avalonia.Controls.Button link = window.GetVisualDescendants().OfType<Avalonia.Controls.Button>().Single(b => (b.Content as string) == title && b.IsEffectivelyVisible);
+            Avalonia.Point at = Avalonia.VisualExtensions.TranslatePoint(link, new Avalonia.Point(link.Bounds.Width / 2, link.Bounds.Height / 2), window)
+                ?? throw new InvalidOperationException("The banner's Install Workloads… is not in the window");
+            Task<CallToolResult> clicking = Waiting.Apart(() => Result(client, McpTools.AppClick,
+                new() { ["app"] = "ide", ["window"] = nameof(MainWindow), ["x"] = at.X, ["y"] = at.Y }));
+            Press(Question(window, "the question for the agent's click in Passenger's windows"), AgentToolDialog.AllowForSession);
+            CallToolResult clicked = Await(clicking, "the agent's click on the banner's Install Workloads…");
+            Assert.True(clicked.IsError == true && Text(clicked).Contains(Refusals.AgentInstallsMobile, StringComparison.Ordinal),
+                $"The agent's click on the banner's Install Workloads… was answered: {Text(clicked)}");
+            Ui.Settle();
+            Assert.True(window.Actions.Work.Of(AppActions.InstallWorkloads) is null && !window.OwnedWindows.OfType<ConfirmDialog>().Any() && installed.Count == 0,
+                $"The agent's click on Install Workloads… began an install ({window.Actions.Work.Of(AppActions.InstallWorkloads)?.Stage}; {installed.Count} run)");
+            Assert.Equal(Refusals.AgentInstallsMobile, window.Status);
+
+            Ui.Click(link);
+            WaitFor(() => window.OwnedWindows.OfType<ConfirmDialog>().Any(d => d.IsVisible), "the person's own click on Install Workloads… to ask them");
+            ConfirmDialog question = window.OwnedWindows.OfType<ConfirmDialog>().Single();
+            CallToolResult answered = Await(Waiting.Apart(() => Result(client, McpTools.AppClick,
+                new() { ["app"] = "ide", ["window"] = nameof(ConfirmDialog), ["control"] = "Button \"Install\"" })), "the agent's click on the question's Install");
+            Assert.True(answered.IsError == true && Text(answered).Contains(Refusals.AgentInstallsMobile, StringComparison.Ordinal),
+                $"The agent's click on the install question's Install was answered: {Text(answered)}");
+            Ui.Settle();
+            Assert.True(question.IsVisible && question.Answered is null && installed.Count == 0, "The agent's click answered the install question the person is asked");
+
+            Press(question, "Cancel");
+            WaitFor(() => window.Actions.Work.Of(AppActions.InstallWorkloads) is null, "the install the person turned down to end");
+            Assert.Equal(($"The .NET workload {platform} was not installed", 0), (window.Status, installed.Count));
+        }
+        finally
+        {
+            MainWindow.WorkloadStandIn = null;
             Gone(client);
             window.Close();
         }

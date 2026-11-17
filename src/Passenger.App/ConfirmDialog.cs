@@ -29,8 +29,18 @@ public sealed class ConfirmDialog : IdeWindow
     /// closes.</summary>
     public bool? Answered { get; private set; }
 
+    /// <summary>Why only the person answers it (an install's, a change of their shell's), which no agent's input reaches
+    /// (<see cref="MainWindow.KeptFromAgents"/>); null for a question an agent's input may answer.</summary>
+    public string? PersonsAlone { get; init; }
+
+    /// <summary>The answer, which an agent's input never gives to a question only the person answers
+    /// (<see cref="AgentAsks.PersonsAlone"/>): it stays asking.</summary>
     private void Answer(bool agreed)
     {
+        if (PersonsAlone is { } why && AgentAsks.PersonsAlone(why))
+        {
+            return;
+        }
         Answered = agreed;
         Close(agreed);
     }

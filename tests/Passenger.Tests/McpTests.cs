@@ -1854,6 +1854,24 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
             $"ide_action of an action there is not answered: {Text(refused)}");
     }
 
+    /// <summary>An agent's own Passenger, which nobody is at, refuses its ide_action of an install or a change of the
+    /// person's shell PATH in the words a person's window refuses an agent's, never taking them as the window's own.</summary>
+    [Fact]
+    public async Task An_agents_own_passenger_refuses_its_ide_action_to_install_or_change_the_shells_path()
+    {
+        string folder = TestFolders.Create("mcp-own-installs-");
+        DeleteAtEnd(folder);
+        await using McpClient client = await Start(["--mcp", folder], languageServer: false);
+        foreach ((string action, string why) in ((string, string)[])[(AppActions.InstallDotnetSdk, Refusals.AgentInstalls),
+            (AppActions.AddDotnetToPath, Refusals.AgentChangesPath), (AppActions.InstallWorkloads, Refusals.AgentInstallsMobile),
+            (AppActions.InstallAndroidDependencies, Refusals.AgentInstallsMobile)])
+        {
+            CallToolResult refused = await Result(client, McpTools.IdeAction, new() { ["action"] = action });
+            Assert.True(refused.IsError == true && Text(refused).Contains(why, StringComparison.Ordinal),
+                $"An agent's own Passenger's ide_action of {action} answered: {Text(refused)}");
+        }
+    }
+
     /// <summary>An agent's checkout of a branch the repository has not is refused naming create, which makes it, and the
     /// branches there are, never git's "fatal: invalid reference"; the head stays where it was. A log of no commits is
     /// refused, never answered with one.</summary>
