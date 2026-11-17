@@ -110,7 +110,7 @@ tests run with a 4 MB `System.GC.Gen0MaxBudget`, so a young collection fits a 14
 - **Colours are tokens** (`Passenger.*` in `Theme/Tokens.axaml`, the default theme every other is laid over), given in
   every theme (dark and light; the others live in Zaneris/passenger-themes, the tests' copy in
   `tests/Passenger.Tests/Themes`, Harbour's and Reef by hand, the rest by `just themes FOLDER`; Cubicle, carried in `Theme/BuiltIn`, by
-  `tools/themes.py`'s `BUILT_IN`, `ThemeSource.Carried` naming what is carried); a theme file is read
+  `tools/themes.py`'s `BUILT_IN`, the themes' pictures by `tools/theme-pictures.py`, `ThemeSource.Carried` naming what is carried); a theme file is read
   only through `ThemeFiles` (format 1, `docs/themes.md`; its JSON `ThemeJson.Read`; one kept over a VS Code theme through `KeptThemes.KeepOver`, its base, by id or by file, kept under `vscode/` (`KeptThemes.BaseBeside`), its name `ThemeFiles.NameOf`) and laid through `ThemeResources`, so a token added to
   Tokens.axaml is one a theme may give. A theme is a `SourcedTheme`; a source is read only through `ThemeSourceReads` and
   `ThemeListing`, never at a start whose themes are kept (`KeptThemes`); `PASSENGER_THEMES` names the repository's place; a theme's picture is drawn only through `ThemeBackdrop`
