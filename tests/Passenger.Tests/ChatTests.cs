@@ -193,13 +193,39 @@ public sealed class ChatTests
     }
 
     [AvaloniaFact]
+    public void The_review_bar_is_one_line_that_lists_its_files_on_a_click_and_Review_steps_through_them()
+    {
+        MainWindow window = Reviewing(out _, out _);
+        Send(window, "edit");
+        Ui.WaitFor(() => !window.Chat.Busy && window.Chat.Review.Shown.Count == 2, "both edits in review");
+        ReviewBar review = window.Chat.Review;
+        Assert.False(review.IsOpen, "The review bar lists its files before it is asked to");
+        Assert.Contains(review.GetVisualDescendants().OfType<TextBlock>(), text => text.Text == "2 Files" && text.IsEffectivelyVisible);
+        Assert.DoesNotContain(review.GetVisualDescendants().OfType<Button>(), b => Equals(b.Content, "notes.md (new)") && b.IsEffectivelyVisible);
+
+        Ui.Click(review.GetVisualDescendants().OfType<Button>().First(b => b.Content is DockPanel));
+        Ui.Settle();
+        Assert.True(review.IsOpen);
+        Assert.Contains(review.GetVisualDescendants().OfType<Button>(), b => Equals(b.Content, "notes.md (new)") && b.IsEffectivelyVisible);
+
+        Ui.Click(InReview(window, "Review"));
+        Ui.Settle();
+        string first = Path.GetFileName(window.EditorArea.Active?.Path ?? string.Empty);
+        Ui.Click(InReview(window, "Review"));
+        Ui.Settle();
+        string second = Path.GetFileName(window.EditorArea.Active?.Path ?? string.Empty);
+        Assert.Equal(["hello.txt", "notes.md"], new[] { first, second }.Order());
+        window.Close();
+    }
+
+    [AvaloniaFact]
     public void Undo_all_puts_each_file_back_as_it_was_before_the_agent()
     {
         MainWindow window = Reviewing(out StandInAgent agent, out string folder);
         Send(window, "edit");
         Ui.WaitFor(() => !window.Chat.Busy && window.Chat.Review.Shown.Count == 2, "the edits in review");
 
-        Ui.Click(InReview(window, "Undo all"));
+        Ui.Click(InReview(window, "Undo"));
         Ui.WaitFor(() => window.Chat.Review.Shown.Count == 0, () => $"the review emptied, where it lists {window.Chat.Review.Shown.Count}");
 
         Assert.Equal("hello\n", File.ReadAllText(Path.Combine(folder, "hello.txt")));
@@ -216,7 +242,7 @@ public sealed class ChatTests
         Ui.WaitFor(() => !window.Chat.Busy && window.Chat.Review.Shown.Count == 2, "the edits in review");
         File.WriteAllText(Path.Combine(folder, "hello.txt"), "mine\n");
 
-        Ui.Click(InReview(window, "Undo all"));
+        Ui.Click(InReview(window, "Undo"));
         Ui.WaitFor(() => window.Chat.Review.Shown.Count == 1, () => $"one file undone, where the review lists {window.Chat.Review.Shown.Count}");
 
         Assert.Equal("mine\n", File.ReadAllText(Path.Combine(folder, "hello.txt")));
@@ -231,7 +257,7 @@ public sealed class ChatTests
         Send(window, "edit");
         Ui.WaitFor(() => !window.Chat.Busy && window.Chat.Review.Shown.Count == 2, "the edits in review");
 
-        Ui.Click(InReview(window, "Keep all"));
+        Ui.Click(InReview(window, "Keep"));
 
         Assert.Empty(window.Chat.Review.Shown);
         Assert.Equal("hello\nworld\n", File.ReadAllText(Path.Combine(folder, "hello.txt")));

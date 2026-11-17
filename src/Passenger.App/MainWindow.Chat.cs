@@ -98,6 +98,17 @@ public partial class MainWindow
                 IdeErrors.Observe(undoing);
             };
             view.Review.DiffRequested += (_, file) => OpenChangedFile(file.Path);
+            view.Review.ReviewRequested += (_, _) =>
+            {
+                // Review steps through the files, as Cursor's does: the one after the file shown, else the first.
+                IReadOnlyList<ReviewedFile> files = view.Review.Shown;
+                string? now = Editors.Active is { } active ? PathNames.Canonical(active.Path) : null;
+                int at = files.ToList().FindIndex(file => file.Path == now);
+                if (files.Count > 0)
+                {
+                    OpenChangedFile(files[(at + 1) % files.Count].Path);
+                }
+            };
             view.EditDiffRequested += (_, id) =>
             {
                 if (chatEdits.TryGetValue(id, out string[]? named) && named.Length > 0)
