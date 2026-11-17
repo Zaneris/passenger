@@ -581,8 +581,11 @@ public static class WorkspaceEdits
     }
 
     /// <summary>The files and folders an edit's renames move, each where it was.</summary>
-    public static IReadOnlyList<string> Moved(JsonElement edit) =>
-        [.. Shapes.WorkspaceEdit(edit).Where(c => c.Operation is not null).Select(c => Resource.Read(c.Operation!.Value)).Where(r => r.To is not null).Select(r => r.Path)];
+    public static IReadOnlyList<string> Moved(JsonElement edit) => [.. Renames(edit).Select(r => r.From)];
+
+    /// <summary>The files and folders an edit's renames move, each where it was and where it goes.</summary>
+    public static IReadOnlyList<(string From, string To)> Renames(JsonElement edit) =>
+        [.. Shapes.WorkspaceEdit(edit).Where(c => c.Operation is not null).Select(c => Resource.Read(c.Operation!.Value)).Where(r => r.To is not null).Select(r => (r.Path, r.To!))];
 
     /// <summary>Whether an edit changes a range of a file already.</summary>
     public static bool Changes(JsonElement edit, string path, LspRange range) =>

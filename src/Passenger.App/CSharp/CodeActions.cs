@@ -343,7 +343,7 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
         {
             return (RefactorOutcome.Refused($"{what} was not applied: {stale}"), false);
         }
-        RefactorOutcome made = chosen.Edit is { } edit ? await ApplyEditAsync(edit, asked, what, what, patience) : new RefactorOutcome(string.Empty, null, [], []);
+        RefactorOutcome made = chosen.Edit is { } edit ? await ApplyEditAsync(edit, asked, what, what) : new RefactorOutcome(string.Empty, null, [], []);
         if (made.Problem is not null)
         {
             return (made, false);
@@ -699,12 +699,12 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
             edit = TypeRename.With(edit, [.. toolkit.Uses.GroupBy(u => u.Path, PathNames.Comparer).Select(file => (file.Key, (IReadOnlyList<LspTextEdit>)[.. file.Select(u =>
                 new LspTextEdit(new LspRange(new LspPosition(u.At.Line, u.At.Character), new LspPosition(u.End.Line, u.End.Character)), u.Name))]))]);
         }
-        TakenAlong along = type is null ? new(edit, [], []) : await TakenAlongAsync(type, name, renameFiles, edit, asked);
+        TakenAlong along = type is null ? new(edit, []) : await TakenAlongAsync(type, name, renameFiles, edit, asked);
         edit = along.Edit;
         List<(string From, string To)> moves = [.. along.Moves];
         IReadOnlyList<RefactoredFile> edited = await WorkspaceEdits.FilesAsync(context.Editors, edit, asked);
         // A scene's places were read from the project's index, which a save the folder's watcher has yet to tell of leaves behind.
-        if (await context.Languages.CSharp.GodotOutOfDateAsync([.. inScenes, .. scripted, .. along.Loading], asked, patience) is { } overtaken)
+        if (await context.Languages.CSharp.GodotOutOfDateAsync([.. inScenes, .. scripted], asked, patience) is { } overtaken)
         {
             return RefactorOutcome.Refused($"Rename was not applied: {overtaken}");
         }
@@ -712,9 +712,12 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
         string command = $"Rename {old} to {name}";
         using CommandHistory.Recording recording = context.Editors.Commands.Record(command);
         TypeRename.Applied applied;
+        List<string> left = [];
+        string? ungodot;
         try
         {
             applied = TypeRename.Apply(context.Editors, edit, moves, asked, dropped, recording);
+            ungodot = await GodotFollowAsync(edit, applied, recording, left);
             // Written whether or not every file moved: the code is renamed either way.
             await WorkspaceEdits.LandedAsync(recording, context.Say);
         }
@@ -730,14 +733,17 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
         {
             said += $"{(dropped.Count > 0 ? "; and" : ", but")} {unmoved}";
         }
+        if (ungodot is not null || left.Count > 0)
+        {
+            said += $"; {ungodot ?? string.Join("; ", left)}";
+        }
         return new RefactorOutcome(said, null, [.. changed, .. applied.Moved.Select(m => new RefactoredFile(m.From, RefactoredChange.Moved, [], m.To))], dropped) { Unmoved = applied.Unmoved };
     }
 
     /// <summary>What a type's rename to <paramref name="name"/> takes along, Rename's and a code action's alike: the
     /// <c>x:Class</c> naming it, where the edit does not change it already; its files named after it when
     /// <paramref name="renameFiles"/>, and the markup its class is made with (<see cref="TypeRename.MarkupAsync"/>), each but
-    /// those the edit moves itself; and, for a Godot script moved, the scenes loading it and its .uid. The edit with them,
-    /// the moves, and the scenes' edits, placed in text Passenger read.</summary>
+    /// those the edit moves itself. The edit with them, and the moves.</summary>
     private async Task<TakenAlong> TakenAlongAsync(TypeRename.Named type, string name, bool renameFiles, System.Text.Json.JsonElement edit, Asked? asked)
     {
         TypeRename.Markup markup = await TypeRename.MarkupAsync(context.Xaml?.Invoke(), type, name, renameFiles);
@@ -749,19 +755,18 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
         IReadOnlyList<string> moved = WorkspaceEdits.Moved(edit);
         List<(string From, string To)> moves = [.. (renameFiles ? type.Files : []).Select(f => (From: f, To: TypeRename.Renamed(f, name))).Concat(markup.Moves)
             .Where(m => m.From != m.To && File.Exists(m.From) && !moved.Any(p => PathNames.Same(p, m.From))).Distinct()];
-        // A Godot script's file moved: the scenes that load it follow, and its .uid goes beside it.
-        (IReadOnlyList<PlacedEdits> loading, IReadOnlyList<(string From, string To)> beside) = await context.Languages.CSharp.GodotMovedAsync(moves);
-        if (loading.Count > 0)
-        {
-            edit = TypeRename.With(edit, loading);
-        }
-        moves.AddRange(beside);
-        return new TakenAlong(edit, moves, loading);
+        return new TakenAlong(edit, moves);
     }
 
-    /// <summary>A type's rename's edit with what it takes along (<see cref="TakenAlongAsync"/>), the files it moves, and
-    /// the edits of the scenes loading a Godot script among them.</summary>
-    private sealed record TakenAlong(System.Text.Json.JsonElement Edit, IReadOnlyList<(string From, string To)> Moves, IReadOnlyList<PlacedEdits> Loading);
+    /// <summary>A type's rename's edit with what it takes along (<see cref="TakenAlongAsync"/>), and the files it moves.</summary>
+    private sealed record TakenAlong(System.Text.Json.JsonElement Edit, IReadOnlyList<(string From, string To)> Moves);
+
+    /// <summary>A Godot project's files following the files a change moved within its command, those its edit renamed and
+    /// those a type's rename took along (<see cref="CSharpAssist.GodotFollowAsync"/>): null once they follow, else why one
+    /// could not.</summary>
+    private Task<string?> GodotFollowAsync(System.Text.Json.JsonElement edit, TypeRename.Applied applied, CommandHistory.Recording recording, List<string> left) =>
+        context.Languages.CSharp.GodotFollowAsync([.. WorkspaceEdits.Renames(edit).Where(r => Path.Exists(r.To) && (!Path.Exists(r.From) || PathNames.Same(r.From, r.To)))
+            .Concat(applied.Moved).Select(m => (m.From, PathNames.Canonical(m.To)))], recording, left);
 
     /// <summary>A GDScript's member renamed from where its script declares it, as Rename there renames it: the script lent
     /// with no tab where none shows it, renamed by Passenger's reading, else once Godot's server reads it, within
@@ -1121,37 +1126,36 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
     /// its files have landed: the files it changed and moved and those it left, with that it is done when the status bar said
     /// it was waiting for one, or that a file could not follow its type, or why not, each said as <paramref name="what"/>. A
     /// type it renames takes along what Rename's does (<see cref="TakenAlongAsync"/>), whatever action made it.</summary>
-    internal async Task<RefactorOutcome> ApplyEditAsync(System.Text.Json.JsonElement edit, Asked? asked, string title, string what, Patience? patience = null)
+    internal async Task<RefactorOutcome> ApplyEditAsync(System.Text.Json.JsonElement edit, Asked? asked, string title, string what)
     {
         List<(string From, string To)> moves = [];
-        List<PlacedEdits> loading = [];
         foreach ((TypeRename.Named type, string name) in await TypeRename.RenamedByAsync(context.Editors, edit, asked))
         {
             TakenAlong along = await TakenAlongAsync(type, name, RenameSettings.RenameFiles, edit, asked);
             edit = along.Edit;
             moves.AddRange(along.Moves.Where(m => !moves.Any(n => PathNames.Same(n.From, m.From))));
-            loading.AddRange(along.Loading);
-        }
-        if (await context.Languages.CSharp.GodotOutOfDateAsync(loading, asked, patience) is { } overtaken)
-        {
-            return RefactorOutcome.Refused($"{what} was not applied: {overtaken}");
         }
         List<string> dropped = [];
         IReadOnlyList<RefactoredFile> files = await WorkspaceEdits.FilesAsync(context.Editors, edit, asked);
         bool waited;
         TypeRename.Applied applied = new(0, [], null);
+        List<string> left = [];
+        string? unfollowed;
         using CommandHistory.Recording recording = context.Editors.Commands.Record(title);
         try
         {
             await context.ChangeFilesAsync([.. WorkspaceEdits.Paths(edit), .. moves.SelectMany(m => new[] { m.From, m.To })], recording,
                 () => applied = TypeRename.Apply(context.Editors, edit, moves, asked, dropped, recording));
+            unfollowed = await GodotFollowAsync(edit, applied, recording, left);
             waited = await WorkspaceEdits.LandedAsync(recording, context.Say);
         }
         catch (WorkspaceEditFailed failed)
         {
             return RefactorOutcome.Refused($"{what} was not applied: {failed.Message}");
         }
-        string said = applied.Unmoved is { } unmoved ? $"{what} was made, but {unmoved}" : waited ? $"{what} done" : string.Empty;
+        string said = applied.Unmoved is { } unmoved ? $"{what} was made, but {unmoved}"
+            : (unfollowed ?? (left.Count > 0 ? string.Join("; ", left) : null)) is { } godot ? $"{what} was made, but {godot}"
+            : waited ? $"{what} done" : string.Empty;
         return new RefactorOutcome(said, null, [.. files, .. applied.Moved.Select(m => new RefactoredFile(m.From, RefactoredChange.Moved, [], m.To))], dropped) { Unmoved = applied.Unmoved };
     }
 }

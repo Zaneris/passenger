@@ -39,6 +39,33 @@ public class GodotUidsTests
     }
 
     [Fact]
+    public void The_cache_names_files_moved_where_they_went_keeping_its_count_and_every_other_byte()
+    {
+        // As Godot's editor leaves it: an id set anew appended after the count's entries, and bytes past them it never reads.
+        byte[] cache = [.. Cache((1, "res://actors/icon.svg"), (2, "res://actors/Main.cs"), (3, "res://main.tscn"), (1, "res://actors/icon.svg")), 9, 9];
+        List<(string, string)> moves = [("res://actors/", "res://levels/actors/"), ("res://main.tscn", "res://Main scene ü.tscn")];
+
+        (byte[] bytes, IReadOnlySet<long> ids) = GodotUids.CacheMoved(cache, moves)!.Value;
+
+        Assert.Equal([.. Cache((1, "res://levels/actors/icon.svg"), (2, "res://levels/actors/Main.cs"), (3, "res://Main scene ü.tscn"), (1, "res://levels/actors/icon.svg")), 9, 9], bytes);
+        Assert.Equal([1L, 2L, 3L], ids.Order());
+        Assert.Equal(cache, GodotUids.CacheMoved(bytes, [("res://levels/actors/", "res://actors/"), ("res://Main scene ü.tscn", "res://main.tscn")])!.Value.Bytes);
+    }
+
+    [Fact]
+    public void Only_the_ids_given_are_moved_in_the_cache_and_one_cut_short_or_naming_none_moved_is_left()
+    {
+        // Two ids of one path, as a file of one id moved over where a file of another was: a move taken back takes its own.
+        byte[] cache = Cache((1, "res://levels/icon.svg"), (2, "res://levels/icon.svg"));
+
+        Assert.Equal(Cache((1, "res://levels/icon.svg"), (2, "res://icon.svg")), GodotUids.CacheMoved(cache, [("res://levels/icon.svg", "res://icon.svg")], new HashSet<long> { 2 })!.Value.Bytes);
+        Assert.Null(GodotUids.CacheMoved(cache, [("res://levels/icon.svg", "res://icon.svg")], new HashSet<long> { 3 }));
+        Assert.Null(GodotUids.CacheMoved(cache, [("res://other.svg", "res://moved.svg")]));
+        Assert.Null(GodotUids.CacheMoved(cache.AsSpan(0, cache.Length - 1), [("res://levels/icon.svg", "res://icon.svg")]));
+        Assert.Null(GodotUids.CacheMoved([1, 2], [("res://icon.svg", "res://moved.svg")]));
+    }
+
+    [Fact]
     public void A_projects_scenes_lead_from_a_uid_to_its_file_a_scenes_own_header_first()
     {
         GodotScenes scenes = new(Path.GetFullPath("/game"), new Dictionary<string, GodotFile>

@@ -1124,7 +1124,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             throw new InvalidOperationException($"{what} was not applied: {stale}");
         }
         // Made as the window makes it, under the action's title in Undo, a type it renames taking its files along.
-        RefactorOutcome made = await window.Assist.Actions.ApplyEditAsync(edit, asked, title, what, patience);
+        RefactorOutcome made = await window.Assist.Actions.ApplyEditAsync(edit, asked, title, what);
         if (made.Problem is { } problem)
         {
             throw new InvalidOperationException(problem);

@@ -3,7 +3,6 @@ using Passenger.App.Editors;
 using Passenger.App.Explorer;
 using Passenger.App.Workspace;
 using Passenger.Core;
-using Passenger.Text;
 using Passenger.Workspace;
 using E = Passenger.Editor.EditorActions;
 
@@ -394,100 +393,10 @@ public partial class MainWindow
     }
 
     /// <summary>The Godot projects' files follow files and folders of theirs moved within the move's command
-    /// (<see cref="CSharpAssist.GodotFollowAsync"/>): every res:// path naming one written anew in its scenes, resources,
-    /// project.godot and C#, a binary scene's or resource's too, and the .uid and .import files beside a moved file moved
-    /// with it. Null once they follow, else why one could not; what Passenger cannot rewrite said into <paramref name="left"/>.</summary>
-    private async Task<string?> FollowGodotAsync(IReadOnlyList<(string From, string To)> moved, CommandHistory.Recording recording, List<string> left)
-    {
-        if (moved.Count == 0 || !moved.Any(m => session.GodotOf(m.To) is not null))
-        {
-            return null;
-        }
-        using Asked asked = WorkspaceEdits.Track(Editors);
-        (IReadOnlyList<(string Path, IReadOnlyList<Lsp.LspTextEdit> Edits)> files, IReadOnlyList<(string From, string To)> beside, IReadOnlyList<GodotRewritten> binary,
-            IReadOnlyList<string> unread) = await assist.Languages.CSharp.GodotFollowAsync(moved);
-        left.AddRange(unread);
-        foreach ((string from, string to) in beside)
-        {
-            if (recording.Move(from, to) is { } refused)
-            {
-                return $"{Path.GetFileName(from)} could not go with {Path.GetFileNameWithoutExtension(to)}: {refused}";
-            }
-        }
-        if (files.Count > 0)
-        {
-            System.Text.Json.JsonElement edit = TypeRename.With(System.Text.Json.JsonSerializer.SerializeToElement(new { changes = new Dictionary<string, object>() }), files);
-            List<string> dropped = [];
-            try
-            {
-                await FollowingAsync([.. files.Select(f => f.Path)], recording, () => WorkspaceEdits.ApplyAsCommand(Editors, edit, recording, asked, dropped));
-            }
-            catch (WorkspaceEditFailed failed)
-            {
-                return failed.Message;
-            }
-            if (dropped.Count > 0)
-            {
-                return $"{string.Join(", ", dropped)} could not follow the files moved: it was edited meanwhile";
-            }
-        }
-        return await RewriteGodotAsync(binary, recording);
-    }
-
-    /// <summary>Each binary scene or resource a move rewrote written within its command (<paramref name="recording"/>), which
-    /// Undo puts back as it was and Redo writes again, unless it has changed since. Null once written, else why one could
-    /// not be, those before it kept in the command.</summary>
-    private async Task<string?> RewriteGodotAsync(IReadOnlyList<GodotRewritten> binary, CommandHistory.Recording recording)
-    {
-        if (binary.Count == 0)
-        {
-            return null;
-        }
-        if (await recording.ClearAsync([.. binary.Select(b => b.Path)]) is { } held)
-        {
-            return held;
-        }
-        foreach (GodotRewritten rewritten in binary)
-        {
-            string name = Path.GetFileName(rewritten.Path);
-            if (await BackgroundWork.Run(() => Put(rewritten.Path, rewritten.After)) is { } unwritten)
-            {
-                return $"{name} could not follow the files moved: {unwritten}";
-            }
-            recording.Also(new CommandHistory.Part(name, _ => null, async redo => await Editors.ClearAsync([redo ? rewritten.Path : rewritten.Was]) is { } unclear ? unclear
-                : await BackgroundWork.Run(() => redo ? Put(rewritten.Path, rewritten.After) : Put(rewritten.Was, rewritten.Before)))
-            {
-                // Before the moves go back, or are made again: where it stands then.
-                Read = redo => BackgroundWork.Run(() => Holds(redo ? rewritten.Was : rewritten.Path, redo ? rewritten.Before : rewritten.After) ? null : $"{name} has been changed since"),
-            });
-        }
-        return null;
-
-        static string? Put(string path, byte[] bytes)
-        {
-            try
-            {
-                FileText.Restore(path, bytes);
-                return null;
-            }
-            catch (Exception error) when (error is IOException or UnauthorizedAccessException)
-            {
-                return error.Message;
-            }
-        }
-
-        static bool Holds(string path, byte[] bytes)
-        {
-            try
-            {
-                return File.Exists(path) && File.ReadAllBytes(path).AsSpan().SequenceEqual(bytes);
-            }
-            catch (Exception error) when (error is IOException or UnauthorizedAccessException)
-            {
-                return false;
-            }
-        }
-    }
+    /// (<see cref="CSharpAssist.GodotFollowAsync"/>). Null once they follow, else why one could not; what Passenger cannot
+    /// rewrite said into <paramref name="left"/>.</summary>
+    private Task<string?> FollowGodotAsync(IReadOnlyList<(string From, string To)> moved, CommandHistory.Recording recording, List<string> left) =>
+        assist.Languages.CSharp.GodotFollowAsync(moved, recording, left);
 
     private static string? Taken(string into, string name) =>
         File.Exists(Path.Combine(into, name)) || Directory.Exists(Path.Combine(into, name)) ? $"{name} is already there" : null;

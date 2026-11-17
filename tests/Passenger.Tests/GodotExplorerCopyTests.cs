@@ -12,8 +12,9 @@ namespace Passenger.Tests;
 /// leaves them: every copy given a uid of its own (a script's .uid, a scene's header, a binary scene's or resource's, an
 /// imported file's .import), a folder's scenes naming the files copied with them, a file's copy given its .uid, the
 /// originals as they were; Godot's headless editor then opens the project with no two files of one uid, and loads a copied
-/// scene from the copies. A file moved is named at its new place by the binary scenes and resources naming it, which Godot
-/// loads it from. Without a Godot 4.4 or later, which keeps a script's uid beside it, each test skips saying why.</summary>
+/// scene from the copies. A file moved is named at its new place by the binary scenes and resources naming it and by the
+/// uid cache, which Godot loads it from at once. Without a Godot 4.4 or later, which keeps a script's uid beside it, each
+/// test skips saying why.</summary>
 public sealed class GodotExplorerCopyTests : IDisposable
 {
     private const string Script = "extends Node2D\n\n\nfunc _ready() -> void:\n\tprint(\"player\")\n";
@@ -257,6 +258,57 @@ public sealed class GodotExplorerCopyTests : IDisposable
         }
     }
 
+    /// <summary>The main scene's script: says where its sprite's texture came from, then quits.</summary>
+    private const string Shower = "extends Node2D\n\n\nfunc _ready() -> void:\n\tprint(\"shows \", $Sprite.texture.resource_path)\n\tget_tree().quit()\n";
+
+    /// <summary>A texture the main scene names by its uid, moved in the Explorer of a project Godot has opened: the game, run
+    /// headless at once with no editor between, loads it from its new place, the uid cache Godot finds a uid's file by
+    /// naming it there; Undo has the cache name it back where it was, and Redo where it went again.</summary>
+    [AvaloniaFact]
+    public void A_texture_moved_in_the_explorer_is_loaded_from_its_new_place_by_the_game_run_at_once()
+    {
+        TestFolders.Write(folder, "project.godot", "; Engine configuration file.\nconfig_version=5\n\n[application]\n\nconfig/name=\"Copies\"\nrun/main_scene=\"res://main.tscn\"\n");
+        TestFolders.Write(folder, "main.gd", Shower);
+        Assert.True(Godot(["--import"]) is { } first && first.Contains("Godot Engine", StringComparison.Ordinal), "Godot's first import wrote no log of its run");
+        string icon = Path.Combine(folder, "actors", "icon.svg");
+        string uid = GodotUids.OfBeside(icon + ".import", File.ReadAllText(icon + ".import"))!;
+        TestFolders.Write(folder, "main.tscn", "[gd_scene load_steps=3 format=3 uid=\"uid://bmainscene1\"]\n\n"
+            + $"[ext_resource type=\"Script\" path=\"res://main.gd\" id=\"1_s\"]\n[ext_resource type=\"Texture2D\" uid=\"{uid}\" path=\"res://actors/icon.svg\" id=\"2_t\"]\n\n"
+            + "[node name=\"Main\" type=\"Node2D\"]\nscript = ExtResource(\"1_s\")\n\n[node name=\"Sprite\" type=\"Sprite2D\" parent=\".\"]\ntexture = ExtResource(\"2_t\")\n");
+        string cache = Path.Combine(folder, GodotUids.CacheFile);
+        Assert.Contains((uid, "res://actors/icon.svg"), GodotUids.ReadCache(File.ReadAllBytes(cache)));
+        string moved = Path.Combine(folder, "levels", "icon.svg");
+
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        try
+        {
+            GodotSceneTests.Choose(window, icon);
+            Ui.Run(window, EditorActions.Cut);
+            GodotSceneTests.Choose(window, Path.Combine(folder, "levels"));
+            Ui.Run(window, EditorActions.Paste);
+            Ui.WaitFor(() => window.Status == "Moved icon.svg to levels", () => $"the paste of icon.svg to say it was moved: {window.Status}");
+            // Ended after its first frames whatever its script meets, a texture it could not load among them.
+            string ran = Godot(["--quit-after", "60"]) ?? string.Empty;
+            Assert.True(ran.Contains("shows res://levels/icon.svg", StringComparison.Ordinal) && !ran.Contains("ERROR", StringComparison.Ordinal),
+                $"The game run at once after the move did not load the texture from its new place:\n{ran}");
+
+            window.Confirm = (_, _, _) => Task.FromResult(true);
+            GodotSceneTests.Choose(window, Path.Combine(folder, "levels"));
+            Ui.Run(window, EditorActions.Undo);
+            Ui.WaitFor(() => File.Exists(icon) && GodotUids.ReadCache(File.ReadAllBytes(cache)).Contains((uid, "res://actors/icon.svg")),
+                () => $"Undo to move the texture back with the cache naming it there: {window.Status}; {string.Join(", ", GodotUids.ReadCache(File.ReadAllBytes(cache)))}");
+            GodotSceneTests.Choose(window, Path.Combine(folder, "actors"));
+            Ui.Run(window, EditorActions.Redo);
+            Ui.WaitFor(() => File.Exists(moved) && GodotUids.ReadCache(File.ReadAllBytes(cache)).Contains((uid, "res://levels/icon.svg")),
+                () => $"Redo to move the texture again with the cache naming it there: {window.Status}; {string.Join(", ", GodotUids.ReadCache(File.ReadAllBytes(cache)))}");
+        }
+        finally
+        {
+            window.Close();
+        }
+        Assert.DoesNotContain(GodotUids.ReadCache(File.ReadAllBytes(cache)), e => e.Res == "res://actors/icon.svg");
+    }
+
     /// <summary>A file or folder chosen in the Explorer, copied and pasted into the folder levels, its status waited for.</summary>
     private void Paste(MainWindow window, string path, string done)
     {
@@ -275,11 +327,15 @@ public sealed class GodotExplorerCopyTests : IDisposable
 
     /// <summary>Headless Godot run on the project with the arguments given, in user folders of the test's own and with the
     /// variables given, until it ends: what it wrote to its log.</summary>
-    private string? Godot(IReadOnlyList<string> arguments, IReadOnlyDictionary<string, string>? variables = null)
+    private string? Godot(IReadOnlyList<string> arguments, IReadOnlyDictionary<string, string>? variables = null) => Run(godot!, folder, folder + "-home", arguments, variables);
+
+    /// <summary>A headless Godot run on a project (<paramref name="project"/>) with the arguments given, its user folders under
+    /// <paramref name="home"/> and with the variables given, until it ends: what it wrote to its log.</summary>
+    internal static string? Run(GodotFound godot, string project, string home, IReadOnlyList<string> arguments, IReadOnlyDictionary<string, string>? variables = null)
     {
-        string log = Path.Combine(folder + "-home", $"godot-{Guid.NewGuid():N}.log");
-        ProcessStartInfo start = ChildProcesses.Command(godot!.Executable, [GodotExecutables.Headless, "--path", folder, .. arguments, "--log-file", log], folder);
-        foreach ((string name, string value) in GodotTests.Game.Home(folder + "-home").Concat(variables ?? new Dictionary<string, string>()))
+        string log = Path.Combine(home, $"godot-{Guid.NewGuid():N}.log");
+        ProcessStartInfo start = ChildProcesses.Command(godot.Executable, [GodotExecutables.Headless, "--path", project, .. arguments, "--log-file", log], project);
+        foreach ((string name, string value) in GodotTests.Game.Home(home).Concat(variables ?? new Dictionary<string, string>()))
         {
             start.Environment[name] = value;
         }

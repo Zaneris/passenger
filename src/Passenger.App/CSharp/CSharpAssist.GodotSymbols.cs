@@ -383,7 +383,7 @@ internal sealed partial class CSharpAssist
     /// <summary>The edits the scenes take as a C# symbol they name is renamed to <paramref name="name"/>: a connection's method
     /// or signal, an exported member's key where it is set; or why the rename cannot follow them (a <c>[Signal]</c> delegate's
     /// name that would not end with EventHandler, which Godot's source generator needs). None for a script's class, whose
-    /// scenes follow its file instead (<see cref="GodotMovedAsync"/>).</summary>
+    /// scenes follow its file instead (<see cref="GodotFollowAsync"/>).</summary>
     internal async Task<(IReadOnlyList<PlacedEdits> Files, string? Problem)> GodotRenameAsync(NamedSymbol? symbol, string name)
     {
         if (await GodotNamedAsync(symbol) is not { Kind: not GodotKind.Script } named)
@@ -499,55 +499,6 @@ internal sealed partial class CSharpAssist
         static string Simple(string full) => full[(full.LastIndexOf('.') + 1)..];
     }
 
-    /// <summary>The edits the project's files take as a rename moves files of a Godot project: each scene's or resource's res://
-    /// path of a moved file written anew, and each GDScript's; and the moves Godot's own files beside a moved one take with it
-    /// (a script's .uid).</summary>
-    internal async Task<(IReadOnlyList<PlacedEdits> Files, IReadOnlyList<(string From, string To)> Moves)> GodotMovedAsync(IReadOnlyList<(string From, string To)> moves)
-    {
-        List<PlacedEdits> files = [];
-        List<(string, string)> beside = [];
-        if (context.CSharp is not { GodotScenes: { } index } csharp)
-        {
-            return (files, beside);
-        }
-        foreach (IGrouping<string, (string From, string To)> project in moves.Where(m => csharp.GodotOf?.Invoke(m.From) is not null).GroupBy(m => csharp.GodotOf!(m.From)!, PathNames.Comparer))
-        {
-            GodotScenes scenes = await index.ScenesAsync(project.Key);
-            Dictionary<string, string> renamed = new(StringComparer.Ordinal);
-            foreach ((string from, string to) in project)
-            {
-                if (scenes.ResPathOf(from) is { } was && scenes.ResPathOf(to) is { } now)
-                {
-                    renamed[was] = now;
-                }
-                if (File.Exists(from + ".uid") && !File.Exists(to + ".uid"))
-                {
-                    beside.Add((from + ".uid", to + ".uid"));
-                }
-            }
-            foreach ((string res, GodotFile file) in scenes.Files.OrderBy(f => f.Key, StringComparer.Ordinal))
-            {
-                List<TextEdit> edits = [.. file.Externals.Select(e => e.Section.Attribute("path")?.Value)
-                    .Where(v => v is { Plain: true } && renamed.ContainsKey(v.Text!)).Select(v => new TextEdit(v!.TextStart, v.TextEnd - v.TextStart, renamed[v.Text!]))];
-                if (edits.Count > 0 && scenes.FileOf(res) is { } path)
-                {
-                    ServerLines lines = ServerLines.Of(TextSnapshot.From(file.Text));
-                    files.Add(new PlacedEdits(path, [.. edits.Select(e => new LspTextEdit(lines.RangeOf(new TextRange(e.Start, e.Length)), e.Text))], file.Text));
-                }
-            }
-            List<(string From, string To)> paths = [.. renamed.Select(r => (r.Key, r.Value))];
-            foreach ((string res, string text) in scenes.Texts.Where(t => GodotScriptDeclarations.IsScript(t.Key)).OrderBy(t => t.Key, StringComparer.Ordinal))
-            {
-                if (GodotScenes.MovedScriptEdits(text, res, paths) is { Count: > 0 } edits && scenes.FileOf(res) is { } path)
-                {
-                    ServerLines lines = ServerLines.Of(TextSnapshot.From(text));
-                    files.Add(new PlacedEdits(path, [.. edits.Select(e => new LspTextEdit(lines.RangeOf(new TextRange(e.Start, e.Length)), e.Text))], text));
-                }
-            }
-        }
-        return (files, beside);
-    }
-
     /// <summary>Why a Godot project's files must not take edits placed in them as they were read: the words for the first
     /// whose text is another now (<see cref="WorkspaceEdits.OutOfDateAsync"/>), saved before the folder's watcher told of it.
     /// The index reads it again at once, so that a command's next attempt (<paramref name="patience"/>) finds its places in
@@ -576,22 +527,65 @@ internal sealed partial class CSharpAssist
         return patience?.Behind([file], null, said, said) ?? said;
     }
 
-    /// <summary>The edits the Godot projects' files take once files and folders of theirs have moved (the Explorer's move or
-    /// rename, already made): every res:// path naming a moved file, or a file inside a moved folder, written anew in each
-    /// scene, resource, GDScript, shader's <c>#include</c> and project.godot and in each C# string, by file at its path now,
-    /// in the server's places, each read as it stands; the .uid and .import beside each moved file, which go with it; and
-    /// the binary scenes and resources rewritten (<see cref="GodotBinaryMoved"/>), and why any was left as it was.</summary>
-    internal async Task<(IReadOnlyList<(string Path, IReadOnlyList<LspTextEdit> Edits)> Files, IReadOnlyList<(string From, string To)> Beside,
-        IReadOnlyList<GodotRewritten> Binary, IReadOnlyList<string> Left)> GodotFollowAsync(IReadOnlyList<(string From, string To)> moved)
+    /// <summary>The Godot projects' files following files and folders of theirs moved, by the Explorer, a rename or a code
+    /// action, within its command (<paramref name="recording"/>), the moves made: the .uid and .import beside a moved file go
+    /// with it, each res:// path naming one is written anew in the texts and C# strings (<see cref="GodotFollowedAsync"/>),
+    /// and the binary scenes and resources and the uid caches follow (<see cref="GodotRewriteAsync"/>). Null once they
+    /// follow, else why one could not; what Passenger cannot rewrite said into <paramref name="left"/>.</summary>
+    internal async Task<string?> GodotFollowAsync(IReadOnlyList<(string From, string To)> moved, CommandHistory.Recording recording, List<string> left)
+    {
+        if (moved.Count == 0 || context.GodotScenes?.Invoke() is not { } index || !moved.Any(m => index.GameOf(m.To) is not null))
+        {
+            return null;
+        }
+        using Asked asked = WorkspaceEdits.Track(context.Editors);
+        GodotFollowed followed = await GodotFollowedAsync(index, moved);
+        left.AddRange(followed.Left);
+        foreach ((string from, string to) in followed.Beside)
+        {
+            if (recording.Move(from, to) is { } refused)
+            {
+                return $"{Path.GetFileName(from)} could not go with {Path.GetFileNameWithoutExtension(to)}: {refused}";
+            }
+        }
+        if (followed.Files.Count > 0)
+        {
+            System.Text.Json.JsonElement edit = TypeRename.With(System.Text.Json.JsonSerializer.SerializeToElement(new { changes = new Dictionary<string, object>() }), followed.Files);
+            List<string> dropped = [];
+            try
+            {
+                await context.ChangeFilesAsync([.. followed.Files.Select(f => f.Path)], recording, () => WorkspaceEdits.ApplyAsCommand(context.Editors, edit, recording, asked, dropped));
+            }
+            catch (WorkspaceEditFailed failed)
+            {
+                return failed.Message;
+            }
+            if (dropped.Count > 0)
+            {
+                return $"{string.Join(", ", dropped)} could not follow the files moved: it was edited meanwhile";
+            }
+        }
+        return await GodotRewriteAsync(followed.Binary, followed.Projects, recording);
+    }
+
+    /// <summary>What the Godot projects' files take once files and folders of theirs moved (<see cref="GodotFollowedAsync"/>):
+    /// the texts' edits by file, the files beside a moved one going with it, the binary files rewritten, each project's
+    /// moves by res:// path, and why a binary file was left as it was.</summary>
+    private sealed record GodotFollowed(IReadOnlyList<(string Path, IReadOnlyList<LspTextEdit> Edits)> Files, IReadOnlyList<(string From, string To)> Beside,
+        IReadOnlyList<GodotRewritten> Binary, IReadOnlyList<(string Folder, IReadOnlyList<(string From, string To)> Paths)> Projects, IReadOnlyList<string> Left);
+
+    /// <summary>The edits the Godot projects' files take once files and folders of theirs have moved (already made): every
+    /// res:// path naming a moved file, or a file inside a moved folder, written anew in each scene, resource, GDScript,
+    /// shader's <c>#include</c> and project.godot and in each C# string, by file at its path now, in the server's places,
+    /// each read as it stands; the .uid and .import beside each moved file, which go with it; and the binary scenes and
+    /// resources rewritten (<see cref="GodotBinaryMoved"/>), and why any was left as it was.</summary>
+    private async Task<GodotFollowed> GodotFollowedAsync(GodotSceneIndex index, IReadOnlyList<(string From, string To)> moved)
     {
         List<(string, IReadOnlyList<LspTextEdit>)> files = [];
         List<(string, string)> beside = [];
         List<GodotRewritten> binary = [];
+        List<(string, IReadOnlyList<(string, string)>)> projects = [];
         List<string> left = [];
-        if (context.GodotScenes?.Invoke() is not { } index)
-        {
-            return (files, beside, binary, left);
-        }
         Func<string, string?> godotOf = index.GameOf;
         OpenTexts open = context.Editors.Texts();
         // The index takes the moves in first, so the scenes are read where they are now.
@@ -620,6 +614,7 @@ internal sealed partial class CSharpAssist
             {
                 continue;
             }
+            projects.Add((folder, paths));
             GodotScenes scenes = await index.ScenesAsync(folder);
             // Each text the moves reach, where it is read from and its path once every move is made: the scenes, project.godot, the .import files moving.
             List<(string Path, string From)> texts = [.. scenes.Files.Keys.Select(scenes.FileOf).OfType<string>().Select(f => (f, f)), (Path.Combine(folder, "project.godot"), Path.Combine(folder, "project.godot")),
@@ -662,7 +657,7 @@ internal sealed partial class CSharpAssist
                         GodotScenes.Moved(paths, u.Path)!))])));
             }
         }
-        return (files, beside, binary, left);
+        return new GodotFollowed(files, beside, binary, projects, left);
     }
 
     /// <summary>The scenes and resources in Godot's binary format of a project's files (<paramref name="listed"/>, by the index,
@@ -718,6 +713,98 @@ internal sealed partial class CSharpAssist
             }
         }
         return File.ReadAllBytes(path);
+    }
+
+    /// <summary>The bytes moves change, written within their command (<paramref name="recording"/>): each project's uid cache
+    /// naming its moved files where they went (<see cref="GodotCacheMoved"/>), Undo and Redo naming them where each leaves
+    /// them; and each binary scene or resource rewritten, which Undo puts back as it was and Redo writes again, unless it has
+    /// changed since. Null once written, else why one could not be, those before it kept in the command.</summary>
+    private async Task<string?> GodotRewriteAsync(IReadOnlyList<GodotRewritten> binary, IReadOnlyList<(string Folder, IReadOnlyList<(string From, string To)> Paths)> projects,
+        CommandHistory.Recording recording)
+    {
+        // First, as the moves stand whatever becomes of the rest.
+        foreach ((string folder, IReadOnlyList<(string From, string To)> paths) in projects)
+        {
+            string cache = Path.Combine(folder, GodotUids.CacheFile);
+            IReadOnlyList<(string From, string To)> back = [.. paths.Select(p => (p.To, p.From))];
+            if (await BackgroundWork.Run(() => GodotCacheMoved(cache, paths, null)) is { } ids)
+            {
+                recording.Also(new CommandHistory.Part(Path.GetFileName(cache), _ => null, async redo =>
+                {
+                    await BackgroundWork.Run(() => GodotCacheMoved(cache, redo ? paths : back, ids));
+                    return null;
+                }));
+            }
+        }
+        if (binary.Count == 0)
+        {
+            return null;
+        }
+        if (await recording.ClearAsync([.. binary.Select(b => b.Path)]) is { } held)
+        {
+            return held;
+        }
+        foreach (GodotRewritten rewritten in binary)
+        {
+            string name = Path.GetFileName(rewritten.Path);
+            if (await BackgroundWork.Run(() => Put(rewritten.Path, rewritten.After)) is { } unwritten)
+            {
+                return $"{name} could not follow the files moved: {unwritten}";
+            }
+            recording.Also(new CommandHistory.Part(name, _ => null, async redo => await context.Editors.ClearAsync([redo ? rewritten.Path : rewritten.Was]) is { } unclear ? unclear
+                : await BackgroundWork.Run(() => redo ? Put(rewritten.Path, rewritten.After) : Put(rewritten.Was, rewritten.Before)))
+            {
+                // Before the moves go back, or are made again: where it stands then.
+                Read = redo => BackgroundWork.Run(() => Holds(redo ? rewritten.Was : rewritten.Path, redo ? rewritten.Before : rewritten.After) ? null : $"{name} has been changed since"),
+            });
+        }
+        return null;
+
+        static string? Put(string path, byte[] bytes)
+        {
+            try
+            {
+                FileText.Restore(path, bytes);
+                return null;
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+            {
+                return error.Message;
+            }
+        }
+
+        static bool Holds(string path, byte[] bytes)
+        {
+            try
+            {
+                return File.Exists(path) && File.ReadAllBytes(path).AsSpan().SequenceEqual(bytes);
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+            {
+                return false;
+            }
+        }
+    }
+
+    /// <summary>A project's uid cache (<paramref name="cache"/>) naming the files moves moved where they went, only the ids of
+    /// <paramref name="ids"/> where given (<see cref="GodotUids.CacheMoved"/>), written whole: the ids it changed; null where
+    /// it changed none, or there is none or it could not be read or written. Off the window's thread.</summary>
+    private static IReadOnlySet<long>? GodotCacheMoved(string cache, IReadOnlyList<(string From, string To)> paths, IReadOnlySet<long>? ids)
+    {
+        try
+        {
+            if (!File.Exists(cache) || new FileInfo(cache).LinkTarget is not null || GodotUids.CacheMoved(File.ReadAllBytes(cache), paths, ids) is not { } mended)
+            {
+                return null;
+            }
+            AtomicFile.Write(cache, mended.Bytes);
+            return mended.Ids;
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            // Left as it was, its moves stand all the same.
+            return null;
+        }
     }
 
     /// <summary>A copy made in a Godot project (<paramref name="source"/> to <paramref name="target"/>, a file or a folder) left

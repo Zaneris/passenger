@@ -11,6 +11,7 @@ using Passenger.App.ToolWindows;
 using Passenger.Core;
 using Passenger.Editor;
 using Passenger.Text;
+using Passenger.Workspace;
 
 namespace Passenger.Tests;
 
@@ -19,7 +20,8 @@ namespace Passenger.Tests;
 /// GetNode string offers the scene's nodes, and in a res:// string the project's files, which Go to Declaration opens;
 /// an exported property's card says what the scene sets it to; Rename on a node's name in a GetNode path renames it in the
 /// scene and in every path of the code, one step of Undo. Its project (Godot.NET.Sdk) is restored from the packages the
-/// Godot found carries, so without a Godot 4 .NET build each test skips saying why; no Godot runs.</summary>
+/// Godot found carries, so without a Godot 4 .NET build each test skips saying why; Godot runs only headless, to save a
+/// scene as bytes.</summary>
 public sealed class GodotSceneTests : IClassFixture<GodotSceneTests.Game>
 {
     private readonly Game game;
@@ -634,6 +636,72 @@ public sealed class GodotSceneTests : IClassFixture<GodotSceneTests.Game>
             window.OpenFile(moved);
             string lost = $"main.tscn:{LineOf(Scene, "[node name=\"Main\"")} has no node 'Hud/Scor' under Main: Hud has no child Scor";
             Ui.WaitFor(() => Marked(window).Contains(lost), () => $"the moved script to be checked against its scene: {string.Join("; ", Marked(window))}", TimeSpan.FromMinutes(1));
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>A Godot script that saves, compressed as Godot's editor saves a scene, a scene whose root keeps Main.cs, then quits.</summary>
+    private const string BinaryMaker = "extends SceneTree\n\n\nfunc _init() -> void:\n\tvar level := Node2D.new()\n\tlevel.name = \"Level\"\n"
+        + "\tlevel.set_meta(\"code\", load(\"res://Main.cs\"))\n\tvar scene := PackedScene.new()\n\tscene.pack(level)\n"
+        + "\tprint(\"saved level \", ResourceSaver.save(scene, \"res://level.scn\", ResourceSaver.FLAG_COMPRESS))\n\tlevel.free()\n\tquit()\n";
+
+    /// <summary>Rename of the script's class with its file moves the file, and what loads it follows within the rename's one
+    /// command, as a move in the Explorer has it follow: the text scene's path, the .uid beside it, and a scene Godot saved as
+    /// bytes, its path written anew with every other byte kept; one Undo puts every file back as it was.</summary>
+    [AvaloniaFact]
+    public void Renaming_a_scripts_class_moves_its_file_with_its_scenes_text_and_binary_and_its_uid_following()
+    {
+        string maker = TestFolders.Create("godot-binary-");
+        try
+        {
+            TestFolders.Write(maker, "project.godot", "; Engine configuration file.\nconfig_version=5\n\n[application]\n\nconfig/name=\"Maker\"\n");
+            TestFolders.Write(maker, "Main.cs", Script);
+            TestFolders.Write(maker, "Main.cs.uid", "uid://cmain1\n");
+            string script = TestFolders.Write(maker + "-home", "make.gd", BinaryMaker);
+            string made = GodotExplorerCopyTests.Run(game.Godot!, maker, maker + "-home", ["--script", script]) ?? string.Empty;
+            Assert.True(made.Contains("saved level 0", StringComparison.Ordinal), $"Godot saved no binary scene naming Main.cs:\n{made}");
+            File.Copy(Path.Combine(maker, "level.scn"), game.PathOf("level.scn"));
+        }
+        finally
+        {
+            TestFolders.Delete(maker);
+            TestFolders.Delete(maker + "-home");
+        }
+        string level = game.PathOf("level.scn");
+        byte[] saved = File.ReadAllBytes(level);
+        GodotBinaryResource original = GodotBinaryResource.Read(saved, out string? unread) ?? throw new Xunit.Sdk.XunitException($"Passenger can't read Godot's binary scene: {unread}");
+        Assert.True(saved.AsSpan().StartsWith("RSCC"u8) && original.Externals.Any(e => e.Path == "res://Main.cs"),
+            $"Godot's binary scene is not compressed or names no res://Main.cs: {string.Join(", ", original.Externals)}");
+        string hero = game.PathOf("Hero.cs");
+
+        MainWindow window = game.Open(ScriptPath);
+        try
+        {
+            Ui.WaitFor(() => Marked(window).Count > 0, "the scene's checks to be read");
+            CodeEditor editor = window.EditorArea.CodeEditor;
+            Ui.PlaceAfter(editor, "partial class Mai");
+            Ui.Run(window, AppActions.Rename);
+            Ui.WaitFor(() => window.Assist.Renaming == "Main", () => $"Rename's box on the script's class ({window.Assist.Renaming}; {window.Status})");
+            window.KeyTextInput("Hero");
+            Ui.Press(window, "ENTER");
+            IReadOnlyList<GodotBinaryExternal> named = [.. original.Externals.Select(e => e.Path == "res://Main.cs" ? e with { Path = "res://Hero.cs" } : e)];
+            Ui.WaitFor(() => File.Exists(hero) && GodotBinaryResource.Read(File.ReadAllBytes(level), out _)?.Externals.SequenceEqual(named) == true,
+                () => $"the binary scene to name the script where its rename moved it ({window.Status}): {string.Join(", ", GodotBinaryResource.Read(File.ReadAllBytes(level), out _)?.Externals ?? [])}",
+                TimeSpan.FromMinutes(1));
+            Assert.True(original.With(null, named).AsSpan().SequenceEqual(File.ReadAllBytes(level)), "The binary scene changed more than the script's path");
+            Assert.Equal(Scene.Replace("path=\"res://Main.cs\"", "path=\"res://Hero.cs\"", StringComparison.Ordinal), File.ReadAllText(ScenePath));
+            Assert.True(File.Exists(hero + ".uid") && !File.Exists(ScriptPath + ".uid") && !File.Exists(ScriptPath), "The script's .uid did not go with it to Hero.cs");
+            Assert.Equal("uid://cmain1", File.ReadAllText(hero + ".uid").Trim());
+
+            window.Confirm = (_, _, _) => Task.FromResult(true);
+            editor.Focus();
+            Ui.Run(window, EditorActions.Undo);
+            Ui.WaitFor(() => File.Exists(ScriptPath) && File.ReadAllBytes(level).AsSpan().SequenceEqual(saved) && File.ReadAllText(ScenePath) == Scene,
+                () => $"Undo to put the script, its scenes and its .uid back ({window.Status}): {File.ReadAllText(ScenePath)}");
+            Assert.True(File.Exists(ScriptPath + ".uid") && !File.Exists(hero) && !File.Exists(hero + ".uid"), "Undo left the script or its .uid where the rename moved them");
         }
         finally
         {

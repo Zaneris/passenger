@@ -196,6 +196,56 @@ public static partial class GodotUids
         }
         return entries;
     }
+
+    /// <summary>The cache's bytes once files and folders move (each by its res:// path, a folder's ending in '/'): each entry
+    /// naming one moved, or a file inside one, names it where it went (<see cref="GodotScenes.Moved"/>), only those of
+    /// <paramref name="ids"/> where given, with the ids of those changed. Every other byte is kept, the count of entries too,
+    /// so a Godot adding entries after its own count goes on; null where none changed, or for a cache cut short.</summary>
+    public static (byte[] Bytes, IReadOnlySet<long> Ids)? CacheMoved(ReadOnlySpan<byte> cache, IReadOnlyList<(string From, string To)> moves, IReadOnlySet<long>? ids = null)
+    {
+        if (cache.Length < 4)
+        {
+            return null;
+        }
+        uint count = BinaryPrimitives.ReadUInt32LittleEndian(cache);
+        HashSet<long> changed = [];
+        using MemoryStream written = new(cache.Length);
+        written.Write(cache[..4]);
+        int at = 4;
+        Span<byte> length = stackalloc byte[4];
+        for (uint i = 0; i < count; i++)
+        {
+            if (cache.Length - at < 12)
+            {
+                return null;
+            }
+            uint size = BinaryPrimitives.ReadUInt32LittleEndian(cache[(at + 8)..]);
+            if (size > (uint)(cache.Length - at - 12))
+            {
+                return null;
+            }
+            long id = BinaryPrimitives.ReadInt64LittleEndian(cache[at..]);
+            ReadOnlySpan<byte> path = cache.Slice(at + 12, (int)size);
+            string? moved = (ids is null || ids.Contains(id)) && System.Text.Unicode.Utf8.IsValid(path) && !path.Contains((byte)0)
+                ? GodotScenes.Moved(moves, Encoding.UTF8.GetString(path)) : null;
+            if (moved is null)
+            {
+                written.Write(cache.Slice(at, 12 + (int)size));
+            }
+            else
+            {
+                byte[] now = Encoding.UTF8.GetBytes(moved);
+                written.Write(cache.Slice(at, 8));
+                BinaryPrimitives.WriteUInt32LittleEndian(length, (uint)now.Length);
+                written.Write(length);
+                written.Write(now);
+                changed.Add(id);
+            }
+            at += 12 + (int)size;
+        }
+        written.Write(cache[at..]);
+        return changed.Count == 0 ? null : (written.ToArray(), changed);
+    }
 }
 
 /// <summary>A file a copy made in a Godot project, as Godot's own duplicate takes it: its res:// path before
