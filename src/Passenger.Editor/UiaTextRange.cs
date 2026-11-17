@@ -70,10 +70,7 @@ internal sealed partial class UiaTextRange : ITextRangeProvider
     internal UiaTextRange? Find(string text, bool backward, bool ignoreCase) => element.OnUi(() =>
     {
         (int from, int to) = Ends;
-        string within = Text.Read(from, to - from);
-        StringComparison comparison = ignoreCase ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
-        int at = text.Length == 0 ? -1 : backward ? within.LastIndexOf(text, comparison) : within.IndexOf(text, comparison);
-        return at < 0 ? null : new UiaTextRange(element, from + at, from + at + text.Length);
+        return Text.Find(TextRange.FromBounds(from, to), text, backward, ignoreCase) is { } found ? new UiaTextRange(element, found.Start, found.End) : null;
     });
 
     public unsafe void GetAttributeValue(int attributeId, ComVariant* value)

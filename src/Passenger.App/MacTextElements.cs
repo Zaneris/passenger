@@ -305,12 +305,13 @@ public static unsafe partial class MacTextElements
         }
     }
 
+    /// <summary>What is selected, its first <see cref="AccessibleText.MostRead"/> characters.</summary>
     [UnmanagedCallersOnly]
     private static nint SelectedText(nint self, nint selector)
     {
         try
         {
-            return TextOf(self) is { } text ? StringOf(text.Read(Chosen(text))) : 0;
+            return TextOf(self) is { } text ? StringOf(text.ReadCut(Chosen(text))) : 0;
         }
         catch (Exception error)
         {
@@ -473,12 +474,13 @@ public static unsafe partial class MacTextElements
         }
     }
 
+    /// <summary>A range's characters, its first <see cref="AccessibleText.MostRead"/>.</summary>
     [UnmanagedCallersOnly]
     private static nint StringForRange(nint self, nint selector, NSRange range)
     {
         try
         {
-            return TextOf(self) is { } text ? StringOf(text.Read(Within(text, range))) : 0;
+            return TextOf(self) is { } text ? StringOf(text.ReadCut(Within(text, range))) : 0;
         }
         catch (Exception error)
         {
@@ -487,7 +489,8 @@ public static unsafe partial class MacTextElements
         }
     }
 
-    /// <summary>A range's characters with no attributes, as the text gives a reader none.</summary>
+    /// <summary>A range's characters with no attributes, as the text gives a reader none, its first
+    /// <see cref="AccessibleText.MostRead"/>.</summary>
     [UnmanagedCallersOnly]
     private static nint AttributedStringForRange(nint self, nint selector, NSRange range)
     {
@@ -497,7 +500,7 @@ public static unsafe partial class MacTextElements
             {
                 return 0;
             }
-            nint made = Send(Send(Objc.NSAttributedString, Objc.Alloc), Objc.InitWithString, StringOf(text.Read(Within(text, range))));
+            nint made = Send(Send(Objc.NSAttributedString, Objc.Alloc), Objc.InitWithString, StringOf(text.ReadCut(Within(text, range))));
             return Send(made, Objc.Autorelease);
         }
         catch (Exception error)

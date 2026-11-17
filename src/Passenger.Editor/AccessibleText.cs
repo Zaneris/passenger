@@ -19,9 +19,20 @@ public abstract class AccessibleText
     /// reader no more than a long one.</summary>
     public const int MostCaretLine = 4096;
 
+    /// <summary>The most of a range <see cref="ReadCut"/> gives, so a reader's question of a range of a whole large file (a
+    /// Select All's text) costs no more than one of a long screen.</summary>
+    public const int MostRead = 1 << 16;
+
     /// <summary>How far either side of an offset its line is read for a character or a word, so a line of a megabyte
     /// costs a reader's question no more than a short one.</summary>
     private const int Reach = 512;
+
+    /// <summary>How much of the text <see cref="Find"/> reads at a time, besides what it carries over from the piece
+    /// before.</summary>
+    private const int SearchPiece = 1 << 14;
+
+    /// <summary>What <see cref="Find"/> reads each piece into, made the first time a reader searches.</summary>
+    private char[]? searched;
 
     /// <summary>The caret's line as last told by <see cref="CaretLineChanged"/>, so a move along the line tells
     /// nothing.</summary>
@@ -46,6 +57,58 @@ public abstract class AccessibleText
 
     /// <summary>The characters of a range.</summary>
     public string Read(TextRange range) => Read(range.Start, range.Length);
+
+    /// <summary>The characters of a range, its first <see cref="MostRead"/>, for a reader's question that may name the
+    /// whole text.</summary>
+    public string ReadCut(TextRange range) => Read(range.Start, Math.Min(range.Length, MostRead));
+
+    /// <summary>Copies the characters from an offset into a span, as many as it holds, which the text holds from there; by
+    /// default through <see cref="Read(int, int)"/>.</summary>
+    protected virtual void CopyTo(int start, Span<char> into) => Read(start, into.Length).CopyTo(into);
+
+    /// <summary>The first place in a range holding <paramref name="sought"/>, or the last <paramref name="backward"/>,
+    /// compared ordinally; null where none does. The range is read a piece at a time as the search goes, each piece
+    /// carrying the sought text's length less one from the one before, so a match across two pieces is found and no more
+    /// than a piece of the text is read at once.</summary>
+    public TextRange? Find(TextRange within, string sought, bool backward, bool ignoreCase)
+    {
+        int from = Math.Clamp(within.Start, 0, Length);
+        int to = Math.Clamp(within.End, from, Length);
+        if (sought.Length == 0 || sought.Length > to - from)
+        {
+            return null;
+        }
+        StringComparison comparison = ignoreCase ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+        int carried = sought.Length - 1;
+        char[] piece = searched is { } kept && kept.Length >= SearchPiece + carried ? kept : searched = new char[SearchPiece + carried];
+        int start = backward ? Math.Max(from, to - SearchPiece - carried) : from;
+        int end = backward ? to : Math.Min(to, from + SearchPiece + carried);
+        while (true)
+        {
+            Span<char> read = piece.AsSpan(0, end - start);
+            CopyTo(start, read);
+            ReadOnlySpan<char> text = read;
+            int found = backward ? text.LastIndexOf(sought, comparison) : text.IndexOf(sought, comparison);
+            if (found >= 0)
+            {
+                return new TextRange(start + found, sought.Length);
+            }
+            if (backward ? start == from : end == to)
+            {
+                return null;
+            }
+            if (backward)
+            {
+                end = start + carried;
+                start = Math.Max(from, end - SearchPiece - carried);
+            }
+            else
+            {
+                start = end - carried;
+                end = Math.Min(to, start + SearchPiece + carried);
+            }
+        }
+    }
 
     /// <summary>Where the caret stands: the offset typing goes in at.</summary>
     public abstract int Caret { get; }

@@ -226,6 +226,46 @@ public sealed partial class MacTextElementsTests
         }
     }
 
+    /// <summary>VoiceOver's questions that may name the whole text (a range's string and attributed string, what a Select
+    /// All selected) give its first <see cref="AccessibleText.MostRead"/> characters and allocate on the UI thread in
+    /// 100,000 lines what they do in 4,000, where they read the whole text.</summary>
+    [AvaloniaFact]
+    public void Voiceovers_questions_of_the_whole_text_cost_in_100000_lines_what_they_do_in_4000()
+    {
+        Assert.SkipUnless(OperatingSystem.IsMacOS(), "NSAccessibility is macOS's");
+        long small = Asked(4_000);
+        long large = Asked(100_000);
+        TestContext.Current.TestOutputHelper?.WriteLine($"VoiceOver's questions of the whole text allocated {small:N0} bytes in 4,000 lines and {large:N0} in 100,000");
+        Assert.True(large <= small + 1024,
+            $"VoiceOver's questions of the whole text allocated {large:N0} bytes on the UI thread in 100,000 lines against {small:N0} in 4,000: the text was read whole");
+
+        static long Asked(int lines)
+        {
+            EditorRig rig = new(string.Concat(Enumerable.Range(0, lines).Select(i => $"    public int Field{i} = {i} * 2; // a comment {i}\n")));
+            using Pool pool = new();
+            nint element = Native.ElementOf(rig.Editor);
+            Native.NSRange whole = new(0, (nuint)rig.Text.Length);
+            Native.Send(element, "setAccessibilitySelectedTextRange:", whole);
+            Ui.Settle();
+            long least = long.MaxValue;
+            for (int round = 0; round < 4; round++)
+            {
+                GC.Collect(1, GCCollectionMode.Forced, blocking: true);
+                GC.WaitForPendingFinalizers();
+                long before = GC.GetAllocatedBytesForCurrentThread();
+                nint read = Native.Send(element, "accessibilityStringForRange:", whole);
+                nint attributed = Native.Send(element, "accessibilityAttributedStringForRange:", whole);
+                nint selected = Native.Send(element, "accessibilitySelectedText");
+                least = Math.Min(least, GC.GetAllocatedBytesForCurrentThread() - before);
+                string?[] answers = [Native.String(read), Native.String(Native.Send(attributed, "string")), Native.String(selected)];
+                Assert.True(answers.All(a => a == rig.Text[..AccessibleText.MostRead]),
+                    $"VoiceOver's questions of the whole text were answered with {string.Join(", ", answers.Select(a => a?.Length))} characters, not the text's first {AccessibleText.MostRead:N0}");
+            }
+            rig.Window.Close();
+            return least;
+        }
+    }
+
     private static string Said(IEnumerable<MacTextElements.Told> told) =>
         string.Join("; ", told.Select(t => $"{t.Notification} {t.Change} {t.Direction} {t.Granularity} [{string.Join(", ", t.Edits.Select(e => $"{e.Kind} \"{e.Text}\""))}]"));
 

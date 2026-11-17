@@ -190,6 +190,41 @@ public sealed partial class UiaTextTests
             $"A reader listening and asking after each key added {largeReader:N0} bytes on the UI thread to the keys in a line of a million characters, against {smallReader:N0} in a line of 10,000: what it asked was read from the whole line");
     }
 
+    /// <summary>A reader's search of an editor's whole text (UI Automation's FindText over the document's range), forward
+    /// for a word on its last line and backward for one on its first, ignoring case, finds each and allocates on the UI
+    /// thread in 100,000 lines what it does in 200: the text is read a piece at a time into one buffer, never whole.</summary>
+    [AvaloniaFact]
+    public void A_readers_search_of_the_whole_text_costs_in_100000_lines_what_it_does_in_200()
+    {
+        (long small, string smallFound) = Searched(200);
+        (long large, string largeFound) = Searched(100_000);
+        TestContext.Current.TestOutputHelper?.WriteLine($"Searching the whole text allocated {small:N0} bytes in 200 lines and {large:N0} in 100,000");
+        Assert.True(smallFound == "first; last" && largeFound == smallFound, $"The searches found \"{smallFound}\" in 200 lines and \"{largeFound}\" in 100,000");
+        Assert.True(large <= small + 1024,
+            $"Searching the whole text allocated {large:N0} bytes on the UI thread in 100,000 lines against {small:N0} in 200: the text was read whole");
+
+        static (long Bytes, string Found) Searched(int lines)
+        {
+            EditorRig rig = new("    int First = 1;\n" + string.Concat(Enumerable.Range(0, lines).Select(i => $"    public int Field{i} = {i} * 2; // a comment {i}\n")) + "    int Last = 2;\n");
+            UiaTextElement element = UiaTextElement.Unhosted(rig.Editor, rig.Editor.AccessibleText);
+            long least = long.MaxValue;
+            string found = string.Empty;
+            for (int round = 0; round < 4; round++)
+            {
+                GC.Collect(1, GCCollectionMode.Forced, blocking: true);
+                GC.WaitForPendingFinalizers();
+                UiaTextRange document = element.Range(0, rig.Editor.AccessibleText.Length);
+                long before = GC.GetAllocatedBytesForCurrentThread();
+                UiaTextRange? last = document.Find("LAST", backward: false, ignoreCase: true);
+                UiaTextRange? first = document.Find("FIRST", backward: true, ignoreCase: true);
+                least = Math.Min(least, GC.GetAllocatedBytesForCurrentThread() - before);
+                found = $"{first?.GetText(-1).ToLowerInvariant()}; {last?.GetText(-1).ToLowerInvariant()}";
+            }
+            rig.Window.Close();
+            return (least, found);
+        }
+    }
+
     [AvaloniaFact]
     public void On_Windows_the_elements_window_answers_UI_Automation_with_the_element_and_passes_every_click_through()
     {

@@ -54,6 +54,8 @@ public sealed partial class CodeEditor
             return text.GetText(from, Math.Clamp(length, 0, text.Length - from));
         }
 
+        protected override void CopyTo(int start, Span<char> into) => Snapshot.CopyTo(start, into);
+
         public override int Caret => Math.Min(editor.selections.Primary.Caret, Snapshot.Length);
 
         public override IReadOnlyList<TextRange> Selected =>
