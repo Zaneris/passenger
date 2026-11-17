@@ -40,6 +40,11 @@ public static class Refusals
     /// <summary>What the banner over an untrusted folder says.</summary>
     public const string UntrustedSaid = "This folder is not trusted: none of its code runs until you trust it";
 
+    /// <summary>What the banner over an untrusted folder below the top of a Git repository says: its Trust Folder trusts the
+    /// repository (<see cref="WorkspaceTrust.FolderToTrust"/>).</summary>
+    public static string UntrustedInRepository(string repository) =>
+        $"This folder is not trusted: none of its code runs until you trust the Git repository it is in, {Path.GetFileName(repository)}";
+
     /// <summary>What the banner over a folder no longer trusted says while what the person started there runs on.</summary>
     public static string UntrustedRunsOn(IReadOnlyList<string> running) =>
         $"This folder is no longer trusted: {Plural.Listed(running)} {Plural.Agreeing(running.Count, "runs", "run")} on until {Plural.Agreeing(running.Count, "it ends", "they end")} or this window closes";

@@ -5,11 +5,13 @@ using Passenger.Core;
 namespace Passenger.App.Settings;
 
 /// <summary>What the person answered of the folders they opened, as Settings shows it and what puts a change of it in force:
-/// the answers as kept (<see cref="TrustState"/>), and <see cref="Apply"/> given those Settings showed and those it has now.</summary>
-public sealed record TrustAnswers(TrustState Kept, Action<TrustState, TrustState> Apply);
+/// the answers as kept (<see cref="TrustState"/>), and <see cref="Apply"/> given those Settings showed and those it has now,
+/// answering those kept then.</summary>
+public sealed record TrustAnswers(TrustState Kept, Func<TrustState, TrustState, TrustState> Apply);
 
 /// <summary>The Trusted Folders page: each folder the person trusted or opened without trusting, its Trusted box trusting it or
-/// taking its trust back, and Forget, so it is asked of again as it next opens; each put in force by OK or Apply.</summary>
+/// taking its trust back, and Forget, so it is asked of again as it next opens; each put in force by OK or Apply, a folder
+/// in a Git repository trusted with the repository, which the page then lists in its place.</summary>
 public sealed partial class SettingsDialog
 {
     public const string TrustPage = "Trusted Folders";
@@ -34,7 +36,8 @@ public sealed partial class SettingsDialog
         Add(TrustPage, "Folders answered for", new StackPanel { MaxWidth = OptionRow.EditorWidth, Children = { TrustedFolders } },
             "workspace trust trusted untrusted restricted safe mode folders forget stop trusting code runs security",
             "A folder you trust has its code run as Passenger works on it: its MSBuild files, analyzers and generators, restore, "
-            + "its own tools. Clear Trusted to stop trusting a folder, and Forget to be asked again as it next opens. Taken "
+            + "its own tools. A folder in a Git repository is trusted with the whole repository, whose build files its projects take in. "
+            + "Clear Trusted to stop trusting a folder, and Forget to be asked again as it next opens. Taken "
             + "back from a folder open in a window, its language server and project hosts end, and what you started there runs on until it ends.");
     }
 
@@ -49,8 +52,12 @@ public sealed partial class SettingsDialog
         if (!Alike(now.Trusted, trustApplied.Trusted) || !Alike(now.Untrusted, trustApplied.Untrusted))
         {
             TrustState from = trustApplied;
-            trustApplied = now;
-            trust.Apply(from, now);
+            TrustState kept = trust.Apply(from, now);
+            trustApplied = kept;
+            if (!Alike(kept.Trusted, now.Trusted) || !Alike(kept.Untrusted, now.Untrusted))
+            {
+                TrustedFolders.Set(kept);
+            }
         }
 
         static bool Alike(IReadOnlyList<string> one, IReadOnlyList<string> other) => new HashSet<string>(one, PathNames.Comparer).SetEquals(other);

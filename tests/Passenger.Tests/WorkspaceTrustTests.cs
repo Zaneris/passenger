@@ -11,9 +11,9 @@ using Passenger.Vcs;
 namespace Passenger.Tests;
 
 /// <summary>A folder the person has not trusted, as their own window opens it: the question asked once and kept, a parent
-/// trusted covering the folders in it, none of the folder's code run (its targets, its Git configuration's programs, the C#
-/// server, its own TypeScript) and no remote reached until Trust Folder, and then each; its trust taken back in Settings,
-/// and its answer forgotten.</summary>
+/// trusted covering the folders in it, a folder in a Git repository trusted with the repository, none of the folder's code
+/// run (its targets, its Git configuration's programs, the C# server, its own TypeScript) and no remote reached until Trust
+/// Folder, and then each; its trust taken back in Settings, and its answer forgotten.</summary>
 public sealed class WorkspaceTrustTests
 {
     [AvaloniaFact]
@@ -126,6 +126,139 @@ public sealed class WorkspaceTrustTests
         using System.Text.Json.JsonDocument kept = System.Text.Json.JsonDocument.Parse(File.ReadAllText(Path.Combine(state, "trust.json")));
         Assert.Equal([parent], kept.RootElement.GetProperty("trusted").EnumerateArray().Select(f => f.GetString()));
         Assert.Equal([elsewhere], kept.RootElement.GetProperty("untrusted").EnumerateArray().Select(f => f.GetString()));
+    }
+
+    /// <summary>A folder opened below the top of a Git repository the person has not trusted asks of the repository, saying
+    /// why, and its banner names it; trusted in Settings, the repository is trusted and listed in the folder's place, a
+    /// folder beside it in the repository trusted too, and the folder's project evaluates with the repository's
+    /// Directory.Build.props; taken back, no folder in it is trusted, and the banner's Trust Folder trusts the repository
+    /// again.</summary>
+    [AvaloniaFact]
+    public void A_folder_in_a_Git_repository_is_trusted_with_the_repository_whose_build_files_its_project_then_evaluates_with()
+    {
+        string repository = PathNames.Canonical(TestFolders.Create("trusted-repository-"));
+        TestGit.Run(repository, "init", "-q");
+        TestFolders.Write(repository, "Directory.Build.props", "<Project>\n  <PropertyGroup>\n    <OutputType>Exe</OutputType>\n  </PropertyGroup>\n</Project>\n");
+        string app = Path.GetDirectoryName(TestFolders.Write(repository, "src/App/App.csproj", TestProjects.Library()))!;
+        TestFolders.Write(app, "Program.cs", "System.Console.WriteLine(\"App\");\n");
+        string tools = Path.GetDirectoryName(TestFolders.Write(repository, "tools/README.md", "# Tools\n"))!;
+        string state = TestFolders.Create("trust-state-");
+        using IDisposable asked = WorkspaceTrust.Ask(repository);
+        MainWindow window = new() { Width = 1200, Height = 800, StartsLanguageServer = false, StateFolder = state };
+        window.Show();
+        window.KeepLayout();
+        try
+        {
+            Open(window, app);
+            WorkspaceTrustDialog question = Asked(window);
+            DialogButtonsTests.Check(question);
+            Assert.Equal((app, repository), (question.Folder, question.Trusting));
+            Assert.Equal($"Trust the code in {Path.GetFileName(repository)}?", question.Title);
+            Assert.Contains(WorkspaceTrustDialog.InRepository(app, repository), Avalonia.Automation.AutomationProperties.GetHelpText(question), StringComparison.Ordinal);
+            Ui.ClickButton(question, WorkspaceTrustDialog.Untrusted);
+            Ui.Settle();
+            Assert.Equal(Refusals.UntrustedInRepository(repository), window.TrustSaid);
+
+            SettingsDialog settings = window.ShowSettings();
+            Ui.Settle();
+            settings.Page = SettingsDialog.TrustPage;
+            Ui.Settle();
+            Ui.Click(Listed(settings, app).Trusted);
+            Ui.ClickButton(settings, "Apply");
+            Ui.Settle();
+            Assert.True(window.Session.Trusted, "The folder trusted in Settings stayed untrusted");
+            Assert.True(WorkspaceTrust.Trusts(tools), "A folder beside the one trusted, in its Git repository, was not trusted with the repository");
+            Assert.True(settings.TrustedFolders.Of(app) is null && Listed(settings, repository).Trusted.IsChecked == true,
+                $"Trusted Folders listed [{string.Join(", ", settings.TrustedFolders.Rows.Select(r => $"{r.Folder} {r.Trusted.IsChecked}"))}], not the repository trusted in the folder's place");
+            Ui.WaitFor(() => window.Projects.Any(p => p.Name == "App" && p.IsEvaluated), () => $"the project to evaluate once trusted: {Ui.Said(window)}", TimeSpan.FromMinutes(2));
+            Assert.Equal("Exe", window.Projects.Single(p => p.Name == "App").OutputType);
+
+            Ui.Click(Listed(settings, repository).Trusted);
+            Ui.ClickButton(settings, "OK");
+            Ui.Settle();
+            Assert.False(window.Session.Trusted, "The folder's window stayed trusted once its repository's trust was taken back");
+            Assert.False(WorkspaceTrust.Trusts(app) || WorkspaceTrust.Trusts(tools), "A folder in the repository stayed trusted once the repository's trust was taken back");
+            Assert.Equal(Refusals.UntrustedInRepository(repository), window.TrustSaid);
+
+            Ui.ClickButton(window, window.Actions[AppActions.TrustFolder]!.Title);
+            Ui.Settle();
+            Assert.True(window.Session.Trusted && WorkspaceTrust.Trusts(tools), "The banner's Trust Folder did not trust the folder's Git repository");
+        }
+        finally
+        {
+            window.Close();
+        }
+        using System.Text.Json.JsonDocument kept = System.Text.Json.JsonDocument.Parse(File.ReadAllText(Path.Combine(state, "trust.json")));
+        Assert.Equal([repository], kept.RootElement.GetProperty("trusted").EnumerateArray().Select(f => f.GetString()));
+        Assert.Empty(kept.RootElement.GetProperty("untrusted").EnumerateArray());
+    }
+
+    /// <summary>A trust kept from before of a folder below the top of its Git repository, given before trusting it named the
+    /// repository, is forgotten as the window takes in what it keeps: the folder opens untrusted and asks again, naming the
+    /// repository, whose Trust trusts the repository, kept in the folder's place.</summary>
+    [AvaloniaFact]
+    public void A_trust_kept_of_a_folder_below_its_repositorys_top_is_asked_again_naming_the_repository()
+    {
+        string repository = PathNames.Canonical(TestFolders.Create("kept-repository-"));
+        TestGit.Run(repository, "init", "-q");
+        string app = Path.GetDirectoryName(TestFolders.Write(repository, "src/App/README.md", "# App\n"))!;
+        string state = TestFolders.Create("trust-state-");
+        TestFolders.Write(state, "trust.json", $$"""{ "version": 1, "trusted": [ {{System.Text.Json.JsonSerializer.Serialize(app)}} ], "untrusted": [] }""" + "\n");
+        using IDisposable asked = WorkspaceTrust.Ask(repository);
+        MainWindow window = new() { Width = 1200, Height = 800, StartsLanguageServer = false, StateFolder = state };
+        window.Show();
+        window.KeepLayout();
+        try
+        {
+            Open(window, app);
+            WorkspaceTrustDialog question = Asked(window);
+            Assert.False(window.Session.Trusted, "The folder whose trust was kept from before trusting it named its repository opened trusted");
+            Assert.Equal(repository, question.Trusting);
+            Ui.ClickButton(question, WorkspaceTrustDialog.Trust);
+            Ui.Settle();
+            Assert.True(window.Session.Trusted && WorkspaceTrust.Trusts(repository), "The question's Trust did not trust the folder's Git repository");
+        }
+        finally
+        {
+            window.Close();
+        }
+        using System.Text.Json.JsonDocument kept = System.Text.Json.JsonDocument.Parse(File.ReadAllText(Path.Combine(state, "trust.json")));
+        Assert.Equal([repository], kept.RootElement.GetProperty("trusted").EnumerateArray().Select(f => f.GetString()));
+    }
+
+    /// <summary>A new solution made in a Git repository the person has not trusted is not trusted as it is made, as its
+    /// projects would take in the repository's build files: it is made without its restore, and opens asking of the
+    /// repository.</summary>
+    [AvaloniaFact]
+    public void A_new_solution_made_in_a_Git_repository_not_trusted_is_not_trusted_and_opens_asking_of_the_repository()
+    {
+        string repository = PathNames.Canonical(TestFolders.Create("new-in-repository-"));
+        TestGit.Run(repository, "init", "-q");
+        using IDisposable asked = WorkspaceTrust.Ask(repository);
+        MainWindow window = new() { Width = 1200, Height = 800, StartsLanguageServer = false };
+        window.Show();
+        Ui.Settle();
+        try
+        {
+            Assert.True(window.Perform(AppActions.NewSolution), $"New Solution did not open: {Ui.Said(window)}");
+            Passenger.App.Templates.NewProjectDialog dialog = NewServiceSetupTests.Opened(window);
+            NewServiceSetupTests.Choose(dialog, "classlib");
+            dialog.Folder = Path.Combine(repository, "samples");
+            dialog.SolutionName = "Made";
+            dialog.ProjectName = "Made";
+            dialog.Framework = TestProjects.Framework;
+            NewServiceSetupTests.Created(dialog, "the solution");
+
+            string made = Path.Combine(repository, "samples", "Made");
+            Assert.True(File.Exists(Path.Combine(made, "Made", "Made.csproj")), $"No Made.csproj was made: {Ui.Said(window)}");
+            Assert.False(WorkspaceTrust.Trusts(made), "The new solution made in a Git repository not trusted was trusted as it was made");
+            Assert.False(File.Exists(Path.Combine(made, "Made", "obj", "project.assets.json")), "The new solution made in a Git repository not trusted was restored");
+            Assert.Equal(repository, Asked(window).Trusting);
+        }
+        finally
+        {
+            window.Close();
+        }
     }
 
     [AvaloniaFact]
@@ -561,6 +694,10 @@ public sealed class WorkspaceTrustTests
             TestFolders.Delete(folder);
         }
     }
+
+    /// <summary>A folder's row in Settings' Trusted Folders, failing where it lists none.</summary>
+    private static TrustedFoldersTable.Row Listed(SettingsDialog settings, string folder) => settings.TrustedFolders.Of(folder)
+        ?? throw new InvalidOperationException($"Trusted Folders lists no {folder}: [{string.Join(", ", settings.TrustedFolders.Rows.Select(r => r.Folder))}]");
 
     /// <summary>The trust question the window asks now, failing where it asks none.</summary>
     private static WorkspaceTrustDialog Asked(MainWindow window)

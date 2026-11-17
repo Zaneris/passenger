@@ -5,8 +5,9 @@ namespace Passenger.App;
 /// <summary>The open folder's trust (<see cref="WorkspaceTrust"/>): a folder opened untrusted runs none of its code, the
 /// banner over the editors saying so with Trust Folder; one the person never answered for asks once as it opens
 /// (<see cref="WorkspaceTrustDialog"/>), the answer kept in their state where the window keeps it, and changed or forgotten
-/// in Settings' Trusted Folders. A folder trusted here, in another window or through a parent, has its session begin at once
-/// what it held back, as an open begins it; one whose trust is taken back holds back what it can, the banner naming what runs on.</summary>
+/// in Settings' Trusted Folders. A folder in a Git repository is trusted with the repository, as each of these says. A
+/// folder trusted here, in another window or through a parent, has its session begin at once what it held back, as an open
+/// begins it; one whose trust is taken back holds back what it can, the banner naming what runs on.</summary>
 public partial class MainWindow
 {
     /// <summary>The trust question while it asks, else null.</summary>
@@ -33,12 +34,30 @@ public partial class MainWindow
     }
 
     /// <summary>The folders the person trusted as their state keeps them, read off the window's thread and taken in, before
-    /// a folder opens; at once in a window keeping no state.</summary>
+    /// a folder opens; at once in a window keeping no state. One kept below the top of its Git repository was trusted
+    /// before trusting it named the repository (<see cref="WorkspaceTrust.FolderToTrust"/>): it is forgotten instead, so
+    /// the folder asks again, naming the repository, as it opens.</summary>
     private async Task TakeKeptTrustAsync()
     {
-        if (keepsWorkspace)
+        if (!keepsWorkspace)
         {
-            WorkspaceTrust.Trust((await Store().Trust.ValueAsync()).Trusted);
+            return;
+        }
+        string[] taking = [.. (await Store().Trust.ValueAsync()).Trusted.Where(f => !WorkspaceTrust.Trusts(f))];
+        if (taking.Length == 0)
+        {
+            return;
+        }
+        string[] below = await BackgroundWork.Run(() =>
+        {
+            string[] widened = [.. taking.Where(f => !PathNames.Same(WorkspaceTrust.FolderToTrust(f), f))];
+            WorkspaceTrust.Trust(taking.Except(widened, PathNames.Comparer));
+            return widened;
+        });
+        if (below.Length > 0)
+        {
+            IdeErrors.Write($"Trust kept of {Plural.Listed(below)}, below the top of a Git repository, forgotten: each asks again, naming its repository");
+            state!.Trust.Set(below.Aggregate(state.Trust.Value, (kept, folder) => kept.Forgotten(folder)));
         }
     }
 
@@ -65,15 +84,18 @@ public partial class MainWindow
         ShowTrust();
     }
 
-    /// <summary>The banner over the editors says the open folder is untrusted, while it is, and what the person started there
-    /// runs on until it ends.</summary>
-    private void ShowTrust() => TrustBanner.Say(session.Folder is null || session.Trusted ? null
-        : session.StillRunning() is { Count: > 0 } running ? Refusals.UntrustedRunsOn(running) : Refusals.UntrustedSaid);
+    /// <summary>The banner over the editors says the open folder is untrusted, while it is, naming the Git repository its
+    /// Trust Folder trusts where it is in one, and what the person started there runs on until it ends.</summary>
+    private void ShowTrust() => TrustBanner.Say(session.Folder is not { } folder || session.Trusted ? null
+        : session.StillRunning() is { Count: > 0 } running ? Refusals.UntrustedRunsOn(running)
+        : WorkspaceTrust.FolderToTrust(folder) is { } trusting && !PathNames.Same(trusting, folder) ? Refusals.UntrustedInRepository(trusting)
+        : Refusals.UntrustedSaid);
 
-    /// <summary>Settings' Trusted Folders put in force: each folder trusted there trusted, each no longer trusted taken back
-    /// (every window of it holding back what trusting began, <see cref="FollowTrust"/>), and the answers kept as changed from
-    /// those Settings showed, so another window's change meanwhile stays.</summary>
-    private void ApplyTrust(State.TrustState from, State.TrustState to)
+    /// <summary>Settings' Trusted Folders put in force: each folder trusted there trusted, one in a Git repository with the
+    /// repository (<see cref="WorkspaceTrust.FolderToTrust"/>), each no longer trusted taken back (every window of it holding
+    /// back what trusting began, <see cref="FollowTrust"/>), and the answers kept as changed from those Settings showed, so
+    /// another window's change meanwhile stays; the answers as now kept, for Settings to list.</summary>
+    private State.TrustState ApplyTrust(State.TrustState from, State.TrustState to)
     {
         UiThread.Check();
         static bool In(IReadOnlyList<string> folders, string folder) => folders.Any(f => PathNames.Same(f, folder));
@@ -86,7 +108,8 @@ public partial class MainWindow
         {
             kept = kept.StoppedTrusting(declined);
         }
-        foreach (string trusted in to.Trusted.Where(f => !In(from.Trusted, f)))
+        string[] trusting = [.. to.Trusted.Where(f => !In(from.Trusted, f)).Select(WorkspaceTrust.FolderToTrust)];
+        foreach (string trusted in trusting)
         {
             kept = kept.With(trusted);
         }
@@ -95,7 +118,8 @@ public partial class MainWindow
         {
             WorkspaceTrust.TakeBack(taken);
         }
-        WorkspaceTrust.Trust(to.Trusted.Where(f => !In(from.Trusted, f)));
+        WorkspaceTrust.Trust(trusting);
+        return kept;
     }
 
     /// <summary>Asks of a folder opened untrusted whether the person trusts it, unless they answered for it, or a folder
@@ -141,10 +165,10 @@ public partial class MainWindow
             switch (dialog.Answered)
             {
                 case TrustAnswer.Trusted:
-                    TrustFolder(folder);
+                    TrustFolder(dialog.Trusting);
                     break;
                 case TrustAnswer.ParentTrusted:
-                    TrustFolder(WorkspaceTrustDialog.ParentOf(folder) ?? folder);
+                    TrustFolder(dialog.Above ?? dialog.Trusting);
                     break;
                 case TrustAnswer.Untrusted when keepsWorkspace:
                     state!.Trust.Set(state.Trust.Value.Declined(folder));
@@ -154,9 +178,10 @@ public partial class MainWindow
         IdeErrors.Observe(dialog.ShowDialog(this));
     }
 
-    /// <summary>Trusts a folder, with every folder under it, kept in the person's state where the window keeps it: every
-    /// window's session of it begins what it held back (<see cref="FollowTrust"/>). Refused where an agent's input into the
-    /// window asked for it, or started the work that does (<see cref="AgentAsks.PersonsAlone"/>), the status bar saying why.</summary>
+    /// <summary>Trusts a folder, with every folder under it, one in a Git repository with the whole repository
+    /// (<see cref="WorkspaceTrust.FolderToTrust"/>), kept in the person's state where the window keeps it: every window's
+    /// session of it begins what it held back (<see cref="FollowTrust"/>). Refused where an agent's input into the window
+    /// asked for it, or started the work that does (<see cref="AgentAsks.PersonsAlone"/>), the status bar saying why.</summary>
     private void TrustFolder(string folder)
     {
         UiThread.Check();
@@ -165,10 +190,11 @@ public partial class MainWindow
             Refuse(Refusals.TrustIsThePersons);
             return;
         }
+        string trusted = WorkspaceTrust.FolderToTrust(folder);
         if (keepsWorkspace)
         {
-            state!.Trust.Set(state.Trust.Value.With(folder));
+            state!.Trust.Set(state.Trust.Value.With(trusted));
         }
-        WorkspaceTrust.Trust(folder);
+        WorkspaceTrust.Trust(trusted);
     }
 }

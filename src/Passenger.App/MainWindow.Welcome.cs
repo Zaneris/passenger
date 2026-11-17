@@ -276,8 +276,11 @@ public partial class MainWindow
         {
             if (dialog.Cloned is { } cloned)
             {
-                // A clone the person made here is trusted as it opens, never asked of.
-                TrustFolder(PathNames.Canonical(cloned));
+                // A clone the person made here is trusted as it opens, never asked of, but in a Git repository only the person trusts.
+                if (WorkspaceTrust.TrustsAlone(PathNames.Canonical(cloned)))
+                {
+                    TrustFolder(PathNames.Canonical(cloned));
+                }
                 Open(cloned);
             }
         };

@@ -50,10 +50,12 @@ public partial class MainWindow
         NewProjectDialog dialog = new(BesideLast(), null, ContainersWhyNot(), settings.GodotExecutable) { Workloads = InstallAskedWorkloadsAsync };
         dialog.Closed += (_, _) =>
         {
-            // What Passenger made is the person's own code, opened trusted.
-            if (dialog.Created is { } created && (created.Solution is not null || created.Game))
+            // What Passenger made is the person's own code, opened trusted, but in a Git repository only the person trusts.
+            if (dialog.Created is { } created && (created.Solution is not null || created.Game)
+                && PathNames.Canonical(created.Solution is { } named ? Path.GetDirectoryName(named)! : created.Folder) is { } own
+                && WorkspaceTrust.TrustsAlone(own))
             {
-                TrustFolder(PathNames.Canonical(created.Solution is { } named ? Path.GetDirectoryName(named)! : created.Folder));
+                TrustFolder(own);
             }
             if (dialog.Created is { Solution: { } solution } made)
             {

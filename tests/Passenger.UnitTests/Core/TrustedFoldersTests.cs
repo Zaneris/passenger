@@ -73,6 +73,83 @@ public sealed class TrustedFoldersTests
     }
 
     [Fact]
+    public void A_folder_in_a_Git_repository_is_trusted_as_the_repositorys_top_and_one_in_none_as_itself()
+    {
+        string root = PathNames.Canonical(Directory.CreateTempSubdirectory("passenger-unit-").FullName);
+        try
+        {
+            string repository = Directory.CreateDirectory(Path.Join(root, "repo")).FullName;
+            Directory.CreateDirectory(Path.Join(repository, ".git"));
+            string app = Directory.CreateDirectory(Path.Join(repository, "src", "App")).FullName;
+            string plain = Directory.CreateDirectory(Path.Join(root, "plain", "App")).FullName;
+
+            Assert.Equal(repository, WorkspaceTrust.FolderToTrust(app));
+            Assert.Equal(repository, WorkspaceTrust.FolderToTrust(repository));
+            Assert.Equal(repository, WorkspaceTrust.FolderToTrust(Path.Join(repository, "samples", "New")));
+            Assert.Equal(plain, WorkspaceTrust.FolderToTrust(plain));
+            Assert.Null(WorkspaceTrust.RepositoryOf(plain));
+            Assert.Null(WorkspaceTrust.RepositoryOf("relative"));
+            Assert.False(WorkspaceTrust.TrustsAlone(Path.Join(repository, "samples", "New")), "A new folder in a Git repository was trusted alone, without the repository");
+            Assert.True(WorkspaceTrust.TrustsAlone(repository) && WorkspaceTrust.TrustsAlone(plain), "A repository's top, or a folder in none, was not trusted alone");
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void A_git_file_naming_a_git_folder_makes_a_worktrees_top_and_a_submodule_takes_its_superprojects_top()
+    {
+        string root = PathNames.Canonical(Directory.CreateTempSubdirectory("passenger-unit-").FullName);
+        try
+        {
+            string worktree = Directory.CreateDirectory(Path.Join(root, "worktree")).FullName;
+            File.WriteAllText(Path.Join(worktree, ".git"), "gitdir: /elsewhere/repo/.git/worktrees/worktree\n");
+            string superproject = Directory.CreateDirectory(Path.Join(root, "super")).FullName;
+            Directory.CreateDirectory(Path.Join(superproject, ".git", "modules", "sub"));
+            string submodule = Directory.CreateDirectory(Path.Join(superproject, "lib", "sub")).FullName;
+            File.WriteAllText(Path.Join(submodule, ".git"), "gitdir: ../../.git/modules/sub\n");
+            string odd = Directory.CreateDirectory(Path.Join(root, "odd", "App")).FullName;
+            File.WriteAllText(Path.Join(root, "odd", ".git"), "not a repository\n");
+
+            Assert.Equal(worktree, WorkspaceTrust.FolderToTrust(Directory.CreateDirectory(Path.Join(worktree, "src")).FullName));
+            Assert.Equal(superproject, WorkspaceTrust.FolderToTrust(Directory.CreateDirectory(Path.Join(submodule, "src")).FullName));
+            Assert.Equal(superproject, WorkspaceTrust.FolderToTrust(submodule));
+            Assert.Equal(odd, WorkspaceTrust.FolderToTrust(odd));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Trusting_a_folder_in_a_Git_repository_trusts_the_repository_whose_trust_taken_back_takes_back_the_folder()
+    {
+        string root = PathNames.Canonical(Directory.CreateTempSubdirectory("passenger-unit-").FullName);
+        string repository = Directory.CreateDirectory(Path.Join(root, "repo")).FullName;
+        try
+        {
+            Directory.CreateDirectory(Path.Join(repository, ".git"));
+            string app = Directory.CreateDirectory(Path.Join(repository, "src", "App")).FullName;
+            string tools = Directory.CreateDirectory(Path.Join(repository, "tools")).FullName;
+
+            WorkspaceTrust.Trust(app);
+
+            Assert.True(WorkspaceTrust.Trusts(repository), "Trusting a folder in a Git repository left the repository, whose build files its projects take in, untrusted");
+            Assert.True(WorkspaceTrust.Trusts(tools), "A folder beside the one trusted, in its Git repository, was not trusted with the repository");
+            WorkspaceTrust.TakeBack(repository);
+            Assert.False(WorkspaceTrust.Trusts(app), "The folder trusted with its repository stayed trusted once the repository's trust was taken back");
+        }
+        finally
+        {
+            WorkspaceTrust.TakeBack(repository);
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
     public void A_folder_taken_back_is_trusted_no_longer_with_every_folder_under_it_while_a_parent_still_trusted_keeps_it()
     {
         TrustedFolders trusted = TrustedFolders.None.With([At("work", "app"), At("other")]);

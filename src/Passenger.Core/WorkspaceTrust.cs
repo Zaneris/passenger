@@ -4,8 +4,9 @@ namespace Passenger.Core;
 /// TypeScript, ESLint and Prettier, the programs its Git configuration names, a dotnet its global.json names, Godot's
 /// editor on its native extensions, its built assemblies in a previewer. One answer per folder, a folder trusted with
 /// every folder under it: the person's, which the App keeps in their state and gives here (<see cref="Trust"/>), and
-/// every folder's in a process nobody is asked in (<see cref="TrustEverything"/>). A trust given stands until the person
-/// takes it back (<see cref="TakeBack"/>). Any thread.</summary>
+/// every folder's in a process nobody is asked in (<see cref="TrustEverything"/>). A folder in a Git repository is trusted
+/// with the whole repository (<see cref="FolderToTrust"/>), whose build files its builds take in. A trust given stands
+/// until the person takes it back (<see cref="TakeBack"/>). Any thread.</summary>
 public static class WorkspaceTrust
 {
     /// <summary>Why a folder's code does not run, in the one sentence every refusal of it says.</summary>
@@ -41,9 +42,50 @@ public static class WorkspaceTrust
     /// own, a screenshot's) and a test run, where whoever started it chose the folder.</summary>
     public static void TrustEverything() => Change(now => now with { Everything = true });
 
-    /// <summary>Folders trusted from now on, each with every folder under it: the person's answer, and those their state
-    /// keeps. Canonical paths.</summary>
-    public static void Trust(params IEnumerable<string> trusted) => Change(now => now.With(trusted));
+    /// <summary>Folders trusted from now on, each with every folder under it, a folder in a Git repository trusting the
+    /// repository (<see cref="FolderToTrust"/>): the person's answer, and those their state keeps. Canonical paths.</summary>
+    public static void Trust(params IEnumerable<string> trusted)
+    {
+        string[] folders = [.. trusted.Select(FolderToTrust)];
+        Change(now => now.With(folders));
+    }
+
+    /// <summary>The folder trusting <paramref name="folder"/> trusts: the top of the Git repository holding it
+    /// (<see cref="RepositoryOf"/>), as MSBuild takes the build files above a project (Directory.Build.props,
+    /// Directory.Packages.props) from anywhere in it, else the folder itself. A canonical path.</summary>
+    public static string FolderToTrust(string folder) => RepositoryOf(folder) ?? folder;
+
+    /// <summary>Whether trusting a folder trusts it alone, no Git repository above it holding it (<see cref="FolderToTrust"/>):
+    /// what Passenger made for the person (a new solution, a clone) is trusted as it is made only where it does, as only
+    /// the person trusts a repository it is in. A canonical path, there or not yet.</summary>
+    public static bool TrustsAlone(string folder) => PathNames.Same(FolderToTrust(folder), folder);
+
+    /// <summary>The top of the Git work tree holding a folder, the outermost where one holds another (a submodule in its
+    /// superproject, a clone in another's folder): the highest folder of the walk up (<see cref="FoldersUp"/>) with a
+    /// <c>.git</c> folder or a <c>.git</c> file naming one (a worktree's, a submodule's), read by Passenger, never asked of
+    /// git. Never the home folder, a folder holding it or a disk's root; null where none holds it. A canonical path.</summary>
+    public static string? RepositoryOf(string folder)
+    {
+        if (!Path.IsPathFullyQualified(folder))
+        {
+            return null;
+        }
+        string home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        string? canonicalHome = home.Length > 0 ? PathNames.Canonical(home) : null;
+        string? top = null;
+        foreach (string at in FoldersUp.From(Path.TrimEndingDirectorySeparator(folder)))
+        {
+            if (Path.GetDirectoryName(at) is null || canonicalHome is not null && PathNames.Within(canonicalHome, at))
+            {
+                break;
+            }
+            if (FoldersUp.Found(at, ".git") is { } git && (Directory.Exists(git) || NamesGitFolder(git)))
+            {
+                top = at;
+            }
+        }
+        return top;
+    }
 
     /// <summary>A folder the person trusted, and every folder trusted under it, no longer trusted from now on: what runs of
     /// its code is the caller's to end. A folder above it still trusted, or one lent, keeps it trusted. A canonical path.</summary>
@@ -92,6 +134,29 @@ public static class WorkspaceTrust
         }
         Changed?.Invoke(null, EventArgs.Empty);
     }
+
+    /// <summary>Whether a <c>.git</c> file names a git folder, as a worktree's and a submodule's do (<c>gitdir: …</c>);
+    /// never opened where it only looks like a file (a FIFO, whose open waits for a writer).</summary>
+    private static bool NamesGitFolder(string file)
+    {
+        if (FileKinds.Of(file) is not (null or FileKind.File))
+        {
+            return false;
+        }
+        try
+        {
+            using FileStream stream = new(file, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+            Span<byte> start = stackalloc byte[GitFolderNamed.Length];
+            return stream.ReadAtLeast(start, start.Length, throwOnEndOfStream: false) == start.Length && start.SequenceEqual(GitFolderNamed);
+        }
+        catch (Exception unread) when (unread is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>How a <c>.git</c> file begins that names a git folder.</summary>
+    private static ReadOnlySpan<byte> GitFolderNamed => "gitdir:"u8;
 
     private static int IndexOf(IReadOnlyList<string> asked, string folder)
     {
