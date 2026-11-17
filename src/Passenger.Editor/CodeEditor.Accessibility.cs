@@ -81,6 +81,28 @@ public sealed partial class CodeEditor
 
         public override int OffsetAt(Point point) => editor.OffsetAt(point);
 
+        public override TextRange Shown
+        {
+            get
+            {
+                (int first, int last) = editor.LinesShown;
+                return TextRange.FromBounds(Line(first).Start, Line(last).EndIncludingBreak);
+            }
+        }
+
+        public override void Select(TextRange range)
+        {
+            int start = Math.Clamp(range.Start, 0, Snapshot.Length);
+            editor.Select(TextRange.FromBounds(start, Math.Clamp(range.End, start, Snapshot.Length)));
+        }
+
+        public override void Show(TextRange range)
+        {
+            int start = Math.Clamp(range.Start, 0, Snapshot.Length);
+            editor.Reveal(Math.Clamp(range.End, start, Snapshot.Length));
+            editor.Reveal(start);
+        }
+
         /// <summary>A rectangle for each row soft wrap makes of a piece of one line, an empty piece's as wide as nothing.</summary>
         private void RowsOf(TextSnapshot text, int from, int to, List<Rect> rows)
         {

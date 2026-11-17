@@ -36,7 +36,7 @@ public sealed class AccessibleTextTests : IDisposable
         Assert.True(text.LineCount == 5 && text.Line(2) == new LineSpan(2, 15, 19, 2), $"Line 3 is {text.Line(2)} of {text.LineCount} lines");
         int count = Text.IndexOf("count", StringComparison.Ordinal);
         Assert.True(text.LineOf(count + 2) == 2 && text.LineAt(count + 2) == new TextRange(15, 19), $"\"count\" is on line {text.LineOf(count + 2)}");
-        Assert.True(text.Read(text.WordAt(count + 2)) == "count", $"The word in \"count\" reads \"{text.Read(text.WordAt(count + 2))}\"");
+        Assert.True(text.Read(text.WordAt(count + 2)) == "count ", $"The word in \"count\" reads \"{text.Read(text.WordAt(count + 2))}\"");
         Assert.True(text.Read(text.WordAt(17)) == "    ", $"The word in the indent reads \"{text.Read(text.WordAt(17))}\"");
         Assert.True(text.Read(text.CharacterAt(10)) == "\r\n" && text.CharacterAt(Text.Length) == new TextRange(Text.Length, 0),
             "A line break is not read as one character, or the text's end as none");
@@ -52,6 +52,33 @@ public sealed class AccessibleTextTests : IDisposable
         Assert.True(changes.Count > 0 && changes[0] == new AccessibleTextChange(count, 5, 1) && changes.Skip(1).All(c => c.Removed == 0 && c.Inserted == 1),
             $"Typing over \"count\" was told as {string.Join(", ", changes)}");
         Assert.True(text.Read(text.LineAt(text.Caret)) == "    int total = 10;", $"After typing, the caret's line reads \"{text.Read(text.LineAt(text.Caret))}\"");
+    }
+
+    [AvaloniaFact]
+    public void A_reader_scrolls_the_editors_text_into_view_and_takes_its_caret_and_hears_its_line_change()
+    {
+        string text = string.Concat(Enumerable.Range(0, 400).Select(i => $"line {i}\n"));
+        EditorRig rig = new(text);
+        AccessibleText model = rig.Editor.AccessibleText;
+        int lines = 0;
+        model.CaretLineChanged += (_, _) => lines++;
+        TextRange shown = model.Shown;
+        Assert.True(shown.Start == 0 && model.LineOf(shown.End) is > 10 and < 100, $"The editor shows {model.Read(shown).Count(c => c == '\n')} lines from {shown.Start}");
+
+        int far = text.IndexOf("line 300", StringComparison.Ordinal);
+        model.Show(new TextRange(far, 8));
+        Ui.Settle();
+        Assert.True(model.Shown.Contains(far) && rig.Caret == 0 && lines == 0,
+            $"Showing line 300 shows {model.Read(model.LineAt(model.Shown.Start))} on, the caret at {rig.Caret} after {lines} line changes told");
+
+        int next = text.IndexOf("line 301", StringComparison.Ordinal);
+        model.Select(new TextRange(next + 5, 3));
+        Ui.Settle();
+        Assert.True(model.Selected is [var chosen] && model.Read(chosen) == "301" && model.Caret == next + 8 && lines == 1 && model.CaretLine == "line 301",
+            $"Choosing \"301\" chose {string.Join(", ", model.Selected.Select(model.Read))}, the caret at {model.Caret} on \"{model.CaretLine}\" after {lines} line changes told");
+        model.Select(new TextRange(next + 2, 0));
+        rig.Type("x");
+        Assert.True(model.CaretLine == "lixne 301" && lines == 2 && model.Selected is [{ Length: 0 }], $"Typing on the line told {lines} line changes and reads \"{model.CaretLine}\"");
     }
 
     [AvaloniaFact]
@@ -167,6 +194,14 @@ public sealed class AccessibleTextTests : IDisposable
             view.Select(above, 0, above, 3);
             Assert.True(changes.Count == 0 && moves == 1 && text.Selected is [var chosen] && text.Read(chosen) == "line",
                 $"A selection made was told as {changes.Count} changes and {moves} moves, reading {string.Join(", ", text.Selected.Select(text.Read))}");
+
+            int scrollbackStart = text.Line(0).Start;
+            text.Select(new TextRange(scrollbackStart, 4));
+            Ui.Settle();
+            Assert.True(text.Selected is [var back] && back == new TextRange(scrollbackStart, 4) && text.Shown.Contains(scrollbackStart) && view.ScrolledBack > 0,
+                $"Choosing the scrollback's first word chose {string.Join(", ", text.Selected)} and scrolled back {view.ScrolledBack} lines to show {text.Shown}");
+            text.Select(new TextRange(text.Caret, 0));
+            Assert.True(text.Selected.Count == 0 && view.SelectedText.Length == 0, $"An empty range left \"{view.SelectedText}\" selected");
         }
         finally
         {

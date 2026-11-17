@@ -180,6 +180,55 @@ public sealed partial class TerminalView
             return OffsetOf(screen, line, column);
         }
 
+        public override TextRange Shown
+        {
+            get
+            {
+                if (Screen is not { } screen)
+                {
+                    return new TextRange(0, 0);
+                }
+                Index();
+                int first = (int)Math.Clamp(view.TopLine - screen.FirstLine, 0, lineCount - 1);
+                int last = (int)Math.Clamp(view.TopLine + screen.Rows - 1 - screen.FirstLine, first, lineCount - 1);
+                return TextRange.FromBounds(starts[first], Math.Min(starts[last + 1], Length));
+            }
+        }
+
+        /// <summary>Selects a range of the lines as a drag over them does; an empty range lets go of what was selected, as
+        /// the cursor is the program's to move.</summary>
+        public override void Select(TextRange range)
+        {
+            if (Screen is not { } screen || range.Length <= 0)
+            {
+                view.ClearSelection();
+                return;
+            }
+            (long fromLine, int fromColumn) = PlaceOf(screen, range.Start);
+            (long toLine, int toColumn) = PlaceOf(screen, range.End - 1);
+            view.Select(fromLine, fromColumn, toLine, toColumn);
+            Show(range);
+        }
+
+        /// <summary>Scrolls back or forward through the scrollback until the range's first line is drawn.</summary>
+        public override void Show(TextRange range)
+        {
+            if (Screen is not { } screen)
+            {
+                return;
+            }
+            (long line, _) = PlaceOf(screen, range.Start);
+            long top = view.TopLine;
+            if (line < top)
+            {
+                view.ScrollLines((int)(top - line));
+            }
+            else if (line >= top + screen.Rows)
+            {
+                view.ScrollLines((int)(top - (line - screen.Rows + 1)));
+            }
+        }
+
         /// <summary>Tells what changed since last told: the oldest lines gone, then the lines from the first written since
         /// to the end (the scrollback's lines are never written once scrolled off); then the caret's move or another
         /// selection.</summary>
@@ -241,6 +290,15 @@ public sealed partial class TerminalView
             int line = (int)Math.Clamp(number - screen.FirstLine, 0, lineCount - 1);
             int length = starts[line + 1] - starts[line] - 1;
             return starts[line] + Math.Min(length, screen.LineAt(screen.FirstLine + line).IndexOf(column));
+        }
+
+        /// <summary>An offset in the text as a line's number and the column of the cell its character starts in.</summary>
+        private (long Line, int Column) PlaceOf(TerminalScreen screen, int offset)
+        {
+            Index();
+            int line = LineOf(offset);
+            long number = screen.FirstLine + line;
+            return (number, screen.LineAt(number).ColumnOf(Math.Clamp(offset - starts[line], 0, starts[line + 1] - starts[line] - 1)));
         }
 
         /// <summary>Finds each line's start again where the screen changed since they were found.</summary>

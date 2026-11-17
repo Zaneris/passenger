@@ -4,20 +4,21 @@ using Passenger.Text;
 namespace Passenger.UnitTests.Text;
 
 /// <summary>The pieces a screen reader steps a line by: a character as a person sees one, and a word as a run of one kind
-/// of character, the runs following one another to the line's end; and a terminal row's text placed by its cells, a wide
-/// character's two cells one character.</summary>
+/// of character with the white space after it, the words following one another to the line's end; and a terminal row's
+/// text placed by its cells, a wide character's two cells one character.</summary>
 public class ReadingUnitsTests
 {
     [Theory]
-    [InlineData("int count = 0;", 5, "count")]
-    [InlineData("int count = 0;", 3, " ")]
+    [InlineData("int count = 0;", 5, "count ")]
+    [InlineData("int count = 0;", 3, "int ")]
     [InlineData("a->b", 1, "->")]
     [InlineData("a->b", 3, "b")]
     [InlineData("    return x;", 2, "    ")]
-    [InlineData("snake_case2 + 1", 4, "snake_case2")]
-    [InlineData("cafe\u0301 au lait", 4, "cafe\u0301")]
+    [InlineData("    return x;", 4, "return ")]
+    [InlineData("snake_case2 + 1", 4, "snake_case2 ")]
+    [InlineData("cafe\u0301 au lait", 4, "cafe\u0301 ")]
     [InlineData("x", 7, "x")]
-    public void A_word_is_the_run_of_one_kind_of_character_holding_the_place(string line, int at, string word)
+    public void A_word_is_the_run_of_one_kind_of_character_holding_the_place_with_the_white_space_after_it(string line, int at, string word)
     {
         (int start, int end) = ReadingUnits.WordAt(line, at);
         Assert.True(line[start..end] == word, $"The word at {at} of \"{line}\" reads \"{line[start..end]}\", not \"{word}\"");
@@ -35,7 +36,7 @@ public class ReadingUnitsTests
             words.Add(Line[start..end]);
             at = end;
         }
-        Assert.Equal(["if", " ", "(", "count", " ", ">=", " ", "10", ")", " ", "{", " ", "Say", "(\"", "done", "\");", " ", "}"], words);
+        Assert.Equal(["if ", "(", "count ", ">= ", "10", ") ", "{ ", "Say", "(\"", "done", "\"); ", "}"], words);
     }
 
     [Theory]

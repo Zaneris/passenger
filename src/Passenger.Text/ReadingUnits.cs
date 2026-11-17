@@ -4,8 +4,9 @@ namespace Passenger.Text;
 
 /// <summary>The pieces a screen reader steps a line's text by: a character, as a person sees one (a letter with its marks,
 /// an emoji with its joiners: a grapheme cluster), and a word, a run of one kind of character (a word's by
-/// <see cref="WordCharacters"/>, white space, or other marks such as an operator), so every place in a line lies in exactly
-/// one word and the words follow one another to its end.</summary>
+/// <see cref="WordCharacters"/>, or other marks such as an operator) with the white space after it, the white space
+/// opening a line (its indent) a word of its own, so every place in a line lies in exactly one word, the words follow one
+/// another to its end, and a reader stepping by words never stops on a space.</summary>
 public static class ReadingUnits
 {
     private enum Kind
@@ -37,7 +38,8 @@ public static class ReadingUnits
     }
 
     /// <summary>The word holding an index of <paramref name="piece"/>, as its start and end there: the run of characters of
-    /// the kind there, a mark or joiner taking the kind of the character it carries on.</summary>
+    /// one kind there or before the white space there, a mark or joiner taking the kind of the character it carries on,
+    /// with the white space after it; white space at the piece's start is a word of its own.</summary>
     public static (int Start, int End) WordAt(ReadOnlySpan<char> piece, int index)
     {
         if (piece.IsEmpty)
@@ -45,6 +47,21 @@ public static class ReadingUnits
             return (0, 0);
         }
         int at = Math.Clamp(index, 0, piece.Length - 1);
+        (int start, int end) = RunAt(piece, at);
+        if (KindAt(piece, at) == Kind.Space)
+        {
+            if (start == 0)
+            {
+                return (0, end);
+            }
+            return (RunAt(piece, start - 1).Start, end);
+        }
+        return end < piece.Length && KindAt(piece, end) == Kind.Space ? (start, RunAt(piece, end).End) : (start, end);
+    }
+
+    /// <summary>The run of characters of the kind at an index, as its start and end.</summary>
+    private static (int Start, int End) RunAt(ReadOnlySpan<char> piece, int at)
+    {
         Kind kind = KindAt(piece, at);
         int start = at;
         while (start > 0 && KindAt(piece, start - 1) == kind)

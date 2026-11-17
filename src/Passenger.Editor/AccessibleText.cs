@@ -9,14 +9,25 @@ public readonly record struct AccessibleTextChange(int Start, int Removed, int I
 
 /// <summary>The text of a control drawing its own (the code editor, the terminal) as each system's screen-reader bridge
 /// reads it, one model for both: the text by range, read as asked and never copied whole; its lines, which end at a line
-/// break and include it; the caret and what is selected; a character and a word around an offset
-/// (<see cref="ReadingUnits"/>); where a range is drawn; and what a key changed and where the caret went, as it happens.
-/// Offsets count UTF-16 code units from the text's start. A UI-thread object of its control.</summary>
+/// break and include it; the caret and what is selected, and a reader's own choice of them; a character and a word around
+/// an offset (<see cref="ReadingUnits"/>); where a range is drawn and what is in view; and what a key changed and where the
+/// caret went, as it happens. Offsets count UTF-16 code units from the text's start. A UI-thread object of its
+/// control.</summary>
 public abstract class AccessibleText
 {
+    /// <summary>The most of the caret's line <see cref="CaretLine"/> gives, from its start, so a line of a megabyte costs a
+    /// reader no more than a long one.</summary>
+    public const int MostCaretLine = 4096;
+
     /// <summary>How far either side of an offset its line is read for a character or a word, so a line of a megabyte
     /// costs a reader's question no more than a short one.</summary>
     private const int Reach = 512;
+
+    /// <summary>The caret's line as last told by <see cref="CaretLineChanged"/>, so a move along the line tells
+    /// nothing.</summary>
+    private int caretLine;
+
+    private EventHandler? caretLineChanged;
 
     /// <summary>How many characters the text holds.</summary>
     public abstract int Length { get; }
@@ -56,11 +67,48 @@ public abstract class AccessibleText
     /// <summary>The offset nearest a point in the control's coordinates.</summary>
     public abstract int OffsetAt(Point point);
 
+    /// <summary>The text in the control's view: from the start of the first line drawn to the end of the last, with any
+    /// folded away between.</summary>
+    public abstract TextRange Shown { get; }
+
+    /// <summary>Chooses a range as a reader moving the caret does: an empty range takes the caret there where the control
+    /// has a caret of its own to move (the editor's), a longer one is selected, and either is scrolled into view.</summary>
+    public abstract void Select(TextRange range);
+
+    /// <summary>Scrolls a range into the control's view, its start first, leaving the caret and what is selected as they
+    /// are.</summary>
+    public abstract void Show(TextRange range);
+
     /// <summary>Raised as the text changes, once for each piece changed.</summary>
     public event EventHandler<AccessibleTextChange>? Changed;
 
     /// <summary>Raised as the caret moves or what is selected changes.</summary>
     public event EventHandler? CaretMoved;
+
+    /// <summary>Raised as the caret comes to another line or a change reaches its line, for a reader that reads only
+    /// <see cref="CaretLine"/>; followed only while something listens.</summary>
+    public event EventHandler? CaretLineChanged
+    {
+        add
+        {
+            if (caretLineChanged is null)
+            {
+                caretLine = LineOf(Caret);
+            }
+            caretLineChanged += value;
+        }
+        remove => caretLineChanged -= value;
+    }
+
+    /// <summary>The caret's line without its line break, its first <see cref="MostCaretLine"/> characters.</summary>
+    public string CaretLine
+    {
+        get
+        {
+            TextRange line = LineAt(Caret);
+            return Read(line.Start, Math.Min(line.Length, MostCaretLine));
+        }
+    }
 
     /// <summary>The line an offset is on, without its line break.</summary>
     public TextRange LineAt(int offset)
@@ -73,13 +121,42 @@ public abstract class AccessibleText
     /// character, and the text's end none.</summary>
     public TextRange CharacterAt(int offset) => Around(offset, ReadingUnits.CharacterAt);
 
-    /// <summary>The word holding an offset: the run of one kind of character (a word's, white space, or other) there on its
-    /// line; a line break is one word, and the text's end none.</summary>
+    /// <summary>The word holding an offset: the run of one kind of character (a word's, or other marks) there on its line
+    /// with the white space after it, a line's indent a word of its own; a line break is one word, and the text's end
+    /// none.</summary>
     public TextRange WordAt(int offset) => Around(offset, ReadingUnits.WordAt);
 
-    protected void OnChanged(int start, int removed, int inserted) => Changed?.Invoke(this, new AccessibleTextChange(start, removed, inserted));
+    protected void OnChanged(int start, int removed, int inserted)
+    {
+        AccessibleTextChange change = new(start, removed, inserted);
+        Changed?.Invoke(this, change);
+        if (caretLineChanged is not null)
+        {
+            TextRange line = LineAt(Caret);
+            FollowCaretLine(changed: change.Start <= line.End && change.Start + change.Inserted >= line.Start);
+        }
+    }
 
-    protected void OnCaretMoved() => CaretMoved?.Invoke(this, EventArgs.Empty);
+    protected void OnCaretMoved()
+    {
+        CaretMoved?.Invoke(this, EventArgs.Empty);
+        if (caretLineChanged is not null)
+        {
+            FollowCaretLine(changed: false);
+        }
+    }
+
+    /// <summary>Tells the caret's line changed as the caret comes to another line, or its line changes.</summary>
+    private void FollowCaretLine(bool changed)
+    {
+        int line = LineOf(Caret);
+        if (line == caretLine && !changed)
+        {
+            return;
+        }
+        caretLine = line;
+        caretLineChanged?.Invoke(this, EventArgs.Empty);
+    }
 
     /// <summary>The unit holding an offset as <paramref name="unit"/> finds it in the piece of its line around it.</summary>
     private TextRange Around(int offset, Func<ReadOnlySpan<char>, int, (int Start, int End)> unit)
