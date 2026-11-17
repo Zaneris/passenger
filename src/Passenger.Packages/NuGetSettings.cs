@@ -1,11 +1,13 @@
 using System.Xml;
 using NuGet.Common;
 using NuGet.Configuration;
+using Passenger.Core;
 
 namespace Passenger.Packages;
 
 /// <summary>NuGet's settings for a folder, read past a nuget.config too deep for them: NuGet's reader recurses as deep as a
-/// file's elements go, and a thread's stack that runs out ends the process.</summary>
+/// file's elements go, and a thread's stack that runs out ends the process. A config above where the person's folders end
+/// (<see cref="FoldersUp"/>) is left out.</summary>
 public static class NuGetSettings
 {
     /// <summary>How deep a config's elements may go, past what any is written to and short of what NuGet's reader reaches.</summary>
@@ -13,8 +15,9 @@ public static class NuGetSettings
 
     private static readonly string[] Names = ["nuget.config", "NuGet.config", "NuGet.Config"];
 
-    /// <summary>The settings of a folder and those above it and the user's; a config nested too deeply is a
-    /// <see cref="NuGetConfigurationException"/>, as one that does not read is.</summary>
+    /// <summary>The settings of a folder and those above it of the person's (<see cref="FoldersUp"/>), the user's and the
+    /// machine's: a config in a folder above where the walk ends, which another user may have put there, is left out. A
+    /// config nested too deeply is a <see cref="NuGetConfigurationException"/>, as one that does not read is.</summary>
     public static ISettings Load(string root)
     {
         foreach (string file in Files(root))
@@ -24,8 +27,15 @@ public static class NuGetSettings
                 throw new NuGetConfigurationException($"{file} is nested too deeply to read");
             }
         }
-        return Settings.LoadDefaultSettings(root);
+        ISettings settings = Settings.LoadDefaultSettings(root);
+        IList<string> read = settings.GetConfigFilePaths();
+        HashSet<string> persons = new(FoldersUp.From(root), PathNames.Comparer);
+        string[] kept = [.. read.Where(file => Path.GetDirectoryName(file) is not { } folder || persons.Contains(folder) || !Over(root, folder))];
+        return kept.Length == read.Count ? settings : Settings.LoadSettingsGivenConfigPaths(kept);
     }
+
+    /// <summary>Whether a folder is the root or one above it, where NuGet's walk up looks for configs.</summary>
+    private static bool Over(string root, string folder) => PathNames.Same(root, folder) || PathNames.IsUnder(root, folder);
 
     /// <summary>The package cache a folder's restores use (NUGET_PACKAGES, else the globalPackagesFolder its configs name,
     /// else the user's); null where its configs do not read, so the cache is unknown.</summary>
