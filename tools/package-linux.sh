@@ -65,8 +65,19 @@ done
 grep -q '^StartupWMClass=Passenger$' "$shipped/$app.desktop" || fail "the desktop entry does not match the window's class, Passenger"
 find "$shipped" -type f -exec file -F '|' {} + | grep '| *ELF' > "$work/elf" || true
 [ -s "$work/elf" ] || fail "the archive has no ELF file"
-wrong=$(grep -v "$machine" "$work/elf" | cut -d'|' -f1 | sed "s:^$shipped/::" || true)
-[ -z "$wrong" ] || fail "built for another processor than $rid's: $(echo "$wrong" | head -n 5 | tr '\n' ' ')"
+# A debug relay is loaded by an app on an Android device, so it is held to that device's processor, not the archive's.
+wrong=
+while IFS='|' read -r file kind; do
+    part=${file#"$shipped/"}
+    case $part in
+        app/debugger/relay/android-arm64/*) want=aarch64 ;;
+        app/debugger/relay/android-x64/*) want=x86-64 ;;
+        app/debugger/relay/*) fail "the archive carries a debug relay for no device Passenger debugs: $part" ;;
+        *) want=$machine ;;
+    esac
+    case $kind in *"$want"*) ;; *) wrong="$wrong $part" ;; esac
+done < "$work/elf"
+[ -z "$wrong" ] || fail "built for another processor than the one it runs on:$wrong"
 # On a Linux machine of the archive's processor, the launcher runs the app, which draws its window off-screen.
 if [ "$(uname -s)" = Linux ] && [ "$(uname -m)" = "$(echo "$machine" | tr - _)" ]; then
     PASSENGER_SETTINGS="$work/state" "$shipped/passenger" --screenshot "$work/welcome.png" --size 1000x700 > /dev/null \
