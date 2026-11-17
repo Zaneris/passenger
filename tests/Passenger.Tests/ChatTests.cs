@@ -554,6 +554,8 @@ public sealed class ChatTests
         Assert.True(agent.ListedDuringTurn, "The project the agent made was not in the solution while it worked");
         Assert.Contains("New.Api.csproj", File.ReadAllText(Path.Combine(made, "app.slnx")), StringComparison.Ordinal);
         Assert.Contains(window.Chat.Notices, note => note.StartsWith("Added New.Api to app.slnx", StringComparison.Ordinal));
+        // The note stays in sight once the turn's steps fold under "Worked for".
+        Assert.Contains(window.Chat.GetVisualDescendants().OfType<TextBlock>(), text => text.Text?.StartsWith("Added New.Api to app.slnx", StringComparison.Ordinal) == true && text.IsEffectivelyVisible);
         window.Close();
     }
 

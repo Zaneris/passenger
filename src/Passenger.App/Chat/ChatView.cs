@@ -339,13 +339,13 @@ public sealed class ChatView : DockPanel
         {
             Classes = { StyleClasses.Framed },
             Padding = new Thickness(10, 8),
-            Child = new StackPanel
+            Tag = NoticeTag,
+            // Docked, so the words take the width left beside the check and wrap in it.
+            Child = new DockPanel
             {
-                Orientation = Orientation.Horizontal,
-                Spacing = 8,
                 Children =
                 {
-                    new RowIcon { DataKey = IconKeys.Check, ForegroundKey = TokenKeys.Vcs_Added, Width = 14, Height = 14, VerticalAlignment = VerticalAlignment.Center },
+                    Docked(new RowIcon { DataKey = IconKeys.Check, ForegroundKey = TokenKeys.Vcs_Added, Width = 14, Height = 14, Margin = new Thickness(0, 2, 8, 0), VerticalAlignment = VerticalAlignment.Top }),
                     new TextBlock { Text = text, TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center },
                 },
             },
@@ -354,8 +354,17 @@ public sealed class ChatView : DockPanel
         ToEnd();
     }
 
+    private static Control Docked(Control left)
+    {
+        DockPanel.SetDock(left, Dock.Left);
+        return left;
+    }
+
+    /// <summary>What marks a note as one, so a finished turn's fold leaves it in sight.</summary>
+    private const string NoticeTag = "notice";
+
     /// <summary>The notes the conversation shows, for a test to read.</summary>
-    public IEnumerable<string> Notices => messages.GetLogicalDescendants().OfType<Border>().Select(note => note.Child).OfType<StackPanel>()
+    public IEnumerable<string> Notices => messages.GetLogicalDescendants().OfType<Border>().Where(note => note.Tag is NoticeTag).Select(note => note.Child).OfType<DockPanel>()
         .SelectMany(panel => panel.Children.OfType<TextBlock>()).Select(text => text.Text ?? string.Empty);
 
     /// <summary>Who the agent is signed in as, for the account's menu: their email or account's name, and the plan.</summary>
@@ -492,7 +501,8 @@ public sealed class ChatView : DockPanel
         Control[] children = [.. reply.Children.Skip(1)];
         int last = Array.FindLastIndex(children, child => parts.Any(part => part.Holder == child));
         int end = last == children.Length - 1 ? last : children.Length;
-        Control[] steps = [.. children.Take(end).Where(child => child is not ToolLine { Snippet: not null })];
+        // The files it changed and what the IDE did for it (a project added to the solution) stay in sight.
+        Control[] steps = [.. children.Take(end).Where(child => child is not ToolLine { Snippet: not null } and not Border { Tag: NoticeTag })];
         if (steps.Length == 0)
         {
             return;
