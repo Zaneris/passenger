@@ -458,21 +458,51 @@ public sealed class ChatTests
 
         string plan = Path.Combine(folder, ".passenger", "plans", $"{DateTime.Now:yyyy-MM-dd}_add-a-math-class.plan.md");
         Assert.True(File.Exists(plan), $"No plan at {plan}");
-        Assert.Equal(StandInAgent.Plan, File.ReadAllText(plan));
+        // The plan keeps the agent's to-dos as a checklist at its end, ticked as each is done.
+        string written = File.ReadAllText(plan);
+        Assert.StartsWith(StandInAgent.Plan.TrimEnd(), written, StringComparison.Ordinal);
+        Assert.Contains("- [x] Read the code", written, StringComparison.Ordinal);
+        Assert.Contains("- [ ] Add tests", written, StringComparison.Ordinal);
         ApprovalCard card = window.Chat.Questions.Single();
         Assert.Contains(card.GetVisualDescendants().OfType<TextBlock>(), text => text.Text == "Add a math class");
         // Shown at once as a page, with no click; Claude Code's own draft is a step, neither reviewed nor a second plan.
         Ui.WaitFor(() => window.EditorArea.Active?.Path?.EndsWith("add-a-math-class.plan.md", StringComparison.Ordinal) == true, () => $"the plan shown, where {window.EditorArea.Active?.Path} is");
         Assert.True(window.EditorArea.ShowsMarkdownPreview);
         Assert.Empty(window.Chat.Review.Shown);
-        Assert.Contains(window.Chat.Tools, line => line.Title == "Draft the plan");
+        // Claude Code drafts twice; the reply shows the drafting once.
+        Assert.Single(window.Chat.Tools, line => line.Title == "Draft the plan" && line.IsVisible);
 
         Ui.Click(InCard(card, "Build"));
         Ui.WaitFor(() => !window.Chat.Busy, () => $"the turn ended, where the conversation is {Shown(window)}");
 
-        Assert.Equal("exit-plan-auto", agent.PlanAnswer);
+        // Build is Cursor's: the session turns to Accept edits once it leaves plan mode, so the round's edits wait for review.
+        Assert.Equal("exit-plan-default", agent.PlanAnswer);
+        Ui.WaitFor(() => agent.Mode == "acceptEdits", () => $"the session in Accept edits, where it is in {agent.Mode}");
         Assert.Equal("Building", card.State);
         Assert.Empty(agent.Steered);
+        Assert.DoesNotContain(window.Chat.Tools, line => line.Status is "pending" or "in_progress");
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void A_commands_question_is_one_line_with_Run_and_Reject_and_gives_way_to_its_line_once_answered()
+    {
+        MainWindow window = Connected(out StandInAgent agent);
+        Send(window, "run");
+        Ui.WaitFor(() => window.Chat.Questions.Any(), () => $"the command's card, where the conversation is {Shown(window)}");
+
+        ApprovalCard card = window.Chat.Questions.Single();
+        ToolLine line = window.Chat.Tools.Single(tool => tool.Title == "dotnet build");
+        Assert.False(line.IsVisible, "The command shows twice, as its line and its card");
+        Assert.Contains(card.GetVisualDescendants().OfType<TextBlock>(), text => text.Text == "Build the project");
+        Assert.DoesNotContain(card.GetVisualDescendants().OfType<TextBlock>(), text => text.Text?.StartsWith("Yes, and don't ask again", StringComparison.Ordinal) == true);
+
+        Ui.Click(InCard(card, "Run"));
+        Ui.WaitFor(() => !window.Chat.Busy, () => $"the turn ended, where the conversation is {Shown(window)}");
+
+        Assert.Equal("allow-once", agent.Answered);
+        Assert.False(card.IsVisible, "The answered command's card still stands beside its line");
+        Assert.True(line.IsEffectivelyVisible || line.Parent?.Parent is ChatFold, "The command's line is gone");
         window.Close();
     }
 
@@ -1027,6 +1057,13 @@ public sealed class ChatTests
                             await writer.WriteLineAsync($$$"""{"jsonrpc":"2.0","id":"ask_edit","method":"session/request_permission","params":{"sessionId":"sess_1","toolCall":{"toolCallId":"call_7","status":"pending","title":"Edit hello.txt","kind":"edit","content":[{"type":"diff","path":{{{named}}},"oldText":"hello\n","newText":"hello\nworld\n"}]},"options":[{"optionId":"allow-once","name":"Yes","kind":"allow_once"},{"optionId":"allow-always","name":"Yes, allow all edits during this session","kind":"allow_always"},{"optionId":"reject","name":"No","kind":"reject_once"}]}}""");
                             break;
                         }
+                        if (text == "run")
+                        {
+                            waiting = id;
+                            await Update(writer, """{"toolCallId":"call_r","sessionUpdate":"tool_call","status":"pending","title":"dotnet build","kind":"execute","content":[]}""");
+                            await writer.WriteLineAsync("""{"jsonrpc":"2.0","id":"ask_run","method":"session/request_permission","params":{"sessionId":"sess_1","toolCall":{"toolCallId":"call_r","status":"pending","title":"dotnet build","kind":"execute","content":[{"type":"content","content":{"type":"text","text":"Build the project"}}]},"options":[{"optionId":"allow-once","name":"Yes","kind":"allow_once"},{"optionId":"allow-always","name":"Yes, and don't ask again for dotnet build commands","kind":"allow_always"},{"optionId":"reject","name":"No","kind":"reject_once"}]}}""");
+                            break;
+                        }
                         if (text == "questions")
                         {
                             // As the Claude adapter asks AskUserQuestion's questions of a client that shows forms.
@@ -1057,6 +1094,8 @@ public sealed class ChatTests
                             string draft = JsonValue.Create(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".claude", "plans", "stand-in-draft.md")).ToJsonString();
                             await Update(writer, $$$"""{"toolCallId":"call_draft","sessionUpdate":"tool_call","status":"pending","title":"Write","kind":"edit","content":[],"locations":[{"path":{{{draft}}}}]}""");
                             await Update(writer, """{"toolCallId":"call_draft","sessionUpdate":"tool_call_update","status":"completed"}""");
+                            // Claude Code writes its draft again, and leaves that call untold as done.
+                            await Update(writer, $$$"""{"toolCallId":"call_draft2","sessionUpdate":"tool_call","status":"pending","title":"Edit","kind":"edit","content":[],"locations":[{"path":{{{draft}}}}]}""");
                             await Update(writer, """{"sessionUpdate":"plan","entries":[{"content":"Read the code","priority":"high","status":"completed"},{"content":"Write MathOperations.cs","priority":"high","status":"in_progress"},{"content":"Add tests","priority":"medium","status":"pending"}]}""");
                             await Update(writer, $$$"""{"toolCallId":"call_5","sessionUpdate":"tool_call","status":"pending","title":"Approve Plan","kind":"switch_mode","content":[{"type":"content","content":{"type":"text","text":{{{content}}}}}]}""");
                             await writer.WriteLineAsync($$$"""{"jsonrpc":"2.0","id":"ask_plan","method":"session/request_permission","params":{"sessionId":"sess_1","toolCall":{"toolCallId":"call_5","title":"Ready to code?","kind":"switch_mode","content":[{"type":"content","content":{"type":"text","text":{{{content}}}}}]},"options":[{"optionId":"exit-plan-auto","name":"Yes, and use auto mode","kind":"allow_always"},{"optionId":"exit-plan-default","name":"Yes, manually approve edits","kind":"allow_once"},{"optionId":"reject","name":"No, keep planning","kind":"reject_once"}]}}""");
@@ -1094,6 +1133,12 @@ public sealed class ChatTests
                             order.Add("answer");
                         }
                         PlanAnswer = decided?["outcome"]?.GetValue<string>() == "cancelled" ? "cancelled" : decided?["optionId"]?.GetValue<string>();
+                        if (PlanAnswer == "exit-plan-default")
+                        {
+                            // As the adapter leaves plan mode for the answer's mode.
+                            Mode = "default";
+                            await Update(writer, """{"sessionUpdate":"current_mode_update","currentModeId":"default"}""");
+                        }
                         if (waiting is not null)
                         {
                             await Update(writer, """{"toolCallId":"call_5","sessionUpdate":"tool_call_update","status":"completed","title":"Exited Plan Mode"}""");
@@ -1131,6 +1176,16 @@ public sealed class ChatTests
                             waiting = null;
                         }
                         break;
+                    case null when message["id"]?.ToJsonString() == "\"ask_run\"":
+                        Answered = message["result"]?["outcome"]?["optionId"]?.GetValue<string>();
+                        if (waiting is not null)
+                        {
+                            await Update(writer, """{"toolCallId":"call_r","sessionUpdate":"tool_call_update","status":"completed"}""");
+                            await Say(writer, "Built.");
+                            await Answer(writer, waiting, """{"stopReason":"end_turn"}""");
+                            waiting = null;
+                        }
+                        break;
                     case null when message["id"]?.ToJsonString() == "\"ask_q\"":
                         QuestionsAnswered = message["result"]?.ToJsonString();
                         if (waiting is not null)
@@ -1149,7 +1204,7 @@ public sealed class ChatTests
         }
 
         /// <summary>Whether it has a question open, whose answer ends the turn rather than session/cancel.</summary>
-        private bool Asked => Prompts.LastOrDefault() is "write" or "plan" or "ask" or "questions";
+        private bool Asked => Prompts.LastOrDefault() is "write" or "plan" or "ask" or "questions" or "run";
 
         /// <summary>Whether the client said at initialize that it shows forms (ACP's elicitation).</summary>
         public bool OffersForms { get; private set; }

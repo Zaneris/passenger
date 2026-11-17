@@ -55,6 +55,9 @@ public sealed class AcpSession : IAsyncDisposable
     /// <summary>The session's settings as last told.</summary>
     public IReadOnlyList<ConfigOption> Config { get; private set; } = [];
 
+    /// <summary>The session's mode changed, by the agent (leaving plan mode) or by a setting: its id now.</summary>
+    public event Action<string>? ModeChanged;
+
     /// <summary>Any update this class does not turn into a type yet, by its sessionUpdate kind, for a log.</summary>
     public event Action<string, JsonNode>? OtherUpdate;
 
@@ -254,6 +257,7 @@ public sealed class AcpSession : IAsyncDisposable
                 break;
             case "current_mode_update":
                 CurrentModeId = Text(update["currentModeId"]) ?? CurrentModeId;
+                ModeChanged?.Invoke(CurrentModeId ?? string.Empty);
                 OtherUpdate?.Invoke(kind, update);
                 break;
             default:
@@ -470,9 +474,10 @@ public sealed class AcpSession : IAsyncDisposable
             config.Add(new ConfigOption(id, Text(option?["name"]) ?? id, Text(option?["description"]), Text(option?["category"]), Text(option?["currentValue"]) ?? string.Empty, choices));
         }
         Config = config;
-        if (config.FirstOrDefault(option => option.Id == "mode") is { } mode)
+        if (config.FirstOrDefault(option => option.Id == "mode") is { } mode && mode.Current != CurrentModeId)
         {
             CurrentModeId = mode.Current;
+            ModeChanged?.Invoke(mode.Current);
         }
         ConfigChanged?.Invoke(config);
     }

@@ -4,6 +4,7 @@ using Avalonia.Layout;
 using Avalonia.Media;
 using Passenger.Acp;
 using Passenger.App.Editors;
+using Passenger.Editor;
 
 namespace Passenger.App.Chat;
 
@@ -33,6 +34,11 @@ public sealed class ApprovalCard : Border
         if (plan is not null)
         {
             Child = PlanCard(plan);
+            return;
+        }
+        if (request.ToolCall.Kind == "execute" && changes.Count == 0)
+        {
+            Child = CommandCard(request.ToolCall);
             return;
         }
         StackPanel body = new() { Spacing = 8 };
@@ -122,11 +128,15 @@ public sealed class ApprovalCard : Border
         edit.Click += (_, _) => PlanEditRequested?.Invoke(this, shown.Path);
         ToolTip.SetTip(edit, "Edit the plan's file, its page beside it; the agent builds your version");
         StackPanel actions = new() { Orientation = Orientation.Horizontal, Spacing = 14, HorizontalAlignment = HorizontalAlignment.Right, Children = { view, edit } };
-        if (request.Options.FirstOrDefault(option => option.Kind.StartsWith("allow", StringComparison.Ordinal)) is { } build)
+        if (BuildAnswer(request.Options) is { } build)
         {
             Button go = new() { Classes = { StyleClasses.Primary }, Content = new TextBlock { Text = "Build" } };
-            ToolTip.SetTip(go, build.Name);
-            go.Click += (_, _) => Decide(build);
+            ToolTip.SetTip(go, "Build it as Cursor does: the agent's edits apply as it goes, for you to keep or undo at the end; it still asks before each command");
+            go.Click += (_, _) =>
+            {
+                Built = true;
+                Decide(build);
+            };
             MenuFlyout others = new();
             foreach (PermissionOption option in request.Options)
             {
@@ -151,6 +161,73 @@ public sealed class ApprovalCard : Border
         return body;
     }
 
+    /// <summary>The answer Build gives, Cursor's way of building: the agent's own "auto-accept edits" where it offers
+    /// it, else its answer that asks before each edit (the window then turns the session to Accept edits), else its
+    /// first way to build.</summary>
+    public static PermissionOption? BuildAnswer(IReadOnlyList<PermissionOption> options) =>
+        options.FirstOrDefault(option => option.Id == ChatAgent.PlanAcceptEdits)
+        ?? options.FirstOrDefault(option => option.Id == ChatAgent.PlanManual)
+        ?? options.FirstOrDefault(option => option.Kind.StartsWith("allow", StringComparison.Ordinal));
+
+    /// <summary>A command's question as Cursor's and Stoat's: the command on one line in the editor's font beside what
+    /// it waits for, what it is for under it, then Run and Reject; the agent's other answers ("don't ask again") under
+    /// the arrow beside them.</summary>
+    private StackPanel CommandCard(ToolCall call)
+    {
+        RowIcon icon = new() { DataKey = IconKeys.Terminal, ForegroundKey = TokenKeys.TextMuted, Width = 14, Height = 14, Margin = new Thickness(0, 0, 8, 0), VerticalAlignment = VerticalAlignment.Center };
+        TextBlock command = new TextBlock { Text = call.Title, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center, FontSize = 12 }.InCodeFont();
+        ToolTip.SetTip(command, call.Title);
+        chip.Margin = new Thickness(8, 0, 0, 0);
+        DockPanel.SetDock(chip, Dock.Right);
+        DockPanel.SetDock(icon, Dock.Left);
+        StackPanel body = new() { Spacing = 6, Children = { new DockPanel { Children = { chip, icon, command } } } };
+        if (call.Texts.FirstOrDefault(text => text.Trim().Length > 0) is { } purpose)
+        {
+            body.Children.Add(new TextBlock { Classes = { StyleClasses.Muted }, FontSize = 11, Text = purpose.Trim(), TextWrapping = TextWrapping.Wrap });
+        }
+        PermissionOption? run = request.Options.FirstOrDefault(option => option.Kind == "allow_once") ?? request.Options.FirstOrDefault(option => option.Kind.StartsWith("allow", StringComparison.Ordinal));
+        PermissionOption? reject = request.Options.FirstOrDefault(option => option.Kind == "reject_once") ?? request.Options.FirstOrDefault(option => option.Kind.StartsWith("reject", StringComparison.Ordinal));
+        StackPanel buttons = new() { Orientation = Orientation.Horizontal, Spacing = 6 };
+        if (run is not null)
+        {
+            Button go = new() { Classes = { StyleClasses.Primary }, Content = new TextBlock { Text = "Run" } };
+            ToolTip.SetTip(go, run.Name);
+            go.Click += (_, _) => Decide(run);
+            buttons.Children.Add(go);
+        }
+        if (reject is not null)
+        {
+            Button no = new() { Content = new TextBlock { Text = "Reject" } };
+            ToolTip.SetTip(no, reject.Name);
+            no.Click += (_, _) => Decide(reject);
+            buttons.Children.Add(no);
+        }
+        PermissionOption[] others = [.. request.Options.Where(option => option != run && option != reject)];
+        if (others.Length > 0)
+        {
+            MenuFlyout menu = new();
+            foreach (PermissionOption option in others)
+            {
+                MenuItem item = new() { Header = option.Name };
+                if (option.Kind.EndsWith("_always", StringComparison.Ordinal))
+                {
+                    ToolTip.SetTip(item, "Kept by the agent beyond this chat");
+                }
+                item.Click += (_, _) => Decide(option);
+                menu.Items.Add(item);
+            }
+            Button more = ToolButtons.Of(IconKeys.ChevronDown, "The agent's other answers", () => { });
+            more.Click += (_, _) => menu.ShowAt(more);
+            buttons.Children.Add(more);
+        }
+        choices.Children.Add(buttons);
+        body.Children.Add(choices);
+        return body;
+    }
+
+    /// <summary>Whether the plan was answered by Build, Cursor's way, rather than one of the agent's own answers.</summary>
+    public bool Built { get; private set; }
+
     /// <summary>The person wrote what to change in the plan while it waited: the agent keeps planning with it.</summary>
     public bool Revise(string words)
     {
@@ -166,10 +243,11 @@ public sealed class ApprovalCard : Border
     /// <summary>Builds the plan as its Build does, from its page's banner: the agent's first way to build it.</summary>
     public bool Build()
     {
-        if (plan is null || Answer.IsCompleted || request.Options.FirstOrDefault(option => option.Kind.StartsWith("allow", StringComparison.Ordinal)) is not { } build)
+        if (plan is null || Answer.IsCompleted || BuildAnswer(request.Options) is not { } build)
         {
             return false;
         }
+        Built = true;
         Decide(build);
         return true;
     }

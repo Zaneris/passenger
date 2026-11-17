@@ -23,6 +23,42 @@ public static partial class ChatPlans
         return title.Length > 0 ? title : "Plan";
     }
 
+    /// <summary>The line Claude Code's drafting of its plan shows as: one per reply, however many times it writes it.</summary>
+    public const string DraftTitle = "Draft the plan";
+
+    /// <summary>The heading of the to-dos section Passenger keeps at the end of a plan's file.</summary>
+    public const string ToDosHeading = "## To-dos";
+
+    /// <summary>A plan's text with the agent's to-dos as a checklist at its end, ticked as the agent finishes each, as
+    /// Cursor's plan tracks them: the section Passenger wrote before is replaced, the rest kept as it is.</summary>
+    public static string WithToDos(string plan, IReadOnlyList<Acp.PlanEntry> entries)
+    {
+        string newline = plan.Contains("\r\n", StringComparison.Ordinal) ? "\r\n" : "\n";
+        // The section is its heading and the checklist under it; whatever the person wrote after it stays.
+        List<string> lines = [.. plan.Split('\n').Select(line => line.TrimEnd('\r'))];
+        int at = lines.FindIndex(line => line == ToDosHeading);
+        if (at >= 0)
+        {
+            int end = at + 1;
+            while (end < lines.Count && (lines[end].Trim().Length == 0 || lines[end].StartsWith("- [", StringComparison.Ordinal)))
+            {
+                end++;
+            }
+            lines.RemoveRange(at, end - at);
+        }
+        StringBuilder text = new(string.Join(newline, lines).TrimEnd());
+        if (entries.Count > 0)
+        {
+            text.Append(newline).Append(newline).Append(ToDosHeading).Append(newline).Append(newline);
+            foreach (Acp.PlanEntry entry in entries)
+            {
+                string mark = entry.Status == "completed" ? "x" : " ";
+                text.Append("- [").Append(mark).Append("] ").Append(entry.Content.ReplaceLineEndings(" ")).Append(entry.Status == "in_progress" ? " (in progress)" : string.Empty).Append(newline);
+            }
+            return text.ToString();
+        }
+        return text.Append(newline).ToString();
+    }
     /// <summary>What a plan's card says of it, as Cursor's does: its first paragraph of words (no heading, list or code),
     /// its Markdown marks left out, cut short past a few lines; empty where it has none.</summary>
     public static string SummaryOf(string plan)

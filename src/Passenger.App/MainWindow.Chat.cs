@@ -38,6 +38,9 @@ public partial class MainWindow
     /// <summary>The plans the person edits, shown as their source beside their page rather than as a page alone.</summary>
     private readonly HashSet<string> editedPlans = new(StringComparer.Ordinal);
     private ChatAgent? chatAgent;
+
+    /// <summary>1 while a plan built by Build waits for the agent to leave plan mode, to turn the session to Accept edits.</summary>
+    private int reviewAfterPlan;
     private CancellationTokenSource? chatTurn;
 
     /// <summary>The files the agent changed that wait for the person to keep or undo them.</summary>
@@ -331,6 +334,39 @@ public partial class MainWindow
         });
     }
 
+    /// <summary>The plan this chat last made, whose to-dos follow the agent's as it works; null before one.</summary>
+    private string? trackedPlan;
+
+    /// <summary>The agent's to-dos as last told.</summary>
+    private IReadOnlyList<PlanEntry> planToDos = [];
+
+    /// <summary>Writes the agent's to-dos into its plan's file as a checklist, ticked as each is done, so the plan tracks
+    /// its rounds as Cursor's does; a plan the person has unsaved changes in is left to them.</summary>
+    private void TrackToDos()
+    {
+        if (trackedPlan is not { } path || planToDos.Count == 0 || Editors.Find(path) is { IsModified: true })
+        {
+            return;
+        }
+        try
+        {
+            string now = File.ReadAllText(path);
+            string tracked = ChatPlans.WithToDos(now, planToDos);
+            if (tracked != now)
+            {
+                FileText.Save(path, tracked, new System.Text.UTF8Encoding(encoderShouldEmitUTF8Identifier: false), bom: false);
+                if (Editors.Find(path) is { } open)
+                {
+                    FollowDisk(open);
+                }
+            }
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            IdeErrors.Write($"Chat plan to-dos: {error.Message}");
+        }
+    }
+
     /// <summary>The plans waiting for an answer, by their page's canonical path: the page's banner offers Build too.</summary>
     private readonly Dictionary<string, ApprovalCard> waitingPlans = new(StringComparer.Ordinal);
 
@@ -589,14 +625,19 @@ public partial class MainWindow
         agent.Session.CommandsChanged += commands => OnWindowThread(() => view.ShowCommands(commands));
         agent.Session.AccountChanged += account => OnWindowThread(() => view.ShowAccount(account));
         agent.Session.UsageUpdated += usage => OnWindowThread(() => view.ShowUsage(usage));
-        agent.Session.PlanUpdated += plan => OnWindowThread(() => view.Todos.Show(plan.Entries));
+        agent.Session.PlanUpdated += plan => OnWindowThread(() =>
+        {
+            view.Todos.Show(plan.Entries);
+            planToDos = plan.Entries;
+            TrackToDos();
+        });
         agent.Session.ToolCallChanged += call =>
         {
             Planned(call);
             (string[] paths, bool done) = Reviewed(call);
             // Claude Code's draft of its plan is its own: the plan shown is the folder's copy, so the draft is a step, not a file.
             ToolCall shown = call.Kind == "edit" && call.Locations.Count > 0 && call.Locations.All(ChatPlans.IsAgentDraft)
-                ? call with { Title = "Draft the plan" }
+                ? call with { Title = ChatPlans.DraftTitle }
                 : call;
             ReviewedFile[] these = done ? [.. chatReview.Files.Where(file => paths.Contains(file.Path, StringComparer.Ordinal))] : [];
             // Answered before it was written, the edit was reviewed then: it asks for no Keep or Undo again.
@@ -635,6 +676,18 @@ public partial class MainWindow
             OnWindowThread(() => shown.SetResult(view.AskQuestions(request)));
             return await await shown.Task;
         };
+        agent.Session.ModeChanged += mode =>
+        {
+            if (mode == ChatAgent.ManualMode && Interlocked.Exchange(ref reviewAfterPlan, 0) == 1)
+            {
+                OnWindowThread(() =>
+                {
+                    Task turning = SetChatConfigAsync(view, "mode", ChatAgent.ReviewMode);
+                    BackgroundWork.Track(turning);
+                    IdeErrors.Observe(turning);
+                });
+            }
+        };
         agent.Session.AskPermission = async (request, _) =>
         {
             Reviewed(request.ToolCall);
@@ -647,6 +700,12 @@ public partial class MainWindow
             if (plan is null && changes.Length > 0)
             {
                 answeredEdits[request.ToolCall.Id] = true;
+            }
+            if (plan is not null && asked?.Built == true && answer == ChatAgent.PlanManual)
+            {
+                // Build leaves plan mode asking before each edit where the agent offers no better; once it has, the
+                // session turns to Accept edits, so the round's edits apply and wait for review at its end.
+                Interlocked.Exchange(ref reviewAfterPlan, 1);
             }
             if (plan is not null && asked?.Revision is { } revision)
             {
@@ -695,7 +754,12 @@ public partial class MainWindow
             chatPlans[call.Id] = saved;
             // Shown at once in the main editor as a page, as Cursor shows its plan; the keys stay in the chat.
             string page = saved.Path;
-            OnWindowThread(() => OpenChatPlan(page, focus: false));
+            OnWindowThread(() =>
+            {
+                trackedPlan = page;
+                TrackToDos();
+                OpenChatPlan(page, focus: false);
+            });
         }
         return new ChatPlan(saved.Path, PathNames.Shown(saved.Path, root), ChatPlans.TitleOf(saved.Text), ChatPlans.SummaryOf(saved.Text));
     }
@@ -713,7 +777,7 @@ public partial class MainWindow
         {
             return;
         }
-        if (!chatPlans.TryGetValue(callId, out (string Path, string Text) saved) || Normalized(now) == Normalized(saved.Text))
+        if (!chatPlans.TryGetValue(callId, out (string Path, string Text) saved) || Normalized(ChatPlans.WithToDos(now, [])) == Normalized(ChatPlans.WithToDos(saved.Text, [])))
         {
             return;
         }

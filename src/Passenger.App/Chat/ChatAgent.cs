@@ -18,6 +18,13 @@ public sealed class ChatAgent(AcpSession session, Action end) : IAsyncDisposable
     /// Cursor's way: the panel takes each file for review first, to keep or undo.</summary>
     public const string ReviewMode = "acceptEdits";
 
+    /// <summary>The Claude adapter's answer to a plan that builds it with edits applied as it goes, for review at the end,
+    /// which it offers only where it has no auto mode.</summary>
+    public const string PlanAcceptEdits = "exit-plan-accept-edits";
+
+    /// <summary>The Claude adapter's answer to a plan that builds it asking before each edit (Manual), always offered.</summary>
+    public const string PlanManual = "exit-plan-default";
+
     public AcpSession Session { get; } = session;
 
     /// <summary>Starts the Claude adapter in <paramref name="folder"/>; what the start throws (no npx found), this throws.</summary>

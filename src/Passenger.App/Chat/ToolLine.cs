@@ -92,6 +92,18 @@ public sealed class ToolLine : DockPanel
         });
     }
 
+    /// <summary>The turn ended with the call still told as running (the agent never said it was done): its ring gives
+    /// way to a muted check, so nothing turns once the agent has stopped.</summary>
+    public void Settle()
+    {
+        if (status is "pending" or "in_progress" or "")
+        {
+            status = "ended";
+            mark.Children.Clear();
+            mark.Children.Add(new RowIcon { DataKey = IconKeys.Check, ForegroundKey = TokenKeys.TextMuted, Width = 14, Height = 14 });
+        }
+    }
+
     /// <summary>Shows what the edit added and removed, its title then opening its file.</summary>
     public void Counted(int add, int remove)
     {

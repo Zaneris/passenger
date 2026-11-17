@@ -393,6 +393,19 @@ public sealed class ChatView : DockPanel
                 reply.Children.Add(line);
             }
         }
+        if (line.Title == ChatPlans.DraftTitle)
+        {
+            // Claude Code writes its draft more than once; the reply shows the drafting as one line, the latest.
+            foreach (ToolLine earlier in reply.Children.OfType<ToolLine>().Where(other => other != line && other.Title == ChatPlans.DraftTitle))
+            {
+                earlier.IsVisible = false;
+            }
+        }
+        if (asking.Any(card => card.CallId == call.Id && !card.IsPlan))
+        {
+            // Its question's card shows it while it waits.
+            line.IsVisible = false;
+        }
         if (line.Parent?.Parent is ChatFold { Explores: true } explored)
         {
             explored.Said = Explored(explored.Body.Children.OfType<ToolLine>().ToArray());
@@ -558,6 +571,11 @@ public sealed class ChatView : DockPanel
         card.PlanEditRequested += (_, path) => PlanEditRequested?.Invoke(this, path);
         reply.Children.Add(card);
         asking.Add(card);
+        if (!card.IsPlan && tools.TryGetValue(card.CallId, out ToolLine? asked))
+        {
+            // One line a step: the card stands for the call while it waits, and gives way to its line once answered.
+            asked.IsVisible = false;
+        }
         // A waiting plan takes what is written as what to change in it, so Send shows beside Stop.
         send.IsVisible |= card.IsPlan;
         Asking?.Invoke(this, card);
@@ -576,6 +594,10 @@ public sealed class ChatView : DockPanel
         }
         Questioning?.Cancel();
         Close();
+        foreach (ToolLine line in tools.Values)
+        {
+            line.Settle();
+        }
         FoldWorked();
         if (note is not null && reply is not null)
         {
@@ -621,6 +643,11 @@ public sealed class ChatView : DockPanel
         finally
         {
             asking.Remove(card);
+            if (!card.IsPlan && tools.TryGetValue(card.CallId, out ToolLine? line))
+            {
+                card.IsVisible = false;
+                line.IsVisible = true;
+            }
             send.IsVisible = !stop.IsVisible || asking.Any(open => open.IsPlan);
             if (asking.Count == 0 && working.IsVisible)
             {
