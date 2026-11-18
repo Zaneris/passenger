@@ -5,8 +5,8 @@
   "description": "The project's own ESLint and Prettier (and Prettier 2, as prettier2) the tests put in a test folder's node_modules (EslintPrettierTests), fetched at build by tools/Passenger.NodePackages; never carried by the app.",
   "license": "MIT",
   "dependencies": {
-    "eslint": "10.14.0",
-    "prettier": "3.9.10",
+    "eslint": "10.15.0",
+    "prettier": "3.10.1",
     "prettier2": "npm:prettier@2.8.8"
   }
 }

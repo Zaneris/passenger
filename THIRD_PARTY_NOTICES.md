@@ -321,6 +321,7 @@ licence its package.json states and the copyright line its licence file (else it
 | `is-glob`, `is-extglob` | eslint's | MIT | Copyright (c) 2014-2017, Jon Schlinkert. |
 | `word-wrap` | optionator's | MIT | Copyright (c) 2014-2016, Jon Schlinkert |
 | `minimatch` | eslint's globs | BlueOak-1.0.0 | no copyright line; its author: Isaac Z. Schlueter <i@izs.me> |
+| `@isaacs/nonrecursive-glob-match` | minimatch's matcher of one path segment, for the tests alone: never carried by the app | BlueOak-1.0.0 | no copyright line or author; its publisher: Isaac Z. Schlueter <i@izs.me> |
 | `brace-expansion`, `balanced-match` | minimatch's | MIT | Copyright Julian Gruber <julian@juliangruber.com> |
 | `optionator`, `levn`, `prelude-ls`, `type-check` | eslint's options | MIT | Copyright (c) George Zahariev |
 | `deep-is` | optionator's | MIT | Copyright (c) 2012, 2013 Thorsten Lorenz <thlorenz@gmx.de> |
