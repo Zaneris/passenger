@@ -71,11 +71,11 @@ BATCH
 
 cp "$repo/tools/site-shots/html/index.html" "$repo/tools/site-shots/vm-scene.ps1" "$share/"
 # Node.js for the HTML server, which the VM lacks: nodejs.org's Windows ARM64 zip, checked against its published hash.
-node=node-v26.12.0-win-arm64
-node_sha=cc773b9829623e3d4fd13aef394f05010e0459273f27fb3255150f38a2577abf
+node=node-v26.13.1-win-arm64
+node_sha=181ebe431b90787113a9e4fc80d38ce86d37888a353a0386de44d2872e48cb97
 mkdir -p "$share/node"
 if ! echo "$node_sha  $share/node/$node.zip" | shasum -a 256 -c --status 2> /dev/null; then
-    curl -fsSL -o "$share/node/$node.zip" "https://nodejs.org/dist/v26.12.0/$node.zip"
+    curl -fsSL -o "$share/node/$node.zip" "https://nodejs.org/dist/v26.13.1/$node.zip"
     echo "$node_sha  $share/node/$node.zip" | shasum -a 256 -c --status || { echo "vm-shots: $node.zip is not nodejs.org's" >&2; exit 1; }
 fi
 built

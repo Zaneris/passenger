@@ -11,9 +11,9 @@ import urllib.parse
 import urllib.request
 
 # The repository's commit the icons come from, so every run draws the same ones.
-COMMIT = "463d58b8186f874ab2f51cf0a08b4ff5097c912f"
+COMMIT = "41089846ad80c5749df505aef35a68712c1561b9"
 BASE = f"https://raw.githubusercontent.com/microsoft/fluentui-system-icons/{COMMIT}/assets"
-CODICONS_COMMIT = "5a6ad49557af022f97987cb3cfc3412b5d03f554"
+CODICONS_COMMIT = "8d1826a9bce0a52283ecaeb63499c149e97a4f14"
 CODICONS_BASE = f"https://raw.githubusercontent.com/microsoft/vscode-codicons/{CODICONS_COMMIT}/src/icons"
 
 # Resource key, the icon's folder in the Fluent repo, and the file's size and style.

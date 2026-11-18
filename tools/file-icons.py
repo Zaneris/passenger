@@ -21,7 +21,7 @@ import urllib.request
 SETS = {
     "fi": "https://raw.githubusercontent.com/file-icons/icons/e6e6e6ac8cb1d91867167c228c00a667f4d47101/svg/{}.svg",
     "mf": "https://raw.githubusercontent.com/file-icons/MFixx/aabb5badb3fbf70ea2446794126e4247e184d653/svg/{}.svg",
-    "oc": "https://raw.githubusercontent.com/primer/octicons/2f3d788e5357d908137436fefd349685692b30da/icons/{}-16.svg",
+    "oc": "https://raw.githubusercontent.com/primer/octicons/68ec2de8d0ddfcbb7497da01d0b7d98eb5593020/icons/{}-16.svg",
 }
 
 # Resource key (FileIcon.KEY), the set and the icon's name in it.
