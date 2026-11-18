@@ -268,11 +268,17 @@ public static partial class DotnetProcesses
         }
     }
 
-    /// <summary>Why macOS lets no other program read a process's memory (a dump, a heap's snapshot), even a program of its
-    /// own user's: its executable is signed with the hardened runtime and without the get-task-allow entitlement, as an app
-    /// notarized for release is (Godot's own builds among them). Null where it may be read, it cannot be asked, or off macOS.</summary>
+    /// <summary>Why a process's memory (a dump, a heap's snapshot) is read only through its own runtime: on Windows, it runs
+    /// as a 32-bit program (<see cref="Runs32Bit"/>), whose runtime's reader a 64-bit Passenger cannot load; on macOS, no
+    /// other program may read it, even a program of its own user's, its executable signed with the hardened runtime and
+    /// without the get-task-allow entitlement, as an app notarized for release is (Godot's own builds among them). Null
+    /// where it may be read or it cannot be asked.</summary>
     public static unsafe string? WhyUnreadable(int id)
     {
+        if (OperatingSystem.IsWindows())
+        {
+            return Runs32Bit(id) ? $"process {id} {RunsAs32Bit}, whose runtime's reader of its memory this 64-bit Passenger cannot load" : null;
+        }
         if (!OperatingSystem.IsMacOS())
         {
             return null;
@@ -718,7 +724,29 @@ public static partial class DotnetProcesses
         }
         string name = ImagePath(process) is { } path ? Path.GetFileName(path) : $"{id}";
         (string user, bool mine) = Owner(process);
-        return new DotnetProcess(id, name, WindowsCommandLine(process) ?? string.Empty, user, mine);
+        return new DotnetProcess(id, name, WindowsCommandLine(process) ?? string.Empty, user, mine)
+        {
+            WhyNot = Kernel32.Runs32Bit(process) == true ? Undebugged32Bit : null,
+        };
+    }
+
+    /// <summary>How a 32-bit program runs on 64-bit Windows, as what Passenger cannot do with one says it.</summary>
+    public const string RunsAs32Bit = "runs as a 32-bit (x86) program";
+
+    /// <summary>Why the debugger attaches to no 32-bit program: the runtime's debugging library it loads is of the program's
+    /// own processor, and Passenger's debugger is a 64-bit program.</summary>
+    public const string Undebugged32Bit = $"it {RunsAs32Bit}, and Passenger's debugger, a 64-bit program, loads only a 64-bit runtime's debugging library";
+
+    /// <summary>Whether a process runs as a 32-bit program on 64-bit Windows (an x86 program's apphost, or the x86 dotnet);
+    /// false where it does not, it is gone or Windows will not say, and off Windows.</summary>
+    public static bool Runs32Bit(int id)
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return false;
+        }
+        using SafeProcessHandle process = Kernel32.OpenProcess(Kernel32.ProcessQueryLimitedInformation, false, (uint)id);
+        return !process.IsInvalid && Kernel32.Runs32Bit(process) == true;
     }
 
     private static unsafe string? ImagePath(SafeProcessHandle process)

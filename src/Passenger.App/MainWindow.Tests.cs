@@ -380,10 +380,17 @@ public partial class MainWindow
         }
     }
 
-    /// <summary>A test host a runner started itself, attached to: true once the debugger has hold of it.</summary>
+    /// <summary>A test host a runner started itself, attached to: true once the debugger has hold of it; a 32-bit one, which
+    /// the debugger cannot follow, refused saying why.</summary>
     private async Task<bool> AttachTestHost(ProjectSession running, int processId, Testing.TestHostReload? reload, HashSet<DebugTab> testHosts)
     {
         CheckTestSession(running);
+        if (DotnetProcesses.Runs32Bit(processId))
+        {
+            reload?.Hook.Dispose();
+            Say(Refusals.X86Unattached("Tests"));
+            return false;
+        }
         CancellationToken cancel = running.Tests.RunCancellation;
         ShowToolWindow(ToolWindowIds.Debug);
         Debugging.DebugLaunch? attached = null;

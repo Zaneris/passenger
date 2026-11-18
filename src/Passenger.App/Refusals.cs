@@ -676,6 +676,30 @@ public static class Refusals
     public static string MacCatalystUnprofiled(string app) =>
         $"Passenger's profiler does not record a Mac Catalyst app yet, so {app} cannot be profiled: Run starts it";
 
+    /// <summary>A program built for 32-bit x86 debugged (by its build, or a test host's or a process's own processor), which
+    /// Passenger's debugger cannot follow (<see cref="DotnetProcesses.Undebugged32Bit"/>): Run starts it, and built for
+    /// AnyCPU it runs, and debugs, as a 64-bit program.</summary>
+    public static string X86Undebugged(string program) =>
+        $"Could not debug {program}: {DotnetProcesses.Undebugged32Bit}. Run starts it; built for AnyCPU (its PlatformTarget), it runs as a 64-bit program, which debugs";
+
+    /// <summary>A running 32-bit program the debugger was to attach to (a test host a runner started), by the name its tab takes.</summary>
+    public static string X86Unattached(string name) => $"Cannot attach to {name}: {DotnetProcesses.Undebugged32Bit}";
+
+    /// <summary>A 32-bit x86 program run with Hot Reload, which reaches it only through the debugger.</summary>
+    public const string X86Unreloaded = $"it {DotnetProcesses.RunsAs32Bit}, and Hot Reload reaches it only through Passenger's debugger, a 64-bit program";
+
+    /// <summary>A program built for 32-bit x86 run off Windows, the one system .NET runs x86 programs on.</summary>
+    public const string X86OnWindowsAlone = "it is built for 32-bit x86 (its PlatformTarget), which .NET runs only on Windows";
+
+    /// <summary>A 32-bit x86 program whose x86 .NET installation, in <paramref name="root"/>, lacks what it runs on, each by
+    /// the installer that brings it and its version (<see cref="Run.X86Programs.Installers"/>), with where to download each.</summary>
+    public static string X86RuntimeMissing(string root, IReadOnlyList<(string Installer, string Version)> lacking)
+    {
+        string named = Plural.Listed([.. lacking.Select(l => $"{l.Installer} {l.Version}")]);
+        string where = string.Join(", ", lacking.Select(l => $"https://dotnet.microsoft.com/download/dotnet/{l.Version}").Distinct(StringComparer.Ordinal));
+        return $"it {DotnetProcesses.RunsAs32Bit}, on the x86 .NET in {PathNames.Shown(root, null)}, which has no {named}: install the {named} for x86, from {where}";
+    }
+
     /// <summary>An Android app run where this machine (<paramref name="host"/>, "Linux on Arm64") builds none.</summary>
     public static string AndroidBuiltElsewhere(string host) => $"Android apps are built only on {AndroidHosts.Builders}: {AndroidHosts.Why(host)}";
 

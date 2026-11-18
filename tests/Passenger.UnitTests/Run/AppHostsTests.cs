@@ -34,10 +34,22 @@ public sealed class AppHostsTests : IDisposable
     {
         (AppHost? emulated, string? why) = AppHosts.Of(Evaluated("Hello", runtime: "osx-x64", defaultHost: null), Target("Hello"));
         (AppHost? linux, string? elsewhere) = AppHosts.Of(Evaluated("Hello", runtime: "linux-arm64", defaultHost: null), Target("Hello"));
-        (AppHost? x86, string? older) = AppHosts.Of(Evaluated("Hello.exe", runtime: null, defaultHost: "win-x86", sdk: "win-x64"), Target("Hello"));
-        Assert.True(emulated is null && linux is null && x86 is null, "An apphost for another machine started, which the .NET Passenger builds with does not run");
+        (AppHost? x64, string? onArm) = AppHosts.Of(Evaluated("Hello.exe", runtime: "win-x64", defaultHost: null, sdk: "win-arm64"), Target("Hello"));
+        Assert.True(emulated is null && linux is null && x64 is null, "An apphost for another machine started, which the .NET Passenger builds with does not run");
         Assert.True(why?.Contains("osx-x64", StringComparison.Ordinal) == true && elsewhere?.Contains("linux-arm64", StringComparison.Ordinal) == true
-            && older?.Contains("win-x86", StringComparison.Ordinal) == true, $"The run says nothing of why it is no apphost's: {why} / {elsewhere} / {older}");
+            && onArm?.Contains("win-x64", StringComparison.Ordinal) == true, $"The run says nothing of why it is no apphost's: {why} / {elsewhere} / {onArm}");
+    }
+
+    [Theory]
+    [InlineData("win-x64")]
+    [InlineData("win-arm64")]
+    public void A_win_x86_apphost_under_a_64_bit_windows_sdk_starts_on_the_x86_net(string sdk)
+    {
+        (AppHost? x86, string? why) = AppHosts.Of(Evaluated("Plate.exe", runtime: null, defaultHost: "win-x86", sdk: sdk), Target("Plate"));
+        Assert.True(x86 == new AppHost(Path.Combine(root, "Plate.exe"), "DOTNET_ROOT_X86", X86: true) && why is null,
+            $"A win-x86 apphost under a {sdk} SDK read as {x86?.ToString() ?? "none"} ({why}), so its 32-bit assembly would go to a 64-bit dotnet, which cannot load it");
+        (AppHost? own, _) = AppHosts.Of(Evaluated("Plate.exe", runtime: null, defaultHost: "win-x86", sdk: "win-x86"), Target("Plate"));
+        Assert.True(own is { X86: false }, $"The apphost of an x86 SDK's own machine read as {own?.ToString() ?? "none"}, where it starts on that SDK's .NET");
     }
 
     [Fact]

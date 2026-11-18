@@ -9,7 +9,7 @@ public sealed record DotnetInstallation(string Root, IReadOnlyList<string> Sdks,
     /// <summary>The installation in <paramref name="root"/> as its folders stand; one it cannot read holds nothing.</summary>
     public static DotnetInstallation Read(string root)
     {
-        IReadOnlyList<string> runtimes = Versions(Path.Combine(root, "shared", Runtime), Directory.Exists);
+        IReadOnlyList<string> runtimes = Framework(root, Runtime);
         return new DotnetInstallation(root, Versions(Path.Combine(root, "sdk"), folder => File.Exists(Path.Combine(folder, "dotnet.dll")) && Runs(folder, runtimes)), runtimes);
     }
 
@@ -17,7 +17,16 @@ public sealed record DotnetInstallation(string Root, IReadOnlyList<string> Sdks,
     /// the host rolls forward: without it the SDK is short of what it needs and never starts. One that says none is taken
     /// at its folder's word.</summary>
     private static bool Runs(string sdk, IReadOnlyList<string> runtimes) => RuntimeConfig.Read(Path.Combine(sdk, "dotnet.dll"))?.VersionOf(Runtime) is not { } needs
-        || runtimes.Any(r => r.Split('.')[0] == needs.Split('.')[0] && VersionOrder.Instance.Compare(r, needs) >= 0);
+        || runtimes.Any(r => Serves(r, needs));
+
+    /// <summary>Whether a shared framework's version installed serves a program asking for <paramref name="needs"/>, as the
+    /// host rolls forward by default: the same major, at that version or later; with <paramref name="anyMajor"/> (a
+    /// rollForward of Major or LatestMajor) a later major too.</summary>
+    public static bool Serves(string installed, string needs, bool anyMajor = false) =>
+        (anyMajor || installed.Split('.')[0] == needs.Split('.')[0]) && VersionOrder.Instance.Compare(installed, needs) >= 0;
+
+    /// <summary>The versions of a shared framework (Microsoft.WindowsDesktop.App) an installation's folder holds, newest first.</summary>
+    public static IReadOnlyList<string> Framework(string root, string name) => Versions(Path.Combine(root, "shared", name), Directory.Exists);
 
     /// <summary>The newest SDK, or null for a runtime alone.</summary>
     public string? NewestSdk => Sdks.Count > 0 ? Sdks[0] : null;

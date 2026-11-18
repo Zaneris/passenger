@@ -12,6 +12,12 @@ namespace Passenger.Core;
 /// taken). Read off the window's thread.</summary>
 public sealed record RuntimeConfig(string? TargetFramework, IReadOnlyList<(string Name, string? Version)> Frameworks, IReadOnlyDictionary<string, string> Properties)
 {
+    /// <summary>Whether the build carries its runtime (its frameworks those it includes), so no installation's is taken.</summary>
+    public bool SelfContained { get; init; }
+
+    /// <summary>How the host rolls forward to a later framework than it names (Major, LatestPatch), as written; null for its default.</summary>
+    public string? RollForward { get; init; }
+
     /// <summary>JSON's writing of a value that is no string, number or switch: on one line, its text unescaped.</summary>
     private static readonly JsonWriterOptions OneLine = new() { Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
 
@@ -42,7 +48,11 @@ public sealed record RuntimeConfig(string? TargetFramework, IReadOnlyList<(strin
             {
                 properties[property.Name] = Given(property.Value);
             }
-            return new RuntimeConfig(JsonMembers.Text(options, "tfm"), frameworks, properties);
+            return new RuntimeConfig(JsonMembers.Text(options, "tfm"), frameworks, properties)
+            {
+                SelfContained = JsonMembers.Items(options, "includedFrameworks").Count > 0,
+                RollForward = JsonMembers.Text(options, "rollForward"),
+            };
         }
         catch (Exception unread) when (unread is IOException or UnauthorizedAccessException or JsonException)
         {

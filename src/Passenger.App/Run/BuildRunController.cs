@@ -867,11 +867,11 @@ public sealed partial class BuildRunController
 
     /// <summary>A configuration's plan with its build before launch done: the plan to start, or why there is none, the folder
     /// left or Stop meanwhile among the reasons; <c>Unresolved</c> when the problem is the plan's own (what the configuration
-    /// runs could not be worked out), which a start shows where it shows its own state. Where the start <paramref name="collects"/>
-    /// (Run's, Debug's, Profile's) and its configuration collects its logs and traces, its dashboard comes up as its project
-    /// builds, the plan's program told of it (<see cref="RunDashboard.CollectAsync"/>), and the start ends it with the program.</summary>
+    /// runs could not be worked out, or that the debugger a start <paramref name="debugs"/> with cannot follow it), which a start
+    /// shows where it shows its own state. Where the start <paramref name="collects"/> (Run's, Debug's, Profile's) and its configuration
+    /// collects its logs and traces, its dashboard comes up as its project builds (<see cref="RunDashboard.CollectAsync"/>), ended with the program.</summary>
     public async Task<(LaunchPlan? Plan, string? Problem, bool Unresolved)> PrepareAsync(RunConfiguration chosen, string? arguments, Working work, bool build = true,
-        Action? reading = null, bool collects = false)
+        Action? reading = null, bool collects = false, bool debugs = false)
     {
         (LaunchPlan? plan, string? problem) = await ResolvePlanAsync(chosen, arguments, work.Stopping);
         if (Checkpoint(work, chosen.Name) is { } stopped)
@@ -881,6 +881,10 @@ public sealed partial class BuildRunController
         if (plan is null)
         {
             return (null, problem, true);
+        }
+        if (debugs && plan.WhyNotDebugged is { } undebugged)
+        {
+            return (null, undebugged, true);
         }
         using CancellationTokenSource collecting = CancellationTokenSource.CreateLinkedTokenSource(work.Stopping);
         Task<LaunchPlan>? told = collects && Collects(chosen, plan) ? CollectAsync(plan, collecting.Token) : null;
@@ -1271,6 +1275,14 @@ public sealed partial class BuildRunController
             {
                 return Said(why);
             }
+            // Hot Reload through the debugger reaches no program it cannot follow, which runs as it is.
+            bool unreloaded = reloaded && plan.WhyNotDebugged is not null;
+            if (unreloaded)
+            {
+                reloaded = false;
+                edits?.Dispose();
+                edits = null;
+            }
             if (watched && MakeWorkingFolder(plan) is { } unmade)
             {
                 return Said(unmade);
@@ -1291,6 +1303,7 @@ public sealed partial class BuildRunController
             game?.Console = parts.Views.Run.Fold;
             session.RunPlan = plan;
             string running = watched || reloaded ? $"Running {chosen.Name} with Hot Reload: a save applies its changes"
+                : unreloaded ? $"Running {chosen.Name} without Hot Reload: {Refusals.X86Unreloaded}"
                 : wanted && godot && !plan.ScriptsAlone ? $"Running {chosen.Name} without Hot Reload: {GodotLaunch.EditorReloads}"
                 : functions && (hotReload ?? parts.Settings().HotReload) ? $"Running {chosen.Name} without Hot Reload: {Refusals.FunctionsUnreloaded}"
                 : $"Running {chosen.Name}";
@@ -2432,7 +2445,7 @@ public sealed partial class BuildRunController
             {
                 edits?.Dispose();
                 edits = session.Debug.Building(session.Debug.HotReloadOn());
-            }, collects: true);
+            }, collects: true, debugs: true);
             if (plan is null)
             {
                 return problem;
@@ -2555,7 +2568,7 @@ public sealed partial class BuildRunController
     /// build; null once its session is open, else why not.</summary>
     private async Task<string?> LaunchDebuggedAsync(RunConfiguration chosen, LaunchPlan plan, Working work, BuiltEdits? edits, string? copies = null)
     {
-        if (plan.WhyNot("debug") is { } why)
+        if ((plan.WhyNotDebugged ?? plan.WhyNot("debug")) is { } why)
         {
             return why;
         }

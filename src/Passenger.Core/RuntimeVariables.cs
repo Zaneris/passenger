@@ -44,6 +44,10 @@ public static class RuntimeVariables
     /// <summary>"0" has the runtime collect garbage with the workstation collector, "1" with the server one.</summary>
     public const string GcServer = "DOTNET_gcServer";
 
+    /// <summary>How the host rolls a program forward onto a later framework than it names (Major, LatestPatch), over its
+    /// runtime configuration's rollForward.</summary>
+    public const string RollForward = "DOTNET_ROLL_FORWARD";
+
     /// <summary>"1" lets the host roll a program forward onto a prerelease runtime when no release one will do.</summary>
     public const string RollForwardToPrerelease = "DOTNET_ROLL_FORWARD_TO_PRERELEASE";
 

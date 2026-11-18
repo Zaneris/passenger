@@ -736,7 +736,7 @@ public static class Debuggees
 
     /// <summary>What runs a debuggee on the newest .NET installed rather than the one it targets: from .NET 11 on, the
     /// runtime leaves its own exception dispatch among a stop's frames for the debugger to hide.</summary>
-    public static IReadOnlyDictionary<string, string> NewestRuntime { get; } = new Dictionary<string, string> { ["DOTNET_ROLL_FORWARD"] = "LatestMajor" };
+    public static IReadOnlyDictionary<string, string> NewestRuntime { get; } = new Dictionary<string, string> { [Passenger.Core.RuntimeVariables.RollForward] = "LatestMajor" };
 
     /// <summary>What a debuggee asked to run on the newest .NET evaluates in a frame to show it does: true on .NET 11 or later.</summary>
     public const string RunsOnNewestRuntime = "System.Environment.Version.Major >= 11";

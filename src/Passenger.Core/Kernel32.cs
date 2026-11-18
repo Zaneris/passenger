@@ -65,6 +65,14 @@ public static partial class Kernel32
     public static long? BeganUnder(SafeProcessHandle process, int parent, long parentBegan) =>
         ParentOf(process) == parent && BeganAt(process) is { } began && began >= parentBegan ? began : null;
 
+    /// <summary>Whether a process runs as a 32-bit program on 64-bit Windows (IsWow64Process2 naming the machine it is
+    /// built for: x86's, run natively on x64 and by emulation on Arm64); null when Windows will not say.</summary>
+    public static bool? Runs32Bit(SafeProcessHandle process) => IsWow64Process2(process, out ushort built, out _) ? built != 0 : null;
+
+    [LibraryImport("kernel32.dll", EntryPoint = "IsWow64Process2", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool IsWow64Process2(SafeProcessHandle process, out ushort processMachine, out ushort nativeMachine);
+
     [LibraryImport("kernel32.dll", EntryPoint = "OpenProcess", SetLastError = true)]
     public static partial SafeProcessHandle OpenProcess(uint access, [MarshalAs(UnmanagedType.Bool)] bool inherit, uint id);
 

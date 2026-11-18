@@ -693,6 +693,10 @@ public sealed class DebugController : IDisposable
     private async Task<string?> StartInTabAsync(Run.LaunchPlan plan, bool elsewhere = false, AdapterPlace? place = null, DebugTab? tab = null, LiveApp? app = null,
         BuiltEdits? edits = null, string? copies = null)
     {
+        if (!elsewhere && place is null && plan.WhyNotDebugged is { } undebugged)
+        {
+            return undebugged;
+        }
         Func<RunInTerminalArguments, Task<Run.TerminalRun>>? inTerminal = !elsewhere && place is null && plan.Console == Run.ConsoleKind.Terminal && RunInTerminal is { } run
             ? arguments => Run.GodotConsole.RunAsync(plan, arguments, asked => run(plan.Name, asked))
             : null;
@@ -751,6 +755,14 @@ public sealed class DebugController : IDisposable
         LiveApp? app = null, BuiltEdits? edits = null, UpdateHandlerHook? handlers = null, BrowserRefresh? browser = null, string? startedElsewhere = null,
         ProgramBuild? builds = null)
     {
+        if (!elsewhere && place is null && DotnetProcesses.Runs32Bit(processId))
+        {
+            // What the session would have taken goes with the refusal.
+            handlers?.Dispose();
+            browser?.Dispose();
+            edits?.Dispose();
+            return Task.FromResult<string?>(Refusals.X86Unattached(name));
+        }
         bool hotReloadOn = hotReload && HotReloadOn();
         return OpenAsync((built, log, output, starting) =>
         {
