@@ -2345,6 +2345,49 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
         window.Close();
     }
 
+    /// <summary>A theme's picture lies over the editor alone: the XAML preview beside it draws the app's frame and its own
+    /// ground as it does with no picture, so the app's colours and edges read as the app draws them (#1892).</summary>
+    [AvaloniaFact]
+    public void A_themes_picture_lies_over_the_editor_and_never_over_the_xaml_preview_beside_it()
+    {
+        MainWindow window = app.Open(app.PathOf("MainWindow.axaml"), languageServer: false);
+        try
+        {
+            CodeEditor editor = window.EditorArea.CodeEditor;
+            OpenDocument document = window.EditorArea.Active!;
+            Ui.Run(window, AppActions.Build);
+            Ui.Settle();
+            Assert.True(window.Perform(AppActions.XamlPreview), $"XAML Preview could not run: {window.Status}");
+            Passenger.App.Xaml.XamlPreview preview = window.PreviewOf(document) ?? throw new InvalidOperationException("XAML Preview showed no preview beside the file");
+            Passenger.App.Xaml.XamlPreviewPane pane = window.PreviewPaneOf(document)!;
+            Ui.WaitFor(() => preview.Frame is not null, "the previewer's first frame", TimeSpan.FromSeconds(60));
+            Ui.Settle();
+            Point Of(Avalonia.Controls.Control control, Point at) => control.TranslatePoint(at, window) ?? throw new InvalidOperationException($"The {control.GetType().Name} is not on the window");
+            Dictionary<string, Point> places = new()
+            {
+                ["the editor"] = Of(editor, new Point(editor.Bounds.Width * 0.6, editor.Bounds.Height - 30)),
+                ["the preview's ground"] = Of(pane, new Point(8, pane.Bounds.Height / 2)),
+                ["the app's frame"] = Of(pane.Frame, pane.Frame.Bounds.Center),
+            };
+            Dictionary<string, Color> plain = places.ToDictionary(p => p.Key, p => Ui.Pixel(window, p.Value));
+
+            ThemeBackgroundTests.Wear(window, $"Pictured {Guid.NewGuid():N}", """{"image": "red.png", "opacity": 0.3}""");
+            Dictionary<string, Color> pictured = places.ToDictionary(p => p.Key, p => Ui.Pixel(window, p.Value));
+            Assert.True(pictured["the editor"].R > plain["the editor"].R + 20,
+                $"The theme's picture is not over the editor beside the preview: its ground {plain["the editor"]} drew {pictured["the editor"]}");
+            foreach (string place in new[] { "the preview's ground", "the app's frame" })
+            {
+                Assert.True(pictured[place] == plain[place],
+                    $"The theme's picture drew over {place}: {plain[place]} became {pictured[place]}, so the preview no longer shows the app's own colours");
+            }
+        }
+        finally
+        {
+            window.ApplySettings(new Passenger.App.Settings.AppSettings());
+            window.Close();
+        }
+    }
+
     /// <summary>In the XAML workspace, with no app running, the preview shows under its frame what the caret's element sets
     /// itself, as its XAML says it: the title's binding with its path, the button's own content and its resource with its key,
     /// and the Name each takes as a property; turned off, it shows none.</summary>

@@ -93,9 +93,10 @@ header before anything decodes it, then decodes it with its own decoders. The re
 - `opacity`, how much of the picture shows, 0 to 0.3 (0.15 if left out). The picture is drawn over the area, its text and
   its ground alike, so every glyph keeps at least 70% of its contrast with its ground whatever the picture holds.
 - `tint`, a colour washed over the picture at a `strength` from 0 (none) to 1 (the colour alone; 0.5 if left out).
-- `places`, where it is drawn: one or more of `editor` (each editor, fitted to it), `toolWindows` (each tool window's
-  page), `frame` (the toolbar, the stripes, the editor tabs' strip and the status bar, fitted to the whole window so they
-  show one picture) and `welcome` (the Welcome screen). `["editor"]` if left out.
+- `places`, where it is drawn: one or more of `editor` (each editor, fitted to it; a preview beside it, of XAML,
+  Markdown, SVG or HTML, keeps its own ground), `toolWindows` (each tool window's page), `frame` (the toolbar, the
+  stripes, the editor tabs' strip and the status bar, fitted to the whole window so they show one picture) and `welcome`
+  (the Welcome screen). `["editor"]` if left out.
 - `fit`: `cover` (fills the area, its overflow cut off; the default), `contain` (whole inside the area), `tile` (at its own
   size, repeated) or `centre` (at its own size, once).
 - `align`: `centre` (the default), or `top`, `bottom`, `left`, `right`, or one of each, `bottom right`.

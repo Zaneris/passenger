@@ -152,7 +152,7 @@ public sealed class ThemeBackgroundTests : IDisposable
     }
 
     /// <summary>A theme of a red picture and a background, kept as a file added is, put in force.</summary>
-    private static void Wear(MainWindow window, string name, string background)
+    internal static void Wear(MainWindow window, string name, string background)
     {
         string json = $$"""{"format": 1, "name": "{{name}}", "background": {{background}}}""";
         Assert.Null(KeptThemes.Keep(ThemeSource.Added, false, name, Encoding.UTF8.GetBytes(json),
