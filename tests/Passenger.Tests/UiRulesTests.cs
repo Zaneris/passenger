@@ -2001,6 +2001,343 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
             + $"(Tokens.axaml and every built-in theme's file, Dark and Light) or a radius resource, and read that:\n{string.Join("\n", found)}");
     }
 
+    /// <summary>No margin, padding, spacing or border is given a number of its own outside the theme files: each is a step
+    /// of the one scale (Gaps) or a line of Hairlines, so like things stand alike in every window, and Theme/'s styles
+    /// write only the steps' numbers. A number that is content's own drawing, not the window's spacing, is allowed below,
+    /// saying why.</summary>
+    [Fact]
+    public void No_margin_padding_spacing_or_border_is_a_number_of_its_own_but_a_step_of_the_one_scale()
+    {
+        Regex number = new(@"(?<![\w.])\d+(?:\.\d+)?(?![\w.])");
+        Regex thickness = new(@"new Thickness\(|\bThickness\s+\w+\s*(?:=>|=)\s*new\(|\b(?:Margin|Padding|BorderThickness)\s*=\s*new\(|Thickness\.Parse\(");
+        Regex spacing = new(@"\b(?:Spacing|ItemSpacing|LineSpacing|RowSpacing|ColumnSpacing)\s*=\s*");
+        Regex named = new(@"const double (\w*(?:Gap|Inset|Pad|Padding|Margin|Spacing|Indent)\w*)\s*=\s*([^;]+);");
+        Regex attribute = new(@"\b(?:Margin|Padding|BorderThickness|Spacing|ItemSpacing|LineSpacing|RowSpacing|ColumnSpacing)=""([^""{][^""]*)""");
+        Regex setter = new(@"Property=""(Margin|Padding|Spacing|ItemSpacing|LineSpacing|RowSpacing|ColumnSpacing)""\s+Value=""([^""{][^""]*)""");
+        double[] steps = [.. typeof(Gaps).GetFields().Where(f => f.IsLiteral).Select(f => (double)f.GetRawConstantValue()!)];
+        bool HasNumber(string written) => number.Matches(written).Any(m => double.Parse(m.Value, System.Globalization.CultureInfo.InvariantCulture) != 0);
+        List<string> found = [];
+        HashSet<string> holding = [];
+        foreach ((string path, string text) in UiFiles(theme: true))
+        {
+            if (path.Contains("/Theme/", StringComparison.Ordinal))
+            {
+                if (path.EndsWith(".axaml", StringComparison.Ordinal))
+                {
+                    string[] themeLines = text.Split('\n');
+                    for (int i = 0; i < themeLines.Length; i++)
+                    {
+                        foreach (Match match in setter.Matches(themeLines[i]))
+                        {
+                            if (!number.Matches(match.Groups[2].Value).Select(m => Math.Abs(double.Parse(m.Value, System.Globalization.CultureInfo.InvariantCulture)))
+                                .Any(n => n != 0 && !steps.Contains(n)))
+                            {
+                                continue;
+                            }
+                            if (SpacingStillToMove.Contains(path))
+                            {
+                                holding.Add(path);
+                            }
+                            else
+                            {
+                                found.Add($"{path}:{i + 1}: {match.Value} (each number one of Gaps' steps: {string.Join(", ", steps.Distinct())})");
+                            }
+                        }
+                    }
+                }
+                continue;
+            }
+            List<(int At, string What)> own = [];
+            if (path.EndsWith(".axaml", StringComparison.Ordinal))
+            {
+                foreach (Match match in attribute.Matches(text))
+                {
+                    if (HasNumber(match.Groups[1].Value))
+                    {
+                        own.Add((match.Index, match.Value));
+                    }
+                }
+                foreach (Match match in setter.Matches(text))
+                {
+                    if (HasNumber(match.Groups[2].Value))
+                    {
+                        own.Add((match.Index, match.Value));
+                    }
+                }
+            }
+            else
+            {
+                string code = string.Join('\n', text.Split('\n').Select(l => l.TrimStart().StartsWith("//", StringComparison.Ordinal) ? string.Empty : l));
+                foreach (Match match in thickness.Matches(code))
+                {
+                    string written = Bracketed(code, match.Index + match.Length - 1);
+                    if (HasNumber(written))
+                    {
+                        own.Add((match.Index, match.Value + written + ")"));
+                    }
+                }
+                foreach (Match match in spacing.Matches(code))
+                {
+                    string written = Expression(code, match.Index + match.Length);
+                    if (HasNumber(written))
+                    {
+                        own.Add((match.Index, match.Value + written));
+                    }
+                }
+                foreach (Match match in named.Matches(code))
+                {
+                    if (HasNumber(match.Groups[2].Value))
+                    {
+                        own.Add((match.Index, match.Value));
+                    }
+                }
+            }
+            foreach ((int at, string what) in own.Where(o => !ContentsSpacing(path, o.What)).OrderBy(o => o.At))
+            {
+                if (SpacingStillToMove.Contains(path))
+                {
+                    holding.Add(path);
+                }
+                else
+                {
+                    found.Add($"{path}:{LineOf(text, at)}: {what}");
+                }
+            }
+        }
+        string[] moved = [.. SpacingStillToMove.Where(p => !holding.Contains(p))];
+        Assert.True(found.Count == 0, $"{found.Count} margins, paddings, spacings or borders are given numbers of their own, so they stand otherwise than their "
+            + $"like elsewhere: give each a step of Gaps (Gaps.Normal, new Thickness(Gaps.Wide, 0)) or a line of Hairlines, through the shared piece it "
+            + $"belongs to where there is one:\n{string.Join("\n", found)}");
+        Assert.True(moved.Length == 0, $"These files are on the scale now: take them off SpacingStillToMove:\n{string.Join("\n", moved)}");
+    }
+
+    /// <summary>The files whose spacing is still to be moved onto the scale, area by area: each comes off as its area
+    /// moves, and the list goes once it is empty.</summary>
+    private static readonly HashSet<string> SpacingStillToMove =
+    [
+        "src/Passenger.App/AboutDialog.cs",
+        "src/Passenger.App/Aspire/AspireInteractionDialog.cs",
+        "src/Passenger.App/Aspire/AspireOrchestrationDialog.cs",
+        "src/Passenger.App/Aspire/AspireServiceDialog.cs",
+        "src/Passenger.App/Aspire/AspireView.cs",
+        "src/Passenger.App/Banner.cs",
+        "src/Passenger.App/Bdd/StepLibraryView.cs",
+        "src/Passenger.App/CheckRows.cs",
+        "src/Passenger.App/ColumnTitles.cs",
+        "src/Passenger.App/Containers/ContainerDetailsPane.cs",
+        "src/Passenger.App/Containers/ContainerFilesPane.cs",
+        "src/Passenger.App/Containers/ContainerStatsPane.cs",
+        "src/Passenger.App/CSharp/AssistPopups.cs",
+        "src/Passenger.App/CSharp/ChangeSignatureDialog.cs",
+        "src/Passenger.App/CSharp/CodeActions.Refactorings.cs",
+        "src/Passenger.App/CSharp/ExtractInterfaceDialog.cs",
+        "src/Passenger.App/CSharp/MembersMoveDialog.cs",
+        "src/Passenger.App/CSharp/PopupPlacement.cs",
+        "src/Passenger.App/CSharp/RefactoringDialog.cs",
+        "src/Passenger.App/Debugging/AttachToProcessDialog.cs",
+        "src/Passenger.App/Debugging/BreakpointViews.cs",
+        "src/Passenger.App/Debugging/VariablesList.cs",
+        "src/Passenger.App/Debugging/VariablesTree.cs",
+        "src/Passenger.App/DialogFooter.cs",
+        "src/Passenger.App/Docking/DockHost.cs",
+        "src/Passenger.App/Docking/DropOverlay.cs",
+        "src/Passenger.App/Docking/EdgeTabs.cs",
+        "src/Passenger.App/Docking/Stripe.cs",
+        "src/Passenger.App/Docking/ToolPane.cs",
+        "src/Passenger.App/DropDownSearch.cs",
+        "src/Passenger.App/EditableTable.cs",
+        "src/Passenger.App/Editors/AssetPreviewControl.cs",
+        "src/Passenger.App/Editors/EditorArea.cs",
+        "src/Passenger.App/Editors/EditorGroup.cs",
+        "src/Passenger.App/Editors/FindBar.axaml",
+        "src/Passenger.App/Editors/HiddenTabsPopup.cs",
+        "src/Passenger.App/Editors/Markdown.cs",
+        "src/Passenger.App/Editors/SvgPreview.cs",
+        "src/Passenger.App/Endpoints/EndpointQuestionDialog.cs",
+        "src/Passenger.App/Endpoints/EndpointsView.cs",
+        "src/Passenger.App/Endpoints/InteractiveTestDialog.cs",
+        "src/Passenger.App/Endpoints/RequestsView.cs",
+        "src/Passenger.App/Endpoints/ResponseView.cs",
+        "src/Passenger.App/ErrorsPopup.cs",
+        "src/Passenger.App/Explorer/AddReferenceDialog.cs",
+        "src/Passenger.App/Explorer/DockerDialogs.cs",
+        "src/Passenger.App/Explorer/ExplorerTree.cs",
+        "src/Passenger.App/Explorer/ExplorerView.axaml",
+        "src/Passenger.App/Explorer/ExplorerView.axaml.cs",
+        "src/Passenger.App/Explorer/FileNestingDialog.cs",
+        "src/Passenger.App/FormFold.cs",
+        "src/Passenger.App/FormRows.cs",
+        "src/Passenger.App/Godot/GodotLiveValues.cs",
+        "src/Passenger.App/Godot/GodotPageViewer.cs",
+        "src/Passenger.App/Godot/GodotPinPopup.cs",
+        "src/Passenger.App/Godot/GodotPopups.cs",
+        "src/Passenger.App/Godot/GodotSceneProperties.cs",
+        "src/Passenger.App/Godot/GodotValueCells.cs",
+        "src/Passenger.App/Godot/GodotValueEditors.cs",
+        "src/Passenger.App/History/HistoryTab.cs",
+        "src/Passenger.App/History/LocalHistoryView.cs",
+        "src/Passenger.App/LiveTree/LiveTreeView.cs",
+        "src/Passenger.App/LiveTree/ValueControls.cs",
+        "src/Passenger.App/MainWindow.axaml",
+        "src/Passenger.App/MainWindow.GodotEditor.cs",
+        "src/Passenger.App/MainWindow.GodotTemplates.cs",
+        "src/Passenger.App/MainWindow.Run.cs",
+        "src/Passenger.App/MainWindow.TitleBar.cs",
+        "src/Passenger.App/Migrations/MigrationScriptDialog.cs",
+        "src/Passenger.App/Migrations/MigrationsView.cs",
+        "src/Passenger.App/Navigation/ActionPopup.cs",
+        "src/Passenger.App/Navigation/FindInFilesPopup.cs",
+        "src/Passenger.App/Navigation/GoToFilePopup.cs",
+        "src/Passenger.App/Navigation/GoToLinePopup.axaml",
+        "src/Passenger.App/Navigation/RecentLocationsPopup.cs",
+        "src/Passenger.App/Navigation/SymbolPopup.cs",
+        "src/Passenger.App/Navigation/UsagesPopup.cs",
+        "src/Passenger.App/Packages/FeedDialog.cs",
+        "src/Passenger.App/PopupFrame.cs",
+        "src/Passenger.App/PopupHost.cs",
+        "src/Passenger.App/Profiling/BandOverTable.cs",
+        "src/Passenger.App/Profiling/FramesTable.cs",
+        "src/Passenger.App/Profiling/FramesView.cs",
+        "src/Passenger.App/Profiling/GameFramesView.cs",
+        "src/Passenger.App/Profiling/MemoryView.cs",
+        "src/Passenger.App/Profiling/ProfilerView.cs",
+        "src/Passenger.App/RowGlyphs.cs",
+        "src/Passenger.App/Run/AppHostPublishDialog.cs",
+        "src/Passenger.App/Run/ComposeServicesTable.cs",
+        "src/Passenger.App/Run/GodotExportDialog.cs",
+        "src/Passenger.App/Run/ProjectStartsTable.cs",
+        "src/Passenger.App/Run/PublishDialog.cs",
+        "src/Passenger.App/Run/RunConfigurationsDialog.cs",
+        "src/Passenger.App/SearchPopup.cs",
+        "src/Passenger.App/Settings/AvailabilityDialog.cs",
+        "src/Passenger.App/Settings/ListPane.cs",
+        "src/Passenger.App/Settings/LiveTemplatesPane.cs",
+        "src/Passenger.App/Settings/MouseShortcutDialog.cs",
+        "src/Passenger.App/Settings/OptionRow.cs",
+        "src/Passenger.App/Settings/PostfixTemplatesPane.cs",
+        "src/Passenger.App/Settings/Setting.cs",
+        "src/Passenger.App/Settings/SettingsDialog.CodeQuality.cs",
+        "src/Passenger.App/Settings/SettingsDialog.cs",
+        "src/Passenger.App/Settings/SettingsDialog.Keymap.cs",
+        "src/Passenger.App/Settings/SettingsDialog.Mcp.cs",
+        "src/Passenger.App/Settings/SettingsDialog.Themes.cs",
+        "src/Passenger.App/Settings/ShortcutDialog.cs",
+        "src/Passenger.App/Settings/ShortcutPanel.cs",
+        "src/Passenger.App/Settings/TemplateVariablesDialog.cs",
+        "src/Passenger.App/Settings/ThemeExplorer.cs",
+        "src/Passenger.App/Settings/ThemePicker.cs",
+        "src/Passenger.App/Settings/TrustedFoldersTable.cs",
+        "src/Passenger.App/StatusLine.cs",
+        "src/Passenger.App/Tables/CellGrid.cs",
+        "src/Passenger.App/Tables/TableViewer.cs",
+        "src/Passenger.App/Telemetry/MetricsPane.cs",
+        "src/Passenger.App/Telemetry/TelemetryView.cs",
+        "src/Passenger.App/Templates/NewItemDialog.cs",
+        "src/Passenger.App/Templates/NewProjectDialog.cs",
+        "src/Passenger.App/Templates/TemplateList.cs",
+        "src/Passenger.App/Templates/TemplateOptions.cs",
+        "src/Passenger.App/Testing/TestTree.cs",
+        "src/Passenger.App/Theme/Shell.axaml",
+        "src/Passenger.App/ToolButtons.cs",
+        "src/Passenger.App/ToolWindows/BookmarksView.cs",
+        "src/Passenger.App/ToolWindows/BranchesPanel.cs",
+        "src/Passenger.App/ToolWindows/CommitView.cs",
+        "src/Passenger.App/ToolWindows/DebugView.cs",
+        "src/Passenger.App/ToolWindows/DetailsTables.cs",
+        "src/Passenger.App/ToolWindows/EmptyState.cs",
+        "src/Passenger.App/ToolWindows/FilterBox.cs",
+        "src/Passenger.App/ToolWindows/FilterMenu.cs",
+        "src/Passenger.App/ToolWindows/FindView.cs",
+        "src/Passenger.App/ToolWindows/FrameViewer.cs",
+        "src/Passenger.App/ToolWindows/GitLogView.cs",
+        "src/Passenger.App/ToolWindows/GitView.cs",
+        "src/Passenger.App/ToolWindows/HierarchyView.cs",
+        "src/Passenger.App/ToolWindows/MergedLog.cs",
+        "src/Passenger.App/ToolWindows/NuGetSourcesView.cs",
+        "src/Passenger.App/ToolWindows/NuGetView.cs",
+        "src/Passenger.App/ToolWindows/NuGetView.Projects.cs",
+        "src/Passenger.App/ToolWindows/ProblemsView.cs",
+        "src/Passenger.App/ToolWindows/RunPane.cs",
+        "src/Passenger.App/ToolWindows/RunRows.cs",
+        "src/Passenger.App/ToolWindows/RunWindowFrame.cs",
+        "src/Passenger.App/ToolWindows/TerminalPanel.cs",
+        "src/Passenger.App/ToolWindows/TestFramesStrip.cs",
+        "src/Passenger.App/ToolWindows/TestsView.cs",
+        "src/Passenger.App/ToolWindows/ToolBars.cs",
+        "src/Passenger.App/ToolWindows/ToolTabs.cs",
+        "src/Passenger.App/Vcs/ChangedFileRow.cs",
+        "src/Passenger.App/Vcs/ChangePopup.cs",
+        "src/Passenger.App/Vcs/ChoicePopup.cs",
+        "src/Passenger.App/Vcs/CloneDialog.cs",
+        "src/Passenger.App/Vcs/CommitSigningDialog.cs",
+        "src/Passenger.App/Vcs/ConflictsDialog.cs",
+        "src/Passenger.App/Vcs/DiffLines.cs",
+        "src/Passenger.App/Vcs/GitQuestionDialog.cs",
+        "src/Passenger.App/Vcs/MergeView.cs",
+        "src/Passenger.App/Vcs/NamePopup.cs",
+        "src/Passenger.App/Vcs/UnstashPopup.cs",
+        "src/Passenger.App/Welcome/FirstStartView.cs",
+        "src/Passenger.App/Welcome/WelcomeView.cs",
+        "src/Passenger.App/Xaml/ColourPicker.cs",
+        "src/Passenger.App/Xaml/XamlPreviewPane.cs",
+        "src/Passenger.App/Xaml/XamlRefactoringDialogs.cs",
+        "src/Passenger.App/ZoomedPicture.cs",
+    ];
+
+    /// <summary>The text between the bracket at <paramref name="open"/> and the one closing it.</summary>
+    private static string Bracketed(string text, int open)
+    {
+        int depth = 0;
+        for (int i = open; i < text.Length; i++)
+        {
+            depth += text[i] switch { '(' => 1, ')' => -1, _ => 0 };
+            if (depth == 0)
+            {
+                return text[(open + 1)..i];
+            }
+        }
+        return text[(open + 1)..];
+    }
+
+    /// <summary>The expression starting at <paramref name="start"/>, up to the comma, semicolon or bracket that ends it.</summary>
+    private static string Expression(string text, int start)
+    {
+        int depth = 0;
+        for (int i = start; i < text.Length; i++)
+        {
+            switch (text[i])
+            {
+                case '(' or '[' or '{':
+                    depth++;
+                    break;
+                case ')' or ']' or '}' when depth == 0:
+                    return text[start..i];
+                case ')' or ']' or '}':
+                    depth--;
+                    break;
+                case ',' or ';' when depth == 0:
+                    return text[start..i];
+            }
+        }
+        return text[start..];
+    }
+
+    /// <summary>A number that is content's own drawing, not the window's spacing, so no step of the scale stands for it.</summary>
+    private static bool ContentsSpacing(string path, string what) => path switch
+    {
+        // The code editor's own rows and gutter, drawn to the code's metrics.
+        _ when path.StartsWith("src/Passenger.Editor/", StringComparison.Ordinal) => true,
+        // The terminal's cells, round which it draws to the program's grid.
+        _ when path.StartsWith("src/Passenger.Terminal/", StringComparison.Ordinal) => true,
+        // The longest pause between a trace's events, a time, not a space.
+        _ when path.EndsWith("Profiler/Snapshot.cs", StringComparison.Ordinal) && what.Contains("LongestGap", StringComparison.Ordinal) => true,
+        // A flame graph's bars and a frame chart's columns, drawn to the trace's own scale.
+        _ when path.EndsWith("Profiling/FlameGraph.cs", StringComparison.Ordinal) || path.EndsWith("Profiling/FrameChart.cs", StringComparison.Ordinal) => true,
+        // The Aspire graph's nodes and edges, laid out as a drawing of the resources.
+        _ when path.EndsWith("Aspire/AspireGraph.cs", StringComparison.Ordinal) => true,
+        _ => false,
+    };
+
     /// <summary>Every theme key and icon the code names (TokenKeys and IconKeys, a literal still shaped like one in C#, a
     /// resource in XAML) is one the app's resources give, dark and light: a misspelt or missing one finds nothing, drawn as
     /// nothing (Transparent, no icon) with no error. A literal of that shape naming something else (a project's assembly, a
