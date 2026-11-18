@@ -1,13 +1,18 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Presenters;
 using Avalonia.Controls.Primitives;
+using Avalonia.Controls.Primitives.PopupPositioning;
+using Avalonia.Media;
+using Avalonia.VisualTree;
 
 namespace Passenger.App;
 
 /// <summary>Where every menu's popup stands (a context menu's, a menu flyout's): its frame is inset by the room its shadow
 /// is drawn in (Shell.axaml's Passenger.MenuShadowRoom), since Avalonia draws nothing past a popup's edge, so the popup is
 /// moved back by that room on the sides its placement aligns the frame to, and the frame opens where it would without it
-/// (under a widget, beside a stripe's button, above the status bar).</summary>
+/// (under a widget, beside a stripe's button, above the status bar). A submenu's popup is its frame and the room round it,
+/// the positioner placing the frame, and opens beside its item (<see cref="Beside"/>).</summary>
 internal static class MenuShadow
 {
     public static void Install()
@@ -15,6 +20,39 @@ internal static class MenuShadow
         TemplatedControl.TemplateAppliedEvent.AddClassHandler<ContextMenu>((menu, _) => Fit(menu));
         ContextMenu.PlacementProperty.Changed.AddClassHandler<ContextMenu>((menu, _) => Fit(menu));
         PopupFlyoutBase.PlacementProperty.Changed.AddClassHandler<MenuFlyout>((flyout, _) => Fit(flyout));
+        TemplatedControl.TemplateAppliedEvent.AddClassHandler<MenuItem>((_, e) => Beside(e.NameScope.Find<Popup>("PART_Popup")));
+    }
+
+    /// <summary>A submenu's popup opens beside its item on whichever side it has room, and the room its shadow is drawn in
+    /// is the submenu's own: a pointer resting there keeps it open, as one on the frame does.</summary>
+    private static void Beside(Popup? popup)
+    {
+        if (popup is null)
+        {
+            return;
+        }
+        popup.Placement = PlacementMode.Custom;
+        popup.CustomPopupPlacementCallback = Place;
+        popup.Opened += (_, _) =>
+        {
+            if (popup.Child?.GetVisualParent() is ContentPresenter room)
+            {
+                room.Background = Brushes.Transparent;
+            }
+        };
+    }
+
+    /// <summary>A submenu's place: right of its item, else left, its item's row widened by the room for the shadow on the
+    /// side it opens to, so the popup, room and all, lies over none of the item, since a desktop gives the pointer to a
+    /// popup across its whole rect and the item would lose it to the shadow. The positioner places the frame: the popup's
+    /// child less its margin, the room.</summary>
+    private static void Place(CustomPopupPlacement placed)
+    {
+        Rect row = placed.AnchorRectangle;
+        Thickness room = placed.Deflate;
+        placed.AnchorRectangle = new Rect(row.X - room.Right, row.Y, row.Width + room.Left + room.Right, row.Height);
+        placed.Anchor = PopupAnchor.TopRight;
+        placed.Gravity = PopupGravity.BottomRight;
     }
 
     /// <summary>The popup's offset for a placement: back by the room on the side the frame meets its target, by none

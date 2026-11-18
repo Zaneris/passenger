@@ -14,11 +14,10 @@
         <!-- A form's drop-down (ComboBox.form): one width for every drop-down in a column, so their edges line up. -->
         <x:Double x:Key="Passenger.DropDownWidth">280</x:Double>
         <!-- The room round a menu's frame its shadow is drawn in (Passenger.PopupShadow's reach), inside the menu's own popup,
-             which is moved back by as much so the frame stands where it would without it. -->
-        <Thickness x:Key="Passenger.MenuShadowRoom">16,12,16,20</Thickness>
-        <!-- A submenu overlaps its item's menu as Fluent's does, its items being inset (MenuItem's margin below), less the
-             room for its shadow. -->
-        <x:Double x:Key="MenuFlyoutSubItemPopupHorizontalOffset">-16</x:Double>
+             which is placed by its frame, so the frame stands where it would without it (MenuShadow). -->
+        <Thickness x:Key="Passenger.MenuShadowRoom">12,12,12,20</Thickness>
+        <!-- A submenu opens beside its item, never over it (MenuShadow.Beside), so it is moved across by nothing more. -->
+        <x:Double x:Key="MenuFlyoutSubItemPopupHorizontalOffset">0</x:Double>
         <!-- A text box's caret blink until Carets.UseBlink puts the system's in force in the application's resources. -->
         <x:TimeSpan x:Key="Passenger.TextBoxCaretBlink">0:0:0.53</x:TimeSpan>
     </Styles.Resources>
@@ -102,8 +101,8 @@
         </Setter>
     </Style>
     <!-- A menu's frame: its rounded edge and a soft shadow, drawn in room round the frame inside the menu's popup, the
-         popup moved back by that room so the frame opens where it would without it (MenuShadow). A submenu's and the menu
-         button's alike. -->
+         popup placed by its frame so the frame opens where it would without that room (MenuShadow). A submenu's and the
+         menu button's alike. -->
     <Style Selector="ContextMenu /template/ Border">
         <Setter Property="Margin" Value="{DynamicResource Passenger.MenuShadowRoom}" />
         <Setter Property="BoxShadow" Value="{DynamicResource Passenger.PopupShadow}" />
@@ -116,8 +115,17 @@
         <Setter Property="Margin" Value="{DynamicResource Passenger.MenuShadowRoom}" />
         <Setter Property="BoxShadow" Value="{DynamicResource Passenger.PopupShadow}" />
     </Style>
+    <!-- A submenu's first item in line with its item: its frame raised by its edge and its list's top margin. -->
     <Style Selector="MenuItem /template/ Popup#PART_Popup">
-        <Setter Property="VerticalOffset" Value="-16" />
+        <Setter Property="VerticalOffset" Value="-5" />
+    </Style>
+    <!-- A submenu's chevron is every chevron's (PathIcon.chevron), centred on its row, which the item's padding lifts its
+         words above by a step. Named by its state: a style without one ranks below what Fluent's template sets. -->
+    <Style Selector="MenuItem:not(:empty) /template/ Path#PART_ChevronPath">
+        <Setter Property="Data" Value="{DynamicResource Icon.ChevronRight}" />
+        <Setter Property="Width" Value="NaN" />
+        <Setter Property="Height" Value="10" />
+        <Setter Property="Margin" Value="12,2,0,0" />
     </Style>
     <!-- A rule between a menu's groups in the colour of its edge. -->
     <Style Selector="ContextMenu Separator">

@@ -74,6 +74,46 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
         }
     }
 
+    /// <summary>A menu item's submenu chevron is every chevron's, under each look: the IDE's own shape, as tall as a
+    /// widget's, its middle on its item's middle.</summary>
+    [AvaloniaFact]
+    public void A_submenus_chevron_is_every_chevrons_shape_and_size_on_its_items_middle()
+    {
+        MainWindow window = Open(1200, 800);
+        try
+        {
+            window.OpenFile(project.PathOf("Notes.txt"));
+            Ui.Settle();
+            UnderEachLook(window, () =>
+            {
+                PathIcon widget = Named<Button>(window, "BranchButton").GetVisualDescendants().OfType<PathIcon>().Single(i => i.Classes.Contains(StyleClasses.Chevron));
+                window.EditorArea.CodeEditor.Focus();
+                Ui.Run(window, AppActions.ShowContextMenu);
+                Ui.WaitFor(() => window.OpenContextMenu is not null, "the editor's menu");
+                Ui.Settle();
+                MenuItem[] parents = [.. window.OpenContextMenu!.Items.OfType<MenuItem>().Where(i => i.ItemCount > 0)];
+                Assert.NotEmpty(parents);
+                foreach (MenuItem parent in parents)
+                {
+                    Avalonia.Controls.Shapes.Path chevron = parent.GetVisualDescendants().OfType<Avalonia.Controls.Shapes.Path>().Single(p => p.Name == "PART_ChevronPath");
+                    Rect at = Placed(window, chevron);
+                    Rect row = Placed(window, parent);
+                    Assert.True(ReferenceEquals(chevron.Data, window.FindResource(IconKeys.ChevronRight)), $"{Header(parent)}'s chevron is a shape of its own, not the IDE's chevron");
+                    Assert.True(Math.Abs(at.Height - widget.Bounds.Height) <= 0.5,
+                        $"{Header(parent)}'s chevron is {at.Height:0.#} tall, where every other chevron (the branch widget's) is {widget.Bounds.Height:0.#}");
+                    Assert.True(Math.Abs(at.Center.Y - row.Center.Y) <= 0.5,
+                        $"{Header(parent)}'s chevron's middle is at {at.Center.Y:0.#}, off its item's middle at {row.Center.Y:0.#}");
+                }
+                window.OpenContextMenu.Close();
+                Ui.Settle();
+            });
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     [Gate]
     [AvaloniaFact]
     public void The_open_editor_tab_shows_its_close_button_as_Rider_s_does_and_the_others_only_under_the_pointer()

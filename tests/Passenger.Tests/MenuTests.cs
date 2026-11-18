@@ -1,5 +1,7 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Platform;
+using Avalonia.Controls.Primitives;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.Input;
@@ -13,7 +15,7 @@ namespace Passenger.Tests;
 
 /// <summary>The main menu: its menus from the action catalog, each item with the shortcut the keymap gives it now and
 /// disabled where it cannot run; an item chosen runs its action, an editing one where the focus is. The toolbar's menus,
-/// opened by a click, take the keys.</summary>
+/// opened by a click, take the keys. A submenu opens beside its item, never over it.</summary>
 public sealed class MenuTests : IDisposable
 {
     private readonly string folder = TestFolders.Create("menu-");
@@ -382,6 +384,152 @@ public sealed class MenuTests : IDisposable
             window.Close();
         }
     }
+
+    /// <summary>A submenu opens beside its item, never over it, on whichever side it has room, in the editor's menu and the
+    /// main menu alike: its frame starts past the item's chevron (or ends before the item, opened to the left), its first
+    /// item in line with the item, and its popup, the room its shadow is drawn in too, lies over none of the item, since a
+    /// desktop gives a popup the pointer across its whole rect and the item would lose it to the shadow.</summary>
+    [AvaloniaFact]
+    public void A_submenu_opens_beside_its_item_its_shadow_over_none_of_it_whichever_side_it_opens()
+    {
+        // The main menu behind the toolbar's button, as on Windows and Linux, rather than in macOS's own menu bar.
+        MainWindow.SystemMenuBar = false;
+        MainWindow window = OpenOne();
+        try
+        {
+            (string What, Func<MenuItem> Item, Action Close)[] menus =
+            [
+                ("the editor's menu's Refactor, opened to the right", () => EditorMenuItem(window, left: false), () => window.OpenContextMenu!.Close()),
+                ("the editor's menu's Refactor, opened to the left by the window's right edge", () => EditorMenuItem(window, left: true), () => window.OpenContextMenu!.Close()),
+                ("the main menu's View", () => MainMenuItem(window, "View"), () => CloseMainMenu(window)),
+            ];
+            foreach ((string what, Func<MenuItem> open, Action close) in menus)
+            {
+                MenuItem item = open();
+                Border frame = (Border)OpenSubmenu(item).Child!;
+                Rect row = Placed(window, item);
+                Rect chevron = Placed(window, item.GetVisualDescendants().OfType<Avalonia.Controls.Shapes.Path>().Single(p => p.Name == "PART_ChevronPath"));
+                Rect drawn = Placed(window, frame);
+                Rect whole = Placed(window, (Visual)frame.GetVisualParent()!);
+                bool left = drawn.Center.X < row.Center.X;
+                Assert.True(left ? drawn.Right <= row.Left + 0.5 : drawn.Left >= chevron.Right - 0.5,
+                    $"The submenu of {what} is drawn at {drawn}, over its item at {row} (its chevron at {chevron}), which it covers");
+                Assert.False(whole.Intersects(row),
+                    $"The submenu of {what} takes {whole} with the room for its shadow, over its item at {row}, so on a desktop the item loses the pointer to the shadow");
+                Rect first = Placed(window, frame.GetVisualDescendants().OfType<MenuItem>().First());
+                Assert.True(Math.Abs(first.Top - row.Top) <= 0.5, $"The submenu of {what} begins its items at {first.Top:0.#}, out of line with its item at {row.Top:0.#}");
+                close();
+                Ui.Settle();
+            }
+        }
+        finally
+        {
+            MainWindow.SystemMenuBar = OperatingSystem.IsMacOS();
+            window.Close();
+        }
+    }
+
+    /// <summary>A pointer resting along a submenu's edge, in the shadow round its frame, beside its item, above, below and
+    /// past it, keeps the submenu open past the delay a submenu the pointer left closes after: the shadow is the submenu's
+    /// own, so it never closes and opens again under a still pointer.</summary>
+    [AvaloniaFact]
+    public void A_pointer_in_a_submenus_shadow_along_its_edge_keeps_it_open_with_no_close_and_open_again()
+    {
+        MainWindow window = OpenOne();
+        try
+        {
+            MenuItem item = EditorMenuItem(window, left: false);
+            Popup popup = OpenSubmenu(item);
+            Border frame = (Border)popup.Child!;
+            Rect drawn = Placed(window, frame);
+            Thickness room = frame.Margin;
+            Rect row = Placed(window, item);
+            int opened = 0;
+            int closed = 0;
+            popup.Opened += (_, _) => opened++;
+            popup.Closed += (_, _) => closed++;
+            (string Where, Point At)[] shadow =
+            [
+                ("beside its item", new Point(drawn.Left - (room.Left / 2), row.Center.Y)),
+                ("above it", new Point(drawn.Center.X, drawn.Top - (room.Top / 2))),
+                ("past it", new Point(drawn.Right + (room.Right / 2), drawn.Center.Y)),
+                ("below it", new Point(drawn.Center.X, drawn.Bottom + (room.Bottom / 2))),
+                ("by its corner", new Point(drawn.Left - (room.Left / 2), drawn.Bottom + (room.Bottom / 2))),
+            ];
+            foreach ((string where, Point at) in shadow)
+            {
+                window.MouseMove(at);
+                Ui.Hold(DefaultMenuInteractionHandler.MenuShowDelay * 2, "past the delay a submenu the pointer left closes after");
+                Assert.True(item.IsSubMenuOpen && opened == 0 && closed == 0,
+                    $"With the pointer at {at}, in Refactor's submenu's shadow {where} (its frame at {drawn}), the submenu closed {closed} times and opened {opened}, so a pointer resting there makes it flicker or go");
+            }
+            window.OpenContextMenu!.Close();
+            Ui.Settle();
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>A window on a C# file, with no language server: a menu's place is the window's.</summary>
+    private MainWindow OpenOne()
+    {
+        File.WriteAllText(Path.Combine(folder, "One.cs"), "class One { }\n");
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        window.OpenFile("One.cs");
+        Ui.Settle();
+        return window;
+    }
+
+    /// <summary>The editor's menu opened, from the keys at the caret, or by a right click by the window's right edge, where
+    /// a submenu has no room to its right; its Refactor item.</summary>
+    private static MenuItem EditorMenuItem(MainWindow window, bool left)
+    {
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        if (left)
+        {
+            Ui.RightClick(editor, new Point(editor.Bounds.Width - 30, 30));
+        }
+        else
+        {
+            editor.Focus();
+            Ui.Run(window, AppActions.ShowContextMenu);
+        }
+        Ui.WaitFor(() => window.OpenContextMenu is not null, "the editor's menu");
+        Ui.Settle();
+        return window.OpenContextMenu!.Items.OfType<MenuItem>().First(i => i.Header as string == "Refactor");
+    }
+
+    /// <summary>The main menu opened by the toolbar's button; its item of a menu's title.</summary>
+    private static MenuItem MainMenuItem(MainWindow window, string title)
+    {
+        ClickOpen(window, "MenuButton");
+        return window.GetVisualDescendants().OfType<MenuFlyoutPresenter>().Where(p => p.IsEffectivelyVisible)
+            .SelectMany(p => p.Items.OfType<MenuItem>()).First(i => i.Header as string == title);
+    }
+
+    /// <summary>The main menu closed by Escape, its open submenu by the first press.</summary>
+    private static void CloseMainMenu(MainWindow window)
+    {
+        Ui.Press(window, "ESCAPE");
+        if (MenuOpen(window))
+        {
+            Ui.Press(window, "ESCAPE");
+        }
+        Assert.False(MenuOpen(window), "Escape left the main menu open");
+    }
+
+    /// <summary>An item's submenu opened by the pointer resting on the item; its popup.</summary>
+    private static Popup OpenSubmenu(MenuItem item)
+    {
+        Ui.Hover(item);
+        Ui.WaitFor(() => item.IsSubMenuOpen, $"{item.Header}'s submenu, opened by the pointer resting on its item");
+        Ui.Settle();
+        return item.GetVisualDescendants().OfType<Popup>().Single();
+    }
+
+    private static Rect Placed(Visual window, Visual control) => new(control.TranslatePoint(default, window)!.Value, control.Bounds.Size);
 
     private static void TapAlt(MainWindow window)
     {
