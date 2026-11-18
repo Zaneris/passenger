@@ -206,23 +206,30 @@ public partial class MainWindow
     private void OnVcsChanged()
     {
         VcsController vcs = session.Vcs;
-        BranchName.Text = vcs.Repository is null ? "Version control" : vcs.Branch ?? "Detached HEAD";
+        BranchName.Text = vcs.Repository is null ? "Version control" : BranchWords;
         ToolTip.SetTip(BranchButton, vcs.Repository is null ? vcs.Refused ?? "Version control" : $"Git branch: {BranchName.Text}");
         Explorer.Tree.SetChanges(vcs.Changes.Where(c => c.Kind is not ChangeKind.Deleted).ToDictionary(c => c.Path, c => c.Kind));
         ShowGitStatus();
         FollowConflicts();
     }
 
+    /// <summary>What a working tree's branch is called where the window shows it (the toolbar's Git widget, the status bar).</summary>
+    private string BranchWords => session.Vcs.Branch ?? "Detached HEAD";
+
     /// <summary>The branch popup: new branch, commit, push, then the local branches (the current, favourites and last
     /// committed to, at most <see cref="BranchesListed"/>), each with its own menu, and More Branches… for the rest.</summary>
-    private void OnBranchClicked(object? sender, RoutedEventArgs e) => ShowBranches();
+    private void OnBranchClicked(object? sender, RoutedEventArgs e) => ShowBranches(BranchButton);
 
-    private void ShowBranches()
+    /// <summary>The branch popup from the status bar's branch, as from the toolbar's Git widget.</summary>
+    private void OnGitBranchClicked(object? sender, RoutedEventArgs e) => ShowBranches(GitBranchButton);
+
+    /// <summary>The branch popup, opened from <paramref name="widget"/>: the toolbar's Git widget or the status bar's branch.</summary>
+    private void ShowBranches(Button widget)
     {
-        IdeErrors.Observe(ShowBranchesAsync());
+        IdeErrors.Observe(ShowBranchesAsync(widget));
     }
 
-    private async Task ShowBranchesAsync()
+    private async Task ShowBranchesAsync(Button widget)
     {
         ContextMenu menu = new();
         MenuItem Item(string header, Action run)
@@ -255,7 +262,7 @@ public partial class MainWindow
             {
                 menu.Items.Add(new MenuItem { Header = Refusals.NoFolder, IsEnabled = false });
             }
-            Open(menu, BranchButton);
+            Open(menu, widget);
             return;
         }
         menu.Items.Add(Action(AppActions.UpdateProject));
@@ -277,7 +284,7 @@ public partial class MainWindow
         {
             menu.Items.Add(Item("More Branches…", ShowAllBranches));
         }
-        Open(menu, BranchButton);
+        Open(menu, widget);
     }
 
     /// <summary>How many local branches the branch popup lists at most, whatever the repository holds.</summary>
@@ -780,7 +787,7 @@ public partial class MainWindow
         Add(AppActions.Push, "Push…", context => IdeErrors.Observe(session.Vcs.PushAsync()), new("Git", 0, 1), remote: true);
         Add(AppActions.UpdateProject, "Update Project…", context => IdeErrors.Observe(session.Vcs.UpdateAsync()), new("Git", 0, 2), remote: true);
         Add(AppActions.Fetch, "Fetch", context => IdeErrors.Observe(session.Vcs.FetchAsync()), new("Git", 0, 3), remote: true);
-        Add(AppActions.Branches, "Branches…", _ => ShowBranches(), new("Git", 0, 4));
+        Add(AppActions.Branches, "Branches…", _ => ShowBranches(BranchButton), new("Git", 0, 4));
         Add(AppActions.Stash, "Stash Changes…", _ => ShowStash(), new("Git", 1, 0), whyNot: () => session.Vcs.WhyNotStash);
         Add(AppActions.Unstash, "Unstash Changes…", context => IdeErrors.Observe(ShowUnstashAsync()), new("Git", 1, 1));
         Add(AppActions.ShowDiff, "Show Diff", context => IdeErrors.Observe(ShowDiffAsync(context.File!.Path)), new("Git", 2, 0), onFile: true);

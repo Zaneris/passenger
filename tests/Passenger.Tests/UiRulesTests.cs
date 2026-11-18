@@ -194,7 +194,7 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
                     .GetVisualDescendants().OfType<Button>().First(b => ToolTip.GetTip(b) as string == "Options");
                 Beside(options, $"{tool.Title}'s Options", () => dock.OpenOptions?.Hide());
             }
-            foreach (string name in (string[])["MenuButton", "ProjectButton", "BranchButton", "RunConfigButton", "LineSeparatorButton", "EncodingButton"])
+            foreach (string name in (string[])["MenuButton", "ProjectButton", "BranchButton", "RunConfigButton", "GitBranchButton", "LineSeparatorButton", "EncodingButton"])
             {
                 Button widget = Named<Button>(window, name);
                 if (widget.IsEffectivelyVisible && widget.IsHitTestVisible)

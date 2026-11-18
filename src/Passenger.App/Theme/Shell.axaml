@@ -314,11 +314,15 @@
         <Setter Property="BorderThickness" Value="0" />
     </Style>
     <!-- The status bar's row in from the window's sides, and the line a group's room before its widgets, as between them. -->
-    <Style Selector="DockPanel.statusRow">
+    <Style Selector="app|ToolbarRow.statusRow">
         <Setter Property="Margin" Value="12,0" />
     </Style>
     <Style Selector="app|StatusLine">
         <Setter Property="Margin" Value="0,0,16,0" />
+    </Style>
+    <!-- The status bar's widgets keep their width as it narrows: only one marked to give way (the branch's) does. -->
+    <Style Selector="app|ShrinkingRow.statusWidgets > :is(Control)">
+        <Setter Property="app:ShrinkingRow.KeepsWidth" Value="True" />
     </Style>
 
     <!-- A list, table or text in a page, framed as a field is, on the list's ground (white in light, deeper than the page

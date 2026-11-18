@@ -121,12 +121,13 @@ public partial class MainWindow
 
     /// <summary>Opens a context menu, remembering it while it is open, the keys kept in it (<see cref="KeepKeys"/>). A
     /// widget's (the project's, the branch's, the run configuration's) drops from under it, where one at the pointer
-    /// covered the widget.</summary>
+    /// covered the widget; a status bar widget's (the file's encoding, the branch's) rises from over it, its right edge
+    /// with the widget's.</summary>
     private void Open(ContextMenu menu, Control target)
     {
         if (target is Button && !menu.IsSet(ContextMenu.PlacementProperty))
         {
-            menu.Placement = PlacementMode.BottomEdgeAlignedLeft;
+            menu.Placement = StatusBarFrame.IsVisualAncestorOf(target) ? PlacementMode.TopEdgeAlignedRight : PlacementMode.BottomEdgeAlignedLeft;
         }
         OpenContextMenu?.Close();
         OpenContextMenu = menu;

@@ -22,6 +22,10 @@ public sealed class StatusLine : Panel
     /// narrow line of a small window gives it the room its path's share would take.</summary>
     private const double MessageLeast = 300;
 
+    /// <summary>The room the line keeps beside the bar's widgets, whatever it says now, so a widget that gives way (the
+    /// branch's) goes before a sentence of the bar's is cut, and never comes and goes with what is said.</summary>
+    public const double LeastWidth = MessageLeast;
+
     /// <summary>The path's width as the line lays it, and whether that cuts it.</summary>
     private (double Width, bool Cut) laid;
 

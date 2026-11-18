@@ -8,11 +8,12 @@ using Passenger.Vcs;
 
 namespace Passenger.App;
 
-/// <summary>The status bar's Git, in a working tree: the commits the branch's upstream has that it lacks and those it has
-/// that the upstream lacks, as last fetched, while it tracks one; and the files changed since the last commit. Each is a
-/// click to the window that lists them: the Git window's comparison of the branch with its upstream, and the Commit window.
-/// Worded from what the window's Git read last (<see cref="VcsController.Divergence"/>, <see cref="VcsController.Changes"/>),
-/// never by a git of its own.</summary>
+/// <summary>The status bar's Git, in a working tree: the branch checked out, a click opening the branch popup as the
+/// toolbar's Git widget does; the commits the branch's upstream has that it lacks and those it has that the upstream
+/// lacks, as last fetched, while it tracks one; and the files changed since the last commit, each a click to the window
+/// that lists them: the Git window's comparison of the branch with its upstream, and the Commit window. Worded from what
+/// the window's Git read last (<see cref="VcsController.Branch"/>, <see cref="VcsController.Divergence"/>,
+/// <see cref="VcsController.Changes"/>), never by a git of its own.</summary>
 public partial class MainWindow
 {
     /// <summary>The status bar's Git as the window's Git last read it: nothing outside a working tree, and no commits for a
@@ -21,6 +22,9 @@ public partial class MainWindow
     {
         VcsController vcs = session.Vcs;
         bool tree = vcs.Repository is not null;
+        GitBranchButton.IsVisible = tree;
+        GitBranchText.Text = BranchWords;
+        ToolTip.SetTip(GitBranchButton, $"Git branch: {BranchWords}\n\nClick to check out another branch or make a new one");
         GitChangesButton.IsVisible = tree;
         int changed = vcs.Changes.Count;
         int unversioned = vcs.Changes.Count(c => c.Kind is ChangeKind.Unversioned);

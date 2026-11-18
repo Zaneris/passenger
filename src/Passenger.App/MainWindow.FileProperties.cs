@@ -84,7 +84,7 @@ public partial class MainWindow
     {
         ActionContext context = actions!.Context();
         List<Control> items = [.. LineSeparators.All.Select(s => FlyoutEntry(new MenuEntry(LineSeparatorAction(s)), context))];
-        Open(new ContextMenu { ItemsSource = items, Placement = PlacementMode.TopEdgeAlignedRight }, LineSeparatorButton);
+        Open(new ContextMenu { ItemsSource = items }, LineSeparatorButton);
     }
 
     private void OnEncodingClicked(object? sender, RoutedEventArgs e) => Request(A.FileEncoding);
@@ -111,7 +111,7 @@ public partial class MainWindow
         items.Add(new Separator());
         items.Add(FlyoutEntry(new MenuEntry(A.ConvertIndentationToTabs), context));
         items.Add(FlyoutEntry(new MenuEntry(A.ConvertIndentationToSpaces), context));
-        Open(new ContextMenu { ItemsSource = items, Placement = PlacementMode.TopEdgeAlignedRight }, IndentButton);
+        Open(new ContextMenu { ItemsSource = items }, IndentButton);
     }
 
     /// <summary>Converts every line's indentation to tabs or spaces at the file's indent size, as one undoable step, and
@@ -150,7 +150,7 @@ public partial class MainWindow
             more.Items.Add(Item(encoding));
         }
         List<Control> items = [.. FileEncoding.First.Select(Item), new Separator(), more];
-        Open(new ContextMenu { ItemsSource = items, Placement = PlacementMode.TopEdgeAlignedRight }, EncodingButton);
+        Open(new ContextMenu { ItemsSource = items }, EncodingButton);
     }
 
     /// <summary>An encoding chosen: taken at once when the bytes read as the same text and the text writes as the same
