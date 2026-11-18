@@ -67,6 +67,10 @@ five draws the sixth depth in `Syntax.Brace1`'s colour. It may also give `Syntax
 `Syntax.Parameter`, `Syntax.Local`, `Syntax.Namespace` and `Syntax.Operator` are drawn in the code's plain words in
 Passenger's own theme; a file that leaves them out draws them in its own `Editor.Text`, unless it is laid over a VS Code
 theme, whose own they are.
+A file that leaves out `ButtonHover`, `ButtonPressed` or `AccentPressed`, a button's grounds under the pointer and
+pressed, has them worked out in each variant from its own colours, as Passenger's themes work them out: a plain button's
+are its `Hover` and `Selected` laid over its `Button`, and the default button's pressed goes as far past its `AccentHover`
+as that is from its `Accent`.
 
 ### Its background picture
 

@@ -43,8 +43,20 @@
         <Setter Property="BorderThickness" Value="1" />
         <Setter Property="Foreground" Value="{DynamicResource Passenger.Text}" />
     </Style>
-    <!-- A button keeps its look under the pointer and pressed (Fluent lightens and shrinks it); a class that lights up
-         under the pointer (tool, widget) says so after this. -->
+    <!-- A plain button lights under the pointer and deepens while pressed, every button in one way, and goes back to its
+         ground once it cannot be used, though the pointer stays (Apply). A class giving its own ground keeps it in each,
+         being later, unless it says its own hover and press (tool, widget, primary). -->
+    <Style Selector="Button:pointerover">
+        <Setter Property="Background" Value="{DynamicResource Passenger.ButtonHover}" />
+    </Style>
+    <Style Selector="Button:pressed">
+        <Setter Property="Background" Value="{DynamicResource Passenger.ButtonPressed}" />
+        <Setter Property="RenderTransform" Value="none" />
+    </Style>
+    <Style Selector="Button:disabled">
+        <Setter Property="Background" Value="{DynamicResource Passenger.Button}" />
+    </Style>
+    <!-- The presenter draws the button's own ground, edge and words in each state, where Fluent's lighten them. -->
     <Style Selector="Button:pointerover /template/ ContentPresenter#PART_ContentPresenter">
         <Setter Property="Background" Value="{Binding $parent[Button].Background}" />
         <Setter Property="BorderBrush" Value="{Binding $parent[Button].BorderBrush}" />
@@ -54,9 +66,6 @@
         <Setter Property="Background" Value="{Binding $parent[Button].Background}" />
         <Setter Property="BorderBrush" Value="{Binding $parent[Button].BorderBrush}" />
         <Setter Property="Foreground" Value="{Binding $parent[Button].Foreground}" />
-    </Style>
-    <Style Selector="Button:pressed">
-        <Setter Property="RenderTransform" Value="none" />
     </Style>
     <!-- A button that cannot be used now, the default one too: its words and edge dimmed on its own ground, since Fluent's
          grey slab makes a disabled default button look like Cancel. -->
@@ -1091,7 +1100,7 @@
     </Style>
 
     <!-- The one emphasised action on a page: only its colours differ, so it is the size and shape of the buttons beside
-         it. -->
+         it, deepening under the pointer and further while pressed as they do. -->
     <Style Selector="Button.primary">
         <Setter Property="Background" Value="{DynamicResource Passenger.Accent}" />
         <Setter Property="BorderBrush" Value="{DynamicResource Passenger.Accent}" />
@@ -1103,8 +1112,8 @@
         <Setter Property="Foreground" Value="{DynamicResource Passenger.AccentText}" />
     </Style>
     <Style Selector="Button.primary:pressed /template/ ContentPresenter#PART_ContentPresenter">
-        <Setter Property="Background" Value="{DynamicResource Passenger.Accent}" />
-        <Setter Property="BorderBrush" Value="{DynamicResource Passenger.Accent}" />
+        <Setter Property="Background" Value="{DynamicResource Passenger.AccentPressed}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource Passenger.AccentPressed}" />
         <Setter Property="Foreground" Value="{DynamicResource Passenger.AccentText}" />
     </Style>
     <!-- Disabled, the default button is a disabled plain one: no accent left to say it would run. -->

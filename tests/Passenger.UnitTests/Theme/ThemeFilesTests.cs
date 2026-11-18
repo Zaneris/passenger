@@ -203,6 +203,32 @@ public class ThemeFilesTests
         Assert.Equal("Mine.json is 1.2 MB, more than the 1 MB a theme file may hold", read.Refused);
     }
 
+    /// <summary>A file written before the buttons had grounds of their own under the pointer and pressed answers the pointer
+    /// in its own colours, each worked out in its variant as Passenger's own theme works them out; one it gives is kept.</summary>
+    [Fact]
+    public void A_file_leaving_out_the_buttons_grounds_under_the_pointer_and_pressed_has_them_worked_out_from_its_own_colours()
+    {
+        Dictionary<string, ThemeTokenKind> tokens = new(Tokens, StringComparer.Ordinal);
+        foreach (string token in (string[])["Button", "ButtonHover", "ButtonPressed", "Hover", "Selected", "AccentHover", "AccentPressed"])
+        {
+            tokens[token] = ThemeTokenKind.Colour;
+        }
+        ThemeRead<ThemeFile> read = ThemeFiles.ReadTheme("Mine.json", Encoding.UTF8.GetBytes("""
+            {"format": 1, "name": "Mine",
+             "dark": {"Button": "#1F2638", "Hover": "#14A6C2FF", "Selected": "#24A6C2FF", "Accent": "#2F6BF2", "AccentHover": "#2A5FD9"},
+             "light": {"Button": "#FFFFFF", "Hover": {"colour": "#1F3A70", "opacity": 0.0706}, "Selected": "#211F3A70", "ButtonHover": "#F0F0F0"}}
+            """), tokens);
+        Assert.True(read.Read is not null, read.Refused);
+        ThemeFile theme = read.Read;
+        // Passenger's own Dark and Light: the hover and pressed washes over the button's ground, the press past the hover.
+        Assert.Equal(new ColourValue(0xFF2A3248, 1), theme.Dark["ButtonHover"]);
+        Assert.Equal(new ColourValue(0xFF323C54, 1), theme.Dark["ButtonPressed"]);
+        Assert.Equal(new ColourValue(0xFF1D51CA, 1), theme.Dark["AccentPressed"]);
+        Assert.Equal(new ColourValue(0xFFF0F0F0, 1), theme.Light["ButtonHover"]);
+        Assert.Equal(new ColourValue(0xFFE2E6EC, 1), theme.Light["ButtonPressed"]);
+        Assert.False(theme.Light.ContainsKey("AccentPressed"), "A press past the accent's hover was made up for a variant giving neither");
+    }
+
     [Fact]
     public void A_code_colour_scheme_gives_the_codes_colours_for_either_variant()
     {

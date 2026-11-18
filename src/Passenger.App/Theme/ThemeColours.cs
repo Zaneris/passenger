@@ -37,6 +37,10 @@ public static class ThemeColours
     /// <summary>The colour made lighter (or darker, below 0) by <paramref name="by"/> in OKLab lightness.</summary>
     public static uint Shift(uint argb, double by) => WithLightness(argb, Math.Clamp(Lightness(argb) + by, 0, 1));
 
+    /// <summary>The colour as far past <paramref name="to"/> in OKLab lightness as <paramref name="to"/> is from
+    /// <paramref name="from"/>: where a press goes, past a hover.</summary>
+    public static uint Past(uint from, uint to) => Shift(Opaque(to), Lightness(Opaque(to)) - Lightness(Opaque(from)));
+
     /// <summary>One colour <paramref name="t"/> of the way to the other, in OKLab.</summary>
     public static uint Mix(uint one, uint other, double t)
     {

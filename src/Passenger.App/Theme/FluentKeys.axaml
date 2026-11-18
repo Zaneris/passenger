@@ -12,10 +12,11 @@
     <x:String x:Key="ControlCornerRadius">Passenger.ControlRadius</x:String>
     <x:String x:Key="OverlayCornerRadius">Passenger.PopupRadius</x:String>
 
-    <!-- A button as Shell.axaml draws it in every state: its plain ground, its words, dimmed when it cannot be used. -->
+    <!-- A button as Shell.axaml draws it in every state: its plain ground, lit under the pointer and deeper pressed, its
+         words, dimmed when it cannot be used. -->
     <x:String x:Key="ButtonBackground">Passenger.Button</x:String>
-    <x:String x:Key="ButtonBackgroundPointerOver">Passenger.Button</x:String>
-    <x:String x:Key="ButtonBackgroundPressed">Passenger.Button</x:String>
+    <x:String x:Key="ButtonBackgroundPointerOver">Passenger.ButtonHover</x:String>
+    <x:String x:Key="ButtonBackgroundPressed">Passenger.ButtonPressed</x:String>
     <x:String x:Key="ButtonBackgroundDisabled">Passenger.Button</x:String>
     <x:String x:Key="ButtonForeground">Passenger.Text</x:String>
     <x:String x:Key="ButtonForegroundPointerOver">Passenger.Text</x:String>

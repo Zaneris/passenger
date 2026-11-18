@@ -204,6 +204,10 @@ public static partial class ThemeFiles
         // Over a VS Code theme, the plain kinds a file leaves out are the base's own.
         bool plain = JsonMembers.Value(root, Member.VsCode) is null;
         Dictionary<string, TokenValue>[] sections = TokenSections(file, root, tokens, code, null, plain, problems);
+        if (!code)
+        {
+            WorkOutButtonGrounds(sections, tokens);
+        }
         (BackgroundValue? dark, BackgroundValue? light) = code ? (null, null) : Background(file, JsonMembers.Value(root, "background"), problems);
         return new ThemeFile(name, description, sections[0], sections[1], sections[2])
         {
@@ -269,6 +273,30 @@ public static partial class ThemeFiles
             }
         }
         return sections;
+    }
+
+    /// <summary>The buttons' grounds under the pointer and pressed that a file written before they were tokens leaves out,
+    /// worked out in each variant from its own colours there as Passenger's themes work them out: a plain button's, its
+    /// hover and pressed washes laid over its ground, and the default button's pressed, as far past its hover as that is
+    /// from its accent; so the file's buttons answer the pointer in its own colours.</summary>
+    private static void WorkOutButtonGrounds(Dictionary<string, TokenValue>[] sections, IReadOnlyDictionary<string, ThemeTokenKind> tokens)
+    {
+        foreach (Dictionary<string, TokenValue> section in sections[1..])
+        {
+            uint? Given(string token) => (section.TryGetValue(token, out TokenValue? value) || sections[0].TryGetValue(token, out value)) && value is ColourValue colour
+                ? ((uint)Math.Round((colour.Argb >> 24) * colour.Opacity) << 24) | (colour.Argb & 0xFFFFFF) : null;
+            void Work(string token, uint? worked)
+            {
+                if (worked is { } colour && tokens.ContainsKey(token) && !section.ContainsKey(token) && !sections[0].ContainsKey(token))
+                {
+                    section[token] = new ColourValue(colour, 1);
+                }
+            }
+            uint? button = Given("Button");
+            Work("ButtonHover", button is { } under && Given("Hover") is { } hover ? ThemeColours.Over(hover, ThemeColours.Opaque(under)) : null);
+            Work("ButtonPressed", button is { } ground && Given("Selected") is { } selected ? ThemeColours.Over(selected, ThemeColours.Opaque(ground)) : null);
+            Work("AccentPressed", Given("Accent") is { } accent && Given("AccentHover") is { } accentHover ? ThemeColours.Past(accent, accentHover) : null);
+        }
     }
 
     private static TokenValue Value(string file, string where, ThemeTokenKind kind, JsonElement value, List<string> problems)

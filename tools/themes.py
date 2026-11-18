@@ -436,6 +436,9 @@ def variant(theme, p, dark):
     accent = legible(accent, [accent_text], 4.6, accent_text != white)
     accent = legible(accent, [panel], 3.05, dark)
     accent_hover = shift(accent, 0.04 if accent_text != white else -0.04)
+    # Pressed, a button goes as far again: the accent a step past its hover, a plain one under the pressed wash.
+    accent_pressed = shift(accent_hover, lightness(accent_hover) - lightness(accent))
+    button_hover, button_pressed = over(hover, button), over(selected, button)
     row = mix(panel, accent, 0.24 if dark else 0.16)
     text_grounds = [panel, frame, field, popup, lst, over(hover, panel), over(hover, frame), over(selected, panel), row,
                     editor, button]
@@ -448,6 +451,8 @@ def variant(theme, p, dark):
     t["Passenger.FieldBorder"] = legible(edge, [field, panel, popup], 3.05, dark)
     t["Passenger.List"] = lst
     t["Passenger.Button"] = button
+    t["Passenger.ButtonHover"] = button_hover
+    t["Passenger.ButtonPressed"] = button_pressed
     t["Passenger.Popup"] = popup
     t["Passenger.PopupBorder"] = mix(popup, text, 0.16)
     t["Passenger.PopupShadow"] = theme.get("glow") if dark and "glow" in theme else "0 6 20 0 #80000000" if dark else "0 6 20 0 #2E000000"
@@ -466,7 +471,7 @@ def variant(theme, p, dark):
 
     tile = mix(editor, panel, 0.5)
     text_grounds.append(tile)
-    t["Passenger.Text"] = legible(text, text_grounds, 4.6, dark)
+    t["Passenger.Text"] = legible(text, text_grounds + [button_hover, button_pressed], 4.6, dark)
     t["Passenger.TextMuted"] = legible(muted, text_grounds, 4.6, dark)
     t["Passenger.TextDisabled"] = mix(panel, text, 0.36)
     t["Passenger.DisabledBorder"] = t["Passenger.Separator"]
@@ -487,6 +492,7 @@ def variant(theme, p, dark):
     t["Passenger.RowSelected"] = row
     t["Passenger.Accent"] = accent
     t["Passenger.AccentHover"] = accent_hover
+    t["Passenger.AccentPressed"] = accent_pressed
     t["Passenger.Focus"] = legible(glance, marks + [field], 3.1, dark)
     t["Passenger.CheckBorder"] = legible(mix(panel, text, 0.45), [panel, popup, lst], 3.05, dark)
     t["Passenger.ScrollThumb"] = "#59808080" if dark else "#33000000"

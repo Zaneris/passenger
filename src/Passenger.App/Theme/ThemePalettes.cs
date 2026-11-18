@@ -76,6 +76,9 @@ public static class ThemePalettes
         uint banner = Mix(editor, accent, 0.12);
         uint tile = Mix(editor, panel, 0.5);
         uint[] textGrounds = [panel, frame, field, popup, list, Over(hover, panel), Over(hover, frame), Over(selected, panel), row, editor, button, banner, tile];
+        // A plain button under the pointer and pressed: the hover and pressed washes over its ground.
+        uint buttonHover = Over(hover, button);
+        uint buttonPressed = Over(selected, button);
         uint glance = p.Glance;
 
         t["Frame"] = frame;
@@ -85,6 +88,8 @@ public static class ThemePalettes
         t["FieldBorder"] = given.ContainsKey("FieldBorder") ? edge : Legible(edge, [field, panel, popup], Mark, dark);
         t["List"] = list;
         t["Button"] = button;
+        t["ButtonHover"] = buttonHover;
+        t["ButtonPressed"] = buttonPressed;
         t["Popup"] = popup;
         t["PopupBorder"] = G("PopupBorder", Mix(popup, text, 0.16));
         t["Popup.Edge"] = t["PopupBorder"];
@@ -95,7 +100,7 @@ public static class ThemePalettes
         t["StripeSeparator"] = Mix(frame, text, 0.22);
         t["WindowEdge"] = edge;
 
-        t["Text"] = L("Text", text, textGrounds, Text, dark);
+        t["Text"] = L("Text", text, [.. textGrounds, buttonHover, buttonPressed], Text, dark);
         t["TextMuted"] = L("TextMuted", muted, textGrounds, Text, dark);
         t["TextDisabled"] = Mix(panel, text, 0.36);
         t["DisabledBorder"] = t["Separator"];
@@ -116,6 +121,7 @@ public static class ThemePalettes
         t["RowSelected"] = row;
         t["Accent"] = accent;
         t["AccentHover"] = Legible(accentHover, [accentText], Text, !IsDark(accentText));
+        t["AccentPressed"] = Legible(Past(accent, t["AccentHover"]), [accentText], Text, !IsDark(accentText));
         t["Focus"] = L("Focus", glance, [.. marks, field], Mark, dark);
         t["CheckBorder"] = Legible(Mix(panel, text, 0.45), [panel, popup, list], Mark, dark);
         t["ScrollThumb"] = G("ScrollThumb", dark ? 0x59808080u : 0x33000000u);

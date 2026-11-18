@@ -277,6 +277,9 @@ public class VsCodeColoursTests
         }
         yield return ("AccentText", "Accent", 4.5);
         yield return ("AccentText", "AccentHover", 4.5);
+        yield return ("AccentText", "AccentPressed", 4.5);
+        yield return ("Text", "ButtonHover", 4.5);
+        yield return ("Text", "ButtonPressed", 4.5);
         yield return ("Menu.SelectedText", "Menu.Selected", 4.5);
         yield return ("Tab.ActiveText", "Tab.Active", 4.5);
         yield return ("TitleBar.Text", "TitleBar", 4.5);

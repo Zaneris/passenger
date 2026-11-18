@@ -48,9 +48,12 @@
             <SolidColorBrush x:Key="Passenger.Panel" Color="#171C28" />
             <SolidColorBrush x:Key="Passenger.Field" Color="#0F131C" />
             <SolidColorBrush x:Key="Passenger.FieldBorder" Color="#656E81" read:Edge="Field Panel Popup" />
-            <!-- A list or table in a dialog's page, and a plain button's ground (its edge is a field's). -->
+            <!-- A list or table in a dialog's page, and a plain button's ground (its edge is a field's), under the pointer and
+                 pressed: the hover and pressed washes below laid over it. -->
             <SolidColorBrush x:Key="Passenger.List" Color="#10141E" />
             <SolidColorBrush x:Key="Passenger.Button" Color="#1F2638" />
+            <SolidColorBrush x:Key="Passenger.ButtonHover" Color="#2A3248" />
+            <SolidColorBrush x:Key="Passenger.ButtonPressed" Color="#323C54" />
             <!-- A menu's or a popup's ground and edge, the shadow round it, and the crown along a popup's top. -->
             <SolidColorBrush x:Key="Passenger.Popup" Color="#1D2434" />
             <SolidColorBrush x:Key="Passenger.PopupBorder" Color="#2F384B" read:None="a popup's edge, its ground and shadow setting it apart" />
@@ -74,14 +77,14 @@
 
             <!-- Words and icons: text, quieter text, what cannot be used now (and a disabled control's edge), icons,
                  links, words on the accent, a kind badge's letter on its colour, an error's and a warning's words. -->
-            <SolidColorBrush x:Key="Passenger.Text" Color="#E4E9F2" read:Text="Panel Frame Field Popup List Hover Hover/Frame Selected RowSelected Editor.Background Banner Button Welcome.Tile TextSelection" />
+            <SolidColorBrush x:Key="Passenger.Text" Color="#E4E9F2" read:Text="Panel Frame Field Popup List Hover Hover/Frame Selected RowSelected Editor.Background Banner Button ButtonHover ButtonPressed Welcome.Tile TextSelection" />
             <SolidColorBrush x:Key="Passenger.TextMuted" Color="#9AA5BA" read:Text="Panel Frame Field Popup List Hover Hover/Frame Selected RowSelected Editor.Background Banner Button Welcome.Tile" />
             <SolidColorBrush x:Key="Passenger.TextDisabled" Color="#576178" read:None="what cannot be used now, which WCAG exempts" />
             <SolidColorBrush x:Key="Passenger.DisabledBorder" Color="#262E3E" read:None="what cannot be used now, which WCAG exempts" />
             <SolidColorBrush x:Key="Passenger.Icon" Color="#B9C3D7" read:Mark="Panel Frame Popup Editor.Background" />
             <SolidColorBrush x:Key="Passenger.Link" Color="#80A8FF" read:Text="Panel Frame Popup Editor.Background" />
             <SolidColorBrush x:Key="Passenger.LinkHover" Color="#A6C2FF" read:Text="Panel" />
-            <SolidColorBrush x:Key="Passenger.AccentText" Color="#FFFFFF" read:Text="Accent AccentHover Welcome.Badge" />
+            <SolidColorBrush x:Key="Passenger.AccentText" Color="#FFFFFF" read:Text="Accent AccentHover AccentPressed Welcome.Badge" />
             <SolidColorBrush x:Key="Passenger.BadgeText" Color="#0F131C" read:Text="TextMuted Editor.Error Editor.Warning Syntax.Keyword Syntax.Class Syntax.Interface Syntax.Struct Syntax.Enum Syntax.TypeParameter Syntax.Method Syntax.Property Syntax.Field Syntax.Constant Syntax.EnumMember Syntax.Event Syntax.Heading" />
             <SolidColorBrush x:Key="Passenger.Error" Color="#FF7A87" read:Text="Panel Frame Popup Editor.Background" />
             <SolidColorBrush x:Key="Passenger.Warning" Color="#F2B84B" read:Text="Panel Frame Popup Editor.Background" />
@@ -90,14 +93,15 @@
 
             <!-- What the pointer is over and what is pressed or chosen: a wash over whatever ground is under it, so it
                  shows on the frame, a tool window and a popup alike; a chosen row; the mark beside every choice, a row's,
-                 a tab's and a stripe button's (ChosenMark); the accent (a default button, a ticked box); the ring round
-                 what has the keys; an unticked box's edge; a scrollbar's thumb and track. -->
+                 a tab's and a stripe button's (ChosenMark); the accent (a default button, a ticked box), under the pointer
+                 and pressed; the ring round what has the keys; an unticked box's edge; a scrollbar's thumb and track. -->
             <SolidColorBrush x:Key="Passenger.Hover" Color="#14A6C2FF" />
             <SolidColorBrush x:Key="Passenger.Selected" Color="#24A6C2FF" />
             <SolidColorBrush x:Key="Passenger.RowSelected" Color="#1B3366" />
             <SolidColorBrush x:Key="Passenger.ChosenMark" Color="#5B8DFF" read:Mark="Panel Frame Popup List Hover RowSelected Selected Selected/Frame Selected/Popup Tab.Active Stripe.Selected" />
             <SolidColorBrush x:Key="Passenger.Accent" Color="#2F6BF2" read:Mark="Panel" />
             <SolidColorBrush x:Key="Passenger.AccentHover" Color="#2A5FD9" />
+            <SolidColorBrush x:Key="Passenger.AccentPressed" Color="#1D51CA" />
             <SolidColorBrush x:Key="Passenger.Focus" Color="#FFB547" read:Mark="Panel Frame Popup Editor.Background Field" />
             <SolidColorBrush x:Key="Passenger.CheckBorder" Color="#6B7690" read:Edge="Panel Popup List" />
             <SolidColorBrush x:Key="Passenger.ScrollThumb" Color="#59808080" read:None="a scrollbar's, faint until the pointer is over it, the wheel and keys scrolling too" />
@@ -340,6 +344,8 @@
             <SolidColorBrush x:Key="Passenger.FieldBorder" Color="#858E9E" />
             <SolidColorBrush x:Key="Passenger.List" Color="#FFFFFF" />
             <SolidColorBrush x:Key="Passenger.Button" Color="#FFFFFF" />
+            <SolidColorBrush x:Key="Passenger.ButtonHover" Color="#EFF1F5" />
+            <SolidColorBrush x:Key="Passenger.ButtonPressed" Color="#E2E6EC" />
             <SolidColorBrush x:Key="Passenger.Popup" Color="#FFFFFF" />
             <SolidColorBrush x:Key="Passenger.PopupBorder" Color="#D6DDE9" />
             <BoxShadows x:Key="Passenger.PopupShadow">0 6 20 0 #2E0B1E4A</BoxShadows>
@@ -374,6 +380,7 @@
             <SolidColorBrush x:Key="Passenger.ChosenMark" Color="#1F55D6" />
             <SolidColorBrush x:Key="Passenger.Accent" Color="#2F6BF2" />
             <SolidColorBrush x:Key="Passenger.AccentHover" Color="#2459D6" />
+            <SolidColorBrush x:Key="Passenger.AccentPressed" Color="#1345C1" />
             <SolidColorBrush x:Key="Passenger.Focus" Color="#B86A00" />
             <SolidColorBrush x:Key="Passenger.CheckBorder" Color="#828DA2" />
             <SolidColorBrush x:Key="Passenger.ScrollThumb" Color="#33000000" />
