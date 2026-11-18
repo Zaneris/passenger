@@ -12,7 +12,8 @@ namespace Passenger.Tests;
 /// through Close Other Tabs and Close All Tabs and comes back pinned with the folder; Reopen Closed Tab brings tabs
 /// back in the reverse of the order they closed, each where it stood with its caret; closing the tab shown shows the one
 /// shown before it, its neighbour only where none was; Close Tabs to the Left and to the Right leave the pinned ones;
-/// Unsplit and Unsplit All join the splits, keeping every tab.</summary>
+/// Unsplit and Unsplit All join the splits, keeping every tab; the open tab of a changed file shows its dot as the
+/// others do.</summary>
 public sealed class EditorTabsTests : IDisposable
 {
     private static readonly string[] Five = ["One.cs", "Two.cs", "Three.cs", "Four.cs", "Five.cs"];
@@ -341,6 +342,35 @@ public sealed class EditorTabsTests : IDisposable
         window.Close();
     }
 
+    /// <summary>The open tab's file typed in shows the dot every tab with unsaved changes shows, its × only while the pointer
+    /// is over the tab; saved, the open tab shows its × again.</summary>
+    [AvaloniaFact]
+    public void The_open_tab_of_a_file_typed_in_shows_its_unsaved_dot_and_its_close_button_only_under_the_pointer()
+    {
+        MainWindow window = Keeping("One.cs", "Two.cs");
+        EditorGroup group = window.EditorArea.ActiveGroup;
+        Assert.Equal("Two.cs", window.EditorArea.Active?.Name);
+        Assert.True(Shows(TabClose(group, "Two.cs")) && !Shows(TabDot(group, "Two.cs")), "The open tab of a file as saved shows no ×, or a dot as if it had changes");
+
+        window.KeyTextInput("// ");
+        Ui.Settle();
+        Assert.True(window.EditorArea.Active?.IsModified == true, "Typing into the open file left it as saved");
+        Assert.True(Shows(TabDot(group, "Two.cs")), "The open tab of the file typed in shows no dot, so nothing says the file being worked on has unsaved changes");
+        Assert.False(Shows(TabClose(group, "Two.cs")), "The open tab of the file typed in shows its × over its dot");
+
+        Ui.Hover(TabName(group, "Two.cs"));
+        Assert.True(Shows(TabClose(group, "Two.cs")), "The changed open tab shows no × under the pointer, so it cannot be closed by its tab");
+        Assert.False(Shows(TabDot(group, "Two.cs")), "The changed open tab shows its dot under the pointer, where its × goes");
+
+        Ui.Hover(window.EditorArea.CodeEditor);
+        Assert.True(Shows(TabDot(group, "Two.cs")) && !Shows(TabClose(group, "Two.cs")), "The pointer gone from the changed open tab, its dot does not come back in place of its ×");
+
+        Ui.Run(window, AppActions.Save);
+        Assert.True(window.EditorArea.Active?.IsModified == false, "Save left the open file with unsaved changes");
+        Assert.True(Shows(TabClose(group, "Two.cs")) && !Shows(TabDot(group, "Two.cs")), "The open tab of the file saved shows its dot still, or no ×");
+        window.Close();
+    }
+
     /// <summary>The window a person uses, keeping its state in the test's own folder, on the folder with these files open.</summary>
     private MainWindow Keeping(params string[] files)
     {
@@ -387,6 +417,15 @@ public sealed class EditorTabsTests : IDisposable
     /// <summary>The name a tab shows, where a click on it shows its file.</summary>
     private static TextBlock TabName(EditorGroup group, string name) =>
         group.GetVisualDescendants().OfType<TextBlock>().First(t => t.Text == name && t.Classes.Contains(StyleClasses.TabName));
+
+    private static Button TabClose(EditorGroup group, string name) =>
+        Tab(group, name).GetVisualDescendants().OfType<Button>().Single(b => b.Classes.Contains(StyleClasses.TabClose));
+
+    private static Avalonia.Controls.Shapes.Ellipse TabDot(EditorGroup group, string name) =>
+        Tab(group, name).GetVisualDescendants().OfType<Avalonia.Controls.Shapes.Ellipse>().Single(e => e.Classes.Contains(StyleClasses.Modified));
+
+    /// <summary>Whether a control is drawn: shown, and not faded out as a tab's × and dot are while the other shows.</summary>
+    private static bool Shows(Control control) => control.IsEffectivelyVisible && control.Opacity == 1;
 
     private static bool PinShown(EditorGroup group, string name) =>
         Tab(group, name).GetVisualDescendants().OfType<Button>().Single(b => b.Classes.Contains(StyleClasses.TabPin)).IsEffectivelyVisible;

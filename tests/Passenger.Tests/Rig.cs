@@ -1427,6 +1427,16 @@ public static class Ui
         Settle();
     }
 
+    /// <summary>The pointer brought to rest over a control (its centre, or a point in it) as a person's mouse brings it,
+    /// once the control is drawn and is what the pointer finds there, as <see cref="Click(Control, Point?, RawInputModifiers, bool)"/>
+    /// aims; then lets what it ran land.</summary>
+    public static void Hover(Control control, Point? at = null)
+    {
+        (TopLevel top, Point point) = Aim(control, at);
+        top.MouseMove(point);
+        Settle();
+    }
+
     /// <summary>A right click as <see cref="Click(Control, Point?, RawInputModifiers, bool)"/> makes a click, which opens
     /// the menu of what is there.</summary>
     public static void RightClick(Control control, Point? at = null) => Click(control, at, MouseButton.Right, RawInputModifiers.None, settle: true);

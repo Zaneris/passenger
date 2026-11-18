@@ -845,10 +845,15 @@
     <Style Selector="Border.toolTabStrip Border.tab.active:pointerover">
         <Setter Property="Background" Value="{DynamicResource Passenger.Panel}" />
     </Style>
+    <!-- A tab's dot while its file has unsaved changes (the tab's modified class), the open tab's too. -->
     <Style Selector="Ellipse.modified">
         <Setter Property="Fill" Value="{DynamicResource Passenger.Modified}" />
         <Setter Property="HorizontalAlignment" Value="Center" />
         <Setter Property="VerticalAlignment" Value="Center" />
+        <Setter Property="IsVisible" Value="False" />
+    </Style>
+    <Style Selector="Border.tab.modified Ellipse.modified">
+        <Setter Property="IsVisible" Value="True" />
     </Style>
     <Style Selector="Border.tab:pointerover Ellipse.modified">
         <Setter Property="Opacity" Value="0" />
@@ -868,12 +873,9 @@
     <Style Selector="Border.tab:pointerover Button.tabClose">
         <Setter Property="Opacity" Value="1" />
     </Style>
-    <!-- The open tab shows its × in place of its modified dot. -->
-    <Style Selector="Border.tab.active Button.tabClose">
+    <!-- The open tab shows its × while its file is as saved; with unsaved changes, its dot until the pointer is over it. -->
+    <Style Selector="Border.tab.active:not(.modified) Button.tabClose">
         <Setter Property="Opacity" Value="1" />
-    </Style>
-    <Style Selector="Border.tab.active Ellipse.modified">
-        <Setter Property="Opacity" Value="0" />
     </Style>
     <!-- A tool window's tab that closes (a search's, a history's): its × on the open one and the one under the pointer. -->
     <Style Selector="ToggleButton.panelTab:pointerover Button.tabClose">

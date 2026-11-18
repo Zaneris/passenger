@@ -940,7 +940,7 @@ public sealed class EditorGroup : DockPanel
             ToolTip.SetTip(border, document.Tool is not null ? document.Title
                 : document.Follows ? $"{document.Path}\n\nFollows the file chosen in the Commit window; pin the tab or edit in it to keep it" : document.Path);
             border.Classes.Set(StyleClasses.Follows, document.Follows);
-            modified.IsVisible = document.IsModified;
+            border.Classes.Set(StyleClasses.Modified, document.IsModified);
             border.Classes.Set(StyleClasses.Active, tab.IsActive);
             border.Classes.Set(StyleClasses.Elsewhere, !IsCurrent);
             pin.IsVisible = tab.IsPinned;
@@ -954,7 +954,7 @@ public sealed class EditorGroup : DockPanel
             }
             if (e.PropertyName == nameof(OpenDocument.IsModified))
             {
-                modified.IsVisible = tab.Document.IsModified;
+                border.Classes.Set(StyleClasses.Modified, tab.Document.IsModified);
             }
             else if (e.PropertyName is nameof(OpenDocument.Path) or nameof(OpenDocument.Diff) or nameof(OpenDocument.Follows))
             {
