@@ -726,7 +726,9 @@ public sealed partial class Vim
     }
 
     /// <summary>is and as in visual mode: the sentence at a single place; over a longer stretch its cursor carried to
-    /// the end of the sentences after it, or back to the start of those before it.</summary>
+    /// the end of the sentences after it (onto an empty line where a sentence follows it), or back a sentence or the white
+    /// before it at a time from the one before where the cursor begins its own; as takes a white with the sentence before
+    /// it, and a sentence with the white before it where the cursor stood inside that sentence.</summary>
     private Region? SentencesOver(TextSnapshot text, Region r, bool inner, int n)
     {
         if (r.Anchor == r.Cursor)
@@ -735,9 +737,20 @@ public sealed partial class Vim
         }
         if (r.Cursor < r.Anchor)
         {
-            return r.Cursor > 0 && VimTextObjects.Of(text, VimMotions.StepBack(text, r.Cursor), "s", inner, n, breakEnds) is { } before && before.Start < r.Cursor
-                ? r with { Cursor = before.Start }
-                : null;
+            // A line break alone between two sentences is no white: each is a step of its own.
+            int at = r.Cursor;
+            for (int left = n; left > 0 && at > 0; left--)
+            {
+                (int Start, bool White) here = SentenceUnit(text, at);
+                bool inside = here.Start < at;
+                (int start, bool white) = inside ? here : SentenceUnit(text, VimMotions.StepBack(text, at));
+                at = start;
+                if (!inner && (white || inside) && at > 0 && SentenceUnit(text, VimMotions.StepBack(text, at)) is var before && before.White != white)
+                {
+                    at = before.Start;
+                }
+            }
+            return at < r.Cursor ? r with { Cursor = at } : null;
         }
         int after = CharEnd(text, r.Cursor);
         LineSpan line = VimMotions.LineOf(text, after);
@@ -746,9 +759,33 @@ public sealed partial class Vim
             // A sentence ending its line holds its line break: the next one is taken from the next line.
             after = line.EndIncludingBreak;
         }
-        return after < text.Length && VimTextObjects.Of(text, after, "s", inner, n, breakEnds) is { } next && OwnLine(text, next).End > after
-            ? r with { Cursor = VimMotions.StepBack(text, OwnLine(text, next).End) }
-            : null;
+        if (after >= text.Length || VimTextObjects.Of(text, after, "s", inner, n, breakEnds) is not { } next)
+        {
+            return null;
+        }
+        // The empty lines ending the text are none to go to.
+        VimSpan own = OwnLine(text, next);
+        if (own.End == own.Start)
+        {
+            return VimMotions.NextSentenceStart(text, own.Start) < text.Length && own.Start > r.Cursor ? r with { Cursor = own.Start } : null;
+        }
+        return own.End > after ? r with { Cursor = VimMotions.StepBack(text, own.End) } : null;
+    }
+
+    /// <summary>Where the sentence or the white between two that an offset is in begins, as is takes it there, and
+    /// whether it is the white (an empty line being a sentence).</summary>
+    private (int Start, bool White) SentenceUnit(TextSnapshot text, int offset)
+    {
+        if (VimTextObjects.Of(text, offset, "s", inner: true, 1, breakEnds) is not { } unit || unit.Start > offset)
+        {
+            return (offset, false);
+        }
+        bool white = VimMotions.LineOf(text, unit.Start).Length > 0;
+        for (int p = unit.Start; p < unit.End && white; p++)
+        {
+            white = char.IsWhiteSpace(text[p]);
+        }
+        return (unit.Start, white);
     }
 
     /// <summary>A sentence's span ending at its own line's end where it runs to the next line's first column.</summary>
