@@ -381,7 +381,7 @@ Projects in `src/`; `find_symbol` finds the rest from the names here. A pointer'
   (`DockerfileStages.Expanded`). A run Detach let go of (`ContainerRun.LetGo`) is the folder's: Stop
   passes it over, and leaving the folder asks whether to stop its containers or leave them running, those left the
   person's from then on (`containers.json`'s `Left`, written before the quit carries on, `ContainerLabels.LeaveToPersonAsync`, merged as a set, passed over by the clean-up); a Passenger nobody sees never asks.
-  The person's `docker` CLI and context only, never the Engine API or a Docker package; a service's name
+  The person's `docker` CLI and context only, never the Engine API or a Docker package (how it runs x86-64 images, `EngineEmulation`, reads Docker Desktop's Rosetta choice from its own settings file, the one file of Docker's Passenger reads); a service's name
   always after `--`; Compose's own model is the plan, Passenger's override in the state; downloaded tools
   SHA256-checked; Podman both ways. A container publish (`-t:PublishContainer`; several platforms need
   `RuntimeIdentifiers` too, NETSDK1047 otherwise, and containerd's image store) is judged by the SDK's "Pushed image"
