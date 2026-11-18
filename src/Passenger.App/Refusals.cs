@@ -759,10 +759,11 @@ public static class Refusals
     /// <summary>Make the Mobile Edits with no mobile head needing an edit Passenger makes.</summary>
     public const string NoMobileEdits = "No mobile app's head of the folder needs an edit Passenger makes";
 
-    /// <summary>A .NET installed for every user, which a workload installs into only with an administrator's rights.</summary>
+    /// <summary>A .NET installed for every user that installs workloads into itself, not each user's own folder, which takes
+    /// an administrator's rights.</summary>
     public static string WorkloadsNeedAdministrator(string root, string command) =>
         $"The .NET in {PathNames.Shown(root, null)} was installed for every user, so its workloads install only with an administrator's rights: run "
-        + (OperatingSystem.IsWindows() ? $"{AsAdministrator(command)} in a terminal run as administrator" : $"{AsAdministrator(command)} in a terminal");
+        + $"{AsAdministrator(command)} in a terminal{(OperatingSystem.IsWindows() ? " run as administrator" : string.Empty)}";
 
     /// <summary>A command as an administrator runs it: through sudo, but on Windows as written, in a terminal run as administrator.</summary>
     public static string AsAdministrator(string command) => OperatingSystem.IsWindows() ? command : $"sudo {command}";

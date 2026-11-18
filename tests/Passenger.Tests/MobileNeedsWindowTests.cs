@@ -7,16 +7,16 @@ using Passenger.Core;
 
 namespace Passenger.Tests;
 
-/// <summary>What a mobile project needs, said over the window as it opens and got from there: a project whose workload the
-/// .NET lacks (tvOS on a Mac, Android elsewhere) says so, and Install Workloads asks, runs the install (a stand-in of
-/// dotnet's), a workload set first where the .NET has none, saying a download out of room plainly, and loads the project
-/// again, needing no administrator where the .NET installs workloads into each user's own folder; an Android project whose workload's answers (stand-ins of its targets) say it lacks its SDK's platform and a JDK
-/// offers the workload's installer, run only once the person accepted the licences Google's repository (a stand-in)
-/// gives; the JDK it installs is found after with no JAVA_HOME, and a JAVA_HOME where the workload finds no JDK is said and
-/// never given to the installer; on a Mac an iOS project lacking its simulator runtime says how Xcode installs one, and one
-/// whose Xcode the workload refuses offers Get Xcode; New Project offers each mobile template a missing workload brings.
-/// It sets a process-wide stand-in and the environment (ANDROID_HOME, DEVELOPER_DIR, HOME, JAVA_HOME, TMPDIR), so it runs
-/// alone.</summary>
+/// <summary>What a mobile project needs, said over the window as it opens and got from there: a project whose workload
+/// the .NET lacks (tvOS on a Mac, Android elsewhere) says so, and Install Workloads asks, runs the install (a stand-in
+/// of dotnet's), a workload set first where the .NET has none, saying a download out of room plainly, and loads the
+/// project again, asking no administrator where the .NET installs for each user; an Android project whose workload's
+/// answers (stand-ins of its targets) say it lacks its SDK's platform and a JDK offers the workload's installer, run
+/// only once the person accepted the licences Google's repository (a stand-in) gives; the JDK it installs is found
+/// after with no JAVA_HOME, and a JAVA_HOME where the workload finds no JDK is said and never given to the installer;
+/// on a Mac an iOS project lacking its simulator runtime says how Xcode installs one, and one whose Xcode the workload
+/// refuses offers Get Xcode; New Project offers each mobile template a missing workload brings. It sets a process-wide
+/// stand-in and the environment (ANDROID_HOME, DEVELOPER_DIR, HOME, JAVA_HOME, TMPDIR): it runs alone.</summary>
 [Collection(Alone.Name)]
 public sealed class MobileNeedsWindowTests : IDisposable
 {
@@ -185,11 +185,11 @@ public sealed class MobileNeedsWindowTests : IDisposable
         window.Close();
     }
 
-    /// <summary>New Project's Install of a template a workload brings (a .NET lacking the workload stood in by dotnet new
-    /// without the SDK's templates, its dotnet by a stand-in) is Install Workloads' own install: refused where the .NET is not
-    /// this user's to write, in the dialog and the status bar, the dialog's Copy Command copying what to run; else run asking nothing more, a workload set first where the
-    /// .NET knows none, its lines shown in the dialog, and the folder's project loaded again, the dialog then saying that
-    /// dotnet new still lists none of its templates. Where this machine builds no Android app, no install is offered.</summary>
+    /// <summary>New Project's Install of a template a workload brings (a .NET lacking the workload stood in by dotnet
+    /// new without the SDK's templates, its dotnet by a stand-in) is Install Workloads' own: refused where the .NET is
+    /// not this user's to write, in the status bar and the dialog, which copies the command to run; else run asking
+    /// nothing more, a workload set first where the .NET knows none, its lines shown, the project loaded again, dotnet
+    /// new still listing none of its templates. None is offered where this machine builds no Android app.</summary>
     [AvaloniaFact]
     public void New_Projects_Install_of_a_workloads_template_is_Install_Workloads_own_refused_where_the_dotnet_is_not_writable_and_loading_the_projects_again()
     {
