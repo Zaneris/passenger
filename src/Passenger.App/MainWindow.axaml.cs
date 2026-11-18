@@ -325,7 +325,9 @@ public partial class MainWindow : IdeWindow
             ? bindingValues!.HoverAt(shown, offset)
             : await session.Debug.HoverAt(offset, cancel);
         assist.GutterWords = line => Editors.Active is { } beside ? GutterWordsOf(beside, line) : null;
-        assist.AnnotationCard = (annotation, card) => Editors.Active is { } annotated && godotValues is { } live && live.Card(annotated, annotation, card);
+        AddCodeVision();
+        assist.AnnotationCard = (annotation, card) => Editors.Active is { } annotated
+            && (godotValues is { } live && live.Card(annotated, annotation, card) || codeVision!.Card(annotated, annotation, card));
         // Passenger's own fixes: bindings, compose names, Aspire, configuration and localized keys, Godot's checks; each language's own come from its assist.
         assist.EditorFixes = (file, offset) => [.. Passenger.App.LiveTree.BindingErrors.Fixes(file, offset, session.FailedBindings.Select(b => b.Failure)),
             .. session.Web?.Checks.Fixes(file, offset) ?? [], .. assist.AspireFixes(file, offset), .. assist.ComposeReadFixes(file, offset), .. MigrationFixes(file, offset),

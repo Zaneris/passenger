@@ -207,8 +207,9 @@ game Godot's own Play starts, and Passenger becomes Godot's script editor in one
 ### The editor and C#
 
 A text control of its own over an immutable rope: multiple carets, folding, soft wrap, Extend Selection, live, postfix
-and surround templates, inlay hints, and splits and tabs in windows of their own; a key costs what it changed, not the
-file's size. C# comes from Roslyn: diagnostics, completion, quick fixes and refactorings (Change Signature, Extract
+and surround templates, inlay hints, Code Vision (a declaration's usages, implementations and authors after its line, off
+until Settings turns it on), and splits and tabs in windows of their own; a key costs what it changed, not the file's
+size. C# comes from Roslyn: diagnostics, completion, quick fixes and refactorings (Change Signature, Extract
 Interface, Move, Pull Members Up, Safe Delete and more), Go to Declaration, Implementation and Base Symbols, Find
 Usages, call and type hierarchies and decompiled library sources, and Problems lists the whole solution's without a
 build. A file-based program (`dotnet run app.cs`) opens as a project of its own, and a solution filter (`.slnf`) loads

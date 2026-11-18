@@ -335,6 +335,10 @@ public sealed partial class SettingsDialog : IdeWindow
         Add(Declared.SolutionWideAnalysis);
         Add(Declared.ParameterHints);
         Add(Declared.TypeHints);
+        Add(Declared.CodeVision);
+        Add(Declared.CodeVisionUsages);
+        Add(Declared.CodeVisionInheritors);
+        Add(Declared.CodeVisionAuthors);
         TextBox masks = new() { Classes = { StyleClasses.Search }, Text = Working.SoftWrapFiles, PlaceholderText = "No files", IsEnabled = Working.SoftWrap };
         ToolTip.SetTip(masks, "Use * and ? as wildcards and ; to separate patterns");
         masks.TextChanged += (_, _) => Change(s => s with { SoftWrapFiles = masks.Text ?? string.Empty });

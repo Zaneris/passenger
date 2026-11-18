@@ -168,6 +168,29 @@ public static class Declared
     public static readonly ToggleSetting TypeHints = new(s => s.TypeHints, (s, v) => s with { TypeHints = v },
         new(D.EditorPage, "Show type name hints", "inlay hints type names var lambda parameters new inferred"));
 
+    public static readonly ToggleSetting CodeVision = new(s => s.CodeVision, (s, v) => s with { CodeVision = v },
+        new(D.EditorPage, "Show Code Vision hints", "code vision lens usages references implementations overrides authors blame inheritors declarations hints",
+            "After each C# type and member's declaration: how many places use it, what implements or overrides it and who last "
+            + "changed it. A hint is pressed to see them."));
+
+    public static readonly ToggleSetting CodeVisionUsages = new(s => s.CodeVisionUsages, (s, v) => s with { CodeVisionUsages = v },
+        new(D.EditorPage, "Code Vision: show usages", "code vision usages references count")
+        {
+            When = new SettingWhen(s => s.CodeVision, "Code Vision is off"),
+        });
+
+    public static readonly ToggleSetting CodeVisionInheritors = new(s => s.CodeVisionInheritors, (s, v) => s with { CodeVisionInheritors = v },
+        new(D.EditorPage, "Code Vision: show implementations and overrides", "code vision implementations overrides inheritors interface abstract virtual")
+        {
+            When = new SettingWhen(s => s.CodeVision, "Code Vision is off"),
+        });
+
+    public static readonly ToggleSetting CodeVisionAuthors = new(s => s.CodeVisionAuthors, (s, v) => s with { CodeVisionAuthors = v },
+        new(D.EditorPage, "Code Vision: show authors", "code vision authors git blame last changed who")
+        {
+            When = new SettingWhen(s => s.CodeVision, "Code Vision is off"),
+        });
+
     public static readonly ToggleSetting SoftWrapIndent = new(s => s.SoftWrapIndent, (s, v) => s with { SoftWrapIndent = v },
         new(D.EditorPage, "Use the original line's indent for wrapped fragments", "soft wrap wrapped indent indentation fragments"));
 

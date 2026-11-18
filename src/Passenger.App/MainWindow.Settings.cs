@@ -133,6 +133,7 @@ public partial class MainWindow
             FollowTerminalLook(panel, next, visualSettings);
         }
         session.CSharp?.Hints = (next.ParameterHints, next.TypeHints);
+        codeVision?.Follow(next);
         visualSettings = next;
     }
 

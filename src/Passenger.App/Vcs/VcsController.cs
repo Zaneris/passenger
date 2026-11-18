@@ -777,6 +777,14 @@ public sealed class VcsController : IDisposable
     /// <summary>The blame an annotated file shows, line by line, or null when it shows none.</summary>
     public IReadOnlyList<BlameLine>? BlameOf(OpenDocument document) => documents.GetValueOrDefault(document)?.Blame;
 
+    /// <summary>Git blame of a file's text as it stands, for what shows no gutter column of it (Code Vision's authors); null where
+    /// there is no repository or Git does not track the file.</summary>
+    public async Task<IReadOnlyList<BlameLine>?> BlameTextAsync(OpenDocument document, TextSnapshot text)
+    {
+        UiThread.Check();
+        return git is { } repository ? await repository.BlameAsync(document.Path, await StoredAsync(document, text)) : null;
+    }
+
     /// <summary>Whether a file's annotations are open, its blame shown or on its way.</summary>
     public bool IsAnnotated(OpenDocument document) => documents.GetValueOrDefault(document)?.Annotated == true;
 

@@ -110,6 +110,19 @@ public sealed record AppSettings : IStateDocument<AppSettings>
     /// after it where the code does not say it.</summary>
     public bool TypeHints { get; init; } = true;
 
+    /// <summary>Code Vision: after each C# type and member's declaration, how many places use it, what implements or
+    /// overrides it, and who last changed it.</summary>
+    public bool CodeVision { get; init; }
+
+    /// <summary>Code Vision's usages: how many places use the declaration.</summary>
+    public bool CodeVisionUsages { get; init; } = true;
+
+    /// <summary>Code Vision's implementations and overrides of an interface, abstract or virtual declaration.</summary>
+    public bool CodeVisionInheritors { get; init; } = true;
+
+    /// <summary>Code Vision's authors: who changed the declaration most, by Git blame.</summary>
+    public bool CodeVisionAuthors { get; init; } = true;
+
     /// <summary>"Soft-wrap these files": a file whose name matches <see cref="SoftWrapFiles"/> opens with its lines
     /// wrapped at the editor's width (View, Active Editor, Soft-Wrap turns it on and off for one file).</summary>
     public bool SoftWrap { get; init; } = true;
