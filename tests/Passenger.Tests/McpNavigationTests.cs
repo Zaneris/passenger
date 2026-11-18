@@ -14,9 +14,10 @@ namespace Passenger.Tests;
 /// without a source generator's, the name itself first, usages read by file with the symbol the place took, a generator's
 /// place (a usage, a declaration) in a copy of its code with its line's text, a place with no symbol said to be one, or
 /// the symbol its line declares taken; symbols named rather than placed, found exactly, each overload told apart by its
-/// documentation id, an indexer by this[] or Item; a hover card as plain text, and a fix's Suppress and Configure choices
-/// counted until asked for; calls on many files leaving open, in the IDE and the language server, only the file the agent
-/// opened and the one it left unsaved; and a type a code action has just moved known at once in its new file.</summary>
+/// documentation id, an indexer by this[] or Item, a record's positional property as Record.Property; a hover card as plain
+/// text, and a fix's Suppress and Configure choices counted until asked for; calls on many files leaving open, in the IDE
+/// and the language server, only the file the agent opened and the one it left unsaved; and a type a code action has just
+/// moved known at once in its new file.</summary>
 public sealed class McpNavigationTests : McpRig, IClassFixture<RestoredFolders>
 {
     public McpNavigationTests(RestoredFolders folders)
@@ -728,6 +729,55 @@ public sealed class McpNavigationTests : McpRig, IClassFixture<RestoredFolders>
 
         Assert.Equal("Renamed in 1 file: Aaa.cs", (await Call(client, McpTools.Rename, new() { ["symbol"] = "Tally.CountAll", ["newName"] = "All" })).GetString());
         Assert.Contains("public static int All(string[] texts)", File.ReadAllText(Path.Combine(Folder, "Aaa.cs")), StringComparison.Ordinal);
+    }
+
+    private const string Feeds = "public sealed record ReleaseFeed(string Latest, int Count)\n{\n    public string Upper { get; } = Latest.ToUpperInvariant();\n}\n\n"
+        + "public readonly record struct Spot(int Across, int Down);\n";
+
+    private const string Readers = "static class Readers\n{\n    public static string Of(ReleaseFeed feed, Spot spot) => feed.Latest + feed.Count + spot.Down;\n\n"
+        + "    public static ReleaseFeed Next(ReleaseFeed feed) => feed with { Latest = \"2.0\" };\n}\n";
+
+    /// <summary>A record's positional property, which its primary constructor's parameter declares, is named as
+    /// Record.Property, of a record class and a record struct, as find_symbol lists it: usages, definition and rename by that
+    /// name answer what they answer from a use of it, as the editor's Find Usages, Go to Declaration and Rename do, the
+    /// property, not the parameter, said to be what the place took.</summary>
+    [Fact]
+    public async Task An_agent_names_a_records_positional_property_as_Record_Property_and_gets_its_uses_declaration_and_rename_as_from_a_use()
+    {
+        await TakeFolderAsync();
+        Write("Feeds.cs", Feeds);
+        Write("Readers.cs", Readers);
+        await using McpClient client = await Start(["--mcp", Folder]);
+
+        JsonElement listed = Assert.Single((await Call(client, McpTools.FindSymbol, new() { ["query"] = "Latest", ["kind"] = "property" })).EnumerateArray());
+        JsonElement exact = Assert.Single((await Call(client, McpTools.FindSymbol, new() { ["query"] = "Latest", ["exact"] = true })).EnumerateArray());
+        Assert.Equal(("property", "ReleaseFeed", "Feeds.cs:1:41"), Found(listed));
+        Assert.Equal((Found(listed), "P:ReleaseFeed.Latest"), (Found(exact), exact.GetProperty("id").GetString()));
+
+        await FoundAsync("ReleaseFeed.Latest", 66, ["Feeds.cs:1:41", "Feeds.cs:3:36", "Readers.cs:3:66", "Readers.cs:5:69"]);
+        await FoundAsync("Spot.Down", 93, ["Feeds.cs:6:52", "Readers.cs:3:93"]);
+        Assert.Equal(["Feeds.cs:6:52"], Placed(await Call(client, McpTools.Definition, new() { ["symbol"] = "P:Spot.Down" })));
+
+        Assert.Equal("Renamed in 2 files: Feeds.cs, Readers.cs", (await Call(client, McpTools.Rename, new() { ["symbol"] = "ReleaseFeed.Latest", ["newName"] = "Newest" })).GetString());
+        Assert.Equal("Renamed in 2 files: Feeds.cs, Readers.cs", (await Call(client, McpTools.Rename, new() { ["symbol"] = "Spot.Down", ["newName"] = "Below" })).GetString());
+        Assert.Equal(Feeds.Replace("Latest", "Newest", StringComparison.Ordinal).Replace("Down", "Below", StringComparison.Ordinal), File.ReadAllText(Path.Combine(Folder, "Feeds.cs")));
+        Assert.Equal(Readers.Replace("Latest", "Newest", StringComparison.Ordinal).Replace("Down", "Below", StringComparison.Ordinal), File.ReadAllText(Path.Combine(Folder, "Readers.cs")));
+
+        async Task FoundAsync(string named, int column, string[] uses)
+        {
+            Dictionary<string, object?> fromUse = new() { ["path"] = "Readers.cs", ["line"] = 3, ["column"] = column };
+            JsonElement byName = await Call(client, McpTools.Usages, new() { ["symbol"] = named });
+            JsonElement byUse = await Call(client, McpTools.Usages, fromUse);
+            Assert.True(byName.GetProperty("symbol").GetString() == $"{named} (property)" && byUse.GetProperty("symbol").GetString() == $"{named} (property)",
+                $"usages of {named} said it took {byName.GetProperty("symbol")} by name and {byUse.GetProperty("symbol")} from a use: an agent naming the property is told of another symbol");
+            Assert.Equal(uses, Used(byName).Select(u => $"{u.Path}:{u.Line}:{u.Column}"));
+            Assert.Equal(Used(byUse), Used(byName));
+            Assert.Equal([uses[0]], Placed(await Call(client, McpTools.Definition, new() { ["symbol"] = named })));
+            Assert.Equal([uses[0]], Placed(await Call(client, McpTools.Definition, fromUse)));
+        }
+
+        static (string Kind, string? Container, string Place) Found(JsonElement symbol) => (symbol.GetProperty("kind").GetString()!, symbol.GetProperty("container").GetString(),
+            $"{symbol.GetProperty("path").GetString()}:{symbol.GetProperty("line").GetInt32()}:{symbol.GetProperty("column").GetInt32()}");
     }
 
     /// <summary>rename of a type answers once Git's index holds its file's move: git status, run the moment the answer comes,

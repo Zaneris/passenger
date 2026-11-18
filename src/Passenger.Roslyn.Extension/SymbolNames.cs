@@ -16,7 +16,8 @@ public sealed class SymbolsNamed : IExtensionWorkspaceMessageHandler<SymbolsAske
         SymbolNames.FindAsync(context.Solution, message.Name, message.Limit, cancellationToken);
 }
 
-/// <summary>The symbol at a caret, the one a name there refers to or a declaration there declares, with its documentation id.</summary>
+/// <summary>The symbol at a caret, the one a name there refers to or a declaration there declares (at a record's positional
+/// parameter, the property it declares), with its documentation id.</summary>
 public sealed class SymbolAt : IExtensionDocumentMessageHandler<Caret, SymbolsFound>
 {
     public async Task<SymbolsFound> ExecuteAsync(Caret message, ExtensionDocumentMessageContext context, CancellationToken cancellationToken)
@@ -25,6 +26,10 @@ public sealed class SymbolAt : IExtensionDocumentMessageHandler<Caret, SymbolsFo
         SourceText text = await document.GetTextAsync(cancellationToken).ConfigureAwait(false);
         int position = text.Lines.GetPosition(new LinePosition(message.At.Line, message.At.Character));
         ISymbol? symbol = await SymbolFinder.FindSymbolAtPositionAsync(document, position, cancellationToken).ConfigureAwait(false);
+        if (symbol is not null && await document.GetSyntaxTreeAsync(cancellationToken).ConfigureAwait(false) is { } tree)
+        {
+            symbol = SymbolNames.PositionalPropertyAt(symbol, tree, position) ?? symbol;
+        }
         return new SymbolsFound(symbol is null ? [] : [SymbolNames.Named(context.Solution, symbol)], 0);
     }
 }
@@ -151,9 +156,10 @@ internal static class SymbolNames
                     }
                 }
             }
+            string bare = Bare(last);
             IEnumerable<ISymbol> declared = bracketed ? [] :
-                [.. await SymbolFinder.FindSourceDeclarationsAsync(solution, Bare(last), ignoreCase: false, cancel).ConfigureAwait(false),
-                .. await GeneratedDeclarationsAsync(solution, Bare(last), cancel).ConfigureAwait(false)];
+                [.. await SymbolFinder.FindSourceDeclarationsAsync(solution, Exactly(bare), SymbolFilter.All, cancel).ConfigureAwait(false),
+                .. await GeneratedDeclarationsAsync(solution, bare, cancel).ConfigureAwait(false)];
             foreach (ISymbol symbol in declared)
             {
                 if (In(symbol, path) && Takes(symbol, parameters))
@@ -184,6 +190,15 @@ internal static class SymbolNames
         }
         return named with { Generated = made.Uri, At = made.At, MadeOf = ToolkitRenames.MakerOf(symbol, solution) is { } maker ? Named(solution, maker) : null };
     }
+
+    /// <summary>The property a record's positional parameter declares, where a place is on the parameter's declaration, which
+    /// declares both: the symbol a name finds there (<see cref="FindAsync"/>); null for any other symbol or place, and for a
+    /// parameter whose name a member the record declares itself takes, which then declares no property.</summary>
+    public static IPropertySymbol? PositionalPropertyAt(ISymbol symbol, SyntaxTree tree, int position) =>
+        symbol is IParameterSymbol { ContainingSymbol: IMethodSymbol { MethodKind: MethodKind.Constructor, ContainingType: { IsRecord: true } record } } parameter
+        && parameter.Locations.FirstOrDefault(l => l.SourceTree == tree && l.SourceSpan.Start <= position && position <= l.SourceSpan.End) is { } declared
+            ? record.GetMembers(parameter.Name).OfType<IPropertySymbol>().FirstOrDefault(p => p.Locations.Contains(declared))
+            : null;
 
     /// <summary>What a symbol is in, as an agent is told it: a member's or a nested type's type, else its namespace; null in
     /// the global namespace.</summary>
@@ -243,7 +258,7 @@ internal static class SymbolNames
             if ((await project.GetSourceGeneratedDocumentsAsync(cancel).ConfigureAwait(false)).Any()
                 && await project.GetCompilationAsync(cancel).ConfigureAwait(false) is { } compilation)
             {
-                found.AddRange(compilation.GetSymbolsWithName(name, SymbolFilter.TypeAndMember, cancel)
+                found.AddRange(compilation.GetSymbolsWithName(Exactly(name), SymbolFilter.TypeAndMember, cancel)
                     .Where(s => s.Locations.Any(l => l.SourceTree is { } tree && solution.GetDocument(tree) is SourceGeneratedDocument)));
             }
         }
@@ -311,6 +326,10 @@ internal static class SymbolNames
     }
 
     private static string Bare(string part) => part.IndexOf('<', StringComparison.Ordinal) is int angle and >= 0 ? part[..angle].Trim() : part.Trim();
+
+    /// <summary>A search for a name itself, given as a test of each name: the compiler's search given the name alone passes
+    /// over a record's positional properties, which a test finds.</summary>
+    private static Func<string, bool> Exactly(string name) => each => each == name;
 
     /// <summary>Whether the parts before a name are the names of what the symbol is in, the nearest last.</summary>
     private static bool In(ISymbol symbol, List<string> path)
