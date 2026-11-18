@@ -275,6 +275,8 @@ public sealed class ProjectSession : IAsyncDisposable
         // And the .http and .rest files the Endpoints window sends.
         session.Index.Walked += (_, _) => IdeErrors.Observe(session.LookForRequestsAsync(session.Index.Files));
         session.Index.Changed += (_, change) => session.RequestsCameOrWent(change.Came, change.Gone);
+        // And a Godot project's file come or gone, alone or with its folder, which the walk for games is made again for.
+        session.Index.Changed += (_, change) => session.GodotProjectsCameOrWent(change.Came, change.Gone);
         session.Index.Build(folder);
         session.Watcher = new FolderWatcher(folder, setup.Watching);
         session.Web = new Web.WebLanguages(folder, setup.Settings, setup.Engine)
@@ -817,6 +819,26 @@ public sealed class ProjectSession : IAsyncDisposable
         {
             IdeErrors.Observe(LookForRequestsAsync(Index.Files));
         }
+    }
+
+    /// <summary>Files come or gone since the walk, by their paths from the folder: a Godot project's file listed that is no
+    /// game the folder knows, or a known game's gone and not listed again, brings or takes a game the folder's walk finds,
+    /// so the folder is read again. Weighed against the games known, a file listed again with its folder is one of them.</summary>
+    private void GodotProjectsCameOrWent(IReadOnlyList<string> came, IReadOnlyList<string> gone)
+    {
+        if (IsEnded || Folder is not { } folder || (!came.Any(IsGodotProject) && !gone.Any(IsGodotProject)))
+        {
+            return;
+        }
+        List<string> games = [.. Workspace?.GodotGames ?? [], .. Projects.Select(p => p.NamedGodotFolder).OfType<string>()];
+        bool Known(string file) => games.Any(game => PathNames.Same(game, Path.GetDirectoryName(Path.Combine(folder, file))!));
+        HashSet<string> listed = [.. came.Where(IsGodotProject)];
+        if (listed.Any(file => !Known(file)) || gone.Any(file => IsGodotProject(file) && !listed.Contains(file) && Known(file)))
+        {
+            ReadAgain();
+        }
+
+        static bool IsGodotProject(string path) => Path.GetFileName(path.AsSpan()).Equals(GodotProject.FileName, StringComparison.Ordinal);
     }
 
     /// <summary>The folder's builds, rebuilds and cleans, in the window's Build console.</summary>

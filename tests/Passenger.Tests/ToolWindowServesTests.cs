@@ -123,6 +123,9 @@ public sealed class ToolWindowServesTests
         }
     }
 
+    /// <summary>A Godot project comes as a person brings one: its folder moved in whole (as a copy or a clone lands, which the
+    /// system may tell as the folder alone), or its project.godot written; and goes as its file or its whole folder is
+    /// deleted.</summary>
     [AvaloniaFact]
     public void A_Godot_project_come_brings_the_Game_window_and_gone_takes_it_away()
     {
@@ -132,24 +135,49 @@ public sealed class ToolWindowServesTests
         {
             DockHost dock = window.DockHost;
             Assert.True(StripeButton(window, ToolWindowIds.Game) is null, "The Game window's icon is on a stripe before any Godot project came");
-            string game = TestFolders.Write(folder, "game/project.godot", "config_version=5\n\n[application]\n\nconfig/name=\"Hop\"\n");
-            Ui.WaitFor(() => StripeButton(window, ToolWindowIds.Game) is not null, () => $"the Game window's icon once a Godot project came, where it says {dock[ToolWindowIds.Game].Unserved}");
+            string made = TestFolders.Create("godot-game-");
+            string project = TestFolders.Write(made, "project.godot", ProjectGodot);
+            TestFolders.Write(made, "main.gd", "extends Node\n");
+            string game = Path.Combine(folder, "game");
+            Directory.Move(made, game);
+            project = Path.Combine(game, Path.GetFileName(project));
+            Came(window, "its folder moved in whole");
             NativeMenu tools = Ui.Submenu(Ui.Submenu(window.MenuBar, "View"), MainMenu.ToolWindows);
             Assert.True(tools.Items.OfType<NativeMenuItem>().Single(i => i.Header == "Game").IsEnabled, "View › Tool Windows greys Game with a Godot project in the folder");
             dock.Show(ToolWindowIds.Game);
             Ui.Settle();
             Assert.True(dock.IsShown(ToolWindowIds.Game), "The Game window did not show with a Godot project in the folder");
 
-            File.Delete(game);
-            Ui.WaitFor(() => StripeButton(window, ToolWindowIds.Game) is null, "the Game window's icon gone with the Godot project");
-            Assert.False(dock.IsShown(ToolWindowIds.Game), "The Game window still shows with no Godot project in the folder");
-            Assert.Equal(Refusals.NoGodotProject, dock[ToolWindowIds.Game].Unserved);
+            File.Delete(project);
+            Went(window, "its project.godot deleted");
             Assert.True(dock.Capture().Windows[ToolWindowIds.Game].Shown, "The Game window's place, open as its project went, was not kept");
+
+            File.WriteAllText(project, ProjectGodot);
+            Came(window, "its project.godot written");
+            Assert.True(dock.IsShown(ToolWindowIds.Game), "The Game window, open as its project went, did not come back open where it stood");
+
+            Directory.Delete(game, recursive: true);
+            Went(window, "its whole folder deleted");
         }
         finally
         {
             window.Close();
         }
+    }
+
+    /// <summary>A Godot project's file, of a game of GDScript alone.</summary>
+    private const string ProjectGodot = "config_version=5\n\n[application]\n\nconfig/name=\"Hop\"\n";
+
+    private static void Came(MainWindow window, string how) =>
+        Ui.WaitFor(() => StripeButton(window, ToolWindowIds.Game) is not null,
+            () => $"the Game window's icon once a Godot project came, {how}, where it says {window.DockHost[ToolWindowIds.Game].Unserved}, the folder's games are "
+                + $"[{string.Join(", ", window.WorkspaceModel?.GodotGames ?? [])}] and its index lists [{string.Join(", ", window.FileIndex.Files)}]");
+
+    private static void Went(MainWindow window, string how)
+    {
+        Ui.WaitFor(() => StripeButton(window, ToolWindowIds.Game) is null, () => $"the Game window's icon gone with the Godot project, {how}");
+        Assert.False(window.DockHost.IsShown(ToolWindowIds.Game), $"The Game window still shows with no Godot project in the folder, {how}");
+        Assert.Equal(Refusals.NoGodotProject, window.DockHost[ToolWindowIds.Game].Unserved);
     }
 
     /// <summary>A solution of one console app, which no tool window of a kind of project serves.</summary>
