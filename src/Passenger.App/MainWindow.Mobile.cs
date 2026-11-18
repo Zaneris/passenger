@@ -412,27 +412,27 @@ public partial class MainWindow
     /// New Project's one way: refused to an agent's input and where this user may not write it, asked of the person where it
     /// <paramref name="asks"/>, its stages and lines said and handed on, the projects loaded again after. A .NET with no
     /// workload set installs its newest first (dotnet workload update); downloads go to disk where the temporary folder is in
-    /// memory (<see cref="WorkloadInstalls"/>). Whether they were installed, and what it came to, as the status bar says it.</summary>
-    public async Task<(bool Installed, string Said)> InstallWorkloadsAsync(IReadOnlyList<string> ids, bool asks, Action<string>? stages, Action<string>? lines,
+    /// memory (<see cref="WorkloadInstalls"/>). Whether installed, what it came to and any command left the person to run.</summary>
+    public async Task<(bool Installed, string Said, string? ToRun)> InstallWorkloadsAsync(IReadOnlyList<string> ids, bool asks, Action<string>? stages, Action<string>? lines,
         CancellationToken stop)
     {
         UiThread.Check();
         if (RefusedToAgentsInput(Refusals.AgentInstallsMobile))
         {
-            return (false, Refusals.AgentInstallsMobile);
+            return (false, Refusals.AgentInstallsMobile, null);
         }
         string named = $"{Plural.Noun(ids.Count, "workload")} {Plural.Listed([.. ids])}";
         if (work.Begin(AppActions.InstallWorkloads, asks ? "Asking to install the .NET workloads" : $"Installing the .NET {named}") is not { } installing)
         {
-            return (false, ActionWork.Busy(work.Of(AppActions.InstallWorkloads)!));
+            return (false, ActionWork.Busy(work.Of(AppActions.InstallWorkloads)!), null);
         }
         using (installing)
         {
             using CancellationTokenSource stopping = CancellationTokenSource.CreateLinkedTokenSource(installing.Stopping, stop);
-            (bool, string) Came(bool installed, string said)
+            (bool, string, string?) Came(bool installed, string said, string? toRun = null)
             {
                 Told(installing, installed, said);
-                return (installed, said);
+                return (installed, said, toRun);
             }
             void Stage(string stage)
             {
@@ -448,7 +448,7 @@ public partial class MainWindow
             string command = $"dotnet workload install {string.Join(' ', ids)}";
             if (!await BackgroundWork.Run(() => Writable(root)) && !await InstallsForThisUserAsync(root))
             {
-                return Came(false, Refusals.WorkloadsNeedAdministrator(root, command));
+                return Came(false, Refusals.WorkloadsNeedAdministrator(root, command), Refusals.AsAdministrator(command));
             }
             if (asks && !await ConfirmAsync($"Install the .NET {named}?",
                 $"Passenger runs {command} with the .NET in {PathNames.Shown(root, null)}, which downloads them from NuGet. "

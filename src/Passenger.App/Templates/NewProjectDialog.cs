@@ -51,8 +51,8 @@ public enum ProjectSetup
 
 /// <summary>The window's one install of .NET workloads (<see cref="MainWindow.InstallWorkloadsAsync(IReadOnlyList{string}, bool,
 /// Action{string}, Action{string}, CancellationToken)"/>): given their ids, what takes its stages and the lines dotnet
-/// writes, and what stops it; whether they were installed, and what it came to.</summary>
-public delegate Task<(bool Installed, string Said)> WorkloadInstall(IReadOnlyList<string> ids, Action<string> stages, Action<string> lines, CancellationToken stop);
+/// writes, and what stops it; whether they were installed, what it came to, and any command left the person to run.</summary>
+public delegate Task<(bool Installed, string Said, string? ToRun)> WorkloadInstall(IReadOnlyList<string> ids, Action<string> stages, Action<string> lines, CancellationToken stop);
 
 /// <summary>The New Project dialog, for New Solution and Add, New Project: the template families read ahead down the
 /// left (<see cref="TemplateFamilies"/>) under a search; on the right the names, where it goes, the family's Type, the
@@ -109,6 +109,10 @@ public sealed class NewProjectDialog : IdeWindow
     private readonly TextBlock progress = new() { Classes = { StyleClasses.Muted }, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center };
     private readonly StackPanel working;
     private readonly TextBlock problem = new() { TextWrapping = TextWrapping.Wrap, IsVisible = false, VerticalAlignment = VerticalAlignment.Center };
+    private readonly Button copyCommand = new() { Content = "Copy Command", IsVisible = false, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(Gaps.Normal, 0, 0, 0) };
+
+    /// <summary>The command the problem shown asks the person to run themselves, which Copy Command copies; null for none.</summary>
+    private string? toRun;
     private readonly Button create = DialogFooter.Default("Create");
     private readonly Button browse = new() { Content = "Browse…", Margin = new Thickness(Gaps.Normal, 0, 0, 0) };
     private readonly ComboBox setup = new() { Classes = { StyleClasses.Form } };
@@ -330,7 +334,10 @@ public sealed class NewProjectDialog : IdeWindow
             followFolder.Stop();
         };
         DockPanel.SetDock(left, Dock.Left);
-        Content = DialogFooter.Page(new DockPanel { Children = { left, rightPane } }, DialogFooter.OkCancel(create, Cancel, new Panel { Children = { problem, working } }));
+        copyCommand.Click += (_, _) => IdeErrors.Observe(CopyCommandAsync());
+        DockPanel.SetDock(copyCommand, Dock.Right);
+        Content = DialogFooter.Page(new DockPanel { Children = { left, rightPane } },
+            DialogFooter.OkCancel(create, Cancel, new Panel { Children = { new DockPanel { Children = { copyCommand, problem } }, working } }));
         ShowTemplate(null);
         typeRow.IsVisible = false;
         readFrom = target is null ? folder : Path.GetDirectoryName(target.Solution)!;
@@ -506,6 +513,9 @@ public sealed class NewProjectDialog : IdeWindow
     /// <summary>Why the last Create was refused or failed, why an install failed, or why the templates could not be read;
     /// null when none.</summary>
     public string? Problem => problem.IsVisible ? problem.Text : null;
+
+    /// <summary>Copy Command, shown beside a problem that asks the person to run a command themselves.</summary>
+    public Button CopyCommandButton => copyCommand;
 
     private bool SolutionNamed => SolutionName.Length > 0 && SolutionName != solutionGiven;
 
@@ -825,14 +835,14 @@ public sealed class NewProjectDialog : IdeWindow
         installOutput.IsVisible = true;
         try
         {
-            string? failed = pack.IsWorkload ? await InstallWorkloadAsync(pack, cancel.Token) : await InstallPackageAsync(pack, cancel.Token);
+            (string? failed, string? run) = pack.IsWorkload ? await InstallWorkloadAsync(pack, cancel.Token) : (await InstallPackageAsync(pack, cancel.Token), null);
             if (cancel.IsCancellationRequested)
             {
                 return;
             }
             if (failed is not null)
             {
-                Fail(failed);
+                Fail(failed, run);
                 return;
             }
             ProjectTemplates.Forget();
@@ -877,11 +887,11 @@ public sealed class NewProjectDialog : IdeWindow
     }
 
     /// <summary>A workload installed through the window's one install of them, its stages said under the dialog and the
-    /// lines dotnet writes shown as they come: null once installed, else what it came to.</summary>
-    private async Task<string?> InstallWorkloadAsync(TemplatePack pack, CancellationToken cancel)
+    /// lines dotnet writes shown as they come: null once installed, else what it came to and any command left the person to run.</summary>
+    private async Task<(string? Failed, string? ToRun)> InstallWorkloadAsync(TemplatePack pack, CancellationToken cancel)
     {
-        (bool installed, string said) = await Workloads([pack.Id], stage => progress.Text = $"{stage}…", line => installOutput.Sink.Write($"{line}\n"), cancel);
-        return installed ? null : said;
+        (bool installed, string said, string? run) = await Workloads([pack.Id], stage => progress.Text = $"{stage}…", line => installOutput.Sink.Write($"{line}\n"), cancel);
+        return installed ? (null, null) : (said, run);
     }
 
     /// <summary>Where dotnet new install runs, whose NuGet configuration says where the package comes from: the directory
@@ -1600,11 +1610,29 @@ public sealed class NewProjectDialog : IdeWindow
         }
     }
 
-    private void Fail(string? why) => TemplateList.Fail(problem, why);
+    /// <summary>Shows why the dialog can't go on, or nothing; with the command the person is to run, offering to copy it.</summary>
+    private void Fail(string? why, string? run = null)
+    {
+        TemplateList.Fail(problem, why);
+        toRun = why is null ? null : run;
+        copyCommand.Content = "Copy Command";
+        copyCommand.IsVisible = toRun is not null;
+    }
+
+    /// <summary>The command the problem asks the person to run, to the clipboard, the button then saying Copied.</summary>
+    private async Task CopyCommandAsync()
+    {
+        if (toRun is { } command)
+        {
+            await ListMenus.CopyAsync(this, command);
+            copyCommand.Content = "Copied";
+        }
+    }
 
     private void Busy(bool busy)
     {
         TemplateList.Busy(problem, working, busy);
+        copyCommand.IsVisible = !busy && toRun is not null;
         create.IsEnabled = !busy && template is { Pack: null };
         install.IsEnabled = !busy;
         installSetup.IsEnabled = !busy;

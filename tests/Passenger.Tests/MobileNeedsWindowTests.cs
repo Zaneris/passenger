@@ -187,7 +187,7 @@ public sealed class MobileNeedsWindowTests : IDisposable
 
     /// <summary>New Project's Install of a template a workload brings (a .NET lacking the workload stood in by dotnet new
     /// without the SDK's templates, its dotnet by a stand-in) is Install Workloads' own install: refused where the .NET is not
-    /// this user's to write, in the dialog and the status bar; else run asking nothing more, a workload set first where the
+    /// this user's to write, in the dialog and the status bar, the dialog's Copy Command copying what to run; else run asking nothing more, a workload set first where the
     /// .NET knows none, its lines shown in the dialog, and the folder's project loaded again, the dialog then saying that
     /// dotnet new still lists none of its templates. Where this machine builds no Android app, no install is offered.</summary>
     [AvaloniaFact]
@@ -257,6 +257,11 @@ public sealed class MobileNeedsWindowTests : IDisposable
             Assert.Empty(asked);
             Assert.Equal(refused, dialog.Problem);
             Assert.Equal(refused, window.Status);
+            string toRun = Refusals.AsAdministrator("dotnet workload install android");
+            Assert.True(dialog.CopyCommandButton.IsEffectivelyVisible, "The refusal asks the person to run a command, but offers no Copy Command beside it");
+            Ui.Click(dialog.CopyCommandButton);
+            Ui.WaitFor(() => Ui.Clipboard(dialog) == toRun, () => $"Copy Command to put {toRun} on the clipboard, which holds {Ui.Clipboard(dialog)}");
+            Assert.Equal("Copied", dialog.CopyCommandButton.Content);
 
             MainWindow.WorkloadStandIn = MainWindow.WorkloadStandIn with { Root = templates };
             int rounds = window.Session.Models.Rounds;
@@ -267,6 +272,7 @@ public sealed class MobileNeedsWindowTests : IDisposable
             Assert.True(window.Session.Models.Rounds > rounds, "The folder's project was not evaluated again after the install");
             Assert.Contains(said[^1], dialog.InstallOutput, StringComparison.Ordinal);
             Assert.Equal("The .NET workload android is installed: the projects loaded again", window.Status);
+            Assert.False(dialog.CopyCommandButton.IsVisible, "Copy Command stayed after the install, which left no command to run");
             // The stand-in installs nothing, so dotnet new still lists none of the workload's templates.
             Assert.Equal($"the .NET android workload is installed, but dotnet new has no {android.Name} (android) from it", dialog.Problem);
             dialog.Cancel();
