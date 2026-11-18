@@ -1000,6 +1000,54 @@ public sealed class SolutionViewTests : IDisposable
         window.Close();
     }
 
+    /// <summary>A file in a NuGet package folder that a project names (a package's targets adding its ProGuard rules, as
+    /// AndroidX's do) is every project's copy of that package: the Solution view lists it only where the project links it
+    /// in, and there Rename, Delete and Cut refuse it saying whose it is, by keys and for an agent, its file left on disk.</summary>
+    [AvaloniaFact]
+    public void A_package_folders_file_a_project_names_is_listed_only_where_linked_and_refuses_rename_delete_and_cut_saying_whose_it_is()
+    {
+        Write("packages/kit/1.0.0/.nupkg.metadata", "{ \"version\": 2 }\n");
+        Write("packages/kit/1.0.0/build/Kit.targets",
+            "<Project>\n  <ItemGroup>\n    <None Include=\"$(MSBuildThisFileDirectory)../proguard/proguard.txt\" />\n  </ItemGroup>\n</Project>\n");
+        Write("packages/kit/1.0.0/proguard/proguard.txt", "-keep class kit.** { *; }\n");
+        Write("packages/kit/1.0.0/content/notes.txt", "Kit's notes.\n");
+        Write("Shop/Shop.csproj", "<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n"
+            + $"    <TargetFramework>{TestProjects.Framework}</TargetFramework>\n"
+            + "    <NuGetPackageRoot>$(MSBuildThisFileDirectory)../packages/</NuGetPackageRoot>\n  </PropertyGroup>\n"
+            + "  <ItemGroup>\n    <None Include=\"../packages/kit/1.0.0/content/notes.txt\" Link=\"notes.txt\" />\n  </ItemGroup>\n"
+            + "  <Import Project=\"../packages/kit/1.0.0/build/Kit.targets\" />\n</Project>\n");
+        Write("Shop/Catalog.cs", "namespace Shop;\n\npublic class Catalog\n{\n}\n");
+        Write("Shop.slnx", "<Solution>\n  <Project Path=\"Shop/Shop.csproj\" />\n</Solution>\n");
+        string package = PathNames.Canonical(Path.Combine(folder, "packages", "kit", "1.0.0"));
+        string rules = Path.Combine(package, "proguard", "proguard.txt");
+        string notes = Path.Combine(package, "content", "notes.txt");
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        List<string> asked = Answer(window);
+        Ui.WaitFor(() => window.Projects.Any(p => p.IsEvaluated), "MSBuild to evaluate Shop");
+        Assert.Contains(window.Projects.Single().Evaluated!.Items, i => PathNames.Same(i.Path, rules));
+
+        Show(window, Path.Combine(folder, "Shop", "Catalog.cs"));
+        IReadOnlyList<ExplorerNode> rows = window.ExplorerView.Tree.Rows;
+        Assert.False(rows.Any(r => r.Name == "proguard.txt"), "The Solution view lists the package's proguard.txt, which Shop names only through the package's targets");
+        ExplorerNode linked = Row(window, NodeKind.File, "notes.txt", notes);
+
+        const string why = "notes.txt is a file of the package kit 1.0.0, as NuGet restored it for every project";
+        Ui.ClickRow(window, linked);
+        Ui.Press(window, "BACK_SPACE");
+        Assert.Equal(why, window.Status);
+        Ui.Run(window, EditorActions.Cut);
+        Assert.Equal(why, window.Status);
+        Assert.False(Row(window, NodeKind.File, "notes.txt", notes).IsCut, "Cut's keys dimmed the package's notes.txt as cut");
+        foreach (string action in (string[])[AppActions.Rename, EditorActions.Delete, EditorActions.Cut])
+        {
+            Assert.Equal(why, window.Actions.Run(action));
+        }
+        Assert.False(window.IsPopupOpen, "Rename on the package's notes.txt asked a new name");
+        Assert.Empty(asked);
+        Assert.True(File.Exists(notes) && File.Exists(rules), "Delete took a file out of the package folder");
+        window.Close();
+    }
+
     /// <summary>The names of the folders shown directly under a project's row, in order.</summary>
     private static IReadOnlyList<string> FoldersUnder(MainWindow window, string project)
     {
