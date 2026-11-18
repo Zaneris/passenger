@@ -205,6 +205,36 @@ public sealed class CommandLineTests : IDisposable
             $"A crop past the Settings dialog in front was to end the screenshot with exit code 2 saying so; it exited {code} and wrote:\n{error}");
     }
 
+    /// <summary>A screenshot's --key takes a key a US keyboard types as that character, as the keymap's own keys are read:
+    /// meta+, is Settings in the Mac's keymap (ctrl+, in VS Code's elsewhere, Visual Studio's having no such key there), and
+    /// the steps after it go to Settings, whose search for IntelliJ shows its Keymap choice to click.</summary>
+    [Fact]
+    public async Task A_screenshot_s_key_takes_a_key_as_the_character_it_types_so_meta_comma_opens_settings()
+    {
+        string state = TestFolders.Create("comma-state-");
+        try
+        {
+            string settingsKey = "meta+,";
+            if (!CommandKey.IsCmd)
+            {
+                settingsKey = "ctrl+,";
+                await File.WriteAllTextAsync(Path.Combine(state, StateStore.SettingsFile), new System.Text.Json.Nodes.JsonObject
+                {
+                    ["version"] = global::Passenger.App.Settings.AppSettings.Upgrades.Count,
+                    ["keymap"] = nameof(global::Passenger.Editor.KeymapPreset.VSCode),
+                }.ToJsonString(), TestContext.Current.CancellationToken);
+            }
+            (int code, string error) = await Run([".", "--key", settingsKey, "--type", "IntelliJ", "--click-name", "KeymapChoice", "--size", "1600x1000", "--scale", "1",
+                "--screenshot", "settings.png"], state);
+            Assert.True(code == 0 && File.Exists(Path.Combine(folder, "settings.png")),
+                $"--key {settingsKey} was to open Settings, whose search for IntelliJ shows its Keymap choice to click; the run exited {code} and wrote:\n{error}");
+        }
+        finally
+        {
+            TestFolders.Delete(state);
+        }
+    }
+
     /// <summary>The headless capture has none of the system's chrome, so on macOS the traffic lights are missing unless
     /// --window-buttons draws them, where macOS puts them on the merged bar, at any scale. Windows and Linux draw the bar's
     /// own buttons, so there the flag changes nothing. The places and colours are AppKit's own drawing of an active Dark

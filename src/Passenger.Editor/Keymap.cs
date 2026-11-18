@@ -8,6 +8,8 @@ namespace Passenger.Editor;
 /// ("meta shift L", "control alt SLASH"), so a binding reads the same in both places.</summary>
 public readonly record struct Keystroke(Key Key, KeyModifiers Modifiers)
 {
+    /// <summary>A keystroke in the keymap's notation, its parts apart by spaces, a key by its name (<see cref="ParseKey"/>)
+    /// or as the character it types on a US keyboard (<see cref="Typing"/>: "meta ," is "meta COMMA", "?" Shift with SLASH).</summary>
     public static Keystroke Parse(string text)
     {
         KeyModifiers modifiers = KeyModifiers.None;
@@ -18,13 +20,55 @@ public readonly record struct Keystroke(Key Key, KeyModifiers Modifiers)
             {
                 modifiers |= modifier;
             }
+            else if (key is not null)
+            {
+                throw new FormatException($"'{text}' names two keys");
+            }
+            else if (Typing(part) is { } typing)
+            {
+                key = typing.Key;
+                modifiers |= typing.Modifiers;
+            }
             else
             {
-                key = key is null ? ParseKey(part) : throw new FormatException($"'{text}' names two keys");
+                key = ParseKey(part);
             }
         }
         return new Keystroke(key ?? KeyOf(modifiers) ?? throw new FormatException($"'{text}' names no key"), modifiers);
     }
+
+    /// <summary>A keystroke as a command line writes one, its parts joined by + ("cmd+shift+L", "meta+,"), the plus key a
+    /// chord's last + where it ends in two ("ctrl++") or the whole of it, each part as <see cref="Parse"/> reads it.</summary>
+    public static Keystroke ParseJoined(string text) =>
+        Parse(text == "+" ? text : text.EndsWith("++", StringComparison.Ordinal) ? text[..^2].Replace('+', ' ') + " +" : text.Replace('+', ' '));
+
+    /// <summary>The key a US keyboard types a character other than a letter or digit on, with Shift for one typed with it
+    /// ("," the comma key, "&lt;" Shift with it, "$" Shift with 4), or null for any other part.</summary>
+    private static Keystroke? Typing(string part) =>
+        part.Length == 1 && !char.IsAsciiLetterOrDigit(part[0]) && UsKeyboard.Value.TryGetValue(part[0], out Keystroke typed) ? typed : null;
+
+    /// <summary>Each character the main keys of a US keyboard type but its letters and digits, by the key and whether Shift
+    /// is held, as Avalonia's keys are laid out on one (what a key typed on it gives as text, read the other way).</summary>
+    private static readonly Lazy<Dictionary<char, Keystroke>> UsKeyboard = new(() =>
+    {
+        Dictionary<char, Keystroke> keys = [];
+        foreach (PhysicalKey physical in Enum.GetValues<PhysicalKey>())
+        {
+            Key key = physical.ToQwertyKey();
+            if (physical == PhysicalKey.None || Keypad(key) is not null)
+            {
+                continue;
+            }
+            foreach (bool shifted in (bool[])[false, true])
+            {
+                if (physical.ToQwertyKeySymbol(shifted) is [char typed] && typed > ' ' && typed < '\u007f' && !char.IsAsciiLetterOrDigit(typed))
+                {
+                    keys.TryAdd(typed, new Keystroke(key, shifted ? KeyModifiers.Shift : KeyModifiers.None));
+                }
+            }
+        }
+        return keys;
+    });
 
     public static Keystroke From(KeyEventArgs e) => new(e.Key, e.KeyModifiers);
 

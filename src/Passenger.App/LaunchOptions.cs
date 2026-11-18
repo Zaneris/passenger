@@ -510,12 +510,13 @@ public sealed record LaunchOptions(string? Folder, IReadOnlyList<string> Files, 
             int.TryParse(part, NumberStyles.None, CultureInfo.InvariantCulture, out value) && value >= first;
     }
 
-    /// <summary>"cmd+shift+L", or "meta shift L" as keymaps write it.</summary>
+    /// <summary>"cmd+shift+L", or "meta shift L" as keymaps write it, a key by its name or the character it types on a US
+    /// keyboard ("meta+,", "shift+/"), as <see cref="Keystroke.ParseJoined"/> reads it.</summary>
     private static Keystroke ParseKey(string text)
     {
         try
         {
-            return Keystroke.Parse(text.Replace('+', ' '));
+            return Keystroke.ParseJoined(text);
         }
         catch (FormatException error)
         {
