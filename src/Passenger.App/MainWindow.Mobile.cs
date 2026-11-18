@@ -446,7 +446,7 @@ public partial class MainWindow
             }
             string root = WorkloadStandIn?.Root ?? Dotnet.Root(Folder);
             string command = $"dotnet workload install {string.Join(' ', ids)}";
-            if (!await BackgroundWork.Run(() => Writable(root)))
+            if (!await BackgroundWork.Run(() => Writable(root)) && !await InstallsForThisUserAsync(root))
             {
                 return Came(false, Refusals.WorkloadsNeedAdministrator(root, command));
             }
@@ -702,6 +702,24 @@ public partial class MainWindow
         ProjectTemplates.Forget();
         AskMobile(again: true);
         await mobileAsking;
+    }
+
+    /// <summary>Whether the .NET at <paramref name="root"/> installs the folder's SDK's workloads into this user's own folder
+    /// (<see cref="WorkloadInstalls.UserLocalMarker"/>), where its own folder needn't be this user's to write.</summary>
+    private async Task<bool> InstallsForThisUserAsync(string root)
+    {
+        string sdk;
+        try
+        {
+            // With no folder open (New Project's own window), the SDK dotnet takes in the home folder.
+            sdk = await Dotnet.SdkAsync(Folder ?? Environment.GetFolderPath(Environment.SpecialFolder.UserProfile));
+        }
+        catch (InvalidOperationException)
+        {
+            // dotnet names no SDK here, so none can be said to install for this user: the refusal stands.
+            return false;
+        }
+        return await BackgroundWork.Run(() => WorkloadInstalls.UserLocalMarker(root, sdk) is { } marker && File.Exists(marker));
     }
 
     /// <summary>Whether this user may write the .NET installation (a workload installs into it): a folder of their own,

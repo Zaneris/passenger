@@ -10,7 +10,7 @@ namespace Passenger.Tests;
 /// <summary>What a mobile project needs, said over the window as it opens and got from there: a project whose workload the
 /// .NET lacks (tvOS on a Mac, Android elsewhere) says so, and Install Workloads asks, runs the install (a stand-in of
 /// dotnet's), a workload set first where the .NET has none, saying a download out of room plainly, and loads the project
-/// again; an Android project whose workload's answers (stand-ins of its targets) say it lacks its SDK's platform and a JDK
+/// again, needing no administrator where the .NET installs workloads into each user's own folder; an Android project whose workload's answers (stand-ins of its targets) say it lacks its SDK's platform and a JDK
 /// offers the workload's installer, run only once the person accepted the licences Google's repository (a stand-in)
 /// gives; the JDK it installs is found after with no JAVA_HOME, and a JAVA_HOME where the workload finds no JDK is said and
 /// never given to the installer; on a Mac an iOS project lacking its simulator runtime says how Xcode installs one, and one
@@ -77,6 +77,53 @@ public sealed class MobileNeedsWindowTests : IDisposable
         Assert.Equal($"dotnet workload install ended, but the projects still lack {platform}", window.Status);
         Assert.Equal(said, window.MobileSaid);
         window.Close();
+    }
+
+    /// <summary>A .NET this user may not write whose SDK installs workloads into each user's own folder (its userlocal
+    /// marker, which Fedora's packaged .NET carries) is no reason to send the person to an administrator: Install Workloads
+    /// asks and runs the install (a stand-in of dotnet's) as for a .NET of their own, where sudo would install it for root.</summary>
+    [AvaloniaFact]
+    public void Install_Workloads_needs_no_administrator_where_the_dotnet_installs_workloads_into_each_users_own_folder()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            Assert.Skip("A .NET no user may write is Program Files' on Windows, where the test can't put a marker");
+            return;
+        }
+        (MainWindow window, _, string platform, _) = LackingWorkload();
+        string sdk = Ui.Await(Dotnet.SdkAsync(folder), "the SDK the folder takes", Slow);
+        string shared = Directory.CreateDirectory(Path.Combine(folder, "obj", "shared-dotnet")).FullName;
+        string marker = WorkloadInstalls.UserLocalMarker(shared, sdk) ?? throw new InvalidOperationException($"dotnet --version named {sdk}, which names no feature band");
+        Directory.CreateDirectory(Path.GetDirectoryName(marker)!);
+        File.WriteAllText(marker, string.Empty);
+        File.SetUnixFileMode(shared, UnixFileMode.UserRead | UnixFileMode.UserExecute);
+        try
+        {
+            Assert.SkipWhen(Libc.Access(shared, Libc.MayWrite) == 0, $"This user may write {shared} whatever its mode says, so no .NET stands in as another's");
+            List<IReadOnlyList<string>> installed = [];
+            MainWindow.WorkloadStandIn = new WorkloadStandIn(shared, arguments =>
+            {
+                installed.Add(arguments);
+                return ChildProcesses.DotnetCommand(["--version"]);
+            });
+            List<string> asked = [];
+            window.Confirm = (title, _, _) =>
+            {
+                asked.Add(title);
+                return Task.FromResult(true);
+            };
+            Ui.ClickButton(window, "Install Workloads…");
+            Ui.WaitFor(() => window.Actions.Work.Of(AppActions.InstallWorkloads) is null, () => $"the install to end: {window.Status}", Slow);
+
+            Assert.True(asked.Count == 1, $"Install Workloads was refused as needing an administrator, where the .NET installs for each user: {window.Status}");
+            Assert.Equal($"Install the .NET workload {platform}?", asked[0]);
+            Assert.Equal(["workload", "install", platform], Assert.Single(installed));
+            window.Close();
+        }
+        finally
+        {
+            File.SetUnixFileMode(shared, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        }
     }
 
     /// <summary>A .NET with no workload set installed knows no workload until one is (dotnet's own words, from a stand-in):
