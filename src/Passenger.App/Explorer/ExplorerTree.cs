@@ -1062,9 +1062,11 @@ public sealed class ExplorerNode : Observable, ITreeRow
     /// every other row.</summary>
     public SdkFolder? SdkFolder { get; init; }
 
-    /// <summary>Why Rename, Delete and Cut leave the row where it is: a folder the SDK reads by its name; null for every
-    /// other row.</summary>
-    public string? Kept => SdkFolder is { } read ? Refusals.ReadBySdk(read, Name) : null;
+    /// <summary>Why Rename, Delete, Cut and a drag leave the row where it is: a folder the SDK reads by its name, or a file
+    /// or folder of a NuGet package, every project's copy; null for every other row.</summary>
+    public string? Kept => SdkFolder is { } read ? Refusals.ReadBySdk(read, Name)
+        : Kind is NodeKind.File or NodeKind.Folder && Path is { } path && Packages.PackageFolders.PackageOf(path) is { } package ? Refusals.OfPackage(Name, package)
+        : null;
 
     /// <summary>Cut and waiting to be pasted, which dims it.</summary>
     public bool IsCut

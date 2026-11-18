@@ -331,9 +331,11 @@ public sealed record FrameworkSymbols(string Framework, IReadOnlyList<string> Sy
 public sealed record PackageDependency(string Name, string? Version, bool Implicit);
 
 /// <summary>A file of the project: its item type, full path, its Link (where it shows when it lives elsewhere), the file
-/// it depends on, relative to its own folder, as MSBuild's DependentUpon is, and the shared project's items file
-/// (<see cref="SharedItemsExtension"/>) that names it, for a file a shared project brings in.</summary>
-public sealed record EvaluatedItem(string Type, string Path, string? Link = null, string? DependentUpon = null, string? Shared = null)
+/// it depends on, relative to its own folder, as MSBuild's DependentUpon is, the shared project's items file
+/// (<see cref="SharedItemsExtension"/>) that names it, for a file a shared project brings in, and whether a NuGet
+/// package's own build file names it from a package folder (AndroidX's ProGuard rules): every project's copy of the
+/// package, where the SDK gives it a Link as it gives any file from elsewhere.</summary>
+public sealed record EvaluatedItem(string Type, string Path, string? Link = null, string? DependentUpon = null, string? Shared = null, bool Packaged = false)
 {
     /// <summary>A shared project's items file (.projitems), which each project sharing its files imports.</summary>
     public const string SharedItemsExtension = ".projitems";
