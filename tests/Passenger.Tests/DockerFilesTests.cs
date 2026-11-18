@@ -690,7 +690,7 @@ public sealed class DockerFilesTests : IClassFixture<DockerFilesTests.Shop>
             Assert.Equal([("Api", "no Dockerfile: Docker Support adds one"), ("Worker", "no Dockerfile: Docker Support adds one")],
                 dialog.Projects.Select(p => (p.Name, p.Detail)));
             ComposeChoice postgres = Assert.Single(dialog.Services);
-            Assert.Equal(("postgres", "postgres:17, for Api"), (postgres.Name, postgres.Detail));
+            Assert.Equal(("postgres", "postgres:18, for Api"), (postgres.Name, postgres.Detail));
             dialog.Projects.Single(p => p.Name == "Worker").IsChosen = false;
             dialog.Close(true);
             Ui.Settle();
@@ -838,7 +838,7 @@ public sealed class DockerFilesTests : IClassFixture<DockerFilesTests.Shop>
             string compose = DockerFiles.Compose(folder, projects);
             string[] services = [.. Passenger.App.Containers.ComposeText.Of(compose).Entries.Where(e => e.Path.Count == 2 && e.Path[0] == "services").Select(e => e.Path[1])];
             Assert.True(services.SequenceEqual(["foo-bar", "foo-bar-2", "postgres-2", "postgres"]), $"compose.yaml's services are [{string.Join(", ", services)}]:\n{compose}");
-            Assert.Equal(["foo-bar", "foo-bar-2", "postgres-2", "postgres:17"],
+            Assert.Equal(["foo-bar", "foo-bar-2", "postgres-2", "postgres:18"],
                 Passenger.App.Containers.ComposeText.Of(compose).Entries.Where(e => e.Path.Count == 3 && e.Path[2] == "image").Select(e => e.Scalar));
             Assert.Contains("    depends_on:\n      postgres:\n", compose, StringComparison.Ordinal);
         }
@@ -964,10 +964,11 @@ public sealed class DockerFilesTests : IClassFixture<DockerFilesTests.Shop>
                 + "      ConnectionStrings__Reports: \"Server=sqlserver,1433;Database=reports;User Id=sa;Password=${MSSQL_SA_PASSWORD:-Passenger_dev1};TrustServerCertificate=True\"\n"
                 + "      ConnectionStrings__Cache: \"redis:6379\"\n    depends_on:\n", compose, StringComparison.Ordinal);
             Assert.DoesNotContain("ConnectionStrings__Local", compose, StringComparison.Ordinal);
-            Assert.Contains("  postgres:\n    image: postgres:17\n    environment:\n      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}\n      POSTGRES_DB: orders\n",
-                compose, StringComparison.Ordinal);
-            Assert.Contains("  sqlserver:\n    # SQL Server's image makes no database: reports is the app's to make (EF Core's Migrate or EnsureCreated) or yours, with sqlcmd\n",
-                compose, StringComparison.Ordinal);
+            Assert.Contains("  postgres:\n    image: postgres:18\n    environment:\n      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}\n      POSTGRES_DB: orders\n"
+                + "    volumes:\n      - postgres-data:/var/lib/postgresql\n", compose, StringComparison.Ordinal);
+            Assert.Contains("  sqlserver:\n    # SQL Server's image makes no database: reports is the app's to make (EF Core's Migrate or EnsureCreated) or yours, with sqlcmd\n"
+                + "    image: mcr.microsoft.com/mssql/server:2025-latest\n    platform: linux/amd64\n    environment:\n      ACCEPT_EULA: \"Y\"\n", compose, StringComparison.Ordinal);
+            Assert.Contains("  redis:\n    image: redis:8\n    healthcheck:\n      test: [\"CMD\", \"redis-cli\", \"ping\"]\n", compose, StringComparison.Ordinal);
             if (Docker.WhyNot is null)
             {
                 Docker.Run("compose", "-f", Path.Combine(folder, "compose.yaml"), "config", "--quiet");
@@ -978,6 +979,167 @@ public sealed class DockerFilesTests : IClassFixture<DockerFilesTests.Shop>
             window.Close();
         }
     }
+
+    /// <summary>The Postgres Add > Docker Compose writes keeps its data in its volume, mounted where its image keeps each
+    /// major's data (/var/lib/postgresql from 18 on), so what was written there is there again once Stop has taken its
+    /// container away and Run has made it anew. Skipped, saying why, without a Linux engine or Postgres's image, which it
+    /// never pulls; the volume carries the run's label, so the run's end removes it should the test not.</summary>
+    [AvaloniaFact]
+    public void Add_docker_composes_postgres_keeps_its_data_once_Stop_and_Run_make_its_container_anew()
+    {
+        Assert.SkipWhen(Docker.WhyNot is not null, Docker.WhyNot ?? string.Empty);
+        string image = Passenger.Workspace.BackingService.Known.Single(k => k.Service == "postgres").Image;
+        Assert.SkipWhen(Docker.Said("image", "inspect", image) is null, $"The engine lacks {image}, which this test never pulls: pull it to run the test");
+        string folder = Fresh("docker-kept-",
+            ("Orders.slnx", "<Solution>\n  <Project Path=\"Orders/Orders.csproj\" />\n</Solution>\n"),
+            ("nuget.config", Shop.NuGetConfig),
+            ("Orders/Orders.csproj", WebProject.Replace("</Project>", "  <ItemGroup>\n    <PackageReference Include=\"Npgsql\" Version=\"9.0.3\" />\n  </ItemGroup>\n</Project>",
+                StringComparison.Ordinal)),
+            ("Orders/Program.cs", WebProgram),
+            ("Orders/appsettings.json", "{\n  \"ConnectionStrings\": {\n    \"Main\": \"Host=localhost;Database=orders;Username=app;Password=secret\"\n  }\n}\n"),
+            ("labelled.yaml", $"volumes:\n  postgres-data:\n    labels: [\"{Docker.RunLabel}\"]\n"));
+        string root = PathNames.Canonical(folder);
+        MainWindow window = OpenOwn(Path.Combine(folder, "Orders.slnx"));
+        string? project = null;
+        try
+        {
+            AwaitEvaluated(window, 1);
+            Assert.Null(Ui.Await(window.AddDockerComposeAsync([Path.Combine(root, "Orders", "Orders.csproj")], ["postgres"]), "compose.yaml added"));
+            Ui.WaitFor(() => window.Configurations.Any(c => c.Kind == Passenger.App.Run.RunKind.Compose),
+                () => $"compose.yaml's run configuration: [{string.Join(", ", window.Configurations.Select(c => c.Name))}]");
+            Passenger.App.Run.RunConfiguration compose = window.Configurations.First(c => c.Kind == Passenger.App.Run.RunKind.Compose);
+            // The app is left unstarted, as a person runs a database alone; its build reaches no feed here.
+            Passenger.App.Run.RunConfiguration postgres = compose.Copied() with
+            {
+                Name = "Postgres",
+                ComposeFiles = [.. compose.ComposeFiles, Path.Combine(root, "labelled.yaml")],
+                ServiceActions = new Dictionary<string, Passenger.App.Run.ServiceStart> { ["orders"] = Passenger.App.Run.ServiceStart.DontStart },
+                Generated = false,
+            };
+            window.SetConfigurations([postgres], postgres.Name);
+
+            string first = Healthy(window, "Run to bring postgres up");
+            project = window.Builds.Containers!.Plan.ProjectName;
+            Assert.Equal($"{image} {project}_postgres-data /var/lib/postgresql",
+                Docker.Run("inspect", "-f", "{{.Config.Image}}{{range .Mounts}} {{.Name}} {{.Destination}}{{end}}", first));
+            Docker.Run("exec", first, "psql", "-U", "postgres", "-d", "orders", "-c", "create table kept (word text); insert into kept values ('written before the stop');");
+            Docker.Stopped(window, project, "Stop to take postgres down");
+            Ui.WaitFor(() => !window.IsRunning, "the log to stop being followed");
+
+            string again = Healthy(window, "Run to bring postgres up again");
+            Assert.NotEqual(first, again);
+            Assert.Equal("written before the stop", Docker.Run("exec", again, "psql", "-U", "postgres", "-d", "orders", "-tAc", "select word from kept"));
+        }
+        finally
+        {
+            window.Perform(AppActions.Stop);
+            if (project is not null)
+            {
+                Docker.TakenDown(project, "Stop to take postgres down");
+            }
+            window.Close();
+            if (project is not null)
+            {
+                Docker.Ask(["volume", "rm", "-f", $"{project}_postgres-data"]);
+            }
+        }
+
+        // Its postgres container once the run is up and its healthcheck passes, failing with what it and the run said.
+        static string Healthy(MainWindow window, string what)
+        {
+            string? refused = Ui.Await(window.RunAsync(), what, TimeSpan.FromMinutes(5));
+            Assert.True(refused is null, $"{refused}\n{ContainerRunsTests.Run(window)}");
+            string container = ContainerRunsTests.Container(window.Builds.Containers!.Plan.ProjectName, "postgres");
+            Ui.WaitFor(() => Docker.Said("inspect", "-f", "{{.State.Health.Status}}", container) == "healthy",
+                () => $"postgres to pass its healthcheck; its log ends:\n{Docker.Ask(["logs", "--tail", "20", container])}", TimeSpan.FromMinutes(2));
+            return container;
+        }
+    }
+
+    /// <summary>A compose.yaml Add > Docker Compose wrote before its backing services moved a major (Postgres 17 with its data
+    /// at /var/lib/postgresql/data, SQL Server 2022, Redis 7) keeps them as written: Add > Docker Compose refuses, the
+    /// solution having one, and a project joining it as a service leaves every line there, so no one's data is handed to
+    /// a major it was not made by.</summary>
+    [AvaloniaFact]
+    public void A_compose_file_written_before_keeps_its_backing_services_majors_and_mounts_as_a_project_joins_it()
+    {
+        File.WriteAllText(app.PathOf("compose.yaml"), EarlierServices + EarlierRest);
+        MainWindow window = app.Open(null);
+        try
+        {
+            AwaitEvaluated(window);
+            Assert.Null(window.ShowDockerCompose());
+            Assert.Contains("has a compose file already", window.Status, StringComparison.Ordinal);
+            using (Passenger.App.Editors.CommandHistory.Recording made = window.EditorArea.Commands.Record("Join compose.yaml"))
+            {
+                Assert.Null(Ui.Await(window.AddComposeServiceAsync(app.PathOf("Worker/Worker.csproj"), made), "Worker to join compose.yaml"));
+            }
+            string compose = File.ReadAllText(app.PathOf("compose.yaml"));
+            Assert.True(compose.StartsWith(EarlierServices + "  worker:\n    build:\n", StringComparison.Ordinal) && compose.EndsWith(EarlierRest, StringComparison.Ordinal),
+                $"Worker's joining changed the services compose.yaml had, or what follows them:\n{compose}");
+        }
+        finally
+        {
+            window.Close();
+            app.Reset();
+        }
+    }
+
+    /// <summary>The services of a compose.yaml as Add > Docker Compose wrote it before its backing services moved a major.</summary>
+    private static readonly string EarlierServices = """
+        # SQL Server's image has no arm64 build: on an Arm machine (Apple silicon) it runs as amd64 under emulation
+        services:
+          api:
+            build:
+              context: .
+              dockerfile: Api/Dockerfile
+              secrets:
+                - nugetconfig
+            image: api
+            ports:
+              - "5080:5080"
+            environment:
+              ConnectionStrings__Shop: "Host=postgres;Port=5432;Database=shop;Username=postgres;Password=${POSTGRES_PASSWORD:-postgres}"
+            depends_on:
+              postgres:
+                condition: service_healthy
+          postgres:
+            image: postgres:17
+            environment:
+              POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+              POSTGRES_DB: shop
+            volumes:
+              - postgres-data:/var/lib/postgresql/data
+            healthcheck:
+              test: ["CMD-SHELL", "pg_isready -U postgres"]
+              interval: 5s
+              timeout: 5s
+              retries: 10
+          sqlserver:
+            image: mcr.microsoft.com/mssql/server:2022-latest
+            platform: linux/amd64
+            environment:
+              ACCEPT_EULA: "Y"
+              MSSQL_SA_PASSWORD: ${MSSQL_SA_PASSWORD:-Passenger_dev1}
+            volumes:
+              - sqlserver-data:/var/opt/mssql
+            healthcheck:
+              test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P \"$$MSSQL_SA_PASSWORD\" -C -Q 'SELECT 1' || exit 1"]
+              interval: 5s
+              timeout: 5s
+              retries: 10
+              start_period: 20s
+          redis:
+            image: redis:7
+            healthcheck:
+              test: ["CMD", "redis-cli", "ping"]
+              interval: 5s
+              timeout: 5s
+              retries: 10
+        """.ReplaceLineEndings("\n") + "\n";
+
+    /// <summary>What follows <see cref="EarlierServices"/> in that file: its volumes and its build's secret.</summary>
+    private const string EarlierRest = "\nvolumes:\n  postgres-data:\n  sqlserver-data:\n\nsecrets:\n  nugetconfig:\n    file: nuget.config\n";
 
     /// <summary>A project gets ASP.NET Core's image when the framework reaches it through a project it references (as
     /// evaluated) or a package (as its restore says), not only through its own SDK.</summary>
@@ -1259,8 +1421,8 @@ public sealed class DockerFilesTests : IClassFixture<DockerFilesTests.Shop>
         /// <summary>What Add > Docker Compose writes for Api alone.</summary>
         public const string Compose = "services:\n  api:\n    build:\n      context: .\n      dockerfile: Api/Dockerfile\n      secrets:\n        - nugetconfig\n    image: api\n    ports:\n      - \"5080:5080\"\n"
             + "    environment:\n      ConnectionStrings__Shop: \"Host=postgres;Port=5432;Database=shop;Username=postgres;Password=${POSTGRES_PASSWORD:-postgres}\"\n"
-            + "    depends_on:\n      postgres:\n        condition: service_healthy\n  postgres:\n    image: postgres:17\n    environment:\n"
-            + "      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}\n      POSTGRES_DB: shop\n    volumes:\n      - postgres-data:/var/lib/postgresql/data\n    healthcheck:\n"
+            + "    depends_on:\n      postgres:\n        condition: service_healthy\n  postgres:\n    image: postgres:18\n    environment:\n"
+            + "      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}\n      POSTGRES_DB: shop\n    volumes:\n      - postgres-data:/var/lib/postgresql\n    healthcheck:\n"
             + "      test: [\"CMD-SHELL\", \"pg_isready -U postgres\"]\n      interval: 5s\n      timeout: 5s\n      retries: 10\n\nvolumes:\n  postgres-data:\n"
             + "\nsecrets:\n  nugetconfig:\n    file: nuget.config\n";
 
