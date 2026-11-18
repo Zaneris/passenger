@@ -46,7 +46,7 @@ public static class ToolButtons
         {
             Classes = { StyleClasses.Outcome },
             Focusable = false,
-            Content = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 5, Children = { mark, count } },
+            Content = new StackPanel { Orientation = Orientation.Horizontal, Spacing = Gaps.Tight, Children = { mark, count } },
         };
         return Tip(button, tip);
     }

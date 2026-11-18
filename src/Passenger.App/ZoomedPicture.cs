@@ -22,10 +22,10 @@ public sealed class ZoomedPicture : ScrollViewer
     private static readonly double[] Steps = [0.1, 0.25, 0.33, 0.5, 0.67, 0.75, 1, 1.25, 1.5, 2, 3, 4, 6, 8, 12, 16];
 
     /// <summary>The space around the picture.</summary>
-    public const double Gap = 12;
+    public const double Gap = Gaps.Wide;
 
     private readonly Image image = new() { Stretch = Stretch.Fill };
-    private readonly TextBlock zoomText = new() { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0), FontSize = 12 };
+    private readonly TextBlock zoomText = new() { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(Gaps.Normal, 0), FontSize = 12 };
 
     /// <summary>How the zoom follows the room: not at all once zoomed, fitted but never enlarged (a preview's start), or
     /// fitted whole (Fit Zoom to Window).</summary>
@@ -44,7 +44,7 @@ public sealed class ZoomedPicture : ScrollViewer
         VerticalScrollBarVisibility = ScrollBarVisibility.Auto;
         Border framed = new()
         {
-            BorderThickness = new Thickness(1),
+            BorderThickness = Hairlines.Round,
             HorizontalAlignment = HorizontalAlignment.Center,
             VerticalAlignment = VerticalAlignment.Center,
             Margin = new Thickness(Gap),
@@ -57,8 +57,8 @@ public sealed class ZoomedPicture : ScrollViewer
         Tools = new StackPanel
         {
             Orientation = Orientation.Horizontal,
-            Spacing = 2,
-            Margin = new Thickness(6, 0),
+            Spacing = Gaps.Hair,
+            Margin = new Thickness(Gaps.Small, 0),
             VerticalAlignment = VerticalAlignment.Center,
             Children =
             {

@@ -50,7 +50,7 @@ public sealed class EmptyState : StackPanel
         else
         {
             // The link sits under the words as their next line, not a paragraph apart.
-            words.Margin = new Thickness(16, 16, 16, 4);
+            words.Margin = new Thickness(Gaps.Group, Gaps.Group, Gaps.Group, Gaps.Tight);
         }
     }
 

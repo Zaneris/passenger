@@ -191,9 +191,9 @@ public sealed class RunRowView : DockPanel
     private readonly Action<Uri> browse;
     private readonly string linkName;
     private readonly RowIcon chevron;
-    private readonly Ellipse dot = new() { Width = 8, Height = 8, Margin = new Thickness(0, 0, 8, 0), VerticalAlignment = VerticalAlignment.Center };
-    private readonly StackPanel right = new() { Orientation = Orientation.Horizontal, Spacing = 6, VerticalAlignment = VerticalAlignment.Center };
-    private readonly StackPanel links = new() { Orientation = Orientation.Horizontal, Spacing = 6, VerticalAlignment = VerticalAlignment.Center };
+    private readonly Ellipse dot = new() { Width = 8, Height = 8, Margin = new Thickness(0, 0, Gaps.Normal, 0), VerticalAlignment = VerticalAlignment.Center };
+    private readonly StackPanel right = new() { Orientation = Orientation.Horizontal, Spacing = Gaps.Small, VerticalAlignment = VerticalAlignment.Center };
+    private readonly StackPanel links = new() { Orientation = Orientation.Horizontal, Spacing = Gaps.Small, VerticalAlignment = VerticalAlignment.Center };
     private readonly TextBlock trailing = RunRows.Words(string.Empty, muted: true, dock: null);
     private readonly TextBlock name = RunRows.Words(string.Empty, muted: false, dock: Dock.Left);
     private readonly TextBlock detail = RunRows.Words(string.Empty, muted: true, dock: null);
@@ -209,7 +209,7 @@ public sealed class RunRowView : DockPanel
         // Its whole box takes a press, not only the glyph's thin strokes.
         chevron = new RowIcon
         {
-            Width = 12, Height = 12, Margin = new Thickness(0, 0, 4, 0), VerticalAlignment = VerticalAlignment.Center,
+            Width = 12, Height = 12, Margin = new Thickness(0, 0, Gaps.Tight, 0), VerticalAlignment = VerticalAlignment.Center,
             ForegroundKey = TokenKeys.TextMuted, Name = "rowChevron",
         };
         chevron.PointerPressed += (_, e) =>
@@ -226,7 +226,7 @@ public sealed class RunRowView : DockPanel
         SetDock(right, Dock.Right);
         right.Children.Add(links);
         right.Children.Add(trailing);
-        detail.Margin = new Thickness(8, 0, 0, 0);
+        detail.Margin = new Thickness(Gaps.Normal, 0, 0, 0);
         detail.FontSize = 12;
         Children.Add(chevron);
         Children.Add(dot);
@@ -243,7 +243,7 @@ public sealed class RunRowView : DockPanel
     {
         RunRow? was = shown;
         shown = row;
-        Margin = new Thickness(6 + (row.Depth * 16), 0, 6, 0);
+        Margin = new Thickness(Gaps.Small + (row.Depth * Gaps.Indent), 0, Gaps.Small, 0);
         chevron.IsVisible = row.Expands;
         chevron.DataKey = row.Expanded ? IconKeys.ChevronDown : IconKeys.ChevronRight;
         dot.IsVisible = !row.Heading && row.State != RunState.None;

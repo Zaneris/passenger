@@ -20,7 +20,7 @@ public static class ToolTabs
             return new ToggleButton { Classes = { StyleClasses.PanelTab }, IsChecked = open, Content = name };
         }
         RowIcon glyph = new() { Width = 10, Height = 10, DataKey = IconKeys.Close };
-        Button button = new() { Classes = { StyleClasses.TabClose }, Content = glyph, Margin = new Thickness(6, 0, 0, 0), [DockPanel.DockProperty] = Dock.Right };
+        Button button = new() { Classes = { StyleClasses.TabClose }, Content = glyph, Margin = new Thickness(Gaps.Small, 0, 0, 0), [DockPanel.DockProperty] = Dock.Right };
         ToolButtons.Tip(button, closeTip);
         button.Click += (_, e) =>
         {

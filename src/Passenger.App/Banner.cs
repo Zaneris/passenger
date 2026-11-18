@@ -11,7 +11,7 @@ namespace Passenger.App;
 /// built by hand.</summary>
 public sealed class Banner : Border
 {
-    private readonly TextBlock words = new() { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(12, 0), FontSize = 12, TextTrimming = TextTrimming.CharacterEllipsis };
+    private readonly TextBlock words = new() { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(Gaps.Wide, 0), FontSize = 12, TextTrimming = TextTrimming.CharacterEllipsis };
     private readonly DockPanel line = new();
 
     public Banner()
@@ -47,7 +47,7 @@ public sealed class Banner : Border
             Content = text,
             FontSize = 12,
             VerticalAlignment = VerticalAlignment.Center,
-            Margin = new Thickness(0, 0, 12, 0),
+            Margin = new Thickness(0, 0, Gaps.Wide, 0),
             [DockPanel.DockProperty] = Dock.Right,
         };
         link.Click += (_, e) =>

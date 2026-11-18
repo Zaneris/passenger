@@ -19,7 +19,7 @@ public static class ToolBars
     /// parts wrap (<see cref="ToolFlow"/>, the Migrations window's, in a narrow window) grows a row at a time.</summary>
     public static Border Top(Control content)
     {
-        Border bar = new() { [DockPanel.DockProperty] = Dock.Top, MinHeight = Height, BorderThickness = new Thickness(0, 0, 0, 1), Child = content };
+        Border bar = new() { [DockPanel.DockProperty] = Dock.Top, MinHeight = Height, BorderThickness = Hairlines.Below, Child = content };
         bar.Bind(Border.BorderBrushProperty, bar.GetResourceObservable(TokenKeys.Divider));
         return bar;
     }
@@ -37,9 +37,9 @@ public static class ToolBars
     /// (<see cref="ToolColumn"/>), its rule at its right.</summary>
     public static Border Side(params Control[] buttons)
     {
-        ToolColumn column = new() { Spacing = 2, Margin = new Thickness(0, 6) };
+        ToolColumn column = new() { Spacing = Gaps.Hair, Margin = new Thickness(0, Gaps.Small) };
         column.Children.AddRange(buttons);
-        Border bar = new() { [DockPanel.DockProperty] = Dock.Left, Width = Width, BorderThickness = new Thickness(0, 0, 1, 0), Child = column };
+        Border bar = new() { [DockPanel.DockProperty] = Dock.Left, Width = Width, BorderThickness = Hairlines.After, Child = column };
         bar.Bind(Border.BorderBrushProperty, bar.GetResourceObservable(TokenKeys.Divider));
         return bar;
     }

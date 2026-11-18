@@ -11,9 +11,8 @@ namespace Passenger.App;
 /// <see cref="Ruled"/> where they are edited in place. UiRulesTests fails titles and ruled rows built by hand.</summary>
 public sealed class ColumnTitles : Border
 {
-    /// <summary>Where a tree list's rows start inside it, past its padding and theirs, so titles over a list stand over its
-    /// columns.</summary>
-    public const double OverList = 10;
+    /// <summary>Where a tree list's rows start inside it, so titles over a list stand over its columns.</summary>
+    public const double OverList = ListRow.TextStart;
 
     /// <summary>The titles' size, a caption's beside the rows' words.</summary>
     private const double TitleSize = 12;
@@ -40,7 +39,7 @@ public sealed class ColumnTitles : Border
             titles[i] = title;
         }
         DockPanel.SetDock(this, Dock.Top);
-        BorderThickness = new Thickness(0, 0, 0, 1);
+        BorderThickness = Hairlines.Below;
         Child = grid;
         this.Bind(BorderBrushProperty, this.GetResourceObservable(TokenKeys.Separator));
     }
@@ -53,7 +52,7 @@ public sealed class ColumnTitles : Border
     /// <param name="inset">Where the rows' grid starts from each side of the table: <see cref="OverList"/> over a tree list.</param>
     /// <param name="cell">Where words start inside a column, as the rows' cells have them.</param>
     /// <param name="numbers">Whether every column after the first holds numbers, its title at its right.</param>
-    public static ColumnTitles Of(string columns, IReadOnlyList<string> titles, double inset = 0, double cell = 8, bool numbers = false) =>
+    public static ColumnTitles Of(string columns, IReadOnlyList<string> titles, double inset = 0, double cell = Gaps.Normal, bool numbers = false) =>
         new(columns, titles, inset, cell, numbers);
 
     /// <summary>A tree list's titles: its first column a name, taking the width the others leave, the rest numbers of the
@@ -98,7 +97,7 @@ public sealed class ColumnTitles : Border
     {
         Grid row = Cells(cells);
         row.MinHeight = ListRow.Height;
-        Border ruled = new() { Child = row, BorderThickness = new Thickness(0, 0, 0, 1) };
+        Border ruled = new() { Child = row, BorderThickness = Hairlines.Below };
         ruled.Bind(BorderBrushProperty, ruled.GetResourceObservable(TokenKeys.Separator));
         return ruled;
     }

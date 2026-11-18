@@ -111,6 +111,15 @@ public sealed class CommitGroup(string name, IReadOnlyList<CommitRow> rows) : Ob
 /// alone.</summary>
 public sealed class CommitView : DockPanel, IOwnKeys
 {
+    /// <summary>A check box's box, as the theme draws one with no words.</summary>
+    private const double CheckWidth = 20;
+
+    /// <summary>A group's check box and the room round it, by which a group with none moves its name in line.</summary>
+    private const double GroupBoxRoom = Gaps.Tight + CheckWidth + Gaps.Hair;
+
+    /// <summary>A file's line past its own check box, under its group's name, by which a file with none moves in line.</summary>
+    private const double FileBoxRoom = GroupBoxRoom - Gaps.Tight + CheckWidth + Gaps.Hair;
+
     private VcsController vcs;
     private readonly ObservableCollection<object> rows = [];
     private readonly Dictionary<string, bool> chosen = [];
@@ -235,8 +244,8 @@ public sealed class CommitView : DockPanel, IOwnKeys
                 ActionRequested?.Invoke(this, action.Id);
             }
         };
-        StackPanel links = new() { Orientation = Orientation.Horizontal, Spacing = 12, Children = { continueRebase, abort } };
-        underWay = new StackPanel { Margin = new Thickness(10, 6, 10, 0), Spacing = 2, IsVisible = false, Children = { underWayText, links } };
+        StackPanel links = new() { Orientation = Orientation.Horizontal, Spacing = Gaps.Wide, Children = { continueRebase, abort } };
+        underWay = new StackPanel { Margin = new Thickness(ListRow.TextStart, Gaps.Small, ListRow.TextStart, 0), Spacing = Gaps.Hair, IsVisible = false, Children = { underWayText, links } };
 
         amend = new CheckBox { Content = "Amend" };
         amend.IsCheckedChanged += (_, _) => IdeErrors.Observe(AmendChangedAsync());
@@ -260,14 +269,14 @@ public sealed class CommitView : DockPanel, IOwnKeys
         };
         Button setUp = new() { Classes = { StyleClasses.Link }, Content = SigningFailure.SetUp, VerticalAlignment = VerticalAlignment.Center };
         setUp.Click += (_, _) => ActionRequested?.Invoke(this, AppActions.CommitSigning);
-        WrapPanel options = new() { Margin = new Thickness(10, 4, 10, 0), ItemSpacing = 16, Children = { amend, signOff, sign, setUp } };
-        unsigned = new TextBlock { TextWrapping = TextWrapping.Wrap, IsVisible = false, Margin = new Thickness(10, 2, 10, 0) };
+        WrapPanel options = new() { Margin = new Thickness(ListRow.TextStart, Gaps.Tight, ListRow.TextStart, 0), ItemSpacing = Gaps.Group, Children = { amend, signOff, sign, setUp } };
+        unsigned = new TextBlock { TextWrapping = TextWrapping.Wrap, IsVisible = false, Margin = new Thickness(ListRow.TextStart, Gaps.Hair, ListRow.TextStart, 0) };
         unsigned.Classes.Add(StyleClasses.Error);
         movesFirst = new CheckBox { Content = MovesFirstTitle, IsChecked = true };
         movesSaid = MutedText.Wrapped(string.Empty);
         movesMessage = new TextBox { Classes = { StyleClasses.Search }, PlaceholderText = "Message of the moves' commit" };
         movesFirst.IsCheckedChanged += (_, _) => movesMessage.IsEnabled = movesFirst.IsChecked == true;
-        movesOffer = new StackPanel { Margin = new Thickness(10, 6, 10, 0), Spacing = 4, IsVisible = false, Children = { movesSaid, movesFirst, movesMessage } };
+        movesOffer = new StackPanel { Margin = new Thickness(ListRow.TextStart, Gaps.Small, ListRow.TextStart, 0), Spacing = Gaps.Tight, IsVisible = false, Children = { movesSaid, movesFirst, movesMessage } };
         message = new TextBox
         {
             Classes = { StyleClasses.Search },
@@ -276,7 +285,7 @@ public sealed class CommitView : DockPanel, IOwnKeys
             PlaceholderText = "Commit Message",
             MinHeight = 90,
             MaxHeight = 220,
-            Margin = new Thickness(10, 4, 10, 8),
+            Margin = new Thickness(ListRow.TextStart, Gaps.Tight, ListRow.TextStart, Gaps.Normal),
             VerticalContentAlignment = VerticalAlignment.Top,
         };
         message.TextChanged += (_, _) => UpdateButtons();
@@ -296,15 +305,15 @@ public sealed class CommitView : DockPanel, IOwnKeys
         StackPanel buttons = new()
         {
             Orientation = Orientation.Horizontal,
-            Spacing = 8,
-            Margin = new Thickness(10, 0, 10, 10),
+            Spacing = Gaps.Normal,
+            Margin = new Thickness(ListRow.TextStart, 0, ListRow.TextStart, ListRow.TextStart),
             Children = { commit, commitAndPush },
         };
         // A window shorter than the form scrolls it, so Commit is still reached sharing a column with another window.
         form = new Border
         {
             [DockProperty] = Dock.Bottom,
-            BorderThickness = new Thickness(0, 1, 0, 0),
+            BorderThickness = Hairlines.Above,
             Child = new ScrollViewer { Content = new StackPanel { Children = { underWay, options, unsigned, movesOffer, message, buttons } } },
         };
         form.Bind(Border.BorderBrushProperty, form.GetResourceObservable(TokenKeys.Divider));
@@ -312,8 +321,8 @@ public sealed class CommitView : DockPanel, IOwnKeys
         StackPanel tools = new()
         {
             Orientation = Orientation.Horizontal,
-            Spacing = 2,
-            Margin = new Thickness(6, 0),
+            Spacing = Gaps.Hair,
+            Margin = new Thickness(Gaps.Small, 0),
             VerticalAlignment = VerticalAlignment.Center,
             Children =
             {
@@ -878,19 +887,19 @@ public sealed class CommitView : DockPanel, IOwnKeys
     /// resolved first). A box follows its item while shown, and a click on it chooses the item it shows.</summary>
     private Control Row()
     {
-        CheckBox groupBox = new() { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(4, 0, 2, 0) };
+        CheckBox groupBox = new() { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(Gaps.Tight, 0, Gaps.Hair, 0) };
         TextBlock groupName = new() { FontWeight = FontWeight.SemiBold, VerticalAlignment = VerticalAlignment.Center };
         TextBlock count = new()
         {
             VerticalAlignment = VerticalAlignment.Center,
-            Margin = new Thickness(8, 0, 0, 0),
+            Margin = new Thickness(Gaps.Normal, 0, 0, 0),
             FontSize = 12,
         };
         count.Classes.Add(StyleClasses.Muted);
-        Button resolve = new() { Classes = { StyleClasses.Link }, Content = "Resolve", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(10, 0, 0, 0) };
+        Button resolve = new() { Classes = { StyleClasses.Link }, Content = "Resolve", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(Gaps.Normal, 0, 0, 0) };
         resolve.Click += (_, _) => ResolveRequested?.Invoke(this, EventArgs.Empty);
         StackPanel groupLine = new() { Orientation = Orientation.Horizontal, Height = ListRow.Height, Children = { groupBox, groupName, count, resolve } };
-        CheckBox fileBox = new() { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(22, 0, 2, 0) };
+        CheckBox fileBox = new() { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(GroupBoxRoom - Gaps.Tight, 0, Gaps.Hair, 0) };
         ChangedFileRow shown = new() { Line = { Margin = default } };
         DockPanel.SetDock(fileBox, Dock.Left);
         DockPanel fileLine = new() { Height = ListRow.Height, Children = { fileBox, shown.Line } };
@@ -925,7 +934,7 @@ public sealed class CommitView : DockPanel, IOwnKeys
                 groupBox.IsVisible = boxed;
                 groupBox.IsChecked = group.IsChosen;
                 groupName.Text = group.Name;
-                groupName.Margin = new Thickness(boxed ? 0 : 26, 0, 0, 0);
+                groupName.Margin = new Thickness(boxed ? 0 : GroupBoxRoom, 0, 0, 0);
                 groupName.Resource(TextBlock.ForegroundProperty, ref groupColour, conflicts ? TokenKeys.Vcs_File_Conflicted : null);
                 count.Text = Core.Plural.Of(group.Rows.Count, "file");
                 resolve.IsVisible = conflicts;
@@ -934,7 +943,7 @@ public sealed class CommitView : DockPanel, IOwnKeys
             {
                 fileBox.IsVisible = file.CanChoose;
                 fileBox.IsChecked = file.CheckState;
-                fileLine.Margin = new Thickness(file.CanChoose ? 0 : 44, 0, 0, 0);
+                fileLine.Margin = new Thickness(file.CanChoose ? 0 : FileBoxRoom, 0, 0, 0);
                 ShowFile(shown, file.Change, vcs.Repository);
             }
             setting = false;
@@ -944,7 +953,7 @@ public sealed class CommitView : DockPanel, IOwnKeys
     /// <summary>The files as this window lists them, without their boxes, for Rollback's question to name.</summary>
     internal static Control FileList(IReadOnlyList<FileChange> changes, Git? repository)
     {
-        StackPanel lines = new() { Margin = new Thickness(8, 2) };
+        StackPanel lines = new() { Margin = new Thickness(Gaps.Normal, Gaps.Hair) };
         foreach (FileChange change in changes.OrderBy(c => c.Kind is ChangeKind.Unversioned).ThenBy(c => c.Path, StringComparer.Ordinal))
         {
             lines.Children.Add(FileLine(change, repository));

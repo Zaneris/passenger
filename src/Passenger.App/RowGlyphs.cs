@@ -14,7 +14,7 @@ public sealed class RowGlyphs : Control
     private const double Column = 18;
     private const double ChevronSize = 10;
     private const double IconSize = 16;
-    private const double Gap = 6;
+    private const double Gap = Gaps.Small;
 
     public static readonly StyledProperty<bool> HasChevronProperty = AvaloniaProperty.Register<RowGlyphs, bool>(nameof(HasChevron));
     public static readonly StyledProperty<bool> TurnedProperty = AvaloniaProperty.Register<RowGlyphs, bool>(nameof(Turned));

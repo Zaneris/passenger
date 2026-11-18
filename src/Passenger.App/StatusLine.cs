@@ -12,7 +12,7 @@ namespace Passenger.App;
 public sealed class StatusLine : Panel
 {
     /// <summary>The room between a cut path and the message after it, as between the bar's widgets.</summary>
-    private const double Gap = 18;
+    private const double Gap = Gaps.Group;
 
     /// <summary>The share of the line the path keeps, whatever the message's length, where that leaves the message its
     /// <see cref="MessageLeast"/>.</summary>
