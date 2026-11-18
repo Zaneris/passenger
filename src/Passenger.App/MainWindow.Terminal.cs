@@ -22,6 +22,7 @@ public partial class MainWindow
             Tools = () => terminal?.HeaderTools,
             Menus = [new MenuPlace("Tools", 0, 2)],
             Activate = ToggleTerminal,
+            TakesKeysAsShown = true,
         });
         actions!.Add(new IdeAction(AppActions.NewTerminalSession, "New Terminal Session", "Terminal", _ => IdeErrors.Observe(NewTerminalSessionAsync())) { FromTerminal = true });
     }

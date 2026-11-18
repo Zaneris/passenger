@@ -590,8 +590,8 @@ public sealed class DockHost : Grid
                 && (standing.Anchor, standing.Order, standing.Shown, standing.Closed, standing.Mode) == (placed.Anchor, placed.Order, placed.Shown, placed.Closed, placed.Mode));
     }
 
-    /// <summary>Shows a window in its place, hiding the one that was there; for an attached agent's call, behind
-    /// (<see cref="ShowBehind"/>).</summary>
+    /// <summary>Shows a window in its place, hiding the one that was there, with the keys where it takes them as shown
+    /// (<see cref="ToolWindow.TakesKeysAsShown"/>); for an attached agent's call, behind (<see cref="ShowBehind"/>).</summary>
     public void Show([IdentifierOf(typeof(ToolWindowIds))] string id) => Show(id, forward: !AgentAsks.Beside);
 
     /// <summary>Shows a window in its place as <see cref="Show(string)"/> does, but brings no window forward: a floating or
@@ -654,6 +654,12 @@ public sealed class DockHost : Grid
         }
         Layout();
         LayoutChanged?.Invoke(this, EventArgs.Empty);
+        if (forward && window.TakesKeysAsShown && !AgentAsks.Inputting)
+        {
+            // A view just put in its place joins the window as the window is laid out.
+            UpdateLayout();
+            window.TakeKeys();
+        }
     }
 
     /// <summary>Brings a window into view as the person asks for it (<see cref="Bring"/>) and gives it the keys

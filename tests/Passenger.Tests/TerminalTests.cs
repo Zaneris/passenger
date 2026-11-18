@@ -485,12 +485,132 @@ public sealed class TerminalTests
             Assert.True(Screenshot.Prepare(window, LaunchOptions.Parse([folder]), []), "The window never settled");
             Ui.WaitFor(() => window.TerminalPanel.Active is { IsRunning: true }, "the shell to start");
             TerminalSession shell = window.TerminalPanel.Active!;
+            // A layout's Terminal takes no keys as it shows: a click in it gives them.
+            Ui.Click(window.TerminalPanel.View);
+            Ui.WaitFor(() => window.TerminalPanel.View.IsFocused, "the keys to go to the terminal clicked");
 
             Run(window, OperatingSystem.IsWindows() ? "echo %CD%" : "pwd");
             string where = PathNames.Canonical(folder);
             Ui.WaitFor(() => Screen(shell).Contains(where, StringComparison.Ordinal),
                 () => $"the shell shown as the window was made started outside the folder it opened on:\n{Screen(shell)}");
             Assert.True(window.TerminalPanel.Tabs.Count == 1, $"{window.TerminalPanel.Tabs.Count} shells were started for the one window shown");
+            window.Close();
+        }
+        finally
+        {
+            TestFolders.Delete(folder);
+        }
+    }
+
+    /// <summary>Under Bonbon, whose layout opens the Terminal as Slate's and Phosphor's do, a window opening on a folder and a
+    /// file gives the file's editor the keys, whether it starts after it shows (a screenshot's, an agent's) or as it shows
+    /// (the person's): the Terminal's first shell starts beside it without them, and what is typed goes into the file.</summary>
+    [AvaloniaFact]
+    public void A_window_opening_under_a_theme_whose_layout_shows_the_terminal_gives_the_file_it_opens_the_keys()
+    {
+        Assert.Null(Ui.Await(ThemeListing.TakeAsync(SourcedTheme.Repository("Bonbon"), code: false), "Bonbon to be kept"));
+        try
+        {
+            Themes.Apply(Application.Current!, SourcedTheme.Repository("Bonbon"), null);
+            foreach (bool startsAsItShows in new[] { false, true })
+            {
+                OpensWithTheKeysInTheFile(new MainWindow { Width = 1200, Height = 800, StartsLanguageServer = false }, startsAsItShows);
+            }
+        }
+        finally
+        {
+            // The theme in force is the process's; the next test starts on Passenger's own.
+            Themes.Apply(Application.Current!, null, null);
+        }
+    }
+
+    /// <summary>The person's window on the layout they left with the Terminal open, starting as it shows on a folder and a
+    /// file, gives the file's editor the keys, and what is typed goes into the file.</summary>
+    [AvaloniaFact]
+    public void A_window_opening_on_a_kept_layout_with_the_terminal_open_gives_the_file_it_opens_the_keys()
+    {
+        string state = TestFolders.Create("terminal-state-");
+        try
+        {
+            MainWindow first = new() { Width = 1200, Height = 800, StateFolder = state, StartsLanguageServer = false };
+            first.Show();
+            first.KeepLayout();
+            first.DockHost.Show(ToolWindowIds.Terminal);
+            first.TerminalPanel.Shell = OperatingSystem.IsWindows() ? ("cmd.exe", []) : ("/bin/sh", []);
+            Ui.Settle();
+            first.Close();
+            Ui.Settle();
+
+            MainWindow window = new() { Width = 1200, Height = 800, StateFolder = state, StartsLanguageServer = false };
+            window.KeepLayout();
+            OpensWithTheKeysInTheFile(window, startsAsItShows: true);
+        }
+        finally
+        {
+            TestFolders.Delete(state);
+        }
+    }
+
+    /// <summary>Opens a window whose layout shows the Terminal on a folder and a file in it, started after it shows or as it
+    /// shows, and finds the file's editor with the keys once the Terminal's shell has started, and typed text in the file.</summary>
+    private static void OpensWithTheKeysInTheFile(MainWindow window, bool startsAsItShows)
+    {
+        string folder = TestFolders.Create("terminal-keys-");
+        try
+        {
+            string notes = Path.Combine(folder, "notes.txt");
+            File.WriteAllText(notes, "written\n");
+            Assert.True(window.DockHost.IsShown(ToolWindowIds.Terminal), "The layout did not show the Terminal as the window was made");
+            window.TerminalPanel.Shell = OperatingSystem.IsWindows() ? ("cmd.exe", []) : ("/bin/sh", []);
+            LaunchOptions launch = LaunchOptions.Parse([folder, "--file", notes]);
+            if (startsAsItShows)
+            {
+                window.Opened += (_, _) => window.Start(launch);
+                window.Show();
+                Ui.Settle();
+            }
+            else
+            {
+                Assert.True(Screenshot.Prepare(window, launch, []), "The window never settled");
+            }
+            Ui.WaitFor(() => window.TerminalPanel.Active is { IsRunning: true } shell && shell.Screen.CursorColumn > 0, "the Terminal's shell to prompt");
+            Ui.Settle();
+            string how = startsAsItShows ? "started as it showed" : "started after it showed";
+            Assert.True(window.EditorArea.Active?.Path == PathNames.Canonical(notes) && window.EditorArea.CodeEditor.IsKeyboardFocusWithin && !window.TerminalPanel.View.IsFocused,
+                $"The window {how} on notes.txt left the keys {(window.TerminalPanel.View.IsFocused ? "in the Terminal its layout showed" : "away from the file")}, the file shown {window.EditorArea.Active?.Path}");
+
+            window.KeyTextInput("typed-into-the-file");
+            Ui.Settle();
+            Assert.True(window.EditorArea.CodeEditor.Document.Snapshot.ToString().Contains("typed-into-the-file", StringComparison.Ordinal)
+                && !Screen(window.TerminalPanel.Active!).Contains("typed-into-the-file", StringComparison.Ordinal),
+                $"What was typed in the window {how} went to the shell rather than the file:\n{Screen(window.TerminalPanel.Active!)}");
+            window.Close();
+        }
+        finally
+        {
+            TestFolders.Delete(folder);
+        }
+    }
+
+    /// <summary>The Terminal shown by a click on its stripe's button takes the keys from the file, as its action gives them,
+    /// so what is typed next goes to its shell.</summary>
+    [AvaloniaFact]
+    public void The_terminal_shown_by_its_stripe_button_takes_the_keys_from_the_file()
+    {
+        string folder = TestFolders.Create("terminal-");
+        try
+        {
+            string notes = Path.Combine(folder, "notes.txt");
+            File.WriteAllText(notes, "written\n");
+            MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+            window.TerminalPanel.Shell = OperatingSystem.IsWindows() ? ("cmd.exe", []) : ("/bin/sh", []);
+            window.OpenFile(notes);
+            Ui.Settle();
+            Assert.True(window.EditorArea.CodeEditor.IsKeyboardFocusWithin, "The file opened without the keys");
+
+            Ui.Click(window.DockHost.GetVisualDescendants().OfType<ToggleButton>().First(b => Equals(b.Tag, ToolWindowIds.Terminal)));
+            Ui.WaitFor(() => window.TerminalPanel.Active is { IsRunning: true } shell && shell.Screen.CursorColumn > 0, "the Terminal's shell to prompt");
+            Ui.WaitFor(() => window.TerminalPanel.View.IsFocused, "the keys to go to the Terminal its stripe's button showed");
             window.Close();
         }
         finally

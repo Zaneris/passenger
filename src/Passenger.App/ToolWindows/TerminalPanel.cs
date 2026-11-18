@@ -43,7 +43,8 @@ public sealed class TerminalTab(TerminalSession session, string name, Run.Termin
 
 /// <summary>The Terminal window: a shell per tab in the open folder, the first started when the window is first
 /// shown, + for another; a tab whose shell ends closes, and the window hides with its last. A run configuration that uses
-/// the terminal runs its program in a tab of its own (<see cref="RunAsync"/>), which stays once it ends.</summary>
+/// the terminal runs its program in a tab of its own (<see cref="RunAsync"/>), which stays once it ends. Shown, it takes
+/// the keys only as asked (<see cref="FocusView"/>, a tab started or chosen), never because a layout shows it.</summary>
 public sealed class TerminalPanel : DockPanel
 {
     private readonly ObservableCollection<TerminalTab> tabs = [];
@@ -78,11 +79,10 @@ public sealed class TerminalPanel : DockPanel
                     firstComing = false;
                     if (tabs.Count == 0)
                     {
-                        IdeErrors.Observe(NewSessionAsync());
+                        IdeErrors.Observe(NewSessionAsync(null, focus: false));
                     }
                 });
             }
-            FocusView();
         };
         Button add = ToolButtons.Of(AppActions.NewTerminalSession, IconKeys.Add, "New Session", action => ActionRequested?.Invoke(this, action));
         HeaderTools = new ShrinkingRow { Spacing = 4, Children = { strip, add } };
@@ -172,14 +172,18 @@ public sealed class TerminalPanel : DockPanel
         return variables;
     }
 
-    /// <summary>Starts a shell in a tab of its own and shows it: in the open folder, or in another (Open In, Terminal).</summary>
-    public async Task<TerminalSession> NewSessionAsync(string? at = null)
+    /// <summary>Starts a shell in a tab of its own and shows it with the keys: in the open folder, or in another (Open In,
+    /// Terminal).</summary>
+    public Task<TerminalSession> NewSessionAsync(string? at = null) => NewSessionAsync(at, focus: true);
+
+    /// <summary>Starts a shell in a tab of its own and shows it, with the keys only where <paramref name="focus"/> says.</summary>
+    private async Task<TerminalSession> NewSessionAsync(string? at, bool focus)
     {
         TerminalSession session = new(view.Session?.Screen.Columns ?? 120, view.Session?.Screen.Rows ?? 30);
         string name = ++opened == 1 ? "Local" : $"Local ({opened})";
         TerminalTab tab = new(session, name);
         tabs.Add(tab);
-        Show(tab);
+        Show(tab, focus);
         session.Exited += (_, _) => Close(tab);
         try
         {
