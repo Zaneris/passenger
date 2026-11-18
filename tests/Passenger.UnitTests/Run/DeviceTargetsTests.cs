@@ -298,6 +298,34 @@ public class DeviceTargetsTests
     }
 
     [Fact]
+    public void A_heads_framework_of_no_platform_carrying_avalonias_desktop_is_this_machine_and_runs_here_with_nothing_chosen()
+    {
+        ProjectModel App(string[] frameworks, params (string Framework, string[] Packages)[] dependencies) => new("/src/Shop/Shop.csproj", "Shop", "Exe", frameworks, [], [], true)
+        {
+            Evaluated = new EvaluatedProject
+            {
+                Path = "/src/Shop/Shop.csproj",
+                Dependencies = [.. dependencies.Select(d => new FrameworkDependencies(d.Framework, [.. d.Packages.Select(p => new PackageDependency(p, "1.0", false))], []))],
+            },
+        };
+        string[] avalonia = ["Microsoft.Maui.Controls", "Avalonia.Controls.Maui", "Avalonia.Controls.Maui.Desktop"];
+        ProjectModel maui = App(["net11.0", "net11.0-android"], ("net11.0", avalonia), ("net11.0-android", ["Microsoft.Maui.Controls", "Avalonia.Controls.Maui"]));
+
+        Assert.Equal("net11.0", DeviceTargets.DesktopHead(maui));
+        DeviceTarget here = DeviceTargets.Here(TargetPlatform.Desktop);
+        Assert.Equal("Desktop (this machine)", here.Shown);
+        Assert.Equal(TargetKind.ThisMachine, here.Kind);
+        Assert.Equal(KeptTarget.Of(here), DeviceTargets.UnchosenDesktop(maui));
+        Assert.Equal("net11.0", DeviceTargets.FrameworkFor(maui.TargetFrameworks, TargetPlatform.Desktop));
+        Assert.Equal("net11.0", DeviceTargets.DesktopHead(App(["net11.0-android", "net11.0"], ("net11.0", ["Avalonia.Desktop"]))));
+        // A framework of no platform kept for tests or a library is no head, nor is a desktop app with no device head.
+        Assert.Null(DeviceTargets.DesktopHead(App(["net11.0", "net11.0-android"], ("net11.0", ["Microsoft.Maui.Controls"]))));
+        Assert.Null(DeviceTargets.UnchosenDesktop(App(["net11.0", "net11.0-android"], ("net11.0", ["Microsoft.Maui.Controls"]))));
+        Assert.Null(DeviceTargets.DesktopHead(App(["net11.0"], ("net11.0", ["Avalonia.Desktop"]))));
+        Assert.Null(DeviceTargets.DesktopHead(App(["net48", "net11.0-android"], ("net48", ["Avalonia.Desktop"]))));
+    }
+
+    [Fact]
     public void An_android_app_is_runnable_though_its_sdk_makes_its_output_a_library()
     {
         ProjectModel Evaluated(string output, string? android) => new("/src/Shop/Shop.csproj", "Shop", output, ["net11.0-android"], [], [], true)
