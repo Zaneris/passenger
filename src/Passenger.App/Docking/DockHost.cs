@@ -371,20 +371,66 @@ public sealed class DockHost : Grid
         };
     }
 
-    /// <summary>Takes a theme's layout as the default (null for Passenger's own); where the windows stand as the default
-    /// before had them, which nobody arranged, they go where the new one puts them, a change the layout kept follows.</summary>
+    /// <summary>Takes a theme's layout as the default (null for Passenger's own), window by window, a change the layout
+    /// kept follows: a window still in the place and the mode the default before gave it goes where the new one puts it,
+    /// and one still open or hidden as that default said opens as the new one says; an area still at that default's size
+    /// takes the new one's. What the person arranged stays as they left it, and where nothing was, the whole of the new
+    /// default is laid as Restore Default Layout lays it.</summary>
     public void UseDefault(ThemeLayout? layout)
     {
         if (ReferenceEquals(layout, themed))
         {
             return;
         }
-        bool unarranged = Stands(Default());
+        DockLayout before = Default();
+        bool unarranged = Stands(before);
         themed = layout;
         if (unarranged)
         {
             RestoreDefault();
+            return;
         }
+        DockLayout now = Capture();
+        DockLayout after = Default();
+        Dictionary<string, DockedWindow> placed = new(now.Windows);
+        HashSet<string> ownOpen = [];
+        foreach (ToolWindow window in windows)
+        {
+            DockedWindow standing = now.Windows[window.Id];
+            DockedWindow was = before.Windows[window.Id];
+            DockedWindow next = after.Windows[window.Id];
+            bool unmoved = (standing.Anchor, standing.Mode) == (was.Anchor, was.Mode);
+            bool ownShown = standing.Shown != was.Shown;
+            if (ownShown && standing.Shown)
+            {
+                ownOpen.Add(window.Id);
+            }
+            placed[window.Id] = standing with
+            {
+                Anchor = unmoved ? next.Anchor : standing.Anchor,
+                Order = unmoved ? next.Order : standing.Order,
+                Mode = unmoved ? next.Mode : standing.Mode,
+                Shown = !standing.Closed && (ownShown ? standing.Shown : next.Shown),
+            };
+        }
+        // A place the new default and the person both open a window in shows the person's.
+        foreach (IGrouping<ToolAnchor, string> place in placed.Where(p => p.Value is { Shown: true, Mode: ToolMode.Docked } && Find(p.Key) is not null)
+            .GroupBy(p => p.Value.Anchor, p => p.Key).Where(g => g.Count() > 1).ToList())
+        {
+            string kept = place.FirstOrDefault(ownOpen.Contains) ?? place.OrderBy(id => placed[id].Order).First();
+            foreach (string other in place.Where(id => id != kept))
+            {
+                placed[other] = placed[other] with { Shown = false };
+            }
+        }
+        Apply(new DockLayout
+        {
+            Windows = placed,
+            LeftWidth = now.LeftWidth == before.LeftWidth ? after.LeftWidth : now.LeftWidth,
+            RightWidth = now.RightWidth == before.RightWidth ? after.RightWidth : now.RightWidth,
+            BottomHeight = now.BottomHeight == before.BottomHeight ? after.BottomHeight : now.BottomHeight,
+        });
+        LayoutChanged?.Invoke(this, EventArgs.Empty);
     }
 
     /// <summary>Whether every window stands docked where a layout puts it, open as it says, the areas at its sizes.</summary>

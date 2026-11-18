@@ -143,8 +143,9 @@ language this Passenger does not know is passed over and named.
 
 Where the tool windows dock when nobody has arranged them: what a window opens on before any layout is kept, and what
 Window | Layout Settings | Restore Default Layout goes back to. A layout you arrange yourself always wins, and is kept as
-yours whatever theme you choose; choosing another theme moves the windows only while they still stand where the theme
-before put them.
+yours whatever theme you choose; choosing another theme moves, window by window, each one still standing where the theme
+before put it, opens or hides it as the new theme says unless you opened or hid it yourself, and gives an area you never
+resized the new theme's size. What you moved, floated, put among the editors, opened, hid or resized stays as you left it.
 
 - `places` names, for any of `leftTop`, `leftBottom`, `rightTop`, `rightBottom`, `bottomLeft` and `bottomRight`, the tool
   windows docked there in their order, before those the theme leaves where Passenger puts them. A window docks in one

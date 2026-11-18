@@ -529,6 +529,48 @@ public sealed class WindowArrangementTests : IDisposable
         }
     }
 
+    [AvaloniaFact]
+    public void A_theme_chosen_moves_each_window_still_where_the_theme_before_put_it_and_keeps_the_one_the_person_moved()
+    {
+        MainWindow window = Open();
+        try
+        {
+            DockHost dock = window.DockHost;
+            dock.Move(dock[ToolWindowIds.Terminal], ToolAnchor.RightBottom);
+            dock.Show(ToolWindowIds.Run);
+            Ui.Settle();
+            DockLayout passengers = dock.Default();
+
+            window.ApplySettings(window.Settings with { Look = SourcedTheme.BuiltIn("Cubicle") });
+            Ui.Settle();
+            DockLayout cubicles = dock.Default();
+            string[] astray = [.. Astray(dock, cubicles, ToolWindowIds.Terminal)];
+            Assert.True(astray.Length == 0 && dock[ToolWindowIds.Explorer] is { Anchor: ToolAnchor.RightTop, IsShown: true },
+                $"Cubicle chosen left {string.Join(", ", astray)} where Cubicle does not put them, the Explorer in {dock[ToolWindowIds.Explorer].Anchor}");
+            Assert.True(dock[ToolWindowIds.Terminal].Anchor == ToolAnchor.RightBottom && dock.IsShown(ToolWindowIds.Run) && !dock.IsShown(ToolWindowIds.Build) && dock.IsShown(ToolWindowIds.Problems),
+                $"Cubicle took the Terminal the person moved to {dock[ToolWindowIds.Terminal].Anchor}, or Run they opened shown {dock.IsShown(ToolWindowIds.Run)} lost its place to Build, "
+                + $"or Problems, unopened, did not open as Cubicle opens it ({dock.IsShown(ToolWindowIds.Problems)})");
+            DockLayout kept = dock.Capture();
+            Assert.True((kept.RightWidth, kept.BottomHeight) == (cubicles.RightWidth, cubicles.BottomHeight),
+                $"The areas nobody resized stand {kept.RightWidth} wide and {kept.BottomHeight} high, where Cubicle gives {cubicles.RightWidth} and {cubicles.BottomHeight}");
+
+            window.ApplySettings(window.Settings with { Look = null });
+            Ui.Settle();
+            astray = [.. Astray(dock, passengers, ToolWindowIds.Terminal)];
+            Assert.True(astray.Length == 0 && dock[ToolWindowIds.Explorer].Anchor == ToolAnchor.LeftTop && dock[ToolWindowIds.Terminal].Anchor == ToolAnchor.RightBottom && dock.IsShown(ToolWindowIds.Run),
+                $"Passenger's own theme chosen again left {string.Join(", ", astray)} where Cubicle put them, the Terminal the person moved in {dock[ToolWindowIds.Terminal].Anchor}, Run shown {dock.IsShown(ToolWindowIds.Run)}");
+        }
+        finally
+        {
+            window.ApplySettings(new AppSettings());
+            window.Close();
+        }
+    }
+
+    /// <summary>The windows but those named that do not stand docked in the place a default layout gives them.</summary>
+    private static IEnumerable<string> Astray(DockHost dock, DockLayout layout, params string[] but) =>
+        dock.Windows.Where(w => !but.Contains(w.Id) && (w.Anchor, w.Mode) != (layout.Windows[w.Id].Anchor, layout.Windows[w.Id].Mode)).Select(w => $"{w.Id} in {w.Anchor}");
+
     /// <summary>The windows on the stripes (closed off them by none) with no stripe icon, shown or behind More.</summary>
     private static string[] Iconless(MainWindow window) =>
         [.. window.DockHost.Windows.Where(w => !w.IsClosed && StripeButton(window, w.Id) is not { IsEffectivelyVisible: true } && !(StripeButton(window, w.Id) is { } hidden && hidden.FindAncestorOfType<Border>() is { IsEffectivelyVisible: true }))
