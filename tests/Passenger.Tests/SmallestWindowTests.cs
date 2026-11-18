@@ -367,11 +367,11 @@ public sealed class SmallestWindowTests
         }
     }
 
-    /// <summary>Under Cubicle at the smallest width, the left stripe, each window of its places named by a titled tab, folds
-    /// away and gives its room to the editors, where it kept 40 units holding nothing; a window dragged by its titled tab
-    /// shows it again as a place to drop on, and dropped there its icon keeps it shown.</summary>
+    /// <summary>Under Cubicle at the smallest width no stripe stands, titled tabs naming every window, so the editors take
+    /// the room a stripe would; a window dragged by its titled tab brings none back, and dropped on the left edge it docks
+    /// at the left as its tab.</summary>
     [AvaloniaFact]
-    public void Under_Cubicle_at_the_smallest_width_the_empty_left_stripe_folds_away_and_shows_while_a_window_is_dragged()
+    public void Under_Cubicle_at_the_smallest_width_no_stripe_stands_even_while_a_window_is_dragged_to_the_left_edge()
     {
         string folder = TestFolders.Create("smallest-stripe-");
         File.WriteAllText(Path.Combine(folder, "One.cs"), "class One { }\n");
@@ -382,9 +382,8 @@ public sealed class SmallestWindowTests
             window.OpenFile(Path.Combine(folder, "One.cs"));
             Ui.Settle();
             DockHost dock = window.DockHost;
-            Border left = StripeBars(window)[0];
-            Assert.True(dock.ColumnDefinitions[0].ActualWidth == 0 && !left.IsEffectivelyVisible && Placed(window, window.EditorArea).Left < 1,
-                $"Cubicle's left stripe, holding no icon, takes {dock.ColumnDefinitions[0].ActualWidth:0.#} units, the editors starting at {Placed(window, window.EditorArea).Left:0.#}");
+            Assert.True(dock.ColumnDefinitions[0].ActualWidth == 0 && !StripeBars(window).Any(b => b.IsEffectivelyVisible) && Placed(window, window.EditorArea).Left < 1,
+                $"Under Cubicle a stripe takes {dock.ColumnDefinitions[0].ActualWidth:0.#} units, the editors starting at {Placed(window, window.EditorArea).Left:0.#}");
 
             ToolWindow build = dock[ToolWindowIds.Build];
             Border tab = dock.GetVisualDescendants().OfType<Border>().FirstOrDefault(b => b.Classes.Contains(StyleClasses.Tab) && Equals(b.Tag, build.Id) && b.IsEffectivelyVisible)
@@ -396,14 +395,16 @@ public sealed class SmallestWindowTests
                 window.MouseMove(from + new Point(0, -20 * step), RawInputModifiers.LeftMouseButton);
             }
             Ui.Settle();
-            Assert.True(dock.ColumnDefinitions[0].ActualWidth == 40 && left.IsEffectivelyVisible,
-                $"With Build dragged, the left stripe takes {dock.ColumnDefinitions[0].ActualWidth:0.#} units: it is no place to drop it");
-            Point onStripe = new(Ui.Centre(left, window).X, Placed(window, left).Top + 60);
-            window.MouseMove(onStripe, RawInputModifiers.LeftMouseButton);
-            window.MouseUp(onStripe, MouseButton.Left);
+            Assert.True(dock.ColumnDefinitions[0].ActualWidth == 0 && !StripeBars(window).Any(b => b.IsEffectivelyVisible),
+                $"With Build dragged, a stripe takes {dock.ColumnDefinitions[0].ActualWidth:0.#} units under Cubicle");
+            Rect editors = Placed(window, window.EditorArea);
+            Point onEdge = new(editors.Left + 4, editors.Top + 60);
+            window.MouseMove(onEdge, RawInputModifiers.LeftMouseButton);
+            window.MouseUp(onEdge, MouseButton.Left);
             Ui.Settle();
-            Assert.True(build.Anchor == ToolAnchor.LeftTop && StripeIcon(window, ToolWindowIds.Build).IsEffectivelyVisible && dock.ColumnDefinitions[0].ActualWidth == 40,
-                $"Build dropped on the left stripe stands at {build.Anchor}, the stripe {dock.ColumnDefinitions[0].ActualWidth:0.#} wide");
+            Assert.True(build.Anchor is ToolAnchor.LeftTop or ToolAnchor.LeftBottom && dock.ColumnDefinitions[0].ActualWidth == 0
+                && !StripeBars(window).Any(b => b.IsEffectivelyVisible),
+                $"Build dropped on the left edge stands at {build.Anchor}, a stripe {dock.ColumnDefinitions[0].ActualWidth:0.#} wide");
         }
         finally
         {
