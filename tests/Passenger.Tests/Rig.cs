@@ -149,7 +149,7 @@ public sealed class TestRun : IAsyncDisposable
         File.WriteAllText(Path.Combine(Root, "zsh", ".zshrc"), string.Empty);
         NuGetHome();
         // No test reaches GitHub: a Passenger that checks for updates without a stand-in asks where nothing listens.
-        Environment.SetEnvironmentVariable(Passenger.App.Updates.ReleaseFeed.Variable, "http://127.0.0.1:9/repos/Zaneris/passenger/releases/latest");
+        Environment.SetEnvironmentVariable(Passenger.App.Updates.ReleaseFeed.Variable, "http://127.0.0.1:9/repos/Zaneris/passenger/releases");
         // Nor any host a browser Passenger starts asks of its own accord (its updates, its services): they go where nothing listens.
         Environment.SetEnvironmentVariable(Passenger.App.Debugging.BrowserRun.ProxyVariable, "127.0.0.1:9");
         // Nor Microsoft's .NET release metadata: Install .NET SDK without a stand-in asks where nothing listens.

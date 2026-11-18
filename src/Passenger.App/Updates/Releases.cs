@@ -1,6 +1,3 @@
-using System.Net;
-using System.Net.Http.Headers;
-using System.Net.Http.Json;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -9,14 +6,15 @@ using Passenger.Packages;
 
 namespace Passenger.App.Updates;
 
-/// <summary>Where Passenger asks for its latest release, GitHub's API unless <c>PASSENGER_RELEASES</c> names another, and
-/// how long it waits for the answer.</summary>
-public sealed record ReleaseFeed(Uri Latest, TimeSpan Timeout)
+/// <summary>Where Passenger asks for its releases, GitHub's API's list of them unless <c>PASSENGER_RELEASES</c> names
+/// another, and how long it waits for the answer.</summary>
+public sealed record ReleaseFeed(Uri Listing, TimeSpan Timeout)
 {
     [IdentifierHome]
     public const string Variable = "PASSENGER_RELEASES";
 
-    public static readonly Uri GitHub = new("https://api.github.com/repos/Zaneris/passenger/releases/latest");
+    /// <summary>GitHub's list of the releases, newest first, a page of the newest 30.</summary>
+    public static readonly Uri GitHub = new("https://api.github.com/repos/Zaneris/passenger/releases");
 
     /// <summary>The releases page, for a release that names neither its own page nor a download for this system.</summary>
     public static readonly Uri GitHubReleases = new("https://github.com/Zaneris/passenger/releases");
@@ -27,11 +25,11 @@ public sealed record ReleaseFeed(Uri Latest, TimeSpan Timeout)
 
     /// <summary>Where a release's files download from, each under its tag (v0.2.0/SHA256SUMS): GitHub's for GitHub's feed,
     /// else the same path on the feed's own host.</summary>
-    public Uri Downloads => Latest == GitHub ? new Uri("https://github.com/Zaneris/passenger/releases/download/") : new Uri(Latest, "/Zaneris/passenger/releases/download/");
+    public Uri Downloads => Listing == GitHub ? new Uri("https://github.com/Zaneris/passenger/releases/download/") : new Uri(Listing, "/Zaneris/passenger/releases/download/");
 
     /// <summary>GitHub's, or the one <c>PASSENGER_RELEASES</c> names (<see cref="EnvironmentValues.Address(string, string)"/>).</summary>
     public static ReleaseFeed Default =>
-        new(EnvironmentValues.Address(Variable, "of a latest release as GitHub's API answers it") ?? GitHub, ShortTimeout);
+        new(EnvironmentValues.Address(Variable, "of the releases as GitHub's API lists them") ?? GitHub, ShortTimeout);
 }
 
 /// <summary>A release newer than the running Passenger: its version ("0.2.0"), its tag ("v0.2.0"), and what its link
@@ -44,8 +42,9 @@ public sealed record LatestRelease(string Version, string Tag, Uri Link, string?
     /// <summary>Every file the release carries that downloads over http or https, by name: what an update downloads.</summary>
     public IReadOnlyList<ReleaseFile> Files { get; init; } = [];
 
-    /// <summary>What a security release says it fixes, its notes' Security section's first line (<see cref="ReleaseNotes.SecurityOf"/>),
-    /// empty where they say nothing more; null for any other release.</summary>
+    /// <summary>What updating to it fixes of security: what the newest security release between the running version and it
+    /// says it fixes, its notes' Security section's first line (<see cref="ReleaseNotes.SecurityOf"/>), empty where they say
+    /// nothing more; null where no release after the running one is a security release.</summary>
     public string? Security { get; init; }
 
     /// <summary>The file the release carries by this name, or null.</summary>
@@ -70,14 +69,19 @@ public abstract record ReleaseAnswer(string Said)
     public sealed record Failed(string Reason, string Said) : ReleaseAnswer(Said);
 }
 
-/// <summary>Asks GitHub's releases/latest, a GET as <see cref="OutboundHttp"/> makes it with the API's media type added:
-/// no token. Pre-releases and drafts are never offered, whether GitHub marks them so or their tag carries a pre-release
-/// label.</summary>
+/// <summary>Asks GitHub's list of releases, one GET as <see cref="OutboundHttp"/> makes it with the API's media type added:
+/// no token. The newest release listed by its version is the latest; pre-releases and drafts are never offered, whether
+/// GitHub marks them so or their tag carries a pre-release label, and say nothing of security.</summary>
 public static partial class Releases
 {
-    /// <summary>The feed's own timeout, or a download's stall, is the one that applies; a release's JSON is some kilobytes,
-    /// and anything far past that is not one.</summary>
+    /// <summary>The feed's own timeout, or a download's stall, is the one that applies.</summary>
     private static readonly HttpClient Http = OutboundHttp.Client(System.Threading.Timeout.InfiniteTimeSpan, most: 4 * 1024 * 1024);
+
+    /// <summary>The most the list may be: a release's notes and downloads are some tens of kilobytes, so a page of 30 a
+    /// few megabytes at most, and anything far past that is no list of Passenger's releases.</summary>
+    private const long ListingLimit = 8 * 1024 * 1024;
+
+    private const string GitHubJson = "application/vnd.github+json";
 
     private static readonly JsonSerializerOptions Json = new() { PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower };
 
@@ -99,7 +103,7 @@ public static partial class Releases
             : null;
     }
 
-    /// <summary>Asks the feed for the latest release and compares it with <paramref name="running"/>, off the caller's
+    /// <summary>Asks the feed for its releases and compares the latest with <paramref name="running"/>, off the caller's
     /// thread. Never throws: a failure, the feed's timeout and <paramref name="cancel"/> included, is an answer.</summary>
     public static async Task<ReleaseAnswer> AskAsync(ReleaseFeed feed, string running, CancellationToken cancel)
     {
@@ -107,19 +111,14 @@ public static partial class Releases
         limit.CancelAfter(feed.Timeout);
         try
         {
-            using HttpRequestMessage request = OutboundHttp.Request(HttpMethod.Get, feed.Latest);
-            request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/vnd.github+json"));
-            using HttpResponseMessage response = await Http.SendAsync(request, limit.Token).ConfigureAwait(false);
-            if (response.StatusCode == HttpStatusCode.NotFound)
+            string missing = $"{feed.Listing} has no releases (404 Not Found)";
+            (byte[]? bytes, string? why) = await OutboundHttp.ReadAsync(Http, feed.Listing, ListingLimit, "The list of releases", missing, GitHubJson, limit.Token).ConfigureAwait(false);
+            if (bytes is null)
             {
-                return new ReleaseAnswer.Current($"{feed.Latest} has no release (404 Not Found)");
+                return why == missing ? new ReleaseAnswer.Current(missing) : Failed(feed, why ?? "it gave no answer");
             }
-            if (!response.IsSuccessStatusCode)
-            {
-                return Failed(feed, $"it answered {(int)response.StatusCode} {response.ReasonPhrase}");
-            }
-            GitHubRelease? release = await response.Content.ReadFromJsonAsync<GitHubRelease>(Json, limit.Token).ConfigureAwait(false);
-            return release is null ? Failed(feed, "its answer is not a release (null)") : Compare(release, running);
+            GitHubRelease[]? releases = JsonSerializer.Deserialize<GitHubRelease[]>(bytes, Json);
+            return releases is null ? Failed(feed, "its answer is not a list of releases (null)") : Compare(releases, running);
         }
         catch (OperationCanceledException) when (!cancel.IsCancellationRequested)
         {
@@ -129,29 +128,48 @@ public static partial class Releases
         {
             return Failed(feed, "the window closed before it answered");
         }
-        catch (Exception error) when (error is HttpRequestException or IOException or NotSupportedException)
+        catch (NotSupportedException error)
         {
             return Failed(feed, error.Message);
         }
         catch (JsonException error)
         {
-            return Failed(feed, $"its answer is not a release ({error.Message})");
+            return Failed(feed, $"its answer is not a list of releases ({error.Message})");
         }
     }
 
-    private static ReleaseAnswer Compare(GitHubRelease release, string running)
+    /// <summary>The newest release listed, offered where it is newer than <paramref name="running"/>, a security update where
+    /// any release after <paramref name="running"/> up to it is a security release, saying what the newest of those fixes.</summary>
+    private static ReleaseAnswer Compare(IReadOnlyList<GitHubRelease?> listed, string running)
     {
-        string tag = release.TagName ?? string.Empty;
-        Match version = Tag().Match(tag);
-        if (release.Draft || release.Prerelease || !version.Success || version.Groups["label"].Success)
+        List<(GitHubRelease Release, string Version)> offered = [];
+        foreach (GitHubRelease? listing in listed)
         {
-            string why = release.Draft ? "a draft" : !version.Success ? "not a version" : "a pre-release";
-            return new ReleaseAnswer.Current($"the latest release, '{tag}', is {why}, and is not offered");
+            if (listing is not null && Offered(listing) is { } version)
+            {
+                offered.Add((listing, version));
+            }
         }
-        string number = version.Groups["version"].Value;
+        if (offered.Count == 0)
+        {
+            return new ReleaseAnswer.Current(listed.Count == 0 ? "no release is out"
+                : $"no release listed is offered, each a draft, a pre-release or no version: {string.Join(", ", listed.Select(r => $"'{r?.TagName}'"))}");
+        }
+        offered = [.. offered.OrderByDescending(r => r.Version, VersionOrder.Instance)];
+        (GitHubRelease release, string number) = offered[0];
+        string tag = release.TagName!;
         if (VersionOrder.Instance.Compare(number, running) <= 0)
         {
             return new ReleaseAnswer.Current($"Passenger {running} is up to date: the latest release is {tag}");
+        }
+        (GitHubRelease By, string Fixes)? marked = null;
+        foreach ((GitHubRelease newer, _) in offered.TakeWhile(r => VersionOrder.Instance.Compare(r.Version, running) > 0))
+        {
+            if (newer.Body is { } body && ReleaseNotes.SecurityOf(body) is { } fixes)
+            {
+                marked = (newer, fixes);
+                break;
+            }
         }
         string? asset = ThisSystemsAsset();
         ReleaseFile[] files = [.. (release.Assets ?? []).Select(a => a.Name is { Length: > 0 } name && WebAddress.Of(a.BrowserDownloadUrl) is { } url
@@ -159,13 +177,22 @@ public static partial class Releases
         Uri? download = files.FirstOrDefault(f => f.Name == asset)?.Url;
         Uri page = WebAddress.Of(release.HtmlUrl) ?? ReleaseFeed.GitHubReleases;
         Uri link = download ?? page;
-        string? security = release.Body is { } body ? ReleaseNotes.SecurityOf(body) : null;
-        return new ReleaseAnswer.Newer(new LatestRelease(number, tag, link, download is null ? null : asset) { Page = page, Files = files, Security = security },
-            $"Passenger {number} is out ({tag}; this is {running}){(security is null ? string.Empty : ", a security release")}: {link}");
+        string security = marked is not { By: var by } ? string.Empty
+            : by == release ? ", a security release"
+            : $", a security update as {by.TagName} is a security release";
+        return new ReleaseAnswer.Newer(new LatestRelease(number, tag, link, download is null ? null : asset) { Page = page, Files = files, Security = marked?.Fixes },
+            $"Passenger {number} is out ({tag}; this is {running}){security}: {link}");
     }
 
+    /// <summary>A release's version where it may be offered, a release that is neither a draft nor a pre-release by GitHub's
+    /// mark or its tag's label; null for any other.</summary>
+    private static string? Offered(GitHubRelease release) =>
+        !release.Draft && !release.Prerelease && Tag().Match(release.TagName ?? string.Empty) is { Success: true } version && !version.Groups["label"].Success
+            ? version.Groups["version"].Value
+            : null;
+
     private static ReleaseAnswer.Failed Failed(ReleaseFeed feed, string reason) =>
-        new(reason, $"could not ask {feed.Latest} for the latest release: {reason}");
+        new(reason, $"could not ask {feed.Listing} for the latest release: {reason}");
 
     /// <summary>A release's tag: a version of two to four numbers, a v before it or not, a pre-release label and build
     /// metadata after it or not.</summary>

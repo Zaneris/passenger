@@ -53,11 +53,20 @@ public static class OutboundHttp
     /// <summary>What an address answers, read whole through <paramref name="client"/> and held to <paramref name="most"/>
     /// bytes, refused unread where its length says more; else why not: <paramref name="missing"/> where it answers 404, its
     /// size where past the most (<paramref name="named"/> naming it), its status, or why no answer came.</summary>
-    public static async Task<(byte[]? Bytes, string? Why)> ReadAsync(HttpClient client, Uri address, long most, string named, string missing, CancellationToken cancel)
+    public static Task<(byte[]? Bytes, string? Why)> ReadAsync(HttpClient client, Uri address, long most, string named, string missing, CancellationToken cancel) =>
+        ReadAsync(client, address, most, named, missing, accepting: null, cancel);
+
+    /// <summary>What an address answers as <see cref="ReadAsync(HttpClient, Uri, long, string, string, CancellationToken)"/>
+    /// reads it, the request asking for <paramref name="accepting"/>'s media type where one is given (GitHub's API's own).</summary>
+    public static async Task<(byte[]? Bytes, string? Why)> ReadAsync(HttpClient client, Uri address, long most, string named, string missing, string? accepting, CancellationToken cancel)
     {
         try
         {
             using HttpRequestMessage request = Request(HttpMethod.Get, address);
+            if (accepting is not null)
+            {
+                request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue(accepting));
+            }
             using HttpResponseMessage response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancel).ConfigureAwait(false);
             if (response.StatusCode == HttpStatusCode.NotFound)
             {

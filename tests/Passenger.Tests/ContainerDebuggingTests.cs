@@ -311,7 +311,7 @@ public sealed class ContainerDebuggingTests(ContainerDebuggingTests.Turns turns)
         github.Serve(tag, "SHA256SUMS", Encoding.UTF8.GetBytes($"{Convert.ToHexStringLower(SHA256.HashData((byte[])[1, 2, 3]))}  {asset}\n"));
         string refusing = Start("refused", turns.Glibc);
         string badCache = TestFolders.Create("tools-bad-");
-        MainWindow refused = Open(turns.Source("host"), new ContainerToolsSource([], new ReleaseFeed(github.Latest, TimeSpan.FromSeconds(5)), badCache));
+        MainWindow refused = Open(turns.Source("host"), new ContainerToolsSource([], new ReleaseFeed(github.Listing, TimeSpan.FromSeconds(5)), badCache));
         try
         {
             AttachToProcessDialog dialog = OpenAttachToProcess(refused);
@@ -332,7 +332,7 @@ public sealed class ContainerDebuggingTests(ContainerDebuggingTests.Turns turns)
         github.Serve(tag, "SHA256SUMS", Encoding.UTF8.GetBytes($"{Convert.ToHexStringLower(SHA256.HashData(archive))}  {asset}\n"));
         string container = Start("download", turns.Glibc);
         string cache = TestFolders.Create("tools-cache-");
-        MainWindow window = Open(turns.Source("host"), new ContainerToolsSource([], new ReleaseFeed(github.Latest, TimeSpan.FromSeconds(5)), cache));
+        MainWindow window = Open(turns.Source("host"), new ContainerToolsSource([], new ReleaseFeed(github.Listing, TimeSpan.FromSeconds(5)), cache));
         try
         {
             AttachToProcessDialog dialog = OpenAttachToProcess(window);

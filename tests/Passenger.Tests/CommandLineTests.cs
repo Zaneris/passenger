@@ -144,7 +144,7 @@ public sealed class CommandLineTests : IDisposable
     [InlineData(global::Passenger.App.Mobile.AndroidLicences.Variable, "repository2-3.xml")]
     [InlineData(global::Passenger.Core.DotnetReleases.Variable, "releases")]
     [InlineData(global::Passenger.App.Xaml.SourceLink.Variable, "symbols")]
-    [InlineData(global::Passenger.App.Updates.ReleaseFeed.Variable, "http://192.0.2.10/repos/Zaneris/passenger/releases/latest")]
+    [InlineData(global::Passenger.App.Updates.ReleaseFeed.Variable, "http://192.0.2.10/repos/Zaneris/passenger/releases")]
     [InlineData(global::Passenger.App.Web.JsonSchemas.Variable, "http://192.0.2.10/")]
     [InlineData(global::Passenger.App.Web.DockerHubTags.Variable, "http://192.0.2.10/")]
     [InlineData(global::Passenger.App.OpenVsx.Variable, "http://192.0.2.10/")]

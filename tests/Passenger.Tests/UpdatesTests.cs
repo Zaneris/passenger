@@ -79,7 +79,7 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
         Assert.Contains(Ui.IdeLog().Split('\n'), line => line.Contains($"Updates: Passenger {newer} is out (v{newer}; this is {Product.Version}): {download}", StringComparison.Ordinal));
 
         string[] head = github.Requests[0].Split("\r\n", StringSplitOptions.RemoveEmptyEntries);
-        Assert.Equal($"GET {github.Latest.PathAndQuery} HTTP/1.1", head[0]);
+        Assert.Equal($"GET {github.Listing.PathAndQuery} HTTP/1.1", head[0]);
         Assert.Contains($"User-Agent: Passenger/{Product.Version}", head);
         string[] headers = [.. head.Skip(1).Select(h => h.Split(':')[0]).Order(StringComparer.OrdinalIgnoreCase)];
         Assert.True(headers.SequenceEqual(["Accept", "Host", "User-Agent"], StringComparer.OrdinalIgnoreCase),
@@ -157,7 +157,8 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
             ("a newer pre-release by its tag", Release($"v{Bumped(1, 0)}-beta.1")),
             ("a newer release GitHub marks a pre-release", Release($"v{Bumped(1, 0)}", prerelease: true)),
             ("a newer draft", Release($"v{Bumped(1, 0)}", draft: true)),
-            ("no release at all", new StandIn.Reply(404, """{"message":"Not Found"}""")),
+            ("no release at all", Listed()),
+            ("no list of releases (404 Not Found)", new StandIn.Reply(404, """{"message":"Not Found"}""")),
         ];
         foreach ((string what, StandIn.Reply answer) in nothingNewer)
         {
@@ -210,7 +211,7 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
     public void A_failed_or_unanswered_check_says_nothing_and_is_logged_and_Check_for_Updates_says_why()
     {
         using IDisposable theme = TestsTheme();
-        Assert.True(ReleaseFeed.Default.Latest.IsLoopback, $"A test's window would ask {ReleaseFeed.Default.Latest} for the latest release, not a loopback address");
+        Assert.True(ReleaseFeed.Default.Listing.IsLoopback, $"A test's window would ask {ReleaseFeed.Default.Listing} for the latest release, not a loopback address");
 
         github.Answer = new StandIn.Reply(500, """{"message":"Server Error"}""");
         MainWindow window = Started();
@@ -219,7 +220,7 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
         Ui.Settle();
         Assert.True(github.Requests.Count == 1, "The window did not ask for the latest release as it started");
         Assert.True(Notice(window) is null && window.Status == before, $"A check that failed was shown or said, where it is only logged: {UpdatesSaid(window)}");
-        Assert.Contains(Ui.IdeLog().Split('\n'), line => line.Contains($"Updates: could not ask {github.Latest} for the latest release: it answered 500 Internal Server Error", StringComparison.Ordinal));
+        Assert.Contains(Ui.IdeLog().Split('\n'), line => line.Contains($"Updates: could not ask {github.Listing} for the latest release: {github.Listing} answers 500 Internal Server Error", StringComparison.Ordinal));
         window.Close();
 
         // A server that takes the request and never answers is given up on at the feed's timeout.
@@ -229,7 +230,7 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
         Ui.Settle();
         Assert.True(github.Requests.Count == 2, "The window did not ask for the latest release as it started");
         Assert.True(Notice(window) is null && window.Status == before, $"A check never answered was shown or said, where it is only logged: {UpdatesSaid(window)}");
-        Assert.Contains(Ui.IdeLog().Split('\n'), line => line.Contains($"Updates: could not ask {github.Latest} for the latest release: no answer in 1 s", StringComparison.Ordinal));
+        Assert.Contains(Ui.IdeLog().Split('\n'), line => line.Contains($"Updates: could not ask {github.Listing} for the latest release: no answer in 1 s", StringComparison.Ordinal));
 
         CheckForUpdates(window);
         Assert.Equal("Could not check for updates: no answer in 1 s", window.Status);
@@ -335,6 +336,70 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
         Assert.DoesNotContain("security", ToolTip.GetTip(window.FindControl<Button>("UpdateButton")!) as string ?? string.Empty, StringComparison.OrdinalIgnoreCase);
         Assert.Equal(before, window.Status);
         window.Close();
+    }
+
+    /// <summary>A release after a security release this version lacks is a security update in that release's words, however
+    /// many releases came between, a newer pre-release's or draft's mark passed over; once this version is that security
+    /// release or newer, a release after it says nothing of security.</summary>
+    [AvaloniaFact]
+    public void A_release_after_a_security_release_this_version_lacks_is_a_security_update_in_that_releases_words()
+    {
+        using IDisposable theme = TestsTheme();
+        string marked = Bumped(1, 0);
+        string newer = Bumped(1, 1);
+        string unreleased = "## Security\n\n- A fix not yet released.\n";
+        github.Answer = Listed(
+            Made($"v{Bumped(1, 3)}", draft: true, body: $"{ReleaseNotes.SecurityMarker}\n\n{unreleased}"),
+            Made($"v{Bumped(1, 2)}-rc.1", body: $"{ReleaseNotes.SecurityMarker}\n\n{unreleased}"),
+            Made($"v{newer}", body: $"Passenger {newer} fixes what {marked} left.\n\n## Fixed\n\n- A fix.\n"),
+            Made($"v{marked}", body: SecurityNotes(marked)),
+            Made($"v{Product.Version}", body: $"{ReleaseNotes.SecurityMarker}\n\n## Security\n\n- What this version fixed.\n"));
+        MainWindow window = Started();
+        window.WatchForUpdates();
+        Ui.Settle();
+        Assert.True(Notice(window) == $"Security update: Passenger {newer} available",
+            $"v{newer} follows v{marked}, a security release this version lacks, but {UpdatesSaid(window)}");
+        string tip = ToolTip.GetTip(window.FindControl<Button>("UpdateButton")!) as string ?? string.Empty;
+        Assert.True(tip.StartsWith($"Passenger {newer} is a security update: {SecurityFixes}\nInstall it as soon as you can.\n", StringComparison.Ordinal),
+            $"The notice's tip does not say what v{marked} fixes, the newest security release after this version: {tip}");
+        Assert.Contains(Ui.IdeLog().Split('\n'), line => line.Contains($"Updates: Passenger {newer} is out (v{newer}; this is {Product.Version}), a security update as v{marked} is a security release: ", StringComparison.Ordinal));
+        window.Close();
+
+        // This version is the newest security release: the one after it is an update like any other.
+        string later = Bumped(1, 2);
+        github.Answer = Listed(
+            Made($"v{later}", body: $"Passenger {later} fixes things.\n"),
+            Made($"v{Product.Version}", body: SecurityNotes(Product.Version)),
+            Made("v0.0.1", body: SecurityNotes("0.0.1")));
+        window = Started();
+        string? before = window.Status;
+        window.WatchForUpdates();
+        Ui.Settle();
+        Assert.True(Notice(window) == $"Passenger {later} available", $"Only this version and older ones are security releases, but {UpdatesSaid(window)}");
+        Assert.DoesNotContain("security", ToolTip.GetTip(window.FindControl<Button>("UpdateButton")!) as string ?? string.Empty, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(before, window.Status);
+        window.Close();
+    }
+
+    /// <summary>GitHub's releases once 0.4.1 follows 0.4.0, a security release: a Passenger 0.3.4 lacks 0.4.0's fixes and is
+    /// told 0.4.1 brings them, in 0.4.0's words, where a Passenger 0.4.0 has them and is told of 0.4.1 alone.</summary>
+    [Fact]
+    public async Task A_0_3_4_is_told_0_4_1_is_a_security_update_in_0_4_0s_words_and_a_0_4_0_that_it_is_out()
+    {
+        github.Answer = Listed(
+            Made("v0.4.1", body: "Passenger 0.4.1 fixes what 0.4.0 left.\n\n## Fixed\n\n- A fix.\n"),
+            Made("v0.4.0", body: SecurityNotes("0.4.0")),
+            Made("v0.3.4", body: "Passenger 0.3.4 fixes things.\n"));
+        ReleaseFeed feed = new(github.Listing, ReleaseFeed.ShortTimeout.Scaled());
+
+        ReleaseAnswer older = await Releases.AskAsync(feed, "0.3.4", TestContext.Current.CancellationToken);
+        Assert.True(older is ReleaseAnswer.Newer { Release: { Version: "0.4.1", Security: SecurityFixes } },
+            $"A Passenger 0.3.4, which lacks 0.4.0's security fixes, was not told 0.4.1 brings them: {older.Said}");
+        Assert.True(github.Requests.Count == 1, $"Passenger asked {github.Requests.Count} times for the releases, not once");
+
+        ReleaseAnswer current = await Releases.AskAsync(feed, "0.4.0", TestContext.Current.CancellationToken);
+        Assert.True(current is ReleaseAnswer.Newer { Release: { Version: "0.4.1", Security: null } },
+            $"A Passenger 0.4.0, which has 0.4.0's security fixes, was told 0.4.1 is other than an update with none: {current.Said}");
     }
 
     [AvaloniaFact]
@@ -1646,7 +1711,7 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
     /// counting a day between checks on the test's clock, looking whether one is due as often as the test says.</summary>
     private MainWindow Started(Updater? updater = null, TimeSpan? feedLimit = null, TimeProvider? clock = null, TimeSpan? look = null)
     {
-        ReleaseFeed feed = new(github.Latest, feedLimit ?? ReleaseFeed.ShortTimeout.Scaled());
+        ReleaseFeed feed = new(github.Listing, feedLimit ?? ReleaseFeed.ShortTimeout.Scaled());
         MainWindow window = new()
         {
             Width = 1200, Height = 800, StateFolder = settings, Releases = feed, SelfUpdate = updater,
@@ -1733,9 +1798,16 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
         return $"{parts[0] + major}.{minor}.0";
     }
 
+    /// <summary>GitHub's list of releases holding one release alone, as <see cref="Made"/> makes it.</summary>
+    private StandIn.Reply Release(string tag, bool prerelease = false, bool draft = false, IReadOnlyDictionary<string, byte[]>? files = null, string? body = null) =>
+        Listed(Made(tag, prerelease, draft, files, body));
+
+    /// <summary>GitHub's list of releases, as its API lists them, newest first.</summary>
+    private static StandIn.Reply Listed(params JsonObject[] releases) => new(200, new JsonArray([.. releases]).ToJsonString());
+
     /// <summary>A release as GitHub's API gives it, with every download a release publishes; the files given are the
     /// stand-in's to serve, by their names, and the rest GitHub's, which no test downloads.</summary>
-    private StandIn.Reply Release(string tag, bool prerelease = false, bool draft = false, IReadOnlyDictionary<string, byte[]>? files = null, string? body = null)
+    private JsonObject Made(string tag, bool prerelease = false, bool draft = false, IReadOnlyDictionary<string, byte[]>? files = null, string? body = null)
     {
         JsonArray assets = [];
         foreach (string name in Downloads.Union(files?.Keys ?? []))
@@ -1758,7 +1830,7 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
             ["assets"] = assets,
             ["body"] = body,
         };
-        return new StandIn.Reply(200, release.ToJsonString());
+        return release;
     }
 
     private static IDisposable TestsTheme() => new ThemeBack(Avalonia.Application.Current!.RequestedThemeVariant);
@@ -2318,8 +2390,8 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
             | UnixFileMode.GroupExecute | UnixFileMode.OtherRead | UnixFileMode.OtherExecute;
     }
 
-    /// <summary>GitHub on a loopback port of its own: releases/latest, answered as the test says, once it lets the answers
-    /// go where it held them, or taken and never answered until the client gives up, and a release's downloads, each
+    /// <summary>GitHub on a loopback port of its own: its list of releases, answered as the test says, once it lets the
+    /// answers go where it held them, or taken and never answered until the client gives up, and a release's downloads, each
     /// request's head kept as it came. A file held is sent half way and the rest only once the test lets it go.</summary>
     internal sealed class StandIn : IDisposable
     {
@@ -2335,13 +2407,14 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
         public StandIn()
         {
             http = new StandInHttp(AnswerAsync);
-            Latest = new Uri($"{http.Root}/repos/Zaneris/passenger/releases/latest");
+            Listing = new Uri($"{http.Root}/repos/Zaneris/passenger/releases");
             Downloads = new Uri(http.Root + DownloadPath);
         }
 
         public sealed record Reply(int Status, string Body);
 
-        public Uri Latest { get; }
+        /// <summary>The list of releases, which the answer answers.</summary>
+        public Uri Listing { get; }
 
         /// <summary>Where a release's files download from, under each release's tag.</summary>
         public Uri Downloads { get; }
@@ -2378,7 +2451,7 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
         /// <summary>Holds a file half sent until <see cref="Let"/>.</summary>
         public void Hold(string name) => Volatile.Write(ref holding, new Held(name, new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously)));
 
-        /// <summary>Holds each answer to releases/latest, its request taken, until <see cref="Let"/>.</summary>
+        /// <summary>Holds each answer to the list of releases, its request taken, until <see cref="Let"/>.</summary>
         public void HoldAnswers() => Volatile.Write(ref answersHeld, new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously));
 
         /// <summary>Lets go of the file and the answers held.</summary>
