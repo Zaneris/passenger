@@ -24,16 +24,19 @@ public static class VimWrapping
     /// back in the text.</summary>
     public sealed record Wrapped(IReadOnlyList<TextEdit> Edits, IReadOnlyList<Moved> Words)
     {
-        /// <summary>An offset of the text before carried into the text after (<paramref name="after"/>): inside a word, the
-        /// same place in it; before a paragraph's first word, as far before it; on the blanks after a word on its line,
-        /// the same blank; on a joined line's lead, its next word where the lead holds a mark, else as far back from the
-        /// blanks the join put as the lead runs on; and from blanks a line break took the place of, the line's end.</summary>
+        /// <summary>An offset of the text before carried into the text after (<paramref name="after"/>): inside a word,
+        /// the same place in it; before a paragraph's first word, as far from its line's start, up to the word (its
+        /// indent may be made again); on the blanks after a word on its line, the same blank; on a joined line's lead,
+        /// its next word where the lead holds a mark, else as far back from the blanks the join put as the lead runs
+        /// on; and from blanks a line break took the place of, the line's end.</summary>
         public int Map(int offset, TextSnapshot after)
         {
+            int shift = 0;
             foreach (TextEdit edit in Edits)
             {
                 if (offset < edit.Start || offset > edit.End)
                 {
+                    shift += edit.Text.Length - edit.Length;
                     continue;
                 }
                 Moved? before = null;
@@ -46,7 +49,7 @@ public static class VimWrapping
                     if (offset < word.From + word.Length)
                     {
                         return offset >= word.From ? word.To + (offset - word.From)
-                            : before is not { } last ? word.To - (word.From - offset)
+                            : before is not { } last ? Math.Min(edit.Start + shift + (offset - edit.Start), word.To)
                             : word.Lead >= 0 && offset >= word.From - word.Lead ? InLead(last, word)
                             : Blank(last);
                     }
@@ -94,20 +97,20 @@ public static class VimWrapping
     /// <summary>The lines of each range, first to last, wrapped at <paramref name="width"/> columns, lines joining as J
     /// joins them (two spaces after a sentence's end with <paramref name="sentenceSpaces"/>, joinspaces); the ranges in
     /// order, none overlapping.</summary>
-    public static Wrapped Wrap(TextSnapshot text, IReadOnlyList<(int First, int Last)> ranges, int width, int tabWidth, string lineEnding, string? lineComment,
-        bool sentenceSpaces)
+    public static Wrapped Wrap(TextSnapshot text, IReadOnlyList<(int First, int Last)> ranges, int width, IndentOptions indent, string lineEnding,
+        string? lineComment, bool sentenceSpaces)
     {
         List<TextEdit> edits = [];
         List<Moved> words = [];
         int shift = 0;
         foreach ((int first, int last) in ranges)
         {
-            Wrap(text, first, last, width, tabWidth, lineEnding, lineComment, sentenceSpaces, edits, words, ref shift);
+            Wrap(text, first, last, width, indent, lineEnding, lineComment, sentenceSpaces, edits, words, ref shift);
         }
         return new Wrapped(edits, words);
     }
 
-    private static void Wrap(TextSnapshot text, int first, int last, int width, int tabWidth, string lineEnding, string? lineComment, bool sentenceSpaces,
+    private static void Wrap(TextSnapshot text, int first, int last, int width, IndentOptions indent, string lineEnding, string? lineComment, bool sentenceSpaces,
         List<TextEdit> edits, List<Moved> words, ref int shift)
     {
         int line = first;
@@ -127,7 +130,7 @@ public static class VimWrapping
             int start = text.GetLineStart(line);
             int stop = text.GetLine(end).End;
             string was = text.GetText(start, stop - start);
-            (string made, List<Moved> placed) = Paragraph(text, line, end, head, width, tabWidth, lineEnding, lineComment, sentenceSpaces);
+            (string made, List<Moved> placed) = Paragraph(text, line, end, head, width, indent, lineEnding, lineComment, sentenceSpaces);
             if (made != was)
             {
                 edits.Add(new TextEdit(start, stop - start, made));
@@ -186,15 +189,18 @@ public static class VimWrapping
     }
 
     /// <summary>One paragraph's lines as wrapped text, and where each word went in it from where it stood (both from the
-    /// paragraph's start).</summary>
-    private static (string Text, List<Moved> Words) Paragraph(TextSnapshot text, int first, int last, Line head, int width, int tabWidth,
+    /// paragraph's start). Each line's indent is made again from its columns, as Vim's autoindent makes it: spaces under
+    /// expandtab, else tabs as far as they go.</summary>
+    private static (string Text, List<Moved> Words) Paragraph(TextSnapshot text, int first, int last, Line head, int width, IndentOptions options,
         string lineEnding, string? lineComment, bool sentenceSpaces)
     {
+        int tabWidth = options.TabWidth;
         int paragraphStart = head.Start;
-        string firstLead = text.GetText(head.Start, head.Words - head.Start);
-        string indent = text.GetText(head.Start, head.Indent - head.Start);
+        int columns = TextNavigation.ColumnAfter(text.GetText(head.Start, head.Indent - head.Start), 0, tabWidth);
+        string indent = Vim.IndentOf(columns, options);
+        string firstLead = indent + text.GetText(head.Indent, head.Words - head.Indent);
         string afterMark = text.GetText(head.Indent + (head.Bullet ? 1 : head.Mark.Length), head.Words - head.Indent - (head.Bullet ? 1 : head.Mark.Length));
-        string nextLead = head.Bullet ? indent + new string(' ', 1 + TextNavigation.ColumnAfter(afterMark, 0, tabWidth)) : indent + head.Mark + afterMark;
+        string nextLead = head.Bullet ? Vim.IndentOf(TextNavigation.ColumnAfter(afterMark, columns + 1, tabWidth), options) : indent + head.Mark + afterMark;
         List<(string Word, string Before, int From, bool Glued, int Trail, int Lead)> pieces = [];
         for (int number = first; number <= last; number++)
         {
