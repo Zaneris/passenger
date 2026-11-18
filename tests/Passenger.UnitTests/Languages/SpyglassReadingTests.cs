@@ -26,22 +26,12 @@ public sealed class SpyglassReadingTests
         Assert.True(SpyglassReading.Inheriting(heritage, count) == words, $"{count} of {heritage} were said as \"{SpyglassReading.Inheriting(heritage, count)}\", not \"{words}\"");
 
     [Fact]
-    public void Two_places_are_one_when_they_are_the_same_place_of_the_same_document_whatever_the_uris_case()
-    {
-        SpyglassReading.Place declaration = new("file:///Work/Shapes.cs", 4, 11);
-        Assert.True(SpyglassReading.IsSame(new("file:///work/shapes.cs", 4, 11), declaration), "The same place, its URI cased otherwise, was taken for another");
-        Assert.False(SpyglassReading.IsSame(new("file:///Work/Shapes.cs", 4, 12), declaration), "A place a character on was taken for the same");
-        Assert.False(SpyglassReading.IsSame(new("file:///Work/Shapes.cs", 5, 11), declaration), "A place a line on was taken for the same");
-        Assert.False(SpyglassReading.IsSame(new("file:///Work/Other.cs", 4, 11), declaration), "The same place of another file was taken for the same");
-    }
-
-    [Fact]
     public void The_references_of_a_member_are_its_uses_less_its_own_declaration_and_those_of_what_implements_it()
     {
-        SpyglassReading.Place declaration = new("file:///Work/IShape.cs", 3, 8);
-        SpyglassReading.Place[] implementations = [.. Enumerable.Range(0, 18).Select(i => new SpyglassReading.Place($"file:///Work/Shape{i}.cs", 6, 15))];
-        SpyglassReading.Place[] calls = [new("file:///Work/Caller.cs", 10, 20), new("file:///Work/Caller.cs", 12, 20), new("file:///Work/Other.cs", 6, 15)];
-        SpyglassReading.Place[] references = [declaration, .. implementations, .. calls];
+        ReferencePlaces.Place declaration = new("file:///Work/IShape.cs", 3, 8);
+        ReferencePlaces.Place[] implementations = [.. Enumerable.Range(0, 18).Select(i => new ReferencePlaces.Place($"file:///Work/Shape{i}.cs", 6, 15))];
+        ReferencePlaces.Place[] calls = [new("file:///Work/Caller.cs", 10, 20), new("file:///Work/Caller.cs", 12, 20), new("file:///Work/Other.cs", 6, 15)];
+        ReferencePlaces.Place[] references = [declaration, .. implementations, .. calls];
         List<int> uses = SpyglassReading.UsesAmong(references, declaration, implementations);
         Assert.True(uses.SequenceEqual([19, 20, 21]),
             $"The 22 references of an interface method (itself, 18 implementations and 3 calls) were read as {uses.Count} uses ({string.Join(", ", uses)}), not its 3 calls, "

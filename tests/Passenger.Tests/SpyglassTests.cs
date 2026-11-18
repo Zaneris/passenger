@@ -209,6 +209,29 @@ public sealed class SpyglassTests : IClassFixture<SpyglassTests.Project>
         }
     }
 
+    /// <summary>Show Usages of an interface member lists its declaration and its calls, the declarations of what implements it
+    /// left to Go to Implementation, as the hint counts them.</summary>
+    [AvaloniaFact]
+    public void Show_usages_of_an_interface_member_lists_its_calls_and_not_what_implements_it()
+    {
+        MainWindow window = project.Open("Shapes.cs");
+        try
+        {
+            CodeEditor editor = window.EditorArea.CodeEditor;
+            Ui.PlaceAfter(editor, "    int Sid");
+            Ui.Run(window, AppActions.ShowUsages);
+            Ui.WaitFor(() => window.Popup is UsagesPopup, () => $"Show Usages' popup ({window.Status})", Limit);
+            UsagesPopup popup = (UsagesPopup)window.Popup!;
+            Ui.WaitFor(() => popup.Rows.Count > 0, "the usages");
+            Assert.True(popup.Rows.Count == 2 && popup.Rows.Any(u => u.LineText.Contains("shape.Sides", StringComparison.Ordinal)) && popup.Rows.All(u => !u.LineText.Contains("public int Sides => 4", StringComparison.Ordinal)),
+                $"The popup lists {string.Join(" | ", popup.Rows.Select(u => u.LineText.Trim()))}, not the member's declaration and the one call, with the implementation Square.Sides left out");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     /// <summary>An implementations hint of one place goes straight to it, as Go to Implementation does.</summary>
     [AvaloniaFact]
     public void Pressing_one_implementation_goes_to_it()

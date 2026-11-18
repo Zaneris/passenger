@@ -297,8 +297,8 @@ internal sealed class CodeSpyglassController
         if (now.CodeSpyglassUsages)
         {
             IReadOnlyList<LspLocation> references = await lsp.ReferencesAsync(declaration.NameOffset, cancel);
-            List<int> uses = SpyglassReading.UsesAmong([.. references.Select(Placed)], new SpyglassReading.Place(lsp.Identifier.Uri, at.Line, at.Character),
-                [.. implemented.Select(Placed)]);
+            List<int> uses = SpyglassReading.UsesAmong([.. references.Select(ImplementedReferences.Of)], new ReferencePlaces.Place(lsp.Identifier.Uri, at.Line, at.Character),
+                [.. implemented.Select(ImplementedReferences.Of)]);
             usages = uses.Count;
             only = uses.Count == 1 ? references[uses[0]] : null;
         }
@@ -308,8 +308,6 @@ internal sealed class CodeSpyglassController
         }
         return new Counted(usages, only, inheritors, read.Version, Stopwatch.GetTimestamp());
     }
-
-    private static SpyglassReading.Place Placed(LspLocation location) => new(location.Uri, location.Range.Start.Line, location.Range.Start.Character);
 
     /// <summary>Shows the hints of every declaration there is a number or an author for, after its line.</summary>
     private static void Publish(OpenDocument document, Memory memory, IReadOnlyList<SpyglassDeclaration> all, TextSnapshot text, AppSettings now)
