@@ -1,3 +1,4 @@
+using System.IO.Enumeration;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 using Microsoft.Win32.SafeHandles;
@@ -71,6 +72,58 @@ public static partial class FileHolders
         }
         return [];
     }
+
+    /// <summary>The most paths under a folder <see cref="Within"/> asks of, each an open and a question of the file system, so
+    /// a folder of many files is answered in moments.</summary>
+    private const int MostLooked = 1_000;
+
+    /// <summary>What holds a file or folder open, or a file or folder under it (the first <see cref="MostLooked"/>), any of
+    /// which keeps Windows from moving or deleting the folder: each process holding one, with the paths it holds, those but
+    /// this one's as the file system lists them (<see cref="Of"/>), this one's as the Restart Manager names it among the
+    /// first <see cref="MostAsked"/> files (<see cref="Named"/>), which sees no folder's handle, so with no path. None off
+    /// Windows.</summary>
+    public static IReadOnlyList<(int Process, IReadOnlyList<string> Paths)> Within(string path)
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return [];
+        }
+        List<(string Path, bool Folder)> looked = [(path, Directory.Exists(path))];
+        if (looked[0].Folder)
+        {
+            try
+            {
+                looked.AddRange(new FileSystemEnumerable<(string, bool)>(path, (ref FileSystemEntry entry) => (entry.ToFullPath(), entry.IsDirectory), Everything)
+                {
+                    ShouldRecursePredicate = (ref FileSystemEntry entry) => (entry.Attributes & FileAttributes.ReparsePoint) == 0,
+                }.Take(MostLooked));
+            }
+            catch (Exception unlisted) when (unlisted is IOException or UnauthorizedAccessException)
+            {
+                // Gone as it was listed: what was listed is asked of.
+            }
+        }
+        Dictionary<int, List<string>> held = [];
+        foreach ((string at, bool _) in looked)
+        {
+            foreach (int id in Of(at))
+            {
+                if (!held.TryGetValue(id, out List<string>? paths))
+                {
+                    held[id] = paths = [];
+                }
+                paths.Add(at);
+            }
+        }
+        List<(int Process, IReadOnlyList<string> Paths)> holding = [.. held.Select(h => (h.Key, (IReadOnlyList<string>)h.Value))];
+        if (Named(looked.Where(l => !l.Folder).Select(l => l.Path)).Contains(Itself))
+        {
+            holding.Add((Environment.ProcessId, []));
+        }
+        return holding;
+    }
+
+    private static readonly EnumerationOptions Everything = new() { RecurseSubdirectories = true, AttributesToSkip = 0, IgnoreInaccessible = true };
 
     /// <summary>The programs holding any of the first <see cref="MostAsked"/> of these files open, each named once as the
     /// Restart Manager names it, this process too (<see cref="Itself"/>), which <see cref="Of"/> cannot tell from its own

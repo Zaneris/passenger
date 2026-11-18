@@ -229,7 +229,7 @@ public partial class MainWindow
         }
         if (!copy)
         {
-            return Gathering(came, () => recording.Move(source, target)) is { } unmoved ? $"{name} could not be moved: {unmoved}" : null;
+            return Gathering(came, () => recording.Move(source, target)) is { } unmoved ? $"{name} could not be moved: {unmoved}{await HeldByAsync(source)}" : null;
         }
         if (CopyOnDisk(source, target) is { } uncopied)
         {

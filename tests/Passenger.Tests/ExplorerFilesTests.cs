@@ -398,6 +398,39 @@ public sealed class ExplorerFilesTests : IDisposable
         window.Close();
     }
 
+    /// <summary>On Windows a folder with a file under it some program holds open will not take a new name or move, and the
+    /// refusal names that program and the file, so the person knows what to close.</summary>
+    [AvaloniaTheory]
+    [InlineData("rename")]
+    [InlineData("move")]
+    public void A_folder_whose_file_a_program_holds_is_refused_on_Windows_naming_the_program_and_the_file(string change)
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "Only Windows keeps a folder with a file under it held open from moving");
+        string library = PathNames.Canonical(Directory.CreateDirectory(Path.Combine(folder, "Lib")).FullName);
+        string held = Path.Combine(Directory.CreateDirectory(Path.Combine(library, "obj")).FullName, "held.txt");
+        File.WriteAllText(held, "held\n");
+        string shell = Programs.OnPath("powershell.exe") ?? throw new InvalidOperationException("Windows has no powershell.exe on its PATH");
+        MainWindow window = Open();
+        string started = Path.Combine(folder, "started");
+        using System.Diagnostics.Process holding = ChildProcesses.Start(ChildProcesses.Command(shell,
+            ["-NoProfile", "-Command", $"$held = [IO.File]::Open('{held}', 'Open', 'Read', 'ReadWrite, Delete'); Set-Content -Path '{started}' -Value started; Start-Sleep -Seconds 120"], folder));
+        try
+        {
+            Ui.WaitFor(() => File.Exists(started), "powershell to start, holding Lib/obj/held.txt open");
+            string models = PathNames.Canonical(Path.Combine(folder, "Models"));
+            string? refused = change == "rename" ? Ui.Await(window.RenameAsync(library, "Core"), "the rename")
+                : Ui.Await(window.PutAsync([library], models, copy: false), "the move").Count > 0 ? null : window.Status;
+            Assert.True(refused?.Contains($"Held by powershell (process {holding.Id}: {Path.Join("obj", "held.txt")})", StringComparison.Ordinal) == true,
+                $"The {change}'s refusal does not name powershell and the file it holds under Lib, so the person cannot tell what to close: {refused ?? "it went"}");
+            Assert.True(File.Exists(Path.Combine(library, "obj", "held.txt")), $"Lib is not where it was although its {change} was refused");
+        }
+        finally
+        {
+            ChildProcesses.Kill(holding);
+        }
+        window.Close();
+    }
+
     /// <summary>A Directory.Build.targets holding the design-time builds of the projects below it before CoreCompile, each
     /// writing held into its project's folder, until <paramref name="release"/> is there.</summary>
     private static string Holding(string release) => $$"""
@@ -1113,14 +1146,14 @@ public sealed class ExplorerFilesTests : IDisposable
     private static async Task<string?> Moved(Task<IReadOnlyList<string>> moving) => (await moving).Count > 0 ? null : "nothing was moved";
 
     /// <summary>What may hold a folder that would not go or move, for a failure to name: the folders under it watched for the
-    /// C# language server, and on Windows the programs holding it, or a folder under it, open (the IDE's own aside).</summary>
+    /// C# language server, and on Windows the programs holding it, or a file or folder under it, open as the failure is said
+    /// (<see cref="FileHolders.Within"/>); the refusal itself names those holding it as it was refused.</summary>
     private static string Holders(MainWindow window, string folder)
     {
         string[] watched = [.. (window.CSharpService?.Watching?.Watching ?? []).Select(w => w.Folder).Where(w => PathNames.Within(w, folder))];
-        string[] open = !Directory.Exists(folder) ? [] : [.. Directory.EnumerateDirectories(folder, "*", SearchOption.AllDirectories).Prepend(folder)
-            .Select(path => (Path: path, By: FileHolders.Of(path))).Where(held => held.By.Count > 0)
-            .Select(held => $"{held.Path} by {string.Join(", ", held.By.Select(id => DotnetProcesses.Describe(id)?.Program ?? $"process {id}"))}")];
-        return $". Watched for the C# language server under it: [{string.Join(", ", watched)}]; held open: [{string.Join("; ", open)}]";
+        string[] open = [.. FileHolders.Within(folder).Select(held => $"{(held.Process == Environment.ProcessId ? FileHolders.Itself
+            : DotnetProcesses.Describe(held.Process)?.Program ?? "a program")} (process {held.Process}) holding [{string.Join(", ", held.Paths)}]")];
+        return $". Watched for the C# language server under it: [{string.Join(", ", watched)}]; held open now: [{string.Join("; ", open)}]";
     }
 
     /// <summary>What a folder holds, by its paths inside it, for a failure to name.</summary>

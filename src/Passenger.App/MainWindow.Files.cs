@@ -412,12 +412,14 @@ public partial class MainWindow
             ? await LetGoAsync([path], $"Waiting for the design-time build of {Path.GetFileName(path)} to end before it is renamed…")
             : null;
         using CommandHistory.Recording recording = Editors.Commands.Record($"Rename {Path.GetFileName(path)} to {name}");
+        string? unmoved = null;
         string? failed = Following([.. moves.SelectMany(m => new[] { m.From, m.To })], () =>
         {
             foreach ((string from, string to) in moves)
             {
                 if (recording.Move(from, to) is { } refused)
                 {
+                    unmoved = from;
                     string why = $"{Path.GetFileName(from)} could not be renamed: {refused}";
                     (IReadOnlyList<(string From, string To)> kept, string? stuck) = recording.MoveBack();
                     if (stuck is null)
@@ -437,7 +439,7 @@ public partial class MainWindow
         });
         if (failed is not null)
         {
-            return failed;
+            return unmoved is not null && await HeldByAsync(unmoved) is { Length: > 0 } holders ? $"{failed}.{holders}" : failed;
         }
         List<string> left = [];
         if (await FollowGodotAsync([.. moves.Select(m => (m.From, PathNames.Canonical(m.To)))], recording, left) is { } ungodot)
@@ -677,12 +679,24 @@ public partial class MainWindow
         }
     }
 
-    /// <summary>The programs holding a file or folder that would not go, as Windows names them (" Held by Passenger.Host
-    /// (process 1234)."), read off the window's thread; nothing where none is told.</summary>
+    /// <summary>The programs holding a file or folder that would not go or move, or what is under it, as Windows names them
+    /// (<see cref="FileHolders.Within"/>): " Held by powershell (process 1234)." for one holding it, " Held by dotnet
+    /// (process 1234: obj\project.assets.json)." for one holding what is under it; read off the window's thread, nothing
+    /// where none is told.</summary>
     private static async Task<string> HeldByAsync(string path)
     {
-        List<string> named = await BackgroundWork.Run(() => FileHolders.Of(path)
-            .Select(id => DotnetProcesses.Describe(id) is { } process ? $"{process.Program} (process {id})" : $"process {id}").ToList());
+        List<string> named = await BackgroundWork.Run(() => FileHolders.Within(path).Select(held =>
+        {
+            if (held.Process == Environment.ProcessId)
+            {
+                return FileHolders.Itself;
+            }
+            List<string> under = [.. held.Paths.Where(p => !PathNames.Same(p, path)).Select(p => PathNames.Shown(p, path))];
+            string inside = under.Count <= 3 ? Plural.Listed(under) : $"{string.Join(", ", under.Take(2))} and {under.Count - 2} more";
+            return DotnetProcesses.Describe(held.Process) is { } process
+                ? $"{process.Program} (process {held.Process}{(inside.Length == 0 ? string.Empty : $": {inside}")})"
+                : $"process {held.Process}{(inside.Length == 0 ? string.Empty : $" ({inside})")}";
+        }).ToList());
         return named.Count == 0 ? string.Empty : $" Held by {Plural.Listed(named)}.";
     }
 
