@@ -235,6 +235,7 @@ public static class Refusals
     {
         DotnetLack.NoDotnet => NoDotnet,
         DotnetLack.RuntimeOnly => $"Only the .NET runtime is installed{(want.Root is { } root ? $", in {PathNames.Shown(root, null)}" : string.Empty)}: {NeedsTheSdk}",
+        DotnetLack.OtherProcessor => OnlyNativeSdk,
         DotnetLack.GlobalJsonSdk or DotnetLack.NoSdk => NoSdk(want.Missing!, folder),
         DotnetLack.OlderThanProject when want.ChosenBy is { } asked => $"{want.Newer!.Value.Project} targets .NET {want.Newer.Value.Framework}, which the .NET SDK {want.Sdk} "
             + $"does not build: {PathNames.Shown(asked.Path, folder)} chose it, asking for {asked.Version}{(asked.RollForward is { } roll ? $" with rollForward {roll}" : string.Empty)}; "
@@ -266,9 +267,11 @@ public static class Refusals
     public static string LooseWithoutSdk(string file) =>
         $"{file} is a C# file of no project, which knows no framework types until a .NET SDK is installed: Roslyn reads a loose file's framework only from a project the SDK's MSBuild builds";
 
-    /// <summary>Install .NET SDK with nothing lacking: the newest SDK found, and where.</summary>
+    /// <summary>Install .NET SDK with nothing it installs mending the want: the newest SDK found, and where; or, for a
+    /// Passenger the system translates, which loads none of the system's own SDKs, what does.</summary>
     public static string NothingToInstall(DotnetMachine? machine, DotnetWant want) =>
-        machine?.NewestSdk is { } sdk && machine.Found is { } found
+        want.Lack == DotnetLack.OtherProcessor ? OnlyNativeSdk
+        : machine?.NewestSdk is { } sdk && machine.Found is { } found
             ? $"The .NET SDK {want.Sdk ?? sdk} is installed, in {PathNames.Shown(found.Root, null)}: nothing is missing"
             : "Passenger is still looking for .NET";
 

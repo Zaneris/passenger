@@ -60,10 +60,14 @@ public partial class MainWindow
     /// <summary>Help, Show Log: the log chosen in the file manager.</summary>
     private StatusPlace LogPlace => new($"show the log in {FileManager.Name}", ShowLog);
 
-    /// <summary>The download page of the .NET SDK the folder wants (<see cref="MissingSdk.Download"/>), in the browser.</summary>
-    private StatusPlace SdkPlace(MissingSdk missing) => missing.ForOtherProcessor
-        ? new("download the Passenger built for this computer", () => Browse(new Uri(Updates.ReleaseFeed.GitHubReleases, "releases/latest")))
+    /// <summary>The download page of the .NET SDK the folder wants (<see cref="MissingSdk.Download"/>), in the browser; for a
+    /// Passenger the system translates that loads none of the system's own SDKs, the Passenger built for this computer.</summary>
+    private StatusPlace SdkPlace(MissingSdk missing) => missing.ForOtherProcessor || DotnetWant.Lack == DotnetLack.OtherProcessor
+        ? SystemsOwnPlace
         : new($"download the .NET SDK{(missing.Asked is { } asked ? $" {asked}" : string.Empty)}", () => Browse(missing.Download));
+
+    /// <summary>The latest release's Passenger for this system's own processor, downloaded in the browser.</summary>
+    private StatusPlace SystemsOwnPlace => new("download the Passenger built for this computer", () => Browse(Updates.Releases.ThisSystemsDownload));
 
     /// <summary>Restart C# Language Server, run as its menu item runs it.</summary>
     private StatusPlace RestartCSharpPlace => StartAgainPlace(() => Request(AppActions.RestartCSharpServer));

@@ -27,6 +27,7 @@ public partial class MainWindow
 
     private Button? installLink;
     private Button? downloadLink;
+    private Button? systemsOwnLink;
     private Button? globalJsonLink;
     private Button? pathLink;
     private Button? hideLink;
@@ -60,6 +61,7 @@ public partial class MainWindow
         });
         installLink = DotnetBanner.Link(actions[AppActions.InstallDotnetSdk]!.Title, () => Request(AppActions.InstallDotnetSdk));
         downloadLink = DotnetBanner.Link("Download Page", () => Browse(DotnetReleases.PageOf(DotnetWant.Install?.Channel ?? Channel(DotnetWant.Install?.Version))));
+        systemsOwnLink = DotnetBanner.Link(OperatingSystem.IsMacOS() ? "Download Passenger for Apple Silicon" : "Download Passenger for Arm64", () => SystemsOwnPlace.Go());
         globalJsonLink = DotnetBanner.Link("Open global.json", OpenGlobalJson);
         pathLink = DotnetBanner.Link(actions[AppActions.AddDotnetToPath]!.Title, () => Request(AppActions.AddDotnetToPath));
         hideLink = DotnetBanner.Link("Hide", HideOffPath);
@@ -136,7 +138,8 @@ public partial class MainWindow
             // A read begun since saw the disk later: its answer is the one that stands.
             return await readingDotnet!;
         }
-        bool came = machine is { NewestSdk: null } && read.NewestSdk is not null;
+        // An x64 SDK installed beside the system's own one is an SDK come too.
+        bool came = machine is { NewestSdk: null } or { SystemsOwn: not null } && read is { NewestSdk: not null, SystemsOwn: null };
         machine = read;
         shellPath = change;
         ShowDotnet();
@@ -180,6 +183,7 @@ public partial class MainWindow
         bool wants = DotnetWant.Install is not null;
         installLink!.IsVisible = wants;
         downloadLink!.IsVisible = wants;
+        systemsOwnLink!.IsVisible = DotnetWant.Lack == DotnetLack.OtherProcessor;
         globalJsonLink!.IsVisible = said is not null && DotnetWant.GlobalJson is not null;
         pathLink!.IsVisible = DotnetWant.Lack == DotnetLack.OffPath && shellPath is not null;
         hideLink!.IsVisible = DotnetWant.Lack == DotnetLack.OffPath;
@@ -217,7 +221,7 @@ public partial class MainWindow
     private string? WithoutSdk() => DotnetWant.NoSdkAtAll ? Refusals.Dotnet(DotnetWant, Folder) : null;
 
     /// <summary>What New Solution and New Project are refused with while the machine has no SDK at all; null with one.</summary>
-    private string? WithoutAnySdk() => DotnetWant.Lack is DotnetLack.NoDotnet or DotnetLack.RuntimeOnly ? Refusals.Dotnet(DotnetWant, Folder) : null;
+    private string? WithoutAnySdk() => DotnetWant.Lack is DotnetLack.NoDotnet or DotnetLack.RuntimeOnly or DotnetLack.OtherProcessor ? Refusals.Dotnet(DotnetWant, Folder) : null;
 
     /// <summary>Install .NET SDK: Microsoft's metadata asked which SDK mends the want, the person asked, the SDK installed
     /// with its stages said, then taken up at once; it says what it came to. Refused to an agent's input.</summary>

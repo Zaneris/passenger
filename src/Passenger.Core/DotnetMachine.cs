@@ -37,14 +37,45 @@ public sealed record DotnetInstallation(string Root, IReadOnlyList<string> Sdks,
 }
 
 /// <summary>This machine's .NET as Passenger finds it (<see cref="Dotnet.Find()"/>): none at all, or the dotnet found, how,
-/// and what its installation holds. Read off the UI thread, as it looks at the disk.</summary>
+/// and what its installation holds; for a process the system translates, the system's own SDK it cannot load. Read off the
+/// UI thread, as it looks at the disk.</summary>
 public sealed record DotnetMachine(DotnetFound? Found, DotnetInstallation? Installation)
 {
     /// <summary>The machine's .NET, or the installation a folder's projects take (<see cref="Dotnet.Find(string?)"/>).</summary>
-    public static DotnetMachine Read(string? folder = null)
+    public static DotnetMachine Read(string? folder = null) =>
+        Of(Dotnet.Find(folder), Dotnet.Translated, Dotnet.Every, DotnetInstallation.Read);
+
+    /// <summary>The machine with <paramref name="found"/>, its installation and, for a process the system translates
+    /// (<paramref name="translated"/>), <see cref="SystemsOwn"/> sought among <paramref name="every"/> dotnet there is.</summary>
+    internal static DotnetMachine Of(DotnetFound? found, bool translated, Func<IEnumerable<DotnetFound>> every, Func<string, DotnetInstallation> read)
     {
-        DotnetFound? found = Dotnet.Find(folder);
-        return new DotnetMachine(found, found is null ? null : DotnetInstallation.Read(found.Root));
+        DotnetInstallation? installation = found is null ? null : read(found.Root);
+        return new DotnetMachine(found, installation)
+        {
+            SystemsOwn = translated && found is not null ? SystemsOwnOf(found, installation!, every, read) : null,
+        };
+    }
+
+    /// <summary>For a process the system translates, which loads MSBuild only from an x64 SDK, where the dotnet found holds
+    /// none: the installation of the system's own processor holding the SDK there is instead, the one found where it is
+    /// that, else the first other holding one; null where the x64 one has an SDK, or no installation has.</summary>
+    public DotnetInstallation? SystemsOwn { get; init; }
+
+    private static DotnetInstallation? SystemsOwnOf(DotnetFound found, DotnetInstallation installation, Func<IEnumerable<DotnetFound>> every, Func<string, DotnetInstallation> read)
+    {
+        bool x64 = Dotnet.IsX64(found.Host);
+        if (installation.NewestSdk is not null)
+        {
+            return x64 ? null : installation;
+        }
+        foreach (DotnetFound other in every())
+        {
+            if (!PathNames.Same(other.Root, found.Root) && !Dotnet.IsX64(other.Host) && read(other.Root) is { NewestSdk: not null } own)
+            {
+                return own;
+            }
+        }
+        return null;
     }
 
     /// <summary>The newest SDK the dotnet found has, or null with none (no dotnet, or a runtime alone).</summary>

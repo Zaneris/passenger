@@ -103,6 +103,10 @@ public static partial class Releases
             : null;
     }
 
+    /// <summary>The latest release's download for this system and its own processor (<see cref="ThisSystemsAsset"/>), else
+    /// the latest release's page.</summary>
+    public static Uri ThisSystemsDownload => new(ReleaseFeed.GitHubReleases, ThisSystemsAsset() is { } asset ? $"releases/latest/download/{asset}" : "releases/latest");
+
     /// <summary>Asks the feed for its releases and compares the latest with <paramref name="running"/>, off the caller's
     /// thread. Never throws: a failure, the feed's timeout and <paramref name="cancel"/> included, is an answer.</summary>
     public static async Task<ReleaseAnswer> AskAsync(ReleaseFeed feed, string running, CancellationToken cancel)

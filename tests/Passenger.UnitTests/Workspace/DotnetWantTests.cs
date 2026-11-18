@@ -1,11 +1,12 @@
+using System.Buffers.Binary;
 using Passenger.Core;
 using Passenger.Workspace;
 
 namespace Passenger.UnitTests.Workspace;
 
 /// <summary>What .NET the banner says the machine or the folder lacks, worst first, and the SDK Install .NET SDK installs
-/// for it: no dotnet, a runtime alone, global.json's SDK, an SDK older than a project's framework; and, lacking nothing, an
-/// SDK found where no PATH names it.</summary>
+/// for it: no dotnet, a runtime alone, for a translated Passenger an SDK of its processor, global.json's SDK, an SDK older
+/// than a project's framework; and, lacking nothing, an SDK found where no PATH names it.</summary>
 public class DotnetWantTests
 {
     private static readonly string Root = OperatingSystem.IsWindows() ? @"C:\dotnet" : "/usr/local/share/dotnet";
@@ -127,6 +128,71 @@ public class DotnetWantTests
     {
         DotnetWant want = DotnetWant.Of(Machine(DotnetPlace.Installed, "10.0.403"), null, null, TenOnly);
         Assert.Equal((DotnetLack.OffPath, null, "10.0.403", false), (want.Lack, want.Install, want.Sdk, want.NoSdkAtAll));
+    }
+
+    /// <summary>An x64 Passenger the system translates (Windows' emulation on an Arm64 PC, Rosetta on a Mac) finds the x64
+    /// installation beside the system's own first; holding a runtime alone, where the system's own holds an SDK, what lacks
+    /// is an SDK of this Passenger's processor, never the SDK the system's runtime-only installation would want installed.</summary>
+    [Fact]
+    public void A_translated_Passenger_whose_x64_installation_holds_a_runtime_alone_beside_the_systems_own_SDK_lacks_an_SDK_of_its_processor()
+    {
+        string root = PathNames.Canonical(Directory.CreateTempSubdirectory("passenger-unit-").FullName);
+        try
+        {
+            DotnetFound x64 = Installation(Path.Join(root, "x64"), 0x01000007);
+            DotnetFound systems = Installation(Path.Join(root, "arm64"), 0x0100000C, "11.0.100");
+            DotnetMachine Translated(bool translated) => DotnetMachine.Of(x64, translated, () => [x64, systems], DotnetInstallation.Read);
+
+            DotnetWant want = DotnetWant.Of(Translated(true), null, null, TenOnly);
+            Assert.Equal((DotnetLack.OtherProcessor, (SdkWanted?)null, true, (string?)systems.Root, (string?)"11.0.100"),
+                (want.Lack, want.Install, want.NoSdkAtAll, want.SystemsOwn, want.Sdk));
+            DotnetWant untranslated = DotnetWant.Of(Translated(false), null, null, TenOnly);
+            Assert.Equal((DotnetLack.RuntimeOnly, (string?)x64.Root), (untranslated.Lack, untranslated.Root));
+
+            // The x64 SDK installed beside it is what a translated Passenger loads: nothing lacks.
+            Sdk(x64.Root, "11.0.100");
+            Assert.Equal(DotnetLack.None, DotnetWant.Of(Translated(true), null, null, TenOnly).Lack);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    /// <summary>The system's own dotnet found first, holding an SDK the project host refused to load into this translated
+    /// Passenger, lacks the same as an x64 one beside it with a runtime alone.</summary>
+    [Fact]
+    public void A_translated_Passengers_project_host_refusing_the_systems_own_SDK_lacks_an_SDK_of_its_processor()
+    {
+        MissingSdk refused = MissingSdk.OtherProcessor("/usr/local/share/dotnet/dotnet is no x64 program");
+        DotnetWant want = DotnetWant.Of(Machine(DotnetPlace.Path, "11.0.100"), refused, null, TenOnly);
+        Assert.Equal((DotnetLack.OtherProcessor, (SdkWanted?)null, true, (string?)Root), (want.Lack, want.Install, want.NoSdkAtAll, want.SystemsOwn));
+
+        DotnetWant beside = DotnetWant.Of(Machine(DotnetPlace.Path) with { SystemsOwn = new DotnetInstallation("/arm64", ["11.0.100"], ["11.0.0"]) }, null, null, TenOnly);
+        Assert.Equal((DotnetLack.OtherProcessor, (string?)"/arm64", (string?)"11.0.100"), (beside.Lack, beside.SystemsOwn, beside.Sdk));
+    }
+
+    /// <summary>An installation in <paramref name="folder"/> whose dotnet is a Mach-O program of <paramref name="cpu"/>,
+    /// holding the runtime 11.0.0 and these SDKs.</summary>
+    private static DotnetFound Installation(string folder, int cpu, params string[] sdks)
+    {
+        byte[] program = new byte[64];
+        BinaryPrimitives.WriteUInt32LittleEndian(program, 0xFEEDFACF);
+        BinaryPrimitives.WriteInt32LittleEndian(program.AsSpan(4), cpu);
+        Directory.CreateDirectory(Path.Join(folder, "shared", "Microsoft.NETCore.App", "11.0.0"));
+        File.WriteAllBytes(Path.Join(folder, Dotnet.HostName), program);
+        foreach (string sdk in sdks)
+        {
+            Sdk(folder, sdk);
+        }
+        return new DotnetFound(Path.Join(folder, Dotnet.HostName), DotnetPlace.Path);
+    }
+
+    private static void Sdk(string folder, string version)
+    {
+        string sdk = Directory.CreateDirectory(Path.Join(folder, "sdk", version)).FullName;
+        File.WriteAllText(Path.Join(sdk, "dotnet.dll"), "cli\n");
+        File.WriteAllText(Path.Join(sdk, "dotnet.runtimeconfig.json"), """{ "runtimeOptions": { "framework": { "name": "Microsoft.NETCore.App", "version": "11.0.0" } } }""");
     }
 
     [Fact]

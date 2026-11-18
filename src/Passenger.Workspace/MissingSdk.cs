@@ -28,8 +28,9 @@ public sealed partial record MissingSdk(string? Asked, string? GlobalJson, bool 
     /// <summary>No dotnet was found at all, runtime or SDK.</summary>
     public bool NoHost { get; init; }
 
-    /// <summary>The dotnet found is the system's own processor's, whose SDK's MSBuild an x64 Passenger the system translates
-    /// cannot load (<see cref="Dotnet.Translated"/>), in the words of the check that found it so.</summary>
+    /// <summary>The SDK there is is the system's own processor's, whose MSBuild an x64 Passenger the system translates cannot
+    /// load (<see cref="Dotnet.Translated"/>): the dotnet found is that processor's, or the x64 one beside it holds no SDK
+    /// (<see cref="DotnetMachine.SystemsOwn"/>); in the words of the check that found it so.</summary>
     public static MissingSdk OtherProcessor(string said) => new(null, null, NoneInstalled: false, said) { ForOtherProcessor = true };
 
     /// <summary>The SDK found is built for another processor than this Passenger's.</summary>

@@ -2,8 +2,10 @@ using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Passenger.App;
 using Passenger.App.Debugging;
+using Passenger.App.Updates;
 using Passenger.Core;
 using Passenger.Editor;
+using Passenger.Workspace;
 
 namespace Passenger.Tests;
 
@@ -27,7 +29,9 @@ public sealed class MachineDotnetTests : IDisposable
     public void Dispose()
     {
         Dotnet.HostSearch = null;
+        Dotnet.PlacesStandIn = null;
         Dotnet.TranslatedStandIn = null;
+        Dotnet.ForgetSdks();
         Environment.SetEnvironmentVariable("PATH", path);
         Environment.SetEnvironmentVariable(RuntimeVariables.Root, root);
         TestFolders.Delete(folder);
@@ -99,16 +103,7 @@ public sealed class MachineDotnetTests : IDisposable
     [AvaloniaFact]
     public void A_translated_passenger_whose_only_sdk_is_the_systems_own_says_in_the_window_that_it_needs_an_x64_one()
     {
-        string arm = Path.Combine(folder, "arm64");
-        byte[] program = new byte[64];
-        System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(program, 0xFEEDFACF);
-        System.Buffers.Binary.BinaryPrimitives.WriteInt32LittleEndian(program.AsSpan(4), 0x0100000C);
-        Directory.CreateDirectory(arm);
-        File.WriteAllBytes(Path.Combine(arm, DotnetName), program);
-        TestFolders.Write(arm, "sdk/11.0.100/dotnet.dll", string.Empty);
-        TestFolders.Write(arm, "sdk/11.0.100/dotnet.runtimeconfig.json",
-            "{ \"runtimeOptions\": { \"tfm\": \"net11.0\", \"framework\": { \"name\": \"Microsoft.NETCore.App\", \"version\": \"11.0.0\" } } }\n");
-        Directory.CreateDirectory(Path.Combine(arm, "shared", "Microsoft.NETCore.App", "11.0.0"));
+        string arm = Installation("arm64", 0x0100000C, "11.0.100");
         Find(Path.Combine(arm, DotnetName));
         Dotnet.TranslatedStandIn = true;
         string app = Path.Combine(folder, "app");
@@ -127,6 +122,73 @@ public sealed class MachineDotnetTests : IDisposable
         {
             window.Close();
         }
+    }
+
+    /// <summary>An x64 Passenger the system translates whose x64 .NET beside the system's own holds a runtime alone, where
+    /// the system's own holds an SDK, says that it needs an x64 SDK and that Passenger for this computer's processor suits
+    /// it, in the banner, the status bar and the refusals of what needs an SDK, never that only a runtime is installed; the
+    /// banner's link and a click on the status bar download that Passenger.</summary>
+    [AvaloniaFact]
+    public void A_translated_passenger_whose_x64_dotnet_holds_a_runtime_alone_beside_the_systems_own_sdk_offers_this_computers_download()
+    {
+        string x64 = Installation("x64", 0x01000007);
+        string systems = Installation("arm64", 0x0100000C, "11.0.100");
+        // Found first, as the x64 installation is beside the system's own; the system's own where the installers put it.
+        Find(Path.Combine(x64, DotnetName));
+        Dotnet.HostSearch = null;
+        Dotnet.PlacesStandIn = [Path.Combine(systems, DotnetName)];
+        Dotnet.TranslatedStandIn = true;
+        Dotnet.ForgetSdks();
+        string app = Path.Combine(folder, "app");
+        TestFolders.Write(app, "App.csproj", "<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <OutputType>Exe</OutputType>\n"
+            + "    <TargetFramework>net11.0</TargetFramework>\n  </PropertyGroup>\n</Project>\n");
+        TestFolders.Write(app, "Program.cs", "System.Console.WriteLine(1);\n");
+        MainWindow window = new() { Width = 1200, Height = 800, StartsLanguageServer = false };
+        window.Show();
+        try
+        {
+            window.OpenFolder(app);
+            Ui.WaitFor(() => window.DotnetSaid == Refusals.OnlyNativeSdk && window.Status == Refusals.OnlyNativeSdk,
+                () => $"the banner and the status bar to say an x64 SDK is needed; the banner says \"{window.DotnetSaid}\" and the status bar \"{window.Status}\"");
+            Assert.True(window.DotnetWant is { Lack: DotnetLack.OtherProcessor, Install: null } want && want.SystemsOwn == systems,
+                $"The window took the want for {window.DotnetWant.Lack}, the system's own SDK in {window.DotnetWant.SystemsOwn}, with {window.DotnetWant.Install} to install");
+            Assert.True(window.Session.Models.MissingSdk is { ForOtherProcessor: true } refused && refused.Said.Contains(x64, StringComparison.Ordinal),
+                $"The project host refused the folder saying: {window.Session.Models.MissingSdk?.Said}");
+            Assert.Equal(Refusals.OnlyNativeSdk, window.Actions.WhyNot(AppActions.Build, window.Actions.Context()));
+            Assert.Equal(Refusals.OnlyNativeSdk, window.Actions.WhyNot(AppActions.InstallDotnetSdk, window.Actions.Context()));
+            string? told = Ui.Await(new App.Mcp.PassengerTools(window).GetWorkspace(), "an agent's workspace").SdkMissing;
+            Assert.True(told is not null && told.StartsWith(Refusals.OnlyNativeSdk, StringComparison.Ordinal) && told.Contains(Releases.ThisSystemsDownload.AbsoluteUri, StringComparison.Ordinal),
+                $"An agent's workspace said of .NET: {told}");
+
+            Ui.ClickButton(window, OperatingSystem.IsMacOS() ? "Download Passenger for Apple Silicon" : "Download Passenger for Arm64");
+            Assert.Equal(Releases.ThisSystemsDownload, Assert.Single(window.Browsed));
+            Assert.Equal("download the Passenger built for this computer", window.StatusPlace?.Name);
+            window.StatusPlace!.Go();
+            Assert.Equal([Releases.ThisSystemsDownload, Releases.ThisSystemsDownload], window.Browsed);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>An installation in the test's folder whose dotnet is a Mach-O program of <paramref name="cpu"/>, holding
+    /// the runtime 11.0.0 and these SDKs; its folder.</summary>
+    private string Installation(string name, int cpu, params string[] sdks)
+    {
+        string root = Path.Combine(folder, name);
+        byte[] program = new byte[64];
+        System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(program, 0xFEEDFACF);
+        System.Buffers.Binary.BinaryPrimitives.WriteInt32LittleEndian(program.AsSpan(4), cpu);
+        Directory.CreateDirectory(Path.Combine(root, "shared", "Microsoft.NETCore.App", "11.0.0"));
+        File.WriteAllBytes(Path.Combine(root, DotnetName), program);
+        foreach (string sdk in sdks)
+        {
+            TestFolders.Write(root, $"sdk/{sdk}/dotnet.dll", string.Empty);
+            TestFolders.Write(root, $"sdk/{sdk}/dotnet.runtimeconfig.json",
+                "{ \"runtimeOptions\": { \"tfm\": \"net11.0\", \"framework\": { \"name\": \"Microsoft.NETCore.App\", \"version\": \"11.0.0\" } } }\n");
+        }
+        return root;
     }
 
     /// <summary>Console's members are offered after its dot, typed on a line of its own after <paramref name="after"/>, the

@@ -153,6 +153,14 @@ public static partial class Dotnet
         return chosen;
     }
 
+    /// <summary>Every dotnet there is, in <see cref="Find()"/>'s order: the stand-in alone where <see cref="HostSearch"/>
+    /// stands in for the search.</summary>
+    internal static IEnumerable<DotnetFound> Every() =>
+        HostSearch is null ? Candidates(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)) : Find() is { } standIn ? [standIn] : [];
+
+    /// <summary>Whether a dotnet is an x64 program, whose SDK's MSBuild a process the system translates can load.</summary>
+    public static bool IsX64(string host) => ProgramProcessors.Of(host).Contains(Architecture.X64);
+
     /// <summary>The installation a folder's projects take where it is not the one <see cref="Find()"/> finds, which what
     /// runs for the folder is given as DOTNET_ROOT, as the process is given the one it takes; null where it is that one.</summary>
     public static string? Apart(string? folder) => folder is not null && Find(folder) is { } taken && Find() is { } first && taken != first ? taken.Root : null;
@@ -162,7 +170,7 @@ public static partial class Dotnet
 
     /// <summary>The first installation dotnet's search for the folder's SDK reaches (<see cref="Searched"/>) that holds an
     /// SDK the global.json over <paramref name="folder"/> takes, any SDK without one, each read by <paramref name="read"/>
-    /// once; a process the system translates passes over one with no x64 dotnet. With none, the first of
+    /// once; a process the system translates passes over one with no x64 dotnet, the first too. With none, the first of
     /// <paramref name="candidates"/>, or null for none; and whether it takes it. A global.json in a folder not trusted
     /// (<paramref name="trusts"/>, else <see cref="WorkspaceTrust.Trusts"/>) names no dotnet: only those found are searched.</summary>
     internal static (DotnetFound? Found, bool Takes) Choose(IEnumerable<DotnetFound> candidates, string folder, Func<string, DotnetInstallation> read,
@@ -175,7 +183,7 @@ public static partial class Dotnet
         bool named = asked is not null && (trusts ?? WorkspaceTrust.Trusts)(Path.GetDirectoryName(asked.Path)!);
         foreach (DotnetFound each in named ? Searched(found, asked) : found)
         {
-            if (!seen.Add(each.Root) || (Translated && each != first && !ProgramProcessors.Of(each.Host).Contains(Architecture.X64)))
+            if (!seen.Add(each.Root) || (Translated && !IsX64(each.Host)))
             {
                 continue;
             }
