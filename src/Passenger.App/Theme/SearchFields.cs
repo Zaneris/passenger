@@ -12,6 +12,9 @@ public static class SearchFields
     /// <summary>Where the field's words start, from its outer edge.</summary>
     public static readonly double TextStart = Padding.Left + Hairlines.Width;
 
+    /// <summary>A drop-down's padding: its words where a field's start, its arrow its own.</summary>
+    public static readonly Thickness DropDown = new(Padding.Left, 0, 0, 0);
+
     /// <summary>A row's padding that starts its words in line with a search field's above it.</summary>
     public static readonly Thickness InLine = new(TextStart, 0);
 }

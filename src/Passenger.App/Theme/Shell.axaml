@@ -34,7 +34,7 @@
          size and ground. -->
     <Style Selector="Button">
         <Setter Property="MinHeight" Value="{DynamicResource Passenger.ControlHeight}" />
-        <Setter Property="Padding" Value="14,0" />
+        <Setter Property="Padding" Value="12,0" />
         <Setter Property="HorizontalContentAlignment" Value="Center" />
         <Setter Property="VerticalContentAlignment" Value="Center" />
         <Setter Property="CornerRadius" Value="{DynamicResource Passenger.ControlRadius}" />
@@ -80,7 +80,7 @@
         <Setter Property="Margin" Value="4,0" />
         <Setter Property="CornerRadius" Value="{DynamicResource Passenger.ControlRadius}" />
         <Setter Property="MinHeight" Value="{x:Static app:ListRow.Height}" />
-        <Setter Property="Padding" Value="10,3,10,4" />
+        <Setter Property="Padding" Value="12,2,12,4" />
     </Style>
     <!-- A long name ends in an ellipsis rather than cut at the menu's edge (a branch's). -->
     <Style Selector="MenuItem /template/ ContentPresenter#PART_HeaderPresenter TextBlock">
@@ -133,7 +133,7 @@
         <Setter Property="Margin" Value="4,0" />
         <Setter Property="CornerRadius" Value="{DynamicResource Passenger.ControlRadius}" />
         <Setter Property="MinHeight" Value="{x:Static app:ListRow.Height}" />
-        <Setter Property="Padding" Value="10,3,10,4" />
+        <Setter Property="Padding" Value="12,2,12,4" />
         <Setter Property="VerticalContentAlignment" Value="Center" />
     </Style>
 
@@ -326,7 +326,9 @@
     </Style>
     <!-- Selected text readable in both themes: Fluent's is the system's saturated blue, under black text in light. -->
     <!-- A field's caret blinks as every caret does (Carets), never where the system keeps carets shown. -->
+    <!-- Every field's words start where a search field's do (SearchFields), a drop-down's and a number box's too. -->
     <Style Selector="TextBox">
+        <Setter Property="Padding" Value="{x:Static app:SearchFields.Padding}" />
         <Setter Property="CornerRadius" Value="{DynamicResource Passenger.ControlRadius}" />
         <Setter Property="SelectionBrush" Value="{DynamicResource Passenger.TextSelection}" />
         <Setter Property="SelectionForegroundBrush" Value="{DynamicResource Passenger.Text}" />
@@ -342,7 +344,7 @@
         <Setter Property="MinHeight" Value="{DynamicResource Passenger.ControlHeight}" />
         <!-- The chosen item's words, narrower than they are, end in an ellipsis rather than being cut at the arrow. -->
         <Setter Property="TextBlock.TextTrimming" Value="CharacterEllipsis" />
-        <Setter Property="Padding" Value="10,0,0,0" />
+        <Setter Property="Padding" Value="{x:Static app:SearchFields.DropDown}" />
         <Setter Property="CornerRadius" Value="{DynamicResource Passenger.ControlRadius}" />
         <Setter Property="BorderBrush" Value="{DynamicResource Passenger.FieldBorder}" />
         <Setter Property="VerticalContentAlignment" Value="Center" />
@@ -376,7 +378,7 @@
     <!-- A number box likewise, its own height beside something taller; its text box no taller than the box. -->
     <Style Selector="NumericUpDown">
         <Setter Property="MinHeight" Value="{DynamicResource Passenger.ControlHeight}" />
-        <Setter Property="Padding" Value="10,4,6,4" />
+        <Setter Property="Padding" Value="{x:Static app:SearchFields.Padding}" />
         <Setter Property="BorderBrush" Value="{DynamicResource Passenger.FieldBorder}" />
         <Setter Property="VerticalContentAlignment" Value="Center" />
         <Setter Property="VerticalAlignment" Value="Center" />
@@ -525,7 +527,7 @@
     <!-- A frame of a test's result in the Unit Tests window: a thumbnail of the window as the test failed, which opens it at
          its size. -->
     <Style Selector="Button.frame">
-        <Setter Property="Padding" Value="5" />
+        <Setter Property="Padding" Value="4" />
         <Setter Property="CornerRadius" Value="{DynamicResource Passenger.ToolRadius}" />
         <Setter Property="BorderThickness" Value="1" />
         <Setter Property="BorderBrush" Value="{DynamicResource Passenger.Divider}" />
@@ -726,8 +728,8 @@
          overhangs its 1 px column so there is something to grab. -->
     <Style Selector="GridSplitter.hairline">
         <Setter Property="MinWidth" Value="0" />
-        <Setter Property="Width" Value="7" />
-        <Setter Property="Margin" Value="-3,0" />
+        <Setter Property="Width" Value="9" />
+        <Setter Property="Margin" Value="-4,0" />
         <Setter Property="Background" Value="Transparent" />
     </Style>
     <Style Selector="GridSplitter.hairline:pointerover">
@@ -1091,8 +1093,8 @@
 
     <Style Selector="GridSplitter.hairlineRows">
         <Setter Property="MinHeight" Value="0" />
-        <Setter Property="Height" Value="7" />
-        <Setter Property="Margin" Value="0,-3" />
+        <Setter Property="Height" Value="9" />
+        <Setter Property="Margin" Value="0,-4" />
         <Setter Property="Background" Value="Transparent" />
     </Style>
     <Style Selector="GridSplitter.hairlineRows:pointerover">
@@ -1105,7 +1107,7 @@
         <Setter Property="Height" Value="{DynamicResource Passenger.ControlHeight}" />
         <Setter Property="TextBlock.TextTrimming" Value="CharacterEllipsis" />
         <Setter Property="MinWidth" Value="0" />
-        <Setter Property="Padding" Value="12,3" />
+        <Setter Property="Padding" Value="12,2" />
         <Setter Property="CornerRadius" Value="0" />
         <Setter Property="BorderThickness" Value="0" />
         <Setter Property="Background" Value="Transparent" />
@@ -1138,7 +1140,7 @@
         <Setter Property="Height" Value="24" />
         <Setter Property="TextBlock.TextTrimming" Value="CharacterEllipsis" />
         <Setter Property="MinWidth" Value="0" />
-        <Setter Property="Padding" Value="10,0" />
+        <Setter Property="Padding" Value="8,0" />
         <Setter Property="CornerRadius" Value="{DynamicResource Passenger.ToolRadius}" />
         <Setter Property="BorderThickness" Value="0" />
         <Setter Property="Background" Value="Transparent" />
@@ -1238,7 +1240,7 @@
     </Style>
     <Style Selector="DockPanel.welcomePage">
         <Setter Property="MaxWidth" Value="920" />
-        <Setter Property="Margin" Value="32,48,32,24" />
+        <Setter Property="Margin" Value="32,32,32,20" />
     </Style>
     <Style Selector="Grid.welcomeHero">
         <Setter Property="Margin" Value="0,0,0,32" />
@@ -1261,12 +1263,12 @@
     <Style Selector="WrapPanel.welcomeActions">
         <Setter Property="ItemSpacing" Value="12" />
         <Setter Property="LineSpacing" Value="12" />
-        <Setter Property="Margin" Value="0,0,0,28" />
+        <Setter Property="Margin" Value="0,0,0,32" />
     </Style>
     <!-- An action's tile: a button laid out as a card, its icon on a chip, its words at its left. -->
     <Style Selector="Button.welcomeAction">
         <Setter Property="MinHeight" Value="76" />
-        <Setter Property="Padding" Value="14,12" />
+        <Setter Property="Padding" Value="12" />
         <Setter Property="HorizontalAlignment" Value="Stretch" />
         <Setter Property="HorizontalContentAlignment" Value="Stretch" />
         <Setter Property="CornerRadius" Value="{DynamicResource Passenger.CardRadius}" />
@@ -1300,7 +1302,7 @@
         <Setter Property="Foreground" Value="{DynamicResource Passenger.TextMuted}" />
     </Style>
     <Style Selector="Grid.welcomeRecentBar">
-        <Setter Property="Margin" Value="0,0,0,10" />
+        <Setter Property="Margin" Value="0,0,0,12" />
     </Style>
     <Style Selector="TextBlock.welcomeSection">
         <Setter Property="FontSize" Value="15" />
@@ -1325,7 +1327,7 @@
         <Setter Property="Width" Value="28" />
         <Setter Property="Height" Value="28" />
         <Setter Property="CornerRadius" Value="{DynamicResource Passenger.BadgeRadius}" />
-        <Setter Property="Margin" Value="0,0,10,0" />
+        <Setter Property="Margin" Value="0,0,12,0" />
         <Setter Property="Background" Value="{DynamicResource Passenger.Welcome.Badge}" />
     </Style>
     <Style Selector="Border.welcomeBadge.missing">
@@ -1347,8 +1349,8 @@
     </Style>
     <!-- What a recent one opens as, a tag at the row's right. -->
     <Style Selector="Border.welcomeKind">
-        <Setter Property="Padding" Value="7,1" />
-        <Setter Property="Margin" Value="10,0,4,0" />
+        <Setter Property="Padding" Value="6,0" />
+        <Setter Property="Margin" Value="12,0,4,0" />
         <Setter Property="CornerRadius" Value="{DynamicResource Passenger.BadgeRadius}" />
         <Setter Property="Background" Value="{DynamicResource Passenger.Hover}" />
     </Style>
@@ -1370,12 +1372,12 @@
     <!-- A little above the middle, where the eye takes a page's middle to be. -->
     <Style Selector="StackPanel.firstStartPage">
         <Setter Property="MaxWidth" Value="960" />
-        <Setter Property="Margin" Value="32,24,32,40" />
+        <Setter Property="Margin" Value="32,20,32,32" />
         <Setter Property="HorizontalAlignment" Value="Center" />
         <Setter Property="VerticalAlignment" Value="Center" />
     </Style>
     <Style Selector="Button.firstStartTile">
-        <Setter Property="Padding" Value="10" />
+        <Setter Property="Padding" Value="8" />
         <Setter Property="HorizontalAlignment" Value="Stretch" />
         <Setter Property="HorizontalContentAlignment" Value="Stretch" />
         <Setter Property="VerticalContentAlignment" Value="Top" />
@@ -1438,7 +1440,7 @@
         <Setter Property="Foreground" Value="{DynamicResource Passenger.Text}" />
     </Style>
     <Style Selector="DockPanel.firstStartFoot">
-        <Setter Property="Margin" Value="0,28,0,0" />
+        <Setter Property="Margin" Value="0,32,0,0" />
     </Style>
     <!-- Back and Keep the Defaults: links in the page's muted words, which the pointer brings up. -->
     <Style Selector="Button.firstStartQuiet">
@@ -1457,7 +1459,7 @@
     </Style>
     <Style Selector="StackPanel.notesPage">
         <Setter Property="MaxWidth" Value="760" />
-        <Setter Property="Margin" Value="32,40" />
+        <Setter Property="Margin" Value="32" />
         <Setter Property="Spacing" Value="12" />
     </Style>
     <Style Selector="Grid.notesHero">

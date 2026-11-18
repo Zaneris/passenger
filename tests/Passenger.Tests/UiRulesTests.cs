@@ -2035,7 +2035,6 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
         bool HasNumber(string written) => number.Matches(Regex.Replace(written, @"/\s*2(?![\d.])", "/ half"))
             .Any(m => double.Parse(m.Value, System.Globalization.CultureInfo.InvariantCulture) != 0);
         List<string> found = [];
-        HashSet<string> holding = [];
         foreach ((string path, string text) in UiFiles(theme: true))
         {
             if (path.Contains("/Theme/", StringComparison.Ordinal))
@@ -2062,14 +2061,7 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
                             {
                                 continue;
                             }
-                            if (SpacingStillToMove.Contains(path))
-                            {
-                                holding.Add(path);
-                            }
-                            else
-                            {
-                                found.Add($"{path}:{i + 1}: {match.Value} (each number one of Gaps' steps: {string.Join(", ", steps.Distinct())})");
-                            }
+                            found.Add($"{path}:{i + 1}: {match.Value} (each number one of Gaps' steps: {string.Join(", ", steps.Distinct())})");
                         }
                     }
                 }
@@ -2122,31 +2114,13 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
             }
             foreach ((int at, string what) in own.Where(o => !ContentsSpacing(path, o.What)).OrderBy(o => o.At))
             {
-                if (SpacingStillToMove.Contains(path))
-                {
-                    holding.Add(path);
-                }
-                else
-                {
-                    found.Add($"{path}:{LineOf(text, at)}: {what}");
-                }
+                found.Add($"{path}:{LineOf(text, at)}: {what}");
             }
         }
-        string[] moved = [.. SpacingStillToMove.Where(p => !holding.Contains(p))];
         Assert.True(found.Count == 0, $"{found.Count} margins, paddings, spacings or borders are given numbers of their own, so they stand otherwise than their "
             + $"like elsewhere: give each a step of Gaps (Gaps.Normal, new Thickness(Gaps.Wide, 0)) or a line of Hairlines, through the shared piece it "
             + $"belongs to where there is one:\n{string.Join("\n", found)}");
-        Assert.True(moved.Length == 0, $"These files are on the scale now: take them off SpacingStillToMove:\n{string.Join("\n", moved)}");
     }
-
-    /// <summary>The files whose spacing is still to be moved onto the scale, area by area: each comes off as its area
-    /// moves, and the list goes once it is empty.</summary>
-    private static readonly HashSet<string> SpacingStillToMove =
-    [
-        "src/Passenger.App/Theme/Shell.axaml",
-        "src/Passenger.App/Welcome/FirstStartView.cs",
-        "src/Passenger.App/Welcome/WelcomeView.cs",
-    ];
 
     /// <summary>The text between the bracket at <paramref name="open"/> and the one closing it.</summary>
     private static string Bracketed(string text, int open)

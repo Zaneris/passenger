@@ -70,7 +70,7 @@ public sealed class WelcomeView : UserControl
         search.TextChanged += (_, _) => Filter();
         Grid bar = new() { Classes = { StyleClasses.WelcomeRecentBar }, ColumnDefinitions = new ColumnDefinitions("Auto,*"), Children = { recent, search } };
 
-        notice = new TextBlock { TextWrapping = TextWrapping.Wrap, IsVisible = false, Margin = new Thickness(4, 0, 4, 10) };
+        notice = new TextBlock { TextWrapping = TextWrapping.Wrap, IsVisible = false, Margin = new Thickness(Gaps.Tight, 0, Gaps.Tight, Gaps.Wide) };
         notice.Bind(TextBlock.ForegroundProperty, notice.GetResourceObservable(TokenKeys.Warning));
         list = new ListBox
         {
@@ -277,7 +277,7 @@ public sealed class WelcomeView : UserControl
         DockPanel line = new() { Classes = { StyleClasses.WelcomeRow } };
         DockPanel.SetDock(badge, Dock.Left);
         line.Children.Add(badge);
-        TextBlock gone = new() { Text = "Missing", FontSize = 12, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(10, 0, 4, 0) };
+        TextBlock gone = new() { Text = "Missing", FontSize = 12, VerticalAlignment = VerticalAlignment.Center, Margin = ListRow.Detail };
         gone.Bind(TextBlock.ForegroundProperty, gone.GetResourceObservable(TokenKeys.Warning));
         DockPanel.SetDock(gone, Dock.Right);
         line.Children.Add(gone);
@@ -285,7 +285,7 @@ public sealed class WelcomeView : UserControl
         Border kind = new() { Classes = { StyleClasses.WelcomeKind }, Child = kindText, VerticalAlignment = VerticalAlignment.Center };
         DockPanel.SetDock(kind, Dock.Right);
         line.Children.Add(kind);
-        line.Children.Add(new StackPanel { VerticalAlignment = VerticalAlignment.Center, Spacing = 2, Children = { name, where } });
+        line.Children.Add(new StackPanel { VerticalAlignment = VerticalAlignment.Center, Spacing = Gaps.Hair, Children = { name, where } });
         return line.Showing<RecentRow>(row =>
         {
             letters.Text = MainWindow.Initials(row.Name);

@@ -23,7 +23,7 @@ namespace Passenger.App.Welcome;
 public sealed class FirstStartView : UserControl, IOwnKeys
 {
     /// <summary>The gap between two tiles.</summary>
-    private const double Gap = 24;
+    private const double Gap = Gaps.Page;
 
 
     private readonly Func<AppSettings> now;
