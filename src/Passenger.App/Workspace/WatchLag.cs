@@ -121,8 +121,7 @@ public static class WatchLag
         stopped?.Dispose();
     }
 
-    /// <summary>The watch on the beat's file, while the beat goes on: a test stops its system's watcher to have the system's
-    /// watcher lag.</summary>
+    /// <summary>The watch on the beat's file, while the beat goes on: a test deafens it to have the system's watcher lag.</summary>
     public static WatchedFile? Canary
     {
         get

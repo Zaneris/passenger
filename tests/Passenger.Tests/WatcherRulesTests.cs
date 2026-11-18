@@ -9,14 +9,23 @@ namespace Passenger.Tests;
 [Collection(Beside.Name)]
 public sealed class WatcherRulesTests
 {
-    /// <summary>The system's watcher is named in src's C# only in its two homes (Workspace/WatchedFile.cs and WatchedTree.cs):
-    /// one made elsewhere has no handler for its error and no look again as a window comes in front, so a change macOS's
-    /// watcher dropped without a word stays unseen. Read from the code as written, comments passed over.</summary>
+    /// <summary>The system's watcher is named in src's C# only in its two homes (Workspace/WatchedFile.cs and WatchedTree.cs),
+    /// and macOS's stream of Passenger's own only in WatchedTree.cs and its own file: one made elsewhere has no handler for
+    /// its error and no look again as a window comes in front, so a change the system dropped stays unseen. Read from the
+    /// code as written, comments passed over.</summary>
     [Fact]
     public void No_FileSystemWatcher_is_named_outside_WatchedFile_and_WatchedTree()
     {
+        List<string> found = [.. Named("FileSystemWatcher", ["src/Passenger.App/Workspace/WatchedFile.cs", "src/Passenger.App/Workspace/WatchedTree.cs"]),
+            .. Named("MacFileEvents", ["src/Passenger.App/Workspace/WatchedTree.cs", "src/Passenger.App/Workspace/MacFileEvents.cs"])];
+        Assert.True(found.Count == 0, "A system's watch used outside WatchedFile and WatchedTree hears no change it lost, as the system may drop one without "
+            + $"a word, and is never looked at again as a window comes in front: watch a file alone through WatchedFile, a folder through WatchedTree:\n{string.Join('\n', found)}");
+    }
+
+    /// <summary>Each line of src's C# outside <paramref name="homes"/> naming <paramref name="name"/>, comments passed over.</summary>
+    private static List<string> Named(string name, string[] homes)
+    {
         string root = Debuggees.Root;
-        string[] homes = ["src/Passenger.App/Workspace/WatchedFile.cs", "src/Passenger.App/Workspace/WatchedTree.cs"];
         List<string> found = [];
         foreach (string file in Directory.EnumerateFiles(Path.Combine(root, "src"), "*.cs", SearchOption.AllDirectories).Order(StringComparer.Ordinal))
         {
@@ -28,13 +37,12 @@ public sealed class WatcherRulesTests
             string[] lines = File.ReadAllLines(file);
             for (int line = 0; line < lines.Length; line++)
             {
-                if (!lines[line].TrimStart().StartsWith("//", StringComparison.Ordinal) && Regex.IsMatch(lines[line], @"\bFileSystemWatcher\b"))
+                if (!lines[line].TrimStart().StartsWith("//", StringComparison.Ordinal) && Regex.IsMatch(lines[line], $@"\b{name}\b"))
                 {
                     found.Add($"{relative}:{line + 1}: {lines[line].Trim()}");
                 }
             }
         }
-        Assert.True(found.Count == 0, "A FileSystemWatcher used outside WatchedFile and WatchedTree hears no change it lost, as the system may drop one without "
-            + $"a word, and is never looked at again as a window comes in front: watch a file alone through WatchedFile, a folder through WatchedTree:\n{string.Join('\n', found)}");
+        return found;
     }
 }

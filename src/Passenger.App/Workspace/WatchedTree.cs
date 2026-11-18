@@ -35,7 +35,10 @@ public abstract class WatchedTree : IDisposable
     /// <summary>Whether each kept folder is watched on its own rather than the whole tree through one watcher.</summary>
     private readonly bool eachFolder;
     private readonly object gate = new();
-    private readonly Dictionary<string, FileSystemWatcher> watches = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, Watch> watches = new(StringComparer.Ordinal);
+
+    /// <summary>How many holds on the watcher's hearing nothing are let go of not yet (<see cref="Deaf"/>).</summary>
+    private int deaf;
 
     /// <summary>When each kept path was last heard of, and each kept folder had one of its paths heard, for the last moments.</summary>
     private readonly Dictionary<string, DateTime> heardAt = new(StringComparer.Ordinal);
@@ -151,15 +154,86 @@ public abstract class WatchedTree : IDisposable
         }
     }
 
-    /// <summary>The system's watchers by the folder each watches: the whole tree's one, or one for each kept folder.</summary>
-    public IReadOnlyDictionary<string, FileSystemWatcher> Watches
+    /// <summary>The folders the system watches: the whole tree's top, or each kept folder.</summary>
+    public IReadOnlyCollection<string> Watched
     {
         get
         {
             lock (gate)
             {
-                return new Dictionary<string, FileSystemWatcher>(watches, StringComparer.Ordinal);
+                return [.. watches.Keys];
             }
+        }
+    }
+
+    /// <summary>Has the watcher pass over all the system says (its changes and its watches' failures) until let go of, as
+    /// changes the system dropped without a word: for a test of what finds them otherwise.</summary>
+    public IDisposable Deaf()
+    {
+        Interlocked.Increment(ref deaf);
+        return new Hearing(this);
+    }
+
+    /// <summary>A hold on the watcher's hearing nothing, let go of once.</summary>
+    private sealed class Hearing(WatchedTree tree) : IDisposable
+    {
+        private int released;
+
+        public void Dispose()
+        {
+            if (Interlocked.Exchange(ref released, 1) == 0)
+            {
+                Interlocked.Decrement(ref tree.deaf);
+            }
+        }
+    }
+
+    private bool IsDeaf => Volatile.Read(ref deaf) > 0;
+
+    /// <summary>The system's watch of <paramref name="at"/> failing with <paramref name="error"/>, as the system fails it
+    /// (its watches used up, too many changes at once, its folder gone), heard however deaf: for a test.</summary>
+    public void Fail(string at, Exception error)
+    {
+        Watch? failed;
+        lock (gate)
+        {
+            failed = watches.GetValueOrDefault(at);
+        }
+        OnError(failed ?? throw new InvalidOperationException($"{at} is not watched"), error);
+    }
+
+    /// <summary>Holds the reading of each of macOS's streams of the tree until let go of, as a reader held up by a loaded
+    /// system is: what comes meanwhile waits in the system's queue, which may drop it and say so. For a test.</summary>
+    public IDisposable HoldReading()
+    {
+        List<IDisposable> held;
+        lock (gate)
+        {
+            held = [.. watches.Values.Select(w => w.Mac?.HoldReading()).OfType<IDisposable>()];
+        }
+        return new Held(held);
+    }
+
+    /// <summary>Holds let go of together.</summary>
+    private sealed class Held(List<IDisposable> holds) : IDisposable
+    {
+        public void Dispose() => holds.ForEach(h => h.Dispose());
+    }
+
+    /// <summary>One of the system's watches of a folder: on macOS a stream of Passenger's own (<see cref="MacFileEvents"/>),
+    /// which says when it dropped changes, elsewhere .NET's watcher.</summary>
+    private sealed class Watch(string path) : IDisposable
+    {
+        public string Path { get; } = path;
+
+        public FileSystemWatcher? Watcher { get; set; }
+
+        public MacFileEvents? Mac { get; set; }
+
+        public void Dispose()
+        {
+            Watcher?.Dispose();
+            Mac?.Dispose();
         }
     }
 
@@ -200,7 +274,7 @@ public abstract class WatchedTree : IDisposable
     public virtual void Dispose()
     {
         WatchLag.Behind -= OnBehind;
-        List<FileSystemWatcher> stopped;
+        List<Watch> stopped;
         lock (gate)
         {
             disposed = true;
@@ -357,6 +431,11 @@ public abstract class WatchedTree : IDisposable
                 return true;
             }
         }
+        Watch watch = new(path);
+        if (FolderWatching.ReadsMacEvents)
+        {
+            return StartMac(watch, recursive);
+        }
         FileSystemWatcher watcher;
         try
         {
@@ -373,6 +452,7 @@ public abstract class WatchedTree : IDisposable
             Unwatched(path, gone);
             return false;
         }
+        watch.Watcher = watcher;
         watcher.Created += (_, e) => OnCreated(e.FullPath, made: true);
         watcher.Deleted += (_, e) => OnDeleted(e.FullPath);
         watcher.Changed += (_, e) => OnChanged(e.FullPath);
@@ -381,15 +461,16 @@ public abstract class WatchedTree : IDisposable
             OnDeleted(e.OldFullPath);
             OnCreated(e.FullPath, made: false);
         };
-        watcher.Error += (_, e) => OnError(watcher, e.GetException());
-        lock (gate)
+        watcher.Error += (_, e) =>
         {
-            if (disposed)
+            if (!IsDeaf)
             {
-                watcher.Dispose();
-                return false;
+                OnError(watch, e.GetException());
             }
-            watches[path] = watcher;
+        };
+        if (!Keep(watch))
+        {
+            return false;
         }
         try
         {
@@ -401,11 +482,76 @@ public abstract class WatchedTree : IDisposable
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
-            Stop(watcher);
+            Stop(watch);
             Unwatched(path, error);
             return false;
         }
         return true;
+    }
+
+    /// <summary>Starts macOS's stream of a folder, or the whole tree under it (<see cref="MacFileEvents"/>), its word that it
+    /// dropped changes taken as too many at once, and its folder moved or deleted as gone.</summary>
+    private bool StartMac(Watch watch, bool recursive)
+    {
+        if (!Directory.Exists(watch.Path))
+        {
+            Unwatched(watch.Path, new DirectoryNotFoundException($"{watch.Path} is not there to watch"));
+            return false;
+        }
+        try
+        {
+            watch.Mac = new MacFileEvents(watch.Path, recursive, heard => OnMacEvent(watch, heard));
+        }
+        catch (IOException error)
+        {
+            Unwatched(watch.Path, error);
+            return false;
+        }
+        return Keep(watch);
+    }
+
+    /// <summary>Takes a watch in as its folder's, unless the watcher was disposed meanwhile, which lets go of it.</summary>
+    private bool Keep(Watch watch)
+    {
+        lock (gate)
+        {
+            if (!disposed)
+            {
+                watches[watch.Path] = watch;
+                return true;
+            }
+        }
+        watch.Dispose();
+        return false;
+    }
+
+    private void OnMacEvent(Watch watch, MacFileEvent heard)
+    {
+        if (IsDeaf)
+        {
+            return;
+        }
+        switch (heard.Kind)
+        {
+            case MacFileEventKind.Changed:
+                OnChanged(heard.Path);
+                break;
+            case MacFileEventKind.Made:
+                OnCreated(heard.Path, made: true);
+                break;
+            case MacFileEventKind.MovedIn:
+                OnCreated(heard.Path, made: false);
+                break;
+            case MacFileEventKind.Deleted:
+                OnDeleted(heard.Path);
+                break;
+            case MacFileEventKind.Dropped:
+                OnError(watch, new InternalBufferOverflowException($"macOS dropped changes under {watch.Path}, saying so at {heard.Path}"));
+                break;
+            case MacFileEventKind.Gone:
+                OnError(watch, new DirectoryNotFoundException($"{watch.Path} was moved or deleted"));
+                break;
+        }
     }
 
     /// <summary>A file or folder come, <paramref name="made"/> there or moved in. Where each folder is watched on its own,
@@ -414,7 +560,7 @@ public abstract class WatchedTree : IDisposable
     /// in as found.</summary>
     private void OnCreated(string path, bool made)
     {
-        if (IsUnheard(path))
+        if (IsDeaf || IsUnheard(path))
         {
             return;
         }
@@ -435,7 +581,7 @@ public abstract class WatchedTree : IDisposable
 
     private void OnDeleted(string path)
     {
-        if (IsUnheard(path))
+        if (IsDeaf || IsUnheard(path))
         {
             return;
         }
@@ -448,7 +594,7 @@ public abstract class WatchedTree : IDisposable
 
     private void OnChanged(string path)
     {
-        if (!IsUnheard(path))
+        if (!IsDeaf && !IsUnheard(path))
         {
             Note(path, created: false);
         }
@@ -471,7 +617,7 @@ public abstract class WatchedTree : IDisposable
     /// <summary>Whether a change heard is one <see cref="UnheardVariable"/> has passed over.</summary>
     private static bool IsUnheard(string path) => Unheard is { } name && Path.GetFileName(path.AsSpan()).Equals(name, StringComparison.Ordinal);
 
-    private void OnError(FileSystemWatcher source, Exception error)
+    private void OnError(Watch source, Exception error)
     {
         if (OutOfWatches(error) is not null)
         {
@@ -592,7 +738,7 @@ public abstract class WatchedTree : IDisposable
             {
                 rewalking = false;
             }
-            foreach (string gone in Watches.Keys.Where(path => !Directory.Exists(path)))
+            foreach (string gone in Watched.Where(path => !Directory.Exists(path)))
             {
                 Unwatch(gone);
             }
@@ -1039,7 +1185,7 @@ public abstract class WatchedTree : IDisposable
     /// or now follow it under another name; one made again in its place is watched anew after.</summary>
     private void Unwatch(string path)
     {
-        List<FileSystemWatcher> stopped = [];
+        List<Watch> stopped = [];
         lock (gate)
         {
             foreach (string watched in watches.Keys.Where(w => PathNames.Within(w, path)).ToList())
@@ -1059,17 +1205,17 @@ public abstract class WatchedTree : IDisposable
         }
     }
 
-    /// <summary>Lets go of one watcher whose folder could not be watched or is gone, unless another has its place.</summary>
-    private void Stop(FileSystemWatcher watcher)
+    /// <summary>Lets go of one watch whose folder could not be watched or is gone, unless another has its place.</summary>
+    private void Stop(Watch watch)
     {
         lock (gate)
         {
-            if (watches.TryGetValue(watcher.Path, out FileSystemWatcher? held) && held == watcher)
+            if (watches.TryGetValue(watch.Path, out Watch? held) && held == watch)
             {
-                watches.Remove(watcher.Path);
+                watches.Remove(watch.Path);
             }
         }
-        watcher.Dispose();
+        watch.Dispose();
     }
 
     /// <summary>Takes in what the system saw at a path, as the watcher takes it (<see cref="Noticed"/>). One not

@@ -6,6 +6,7 @@ using Avalonia.Input;
 using Avalonia.VisualTree;
 using Passenger.App;
 using Passenger.App.Templates;
+using Passenger.App.Workspace;
 using Passenger.Core;
 
 namespace Passenger.Tests;
@@ -320,11 +321,11 @@ public sealed class TemplateFamiliesTests : IDisposable
         Assert.True(window.Perform(AppActions.NewSolution));
         NewProjectDialog dialog = Opened(window);
         Ui.Click(dialog.FamilyRow("Unit Test")!);
-        FileSystemWatcher watcher = ProjectTemplates.PackagesWatch?.Watcher ?? throw new InvalidOperationException("dotnet new's packages.json is not watched");
+        WatchedFile watched = ProjectTemplates.PackagesWatch ?? throw new InvalidOperationException("dotnet new's packages.json is not watched");
         bool installed = false;
+        IDisposable deaf = watched.Deaf();
         try
         {
-            watcher.EnableRaisingEvents = false;
             DotnetNew(["install", probe]);
             installed = true;
             dialog.Activate();
@@ -339,7 +340,7 @@ public sealed class TemplateFamiliesTests : IDisposable
         }
         finally
         {
-            watcher.EnableRaisingEvents = true;
+            deaf.Dispose();
             if (installed)
             {
                 DotnetNew(["uninstall", probe]);

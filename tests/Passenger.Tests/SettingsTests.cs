@@ -13,6 +13,7 @@ using Passenger.App;
 using Passenger.App.Run;
 using Passenger.App.Settings;
 using Passenger.App.State;
+using Passenger.App.Workspace;
 using Passenger.Editor;
 
 namespace Passenger.Tests;
@@ -1023,15 +1024,15 @@ public sealed class SettingsTests : IDisposable
         window.KeepSettings();
         StateStore store = StateStore.Open(settings);
         string file = Path.Combine(settings, StateStore.SettingsFile);
-        FileSystemWatcher watcher = store.Settings.Watched?.Watcher ?? throw new InvalidOperationException($"{file} is not watched");
+        WatchedFile watched = store.Settings.Watched ?? throw new InvalidOperationException($"{file} is not watched");
+        IDisposable deaf = watched.Deaf();
         try
         {
-            watcher.EnableRaisingEvents = false;
             window.ApplySettings(window.Settings with { EditorFontSize = 15 });
             store.Settings.Flush();
 
             WrittenElsewhere(file, 21);
-            FolderWatchTests.RaiseError(watcher, new InternalBufferOverflowException("Too many changes at once; directory listing is required."));
+            watched.Fail();
             Ui.WaitFor(() => window.EditorArea.CodeEditor.FontSize == 21,
                 $"the window to follow another Passenger's change to settings.json, lost in the watcher's overflow (its font is {window.EditorArea.CodeEditor.FontSize})");
 
@@ -1044,7 +1045,7 @@ public sealed class SettingsTests : IDisposable
         }
         finally
         {
-            watcher.EnableRaisingEvents = true;
+            deaf.Dispose();
             store.Release();
             window.Close();
         }
@@ -1060,11 +1061,11 @@ public sealed class SettingsTests : IDisposable
         window.KeepSettings();
         StateStore store = StateStore.Open(settings);
         string file = Path.Combine(settings, StateStore.SettingsFile);
-        FileSystemWatcher watcher = store.Settings.Watched?.Watcher ?? throw new InvalidOperationException($"{file} is not watched");
+        WatchedFile watched = store.Settings.Watched ?? throw new InvalidOperationException($"{file} is not watched");
+        // Deaf, so its word of the window's own write, which comes when the system sends it, is no part of the test.
+        IDisposable deaf = watched.Deaf();
         try
         {
-            // Deaf, so its word of the window's own write, which comes when the system sends it, is no part of the test.
-            watcher.EnableRaisingEvents = false;
             window.ApplySettings(window.Settings with { EditorFontSize = 15 });
             store.Settings.Flush();
             ChangedUnstamped(file, 16);
@@ -1072,7 +1073,7 @@ public sealed class SettingsTests : IDisposable
             window.Activate();
             Ui.Settle();
             Assert.True(window.EditorArea.CodeEditor.FontSize == 15, "settings.json was read again as the window came in front, though only the window's own change had moved it");
-            FolderWatchTests.RaiseError(watcher, new InternalBufferOverflowException("Too many changes at once; directory listing is required."));
+            watched.Fail();
             Ui.Settle();
             Assert.True(window.EditorArea.CodeEditor.FontSize == 15, "settings.json was read again as its watcher overflowed, though only the window's own change had moved it");
 
@@ -1082,7 +1083,7 @@ public sealed class SettingsTests : IDisposable
         }
         finally
         {
-            watcher.EnableRaisingEvents = true;
+            deaf.Dispose();
             store.Release();
             window.Close();
         }

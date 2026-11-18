@@ -29,6 +29,10 @@ public sealed class FolderWatching
     /// <summary>Whether each kept folder is watched on its own rather than the whole tree at once.</summary>
     public bool EachFolder { get; }
 
+    /// <summary>Whether the system's changes are read through a stream of Passenger's own, which says when the system dropped
+    /// some (macOS's FSEvents, whose drops .NET's watcher passes over), rather than through .NET's watcher.</summary>
+    public static bool ReadsMacEvents => OperatingSystem.IsMacOS();
+
     /// <summary>What the person is told when a watcher's error says the user's watches ran out, with how to raise the
     /// limit; null for any other error.</summary>
     public string? OutOfWatches(Exception error)

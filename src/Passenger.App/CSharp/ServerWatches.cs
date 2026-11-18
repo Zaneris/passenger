@@ -387,7 +387,7 @@ public sealed class ServerWatches : IDisposable
                 bool taken = false;
                 lock (gate)
                 {
-                    if (!disposed && !own.ContainsKey((at, recursive)) && !Going(at) && tree.Watches.Count > 0)
+                    if (!disposed && !own.ContainsKey((at, recursive)) && !Going(at) && tree.Watched.Count > 0)
                     {
                         own[(at, recursive)] = tree;
                         taken = true;

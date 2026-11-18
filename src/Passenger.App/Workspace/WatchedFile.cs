@@ -44,12 +44,12 @@ public sealed class WatchedFile : IDisposable
             {
                 NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName | NotifyFilters.Size | NotifyFilters.CreationTime,
             };
-            Watcher.Changed += (_, _) => Look();
-            Watcher.Created += (_, _) => Look();
-            Watcher.Deleted += (_, _) => Look();
+            Watcher.Changed += (_, _) => Heard();
+            Watcher.Created += (_, _) => Heard();
+            Watcher.Deleted += (_, _) => Heard();
             // Heard for a rename from the name as well as onto it, by the filter: either moves the file.
-            Watcher.Renamed += (_, _) => Look();
-            Watcher.Error += (_, _) => Look();
+            Watcher.Renamed += (_, _) => Heard();
+            Watcher.Error += (_, _) => Heard();
             Watcher.EnableRaisingEvents = true;
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or ArgumentException or PlatformNotSupportedException)
@@ -63,7 +63,44 @@ public sealed class WatchedFile : IDisposable
     public string Path { get; }
 
     /// <summary>The system's watcher of the file; null where it could not be watched.</summary>
-    public FileSystemWatcher? Watcher { get; }
+    private FileSystemWatcher? Watcher { get; }
+
+    /// <summary>How many holds on the watch's hearing nothing are let go of not yet (<see cref="Deaf"/>).</summary>
+    private int deaf;
+
+    /// <summary>Has the watch pass over all the system says of the file (its changes and its watch's failure) until let go
+    /// of, as a change the system dropped without a word: for a test of what finds it otherwise.</summary>
+    public IDisposable Deaf()
+    {
+        Interlocked.Increment(ref deaf);
+        return new Hearing(this);
+    }
+
+    /// <summary>A hold on the watch's hearing nothing, let go of once.</summary>
+    private sealed class Hearing(WatchedFile file) : IDisposable
+    {
+        private int released;
+
+        public void Dispose()
+        {
+            if (Interlocked.Exchange(ref released, 1) == 0)
+            {
+                Interlocked.Decrement(ref file.deaf);
+            }
+        }
+    }
+
+    /// <summary>The system's watch of the file failing, as when it lost changes, heard however deaf: for a test.</summary>
+    public void Fail() => Look();
+
+    /// <summary>What the system said of the file, unless the watch is deaf: the file looked at.</summary>
+    private void Heard()
+    {
+        if (Volatile.Read(ref deaf) == 0)
+        {
+            Look();
+        }
+    }
 
     /// <summary>What is told the file found moved since it was last seen, with its stamp now (null: not there): whether it
     /// took the file as it stands.</summary>

@@ -586,8 +586,7 @@ public sealed class ProjectFileHelpTests : IClassFixture<ProjectFileHelpTests.Sh
         MainWindow window = Open("App/App.csproj");
         CodeEditor editor = window.EditorArea.CodeEditor;
         Assert.DoesNotContain("Passenger.Sample", Children(window, "Dependencies"));
-        List<FileSystemWatcher> watchers = [.. window.FolderWatcher!.Watches.Values];
-        watchers.ForEach(w => w.EnableRaisingEvents = false);
+        IDisposable deaf = window.FolderWatcher!.Deaf();
         try
         {
             Ui.PlaceAfter(editor, "<ProjectReference Include=\"../\" />");
@@ -599,7 +598,7 @@ public sealed class ProjectFileHelpTests : IClassFixture<ProjectFileHelpTests.Sh
         }
         finally
         {
-            watchers.ForEach(w => w.EnableRaisingEvents = true);
+            deaf.Dispose();
         }
         window.Close();
     }

@@ -95,7 +95,7 @@ public sealed class ServerWatchTests : IClassFixture<ServerWatchTests.Project>
         string obj = PathNames.Canonical(project.PathOf("obj"));
         WatchedTree tree = window.CSharpService!.Watching!.Of(obj)!;
         Ui.WaitFor(() => tree.Ready.IsCompleted, "obj's watcher to have recorded what is in it");
-        List<FileSystemWatcher> watchers = [.. tree.Watches.Values];
+        IDisposable? deaf = null;
         string source = Path.Combine(obj, "Unheard.cs");
         using Told made = new(watched, name => name == "Unheard.cs", gone: false);
         using Told gone = new(watched, name => name == "Unheard.cs", gone: true);
@@ -104,14 +104,14 @@ public sealed class ServerWatchTests : IClassFixture<ServerWatchTests.Project>
         bool heardGone;
         try
         {
-            watchers.ForEach(w => w.EnableRaisingEvents = false);
+            deaf = tree.Deaf();
             File.Delete(source);
-            FolderWatchTests.RaiseError(tree.Watches[tree.Top], new InternalBufferOverflowException("Too many changes at once; directory listing is required."));
+            tree.Fail(tree.Top, new InternalBufferOverflowException("Too many changes at once; directory listing is required."));
             heardGone = Ui.Pumped(() => gone.Count == 1, TimeSpan.FromSeconds(30));
         }
         finally
         {
-            watchers.ForEach(w => w.EnableRaisingEvents = true);
+            deaf?.Dispose();
         }
         Assert.True(heardGone, $"The language server was never told the source deleted unheard in obj went, so it keeps its document and its problems: {WatchLog(window)}");
         window.Close();
@@ -128,11 +128,11 @@ public sealed class ServerWatchTests : IClassFixture<ServerWatchTests.Project>
         string obj = PathNames.Canonical(project.PathOf("obj"));
         WatchedTree tree = window.CSharpService!.Watching!.Of(obj)!;
         Ui.WaitFor(() => tree.Ready.IsCompleted, "obj's watcher to have recorded what is in it");
-        List<FileSystemWatcher> watchers = [.. tree.Watches.Values];
+        IDisposable? deaf = null;
         using Told made = new(watched, name => name == "Unheard.cs", gone: false);
         try
         {
-            watchers.ForEach(w => w.EnableRaisingEvents = false);
+            deaf = tree.Deaf();
             File.WriteAllText(Path.Combine(obj, "Unheard.cs"), "static class Unheard\n{\n}\n");
             Ui.Settle();
             Assert.True(made.Count == 0, "The server was told of a source written in obj while obj's watcher heard nothing before the window came in front");
@@ -143,7 +143,7 @@ public sealed class ServerWatchTests : IClassFixture<ServerWatchTests.Project>
         }
         finally
         {
-            watchers.ForEach(w => w.EnableRaisingEvents = true);
+            deaf?.Dispose();
         }
         window.Close();
     }
@@ -165,19 +165,19 @@ public sealed class ServerWatchTests : IClassFixture<ServerWatchTests.Project>
         Ui.PumpUntil(() => Enumerable.Range(0, Moved).All(i => window.FileIndex.Files.Contains(Path.Combine("Arriving", $"Arriving{i}.cs"))), "every source moved in in Go to File");
 
         FolderWatcher watcher = window.FolderWatcher!;
-        List<FileSystemWatcher> watchers = [.. watcher.Watches.Values];
+        IDisposable? deaf = null;
         using Told gone = new(watched, name => name == "Arriving7.cs", gone: true);
         bool heardGone;
         try
         {
-            watchers.ForEach(w => w.EnableRaisingEvents = false);
+            deaf = watcher.Deaf();
             File.Delete(project.PathOf(Path.Combine("Arriving", "Arriving7.cs")));
-            FolderWatchTests.RaiseError(watcher.Watches[watcher.Top], new InternalBufferOverflowException("Too many changes at once; directory listing is required."));
+            watcher.Fail(watcher.Top, new InternalBufferOverflowException("Too many changes at once; directory listing is required."));
             heardGone = Ui.Pumped(() => gone.Count == 1, TimeSpan.FromSeconds(30));
         }
         finally
         {
-            watchers.ForEach(w => w.EnableRaisingEvents = true);
+            deaf?.Dispose();
         }
         Assert.True(heardGone, $"The language server was never told a source of the folder moved in, deleted unheard, went: {WatchLog(window)}");
         Ui.PumpUntil(() => !window.FileIndex.Files.Contains(Path.Combine("Arriving", "Arriving7.cs")), "the source deleted unheard gone from Go to File");
