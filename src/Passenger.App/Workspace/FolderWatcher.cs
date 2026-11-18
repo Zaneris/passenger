@@ -19,6 +19,10 @@ public sealed record FolderChanges(IReadOnlySet<string> Paths, bool Structure, b
     /// as a walk names it, its folder's canonical path and its own name: what Go to File's index puts in or takes out.</summary>
     public IReadOnlySet<string> ComeOrGone { get; init; } = new HashSet<string>();
 
+    /// <summary>The files among <see cref="Paths"/> written in place, or saved by Passenger, neither come nor gone: a change of
+    /// a file's text, which the folder's index, following what comes and goes, never hears.</summary>
+    public IEnumerable<string> Written => Paths.Where(path => !ComeOrGone.Contains(path));
+
     /// <summary>Whether the system lost changes (too many at once, as a large checkout makes) or a watch failed: what they
     /// were is not known, so everything shown from the folder is read again (the open files, the Explorer, the solution,
     /// Go to File's index). <see cref="Paths"/> then holds the folder itself, and what its record held that is gone.</summary>
@@ -270,7 +274,7 @@ public sealed class FolderWatcher : WatchedTree
                 comeOrGone.Add(named);
             }
         }
-        projects |= IsProjectFile(path);
+        projects |= IsReadFor(path);
         launchProfiles |= Path.GetFileName(path.AsSpan()).Equals(Run.LaunchProfile.SettingsFile, StringComparison.OrdinalIgnoreCase)
             || path.EndsWith(".run.json", StringComparison.OrdinalIgnoreCase) || SolutionLaunch.IsFile(path);
     }
@@ -283,8 +287,9 @@ public sealed class FolderWatcher : WatchedTree
     }
 
     /// <summary>Whether a file is a solution, project, props or targets file, or a shared project's or its items file, which
-    /// the solution is read again for.</summary>
-    private static bool IsProjectFile(string path) =>
+    /// the folder is read again for as it is written; come or gone, the folder's index weighs it against what the read found
+    /// (<see cref="ProjectSession.ProjectsCameOrWent"/>).</summary>
+    public static bool IsReadFor(string path) =>
         WorkspaceModel.IsSolution(path) || WorkspaceModel.IsProjectFile(path) || PathNames.HasExtension(path, [".props", ".targets", SharedProjects.Extension, EvaluatedItem.SharedItemsExtension]);
 
     protected override FolderChanges? Gathered(bool lost, bool overflowed)

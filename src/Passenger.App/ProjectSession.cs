@@ -285,8 +285,8 @@ public sealed class ProjectSession : IAsyncDisposable
         // And the .http and .rest files the Endpoints window sends.
         session.Index.Walked += (_, _) => IdeErrors.Observe(session.LookForRequestsAsync(session.Index.Files));
         session.Index.Changed += (_, change) => session.RequestsCameOrWent(change.Came, change.Gone);
-        // And a Godot project's file come or gone, alone or with its folder, which the walk for games is made again for.
-        session.Index.Changed += (_, change) => session.GodotProjectsCameOrWent(change.Came, change.Gone);
+        // And the projects, programs and Godot projects come or gone, alone or with their folders, which the folder is read again for.
+        session.Index.Changed += (_, change) => session.ProjectsCameOrWent(change.Came, change.Gone);
         session.Index.Build(folder);
         session.Watcher = new FolderWatcher(folder, setup.Watching);
         session.Web = new Web.WebLanguages(folder, setup.Settings, setup.Engine)
@@ -866,24 +866,62 @@ public sealed class ProjectSession : IAsyncDisposable
         }
     }
 
-    /// <summary>Files come or gone since the walk, by their paths from the folder: a Godot project's file listed that is no
-    /// game the folder knows, or a known game's gone and not listed again, brings or takes a game the folder's walk finds,
-    /// so the folder is read again. Weighed against the games known, a file listed again with its folder is one of them.</summary>
-    private void GodotProjectsCameOrWent(IReadOnlyList<string> came, IReadOnlyList<string> gone)
+    /// <summary>Files come or gone since the walk, by their paths from the folder, weighed against what the folder's read found,
+    /// the one way projects, programs and Godot projects come or gone are followed: a solution's, an import's or a shared
+    /// project's file, a project or project.godot the read's walk would find anew, a known one's gone and not listed again,
+    /// or a C# file come that is a program now and was not (or the reverse) has the folder read again. One listed again (with
+    /// its folder, or replaced in place as Godot's editor's safe save does) is known, its text the evaluation's.</summary>
+    private void ProjectsCameOrWent(IReadOnlyList<string> came, IReadOnlyList<string> gone)
     {
-        if (IsEnded || Folder is not { } folder || (!came.Any(IsGodotProject) && !gone.Any(IsGodotProject)))
+        if (IsEnded || Folder is not { } folder || Workspace is not { } workspace || !came.Any(Weighed) && !gone.Any(Weighed))
         {
             return;
         }
-        List<string> games = [.. Workspace?.GodotGames ?? [], .. Projects.Select(p => p.NamedGodotFolder).OfType<string>()];
-        bool Known(string file) => games.Any(game => PathNames.Same(game, Path.GetDirectoryName(Path.Combine(folder, file))!));
-        HashSet<string> listed = [.. came.Where(IsGodotProject)];
-        if (listed.Any(file => !Known(file)) || gone.Any(file => IsGodotProject(file) && !listed.Contains(file) && Known(file)))
+        HashSet<string> listed = new(came, StringComparer.Ordinal);
+        HashSet<string> known = new(workspace.Projects.Select(p => p.Path), PathNames.Comparer);
+        string[] projectFolders = [.. workspace.Projects.Where(p => !p.IsProgram).Select(p => p.Folder)];
+        List<string> games = [.. workspace.GodotGames, .. Projects.Select(p => p.NamedGodotFolder).OfType<string>()];
+        if (came.Any(Comes) || gone.Any(file => !listed.Contains(file) && Goes(Path.Join(folder, file))))
+        {
+            ReadAgain();
+            return;
+        }
+        // Whether a C# file come is a program is in its head, read off the window's thread.
+        string[] sources = [.. came.Where(Passenger.Host.ProgramFiles.IsProgram).Select(file => Path.Join(folder, file))];
+        if (sources.Length > 0)
+        {
+            IdeErrors.Observe(ProgramsCameAsync(sources, workspace, reads));
+        }
+
+        bool Comes(string file)
+        {
+            string path = Path.Join(folder, file);
+            bool found = FolderWalk.Enters(folder, Path.GetDirectoryName(file.AsSpan()), built: true);
+            return FolderWatcher.IsReadFor(path) && !WorkspaceModel.IsProjectFile(path)
+                || found && WorkspaceModel.IsProject(path) && !known.Contains(path)
+                || found && IsGodotProject(path) && NewGame(Path.GetDirectoryName(path)!);
+        }
+        bool Goes(string path) => FolderWatcher.IsReadFor(path) ? !WorkspaceModel.IsProjectFile(path) || known.Contains(path)
+            : IsGodotProject(path) ? games.Any(game => PathNames.Same(game, Path.GetDirectoryName(path)!))
+            : Passenger.Host.ProgramFiles.IsProgram(path) && known.Contains(path);
+        // A folder the walk takes for no game of its own: a known one, one holding a project or under one, or under a game.
+        bool NewGame(string at) => !games.Any(game => PathNames.Within(at, game)) && !projectFolders.Any(project => PathNames.Within(at, project));
+
+        static bool IsGodotProject(string path) => Path.GetFileName(path.AsSpan()).Equals(GodotProject.FileName, StringComparison.Ordinal);
+        static bool Weighed(string file) => FolderWatcher.IsReadFor(file) || IsGodotProject(file) || Passenger.Host.ProgramFiles.IsProgram(file);
+    }
+
+    /// <summary>The C# files come, each now a program and not one of the folder's, or the reverse: the folder is read again,
+    /// unless a read came since, whose walk found them.</summary>
+    private async Task ProgramsCameAsync(string[] sources, WorkspaceModel workspace, int read)
+    {
+        IReadOnlyList<ProjectModel> projects = Projects;
+        bool changed = await BackgroundWork.Run(() =>
+            sources.Any(path => workspace.IsProgramNow(path, projects) != projects.Any(p => p.IsProgram && PathNames.Same(p.Path, path))));
+        if (changed && read == reads && !IsEnded)
         {
             ReadAgain();
         }
-
-        static bool IsGodotProject(string path) => Path.GetFileName(path.AsSpan()).Equals(GodotProject.FileName, StringComparison.Ordinal);
     }
 
     /// <summary>The folder's builds, rebuilds and cleans, in the window's Build console.</summary>

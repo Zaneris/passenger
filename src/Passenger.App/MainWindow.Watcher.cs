@@ -81,10 +81,13 @@ public partial class MainWindow
         session.DesignTimeBuilds.FolderChanged(changes);
         session.FilesChanged(changes);
         session.Debug.FilesChanged(changes.Paths);
-        (bool programsMade, bool programsWritten) = ProgramsChanged(changes.Paths);
+        // What came or went is the index's to weigh against what the folder's read found (ProjectSession.ProjectsCameOrWent).
+        string[] written = [.. changes.Written];
+        (bool programsMade, bool programsWritten) = ProgramsChanged(written);
         // Lost changes may have made or moved anything in the folder.
         IReadOnlyCollection<string> cameOrWent = changes.Lost ? [folder] : changes.ComeOrGone;
-        if (changes.Projects || changes.Lost || programsMade)
+        bool readAgain = changes.Lost || programsMade || written.Any(FolderWatcher.IsReadFor);
+        if (readAgain)
         {
             // Lost changes may have been a project's or the solution's: read again, which shows the whole Explorer anew.
             session.CameOrWent(cameOrWent, readAgain: true);
@@ -102,12 +105,12 @@ public partial class MainWindow
             session.Evaluate();
         }
         // A Docker Compose project is never evaluated: what it holds and how it runs are read from its text as written.
-        IReadOnlyList<ProjectModel> composed = changes.Projects || changes.Lost ? [] : ComposeProjectsWritten(changes.Paths);
+        IReadOnlyList<ProjectModel> composed = readAgain ? [] : ComposeProjectsWritten(changes.Paths);
         if (composed.Count > 0)
         {
             Explorer.UpdateProjects(session.Workspace!, composed);
         }
-        if ((changes.LaunchProfiles || composed.Count > 0) && !(changes.Projects || changes.Lost))
+        if ((changes.LaunchProfiles || composed.Count > 0) && !readAgain)
         {
             // Only the run configurations are made of launch profiles and compose projects, so the solution stays as it is.
             session.Configurations.Configure(Projects);
@@ -175,9 +178,9 @@ public partial class MainWindow
             ? [.. solution.Projects.Where(p => WorkspaceModel.IsComposeProject(p.Path) && paths.Any(written => PathNames.Same(written, p.Path)))]
             : [];
 
-    /// <summary>What the C# files written, come or gone change of the folder's file-based programs: one that is a program
-    /// now and was not, or the reverse, has the folder read again; one a program compiles (its own file, or one it
-    /// includes) has the projects evaluated again, its directives being its project's.</summary>
+    /// <summary>What the C# files written in place change of the folder's file-based programs: one that is a program now and
+    /// was not, or the reverse, has the folder read again; one a program compiles (its own file, or one it includes) has the
+    /// projects evaluated again, its directives being its project's.</summary>
     private (bool Made, bool Written) ProgramsChanged(IEnumerable<string> paths)
     {
         if (session.Workspace is not { } workspace)
@@ -189,11 +192,7 @@ public partial class MainWindow
         foreach (string path in paths.Where(Passenger.Host.ProgramFiles.IsProgram))
         {
             bool known = projects.Any(p => p.IsProgram && PathNames.Same(p.Path, path));
-            bool now = File.Exists(path)
-                && !projects.Any(p => p.IsProgram ? !PathNames.Same(p.Path, path) && p.Holds(path) : PathNames.Within(path, p.Folder))
-                && (workspace.IsProgramFile(path)
-                    || projects.Any(p => p.IsProgram && p.ProjectReferences.Contains(path, PathNames.Comparer)));
-            if (known != now)
+            if (known != workspace.IsProgramNow(path, projects))
             {
                 return (true, false);
             }

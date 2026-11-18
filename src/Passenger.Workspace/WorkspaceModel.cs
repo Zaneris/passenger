@@ -407,6 +407,15 @@ public sealed record WorkspaceModel(string Folder, SolutionModel? Solution, IRea
         return IsProgram(path, head) || head.Count == 0 && ProgramFiles.IsProgram(path) && TakesPlainPrograms && ProgramFiles.BeginsWithStatement(path);
     }
 
+    /// <summary>Whether a C# file is one of its programs now, among the <paramref name="projects"/> loaded: in a folder the
+    /// walk for programs enters, there, compiled by no project nor another program, and a program by its text (<see
+    /// cref="IsProgramFile"/>) or one a program references (<c>#:ref</c>). Its head is read, so more than a few are a worker's.</summary>
+    public bool IsProgramNow(string path, IReadOnlyList<ProjectModel> projects) =>
+        FolderWalk.Enters(Folder, PathNames.Below(Path.GetDirectoryName(path)!, Folder), built: true)
+        && File.Exists(path)
+        && !projects.Any(p => p.IsProgram ? !PathNames.Same(p.Path, path) && p.Holds(path) : PathNames.Within(path, p.Folder))
+        && (IsProgramFile(path) || projects.Any(p => p.IsProgram && p.ProjectReferences.Contains(path, PathNames.Comparer)));
+
     /// <summary>Whether a C# file opened alone opens with its folder, a program of it: its head makes it one, or it has none
     /// and begins with top-level statements in a folder holding no project or solution.</summary>
     public static bool OpensAsProgram(string path)

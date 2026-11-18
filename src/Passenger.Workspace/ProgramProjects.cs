@@ -16,11 +16,24 @@ public static class ProgramProjects
     {
         Stamp head = Stamps.Head(path);
         string folder = Path.GetDirectoryName(path)!;
-        string asked = JsonSerializer.Serialize(new Dictionary<string, string> { ["$type"] = "GetProject", ["EntryPointFileFullPath"] = path });
-        // Its answer is its line of JSON, taken as it comes: the SDK's first run in a new home writes its welcome before it.
-        ChildAnswer answer = await ChildProcesses.AnswerAsync(ChildProcesses.DotnetQuestion(["run-api"], folder), l => l.TrimStart().StartsWith('{'), asked,
-            cancel: cancel).ConfigureAwait(false);
         string name = Path.GetFileName(path);
+        // Gone, with its folder or alone, until the folder is read again: nothing for the SDK to make, nor a folder to run it in.
+        if (!File.Exists(path))
+        {
+            return Gone();
+        }
+        string asked = JsonSerializer.Serialize(new Dictionary<string, string> { ["$type"] = "GetProject", ["EntryPointFileFullPath"] = path });
+        ChildAnswer answer;
+        try
+        {
+            // Its answer is its line of JSON, taken as it comes: the SDK's first run in a new home writes its welcome before it.
+            answer = await ChildProcesses.AnswerAsync(ChildProcesses.DotnetQuestion(["run-api"], folder), l => l.TrimStart().StartsWith('{'), asked,
+                cancel: cancel).ConfigureAwait(false);
+        }
+        catch (System.ComponentModel.Win32Exception) when (!Directory.Exists(folder))
+        {
+            return Gone();
+        }
         if (answer.Answer?.Trim() is not { } line)
         {
             return (new ProgramParams(path, null, null, $"{name}: the .NET SDK made no project for it: {answer.Said}"), [head], []);
@@ -48,6 +61,8 @@ public static class ProgramProjects
         {
             return (new ProgramParams(path, null, null, $"{name}: the .NET SDK's answer does not read: {error.Message}"), [head], []);
         }
+
+        (ProgramParams, IReadOnlyList<Stamp>, IReadOnlyList<string>) Gone() => (new ProgramParams(path, null, null, $"{name}: it is not there"), [head], []);
     }
 
     /// <summary>Where a diagnostic of the SDK's is, as a build names a place: its file and line from 1.</summary>

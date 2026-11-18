@@ -61,9 +61,9 @@ public static class FolderWalk
 
     /// <summary>Whether the walk from <paramref name="root"/> enters a folder under it: none of the names between them is one
     /// passed over, though a link led to it.</summary>
-    private static bool Enters(string root, string folder, bool built)
-    {
-        ReadOnlySpan<char> names = PathNames.Below(folder, root);
-        return !IgnoredFolders.AnyIn(root, names) && !(built && IgnoredFolders.AnyHidden(names));
-    }
+    private static bool Enters(string root, string folder, bool built) => Enters(root, PathNames.Below(folder, root), built);
+
+    /// <summary>Whether the walk from <paramref name="root"/> enters a folder under it, named by its path from the root ("src/App"):
+    /// <paramref name="built"/>, the walk for what projects build or hold (the folder's projects, programs and Godot projects).</summary>
+    public static bool Enters(string root, ReadOnlySpan<char> names, bool built) => !IgnoredFolders.AnyIn(root, names) && !(built && IgnoredFolders.AnyHidden(names));
 }

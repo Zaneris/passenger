@@ -1083,6 +1083,76 @@ public sealed class FolderWatchTests : IDisposable
         static IReadOnlyList<string> Configurations(MainWindow window) => [.. window.Configurations.Select(c => c.Name).Order(StringComparer.Ordinal)];
     }
 
+    /// <summary>A program brought into a folder with no solution with its folder whole, nothing else coming with it, is the
+    /// folder's with its run configuration, its head read for its directive; its folder moved out, it is gone. Watched the
+    /// system's way and as on Linux.</summary>
+    [AvaloniaTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_program_moved_in_with_its_folder_alone_is_found_and_gone_with_it(bool asOnLinux)
+    {
+        Write("App/App.csproj", Project);
+        MainWindow window = Open(asOnLinux ? FolderWatching.Inotify : FolderWatching.Platform, languageServer: false);
+        Assert.Equal(["App"], Names(window.Projects));
+        string elsewhere = PathNames.Canonical(TestFolders.Create("elsewhere-"));
+        try
+        {
+            TestFolders.Write(elsewhere, "scripts/hello.cs", "#:property PublishAot=false\nConsole.WriteLine(\"hello\");\n");
+            TestFolders.Write(elsewhere, "scripts/notes.cs", "// Not a program: no directive, and the folder has a project.\n");
+            Directory.Move(Path.Combine(elsewhere, "scripts"), Path.Combine(folder, "scripts"));
+            Ui.WaitFor(() => Names(window.Projects) is ["App", "hello"] && Names(window.Configurations) is ["App", "hello"],
+                () => $"hello.cs, moved in with its folder, the folder's with its run configuration; its projects are {string.Join(", ", Names(window.Projects))} "
+                    + $"and its run configurations {string.Join(", ", Names(window.Configurations))}");
+
+            Directory.Move(Path.Combine(folder, "scripts"), Path.Combine(elsewhere, "gone"));
+            Ui.WaitFor(() => Names(window.Projects) is ["App"] && Names(window.Configurations) is ["App"],
+                () => $"hello.cs gone with its folder, and its run configuration; the folder's projects are {string.Join(", ", Names(window.Projects))} "
+                    + $"and its run configurations {string.Join(", ", Names(window.Configurations))}");
+        }
+        finally
+        {
+            window.Close();
+            TestFolders.Delete(elsewhere);
+        }
+    }
+
+    /// <summary>A project's folder replaced by another of the same name between the folder watcher hearing of it and handing it
+    /// over, as a checkout or a sync swapping it whole lands in one batch, which names the folder alone: the project the new
+    /// folder holds is the folder's with its run configuration, and the one gone with the old folder is not. Watched the
+    /// system's way and as on Linux.</summary>
+    [AvaloniaTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_project_folder_replaced_under_its_name_within_one_batch_brings_the_project_it_holds(bool asOnLinux)
+    {
+        Write("App/App.csproj", Project);
+        Write("Tool/Tool.csproj", Project);
+        Write("Tool/Program.cs", "Console.WriteLine(\"tool\");\n");
+        MainWindow window = Open(asOnLinux ? FolderWatching.Inotify : FolderWatching.Platform, languageServer: false);
+        Assert.Equal(["App", "Tool"], Names(window.Projects));
+        string elsewhere = PathNames.Canonical(TestFolders.Create("elsewhere-"));
+        try
+        {
+            TestFolders.Write(elsewhere, "Tool/Gadget.csproj", Project);
+            TestFolders.Write(elsewhere, "Tool/Program.cs", "Console.WriteLine(\"gadget\");\n");
+            string tool = Path.Combine(folder, "Tool");
+            window.FolderWatcher!.WhileNextHandOver(() => Directory.Move(Path.Combine(elsewhere, "Tool"), tool));
+            Directory.Move(tool, Path.Combine(elsewhere, "Old"));
+            Ui.WaitFor(() => Names(window.Projects) is ["App", "Gadget"] && Names(window.Configurations) is ["App", "Gadget"],
+                () => $"Gadget, in the Tool folder that took the old one's place, the folder's with its run configuration and Tool gone; its projects are "
+                    + $"{string.Join(", ", Names(window.Projects))} and its run configurations {string.Join(", ", Names(window.Configurations))}");
+        }
+        finally
+        {
+            window.Close();
+            TestFolders.Delete(elsewhere);
+        }
+    }
+
+    private static IReadOnlyList<string> Names(IEnumerable<ProjectModel> projects) => [.. projects.Select(p => p.Name).Order(StringComparer.Ordinal)];
+
+    private static IReadOnlyList<string> Names(IEnumerable<Passenger.App.Run.RunConfiguration> configurations) => [.. configurations.Select(c => c.Name).Order(StringComparer.Ordinal)];
+
     [AvaloniaFact]
     public void A_folders_sln_and_slnx_listing_different_projects_give_the_explorer_and_the_language_server_the_same_one()
     {

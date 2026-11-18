@@ -166,6 +166,40 @@ public sealed class ToolWindowServesTests
         }
     }
 
+    /// <summary>A Godot project's file saved by Godot's editor's safe save (written whole beside it, then moved over it) is the
+    /// game the folder knows, come again in place: the folder is read again for nothing, and the Game window stays.</summary>
+    [AvaloniaFact]
+    public void A_Godot_editors_safe_save_of_project_godot_reads_the_folder_again_for_nothing()
+    {
+        string folder = ConsoleSolution();
+        string project = TestFolders.Write(folder, "game/project.godot", ProjectGodot);
+        TestFolders.Write(folder, "game/main.gd", "extends Node\n");
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        try
+        {
+            Came(window, "with the folder as it opened");
+            Ui.Settle();
+            List<string> listed = [];
+            window.FileIndex.Changed += (_, change) => listed.AddRange(change.Came);
+            int read = 0;
+            window.Session.WorkspaceChanged += (_, _) => read++;
+            Task walk = window.Session.WorkspaceRead;
+
+            File.WriteAllText(project + "-a1B2c3", ProjectGodot + "\n[display]\n\nwindow/size/viewport_width=640\n");
+            File.Move(project + "-a1B2c3", project, overwrite: true);
+            string saved = Path.Combine("game", "project.godot");
+            Ui.WaitFor(() => listed.Contains(saved), () => $"Go to File's index to hear {saved} come again, where it heard [{string.Join(", ", listed)}]");
+            Ui.Settle();
+            Assert.True(read == 0 && ReferenceEquals(walk, window.Session.WorkspaceRead),
+                $"Godot's safe save of project.godot read the folder again {read} times, walking it {(ReferenceEquals(walk, window.Session.WorkspaceRead) ? "never" : "again")}, for a game it knows");
+            Assert.True(StripeButton(window, ToolWindowIds.Game) is not null, "The Game window's icon went with Godot's safe save of project.godot");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     /// <summary>Under titled tabs, as Cubicle names the tool windows, a console solution names no window of a kind of project
     /// it lacks by a tab along an edge or at a place's foot, and a Godot project come brings the Game window's tab.</summary>
     [AvaloniaFact]
