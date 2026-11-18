@@ -10,9 +10,9 @@ using Passenger.Editor;
 namespace Passenger.App.Docking;
 
 /// <summary>Under titled tabs, one edge of the frame (a side's, or the foot's) where each window of its places that stands
-/// hidden is a tab of its name: a click opens a docked one over the editors beside the edge (<see cref="DockHost.Peek"/>)
-/// and closes it again, opens one that floats or stands among the editors there, and a drag moves it as its titled tab's
-/// does. A side's tabs run down it, the upper place's before the lower's; the foot's run across, the left place's from its
+/// hidden is a tab of its name: the pointer resting on it opens a docked one over the editors beside the edge without the
+/// keys, a click opens it with them (<see cref="DockHost.Peek"/>) and closes it again, opens one that floats or stands
+/// among the editors there, and a drag moves it as its titled tab's does. A side's tabs run down it, the upper place's before the lower's; the foot's run across, the left place's from its
 /// start and the right's to its end. Each takes the keys as a tab of the window's regions, Enter or Space opening it, and
 /// is a button of its name to a screen reader, as a stripe icon is.</summary>
 internal sealed class EdgeTabs : Border
@@ -129,8 +129,11 @@ internal sealed class EdgeTabs : Border
                 AutomationProperties.SetName(tab, window.Title);
             }
         };
+        tab.PointerEntered += (_, _) => host.EdgeTabEntered(window);
+        tab.PointerExited += (_, _) => host.EdgeTabLeft(window);
         tab.PointerPressed += (_, e) =>
         {
+            host.EdgeTabPressed();
             if (e.GetCurrentPoint(tab).Properties.IsLeftButtonPressed)
             {
                 host.Drag.Begin(window, e, tab);

@@ -4,6 +4,7 @@ using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
+using Avalonia.Media;
 using Avalonia.VisualTree;
 
 namespace Passenger.App.Docking;
@@ -46,8 +47,15 @@ internal sealed class ToolPane : DockPanel
     /// <summary>The header's ×, shown while a window closed leaves its stripe.</summary>
     private readonly Button close;
 
-    /// <summary>The header's Dock, shown while the pane stands over the editors (<see cref="Peeking"/>).</summary>
+    /// <summary>The header's Dock, shown while the pane stands over the editors (<see cref="Peeking"/>): the pin lying
+    /// down, as a window set to hide shows it.</summary>
     private readonly Button dock;
+
+    /// <summary>The header's Hide, and the glyphs it shows: its own, or the pin standing up as Auto Hide
+    /// (<see cref="AutoHides"/>).</summary>
+    private readonly Button hide;
+    private readonly PathIcon hideGlyph;
+    private readonly PathIcon pinGlyph;
 
     /// <summary>The window's own action's button (<see cref="ToolWindow.HeaderAction"/>), made as the pane shows it.</summary>
     private Button? own;
@@ -58,9 +66,12 @@ internal sealed class ToolPane : DockPanel
         expandAll = ToolButtons.Of(AppActions.ExpandAll, IconKeys.ExpandAll, "Expand All", Ask);
         collapseAll = ToolButtons.Of(AppActions.CollapseAll, IconKeys.CollapseAll, "Collapse All", Ask);
         Button options = HeaderButton(IconKeys.More, "Options");
-        Button hide = HeaderButton(IconKeys.Minimize, "Hide");
+        hide = HeaderButton(IconKeys.Minimize, "Hide");
+        hideGlyph = (PathIcon)hide.Content!;
+        pinGlyph = Pin(standing: true);
         close = HeaderButton(IconKeys.Close, "Close");
         dock = HeaderButton(IconKeys.Pin, "Dock");
+        dock.Content = Pin(standing: false);
         dock.IsVisible = false;
         dock.Click += (_, _) =>
         {
@@ -239,7 +250,34 @@ internal sealed class ToolPane : DockPanel
     public bool Peeking
     {
         get => dock.IsVisible;
-        init => dock.IsVisible = value;
+        init
+        {
+            dock.IsVisible = value;
+            hide.IsVisible = !value;
+        }
+    }
+
+    /// <summary>Whether its Hide is Auto Hide, under titled tabs: the pin standing up, which sends the place's windows to
+    /// the window's edge as Hide does; else Hide's own glyph.</summary>
+    public bool AutoHides
+    {
+        get => hide.Content == pinGlyph;
+        set
+        {
+            if (value != AutoHides)
+            {
+                hide.Content = value ? pinGlyph : hideGlyph;
+                ActionTips.Set(hide, AppActions.HideToolWindow, value ? "Auto Hide" : "Hide");
+            }
+        }
+    }
+
+    /// <summary>The pin a header shows, standing up (the window docked, Auto Hide) or lying down (over the editors, Dock).</summary>
+    private static PathIcon Pin(bool standing)
+    {
+        PathIcon glyph = new() { Classes = { StyleClasses.Small }, RenderTransform = new RotateTransform(standing ? -45 : 45) };
+        glyph.Bind(PathIcon.DataProperty, glyph.GetResourceObservable(IconKeys.Pin));
+        return glyph;
     }
 
     public void Show(ToolWindow? window)

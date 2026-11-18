@@ -288,6 +288,10 @@
         <Setter Property="BorderBrush" Value="{DynamicResource Passenger.Divider}" />
         <Setter Property="BoxShadow" Value="{DynamicResource Passenger.PopupShadow}" />
     </Style>
+    <!-- Its edge toward the editors, clear but taking the pointer, which a drag resizes it by. -->
+    <Style Selector="Border.peekGrip">
+        <Setter Property="Background" Value="Transparent" />
+    </Style>
     <Style Selector="Border.statusBar">
         <Setter Property="Height" Value="26" />
         <Setter Property="Background" Value="{DynamicResource Passenger.Frame}" />

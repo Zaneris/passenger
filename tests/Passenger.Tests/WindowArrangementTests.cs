@@ -2,7 +2,9 @@ using System.Text;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
+using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
+using Avalonia.Media;
 using Avalonia.VisualTree;
 using Passenger.App;
 using Passenger.App.Docking;
@@ -535,6 +537,121 @@ public sealed class WindowArrangementTests : IDisposable
             window.Close();
         }
     }
+
+    [AvaloniaFact]
+    public void Under_Cubicle_the_pointer_resting_on_an_edge_tab_opens_its_window_over_the_editors_without_the_keys_until_it_leaves_and_a_click_keeps_it()
+    {
+        MainWindow window = Open();
+        try
+        {
+            window.ApplySettings(window.Settings with { Look = SourcedTheme.BuiltIn("Cubicle") });
+            window.EditorArea.CodeEditor.Focus();
+            Ui.Settle();
+            DockHost dock = window.DockHost;
+            Point away = Ui.Centre(window.EditorArea.CodeEditor, window);
+            window.MouseMove(Ui.Centre(EdgeTab(window, ToolWindowIds.Structure)!, window));
+            window.MouseMove(away);
+            Ui.Settle();
+            Assert.True(dock.Peeked is null, $"A quick pass across Structure's edge tab opened {dock.Peeked?.Id} over the editors");
+
+            Ui.Hover(EdgeTab(window, ToolWindowIds.Structure)!);
+            Assert.True(dock.Peeked == dock[ToolWindowIds.Structure] && !dock[ToolWindowIds.Structure].Content.IsKeyboardFocusWithin && window.EditorArea.CodeEditor.IsKeyboardFocusWithin,
+                $"The pointer resting on Structure's edge tab opened {dock.Peeked?.Id} over the editors, the keys {(window.EditorArea.CodeEditor.IsKeyboardFocusWithin ? "left in the editor" : "taken from the editor")}");
+            Ui.Hover(EdgeTab(window, ToolWindowIds.Bookmarks)!);
+            Assert.True(dock.Peeked == dock[ToolWindowIds.Bookmarks], $"The pointer moved on to Bookmarks' edge tab left {dock.Peeked?.Id} over the editors");
+            Ui.Hover(dock[ToolWindowIds.Bookmarks].Content);
+            Assert.True(dock.Peeked == dock[ToolWindowIds.Bookmarks], "The pointer moved from Bookmarks' tab into it put it away");
+            window.MouseMove(away);
+            Ui.Settle();
+            Assert.True(dock.Peeked is null && !dock.IsShown(ToolWindowIds.Bookmarks), $"The pointer gone from Bookmarks and its tab left {dock.Peeked?.Id} over the editors");
+
+            Ui.Hover(EdgeTab(window, ToolWindowIds.Structure)!);
+            Ui.Click(EdgeTab(window, ToolWindowIds.Structure)!);
+            window.MouseMove(away);
+            Ui.Settle();
+            Assert.True(dock.Peeked == dock[ToolWindowIds.Structure] && dock[ToolWindowIds.Structure].Content.IsKeyboardFocusWithin,
+                $"Structure, opened by the pointer's rest and then clicked, is over the editors {dock.Peeked?.Id}, its keys {(dock[ToolWindowIds.Structure].Content.IsKeyboardFocusWithin ? "in it" : "elsewhere")}, once the pointer left");
+            Ui.Press(window, "ESCAPE");
+            Assert.Null(dock.Peeked);
+        }
+        finally
+        {
+            window.ApplySettings(new AppSettings());
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact]
+    public void Under_Cubicle_a_window_over_the_editors_resizes_by_its_edge_and_keeps_the_size_open_again_and_docked()
+    {
+        MainWindow window = Open();
+        try
+        {
+            window.ApplySettings(window.Settings with { Look = SourcedTheme.BuiltIn("Cubicle") });
+            Ui.Settle();
+            DockHost dock = window.DockHost;
+            Ui.Click(EdgeTab(window, ToolWindowIds.Structure)!);
+            Border over = dock.GetVisualDescendants().OfType<Border>().Single(b => b.Classes.Contains(StyleClasses.ToolPeek));
+            Border grip = over.GetVisualDescendants().OfType<Border>().Single(b => b.Classes.Contains(StyleClasses.PeekGrip));
+            double before = Placed(window, over).Width;
+            Point at = Ui.Centre(grip, window);
+            Ui.Drag(window, at, at - new Vector(120, 0));
+            double after = Placed(window, over).Width;
+            Assert.True(Math.Abs(after - (before + 120)) <= 2 && Math.Abs(dock.Capture().RightWidth - after) <= 2 && dock.Peeked == dock[ToolWindowIds.Structure],
+                $"Structure's edge dragged 120 toward the editors left it {after:0} wide from {before:0}, the right side kept {dock.Capture().RightWidth:0} wide, over the editors {dock.Peeked?.Id}");
+
+            Ui.Press(window, "ESCAPE");
+            Ui.Click(EdgeTab(window, ToolWindowIds.Structure)!);
+            Assert.True(Math.Abs(Placed(window, over).Width - after) <= 2, $"Opened again, Structure is {Placed(window, over).Width:0} wide, not the {after:0} it was given");
+            Ui.Click(dock.GetVisualDescendants().OfType<Button>().Single(b => ToolTip.GetTip(b) is "Dock" && b.IsEffectivelyVisible));
+            double docked = Placed(window, dock[ToolWindowIds.Structure].Content.FindAncestorOfType<DockPanel>()!).Width;
+            Assert.True(dock.IsShown(ToolWindowIds.Structure) && Math.Abs(docked - after) <= 2, $"Docked, Structure's side is {docked:0} wide, not the {after:0} it was given over the editors");
+        }
+        finally
+        {
+            window.ApplySettings(new AppSettings());
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact]
+    public void Under_Cubicle_a_docked_headers_pin_sends_its_place_to_the_edge_and_the_pin_turned_over_the_editors_docks_it_while_stripe_icons_keep_Hide()
+    {
+        MainWindow window = Open();
+        try
+        {
+            window.ApplySettings(window.Settings with { Look = SourcedTheme.BuiltIn("Cubicle") });
+            Ui.Settle();
+            DockHost dock = window.DockHost;
+            Button pin = HideButton(window, "Explorer")!;
+            Assert.True(ToolTip.GetTip(pin) is string tip && tip.StartsWith("Auto Hide", StringComparison.Ordinal) && pin.Content is PathIcon { RenderTransform: RotateTransform },
+                $"Cubicle's docked Explorer header offers {ToolTip.GetTip(pin)}, not Auto Hide's pin");
+            Ui.Click(pin);
+            Assert.True(!dock.IsShown(ToolWindowIds.Explorer) && EdgeTab(window, ToolWindowIds.Explorer) is not null && EdgeTab(window, ToolWindowIds.Commit) is not null,
+                $"Auto Hide left the Explorer shown {dock.IsShown(ToolWindowIds.Explorer)}, or it and Commit with no tab along the edge");
+
+            Ui.Click(EdgeTab(window, ToolWindowIds.Explorer)!);
+            Assert.True(dock.Peeked == dock[ToolWindowIds.Explorer] && HideButton(window, "Explorer") is null, "Over the editors the Explorer's header still offers Hide beside its pin");
+            Ui.Click(dock.GetVisualDescendants().OfType<Button>().Single(b => ToolTip.GetTip(b) is "Dock" && b.IsEffectivelyVisible));
+            Assert.True(dock.Peeked is null && dock.IsShown(ToolWindowIds.Explorer) && HideButton(window, "Explorer") is { } again && ToolTip.GetTip(again) is string pinned && pinned.StartsWith("Auto Hide", StringComparison.Ordinal),
+                $"The pin over the editors left the Explorer over them {dock.Peeked?.Id}, docked {dock.IsShown(ToolWindowIds.Explorer)}");
+
+            window.ApplySettings(new AppSettings());
+            Ui.Settle();
+            Assert.True(HideButton(window, "Explorer") is { } hide && ToolTip.GetTip(hide) is string plain && plain.StartsWith("Hide", StringComparison.Ordinal) && hide.Content is PathIcon { RenderTransform: null },
+                $"Under stripe icons the Explorer's header offers {(HideButton(window, "Explorer") is { } shown ? ToolTip.GetTip(shown) : "nothing")}, not Hide");
+        }
+        finally
+        {
+            window.ApplySettings(new AppSettings());
+            window.Close();
+        }
+    }
+
+    /// <summary>A pane's Hide (Auto Hide under titled tabs) shown in the header naming a window; null for none.</summary>
+    private static Button? HideButton(MainWindow window, string title) =>
+        window.DockHost.GetVisualDescendants().OfType<Button>().FirstOrDefault(b => b.Name == AppActions.HideToolWindow && b.IsEffectivelyVisible
+            && b.FindAncestorOfType<DockPanel>() is { } pane && pane.GetVisualDescendants().OfType<TextBlock>().Any(t => t.Classes.Contains(StyleClasses.ToolTitle) && t.Text == title));
 
     [AvaloniaFact]
     public void A_theme_choosing_either_look_gets_that_look_whole()
