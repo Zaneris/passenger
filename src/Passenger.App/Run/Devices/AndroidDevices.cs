@@ -75,9 +75,14 @@ public static class AndroidDevices
 
     /// <summary>adb's server started in Passenger's own folder where none runs, before a target of the workload runs adb:
     /// adb's client starts the server in the folder it works in, which the server keeps for as long as it runs, and a
-    /// target's adb works in the project's folder, which Windows then lets no one delete or rename.</summary>
+    /// target's adb works in the project's folder, which Windows then lets no one delete or rename. An adb that is not
+    /// there (the workload named none) starts nothing, and the target says what it lacks.</summary>
     private static async Task ServeAsync(string adb, CancellationToken cancel)
     {
+        if (!File.Exists(adb))
+        {
+            return;
+        }
         if (await AdbAsync(adb, ["start-server"], cancel) is { Succeeded: false } unserved)
         {
             IdeLog.Write(IdeLog.Ide, $"adb's server did not start in Passenger's folder, so the workload's adb may start it in the project's: {unserved.Said}");

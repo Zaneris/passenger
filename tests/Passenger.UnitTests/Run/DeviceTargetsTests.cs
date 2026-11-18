@@ -105,6 +105,25 @@ public class DeviceTargetsTests
         Assert.Null(DeviceTargets.Find(chosen with { Platform = TargetPlatform.Ios }, restarted));
     }
 
+    /// <summary>A run on an Android emulator lists Android's targets again on its way: this machine and the iOS simulators
+    /// stay listed where they stood, Android's put in place of its own, and a platform the listing lacked comes after.</summary>
+    [Fact]
+    public void A_listing_of_one_platform_replaces_that_platforms_targets_alone()
+    {
+        DeviceTarget here = DeviceTargets.Here(TargetPlatform.MacCatalyst);
+        DeviceTarget pixel = new(TargetPlatform.Android, "pixel", "Pixel 9", TargetKind.Emulator, false) { Avd = "pixel" };
+        DeviceTarget galaxy = new(TargetPlatform.Android, "R5CT1234", "Galaxy S24", TargetKind.Device, true);
+        DeviceTarget iphone = new(TargetPlatform.Ios, "A1B2", "iPhone 17", TargetKind.Simulator, false);
+        DeviceTarget ipad = new(TargetPlatform.Ios, "C3D4", "iPad Air", TargetKind.Simulator, false);
+        DeviceTarget started = pixel with { Id = "emulator-5554", Running = true };
+
+        Assert.Equal([here, started, iphone, ipad], DeviceTargets.Relisted([here, pixel, galaxy, iphone, ipad], TargetPlatform.Android, [started]));
+        Assert.Equal([here, iphone, ipad], DeviceTargets.Relisted([here, pixel, galaxy, iphone, ipad], TargetPlatform.Android, []));
+        Assert.Equal([here, pixel, iphone with { Running = true }], DeviceTargets.Relisted([here, pixel, iphone, ipad], TargetPlatform.Ios, [iphone with { Running = true }]));
+        Assert.Equal([here, started], DeviceTargets.Relisted([here], TargetPlatform.Android, [started]));
+        Assert.Equal([started], DeviceTargets.Relisted([], TargetPlatform.Android, [started]));
+    }
+
     [Fact]
     public void Run_starts_the_app_afresh_and_writes_its_processes_log_until_it_ends()
     {

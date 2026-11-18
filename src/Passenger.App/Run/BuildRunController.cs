@@ -897,12 +897,13 @@ public sealed partial class BuildRunController
         if (build && plan.Device is { App: null } && session.Projects.FirstOrDefault(p => PathNames.Same(p.Path, plan.Project!)) is { } device)
         {
             ProjectSession listing = session;
+            TargetPlatform platform = plan.Device.Target.Platform;
             (LaunchPlan? installed, string? uninstalled) = await DeviceLaunches.ReadyAsync(plan, Workspace.ProjectModels.Properties(plan.Workspace, device), parts.Unseen,
                 work.Say, targets => UiThread.Post(() =>
                 {
                     if (!listing.IsEnded)
                     {
-                        listing.Targets.List(device, targets);
+                        listing.Targets.List(device, platform, targets);
                     }
                 }), work.Stopping, listing.Booted);
             if (installed is null)

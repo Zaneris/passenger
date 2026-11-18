@@ -15,7 +15,7 @@ namespace Passenger.Tests;
 /// running, the line gone, and chosen to be started by Run and Debug. The AVDs are the test's own, in the folder
 /// ANDROID_AVD_HOME names, and none is booted. Skips, saying why, without the Android workload, its SDK and a JDK, with a
 /// device connected, or with no system image for this machine's processor. It sets the process's ANDROID_AVD_HOME, so it
-/// runs alone.</summary>
+/// runs alone. A run on an Android target leaves the other platforms' targets listed.</summary>
 [Collection(Alone.Name)]
 public sealed class AndroidTargetChoiceTests : IDisposable
 {
@@ -112,6 +112,90 @@ public sealed class AndroidTargetChoiceTests : IDisposable
             window.Close();
         }
     }
+
+    /// <summary>A run on an Android target lists Android's targets again on its way, which leaves every other platform's
+    /// listed: Choose Where It Runs opened at once after the run still offers this machine's head and, on a Mac, the iOS
+    /// simulators beside the emulator. The workload's emulator, the run's build and its install are the project's own
+    /// stand-ins (an emulator listed as running, a build of nothing, an install that fails once the run has listed), so no
+    /// device, SDK or JDK is needed. Skips, saying why, without the Android workload.</summary>
+    [AvaloniaFact]
+    public void After_a_run_on_an_android_target_this_machines_head_and_the_simulators_are_still_offered()
+    {
+        string project = PathNames.Canonical(TestFolders.Write(folder, "Relisted/Relisted.csproj", StandingIn));
+        TestFolders.Write(folder, "Relisted/StandIn.targets", StandIns);
+        (IReadOnlyList<DeviceTarget> stoodIn, AndroidTools? tools, string? unlisted) = Ui.Await(Waiting.Apart(() =>
+            AndroidDevices.ListAsync(project, MauiApp.Android, new Dictionary<string, string>(), CancellationToken.None)), "the Android workload's devices", Slow);
+        if (tools is null)
+        {
+            Assert.Skip($"Android's devices cannot be listed here: {unlisted}");
+        }
+        DeviceTarget emulator = Assert.Single(stoodIn);
+
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        try
+        {
+            Ui.WaitFor(() => window.Session.Projects.Any(p => p.IsEvaluated) && window.Configurations.Count > 0,
+                () => $"the app's project evaluated and its configuration made; it has {string.Join(", ", window.Configurations.Select(c => c.Name))}: {Ui.Said(window)}", Slow);
+            ProjectModel app = window.Session.Projects.Single();
+            Ui.Click(window.FindControl<Button>("RunTargetButton")!);
+            Ui.WaitFor(() => window.OpenContextMenu is not null, () => $"the menu of where the app runs: {Ui.Said(window)}", Slow);
+            string[] listed = [.. window.Session.Targets.Listed(app).Select(t => t.Shown)];
+            if (DeviceTargets.OfThisMachine is { } machine)
+            {
+                Assert.Contains(DeviceTargets.Here(machine).Shown, listed);
+            }
+            Assert.True(listed.Length > 1, $"Only {string.Join(", ", listed)} is listed, so a run's listing has nothing else to keep");
+            Ui.Choose(window.OpenContextMenu, emulator.Shown);
+
+            Ui.Run(window, AppActions.RunProgram);
+            Ui.WaitFor(() => window.Status?.Contains($"could not be installed on {emulator.Name}", StringComparison.Ordinal) == true,
+                () => $"the run to look for {emulator.Name} and fail at the stand-in's install: {Ui.Said(window)}", Slow);
+
+            Ui.Click(window.FindControl<Button>("RunTargetButton")!);
+            Ui.WaitFor(() => window.OpenContextMenu is not null, () => $"the menu of where the app runs, after the run: {Ui.Said(window)}", Slow);
+            IReadOnlyList<string> offered = Offered(window.OpenContextMenu!);
+            string[] lost = [.. listed.Where(t => !offered.Contains(t))];
+            Assert.True(lost.Length == 0, $"After the run on {emulator.Name}, the menu no longer offers {string.Join(", ", lost)}: it offers {string.Join(" | ", offered)}");
+            window.OpenContextMenu!.Close();
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>An app with an Android head and, on a Mac, a Mac Catalyst head this machine runs and an iOS head its
+    /// simulators run, or on Windows a Windows head, whose Android head is the stand-ins' (<see cref="StandIns"/>).</summary>
+    private static string StandingIn => $"""
+        <Project>
+          <Import Project="Sdk.props" Sdk="Microsoft.NET.Sdk" />
+          <PropertyGroup>
+            <TargetFrameworks>{MauiApp.Android}</TargetFrameworks>
+            <TargetFrameworks Condition="$([MSBuild]::IsOSPlatform('osx'))">$(TargetFrameworks);{MauiApp.Android.Replace("-android", "-maccatalyst", StringComparison.Ordinal)};{MauiApp.Android.Replace("-android", "-ios", StringComparison.Ordinal)}</TargetFrameworks>
+            <TargetFrameworks Condition="$([MSBuild]::IsOSPlatform('windows'))">$(TargetFrameworks);{MauiApp.Android.Replace("-android", "-windows10.0.19041.0", StringComparison.Ordinal)}</TargetFrameworks>
+            <OutputType>Exe</OutputType>
+            <ApplicationId>net.passengeride.tests.relisted</ApplicationId>
+          </PropertyGroup>
+          <Import Project="Sdk.targets" Sdk="Microsoft.NET.Sdk" />
+          <Import Project="StandIn.targets" Condition="'$(TargetFramework)' == '{MauiApp.Android}'" />
+        </Project>
+        """;
+
+    /// <summary>The Android head's stand-ins, after the workload's targets: one emulator listed, running; a build of nothing;
+    /// an install that fails, after the run has listed Android's targets. None asks the Android SDK or a JDK.</summary>
+    private const string StandIns = """
+        <Project>
+          <Target Name="ComputeAvailableDevices" Returns="@(Devices)">
+            <ItemGroup>
+              <Devices Include="emulator-5554" Type="Emulator" Status="Online" AvdName="Passenger_Relisted" Description="Passenger Relisted" />
+            </ItemGroup>
+          </Target>
+          <Target Name="Build" />
+          <Target Name="DeployToDevice">
+            <Error Text="The test's stand-in installs nothing" />
+          </Target>
+        </Project>
+        """;
 
     /// <summary>The words of a menu's items, a line of text's too.</summary>
     private static IReadOnlyList<string> Offered(ContextMenu menu) =>

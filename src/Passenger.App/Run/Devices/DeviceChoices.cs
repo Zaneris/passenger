@@ -7,12 +7,16 @@ namespace Passenger.App.Run.Devices;
 
 /// <summary>Where each project of the folder runs, for a project whose frameworks run on devices, emulators or simulators
 /// (<see cref="DeviceTargets.PlatformsOf"/>): one target per project, kept with the folder
-/// (<see cref="WorkspaceState.RunTargets"/>), and each project's targets as last listed. A target chosen is found again by
-/// its key in a later listing; one no longer listed is said (<see cref="DeviceTargets.Gone"/>). A UI-thread object.</summary>
+/// (<see cref="WorkspaceState.RunTargets"/>), and each project's targets as last listed, every platform's or one platform's
+/// in place of its own. A target chosen is found again by its key in a later listing; one no longer listed is said
+/// (<see cref="DeviceTargets.Gone"/>). A UI-thread object.</summary>
 public sealed class DeviceChoices
 {
     private readonly Dictionary<string, KeptTarget> chosen = new(PathNames.Comparer);
     private readonly Dictionary<string, IReadOnlyList<DeviceTarget>> listed = new(PathNames.Comparer);
+
+    /// <summary>The projects whose every platform's targets have been listed.</summary>
+    private readonly HashSet<string> wholly = new(PathNames.Comparer);
     private StateDocument<WorkspaceState>? kept;
 
     /// <summary>A project's choice or listing changed, by its path.</summary>
@@ -30,17 +34,27 @@ public sealed class DeviceChoices
     /// <summary>The project's targets as last listed; none before its first listing.</summary>
     public IReadOnlyList<DeviceTarget> Listed(ProjectModel project) => listed.GetValueOrDefault(project.Path) ?? [];
 
-    /// <summary>Whether the project's targets have been listed since the window opened.</summary>
-    public bool WasListed(ProjectModel project) => listed.ContainsKey(project.Path);
+    /// <summary>Whether every platform's targets of the project have been listed since the window opened.</summary>
+    public bool WasListed(ProjectModel project) => wholly.Contains(project.Path);
 
     /// <summary>The chosen target in the project's last listing; null where none is chosen, or it is not listed now.</summary>
     public DeviceTarget? Found(ProjectModel project) => DeviceTargets.Find(Of(project), Listed(project));
 
-    /// <summary>A project's targets as just listed, which a choice is found in again.</summary>
+    /// <summary>A project's targets as just listed, every platform's, which a choice is found in again.</summary>
     public void List(ProjectModel project, IReadOnlyList<DeviceTarget> targets)
     {
         UiThread.Check();
         listed[project.Path] = targets;
+        wholly.Add(project.Path);
+        Changed?.Invoke(this, project.Path);
+    }
+
+    /// <summary>One platform's targets of a project as just listed (a run on one of them looked for it), in place of that
+    /// platform's alone: the other platforms' stay listed.</summary>
+    public void List(ProjectModel project, TargetPlatform platform, IReadOnlyList<DeviceTarget> targets)
+    {
+        UiThread.Check();
+        listed[project.Path] = DeviceTargets.Relisted(Listed(project), platform, targets);
         Changed?.Invoke(this, project.Path);
     }
 

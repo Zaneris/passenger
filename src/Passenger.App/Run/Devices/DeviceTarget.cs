@@ -216,6 +216,31 @@ public static partial class DeviceTargets
     public static DeviceTarget? Find(KeptTarget? choice, IReadOnlyList<DeviceTarget> targets) =>
         choice is null ? null : targets.FirstOrDefault(t => t.Platform == choice.Platform && t.Key == choice.Key);
 
+    /// <summary>A listing with one platform's targets listed again (<paramref name="found"/>, as a run on one of them found
+    /// them): the platform's targets in place of those it had, where its first stood, and every other platform's kept.</summary>
+    public static IReadOnlyList<DeviceTarget> Relisted(IReadOnlyList<DeviceTarget> listed, TargetPlatform platform, IReadOnlyList<DeviceTarget> found)
+    {
+        List<DeviceTarget> relisted = [];
+        bool placed = false;
+        foreach (DeviceTarget target in listed)
+        {
+            if (target.Platform != platform)
+            {
+                relisted.Add(target);
+            }
+            else if (!placed)
+            {
+                relisted.AddRange(found);
+                placed = true;
+            }
+        }
+        if (!placed)
+        {
+            relisted.AddRange(found);
+        }
+        return relisted;
+    }
+
     /// <summary>What a listing says of a project's chosen target that it no longer has; null where it has it, or none was chosen.</summary>
     public static string? Gone(KeptTarget? choice, IReadOnlyList<DeviceTarget> targets, string project) =>
         choice is not null && Find(choice, targets) is null
