@@ -1,4 +1,5 @@
-// A minimal API that asks its own handlers once it listens, so a test stops in them with no client of its own.
+// A minimal API that asks its own handlers once it listens, so a test stops in them with no client of its own; the last
+// it asks again and again, as requests come to a web app.
 WebApplication app = WebApplication.Create(args);
 app.Urls.Add("http://127.0.0.1:0");
 
@@ -15,9 +16,20 @@ app.MapGet("/later/{n:int}", async (int n) =>
     return Results.Ok(twice);
 });
 
+app.MapGet("/handled/{n:int}", (int n) =>
+{
+    int handled = n + 1;
+    return Results.Ok(handled);
+});
+
 await app.StartAsync();
 string address = app.Urls.First();
 using HttpClient client = new();
 Console.WriteLine($"added {await client.GetStringAsync($"{address}/add/2/3")}");
 Console.WriteLine($"later {await client.GetStringAsync($"{address}/later/4")}");
+for (int turn = 1; turn <= 20; turn++)
+{
+    await client.GetStringAsync($"{address}/handled/{turn}");
+}
+Console.WriteLine("handled 20 requests");
 await app.StopAsync();

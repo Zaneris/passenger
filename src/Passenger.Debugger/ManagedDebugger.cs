@@ -758,9 +758,11 @@ public partial class ManagedDebugger
         EndReturnGuard();
     }
 
-    /// <summary>A step out standing guard over a step whose frame returns to native code, Just My Code off, with the step it
-    /// guards: the runtime's stepper loses that return, so the guard's end is the step's (<see cref="AboveShownCaller"/>).</summary>
-    private (ICorDebugStepper Guard, ICorDebugStepper Step)? _returnGuard;
+    /// <summary>A step out standing guard over the return of a step's frame, with the step it guards. Just My Code off, over a
+    /// frame whose caller is native code, which the runtime's stepper loses: the guard's end is the step's
+    /// (<see cref="AboveShownCaller"/>). Just My Code on, over a frame with none of the user's code below it to go back to
+    /// (<see cref="GoesBackToUsersCode"/>): the guard's end ends the step with no stop, the program running on.</summary>
+    private (ICorDebugStepper Guard, ICorDebugStepper Step, bool RunsOn)? _returnGuard;
 
     /// <summary>Ends a step's guard, with the step it guards or when another step begins.</summary>
     private void EndReturnGuard()
@@ -824,7 +826,9 @@ public partial class ManagedDebugger
         BeginStep(handler.CreateStepper(), thread, handler, justMyCode: true, stepper => stepper.StepOut());
 
     /// <summary>Makes a stepper (a frame's, or a thread's outside managed code) the step in progress: it stops nowhere
-    /// unmapped, and, Just My Code, only in the user's code; <paramref name="step"/> says where it goes.</summary>
+    /// unmapped, and, Just My Code, only in the user's code, ending where its frame returns if none of that code is below
+    /// it to go back to, as the runtime's would stop in whatever of it the thread runs next; <paramref name="step"/> says
+    /// where it goes.</summary>
     private ICorDebugStepper BeginStep(ICorDebugStepper stepper, ICorDebugThread thread, ICorDebugFrame? from, bool justMyCode, Action<ICorDebugStepper> step)
     {
         EndReturnGuard();
@@ -836,7 +840,60 @@ public partial class ManagedDebugger
         step(stepper);
         _stepper = stepper;
         _stepping = (thread.Id, from is null ? null : RangeOf(from));
+        if (justMyCode && from is not null && !GoesBackToUsersCode(thread, from))
+        {
+            ICorDebugStepper guard = Intercepting(from.CreateStepper());
+            guard.SetUnmappedStopMask(CorDebugUnmappedStop.STOP_NONE);
+            guard.StepOut();
+            _returnGuard = (guard, stepper, RunsOn: true);
+            _logger?.Invoke($"  None of the user's code is below {FrameTold(from)}: a step out of it stands guard, the step ending as it returns");
+        }
         return stepper;
+    }
+
+    /// <summary>Whether a frame, once it returns, goes back to the user's code on its thread: a frame of theirs below it
+    /// before native code, or past native code that called the frame itself (a static constructor's, a native library's
+    /// callback's). Not where it returns to code that is not theirs with none of theirs below (a web request's, a window's
+    /// event loop, a timer's): what that thread runs next comes of something else, never of the step.</summary>
+    private bool GoesBackToUsersCode(ICorDebugThread thread, ICorDebugFrame frame)
+    {
+        if (RangeOf(frame) is not { } stepping)
+        {
+            return true;
+        }
+        bool found = false;
+        List<ICorDebugChain> chains = [.. thread.EnumerateChains()];
+        for (int at = chains.FindLastIndex(chain => chain.Reason is CorDebugChainReason.CHAIN_FUNC_EVAL) + 1; at < chains.Count; at++)
+        {
+            if (!chains[at].IsManaged)
+            {
+                continue;
+            }
+            bool returnsHere = false;
+            foreach (ICorDebugFrame below in chains[at].EnumerateFrames())
+            {
+                if (!found)
+                {
+                    found = RangeOf(below) == stepping;
+                    continue;
+                }
+                if (below is ICorDebugInternalFrame)
+                {
+                    continue;
+                }
+                if (IsUserCodeFrame(below))
+                {
+                    _logger?.Invoke($"  The user's {FrameTold(below)} is below it: the step goes on to their code as its frame returns");
+                    return true;
+                }
+                returnsHere = true;
+            }
+            if (returnsHere)
+            {
+                return false;
+            }
+        }
+        return !found;
     }
 
     /// <summary>A step under way whose frame an exception will unwind, to a handler outside the user's code: the runtime's
@@ -909,7 +966,7 @@ public partial class ManagedDebugger
             ICorDebugStepper guard = Intercepting(below.CreateStepper());
             guard.SetUnmappedStopMask(CorDebugUnmappedStop.STOP_NONE);
             guard.StepOut();
-            _returnGuard = (guard, begun);
+            _returnGuard = (guard, begun, RunsOn: false);
             _logger?.Invoke($"  Its frame's caller is native code: a step out of {FrameTold(below)} stands guard over its return");
         }
         return begun;

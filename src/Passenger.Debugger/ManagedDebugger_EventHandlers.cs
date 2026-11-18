@@ -481,11 +481,20 @@ public partial class ManagedDebugger
             return;
         }
         TakeBehindStep();
-        if (_returnGuard is ({ } guard, { } guarded) && _stepper is { } lost && guarded == lost && stepCompleteEventArgs.Stepper == guard)
+        if (_returnGuard is ({ } guard, { } guarded, bool runsOn) && _stepper is { } lost && guarded == lost && stepCompleteEventArgs.Stepper == guard)
         {
-            _logger?.Invoke($"The step on thread {corThread.Id} ends where its guard's step out did, its frame having returned to native code");
             _returnGuard = null;
             lost.TryDeactivate();
+            if (runsOn)
+            {
+                _logger?.Invoke($"The step on thread {corThread.Id} ends as its frame returns to code that is not the user's, none of theirs below it: the program runs on");
+                _stepper = null;
+                EndStepForStop();
+                EndReturnWatch();
+                Continue(clearVariables: true);
+                return;
+            }
+            _logger?.Invoke($"The step on thread {corThread.Id} ends where its guard's step out did, its frame having returned to native code");
             _stepper = guard;
         }
         if (stepCompleteEventArgs.Stepper != _stepper)

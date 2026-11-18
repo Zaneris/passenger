@@ -432,6 +432,39 @@ public sealed class DebugSession : IAsyncDisposable
 
 
 
+    /// <summary>The next stop, or null where the session ends first, with what the program wrote to its standard output
+    /// meanwhile: for a step after which the program is to run on to its end.</summary>
+    public async Task<(StoppedEvent? Stop, string Output)> WaitForStopOrEnd()
+    {
+        using CancellationTokenSource limit = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        limit.CancelAfter(EventLimit);
+        StringBuilder output = new();
+        while (true)
+        {
+            (string Name, JsonElement Body) next;
+            try
+            {
+                next = await events.Reader.ReadAsync(limit.Token);
+            }
+            catch (OperationCanceledException) when (!TestContext.Current.CancellationToken.IsCancellationRequested)
+            {
+                throw new TimeoutException($"Neither a stop nor the session's end came in {EventLimit.TotalSeconds:0} s. {Heard()}");
+            }
+            if (next.Name == DapEvents.Terminated)
+            {
+                return (null, output.ToString());
+            }
+            if (next.Name == DapEvents.Stopped)
+            {
+                return (next.Body.Deserialize<StoppedEvent>(DapConnection.Options)!, output.ToString());
+            }
+            if (next.Name == DapEvents.Output && next.Body.Deserialize<OutputEvent>(DapConnection.Options) is { Category: DapOutputCategories.Stdout } written)
+            {
+                output.Append(written.Output);
+            }
+        }
+    }
+
     /// <summary>What the program wrote to its standard output and how it ended (no exit code when none was told), read
     /// from the events to the session's end.</summary>
     public async Task<(string Output, int? ExitCode)> WaitForEnd()
@@ -799,4 +832,6 @@ public static class DebugSessionChain
     public static async Task<T> WaitForEvent<T>(this Task<DebugSession> chain, Predicate<T>? condition = null) => await (await chain).WaitForEvent(condition);
 
     public static async Task<(string Output, int? ExitCode)> WaitForEnd(this Task<DebugSession> chain) => await (await chain).WaitForEnd();
+
+    public static async Task<(StoppedEvent? Stop, string Output)> WaitForStopOrEnd(this Task<DebugSession> chain) => await (await chain).WaitForStopOrEnd();
 }
