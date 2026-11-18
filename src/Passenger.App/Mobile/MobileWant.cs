@@ -64,6 +64,10 @@ public sealed record MobileWant
     /// <summary>The projects whose every app is an Apple platform's, off a Mac.</summary>
     public IReadOnlyList<string> AppleOffMac { get; init; } = [];
 
+    /// <summary>The projects with Apple apps beside others, off a Mac, each with those apps' platforms as a person names
+    /// them ("iOS", "Mac Catalyst"): only a Mac makes those apps, with Xcode.</summary>
+    public IReadOnlyList<(string Project, IReadOnlyList<string> Platforms)> AppleAppsOffMac { get; init; } = [];
+
     /// <summary>The projects with an Android app, where this machine builds none (<see cref="AndroidHost"/>).</summary>
     public IReadOnlyList<string> AndroidElsewhere { get; init; } = [];
 
@@ -74,8 +78,11 @@ public sealed record MobileWant
     public bool AndroidLacks => NoAndroidSdk || AndroidPackages.Count > 0 || Java is not null;
 
     /// <summary>Whether anything is said.</summary>
-    public bool Says => Workloads.Count > 0 || AndroidLacks || Xcode is not null || Simulators.Count > 0 || OnMono.Count > 0 || AppleOffMac.Count > 0
-        || AndroidElsewhere.Count > 0 || Heads.Count > 0;
+    public bool Says => MayChange || AppleOffMac.Count > 0 || AppleAppsOffMac.Count > 0 || AndroidElsewhere.Count > 0;
+
+    /// <summary>Whether what is said may change with what the person installs outside Passenger (a workload, the Android
+    /// SDK, a JDK, Xcode, a simulator runtime) or edits of a project's heads: all but what only another machine builds.</summary>
+    public bool MayChange => Workloads.Count > 0 || AndroidLacks || Xcode is not null || Simulators.Count > 0 || OnMono.Count > 0 || Heads.Count > 0;
 
     /// <summary>What the folder's projects need, from their answers: <paramref name="usualSdk"/> is where the Android SDK
     /// is looked for where the workload found none, <paramref name="exists"/> whether a file or folder is there, and
@@ -88,6 +95,7 @@ public sealed record MobileWant
         List<string> workloads = [];
         List<(string, string)> mono = [];
         List<string> offMac = [];
+        List<(string, IReadOnlyList<string>)> appsOffMac = [];
         List<string> androidElsewhere = [];
         string? sdk = null;
         bool noSdk = false;
@@ -130,6 +138,11 @@ public sealed record MobileWant
             if (appleOnly)
             {
                 offMac.Add(project.Name);
+                needs = true;
+            }
+            else if (!onMac && mobile.Select(f => MobilePlatforms.Of(f)!).Where(MobilePlatforms.IsApple).Distinct().ToList() is { Count: > 0 } appleHeads)
+            {
+                appsOffMac.Add((project.Name, [.. appleHeads.Select(MobilePlatforms.Named)]));
                 needs = true;
             }
             bool androidHere = androidHost is null || !mobile.Any(f => MobilePlatforms.Of(f) == FrameworkNames.Android);
@@ -194,6 +207,7 @@ public sealed record MobileWant
             EditsAlone = editsAlone,
             Trimmed = trimmed,
             AppleOffMac = offMac,
+            AppleAppsOffMac = appsOffMac,
             AndroidElsewhere = androidElsewhere,
             AndroidHost = androidElsewhere.Count > 0 ? androidHost : null,
         };
@@ -259,6 +273,10 @@ public sealed record MobileWant
             if (AppleOffMac.Count > 0)
             {
                 sentences.Add($"{Plural.Listed([.. AppleOffMac])} {Plural.Agreeing(AppleOffMac.Count, "builds", "build")} only on a Mac, with Xcode");
+            }
+            foreach (IGrouping<string, string> apps in AppleAppsOffMac.GroupBy(p => Plural.Listed([.. p.Platforms]), p => p.Project))
+            {
+                sentences.Add($"{Plural.Listed([.. apps])} {Plural.Agreeing(apps.Count(), "builds", "build")} for {apps.Key} only on a Mac, with Xcode");
             }
             if (AndroidElsewhere.Count > 0)
             {

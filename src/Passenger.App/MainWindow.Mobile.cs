@@ -101,7 +101,7 @@ public partial class MainWindow
         // What the person installed outside Passenger is seen as they come back to it.
         Activated += (_, _) =>
         {
-            if (MobileWant.Says)
+            if (MobileWant.MayChange)
             {
                 AskMobile(again: true);
             }

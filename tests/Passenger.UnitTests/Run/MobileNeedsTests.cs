@@ -371,7 +371,6 @@ public class MobileNeedsTests
         ProjectNeeds ios = new("IosApp", ["net11.0-ios"]) { Apple = new AppleAnswer("Could not find a valid Xcode developer path") };
 
         Assert.Equal("IosApp builds only on a Mac, with Xcode", Want([ios], onMac: false).Said);
-        Assert.Null(Want([new ProjectNeeds(Maui, MauiFrameworks)], onMac: false).Said);
 
         // Linux's SDK names wasm-tools for a tvOS app, which names no framework of it; Windows' tvos lets it load to be edited.
         ProjectNeeds onLinux = new("Tv", ["net11.0-tvos"]) { Workloads = [new WorkloadLacked("wasm-tools", null)] };
@@ -382,6 +381,28 @@ public class MobileNeedsTests
         Assert.Equal(["tvos"], Want([tv], onMac: false).Workloads);
         Assert.Equal(["tvos"], Want([tv]).Workloads);
         Assert.Equal("IosApp needs Xcode (Could not find a valid Xcode developer path)", Want([ios]).Said);
+    }
+
+    [Fact]
+    public void Off_a_Mac_an_app_with_Apple_heads_beside_others_is_said_to_build_them_only_on_a_Mac_whatever_else_it_lacks()
+    {
+        const string AppleHeads = "MauiApp1 builds for iOS and Mac Catalyst only on a Mac, with Xcode";
+        ProjectNeeds maui = new(Maui, MauiFrameworks);
+        ProjectNeeds lacking = maui with { Android = MobileAnswers.Android(Answer(AndroidSaid, AndroidWarned)) };
+
+        MobileWant want = Want([maui], onMac: false);
+
+        Assert.Equal([$"{Maui}: iOS, Mac Catalyst"], want.AppleAppsOffMac.Select(p => $"{p.Project}: {string.Join(", ", p.Platforms)}"));
+        Assert.Equal(AppleHeads, want.Said);
+        Assert.False(want.MayChange, "What only a Mac builds is asked again each time the window comes in front");
+        Assert.Empty(want.Workloads);
+        Assert.Equal($"MauiApp1 needs a JDK (Java 21.0.8) and the Android SDK's platforms;android-37.0 and build-tools;37.0.0. {AppleHeads}",
+            Want([lacking], onMac: false).Said);
+        Assert.Equal("MauiApp1 and Phone build for iOS and Mac Catalyst only on a Mac, with Xcode. Tv builds for tvOS only on a Mac, with Xcode",
+            Want([maui, new ProjectNeeds("Phone", [.. MauiFrameworks, "net11.0-windows10.0.19041.0"]), new ProjectNeeds("Tv", ["net11.0-android", "net11.0-tvos"])],
+                onMac: false).Said);
+        Assert.Empty(Want([maui]).AppleAppsOffMac);
+        Assert.Null(Want([maui]).Said);
     }
 
     /// <summary>The first bytes of the Android workload's Linux aapt2 (37.2.31), an x64 program's ELF header.</summary>
@@ -425,7 +446,7 @@ public class MobileNeedsTests
         Assert.False(loaded.AndroidLacks, "The Android SDK and a JDK, which build nothing here, were offered");
         Assert.Equal($"AndroidApp {Elsewhere}", loaded.Said);
         Assert.Equal($"MauiApp1 and AndroidApp build{Elsewhere["builds".Length..]}",
-            Want([new ProjectNeeds(Maui, MauiFrameworks), lacking], onMac: false, androidHost: "Linux on Arm64").Said);
+            Want([new ProjectNeeds(Maui, ["net11.0-android"]), lacking], onMac: false, androidHost: "Linux on Arm64").Said);
         Assert.Null(Want([new ProjectNeeds("Desktop", ["net11.0"])], onMac: false, androidHost: "Linux on Arm64").Said);
         Assert.Equal("AndroidApp needs the .NET workload android", Want([lacking], onMac: false).Said);
     }

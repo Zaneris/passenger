@@ -11,12 +11,13 @@ namespace Passenger.Tests;
 
 /// <summary>The app <c>dotnet new maui</c> makes, opened in the window: its one run configuration is named for it, and the
 /// menu of where it runs offers this machine's head (Windows on Windows, Mac Catalyst on a Mac) beside Android, its
-/// devices and emulators or what Android lacks here. With all it needs here, it says nothing lacking and builds every
-/// head. Run builds this machine's head: on Windows it runs as the WinUI app it is; on a Mac the system opens it hidden,
-/// never in front. What it writes is in the Run window, and Stop ends it; on Windows with Hot Reload, under dotnet watch,
-/// a saved edit reaches it as it runs. Skips, saying why, without MAUI's workload, whose template makes the app, or, for a
-/// build, without the workload of any head the app's restore reads. Its packages come from nuget.org, as no restore of
-/// the solution's brings them, so it is never one of the gate's.</summary>
+/// devices and emulators or what Android lacks here. With all it needs here, it says nothing lacking but, off a Mac, that
+/// only a Mac makes its iOS and Mac Catalyst apps, and builds every head to what this machine makes of it. Run builds this
+/// machine's head: on Windows it runs as the WinUI app it is; on a Mac the system opens it hidden, never in front. What it
+/// writes is in the Run window, and Stop ends it; on Windows with Hot Reload, under dotnet watch, a saved edit reaches it
+/// as it runs. Skips, saying why, without MAUI's workload, whose template makes the app, or, for a build, without the
+/// workload of any head the app's restore reads. Its packages come from nuget.org, as no restore of the solution's brings
+/// them, so it is never one of the gate's.</summary>
 public sealed class MauiTemplateRunTests
 {
     private static readonly TimeSpan Slow = TimeSpan.FromMinutes(15);
@@ -87,12 +88,13 @@ public sealed class MauiTemplateRunTests
         }
     }
 
-    /// <summary>Opened where this machine has all the app needs, the banner says nothing lacking and Build builds each head
-    /// the app targets here (on a Mac Android's, iOS's for the simulator and Mac Catalyst's) to its app. Where the banner
-    /// names something lacking, the build checks it: a JDK, the Android SDK or Xcode said lacking fails it, a simulator
-    /// runtime, which only a run needs, does not, and the test skips saying what this machine lacks.</summary>
+    /// <summary>Where this machine has all the app needs, the banner says nothing lacking (off a Mac, that only a Mac makes its
+    /// iOS and Mac Catalyst apps) and Build makes of each head what this machine makes: Android's signed app, Windows'
+    /// program, on a Mac iOS's simulator app and Mac Catalyst's app, elsewhere their code alone. Where it names something
+    /// lacking, the build checks it: a JDK, the Android SDK or Xcode lacking fails it, a simulator runtime, which only a run
+    /// needs, does not, and the test skips saying what this machine lacks.</summary>
     [AvaloniaFact]
-    public void The_maui_templates_app_says_nothing_lacking_where_this_machine_has_all_it_needs_and_builds_every_head_here()
+    public void The_maui_templates_app_says_nothing_lacking_but_what_only_a_mac_makes_and_builds_each_head_to_what_this_machine_makes_of_it()
     {
         string folder = Made();
         try
@@ -103,8 +105,13 @@ public sealed class MauiTemplateRunTests
                 Ui.WaitFor(() => window.Session.Projects.Any(p => p.IsEvaluated), () => $"the app's project to evaluate: {Ui.Said(window)}", Slow);
                 Built(window);
                 MobileWant want = window.MobileWant;
-                string? said = window.MobileSaid;
                 IReadOnlyList<string> heads = window.Session.Projects.Single().TargetFrameworks;
+                bool onMac = OperatingSystem.IsMacOS();
+                string[] apple = [.. heads.Select(FrameworkNames.PlatformOf).OfType<string>().Where(MobilePlatforms.IsApple).Select(MobilePlatforms.Named)];
+                Assert.Equal(onMac || apple.Length == 0 ? [] : [$"MauiApp1: {string.Join(", ", apple)}"],
+                    want.AppleAppsOffMac.Select(p => $"{p.Project}: {string.Join(", ", p.Platforms)}"));
+                Assert.Equal(want.Said, window.MobileSaid);
+                string? said = (want with { AppleAppsOffMac = [] }).Said;
                 Assert.True(window.Perform(AppActions.Build), $"The app's build could not begin: {window.Status}");
                 Ui.WaitFor(() => !window.IsBuilding, () => $"the app's build to end: {window.Status}", Slow);
                 bool built = window.Status?.StartsWith("Build succeeded", StringComparison.Ordinal) == true;
@@ -122,10 +129,12 @@ public sealed class MauiTemplateRunTests
                     string place = Path.Combine(output, head);
                     string[] made = Directory.Exists(place) ? [.. Directory.EnumerateFileSystemEntries(place, "*", SearchOption.AllDirectories).Select(Path.GetFileName).OfType<string>()] : [];
                     string? platform = FrameworkNames.PlatformOf(head);
+                    bool ofApple = platform is not null && MobilePlatforms.IsApple(platform);
                     string app = platform == FrameworkNames.Android ? $"{MauiApp.Package}-Signed.apk"
-                        : platform is not null && MobilePlatforms.IsApple(platform) ? "MauiApp1.app"
+                        : ofApple && onMac ? "MauiApp1.app"
                         : "MauiApp1.dll";
                     Assert.True(made.Contains(app), $"The build said it succeeded, but {head}'s head made no {app} in {place}");
+                    Assert.False(ofApple && !onMac && made.Contains("MauiApp1.app"), $"{head}'s head made an app off a Mac, which the banner says only a Mac makes");
                 }
             }
             finally
