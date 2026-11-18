@@ -15,10 +15,10 @@ public sealed class ShortcutPanel : StackPanel
 {
     public ShortcutPanel(string secondLabel)
     {
-        Spacing = 6;
+        Spacing = Gaps.Small;
         First = new StrokeField(passesDialogKeys: true);
         Second = new StrokeField(passesDialogKeys: false) { IsEnabled = false };
-        SecondStroke = new CheckBox { Content = secondLabel, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 0) };
+        SecondStroke = new CheckBox { Content = secondLabel, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, Gaps.Normal, 0) };
         DockPanel second = new();
         DockPanel.SetDock(SecondStroke, Dock.Left);
         second.Children.Add(SecondStroke);
@@ -171,7 +171,7 @@ public sealed class StrokeField : TextBox
         Keystroke[] keys = [new(Key.Enter, KeyModifiers.None), new(Key.Escape, KeyModifiers.None), new(Key.Tab, KeyModifiers.None), new(Key.Tab, KeyModifiers.Shift)];
         PathIcon plus = new() { Width = 12, Height = 12 };
         plus.Bind(PathIcon.DataProperty, plus.GetResourceObservable(IconKeys.Add));
-        Button set = new() { Classes = { StyleClasses.TabPin }, Content = plus, Focusable = false, Margin = new Thickness(0, 0, 6, 0) };
+        Button set = new() { Classes = { StyleClasses.TabPin }, Content = plus, Focusable = false, Margin = new Thickness(0, 0, Gaps.Small, 0) };
         ToolButtons.Tip(set, $"Set shortcuts with {string.Join(", ", keys.Where(k => k.Modifiers == KeyModifiers.None).Select(k => k.Display()))} keys");
         List<MenuItem> items = [];
         foreach (Keystroke key in keys)

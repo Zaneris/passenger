@@ -22,10 +22,10 @@ public sealed class OptionRow : Panel
     public const double NumberWidth = 140;
 
     /// <summary>Between the label, the editor and the note, where they stand one over another.</summary>
-    private const double Gap = 4;
+    private const double Gap = Gaps.Tight;
 
     /// <summary>Between a check box and the label after it.</summary>
-    private const double BoxGap = 8;
+    private const double BoxGap = Gaps.Normal;
 
     private readonly double labelTop;
 
@@ -171,7 +171,7 @@ public sealed class NarrowingField : Panel
 {
     public static readonly StyledProperty<double> MostProperty = AvaloniaProperty.Register<NarrowingField, double>(nameof(Most), double.PositiveInfinity);
 
-    private const double Gap = 8;
+    private const double Gap = Gaps.Normal;
 
     private readonly Control field;
     private readonly Control after;

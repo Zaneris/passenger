@@ -264,7 +264,7 @@ public sealed class VimKeysSetting(string property, Func<AppSettings, string> ge
     /// with it (null to name nothing), for the dialog, which knows that keymap.</summary>
     public StackPanel Box(AppSettings now, Action<Func<AppSettings, AppSettings>> change, Func<Keystroke, string?> keymapDoes)
     {
-        StackPanel rows = new() { Spacing = 4 };
+        StackPanel rows = new() { Spacing = Gaps.Tight };
         IReadOnlySet<string> given = Given(now);
         foreach ((string key, string does) in Vim.CtrlKeys)
         {
@@ -280,7 +280,7 @@ public sealed class VimKeysSetting(string property, Func<AppSettings, string> ge
             rows.Children.Add(new StackPanel
             {
                 Orientation = Orientation.Horizontal,
-                Spacing = 8,
+                Spacing = Gaps.Normal,
                 Children = { new TextBlock { Text = stroke.Display(), MinWidth = 56, VerticalAlignment = VerticalAlignment.Center }, choice },
             });
         }
@@ -333,7 +333,7 @@ public sealed class ProgramSetting(Func<AppSettings, string?> get, Func<AppSetti
             change(s => set(s, string.IsNullOrWhiteSpace(line.Text) ? null : line.Text.Trim()));
             Said();
         };
-        return new StackPanel { Spacing = 4, MaxWidth = OptionRow.EditorWidth, Children = { line, problem, runs } };
+        return new StackPanel { Spacing = Gaps.Tight, MaxWidth = OptionRow.EditorWidth, Children = { line, problem, runs } };
 
         // What the line runs, the last asked winning.
         async Task DescribeAsync(string? typed)

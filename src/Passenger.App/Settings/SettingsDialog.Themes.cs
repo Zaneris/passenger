@@ -82,13 +82,13 @@ public sealed partial class SettingsDialog
         List();
         StackPanel sources = new()
         {
-            Spacing = 6,
+            Spacing = Gaps.Small,
             MaxWidth = OptionRow.EditorWidth,
             Children =
             {
                 new Border { Classes = { StyleClasses.Framed }, Child = ThemeSourceList },
                 new NarrowingField(ThemeSourceBox, AddThemeSourceButton),
-                new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { RemoveThemeSourceButton, RefreshThemesButton } },
+                new StackPanel { Orientation = Orientation.Horizontal, Spacing = Gaps.Normal, Children = { RemoveThemeSourceButton, RefreshThemesButton } },
                 ThemeSourceWords,
             },
         };

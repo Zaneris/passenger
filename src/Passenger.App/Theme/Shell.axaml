@@ -828,12 +828,10 @@
     <Style Selector="ListBox.tree ListBoxItem:selected:pointerover /template/ ContentPresenter#PART_ContentPresenter">
         <Setter Property="Background" Value="{DynamicResource Passenger.RowSelected}" />
     </Style>
-    <!-- Settings' pages under its search field: the band as wide as the field, a page's name where the field's text starts. -->
-    <Style Selector="ListBox.pages">
-        <Setter Property="Padding" Value="10,0" />
-    </Style>
+    <!-- Settings' pages under its search field: a page's name where the field's text starts (the band as wide as the field
+         is SettingsDialog's). -->
     <Style Selector="ListBox.pages ListBoxItem">
-        <Setter Property="Padding" Value="11,0" />
+        <Setter Property="Padding" Value="{x:Static app:SearchFields.InLine}" />
     </Style>
     <!-- A framed list's chosen row clear of the frame's top and foot. -->
     <Style Selector="Border.framed > ListBox.tree">
@@ -950,7 +948,7 @@
     <Style Selector="TextBox.search">
         <Setter Property="MinHeight" Value="{DynamicResource Passenger.ControlHeight}" />
         <!-- Fluent's padding would make it a pixel taller than the buttons and drop-downs beside it. -->
-        <Setter Property="Padding" Value="10,4,6,4" />
+        <Setter Property="Padding" Value="{x:Static app:SearchFields.Padding}" />
         <Setter Property="VerticalContentAlignment" Value="Center" />
         <!-- Its own height in a row beside something taller (a check box), not stretched to that one's. -->
         <Setter Property="VerticalAlignment" Value="Center" />

@@ -11,7 +11,7 @@ public abstract class ListPane : DockPanel
     /// <summary>The list's height above what it shows.</summary>
     private const double ListHeight = 200;
 
-    private const double Gap = 16;
+    private const double Gap = Gaps.Group;
 
     private Control? list;
     private Control? shown;

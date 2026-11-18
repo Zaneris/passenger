@@ -49,7 +49,7 @@ public sealed partial class SettingsDialog
         List();
         StackPanel folders = new()
         {
-            Spacing = 6,
+            Spacing = Gaps.Small,
             MaxWidth = OptionRow.EditorWidth,
             Children =
             {
@@ -64,8 +64,8 @@ public sealed partial class SettingsDialog
 
         Control heading = Column(new StackPanel
         {
-            Spacing = 4,
-            Margin = new Thickness(0, 12, 0, 0),
+            Spacing = Gaps.Tight,
+            Margin = new Thickness(0, Gaps.Wide, 0, 0),
             Children =
             {
                 new TextBlock { Text = "Set up an agent", FontWeight = FontWeight.SemiBold },
@@ -135,8 +135,8 @@ public sealed partial class SettingsDialog
         head.Children.Add(new TextBlock { Text = title, FontWeight = FontWeight.SemiBold, VerticalAlignment = VerticalAlignment.Center });
         return Column(new StackPanel
         {
-            Spacing = 6,
-            Margin = new Thickness(0, 8, 0, 0),
+            Spacing = Gaps.Small,
+            Margin = new Thickness(0, Gaps.Normal, 0, 0),
             Children = { head, MutedText.Wrapped(note), CodeBlock.Of(text) },
         });
     }

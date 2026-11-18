@@ -50,7 +50,7 @@ public sealed partial class SettingsDialog
     /// <summary>The three radio buttons for how a tool is configured.</summary>
     private static StackPanel Configuration(string tool, ToolConfiguration now, Action<ToolConfiguration> changed)
     {
-        StackPanel choices = new() { Spacing = 4 };
+        StackPanel choices = new() { Spacing = Gaps.Tight };
         string[] names = ConfigurationChoices(tool);
         foreach (ToolConfiguration choice in Enum.GetValues<ToolConfiguration>())
         {

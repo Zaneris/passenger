@@ -53,7 +53,7 @@ public sealed class TrustedFoldersTable : EditableTable
 
     private void Add(string folder, bool trusted)
     {
-        TextBlock name = new() { Text = folder, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0), TextTrimming = TextTrimming.PathSegmentEllipsis };
+        TextBlock name = new() { Text = folder, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(Gaps.Normal, 0), TextTrimming = TextTrimming.PathSegmentEllipsis };
         ToolTip.SetTip(name, folder);
         CheckBox box = CheckRows.Box();
         box.IsChecked = trusted;

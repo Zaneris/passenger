@@ -25,12 +25,12 @@ public sealed partial class SettingsDialog
     private const string ConflictWarning = "This shortcut is already assigned to other actions. Do you want to remove the other assignments?";
 
     private readonly Dictionary<string, ActionRow> keymapRows = [];
-    private readonly DockPanel keymapHeader = new() { Margin = new Thickness(0, 0, 0, 10) };
+    private readonly DockPanel keymapHeader = new() { Margin = new Thickness(0, 0, 0, Gaps.Wide) };
     private readonly TextBlock keymapNote = new() { TextWrapping = TextWrapping.Wrap, IsVisible = false, Classes = { StyleClasses.Muted } };
     private readonly ShortcutPanel filterKeys = new("Second stroke");
     private readonly Popup findPopup = new() { Placement = PlacementMode.BottomEdgeAlignedRight, IsLightDismissEnabled = true };
     private readonly TextBlock filterText = new() { VerticalAlignment = VerticalAlignment.Center, FontSize = 12 };
-    private readonly Border filterChip = new() { IsVisible = false, Classes = { StyleClasses.Tag }, Padding = new Thickness(8, 2, 4, 2), VerticalAlignment = VerticalAlignment.Center };
+    private readonly Border filterChip = new() { IsVisible = false, Classes = { StyleClasses.Tag }, Padding = new Thickness(Gaps.Normal, Gaps.Hair, Gaps.Tight, Gaps.Hair), VerticalAlignment = VerticalAlignment.Center };
     private readonly Dictionary<KeymapPreset, Keymap> defaults = [];
     private Shortcut? shortcutFilter;
 
@@ -51,7 +51,7 @@ public sealed partial class SettingsDialog
     public ShortcutPanel FindShortcut => filterKeys;
 
     /// <summary>The x on the shortcut the page is narrowed to (Clear Filtering).</summary>
-    public Button ClearFiltering { get; } = new() { Classes = { StyleClasses.TabPin }, Margin = new Thickness(6, 0, 0, 0) };
+    public Button ClearFiltering { get; } = new() { Classes = { StyleClasses.TabPin }, Margin = new Thickness(Gaps.Small, 0, 0, 0) };
 
     /// <summary>The shortcut the Keymap page is narrowed to, or null while it lists every action.</summary>
     public Shortcut? ShortcutFilter => shortcutFilter;
@@ -234,9 +234,9 @@ public sealed partial class SettingsDialog
         Border popup = new()
         {
             Width = 320,
-            Padding = new Thickness(12, 10, 12, 12),
+            Padding = new Thickness(Gaps.Wide),
             Classes = { StyleClasses.Popup },
-            Child = new StackPanel { Spacing = 8, Children = { title, filterKeys } },
+            Child = new StackPanel { Spacing = Gaps.Normal, Children = { title, filterKeys } },
         };
         // Tab goes round the popup's own fields, never on to the page under it.
         KeyboardNavigation.SetTabNavigation(popup, KeyboardNavigationMode.Cycle);
@@ -254,10 +254,10 @@ public sealed partial class SettingsDialog
         findPopup.Opened += (_, _) => Dispatcher.UIThread.Post(() => filterKeys.First.Focus(), DispatcherPriority.Loaded);
         filterKeys.Changed += (_, _) => FilterByShortcut(filterKeys.Shortcut);
 
-        StackPanel tools = new() { Orientation = Orientation.Horizontal, Spacing = 6, VerticalAlignment = VerticalAlignment.Top, Children = { filterChip, FindByShortcut } };
+        StackPanel tools = new() { Orientation = Orientation.Horizontal, Spacing = Gaps.Small, VerticalAlignment = VerticalAlignment.Top, Children = { filterChip, FindByShortcut } };
         StackPanel named = new()
         {
-            Spacing = 4,
+            Spacing = Gaps.Tight,
             VerticalAlignment = VerticalAlignment.Center,
             Children = { KeymapChoice, keymapNote },
         };
@@ -390,7 +390,7 @@ public sealed partial class SettingsDialog
                 row.Keys.Children.Clear();
                 foreach (string keys in shown)
                 {
-                    Border box = new() { Classes = { StyleClasses.Box }, Padding = new Thickness(6, 1), Margin = new Thickness(0, 2, 4, 2), Child = new TextBlock { Text = keys, FontSize = 12 } };
+                    Border box = new() { Classes = { StyleClasses.Box }, Padding = new Thickness(Gaps.Small, 0), Margin = new Thickness(0, Gaps.Hair, Gaps.Tight, Gaps.Hair), Child = new TextBlock { Text = keys, FontSize = 12, VerticalAlignment = VerticalAlignment.Center } };
                     box.Bind(Border.BackgroundProperty, box.GetResourceObservable(TokenKeys.Selected));
                     row.Keys.Children.Add(box);
                 }

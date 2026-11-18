@@ -17,14 +17,14 @@ namespace Passenger.App.Settings;
 /// nothing.</summary>
 public sealed class ThemeExplorer : StackPanel
 {
-    private const double Gap = 8;
+    private const double Gap = Gaps.Normal;
     private static readonly string[] Orders = ["Popular", "Top rated", "Newest", "Name"];
     private readonly Func<AppSettings> working;
     private readonly Action<Func<AppSettings, AppSettings>> change;
     private readonly Action chosen;
     private readonly List<ExplorerRow> rows = [];
     private readonly Dictionary<string, byte[]> fetched = new(StringComparer.Ordinal);
-    private readonly StackPanel opened = new() { Spacing = 6, IsVisible = false };
+    private readonly StackPanel opened = new() { Spacing = Gaps.Small, IsVisible = false };
     private CancellationTokenSource? searching;
     private CancellationTokenSource? choosing;
     private int found;
@@ -36,7 +36,7 @@ public sealed class ThemeExplorer : StackPanel
         this.working = working;
         this.change = change;
         this.chosen = chosen;
-        Spacing = 6;
+        Spacing = Gaps.Small;
         AutomationProperties.SetName(SearchBox, "Search VS Code themes");
         AutomationProperties.SetName(OrderBox, "Order of VS Code themes");
         AutomationProperties.SetName(List, "VS Code themes");
@@ -88,7 +88,7 @@ public sealed class ThemeExplorer : StackPanel
         };
         opened.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Spacing = Gap, Children = { SearchBox, OrderBox } });
         opened.Children.Add(new Border { Classes = { StyleClasses.Framed }, Child = List });
-        opened.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { MoreButton } });
+        opened.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Spacing = Gaps.Normal, Children = { MoreButton } });
         Children.Add(OpenButton);
         Children.Add(opened);
         Children.Add(Said);

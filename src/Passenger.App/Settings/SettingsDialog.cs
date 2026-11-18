@@ -95,7 +95,10 @@ public sealed partial class SettingsDialog : IdeWindow
     private readonly TextBlock nothing;
 
     /// <summary>The page's room at its right: its gutter, where its scroll bar shows over the page, clear of what it shows.</summary>
-    private const double Gutter = 20;
+    private const double Gutter = Gaps.Page;
+
+    /// <summary>The search field's room in the pages' column, the pages' bands as wide as it below.</summary>
+    private static readonly Thickness PagesInset = new(Gaps.Normal);
 
     /// <summary>What a page keeps above its options as they scroll (the Keymap page's toolbar).</summary>
     private readonly Decorator pageTop = new() { Margin = new Thickness(0, 0, Gutter, 0) };
@@ -127,14 +130,14 @@ public sealed partial class SettingsDialog : IdeWindow
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
 
         AddOptions(agents ?? Mcp.AgentSetup.Here(null, current.TerminalShell));
-        search = new TextBox { Classes = { StyleClasses.Search }, PlaceholderText = "Search settings", Margin = new Thickness(10, 10, 10, 6) };
+        search = new TextBox { Classes = { StyleClasses.Search }, PlaceholderText = "Search settings", Margin = new Thickness(PagesInset.Left, PagesInset.Top, PagesInset.Right, Gaps.Small) };
         search.TextChanged += (_, _) => Filter();
-        pages = new ListBox { Classes = { StyleClasses.Tree, StyleClasses.Pages } };
+        pages = new ListBox { Classes = { StyleClasses.Tree, StyleClasses.Pages }, Padding = new Thickness(PagesInset.Left, 0) };
         pages.SelectionChanged += (_, _) => ShowPage();
-        heading = new TextBlock { FontSize = 16, FontWeight = FontWeight.SemiBold, Margin = new Thickness(0, 0, Gutter, 14) };
+        heading = new TextBlock { FontSize = 16, FontWeight = FontWeight.SemiBold, Margin = new Thickness(0, 0, Gutter, Gaps.Wide) };
         // The scroll bar shows over the scrolled page's right, so the gutter is inside it: the bar stands there, beside the rows.
-        body = new StackPanel { Spacing = 12, Margin = new Thickness(0, 0, Gutter, 0) };
-        nothing = new TextBlock { Classes = { StyleClasses.Muted }, Text = "Nothing matches", IsVisible = false, Margin = new Thickness(21, 4) };
+        body = new StackPanel { Spacing = Gaps.Wide, Margin = new Thickness(0, 0, Gutter, 0) };
+        nothing = new TextBlock { Classes = { StyleClasses.Muted }, Text = "Nothing matches", IsVisible = false, Margin = new Thickness(PagesInset.Left + SearchFields.TextStart, Gaps.Tight) };
 
         ok.Click += (_, _) => Ok();
         applyButton.Click += (_, _) => Apply();
@@ -143,9 +146,9 @@ public sealed partial class SettingsDialog : IdeWindow
         DockPanel.SetDock(search, Dock.Top);
         left.Children.Add(search);
         left.Children.Add(new Panel { Children = { pages, nothing } });
-        Border leftPane = new() { BorderThickness = new Thickness(0, 0, 1, 0), Child = left };
+        Border leftPane = new() { BorderThickness = Hairlines.After, Child = left };
         leftPane.Bind(Border.BorderBrushProperty, leftPane.GetResourceObservable(TokenKeys.Divider));
-        DockPanel right = new() { Margin = new Thickness(20, 16, 0, 0) };
+        DockPanel right = new() { Margin = new Thickness(Gaps.Page, Gaps.Group, 0, 0) };
         DockPanel.SetDock(heading, Dock.Top);
         DockPanel.SetDock(pageTop, Dock.Top);
         right.Children.Add(heading);
@@ -283,7 +286,7 @@ public sealed partial class SettingsDialog : IdeWindow
         Add(Declared.FindResults);
 
         Add(Declared.ReopenProjectsOnStartup);
-        StackPanel openIn = new() { Orientation = Orientation.Horizontal, Spacing = 16 };
+        StackPanel openIn = new() { Orientation = Orientation.Horizontal, Spacing = Gaps.Group };
         foreach ((OpenProjectIn choice, string name) in OpenProjectChoices)
         {
             RadioButton radio = new() { Content = name, GroupName = "openProjectIn", IsChecked = Working.OpenProjectIn == choice };
@@ -307,7 +310,7 @@ public sealed partial class SettingsDialog : IdeWindow
             Change(s => s with { SaveWhenIdle = v });
             seconds.IsEnabled = v;
         });
-        Add(SystemPage, "Save when idle for", new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { idle, NumberSetting.WithUnit(seconds, "seconds") } },
+        Add(SystemPage, "Save when idle for", new StackPanel { Orientation = Orientation.Horizontal, Spacing = Gaps.Normal, Children = { idle, NumberSetting.WithUnit(seconds, "seconds") } },
             "autosave files idle inactive seconds");
 
         AddTrust();
@@ -448,7 +451,7 @@ public sealed partial class SettingsDialog : IdeWindow
         Add(DiscordPage, "Only Passenger when idle for", new StackPanel
         {
             Orientation = Orientation.Horizontal,
-            Spacing = 8,
+            Spacing = Gaps.Normal,
             Children = { whenIdle, NumberSetting.WithUnit(idleMinutes, "minutes") },
         }, $"{Discord} idle inactive away timeout minutes");
 
@@ -542,7 +545,7 @@ public sealed partial class SettingsDialog : IdeWindow
         TextBlock name = new()
         {
             Text = label,
-            Padding = new Thickness(0, 0, 16, 0),
+            Padding = new Thickness(0, 0, Gaps.Group, 0),
             TextWrapping = TextWrapping.Wrap,
             VerticalAlignment = firstLine < 0 ? VerticalAlignment.Center : VerticalAlignment.Top,
         };
