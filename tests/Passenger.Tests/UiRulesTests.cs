@@ -2011,9 +2011,10 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
         Regex number = new(@"(?<![\w.])\d+(?:\.\d+)?(?![\w.])");
         Regex thickness = new(@"new Thickness\(|\bThickness\s+\w+\s*(?:=>|=)\s*new\(|\b(?:Margin|Padding|BorderThickness)\s*=\s*new\(|Thickness\.Parse\(");
         Regex spacing = new(@"\b(?:Spacing|ItemSpacing|LineSpacing|RowSpacing|ColumnSpacing)\s*=\s*");
-        Regex named = new(@"const double (\w*(?:Gap|Inset|Pad|Padding|Margin|Spacing|Indent)\w*)\s*=\s*([^;]+);");
+        Regex named = new(@"const double (\w*(?:Gap|Gutter|Inset|Pad|Padding|Margin|Spacing|Indent)\w*)\s*=\s*([^;]+);");
         Regex attribute = new(@"\b(?:Margin|Padding|BorderThickness|Spacing|ItemSpacing|LineSpacing|RowSpacing|ColumnSpacing)=""([^""{][^""]*)""");
         Regex setter = new(@"Property=""(Margin|Padding|Spacing|ItemSpacing|LineSpacing|RowSpacing|ColumnSpacing)""\s+Value=""([^""{][^""]*)""");
+        Regex selector = new(@"<Style Selector=""([^""]*)""");
         double[] steps = [.. typeof(Gaps).GetFields().Where(f => f.IsLiteral).Select(f => (double)f.GetRawConstantValue()!)];
         bool HasNumber(string written) => number.Matches(written).Any(m => double.Parse(m.Value, System.Globalization.CultureInfo.InvariantCulture) != 0);
         List<string> found = [];
@@ -2025,8 +2026,18 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
                 if (path.EndsWith(".axaml", StringComparison.Ordinal))
                 {
                     string[] themeLines = text.Split('\n');
+                    string styled = string.Empty;
                     for (int i = 0; i < themeLines.Length; i++)
                     {
+                        if (selector.Match(themeLines[i]) is { Success: true } style)
+                        {
+                            styled = style.Groups[1].Value;
+                        }
+                        // A rendered Markdown document's own type and spacing, as its page draws it.
+                        if (styled.Contains(".md", StringComparison.Ordinal) || styled.Contains("MarkdownBlocks", StringComparison.Ordinal))
+                        {
+                            continue;
+                        }
                         foreach (Match match in setter.Matches(themeLines[i]))
                         {
                             if (!number.Matches(match.Groups[2].Value).Select(m => Math.Abs(double.Parse(m.Value, System.Globalization.CultureInfo.InvariantCulture)))
@@ -2115,30 +2126,20 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
     /// moves, and the list goes once it is empty.</summary>
     private static readonly HashSet<string> SpacingStillToMove =
     [
-        "src/Passenger.App/AboutDialog.cs",
-        "src/Passenger.App/Aspire/AspireInteractionDialog.cs",
-        "src/Passenger.App/Aspire/AspireOrchestrationDialog.cs",
-        "src/Passenger.App/Aspire/AspireServiceDialog.cs",
         "src/Passenger.App/Aspire/AspireView.cs",
         "src/Passenger.App/Banner.cs",
         "src/Passenger.App/Bdd/StepLibraryView.cs",
+        "src/Passenger.App/CSharp/AssistPopups.cs",
+        "src/Passenger.App/CSharp/CodeActions.Refactorings.cs",
+        "src/Passenger.App/CSharp/PopupPlacement.cs",
         "src/Passenger.App/CheckRows.cs",
         "src/Passenger.App/ColumnTitles.cs",
         "src/Passenger.App/Containers/ContainerDetailsPane.cs",
         "src/Passenger.App/Containers/ContainerFilesPane.cs",
         "src/Passenger.App/Containers/ContainerStatsPane.cs",
-        "src/Passenger.App/CSharp/AssistPopups.cs",
-        "src/Passenger.App/CSharp/ChangeSignatureDialog.cs",
-        "src/Passenger.App/CSharp/CodeActions.Refactorings.cs",
-        "src/Passenger.App/CSharp/ExtractInterfaceDialog.cs",
-        "src/Passenger.App/CSharp/MembersMoveDialog.cs",
-        "src/Passenger.App/CSharp/PopupPlacement.cs",
-        "src/Passenger.App/CSharp/RefactoringDialog.cs",
-        "src/Passenger.App/Debugging/AttachToProcessDialog.cs",
         "src/Passenger.App/Debugging/BreakpointViews.cs",
         "src/Passenger.App/Debugging/VariablesList.cs",
         "src/Passenger.App/Debugging/VariablesTree.cs",
-        "src/Passenger.App/DialogFooter.cs",
         "src/Passenger.App/Docking/DockHost.cs",
         "src/Passenger.App/Docking/DropOverlay.cs",
         "src/Passenger.App/Docking/EdgeTabs.cs",
@@ -2153,20 +2154,13 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
         "src/Passenger.App/Editors/HiddenTabsPopup.cs",
         "src/Passenger.App/Editors/Markdown.cs",
         "src/Passenger.App/Editors/SvgPreview.cs",
-        "src/Passenger.App/Endpoints/EndpointQuestionDialog.cs",
         "src/Passenger.App/Endpoints/EndpointsView.cs",
-        "src/Passenger.App/Endpoints/InteractiveTestDialog.cs",
         "src/Passenger.App/Endpoints/RequestsView.cs",
         "src/Passenger.App/Endpoints/ResponseView.cs",
         "src/Passenger.App/ErrorsPopup.cs",
-        "src/Passenger.App/Explorer/AddReferenceDialog.cs",
-        "src/Passenger.App/Explorer/DockerDialogs.cs",
         "src/Passenger.App/Explorer/ExplorerTree.cs",
         "src/Passenger.App/Explorer/ExplorerView.axaml",
         "src/Passenger.App/Explorer/ExplorerView.axaml.cs",
-        "src/Passenger.App/Explorer/FileNestingDialog.cs",
-        "src/Passenger.App/FormFold.cs",
-        "src/Passenger.App/FormRows.cs",
         "src/Passenger.App/Godot/GodotLiveValues.cs",
         "src/Passenger.App/Godot/GodotPageViewer.cs",
         "src/Passenger.App/Godot/GodotPinPopup.cs",
@@ -2178,12 +2172,11 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
         "src/Passenger.App/History/LocalHistoryView.cs",
         "src/Passenger.App/LiveTree/LiveTreeView.cs",
         "src/Passenger.App/LiveTree/ValueControls.cs",
-        "src/Passenger.App/MainWindow.axaml",
         "src/Passenger.App/MainWindow.GodotEditor.cs",
         "src/Passenger.App/MainWindow.GodotTemplates.cs",
         "src/Passenger.App/MainWindow.Run.cs",
         "src/Passenger.App/MainWindow.TitleBar.cs",
-        "src/Passenger.App/Migrations/MigrationScriptDialog.cs",
+        "src/Passenger.App/MainWindow.axaml",
         "src/Passenger.App/Migrations/MigrationsView.cs",
         "src/Passenger.App/Navigation/ActionPopup.cs",
         "src/Passenger.App/Navigation/FindInFilesPopup.cs",
@@ -2192,7 +2185,6 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
         "src/Passenger.App/Navigation/RecentLocationsPopup.cs",
         "src/Passenger.App/Navigation/SymbolPopup.cs",
         "src/Passenger.App/Navigation/UsagesPopup.cs",
-        "src/Passenger.App/Packages/FeedDialog.cs",
         "src/Passenger.App/PopupFrame.cs",
         "src/Passenger.App/PopupHost.cs",
         "src/Passenger.App/Profiling/BandOverTable.cs",
@@ -2202,28 +2194,20 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
         "src/Passenger.App/Profiling/MemoryView.cs",
         "src/Passenger.App/Profiling/ProfilerView.cs",
         "src/Passenger.App/RowGlyphs.cs",
-        "src/Passenger.App/Run/AppHostPublishDialog.cs",
         "src/Passenger.App/Run/ComposeServicesTable.cs",
-        "src/Passenger.App/Run/GodotExportDialog.cs",
         "src/Passenger.App/Run/ProjectStartsTable.cs",
-        "src/Passenger.App/Run/PublishDialog.cs",
-        "src/Passenger.App/Run/RunConfigurationsDialog.cs",
         "src/Passenger.App/SearchPopup.cs",
-        "src/Passenger.App/Settings/AvailabilityDialog.cs",
         "src/Passenger.App/Settings/ListPane.cs",
         "src/Passenger.App/Settings/LiveTemplatesPane.cs",
-        "src/Passenger.App/Settings/MouseShortcutDialog.cs",
         "src/Passenger.App/Settings/OptionRow.cs",
         "src/Passenger.App/Settings/PostfixTemplatesPane.cs",
         "src/Passenger.App/Settings/Setting.cs",
         "src/Passenger.App/Settings/SettingsDialog.CodeQuality.cs",
-        "src/Passenger.App/Settings/SettingsDialog.cs",
         "src/Passenger.App/Settings/SettingsDialog.Keymap.cs",
         "src/Passenger.App/Settings/SettingsDialog.Mcp.cs",
         "src/Passenger.App/Settings/SettingsDialog.Themes.cs",
-        "src/Passenger.App/Settings/ShortcutDialog.cs",
+        "src/Passenger.App/Settings/SettingsDialog.cs",
         "src/Passenger.App/Settings/ShortcutPanel.cs",
-        "src/Passenger.App/Settings/TemplateVariablesDialog.cs",
         "src/Passenger.App/Settings/ThemeExplorer.cs",
         "src/Passenger.App/Settings/ThemePicker.cs",
         "src/Passenger.App/Settings/TrustedFoldersTable.cs",
@@ -2232,10 +2216,7 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
         "src/Passenger.App/Tables/TableViewer.cs",
         "src/Passenger.App/Telemetry/MetricsPane.cs",
         "src/Passenger.App/Telemetry/TelemetryView.cs",
-        "src/Passenger.App/Templates/NewItemDialog.cs",
-        "src/Passenger.App/Templates/NewProjectDialog.cs",
         "src/Passenger.App/Templates/TemplateList.cs",
-        "src/Passenger.App/Templates/TemplateOptions.cs",
         "src/Passenger.App/Testing/TestTree.cs",
         "src/Passenger.App/Theme/Shell.axaml",
         "src/Passenger.App/ToolButtons.cs",
@@ -2248,14 +2229,13 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
         "src/Passenger.App/ToolWindows/FilterBox.cs",
         "src/Passenger.App/ToolWindows/FilterMenu.cs",
         "src/Passenger.App/ToolWindows/FindView.cs",
-        "src/Passenger.App/ToolWindows/FrameViewer.cs",
         "src/Passenger.App/ToolWindows/GitLogView.cs",
         "src/Passenger.App/ToolWindows/GitView.cs",
         "src/Passenger.App/ToolWindows/HierarchyView.cs",
         "src/Passenger.App/ToolWindows/MergedLog.cs",
         "src/Passenger.App/ToolWindows/NuGetSourcesView.cs",
-        "src/Passenger.App/ToolWindows/NuGetView.cs",
         "src/Passenger.App/ToolWindows/NuGetView.Projects.cs",
+        "src/Passenger.App/ToolWindows/NuGetView.cs",
         "src/Passenger.App/ToolWindows/ProblemsView.cs",
         "src/Passenger.App/ToolWindows/RunPane.cs",
         "src/Passenger.App/ToolWindows/RunRows.cs",
@@ -2265,14 +2245,10 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
         "src/Passenger.App/ToolWindows/TestsView.cs",
         "src/Passenger.App/ToolWindows/ToolBars.cs",
         "src/Passenger.App/ToolWindows/ToolTabs.cs",
-        "src/Passenger.App/Vcs/ChangedFileRow.cs",
         "src/Passenger.App/Vcs/ChangePopup.cs",
+        "src/Passenger.App/Vcs/ChangedFileRow.cs",
         "src/Passenger.App/Vcs/ChoicePopup.cs",
-        "src/Passenger.App/Vcs/CloneDialog.cs",
-        "src/Passenger.App/Vcs/CommitSigningDialog.cs",
-        "src/Passenger.App/Vcs/ConflictsDialog.cs",
         "src/Passenger.App/Vcs/DiffLines.cs",
-        "src/Passenger.App/Vcs/GitQuestionDialog.cs",
         "src/Passenger.App/Vcs/MergeView.cs",
         "src/Passenger.App/Vcs/NamePopup.cs",
         "src/Passenger.App/Vcs/UnstashPopup.cs",
@@ -2280,7 +2256,6 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
         "src/Passenger.App/Welcome/WelcomeView.cs",
         "src/Passenger.App/Xaml/ColourPicker.cs",
         "src/Passenger.App/Xaml/XamlPreviewPane.cs",
-        "src/Passenger.App/Xaml/XamlRefactoringDialogs.cs",
         "src/Passenger.App/ZoomedPicture.cs",
     ];
 

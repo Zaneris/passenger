@@ -36,10 +36,10 @@ public sealed class ExtractInterfaceDialog : RefactoringDialog
             fileTyped |= !naming;
             Changed();
         };
-        StackPanel list = new() { Margin = new Thickness(8, 4) };
+        StackPanel list = new() { Margin = new Thickness(Gaps.Normal, Gaps.Tight), Spacing = Gaps.Hair };
         foreach (Member member in source.Members)
         {
-            CheckBox box = new() { Content = member.Text, IsChecked = true, Margin = new Thickness(0, 1) };
+            CheckBox box = new() { Content = member.Text, IsChecked = true };
             box.IsCheckedChanged += (_, _) => Changed();
             members.Add((member, box));
             list.Children.Add(box);
@@ -58,14 +58,14 @@ public sealed class ExtractInterfaceDialog : RefactoringDialog
 
         Options = new StackPanel
         {
-            Spacing = 10,
+            Spacing = FormRows.Between,
             Children =
             {
                 Row("Interface name:", NameBox),
                 Row("File name:", FileBox),
                 new TextBlock { Text = "Members to form interface:" },
                 listFrame,
-                new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { SelectAllButton, SelectNoneButton } },
+                new StackPanel { Orientation = Orientation.Horizontal, Spacing = Gaps.Normal, Children = { SelectAllButton, SelectNoneButton } },
             },
         };
         Changed();

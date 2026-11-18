@@ -26,7 +26,7 @@ public sealed class MouseShortcutDialog : ShortcutDialog
             Classes = { StyleClasses.Box },
             Height = 88,
             Background = Brushes.Transparent,
-            Child = new StackPanel { Spacing = 6, VerticalAlignment = VerticalAlignment.Center, Children = { asked, shown } },
+            Child = new StackPanel { Spacing = Gaps.Small, VerticalAlignment = VerticalAlignment.Center, Children = { asked, shown } },
         };
         Pad.PointerPressed += (_, e) =>
         {

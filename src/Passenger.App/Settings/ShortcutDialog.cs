@@ -10,8 +10,8 @@ namespace Passenger.App.Settings;
 /// there is one (<see cref="Chosen"/>); Cancel or Escape with null.</summary>
 public abstract class ShortcutDialog : IdeWindow
 {
-    private readonly StackPanel conflictsList = new() { Spacing = 2 };
-    private readonly DockPanel conflictsPanel = new() { IsVisible = false, Margin = new Thickness(0, 4, 0, 0) };
+    private readonly StackPanel conflictsList = new() { Spacing = Gaps.Hair };
+    private readonly DockPanel conflictsPanel = new() { IsVisible = false, Margin = new Thickness(0, Gaps.Tight, 0, 0) };
 
     protected ShortcutDialog(string title)
     {
@@ -31,14 +31,14 @@ public abstract class ShortcutDialog : IdeWindow
             }
         };
 
-        PathIcon warning = new() { VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(0, 1, 8, 0) };
+        PathIcon warning = new() { VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(0, 0, Gaps.Normal, 0) };
         warning.Bind(PathIcon.DataProperty, warning.GetResourceObservable(IconKeys.Problems));
         warning.Bind(PathIcon.ForegroundProperty, warning.GetResourceObservable(TokenKeys.Warning));
         DockPanel.SetDock(warning, Dock.Left);
         conflictsPanel.Children.Add(warning);
         conflictsPanel.Children.Add(new StackPanel
         {
-            Spacing = 4,
+            Spacing = Gaps.Tight,
             Children = { new TextBlock { Text = "Already assigned to:" }, new ScrollViewer { MaxHeight = 120, Content = conflictsList } },
         });
     }
@@ -56,8 +56,8 @@ public abstract class ShortcutDialog : IdeWindow
     /// <summary>Lays the dialog out: the action it is for, then the <paramref name="field"/> its shortcut is given in.</summary>
     protected void Frame(string action, string where, Control field) => Content = DialogFooter.Page(new StackPanel
     {
-        Margin = new Thickness(16, 14, 16, 16),
-        Spacing = 10,
+        [DialogFooter.InsetProperty] = true,
+        Spacing = FormRows.Between,
         Children = { Named(action, where), field, conflictsPanel },
     }, DialogFooter.OkCancel(OkButton, () => Close(null)));
 

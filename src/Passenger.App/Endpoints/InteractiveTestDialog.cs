@@ -58,7 +58,7 @@ public sealed class InteractiveTestDialog : IdeWindow
 
         DockPanel urlRow = new() { Children = { Method, Url } };
         DockPanel.SetDock(Method, Dock.Left);
-        Method.Margin = new Thickness(0, 0, 8, 0);
+        Method.Margin = new Thickness(0, 0, Gaps.Normal, 0);
 
         pages =
         [
@@ -73,12 +73,12 @@ public sealed class InteractiveTestDialog : IdeWindow
             int page = i;
             tabs[i].Click += (_, _) => ShowPage(page);
         }
-        StackPanel tabRow = new() { Orientation = Orientation.Horizontal, Spacing = 4 };
+        StackPanel tabRow = new() { Orientation = Orientation.Horizontal, Spacing = Gaps.Tight };
         tabRow.Children.AddRange(tabs);
         Panel pageArea = new();
         pageArea.Children.AddRange(pages);
 
-        Grid fields = new() { RowDefinitions = new RowDefinitions("Auto,Auto,Auto,*,Auto"), RowSpacing = 6 };
+        Grid fields = new() { RowDefinitions = new RowDefinitions("Auto,Auto,Auto,*,Auto"), RowSpacing = Gaps.Small };
         Add(fields, urlRow, 0);
         Add(fields, Caption(environment is null ? "No environment: {{variables}} take the file's values" : $"Variables from the {environment} environment and the file"), 1);
         Add(fields, tabRow, 2);
@@ -87,12 +87,12 @@ public sealed class InteractiveTestDialog : IdeWindow
         WrapPanel options = new()
         {
             Orientation = Orientation.Horizontal,
-            ItemSpacing = 16,
-            LineSpacing = 6,
-            Margin = new Thickness(0, 4, 0, 0),
+            ItemSpacing = Gaps.Group,
+            LineSpacing = Gaps.Small,
+            Margin = new Thickness(0, Gaps.Tight, 0, 0),
             Children =
             {
-                new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { new TextBlock { Text = "Timeout (s)", VerticalAlignment = VerticalAlignment.Center }, Timeout } },
+                new StackPanel { Orientation = Orientation.Horizontal, Spacing = Gaps.Normal, Children = { new TextBlock { Text = "Timeout (s)", VerticalAlignment = VerticalAlignment.Center }, Timeout } },
                 FollowRedirects,
                 AcceptAnyCertificate,
             },
@@ -104,11 +104,11 @@ public sealed class InteractiveTestDialog : IdeWindow
 
         Response = new ResponseView("Send to see the response");
         Grid panes = new() { ColumnDefinitions = new ColumnDefinitions("*,1,*"), Margin = new Thickness(0) };
-        fields.Margin = new Thickness(16, 16, 12, 12);
+        fields.Margin = new Thickness(Gaps.Group, Gaps.Group, Gaps.Wide, Gaps.Wide);
         panes.Children.Add(fields);
         panes.Children.Add(new HairlineDivider(GridResizeDirection.Columns) { [Grid.ColumnProperty] = 1 });
         Response[Grid.ColumnProperty] = 2;
-        Response.Margin = new Thickness(4, 8, 8, 8);
+        Response.Margin = new Thickness(Gaps.Tight, Gaps.Normal, Gaps.Normal, Gaps.Normal);
         panes.Children.Add(Response);
 
         Send = new Button { Content = "Send", IsDefault = true, Classes = { StyleClasses.Primary } };
@@ -281,7 +281,7 @@ public sealed class InteractiveTestDialog : IdeWindow
             return content;
         }
         TextBlock note = Caption(caption);
-        note.Margin = new Thickness(0, 6, 0, 0);
+        note.Margin = new Thickness(0, Gaps.Small, 0, 0);
         DockPanel.SetDock(note, Dock.Bottom);
         return new DockPanel { Children = { note, content } };
     }

@@ -21,12 +21,12 @@ public sealed class TemplateOptions
     private bool setting;
 
     /// <summary>Where the options are shown, one row each, but those under More options.</summary>
-    public StackPanel Panel { get; } = new() { Spacing = 10 };
+    public StackPanel Panel { get; } = new() { Spacing = FormRows.Between };
 
     /// <summary>More options and the rows it opens, shown where a template has some; its dialog places it last.</summary>
     public StackPanel Folded { get; }
 
-    public TemplateOptions() => Folded = new StackPanel { Spacing = 10, IsVisible = false, Children = { more.Opener, more.Rows } };
+    public TemplateOptions() => Folded = new StackPanel { Spacing = FormRows.Between, IsVisible = false, Children = { more.Opener, more.Rows } };
 
     /// <summary>A value changed, or what is enabled with it: what the options come to has changed.</summary>
     public event Action? Changed;
@@ -107,7 +107,7 @@ public sealed class TemplateOptions
             return editor;
         }
         editor.HorizontalAlignment = HorizontalAlignment.Left;
-        return new StackPanel { Spacing = 4, Children = { editor, said } };
+        return new StackPanel { Spacing = Gaps.Tight, Children = { editor, said } };
     }
 
     /// <summary>No options, as for a template that has none to show.</summary>

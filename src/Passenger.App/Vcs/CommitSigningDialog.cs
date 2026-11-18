@@ -37,10 +37,10 @@ public sealed class CommitSigningDialog : IdeWindow
         gpg = Radio("format", "GPG key", configured && setup.Format is SigningFormat.OpenPgp);
         x509 = Radio("format", "X.509 certificate", configured && setup.Format is SigningFormat.X509);
         key = new TextBox { Name = "SigningKey", Classes = { StyleClasses.Search }, Text = setup.Key ?? string.Empty };
-        found = new WrapPanel { ItemSpacing = 12, Margin = new Thickness(0, 6, 0, 0) };
+        found = new WrapPanel { ItemSpacing = Gaps.Wide, Margin = new Thickness(0, Gaps.Small, 0, 0) };
         foundNone = MutedText.Of(string.Empty);
         foundNone.TextWrapping = TextWrapping.Wrap;
-        foundNone.Margin = new Thickness(0, 6, 0, 0);
+        foundNone.Margin = new Thickness(0, Gaps.Small, 0, 0);
         here = Radio("scope", "This repository", setup.KeyScope is not "global");
         everywhere = Radio("scope", "All your repositories (your global git config)", setup.KeyScope is "global");
         every = new CheckBox { Content = $"Sign every commit ({GitConfigKeys.CommitGpgSign})", IsChecked = setup.Signs || !configured };
@@ -62,12 +62,12 @@ public sealed class CommitSigningDialog : IdeWindow
 
         StackPanel fields = new()
         {
-            Spacing = 10,
+            Spacing = FormRows.Between,
             Children =
             {
-                FormRows.Of("Sign with:", new StackPanel { Orientation = Orientation.Horizontal, Spacing = 16, Children = { ssh, gpg, x509 } }),
+                FormRows.Of("Sign with:", new StackPanel { Orientation = Orientation.Horizontal, Spacing = Gaps.Group, Children = { ssh, gpg, x509 } }),
                 new StackPanel { Children = { FormRows.Of("Key:", key), FormRows.Of(null, found), FormRows.Of(null, foundNone) } },
-                FormRows.Of("Set in:", new StackPanel { Spacing = 6, Children = { here, everywhere } }, top: true),
+                FormRows.Of("Set in:", new StackPanel { Spacing = Gaps.Small, Children = { here, everywhere } }, top: true),
                 FormRows.Of(null, every),
             },
         };

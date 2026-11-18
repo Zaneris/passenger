@@ -25,14 +25,14 @@ public sealed class AspireServiceDialog : IdeWindow
         Profile.Click += (_, _) => Close(Services.SelectedItem as AspireSelection);
         StackPanel heading = new()
         {
-            Spacing = 8,
-            Margin = new Thickness(20, 16),
+            Spacing = Gaps.Normal,
+            Margin = new Thickness(Gaps.Page, Gaps.Page, Gaps.Page, Gaps.Wide),
             Children = { new TextBlock { Text = "Choose a running .NET service", Classes = { StyleClasses.Muted } } },
         };
         DockPanel page = new();
         DockPanel.SetDock(heading, Dock.Top);
         page.Children.Add(heading);
-        page.Children.Add(new Border { Classes = { StyleClasses.Framed }, Margin = new Thickness(20, 0, 20, 16), Child = Services });
+        page.Children.Add(new Border { Classes = { StyleClasses.Framed }, Margin = new Thickness(Gaps.Page, 0, Gaps.Page, Gaps.Page), Child = Services });
         Content = DialogFooter.Page(page, DialogFooter.OkCancel(Profile, () => Close(null)));
         Services.SelectedIndex = services.Count > 0 ? 0 : -1;
     }

@@ -31,19 +31,19 @@ public sealed class AboutDialog : IdeWindow
 
         StackPanel facts = new()
         {
-            Spacing = 4,
+            Spacing = Gaps.Tight,
             Children =
             {
-                new TextBlock { Text = $"Passenger {Product.Version}", FontSize = 20, FontWeight = FontWeight.SemiBold, Margin = new Thickness(0, 0, 0, 6) },
+                new TextBlock { Text = $"Passenger {Product.Version}", FontSize = 20, FontWeight = FontWeight.SemiBold, Margin = new Thickness(0, 0, 0, Gaps.Small) },
                 new TextBlock { Text = commit },
                 new TextBlock { Text = $"Runtime version: {Product.Runtime}" },
-                Sentence("Powered by ", Link(NoticesLink, Product.Notices), new Thickness(0, 14, 0, 0)),
+                Sentence("Powered by ", Link(NoticesLink, Product.Notices), new Thickness(0, Gaps.Wide, 0, 0)),
                 Sentence("Licensed under the ", Link(LicenseLink, Product.License), default),
             },
         };
         if (Copyright() is { } copyright)
         {
-            facts.Children.Add(new TextBlock { Classes = { StyleClasses.Muted }, Text = copyright, Margin = new Thickness(0, 14, 0, 0) });
+            facts.Children.Add(new TextBlock { Classes = { StyleClasses.Muted }, Text = copyright, Margin = new Thickness(0, Gaps.Wide, 0, 0) });
         }
 
         Button copy = new() { Content = "Copy and Close" };
@@ -53,9 +53,9 @@ public sealed class AboutDialog : IdeWindow
 
         Content = DialogFooter.Page(new StackPanel
         {
-            Margin = new Thickness(24, 22, 20, 20),
+            [DialogFooter.InsetProperty] = true,
             Orientation = Orientation.Horizontal,
-            Spacing = 20,
+            Spacing = Gaps.Page,
             Children =
             {
                 new Image

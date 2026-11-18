@@ -18,7 +18,7 @@ public sealed class FormFold
         {
             Classes = { StyleClasses.Link },
             HorizontalAlignment = HorizontalAlignment.Left,
-            Content = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, Children = { chevron, title } },
+            Content = new StackPanel { Orientation = Orientation.Horizontal, Spacing = Gaps.Small, Children = { chevron, title } },
         };
         Opener.Click += (_, _) => IsOpen = !IsOpen;
     }
@@ -27,7 +27,7 @@ public sealed class FormFold
     public Button Opener { get; }
 
     /// <summary>The folded rows, shown while open.</summary>
-    public StackPanel Rows { get; } = new() { Spacing = 10, IsVisible = false };
+    public StackPanel Rows { get; } = new() { Spacing = FormRows.Between, IsVisible = false };
 
     /// <summary>What the link says.</summary>
     public string Title

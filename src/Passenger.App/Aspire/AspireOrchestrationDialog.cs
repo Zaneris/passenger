@@ -55,7 +55,7 @@ public sealed class AspireOrchestrationDialog : IdeWindow
             hosts[AppHost.SelectedIndex], defaults[ServiceDefaults.SelectedIndex]));
         StackPanel options = new()
         {
-            Spacing = 8,
+            Spacing = Gaps.Normal,
             Children =
             {
                 new TextBlock { Text = "AppHost" }, AppHost,
@@ -64,12 +64,12 @@ public sealed class AspireOrchestrationDialog : IdeWindow
             },
         };
         DockPanel.SetDock(options, Dock.Bottom);
-        TextBlock heading = new() { Text = "Service projects", Margin = new Thickness(0, 0, 0, 8) };
+        TextBlock heading = new() { Text = "Service projects", Margin = new Thickness(0, 0, 0, Gaps.Normal) };
         DockPanel.SetDock(heading, Dock.Top);
-        Border rows = new() { Classes = { StyleClasses.Framed }, Child = ServiceProjects, Margin = new Thickness(0, 0, 0, 12) };
+        Border rows = new() { Classes = { StyleClasses.Framed }, Child = ServiceProjects, Margin = new Thickness(0, 0, 0, Gaps.Wide) };
         Content = DialogFooter.Page(new DockPanel
         {
-            Margin = new Thickness(16),
+            [DialogFooter.InsetProperty] = true,
             Children = { heading, options, rows },
         }, DialogFooter.OkCancel(Add, () => Close(null)));
         if (choices.Count == 0)

@@ -63,7 +63,7 @@ public sealed class ChangeSignatureDialog : RefactoringDialog
             },
         };
 
-        Border previewFrame = new() { Classes = { StyleClasses.Framed }, Padding = new Thickness(10, 8), Child = preview };
+        Border previewFrame = new() { Classes = { StyleClasses.Framed }, Padding = new Thickness(Gaps.Wide, Gaps.Normal), Child = preview };
         previewFrame.Bind(Border.BackgroundProperty, previewFrame.GetResourceObservable(TokenKeys.Editor_Background));
 
         for (int i = 0; i < signature.Parameters.Count; i++)
@@ -73,7 +73,7 @@ public sealed class ChangeSignatureDialog : RefactoringDialog
         }
         Options = new StackPanel
         {
-            Spacing = 10,
+            Spacing = FormRows.Between,
             Children =
             {
                 Row("Name:", NameBox),
@@ -83,7 +83,7 @@ public sealed class ChangeSignatureDialog : RefactoringDialog
                     Children =
                     {
                         Docked(new TextBlock { Text = "Parameters:", VerticalAlignment = VerticalAlignment.Center }, Dock.Left),
-                        new StackPanel { Orientation = Orientation.Horizontal, Spacing = 2, HorizontalAlignment = HorizontalAlignment.Right, Children = { AddButton, RemoveButton, UpButton, DownButton } },
+                        new StackPanel { Orientation = Orientation.Horizontal, Spacing = Gaps.Hair, HorizontalAlignment = HorizontalAlignment.Right, Children = { AddButton, RemoveButton, UpButton, DownButton } },
                     },
                 },
                 tableFrame,

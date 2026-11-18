@@ -19,7 +19,7 @@ public sealed class EndpointQuestionDialog : IdeWindow
         AllowButton.Click += (_, _) => Close(true);
         DontAllowButton.Click += (_, _) => Close(false);
 
-        StackPanel listed = new() { Spacing = 4 };
+        StackPanel listed = new() { Spacing = Gaps.Tight };
         foreach (EndpointRead read in reads)
         {
             listed.Children.Add(DialogFooter.Paragraph($"• {read}"));

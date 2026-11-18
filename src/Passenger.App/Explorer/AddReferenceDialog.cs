@@ -73,9 +73,9 @@ public sealed class AddReferenceDialog : IdeWindow
             [DockPanel.DockProperty] = Dock.Top,
             Text = $"Projects {project} references",
             FontWeight = FontWeight.SemiBold,
-            Margin = new Thickness(0, 0, 0, 10),
+            Margin = new Thickness(0, 0, 0, Gaps.Wide),
         };
-        Content = DialogFooter.Page(new DockPanel { Margin = new Thickness(16), Children = { heading, rows } }, DialogFooter.OkCancel(ok, () => Close(null)));
+        Content = DialogFooter.Page(new DockPanel { [DialogFooter.InsetProperty] = true, Children = { heading, rows } }, DialogFooter.OkCancel(ok, () => Close(null)));
         Opened += (_, _) => Dispatcher.UIThread.Post(FocusChosen, DispatcherPriority.Loaded);
     }
 

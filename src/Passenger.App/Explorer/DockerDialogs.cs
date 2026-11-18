@@ -43,13 +43,13 @@ public sealed class DockerSupportDialog : IdeWindow
         };
         foreach (RadioButton choice in new[] { dockerfile, sdk })
         {
-            choice.Margin = new Thickness(0, 0, 0, 8);
+            choice.Margin = new Thickness(0, 0, 0, Gaps.Normal);
             choice.HorizontalAlignment = HorizontalAlignment.Stretch;
         }
-        TextBlock heading = new() { Text = $"How {project}'s image is built", FontWeight = FontWeight.SemiBold, Margin = new Thickness(0, 0, 0, 10) };
+        TextBlock heading = new() { Text = $"How {project}'s image is built", FontWeight = FontWeight.SemiBold, Margin = new Thickness(0, 0, 0, Gaps.Wide) };
         Button ok = DialogFooter.Default();
         ok.Click += (_, _) => Accept();
-        StackPanel page = new() { Margin = new Thickness(16), Children = { heading, dockerfile, sdk } };
+        StackPanel page = new() { [DialogFooter.InsetProperty] = true, Children = { heading, dockerfile, sdk } };
         Content = DialogFooter.Page(page, DialogFooter.OkCancel(ok, () => Close(null)));
     }
 
@@ -105,12 +105,12 @@ public sealed class DockerComposeDialog : IdeWindow
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
         Button ok = DialogFooter.Default();
         ok.Click += (_, _) => Close((bool?)true);
-        Grid page = new() { Margin = new Thickness(16), RowDefinitions = new RowDefinitions("Auto,*,Auto,Auto") };
+        Grid page = new() { [DialogFooter.InsetProperty] = true, RowDefinitions = new RowDefinitions("Auto,*,Auto,Auto") };
         page.Children.Add(Heading($"The services of {solution}'s compose.yaml", 0));
         page.Children.Add(List(projects, 1));
         page.Children.Add(Heading("Beside them, from their packages", 2));
         Control backing = services.Count == 0
-            ? new TextBlock { Classes = { StyleClasses.EmptyText }, Text = "No database, cache or broker among their packages", Margin = new Thickness(0, 0, 0, 4) }
+            ? new TextBlock { Classes = { StyleClasses.EmptyText }, Text = "No database, cache or broker among their packages", Margin = new Thickness(0, 0, 0, Gaps.Tight) }
             : List(services, 3);
         Grid.SetRow(backing, 3);
         page.Children.Add(backing);
@@ -123,7 +123,7 @@ public sealed class DockerComposeDialog : IdeWindow
 
     private static TextBlock Heading(string text, int row)
     {
-        TextBlock heading = new() { Text = text, FontWeight = FontWeight.SemiBold, Margin = new Thickness(0, row == 0 ? 0 : 12, 0, 8) };
+        TextBlock heading = new() { Text = text, FontWeight = FontWeight.SemiBold, Margin = new Thickness(0, row == 0 ? 0 : Gaps.Wide, 0, Gaps.Normal) };
         Grid.SetRow(heading, row);
         return heading;
     }

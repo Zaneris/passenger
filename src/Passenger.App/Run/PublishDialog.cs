@@ -41,7 +41,7 @@ public sealed class PublishDialog : IdeWindow
     private readonly TextBox tagBox = new() { Classes = { StyleClasses.Search }, PlaceholderText = "latest (several between semicolons)" };
     private readonly TextBox runtimesBox = new() { Classes = { StyleClasses.Search }, PlaceholderText = "The SDK's own (several between semicolons: linux-x64;linux-arm64)" };
     private readonly TextBox registryBox = new() { Classes = { StyleClasses.Search }, PlaceholderText = "None: the engine on this machine" };
-    private readonly TextBlock imageSaid = new() { Classes = { StyleClasses.Muted }, FontSize = 12, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 4, 0, 0) };
+    private readonly TextBlock imageSaid = new() { Classes = { StyleClasses.Muted }, FontSize = 12, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, Gaps.Tight, 0, 0) };
     private readonly Control folderRows;
     private readonly Control imageRows;
     private readonly TextBox nameBox = new() { Classes = { StyleClasses.Search } };
@@ -51,9 +51,9 @@ public sealed class PublishDialog : IdeWindow
     private readonly ComboBox deploymentBox = new() { HorizontalAlignment = HorizontalAlignment.Stretch, ItemsSource = new[] { FrameworkDependent, SelfContainedMode } };
     private readonly ComboBox runtimeBox = new() { HorizontalAlignment = HorizontalAlignment.Stretch };
     private readonly TextBox folderBox = new() { Classes = { StyleClasses.Search } };
-    private readonly Button browse = new() { Content = "Browse…", Margin = new Thickness(8, 0, 0, 0) };
-    private readonly TextBlock destination = new() { Classes = { StyleClasses.Muted }, FontSize = 12, TextTrimming = TextTrimming.PathSegmentEllipsis, Margin = new Thickness(0, 4, 0, 0) };
-    private readonly TextBlock copied = new() { Classes = { StyleClasses.Muted }, FontSize = 12, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 2, 0, 0), IsVisible = false };
+    private readonly Button browse = new() { Content = "Browse…", Margin = new Thickness(Gaps.Normal, 0, 0, 0) };
+    private readonly TextBlock destination = new() { Classes = { StyleClasses.Muted }, FontSize = 12, TextTrimming = TextTrimming.PathSegmentEllipsis, Margin = new Thickness(0, Gaps.Tight, 0, 0) };
+    private readonly TextBlock copied = new() { Classes = { StyleClasses.Muted }, FontSize = 12, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, Gaps.Hair, 0, 0), IsVisible = false };
     private readonly CheckBox singleFileBox = new() { Content = "Produce a single file" };
     private readonly CheckBox readyToRunBox = new() { Content = "Compile ReadyToRun" };
     private readonly CheckBox trimBox = new() { Content = "Trim unused code" };
@@ -108,7 +108,7 @@ public sealed class PublishDialog : IdeWindow
         folderRows = new StackPanel { Children = { Row("Output folder:", BrowseRow.Of(folderBox, browse)), FormRows.Of(null, destination), FormRows.Of(null, copied) } };
         imageRows = new StackPanel
         {
-            Spacing = 10,
+            Spacing = FormRows.Between,
             Children =
             {
                 Row("Image:", repositoryBox), Row("Tags:", tagBox), Row("Platforms:", runtimesBox),
@@ -119,10 +119,10 @@ public sealed class PublishDialog : IdeWindow
 
         frameworkBox.ItemsSource = project.TargetFrameworks;
         nameRow = Row("Name:", nameBox);
-        StackPanel options = new() { Spacing = 6, Children = { singleFileBox, readyToRunBox, trimBox } };
+        StackPanel options = new() { Spacing = Gaps.Small, Children = { singleFileBox, readyToRunBox, trimBox } };
         StackPanel fields = new()
         {
-            Spacing = 10,
+            Spacing = FormRows.Between,
             Children =
             {
                 Row("Profile:", profileBox),

@@ -13,7 +13,7 @@ namespace Passenger.App.CSharp;
 /// stays open saying why. Escape cancels.</summary>
 public abstract class RefactoringDialog : IdeWindow
 {
-    private readonly TextBlock problem = new() { TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 12, 0) };
+    private readonly TextBlock problem = new() { TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, Gaps.Wide, 0) };
     private readonly Decorator body = new();
     private bool running;
 

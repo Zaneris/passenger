@@ -37,8 +37,8 @@ public sealed class RunConfigurationsDialog : IdeWindow
     private readonly Action<IReadOnlyList<RunConfiguration>, IReadOnlyList<RunConfiguration>, string?> apply;
     private readonly IReadOnlyList<string> singleFileAppHosts;
     private readonly ListBox list = new() { Classes = { StyleClasses.Tree } };
-    private readonly StackPanel variables = new() { Spacing = 4 };
-    private readonly StackPanel linkedAppHosts = new() { Spacing = 4 };
+    private readonly StackPanel variables = new() { Spacing = Gaps.Tight };
+    private readonly StackPanel linkedAppHosts = new() { Spacing = Gaps.Tight };
     private readonly Control linkedRow;
     private readonly Control aspireRow;
     private readonly Control godotRow;
@@ -62,14 +62,14 @@ public sealed class RunConfigurationsDialog : IdeWindow
     private readonly TextBlock note = new() { TextWrapping = TextWrapping.Wrap, Classes = { StyleClasses.Muted } };
     private readonly TextBlock problem = new() { TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center };
     private readonly Control form;
-    private readonly TextBlock nothing = new() { Text = "No configuration is chosen", Classes = { StyleClasses.Muted }, Margin = new Thickness(0, 8) };
+    private readonly TextBlock nothing = new() { Text = "No configuration is chosen", Classes = { StyleClasses.Muted }, Margin = new Thickness(0, Gaps.Normal) };
 
     /// <summary>Each row's label (or a box's own words) with the fields it shows, by the store's names, marked when the
     /// generated configuration chosen has one changed from its source.</summary>
     private readonly List<(TextBlock Label, string Title, string[] Fields)> marks = [];
 
     /// <summary>What the chosen generated configuration has changed from its source, with Write to Launch Profile and Reset.</summary>
-    private readonly StackPanel changes = new() { Spacing = 6 };
+    private readonly StackPanel changes = new() { Spacing = Gaps.Small };
     private readonly TextBlock changesText = new() { TextWrapping = TextWrapping.Wrap };
 
     /// <summary>What the last Write to Launch Profile did, said in place of the changes until the configuration changes
@@ -160,7 +160,7 @@ public sealed class RunConfigurationsDialog : IdeWindow
         BrowserUrlBox = Field();
         AddVariableButton = new Button
         {
-            Content = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, Children = { Glyph(IconKeys.Add), new TextBlock { Text = "Add variable" } } },
+            Content = new StackPanel { Orientation = Orientation.Horizontal, Spacing = Gaps.Small, Children = { Glyph(IconKeys.Add), new TextBlock { Text = "Add variable" } } },
         };
         NameBox.TextChanged += (_, _) => Edit(c => c with { Name = NameBox.Text?.Trim() ?? string.Empty });
         ProjectBox.SelectionChanged += (_, _) => Edit(c => ProjectBox.SelectedItem switch
@@ -245,12 +245,12 @@ public sealed class RunConfigurationsDialog : IdeWindow
         // A file of launch profiles that does not read lists none of its own, and is never written over.
         problem.Text = string.Join(" ", unread ?? []);
 
-        StackPanel tools = new() { Orientation = Orientation.Horizontal, Spacing = 2, Margin = new Thickness(8, 6), Children = { AddButton, RemoveButton, CopyButton } };
+        StackPanel tools = new() { Orientation = Orientation.Horizontal, Spacing = Gaps.Hair, Margin = new Thickness(Gaps.Normal, Gaps.Small), Children = { AddButton, RemoveButton, CopyButton } };
         DockPanel left = new() { Width = 270 };
         DockPanel.SetDock(tools, Dock.Top);
         left.Children.Add(tools);
         left.Children.Add(list);
-        Border leftPane = new() { BorderThickness = new Thickness(0, 0, 1, 0), Child = left };
+        Border leftPane = new() { BorderThickness = Hairlines.After, Child = left };
         leftPane.Bind(Border.BorderBrushProperty, leftPane.GetResourceObservable(TokenKeys.Divider));
 
         // Each kind's page is the rows it takes; each row names the fields it shows, which a change from the source marks.
@@ -279,7 +279,7 @@ public sealed class RunConfigurationsDialog : IdeWindow
             (builtRows[0] = Row("Target framework", FrameworkBox, fields: ["framework"]), [RunKind.Project, RunKind.Dockerfile, RunKind.SdkContainer]),
             (buildConfigurationRow = Row("Build configuration", BuildConfigurationBox, fields: ["buildConfiguration"]),
                 [RunKind.Project, RunKind.Compose, RunKind.Dockerfile, RunKind.SdkContainer]),
-            (builtRows[1] = Row("Launch profile", new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { ProfileBox, SaveAsProfileButton } }), [RunKind.Project]),
+            (builtRows[1] = Row("Launch profile", new StackPanel { Orientation = Orientation.Horizontal, Spacing = Gaps.Normal, Children = { ProfileBox, SaveAsProfileButton } }), [RunKind.Project]),
             (launchRows[0] = Row("Exe path", ProgramBox, fields: ["program"]), [RunKind.Project]),
             (Row("Script", ScriptText, fields: ["script"]), [RunKind.Script]),
             (launchRows[1] = Row("Program arguments", ArgumentsBox, fields: ["arguments"]), [RunKind.Project, RunKind.Script]),
@@ -295,7 +295,7 @@ public sealed class RunConfigurationsDialog : IdeWindow
             (Row("Mode", ModeBox, fields: ["mode"]), [RunKind.Compose, RunKind.Dockerfile, RunKind.SdkContainer]),
             (Row(string.Empty, KeepBackingBox, marked: keepWords, fields: ["keepBackingServices"]), [RunKind.Compose]),
             (telemetryRow = Row(string.Empty, TelemetryBox, marked: telemetryWords, fields: ["telemetry"]), [RunKind.Project, RunKind.Compose, RunKind.Dockerfile, RunKind.SdkContainer]),
-            (launchRows[3] = Row("Environment variables", new StackPanel { Spacing = 6, Children = { VariablesHeader(), variables, AddVariableButton } }, top: true, fields: ["environment"]),
+            (launchRows[3] = Row("Environment variables", new StackPanel { Spacing = Gaps.Small, Children = { VariablesHeader(), variables, AddVariableButton } }, top: true, fields: ["environment"]),
                 [RunKind.Project, RunKind.Dockerfile, RunKind.SdkContainer, RunKind.Script]),
             (launchRows[4] = Row(string.Empty, ConsoleBox, marked: consoleWords, fields: ["console"]), [RunKind.Project, RunKind.Script]),
             (browserRows[0], [RunKind.Project, RunKind.Compose, RunKind.Dockerfile, RunKind.SdkContainer]),
@@ -311,14 +311,14 @@ public sealed class RunConfigurationsDialog : IdeWindow
         WriteButton.Click += (_, _) => IdeErrors.Observe(WriteToLaunchProfileAsync());
         ResetButton.Click += (_, _) => Reset();
         changes.Children.Add(changesText);
-        changes.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { WriteButton, ResetButton } });
-        StackPanel rows = new() { Spacing = 10, Children = { Row("Name", NameBox), Row("Kind", KindText), note, changes } };
+        changes.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Spacing = Gaps.Normal, Children = { WriteButton, ResetButton } });
+        StackPanel rows = new() { Spacing = FormRows.Between, Children = { Row("Name", NameBox), Row("Kind", KindText), note, changes } };
         foreach ((Control row, _) in pages)
         {
             rows.Children.Add(row);
         }
         form = rows;
-        ScrollViewer editorPane = new() { Content = new Panel { Margin = new Thickness(20, 16, 20, 16), Children = { form, nothing } } };
+        ScrollViewer editorPane = new() { Content = new Panel { [DialogFooter.InsetProperty] = true, Children = { form, nothing } } };
         DockPanel.SetDock(leftPane, Dock.Left);
         Content = DialogFooter.Page(new DockPanel { Children = { leftPane, editorPane } }, DialogFooter.OkCancel(OkButton, () => Close(false), problem, applyButton));
         Closed += (_, _) =>
@@ -1469,7 +1469,7 @@ public sealed class RunConfigurationsDialog : IdeWindow
     private Control RowView()
     {
         TextBlock name = new() { VerticalAlignment = VerticalAlignment.Center };
-        TextBlock from = new() { Classes = { StyleClasses.Muted }, FontSize = 11, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0) };
+        TextBlock from = new() { Classes = { StyleClasses.Muted }, FontSize = 11, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(Gaps.Normal, 0, 0, 0) };
         ShrinkingRow line = new() { Children = { name, from } };
         return line.Showing<Entry>(entry =>
         {

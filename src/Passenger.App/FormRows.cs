@@ -16,6 +16,9 @@ public static class FormRows
     /// <summary>The widest a label grows before it wraps.</summary>
     public const double LabelWidth = 170;
 
+    /// <summary>The room between a form's rows, a fold's rows too.</summary>
+    public const double Between = Gaps.Wide;
+
     /// <summary>The labels' column, shared by every row in the form.</summary>
     private const string Labels = "FormLabels";
 
@@ -31,7 +34,7 @@ public static class FormRows
         {
             Text = label ?? string.Empty,
             MaxWidth = LabelWidth,
-            Margin = new Thickness(0, top ? 4 : 0, 12, 0),
+            Margin = new Thickness(0, top ? Gaps.Tight : 0, Gaps.Wide, 0),
             TextWrapping = TextWrapping.Wrap,
             VerticalAlignment = top ? VerticalAlignment.Top : VerticalAlignment.Center,
         };

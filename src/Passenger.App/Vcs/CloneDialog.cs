@@ -40,12 +40,12 @@ public sealed partial class CloneDialog : IdeWindow
         parent = new TextBox { Classes = { StyleClasses.Search }, Text = folder };
         url.TextChanged += (_, _) => ShowDestination();
         parent.TextChanged += (_, _) => ShowDestination();
-        browse = new Button { Content = "Browse…", Margin = new Thickness(8, 0, 0, 0) };
+        browse = new Button { Content = "Browse…", Margin = new Thickness(Gaps.Normal, 0, 0, 0) };
         browse.Click += (_, _) => IdeErrors.Observe(BrowseAsync());
-        into = new TextBlock { Classes = { StyleClasses.Muted }, FontSize = 12, TextTrimming = TextTrimming.PathSegmentEllipsis, Margin = new Thickness(0, 6, 0, 0) };
+        into = new TextBlock { Classes = { StyleClasses.Muted }, FontSize = 12, TextTrimming = TextTrimming.PathSegmentEllipsis, Margin = new Thickness(0, Gaps.Tight, 0, 0) };
         bar = new ProgressBar { IsIndeterminate = true, Minimum = 0, Maximum = 100, Height = 4, MinHeight = 4 };
         progress = new TextBlock { Classes = { StyleClasses.Muted }, FontSize = 12, TextTrimming = TextTrimming.CharacterEllipsis };
-        working = new StackPanel { Spacing = 6, IsVisible = false, Children = { bar, progress } };
+        working = new StackPanel { Spacing = Gaps.Small, IsVisible = false, Children = { bar, progress } };
         problem = new TextBlock { TextWrapping = TextWrapping.Wrap, IsVisible = false };
         problem.Classes.Add(StyleClasses.Error);
 
@@ -55,7 +55,7 @@ public sealed partial class CloneDialog : IdeWindow
 
         StackPanel fields = new()
         {
-            Spacing = 10,
+            Spacing = FormRows.Between,
             Children =
             {
                 FormRows.Of("URL:", url),
@@ -65,8 +65,8 @@ public sealed partial class CloneDialog : IdeWindow
 
         Content = DialogFooter.Page(new StackPanel
         {
-            Margin = new Thickness(20),
-            Spacing = 16,
+            [DialogFooter.InsetProperty] = true,
+            Spacing = Gaps.Group,
             Children =
             {
                 new TextBlock { Text = "Clone Repository", FontWeight = FontWeight.SemiBold },

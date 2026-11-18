@@ -68,14 +68,14 @@ public sealed class NewProjectDialog : IdeWindow
     /// runs there and its global.json decides what it can make.</summary>
     private string readFrom;
     private readonly Passenger.Editor.Debounce followFolder;
-    private readonly TextBox search = new() { Classes = { StyleClasses.Search }, PlaceholderText = "Search", Margin = new Thickness(8, 8, 8, 6) };
+    private readonly TextBox search = new() { Classes = { StyleClasses.Search }, PlaceholderText = "Search", Margin = new Thickness(Gaps.Normal, Gaps.Normal, Gaps.Normal, Gaps.Small) };
     private readonly ListBox list;
     private readonly TextBlock loading;
     private readonly ComboBox typeChooser = new() { Classes = { StyleClasses.Form } };
     private readonly Control typeRow;
     private readonly TextBlock heading;
     private readonly TextBlock description;
-    private readonly TextBlock windowsNote = new() { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 6, 0, 0), IsVisible = false };
+    private readonly TextBlock windowsNote = new() { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, Gaps.Tight, 0, 0), IsVisible = false };
     private readonly TextBox solutionName = new() { Classes = { StyleClasses.Search } };
     private readonly TextBox projectName = new() { Classes = { StyleClasses.Search } };
     private readonly TextBox directory = new() { Classes = { StyleClasses.Search } };
@@ -110,7 +110,7 @@ public sealed class NewProjectDialog : IdeWindow
     private readonly StackPanel working;
     private readonly TextBlock problem = new() { TextWrapping = TextWrapping.Wrap, IsVisible = false, VerticalAlignment = VerticalAlignment.Center };
     private readonly Button create = DialogFooter.Default("Create");
-    private readonly Button browse = new() { Content = "Browse…", Margin = new Thickness(8, 0, 0, 0) };
+    private readonly Button browse = new() { Content = "Browse…", Margin = new Thickness(Gaps.Normal, 0, 0, 0) };
     private readonly ComboBox setup = new() { Classes = { StyleClasses.Form } };
     private readonly ComboBoxItem[] setups = [.. Enum.GetValues<ProjectSetup>().Select(s => new ComboBoxItem { Content = SetupName(s) })];
     private readonly TextBlock setupNote = new() { Classes = { StyleClasses.Muted }, FontSize = 12, TextWrapping = TextWrapping.Wrap };
@@ -193,7 +193,7 @@ public sealed class NewProjectDialog : IdeWindow
         {
             Classes = { StyleClasses.Tree },
             // The chosen family's band as wide as the search field above, its name where the field's text starts.
-            Padding = new Thickness(8, 0),
+            Padding = new Thickness(Gaps.Normal, 0),
         };
         ReusedRows.Use(list, Item);
         list.SelectionChanged += (_, _) =>
@@ -205,12 +205,12 @@ public sealed class NewProjectDialog : IdeWindow
         };
         search.TextChanged += (_, _) => Filter(searched: true);
         ListKeys.Search(search, list);
-        loading = new TextBlock { Classes = { StyleClasses.Muted }, Text = "Loading templates…", TextWrapping = TextWrapping.Wrap, Margin = new Thickness(12) };
+        loading = new TextBlock { Classes = { StyleClasses.Muted }, Text = "Loading templates…", TextWrapping = TextWrapping.Wrap, Margin = new Thickness(Gaps.Wide) };
         DockPanel leftPanel = new();
         DockPanel.SetDock(search, Dock.Top);
         leftPanel.Children.Add(search);
         leftPanel.Children.Add(new Panel { Children = { list, loading } });
-        Border left = new() { Width = 260, BorderThickness = new Thickness(0, 0, 1, 0), Child = leftPanel };
+        Border left = new() { Width = 260, BorderThickness = Hairlines.After, Child = leftPanel };
         left.Bind(Border.BorderBrushProperty, left.GetResourceObservable(TokenKeys.Divider));
         ReusedRows.Use(typeChooser, TypeItem);
         typeChooser.SelectionChanged += (_, _) =>
@@ -223,7 +223,7 @@ public sealed class NewProjectDialog : IdeWindow
         typeRow = Row("Type:", typeChooser);
 
         heading = new TextBlock { FontSize = 16, FontWeight = FontWeight.SemiBold };
-        description = new TextBlock { Classes = { StyleClasses.Muted }, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 4, 0, 0) };
+        description = new TextBlock { Classes = { StyleClasses.Muted }, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, Gaps.Tight, 0, 0) };
         directory.Text = folder;
         browse.Click += (_, _) => IdeErrors.Observe(BrowseAsync());
         Grid folderRow = BrowseRow.Of(directory, browse);
@@ -250,13 +250,13 @@ public sealed class NewProjectDialog : IdeWindow
         };
         language.SelectionChanged += (_, _) => Retarget();
 
-        StackPanel fields = new() { Spacing = 10 };
+        StackPanel fields = new() { Spacing = FormRows.Between };
         projectRow = Row("Project name:", projectName);
         sameRow = Row(null, sameDirectory);
         if (target is null)
         {
             format.HorizontalAlignment = HorizontalAlignment.Left;
-            formatRow = Row("Solution format:", new StackPanel { Spacing = 6, Children = { format, formatNote } });
+            formatRow = Row("Solution format:", new StackPanel { Spacing = Gaps.Small, Children = { format, formatNote } });
             fields.Children.Add(Row("Solution name:", solutionName));
             fields.Children.Add(projectRow);
             fields.Children.Add(Row("Solution directory:", folderRow));
@@ -284,8 +284,8 @@ public sealed class NewProjectDialog : IdeWindow
         frameworkNoteRow.IsVisible = false;
         details = new StackPanel
         {
-            Spacing = 10,
-            Children = { Row("Target framework:", framework), frameworkNoteRow, languageRow, options.Panel, setupRow, Row(null, new StackPanel { Spacing = 4, Children = { setupNote, installSetup } }), options.Folded, Row(null, command) },
+            Spacing = FormRows.Between,
+            Children = { Row("Target framework:", framework), frameworkNoteRow, languageRow, options.Panel, setupRow, Row(null, new StackPanel { Spacing = Gaps.Tight, Children = { setupNote, installSetup } }), options.Folded, Row(null, command) },
         };
         options.Changed += ShowCommand;
         install.Click += (_, _) => IdeErrors.Observe(InstallAsync());
@@ -298,21 +298,21 @@ public sealed class NewProjectDialog : IdeWindow
         };
         offer = new StackPanel
         {
-            Spacing = 10,
+            Spacing = FormRows.Between,
             IsVisible = false,
             Children = { offerText, offerCommand, install },
         };
         StackPanel right = new()
         {
-            Margin = new Thickness(24, 18, 24, 18),
-            Spacing = 10,
-            Children = { new StackPanel { Children = { heading, description, windowsNote }, Margin = new Thickness(0, 0, 0, 8) }, fields, Rule(), typeRow, details, offer, installOutput },
+            [DialogFooter.InsetProperty] = true,
+            Spacing = FormRows.Between,
+            Children = { new StackPanel { Children = { heading, description, windowsNote }, Margin = new Thickness(0, 0, 0, Gaps.Normal) }, fields, Rule(), typeRow, details, offer, installOutput },
         };
         Border rightPane = new() { Child = new ScrollViewer { Content = right } };
 
         problem.Classes.Add(StyleClasses.Error);
         windowsNote.Bind(TextBlock.ForegroundProperty, windowsNote.GetResourceObservable(TokenKeys.Warning));
-        working = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10, IsVisible = false, Children = { bar, progress } };
+        working = new StackPanel { Orientation = Orientation.Horizontal, Spacing = Gaps.Normal, IsVisible = false, Children = { bar, progress } };
         create.Click += (_, _) => IdeErrors.Observe(CreateAsync());
         Closing += (_, _) =>
         {
@@ -1664,7 +1664,7 @@ public sealed class NewProjectDialog : IdeWindow
     /// shown only where it says something.</summary>
     private Control Rule()
     {
-        Border rule = new() { Height = 1, Margin = new Thickness(0, 6) };
+        Border rule = new() { Height = 1, Margin = new Thickness(0, Gaps.Small) };
         rule.Bind(Border.BackgroundProperty, rule.GetResourceObservable(TokenKeys.Separator));
         return rule;
     }

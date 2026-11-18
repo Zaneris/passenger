@@ -45,7 +45,7 @@ public sealed class FeedDialog : IdeWindow
 
         StackPanel fields = new()
         {
-            Spacing = 8,
+            Spacing = Gaps.Normal,
             Children =
             {
                 FormRows.Of("Name:", name),
@@ -70,8 +70,8 @@ public sealed class FeedDialog : IdeWindow
         ok.Click += (_, _) => Accept();
         Content = DialogFooter.Page(new StackPanel
         {
-            Margin = new Thickness(20),
-            Spacing = 14,
+            [DialogFooter.InsetProperty] = true,
+            Spacing = FormRows.Between,
             Children =
             {
                 new TextBlock { Text = Title, FontWeight = FontWeight.SemiBold },

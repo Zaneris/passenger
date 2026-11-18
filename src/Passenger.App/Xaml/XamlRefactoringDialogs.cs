@@ -26,7 +26,7 @@ public sealed class ExtractResourceDialog : RefactoringDialog
         EveryUse = new CheckBox { Content = $"Replace all {value.Uses.Count} occurrences in this file", IsChecked = true, IsVisible = value.Others > 0 };
         Options = new StackPanel
         {
-            Spacing = 10,
+            Spacing = FormRows.Between,
             Children = { Row("Resource name:", NameBox), Row("Create in:", PlaceBox), EveryUse },
         };
         Changed();
@@ -69,7 +69,7 @@ public sealed class ExtractStyleDialog : RefactoringDialog
         NameBox = Field(source.Suggested);
         NameBox.TextChanged += (_, _) => Changed();
         PlaceBox = new ComboBox { ItemsSource = places.Select(p => p.Title).ToList(), SelectedIndex = 0, HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Stretch };
-        StackPanel list = new() { Spacing = 4, Margin = new Thickness(0, 2, 0, 0) };
+        StackPanel list = new() { Spacing = Gaps.Tight, Margin = new Thickness(0, Gaps.Hair, 0, 0) };
         foreach (StyleProperty property in source.Properties)
         {
             CheckBox box = new() { Content = $"{property.Name} = {property.Written}", IsChecked = !property.IsBinding, Tag = property.Name };
@@ -79,7 +79,7 @@ public sealed class ExtractStyleDialog : RefactoringDialog
         }
         Options = new StackPanel
         {
-            Spacing = 10,
+            Spacing = FormRows.Between,
             Children =
             {
                 Row(source.ByClass ? "Style class:" : "Style name:", NameBox),

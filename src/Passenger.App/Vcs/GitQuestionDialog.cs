@@ -29,7 +29,7 @@ public sealed class GitQuestionDialog : IdeWindow
         {
             secret = new TextBox { Name = "GitSecret", Classes = { StyleClasses.Search }, PasswordChar = '•' };
         }
-        StackPanel fields = new() { Spacing = 8 };
+        StackPanel fields = new() { Spacing = FormRows.Between };
         if (user is not null)
         {
             fields.Children.Add(FormRows.Of("User:", user));

@@ -11,6 +11,19 @@ namespace Passenger.App;
 /// <c>StackPanel.footer</c> spaces the buttons and gives each one minimum width.</summary>
 public static class DialogFooter
 {
+    /// <summary>Marks a dialog's page, which then stands as far in from the window's edges and above the footer's bar as
+    /// the footer's buttons stand in from its sides (the theme's DialogFooterPadding), so the page's fields end where the
+    /// default button does, in every dialog and under every theme.</summary>
+    public static readonly AttachedProperty<bool> InsetProperty = AvaloniaProperty.RegisterAttached<Control, bool>("Inset", typeof(DialogFooter));
+
+    static DialogFooter() => InsetProperty.Changed.AddClassHandler<Control>((page, e) =>
+    {
+        if (e.NewValue is true)
+        {
+            BySides(page, Layoutable.MarginProperty, null, null);
+        }
+    });
+
     /// <summary>A dialog's default button, OK unless its words say what it does (Next, Publish, Create): Enter clicks it,
     /// and it wears the accent.</summary>
     public static Button Default(string words = "OK") => new() { Content = words, IsDefault = true, Classes = { StyleClasses.Primary } };
@@ -40,7 +53,7 @@ public static class DialogFooter
     {
         Button cancel = new() { Content = "Cancel" };
         cancel.Click += (_, _) => cancelled();
-        StackPanel answers = new() { Orientation = Orientation.Horizontal, Spacing = 8 };
+        StackPanel answers = new() { Orientation = Orientation.Horizontal, Spacing = Gaps.Normal };
         answers.Children.AddRange(Ordered(chosen, cancel, []));
         return answers;
     }
@@ -66,7 +79,7 @@ public static class DialogFooter
         if (left is not null)
         {
             left.VerticalAlignment = VerticalAlignment.Center;
-            left.Margin = new Thickness(0, 0, 16, 0);
+            left.Margin = new Thickness(0, 0, Gaps.Group, 0);
             row.Children.Add(left);
         }
         return row;
@@ -89,15 +102,14 @@ public static class DialogFooter
     {
         StackPanel header = new()
         {
-            Margin = new Thickness(20, 16, 20, 12),
-            Spacing = 4,
+            Spacing = Gaps.Tight,
             Children = { new TextBlock { Text = title, FontWeight = FontWeight.SemiBold }, about },
         };
-        Border top = new() { BorderThickness = new Thickness(0, 0, 0, 1), Child = header };
+        BySides(header, Layoutable.MarginProperty, null, Gaps.Wide);
+        Border top = new() { BorderThickness = Hairlines.Below, Child = header };
         top.Bind(Border.BorderBrushProperty, top.GetResourceObservable(TokenKeys.Divider));
         DockPanel.SetDock(top, Dock.Top);
-        bar.Padding = new Thickness(20, 10);
-        DockPanel content = Page(new Border { Padding = new Thickness(20, 14, 20, 16), Child = page }, bar);
+        DockPanel content = Page(new Border { [InsetProperty] = true, Child = page }, bar);
         content.Children.Insert(0, top);
         return content;
     }
@@ -118,7 +130,7 @@ public static class DialogFooter
         dialog.SizeToContent = SizeToContent.Height;
         dialog.CanResize = false;
         dialog.WindowStartupLocation = WindowStartupLocation.CenterOwner;
-        StackPanel page = new() { Margin = new Thickness(20), Spacing = 12 };
+        StackPanel page = new() { [InsetProperty] = true, Spacing = Gaps.Wide };
         page.Children.Add(new TextBlock { Text = title, FontWeight = FontWeight.SemiBold, TextWrapping = TextWrapping.Wrap });
         page.Children.AddRange(said);
         // On a screen too short for its words, they scroll above the answers, which stay in reach.
@@ -131,6 +143,12 @@ public static class DialogFooter
 
     /// <summary>A question's paragraph of words, wrapping to its width.</summary>
     public static TextBlock Paragraph(string text) => new() { Text = text, TextWrapping = TextWrapping.Wrap };
+
+    /// <summary>Gives a part of a dialog the footer's sides, its top and foot those sides too unless given.</summary>
+    private static void BySides(Control part, StyledProperty<Thickness> property, double? top, double? bottom) =>
+        part.Bind(property, part.GetResourceObservable(TokenKeys.DialogFooterPadding, padding => padding is Thickness footer
+            ? new Thickness(footer.Left, top ?? footer.Left, footer.Right, bottom ?? footer.Left)
+            : new Thickness(Gaps.Group)));
 
     private static IEnumerable<Button> Ordered(Button chosen, Button? cancel, Button[] more) =>
         (OperatingSystem.IsMacOS() ? [cancel, .. more, chosen] : (Button?[])[chosen, cancel, .. more]).OfType<Button>();

@@ -36,14 +36,14 @@ public sealed class MembersMoveDialog : RefactoringDialog
         BaseBox.SelectedIndex = hierarchy.Bases.Count > 0 ? 0 : -1;
         BaseBox.SelectionChanged += (_, _) => Changed();
 
-        StackPanel options = new() { Spacing = 10 };
+        StackPanel options = new() { Spacing = FormRows.Between };
         if (up)
         {
             options.Children.Add(Row("Base type:", BaseBox));
         }
         else
         {
-            StackPanel list = new() { Spacing = 2 };
+            StackPanel list = new() { Spacing = Gaps.Hair };
             foreach (Member type in hierarchy.Derived)
             {
                 CheckBox box = new() { Content = type.Text, IsChecked = true };
@@ -52,15 +52,15 @@ public sealed class MembersMoveDialog : RefactoringDialog
                 list.Children.Add(box);
             }
             options.Children.Add(new TextBlock { Text = "Inheritors:" });
-            options.Children.Add(new Border { Padding = new Thickness(8, 0), Child = list });
+            options.Children.Add(new Border { Padding = new Thickness(Gaps.Normal, 0), Child = list });
         }
 
         ColumnTitles titles = ColumnTitles.Of(Columns, ["Members", "Make abstract"]);
-        StackPanel rows = new() { Margin = new Thickness(0, 4) };
+        StackPanel rows = new() { Margin = new Thickness(0, Gaps.Tight), Spacing = Gaps.Hair };
         foreach (Member member in hierarchy.Members)
         {
-            CheckBox moved = new() { Content = member.Text, Margin = new Thickness(8, 1, 0, 1) };
-            CheckBox made = new() { Margin = new Thickness(8, 1, 0, 1) };
+            CheckBox moved = new() { Content = member.Text, Margin = new Thickness(Gaps.Normal, 0, 0, 0) };
+            CheckBox made = new() { Margin = new Thickness(Gaps.Normal, 0, 0, 0) };
             moved.IsCheckedChanged += (_, _) => Changed();
             made.IsCheckedChanged += (_, _) => Changed();
             Grid.SetColumn(made, 1);

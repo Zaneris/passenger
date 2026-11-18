@@ -15,7 +15,7 @@ namespace Passenger.App.Aspire;
 /// <summary>A native AppHost prompt. Server updates retain the interaction and editable field values.</summary>
 public sealed class AspireInteractionDialog : IdeWindow
 {
-    private readonly StackPanel fields = new() { Spacing = 8 };
+    private readonly StackPanel fields = new() { Spacing = FormRows.Between };
     private readonly TextBlock message = new() { TextWrapping = TextWrapping.Wrap };
     private readonly TextBlock intent = new();
     private readonly Dictionary<string, InteractionInput> inputs = new(StringComparer.Ordinal);
@@ -77,8 +77,8 @@ public sealed class AspireInteractionDialog : IdeWindow
         {
             Content = new StackPanel
             {
-                Margin = new Thickness(16),
-                Spacing = 12,
+                [DialogFooter.InsetProperty] = true,
+                Spacing = Gaps.Wide,
                 Children = { intent, message, fields, Problem },
             },
             HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled,
