@@ -511,9 +511,10 @@ public sealed partial class Vim
     }
 
     /// <summary>p and P over a visual stretch: the register's text in place of what is shown, which p keeps in the
-    /// unnamed register and P doesn't; whole lines put over characters go on lines of their own, over a block below the
-    /// line its cursor stands on (<paramref name="below"/>). From an empty register the stretch is deleted alone, as a d
-    /// into the unnamed register (for P into none); . after either deletes as much again so, putting nothing.</summary>
+    /// unnamed register unless it was nothing (v$ on the last line) and P doesn't; whole lines put over characters go
+    /// on lines of their own, over a block below the line its cursor stands on (<paramref name="below"/>). From an
+    /// empty register the stretch is deleted alone, as a d into the unnamed register (for P into none); . after either
+    /// deletes as much again so, putting nothing.</summary>
     private VimResult PutOver(Command command, bool keep, TextSnapshot text, List<Stretch> stretches, SelectionSet carets, bool block, IVimView view, int top, int below)
     {
         if (VimRegisters.IsClipboard(command.Register))
@@ -546,7 +547,7 @@ public sealed partial class Vim
             int corner = stretches[0].Start;
             TextSnapshot cleared = text.Apply(deletes);
             VimResult put = PutBlock(value, before: true, times, cleared, SelectionSet.Single(TextEditing.MapOffset(corner, deletes, false)), view, cursorAfter: false);
-            if (!keep)
+            if (!keep && replaced.Text.Length > 0)
             {
                 Registers.Delete(null, replaced, always: false);
             }
@@ -559,7 +560,7 @@ public sealed partial class Vim
             List<TextEdit> pieces = [.. stretches.Select(t => new TextEdit(t.Start, t.End - t.Start, each))];
             TextSnapshot filled = text.Apply(pieces);
             int lastOfFirst = stretches[0].Start + Math.Max(0, each.Length - 1);
-            if (!keep)
+            if (!keep && replaced.Text.Length > 0)
             {
                 Registers.Delete(null, replaced, always: false);
             }
@@ -611,7 +612,7 @@ public sealed partial class Vim
         bool lines = value.Linewise || stretches[0].Lines;
         List<Selection> putCarets = [.. landed.Select(p => Selection.At(!lines ? Settled(after, p, breakEnds)
             : VimMotions.FirstNonBlank(after, after.GetLineFromOffset(Math.Min(p, after.Length)), breakEnds)))];
-        if (!keep)
+        if (!keep && replaced.Text.Length > 0)
         {
             Registers.Delete(null, replaced, always: false);
         }
@@ -640,7 +641,7 @@ public sealed partial class Vim
         }
         TextSnapshot after = text.Apply(edits);
         int first = after.GetLineFromOffset(Math.Min(TextEditing.MapOffset(at, edits, false) + (above || end.BreakLength > 0 ? 0 : eol.Length), after.Length));
-        if (!keep)
+        if (!keep && replaced.Text.Length > 0)
         {
             Registers.Delete(null, replaced, always: false);
         }

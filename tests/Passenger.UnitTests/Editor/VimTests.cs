@@ -1125,6 +1125,32 @@ public class VimTests
         Assert.Equal(after, Run(vim, before, keys));
     }
 
+    /// <summary>gq and gw make each line's indent again from its columns, as Vim 9.1's do with autoindent: spaces under
+    /// expandtab, tabs as far as they go without, the first line's too, and the text after the indent as it was.</summary>
+    [Theory]
+    [InlineData(false, "\t|one two", "gqq", "    |one two")]
+    [InlineData(false, "\t|one two three four five six", "gqq", "    one two three\n    |four five six")]
+    [InlineData(false, "\t|one two three four five six\n\tseven", "gqip", "    one two three\n    four five six\n    |seven")]
+    [InlineData(false, "  \t|one two three four five six\n\tseven", "gqip", "    one two three\n    four five six\n    |seven")]
+    [InlineData(false, "\t  |one two three four five six\n\tseven", "gqip", "      one two three\n      four five six\n      |seven")]
+    [InlineData(false, "\t// |one two three four five six\n\t// seven", "gqip", "    // one two three\n    // four five six\n    |// seven")]
+    [InlineData(false, "\t- |one two three four five six\n\t  seven", "gqip", "    - one two three\n      four five six\n      |seven")]
+    [InlineData(false, "\t|one\ttwo three four five six", "gqip", "    one\ttwo three\n    |four five six")]
+    [InlineData(false, "\t|one two three\n\n\tfour", "gqip", "    |one two three\n\n\tfour")]
+    [InlineData(false, "\t|one\n\ttwo\n\tthree", "gqj", "    |one two\n\tthree")]
+    [InlineData(false, "\tone t|wo three four five six\n\tseven", "gwip", "    one t|wo three\n    four five six\n    seven")]
+    [InlineData(false, "|\tone two three four five six\n\tseven", "gwip", "|    one two three\n    four five six\n    seven")]
+    [InlineData(true, "  |      one two three four five six\n        seven", "gwip", "\t\t|one two\n\t\tthree four\n\t\tfive six\n\t\tseven")]
+    [InlineData(true, "        |one two three four five six\n        seven", "gqip", "\t\tone two\n\t\tthree four\n\t\tfive six\n\t\t|seven")]
+    [InlineData(true, "      |one two three four five six", "gqip", "\t  one two three\n\t  |four five six")]
+    [InlineData(true, "  - |one two three four five six\n    seven", "gqip", "  - one two three\n\tfour five six\n\t|seven")]
+    public void Gq_makes_each_lines_indent_again_by_expandtab(bool tabs, string before, string keys, string after)
+    {
+        Vim vim = new();
+        vim.Registers.Options.TextWidth = 20;
+        Assert.Equal(after, Run(vim, before, keys, new VimTextView(new IndentOptions(4, tabs, 4))));
+    }
+
     /// <summary>gq and | count a character's cells alike, as Vim 9.1 draws them: two for a wide one, none for a mark,
     /// each of a flag's two letters on its own.</summary>
     [Theory]
@@ -2116,6 +2142,37 @@ public class VimTests
     [InlineData("ab| cd\n  ef gh\nij kl\n\tmn", "vjyjVp", "ab cd\n |cd\n  e\nij kl\n\tmn")]
     [InlineData("a|b cd\n  ef gh\nij kl\n\tmn", "vjy2jVp", "ab cd\n  ef gh\n|b cd\n  \n\tmn")]
     public void Characters_put_over_lines_leave_the_cursor_on_the_first_non_blank(string before, string keys, string after) =>
+        Assert.Equal(after, Run(before, keys));
+
+    /// <summary>Lines put over v$ on an empty line go in between its two halves, as Vim's do: the last line of a file
+    /// ending with no line break too, whose empty line stays last after them. There v$ takes nothing, so p leaves the
+    /// register as it was.</summary>
+    [Theory]
+    [InlineData("|one", "o<Esc>ggyyGv$p", "one\n\n|one\n")]
+    [InlineData("|one", "o<Esc>ggyyGv$P", "one\n\n|one\n")]
+    [InlineData("|one", "o<Esc>ggyyGvp", "one\n\n|one\n")]
+    [InlineData("|one", "o<Esc>gg2yyGv$p", "one\n\n|one\n\n")]
+    [InlineData("|one", "o<Esc>ggyyGVp", "one\n|one")]
+    [InlineData("|one", "o<Esc>ggyiwGv$p", "one\non|e")]
+    [InlineData("|one\n", "o<Esc>ggyyGv$p", "one\n\n|one\n\n")]
+    [InlineData("|one\ntwo", "o<Esc>ggyyjv$p", "one\n\n|one\ntwo")]
+    [InlineData("|one", "o<Esc>ggyyGv$2p", "one\n\n|one\none\n")]
+    [InlineData("|one", "o<Esc>gg2yyGv$P", "one\n\n|one\n\n")]
+    [InlineData("|one", "o<Esc>ggyyGv$pGp", "one\n\none\n\n|one")]
+    [InlineData("|one", "o<Esc>ggyyGv$pk.", "one\n|one\n")]
+    [InlineData("|one", "o<Esc>ggVyGv$p", "one\n\n|one\n")]
+    [InlineData("|one", "o<Esc>kyyjp", "one\n\n|one")]
+    [InlineData("|one", "o<Esc>kyyjP", "one\n|one\n")]
+    [InlineData("|one", "o<Esc>o<Esc>ggyyGp", "one\n\n\n|one")]
+    [InlineData("|one", "o<Esc>ggyyGv$pGP", "one\n\none\n|one\n")]
+    [InlineData("|one\n", "o<Esc>ggyyGv$pGp", "one\n\none\n\n|one\n")]
+    [InlineData("|one\ntwo", "o<Esc>ggyyjv$pGp", "one\n\none\n|t\nwo")]
+    [InlineData("|one", "o<Esc>ggyyGvpGp", "one\n\none\n\n|one")]
+    [InlineData("|one", "o<Esc>ggyiwGv$pGp", "one\noon|ene")]
+    [InlineData("|one", "o<Esc>ggyyG<C-v>$pGp", "one\n\none\n|one")]
+    [InlineData("|one", "o<Esc>ggyyG<C-v>pGp", "one\n\none\n|one")]
+    [InlineData("|one", "o<Esc>ggyiwG<C-v>$pGp", "one\noon|ene")]
+    public void Lines_put_over_v_dollar_on_an_empty_line_go_between_its_halves(string before, string keys, string after) =>
         Assert.Equal(after, Run(before, keys));
 
     /// <summary>. after p or P over a visual stretch deletes as much again as a d there would, putting nothing: after p
