@@ -140,31 +140,31 @@ public sealed class RoslynSession : IAsyncDisposable, IDocumentHost
                 if (before.Count > 0)
                 {
                     session.Expect(2);
-                    await LoadAsync(server, ProjectMethods.Load, new LoadProjectsParams(before, solution)).ConfigureAwait(false);
-                    Core.UnawaitedWork.Observe(session.OpenRestAsync(() => LoadAsync(server, ProjectMethods.Load, new LoadProjectsParams(rest, solution))));
+                    await server.NotifyAsync(ProjectMethods.Load, new LoadProjectsParams(before, solution)).ConfigureAwait(false);
+                    Core.UnawaitedWork.Observe(session.OpenRestAsync(() => server.NotifyAsync(ProjectMethods.Load, new LoadProjectsParams(rest, solution))));
                     return session;
                 }
-                await LoadAsync(server, ProjectMethods.Load, new LoadProjectsParams(rest, solution)).ConfigureAwait(false);
+                await server.NotifyAsync(ProjectMethods.Load, new LoadProjectsParams(rest, solution)).ConfigureAwait(false);
                 return session;
             }
             IReadOnlyList<string> ahead = first is null ? [] : await first().ConfigureAwait(false);
             if (ahead.Count > 0)
             {
                 session.Expect(2);
-                await LoadAsync(server, LspMethods.ProjectOpen, new OpenProjectParams([.. ahead.Select(DocumentUris.FromPath)])).ConfigureAwait(false);
+                await server.NotifyAsync(LspMethods.ProjectOpen, new OpenProjectParams([.. ahead.Select(DocumentUris.FromPath)])).ConfigureAwait(false);
                 // The rest once those have loaded: opened at once, the server would take them all in one batch.
                 Core.UnawaitedWork.Observe(session.OpenRestAsync(() => solution is not null
-                    ? LoadAsync(server, LspMethods.SolutionOpen, new OpenSolutionParams(DocumentUris.FromPath(solution)))
-                    : LoadAsync(server, LspMethods.ProjectOpen, new OpenProjectParams([.. projects.Select(DocumentUris.FromPath)]))));
+                    ? server.NotifyAsync(LspMethods.SolutionOpen, new OpenSolutionParams(DocumentUris.FromPath(solution)))
+                    : server.NotifyAsync(LspMethods.ProjectOpen, new OpenProjectParams([.. projects.Select(DocumentUris.FromPath)]))));
                 return session;
             }
             if (solution is not null)
             {
-                await LoadAsync(server, LspMethods.SolutionOpen, new OpenSolutionParams(DocumentUris.FromPath(solution))).ConfigureAwait(false);
+                await server.NotifyAsync(LspMethods.SolutionOpen, new OpenSolutionParams(DocumentUris.FromPath(solution))).ConfigureAwait(false);
             }
             else
             {
-                await LoadAsync(server, LspMethods.ProjectOpen, new OpenProjectParams([.. projects.Select(DocumentUris.FromPath)])).ConfigureAwait(false);
+                await server.NotifyAsync(LspMethods.ProjectOpen, new OpenProjectParams([.. projects.Select(DocumentUris.FromPath)])).ConfigureAwait(false);
             }
         }
         catch
@@ -174,13 +174,6 @@ public sealed class RoslynSession : IAsyncDisposable, IDocumentHost
             throw;
         }
         return session;
-    }
-
-    /// <summary>Asks the server to load or open projects, its file watches counting the load as under way until it ends.</summary>
-    private static Task LoadAsync(LanguageServer server, string method, object parameters)
-    {
-        server.WatchedFiles.Loading();
-        return server.NotifyAsync(method, parameters);
     }
 
     /// <summary>The design-time builds asked for as a server started that will not load them: a fault in the asking is
@@ -250,7 +243,6 @@ public sealed class RoslynSession : IAsyncDisposable, IDocumentHost
                     opens++;
                 }
             }
-            Server.WatchedFiles.Loading();
             Server.Notify(ProjectMethods.Load, new LoadProjectsParams([.. projects.Select(p => new ProjectToOpen(p, null))], Solution));
         }
     }
@@ -289,7 +281,6 @@ public sealed class RoslynSession : IAsyncDisposable, IDocumentHost
             IsLoaded = false;
             opens = completed + 1;
         }
-        Server.WatchedFiles.Loading();
         Server.Notify(ProjectMethods.Load, new LoadProjectsParams([.. projects.Select(p => new ProjectToOpen(p, null))], Solution));
     }
 

@@ -1,3 +1,4 @@
+using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Passenger.App;
 using Passenger.App.CSharp;
@@ -270,6 +271,112 @@ public sealed class ServerWatchTests : IClassFixture<ServerWatchTests.Project>
             () => $"the language server to take the global using of System.Text its design-time build wrote into Lib's obj, where Code.cs still has "
                 + $"[{string.Join(", ", Codes(window, code))}], so the type it names stays unknown: {WatchLog(window)}", TimeSpan.FromMinutes(2));
         window.Close();
+    }
+
+    /// <summary>A closed file the server has read, written again before the server's watches of the folder are registered
+    /// (held back here until it is written, as a registration may come after its load has ended): the server is told of it
+    /// as they come, so a rename that reaches it, asked at once, renames it as written, never refused after a wait for a
+    /// file the server was never told of.</summary>
+    [AvaloniaFact]
+    public void A_file_written_before_the_servers_watches_are_registered_is_told_it_as_they_come_and_a_rename_reaches_it_as_written()
+    {
+        string folder = PathNames.Canonical(TestFolders.Create("registered-late-"));
+        string shop = TestFolders.Write(folder, "Shop.csproj", TestProjects.Library());
+        string order = TestFolders.Write(folder, "Order.cs", "namespace Shop;\n\npublic class Order\n{\n    public int Total;\n}\n");
+        const string Till = "namespace Shop;\n\npublic static class Till\n{\n    public static int Sum(Order order) => order.Total;\n}\n";
+        string till = TestFolders.Write(folder, "Till.cs", Till);
+        Restore.Run(shop);
+        TaskCompletionSource written = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        WatchedFiles.HoldRegistrations(folder, written.Task);
+        MainWindow window = Ui.OpenFolder(folder);
+        try
+        {
+            window.OpenFile(order);
+            Ui.Settle();
+            Assert.True(window.CSharpService?.IsReady, window.CSharpService?.State);
+            RoslynSession session = window.CSharpService!.Session!;
+            // Read by the server as first written, which it holds until told otherwise.
+            Assert.NotNull(Assert.Single(Ui.Await(session.HeldTextsAsync([till]), "the server's text of Till.cs")).Hash);
+            string now = "// Summed at the till.\n" + Till;
+            File.WriteAllText(till, now);
+            Ui.WaitFor(() => session.Server.WatchedFiles.Changing().Paths.Contains(till), "the folder's watcher to hear Till.cs written");
+            Assert.DoesNotContain(session.Server.WatchedFiles.Watches, w => w.Folder is { } at && PathNames.Within(at, folder));
+            written.SetResult();
+
+            Ui.PlaceAfter(window.EditorArea.CodeEditor, "public int Tot");
+            window.EditorArea.CodeEditor.Focus();
+            Ui.Run(window, AppActions.Rename);
+            Ui.Settle();
+            Assert.True(window.Assist.Renaming is not null, "Rename opened no box");
+            window.KeyTextInput("Amount");
+            Ui.Press(window, "ENTER");
+            Ui.Settle();
+            Assert.True(File.ReadAllText(till) == now.Replace("order.Total", "order.Amount", StringComparison.Ordinal),
+                $"Renaming Total to Amount left Till.cs, written before the server's watches were registered, otherwise: {File.ReadAllText(till)}; it said {window.Status}: {WatchLog(window)}");
+        }
+        finally
+        {
+            written.TrySetResult();
+            window.Close();
+            TestFolders.Delete(folder);
+        }
+    }
+
+    /// <summary>A MAUI page's folder never restored, its page written again before the server's watches of the folder are
+    /// registered (held back here until it is written, through the server's restore and its load again): the server is
+    /// told of the page as they come, so renaming a method the page's C# expression calls renames the expression in the
+    /// page as written, never refused after a wait for a page the server was never told of.</summary>
+    [AvaloniaFact]
+    public void A_maui_page_written_before_the_servers_watches_are_registered_is_told_it_as_they_come_and_a_rename_reaches_its_expression()
+    {
+        string folder = McpNavigationTests.MauiPage("registered-late-maui-");
+        string helper = TestFolders.Write(folder, "Helper.cs", "namespace MauiApp1;\n\npublic static class Helper\n{\n    public static string Shout(string text) => text.ToUpperInvariant();\n}\n");
+        string page = Path.Combine(folder, "MainPage.xaml");
+        string first = File.ReadAllText(page)
+            .Replace("<ContentPage x:Class=\"MauiApp1.MainPage\">", "<ContentPage x:Class=\"MauiApp1.MainPage\" xmlns:local=\"clr-namespace:MauiApp1\">", StringComparison.Ordinal)
+            .Replace("Text=\"Hello, World!\"", "Text=\"{local:Helper.Shout('hello')}\"", StringComparison.Ordinal);
+        File.WriteAllText(page, first);
+        TaskCompletionSource written = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        WatchedFiles.HoldRegistrations(folder, written.Task);
+        MainWindow window = Ui.OpenFolder(folder);
+        try
+        {
+            window.OpenFile(helper);
+            Ui.WaitFor(() => window.CSharpService?.IsReady == true, () => $"the language server to load MauiApp1: {window.CSharpService?.State}", TimeSpan.FromMinutes(3));
+            RoslynSession session = window.CSharpService!.Session!;
+            // Read by the server as first written once its load after the restore takes the page in, which it holds until told otherwise.
+            Task<IReadOnlyList<Passenger.Roslyn.Extension.TextHeld>>? asking = null;
+            Ui.WaitFor(() =>
+            {
+                if (asking is { IsCompleted: true } asked && Ui.Await(asked, "the server's text of MainPage.xaml") is [{ Hash: not null }])
+                {
+                    return true;
+                }
+                asking = asking is { IsCompleted: false } ? asking : session.HeldTextsAsync([page]);
+                return false;
+            }, "the server to hold MainPage.xaml as its load after the restore takes it in", TimeSpan.FromMinutes(3));
+            string now = "<!-- Shouted. -->\n" + first;
+            File.WriteAllText(page, now);
+            Ui.WaitFor(() => session.Server.WatchedFiles.Changing().Paths.Contains(page), "the folder's watcher to hear MainPage.xaml written");
+            written.SetResult();
+
+            Ui.PlaceAfter(window.EditorArea.CodeEditor, "string Sho");
+            window.EditorArea.CodeEditor.Focus();
+            Ui.Run(window, AppActions.Rename);
+            Ui.Settle();
+            Assert.True(window.Assist.Renaming is not null, "Rename opened no box");
+            window.KeyTextInput("Yell");
+            Ui.Press(window, "ENTER");
+            Ui.Settle();
+            Assert.True(File.ReadAllText(page) == now.Replace("{local:Helper.Shout(", "{local:Helper.Yell(", StringComparison.Ordinal),
+                $"Renaming Shout to Yell left MainPage.xaml, written before the server's watches were registered, otherwise: {File.ReadAllText(page)}; it said {window.Status}: {WatchLog(window)}");
+        }
+        finally
+        {
+            written.TrySetResult();
+            window.Close();
+            TestFolders.Delete(folder);
+        }
     }
 
     /// <summary>The codes of the server's diagnostics in an open file.</summary>

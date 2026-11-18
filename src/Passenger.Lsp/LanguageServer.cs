@@ -1728,7 +1728,6 @@ public sealed class LanguageServer : IAsyncDisposable
         {
             Owner?.Note(LoadedNote);
             Owner?.Changing(LspMethods.ProjectInitializationComplete);
-            Owner?.WatchedFiles.Loaded();
             Owner?.ProjectsLoaded?.Invoke(Owner, EventArgs.Empty);
         }
 

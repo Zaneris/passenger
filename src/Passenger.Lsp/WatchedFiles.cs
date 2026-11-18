@@ -10,8 +10,9 @@ namespace Passenger.Lsp;
 /// which the client watches for it in place of a watcher of the server's own: each registration's watchers, a glob from a
 /// folder (or over whole paths) with the kinds of change it asks for, until the server unregisters it. What is told
 /// (<see cref="Tell"/>) goes to the server as one notification of the changes some watcher covers, in the order told,
-/// files gone in one of their own to a server with Passenger's loader (<see cref="HasLoader"/>); one told while the server
-/// loads projects that no watcher covers yet is kept for the registration its load sends, which may arrive after it.
+/// files gone in one of their own to a server with Passenger's loader (<see cref="HasLoader"/>); one no watcher covers yet
+/// is kept for a registration that does, which a load sends as it goes and may send after the server said it ended, and
+/// told as that comes.
 /// Every file heard changed is kept until a command has seen the server hold it as the disk has it (<see cref="Changing"/>).
 /// Every registration and notification is written in the server's log. Thread-safe; <see cref="Changed"/> is raised on
 /// the thread that registered or unregistered, <see cref="Sent"/> on the telling one.</summary>
@@ -22,6 +23,8 @@ public sealed class WatchedFiles
 
     private readonly Lock gate = new();
     private readonly Dictionary<string, IReadOnlyList<FileWatch>> registered = new(StringComparer.Ordinal);
+
+    /// <summary>The latest change of each file no watcher covered as it was told, kept until one does.</summary>
     private readonly Dictionary<string, FileChangeType> kept = new(PathNames.Comparer);
 
     /// <summary>How long a changed file the server was found holding otherwise than the disk is waited for, from the first
@@ -47,10 +50,7 @@ public sealed class WatchedFiles
     private readonly LanguageServer server;
     private IReadOnlyList<FileWatch> watches = [];
 
-    /// <summary>The loads the server was asked for that it has not yet said ended.</summary>
-    private int loading;
-
-    /// <summary>Whether changes were let go past <see cref="KeptLimit"/> in this load, said once.</summary>
+    /// <summary>Whether changes were let go past <see cref="KeptLimit"/>, said once until fewer are kept.</summary>
     private bool overflowed;
 
     private DateTime since = DateTime.UtcNow;
@@ -107,6 +107,48 @@ public sealed class WatchedFiles
                 }
             }
         }
+        if (Volatile.Read(ref registrationsHeld) is { } hold && !hold.Until.IsCompleted && read.Any(w => w.Folder is { } at && PathNames.Within(at, hold.Folder)))
+        {
+            lock (gate)
+            {
+                heldBack.Add(id);
+            }
+            UnawaitedWork.Observe(TakeHeldAsync(id, read, hold.Until));
+            return;
+        }
+        Take(id, read);
+    }
+
+    /// <summary>The registrations a test holds back (<see cref="HoldRegistrations"/>): those watching under a folder, until a
+    /// task has ended.</summary>
+    private sealed record HeldRegistrations(string Folder, Task Until);
+
+    private static HeldRegistrations? registrationsHeld;
+
+    /// <summary>The ids of the registrations held back not yet taken, under the gate: one unregistered meanwhile is never taken.</summary>
+    private readonly HashSet<string> heldBack = new(StringComparer.Ordinal);
+
+    /// <summary>Takes every server's registrations of watchers under <paramref name="folder"/> only once <paramref name="until"/>
+    /// has ended, as registrations that come after a file there was written, for a test.</summary>
+    public static void HoldRegistrations(string folder, Task until) => Volatile.Write(ref registrationsHeld, new HeldRegistrations(folder, until));
+
+    /// <summary>A registration held back taken once what it was held for has ended, unless unregistered meanwhile.</summary>
+    private async Task TakeHeldAsync(string id, List<FileWatch> read, Task until)
+    {
+        await until.Ended();
+        lock (gate)
+        {
+            if (!heldBack.Remove(id))
+            {
+                return;
+            }
+        }
+        Take(id, read);
+    }
+
+    /// <summary>A registration's watchers taken, and the changes kept for them told now.</summary>
+    private void Take(string id, List<FileWatch> read)
+    {
         List<FileEvent> waited;
         lock (gate)
         {
@@ -128,7 +170,7 @@ public sealed class WatchedFiles
     {
         lock (gate)
         {
-            if (!registered.Remove(id))
+            if (heldBack.Remove(id) || !registered.Remove(id))
             {
                 return;
             }
@@ -147,30 +189,6 @@ public sealed class WatchedFiles
             if (read is { } began && began < since)
             {
                 since = began;
-            }
-        }
-    }
-
-    /// <summary>The server was asked to load projects, whose registrations may follow changes told meanwhile.</summary>
-    internal void Loading()
-    {
-        lock (gate)
-        {
-            loading++;
-        }
-    }
-
-    /// <summary>The server said a load ended, after every registration it sent for it: once none is under way, changes no
-    /// watcher covered are never asked for.</summary>
-    internal void Loaded()
-    {
-        lock (gate)
-        {
-            loading = Math.Max(0, loading - 1);
-            if (loading == 0)
-            {
-                kept.Clear();
-                overflowed = false;
             }
         }
     }
@@ -259,7 +277,7 @@ public sealed class WatchedFiles
     }
 
     /// <summary>Tells the server of the changes some watcher covers, by their canonical paths, in one notification, keeping
-    /// the rest while it loads projects; how many it was told of. Each is matched against every watcher, so the caller
+    /// the rest for a registration to come; how many it was told of. Each is matched against every watcher, so the caller
     /// tells a batch from off the UI thread.</summary>
     public int Tell(IReadOnlyCollection<FileEvent> events)
     {
@@ -272,14 +290,14 @@ public sealed class WatchedFiles
                 {
                     covered.Add(change);
                 }
-                else if (loading > 0 && (kept.Count < KeptLimit || kept.ContainsKey(change.Path)))
+                else if (kept.Count < KeptLimit || kept.ContainsKey(change.Path))
                 {
                     kept[change.Path] = change.Change;
                 }
-                else if (loading > 0 && !overflowed)
+                else if (!overflowed)
                 {
                     overflowed = true;
-                    server.Note($"Changes on disk no registration covered were let go past {KeptLimit} as the server loaded projects");
+                    server.Note($"Changes on disk no registration covered yet were let go past {KeptLimit}");
                 }
             }
             covered = Send(covered, null);
@@ -377,7 +395,10 @@ public sealed class WatchedFiles
         {
             Heard(change.Path);
             told[change.Path] = now;
+            // An earlier change kept for a registration to come is behind this one.
+            kept.Remove(change.Path);
         }
+        overflowed &= kept.Count >= KeptLimit;
         List<FileEvent> gone = HasLoader ? [.. changes.Where(c => c.Change == FileChangeType.Deleted)] : [];
         List<FileEvent> rest = gone.Count == 0 ? changes : [.. changes.Where(c => c.Change != FileChangeType.Deleted)];
         if (rest.Count > 0)
