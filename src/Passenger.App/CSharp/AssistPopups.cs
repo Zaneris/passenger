@@ -292,7 +292,7 @@ internal sealed class CompletionPopup : Border, IHeardPopup
     /// <summary>What the wheel has turned short of a whole row.</summary>
     private double turned;
 
-    /// <summary>The item the selection was last said to be on, so a filter that leaves it there says nothing.</summary>
+    /// <summary>The item the selection was last said to be on, so a filter or an answer that leaves it there says nothing.</summary>
     private Lsp.CompletionItem? told;
 
     /// <summary>Whether the list is being laid out ahead (<see cref="LayOutAhead"/>), its choice no one's to hear of.</summary>
@@ -366,7 +366,8 @@ internal sealed class CompletionPopup : Border, IHeardPopup
         MaxWidth = Math.Min(MostWidth, Math.Max(0, room));
     }
 
-    /// <summary>The selection moved to another item: another row chosen, or the row chosen showing another item.</summary>
+    /// <summary>The selection moved to another item (<see cref="Lsp.CompletionItem.Same"/>): another row chosen, or the row
+    /// chosen showing another item; never the same item a list answered again lists anew.</summary>
     public event EventHandler? SelectedChanged;
 
     /// <summary>A XAML colour's own swatch for its badge, null for an item badged by its kind.</summary>
@@ -379,37 +380,42 @@ internal sealed class CompletionPopup : Border, IHeardPopup
 
     public IReadOnlyList<CompletionRow> Rows => rows;
 
-    /// <summary>The list's rows, the first chosen, or the row of <paramref name="stays"/> where it is among them, scrolled
-    /// only as far as shows the one chosen; rows of the name already shown (<paramref name="sameName"/>: a list grown by
-    /// items as they came, or answered again) that the person had scrolled away from the row chosen keep showing the rows
-    /// scrolled to, wherever they now stand.</summary>
-    public void Show(IReadOnlyList<CompletionRow> rows, Lsp.CompletionItem? stays = null, bool sameName = false)
+    /// <summary>The list's rows, the first chosen, scrolled only as far as shows the one chosen. Rows of the name already
+    /// shown (<paramref name="sameName"/>: a list grown by items as they came, or answered again) keep the item chosen where
+    /// it is among them, and, where the person had scrolled away from it, the rows scrolled to, wherever they now stand.</summary>
+    public void Show(IReadOnlyList<CompletionRow> rows, bool sameName = false)
     {
+        Lsp.CompletionItem? stays = sameName ? Selected?.Item : null;
         Lsp.CompletionItem? first = sameName && chosen >= 0 && (chosen < top || chosen >= top + Shown) && top < this.rows.Count ? this.rows[top].Item : null;
         this.rows = rows;
         chosen = rows.Count > 0 ? 0 : -1;
-        for (int i = 0; stays is not null && i < rows.Count; i++)
+        if (stays is not null && IndexOf(stays) is >= 0 and int kept)
         {
-            if (ReferenceEquals(rows[i].Item, stays))
-            {
-                chosen = i;
-                break;
-            }
+            chosen = kept;
         }
         if (first is null)
         {
             Place();
             return;
         }
-        for (int i = 0; i < rows.Count; i++)
+        if (IndexOf(first) is >= 0 and int scrolled)
         {
-            if (ReferenceEquals(rows[i].Item, first))
-            {
-                top = i;
-                break;
-            }
+            top = scrolled;
         }
         ScrollTo(top, fromBar: false);
+    }
+
+    /// <summary>Where an item stands among the rows, however many answers ago it was listed; -1 where it is not.</summary>
+    private int IndexOf(Lsp.CompletionItem item)
+    {
+        for (int i = 0; i < rows.Count; i++)
+        {
+            if (Lsp.CompletionItem.Same(rows[i].Item, item))
+            {
+                return i;
+            }
+        }
+        return -1;
     }
 
     /// <summary>The list laid out once before it is first shown, so its first list costs what any other does: the rows'
@@ -518,9 +524,10 @@ internal sealed class CompletionPopup : Border, IHeardPopup
             return;
         }
         Lsp.CompletionItem? now = Selected?.Item;
-        if (!ReferenceEquals(now, told))
+        bool same = Lsp.CompletionItem.Same(now, told);
+        told = now;
+        if (!same)
         {
-            told = now;
             SelectedChanged?.Invoke(this, EventArgs.Empty);
         }
     }

@@ -219,6 +219,14 @@ public sealed class CompletionItem
     private JsonElement? data;
     private List<string>? commitCharacters;
 
+    /// <summary>Whether two items are one, however many answers apart: the same label, kind, label details (where a server
+    /// tells two of one name apart, by a namespace or a module) and detail. Each answer gives an item anew, its sort text,
+    /// range and data that answer's own.</summary>
+    public static bool Same(CompletionItem? one, CompletionItem? other) =>
+        ReferenceEquals(one, other)
+        || (one is not null && other is not null && one.Label == other.Label && one.Kind == other.Kind
+            && one.LabelDetails == other.LabelDetails && one.Detail == other.Detail);
+
     /// <summary>What a list's defaults say of the item that it does not say itself: its edit over the default range,
     /// putting in its own edit text or its label, its text's format, its data, which resolving it sends back, and the
     /// characters that commit it, so an item keeps its own list's among another's (a list's later part).</summary>

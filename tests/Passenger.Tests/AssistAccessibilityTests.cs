@@ -11,9 +11,9 @@ namespace Passenger.Tests;
 /// <summary>The popups the code's help places at a line, as a screen reader meets and hears them on a real project: each
 /// is found in a walk of the window by its role and name, and what it says is heard through the window's announcing
 /// region (<see cref="AccessibilityTests.Listen"/>), the editor keeping the keys: completion's choice as it opens, as Down
-/// moves it, once as the list asked again for the name keeps it, and as it closes, and its documentation when asked;
-/// Parameter Info's signature, then its parameter as a comma is typed and as the caret moves back; a card a key shows,
-/// never one the pointer brings; the fixes' list as completion's.</summary>
+/// moves it, once as the list asked again for the name keeps it, and as it closes, and its documentation when asked, the
+/// list answered again or not; Parameter Info's signature, then its parameter as a comma is typed and as the caret moves
+/// back; a card a key shows, never one the pointer brings; the fixes' list as completion's.</summary>
 public sealed class AssistAccessibilityTests : IClassFixture<AssistAccessibilityTests.Project>
 {
     private const string Program = "class Program\n{\n    static void Main()\n    {\n        int result = Helper.Twice(2);\n        int area = Area.Of(3);\n        Missing gone = null;\n    }\n}\n";
@@ -90,23 +90,12 @@ public sealed class AssistAccessibilityTests : IClassFixture<AssistAccessibility
     public void A_narrowed_choice_is_heard_once_however_late_the_list_asked_again_for_the_name_comes()
     {
         MainWindow window = project.Open("Program.cs");
-        CodeEditor editor = window.EditorArea.CodeEditor;
         List<(string Words, AutomationLiveSetting Live)> heard = AccessibilityTests.Listen(window);
-        Ui.PlaceAfter(editor, "int result = Helper.Twice(2);");
-        editor.Focus();
-        Ui.Press(window, "ENTER");
-        window.KeyTextInput("Helper");
-        Ui.Settle();
-        window.KeyTextInput(".");
-        Ui.WaitFor(() => window.Assist.IsCompletionOpen, "Helper's members after its dot");
-        Ui.Settle();
-        Passenger.Lsp.LspDocument lsp = window.CSharpService!.For(window.EditorArea.Active!)!.Lsp!;
-        Passenger.Lsp.LanguageServer server = window.CSharpService!.Session!.Server;
+        (Passenger.Lsp.LanguageServer server, string asking) = HelpersMembers(window);
 
         heard.Clear();
         TaskCompletionSource answered = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        Task held = server.HoldNextAnswer(lsp.CompletionMethod,
-            asked => asked is Passenger.Lsp.CompletionParams { Context.TriggerKind: Passenger.Lsp.CompletionTriggerKind.TriggerForIncompleteCompletions }, answered.Task);
+        Task held = server.HoldNextAnswer(asking, AskedAgain, answered.Task);
         string said;
         try
         {
@@ -125,6 +114,118 @@ public sealed class AssistAccessibilityTests : IClassFixture<AssistAccessibility
         Ui.Press(window, "ESCAPE");
         window.Close();
     }
+
+    /// <summary>The second of the rows T narrows Helper's members to, chosen by Down while the list asked again as T was
+    /// typed is held, stays chosen as its answer comes, its items new, and is not heard again; Enter puts it in.</summary>
+    [AvaloniaFact]
+    public void A_choice_moved_while_the_list_is_asked_again_stays_on_its_item_as_the_answer_comes_and_enter_puts_it_in()
+    {
+        MainWindow window = project.Open("Program.cs");
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        List<(string Words, AutomationLiveSetting Live)> heard = AccessibilityTests.Listen(window);
+        (Passenger.Lsp.LanguageServer server, string asking) = HelpersMembers(window);
+
+        heard.Clear();
+        TaskCompletionSource answered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        Task held = server.HoldNextAnswer(asking, AskedAgain, answered.Task);
+        string chosen;
+        try
+        {
+            window.KeyTextInput("T");
+            Ui.AwaitPumped(held, "Helper's members asked again as T was typed into the list the server said left items out, answered and held");
+            Ui.PumpUntil(() => window.Assist.CompletionNarrowedBy == "T" && window.Assist.CompletionLabels.Count > 1 && heard.Count > 0,
+                "the rows narrowed by T and their choice heard");
+            chosen = window.Assist.CompletionLabels[1];
+            heard.Clear();
+            Ui.Press(window, "DOWN", settle: false);
+            Ui.PumpUntil(() => window.Assist.CompletionChosen == chosen, $"{chosen}, the second row, chosen by Down");
+        }
+        finally
+        {
+            answered.SetResult();
+        }
+        Ui.Settle();
+        Assert.True(window.Assist.CompletionChosen == chosen && heard is [(var moved, AutomationLiveSetting.Assertive)]
+            && moved.StartsWith($"{chosen}, method, item 2 of ", StringComparison.Ordinal),
+            $"Down chose {chosen}, and once the list asked again came {window.Assist.CompletionChosen} was chosen, the list heard as "
+            + $"{AccessibilityTests.Said(heard)}: Enter would put in another item than the one chosen");
+        Ui.Press(window, "ENTER");
+        Ui.Settle();
+        string line = editor.Document.Snapshot.GetLineText(editor.CaretPosition.Line).Trim();
+        Assert.True(line.StartsWith($"Helper.{chosen}", StringComparison.Ordinal), $"Enter on {chosen}, chosen as the list asked again came, put in \"{line}\"");
+        window.Close();
+    }
+
+    /// <summary>Quick Documentation asked for the item Down chose, its card still to come, is heard once the card comes,
+    /// though the list asked again as T was typed is answered between the asking and the card: the answer's items are new,
+    /// the item the same.</summary>
+    [AvaloniaFact]
+    public void Documentation_asked_as_the_list_is_answered_again_is_heard_for_the_item_chosen()
+    {
+        MainWindow window = project.Open("Program.cs");
+        List<(string Words, AutomationLiveSetting Live)> heard = AccessibilityTests.Listen(window);
+        (Passenger.Lsp.LanguageServer server, string asking) = HelpersMembers(window);
+
+        TaskCompletionSource answered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource resolved = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource made = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        Task held = server.HoldNextAnswer(asking, AskedAgain, answered.Task);
+        string chosen;
+        try
+        {
+            window.KeyTextInput("T");
+            Ui.AwaitPumped(held, "Helper's members asked again as T was typed into the list the server said left items out, answered and held");
+            Ui.PumpUntil(() => window.Assist.CompletionNarrowedBy == "T" && window.Assist.CompletionLabels.Count > 1 && window.Assist.ItemDocumentation is not null,
+                "the rows narrowed by T, the first one's documentation beside them");
+            chosen = window.Assist.CompletionLabels[1];
+            Task describing = server.HoldNextAnswer(Passenger.Lsp.LspMethods.CompletionResolve,
+                asked => asked is Passenger.Lsp.CompletionItem { Label: var label } && label == chosen, resolved.Task);
+            Ui.Press(window, "DOWN", settle: false);
+            heard.Clear();
+            Ui.Run(window, AppActions.QuickDocumentation, settle: false);
+            Ui.AwaitPumped(describing, $"{chosen}'s documentation, asked for by Quick Documentation, answered and held");
+            Task rows = window.Assist.HoldNextCompletionRows(made.Task);
+            answered.SetResult();
+            Ui.AwaitPumped(rows, "the rows of Helper's members answered again, made and held");
+            made.SetResult();
+            // The rows answered again shown before the documentation's answer comes.
+            Ui.Draw();
+        }
+        finally
+        {
+            answered.TrySetResult();
+            made.TrySetResult();
+            resolved.SetResult();
+        }
+        Ui.WaitFor(() => window.Assist.ItemDocumentation is not null, "the card beside the list");
+        string documentation = window.Assist.ItemDocumentation!;
+        Assert.True(window.Assist.CompletionChosen == chosen && documentation.Contains($"Helper.{chosen}(", StringComparison.Ordinal)
+            && heard.Count(h => h.Words == documentation) == 1 && heard[^1] == (documentation, AutomationLiveSetting.Polite),
+            $"Quick Documentation asked for {chosen}, the list answered again meanwhile, was heard as {AccessibilityTests.Said(heard)}, "
+            + $"{window.Assist.CompletionChosen} chosen, not the card beside it once, \"{documentation}\"");
+        Ui.Press(window, "ESCAPE");
+        window.Close();
+    }
+
+    /// <summary>Helper's members listed after its dot on a line of their own: a list the server says left items out, so
+    /// typing on asks for it again; with the server and the method that asks.</summary>
+    private static (Passenger.Lsp.LanguageServer Server, string Asking) HelpersMembers(MainWindow window)
+    {
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        Ui.PlaceAfter(editor, "int result = Helper.Twice(2);");
+        editor.Focus();
+        Ui.Press(window, "ENTER");
+        window.KeyTextInput("Helper");
+        Ui.Settle();
+        window.KeyTextInput(".");
+        Ui.WaitFor(() => window.Assist.IsCompletionOpen, "Helper's members after its dot");
+        Ui.Settle();
+        return (window.CSharpService!.Session!.Server, window.CSharpService!.For(window.EditorArea.Active!)!.Lsp!.CompletionMethod);
+    }
+
+    /// <summary>Whether a completion request asks again for a list the server said left items out.</summary>
+    private static bool AskedAgain(object asked) =>
+        asked is Passenger.Lsp.CompletionParams { Context.TriggerKind: Passenger.Lsp.CompletionTriggerKind.TriggerForIncompleteCompletions };
 
     [AvaloniaFact]
     public void Parameter_info_says_its_signature_then_the_parameter_as_a_comma_is_typed_and_as_the_caret_moves_back()

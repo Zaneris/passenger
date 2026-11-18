@@ -66,6 +66,37 @@ public class CompletionAnswerTests
         Assert.All(Read($$"""{"isIncomplete":false,"items":[{{items}}]}""").Items, i => Assert.Equal(0, i.MatchPriority));
     }
 
+    /// <summary>A list asked again as a name is typed lists its items anew, each with that answer's sort text, range and
+    /// data: an item is the one chosen before by what it is, and two of one name are told apart by what else the server
+    /// says of them.</summary>
+    [Fact]
+    public void An_item_answered_again_is_the_same_item_whatever_its_answers_own_and_one_of_its_name_another()
+    {
+        CompletionList first = Read("""
+            {"isIncomplete":true,"itemDefaults":{"editRange":{"start":{"line":4,"character":15},"end":{"line":4,"character":16}},"data":{"ResultId":3}},"items":[
+              {"label":"Thrice","kind":2,"sortText":"0002"},
+              {"label":"Twice","kind":2,"sortText":"0003"},
+              {"label":"Stream","kind":7,"labelDetails":{"description":"System.IO"}}
+            ]}
+            """);
+        CompletionList again = Read("""
+            {"isIncomplete":true,"itemDefaults":{"editRange":{"start":{"line":4,"character":15},"end":{"line":4,"character":17}},"data":{"ResultId":4}},"items":[
+              {"label":"Twice","kind":2,"sortText":"0001"},
+              {"label":"Twice","kind":10,"sortText":"0002"},
+              {"label":"Stream","kind":7,"labelDetails":{"description":"System.IO"}},
+              {"label":"Stream","kind":7,"labelDetails":{"description":"Pipes"}}
+            ]}
+            """);
+        Assert.True(CompletionItem.Same(first.Items[1], again.Items[0]),
+            "Twice, the method, answered again with another sort text, range and data is another item: a choice on it would go to the list's first row");
+        Assert.True(CompletionItem.Same(first.Items[2], again.Items[2]), "Stream of System.IO answered again is another item");
+        Assert.False(CompletionItem.Same(first.Items[1], again.Items[1]), "Twice the method is the same item as a property named Twice");
+        Assert.False(CompletionItem.Same(first.Items[2], again.Items[3]), "Stream of System.IO is the same item as a Stream of another namespace");
+        Assert.False(CompletionItem.Same(first.Items[0], again.Items[0]), "Thrice is the same item as Twice");
+        Assert.False(CompletionItem.Same(first.Items[0], null), "An item is the same as none");
+        Assert.True(CompletionItem.Same(null, null), "No item is not the same as no item");
+    }
+
     [Fact]
     public void An_answer_of_items_alone_or_of_nothing_reads_as_the_protocol_says()
     {

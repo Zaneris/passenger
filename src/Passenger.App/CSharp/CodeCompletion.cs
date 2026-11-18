@@ -32,7 +32,8 @@ internal sealed partial class CodeCompletion
     /// <summary>Whether the keys are moving the choice (Up, Down, Page Up, Page Down), which a screen reader is told at once.</summary>
     private bool moving;
 
-    /// <summary>The item whose documentation was asked for (<see cref="SayDocumentation"/>), told as its card comes.</summary>
+    /// <summary>The item whose documentation was asked for (<see cref="SayDocumentation"/>), told as its card comes, however
+    /// the list was answered again meanwhile.</summary>
     private CompletionItem? documentationAsked;
 
     public CodeCompletion(AssistContext context, PopupPlacement popups)
@@ -153,12 +154,9 @@ internal sealed partial class CodeCompletion
         }
     }
 
-    /// <summary>What was last said of the open list's choice (<see cref="TellChosen"/>); null once it closes.</summary>
-    private string? choiceSaid;
-
     /// <summary>Tells a screen reader the item chosen: its name, its kind and where it stands, at once as the keys move it,
-    /// after what it is saying as the list opens or narrows to another. A choice said already is not said again, however
-    /// late the rows that keep it come (a list the server is asked again for as the name is typed, its items new).</summary>
+    /// after what it is saying as the list opens or narrows to another item; never again for rows that keep the item, however
+    /// late they come (a list the server is asked again for as the name is typed, its items new).</summary>
     private void TellChosen(bool opening)
     {
         if (completion.Selected is not { } row)
@@ -166,11 +164,6 @@ internal sealed partial class CodeCompletion
             return;
         }
         string said = PopupPlacement.Chosen(row.Item.Label, KindWords(row.Item.Kind), completion.ChosenAt, completion.Rows.Count);
-        if (!opening && said == choiceSaid)
-        {
-            return;
-        }
-        choiceSaid = said;
         popups.Tell(opening ? $"Completion, {said}" : said, moving ? Urgency.Assertive : Urgency.Polite, completion);
     }
 
@@ -194,7 +187,7 @@ internal sealed partial class CodeCompletion
     /// <summary>The card beside the list came, or none will, for an item: its words told where they were asked for.</summary>
     private void Described(CompletionItem item)
     {
-        if (!ReferenceEquals(documentationAsked, item))
+        if (!CompletionItem.Same(documentationAsked, item))
         {
             return;
         }
@@ -533,8 +526,8 @@ internal sealed partial class CodeCompletion
     }
 
     /// <summary>The list opened of the server's items asked at <paramref name="caret"/>, its parts in order, a language's
-    /// own first and the templates last; one with items added as they came (<paramref name="before"/>) keeps the choice
-    /// made in it.</summary>
+    /// own first and the templates last; one grown by items as they came starts where the one it grew from
+    /// (<paramref name="before"/>) did.</summary>
     private Completion Made(LspDocument lsp, CompletionList? list, IReadOnlyList<CompletionItem>[] parts, OwnItems? named, WebDocument? web,
         TextSnapshot asked, int caret, bool incomplete, Completion? before)
     {
@@ -572,7 +565,6 @@ internal sealed partial class CodeCompletion
             Tail = listTail,
             WordCharacters = named?.WordCharacters ?? string.Empty,
             Lead = lead,
-            Before = before,
             Coming = before is null && list?.Later is not null,
         };
         Filter();
@@ -709,10 +701,6 @@ internal sealed partial class CodeCompletion
 
     private void ShowRows(Narrowing narrowing, CompletionRow[] rows)
     {
-        // The choice made among the rows of the name as typed stays on its item as items are added to the list.
-        CompletionItem? chosen = filtered is { } before && ReferenceEquals(before.List, narrowing.List.Before) && before.Typed == narrowing.Typed
-            ? completion.Selected?.Item
-            : null;
         if (rows.Length == 0)
         {
             if (narrowing.List.Coming)
@@ -733,8 +721,8 @@ internal sealed partial class CodeCompletion
             Close();
             return;
         }
-        // The rows of the name as shown, the list grown or answered again, keep the place the person scrolled to.
-        completion.Show(rows, chosen, sameName: !opening && filtered?.Typed == narrowing.Typed);
+        // The rows of the name as shown, the list grown or answered again, keep the item chosen and the place scrolled to.
+        completion.Show(rows, sameName: !opening && filtered is { } shown && shown.Typed == narrowing.Typed && shown.List.Start == narrowing.List.Start);
         filtered = (narrowing.List, narrowing.Typed);
         completion.IsVisible = true;
         completion.Within(popups.Widest);
@@ -1020,7 +1008,6 @@ internal sealed partial class CodeCompletion
         completing?.Cancel();
         describing?.Cancel();
         documentationAsked = null;
-        choiceSaid = null;
         open = null;
         lastAsked = null;
         completion.IsVisible = false;
@@ -1064,7 +1051,7 @@ internal sealed partial class CodeCompletion
             {
                 item = await lsp.ResolveAsync(item, cancel.Token) ?? item;
             }
-            if (cancel.IsCancellationRequested || !completion.IsVisible || completion.Selected != row)
+            if (cancel.IsCancellationRequested || !completion.IsVisible || !CompletionItem.Same(completion.Selected?.Item, row.Item))
             {
                 return;
             }
@@ -1176,12 +1163,8 @@ internal sealed partial class CodeCompletion
         /// <summary>Whether the first item's documentation shows beside the list as it opens.</summary>
         public bool DescribedAsItOpens { get; init; }
 
-        /// <summary>The list these items were added to as they came, whose choice stays where it is (C#'s types of
-        /// namespaces not imported added to what is in scope); null for a list asked anew.</summary>
-        public Completion? Before { get; init; }
-
-        /// <summary>Whether items are still to be added to the list as they come (<see cref="Before"/>): showing no row
-        /// meanwhile, it stays open for them.</summary>
+        /// <summary>Whether items are still to be added to the list as they come (C#'s types of namespaces not imported
+        /// added to what is in scope): showing no row meanwhile, it stays open for them.</summary>
         public bool Coming { get; set; }
 
         /// <summary>The text after the caret a web server's items replace as well (a JSON string's closing quote, the rest
