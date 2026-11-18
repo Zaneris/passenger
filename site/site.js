@@ -14,6 +14,8 @@
         "linux-arm64": { asset: "Passenger-linux-arm64.tar.gz", label: "Linux Arm64" },
     };
 
+    // The visitor's build, and whether the browser told its processor: a Windows browser's user agent may say x64 on an Arm
+    // PC, so there only arm64 in it or Chromium's hints tell.
     async function system() {
         const agent = navigator.userAgent;
         let os = /Windows/.test(agent) ? "windows"
@@ -29,17 +31,20 @@
         }
         // Every Mac browser's user agent says Intel, so a Mac is taken for Apple Silicon unless Chromium's hints say x86.
         let arch = os === "mac" || /aarch64|arm64/i.test(agent) ? "arm64" : "x64";
+        let told = os !== "windows" || arch === "arm64";
         try {
             const hints = await navigator.userAgentData?.getHighEntropyValues(["architecture"]);
             if (hints?.architecture === "arm") {
                 arch = "arm64";
+                told = true;
             } else if (hints?.architecture === "x86") {
                 arch = "x64";
+                told = true;
             }
         } catch {
             // No hints: keep the guess from the user agent.
         }
-        return `${os}-${arch}`;
+        return { build: `${os}-${arch}`, told };
     }
 
     async function latest() {
@@ -78,7 +83,7 @@
 
     async function main() {
         const [found, release] = await Promise.all([system(), latest()]);
-        const build = found ? builds[found] : null;
+        const build = found ? builds[found.build] : null;
         const primary = document.getElementById("primary-download");
         const note = document.getElementById("primary-note");
         const status = document.getElementById("release-status");
@@ -115,12 +120,24 @@
             }
         }
 
-        if (primary && note && build && (!release || release.assets.has(build.asset))) {
+        const out = b => !release || release.assets.has(b.asset);
+        if (primary && note && build && out(build)) {
             primary.href = `${releases}/latest/download/${build.asset}`;
             primary.innerHTML = `Download <small>for ${build.label}</small>`;
-            note.innerHTML = found.startsWith("linux")
+            note.innerHTML = found.build.startsWith("linux")
                 ? `Then see <a href="/linux">how to install on Linux</a>. <a href="#download">Other systems</a>.`
                 : `<a href="#download">Other systems and architectures</a>`;
+            // A Windows processor not told: the Arm64 installer beside the x64 one, and which suits an Arm PC.
+            const arm = builds["windows-arm64"];
+            if (!found.told && out(arm)) {
+                const second = document.createElement("a");
+                second.className = "button";
+                second.href = `${releases}/latest/download/${arm.asset}`;
+                second.innerHTML = `Download <small>for ${arm.label}</small>`;
+                primary.after(second);
+                note.innerHTML = `Arm64 for a PC with an Arm processor, such as a Snapdragon; x64 for one with Intel or AMD. `
+                    + `Settings &rsaquo; System &rsaquo; About says which. <a href="#download">Other systems</a>`;
+            }
         }
     }
 
