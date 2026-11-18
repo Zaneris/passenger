@@ -1,6 +1,5 @@
 using Avalonia;
 using Avalonia.Controls;
-using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.Input;
 using Avalonia.VisualTree;
@@ -87,14 +86,22 @@ public sealed class GodotLiveCardTests
     /// <summary>The member's hint as the file shows it, or null.</summary>
     private static string? Hint(OpenDocument document) => document.LiveValues.Where(a => a.Line == Member).Select(a => a.Text).FirstOrDefault();
 
-    /// <summary>The pointer rested on the start of the member's hint as it is drawn now, the part a narrow editor shows.</summary>
+    /// <summary>The pointer rested on the start of the member's hint as it is drawn now, the part a narrow editor shows: the
+    /// middle of what of it the pointer finds the editor at, short of the divider's grab laid over the editor's edge.</summary>
     private static void Rest(MainWindow window, OpenDocument script)
     {
         CodeEditor editor = window.EditorArea.CodeEditor;
         Rect box = default;
         Ui.WaitFor(() => Hint(script) is { } hint && editor.AnnotationBox(Member, hint) is { } drawn && (box = drawn) != default, "d's hint drawn");
         Assert.True(box.X + 8 < editor.Bounds.Width, $"d's hint at {box} starts past the editor's {editor.Bounds.Width:0.#}, where it was to show");
-        window.MouseMove(editor.TranslatePoint(new Point(box.X + 8, box.Center.Y), window)!.Value, RawInputModifiers.None);
+        Ui.Draw();
+        double reached = box.X + 1;
+        while (reached + 1 < Math.Min(box.Right, editor.Bounds.Width) && window.InputHitTest(editor.TranslatePoint(new Point(reached + 1, box.Center.Y), window)!.Value) is Visual found
+            && (found == editor || editor.IsVisualAncestorOf(found)))
+        {
+            reached++;
+        }
+        Ui.Hover(editor, new Point((box.X + reached) / 2, box.Center.Y));
     }
 
     /// <summary>A game heard as Godot's editor relays one: it answers its scene tree with Passenger's helper beside its scene,
