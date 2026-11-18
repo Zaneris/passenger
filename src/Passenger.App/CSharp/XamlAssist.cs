@@ -801,10 +801,26 @@ internal sealed partial class XamlAssist : LanguageAssist
 
     /// <summary>Rename in XAML: an element's name, from it or an expression reading it, where the file names it or its
     /// expressions read it and where its code-behind uses its field; a type or member of the folder's C# a name leads to,
-    /// from its declaration (<see cref="DeclaredRenameAsync"/>). One command undone whole.</summary>
+    /// from its declaration (<see cref="DeclaredRenameAsync"/>). One command undone whole, asked once the server holds the C#
+    /// files come under the projects the page sees (<see cref="AssistContext.TakenInAsync(string)"/>).</summary>
     private async Task XamlRename(XamlDocument xaml)
     {
         int caret = Editor.Selections.Primary.Caret;
+        // The C# the page sees may still be taking in a file a rename moved: waited for, the caret held.
+        Anchor held = xaml.Document.Text.AnchorAt(caret, AnchorGravity.Before);
+        try
+        {
+            if (await context.TakenInAsync(xaml.Document.Path) is { } unloaded)
+            {
+                context.Say($"Rename was not applied: {unloaded}");
+                return;
+            }
+            caret = held.Offset;
+        }
+        finally
+        {
+            held.Remove();
+        }
         // Read against the C# as it stands: a rename a moment before may have written it.
         if (context.Xaml?.Invoke() is { } service)
         {

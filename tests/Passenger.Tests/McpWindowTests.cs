@@ -871,6 +871,61 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
         }
     }
 
+    /// <summary>An agent renames the type a MAUI page's C# expression names, which moves its file (Helper.cs to Speaker.cs),
+    /// then at once renames the method the expression calls from the expression, the server's load taking in the moved file
+    /// held back until then: the rename waits, saying so, until the server has the file in its project, then renames the
+    /// method there and in the expression, never refusing the expression as naming nothing.</summary>
+    [AvaloniaFact]
+    public void An_agents_rename_in_a_maui_expression_asked_as_a_type_rename_moved_its_file_waits_for_the_server_to_take_the_file_in()
+    {
+        (string folder, string page) = McpNavigationTests.MauiPageCallingHelper("mcp-maui-moved-");
+        DeleteAtEnd(folder);
+        string project = Path.Combine(folder, "MauiApp1.csproj");
+        MainWindow window = AgentsWindow(folder);
+        McpClient client = Await(Waiting.Apart(() => Start(["--mcp-attach", ProcessId])), "the agent attaching");
+        TaskCompletionSource loading = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        try
+        {
+            // The first waits through the server's restore of MAUI and the load after it, so the load held next is the move's.
+            Task<JsonElement> yelled = Waiting.Apart(() => Call(client, McpTools.Rename, new() { ["path"] = "Helper.cs", ["line"] = 5, ["column"] = 26, ["newName"] = "Yell" }));
+            Press(Question(window, "the question for the agent's rename"), AgentToolDialog.AllowForSession);
+            Await(yelled, "the agent's rename of Shout to Yell");
+            // Pumped, not settled, from here: the server's load held waits on the window.
+            Task loadHeld = window.Session.DesignTimeBuilds.HoldNextAsked(project, loading.Task);
+            Ui.AwaitPumped(Waiting.Apart(() => Call(client, McpTools.Rename, new() { ["path"] = "Helper.cs", ["line"] = 3, ["column"] = 21, ["newName"] = "Speaker" })),
+                "the agent's rename of Helper to Speaker", AgentLimit);
+            string speaker = Path.Combine(folder, "Speaker.cs");
+            Assert.True(File.Exists(speaker) && !File.Exists(Path.Combine(folder, "Helper.cs")), "renaming Helper to Speaker did not rename its file Speaker.cs");
+            Ui.PumpUntil(() => loadHeld.IsCompleted, "the server's load of MauiApp1 taking in Speaker.cs to be held", AgentLimit);
+            string renamed = File.ReadAllText(Path.Combine(folder, "MainPage.xaml"));
+            int at = renamed.IndexOf("Yell(", StringComparison.Ordinal);
+            Heard heard = new();
+            Task<CallToolResult> asked = Waiting.Apart(() => Result(client, McpTools.Rename, new()
+            {
+                ["path"] = "MainPage.xaml", ["line"] = renamed[..at].Count(c => c == '\n') + 1, ["column"] = at - renamed.LastIndexOf('\n', at) + 1, ["newName"] = "Cheer",
+            }, heard: heard));
+            Ui.PumpUntil(() => asked.IsCompleted || heard.Told.Any(t => t.Message?.Contains("Speaker.cs", StringComparison.Ordinal) == true),
+                "the agent's rename from the expression to wait for the server to take Speaker.cs into MauiApp1", AgentLimit);
+            if (asked.IsCompleted)
+            {
+                Assert.Fail($"the agent's rename from the expression answered while the server's load taking in Speaker.cs was held: {Text(Ui.AwaitPumped(asked, "the agent's rename", AgentLimit))}");
+            }
+            loading.SetResult();
+            CallToolResult answer = Ui.AwaitPumped(asked, "the agent's rename of Yell to Cheer from the expression", AgentLimit);
+            Assert.True(answer.IsError != true, $"the agent's rename from the expression, asked as the server's load taking in Speaker.cs was held, answered: {Text(answer)}");
+            Assert.Contains("public static string Cheer(string text)", File.ReadAllText(speaker), StringComparison.Ordinal);
+            string again = File.ReadAllText(Path.Combine(folder, "MainPage.xaml"));
+            Assert.True(again == page.Replace("{local:Helper.Shout(", "{local:Speaker.Cheer(", StringComparison.Ordinal),
+                $"renaming Yell to Cheer from the expression left it naming Yell, or changed more: {again}");
+        }
+        finally
+        {
+            loading.TrySetResult();
+            Gone(client);
+            window.Close();
+        }
+    }
+
     /// <summary>A MAUI page's folder whose load after its first restore waits for its design-time builds (held back here)
     /// longer than an agent's code tools wait for the C# language server, given this window a little past the time the
     /// server may say nothing of a load under way: the agent's definition of the InitializeComponent MAUI's generator

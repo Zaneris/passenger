@@ -112,13 +112,8 @@ public sealed class McpNavigationTests : McpRig, IClassFixture<RestoredFolders>
     [Fact]
     public async Task Renaming_a_method_and_its_type_a_maui_expression_names_renames_the_expression_with_them()
     {
-        string folder = MauiPage("mcp-maui-renamed-");
+        (string folder, string page) = MauiPageCallingHelper("mcp-maui-renamed-");
         DeleteAtEnd(folder);
-        TestFolders.Write(folder, "Helper.cs", "namespace MauiApp1;\n\npublic static class Helper\n{\n    public static string Shout(string text) => text.ToUpperInvariant();\n}\n");
-        string page = File.ReadAllText(Path.Combine(folder, "MainPage.xaml"))
-            .Replace("<ContentPage x:Class=\"MauiApp1.MainPage\">", "<ContentPage x:Class=\"MauiApp1.MainPage\" xmlns:local=\"clr-namespace:MauiApp1\">", StringComparison.Ordinal)
-            .Replace("Text=\"Hello, World!\"", "Text=\"{local:Helper.Shout('hello')}\"", StringComparison.Ordinal);
-        TestFolders.Write(folder, "MainPage.xaml", page);
         await using McpClient client = await Start(["--mcp", folder]);
 
         await Call(client, McpTools.Rename, new() { ["path"] = "Helper.cs", ["line"] = 5, ["column"] = 26, ["newName"] = "Yell" });
@@ -275,6 +270,19 @@ public sealed class McpNavigationTests : McpRig, IClassFixture<RestoredFolders>
         TestFolders.Write(folder, "MainPage.xaml", MauiXamlTests.Gallery.MainPage);
         TestFolders.Write(folder, "MainPage.xaml.cs", MauiXamlTests.Gallery.MainPageCode);
         return folder;
+    }
+
+    /// <summary>A MAUI page's folder (<see cref="MauiPage"/>) whose page's C# expression calls the app's Helper.Shout, declared
+    /// in Helper.cs, through a XAML prefix; with the page's text as written.</summary>
+    internal static (string Folder, string Page) MauiPageCallingHelper(string prefix)
+    {
+        string folder = MauiPage(prefix);
+        TestFolders.Write(folder, "Helper.cs", "namespace MauiApp1;\n\npublic static class Helper\n{\n    public static string Shout(string text) => text.ToUpperInvariant();\n}\n");
+        string page = File.ReadAllText(Path.Combine(folder, "MainPage.xaml"))
+            .Replace("<ContentPage x:Class=\"MauiApp1.MainPage\">", "<ContentPage x:Class=\"MauiApp1.MainPage\" xmlns:local=\"clr-namespace:MauiApp1\">", StringComparison.Ordinal)
+            .Replace("Text=\"Hello, World!\"", "Text=\"{local:Helper.Shout('hello')}\"", StringComparison.Ordinal);
+        TestFolders.Write(folder, "MainPage.xaml", page);
+        return (folder, page);
     }
 
     /// <summary>Two projects each given a package once loaded: the server loads both again and restores both, one restore

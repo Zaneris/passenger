@@ -139,6 +139,15 @@ internal sealed class AssistContext(EditorArea editors, Func<CSharpService?> ser
         return (NotTakenIn(left), waited);
     }
 
+    /// <summary>Waits, for a question of another language's file that its project's C# answers (a MAUI page's expression),
+    /// until the server holds in their projects the C# files come under the projects the file sees (<see
+    /// cref="CSharpService.SeenFrom"/>), for up to <see cref="Patience.Limit"/>, the status bar saying which meanwhile. Why
+    /// not when the time is up, else null.</summary>
+    public async Task<string?> TakenInAsync(string path) =>
+        CSharp is { IsReady: true, Arriving: true } csharp
+            ? NotTakenIn(await csharp.UnplacedAsync(Patience.Limit, looking: false, csharp.SeenFrom(path), SayWaiting, CancellationToken.None))
+            : null;
+
     /// <summary>For a question about an offset of a C# file (Find Usages): waits until the server holds the file itself in
     /// its project, if it just came, for up to <see cref="Patience.Limit"/>; then the C# files come under the projects that
     /// can change the answer that it has not taken in yet, looked at once, which the answer says it went without.</summary>

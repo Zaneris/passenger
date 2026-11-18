@@ -551,6 +551,58 @@ public sealed class MauiXamlTests : IClassFixture<MauiXamlTests.Gallery>
         window.Close();
     }
 
+    /// <summary>Rename from a page's C# expression asked right after a type's rename moved the file declaring what the
+    /// expression calls (MainViewModel.cs to HomeViewModel.cs, which declares Helper too), the server's load taking in the
+    /// moved file held back until then: the rename waits, saying so, until the server has the file in its project, then
+    /// renames the method from the expression as from its declaration, never saying the place names nothing.</summary>
+    [AvaloniaFact]
+    public void Rename_in_an_expression_asked_as_a_type_rename_moved_the_file_it_calls_into_waits_for_the_server_to_take_the_file_in()
+    {
+        app.Rewrite("PeoplePage.xaml", Gallery.People.Replace("Title=\"{Binding Greeting}\"", "Title=\"{vm:Helper.Shout(Greeting)}\"", StringComparison.Ordinal));
+        MainWindow window = app.Open(app.PathOf("ViewModels/MainViewModel.cs"));
+        TaskCompletionSource loading = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        try
+        {
+            Ui.PlaceAfter(window.EditorArea.CodeEditor, "public class MainVie");
+            window.EditorArea.CodeEditor.Focus();
+            Ui.Run(window, AppActions.Rename);
+            // Settled, so the box offers to rename MainViewModel.cs with the type.
+            Ui.WaitFor(() => window.Assist.Renaming is not null, "the rename box to open on MainViewModel");
+            // Pumped, not settled, from here: the server's load held waits on the window.
+            Task loadHeld = window.Session.DesignTimeBuilds.HoldNextAsked(PathNames.Canonical(app.PathOf("MauiApp1.csproj")), loading.Task);
+            window.KeyTextInput("HomeViewModel");
+            Ui.Press(window, "ENTER", settle: false);
+            string moved = PathNames.Canonical(app.PathOf("ViewModels/HomeViewModel.cs"));
+            bool held = Ui.Pumped(() => File.Exists(moved) && loadHeld.IsCompleted, TimeSpan.FromMinutes(1));
+            Assert.True(held, $"MainViewModel.cs renamed HomeViewModel.cs ({File.Exists(moved)}), and the server's load taking it in held ({loadHeld.IsCompleted}): "
+                + $"{window.Status}\n{Ui.IdeLogTail()}\n{Ui.ServerLogTail()}");
+            string page = PathNames.Canonical(app.PathOf("PeoplePage.xaml"));
+            Assert.Null(window.OpenFile(page));
+            Ui.PumpUntil(() => window.EditorArea.Active is { } shown && PathNames.Same(shown.Path, page), "PeoplePage.xaml to open");
+            Ui.PlaceAfter(window.EditorArea.CodeEditor, "{vm:Helper.Sho");
+            window.EditorArea.CodeEditor.Focus();
+            Ui.Run(window, AppActions.Rename, settle: false);
+            Ui.PumpUntil(() => window.Assist.Renaming is not null || window.Status is { } said
+                && (said.Contains("HomeViewModel.cs", StringComparison.Ordinal) || said.StartsWith("Rename in XAML", StringComparison.Ordinal)),
+                "Rename in the expression to wait for the server to take HomeViewModel.cs in, or to say why not");
+            Assert.True(window.Assist.Renaming is null && window.Status?.Contains("HomeViewModel.cs", StringComparison.Ordinal) == true,
+                $"Rename in the expression, asked as the server's load taking in HomeViewModel.cs was held, did not wait for it: {window.Status}");
+            loading.SetResult();
+            Ui.WaitFor(() => window.Assist.Renaming is not null, () => $"the rename box to open on Shout once the server took HomeViewModel.cs in: {window.Status}");
+            window.KeyTextInput("Cheer");
+            Ui.Press(window, "ENTER");
+            Ui.WaitFor(() => window.EditorArea.Find(moved)?.Text.Snapshot.ToString().Contains("public static string Cheer(string text)", StringComparison.Ordinal) == true,
+                () => $"Shout renamed Cheer from the expression: {window.Status}\n{window.EditorArea.Find(moved)?.Text.Snapshot}");
+            string expression = window.EditorArea.Active!.Text.Snapshot.ToString();
+            Assert.True(expression.Contains("Title=\"{vm:Helper.Cheer(Greeting)}\"", StringComparison.Ordinal), $"the expression not renamed with the method: {expression}");
+        }
+        finally
+        {
+            loading.TrySetResult();
+            window.Close();
+        }
+    }
+
     /// <summary>An expression reading the page's button through its name.</summary>
     private const string ReadsCounter = "IsVisible=\"{CounterBtn.(Grid.Row) GT 0}\"";
 
