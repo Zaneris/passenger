@@ -729,7 +729,10 @@ public static class Refusals
     /// <summary>A .NET installed for every user, which a workload installs into only with an administrator's rights.</summary>
     public static string WorkloadsNeedAdministrator(string root, string command) =>
         $"The .NET in {PathNames.Shown(root, null)} was installed for every user, so its workloads install only with an administrator's rights: run "
-        + (OperatingSystem.IsWindows() ? $"{command} in a terminal run as administrator" : $"sudo {command} in a terminal");
+        + (OperatingSystem.IsWindows() ? $"{AsAdministrator(command)} in a terminal run as administrator" : $"{AsAdministrator(command)} in a terminal");
+
+    /// <summary>A command as an administrator runs it: through sudo, but on Windows as written, in a terminal run as administrator.</summary>
+    public static string AsAdministrator(string command) => OperatingSystem.IsWindows() ? command : $"sudo {command}";
 
     /// <summary>A Functions app an AppHost asks for, with no Azure Functions Core Tools' func on the PATH to host it.</summary>
     public static string NoFunc(string project) =>

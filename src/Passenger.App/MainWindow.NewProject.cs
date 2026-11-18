@@ -72,7 +72,7 @@ public partial class MainWindow
     }
 
     /// <summary>New Project's Install of a workload, the person's ask: the window's one install of workloads, asking nothing more.</summary>
-    public Task<(bool Installed, string Said)> InstallAskedWorkloadsAsync(IReadOnlyList<string> ids, Action<string> stages, Action<string> lines, CancellationToken stop) =>
+    public Task<(bool Installed, string Said, string? ToRun)> InstallAskedWorkloadsAsync(IReadOnlyList<string> ids, Action<string> stages, Action<string> lines, CancellationToken stop) =>
         InstallWorkloadsAsync(ids, asks: false, stages, lines, stop);
 
     /// <summary>Add, New Project: the dialog over this window for a project in the open solution, in a solution folder
