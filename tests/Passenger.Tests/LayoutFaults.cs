@@ -1,15 +1,18 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Presenters;
 using Avalonia.Controls.Primitives;
 using Avalonia.Headless;
+using Avalonia.Media.TextFormatting;
 using Avalonia.VisualTree;
 
 namespace Passenger.Tests;
 
 /// <summary>What a person sees go wrong in a window, a dialog or a part of one, however narrow: words cut short with no
-/// ellipsis or wrap, and two things a person reads or presses drawn one over the other, each as far as what clips it
-/// shows it. A field's own options inside it and what one holds inside another are laid over each other on purpose. The
-/// code editor draws its own rows and a scroll bar its own thumb, so neither is read here.</summary>
+/// ellipsis or wrap, by their own room or by a scroller that can't scroll to the rest, and two things a person reads or
+/// presses drawn one over the other, each as far as what clips it shows it. A field's own options inside it and what one
+/// holds inside another are laid over each other on purpose. The code editor draws its own rows and a scroll bar its own
+/// thumb, so neither is read here.</summary>
 internal static class LayoutFaults
 {
     /// <summary>The faults of <paramref name="part"/>, measured in <paramref name="window"/>, each saying what and where.</summary>
@@ -24,6 +27,10 @@ internal static class LayoutFaults
             if (text.TextLayout.Width > room + 0.5)
             {
                 found.Add($"{what} cuts '{text.Text}' to {room:0.#} px of its {text.TextLayout.Width:0.#}, where words with no room end in an ellipsis");
+            }
+            else if (CutUnscrolled(text) is { } shown)
+            {
+                found.Add($"{what} cuts '{text.Text}' at the edge of a scroller the person can't scroll to it, to {shown:0.#} px of its {text.TextLayout.Width:0.#}, where words with no room end in an ellipsis");
             }
         }
         Rect[] seen = [.. drawn.Select(c => Visible(window, c))];
@@ -73,6 +80,35 @@ internal static class LayoutFaults
             Ui.Settle();
         }
         Assert.True(found.Count == 0, string.Join("\n", found.Distinct()));
+    }
+
+    /// <summary>How much of a text's words a scroller holding it shows, where that is less than all of them and the person
+    /// can't scroll it sideways to the rest: one that scrolls no way sideways, or a field's, which moves only to keep its
+    /// caret in view, so only its typed text is scrolled to. Null where none cuts it.</summary>
+    private static double? CutUnscrolled(TextBlock text)
+    {
+        TextLine[] lines = [.. text.TextLayout.TextLines];
+        if (lines.Length == 0)
+        {
+            return null;
+        }
+        double start = text.Padding.Left + lines.Min(l => l.Start);
+        double end = text.Padding.Left + lines.Max(l => l.Start + l.Width);
+        foreach (ScrollContentPresenter scroller in text.GetVisualAncestors().OfType<ScrollContentPresenter>())
+        {
+            if (scroller.CanHorizontallyScroll && scroller.TemplatedParent is not ScrollViewer { TemplatedParent: TextBox })
+            {
+                continue;
+            }
+            double left = text.TranslatePoint(new Point(start, 0), scroller)?.X ?? 0;
+            double right = text.TranslatePoint(new Point(end, 0), scroller)?.X ?? 0;
+            double shown = Math.Min(right, scroller.Bounds.Width) - Math.Max(left, 0);
+            if (shown < right - left - 0.5)
+            {
+                return Math.Max(shown, 0);
+            }
+        }
+        return null;
     }
 
     /// <summary>Whether a control is drawn at all: one laid out but clear (a toolbar widget gone whole keeps its bounds, at

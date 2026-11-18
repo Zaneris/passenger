@@ -334,9 +334,13 @@
         <Setter Property="SelectionForegroundBrush" Value="{DynamicResource Passenger.Text}" />
         <Setter Property="CaretBlinkInterval" Value="{DynamicResource Passenger.TextBoxCaretBlink}" />
     </Style>
-    <!-- A field's placeholder, narrower than it, ends in an ellipsis rather than being cut at its edge. -->
+    <!-- A field's placeholder, narrower than it, ends in an ellipsis rather than being cut at its edge: while the field is
+         empty its text scrolls no way, so the placeholder, which lies in what scrolls, is laid out in the field's room. -->
     <Style Selector="TextBox /template/ TextBlock">
         <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+    </Style>
+    <Style Selector="TextBox:empty /template/ ScrollViewer#PART_ScrollViewer">
+        <Setter Property="HorizontalScrollBarVisibility" Value="Disabled" />
     </Style>
     <!-- A drop-down framed as a field and as tall, its text inset as a field's (Fluent's is taller and its frame
          brighter). -->

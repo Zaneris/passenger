@@ -1279,6 +1279,87 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
         }
     }
 
+    /// <summary>A field's placeholder too long for it ends in an ellipsis, where the field's scroller, which only follows
+    /// its caret, would have cut it mid-letter; and the layout check finds a word cut inside a scroller the person can't
+    /// scroll to it: a placeholder laid out wider than its field, as every one was, and words wider than a scroller that
+    /// scrolls no way sideways. A field's own typed text, which its caret scrolls to, and words in a scroller with its bar,
+    /// are not cuts.</summary>
+    [AvaloniaFact]
+    public void A_fields_long_placeholder_ends_in_an_ellipsis_and_the_check_finds_one_cut_inside_its_scroller()
+    {
+        const string Long = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
+        TextBox field = new() { Width = 160, PlaceholderText = Long, HorizontalAlignment = HorizontalAlignment.Left };
+        TextBox typed = new() { Width = 160, Text = Long, HorizontalAlignment = HorizontalAlignment.Left };
+        TextBox scrolledPlaceholder = new() { Width = 160, PlaceholderText = Long, HorizontalAlignment = HorizontalAlignment.Left };
+        // The field's scroller scrolling sideways while its placeholder shows, as every field's did.
+        scrolledPlaceholder.Styles.Add(new Style(x => x.OfType<TextBox>().Class(":empty").Template().OfType<ScrollViewer>().Name("PART_ScrollViewer"))
+        {
+            Setters = { new Setter(ScrollViewer.HorizontalScrollBarVisibilityProperty, ScrollBarVisibility.Hidden) },
+        });
+        ScrollViewer barred = new()
+        {
+            Width = 160, HorizontalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalAlignment = HorizontalAlignment.Left,
+            Content = new TextBlock { Text = "Words in a scroller with its bar, wider than it" },
+        };
+        ScrollViewer unscrolled = new()
+        {
+            Width = 160, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled, HorizontalAlignment = HorizontalAlignment.Left,
+            Content = new TextBlock { Text = "Words in a scroller that scrolls no way sideways", Width = 400, HorizontalAlignment = HorizontalAlignment.Left },
+        };
+        Window window = new() { Width = 400, Height = 400, Content = new StackPanel { Spacing = 8, Children = { field, typed, scrolledPlaceholder, barred, unscrolled } } };
+        window.Show();
+        try
+        {
+            Ui.Settle();
+            TextBlock placeholder = field.GetVisualDescendants().OfType<TextBlock>().First(t => t.Name == "PART_Placeholder");
+            Assert.True(placeholder.TextLayout.TextLines.Any(l => l.HasCollapsed) && placeholder.Bounds.Width <= field.Bounds.Width,
+                $"A field {field.Bounds.Width:0} px wide lays its placeholder out {placeholder.Bounds.Width:0} px wide, untrimmed: it is cut mid-letter at the field's edge, where words with no room end in an ellipsis");
+            List<string> found = LayoutFaults.Of(window, window, "The test window");
+            string[] cut = [.. found.Where(f => f.Contains("scroller", StringComparison.Ordinal))];
+            Assert.True(cut.Length == 2 && cut.Any(f => f.Contains(Long, StringComparison.Ordinal)) && cut.Any(f => f.Contains("scrolls no way", StringComparison.Ordinal))
+                && found.Count == cut.Length,
+                $"The check found {found.Count} faults where a placeholder cut inside its field's scroller and words cut by a scroller that scrolls no way sideways stand, and nothing else:\n{string.Join("\n", found)}");
+
+            // Typed into, the field scrolls again to keep its caret, at the end of the words, in view.
+            Ui.WaitFor(() => field.Focus() && field.IsFocused, "the field to take the keys");
+            window.KeyTextInput(Long);
+            Ui.Settle();
+            ScrollViewer scroller = field.GetVisualDescendants().OfType<ScrollViewer>().First(s => s.Name == "PART_ScrollViewer");
+            Assert.True(field.Text == Long && scroller.Extent.Width > scroller.Viewport.Width && scroller.Offset.X >= scroller.Extent.Width - scroller.Viewport.Width - 1,
+                $"Typed into, a field {scroller.Viewport.Width:0} px wide holding words {scroller.Extent.Width:0} px wide stands scrolled {scroller.Offset.X:0} px: its caret at their end is out of sight");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>A row of a list of what runs (RunRows) narrower than the parts at its right gives them way from the last,
+    /// their words ending in an ellipsis, where they ran past the list's edge, which scrolls no way sideways.</summary>
+    [AvaloniaFact]
+    public void A_narrow_run_row_gives_way_at_its_right_rather_than_cutting_its_words()
+    {
+        Passenger.App.ToolWindows.RunRow drawn = new(0, "master")
+        {
+            State = Passenger.App.ToolWindows.RunState.Stopped, Health = "healthy", Links = [new("58370→5200", null), new("58371→4433/udp", null)], Trailing = "exited(2)",
+        };
+        ListBox list = new() { Width = 150, ItemsSource = new System.Collections.ObjectModel.ObservableCollection<Passenger.App.ToolWindows.RunItem<Passenger.App.ToolWindows.RunRow>> { new("master", drawn) } };
+        Passenger.App.ToolWindows.RunRows.Use<Passenger.App.ToolWindows.RunRow>(list, row => row, _ => { }, _ => { }, "port");
+        Window window = new() { Width = 400, Height = 200, Content = list };
+        window.Show();
+        try
+        {
+            Ui.Settle();
+            Assert.True(list.GetVisualDescendants().OfType<Passenger.App.ToolWindows.RunRowView>().Any(), "The list draws no run row");
+            List<string> found = LayoutFaults.Of(window, window, "A run row 150 px wide");
+            Assert.True(found.Count == 0, string.Join("\n", found));
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     /// <summary>The tool window a view is shown in, its header and all.</summary>
     private static Visual PaneOf(Visual view) =>
         view.GetVisualAncestors().OfType<DockPanel>().FirstOrDefault(p => p.Classes.Contains(StyleClasses.ToolPane))

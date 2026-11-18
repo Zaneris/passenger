@@ -470,6 +470,34 @@ public sealed class SettingsTests : IDisposable
         TestFolders.Delete(settings);
     }
 
+    /// <summary>Every page of Settings at the dialog's least width cuts no word and lays nothing over anything
+    /// (LayoutFaults): a field's placeholder too long for it, as the Run page's browser where one is found at a long path,
+    /// ends in an ellipsis rather than being cut mid-letter at the field's edge.</summary>
+    [AvaloniaFact]
+    public void Every_page_at_the_least_width_cuts_no_word_and_lays_nothing_over_anything()
+    {
+        MainWindow window = Open();
+        SettingsDialog dialog = window.ShowSettings();
+        List<string> found = [];
+        try
+        {
+            Ui.Settle();
+            dialog.Width = dialog.MinWidth;
+            foreach (string page in dialog.Pages.ToList())
+            {
+                dialog.Page = page;
+                Ui.Settle();
+                found.AddRange(LayoutFaults.Of(dialog, dialog, $"Settings › {page}, at the dialog's least width,"));
+            }
+        }
+        finally
+        {
+            dialog.Close();
+            window.Close();
+        }
+        Assert.True(found.Count == 0, string.Join("\n", found.Distinct()));
+    }
+
     [AvaloniaFact]
     public void A_search_keeps_the_pages_and_options_it_matches()
     {
