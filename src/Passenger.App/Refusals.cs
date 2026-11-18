@@ -501,6 +501,15 @@ public static class Refusals
     /// <summary>The container engine's CLI answers, but its engine does not, and it gave no words of its own.</summary>
     public const string EngineNotRunning = "The container engine is not running";
 
+    /// <summary>An image built for x86-64 alone (SQL Server's, <see cref="BackingService.X64Only"/>) on an Arm engine without
+    /// Rosetta: one that runs no x86-64 image, or emulates x86-64 otherwise (QEMU), under which SQL Server fails as it starts.
+    /// Docker Desktop and Podman are told how they would use Rosetta.</summary>
+    public static string X64OnlyUnrunnable(string what, Containers.EngineState engine) =>
+        $"{what} can't run on this {(OperatingSystem.IsMacOS() ? "Mac" : "machine")}: its image is built for x86-64 alone, and {engine.EngineName} "
+        + (engine.Amd64 == Containers.Amd64Runs.Never ? "runs no x86-64 image here" : $"emulates x86-64 here without Rosetta, under which {what} fails as it starts")
+        + (engine.DockerDesktop ? ". Choose the Apple Virtualization framework and turn on Use Rosetta for x86_64/amd64 emulation on Apple Silicon in Docker Desktop's settings (General)"
+            : engine.IsPodman ? ". Run it on a Podman machine that uses Rosetta" : string.Empty);
+
     /// <summary>A profile asked for while another run of the window is profiled or starting to be: one records at a time.</summary>
     public const string Profiling = "A run is already being profiled";
 

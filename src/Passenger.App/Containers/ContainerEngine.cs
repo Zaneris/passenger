@@ -48,6 +48,12 @@ public sealed record EngineState(EngineStatus Status, string? Cli, string? Probl
     /// <summary>The engine's processor, docker's name for it (amd64, arm64).</summary>
     public string? ServerArch { get; init; }
 
+    /// <summary>How it runs an image built for x86-64 alone (<see cref="EngineEmulation"/>).</summary>
+    public Amd64Runs Amd64 { get; init; }
+
+    /// <summary>Whether it is Docker Desktop's own engine on this machine, whose settings are the person's here.</summary>
+    public bool DockerDesktop { get; init; }
+
     /// <summary>The engine's name as messages give it.</summary>
     public string EngineName => IsPodman ? "Podman" : "Docker";
 
@@ -370,7 +376,7 @@ public sealed class ContainerEngine
         {
             return new EngineState(EngineStatus.NotRunning, cli, $"The container engine did not answer: {failed.Message}", null, null, null, null, null, null);
         }
-        (string? serverVersion, string? serverOs, string? serverArch, string? context, bool podmanCli, bool podman) = (null, null, null, null, false, false);
+        (string? serverVersion, string? serverOs, string? serverArch, string? context, bool podmanCli, bool podman, string? platform) = (null, null, null, null, false, false, null);
         foreach (JsonElement read in JsonLines(version.Output))
         {
             JsonElement? client = JsonMembers.Object(read, "Client");
@@ -379,6 +385,7 @@ public sealed class ContainerEngine
             serverVersion = JsonMembers.Scalar(server, "Version");
             serverOs = JsonMembers.Scalar(server, "Os");
             serverArch = JsonMembers.Scalar(server, "Arch") ?? ArchOf(JsonMembers.Scalar(server, "OsArch"));
+            platform = JsonMembers.Scalar(JsonMembers.Object(server, "Platform"), "Name");
             // Podman's own command words its system as OsArch; on Linux it is the engine itself, with no server apart.
             podmanCli = JsonMembers.Scalar(client, "OsArch") is not null;
             podman = podmanCli || JsonMembers.Items(server, "Components").Any(p => JsonMembers.Scalar(p, "Name") == "Podman Engine");
@@ -388,14 +395,14 @@ public sealed class ContainerEngine
             }
         }
         // The engine's info asked beside the rest, once it answers: Docker's and Podman's alike say whether it runs rootless.
-        Task<(bool Rootless, string? Socket, bool SocketThere)> infoAsked = version.Succeeded && serverVersion is not null ? InfoAsync()
-            : Task.FromResult<(bool, string?, bool)>((false, null, true));
+        Task<(bool Rootless, string? Socket, bool SocketThere, bool? Emulates)> infoAsked = version.Succeeded && serverVersion is not null ? InfoAsync()
+            : Task.FromResult<(bool, string?, bool, bool?)>((false, null, true, null));
         Task<string?> endpointAsked = EndpointAsync();
         Task<string?> composeAsked = ComposeAsync();
         Task<string?> buildxAsked = BuildxAsync();
         await Task.WhenAll(infoAsked, endpointAsked, composeAsked, buildxAsked);
         (string? endpoint, string? compose, string? buildx) = (await endpointAsked, await composeAsked, await buildxAsked);
-        (bool rootless, string? remoteSocket, bool socket) = await infoAsked;
+        (bool rootless, string? remoteSocket, bool socket, bool? emulates) = await infoAsked;
         // A Podman that does not answer says so, through Docker's CLI too, as does the socket a context names.
         podman |= Said(version).Contains("Podman", StringComparison.Ordinal) || endpoint?.Contains("podman", StringComparison.OrdinalIgnoreCase) == true;
         string name = podman ? "Podman" : "Docker";
@@ -408,10 +415,14 @@ public sealed class ContainerEngine
                 null, null, context, endpoint, compose, buildx) { IsPodman = podman, PodmanCli = podmanCli };
         }
         endpoint ??= remoteSocket;
+        // Docker Desktop's settings are this machine's only for its engine here, on its own socket.
+        bool desktop = OperatingSystem.IsMacOS() && platform?.StartsWith("Docker Desktop", StringComparison.Ordinal) == true
+            && endpoint?.StartsWith("unix://", StringComparison.Ordinal) == true;
+        Amd64Runs amd64 = EngineEmulation.Of(serverArch, serverArch is "arm64" or "aarch64" ? await RosettaAsync() : null, emulates);
         EngineState Made(EngineStatus status, string? problem) =>
             new(status, cli, problem, serverVersion, serverOs, context, endpoint, compose, buildx)
             {
-                IsPodman = podman, PodmanCli = podmanCli, Rootless = rootless, ServerArch = serverArch,
+                IsPodman = podman, PodmanCli = podmanCli, Rootless = rootless, ServerArch = serverArch, Amd64 = amd64, DockerDesktop = desktop,
             };
         if (string.Equals(serverOs, "windows", StringComparison.OrdinalIgnoreCase))
         {
@@ -429,41 +440,77 @@ public sealed class ContainerEngine
         }
         return Made(EngineStatus.Ready, null);
 
-        // Whether the engine runs rootless, Docker's and Podman's info alike, and where Podman's own command's API socket is.
-        async Task<(bool Rootless, string? Socket, bool SocketThere)> InfoAsync()
+        // Whether the engine runs rootless, Docker's and Podman's info alike, where Podman's own command's API socket is, and
+        // whether Podman's own has an emulator for x86-64.
+        async Task<(bool Rootless, string? Socket, bool SocketThere, bool? Emulates)> InfoAsync()
         {
             try
             {
                 ChildResult said = await RunAsync(["info", "--format", "json"], AskLimit);
                 if (!said.Succeeded)
                 {
-                    return (false, null, true);
+                    return (false, null, true, null);
                 }
                 // Podman's own writes it over many lines.
                 using JsonDocument read = JsonDocument.Parse(said.Output);
                 JsonElement info = read.RootElement;
                 if (info.ValueKind != JsonValueKind.Object)
                 {
-                    return (false, null, true);
+                    return (false, null, true, null);
                 }
                 if (JsonMembers.Value(info, "SecurityOptions") is { ValueKind: JsonValueKind.Array } options)
                 {
-                    return (options.EnumerateArray().Any(o => o.ValueKind == JsonValueKind.String && o.GetString() == "name=rootless"), null, true);
+                    return (options.EnumerateArray().Any(o => o.ValueKind == JsonValueKind.String && o.GetString() == "name=rootless"), null, true, null);
                 }
                 JsonElement? host = JsonMembers.Object(info, "host");
                 bool isRootless = JsonMembers.Scalar(JsonMembers.Object(host, "security"), "rootless") == "true";
+                bool? emulating = EngineEmulation.Emulates(info);
                 if (!podmanCli || !OperatingSystem.IsLinux())
                 {
-                    return (isRootless, null, true);
+                    return (isRootless, null, true, emulating);
                 }
                 JsonElement? socket = JsonMembers.Object(host, "remoteSocket");
                 bool there = JsonMembers.Scalar(socket, "exists") != "false";
-                return (isRootless, there && JsonMembers.Scalar(socket, "path") is { Length: > 0 } path ? (path.Contains("://", StringComparison.Ordinal) ? path : $"unix://{path}") : null, there);
+                return (isRootless, there && JsonMembers.Scalar(socket, "path") is { Length: > 0 } path ? (path.Contains("://", StringComparison.Ordinal) ? path : $"unix://{path}") : null,
+                    there, emulating);
             }
             catch (Exception failed) when (failed is TimeoutException or JsonException)
             {
-                return (false, null, true);
+                return (false, null, true, null);
             }
+        }
+
+        // Whether an Arm engine uses Rosetta, where it says: Podman's own command of its machine, Docker Desktop in its settings.
+        async Task<bool?> RosettaAsync()
+        {
+            if (podmanCli && !OperatingSystem.IsLinux())
+            {
+                try
+                {
+                    ChildResult said = await RunAsync(["machine", "inspect"], AskLimit);
+                    return said.Succeeded ? EngineEmulation.MachineRosetta(said.Output) : null;
+                }
+                catch (TimeoutException)
+                {
+                    return null;
+                }
+            }
+            if (!desktop)
+            {
+                return null;
+            }
+            foreach (string file in EngineEmulation.DockerDesktopSettings(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)))
+            {
+                try
+                {
+                    return EngineEmulation.DockerDesktopRosetta(File.ReadAllText(file));
+                }
+                catch (Exception unread) when (unread is IOException or UnauthorizedAccessException)
+                {
+                    continue;
+                }
+            }
+            return null;
         }
 
         async Task<string?> EndpointAsync()

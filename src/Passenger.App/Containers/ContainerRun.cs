@@ -284,6 +284,12 @@ public static class ContainerPlans
             notes.Add($"{configuration.Name} runs without {string.Join(", ", uncarried)} of its docker run arguments, which its container's compose service has no place for");
         }
         EngineState engineState = await engine.StateAsync(cancel: cancel);
+        // An image this engine cannot run would only stop as its container starts, and stop again at each restart.
+        if (engineState.Amd64 is Amd64Runs.Emulated or Amd64Runs.Never
+            && touched.Select(s => (Service: s, Is: BackingService.OfImage(model[s]?.Image)?.X64Only)).FirstOrDefault(s => s.Is is not null) is ({ } unrunnable, { } what))
+        {
+            throw new LaunchException($"{configuration.Name} cannot run {unrunnable}: {Refusals.X64OnlyUnrunnable(what, engineState)}");
+        }
         string? owner = OperatingSystem.IsLinux() ? DotnetProcesses.UserAndGroup : null;
         // As deployed, the image's own user could not read what is kept for the person alone (RunsAs).
         if (mode == ContainerMode.Images && RunsAs(engineState, owner) is { } user)

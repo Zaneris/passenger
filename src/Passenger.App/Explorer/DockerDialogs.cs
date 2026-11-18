@@ -67,16 +67,29 @@ public sealed class DockerSupportDialog : IdeWindow
     private static TextBlock Words(string text) => new() { Text = text, TextWrapping = TextWrapping.Wrap };
 }
 
-/// <summary>A project or a backing service Add > Docker Compose offers, checked while it is to be in compose.yaml.</summary>
+/// <summary>A project or a backing service Add > Docker Compose offers, checked while it is to be in compose.yaml; one the
+/// engine cannot run is greyed, unchecked.</summary>
 public sealed class ComposeChoice(string name, string detail, bool chosen, object value) : Observable, ICheckChoice
 {
     private bool isChosen = chosen;
+
+    private bool canChoose = true;
 
     public string Name { get; } = name;
 
     public string Detail { get; } = detail;
 
-    public bool CanChoose => true;
+    public bool CanChoose
+    {
+        get => canChoose;
+        set
+        {
+            if (Set(ref canChoose, value) && !value)
+            {
+                IsChosen = false;
+            }
+        }
+    }
 
     public object Value { get; } = value;
 
@@ -88,11 +101,13 @@ public sealed class ComposeChoice(string name, string detail, bool chosen, objec
 }
 
 /// <summary>Add > Docker Compose on the solution: its projects that run, each checked, a project with no Dockerfile given
-/// one by Docker Support as it is written; and the databases, caches and brokers their packages point to, each checked.
-/// Closes with true for OK, null when cancelled; what is checked is read from <see cref="Projects"/> and
-/// <see cref="Services"/>.</summary>
+/// one by Docker Support as it is written; and the databases, caches and brokers their packages point to, each checked,
+/// what the engine makes of one said under them (<see cref="Note"/>). Closes with true for OK, null when cancelled; what is
+/// checked is read from <see cref="Projects"/> and <see cref="Services"/>.</summary>
 public sealed class DockerComposeDialog : IdeWindow
 {
+    private readonly TextBlock note = MutedText.Wrapped(string.Empty);
+
     public DockerComposeDialog(string solution, IReadOnlyList<ComposeChoice> projects, IReadOnlyList<ComposeChoice> services)
     {
         Projects = projects;
@@ -105,7 +120,7 @@ public sealed class DockerComposeDialog : IdeWindow
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
         Button ok = DialogFooter.Default();
         ok.Click += (_, _) => Close((bool?)true);
-        Grid page = new() { [DialogFooter.InsetProperty] = true, RowDefinitions = new RowDefinitions("Auto,*,Auto,Auto") };
+        Grid page = new() { [DialogFooter.InsetProperty] = true, RowDefinitions = new RowDefinitions("Auto,*,Auto,Auto,Auto") };
         page.Children.Add(Heading($"The services of {solution}'s compose.yaml", 0));
         page.Children.Add(List(projects, 1));
         page.Children.Add(Heading("Beside them, from their packages", 2));
@@ -114,12 +129,27 @@ public sealed class DockerComposeDialog : IdeWindow
             : List(services, 3);
         Grid.SetRow(backing, 3);
         page.Children.Add(backing);
+        note.Margin = new Thickness(0, Gaps.Normal, 0, 0);
+        note.IsVisible = false;
+        Grid.SetRow(note, 4);
+        page.Children.Add(note);
         Content = DialogFooter.Page(page, DialogFooter.OkCancel(ok, () => Close(null)));
     }
 
     public IReadOnlyList<ComposeChoice> Projects { get; }
 
     public IReadOnlyList<ComposeChoice> Services { get; }
+
+    /// <summary>What is said under the backing services of one of them (SQL Server's image on an Arm engine); null for nothing.</summary>
+    public string? Note
+    {
+        get => note.IsVisible ? note.Text : null;
+        set
+        {
+            note.Text = value ?? string.Empty;
+            note.IsVisible = value is not null;
+        }
+    }
 
     private static TextBlock Heading(string text, int row)
     {

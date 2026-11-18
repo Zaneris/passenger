@@ -20,7 +20,7 @@ public interface ICheckChoice
 
 /// <summary>A row a person checks or clears (Add Reference's projects, Add Docker Compose's services, a nuget.config's
 /// feeds), as tall as every list's row (<see cref="ListRow.Height"/>): its box at its start, centred in it, then what
-/// it names.</summary>
+/// it names, and what it is in the rest of the row's width, cut short with an ellipsis where it has no more.</summary>
 public static class CheckRows
 {
     /// <summary>A row's box: centred in the row, as wide as its glyph.</summary>
@@ -35,7 +35,9 @@ public static class CheckRows
         check.Focusable = false;
         TextBlock name = new() { VerticalAlignment = VerticalAlignment.Center };
         TextBlock detail = new() { Classes = { StyleClasses.Muted }, FontSize = 12, Margin = new Thickness(Gaps.Wide, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
-        StackPanel row = new() { Orientation = Orientation.Horizontal, Height = ListRow.Height, Margin = new Thickness(Gaps.Small, 0), Children = { check, name, detail } };
+        DockPanel.SetDock(check, Dock.Left);
+        DockPanel.SetDock(name, Dock.Left);
+        DockPanel row = new() { Height = ListRow.Height, Margin = new Thickness(Gaps.Small, 0), Children = { check, name, detail } };
         bool setting = false;
         check.IsCheckedChanged += (_, _) =>
         {

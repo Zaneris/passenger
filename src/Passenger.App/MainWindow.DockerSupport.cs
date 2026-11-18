@@ -1,3 +1,5 @@
+using System.Runtime.InteropServices;
+using Passenger.App.Containers;
 using Passenger.App.Editors;
 using Passenger.App.Explorer;
 using Passenger.App.Workspace;
@@ -134,12 +136,32 @@ public partial class MainWindow
         List<ComposeChoice> services = [.. BackingService.Known
             .Select(k => (Service: k, Users: running.Where(p => BackingService.For(p.Packages.Select(q => q.Name)).Contains(k)).ToList()))
             .Where(k => k.Users.Count > 0)
-            .Select(k => new ComposeChoice(k.Service.Service,
-                $"{k.Service.Image}, for {string.Join(", ", k.Users.Select(u => Path.GetFileNameWithoutExtension(u.Path)))}{(k.Service.Note is { } note ? $" ({note})" : string.Empty)}",
+            .Select(k => new ComposeChoice(k.Service.Service, $"{k.Service.Image}, for {string.Join(", ", k.Users.Select(u => Path.GetFileNameWithoutExtension(u.Path)))}",
                 true, k.Service.Service))];
         DockerComposeDialog dialog = new(solution.Name, projects, services);
+        if (services.Select(c => (Choice: c, Service: BackingService.Known.First(k => k.Service == (string)c.Value))).FirstOrDefault(c => c.Service.X64Only is not null)
+            is ({ } x64, { } service))
+        {
+            Follow(Engine.Known);
+            IdeErrors.Observe(AskEngineAsync());
+        }
         IdeErrors.Observe(ApplyAsync());
         return dialog;
+
+        async Task AskEngineAsync()
+        {
+            // Asked again: its settings may have changed since, as a person turns Rosetta on for SQL Server.
+            EngineState state = await BackgroundWork.Run(() => Engine.StateAsync(again: true));
+            Follow(state);
+        }
+
+        // An image built for x86-64 alone, greyed where the engine cannot run it, its note said only on an Arm engine.
+        void Follow(EngineState? state)
+        {
+            x64.CanChoose = state?.Amd64 is not (Amd64Runs.Emulated or Amd64Runs.Never);
+            bool arm = state?.ServerArch is { } arch ? arch is "arm64" or "aarch64" : RuntimeInformation.OSArchitecture == Architecture.Arm64;
+            dialog.Note = !x64.CanChoose ? Refusals.X64OnlyUnrunnable(service.X64Only!, state!) : arm ? service.Note : null;
+        }
 
         async Task ApplyAsync()
         {

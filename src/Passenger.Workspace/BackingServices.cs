@@ -26,7 +26,8 @@ public sealed partial record BackingService(string Service, string Image, string
         new("sqlserver", "mcr.microsoft.com/mssql/server:2025-latest",
             ["Microsoft.Data.SqlClient", "System.Data.SqlClient", "Microsoft.EntityFrameworkCore.SqlServer", "Aspire.Microsoft.Data.SqlClient", "Aspire.Microsoft.EntityFrameworkCore.SqlServer"],
             ["sql", "mssql"], "[\"CMD-SHELL\", \"/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P \\\"$$MSSQL_SA_PASSWORD\\\" -C -Q 'SELECT 1' || exit 1\"]",
-            "SQL Server's image has no arm64 build: on an Arm machine (Apple silicon) it runs as amd64 under emulation", "Aspire.Hosting.SqlServer", "AddSqlServer"),
+            "SQL Server's image is built for x86-64 alone: on Apple silicon it runs only where the container engine translates it with Rosetta "
+            + "(Docker Desktop's Use Rosetta for x86_64/amd64 emulation, on the Apple Virtualization framework)", "Aspire.Hosting.SqlServer", "AddSqlServer"),
         new("redis", "redis:8", ["StackExchange.Redis", "Microsoft.Extensions.Caching.StackExchangeRedis", "Aspire.StackExchange.Redis"],
             ["redis", "cache"], "[\"CMD\", \"redis-cli\", \"ping\"]", null, "Aspire.Hosting.Redis", "AddRedis"),
         new("rabbitmq", "rabbitmq:4", ["RabbitMQ.Client", "Aspire.RabbitMQ.Client", "MassTransit.RabbitMQ"],
@@ -52,6 +53,10 @@ public sealed partial record BackingService(string Service, string Image, string
             .Select(c => (c.Name, c.Value, To: Reached(c.Name, c.Value, services)))
             .Where(c => c.To is not null).Select(c => new BackingConnection(c.Name, c.Value, c.To!))]);
     }
+
+    /// <summary>What it is, named where its image is built for x86-64 (amd64) alone, which an Arm engine runs only translated
+    /// or emulated: SQL Server; null for one built for Arm too.</summary>
+    public string? X64Only => Service == "sqlserver" ? "SQL Server" : null;
 
     /// <summary>Whether it keeps databases a connection string names (Postgres, SQL Server, Mongo), which an AppHost adds to its
     /// server one by one (AddDatabase), where the others are reached whole.</summary>

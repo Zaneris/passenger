@@ -980,6 +980,120 @@ public sealed class DockerFilesTests : IClassFixture<DockerFilesTests.Shop>
         }
     }
 
+    /// <summary>SQL Server's image is built for x86-64 alone. Add > Docker Compose offers it on an Arm engine that translates
+    /// x86-64 with Rosetta, saying under the backing services what it runs through there; on one without Rosetta (a stand-in
+    /// Podman whose machine uses none), it greys SQL Server, unchecked, saying it can't run on this Mac and why: an engine
+    /// running no x86-64 image, or (on a Mac, where Podman's machine says) one emulating x86-64 without Rosetta. A run of the
+    /// compose file it wrote is refused there in the same words, before anything is built or started.</summary>
+    [AvaloniaFact]
+    public void Add_docker_compose_says_what_sql_server_runs_through_on_an_arm_engine_and_greys_it_and_a_run_refuses_it_where_the_engine_has_no_rosetta()
+    {
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "The stand-in engine is a shell script");
+        string folder = Fresh("docker-x64-",
+            ("Orders.slnx", "<Solution>\n  <Project Path=\"Orders/Orders.csproj\" />\n</Solution>\n"),
+            ("nuget.config", Shop.NuGetConfig),
+            ("Orders/Orders.csproj", WebProject.Replace("</Project>", "  <ItemGroup>\n    <PackageReference Include=\"Microsoft.Data.SqlClient\" Version=\"6.0.2\" />\n  </ItemGroup>\n</Project>",
+                StringComparison.Ordinal)),
+            ("Orders/Program.cs", WebProgram));
+        string engine = TestFolders.Create("docker-x64-engine-");
+        string cli = StandInPodman(engine);
+        MainWindow window = new() { Width = 1200, Height = 800, Autosaves = false, StartsLanguageServer = false, Engine = new Passenger.App.Containers.ContainerEngine(cli: cli) };
+        window.Show();
+        window.OpenFolder(Path.Combine(folder, "Orders.slnx"));
+        Ui.Settle();
+        string mac = OperatingSystem.IsMacOS() ? "Mac" : "machine";
+        try
+        {
+            AwaitEvaluated(window, 1);
+            Machine(rosetta: true, emulates: true);
+            DockerComposeDialog dialog = Opened();
+            ComposeChoice sql = Assert.Single(dialog.Services);
+            Assert.Equal(("sqlserver", "mcr.microsoft.com/mssql/server:2025-latest, for Orders", true, true), (sql.Name, sql.Detail, sql.CanChoose, sql.IsChosen));
+            Assert.Equal("SQL Server's image is built for x86-64 alone: on Apple silicon it runs only where the container engine translates it with Rosetta "
+                + "(Docker Desktop's Use Rosetta for x86_64/amd64 emulation, on the Apple Virtualization framework)", dialog.Note);
+            Assert.True(dialog.GetVisualDescendants().OfType<TextBlock>().Any(t => t.Text == dialog.Note && t.IsEffectivelyVisible), "The dialog did not show its note on SQL Server");
+            dialog.Close(null);
+
+            // Podman's machine is asked of Rosetta on a Mac alone.
+            if (OperatingSystem.IsMacOS())
+            {
+                Machine(rosetta: false, emulates: true);
+                dialog = Opened();
+                Assert.Equal((false, "SQL Server can't run on this Mac: its image is built for x86-64 alone, and Podman emulates x86-64 here without Rosetta, "
+                    + "under which SQL Server fails as it starts. Run it on a Podman machine that uses Rosetta"), (Assert.Single(dialog.Services).CanChoose, dialog.Note));
+                dialog.Close(null);
+            }
+            Machine(rosetta: false, emulates: false);
+            dialog = Opened();
+            sql = Assert.Single(dialog.Services);
+            string never = $"SQL Server can't run on this {mac}: its image is built for x86-64 alone, and Podman runs no x86-64 image here. Run it on a Podman machine that uses Rosetta";
+            Assert.Equal((false, false, never), (sql.CanChoose, sql.IsChosen, dialog.Note));
+            dialog.Close(null);
+
+            Assert.Null(Ui.Await(window.AddDockerComposeAsync([Path.Combine(PathNames.Canonical(folder), "Orders", "Orders.csproj")], ["sqlserver"]), "compose.yaml added"));
+            Ui.WaitFor(() => window.Configurations.Any(c => c.Kind == Passenger.App.Run.RunKind.Compose),
+                () => $"compose.yaml's run configuration: [{string.Join(", ", window.Configurations.Select(c => c.Name))}]");
+            Assert.True(window.SelectConfiguration(window.Configurations.First(c => c.Kind == Passenger.App.Run.RunKind.Compose).Name));
+            string? refused = Ui.Await(window.RunAsync(), "the run of SQL Server to be refused", TimeSpan.FromMinutes(2));
+            Assert.Equal($"Compose: compose.yaml cannot run sqlserver: {never}", refused);
+            string[] asked = File.ReadAllLines(Path.Combine(engine, "calls"));
+            Assert.True(!asked.Any(c => c.Split(' ').Contains("up")),
+                $"A run refused for SQL Server still brought something up:\n{string.Join('\n', asked)}");
+        }
+        finally
+        {
+            window.Close();
+        }
+
+        // The machine the stand-in Podman says it has: whether it uses Rosetta, and whether its engine emulates x86-64.
+        void Machine(bool rosetta, bool emulates)
+        {
+            File.WriteAllText(Path.Combine(engine, "rosetta"), rosetta ? "true" : "false");
+            File.WriteAllText(Path.Combine(engine, "emulated"), emulates ? "\"linux/386\", \"linux/amd64\"" : "\"linux/riscv64\"");
+        }
+
+        DockerComposeDialog Opened()
+        {
+            Assert.NotNull(window.ShowDockerCompose());
+            Ui.Settle();
+            return DialogButtonsTests.Check(Assert.Single(window.OwnedWindows.OfType<DockerComposeDialog>()));
+        }
+    }
+
+    /// <summary>A docker that is Podman's own command, on an Arm machine of Podman's, answering as it does: its version, its
+    /// info (the emulated platforms its host lists, from <c>emulated</c> beside it), its machine's Rosetta (from
+    /// <c>rosetta</c>), Compose's version, and a compose file's model, SQL Server's service alone. Each command is
+    /// written to <c>calls</c>.</summary>
+    private static string StandInPodman(string folder)
+    {
+        const string Model = """{"name":"orders","services":{"sqlserver":{"image":"mcr.microsoft.com/mssql/server:2025-latest","platform":"linux/amd64","networks":{"default":null}}}}""";
+        string cli = Path.Combine(folder, "docker");
+        File.WriteAllText(cli, string.Join('\n', (string[])[
+            "#!/bin/sh",
+            "here=$(dirname \"$0\")",
+            "echo \"$*\" >> \"$here/calls\"",
+            "case \"$1\" in",
+            "  version) echo '{\"Client\":{\"Version\":\"5.8.0\",\"Os\":\"darwin\",\"OsArch\":\"darwin/arm64\"},\"Server\":{\"Version\":\"5.8.0\",\"Os\":\"linux\",\"OsArch\":\"linux/arm64\"}}' ;;",
+            """  info) printf '{"host":{"arch":"arm64","emulatedArchitectures":[%s],"security":{"rootless":false},"remoteSocket":{"exists":true,"path":"/nowhere/podman.sock"}}}\n' "$(cat "$here/emulated")" ;;""",
+            """  machine) printf '[{"Name":"podman-machine-default","Rosetta":%s,"State":"running"}]\n' "$(cat "$here/rosetta")" ;;""",
+            "  buildx) echo 'buildah 1.42.2' ;;",
+            "  compose)",
+            "    case \" $* \" in",
+            "      *' version '*) echo '{\"version\":\"2.39.0\"}' ;;",
+            $"      *' config '*) echo '{Model}' ;;",
+            "      *) exit 1 ;;",
+            "    esac ;;",
+            "  ps|images|volume|network) ;;",
+            "  *) exit 1 ;;",
+            "esac",
+            string.Empty]));
+        if (!OperatingSystem.IsWindows())
+        {
+            File.SetUnixFileMode(cli, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        }
+        return cli;
+    }
+
     /// <summary>The Postgres Add > Docker Compose writes keeps its data in its volume, mounted where its image keeps each
     /// major's data (/var/lib/postgresql from 18 on), so what was written there is there again once Stop has taken its
     /// container away and Run has made it anew. Skipped, saying why, without a Linux engine or Postgres's image, which it
