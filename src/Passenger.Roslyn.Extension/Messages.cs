@@ -88,6 +88,10 @@ public static class ExtensionMethods
     /// <summary>The later part of a completion list asked in parts, by the id its first part gave (<see cref="LaterAsked"/>):
     /// a list of the types and extension members of namespaces not imported, or null where none comes.</summary>
     public const string LaterCompletion = "passenger/laterCompletion";
+
+    /// <summary>textDocument/prepareCallHierarchy, its item made where the symbol is declared, so a use of it in another
+    /// document has one, and at a record's positional parameter the property it declares.</summary>
+    public const string CallHierarchy = "passenger/prepareCallHierarchy";
 }
 
 /// <summary>A C# completion list asked in two parts: what is in scope first, then the types and extension members of

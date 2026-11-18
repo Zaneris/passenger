@@ -761,9 +761,9 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         {
             throw new ArgumentException($"No direction '{direction}'; there are callers, callees, supertypes, subtypes and implementations", nameof(direction));
         }
-        HierarchyItem item = (calls ? await lsp.PrepareCallHierarchyAsync(offset) : await lsp.PrepareTypeHierarchyAsync(offset))
-            ?? throw new InvalidOperationException(await NoHierarchyAsync(lsp, offset, calls));
         string name = CSharp.AssistContext.NameAt(document.Text.Snapshot, offset);
+        HierarchyItem item = (calls ? await lsp.PrepareCallHierarchyAsync(offset) : await lsp.PrepareTypeHierarchyAsync(offset))
+            ?? throw new InvalidOperationException(await NoHierarchyAsync(lsp, offset, name, calls));
         if (!calls && !CSharp.RelatedSymbols.IsType(item, name))
         {
             // A member's own, as Base and Derived Symbols go: the server's type hierarchy at a member is its type's.
@@ -784,11 +784,12 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         return [.. found.Select((f, i) => new HierarchyEntry(f.Item.Name, f.Item.Detail, places[i].Path, places[i].Line, places[i].Column, places[i].Text))];
     }
 
-    /// <summary>Why the symbol at an offset has no hierarchy of the kind asked, naming the directions that follow it where
-    /// it has the other kind: a type no callers, a member in no type no supertypes.</summary>
-    private static async Task<string> NoHierarchyAsync(LspDocument lsp, int offset, bool calls)
+    /// <summary>Why the symbol at an offset, of the name there, has no hierarchy of the kind asked, naming the directions
+    /// that follow it where it has the other kind: a type no callers, a member in no type no supertypes. The server's type
+    /// hierarchy at a member is the type the member is in, so only a type of the name there is one.</summary>
+    private static async Task<string> NoHierarchyAsync(LspDocument lsp, int offset, string name, bool calls)
     {
-        if (calls && await lsp.PrepareTypeHierarchyAsync(offset) is { } type)
+        if (calls && await lsp.PrepareTypeHierarchyAsync(offset) is { } type && CSharp.RelatedSymbols.IsType(type, name))
         {
             return $"{type.Name} is a type, which has no callers or callees: direction supertypes, subtypes or implementations follows it";
         }

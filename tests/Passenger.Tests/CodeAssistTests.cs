@@ -3015,6 +3015,35 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
             : null;
     }
 
+    /// <summary>Call Hierarchy at a use of a method declared in another file shows it and its callers as at its declaration,
+    /// and at a record's positional property, from a use in another file or at its declaration, shows the property with the
+    /// members that read or set it, each at its first use, as for any property; what the property calls is nothing, as an
+    /// auto-property's.</summary>
+    [AvaloniaFact]
+    public void Call_hierarchy_at_a_use_in_another_file_and_at_a_records_positional_property_shows_its_callers()
+    {
+        MainWindow window = project.Open("Program.cs");
+        Ui.PlaceAfter(window.EditorArea.CodeEditor, "Helper.Tw");
+        Assert.Null(Ui.Await(window.ShowCallHierarchyAsync(), "the call hierarchy at a use of Twice"));
+        Assert.Equal(["Helper.Twice(int) Helper.cs:3", "  Program.Main() Program.cs:5"], Listed());
+
+        foreach ((string file, string at) in new[] { ("ReleaseReaders.cs", "release.Vers"), ("Releases.cs", "record Release(string Vers") })
+        {
+            window.OpenFile(project.PathOf(file));
+            Ui.Settle();
+            Ui.PlaceAfter(window.EditorArea.CodeEditor, at);
+            Assert.Null(Ui.Await(window.ShowCallHierarchyAsync(), $"the call hierarchy after {at}"));
+            Assert.Equal("Calls of Release.Version", window.Hierarchy.Title);
+            Assert.Equal(["Release.Version Releases.cs:1", "  ReleaseReaders.Of(Release) ReleaseReaders.cs:3", "  ReleaseReaders.Next(Release) ReleaseReaders.cs:5"], Listed());
+        }
+        Task callees = window.Hierarchy.ChooseAsync(first: false);
+        Ui.WaitFor(() => callees.IsCompleted, "what Release.Version calls");
+        Assert.Equal(["Release.Version Releases.cs:1"], Listed());
+        window.Close();
+
+        string[] Listed() => [.. window.Hierarchy.Rows.Select(r => $"{new string(' ', r.Depth * 2)}{r.Node.Item.Name} {Path.GetFileName(r.Node.Path)}:{r.Node.Where.Line + 1}")];
+    }
+
     /// <summary>Typing on into an open completion list narrows it off the UI thread in the rows the list has: as each letter
     /// narrows a class's members, the controls on screen are the ones that showed it before; and a key into a list of four
     /// times the items costs the UI thread what it does in the shorter one, counted rather than timed. The lists differ in
@@ -3563,6 +3592,9 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
             // Each one test's own, which no other file uses: written by the test, it cost the warm server before and after it.
             File.WriteAllText(PathOf("Pairs.cs"), "class Counter(int start)\n{\n    public int Start => start;\n}\n\nrecord Pair(int Left, int Right)\n{\n"
                 + "    public static int Sum(Pair pair) => pair.Left + new Counter(pair.Right).Start;\n}\n");
+            File.WriteAllText(PathOf("Releases.cs"), "record Release(string Version, int Downloads);\n");
+            File.WriteAllText(PathOf("ReleaseReaders.cs"), "static class ReleaseReaders\n{\n    public static string Of(Release release) => release.Version;\n\n"
+                + "    public static Release Next(Release release) => release with { Version = \"2.0\" };\n}\n");
             File.WriteAllText(PathOf("Mixed.cs"), "static class Mixed\n{\n    /* Pasted:\u2028one,\r\ntwo,\u0085three. */\n    public static int Value()\n    {\n        int total = 1;\n          return total;\n    }\n}\n");
             File.WriteAllText(PathOf("Halves.cs"), "static class Halves\n{\n    /* one,\r\ntwo,\r\nthree. */\n    public static int Value()\n    {\n        int total = 1;\n        return total;\n    }\n}\n");
             File.WriteAllText(PathOf("Average.cs"), "using System.Collections.Generic;\n\nstatic class Average\n{\n    public static double Of(IEnumerable<int> values)\n    {\n"

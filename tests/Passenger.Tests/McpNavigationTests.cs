@@ -788,6 +788,46 @@ public sealed class McpNavigationTests : McpRig, IClassFixture<RestoredFolders>
             $"{symbol.GetProperty("path").GetString()}:{symbol.GetProperty("line").GetInt32()}:{symbol.GetProperty("column").GetInt32()}");
     }
 
+    /// <summary>hierarchy of a record's positional property answers its callers, the members that read or set it, each at
+    /// its first use, from a use of it in another file, by name and at its declaration, as for any property, where it
+    /// answered that the record was a type with no callers; its callees none, as an auto-property's. A method asked about at
+    /// a use in another file answers as at its declaration, its callees the positional properties it reads; the record's
+    /// parameter read in its own body is no member, and said to be none.</summary>
+    [Fact]
+    public async Task An_agent_gets_a_records_positional_propertys_callers_from_a_use_by_name_and_at_its_declaration()
+    {
+        await TakeFolderAsync();
+        Write("Feeds.cs", Feeds);
+        Write("Readers.cs", Readers);
+        Write("Both.cs", "static class Both\n{\n    public static string Of(ReleaseFeed feed, Spot spot) => Readers.Of(feed, spot) + Readers.Of(feed, spot);\n}\n");
+        await using McpClient client = await Start(["--mcp", Folder]);
+
+        foreach (Dictionary<string, object?> asked in new Dictionary<string, object?>[]
+        {
+            new() { ["path"] = "Readers.cs", ["line"] = 3, ["column"] = 66 },
+            new() { ["symbol"] = "ReleaseFeed.Latest" },
+            new() { ["path"] = "Feeds.cs", ["line"] = 1, ["column"] = 41 },
+        })
+        {
+            Assert.Equal(["Readers.Of(ReleaseFeed, Spot) Readers.cs:3:66", "Readers.Next(ReleaseFeed) Readers.cs:5:69"], await CallsAsync(asked));
+            Assert.Empty(await CallsAsync(new(asked) { ["direction"] = "callees" }));
+        }
+        Assert.Equal(["Readers.Of(ReleaseFeed, Spot) Readers.cs:3:93"], await CallsAsync(new() { ["symbol"] = "Spot.Down" }));
+
+        Dictionary<string, object?> ofUsed = new() { ["path"] = "Both.cs", ["line"] = 3, ["column"] = 69 };
+        Assert.Equal(["Both.Of(ReleaseFeed, Spot) Both.cs:3:69"], await CallsAsync(ofUsed));
+        Assert.Equal(["ReleaseFeed.Latest Feeds.cs:1:41", "ReleaseFeed.Count Feeds.cs:1:53", "Spot.Down Feeds.cs:6:52"],
+            await CallsAsync(new(ofUsed) { ["direction"] = "callees" }));
+
+        CallToolResult parameter = await Result(client, McpTools.Hierarchy, new() { ["path"] = "Feeds.cs", ["line"] = 3, ["column"] = 36 });
+        Assert.True(parameter.IsError == true && Text(parameter).Contains("No method, property or event there", StringComparison.Ordinal),
+            $"hierarchy at the record's parameter read in its own body answered: {Text(parameter)}");
+
+        async Task<string[]> CallsAsync(Dictionary<string, object?> arguments) =>
+            [.. (await Call(client, McpTools.Hierarchy, arguments)).EnumerateArray()
+                .Select(c => $"{c.GetProperty("name").GetString()} {c.GetProperty("path").GetString()}:{c.GetProperty("line").GetInt32()}:{c.GetProperty("column").GetInt32()}")];
+    }
+
     /// <summary>rename of a type answers once Git's index holds its file's move: git status, run the moment the answer comes,
     /// as an agent's shell runs it, shows the file renamed, never the old one deleted and the new one untracked.</summary>
     [Fact]

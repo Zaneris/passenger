@@ -1044,9 +1044,13 @@ public sealed class LspDocument : IDisposable
         return await Server.RequestAsync<SemanticTokens>(ExtensionMethods.LooseColours, parameters, cancel) ?? tokens;
     }
 
-    /// <summary>The symbol at an offset as a call hierarchy's root, if it is one that calls or is called.</summary>
-    public Task<HierarchyItem?> PrepareCallHierarchyAsync(int offset, CancellationToken cancel = default) =>
-        PrepareCallHierarchyAsync(Server, Identifier, PositionOf(offset), cancel);
+    /// <summary>The symbol at an offset as a call hierarchy's root, if it is one that calls or is called: from a use of a
+    /// member declared in another file and at a record's positional parameter too where Passenger's extension answers
+    /// (<see cref="ExtensionMethods.CallHierarchy"/>), as the server's own makes an item only for what the file declares.</summary>
+    public async Task<HierarchyItem?> PrepareCallHierarchyAsync(int offset, CancellationToken cancel = default) =>
+        Server.ExtensionProblem is null && !IsRazor
+            ? (await Server.RequestAsync<List<HierarchyItem>>(ExtensionMethods.CallHierarchy, new TextDocumentPositionParams(Identifier, PositionOf(offset)), cancel))?.FirstOrDefault()
+            : await PrepareCallHierarchyAsync(Server, Identifier, PositionOf(offset), cancel);
 
     internal static async Task<HierarchyItem?> PrepareCallHierarchyAsync(LanguageServer server, TextDocumentIdentifier document, LspPosition at, CancellationToken cancel) =>
         (await server.RequestAsync<List<HierarchyItem>>(LspMethods.PrepareCallHierarchy, new TextDocumentPositionParams(document, at), cancel).ConfigureAwait(false))?.FirstOrDefault();
