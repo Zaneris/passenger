@@ -1,6 +1,7 @@
 using System.Reflection.PortableExecutable;
 using System.Text;
 using Passenger.Core;
+using Passenger.Host;
 using Passenger.Packages;
 using Passenger.Workspace;
 
@@ -36,6 +37,9 @@ public static class DesktopPrograms
 
     /// <summary>The packages of an Avalonia head that runs in a browser or on a device, where no inspector reaches it.</summary>
     private static readonly string[] AvaloniaElsewhere = ["Avalonia.Browser", "Avalonia.Android", "Avalonia.iOS"];
+
+    /// <summary>The packages that bring Avalonia's desktop platforms (X11, Win32, macOS), a MAUI app's Avalonia head's too.</summary>
+    private static readonly string[] AvaloniaDesktop = ["Avalonia.Desktop", "Avalonia.Controls.Maui.Desktop"];
 
     /// <summary>What a <c>dotnet run</c> of a project no window has loaded is, nothing having been read of it.</summary>
     public const string UnreadProject = "a project not loaded here, so of no known kind";
@@ -160,6 +164,11 @@ public static class DesktopPrograms
     /// say: an Avalonia or WPF app of this computer's desktop (<see cref="TakesXaml"/>), or a .NET MAUI app.</summary>
     public static bool Inspected(ProjectModel project, IReadOnlyList<ProjectModel> projects) =>
         TakesXaml(project, projects) || OfProject(project, projects) == Maui;
+
+    /// <summary>Whether a framework's own packages, as evaluated, bring Avalonia's desktop platforms (<see cref="AvaloniaDesktop"/>),
+    /// so its app runs on this computer's desktop.</summary>
+    public static bool TakesAvaloniaDesktop(FrameworkDependencies framework) =>
+        framework.Packages.Any(p => AvaloniaDesktop.Contains(p.Name, StringComparer.OrdinalIgnoreCase));
 
     /// <summary>Whether a restore resolved Avalonia for this computer's desktop, whichever package or project brought it.</summary>
     public static bool RestoredXaml(RestoredVersions restored) => restored.Holds(AvaloniaPackage) && !AvaloniaElsewhere.Any(restored.Holds);

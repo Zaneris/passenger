@@ -79,25 +79,26 @@ public static partial class DeviceTargets
         _ => null,
     };
 
-    /// <summary>The project's framework for a platform, the first of them in its order (for <see cref="TargetPlatform.Desktop"/>,
-    /// the first of no platform); null where it targets none.</summary>
-    public static string? FrameworkFor(IEnumerable<string> frameworks, TargetPlatform platform) => platform == TargetPlatform.Desktop
-        ? frameworks.FirstOrDefault(IsDesktopFramework)
-        : frameworks.FirstOrDefault(f => PlatformOf(f) == platform);
+    /// <summary>The project's framework for a platform its frameworks name, the first of them in its order; null where it
+    /// targets none.</summary>
+    public static string? FrameworkFor(IEnumerable<string> frameworks, TargetPlatform platform) =>
+        frameworks.FirstOrDefault(f => PlatformOf(f) == platform);
 
-    /// <summary>The packages that carry Avalonia's desktop platforms (X11, Win32, macOS), whose framework's app is a desktop app.</summary>
-    private static readonly HashSet<string> DesktopPackages = new(StringComparer.OrdinalIgnoreCase) { "Avalonia.Desktop", "Avalonia.Controls.Maui.Desktop" };
+    /// <summary>The framework a project builds for a target's platform: its desktop head's for
+    /// <see cref="TargetPlatform.Desktop"/> (<see cref="DesktopHead"/>), else its first naming the platform; null where it
+    /// has none.</summary>
+    public static string? FrameworkFor(ProjectModel project, TargetPlatform platform) =>
+        platform == TargetPlatform.Desktop ? DesktopHead(project) : FrameworkFor(project.TargetFrameworks, platform);
 
-    /// <summary>The framework of a project's desktop head beside its device heads: one of no platform whose packages carry
-    /// Avalonia's desktop platforms (a MAUI app's Avalonia head, Avalonia.Controls.Maui.Desktop); null for none, as for a
-    /// framework of no platform kept for tests or a library, or a project of no device head.</summary>
+    /// <summary>The framework of a project's desktop head beside its device heads: its first .NET framework of no platform
+    /// whose own packages bring Avalonia's desktop platforms (<see cref="Run.DesktopPrograms.TakesAvaloniaDesktop"/>), as a
+    /// MAUI app's Avalonia head's do; null for none, as for one kept for tests or a library, or a project of no device
+    /// head.</summary>
     public static string? DesktopHead(ProjectModel project) =>
         PlatformsOf(project.TargetFrameworks).Count == 0 ? null
-            : project.Evaluated?.Dependencies.FirstOrDefault(d => d.Framework is { } framework && IsDesktopFramework(framework)
-                && project.TargetFrameworks.Contains(framework, StringComparer.OrdinalIgnoreCase) && d.Packages.Any(p => DesktopPackages.Contains(p.Name)))?.Framework;
-
-    /// <summary>A .NET framework of no platform, which a desktop app runs on wherever .NET does.</summary>
-    private static bool IsDesktopFramework(string framework) => FrameworkNames.PlatformOf(framework) is null && !FrameworkNames.IsNetFramework(framework);
+            : project.TargetFrameworks.FirstOrDefault(framework => FrameworkNames.PlatformOf(framework) is null && FrameworkNames.VersionOf(framework) is not null
+                && project.Evaluated?.Dependencies.FirstOrDefault(d => string.Equals(d.Framework, framework, StringComparison.OrdinalIgnoreCase)) is { } dependencies
+                && Run.DesktopPrograms.TakesAvaloniaDesktop(dependencies));
 
     /// <summary>The platforms a project's frameworks run on elsewhere, in its order, each once.</summary>
     public static IReadOnlyList<TargetPlatform> PlatformsOf(IEnumerable<string> frameworks) =>

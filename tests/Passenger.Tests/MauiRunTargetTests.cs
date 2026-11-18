@@ -12,8 +12,9 @@ namespace Passenger.Tests;
 /// template's Windows profile, and the target chosen beside it says where it runs. An Android emulator's plan builds
 /// the app's Android head with no Windows profile; on Windows, Windows chosen from the widget's menu runs the template's
 /// own profile on this machine, as it does with nothing chosen; on a Mac, nothing chosen runs its Mac Catalyst head on
-/// this machine, with no Windows profile; on Linux a target must be chosen. An app's Avalonia desktop head runs on this machine with nothing chosen, on every system. Plans are worked out with no build, so no
-/// emulator is needed; where MSBuild cannot say what a head builds for want of MAUI's workloads, it skips there, saying so.</summary>
+/// this machine, with no Windows profile; on Linux a target must be chosen. An app's Avalonia desktop head runs on this
+/// machine with nothing chosen, on every system. Plans are worked out with no build, so no emulator is needed; where
+/// MSBuild cannot say what a head builds for want of MAUI's workloads, it skips there, saying so.</summary>
 public sealed class MauiRunTargetTests
 {
     private static readonly TimeSpan Slow = TimeSpan.FromMinutes(2);
@@ -124,6 +125,7 @@ public sealed class MauiRunTargetTests
             Assert.Null(here.Device);
             Assert.Null(here.MacCatalyst);
             Assert.Equal("net11.0", here.Framework);
+            Assert.Equal(DesktopPrograms.Avalonia, here.DesktopProject);
             Assert.Equal(desktop.Shown, window.FindControl<TextBlock>("RunTargetName")!.Text);
 
             window.ChooseRunTarget(app, new DeviceTarget(TargetPlatform.Android, "emulator-5554", "Pixel 9", TargetKind.Emulator, true) { Avd = "Pixel_9" });
@@ -203,8 +205,8 @@ public sealed class MauiRunTargetTests
           </PropertyGroup>
           <ItemGroup>
             <PackageReference Include="Microsoft.Maui.Controls" Version="$(MauiVersion)" />
-            <PackageReference Include="Avalonia.Controls.Maui" Version="11.0.0-preview.6" />
-            <PackageReference Include="Avalonia.Controls.Maui.Desktop" Version="11.0.0-preview.6" Condition="'$(TargetFramework)' == 'net11.0'" />
+            <PackageReference Include="Avalonia.Controls.Maui" Version="11.0.0-rc.3.26301.1434" />
+            <PackageReference Include="Avalonia.Controls.Maui.Desktop" Version="11.0.0-rc.3.26301.1434" Condition="'$(TargetFramework)' == 'net11.0'" />
           </ItemGroup>
         </Project>
         """;

@@ -12,9 +12,9 @@ namespace Passenger.App;
 /// <summary>Where the chosen configuration's app runs: for a project whose frameworks run on devices, emulators or
 /// simulators, the widget beside the run configuration's names the target chosen, and its action lists what the
 /// project's platforms run on as their workloads list it (Android's devices and emulators, iOS's simulators on a Mac,
-/// those not running too, which Run and Debug start), with this machine for a platform whose apps run here (Windows') and for a desktop head (a MAUI app's Avalonia head, Linux's too). The choice is the project's,
-/// kept with the folder, and decides the framework built and the launch profile tied to its platform; one no longer
-/// listed is said.</summary>
+/// those not running too, which Run and Debug start), with this machine for a platform whose apps run here (Windows')
+/// and for a desktop head (a MAUI app's Avalonia head, Linux's too). The choice is the project's, kept with the folder,
+/// and decides the framework built and the launch profile tied to its platform; one no longer listed is said.</summary>
 public partial class MainWindow
 {
     /// <summary>Why the last listing of the project's targets found none, where it could not list them.</summary>
@@ -195,7 +195,7 @@ public partial class MainWindow
     {
         UiThread.Check();
         session.Targets.Choose(project, target);
-        if (DeviceTargets.FrameworkFor(project.TargetFrameworks, target.Platform) is { } framework
+        if (DeviceTargets.FrameworkFor(project, target.Platform) is { } framework
             && TargetFrameworkChoices.Offered(project).Contains(framework, StringComparer.OrdinalIgnoreCase))
         {
             session.Frameworks.Choose(project, framework);

@@ -329,12 +329,12 @@ public sealed partial record LaunchPlan
             ?? throw new LaunchException($"{configuration.Name} cannot run: its project {System.IO.Path.GetFileName(configuration.Project)} is not loaded in the open folder");
         // The target chosen to run on decides the framework built: its platform's, unless the configuration names one of it.
         Devices.KeptTarget? device = Devices.DeviceTargets.PlatformsOf(project.TargetFrameworks).Count > 0 ? targets?.Invoke(project) : null;
-        if (device is not null && Devices.DeviceTargets.FrameworkFor(project.TargetFrameworks, device.Platform) is null)
+        if (device is not null && Devices.DeviceTargets.FrameworkFor(project, device.Platform) is null)
         {
             device = null;
         }
         string? framework = device is not null && Devices.DeviceTargets.PlatformOf(configuration.Framework) != device.Platform && project.TargetFrameworks.Count > 1
-            ? Devices.DeviceTargets.FrameworkFor(project.TargetFrameworks, device.Platform)
+            ? Devices.DeviceTargets.FrameworkFor(project, device.Platform)
             : FrameworkOf(configuration.Framework, project);
         Devices.TargetPlatform? platform = device?.Platform ?? Devices.DeviceTargets.PlatformOf(framework ?? project.TargetFrameworks.FirstOrDefault() ?? string.Empty);
         if (device is null && configuration.Program.Length == 0 && platform is Devices.TargetPlatform.Android or Devices.TargetPlatform.Ios)

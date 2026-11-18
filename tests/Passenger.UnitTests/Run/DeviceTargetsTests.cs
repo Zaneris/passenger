@@ -316,13 +316,20 @@ public class DeviceTargetsTests
         Assert.Equal("Desktop (this machine)", here.Shown);
         Assert.Equal(TargetKind.ThisMachine, here.Kind);
         Assert.Equal(KeptTarget.Of(here), DeviceTargets.UnchosenDesktop(maui));
-        Assert.Equal("net11.0", DeviceTargets.FrameworkFor(maui.TargetFrameworks, TargetPlatform.Desktop));
+        Assert.Equal("net11.0", DeviceTargets.FrameworkFor(maui, TargetPlatform.Desktop));
         Assert.Equal("net11.0", DeviceTargets.DesktopHead(App(["net11.0-android", "net11.0"], ("net11.0", ["Avalonia.Desktop"]))));
+        // The head is the framework carrying the packages, not the first of no platform.
+        ProjectModel later = App(["net10.0", "net11.0", "net11.0-android"], ("net10.0", []), ("net11.0", ["Avalonia.Desktop"]));
+        Assert.Equal("net11.0", DeviceTargets.FrameworkFor(later, TargetPlatform.Desktop));
         // A framework of no platform kept for tests or a library is no head, nor is a desktop app with no device head.
-        Assert.Null(DeviceTargets.DesktopHead(App(["net11.0", "net11.0-android"], ("net11.0", ["Microsoft.Maui.Controls"]))));
-        Assert.Null(DeviceTargets.UnchosenDesktop(App(["net11.0", "net11.0-android"], ("net11.0", ["Microsoft.Maui.Controls"]))));
+        ProjectModel tested = App(["net11.0", "net11.0-android"], ("net11.0", ["Microsoft.Maui.Controls"]));
+        Assert.Null(DeviceTargets.DesktopHead(tested));
+        Assert.Null(DeviceTargets.UnchosenDesktop(tested));
+        Assert.Null(DeviceTargets.FrameworkFor(tested, TargetPlatform.Desktop));
         Assert.Null(DeviceTargets.DesktopHead(App(["net11.0"], ("net11.0", ["Avalonia.Desktop"]))));
         Assert.Null(DeviceTargets.DesktopHead(App(["net48", "net11.0-android"], ("net48", ["Avalonia.Desktop"]))));
+        Assert.Null(DeviceTargets.DesktopHead(App(["netstandard2.0", "net11.0-android"], ("netstandard2.0", ["Avalonia.Desktop"]))));
+        Assert.Equal("net11.0-android", DeviceTargets.FrameworkFor(maui, TargetPlatform.Android));
     }
 
     [Fact]
