@@ -382,6 +382,7 @@ public sealed class DebugAdapter
                 Unseen = arguments.Unseen ?? false,
             };
             debugger.Present(arguments.Presentations ?? []);
+            debugger.Carry(arguments.Carried ?? []);
             await Locked(() => debugger.Launch(launch, arguments.JustMyCode ?? true));
         }
         catch (Exception error)
@@ -396,6 +397,7 @@ public sealed class DebugAdapter
         {
             bool justMyCode = arguments.JustMyCode ?? true;
             debugger.Present(arguments.Presentations ?? []);
+            debugger.Carry(arguments.Carried ?? []);
             if (arguments.Relay is { } relay)
             {
                 await Locked(() => debugger.AttachThroughRelay(relay, arguments.RelayModules, arguments.RelayToken, justMyCode, arguments.HotReload ?? false));

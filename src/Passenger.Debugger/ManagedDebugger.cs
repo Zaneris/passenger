@@ -62,6 +62,14 @@ public partial class ManagedDebugger
     /// attached to: only such a program ends with a client that goes without disconnecting (<see cref="AbandonAsync"/>).</summary>
     private bool _launched;
     private bool _justMyCode;
+
+    /// <summary>The assemblies the client carries into the program, by name, never the user's code (<see cref="Carry"/>).</summary>
+    private HashSet<string> _carried = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>Takes the names of the assemblies the client carries into the program for this session, before it launches
+    /// or attaches: their code, however built, is never the user's, so Just My Code steps through it and over it.</summary>
+    public void Carry(IReadOnlyList<string> assemblies) => _carried = new HashSet<string>(assemblies, StringComparer.OrdinalIgnoreCase);
+
     private bool _stopAtEntry;
     private EntryBreakpoint? _entryBreakpoint;
     private sealed record EntryBreakpoint(ICorDebugFunctionBreakpoint CorBreakpoint, ModuleInfo Module, int MethodToken, int IlOffset);

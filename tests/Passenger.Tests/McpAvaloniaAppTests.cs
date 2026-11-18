@@ -239,6 +239,41 @@ public sealed class McpAvaloniaAppTests : McpRig, IClassFixture<AgentAppFolder>
         await Call(client, McpTools.Stop);
     }
 
+    /// <summary>An agent stopped in the app's click handler by its breakpoint steps over, deletes the breakpoint and steps on
+    /// out of the handler: the app runs on, the click's handling done, never stopped in Passenger's inspector, whose code made
+    /// the click and which is never the app's own code to Just My Code (#1891).</summary>
+    [Fact]
+    public async Task An_agent_stepping_out_of_a_click_handler_it_clicked_into_is_never_stopped_in_passengers_inspector()
+    {
+        await using McpClient client = await Start(["--mcp", appFolder], languageServer: false);
+        JsonElement built = await Call(client, McpTools.Build);
+        Assert.True(built.GetProperty("succeeded").GetBoolean(), $"The app did not build: {built}");
+        JsonElement started = await Call(client, McpTools.DebugStart, new() { ["waitSeconds"] = 3600 });
+        Assert.True(started.GetProperty("status").GetString()!.Contains("its UI up", StringComparison.Ordinal), $"debug_start came back from an app that never stops saying: {started}");
+        int counted = Debuggees.Line("AgentApp", "MainWindow.axaml.cs", "clicks++;");
+        await Call(client, McpTools.BreakpointSet, new() { ["path"] = "MainWindow.axaml.cs", ["line"] = counted });
+        string clicked = Text(await Call(client, McpTools.AppClick, new() { ["control"] = "#Count" }));
+        Assert.Contains($"and that paused the program (breakpoint) at MainWindow.axaml.cs:{counted}:", clicked, StringComparison.Ordinal);
+        JsonElement stepped = await Call(client, McpTools.DebugStep);
+        Assert.StartsWith($"MainWindow.axaml.cs:{counted + 1}:", stepped.GetProperty("location").GetString(), StringComparison.Ordinal);
+        await Call(client, McpTools.BreakpointSet, new() { ["path"] = "MainWindow.axaml.cs", ["line"] = counted, ["remove"] = true });
+
+        // To the handler's closing brace, then out of it.
+        stepped = await Call(client, McpTools.DebugStep);
+        Assert.StartsWith($"MainWindow.axaml.cs:{counted + 2}:", stepped.GetProperty("location").GetString(), StringComparison.Ordinal);
+        stepped = await Call(client, McpTools.DebugStep, new() { ["waitSeconds"] = 2 });
+        Assert.True(stepped.GetProperty("state").GetString() == "running", $"The step out of the click handler stopped the app again: {stepped}\n{StepsLogged()}");
+        Assert.Contains("\"Clicked once\"", Text(await Call(client, McpTools.AppTree, new() { ["control"] = "#Counter" })), StringComparison.Ordinal);
+        await Call(client, McpTools.Stop);
+    }
+
+    /// <summary>The engine's log from the last step it was asked for on: what its steppers did.</summary>
+    private string StepsLogged()
+    {
+        string log = File.Exists(EngineLog) ? File.ReadAllText(EngineLog) : "";
+        return $"The engine's log from the last step on:\n{log[Math.Max(0, log.LastIndexOf("StepOver on thread", StringComparison.Ordinal))..]}";
+    }
+
     /// <summary>On the person's window an agent asks before its first click or key in their app, and apart before its first
     /// in Passenger itself, which the app's Allow for This Session never covers; once allowed both still never answers the
     /// questions Passenger asks the person for it, nor reaches Settings; the window,

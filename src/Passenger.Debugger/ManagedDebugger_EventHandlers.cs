@@ -161,8 +161,9 @@ public partial class ManagedDebugger
             return;
         }
 
-        // Unoptimized code (a Debug build's, Edit and Continue's) is the user's; emitted code, with no source, never.
-        bool isUserCode = !emitted && corModule.JITCompilerFlags is CorDebugJITCompilerFlags.CORDEBUG_JIT_DISABLE_OPTIMIZATION or CorDebugJITCompilerFlags.CORDEBUG_JIT_ENABLE_ENC;
+        // Unoptimized code (a Debug build's, Edit and Continue's) is the user's; emitted code, with no source, never, nor what the client carries in.
+        bool isUserCode = !emitted && !(AssemblyNameOf(metadataReader) is { } assembly && _carried.Contains(assembly))
+            && corModule.JITCompilerFlags is CorDebugJITCompilerFlags.CORDEBUG_JIT_DISABLE_OPTIMIZATION or CorDebugJITCompilerFlags.CORDEBUG_JIT_ENABLE_ENC;
         if (_justMyCode && isUserCode && metadataReader.HasSymbols)
         {
             // The module is the user's, but not the methods its own code says are not: steppers pass over them.

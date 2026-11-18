@@ -376,6 +376,11 @@ public sealed class DebugSession
     /// <summary>The adapter's process id.</summary>
     public int AdapterProcessId => adapter.Id;
 
+    /// <summary>What Passenger carries into a program it debugs, by assembly name: its inspectors and its Hot Reload and
+    /// test hooks, which the debugger never takes for the user's code, however they were built.</summary>
+    private static IReadOnlyList<string> Carried { get; } = [.. ((string[])[LiveTree.LiveApp.InspectorPath, LiveTree.LiveApp.WpfInspectorPath,
+        LiveTree.LiveApp.MauiInspectorPath, UpdateHandlerHook.HookPath, Testing.TestFrames.HookPath]).Select(path => Path.GetFileNameWithoutExtension(path))];
+
     /// <summary>Where the adapter keeps symbols it decompiles for assemblies that ship none, and prunes them as it starts:
     /// under the state folder's cache/.</summary>
     public static string SymbolCache => Path.Combine(Passenger.App.State.StateStore.DefaultRoot, "cache", "symbols");
@@ -403,6 +408,7 @@ public sealed class DebugSession
             StopAtEntry = false,
             HotReload = hotReload,
             Presentations = Godot.GodotValues.Presentations,
+            Carried = Carried,
             Unseen = plan.OnOwnDesktop ? true : null,
         }, breakpoints, lines, log, output, runInTerminal, columns, starting, elsewhere, place);
     }
@@ -416,7 +422,10 @@ public sealed class DebugSession
         Func<string, int, string?, int?, int?>? columns = null, Action<DebugSession>? starting = null, bool hotReload = false, bool elsewhere = false, AdapterPlace? place = null,
         bool quiet = false) =>
         StartAsync(OwnAdapter(place, elsewhere), place is null ? $"process {processId}" : $"process {processId} in {place.Where}", DapCommands.Attach,
-            new AttachArguments { ProcessId = processId, JustMyCode = true, HotReload = hotReload ? true : null, Presentations = Godot.GodotValues.Presentations },
+            new AttachArguments
+            {
+                ProcessId = processId, JustMyCode = true, HotReload = hotReload ? true : null, Presentations = Godot.GodotValues.Presentations, Carried = Carried,
+            },
             breakpoints, lines, log, output, null, columns, starting, elsewhere, place, quiet);
 
     /// <summary>Starts the adapter and attaches it to an app on a device through Passenger's relay in it, the app's start
@@ -429,7 +438,7 @@ public sealed class DebugSession
             new AttachArguments
             {
                 Relay = relay.Address, RelayModules = relay.Modules, RelayToken = relay.Token, JustMyCode = true, HotReload = hotReload ? true : null,
-                Presentations = Godot.GodotValues.Presentations,
+                Presentations = Godot.GodotValues.Presentations, Carried = Carried,
             },
             breakpoints, lines, log, output, null, columns, starting, elsewhere: true, place: null, quiet);
 

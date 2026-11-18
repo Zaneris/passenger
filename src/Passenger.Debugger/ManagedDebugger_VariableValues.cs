@@ -234,8 +234,10 @@ public partial class ManagedDebugger
         return ((ICorDebugClass2)module.GetClassFromToken(definition)).GetParameterizedType(valueType ? CorElementType.VALUETYPE : CorElementType.CLASS, arguments.Length, arguments);
     }
 
-    private static string? AssemblyNameOf(ModuleInfo module) =>
-        module.MetadataReader.PeMetadataReader is { IsAssembly: true } reader ? reader.GetString(reader.GetAssemblyDefinition().Name) : null;
+    private static string? AssemblyNameOf(ModuleInfo module) => AssemblyNameOf(module.MetadataReader);
+
+    private static string? AssemblyNameOf(ModuleMetadataReader metadata) =>
+        metadata.PeMetadataReader is { IsAssembly: true } reader ? reader.GetString(reader.GetAssemblyDefinition().Name) : null;
 
     /// <summary>The [DebuggerTypeProxy] made for a value, or null when its constructor throws, so the value opens into
     /// its own members rather than the exception's.</summary>
