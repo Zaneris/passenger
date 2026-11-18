@@ -1529,11 +1529,92 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
         }
     }
 
+    /// <summary>Every control of a diff a person presses that shows no words of its own says what it does under the pointer
+    /// and to a screen reader (<see cref="ToolButtons.Tip"/>): the arrow of each change that rolls it back, the box that
+    /// takes it into the commit, the toolbar's and Find's. In the Commit window's diff, the pointer resting on the first
+    /// change's arrow and its box shows their tips; a bare icon button put among them is found by the rule.</summary>
+    [AvaloniaFact]
+    public void Every_icon_control_in_a_diff_says_what_it_does_under_the_pointer_and_to_a_screen_reader()
+    {
+        string folder = TestFolders.Create("diff-tips-");
+        string notes = Path.Combine(Passenger.Core.PathNames.Canonical(folder), "Notes.txt");
+        TestFolders.Prepare(() =>
+        {
+            File.WriteAllText(notes, "one\ntwo\nthree\nfour\nfive\n");
+            TestGit.Init(folder);
+            File.WriteAllText(notes, "ONE\ntwo\nthree\nfour\nFIVE\n");
+        }, folder);
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        try
+        {
+            // Open, so its diff can roll its changes back.
+            window.OpenFile(notes);
+            window.Perform(AppActions.ShowCommit);
+            Ui.Landed(() => window.CommitView.Rows.OfType<Passenger.App.ToolWindows.CommitRow>().Any(), "the changed file");
+            Passenger.App.Vcs.IDiffHost host = Ui.Landed(window.ShowDiffAsync(notes), "the diff")!;
+            Passenger.App.Vcs.DiffView view = OpenDiffs.ViewOf(host);
+            view.ShowFind(replace: false);
+            Ui.Settle();
+            Button[] icons = [.. view.GetVisualDescendants().OfType<Button>().Where(b => b.IsEffectivelyVisible && b.TemplatedParent is null && !Worded(b))];
+            Assert.True(icons.Length >= 8, $"Only {icons.Length} controls of no words were found in the diff: {string.Join(", ", icons.Select(b => ToolTip.GetTip(b)))}");
+            List<string> untold = Untold(view);
+            Assert.True(untold.Count == 0, $"{untold.Count} controls of the diff say nothing of what they do: give each ToolButtons.Tip:\n{string.Join("\n", untold)}");
+
+            Button arrow = icons.Single(b => ToolTip.GetTip(b) as string == "Roll back change 1 to HEAD");
+            CheckBox box = icons.OfType<CheckBox>().Single(b => ToolTip.GetTip(b) as string == "Include change 1 in commit");
+            Assert.Equal("Roll back change 1 to HEAD", Avalonia.Automation.Peers.ControlAutomationPeer.CreatePeerForElement(arrow).GetName());
+            Assert.Equal("Include change 1 in commit", Avalonia.Automation.Peers.ControlAutomationPeer.CreatePeerForElement(box).GetName());
+            TopLevel top = TopLevel.GetTopLevel(view)!;
+            Rest(top, arrow, "Roll back change 1 to HEAD");
+            Rest(top, box, "Include change 1 in commit");
+
+            Button bare = new() { Content = new PathIcon() };
+            Panel boxes = (Panel)box.GetVisualParent()!;
+            boxes.Children.Add(bare);
+            Ui.Settle();
+            try
+            {
+                Assert.True(Untold(view).Count == 1, "The rule finds no bare icon button put among the diff's");
+            }
+            finally
+            {
+                boxes.Children.Remove(bare);
+            }
+            host.Close();
+        }
+        finally
+        {
+            window.Close();
+            TestFolders.Delete(folder);
+        }
+    }
+
+    /// <summary>Each control a person presses under <paramref name="within"/> that shows no words of its own (an icon, a bare
+    /// check box) and lacks a tip or the name a screen reader says, which <see cref="ToolButtons.Tip"/> gives both.</summary>
+    internal static List<string> Untold(Visual within)
+    {
+        List<string> untold = [];
+        foreach (Button button in within.GetVisualDescendants().OfType<Button>().Where(b => b.IsEffectivelyVisible && b.TemplatedParent is null && !Worded(b)))
+        {
+            string? tip = ToolTip.GetTip(button) as string;
+            string? name = Avalonia.Automation.Peers.ControlAutomationPeer.CreatePeerForElement(button).GetName();
+            if (string.IsNullOrWhiteSpace(tip) || string.IsNullOrWhiteSpace(name))
+            {
+                untold.Add($"{button.GetType().Name} {button.Name} in {button.GetVisualParent()?.GetType().Name}: tip \"{tip}\", name \"{name}\"");
+            }
+        }
+        return untold;
+    }
+
+    /// <summary>Whether a button shows words of its own, which name it.</summary>
+    private static bool Worded(Button button) =>
+        button.Content is string { Length: > 0 } || button.GetVisualDescendants().OfType<TextBlock>().Any(t => !string.IsNullOrWhiteSpace(t.Text));
+
     /// <summary>Rests the pointer on a control and waits for the tooltip it opens to say what is given.</summary>
     private static void Rest(TopLevel top, Control control, string tip)
     {
         top.MouseMove(control.TranslatePoint(new Point(control.Bounds.Width / 2, control.Bounds.Height / 2), top)!.Value);
-        Ui.WaitFor(() => Shown(top) == tip, () => $"\"{tip}\" shown with the pointer resting on the greyed {control.GetType().Name}, where it shows {Shown(top) ?? "no tooltip"}",
+        Ui.WaitFor(() => Shown(top) == tip, () => $"\"{tip}\" shown with the pointer resting on the {(control.IsEffectivelyEnabled ? string.Empty : "greyed ")}{control.GetType().Name}, where it shows {Shown(top) ?? "no tooltip"}",
             TimeSpan.FromSeconds(5));
 
         static string? Shown(TopLevel top) => top.GetVisualDescendants().OfType<ToolTip>().FirstOrDefault(t => t.IsEffectivelyVisible)?.Content as string;

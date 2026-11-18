@@ -96,7 +96,7 @@ public sealed class PartialCommitTests : IDisposable
     }
 
     private static CheckBox[] Boxes(DiffView view) =>
-        [.. view.GetVisualDescendants().OfType<CheckBox>().Where(b => b.IsVisible && ToolTip.GetTip(b) as string == "Include this change in commit")];
+        [.. view.GetVisualDescendants().OfType<CheckBox>().Where(b => b.IsVisible && ToolTip.GetTip(b) is string tip && tip.StartsWith("Include change ", StringComparison.Ordinal))];
 
     /// <summary>Only the changes in view have a box, so a diff of hundreds scrolls as lightly as one of a few, and a box
     /// scrolled to chooses the change it stands beside.</summary>

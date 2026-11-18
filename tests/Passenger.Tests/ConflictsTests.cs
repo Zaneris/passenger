@@ -3,6 +3,7 @@ using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.Input;
+using Avalonia.VisualTree;
 using Passenger.App;
 using Passenger.App.Editors;
 using Passenger.App.ToolWindows;
@@ -257,6 +258,11 @@ public sealed class ConflictsTests : IDisposable
         MergeWindow merge = (MergeWindow)window.Frontmost;
         MergeView view = merge.View;
         Assert.Equal((mine, Menu, theirs), (view.Texts.Left, view.ResultText, view.Texts.Right));
+        // Each change's arrow and X say what they do, the arrow with the keys that accept the change at the caret.
+        Assert.Empty(UiRulesTests.Untold(view));
+        string[] tips = [.. view.GetVisualDescendants().OfType<Button>().Where(b => b.IsEffectivelyVisible).Select(b => ToolTip.GetTip(b) as string ?? string.Empty)];
+        Assert.Contains(tips, t => t.StartsWith("Accept Left Side (", StringComparison.Ordinal));
+        Assert.Contains("Ignore Right Side", tips);
 
         Press(merge, "Apply All Non-Conflicting Changes");
         Click(merge, view, view.IconAt(0, MergeSide.Left, ignore: false));

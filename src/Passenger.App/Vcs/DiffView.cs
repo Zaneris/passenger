@@ -65,10 +65,11 @@ public sealed class DiffView : DockPanel, IOwnKeys
         Left.Show(head, SelectionSet.Single(0), default);
         Right = new CodeEditor { IsReadOnly = !editable, ChangeBackgrounds = true };
         Right.Show(mine, SelectionSet.Single(0), default);
-        bands = new DiffStrip(Bands, MergeSide.Left, Left, () => IsEditable, ignores: false, (band, _, _) => Revert(Hunks[band.Index])) { Width = 36 };
+        named = (titles?.Left ?? "HEAD", titles?.Right ?? (editable ? "Your version" : "Your version (read-only)"));
+        bands = new DiffStrip(Bands, MergeSide.Left, Left, () => IsEditable, ignores: false, (band, _) => ($"Roll back change {band.Index + 1} to {named.Left}", null),
+            (band, _, _) => Revert(Hunks[band.Index])) { Width = 36 };
 
         Grid sides = new() { ColumnDefinitions = new ColumnDefinitions("*,Auto,Auto,*"), RowDefinitions = new RowDefinitions("Auto,*") };
-        named = (titles?.Left ?? "HEAD", titles?.Right ?? (editable ? "Your version" : "Your version (read-only)"));
         Left.ReadOnlyWhy = Refusals.ReadOnly(named.Left);
         Right.ReadOnlyWhy = editable ? null : Refusals.ReadOnly(named.Right);
         sides.Children.Add(DiffLines.Title(named.Left, 0));
@@ -195,7 +196,7 @@ public sealed class DiffView : DockPanel, IOwnKeys
                     boxedHunks.Add(index);
                 }
                 boxedHunks[used] = index;
-                Avalonia.Automation.AutomationProperties.SetName(box, $"Include change {index + 1} in commit");
+                ToolButtons.Tip(box, $"Include change {index + 1} in commit");
                 box.IsChecked = hunksTaken[index];
                 box.IsVisible = true;
                 Canvas.SetTop(box, top + ((line - box.Height) / 2));
@@ -217,7 +218,6 @@ public sealed class DiffView : DockPanel, IOwnKeys
     private CheckBox HunkBox(int slot)
     {
         CheckBox box = new() { MinHeight = 0, Height = 24 };
-        ToolTip.SetTip(box, "Include this change in commit");
         box.IsCheckedChanged += (_, _) =>
         {
             if (!settingHunkBoxes && slot < boxedHunks.Count)
@@ -384,7 +384,7 @@ public sealed class DiffView : DockPanel, IOwnKeys
             : new ChangeMark(h.OldStart, h.OldCount, ChangeMarkKind.Modified))]);
         Right.SetChangeMarks(off ? [] : diff.Marks);
         Count();
-        bands.InvalidateVisual();
+        bands.Refresh();
         IdeErrors.Observe(ShowWordsAsync(diff));
         IdeErrors.Observe(ShowSeparatorsAsync(diff));
     }
@@ -479,7 +479,7 @@ public sealed class DiffView : DockPanel, IOwnKeys
     /// differences above it to the other's.</summary>
     private void Follow(CodeEditor from, CodeEditor to, bool toLeft)
     {
-        bands.InvalidateVisual();
+        bands.Refresh();
         PlaceHunkBoxes();
         if (following)
         {
