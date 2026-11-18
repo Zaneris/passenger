@@ -133,15 +133,23 @@ public sealed record WorkspaceModel(string Folder, SolutionModel? Solution, IRea
     /// MSBuild's alone (.proj).</summary>
     private static readonly string[] ProjectExtensions = [".csproj", ".fsproj", ".vbproj", ".proj"];
 
+    /// <summary>The extensions of a file that opens as the workspace (<see cref="Opens"/>): a solution's, a solution
+    /// filter's and a C# project's.</summary>
+    public static IReadOnlyList<string> OpenedExtensions => Opened;
+
+    private static readonly string[] Opened = [.. SolutionExtensions, CSharpProject];
+
     /// <summary>Whether a file opens as the workspace rather than in an editor: a solution (.sln, .slnx), a solution
     /// filter (.slnf) or a C# project (.csproj).</summary>
-    public static bool Opens(string path) => IsSolution(path) || IsProject(path);
+    public static bool Opens(string path) => PathNames.HasExtension(path, Opened);
 
     /// <summary>Whether a file is a solution or a solution filter, either of which opens a solution.</summary>
     public static bool IsSolution(string path) => PathNames.HasExtension(path, SolutionExtensions);
 
     /// <summary>Whether a file is a C# project, the one kind of project that opens as the workspace.</summary>
-    public static bool IsProject(string path) => Path.GetExtension(path).Equals(".csproj", StringComparison.OrdinalIgnoreCase);
+    public static bool IsProject(string path) => Path.GetExtension(path).Equals(CSharpProject, StringComparison.OrdinalIgnoreCase);
+
+    private const string CSharpProject = ".csproj";
 
     /// <summary>Whether a file is a project file of any kind MSBuild evaluates as itself (<see cref="ProjectExtensions"/>),
     /// a C# project's among them.</summary>

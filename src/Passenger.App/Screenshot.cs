@@ -114,7 +114,7 @@ public static class Screenshot
         {
             if (step is ScriptStep.Open open)
             {
-                // As File, Open's panel hands the window what was chosen.
+                // As the system's panel hands the window what was chosen.
                 window.Open(open.Path);
             }
             else if (step is ScriptStep.FirstStart)

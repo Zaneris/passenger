@@ -21,6 +21,10 @@ public sealed record IdeAction(string Id, string Title, string Group, Action<Act
 
     public IReadOnlyList<MenuPlace> Menus { get; init; } = [];
 
+    /// <summary>Whether Find Action lists it in the order of its menu's run among the others of that run so marked, in the
+    /// places their titles give them all (Open Solution, Open Folder and Open File, as the File menu lists them).</summary>
+    public bool KeepsMenuOrder { get; init; }
+
     /// <summary>Its title in a menu opened where it would run, when that says more than <see cref="Title"/> (Unpin Tab on
     /// a pinned tab, Close on a tab's own menu); Find Action lists it by its title.</summary>
     public Func<ActionContext, string>? TitleIn { get; init; }

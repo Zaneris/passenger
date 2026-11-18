@@ -273,7 +273,7 @@ public static class PassengerApp
 
     /// <summary>A person's launch another Passenger process handed over (<see cref="LaunchHandOff"/>): its files and caret
     /// go, once its folder is open, to the innermost window whose folder holds what it names, else its folder or workspace
-    /// opens as File, Open opens one in a window of its own (the one in front when that has nothing open), a launch naming
+    /// opens as Open Solution opens one in a window of its own (the one in front when that has nothing open), a launch naming
     /// nothing going to the window in front, one asking for a new window making one with nothing open; that window comes
     /// forward, the person's own act. The answer the launch is told.</summary>
     internal static string TakeLaunch(HandedLaunch launch)

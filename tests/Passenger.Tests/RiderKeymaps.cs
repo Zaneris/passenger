@@ -6,8 +6,8 @@ namespace Passenger.Tests;
 /// <summary>Rider's keymaps as the files in Rider's jars write them, for the actions the keymap tests check: each
 /// keymap's parent and its own list of an action's keys and mouse shortcuts, empty where it takes the parent's away, and
 /// the keys plugins' descriptors add to a keymap. An action's keys resolve as IntelliJ resolves them: the keymap's own
-/// list, else its parent's, Mac OS X 10.5+ taking $default's with Ctrl and Cmd swapped; then what the descriptors
-/// add.</summary>
+/// list, else its parent's, Mac OS X 10.5+ taking $default's with Ctrl and Cmd swapped; then what the descriptors add to
+/// that keymap, or put in place of it all, which a keymap below it takes as its parent's.</summary>
 internal static class RiderKeymaps
 {
     private const string Default = "$default";
@@ -48,6 +48,7 @@ internal static class RiderKeymaps
         }),
         ["Visual Studio"] = (Default, new()
         {
+            ["OpenFile"] = ["control O"],
             ["ParameterInfo"] = ["shift control SPACE"],
             ["NewElement"] = ["control N", "alt INSERT"],
             ["ExternalJavaDoc"] = ["shift F1"],
@@ -55,6 +56,7 @@ internal static class RiderKeymaps
         }),
         ["Visual Studio OSX"] = (MacOS, new()
         {
+            ["OpenFile"] = ["meta O"],
             ["Generate"] = ["control meta N"],
             ["NewElement"] = ["meta N", "alt INSERT"],
             ["ContextHelp"] = ["F1"],
@@ -63,6 +65,7 @@ internal static class RiderKeymaps
         }),
         ["VSCode"] = (Default, new()
         {
+            ["OpenFile"] = ["ctrl o"],
             ["EditorDuplicate"] = [],
             ["EditorDuplicateLines"] = ["shift alt down"],
             ["CompareTwoFiles"] = [],
@@ -77,6 +80,7 @@ internal static class RiderKeymaps
         }),
         ["VSCode OSX"] = (MacOS, new()
         {
+            ["OpenFile"] = ["meta o"],
             ["EditorDuplicate"] = [],
             ["EditorDuplicateLines"] = ["shift alt down"],
             ["CompareTwoFiles"] = [],
@@ -94,13 +98,17 @@ internal static class RiderKeymaps
         }),
     };
 
-    /// <summary>The keys plugins' descriptors add, by keymap and action: Rider's own (intellij.rider.xml).</summary>
-    private static readonly (string Keymap, string Action, string Keys)[] Descriptors =
+    /// <summary>The keys plugins' descriptors add, by keymap and action, or put in place of all the keymap had for it
+    /// (replace-all): Rider's own (intellij.rider.xml).</summary>
+    private static readonly (string Keymap, string Action, string Keys, bool ReplaceAll)[] Descriptors =
     [
-        ("Visual Studio", "CloneCaretAboveWithVirtualSpace", "alt shift UP"),
-        ("Visual Studio OSX", "CloneCaretAboveWithVirtualSpace", "control shift UP"),
-        ("Visual Studio", "CloneCaretBelowWithVirtualSpace", "alt shift DOWN"),
-        ("Visual Studio OSX", "CloneCaretBelowWithVirtualSpace", "control shift DOWN"),
+        ("Visual Studio", "CloneCaretAboveWithVirtualSpace", "alt shift UP", false),
+        ("Visual Studio OSX", "CloneCaretAboveWithVirtualSpace", "control shift UP", false),
+        ("Visual Studio", "CloneCaretBelowWithVirtualSpace", "alt shift DOWN", false),
+        ("Visual Studio OSX", "CloneCaretBelowWithVirtualSpace", "control shift DOWN", false),
+        (Default, "RiderOpenSolution", "control shift O", false),
+        (MacOS, "RiderOpenSolution", "control shift O", true),
+        ("VSCode", "RiderOpenSolution", "control K , control O", true),
     ];
 
     /// <summary>The keymap of Rider's that a preset is on this platform.</summary>
@@ -115,26 +123,28 @@ internal static class RiderKeymaps
     };
 
     /// <summary>An action's keys in one of Rider's keymaps.</summary>
-    public static IReadOnlyList<Shortcut> Resolve(string keymap, string action)
-    {
-        IEnumerable<Shortcut> keys = Listed(keymap, action).Where(t => !MouseShortcut.IsMouse(t)).Select(Shortcut.Parse);
-        IEnumerable<Shortcut> added = Descriptors.Where(d => d.Keymap == keymap && d.Action == action).Select(d => Shortcut.Parse(d.Keys));
-        return [.. keys.Concat(added).Distinct()];
-    }
+    public static IReadOnlyList<Shortcut> Resolve(string keymap, string action) =>
+        [.. Listed(keymap, action).Where(t => !MouseShortcut.IsMouse(t)).Select(Shortcut.Parse).Distinct()];
 
     /// <summary>An action's mouse shortcuts in one of Rider's keymaps.</summary>
     public static IReadOnlyList<MouseShortcut> ResolveMouse(string keymap, string action) =>
         [.. Listed(keymap, action).Where(MouseShortcut.IsMouse).Select(MouseShortcut.Parse).Distinct()];
 
-    /// <summary>What a keymap's own list, else its parent's, has for an action, keys and gestures alike: an action's element
-    /// lists both, so a list of keys alone takes the parent's gestures away too.</summary>
+    /// <summary>What a keymap's own list, else its parent's, has for an action, keys and gestures alike (an action's
+    /// element lists both, so a list of keys alone takes the parent's gestures away too), with what descriptors add to the
+    /// keymap.</summary>
     private static IEnumerable<string> Listed(string keymap, string action)
     {
         (string? parent, Dictionary<string, string[]> own) = Files[keymap];
-        return own.TryGetValue(action, out string[]? listed) ? listed
+        IEnumerable<string> listed = own.TryGetValue(action, out string[]? written) ? written
             : parent is null ? []
             : keymap == MacOS && parent == Default ? Listed(parent, action).Select(Swapped)
             : Listed(parent, action);
+        foreach ((string _, string _, string keys, bool replaceAll) in Descriptors.Where(d => d.Keymap == keymap && d.Action == action))
+        {
+            listed = replaceAll ? [keys] : listed.Append(keys);
+        }
+        return listed;
     }
 
     /// <summary>A key's or gesture's text with Ctrl and Cmd swapped, as Mac OS X 10.5+ takes $default's.</summary>

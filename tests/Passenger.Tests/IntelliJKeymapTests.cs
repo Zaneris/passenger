@@ -37,6 +37,8 @@ public sealed class IntelliJKeymapTests
             (AppActions.SaveAll, "Save All", ["control S"], ["meta S"]),
             (AppActions.Save, "Save", [], []),
             (AppActions.GoToEverything, "Search Everywhere", ["shift , shift"], ["shift , shift"]),
+            (AppActions.OpenSolution, "Open Solution", ["control shift O"], ["control shift O"]),
+            (AppActions.OpenFile, "Open", [], []),
         ];
         Keymap keymap = Plain;
         foreach ((string action, string name, string[] others, string[] macOS) in keys)

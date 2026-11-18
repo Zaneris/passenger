@@ -35,7 +35,26 @@ public sealed class ActionRegistry(Func<ActionContext> context, Func<Keymap> key
 
     /// <summary>Every action, in the order Find Action lists them before anything is typed: by group, then title.</summary>
     public IReadOnlyList<IdeAction> All => sorted ??=
-        [.. byId.Values.OrderBy(a => a.Group, StringComparer.Ordinal).ThenBy(a => a.Title, StringComparer.Ordinal)];
+        InMenuOrder([.. byId.Values.OrderBy(a => a.Group, StringComparer.Ordinal).ThenBy(a => a.Title, StringComparer.Ordinal)]);
+
+    /// <summary>Actions as listed, but those that keep their menu's order (<see cref="IdeAction.KeepsMenuOrder"/>) put in
+    /// it, each run of a menu's in the places its actions took.</summary>
+    private static IdeAction[] InMenuOrder(IdeAction[] listed)
+    {
+        IEnumerable<IGrouping<(string Path, int Group), int>> runs = Enumerable.Range(0, listed.Length)
+            .Where(at => listed[at] is { KeepsMenuOrder: true, Menus.Count: > 0 })
+            .GroupBy(at => (listed[at].Menus[0].Path, listed[at].Menus[0].Group));
+        foreach (IGrouping<(string Path, int Group), int> run in runs)
+        {
+            int[] places = [.. run];
+            IdeAction[] ordered = [.. places.Select(at => listed[at]).OrderBy(a => a.Menus[0].Order)];
+            for (int i = 0; i < places.Length; i++)
+            {
+                listed[places[i]] = ordered[i];
+            }
+        }
+        return listed;
+    }
 
     /// <summary>The window's keymap, the person's shortcuts over the platform's.</summary>
     public Keymap Keymap => keymap();
@@ -102,12 +121,12 @@ public sealed class ActionRegistry(Func<ActionContext> context, Func<Keymap> key
         }
         string typed = query.Trim();
         IEnumerable<string> Names(IdeAction action) => [action.Title, .. action.Words];
-        return [.. All
+        return InMenuOrder([.. All
             .Where(a => words.All(w => Names(a).Any(n => n.Contains(w, StringComparison.OrdinalIgnoreCase)) || a.Group.Contains(w, StringComparison.OrdinalIgnoreCase)
                 || a.Id.Contains(w, StringComparison.OrdinalIgnoreCase)))
             .OrderBy(a => Names(a).Any(n => n.StartsWith(typed, StringComparison.OrdinalIgnoreCase)) ? 0
                 : Names(a).Any(n => words.All(w => n.Contains(w, StringComparison.OrdinalIgnoreCase))) ? 1 : 2)
-            .ThenBy(a => a.Title.Length)];
+            .ThenBy(a => a.Title.Length)]);
     }
 
     /// <summary>Null when the action can run in this context, else why not: no action has the id, its work is under way

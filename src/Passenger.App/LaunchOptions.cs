@@ -236,7 +236,7 @@ public sealed record LaunchOptions(string? Folder, IReadOnlyList<string> Files, 
                     break;
                 case "--open":
                     string opened = Value(args, ref i, flag);
-                    // As File, Open takes it: a solution, project or folder as the workspace, any other file in a tab.
+                    // As the window opens what it is handed: a solution, project or folder as the workspace, a file in a tab.
                     steps.Add(new ScriptStep.Open(Directory.Exists(opened) || File.Exists(opened)
                         ? PathNames.Canonical(opened)
                         : throw new FormatException($"--open takes a file or folder that is there, not '{opened}'")));
@@ -585,8 +585,8 @@ public abstract record ScriptStep
     /// start shows it, its keys and clicks the next steps'.</summary>
     public sealed record FirstStart : ScriptStep;
 
-    /// <summary>A folder, solution or project opened as File, Open opens the one chosen: with one open already, Open
-    /// Solution asks where (Settings' default), and a window of its own opens on New Window.</summary>
+    /// <summary>A folder, solution or project opened as Open Solution and Open Folder open the one chosen: with one open
+    /// already, the Open Solution question asks where (Settings' default), and a window of its own opens on New Window.</summary>
     public sealed record Open(string Path) : ScriptStep;
 
     /// <summary>A run configuration of the folder open run or debugged as the window's own <c>--run</c> or <c>--debug</c>

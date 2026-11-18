@@ -242,14 +242,14 @@ public sealed class MenuTests : IDisposable
             Assert.All(titles, t => Assert.True(t.Foreground is ISolidColorBrush ink && ink.Color == words, $"The bar's {t.Content} is not in the title bar's own words"));
 
             Ui.Click(titles[0]);
-            Ui.WaitFor(() => OpenMenuTitles(window).Contains("Open…"), "the File menu");
+            Ui.WaitFor(() => OpenMenuTitles(window).Contains("Open Solution…"), "the File menu");
             Ui.Click(titles[1]);
             Ui.WaitFor(() => OpenMenuTitles(window).Contains("Undo"), "the Edit menu in the File menu's place");
-            Assert.False(OpenMenuTitles(window).Contains("Open…"), "The File menu stayed open under the Edit menu");
+            Assert.False(OpenMenuTitles(window).Contains("Open Solution…"), "The File menu stayed open under the Edit menu");
             Hover(window, titles[2]);
             Ui.WaitFor(() => OpenMenuTitles(window).Contains("Recent Locations"), "the View menu, opened by the pointer moving over its title");
             Hover(window, titles[0]);
-            Ui.WaitFor(() => OpenMenuTitles(window).Contains("Open…"), "the File menu again, opened by the pointer moving back over its title");
+            Ui.WaitFor(() => OpenMenuTitles(window).Contains("Open Solution…"), "the File menu again, opened by the pointer moving back over its title");
             Ui.Press(window, "ESCAPE");
             Assert.False(MenuOpen(window), "Escape left the bar's File menu open: it never took the keys");
             Ui.Click(titles[1]);
@@ -316,7 +316,7 @@ public sealed class MenuTests : IDisposable
             Assert.True(Focused(window) == titles[0], "Right from Help did not go round to File");
 
             Ui.Press(window, "DOWN");
-            Ui.WaitFor(() => OpenMenuTitles(window).Contains("Open…"), "the File menu, opened by Down");
+            Ui.WaitFor(() => OpenMenuTitles(window).Contains("Open Solution…"), "the File menu, opened by Down");
             Assert.True(Focused(window) is MenuItem, $"The File menu opened by Down left the keys with {Focused(window)?.GetType().Name}");
             Assert.True(titles[0].Classes.Contains(StyleClasses.Open), "The open File menu's title does not show pressed");
             Ui.Press(window, "RIGHT");
@@ -324,7 +324,7 @@ public sealed class MenuTests : IDisposable
             Assert.False(titles[0].Classes.Contains(StyleClasses.Open), "File's title still shows pressed with Edit's menu open");
             Assert.True(titles[1].Classes.Contains(StyleClasses.Open) && Focused(window) is MenuItem, "Edit's menu opened by Right is not shown pressed with the keys");
             Ui.Press(window, "LEFT");
-            Ui.WaitFor(() => OpenMenuTitles(window).Contains("Open…"), "the File menu again, opened by Left from Edit's");
+            Ui.WaitFor(() => OpenMenuTitles(window).Contains("Open Solution…"), "the File menu again, opened by Left from Edit's");
 
             Ui.Press(window, "ESCAPE");
             Assert.False(MenuOpen(window), "Escape left the bar's menu open");

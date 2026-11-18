@@ -35,7 +35,7 @@ public sealed class SmallestWindowTests
             window.Start(LaunchOptions.Empty);
             Ui.Settle();
             Button[] tiles = [.. window.Welcome.GetVisualDescendants().OfType<Button>().Where(b => b.Classes.Contains(StyleClasses.WelcomeAction))];
-            Assert.Equal(4, tiles.Length);
+            Assert.Equal(5, tiles.Length);
             TextBox search = window.Welcome.GetVisualDescendants().OfType<TextBox>().Single(t => t.Classes.Contains(StyleClasses.WelcomeSearch));
             foreach (Button tile in tiles)
             {

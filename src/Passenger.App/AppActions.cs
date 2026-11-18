@@ -9,11 +9,17 @@ namespace Passenger.App;
 [IdentifierHome]
 public static class AppActions
 {
-    public const string Open = "app.open";
+    /// <summary>A solution or project to open as the workspace: Rider's Open Solution (RiderOpenSolution), Ctrl+Shift+O in
+    /// every keymap but VS Code's on Windows, which gives it Ctrl+K, Ctrl+O.</summary>
+    public const string OpenSolution = "app.openSolution";
 
-    /// <summary>A folder to open: the system's panel takes files or folders, not both, so Open takes the solution or
-    /// project files and this the folder. Rider's keymaps have no keys for it.</summary>
+    /// <summary>A folder to open: the system's panel takes files or folders, not both. Rider's keymaps have no keys for
+    /// it.</summary>
     public const string OpenFolder = "app.openFolder";
+
+    /// <summary>A file to open in the editor, never as the workspace: IntelliJ's Open (OpenFile), which Rider's Visual Studio
+    /// and VS Code keymaps give Ctrl+O (Cmd+O on the Mac) and IntelliJ IDEA's none.</summary>
+    public const string OpenFile = "app.openFile";
 
     /// <summary>Rider's New Solution (RiderNewSolution), which its keymaps give no keys.</summary>
     public const string NewSolution = "app.newSolution";
@@ -215,6 +221,7 @@ public static class AppActions
         ["app.aspire.attach"] = ServiceAttach,
         ["app.aspire.runWithoutDebugger"] = ServiceRun,
         ["app.aspire.profile"] = ServiceProfile,
+        ["app.open"] = OpenSolution,
     };
 
     /// <summary>An action's id now, for one it had before (<see cref="Formerly"/>), else the id itself.</summary>
@@ -701,7 +708,8 @@ public static class AppActions
         if (OperatingSystem.IsMacOS())
         {
             return keymap
-                .Bind(Open, "meta O")
+                .Bind(OpenSolution, "control shift O")
+                .Bind(OpenFile, "meta O")
                 .Bind(NewProject, "meta shift N")
                 .Bind(NewItem, "meta N", "alt INSERT")
                 .Bind(Save, "meta S")
@@ -832,7 +840,8 @@ public static class AppActions
                 .Bind(PreviousProjectWindow, "meta shift alt BACK_QUOTE");
         }
         return keymap
-            .Bind(Open, "control O")
+            .Bind(OpenSolution, "control shift O")
+            .Bind(OpenFile, "control O")
             .Bind(NewProject, "control shift N")
             .Bind(NewItem, "control N")
             .Bind(Save, "control S")
@@ -971,7 +980,8 @@ public static class AppActions
         if (OperatingSystem.IsMacOS())
         {
             return keymap
-                .Bind(Open, "meta O")
+                .Bind(OpenSolution, "control shift O")
+                .Bind(OpenFile, "meta O")
                 // VS Code's Ctrl+W, Switch Window; Cmd+Q is the application menu's Quit, as in the Visual Studio keymap.
                 .Bind(NextProjectWindow, "control W")
                 .Bind(PreviousProjectWindow, "meta alt shift BACK_QUOTE")
@@ -1087,7 +1097,8 @@ public static class AppActions
                 .Bind(RecentChanges, "alt shift C");
         }
         return keymap
-            .Bind(Open, "control O")
+            .Bind(OpenSolution, "control K , control O")
+            .Bind(OpenFile, "control O")
             // VS Code's Ctrl+W closes the editor here, its Switch Window macOS's Ctrl+W; Next Project Window has no key.
             .Bind(Save, "control S")
             .Bind(SaveAll, "control K , S")
@@ -1213,7 +1224,7 @@ public static class AppActions
         {
             // Cmd+Q, Exit's here, is the application menu's Quit, as in the other keymaps.
             return keymap
-                .Bind(Open, "control shift O")
+                .Bind(OpenSolution, "control shift O")
                 .Bind(NextProjectWindow, "meta alt BACK_QUOTE")
                 .Bind(PreviousProjectWindow, "meta alt shift BACK_QUOTE")
                 .Bind(SaveAll, "meta S")
@@ -1331,7 +1342,7 @@ public static class AppActions
                 .Bind(RecentChanges, "alt shift C");
         }
         return keymap
-            .Bind(Open, "control shift O")
+            .Bind(OpenSolution, "control shift O")
             .Bind(NextProjectWindow, "control alt CLOSE_BRACKET")
             .Bind(PreviousProjectWindow, "control alt OPEN_BRACKET")
             .Bind(SaveAll, "control S")

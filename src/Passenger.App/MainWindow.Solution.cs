@@ -12,9 +12,9 @@ namespace Passenger.App;
 /// and the Explorer, Build, Run and the language server read the solution again.</summary>
 public partial class MainWindow
 {
-    /// <summary>Asks the person for files (Existing Project, Existing Item, Compare With, an Aspire AppHost's file
-    /// input), by a title, the types it takes (any file with none) and whether it takes several, in the system's own
-    /// dialog.</summary>
+    /// <summary>Asks the person for files (Open Solution, Open File, Existing Project, Existing Item, Compare With, an
+    /// Aspire AppHost's file input), by a title, the types it takes (any file with none) and whether it takes several, in
+    /// the system's own dialog, in the open folder or, with none, beside the folder opened last.</summary>
     public Func<string, IReadOnlyList<FilePickerFileType>?, bool, Task<IReadOnlyList<string>>> PickFiles
     {
         get => pickFiles ?? PickFilesAsync;
@@ -29,7 +29,7 @@ public partial class MainWindow
         {
             Title = title,
             AllowMultiple = several,
-            SuggestedStartLocation = Folder is null ? null : await StorageProvider.TryGetFolderFromPathAsync(Folder),
+            SuggestedStartLocation = await StorageProvider.TryGetFolderFromPathAsync(Folder ?? BesideLast()),
             FileTypeFilter = types,
         });
         return [.. picked.Select(f => f.TryGetLocalPath()).OfType<string>()];
