@@ -10,10 +10,10 @@ using Passenger.Languages.CSharp;
 
 namespace Passenger.App.Navigation;
 
-/// <summary>Show Usages, and Go to Implementation's list: a symbol's usages (or implementations) under the caret, its declaration first and those in generated code last, each
-/// its file and line with its line of code (the usage in bold) and what it does there, narrowed as a file's name or code
-/// is typed, with what the search went without above them; Up and Down move, Enter or a double-click goes to one, Escape
-/// leaves, and Open in Find Window (or Find Usages' keys) lists them in the Find window instead.</summary>
+/// <summary>Show Usages, and Go to Implementation's list: a symbol's usages (or implementations) under the caret, those in
+/// generated code last, each its file and line with its line of code (the usage in bold) and what it does there, narrowed as
+/// a file's name or code is typed, with what the search went without above them; Up and Down move, Enter or a double-click
+/// goes to one, Escape leaves, and Open in Find Window (or Find Usages' keys) lists them, the declaration too, in the Find window.</summary>
 public sealed class UsagesPopup : SearchPopup<Usage>
 {
     private readonly IReadOnlyList<Usage> all;
@@ -22,10 +22,9 @@ public sealed class UsagesPopup : SearchPopup<Usage>
     private readonly bool kinds;
 
     public UsagesPopup(string title, IReadOnlyList<Usage> usages, string? note, string noun = "usage", bool kinds = true)
-        : base($"{title}  {Core.Plural.Of(usages.Count, noun)}{(usages.Count(u => u.Generated) is > 0 and int made ? $", {made} in generated code" : string.Empty)}",
-            "A file's name or code", PopupFrame.Wide)
+        : base(Heading(title, Listed(usages, kinds), noun), "A file's name or code", PopupFrame.Wide)
     {
-        all = [.. usages.OrderBy(u => u.Generated).ThenBy(u => u.Kind == UsageKind.Declaration ? 0 : 1).ThenBy(u => u.Path, StringComparer.Ordinal).ThenBy(u => u.Line).ThenBy(u => u.Column)];
+        all = [.. Listed(usages, kinds).OrderBy(u => u.Generated).ThenBy(u => u.Kind == UsageKind.Declaration ? 0 : 1).ThenBy(u => u.Path, StringComparer.Ordinal).ThenBy(u => u.Line).ThenBy(u => u.Column)];
         this.note = note;
         this.noun = noun;
         this.kinds = kinds;
@@ -34,6 +33,14 @@ public sealed class UsagesPopup : SearchPopup<Usage>
         AddToHeading(FindWindow);
         QueryChanged();
     }
+
+    /// <summary>What the popup lists of the usages it is given: where it says what each does, those that are not the symbol's own
+    /// declaration, which a count of usages leaves out; the Find window, handed them all, lists it apart.</summary>
+    private static IReadOnlyList<Usage> Listed(IReadOnlyList<Usage> usages, bool kinds) =>
+        kinds ? [.. usages.Where(u => u.Kind != UsageKind.Declaration)] : usages;
+
+    private static string Heading(string title, IReadOnlyList<Usage> listed, string noun) =>
+        $"{title}  {Core.Plural.Of(listed.Count, noun)}{(listed.Count(u => u.Generated) is > 0 and int made ? $", {made} in generated code" : string.Empty)}";
 
     /// <summary>The link that lists the usages in the Find window.</summary>
     public Button FindWindow { get; }
@@ -45,7 +52,7 @@ public sealed class UsagesPopup : SearchPopup<Usage>
     {
         string typed = Query.Trim();
         Show([.. all.Where(u => typed.Length == 0 || Path.GetFileName(u.Path).Contains(typed, StringComparison.OrdinalIgnoreCase)
-            || u.LineText.Contains(typed, StringComparison.OrdinalIgnoreCase))], $"No {noun}s match");
+            || u.LineText.Contains(typed, StringComparison.OrdinalIgnoreCase))], typed.Length == 0 ? $"No {noun}s found" : $"No {noun}s match");
         if (note is not null && Rows.Count > 0)
         {
             Say(note);

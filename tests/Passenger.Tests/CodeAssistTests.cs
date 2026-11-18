@@ -920,8 +920,8 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
     }
 
     /// <summary>Show Usages, from its keys, lists the usages Find Usages finds in a popup under the caret, framed as every
-    /// popup is, the declaration first with what each does and the usage in its line; Enter goes to the one chosen, and its
-    /// link hands the usages to the Find window.</summary>
+    /// popup is, with what each does and the usage in its line, the symbol's own declaration left to the Find window; Enter
+    /// goes to the one chosen, and its link hands the usages, the declaration too, to the Find window.</summary>
     [AvaloniaFact]
     public void Show_usages_lists_them_in_a_popup_under_the_caret_goes_to_the_one_chosen_and_hands_them_to_the_find_window()
     {
@@ -930,11 +930,11 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         Ui.PlaceAfter(editor, "int tot");
         Point caret = editor.TranslatePoint(editor.PointOf(editor.Selections.Primary.Caret), window)!.Value;
         Ui.Press(window, window.Actions.Keymap.ShortcutsFor(AppActions.ShowUsages)[0].Notation());
-        Ui.WaitFor(() => window.Popup is UsagesPopup { Rows.Count: 3 }, () => $"the usages of total in Show Usages' popup ({window.Status})");
+        Ui.WaitFor(() => window.Popup is UsagesPopup { Rows.Count: 2 }, () => $"the usages of total in Show Usages' popup ({window.Status})");
         UsagesPopup usages = (UsagesPopup)window.Popup!;
-        Assert.Equal("Usages of total  3 usages", usages.Title);
-        Assert.Equal([(4, "int total = 0;"), (7, "total += i * 2;"), (9, "return total;")], usages.Rows.Select(u => (u.Line, u.LineText.Trim())));
-        Assert.Equal(Languages.CSharp.UsageKind.Declaration, usages.Rows[0].Kind);
+        Assert.Equal("Usages of total  2 usages", usages.Title);
+        Assert.Equal([(7, "total += i * 2;"), (9, "return total;")], usages.Rows.Select(u => (u.Line, u.LineText.Trim())));
+        Assert.DoesNotContain(usages.Rows, u => u.Kind == Languages.CSharp.UsageKind.Declaration);
         Border frame = PopupFrame.FrameOf(usages)!;
         UiRulesTests.HoldsToPopupRules("Show Usages", frame);
         Point top = frame.TranslatePoint(default, window)!.Value;
@@ -943,14 +943,13 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         Assert.False(window.Find.Searches.Contains("Usages of total"), "Show Usages listed the usages in the Find window as well as its popup");
 
         Ui.Press(window, "DOWN");
-        Ui.Press(window, "DOWN");
         Ui.Press(window, "ENTER");
         Assert.True(window.Popup is null, "Show Usages' popup stayed open once a usage was chosen");
         Assert.Equal(new TextPosition(9, 15), editor.CaretPosition);
 
         Ui.PlaceAfter(editor, "int tot");
         Ui.Run(window, AppActions.ShowUsages);
-        Ui.WaitFor(() => window.Popup is UsagesPopup { Rows.Count: 3 }, "Show Usages' popup again");
+        Ui.WaitFor(() => window.Popup is UsagesPopup { Rows.Count: 2 }, "Show Usages' popup again");
         Ui.Click(((UsagesPopup)window.Popup!).FindWindow);
         Ui.WaitFor(() => window.Find.Shown == "Usages of total", "Open in Find Window to list the usages there");
         Assert.True(window.Popup is null, "Show Usages' popup stayed open once its usages went to the Find window");
