@@ -102,6 +102,8 @@ public sealed class KeysPlaceTests : IDisposable
     {
         TestFolders.Write(folder, "Notes.txt", "one\ntwo\n");
         MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        // Every window's keys, whatever this folder's projects bring.
+        Ui.ServeEveryWindow(window);
         window.OpenFile("Notes.txt");
         Ui.Settle();
         List<string> outside = [];

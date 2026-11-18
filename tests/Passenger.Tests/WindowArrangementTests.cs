@@ -124,7 +124,7 @@ public sealed class WindowArrangementTests : IDisposable
 
             window.ApplySettings(window.Settings with { ToolWindowLook = ToolWindowLook.TitledTabs });
             Ui.Settle();
-            string[] docked = [.. dock.Windows.Where(w => w.Anchor == place && w.Mode == ToolMode.Docked).OrderBy(w => w.Order).Select(w => w.Id)];
+            string[] docked = [.. dock.Windows.Where(w => w.Anchor == place && w is { Mode: ToolMode.Docked, Unserved: null }).OrderBy(w => w.Order).Select(w => w.Id)];
             string[] named = [.. ToolTabs(window).Select(t => (string)t.Tag!).Where(id => dock[id].Anchor == place)];
             Assert.True(named.SequenceEqual(docked), $"The tabs along the place's foot name {string.Join(", ", named)}, where {string.Join(", ", docked)} dock there");
             Assert.True(ToolTab(window, ToolWindowIds.Build).Classes.Contains(StyleClasses.Active), "Build, open, has no open tab");

@@ -179,6 +179,8 @@ public sealed class ToolHeaderTests : IDisposable
     private MainWindow Open()
     {
         MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        // Every window's header, whatever this folder's projects bring.
+        Ui.ServeEveryWindow(window);
         window.ApplySettings(window.Settings with { ClosedToolWindows = ClosedToolWindows.LeaveStripe });
         window.TerminalPanel.Shell = OperatingSystem.IsWindows() ? ("cmd.exe", []) : ("/bin/sh", []);
         Ui.Settle();
