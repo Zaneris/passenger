@@ -738,6 +738,46 @@ public sealed class FolderWatchTests : IDisposable
         window.Close();
     }
 
+    /// <summary>The system's watcher's beat goes on only while it can matter: while a window the person sees is in front,
+    /// a write of its file and its change heard at each beat; never while that window is in the background, whose look as
+    /// it comes in front finds what went unheard meanwhile.</summary>
+    [AvaloniaFact]
+    public void The_systems_watchers_beat_goes_on_only_while_a_window_the_person_sees_is_in_front()
+    {
+        Assert.SkipUnless(OperatingSystem.IsMacOS(), "Only macOS's watcher falls behind without a word, so only there is a beat written");
+        Write("One.cs", "class One { }\n");
+        string state = TestFolders.Create("watch-state-");
+        MainWindow window = new() { Width = 1200, Height = 800, StateFolder = state, StartsLanguageServer = false, Unseen = false };
+        try
+        {
+            window.Show();
+            window.OpenFolder(folder);
+            window.Activate();
+            Ui.Settle();
+            (long beats, long heard) = (WatchLag.Beats, WatchLag.HeardBeats);
+            long began = System.Diagnostics.Stopwatch.GetTimestamp();
+            Ui.WaitFor(() => WatchLag.Beats >= beats + 5, "five beats while the window the person sees is in front");
+            TimeSpan on = System.Diagnostics.Stopwatch.GetElapsedTime(began);
+            TestContext.Current.TestOutputHelper?.WriteLine(
+                $"While on, the beat wrote its file {WatchLag.Beats - beats} times and heard {WatchLag.HeardBeats - heard} changes of it in {on.TotalSeconds:F1} s");
+
+            window.Hide();
+            Ui.WaitFor(() => !WatchLag.IsBeating, "the beat to end once the window went to the background");
+            long stopped = WatchLag.Beats;
+            Ui.Hold(TimeSpan.FromSeconds(5), "two beats' time with no window in front");
+            Assert.True(WatchLag.Beats == stopped, $"The beat wrote its file {WatchLag.Beats - stopped} times while no window was in front");
+
+            window.Show();
+            window.Activate();
+            Ui.WaitFor(() => WatchLag.IsBeating, "the beat to go on again once the window came back in front");
+        }
+        finally
+        {
+            window.Close();
+            TestFolders.Delete(state);
+        }
+    }
+
     /// <summary>A branch switched from outside while the watcher of Git's folder heard nothing is read once that watcher's
     /// watch fails, which says at once that anything there may have moved, rather than at the next change it hears: in a
     /// folder opened below the repository's top, whose Git folder is outside it and watched apart.</summary>

@@ -4,11 +4,11 @@ using Passenger.Core;
 namespace Passenger.App.Workspace;
 
 /// <summary>Whether macOS's watcher hands changes over in time: under a load of changes its daemon falls seconds to
-/// minutes behind, saying nothing, and every watcher hears nothing meanwhile. While anything follows <see cref="Behind"/>,
-/// a file of the process's own in the user's temporary folder is written at each <see cref="Beat"/> and its change
-/// awaited: one unheard <see cref="Late"/> after it was written has the watchers look for themselves at each beat, and
-/// once more as changes have been heard in time for <see cref="Settled"/>. Other systems' watchers say when they lose
-/// changes, so nothing is written there.</summary>
+/// minutes behind, saying nothing, and every watcher hears nothing meanwhile. While anything follows <see cref="Behind"/>
+/// and a window holds the beat (<see cref="Hold"/>: one in front, or one nobody sees), a file of the process's own in the
+/// user's temporary folder is written at each <see cref="Beat"/> and its change awaited: one unheard <see cref="Late"/>
+/// after it was written has the watchers look for themselves at each beat, and once more as changes have been heard in
+/// time for <see cref="Settled"/>. Other systems' watchers say when they lose changes, so nothing is written there.</summary>
 public static class WatchLag
 {
     private static readonly TimeSpan Beat = TimeSpan.FromSeconds(2);
@@ -26,6 +26,9 @@ public static class WatchLag
     private static CancellationTokenSource? beating;
     private static bool exitHooked;
 
+    /// <summary>How many holds on the beat are let go of not yet (<see cref="Hold"/>).</summary>
+    private static int holds;
+
     /// <summary>When the earliest write of the beat still unheard was made, a timestamp of <see cref="Stopwatch.GetTimestamp"/>'s,
     /// or 0; when one was last found late, or 0; and since when, on the wall clock, changes may have gone unheard.</summary>
     private static long unheard;
@@ -36,31 +39,74 @@ public static class WatchLag
     /// with the moment on the wall clock from which changes may have gone unheard; following it keeps the beat going.</summary>
     public static event Action<DateTime>? Behind
     {
-        add
+        add => Follow(() => behind += value);
+        remove => Follow(() => behind -= value);
+    }
+
+    /// <summary>Holds the beat going while anything follows <see cref="Behind"/>, until let go of: a window's while it is in
+    /// front, as a person works there, and while it is open where nobody sees it (an agent's, a test's), whose changes come
+    /// from programs beside it. A window come in front looks again itself for what was dropped while none held it.</summary>
+    public static IDisposable Hold()
+    {
+        Follow(() => holds++);
+        return new Held();
+    }
+
+    /// <summary>A hold on the beat, let go of once.</summary>
+    private sealed class Held : IDisposable
+    {
+        private int released;
+
+        public void Dispose()
+        {
+            if (Interlocked.Exchange(ref released, 1) == 0)
+            {
+                Follow(() => holds--);
+            }
+        }
+    }
+
+    /// <summary>Whether the beat goes on now.</summary>
+    public static bool IsBeating
+    {
+        get
         {
             lock (Gate)
             {
-                behind += value;
-                if (OperatingSystem.IsMacOS() && beating is null)
-                {
-                    Start();
-                }
+                return beating is not null;
             }
         }
-        remove
+    }
+
+    /// <summary>How many times the beat's file was written in this process.</summary>
+    public static long Beats => Interlocked.Read(ref beats);
+
+    /// <summary>How many changes of the beat's file the system's watcher handed over in this process.</summary>
+    public static long HeardBeats => Interlocked.Read(ref heardBeats);
+
+    private static long beats;
+    private static long heardBeats;
+
+    /// <summary>Changes what follows or holds the beat under the gate, then begins or ends it as they now ask: it goes on
+    /// on macOS while anything follows it and anything holds it.</summary>
+    private static void Follow(Action change)
+    {
+        FileSystemWatcher? stopped = null;
+        lock (Gate)
         {
-            FileSystemWatcher? stopped = null;
-            lock (Gate)
+            change();
+            bool wanted = OperatingSystem.IsMacOS() && behind is not null && holds > 0;
+            if (wanted && beating is null)
             {
-                behind -= value;
-                if (behind is null)
-                {
-                    stopped = Stop();
-                }
+                Start();
             }
-            // Off the gate, which the system's watcher takes as it hears the beat.
-            stopped?.Dispose();
+            else if (!wanted && beating is not null)
+            {
+                stopped = Stop();
+            }
         }
+        // Off the gate, which the system's watcher takes as it hears the beat.
+        stopped?.Dispose();
     }
 
     /// <summary>The system's watcher of the beat's file, while anything follows <see cref="Behind"/> on macOS: a test stops
@@ -225,6 +271,7 @@ public static class WatchLag
             // Made again where the system's clean-up of its temporary folder took it.
             Directory.CreateDirectory(Path.GetDirectoryName(file)!);
             AtomicFile.Write(file, System.Text.Encoding.ASCII.GetBytes(count.ToString(System.Globalization.CultureInfo.InvariantCulture)));
+            Interlocked.Increment(ref beats);
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
@@ -239,6 +286,7 @@ public static class WatchLag
 
     private static void Heard()
     {
+        Interlocked.Increment(ref heardBeats);
         lock (Gate)
         {
             unheard = 0;

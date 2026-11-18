@@ -38,8 +38,32 @@ public partial class MainWindow
     private long agentCalled;
     private Task agentLook = Task.CompletedTask;
 
-    /// <summary>Back from another program, the window looks again (<see cref="LookAgainAsync"/>).</summary>
-    private void AddLookingAgain() => Activated += (_, _) => IdeErrors.Observe(LookAgainAsync());
+    /// <summary>Back from another program, the window looks again (<see cref="LookAgainAsync"/>). It holds the system's
+    /// watcher's beat (<see cref="WatchLag.Hold"/>) while it is in front, or, nobody seeing it, while it is open: in the
+    /// background, the look as it comes in front finds what went unheard meanwhile.</summary>
+    private void AddLookingAgain()
+    {
+        IDisposable? beat = null;
+        Opened += (_, _) => beat ??= Unseen ? WatchLag.Hold() : null;
+        Activated += (_, _) =>
+        {
+            beat ??= WatchLag.Hold();
+            IdeErrors.Observe(LookAgainAsync());
+        };
+        Deactivated += (_, _) =>
+        {
+            if (!Unseen)
+            {
+                beat?.Dispose();
+                beat = null;
+            }
+        };
+        Closed += (_, _) =>
+        {
+            beat?.Dispose();
+            beat = null;
+        };
+    }
 
     /// <summary>An agent's call begins: its first, and one coming <see cref="AgentAway"/> or more after the last, looks again
     /// first, as the window coming in front does, which an agent's own IDE never does; a call meanwhile waits for the same
