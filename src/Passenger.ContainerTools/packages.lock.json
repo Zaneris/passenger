@@ -35,15 +35,15 @@
       },
       "Microsoft.CodeAnalysis.Analyzers": {
         "type": "Transitive",
-        "resolved": "5.9.0-1.26328.17",
-        "contentHash": "HP9NNk8ZjOSI2hgOyXnQg+kv7/X837Vr2nAlXiGAtqtYnYKjRRa1UmQFr8KFs5ynGYKqfbb8zB9APoWjiAGdMg=="
+        "resolved": "5.9.0",
+        "contentHash": "jMNOo+uoBGiWbZ6Wx0dqU93r5WD4P5WnIRZdoz67RP5N09OUetHgAbo4L7hihOH1NHdD2TgW5/l+SP4gQukwww=="
       },
       "Microsoft.CodeAnalysis.Common": {
         "type": "Transitive",
-        "resolved": "5.9.0",
-        "contentHash": "IYaIaUWdIx539AReKZOBEqTskFusZfCh/wFSPilDvCn5Say8MegLw2LONcSIcVy+v3Gzv53qYBspgvBGSErfbQ==",
+        "resolved": "5.12.0",
+        "contentHash": "0C7o9ys497xp0kZ64sL7C6nY/5WPQlxia28VlezdonBmjxbC6mIovAYs8mBoh/QooxBBZQCo/wMuZnV1kNk9GA==",
         "dependencies": {
-          "Microsoft.CodeAnalysis.Analyzers": "5.9.0-1.26328.17"
+          "Microsoft.CodeAnalysis.Analyzers": "5.9.0"
         }
       },
       "Microsoft.Diagnostics.DbgShim.linux-arm": {
@@ -103,8 +103,8 @@
       },
       "Microsoft.DiaSymReader": {
         "type": "Transitive",
-        "resolved": "2.0.0",
-        "contentHash": "QcZrCETsBJqy/vQpFtJc+jSXQ0K5sucQ6NUFbTNVHD4vfZZOwjZ/3sBzczkC4DityhD3AVO/+K/+9ioLs1AgRA=="
+        "resolved": "2.2.10",
+        "contentHash": "zmGsm6b2y3STDa/Of7rdkkfTDV8VuGB8aCqIkLoJIQh5tL78K3zJ8OUyFKnfsaORXmGr9iOKwDkZfUjeXi+CwA=="
       },
       "Microsoft.Identity.Client": {
         "type": "Transitive",
@@ -135,12 +135,12 @@
       },
       "MP.Microsoft.CodeAnalysis.ExpressionEvaluator.ExpressionCompiler": {
         "type": "Transitive",
-        "resolved": "5.9.0",
-        "contentHash": "YFsgxMlzzyXhcqNNnSsSDpNPGg6wZi89YEyilBNAs9UwNueQvcvlD2TAo/jjEBU+qli/CgDn5Usrsj7UFRsF4Q==",
+        "resolved": "5.12.0",
+        "contentHash": "8CwLPu6BWnSFNElQYMx9UHXt/FY3rPWp4jcREhFrplfw5kWYfAcSKl4GWTSVYKZ6ITO+z7D+UccUbebfZOb4eA==",
         "dependencies": {
-          "Microsoft.CodeAnalysis.Analyzers": "5.9.0-1.26328.17",
-          "Microsoft.CodeAnalysis.Common": "5.9.0",
-          "Microsoft.DiaSymReader": "2.0.0"
+          "Microsoft.CodeAnalysis.Analyzers": "5.9.0",
+          "Microsoft.CodeAnalysis.Common": "5.12.0",
+          "Microsoft.DiaSymReader": "2.2.10"
         }
       },
       "System.ClientModel": {
@@ -170,20 +170,20 @@
       "passenger.dap": {
         "type": "Project",
         "dependencies": {
-          "Passenger.Core": "[0.3.0, )"
+          "Passenger.Core": "[0.4.0, )"
         }
       },
       "passenger.debugger": {
         "type": "Project",
         "dependencies": {
           "ICSharpCode.Decompiler": "[11.2.0.10050, )",
-          "MP.Microsoft.CodeAnalysis.CSharp.ExpressionEvaluator.ExpressionCompiler": "[5.9.0, )",
-          "Microsoft.CodeAnalysis.CSharp": "[5.9.0, )",
+          "MP.Microsoft.CodeAnalysis.CSharp.ExpressionEvaluator.ExpressionCompiler": "[5.12.0, )",
+          "Microsoft.CodeAnalysis.CSharp": "[5.12.0, )",
           "Microsoft.Diagnostics.DbgShim": "[10.0.750501, )",
           "Microsoft.Diagnostics.NETCore.Client": "[0.2.750501, )",
-          "Passenger.Core": "[0.3.0, )",
-          "Passenger.Dap": "[0.3.0, )",
-          "Passenger.Debugger.Interop": "[0.3.0, )",
+          "Passenger.Core": "[0.4.0, )",
+          "Passenger.Dap": "[0.4.0, )",
+          "Passenger.Debugger.Interop": "[0.4.0, )",
           "ZLinq": "[1.6.1, )"
         }
       },
@@ -196,7 +196,7 @@
           "Microsoft.Diagnostics.NETCore.Client": "[0.2.750501, )",
           "Microsoft.Diagnostics.Runtime": "[4.2.751201, )",
           "Microsoft.Diagnostics.Tracing.TraceEvent": "[4.0.0, )",
-          "Passenger.Core": "[0.3.0, )"
+          "Passenger.Core": "[0.4.0, )"
         }
       },
       "ICSharpCode.Decompiler": {
@@ -207,12 +207,12 @@
       },
       "Microsoft.CodeAnalysis.CSharp": {
         "type": "CentralTransitive",
-        "requested": "[5.9.0, )",
-        "resolved": "5.9.0",
-        "contentHash": "7JGDA0UT1+h7k9ZcA3rF4eFC8+QPq1xyYaXxag4p8r/zzPurEJxvdi7aM+MRL/SfP7XADXpWF/pl/eUYXOq/ww==",
+        "requested": "[5.12.0, )",
+        "resolved": "5.12.0",
+        "contentHash": "6W6vBcpQFjlxog+KUGNM2fFy+XA2StC1PtnkEkechk68vFy3a28tGjEdnoA7NrxhMdr8a+zh/AmiUtBAmdkQPg==",
         "dependencies": {
-          "Microsoft.CodeAnalysis.Analyzers": "5.9.0-1.26328.17",
-          "Microsoft.CodeAnalysis.Common": "[5.9.0]"
+          "Microsoft.CodeAnalysis.Analyzers": "5.9.0",
+          "Microsoft.CodeAnalysis.Common": "[5.12.0]"
         }
       },
       "Microsoft.Diagnostics.DbgShim": {
@@ -262,15 +262,15 @@
       },
       "MP.Microsoft.CodeAnalysis.CSharp.ExpressionEvaluator.ExpressionCompiler": {
         "type": "CentralTransitive",
-        "requested": "[5.9.0, )",
-        "resolved": "5.9.0",
-        "contentHash": "dswOZ/GeIQvGwkvHcFR9tf94DjOa3dGTr0wZeXjV6nxMCChRtaR7iLvrSjup4N8bVielozKcA1IStUtrEX4/jQ==",
+        "requested": "[5.12.0, )",
+        "resolved": "5.12.0",
+        "contentHash": "M4DbxxYRpSNfhRbvB4xoSMmR1M2yp5oMoOOpa6HZ+ybwlwu+P4O/XJjTfjCNR9Iq29DAQB01Lqj0uRw44jK21w==",
         "dependencies": {
-          "MP.Microsoft.CodeAnalysis.ExpressionEvaluator.ExpressionCompiler": "5.9.0",
-          "Microsoft.CodeAnalysis.Analyzers": "5.9.0-1.26328.17",
-          "Microsoft.CodeAnalysis.CSharp": "5.9.0",
-          "Microsoft.CodeAnalysis.Common": "5.9.0",
-          "Microsoft.DiaSymReader": "2.0.0"
+          "MP.Microsoft.CodeAnalysis.ExpressionEvaluator.ExpressionCompiler": "5.12.0",
+          "Microsoft.CodeAnalysis.Analyzers": "5.9.0",
+          "Microsoft.CodeAnalysis.CSharp": "5.12.0",
+          "Microsoft.CodeAnalysis.Common": "5.12.0",
+          "Microsoft.DiaSymReader": "2.2.10"
         }
       },
       "ZLinq": {

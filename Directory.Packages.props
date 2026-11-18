@@ -120,10 +120,10 @@
     <!-- Skia and HarfBuzz under Avalonia's renderer, Svg.Skia and the MAUI previewer, at their newest stable line rather
          than the older ones Avalonia.Skia and Avalonia.Controls.Maui name as their least, each with the Linux native
          library of its own version (macOS's and Windows' come with the managed package). -->
-    <PackageVersion Include="SkiaSharp" Version="4.156.0" />
-    <PackageVersion Include="SkiaSharp.NativeAssets.Linux" Version="4.156.0" />
-    <PackageVersion Include="HarfBuzzSharp" Version="14.4.0.100" />
-    <PackageVersion Include="HarfBuzzSharp.NativeAssets.Linux" Version="14.4.0.100" />
+    <PackageVersion Include="SkiaSharp" Version="4.157.0" />
+    <PackageVersion Include="SkiaSharp.NativeAssets.Linux" Version="4.157.0" />
+    <PackageVersion Include="HarfBuzzSharp" Version="14.4.0.200" />
+    <PackageVersion Include="HarfBuzzSharp.NativeAssets.Linux" Version="14.4.0.200" />
     <!-- The MAUI previewer's (src/Passenger.MauiPreview): Avalonia's backend for .NET MAUI, which draws MAUI's controls with
          Avalonia's on every system. Its newest release candidate, as it has no stable release yet. -->
     <PackageVersion Include="Avalonia.Controls.Maui" Version="11.0.0-rc.3.26301.1434" />
@@ -133,13 +133,13 @@
     <PackageVersion Include="Grpc.Net.Client" Version="2.85.0" />
     <!-- Also what Passenger's analyzers are compiled against (src/Passenger.Analyzers), so never past the compiler of
          global.json's SDK, nor of Roslyn's server at RoslynServerVersion, which load them. -->
-    <PackageVersion Include="Microsoft.CodeAnalysis.CSharp" Version="5.9.0" />
+    <PackageVersion Include="Microsoft.CodeAnalysis.CSharp" Version="5.12.0" />
     <!-- The unit tests' workspaces, at the compiler's version above: what the extension inside Roslyn's server keeps by a
          solution's documents, held to each workspace apart. -->
-    <PackageVersion Include="Microsoft.CodeAnalysis.CSharp.Workspaces" Version="5.9.0" />
-    <PackageVersion Include="ModelContextProtocol.Core" Version="2.3.1" />
+    <PackageVersion Include="Microsoft.CodeAnalysis.CSharp.Workspaces" Version="5.12.0" />
+    <PackageVersion Include="ModelContextProtocol.Core" Version="2.4.0" />
     <!-- The NuGet window's package sources, read by NuGet's own code, so they match the CLI's. -->
-    <PackageVersion Include="NuGet.Configuration" Version="7.9.0" />
+    <PackageVersion Include="NuGet.Configuration" Version="8.0.0" />
     <PackageVersion Include="StreamJsonRpc" Version="2.26.150" />
     <!-- The app's JoinableTaskFactory (Synchronously.cs), at the version StreamJsonRpc takes. -->
     <PackageVersion Include="Microsoft.VisualStudio.Threading.Only" Version="18.7.23" />
@@ -159,7 +159,7 @@
     <PackageVersion Include="Gherkin" Version="35.0.0" />
     <PackageVersion Include="Cucumber.CucumberExpressions" Version="17.1.0" />
     <!-- VSTest's own client for the vstest.console the SDK ships: discovery, runs and debugging of tests. -->
-    <PackageVersion Include="Microsoft.TestPlatform.TranslationLayer" Version="18.11.0" />
+    <PackageVersion Include="Microsoft.TestPlatform.TranslationLayer" Version="18.12.0" />
     <!-- The Windows install's hooks, at the version of the vpk tool that packs it (dotnet-tools.json). -->
     <PackageVersion Include="Velopack" Version="1.2.161" />
   </ItemGroup>
@@ -184,7 +184,7 @@
     <PackageVersion Include="Microsoft.Diagnostics.NETCore.Client" Version="0.2.750501" />
     <PackageVersion Include="Microsoft.Diagnostics.Tracing.TraceEvent" Version="4.0.0" />
     <PackageVersion Include="Microsoft.Diagnostics.Runtime" Version="4.2.751201" />
-    <PackageVersion Include="MP.Microsoft.CodeAnalysis.CSharp.ExpressionEvaluator.ExpressionCompiler" Version="5.9.0" />
+    <PackageVersion Include="MP.Microsoft.CodeAnalysis.CSharp.ExpressionEvaluator.ExpressionCompiler" Version="5.12.0" />
     <PackageVersion Include="ZLinq" Version="1.6.1" />
   </ItemGroup>
   <!-- Tests. xunit v3 stays on 3.2, the line Avalonia.Headless.XUnit is built against. -->
@@ -224,7 +224,7 @@
     <PackageVersion Include="Microsoft.CodeAnalysis.BannedApiAnalyzers" Version="5.6.0" />
     <!-- The analyzers' (src/Passenger.Analyzers): the last release, MIT where netstandard2.0's 1.1.0 is not. -->
     <PackageVersion Include="Microsoft.NETCore.Platforms" Version="7.0.4" />
-    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.11.0" />
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.12.0" />
     <PackageVersion Include="xunit.runner.visualstudio" Version="4.0.1" />
     <PackageVersion Include="xunit.v3" Version="3.2.2" />
   </ItemGroup>
