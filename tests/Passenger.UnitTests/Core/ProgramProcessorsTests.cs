@@ -126,6 +126,33 @@ public class ProgramProcessorsTests
         Assert.Equal([Architecture.Arm64], Of(Windows(0xAA64)));
     }
 
+    /// <summary>A Windows program with a whole PE32 optional header, its CLR header's data directory set where it is a .NET assembly.</summary>
+    private static byte[] WindowsWithOptionalHeader(ushort machine, bool managed)
+    {
+        byte[] program = new byte[0x200];
+        Windows(machine).CopyTo(program, 0);
+        const int Optional = 0x80 + 24;
+        BinaryPrimitives.WriteUInt16LittleEndian(program.AsSpan(Optional), 0x10B);
+        BinaryPrimitives.WriteUInt32LittleEndian(program.AsSpan(Optional + 92), 16);
+        if (managed)
+        {
+            BinaryPrimitives.WriteUInt32LittleEndian(program.AsSpan(Optional + 96 + (14 * 8)), 0x2008);
+            BinaryPrimitives.WriteUInt32LittleEndian(program.AsSpan(Optional + 96 + (14 * 8) + 4), 0x48);
+        }
+        return program;
+    }
+
+    [Fact]
+    public void A_dotnet_assembly_is_built_for_no_processor_its_machine_names_and_a_native_x86_program_for_x86()
+    {
+        IReadOnlyList<Architecture> assembly = Of(WindowsWithOptionalHeader(0x014C, managed: true));
+        Assert.True(assembly.Count == 0,
+            $"An AnyCPU .NET assembly, whose PE machine is x86's, read as built for [{string.Join(", ", assembly)}], so Debug would refuse a 64-bit program as a 32-bit one");
+        Assert.Equal([Architecture.X86], Of(WindowsWithOptionalHeader(0x014C, managed: false)));
+        IReadOnlyList<Architecture> built = ProgramProcessors.Of(typeof(ProgramProcessorsTests).Assembly.Location);
+        Assert.True(built.Count == 0, $"This AnyCPU test assembly read as built for [{string.Join(", ", built)}]");
+    }
+
     [Fact]
     public void A_file_that_is_no_program_or_is_cut_short_has_none()
     {
