@@ -886,12 +886,8 @@ public sealed class ProjectSession : IAsyncDisposable
             ReadAgain();
             return;
         }
-        // Whether a C# file come is a program is in its head, read off the window's thread.
-        string[] sources = [.. came.Where(Passenger.Host.ProgramFiles.IsProgram).Select(file => Path.Join(folder, file))];
-        if (sources.Length > 0)
-        {
-            IdeErrors.Observe(ProgramsCameAsync(sources, workspace, reads));
-        }
+        // Whether a C# file come is a program is in its head, read off the window's thread once its folder has stood still.
+        ProgramArrivals.Came(came.Where(Passenger.Host.ProgramFiles.IsProgram).Select(file => Path.Join(folder, file)));
 
         bool Comes(string file)
         {
@@ -911,13 +907,24 @@ public sealed class ProjectSession : IAsyncDisposable
         static bool Weighed(string file) => FolderWatcher.IsReadFor(file) || IsGodotProject(file) || Passenger.Host.ProgramFiles.IsProgram(file);
     }
 
+    /// <summary>The C# files come, read for whether each is a program once their folders have stood still.</summary>
+    private StandingStill ProgramArrivals => programArrivals ??= new StandingStill(sources =>
+    {
+        if (!IsEnded && Workspace is { } workspace)
+        {
+            IdeErrors.Observe(ProgramsCameAsync(sources, workspace, reads));
+        }
+    });
+
+    private StandingStill? programArrivals;
+
     /// <summary>The C# files come, each now a program and not one of the folder's, or the reverse: the folder is read again,
-    /// unless a read came since, whose walk found them.</summary>
-    private async Task ProgramsCameAsync(string[] sources, WorkspaceModel workspace, int read)
+    /// unless a read came since, whose walk found them; one gone since it came is passed over.</summary>
+    private async Task ProgramsCameAsync(IReadOnlyList<string> sources, WorkspaceModel workspace, int read)
     {
         IReadOnlyList<ProjectModel> projects = Projects;
-        bool changed = await BackgroundWork.Run(() =>
-            sources.Any(path => workspace.IsProgramNow(path, projects) != projects.Any(p => p.IsProgram && PathNames.Same(p.Path, path))));
+        bool changed = await BackgroundWork.Run(() => sources.Any(path => File.Exists(path)
+            && workspace.IsProgramNow(path, projects) != projects.Any(p => p.IsProgram && PathNames.Same(p.Path, path))));
         if (changed && read == reads && !IsEnded)
         {
             ReadAgain();
@@ -1989,10 +1996,12 @@ public sealed class ProjectSession : IAsyncDisposable
         Evaluate();
     }
 
-    /// <summary>What the folder's watcher saw, for the C# language server: told through its service, or kept for the one the
-    /// session makes while a server started ahead waits for it.</summary>
+    /// <summary>What the folder's watcher saw: the reads of C# files come in its folders put off again (<see cref="ProgramArrivals"/>),
+    /// and for the C# language server told through its service, or kept for the one the session makes while a server
+    /// started ahead waits for it.</summary>
     public void FilesChanged(FolderChanges changes)
     {
+        programArrivals?.Heard(changes.Paths);
         if (CSharp is { } csharp)
         {
             csharp.FilesChanged(changes);

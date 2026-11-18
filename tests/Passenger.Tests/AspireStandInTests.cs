@@ -62,6 +62,44 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
         static bool Found(MainWindow window, string file) => window.Configurations.Any(c => c.Aspire && PathNames.Same(c.Project, file));
     }
 
+    /// <summary>A single-file AppHost brought in with its folder by another program is read only once that folder has stood
+    /// still: moved out again before then it is never read, which on Windows would refuse that move, and brought in to stay
+    /// it is found once the folder has stood still.</summary>
+    [AvaloniaFact]
+    public void A_single_file_AppHost_that_came_with_its_folder_is_read_only_once_the_folder_has_stood_still()
+    {
+        project.Reset();
+        string sdk = $"#:sdk Aspire.AppHost.Sdk@{AspireApp.TemplatesVersion}\nvar builder = DistributedApplication.CreateBuilder(args);\nbuilder.Build().Run();\n";
+        string elsewhere = TestFolders.Create("elsewhere-");
+        TestFolders.Write(elsewhere, "Moving/apphost.cs", sdk);
+        string inside = Path.Combine(project.Folder, "Moving");
+        string appHost = PathNames.Canonical(Path.Combine(inside, "apphost.cs"));
+        string relative = Path.Combine("Moving", "apphost.cs");
+        MainWindow window = project.Open(null, languageServer: false);
+        try
+        {
+            using (window.Session.AspireFiles.HoldArrivals())
+            {
+                Directory.Move(Path.Combine(elsewhere, "Moving"), inside);
+                Ui.WaitFor(() => window.FileIndex.Files.Contains(relative), "the folder moved in in Go to File");
+                Assert.False(Found(window, appHost), "The single-file AppHost that came was read before its folder stood still");
+                Directory.Move(inside, Path.Combine(elsewhere, "Moved"));
+                Ui.WaitFor(() => !window.FileIndex.Files.Contains(relative), "the folder moved out gone from Go to File");
+            }
+            Ui.Settle();
+            Assert.False(Found(window, appHost), "A single-file AppHost moved out before its folder stood still was found all the same");
+
+            Directory.Move(Path.Combine(elsewhere, "Moved"), inside);
+            Ui.WaitFor(() => Found(window, appHost), "the single-file AppHost brought in to stay, once its folder stood still");
+        }
+        finally
+        {
+            window.Close();
+        }
+
+        static bool Found(MainWindow window, string file) => window.Configurations.Any(c => c.Aspire && PathNames.Same(c.Project, file));
+    }
+
     /// <summary>An AppHost whose launch profile serves HTTPS, with no trusted development certificate, has the person
     /// asked once before it starts (dev-certs is <see cref="DevCerts"/>' stand-in, which trusts nothing on this
     /// machine): Stop closes the question and starts nothing; Run over HTTP has it serve HTTP where it would have

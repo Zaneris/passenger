@@ -1,6 +1,7 @@
 using Microsoft.CodeAnalysis.CSharp;
 using Passenger.App.CSharp;
 using Passenger.App.Run;
+using Passenger.App.Workspace;
 using Passenger.Core;
 using Passenger.Languages.CSharp;
 using Passenger.Roslyn.Extension;
@@ -33,7 +34,14 @@ public sealed class AspireFiles
     {
         this.session = session;
         session.Configurations.Changed += (_, _) => FollowAppHosts();
+        arrivals = new StandingStill(ReadCame);
     }
+
+    /// <summary>The C# files another program brought in, read once their folders have stood still.</summary>
+    private readonly StandingStill arrivals;
+
+    /// <summary>The reads of C# files that came put off until let go, for a test of what the folder does meanwhile.</summary>
+    public IDisposable HoldArrivals() => arrivals.HoldOpen();
 
     /// <summary>The most single-file AppHosts a folder offers, so a folder of generated ones cannot flood the configurations.</summary>
     private const int AppHostLimit = 200;
@@ -115,43 +123,62 @@ public sealed class AspireFiles
     }
 
     /// <summary>Files the index put in and took out after a walk, by their paths from the folder: the C# files gone
-    /// forgotten, those come read unless the watcher had them read already.</summary>
+    /// forgotten, those come read once their folders have stood still (<see cref="StandingStill"/>).</summary>
     public void CameAndWent(string root, IReadOnlyList<string> came, IReadOnlyList<string> gone)
     {
         UiThread.Check();
-        Then(walk: false, () =>
+        List<string> sources = [.. gone.Where(relative => IsSource(root, relative))];
+        if (sources.Count > 0)
         {
-            foreach (string relative in gone)
+            Then(walk: false, () =>
             {
-                if (IsSource(root, relative))
+                foreach (string relative in sources)
                 {
                     read.Remove(relative);
                     appHosts.Remove(Path.Join(root, relative));
                     touched.Add(Path.Join(root, relative));
                 }
-            }
-            foreach (string relative in came)
+            });
+        }
+        arrivals.Came(came.Where(relative => IsSource(root, relative)).Select(relative => Path.Join(root, relative)));
+    }
+
+    /// <summary>C# files that came, their folders standing still: each still there read, as one written is.</summary>
+    private void ReadCame(IReadOnlyList<string> came)
+    {
+        if (session.Folder is not { } root)
+        {
+            return;
+        }
+        Then(walk: false, () =>
+        {
+            foreach (string path in came)
             {
-                if (IsSource(root, relative) && read.Add(relative))
+                string relative = PathNames.Below(path, root).ToString();
+                if (!File.Exists(path) || IsAppHost(path) is not { } appHost)
                 {
-                    string path = Path.Join(root, relative);
-                    Found(path, IsAppHost(path) ?? false);
-                    touched.Add(path);
+                    continue;
                 }
+                read.Add(relative);
+                Found(path, appHost);
+                touched.Add(path);
             }
         });
     }
 
     /// <summary>Files the folder watcher saw change: each C# file among them read again, as it may have gained or lost the
-    /// AppHost SDK's line; with <paramref name="every"/> (the system lost changes) every one, as the walk that follows lists it.</summary>
-    public void Changed(IEnumerable<string> paths, bool every = false)
+    /// AppHost SDK's line, but one that <paramref name="came"/>, read once its folder has stood still, as any change there
+    /// puts that read off; with <paramref name="every"/> (the system lost changes) every one, as the walk that follows lists it.</summary>
+    public void Changed(IReadOnlyCollection<string> paths, IReadOnlySet<string> came, bool every = false)
     {
         UiThread.Check();
         if (session.Folder is not { } root)
         {
             return;
         }
-        string[] sources = [.. paths.Where(path => IsSource(root, PathNames.Below(path, root)))];
+        arrivals.Heard(paths);
+        string[] sources = [.. paths.Where(path => !came.Contains(path) && IsSource(root, PathNames.Below(path, root)))];
+        arrivals.Came(paths.Where(path => came.Contains(path) && IsSource(root, PathNames.Below(path, root))));
         if (sources.Length == 0 && !every)
         {
             return;
