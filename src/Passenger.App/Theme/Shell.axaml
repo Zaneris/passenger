@@ -13,8 +13,8 @@
         <StaticResource x:Key="CheckBoxMinHeight" ResourceKey="Passenger.ControlHeight" />
         <!-- A form's drop-down (ComboBox.form): one width for every drop-down in a column, so their edges line up. -->
         <x:Double x:Key="Passenger.DropDownWidth">280</x:Double>
-        <!-- The room round a menu's frame its shadow is drawn in (Passenger.PopupShadow's reach), inside the menu's own popup,
-             which is placed by its frame, so the frame stands where it would without it (MenuShadow). -->
+        <!-- The room round a menu's frame its shadow is drawn in (Passenger.PopupShadow's reach), inside the menu's own popup:
+             the margin of what the popup holds, by which the popup places the frame where it would stand without it. -->
         <Thickness x:Key="Passenger.MenuShadowRoom">12,12,12,20</Thickness>
         <!-- A submenu opens beside its item, never over it (MenuShadow.Beside), so it is moved across by nothing more. -->
         <x:Double x:Key="MenuFlyoutSubItemPopupHorizontalOffset">0</x:Double>
@@ -101,14 +101,19 @@
         </Setter>
     </Style>
     <!-- A menu's frame: its rounded edge and a soft shadow, drawn in room round the frame inside the menu's popup, the
-         popup placed by its frame so the frame opens where it would without that room (MenuShadow). A submenu's and the
-         menu button's alike. -->
-    <Style Selector="ContextMenu /template/ Border">
+         margin of what the popup holds (the menu, the menu button's list, a submenu's frame), by which the popup places
+         the frame where it would open without that room, at the pointer, under a widget or beside an item, on whichever
+         side it has room. -->
+    <Style Selector="ContextMenu">
         <Setter Property="Margin" Value="{DynamicResource Passenger.MenuShadowRoom}" />
+    </Style>
+    <Style Selector="ContextMenu /template/ Border">
         <Setter Property="BoxShadow" Value="{DynamicResource Passenger.PopupShadow}" />
     </Style>
-    <Style Selector="MenuFlyoutPresenter /template/ Border#LayoutRoot">
+    <Style Selector="MenuFlyoutPresenter">
         <Setter Property="Margin" Value="{DynamicResource Passenger.MenuShadowRoom}" />
+    </Style>
+    <Style Selector="MenuFlyoutPresenter /template/ Border#LayoutRoot">
         <Setter Property="BoxShadow" Value="{DynamicResource Passenger.PopupShadow}" />
     </Style>
     <Style Selector="MenuItem /template/ Border:not(#PART_LayoutRoot)">

@@ -9,20 +9,14 @@ using Avalonia.VisualTree;
 
 namespace Passenger.App;
 
-/// <summary>Where every menu's popup stands (a context menu's, a menu flyout's): its frame is inset by the room its shadow
-/// is drawn in (Shell.axaml's Passenger.MenuShadowRoom), since Avalonia draws nothing past a popup's edge, so the popup is
-/// moved back by that room on the sides its placement aligns the frame to, and the frame opens where it would without it
-/// (under a widget, beside a stripe's button, above the status bar). A submenu's popup is its frame and the room round it,
-/// the positioner placing the frame, and opens beside its item (<see cref="Beside"/>).</summary>
+/// <summary>Where a submenu's popup stands: beside its item (<see cref="Beside"/>). Every menu's popup is its frame and
+/// the room round it its shadow is drawn in (Shell.axaml's Passenger.MenuShadowRoom), the margin of what the popup holds,
+/// so the positioner places the frame, at the pointer, under a widget or beside an item, and the room comes with it on
+/// whichever side the menu opens.</summary>
 internal static class MenuShadow
 {
-    public static void Install()
-    {
-        TemplatedControl.TemplateAppliedEvent.AddClassHandler<ContextMenu>((menu, _) => Fit(menu));
-        ContextMenu.PlacementProperty.Changed.AddClassHandler<ContextMenu>((menu, _) => Fit(menu));
-        PopupFlyoutBase.PlacementProperty.Changed.AddClassHandler<MenuFlyout>((flyout, _) => Fit(flyout));
+    public static void Install() =>
         TemplatedControl.TemplateAppliedEvent.AddClassHandler<MenuItem>((item, e) => Beside(item, e.NameScope.Find<Popup>("PART_Popup")));
-    }
 
     /// <summary>A submenu's popup opens beside its item on whichever side it has room, and the room its shadow is drawn in
     /// is the submenu's own: a pointer resting there keeps it open, as one on the frame does, and the pointer coming in
@@ -77,40 +71,4 @@ internal static class MenuShadow
         placed.Anchor = PopupAnchor.TopRight;
         placed.Gravity = PopupGravity.BottomRight;
     }
-
-    /// <summary>The popup's offset for a placement: back by the room on the side the frame meets its target, by none
-    /// across a side the frame is centred on.</summary>
-    public static (double X, double Y) Offsets(PlacementMode placement, Thickness room) => placement switch
-    {
-        PlacementMode.TopEdgeAlignedLeft => (-room.Left, room.Bottom),
-        PlacementMode.TopEdgeAlignedRight => (room.Right, room.Bottom),
-        PlacementMode.BottomEdgeAlignedRight => (room.Right, -room.Top),
-        PlacementMode.LeftEdgeAlignedTop => (room.Right, -room.Top),
-        PlacementMode.LeftEdgeAlignedBottom => (room.Right, room.Bottom),
-        PlacementMode.RightEdgeAlignedBottom => (-room.Left, room.Bottom),
-        PlacementMode.Top => (0, room.Bottom),
-        PlacementMode.Bottom => (0, -room.Top),
-        PlacementMode.Left => (room.Right, 0),
-        PlacementMode.Right => (-room.Left, 0),
-        _ => (-room.Left, -room.Top),
-    };
-
-    private static void Fit(ContextMenu menu)
-    {
-        if (Room() is { } room)
-        {
-            (menu.HorizontalOffset, menu.VerticalOffset) = Offsets(menu.Placement, room);
-        }
-    }
-
-    private static void Fit(MenuFlyout flyout)
-    {
-        if (Room() is { } room)
-        {
-            (flyout.HorizontalOffset, flyout.VerticalOffset) = Offsets(flyout.Placement, room);
-        }
-    }
-
-    private static Thickness? Room() =>
-        Application.Current?.TryGetResource(TokenKeys.MenuShadowRoom, null, out object? found) == true && found is Thickness room ? room : null;
 }

@@ -114,6 +114,51 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
         }
     }
 
+    /// <summary>A right-click menu opens with its frame's corner at the pointer, however it is made, under each look: the
+    /// editor's, the Explorer's, an editor tab's and the console's, each opened for the first time, and the editor's by the
+    /// window's far corner, where it opens up and to the left with its far corner there, its shadow round it either way.</summary>
+    [AvaloniaFact]
+    public void A_right_click_menu_opens_with_its_frames_corner_at_the_pointer()
+    {
+        MainWindow window = Open(1200, 800);
+        try
+        {
+            window.OpenFile(project.PathOf("Notes.txt"));
+            Assert.True(window.Perform(AppActions.ShowBuild), "The Build window did not show");
+            Ui.Settle();
+            UnderEachLook(window, () =>
+            {
+                Passenger.Editor.CodeEditor editor = window.EditorArea.CodeEditor;
+                AtPointer(editor, new Point(120, 40), () => window.OpenContextMenu, "The editor");
+                AtPointer(editor, new Point(editor.Bounds.Width - 20, editor.Bounds.Height - 20), () => window.OpenContextMenu, "The editor, by the window's far corner,", far: true);
+                ListBox rows = window.ExplorerView.Rows();
+                AtPointer(rows.ContainerFromIndex(1)!, new Point(60, ListRow.Height / 2), () => window.ExplorerView.OpenMenu, "The Explorer's row");
+                Control tab = window.EditorArea.ActiveGroup.GetVisualDescendants().OfType<TextBlock>()
+                    .First(t => t.Text == "Notes.txt" && t.Classes.Contains(StyleClasses.TabName)).FindAncestorOfType<Border>()!;
+                AtPointer(tab, new Point(12, tab.Bounds.Height / 2), () => tab.ContextMenu is { IsOpen: true } open ? open : null, "The editor tab");
+                Passenger.App.ToolWindows.OutputView console = window.BottomPanel.Build;
+                AtPointer(console.Editor, new Point(60, 12), () => console.Menu, "The Build console");
+            });
+        }
+        finally
+        {
+            window.Close();
+        }
+
+        void AtPointer(Control control, Point at, Func<ContextMenu?> open, string what, bool far = false)
+        {
+            Point pointer = control.TranslatePoint(at, window)!.Value;
+            Ui.RightClick(control, at);
+            ContextMenu menu = open() ?? throw new Xunit.Sdk.XunitException($"{what} opened no menu on a right click");
+            Rect drawn = Placed(window, menu.GetVisualDescendants().OfType<Border>().First(b => b.BoxShadow.Count > 0));
+            Point corner = far ? drawn.BottomRight : drawn.TopLeft;
+            Assert.True(Math.Abs(corner.X - pointer.X) <= 1.5 && Math.Abs(corner.Y - pointer.Y) <= 1.5,
+                $"{what}'s menu opened with its frame at {drawn}, its {(far ? "far" : "near")} corner off the pointer at {pointer}, by the room round it for its shadow");
+            menu.Close();
+            Ui.Settle();
+        }
+    }
+
     [Gate]
     [AvaloniaFact]
     public void The_open_editor_tab_shows_its_close_button_as_Rider_s_does_and_the_others_only_under_the_pointer()
@@ -3287,7 +3332,7 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
     }
 
     /// <summary>A widget's menu opens against it, its frame's edge meeting the widget's and one of its sides in line with
-    /// the widget's, wherever the room for its shadow put the menu's popup (MenuShadow).</summary>
+    /// the widget's, wherever the room for its shadow puts the menu's popup (Passenger.MenuShadowRoom).</summary>
     private static void DropsFrom(Control widget, ContextMenu menu, string what)
     {
         Border frame = menu.GetVisualDescendants().OfType<Border>().First(b => b.BoxShadow.Count > 0);
