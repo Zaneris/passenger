@@ -674,6 +674,11 @@ public static class Refusals
     public const string QuitIsThePersons = "Only the person quits Passenger or closes its last window, which ends what runs there and installs an update made ready: "
         + "ask them to";
 
+    /// <summary>An attached agent's input closing a window that Settings' Confirm before closing asks the person about, or
+    /// answering that question: the person closes it.</summary>
+    public const string CloseIsThePersons = "Only the person closes this window, which Passenger asks them about first as Settings says (Confirm before closing): "
+        + "ask them to";
+
     /// <summary>An agent's install of what a mobile project needs: the person installs it, accepting what it asks.</summary>
     public const string AgentInstallsMobile = "Only the person installs what a mobile project needs (a workload downloads from NuGet, the Android SDK asks them to accept "
         + "its licences): ask them to, with the banner over Passenger's window";

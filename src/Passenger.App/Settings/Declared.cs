@@ -72,6 +72,12 @@ public static class Declared
 
     public static readonly ChoiceSetting<OpenProjectIn> OpenProjectIn = new(s => s.OpenProjectIn, (s, v) => s with { OpenProjectIn = v }, D.OpenProjectChoices);
 
+    public static readonly ChoiceSetting<ConfirmClosing> ConfirmBeforeClosing = new(s => s.ConfirmBeforeClosing, (s, v) => s with { ConfirmBeforeClosing = v },
+        [(ConfirmClosing.Never, "Never"), (ConfirmClosing.WhenQuitting, "When quitting"), (ConfirmClosing.EveryWindow, "Every window")],
+        new(D.SystemPage, "Confirm before closing", "confirm ask prompt question before closing close quit exit window are you sure accidental",
+            $"Whether Passenger asks you before it quits ({(OperatingSystem.IsMacOS() ? "Quit Passenger" : "File | Exit")} or closing its last "
+            + "window) or before any of its windows closes. The question's Don't ask again sets this back to Never."));
+
     public static readonly ToggleSetting SaveOnDeactivation = new(s => s.SaveOnDeactivation, (s, v) => s with { SaveOnDeactivation = v },
         new(D.SystemPage, "Save when leaving the IDE", "autosave files switching to a different application or the built-in terminal focus frame deactivation"));
 

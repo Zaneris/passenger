@@ -71,19 +71,20 @@ public abstract class SharedProject : IAsyncLifetime
             stamps = Stamps();
         }, Folder);
 
-    /// <summary>A window on the project (of the size given), never saving what its test typed, with a file open (when one is
-    /// named) once C# is ready: on the server the class's last window left, or one of its own; its settings (and layout,
-    /// with <paramref name="keepsLayout"/>) in a test's own state folder when given, its Godots in <paramref name="godot"/>'s
-    /// user folders, a GDScript then served by a headless editor as it opens. One asking nothing of C# opens with no C# server
-    /// (<paramref name="languageServer"/>) once the folder's opening work has landed, the warm server left for the next.</summary>
+    /// <summary>A window on the project (of the size given, <paramref name="seen"/> or nobody's), never saving what its test
+    /// typed, with a file open (when named) once C# is ready: on the server the class's last window left, or its own; its
+    /// settings (and layout, <paramref name="keepsLayout"/>) in a test's own state folder when given, its Godots in <paramref
+    /// name="godot"/>'s user folders, a GDScript served by a headless editor as it opens. One asking nothing of C# opens with
+    /// no C# server (<paramref name="languageServer"/>) once the folder's opening work has landed, the warm server kept.</summary>
     public MainWindow Open(string? file, Action<MainWindow>? before = null, string? state = null, bool languageServer = true, bool keepsLayout = false,
-        IReadOnlyDictionary<string, string>? godot = null, double width = 1200, double height = 800)
+        IReadOnlyDictionary<string, string>? godot = null, double width = 1200, double height = 800, bool seen = false)
     {
+        bool unseen = !seen && PassengerApp.ShowsNoWindow;
         MainWindow window = state is null
             ? new() { Width = width, Height = height, Autosaves = false, WarmServer = Server, StartsLanguageServer = languageServer, GodotEnvironment = godot,
-                GodotHeadlessAtOpen = godot is not null }
+                GodotHeadlessAtOpen = godot is not null, Unseen = unseen }
             : new() { Width = width, Height = height, Autosaves = false, WarmServer = Server, StateFolder = state, StartsLanguageServer = languageServer, GodotEnvironment = godot,
-                GodotHeadlessAtOpen = godot is not null };
+                GodotHeadlessAtOpen = godot is not null, Unseen = unseen };
         window.Show();
         if (state is not null)
         {

@@ -736,10 +736,11 @@ public abstract class ProjectWindowsFolders : IDisposable
 
     /// <summary>The window a person starts, as the app makes it: its layout and settings kept in the test's state folder,
     /// then the command line taken; with no C# language server for a test that asks nothing of C#
-    /// (<paramref name="languageServer"/>), in whatever folder the window opens.</summary>
-    protected MainWindow Started(LaunchOptions options, bool languageServer = true)
+    /// (<paramref name="languageServer"/>), in whatever folder the window opens; asking what a person sees asked where
+    /// <paramref name="seen"/>, as the run's windows are otherwise nobody's (<see cref="MainWindow.Unseen"/>).</summary>
+    protected MainWindow Started(LaunchOptions options, bool languageServer = true, bool seen = false)
     {
-        MainWindow window = new() { Width = 1200, Height = 800, StateFolder = settings, StartsLanguageServer = languageServer };
+        MainWindow window = new() { Width = 1200, Height = 800, StateFolder = settings, StartsLanguageServer = languageServer, Unseen = !seen && PassengerApp.ShowsNoWindow };
         window.Show();
         window.KeepLayout();
         window.KeepSettings();

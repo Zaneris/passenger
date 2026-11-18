@@ -10,7 +10,7 @@ public sealed class OpenProjectDialog : IdeWindow
     public const string ThisWindow = "This Window";
     public const string NewWindow = "New Window";
 
-    private readonly CheckBox remember = new() { Content = "Don't ask again" };
+    private readonly CheckBox remember = DialogFooter.DontAskAgain();
 
     public OpenProjectDialog(string name)
     {

@@ -61,16 +61,22 @@ public partial class MainWindow
         }
     }
 
-    /// <summary>Saves before anything else hears of the close (but an agent's input closing the last window, <see
-    /// cref="LastCloseRefused"/>); a file that cannot be written keeps the window open and asks whether to make it writable
-    /// or close without it (<see cref="CloseUnsavedAsync"/>). A save still landing holds the close until it has (<see
-    /// cref="CloseLandedAsync"/>), a program Hot Reload changed that it would stop is asked about (<see
-    /// cref="CloseHeldAsync"/>), and so are the containers of runs Detach let go of (<see cref="CloseLetGoAsync"/>).</summary>
+    /// <summary>Saves before anything else hears of the close (but a close refused to an agent's input, <see
+    /// cref="CloseRefused"/>, or asked about first, <see cref="ConfirmFirst"/>); a file that cannot be written keeps the window
+    /// open and asks whether to make it writable or close without it (<see cref="CloseUnsavedAsync"/>). A save still landing
+    /// holds the close until it has (<see cref="CloseLandedAsync"/>), and a program Hot Reload changed that it would stop is
+    /// asked about (<see cref="CloseHeldAsync"/>), as are the containers of runs Detach let go of (<see cref="CloseLetGoAsync"/>).</summary>
     protected override void OnClosing(WindowClosingEventArgs e)
     {
-        if (LastCloseRefused())
+        if (CloseRefused())
         {
             e.Cancel = true;
+            return;
+        }
+        if (ConfirmFirst(e) is { } asking)
+        {
+            e.Cancel = true;
+            IdeErrors.Observe(asking);
             return;
         }
         // Passenger's quit (File, Exit; Restart to Update) and the system's (the application menu's Quit) keep each solution.
@@ -88,10 +94,10 @@ public partial class MainWindow
             return;
         }
         // Nobody is at an agent's own IDE to ask, nor does the system's shutdown wait for an answer: its close stops them unasked.
-        if (!AgentsOwn && e.CloseReason != WindowCloseReason.OSShutdown && HeldByLeaving() is { Count: > 0 } held)
+        if (e.CloseReason != WindowCloseReason.OSShutdown && AsksOfHeld)
         {
             e.Cancel = true;
-            IdeErrors.Observe(CloseHeldAsync(held, quit));
+            IdeErrors.Observe(CloseHeldAsync(HeldByLeaving(), quit));
             return;
         }
         // The containers of runs Detach let go of: stopped with the folder, or left running as the person's.
@@ -130,7 +136,7 @@ public partial class MainWindow
         }
         else
         {
-            Close();
+            CloseAsAnswered();
         }
     }
 

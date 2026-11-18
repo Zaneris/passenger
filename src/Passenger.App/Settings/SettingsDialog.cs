@@ -298,6 +298,7 @@ public sealed partial class SettingsDialog : IdeWindow
         }
         Add(SystemPage, "Open project in", openIn,
             "open solution project folder new window current window this window ask confirm where frame");
+        Add(Declared.ConfirmBeforeClosing);
         Add(Declared.SaveOnDeactivation);
         NumericUpDown seconds = Declared.IdleSeconds.Box(Working, Change);
         seconds.IsEnabled = Working.SaveWhenIdle;

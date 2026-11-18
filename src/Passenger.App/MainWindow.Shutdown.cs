@@ -39,21 +39,22 @@ public partial class MainWindow
         });
     }
 
-    /// <summary>File, Exit: Passenger quits (<see cref="PassengerApp.Quit"/>), but for an attached agent's input into the
-    /// window (<see cref="RefusedToAgentsInput"/>); an agent's own Passenger, which ends with its agent, quits as it asks.</summary>
+    /// <summary>File, Exit: Passenger quits (<see cref="PassengerApp.Quit"/>), asking first where Confirm before closing says
+    /// (<see cref="PassengerApp.QuitAskedAsync"/>), but for an attached agent's input into the window (<see
+    /// cref="RefusedToAgentsInput"/>); an agent's own Passenger, which ends with its agent, quits as it asks.</summary>
     private void Exit()
     {
         if (!AgentsOwn && RefusedToAgentsInput(Refusals.QuitIsThePersons))
         {
             return;
         }
+        if (ConfirmsQuit)
+        {
+            IdeErrors.Observe(PassengerApp.QuitAskedAsync(this));
+            return;
+        }
         PassengerApp.Quit();
     }
-
-    /// <summary>Whether a close of this window by an attached agent's input is refused: the person's last window, whose
-    /// close quits Passenger (<see cref="RefusedToAgentsInput"/>).</summary>
-    private bool LastCloseRefused() =>
-        !AgentsOwn && !PassengerApp.Windows.Any(w => w != this && w.IsVisible) && RefusedToAgentsInput(Refusals.QuitIsThePersons);
 
     /// <summary>The session's programs and builds go now, so a server lets go of its port; the rest are asked to end.</summary>
     private void EndChildren()
@@ -189,7 +190,7 @@ public partial class MainWindow
         }
         else if (stopped)
         {
-            Close();
+            CloseAsAnswered();
         }
     }
 

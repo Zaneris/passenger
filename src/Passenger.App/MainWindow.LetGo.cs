@@ -111,7 +111,7 @@ public partial class MainWindow
         }
         else if (goOn)
         {
-            Close();
+            CloseAsAnswered();
         }
     }
 

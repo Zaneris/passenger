@@ -9,6 +9,7 @@ using Avalonia.VisualTree;
 using Passenger.App.Editors;
 using Passenger.App;
 using Passenger.App.Debugging;
+using Passenger.App.Settings;
 using Passenger.App.ToolWindows;
 using Passenger.Core;
 using Passenger.Dap;
@@ -322,12 +323,13 @@ public sealed class DebugSessionsTests : IClassFixture<DebugSessionsTests.Pair>
 
     /// <summary>A program attached to whose code Hot Reload changed, which its runtime then lets no debugger go of: Close
     /// Solution and the window's close each ask first, saying leaving would stop it rather than leave it frozen, Cancel
-    /// keeping it debugged and the folder open, and an agent's Close Solution is refused saying so; then Stop and Close
-    /// ends the program and closes the solution, where the debugger let it go before, held by the runtime for good.</summary>
+    /// keeping it debugged and the folder open, and an agent's Close Solution is refused saying so; the window's close asks
+    /// that alone though Confirm before closing says Every window, the question confirming the close already; then Stop and
+    /// Close ends the program and closes the solution, where the debugger let it go before, held by the runtime for good.</summary>
     [AvaloniaFact]
     public void Leaving_a_program_Hot_Reload_changed_asks_first_and_stops_it_rather_than_leave_it_frozen()
     {
-        MainWindow window = pair.Open(Counter);
+        MainWindow window = pair.Open(Counter, seen: true);
         Process? program = null;
         try
         {
@@ -363,12 +365,16 @@ public sealed class DebugSessionsTests : IClassFixture<DebugSessionsTests.Pair>
             Assert.Equal(PathNames.Canonical(pair.Folder), window.Folder);
             Assert.Empty(window.OwnedWindows.OfType<ChoiceDialog>());
 
+            window.ApplySettings(window.Settings with { ConfirmBeforeClosing = ConfirmClosing.EveryWindow });
             window.Close();
             asked = AskedToStop(window);
             Assert.Contains("closing the window would stop it rather than leave it frozen", Said(asked), StringComparison.Ordinal);
+            Assert.Empty(window.OwnedWindows.OfType<ConfirmDialog>());
             Ui.ClickButton(asked, "Cancel");
-            Assert.True(window.IsVisible, "Cancel closed the window, letting First go");
+            Ui.Settle();
+            Assert.True(window.IsVisible && !window.OwnedWindows.OfType<ConfirmDialog>().Any(), "Cancel closed the window, letting First go, or Confirm before closing asked after it");
             Assert.Equal(DebugState.Paused, first.State);
+            window.ApplySettings(window.Settings with { ConfirmBeforeClosing = ConfirmClosing.Never });
 
             CloseSolution(window);
             Ui.ClickButton(AskedToStop(window), "Stop and Close");
@@ -378,6 +384,7 @@ public sealed class DebugSessionsTests : IClassFixture<DebugSessionsTests.Pair>
         }
         finally
         {
+            window.ApplySettings(window.Settings with { ConfirmBeforeClosing = ConfirmClosing.Never });
             window.Close();
             if (program is not null)
             {

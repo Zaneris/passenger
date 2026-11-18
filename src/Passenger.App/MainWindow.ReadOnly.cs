@@ -134,7 +134,7 @@ public partial class MainWindow
         }
         else if (closes)
         {
-            Close();
+            CloseAsAnswered();
         }
     }
 }

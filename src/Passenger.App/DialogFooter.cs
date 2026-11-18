@@ -125,6 +125,10 @@ public static class DialogFooter
         dialog.Content = Page(new ScrollViewer { Content = page }, Bar(answers, left));
     }
 
+    /// <summary>A question's Don't ask again, which goes beside its answers (<see cref="Question"/>'s left): ticked as the
+    /// person agrees, the asker keeps the answer in Settings.</summary>
+    public static CheckBox DontAskAgain() => new() { Content = "Don't ask again" };
+
     /// <summary>A question's paragraph of words, wrapping to its width.</summary>
     public static TextBlock Paragraph(string text) => new() { Text = text, TextWrapping = TextWrapping.Wrap };
 

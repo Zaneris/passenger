@@ -49,6 +49,9 @@ public static class PassengerApp
     /// <summary>What a quit a window's question holds tells if the person keeps that window open (<see cref="Quit"/>).</summary>
     private static Action? quitGivenUp;
 
+    /// <summary>The window asking the person whether to quit while it asks (<see cref="QuitAskedAsync"/>).</summary>
+    private static MainWindow? askingQuit;
+
     /// <summary>The project windows open, in the order they opened: the Window menu's list, which Next and Previous
     /// Solution Window step through.</summary>
     public static IReadOnlyList<MainWindow> Windows => Open;
@@ -234,6 +237,45 @@ public static class PassengerApp
         finally
         {
             Quitting = false;
+        }
+    }
+
+    /// <summary>A quit the person asked for from <paramref name="from"/> (Exit, the system's Quit) where its Confirm before
+    /// closing asks: asked once, over the window in front, however many windows are open or times it is asked meanwhile (the
+    /// system's Quit closes each window in turn), then quits as they agree (<see cref="Quit"/>). Nothing is asked where the
+    /// window the quit closes first asks whether to stop programs Hot Reload changed, a question that confirms it.</summary>
+    internal static async Task QuitAskedAsync(MainWindow from)
+    {
+        UiThread.Check();
+        if (askingQuit is { } asking)
+        {
+            asking.OwnedWindows.OfType<ConfirmDialog>().LastOrDefault()?.Activate();
+            return;
+        }
+        MainWindow over = Front is { IsVisible: true } front ? front : from;
+        askingQuit = over;
+        bool agreed;
+        try
+        {
+            // Once the close in hand is over, as the system's Quit goes on to close each window, which waits on this.
+            await Task.Yield();
+            if (Open.LastOrDefault() is { AsksOfHeld: true })
+            {
+                agreed = true;
+            }
+            else
+            {
+                BringForward(over);
+                agreed = await over.ConfirmedAsync(quits: true);
+            }
+        }
+        finally
+        {
+            askingQuit = null;
+        }
+        if (agreed)
+        {
+            Quit();
         }
     }
 

@@ -225,6 +225,10 @@ public sealed record AppSettings : IStateDocument<AppSettings>
     /// own, that window's place, or asked each time (Open Solution's This Window and New Window).</summary>
     public OpenProjectIn OpenProjectIn { get; init; } = OpenProjectIn.Ask;
 
+    /// <summary>"Confirm before closing": whether Passenger asks the person before it quits (Exit, the system's Quit, the last
+    /// window's close) or before any of its windows closes; never at first.</summary>
+    public ConfirmClosing ConfirmBeforeClosing { get; init; } = ConfirmClosing.Never;
+
     /// <summary>Check IDE updates: the person's window asks GitHub for Passenger's latest release as it starts and once
     /// a day, and an installed Passenger downloads a newer one to install as it restarts. Off, nothing is asked unless
     /// Help, Check for Updates is chosen, and nothing is downloaded at all.</summary>
@@ -669,6 +673,14 @@ public enum OpenProjectIn
     NewWindow,
     CurrentWindow,
     Ask,
+}
+
+/// <summary>The choices for "Confirm before closing", in the order Settings lists them.</summary>
+public enum ConfirmClosing
+{
+    Never,
+    WhenQuitting,
+    EveryWindow,
 }
 
 /// <summary>Where a diff opens, in the order Settings lists them.</summary>
