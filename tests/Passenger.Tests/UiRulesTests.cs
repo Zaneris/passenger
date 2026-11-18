@@ -1038,6 +1038,21 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
         }
     }
 
+    /// <summary>Words the window shows that trail off end in the one ellipsis, "…", however they are written: a status,
+    /// a console's line, a note. An agent's words (Mcp/) and code shown as code (GDScript's varargs, a YAML document's end)
+    /// are not the window's words; three dots inside words ("do...while") are not their end.</summary>
+    [Fact]
+    public void No_words_the_window_shows_trail_off_in_three_dots()
+    {
+        Regex trailing = new(@"[A-Za-z ]\.\.\.(?:\\n)?""");
+        string[] found = [.. from file in UiFiles()
+            where !file.Path.Contains("/Mcp/", StringComparison.Ordinal)
+            from line in file.Text.Split('\n').Select((text, i) => (Text: text, Number: i + 1))
+            where !line.Text.TrimStart().StartsWith("//", StringComparison.Ordinal) && trailing.IsMatch(line.Text)
+            select $"{file.Path}:{line.Number}: {line.Text.Trim()}"];
+        Assert.True(found.Length == 0, $"Words that trail off in three dots, where every one ends in the one ellipsis, '…':\n{string.Join("\n", found)}");
+    }
+
     /// <summary>A label that asks more before it acts ends in one ellipsis everywhere, "…": every action's title, as the
     /// menus, Find Action and the keymap list it and as a menu opened where it runs words it, macOS's application menu, a
     /// row's menu in the Explorer, and every button and menu item the tool windows show.</summary>

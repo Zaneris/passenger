@@ -522,8 +522,8 @@ public partial class MainWindow
                 return false;
             }
         }
-        status.Text = "Restarting application to apply changes ...";
-        tab.Console.Append("Hot Reload: Restarting application to apply changes ...\n");
+        status.Text = "Restarting application to apply changes…";
+        tab.Console.Append("Hot Reload: Restarting application to apply changes…\n");
         if (tab.RestartFor is { } restart)
         {
             bool restarted = await restart(outcome);
