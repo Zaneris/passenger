@@ -38,10 +38,15 @@ public sealed partial class CodeEditor
         }
     }
 
+    /// <summary>How many times the editor has drawn its ground: each has the compositor draw the whole editor again, every
+    /// row's text over it.</summary>
+    public long GroundsDrawn { get; private set; }
+
     /// <summary>The editor's own drawing: the ground under the text and the gutter's. The rows draw themselves over it
     /// (<see cref="PrepareFrame"/>), so this is drawn again only for a change, never for a scroll.</summary>
     public override void Render(DrawingContext context)
     {
+        GroundsDrawn++;
         Size size = Bounds.Size;
         context.FillRectangle(palette.Background, new Rect(size));
         context.FillRectangle(palette.Gutter, new Rect(0, 0, GutterWidth, size.Height));

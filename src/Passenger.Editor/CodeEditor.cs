@@ -880,7 +880,11 @@ public sealed partial class CodeEditor : Control
             ScrollWithinRows();
         }
         widestStale = true;
-        InvalidateArrange();
+        // An arrange draws the ground again, and so every row; what it lays out moves with the line count alone (gutter, extent).
+        if (e.After.LineCount != e.Before.LineCount)
+        {
+            InvalidateArrange();
+        }
         RedrawChanged();
     }
 

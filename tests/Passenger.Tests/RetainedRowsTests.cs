@@ -93,14 +93,21 @@ public sealed class RetainedRowsTests
 
         Drawn("every row drawn again", () => editor.ShowWhitespaces = editor.ShowWhitespaces);
 
+        long grounds = editor.GroundsDrawn;
         long typed = Drawn("a letter typed", () => rig.Window.KeyTextInput("x"));
         Assert.True(typed == 1, $"A letter typed in a line drew {typed} rows: rows it did not change were drawn again");
+        Assert.True(editor.GroundsDrawn == grounds,
+            "A letter typed in a line drew the editor's ground again, which has the compositor draw every row on screen again, where one changed");
         long down = Drawn("Down", () => Ui.Press(rig.Window, "down"));
         Assert.True(down == 2, $"Down drew {down} rows, where only the line the caret left and the one it entered changed");
         long selected = Drawn("Shift+Down", () => Ui.Press(rig.Window, "shift down"));
         Assert.True(selected == 2, $"Shift+Down drew {selected} rows, where only the line it selected and the one the caret entered changed");
         long unselected = Drawn("Escape", () => Ui.Press(rig.Window, "escape"));
         Assert.True(unselected == 2, $"Escape drew {unselected} rows, where only the two lines the selection left changed");
+        long deleted = Drawn("Backspace", () => Ui.Press(rig.Window, "BACK_SPACE"));
+        Assert.True(deleted == 1, $"Backspace in a line drew {deleted} rows: rows it did not change were drawn again");
+        Assert.True(editor.GroundsDrawn == grounds,
+            $"Keys that left the line count drew the editor's ground again {editor.GroundsDrawn - grounds} times, each having the compositor draw every row on screen again");
         int line = editor.CaretPosition.Line;
         long split = Drawn("Enter", () => Ui.Press(rig.Window, "enter"));
         // The line split and those below it, each numbered one more; none above it.
