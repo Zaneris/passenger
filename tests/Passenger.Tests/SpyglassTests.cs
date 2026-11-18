@@ -200,7 +200,7 @@ public sealed class SpyglassTests : IClassFixture<SpyglassTests.Project>
 
             int twice = LineOf(editor, "int Twice()");
             Ui.Click(editor, editor.AnnotationBox(twice, "2 usages")!.Value.Center);
-            Ui.WaitFor(() => window.Popup is UsagesPopup { Rows.Count: 2 }, () => $"the two usages of Twice in Show Usages' popup, as its hint counts them ({window.Status})", Limit);
+            Ui.WaitFor(() => window.Popup is UsagesPopup { Rows.Count: 3 }, () => $"the usages of Twice in Show Usages' popup ({window.Status})", Limit);
             Assert.True(editor.CaretPosition.Line == twice, $"Pressing the usages put the caret on line {editor.CaretPosition.Line + 1}, not on Twice's declaration at {twice + 1}");
         }
         finally
@@ -209,8 +209,8 @@ public sealed class SpyglassTests : IClassFixture<SpyglassTests.Project>
         }
     }
 
-    /// <summary>Show Usages of an interface member lists its calls alone, as its hint counts them: neither its own declaration nor
-    /// the declarations of what implements it, which Go to Implementation lists.</summary>
+    /// <summary>Show Usages of an interface member lists its declaration and its calls, the declarations of what implements it
+    /// left to Go to Implementation, as the hint counts them.</summary>
     [AvaloniaFact]
     public void Show_usages_of_an_interface_member_lists_its_calls_and_not_what_implements_it()
     {
@@ -223,8 +223,8 @@ public sealed class SpyglassTests : IClassFixture<SpyglassTests.Project>
             Ui.WaitFor(() => window.Popup is UsagesPopup, () => $"Show Usages' popup ({window.Status})", Limit);
             UsagesPopup popup = (UsagesPopup)window.Popup!;
             Ui.WaitFor(() => popup.Rows.Count > 0, "the usages");
-            Assert.True(popup.Rows.Count == 1 && popup.Rows[0].LineText.Contains("shape.Sides", StringComparison.Ordinal),
-                $"The popup lists {string.Join(" | ", popup.Rows.Select(u => u.LineText.Trim()))}, not the one call of Sides alone, so it lists its declaration or what implements it");
+            Assert.True(popup.Rows.Count == 2 && popup.Rows.Any(u => u.LineText.Contains("shape.Sides", StringComparison.Ordinal)) && popup.Rows.All(u => !u.LineText.Contains("public int Sides => 4", StringComparison.Ordinal)),
+                $"The popup lists {string.Join(" | ", popup.Rows.Select(u => u.LineText.Trim()))}, not the member's declaration and the one call, with the implementation Square.Sides left out");
         }
         finally
         {
