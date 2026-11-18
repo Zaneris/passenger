@@ -16,7 +16,7 @@ namespace Passenger.App.Godot;
 /// and written into the scene once it settles (<see cref="GodotSceneValues"/>); one they cannot edit shows its text.</summary>
 public sealed class GodotSceneProperties : DockPanel, IGodotTuner
 {
-    private readonly TextBlock heading = new() { FontWeight = FontWeight.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis, Margin = new Thickness(8, 6, 8, 4) };
+    private readonly TextBlock heading = new() { FontWeight = FontWeight.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis, Margin = new Thickness(Gaps.Normal, Gaps.Small, Gaps.Normal, Gaps.Tight) };
     private readonly ListBox list = new() { Classes = { StyleClasses.Tree } };
     private readonly Action<Control, Control> showPopup;
     private readonly Action closePopup;
@@ -175,8 +175,8 @@ public sealed class GodotSceneProperties : DockPanel, IGodotTuner
     /// <summary>A property's row: its name, its value's editor where one fits it (else its text), and where it comes from.</summary>
     private Control Row()
     {
-        Grid grid = new() { ColumnDefinitions = new ColumnDefinitions("8*,12*"), RowDefinitions = new RowDefinitions("Auto,Auto"), Margin = new Thickness(8, 3) };
-        TextBlock label = new() { TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 0) };
+        Grid grid = new() { ColumnDefinitions = new ColumnDefinitions("8*,12*"), RowDefinitions = new RowDefinitions("Auto,Auto"), Margin = new Thickness(Gaps.Normal, Gaps.Hair) };
+        TextBlock label = new() { TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, Gaps.Normal, 0) };
         TextBlock text = new TextBlock { FontSize = 12, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center }.InCodeFont();
         Grid.SetColumn(text, 1);
         TextBlock source = new() { Classes = { StyleClasses.Muted }, FontSize = 11, TextTrimming = TextTrimming.CharacterEllipsis };

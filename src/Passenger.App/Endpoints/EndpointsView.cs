@@ -93,8 +93,8 @@ public sealed class EndpointsView : DockPanel
         environments.SelectionChanged += (_, _) => EnvironmentChanged?.Invoke(this, EventArgs.Empty);
         ToolTip.SetTip(environments, $"The environment of {HttpVariables.PublicFile} whose variables the requests use");
         Button refresh = ToolButtons.Of(AppActions.EndpointsRefresh, IconKeys.Rerun, "Read the .http files again", action => ActionRequested?.Invoke(this, action));
-        TextBlock label = new() { Text = "Environment", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 6, 0) };
-        StackPanel bar = new() { Orientation = Orientation.Horizontal, Margin = new Thickness(8, 4), Spacing = 4, Children = { label, environments, refresh } };
+        TextBlock label = new() { Text = "Environment", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, Gaps.Small, 0) };
+        StackPanel bar = new() { Orientation = Orientation.Horizontal, Margin = new Thickness(Gaps.Normal, Gaps.Tight), Spacing = Gaps.Tight, Children = { label, environments, refresh } };
         DockPanel.SetDock(bar, Dock.Top);
         Children.Add(bar);
 
@@ -444,9 +444,9 @@ public sealed class EndpointsView : DockPanel
     /// muted); a route's method, template, what declares it (muted) and Send where a request can reach it.</summary>
     private Control Row()
     {
-        RowIcon headingIcon = new() { Width = 14, Height = 14, Margin = new Thickness(0, 0, 6, 0) };
+        RowIcon headingIcon = new() { Width = 14, Height = 14, Margin = new Thickness(0, 0, Gaps.Small, 0) };
         TextBlock headingName = new() { FontWeight = FontWeight.SemiBold, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
-        StackPanel heading = new() { Orientation = Orientation.Horizontal, Height = ListRow.Height, Margin = new Thickness(8, 0), Children = { headingIcon, headingName } };
+        StackPanel heading = new() { Orientation = Orientation.Horizontal, Height = ListRow.Height, Margin = new Thickness(Gaps.Normal, 0), Children = { headingIcon, headingName } };
         Panel row = new();
         (DockPanel request, Action<EndpointRequest> showRequest) = RequestRow(row);
         (DockPanel route, Action<WebRoute> showRoute) = RouteRow(row);
@@ -500,18 +500,18 @@ public sealed class EndpointsView : DockPanel
         test.Name = "endpointTest";
         ((PathIcon)test.Content!).Bind(PathIcon.ForegroundProperty, test.GetResourceObservable(TokenKeys.Run));
         interactive.Name = "endpointInteractive";
-        StackPanel buttons = new() { Orientation = Orientation.Horizontal, Spacing = 2, VerticalAlignment = VerticalAlignment.Center, Children = { test, interactive } };
+        StackPanel buttons = new() { Orientation = Orientation.Horizontal, Spacing = Gaps.Hair, VerticalAlignment = VerticalAlignment.Center, Children = { test, interactive } };
         DockPanel.SetDock(buttons, Dock.Right);
-        RowIcon outcome = new() { Width = 12, Height = 12, Margin = new Thickness(0, 0, 6, 0), VerticalAlignment = VerticalAlignment.Center };
+        RowIcon outcome = new() { Width = 12, Height = 12, Margin = new Thickness(0, 0, Gaps.Small, 0), VerticalAlignment = VerticalAlignment.Center };
         DockPanel.SetDock(outcome, Dock.Left);
         Border method = MethodTag(string.Empty);
         DockPanel.SetDock(method, Dock.Left);
         TextBlock title = new() { VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
         // A named request shows its URL after the name, muted, ending in an ellipsis first.
-        TextBlock url = new() { VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis, FontSize = 12, Margin = new Thickness(8, 0, 0, 0) };
+        TextBlock url = new() { VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis, FontSize = 12, Margin = new Thickness(Gaps.Normal, 0, 0, 0) };
         url.Classes.Add(StyleClasses.Muted);
         // The title takes what the row leaves, so a narrow window ends it in an ellipsis and keeps the buttons.
-        DockPanel line = new() { Height = ListRow.Height, Margin = new Thickness(22, 0, 4, 0), Children = { buttons, outcome, method, title, url } };
+        DockPanel line = new() { Height = ListRow.Height, Margin = new Thickness(Gaps.Indent + Gaps.Small, 0, Gaps.Tight, 0), Children = { buttons, outcome, method, title, url } };
         string? methodColour = MethodColour(string.Empty);
         return (line, request =>
         {
@@ -547,9 +547,9 @@ public sealed class EndpointsView : DockPanel
         // The template first: what declares it takes the room it leaves, and goes before the template ends in an ellipsis.
         TextBlock template = new() { VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
         DockPanel.SetDock(template, Dock.Left);
-        TextBlock kind = new() { VerticalAlignment = VerticalAlignment.Center, FontSize = 12, Margin = new Thickness(8, 0, 4, 0), TextAlignment = TextAlignment.Right, TextTrimming = TextTrimming.CharacterEllipsis };
+        TextBlock kind = new() { VerticalAlignment = VerticalAlignment.Center, FontSize = 12, Margin = new Thickness(Gaps.Normal, 0, Gaps.Tight, 0), TextAlignment = TextAlignment.Right, TextTrimming = TextTrimming.CharacterEllipsis };
         kind.Classes.Add(StyleClasses.Muted);
-        DockPanel line = new() { Height = ListRow.Height, Margin = new Thickness(22, 0, 4, 0), Children = { send, method, template, kind } };
+        DockPanel line = new() { Height = ListRow.Height, Margin = new Thickness(Gaps.Indent + Gaps.Small, 0, Gaps.Tight, 0), Children = { send, method, template, kind } };
         string? methodColour = MethodColour(string.Empty);
         return (line, route =>
         {
@@ -574,7 +574,7 @@ public sealed class EndpointsView : DockPanel
     {
         TextBlock text = new TextBlock { Text = method, FontSize = 11, FontWeight = FontWeight.Bold, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center }.InCodeFont();
         text.Bind(TextBlock.ForegroundProperty, text.GetResourceObservable(MethodColour(method)));
-        return new Border { Classes = { StyleClasses.Tag }, MinWidth = 52, Padding = new Thickness(4, 1), Margin = new Thickness(0, 0, 8, 0), VerticalAlignment = VerticalAlignment.Center, Child = text };
+        return new Border { Classes = { StyleClasses.Tag }, MinWidth = 52,  Margin = new Thickness(0, 0, Gaps.Normal, 0), VerticalAlignment = VerticalAlignment.Center, Child = text };
     }
 
     /// <summary>The colour a method's tag shows its name in.</summary>

@@ -16,9 +16,9 @@ namespace Passenger.App.Vcs;
 public sealed class ChangedFileRow
 {
     /// <summary>How far the icon sits from its list's edge where nothing comes before it.</summary>
-    public const double Inset = 8;
+    public const double Inset = Gaps.Normal;
 
-    private readonly RowIcon icon = new() { Width = 14, Height = 14, Margin = new Thickness(0, 0, 6, 0) };
+    private readonly RowIcon icon = new() { Width = 14, Height = 14, Margin = new Thickness(0, 0, Gaps.Small, 0) };
     private readonly TextBlock name = new() { VerticalAlignment = VerticalAlignment.Center };
     private readonly TextBlock came = MutedText.Of(string.Empty);
     private readonly TextBlock folder = MutedText.Of(string.Empty);
@@ -29,7 +29,7 @@ public sealed class ChangedFileRow
         foreach (TextBlock muted in (TextBlock[])[came, folder])
         {
             muted.FontSize = 12;
-            muted.Margin = new Thickness(8, 0, 0, 0);
+            muted.Margin = new Thickness(Gaps.Normal, 0, 0, 0);
         }
         came.IsVisible = false;
         Line = new ShrinkingRow { Height = ListRow.Height, Margin = new Thickness(Inset, 0, 0, 0), Children = { icon, name, came, folder } };

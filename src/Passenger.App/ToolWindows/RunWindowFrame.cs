@@ -19,7 +19,7 @@ public static class RunWindowFrame
         Func<string, string> actionOf, string named, Action<string> request)
     {
         window.Children.Add(ToolBars.Top(toolbar));
-        StackPanel strip = new() { Orientation = Orientation.Horizontal, Spacing = 2, Margin = new Thickness(8, 0), VerticalAlignment = VerticalAlignment.Center };
+        StackPanel strip = new() { Orientation = Orientation.Horizontal, Spacing = Gaps.Hair, Margin = new Thickness(Gaps.Normal, 0), VerticalAlignment = VerticalAlignment.Center };
         Dictionary<string, ToggleButton> made = new(StringComparer.Ordinal);
         HashSet<string> has = [.. tabs];
         foreach (string name in RunWindows.Tabs.Where(has.Contains))
@@ -42,7 +42,7 @@ public static class RunWindowFrame
     /// else the bar holds before them.</summary>
     public static ToolFlow Tools(params Control[] before)
     {
-        ToolFlow tools = new() { Margin = new Thickness(6, 2) };
+        ToolFlow tools = new() { Margin = new Thickness(Gaps.Small, Gaps.Hair) };
         tools.Children.AddRange(before);
         return tools;
     }

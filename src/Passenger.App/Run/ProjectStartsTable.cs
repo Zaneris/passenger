@@ -77,7 +77,7 @@ public sealed class ProjectStartsTable : EditableTable
 
     private void Add(string path, string? name, IReadOnlyList<string> profiles, ProjectStart? start)
     {
-        TextBlock title = new() { Text = name ?? $"{Path.GetFileNameWithoutExtension(path)} (not loaded)", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0),
+        TextBlock title = new() { Text = name ?? $"{Path.GetFileNameWithoutExtension(path)} (not loaded)", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(Gaps.Normal, 0),
             TextTrimming = Avalonia.Media.TextTrimming.CharacterEllipsis };
         if (name is null)
         {
@@ -106,7 +106,7 @@ public sealed class ProjectStartsTable : EditableTable
         ToolTip.SetTip(profile, "The launch profile it starts in: Default takes the first of its launch profiles that runs here, as dotnet run does");
         Button up = ToolButtons.Of(IconKeys.ArrowUp, "Start Earlier");
         Button down = ToolButtons.Of(IconKeys.ArrowDown, "Start Later");
-        StackPanel moves = new() { Orientation = Orientation.Horizontal, Spacing = 2, Margin = new Thickness(4, 0), Children = { up, down } };
+        StackPanel moves = new() { Orientation = Orientation.Horizontal, Spacing = Gaps.Hair, Margin = new Thickness(Gaps.Tight, 0), Children = { up, down } };
         Border view = Ruled(title, action, profile, moves);
         Row row = new(path, action, profile, listed, view, up, down) { Was = start };
         rows.Add(row);

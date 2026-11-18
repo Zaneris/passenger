@@ -57,16 +57,16 @@ public static class DiffLines
         StackPanel start = new()
         {
             Orientation = Orientation.Horizontal,
-            Spacing = 2,
-            Margin = new Thickness(6, 0),
+            Spacing = Gaps.Hair,
+            Margin = new Thickness(Gaps.Small, 0),
             VerticalAlignment = VerticalAlignment.Center,
         };
         start.Children.AddRange(tools);
         start.Children.Add(ToolButtons.Of(IconKeys.ArrowUp, $"Previous Difference ({Keys("Shift+F7")})", () => step(-1)));
         start.Children.Add(ToolButtons.Of(IconKeys.ArrowDown, $"Next Difference ({Keys("F7")})", () => step(1)));
-        start.Children.Add(new TextBlock { Text = name, FontWeight = FontWeight.SemiBold, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0) });
+        start.Children.Add(new TextBlock { Text = name, FontWeight = FontWeight.SemiBold, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(Gaps.Normal, 0, 0, 0) });
         status.VerticalAlignment = VerticalAlignment.Center;
-        status.Margin = new Thickness(12, 0);
+        status.Margin = new Thickness(Gaps.Wide, 0);
         status.TextTrimming = TextTrimming.CharacterEllipsis;
         status.Classes.Add(StyleClasses.Muted);
         start.Children.Add(status);
@@ -74,7 +74,7 @@ public static class DiffLines
         if (end is not null)
         {
             DockPanel.SetDock(end, Dock.Right);
-            end.Margin = new Thickness(0, 0, 6, 0);
+            end.Margin = new Thickness(0, 0, Gaps.Small, 0);
             end.VerticalAlignment = VerticalAlignment.Center;
             row.Children.Add(end);
         }
@@ -87,7 +87,7 @@ public static class DiffLines
     /// <summary>What a pane shows, over it in its column, ending in an ellipsis where it has no room.</summary>
     public static Control Title(string text, int column)
     {
-        TextBlock label = new() { Text = text, FontSize = 12, Margin = new Thickness(12, 4), TextTrimming = TextTrimming.CharacterEllipsis };
+        TextBlock label = new() { Text = text, FontSize = 12, Margin = new Thickness(Gaps.Wide, Gaps.Tight), TextTrimming = TextTrimming.CharacterEllipsis };
         label.Classes.Add(StyleClasses.Muted);
         Grid.SetColumn(label, column);
         return label;

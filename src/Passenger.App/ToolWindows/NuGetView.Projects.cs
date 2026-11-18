@@ -35,7 +35,7 @@ public sealed partial class NuGetView
 {
     private readonly TextBox projectSearch;
     private readonly FilterMenu projectFilters;
-    private readonly TextBlock projectCount = new() { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0) };
+    private readonly TextBlock projectCount = new() { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(Gaps.Normal, 0, 0, 0) };
     private readonly StackPanel projectsHeader;
     private ProjectOrder projectOrder;
     private ProjectsShown projectsShown;
@@ -72,7 +72,7 @@ public sealed partial class NuGetView
 
     private (TextBox Search, FilterMenu Filters, StackPanel Header) MakeProjectsHeader()
     {
-        TextBox typed = new() { Classes = { StyleClasses.Search }, PlaceholderText = "Filter projects", MinWidth = 180, Margin = new Thickness(12, 0, 4, 0), VerticalAlignment = VerticalAlignment.Center };
+        TextBox typed = new() { Classes = { StyleClasses.Search }, PlaceholderText = "Filter projects", MinWidth = 180, Margin = new Thickness(Gaps.Wide, 0, Gaps.Tight, 0), VerticalAlignment = VerticalAlignment.Center };
         typed.TextChanged += (_, _) => ShowProjectsAgain();
         FilterMenu menu = new("Sort and Filter Projects", ProjectFilterItems);
         menu.Inside(typed);

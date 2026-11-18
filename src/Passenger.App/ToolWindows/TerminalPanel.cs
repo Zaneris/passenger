@@ -63,7 +63,7 @@ public sealed class TerminalPanel : DockPanel
             ItemsSource = tabs,
             VerticalAlignment = VerticalAlignment.Center,
             // In a narrow window the last tabs give way first, each name ending in an ellipsis, as the Debug window's do.
-            ItemsPanel = new FuncTemplate<Panel?>(() => new ShrinkingRow { Spacing = 2 }),
+            ItemsPanel = new FuncTemplate<Panel?>(() => new ShrinkingRow { Spacing = Gaps.Hair }),
         };
         ReusedRows.Use(strip, Tab);
         Children.Add(view);
@@ -85,7 +85,7 @@ public sealed class TerminalPanel : DockPanel
             }
         };
         Button add = ToolButtons.Of(AppActions.NewTerminalSession, IconKeys.Add, "New Session", action => ActionRequested?.Invoke(this, action));
-        HeaderTools = new ShrinkingRow { Spacing = 4, Children = { strip, add } };
+        HeaderTools = new ShrinkingRow { Spacing = Gaps.Tight, Children = { strip, add } };
     }
 
     /// <summary>Raised when the last shell has ended, so the window can hide.</summary>

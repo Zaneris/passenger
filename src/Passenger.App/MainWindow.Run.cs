@@ -637,7 +637,7 @@ public partial class MainWindow
         static StackPanel Greyed(string name, string why) => new()
         {
             Orientation = Avalonia.Layout.Orientation.Horizontal,
-            Spacing = 8,
+            Spacing = Gaps.Normal,
             Children =
             {
                 new TextBlock { Text = name, Classes = { StyleClasses.Muted } },

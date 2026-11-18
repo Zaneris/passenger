@@ -131,7 +131,7 @@ public sealed class BranchesPanel : DockPanel
             }
         };
         ListMenus.Attach(list, () => Selected is { Branch: { } branch } ? Menu(branch) : []);
-        search = new TextBox { Classes = { StyleClasses.Search }, PlaceholderText = "Branch or tag", Margin = new Thickness(6, 0, 4, 0), VerticalAlignment = VerticalAlignment.Center };
+        search = new TextBox { Classes = { StyleClasses.Search }, PlaceholderText = "Branch or tag", Margin = new Thickness(Gaps.Small, 0, Gaps.Tight, 0), VerticalAlignment = VerticalAlignment.Center };
         search.TextChanged += (_, _) => Show();
         newBranch = ToolButtons.Of(IconKeys.Add, "New Branch…", () => Request(NewBranchRequested, WhyNotFrom));
         update = ToolButtons.Of(IconKeys.Update, "Update Selected", () =>
@@ -607,13 +607,13 @@ public sealed class BranchesPanel : DockPanel
     /// tag's mark (a favourite's star, the current branch's in the accent), its name, and where a local branch pushes.</summary>
     private Control Row()
     {
-        RowIcon chevron = new() { Width = 10, Height = 10, Margin = new Thickness(4, 0, 4, 0) };
+        RowIcon chevron = new() { Width = 10, Height = 10, Margin = new Thickness(Gaps.Tight, 0, Gaps.Tight, 0) };
         Border hit = new() { Background = Brushes.Transparent, Child = chevron, VerticalAlignment = VerticalAlignment.Center };
         Border gap = new() { Width = 18 };
-        RowIcon mark = new() { Width = 13, Height = 13, Margin = new Thickness(0, 0, 6, 0) };
+        RowIcon mark = new() { Width = 13, Height = 13, Margin = new Thickness(0, 0, Gaps.Small, 0) };
         TextBlock name = new() { VerticalAlignment = VerticalAlignment.Center };
         // Where it pushes and pulls, muted after its name.
-        TextBlock tracked = new() { FontSize = 12, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0) };
+        TextBlock tracked = new() { FontSize = 12, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(Gaps.Normal, 0, 0, 0) };
         tracked.Classes.Add(StyleClasses.Muted);
         ShrinkingRow row = new() { Height = ListRow.Height, Children = { hit, gap, mark, name, tracked } };
         hit.PointerPressed += (_, e) =>
@@ -626,7 +626,7 @@ public sealed class BranchesPanel : DockPanel
         };
         return row.Showing<BranchNode>(node =>
         {
-            row.Margin = new Thickness(node.Depth * 16, 0, 0, 0);
+            row.Margin = new Thickness(node.Depth * Gaps.Indent, 0, 0, 0);
             hit.IsVisible = node.IsGroup;
             gap.IsVisible = !node.IsGroup;
             chevron.DataKey = node.IsExpanded ? IconKeys.ChevronDown : IconKeys.ChevronRight;

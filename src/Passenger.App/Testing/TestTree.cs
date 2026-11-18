@@ -63,7 +63,7 @@ public sealed class TestNode : Observable, ITreeRow
     public TestNode? Parent { get; private set; }
     public List<TestNode> Children { get; } = [];
     public int Depth { get; private set; }
-    public Thickness Indent => new(Depth * 16, 0, 0, 0);
+    public Thickness Indent => new(Depth * Gaps.Indent, 0, 0, 0);
 
     /// <summary>A class's, method's or data row's test, whatever groups it is under: by it the same row is found again
     /// when the grouping changes, keeping its results and whether it is open.</summary>

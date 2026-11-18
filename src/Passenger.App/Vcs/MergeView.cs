@@ -108,7 +108,7 @@ public sealed class MergeView : DockPanel
         applyNonConflicting.Content = new PathIcon { RenderTransform = new RotateTransform(90) };
         ((PathIcon)applyNonConflicting.Content).Bind(PathIcon.DataProperty, applyNonConflicting.GetResourceObservable(IconKeys.ApplyNonConflicts));
         resolveSimple = ToolButtons.Of(IconKeys.Wand, "Resolve Simple Conflicts", ResolveSimpleConflicts);
-        Border rule = new() { Width = 1, Height = 16, Margin = new Thickness(6, 0) };
+        Border rule = new() { Width = 1, Height = 16, Margin = new Thickness(Gaps.Small, 0) };
         rule.Bind(Border.BackgroundProperty, rule.GetResourceObservable(TokenKeys.Divider));
         Children.Add(DiffLines.Bar(name, Step, status, [applyNonConflicting, resolveSimple, rule]));
         Children.Add(sides);

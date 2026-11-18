@@ -14,7 +14,7 @@ namespace Passenger.App.Endpoints;
 public sealed class ResponseView : DockPanel
 {
     private readonly TextBlock summary = new() { VerticalAlignment = VerticalAlignment.Center, FontWeight = FontWeight.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis };
-    private readonly StackPanel criteria = new() { Margin = new Thickness(8, 0, 8, 4) };
+    private readonly StackPanel criteria = new() { Margin = new Thickness(Gaps.Normal, 0, Gaps.Normal, Gaps.Tight) };
     private readonly ToggleButton bodyTab = new() { Classes = { StyleClasses.Segment }, Content = "Body", IsChecked = true, FontSize = 12 };
     private readonly ToggleButton headersTab = new() { Classes = { StyleClasses.Segment }, Content = "Headers", FontSize = 12 };
     private readonly TextBox text = new TextBox
@@ -23,7 +23,7 @@ public sealed class ResponseView : DockPanel
         AcceptsReturn = true,
         TextWrapping = TextWrapping.NoWrap,
         FontSize = 12,
-        Margin = new Thickness(8, 4, 8, 8),
+        Margin = new Thickness(Gaps.Normal, Gaps.Tight, Gaps.Normal, Gaps.Normal),
     }.InCodeFont();
     private readonly TextBlock empty;
     private readonly Panel shown;
@@ -34,8 +34,8 @@ public sealed class ResponseView : DockPanel
         ScrollViewer.SetVerticalScrollBarVisibility(text, ScrollBarVisibility.Auto);
         bodyTab.Click += (_, _) => ShowPart(body: true);
         headersTab.Click += (_, _) => ShowPart(body: false);
-        StackPanel tabs = new() { Orientation = Orientation.Horizontal, Spacing = 4, Children = { bodyTab, headersTab } };
-        DockPanel head = new() { Margin = new Thickness(8, 6), LastChildFill = true };
+        StackPanel tabs = new() { Orientation = Orientation.Horizontal, Spacing = Gaps.Tight, Children = { bodyTab, headersTab } };
+        DockPanel head = new() { Margin = new Thickness(Gaps.Normal, Gaps.Small), LastChildFill = true };
         DockPanel.SetDock(tabs, Dock.Right);
         head.Children.Add(tabs);
         head.Children.Add(summary);
@@ -105,13 +105,13 @@ public sealed class ResponseView : DockPanel
         criteria.Children.Clear();
         foreach (string note in response.Notes)
         {
-            TextBlock said = new() { Text = note, FontSize = 12, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 4) };
+            TextBlock said = new() { Text = note, FontSize = 12, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, Gaps.Tight) };
             Paint(said, TokenKeys.TextMuted);
             criteria.Children.Add(said);
         }
         foreach (ExpectationResult result in results)
         {
-            PathIcon mark = new() { Width = 12, Height = 12, Margin = new Thickness(0, 0, 6, 0) };
+            PathIcon mark = new() { Width = 12, Height = 12, Margin = new Thickness(0, 0, Gaps.Small, 0) };
             mark.Bind(PathIcon.DataProperty, mark.GetResourceObservable(result.Passed ? IconKeys.TestPassed : IconKeys.TestFailed));
             Paint(mark, result.Passed ? TokenKeys.Test_Passed : TokenKeys.Test_Failed);
             TextBlock what = new TextBlock { Text = result.Expectation.ToString(), FontSize = 12, VerticalAlignment = VerticalAlignment.Center }.InCodeFont();
@@ -132,7 +132,7 @@ public sealed class ResponseView : DockPanel
     /// <summary>A place the body breaks its schema: the member in the code font, then what is wrong there.</summary>
     private static Control BreakRow(SchemaBreak broken)
     {
-        PathIcon mark = new() { Width = 12, Height = 12, Margin = new Thickness(0, 0, 6, 0) };
+        PathIcon mark = new() { Width = 12, Height = 12, Margin = new Thickness(0, 0, Gaps.Small, 0) };
         mark.Bind(PathIcon.DataProperty, mark.GetResourceObservable(IconKeys.TestFailed));
         Paint(mark, TokenKeys.Test_Failed);
         TextBlock lead = new() { Text = "Breaks its schema at ", FontSize = 12, VerticalAlignment = VerticalAlignment.Center };

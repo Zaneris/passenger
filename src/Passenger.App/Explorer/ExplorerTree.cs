@@ -1180,7 +1180,7 @@ public sealed class ExplorerNode : Observable, ITreeRow
     public bool IsVcsUnversioned => change is ChangeKind.Unversioned;
     public bool IsVcsConflicted => change is ChangeKind.Conflicted;
 
-    public Thickness Indent => new(Depth * 16, 0, 0, 0);
+    public Thickness Indent => new(Depth * Gaps.Indent, 0, 0, 0);
     public double Opacity => IsDimmed || IsCut ? 0.55 : 1;
     public Geometry Icon => FileIcons.For(this);
     public IBrush IconBrush => FileIcons.BrushFor(this);

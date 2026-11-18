@@ -193,8 +193,10 @@
     <Style Selector="Border.kindBadge">
         <Setter Property="CornerRadius" Value="{DynamicResource Passenger.BadgeRadius}" />
     </Style>
+    <!-- A tag's words (a method, a kind, a feature's tags) a small step in from its rounded ends: every tag's own. -->
     <Style Selector="Border.tag">
         <Setter Property="CornerRadius" Value="{DynamicResource Passenger.BadgeRadius}" />
+        <Setter Property="Padding" Value="6,0" />
     </Style>
     <Style Selector="Border.box">
         <Setter Property="CornerRadius" Value="{DynamicResource Passenger.ControlRadius}" />

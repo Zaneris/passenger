@@ -66,7 +66,7 @@ internal sealed class GodotValueCell : LiveValueCell
     private readonly IGodotValues values;
     private readonly IGodotTuner tuner;
     private readonly Panel editor = new() { VerticalAlignment = VerticalAlignment.Center };
-    private readonly StackPanel note = new() { Orientation = Orientation.Horizontal, Spacing = 6 };
+    private readonly StackPanel note = new() { Orientation = Orientation.Horizontal, Spacing = Gaps.Small };
     private readonly TextBlock changed = new() { Classes = { StyleClasses.Muted }, FontSize = 11, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center };
     private readonly Button keep = new() { Classes = { StyleClasses.Link }, Content = "Keep", FontSize = 11 };
 
@@ -199,7 +199,7 @@ internal sealed class GodotValueCell : LiveValueCell
         if (range is null)
         {
             ValueSlider slider = new();
-            ScrubField number = new(string.Empty) { Width = 74, Margin = new Thickness(6, 0, 0, 0) };
+            ScrubField number = new(string.Empty) { Width = 74, Margin = new Thickness(Gaps.Small, 0, 0, 0) };
             DockPanel.SetDock(number, Dock.Right);
             DockPanel panel = Add(new DockPanel { Children = { number, slider } });
             slider.Changing += (_, shown) =>
@@ -298,15 +298,15 @@ internal sealed class GodotValueCell : LiveValueCell
     {
         if (colour is null)
         {
-            Border swatch = new() { Classes = { StyleClasses.Box }, Width = 22, Height = 16, BorderThickness = new Thickness(1) };
+            Border swatch = new() { Classes = { StyleClasses.Box }, Width = 22, Height = 16, BorderThickness = Hairlines.Round };
             swatch.Bind(Border.BorderBrushProperty, swatch.GetResourceObservable(TokenKeys.FieldBorder));
             TextBlock hex = new TextBlock { FontSize = 12, VerticalAlignment = VerticalAlignment.Center }.InCodeFont();
             Button button = Add(new Button
             {
                 Classes = { StyleClasses.Compact },
                 HorizontalAlignment = HorizontalAlignment.Left,
-                Padding = new Thickness(4, 2, 8, 2),
-                Content = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, Children = { swatch, hex } },
+                Padding = new Thickness(Gaps.Tight, Gaps.Hair, Gaps.Normal, Gaps.Hair),
+                Content = new StackPanel { Orientation = Orientation.Horizontal, Spacing = Gaps.Small, Children = { swatch, hex } },
             });
             ToolTip.SetTip(button, values is GodotGame ? "Pick a colour: the game takes each one as the pointer moves" : "Pick a colour: the scene is written once one is chosen");
             button.Click += (_, _) => PickColour(button);
@@ -372,7 +372,7 @@ internal sealed class GodotValueCell : LiveValueCell
             for (int i = 0; i < count; i++)
             {
                 int axis = i;
-                ScrubField field = new(hint.Axes[i]) { Margin = new Thickness(i == 0 ? 0 : 4, 0, 0, 0) };
+                ScrubField field = new(hint.Axes[i]) { Margin = new Thickness(i == 0 ? 0 : Gaps.Tight, 0, 0, 0) };
                 field.Changing += (_, moved) => Send(WithAxis(axis, moved), settles: false);
                 field.Committed += (_, moved) => Send(WithAxis(axis, moved), settles: true);
                 fields.Add(field);
@@ -429,11 +429,11 @@ internal sealed class GodotValueCell : LiveValueCell
                 Classes = { StyleClasses.Compact },
                 HorizontalAlignment = HorizontalAlignment.Stretch,
                 HorizontalContentAlignment = HorizontalAlignment.Left,
-                Padding = new Thickness(4, 2, 8, 2),
-                Content = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, Children = { thumbnail, name } },
+                Padding = new Thickness(Gaps.Tight, Gaps.Hair, Gaps.Normal, Gaps.Hair),
+                Content = new StackPanel { Orientation = Orientation.Horizontal, Spacing = Gaps.Small, Children = { thumbnail, name } },
             };
             button.Click += (_, _) => PickResource(button);
-            Button properties = new() { Classes = { StyleClasses.Link }, Content = "Properties", FontSize = 11, Margin = new Thickness(6, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
+            Button properties = new() { Classes = { StyleClasses.Link }, Content = "Properties", FontSize = 11, Margin = new Thickness(Gaps.Small, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
             properties.Click += (_, _) => EditResource(properties);
             DockPanel.SetDock(properties, Dock.Right);
             DockPanel panel = Add(new DockPanel { Children = { properties, button } });
@@ -469,7 +469,7 @@ internal sealed class GodotValueCell : LiveValueCell
                 Classes = { StyleClasses.Compact },
                 HorizontalAlignment = HorizontalAlignment.Stretch,
                 HorizontalContentAlignment = HorizontalAlignment.Left,
-                Padding = new Thickness(4, 2, 8, 2),
+                Padding = new Thickness(Gaps.Tight, Gaps.Hair, Gaps.Normal, Gaps.Hair),
                 Content = words,
             });
             button.Click += (_, _) =>

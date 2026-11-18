@@ -248,16 +248,16 @@ public sealed class VariablesList : TreeList
     {
         RowIcon chevron = RowIcon.Chevron();
         Border toggle = new() { Width = 18, Height = ListRow.Height, Background = Brushes.Transparent, Child = chevron };
-        RowIcon icon = new() { Margin = new Thickness(0, 0, 6, 0) };
+        RowIcon icon = new() { Margin = new Thickness(0, 0, Gaps.Small, 0) };
         // In the icon's place, a colour's own.
-        Border swatch = new() { Classes = { StyleClasses.Swatch }, Width = 12, Height = 12, Margin = new Thickness(2, 0, 8, 0), VerticalAlignment = VerticalAlignment.Center };
+        Border swatch = new() { Classes = { StyleClasses.Swatch }, Width = 12, Height = 12, Margin = new Thickness(Gaps.Hair, 0, Gaps.Normal, 0), VerticalAlignment = VerticalAlignment.Center };
         TextBlock name = new() { VerticalAlignment = VerticalAlignment.Center };
         TextBlock type = new() { VerticalAlignment = VerticalAlignment.Center };
         type.Classes.Add(StyleClasses.Muted);
         TextBlock value = new() { VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis, MaxWidth = 900 };
-        ValueField editor = new() { Classes = { StyleClasses.Search }, MinHeight = 22, Height = 22, Padding = new Thickness(6, 0), IsVisible = false, VerticalAlignment = VerticalAlignment.Center };
+        ValueField editor = new() { Classes = { StyleClasses.Search }, MinHeight = 22, Height = 22, Padding = new Thickness(Gaps.Small, 0), IsVisible = false, VerticalAlignment = VerticalAlignment.Center };
         // Before the words saying why, which a narrow row cuts first.
-        Button again = new() { Classes = { StyleClasses.Link }, Content = RunWithThreads, Margin = new Thickness(0, 0, 8, 0), VerticalAlignment = VerticalAlignment.Center, IsVisible = false };
+        Button again = new() { Classes = { StyleClasses.Link }, Content = RunWithThreads, Margin = new Thickness(0, 0, Gaps.Normal, 0), VerticalAlignment = VerticalAlignment.Center, IsVisible = false };
         ToolTip.SetTip(again, "Evaluates it again with every other thread of the program running meanwhile, which changes what they hold");
         // Narrower than its row, the value gives way first, ending in an ellipsis, then its type.
         ShrinkingRow row = new()

@@ -107,7 +107,7 @@ public static class DropDownSearch
         /// <summary>What holds the list's rows in its popup, scrolled to its top as the list narrows.</summary>
         public Control? List { get; set; }
 
-        public TextBlock Said { get; } = new() { IsVisible = false, Margin = new Thickness(10, 6, 10, 4), FontSize = 12, VerticalAlignment = VerticalAlignment.Center };
+        public TextBlock Said { get; } = new() { IsVisible = false, Margin = new Thickness(Gaps.Wide, Gaps.Small, Gaps.Wide, Gaps.Tight), FontSize = 12, VerticalAlignment = VerticalAlignment.Center };
 
         /// <summary>The list narrowed to what is typed, the first item left given the keys; nothing typed shows every item.</summary>
         public void Narrow(string typed)

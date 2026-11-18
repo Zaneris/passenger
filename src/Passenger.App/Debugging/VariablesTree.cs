@@ -122,7 +122,7 @@ public sealed class VariableNode(string name, string value, string? type, int re
     /// <summary>The type in braces before the value, unless the value already says it.</summary>
     public string TypeLabel => Type is { Length: > 0 } t && Value != t && !Value.StartsWith(t, StringComparison.Ordinal) ? $"{{{t}}} " : string.Empty;
 
-    public Thickness Indent => new(Depth * 16, 0, 0, 0);
+    public Thickness Indent => new(Depth * Gaps.Indent, 0, 0, 0);
     public List<VariableNode>? Children { get; set; }
 
     public bool IsExpanded

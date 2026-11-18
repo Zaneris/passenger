@@ -19,7 +19,7 @@ public sealed class NuGetSourcesView : Panel
 {
     private readonly NuGetView owner;
     private readonly ListBox files;
-    private readonly StackPanel details = new() { Spacing = 6, Margin = new Thickness(14, 10) };
+    private readonly StackPanel details = new() { Spacing = Gaps.Small, Margin = new Thickness(ListRow.TextStart, Gaps.Wide) };
     private readonly TextBlock problem = new() { TextWrapping = TextWrapping.Wrap, IsVisible = false };
     private PackageSourceSet sources = PackageSourceSet.None;
     private bool drawing;
@@ -39,7 +39,7 @@ public sealed class NuGetSourcesView : Panel
         problem.Classes.Add(StyleClasses.Error);
         DockPanel right = new();
         DockPanel.SetDock(problem, Dock.Bottom);
-        problem.Margin = new Thickness(14, 0, 14, 8);
+        problem.Margin = new Thickness(ListRow.TextStart, 0, ListRow.TextStart, Gaps.Normal);
         right.Children.Add(problem);
         right.Children.Add(new ScrollViewer { Content = details });
         Children.Add(new PaneSplit(files, right, "2*,1,5*"));
@@ -89,7 +89,7 @@ public sealed class NuGetSourcesView : Panel
         {
             DrawFile(file);
         }
-        details.Children.Add(Title("Summary", new Thickness(0, 14, 0, 2)));
+        details.Children.Add(Title("Summary", new Thickness(0, Gaps.Wide, 0, Gaps.Hair)));
         if (!sources.Feeds.Any())
         {
             details.Children.Add(MutedText.Wrapped("No feeds: a restore finds no packages"));
@@ -137,7 +137,7 @@ public sealed class NuGetSourcesView : Panel
         {
             details.Children.Add(MutedText.Wrapped("<clear /> here: the feeds of the files after this one are not used"));
         }
-        details.Children.Add(Title("Properties", new Thickness(0, 14, 0, 2)));
+        details.Children.Add(Title("Properties", new Thickness(0, Gaps.Wide, 0, Gaps.Hair)));
         details.Children.Add(Property("Global packages folder", file.GlobalPackagesFolder));
         details.Children.Add(Property("Repository path", file.RepositoryPath));
     }
@@ -151,11 +151,11 @@ public sealed class NuGetSourcesView : Panel
         CheckBox toggle = CheckRows.Box();
         toggle.IsChecked = enabled;
         toggle.IsEnabled = !file.ReadOnly;
-        toggle.Margin = new Thickness(0, 0, 4, 0);
+        toggle.Margin = new Thickness(0, 0, Gaps.Tight, 0);
         ToolTip.SetTip(toggle, "Enabled");
         toggle.IsCheckedChanged += (_, _) => IdeErrors.Observe(SetEnabledAsync(file, feed.Name, toggle.IsChecked == true));
         TextBlock name = new() { Text = feed.Name, FontWeight = FontWeight.SemiBold, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
-        TextBlock url = new() { Classes = { StyleClasses.Muted }, Text = feed.Value, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis, Margin = new Thickness(10, 0) };
+        TextBlock url = new() { Classes = { StyleClasses.Muted }, Text = feed.Value, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis, Margin = new Thickness(Gaps.Normal, 0) };
         ToolTip.SetTip(url, feed.Value);
         Grid row = new() { ColumnDefinitions = new ColumnDefinitions("Auto,150,*,Auto,Auto,Auto"), Height = ListRow.Height, Tag = feed.Name };
         Add(row, toggle, 0);
@@ -163,7 +163,7 @@ public sealed class NuGetSourcesView : Panel
         Add(row, url, 2);
         if (feed.Username is not null || feed.HasPassword)
         {
-            PathIcon locked = new() { Classes = { StyleClasses.Small }, Margin = new Thickness(0, 0, 6, 0), VerticalAlignment = VerticalAlignment.Center };
+            PathIcon locked = new() { Classes = { StyleClasses.Small }, Margin = new Thickness(0, 0, Gaps.Small, 0), VerticalAlignment = VerticalAlignment.Center };
             locked.Bind(PathIcon.DataProperty, locked.GetResourceObservable(IconKeys.Lock));
             ToolTip.SetTip(locked, feed.Username is { } user ? $"Credentials for {user} in this file" : "Credentials in this file");
             Add(row, locked, 3);
@@ -187,7 +187,7 @@ public sealed class NuGetSourcesView : Panel
         Grid line = new() { ColumnDefinitions = new ColumnDefinitions("170,*,Auto"), Opacity = feed.Enabled ? 1 : 0.55 };
         Add(line, new TextBlock { Text = feed.Name, TextTrimming = TextTrimming.CharacterEllipsis }, 0);
         Add(line, new TextBlock { Classes = { StyleClasses.Muted }, Text = feed.Source, TextTrimming = TextTrimming.PathSegmentEllipsis }, 1);
-        Add(line, new TextBlock { Classes = { StyleClasses.Muted }, Text = feed.Enabled ? string.Empty : "disabled", Margin = new Thickness(10, 0, 0, 0) }, 2);
+        Add(line, new TextBlock { Classes = { StyleClasses.Muted }, Text = feed.Enabled ? string.Empty : "disabled", Margin = new Thickness(Gaps.Wide, 0, 0, 0) }, 2);
         ToolTip.SetTip(line, $"{(feed.Enabled ? "Enabled" : "Disabled")}, from {from}{(feed.Credentials is { } held ? $", with {held}" : string.Empty)}"
             + (feed.Withheld is { } withheld ? $". {withheld}" : string.Empty));
         return line;
@@ -282,12 +282,12 @@ public sealed class NuGetSourcesView : Panel
     /// applies (the solution, the folder, the user or the machine), its path in its tip.</summary>
     private static Control FileRow()
     {
-        RowIcon icon = new() { Width = 14, Height = 14, Margin = new Thickness(6, 0, 6, 0) };
+        RowIcon icon = new() { Width = 14, Height = 14, Margin = new Thickness(Gaps.Small, 0, Gaps.Small, 0) };
         icon.DataKey = IconKeys.DocumentText;
-        TextBlock place = new() { Classes = { StyleClasses.Muted }, FontSize = 12, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 8, 0) };
+        TextBlock place = new() { Classes = { StyleClasses.Muted }, FontSize = 12, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(Gaps.Normal, 0, Gaps.Normal, 0) };
         // Its name, then its folder, which gives way first in a narrow pane so the name stays whole.
         TextBlock name = new() { VerticalAlignment = VerticalAlignment.Center };
-        TextBlock folder = new() { Classes = { StyleClasses.Muted }, FontSize = 12, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(6, 0, 0, 0) };
+        TextBlock folder = new() { Classes = { StyleClasses.Muted }, FontSize = 12, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(Gaps.Small, 0, 0, 0) };
         ShrinkingRow path = new() { Children = { name, folder } };
         Grid line = new() { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto"), Height = ListRow.Height };
         Add(line, icon, 0);

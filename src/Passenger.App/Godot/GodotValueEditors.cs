@@ -35,7 +35,7 @@ public sealed class GodotItemsEditor : Border
     private readonly Func<ulong, string, Control> objectForm;
 
     // Clear of the scroll bar, which shows over the rows' right.
-    private readonly StackPanel rows = new() { Spacing = 2, Margin = new Thickness(0, 0, 14, 0) };
+    private readonly StackPanel rows = new() { Spacing = Gaps.Hair, Margin = new Thickness(0, 0, Gaps.Group, 0) };
     private readonly TextBlock empty;
     private readonly List<TextBox> fields = [];
     private readonly Border slot = new() { IsVisible = false };
@@ -92,7 +92,7 @@ public sealed class GodotItemsEditor : Border
         keyType = hint.Key != GodotType.Nil ? hint.Key : keys.Kind == 0 ? GodotType.Nil : keys.Type;
         Classes.Add(StyleClasses.Popup);
         Width = PopupFrame.Narrow;
-        Padding = new Thickness(8);
+        Padding = new Thickness(Gaps.Normal);
         empty = new TextBlock { Classes = { StyleClasses.EmptyText }, Text = Entries ? "No entries" : "No items" };
         Button add = new() { Classes = { StyleClasses.Compact }, Content = Entries ? "Add Entry" : "Add Item", HorizontalAlignment = HorizontalAlignment.Left };
         add.Click += (_, _) => IdeErrors.Observe(InTurnAsync(AddAsync));
@@ -101,7 +101,7 @@ public sealed class GodotItemsEditor : Border
             : Entries ? $"Dictionary[{Named(keyType, keys)}, {Named(itemType, items)}]" : $"{type}[{Named(itemType, items)}]";
         Child = new StackPanel
         {
-            Spacing = 6,
+            Spacing = Gaps.Small,
             Children =
             {
                 new TextBlock { Classes = { StyleClasses.PopupTitle }, Text = $"{name}: {of}", TextTrimming = TextTrimming.CharacterEllipsis },
@@ -201,7 +201,7 @@ public sealed class GodotItemsEditor : Border
         TextBox key = Field(entry.Key, asked, text => InTurn(asked, now => SetEntryAsync(now, text, key: true)));
         Control value = Opens(entry.Value, $"{name}[{GodotVariant.Shown(entry.Key, quoted: true)}]", asked, ReplacedValue) is { } opens ? opens
             : Field(entry.Value, asked, text => InTurn(asked, now => SetEntryAsync(now, text, key: false)));
-        value.Margin = new Thickness(4, 0, 0, 0);
+        value.Margin = new Thickness(Gaps.Tight, 0, 0, 0);
         Grid.SetColumn(value, 1);
         Button remove = ToolButtons.Of(IconKeys.Close, $"Remove {GodotVariant.Shown(entry.Key, quoted: true)}", () => Remove(asked));
         Grid.SetColumn(remove, 2);
@@ -228,7 +228,7 @@ public sealed class GodotItemsEditor : Border
             Classes = { StyleClasses.Compact },
             HorizontalAlignment = HorizontalAlignment.Stretch,
             HorizontalContentAlignment = HorizontalAlignment.Left,
-            Padding = new Thickness(4, 2, 8, 2),
+            Padding = new Thickness(Gaps.Tight, Gaps.Hair, Gaps.Normal, Gaps.Hair),
             Content = words,
         };
         ToolTip.SetTip(button, item is GodotObjectId ? $"{named}: its own properties, read and set in the game" : $"{named}: its items, set in the game");
@@ -475,7 +475,7 @@ public sealed class GodotResourceEditor : Border, IGodotTuner
     private readonly GodotGame game;
     private readonly IGodotTuner tuner;
     // Clear of the scroll bar, which shows over the rows' right.
-    private readonly StackPanel rows = new() { Spacing = 2, Margin = new Thickness(0, 0, 14, 0) };
+    private readonly StackPanel rows = new() { Spacing = Gaps.Hair, Margin = new Thickness(0, 0, Gaps.Group, 0) };
     private readonly TextBlock words = new() { Classes = { StyleClasses.EmptyText } };
     private readonly TextBlock title;
     private readonly Border slot = new() { IsVisible = false };
@@ -495,12 +495,12 @@ public sealed class GodotResourceEditor : Border, IGodotTuner
         this.tuner = tuner;
         Classes.Add(StyleClasses.Popup);
         Width = PopupFrame.Medium;
-        Padding = new Thickness(8);
+        Padding = new Thickness(Gaps.Normal);
         title = new TextBlock { Classes = { StyleClasses.PopupTitle }, Text = property, TextTrimming = TextTrimming.CharacterEllipsis };
         words.Text = $"Reading {property}'s properties…";
         Child = new StackPanel
         {
-            Spacing = 6,
+            Spacing = Gaps.Small,
             Children =
             {
                 title,
@@ -577,7 +577,7 @@ public sealed class GodotResourceEditor : Border, IGodotTuner
     private (Control Row, GodotValueCell Cell, TextBox Typed, TextBlock Shown) Row(string name)
     {
         Grid grid = new() { ColumnDefinitions = new ColumnDefinitions("2*,3*"), RowDefinitions = new RowDefinitions("Auto,Auto"), MinHeight = ListRow.Height };
-        TextBlock label = new() { Text = name, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 0) };
+        TextBlock label = new() { Text = name, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, Gaps.Normal, 0) };
         ToolTip.SetTip(label, name);
         GodotValueCell cell = new(game, this);
         TextBox typed = new TextBox { FontSize = 12, VerticalAlignment = VerticalAlignment.Center }.InCodeFont();

@@ -550,10 +550,11 @@ internal static partial class Markdown
                 MarkdownText words = MarkdownText.Of(Inlines(column < rows[row].Count ? rows[row][column] : ""), page, row == 0 ? StyleClasses.MdCellHead : StyleClasses.MdCellText);
                 words.TextAlignment = table.Aligns[column] ?? TextAlignment.Left;
                 // The rules between cells only: the table's frame draws its edges.
+                bool beforeAnother = column < columns - 1, aboveAnother = row < rows.Count - 1;
                 Border cell = new()
                 {
                     Classes = { StyleClasses.MdCell },
-                    BorderThickness = new Thickness(0, 0, column < columns - 1 ? 1 : 0, row < rows.Count - 1 ? 1 : 0),
+                    BorderThickness = new Thickness(0, 0, beforeAnother ? Hairlines.Width : 0, aboveAnother ? Hairlines.Width : 0),
                     Child = words,
                     [Grid.RowProperty] = row,
                     [Grid.ColumnProperty] = column,

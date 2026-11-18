@@ -10,7 +10,7 @@ public static class FilterBox
 {
     public static TextBox Of()
     {
-        PathIcon magnifier = new() { Width = 14, Height = 14, Margin = new Thickness(8, 0, 0, 0) };
+        PathIcon magnifier = new() { Width = 14, Height = 14, Margin = new Thickness(Gaps.Normal, 0, 0, 0) };
         magnifier.Bind(PathIcon.DataProperty, magnifier.GetResourceObservable(IconKeys.Search));
         return new TextBox
         {

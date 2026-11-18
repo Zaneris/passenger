@@ -178,14 +178,14 @@ public sealed class ScrubField : DockPanel
             Text = axis.Length > 0 ? axis : "⇔",
             Classes = { StyleClasses.Muted },
             FontSize = 11,
-            Padding = new Thickness(1, 0, 3, 0),
+            Padding = new Thickness(0, 0, Gaps.Hair, 0),
             VerticalAlignment = VerticalAlignment.Center,
             Background = Brushes.Transparent,
             Cursor = new Cursor(StandardCursorType.SizeWestEast),
         };
         ToolTip.SetTip(label, "Drag left or right to change it: Shift for faster, Alt for finer");
         SetDock(label, Dock.Left);
-        box = new TextBox { FontSize = 11.5, MinWidth = 0, Padding = new Thickness(4, 0), VerticalAlignment = VerticalAlignment.Center, VerticalContentAlignment = VerticalAlignment.Center }.InCodeFont();
+        box = new TextBox { FontSize = 11.5, MinWidth = 0, Padding = new Thickness(Gaps.Tight, 0), VerticalAlignment = VerticalAlignment.Center, VerticalContentAlignment = VerticalAlignment.Center }.InCodeFont();
         Children.Add(label);
         Children.Add(box);
         label.PointerPressed += (_, e) =>

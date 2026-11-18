@@ -135,7 +135,7 @@ public sealed class ProfilerView : DockPanel
         ReusedRows.Use(backTraces, Row);
         TreeKeys.Attach<CallRow>(backTraces, Toggle, row => Open(row.Node.Name, row.Node.Code));
         allocations = new PaneSplit(types, backTraces, "2*,1,3*");
-        collectionsSummary = new TextBlock { Margin = new Thickness(12, 8), TextWrapping = TextWrapping.Wrap };
+        collectionsSummary = new TextBlock { Margin = new Thickness(Gaps.Wide, Gaps.Normal), TextWrapping = TextWrapping.Wrap };
         collections = new ListBox
         {
             Classes = { StyleClasses.Tree },
@@ -158,11 +158,11 @@ public sealed class ProfilerView : DockPanel
         };
         ReusedRows.Use(kept, KeptRow);
         ListKeys.Act(kept, new ListActs { Open = OpenKept });
-        keptSummary = new TextBlock { Margin = new Thickness(12, 8), TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center };
+        keptSummary = new TextBlock { Margin = new Thickness(Gaps.Wide, Gaps.Normal), TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center };
         Button reveal = new()
         {
             Content = FileManager.Showing,
-            Margin = new Thickness(0, 0, 12, 0),
+            Margin = new Thickness(0, 0, Gaps.Wide, 0),
             VerticalAlignment = VerticalAlignment.Center,
         };
         reveal.Click += (_, _) => RevealSnapshotsRequested?.Invoke(this, EventArgs.Empty);
@@ -180,7 +180,7 @@ public sealed class ProfilerView : DockPanel
         };
 
         // Cut where it is longer than its line, its whole text on hover.
-        status = new TextBlock { Name = "ProfilerSummary", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(12, 0), TextTrimming = TextTrimming.CharacterEllipsis };
+        status = new TextBlock { Name = "ProfilerSummary", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(Gaps.Wide, 0), TextTrimming = TextTrimming.CharacterEllipsis };
         status.Bind(ToolTip.TipProperty, status.GetObservable(TextBlock.TextProperty));
         stop = new Button { Name = "ProfilerGetSnapshot", Content = "Get Snapshot", Classes = { StyleClasses.Primary }, IsVisible = false };
         stop.Click += (_, _) => StopRequested?.Invoke(this, EventArgs.Empty);
@@ -194,7 +194,7 @@ public sealed class ProfilerView : DockPanel
             pages[(int)page].Name = $"Profiler{page}";
         }
         // The pages and the run's summary wrap to another line where the pane has no room for them on one, as at 640 wide.
-        WrapPanel left = new() { ItemSpacing = 2, Margin = new Thickness(6, 0), VerticalAlignment = VerticalAlignment.Center };
+        WrapPanel left = new() { ItemSpacing = Gaps.Hair, Margin = new Thickness(Gaps.Small, 0), VerticalAlignment = VerticalAlignment.Center };
         foreach (ToggleButton page in pages)
         {
             left.Children.Add(page);
@@ -204,7 +204,7 @@ public sealed class ProfilerView : DockPanel
         heap = new Button { Name = "ProfilerGetMemorySnapshot", Content = "Get Memory Snapshot", IsVisible = false };
         heap.Click += (_, _) => MemoryRequested?.Invoke(this, EventArgs.Empty);
         ActionButtons.Mark(heap, AppActions.MemorySnapshot);
-        StackPanel right = new() { Orientation = Orientation.Horizontal, Spacing = 6, Margin = new Thickness(6, 0), VerticalAlignment = VerticalAlignment.Center, Children = { heap, stop, kill, open } };
+        StackPanel right = new() { Orientation = Orientation.Horizontal, Spacing = Gaps.Small, Margin = new Thickness(Gaps.Small, 0), VerticalAlignment = VerticalAlignment.Center, Children = { heap, stop, kill, open } };
         DockPanel bar = new();
         DockPanel.SetDock(right, Dock.Right);
         left.Children.Add(status);
@@ -216,7 +216,7 @@ public sealed class ProfilerView : DockPanel
         Children.Add(offer);
         timeline = new Timeline();
         timeline.Chosen += (_, stretch) => IdeErrors.Observe(ChooseAsync(stretch));
-        timelineBand = new Border { [DockProperty] = Dock.Top, BorderThickness = new Thickness(0, 0, 0, 1), Child = timeline, IsVisible = false, Padding = new Thickness(0, 4) };
+        timelineBand = new Border { [DockProperty] = Dock.Top, BorderThickness = Hairlines.Below, Child = timeline, IsVisible = false, Padding = new Thickness(0, Gaps.Tight) };
         timelineBand.Bind(Border.BorderBrushProperty, timelineBand.GetResourceObservable(TokenKeys.Divider));
         Children.Add(timelineBand);
         Children.Add(new Panel { Children = { tree, spots, flameScroll, framesPage, allocations, garbage, memory, keptPage, placeholder } });
@@ -320,7 +320,7 @@ public sealed class ProfilerView : DockPanel
         TextBlock when = Mono(Muted(string.Empty, 160));
         TextBlock size = Mono(Muted(string.Empty, 100));
         TextBlock program = new() { VerticalAlignment = VerticalAlignment.Center, FontWeight = FontWeight.SemiBold };
-        ShrinkingRow row = new() { Height = ListRow.Height, Margin = new Thickness(6, 0), Children = { when, size, program } };
+        ShrinkingRow row = new() { Height = ListRow.Height, Margin = new Thickness(Gaps.Small, 0), Children = { when, size, program } };
         return row.Showing<SnapshotFile>(file =>
         {
             when.Text = file.Written.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss", System.Globalization.CultureInfo.CurrentCulture);
@@ -593,7 +593,7 @@ public sealed class ProfilerView : DockPanel
     {
         TextBlock size = Mono(Muted(string.Empty, 170));
         TextBlock name = new() { VerticalAlignment = VerticalAlignment.Center, FontWeight = FontWeight.SemiBold };
-        ShrinkingRow row = new() { Height = ListRow.Height, Margin = new Thickness(6, 0), Children = { size, name } };
+        ShrinkingRow row = new() { Height = ListRow.Height, Margin = new Thickness(Gaps.Small, 0), Children = { size, name } };
         return row.Showing<AllocatedType>(type =>
         {
             long whole = Snapshot?.Allocations.Sum(a => a.Bytes) ?? 0;
@@ -609,7 +609,7 @@ public sealed class ProfilerView : DockPanel
         TextBlock when = Muted(string.Empty, 110);
         TextBlock pause = Muted(string.Empty, 140);
         TextBlock why = Muted(string.Empty, double.NaN);
-        ShrinkingRow row = new() { Height = ListRow.Height, Margin = new Thickness(6, 0), Children = { what, when, pause, why } };
+        ShrinkingRow row = new() { Height = ListRow.Height, Margin = new Thickness(Gaps.Small, 0), Children = { what, when, pause, why } };
         return row.Showing<Collection>(gc =>
         {
             what.Text = $"#{gc.Number}  generation {gc.Generation}";
@@ -783,7 +783,7 @@ public sealed class ProfilerView : DockPanel
         };
         return line.Showing<CallRow>(row =>
         {
-            line.Margin = new Thickness(row.Depth * 14, 0, 0, 0);
+            line.Margin = new Thickness(row.Depth * Gaps.Indent, 0, 0, 0);
             chevron.IsVisible = row.Node.Children.Count > 0;
             chevron.Turned = row.IsExpanded;
             string percent = row.Whole > 0 ? $"{100.0 * row.Node.Total / row.Whole,5:0.0}%" : string.Empty;
@@ -799,7 +799,7 @@ public sealed class ProfilerView : DockPanel
         TextBlock total = Muted(string.Empty, 110);
         total.FontSize = 12;
         MethodName method = new();
-        ShrinkingRow row = new() { Height = ListRow.Height, Margin = new Thickness(6, 0), Children = { own, total, method.Row } };
+        ShrinkingRow row = new() { Height = ListRow.Height, Margin = new Thickness(Gaps.Small, 0), Children = { own, total, method.Row } };
         return row.Showing<HotSpot>(spot =>
         {
             double sampleMs = Snapshot?.SampleMs ?? 1;

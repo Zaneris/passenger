@@ -908,7 +908,7 @@ public sealed class EditorGroup : DockPanel
             : new StackPanel
             {
                 Orientation = Orientation.Horizontal,
-                Spacing = 6,
+                Spacing = Gaps.Small,
                 VerticalAlignment = VerticalAlignment.Center,
                 Children = { icon, name, pin, ends },
             });

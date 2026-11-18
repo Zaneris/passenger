@@ -416,10 +416,10 @@ public sealed class GodotLiveValues
             return true;
         }
         // Each part's line named beside its colour with its lowest and highest, as many to a row as fit, its words wrapping alone.
-        WrapPanel legend = new() { ItemSpacing = 14, LineSpacing = 4 };
+        WrapPanel legend = new() { ItemSpacing = Gaps.Wide, LineSpacing = Gaps.Tight };
         for (int i = 0; i < parts; i++)
         {
-            Border swatch = new() { Width = 9, Height = 9, Margin = new Thickness(0, 0, 5, 0), VerticalAlignment = VerticalAlignment.Center, [DockPanel.DockProperty] = Dock.Left };
+            Border swatch = new() { Width = 9, Height = 9, Margin = new Thickness(0, 0, Gaps.Small, 0), VerticalAlignment = VerticalAlignment.Center, [DockPanel.DockProperty] = Dock.Left };
             swatch.Bind(Border.BackgroundProperty, swatch.GetResourceObservable(brushes[i]));
             TextBlock words = MutedText.Wrapped($"{(i < names.Count ? names[i] : $"{i}")} {Range(i)}");
             words.FontSize = 12;

@@ -44,7 +44,7 @@ public sealed class ContainerStatsPane : DockPanel
     private const int Kept = 120;
 
     private readonly Func<ContainerEngine> engine;
-    private readonly StackPanel table = new() { Margin = new Thickness(8, 6) };
+    private readonly StackPanel table = new() { Margin = new Thickness(Gaps.Normal, Gaps.Small) };
     private readonly Sparkline cpu = new(Kept, fromZero: true, fromRight: false, TokenKeys.Link);
     private readonly Sparkline memory = new(Kept, fromZero: true, fromRight: false, TokenKeys.Test_Passed);
     private readonly TextBlock waiting = new() { Classes = { StyleClasses.EmptyText }, Text = "Waiting for the engine's first reading…" };
@@ -66,7 +66,7 @@ public sealed class ContainerStatsPane : DockPanel
     public ContainerStatsPane(Func<ContainerEngine> engine)
     {
         this.engine = engine;
-        Grid charts = new() { ColumnDefinitions = new ColumnDefinitions("*,*"), Height = 72, Margin = new Thickness(8, 0, 8, 8), [DockProperty] = Dock.Bottom };
+        Grid charts = new() { ColumnDefinitions = new ColumnDefinitions("*,*"), Height = 72, Margin = new Thickness(Gaps.Normal, 0, Gaps.Normal, Gaps.Normal), [DockProperty] = Dock.Bottom };
         charts.Children.Add(Chart("CPU %", cpu, 0));
         charts.Children.Add(Chart("Memory %", memory, 1));
         Children.Add(charts);
@@ -301,7 +301,7 @@ public sealed class ContainerStatsPane : DockPanel
         TextBlock[] cells = new TextBlock[6];
         for (int i = 0; i < cells.Length; i++)
         {
-            TextBlock cell = new() { VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis, [Grid.ColumnProperty] = i, Margin = new Thickness(0, 0, 8, 0) };
+            TextBlock cell = new() { VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis, [Grid.ColumnProperty] = i, Margin = new Thickness(0, 0, Gaps.Normal, 0) };
             if (heading)
             {
                 cell.FontWeight = FontWeight.SemiBold;
@@ -317,6 +317,6 @@ public sealed class ContainerStatsPane : DockPanel
         TextBlock name = new() { Text = title, FontSize = 11, [DockProperty] = Dock.Top };
         name.Classes.Add(StyleClasses.Muted);
         Border frame = new() { Classes = { StyleClasses.Framed }, Child = line };
-        return new DockPanel { [Grid.ColumnProperty] = column, Margin = new Thickness(column == 0 ? 0 : 4, 0, column == 0 ? 4 : 0, 0), Children = { name, frame } };
+        return new DockPanel { [Grid.ColumnProperty] = column, Margin = new Thickness(column == 0 ? 0 : Gaps.Tight, 0, column == 0 ? Gaps.Tight : 0, 0), Children = { name, frame } };
     }
 }

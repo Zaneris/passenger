@@ -17,7 +17,7 @@ public sealed class GitView : DockPanel
     /// <summary>The tabs after the Log: each one's view (a <see cref="GitLogView"/>, or a <see cref="WorkingTreeDiffView"/>)
     /// and what it shows, the view with what is laid out around it.</summary>
     private readonly List<(HistoryScope? Scope, string Title, Control View, Control Body)> histories = [];
-    private readonly StackPanel tabs = new() { Orientation = Orientation.Horizontal, Spacing = 2, VerticalAlignment = VerticalAlignment.Center };
+    private readonly StackPanel tabs = new() { Orientation = Orientation.Horizontal, Spacing = Gaps.Hair, VerticalAlignment = VerticalAlignment.Center };
     private readonly ContentControl body = new();
 
     public GitView(VcsController git)
@@ -129,7 +129,7 @@ public sealed class GitView : DockPanel
     /// <summary>What a tab's list holds, muted above it.</summary>
     private static TextBlock Explanation(string text, int row)
     {
-        TextBlock said = new() { Text = text, Margin = new Thickness(10, 6), FontSize = 12 };
+        TextBlock said = new() { Text = text, Margin = new Thickness(ListRow.TextStart, Gaps.Small), FontSize = 12 };
         said.Classes.Add(StyleClasses.Muted);
         Grid.SetRow(said, row);
         return said;

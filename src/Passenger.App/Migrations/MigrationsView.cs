@@ -90,7 +90,7 @@ public sealed class MigrationsView : DockPanel
         against.Name = "MigrationsDatabase";
         WrapPanel top = new()
         {
-            Margin = new Thickness(8, 2),
+            Margin = new Thickness(Gaps.Normal, Gaps.Hair),
             Children = { Labelled("Project", projects), Labelled("Startup", startups), Labelled("Environment", environments), Labelled("Context", contexts), against },
         };
         Border topBar = ToolBars.Top(top);
@@ -104,7 +104,7 @@ public sealed class MigrationsView : DockPanel
             ToolButtons.Of(AppActions.ScriptMigrations, IconKeys.DocumentText, "Script Migrations…", Request),
             ToolButtons.Of(AppActions.BundleMigrations, IconKeys.Package, "Bundle Migrations", Request));
 
-        gaps = new StackPanel { [DockProperty] = Dock.Top, Name = "MigrationsGaps", Spacing = 4, Margin = new Thickness(8, 6, 8, 0) };
+        gaps = new StackPanel { [DockProperty] = Dock.Top, Name = "MigrationsGaps", Spacing = Gaps.Tight, Margin = new Thickness(Gaps.Normal, Gaps.Small, Gaps.Normal, 0) };
         list = new ListBox
         {
             Name = "MigrationsList",
@@ -232,9 +232,9 @@ public sealed class MigrationsView : DockPanel
 
     private Control GapRow(EfGap gap)
     {
-        PathIcon icon = new() { Width = 16, Height = 16, VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(0, 2, 6, 0) };
+        PathIcon icon = new() { Width = 16, Height = 16, VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(0, Gaps.Hair, Gaps.Small, 0) };
         icon.Bind(PathIcon.DataProperty, icon.GetResourceObservable(gap.Blocks ? IconKeys.Error : IconKeys.Problems));
-        StackPanel fixes = new() { Orientation = Orientation.Horizontal, Spacing = 6, Margin = new Thickness(0, 4, 0, 0) };
+        StackPanel fixes = new() { Orientation = Orientation.Horizontal, Spacing = Gaps.Small, Margin = new Thickness(0, Gaps.Tight, 0, 0) };
         foreach (EfFix fix in gap.Fixes)
         {
             Button button = new() { Content = fix.Title };
@@ -256,10 +256,10 @@ public sealed class MigrationsView : DockPanel
     private static Control Row()
     {
         TextBlock state = MutedText.Of(string.Empty);
-        state.Margin = new Thickness(12, 0, 8, 0);
+        state.Margin = new Thickness(Gaps.Wide, 0, Gaps.Normal, 0);
         TextBlock name = new() { VerticalAlignment = VerticalAlignment.Center };
         TextBlock when = MutedText.Of(string.Empty);
-        when.Margin = new Thickness(8, 0, 0, 0);
+        when.Margin = new Thickness(Gaps.Normal, 0, 0, 0);
         DockPanel line = new() { Height = ListRow.Height, Children = { state, name, when } };
         SetDock(state, Dock.Right);
         DockPanel.SetDock(name, Dock.Left);
@@ -289,7 +289,7 @@ public sealed class MigrationsView : DockPanel
         {
             TextBlock shown = new();
             TextBlock note = MutedText.Of(string.Empty);
-            note.Margin = new Thickness(8, 0, 0, 0);
+            note.Margin = new Thickness(Gaps.Normal, 0, 0, 0);
             StackPanel row = new() { Orientation = Orientation.Horizontal, Children = { shown, note } };
             return row.Showing<object>(item =>
             {
@@ -305,8 +305,8 @@ public sealed class MigrationsView : DockPanel
     private static Control Labelled(string label, ComboBox chooser) => new StackPanel
     {
         Orientation = Orientation.Horizontal,
-        Spacing = 6,
-        Margin = new Thickness(0, 0, 12, 0),
+        Spacing = Gaps.Small,
+        Margin = new Thickness(0, 0, Gaps.Wide, 0),
         Children = { new TextBlock { Text = label, VerticalAlignment = VerticalAlignment.Center }, chooser },
     };
 }

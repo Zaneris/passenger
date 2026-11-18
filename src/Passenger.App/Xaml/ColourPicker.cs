@@ -38,7 +38,7 @@ public sealed class ColourPicker : Border, CSharp.IHeldToEditor, CSharp.IHeardPo
         chooses = unchangeable is null;
         Classes.Add(StyleClasses.Popup);
         Width = PopupFrame.Narrow;
-        Padding = new Thickness(10);
+        Padding = PopupFrame.Inset;
         (h, s, v) = ToHsv(start);
         a = start.A;
         square = new ShadeSquare(this) { Height = 160 };
@@ -57,7 +57,7 @@ public sealed class ColourPicker : Border, CSharp.IHeldToEditor, CSharp.IHeardPo
         hex.TextChanged += (_, _) => FromHex();
         Child = new StackPanel
         {
-            Spacing = 8,
+            Spacing = Gaps.Normal,
             Children =
             {
                 square,
@@ -208,7 +208,7 @@ public sealed class ColourPicker : Border, CSharp.IHeldToEditor, CSharp.IHeardPo
         /// <summary>The least the hex is wide beside the answers: a colour's with its alpha, #RRGGBBAA, in the code's font.</summary>
         private const double LeastHex = 90;
 
-        private const double Gap = 8;
+        private const double Gap = Gaps.Normal;
 
         private readonly Control swatches;
         private readonly Control field;

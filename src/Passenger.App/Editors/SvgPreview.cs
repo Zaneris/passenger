@@ -40,9 +40,9 @@ public sealed class SvgPreview : DockPanel, IOwnKeys
         LastChildFill = true;
         Bind(BackgroundProperty, this.GetResourceObservable(TokenKeys.Editor_Background));
         size.FontSize = 12;
-        size.Margin = new Thickness(8, 0);
+        size.Margin = new Thickness(Gaps.Normal, 0);
         size.HorizontalAlignment = HorizontalAlignment.Right;
-        problem.Margin = new Thickness(16, 8);
+        problem.Margin = new Thickness(Gaps.Group, Gaps.Normal);
         AutomationProperties.SetName(picture, "SVG preview");
         SetDock(picture.Tools, Dock.Left);
         Border bar = ToolWindows.ToolBars.OverEditor(new DockPanel { Children = { picture.Tools, size } });

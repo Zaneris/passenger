@@ -15,6 +15,9 @@ public static class Hairlines
     /// <summary>A line along the top, over a footer or a pane below another.</summary>
     public static readonly Thickness Above = new(0, Width, 0, 0);
 
+    /// <summary>A line down the left, between a page and the list before it.</summary>
+    public static readonly Thickness Before = new(Width, 0, 0, 0);
+
     /// <summary>A line down the right, between a list and the page beside it.</summary>
     public static readonly Thickness After = new(0, 0, Width, 0);
 

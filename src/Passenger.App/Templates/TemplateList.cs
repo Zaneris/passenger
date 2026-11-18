@@ -17,7 +17,7 @@ internal static class TemplateList
     public static (DockPanel Named, TextBlock Name, TextBlock Mark) Named()
     {
         TextBlock name = new() { TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center };
-        TextBlock mark = new() { Classes = { StyleClasses.Muted }, FontSize = 11, Margin = new Thickness(8, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
+        TextBlock mark = new() { Classes = { StyleClasses.Muted }, FontSize = 11, Margin = new Thickness(Gaps.Normal, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
         DockPanel both = new();
         DockPanel.SetDock(mark, Dock.Right);
         both.Children.Add(mark);
@@ -26,7 +26,7 @@ internal static class TemplateList
     }
 
     /// <summary>A row as the list shows it, around its words.</summary>
-    public static Border Row(Control named) => new() { Padding = new Thickness(5, 6), Child = named };
+    public static Border Row(Control named) => new() { Padding = new Thickness(Gaps.Small), Child = named };
 
     /// <summary>Says why the dialog's work was refused or failed, or nothing.</summary>
     public static void Fail(TextBlock problem, string? why)

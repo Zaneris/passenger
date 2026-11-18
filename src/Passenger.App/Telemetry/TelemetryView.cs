@@ -148,7 +148,7 @@ public sealed class TelemetryView : IDisposable
                 logs.Click += (_, _) => Choose(TelemetryPage.Logs);
                 spans.Click += (_, _) => Choose(TelemetryPage.Traces);
                 PageWanted += (_, wanted) => Choose(wanted);
-                StackPanel strip = new() { Orientation = Orientation.Horizontal, Spacing = 2, Margin = new Thickness(8, 0), VerticalAlignment = VerticalAlignment.Center, Children = { logs, spans } };
+                StackPanel strip = new() { Orientation = Orientation.Horizontal, Spacing = Gaps.Hair, Margin = new Thickness(Gaps.Normal, 0), VerticalAlignment = VerticalAlignment.Center, Children = { logs, spans } };
                 Border tabBar = ToolBars.Top(strip);
                 both = WithHeader(tabBar, page);
                 choose = Choose;
@@ -602,12 +602,12 @@ public sealed class TelemetryView : IDisposable
     /// <summary>A page's bar: what it says, its buttons at the right.</summary>
     private static Border PageBar(TextBlock said, params Button[] buttons)
     {
-        StackPanel right = new() { Orientation = Orientation.Horizontal, Spacing = 2, VerticalAlignment = VerticalAlignment.Center, [DockPanel.DockProperty] = Dock.Right };
+        StackPanel right = new() { Orientation = Orientation.Horizontal, Spacing = Gaps.Hair, VerticalAlignment = VerticalAlignment.Center, [DockPanel.DockProperty] = Dock.Right };
         foreach (Button button in buttons)
         {
             right.Children.Add(button);
         }
-        return ToolBars.Top(new DockPanel { Margin = new Thickness(8, 0), Children = { right, said } });
+        return ToolBars.Top(new DockPanel { Margin = new Thickness(Gaps.Normal, 0), Children = { right, said } });
     }
 
     private static ListBox List<T>(ObservableCollection<RunItem<T>> items, Func<T, string> text, string name)

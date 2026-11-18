@@ -24,7 +24,7 @@ namespace Passenger.App.Tables;
 public sealed class CellGrid : Control, IOwnKeys
 {
     private const double RowHeight = ListRow.Height;
-    private const double Pad = 8;
+    private const double Pad = Gaps.Normal;
     private const double FontSize = 12;
 
     /// <summary>The narrowest and widest a column is made to fit its cells, in characters.</summary>
@@ -144,7 +144,7 @@ public sealed class CellGrid : Control, IOwnKeys
             FontFamily = plain.FontFamily,
             FontSize = FontSize,
             MinHeight = RowHeight - 1,
-            Padding = new Thickness(Pad - 1, 2),
+            Padding = new Thickness(Pad - Hairlines.Width, Gaps.Hair),
             Name = "CellBox",
         };
         writing.AddHandler(KeyDownEvent, OnWritingKey, Avalonia.Interactivity.RoutingStrategies.Tunnel);

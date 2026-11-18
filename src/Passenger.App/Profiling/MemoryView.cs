@@ -116,16 +116,16 @@ public sealed class MemoryView : DockPanel
         [
             ListMenus.Item("Remove Snapshot", "Delete", () => Remove(chosen)),
         ]);
-        Border left = new() { [DockProperty] = Dock.Left, Width = 230, Child = snapshotList, BorderThickness = new Thickness(0, 0, 1, 0) };
+        Border left = new() { [DockProperty] = Dock.Left, Width = 230, Child = snapshotList, BorderThickness = Hairlines.After };
         left.Bind(Border.BorderBrushProperty, left.GetResourceObservable(TokenKeys.Divider));
         Children.Add(left);
 
-        crumbs = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4, VerticalAlignment = VerticalAlignment.Center };
-        actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, VerticalAlignment = VerticalAlignment.Center, [DockProperty] = Dock.Right };
+        crumbs = new StackPanel { Orientation = Orientation.Horizontal, Spacing = Gaps.Tight, VerticalAlignment = VerticalAlignment.Center };
+        actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = Gaps.Small, VerticalAlignment = VerticalAlignment.Center, [DockProperty] = Dock.Right };
         // The trail and its actions a bar's height, what the page shows under them.
-        DockPanel head = new() { Margin = new Thickness(12, 0, 8, 0), MinHeight = ToolBars.Height, Children = { actions, crumbs } };
+        DockPanel head = new() { Margin = new Thickness(Gaps.Wide, 0, Gaps.Normal, 0), MinHeight = ToolBars.Height, Children = { actions, crumbs } };
         summary = Muted(string.Empty);
-        summary.Margin = new Thickness(12, 0, 12, 6);
+        summary.Margin = new Thickness(Gaps.Wide, 0, Gaps.Wide, Gaps.Small);
         summary.TextWrapping = TextWrapping.Wrap;
         Border top = ToolBars.Top(new StackPanel { Children = { head, summary } });
 
@@ -201,7 +201,7 @@ public sealed class MemoryView : DockPanel
         keyPathsPage = Framed(keyTable, keyPaths);
 
         setTabs = [Tab("Objects", 0), Tab("Shortest Paths to Roots", 1), Tab("Key Retention Paths", 2)];
-        StackPanel tabs = new() { Orientation = Orientation.Horizontal, Spacing = 2, Margin = new Thickness(8, 0, 8, 4), [DockProperty] = Dock.Top };
+        StackPanel tabs = new() { Orientation = Orientation.Horizontal, Spacing = Gaps.Hair, Margin = new Thickness(Gaps.Normal, 0, Gaps.Normal, Gaps.Tight), [DockProperty] = Dock.Top };
         foreach (ToggleButton tab in setTabs)
         {
             tabs.Children.Add(tab);
@@ -666,7 +666,7 @@ public sealed class MemoryView : DockPanel
         };
         return step.Showing<RetentionRow>(row =>
         {
-            step.Margin = new Thickness(row.Depth * 14, 0, 0, 0);
+            step.Margin = new Thickness(row.Depth * Gaps.Indent, 0, 0, 0);
             chevron.IsVisible = row.Node.Children.Count > 0;
             chevron.Turned = row.IsExpanded;
             text.IsVisible = row.Node.Root is null;
@@ -686,8 +686,8 @@ public sealed class MemoryView : DockPanel
         TextBlock letGo = Muted("objects let go");
         letGo.VerticalAlignment = VerticalAlignment.Center;
         TextBlock said = Muted(string.Empty);
-        StackPanel head = new() { Orientation = Orientation.Horizontal, Spacing = 6, Children = { name, letGo } };
-        StackPanel row = new() { Margin = new Thickness(2, 4), Children = { head, said } };
+        StackPanel head = new() { Orientation = Orientation.Horizontal, Spacing = Gaps.Small, Children = { name, letGo } };
+        StackPanel row = new() { Margin = new Thickness(Gaps.Hair, Gaps.Tight), Children = { head, said } };
         return row.Showing<SnapshotRow>(listed =>
         {
             MemorySnapshot snapshot = listed.Snapshot;

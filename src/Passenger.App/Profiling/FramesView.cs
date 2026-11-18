@@ -54,7 +54,7 @@ public sealed class FramesView : DockPanel
         StackPanel legend = FramesTable.Legend([("Measure", TokenKeys.Graph_0), ("Arrange", TokenKeys.Graph_1), ("Render", TokenKeys.Graph_2), ("Other UI work", TokenKeys.TextMuted),
             ("Compositor", TokenKeys.Graph_3)]);
         summary = FramesTable.Muted(string.Empty);
-        summary.Margin = new Thickness(12, 6, 12, 6);
+        summary.Margin = new Thickness(Gaps.Wide, Gaps.Small, Gaps.Wide, Gaps.Small);
         summary.TextWrapping = TextWrapping.Wrap;
         ColumnTitles titles = ColumnTitles.OfNumbers(("Control", 0), ("Own time", NumberWidth), ("Measures", NumberWidth), ("Measure time", NumberWidth),
             ("Arranges", NumberWidth), ("Arrange time", NumberWidth + 16));
@@ -201,7 +201,7 @@ public sealed class FramesView : DockPanel
             ToolTip.SetTip(name, shown.Cost.Control is { } control
                 ? $"{control.FullType}{(control.File is { } file ? $"\n{Path.GetFileName(file)}:{LineOf?.Invoke(control) ?? control.Line}" : string.Empty)}"
                 : Plural.Of(shown.Cost.Controls.Count, "control"));
-            named.Margin = new Thickness(shown.Depth * 14, 0, 0, 0);
+            named.Margin = new Thickness(shown.Depth * Gaps.Indent, 0, 0, 0);
             LayoutWork work = shown.Cost.Work;
             FramesTable.Put(numbers[0], $"{work.SelfMs:N1} ms");
             FramesTable.Put(numbers[1], $"{work.Measures:N0}");

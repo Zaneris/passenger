@@ -12,8 +12,8 @@ namespace Passenger.App.Tables;
 /// cells written through its file. Each file's chosen cells and scroll are kept for when its tab is shown again.</summary>
 public sealed class TableViewer
 {
-    private readonly StackPanel choices = new() { Orientation = Orientation.Horizontal, Spacing = 2, VerticalAlignment = VerticalAlignment.Center };
-    private readonly CheckBox header = new() { Content = "First row is header", FontSize = 12, Margin = new Thickness(12, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
+    private readonly StackPanel choices = new() { Orientation = Orientation.Horizontal, Spacing = Gaps.Hair, VerticalAlignment = VerticalAlignment.Center };
+    private readonly CheckBox header = new() { Content = "First row is header", FontSize = 12, Margin = new Thickness(Gaps.Wide, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
     private readonly TextBlock size = new() { Classes = { StyleClasses.Muted }, FontSize = 11, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
     private readonly TextBlock message = new() { Classes = { StyleClasses.EmptyText }, IsVisible = false };
     private readonly Dictionary<TableFile, ((int, int) Anchor, (int, int) Caret, Vector Scroll)> kept = [];
@@ -27,10 +27,10 @@ public sealed class TableViewer
     {
         Bar = ToolWindows.ToolBars.OverEditor(new DockPanel
         {
-            Margin = new Thickness(8, 0),
+            Margin = new Thickness(Gaps.Normal, 0),
             Children =
             {
-                new Border { [DockPanel.DockProperty] = Dock.Right, Child = size, Margin = new Thickness(12, 0, 0, 0) },
+                new Border { [DockPanel.DockProperty] = Dock.Right, Child = size, Margin = new Thickness(Gaps.Wide, 0, 0, 0) },
                 new ScrollViewer
                 {
                     HorizontalScrollBarVisibility = ScrollBarVisibility.Hidden,

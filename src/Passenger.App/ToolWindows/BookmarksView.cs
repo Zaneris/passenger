@@ -88,7 +88,7 @@ public sealed class BookmarksView : DockPanel
         text.Classes.Add(StyleClasses.Muted);
         // The line takes what the row leaves, so a narrow window ends it in an ellipsis rather than cutting it off.
         DockPanel.SetDock(where, Dock.Left);
-        DockPanel row = new() { Height = ListRow.Height, Margin = new Thickness(8, 0), Children = { where, text } };
+        DockPanel row = new() { Height = ListRow.Height, Margin = new Thickness(Gaps.Normal, 0), Children = { where, text } };
         return row.Showing<Bookmark>(bookmark =>
         {
             where.Text = $"{bookmark.Name}:{bookmark.Line + 1}";

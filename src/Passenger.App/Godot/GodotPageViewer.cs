@@ -32,11 +32,11 @@ public sealed class GodotPageViewer
     {
         Bar = ToolWindows.ToolBars.OverEditor(new DockPanel
         {
-            Margin = new Thickness(8, 0),
+            Margin = new Thickness(Gaps.Normal, 0),
             Children =
             {
-                new Border { [DockPanel.DockProperty] = Dock.Right, Child = said, Margin = new Thickness(12, 0, 0, 0) },
-                new StackPanel { Orientation = Orientation.Horizontal, Spacing = 2, VerticalAlignment = VerticalAlignment.Center, Children = { page, text } },
+                new Border { [DockPanel.DockProperty] = Dock.Right, Child = said, Margin = new Thickness(Gaps.Wide, 0, 0, 0) },
+                new StackPanel { Orientation = Orientation.Horizontal, Spacing = Gaps.Hair, VerticalAlignment = VerticalAlignment.Center, Children = { page, text } },
             },
         });
         Bar.IsVisible = false;
@@ -209,8 +209,8 @@ public sealed class GodotPageViewer
         list.Children.AddRange(rows);
         content.Children.Add(new StackPanel
         {
-            Spacing = 6,
-            Margin = new Thickness(0, 8, 0, 0),
+            Spacing = Gaps.Small,
+            Margin = new Thickness(0, Gaps.Normal, 0, 0),
             Children = { new TextBlock { Classes = { StyleClasses.PaneTitle }, Text = title }, new Border { Classes = { StyleClasses.Framed }, Child = list } },
         });
     }
@@ -218,21 +218,21 @@ public sealed class GodotPageViewer
     /// <summary>A row: what it is (a link to its line or file, or words), what it says beside, and a link at its end.</summary>
     private static Control Row(Control name, Control? detail, Control? end)
     {
-        Grid row = new() { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto"), MinHeight = ListRow.Height, Margin = new Thickness(8, 0) };
+        Grid row = new() { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto"), MinHeight = ListRow.Height, Margin = new Thickness(Gaps.Normal, 0) };
         name.MinWidth = 180;
         name.VerticalAlignment = VerticalAlignment.Center;
         row.Children.Add(name);
         if (detail is not null)
         {
             detail[Grid.ColumnProperty] = 1;
-            detail.Margin = new Thickness(12, 0, 0, 0);
+            detail.Margin = new Thickness(Gaps.Wide, 0, 0, 0);
             detail.VerticalAlignment = VerticalAlignment.Center;
             row.Children.Add(detail);
         }
         if (end is not null)
         {
             end[Grid.ColumnProperty] = 2;
-            end.Margin = new Thickness(12, 0, 0, 0);
+            end.Margin = new Thickness(Gaps.Wide, 0, 0, 0);
             end.VerticalAlignment = VerticalAlignment.Center;
             row.Children.Add(end);
         }
@@ -256,12 +256,12 @@ public sealed class GodotPageViewer
         return muted;
     }
 
-    private static Control Empty(string words) => new TextBlock { Classes = { StyleClasses.EmptyText }, Text = words, Margin = new Thickness(8, 4), HorizontalAlignment = HorizontalAlignment.Left };
+    private static Control Empty(string words) => new TextBlock { Classes = { StyleClasses.EmptyText }, Text = words, Margin = new Thickness(Gaps.Normal, Gaps.Tight), HorizontalAlignment = HorizontalAlignment.Left };
 
     /// <summary>What an autoload is (a global the scripts name, or a node), and a link that asks to make it the other.</summary>
     private Control Autoload(string folder, GodotPageAutoload autoload)
     {
-        StackPanel said = new() { Orientation = Orientation.Horizontal, Spacing = 12 };
+        StackPanel said = new() { Orientation = Orientation.Horizontal, Spacing = Gaps.Wide };
         said.Children.Add(Muted(autoload.Global ? "global" : "node"));
         said.Children.Add(Link(autoload.Global ? MakeNodeWords : MakeGlobalWords, () => Ask(folder, GodotPageEdits.Autoload(autoload, !autoload.Global))));
         return said;
@@ -304,7 +304,7 @@ public sealed class GodotPageViewer
         for (int i = 0; i < action.Events.Count; i++)
         {
             int at = i;
-            yield return Row(new TextBlock { Text = action.Events[i], Margin = new Thickness(16, 0, 0, 0), TextTrimming = TextTrimming.CharacterEllipsis }, null,
+            yield return Row(new TextBlock { Text = action.Events[i], Margin = new Thickness(Gaps.Group, 0, 0, 0), TextTrimming = TextTrimming.CharacterEllipsis }, null,
                 Link(RemoveEventWords, () => Ask(folder, GodotPageEdits.RemoveEvent(action, at))));
         }
     }
@@ -344,7 +344,7 @@ public sealed class GodotPageViewer
             }
         };
         TextBox named = new() { Name = LayerNameName, PlaceholderText = "Layer's name", MinWidth = 180 };
-        return Row(kinds, new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { numbers, named } }, Link(NameLayerWords, () =>
+        return Row(kinds, new StackPanel { Orientation = Orientation.Horizontal, Spacing = Gaps.Normal, Children = { numbers, named } }, Link(NameLayerWords, () =>
         {
             if (kinds.SelectedItem is string kind && numbers.SelectedItem is string number)
             {

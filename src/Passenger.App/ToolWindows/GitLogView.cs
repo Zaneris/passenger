@@ -119,13 +119,13 @@ public sealed class GitLogView : DockPanel, IOwnKeys
             TextWrapping = TextWrapping.Wrap,
             BorderThickness = new Thickness(0),
             Background = Brushes.Transparent,
-            Padding = new Thickness(10, 8),
+            Padding = new Thickness(ListRow.TextStart, Gaps.Normal),
             FontSize = 12,
         };
         placeholder = new EmptyState();
         placeholder.ActionRequested += (_, action) => ActionRequested?.Invoke(this, action);
 
-        filter = new TextBox { Classes = { StyleClasses.Search }, PlaceholderText = "Text or hash", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 6, 0) };
+        filter = new TextBox { Classes = { StyleClasses.Search }, PlaceholderText = "Text or hash", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, Gaps.Small, 0) };
         ToolFlow.SetFills(filter, new ToolLayout.Fills(120, 246));
         filter.TextChanged += (_, _) => Filter();
         Button refresh = ToolButtons.Of(AppActions.GitLogRefresh, IconKeys.Rerun, "Refresh", action => ActionRequested?.Invoke(this, action));
@@ -133,20 +133,20 @@ public sealed class GitLogView : DockPanel, IOwnKeys
         branchFilterText = new TextBlock { VerticalAlignment = VerticalAlignment.Center };
         PathIcon clearGlyph = new() { Classes = { StyleClasses.Small } };
         clearGlyph.Bind(PathIcon.DataProperty, clearGlyph.GetResourceObservable(IconKeys.Close));
-        Button clearBranch = new() { Classes = { StyleClasses.TabPin }, Content = clearGlyph, Margin = new Thickness(6, 0, 0, 0) };
+        Button clearBranch = new() { Classes = { StyleClasses.TabPin }, Content = clearGlyph, Margin = new Thickness(Gaps.Small, 0, 0, 0) };
         ToolButtons.Tip(clearBranch, "Clear Branch Filter");
         clearBranch.Click += (_, _) => FilterBranch(null, all: true);
         branchFilter = new Border
         {
             IsVisible = false,
             Classes = { StyleClasses.Tag },
-            Padding = new Thickness(8, 2, 4, 2),
-            Margin = new Thickness(0, 0, 8, 0),
+            Padding = new Thickness(Gaps.Normal, Gaps.Hair, Gaps.Tight, Gaps.Hair),
+            Margin = new Thickness(0, 0, Gaps.Normal, 0),
             VerticalAlignment = VerticalAlignment.Center,
             Child = new StackPanel { Orientation = Orientation.Horizontal, Children = { branchFilterText, clearBranch } },
         };
         branchFilter.Bind(Border.BackgroundProperty, branchFilter.GetResourceObservable(TokenKeys.Selected));
-        Border top = ToolBars.Top(new ToolFlow { Margin = new Thickness(8, 2), Children = { filter, branchFilter, refresh } });
+        Border top = ToolBars.Top(new ToolFlow { Margin = new Thickness(Gaps.Normal, Gaps.Hair), Children = { filter, branchFilter, refresh } });
 
         Grid right = new() { RowDefinitions = new RowDefinitions("*,1,*") };
         HairlineDivider between = new(GridResizeDirection.Rows) { [Grid.RowProperty] = 1 };
@@ -486,7 +486,7 @@ public sealed class GitLogView : DockPanel, IOwnKeys
         then[DockProperty] = Dock.Right;
         then.MaxWidth = 280;
         TextBlock words = new() { VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
-        RowIcon mark = new() { [DockProperty] = Dock.Right, Width = 14, Height = 14, IsVisible = false, Margin = new Thickness(6, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
+        RowIcon mark = new() { [DockProperty] = Dock.Right, Width = 14, Height = 14, IsVisible = false, Margin = new Thickness(Gaps.Small, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
         string? marked = null;
         subject.Children.Add(mark);
         subject.Children.Add(then);
@@ -520,7 +520,7 @@ public sealed class GitLogView : DockPanel, IOwnKeys
                 // A long branch's name ends in an ellipsis and leaves the subject room.
                 TextBlock text = new() { FontSize = 11, TextTrimming = TextTrimming.CharacterEllipsis };
                 text.Bind(TextBlock.ForegroundProperty, text.GetResourceObservable(TokenKeys.Vcs_RefText));
-                Border tag = new() { [DockProperty] = Dock.Left, Classes = { StyleClasses.Tag }, Padding = new Thickness(5, 1), Margin = new Thickness(0, 0, 6, 0), Child = text, VerticalAlignment = VerticalAlignment.Center, MaxWidth = 160 };
+                Border tag = new() { [DockProperty] = Dock.Left, Classes = { StyleClasses.Tag },  Margin = new Thickness(0, 0, Gaps.Small, 0), Child = text, VerticalAlignment = VerticalAlignment.Center, MaxWidth = 160 };
                 tag.Bind(Border.BackgroundProperty, tag.GetResourceObservable(TokenKeys.Vcs_Ref));
                 subject.Children.Insert(tags.Count, tag);
                 tags.Add((tag, text));
@@ -565,7 +565,7 @@ public sealed class GitLogView : DockPanel, IOwnKeys
         static TextBlock Muted()
         {
             TextBlock block = MutedText.Of(string.Empty);
-            block.Margin = new Thickness(8, 0);
+            block.Margin = new Thickness(Gaps.Normal, 0);
             return block;
         }
     }

@@ -144,7 +144,7 @@ public partial class MainWindow
                     + "Godot's Play then builds here, and this Passenger debugs what it plays",
                 IsChecked = false,
             };
-            StackPanel detail = new() { Spacing = 8, Children = { Copyable(listed), addon } };
+            StackPanel detail = new() { Spacing = Gaps.Normal, Children = { Copyable(listed), addon } };
             if (!await ConfirmAsync("Make Passenger Godot's Script Editor?",
                 $"Godot {found.Version}'s editor will open its C# scripts and its other scripts in Passenger, at their line, in the window on their project. "
                 + $"Passenger writes these into {PathNames.Shown(found.Written!, null)}, keeping the rest; Godot's editor takes them as it next starts.",

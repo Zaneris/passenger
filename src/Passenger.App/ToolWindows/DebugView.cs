@@ -57,7 +57,7 @@ public sealed class DebugView : DockPanel, IOwnKeys
         threads = new ComboBox
         {
             [DockProperty] = Dock.Top,
-            Margin = new Thickness(6, 6, 6, 4),
+            Margin = new Thickness(Gaps.Small, Gaps.Small, Gaps.Small, Gaps.Tight),
             HorizontalAlignment = HorizontalAlignment.Stretch,
             ItemsSource = model.Threads,
         };
@@ -92,7 +92,7 @@ public sealed class DebugView : DockPanel, IOwnKeys
         {
             [DockProperty] = Dock.Top,
             Classes = { StyleClasses.Search },
-            Margin = new Thickness(6, 6, 6, 4),
+            Margin = new Thickness(Gaps.Small, Gaps.Small, Gaps.Small, Gaps.Tight),
         };
         string enter = new Keystroke(Key.Enter, KeyModifiers.None).Display();
         ActionTips.SetWords(evaluate, AppActions.AddToWatches, keys => keys is null ? $"Evaluate expression ({enter})" : $"Evaluate expression ({enter}) or add a watch ({keys})");
@@ -130,7 +130,7 @@ public sealed class DebugView : DockPanel, IOwnKeys
         telemetryTab.Click += (_, _) => model.ShowTelemetry();
         ToolFlow top = new()
         {
-            Margin = new Thickness(6, 3),
+            Margin = new Thickness(Gaps.Small, Gaps.Hair),
             Children =
             {
                 debuggerTab,
@@ -377,7 +377,7 @@ public sealed class DebugView : DockPanel, IOwnKeys
         TextBlock where = new()
         {
             FontSize = 12,
-            Margin = new Thickness(8, 0, 0, 0),
+            Margin = new Thickness(Gaps.Normal, 0, 0, 0),
             VerticalAlignment = VerticalAlignment.Center,
         };
         where.Classes.Add(StyleClasses.Muted);

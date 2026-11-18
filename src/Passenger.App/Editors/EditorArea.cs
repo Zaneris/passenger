@@ -48,11 +48,11 @@ public sealed partial class EditorArea : UserControl
             FontWeight = FontWeight.SemiBold,
             HorizontalAlignment = HorizontalAlignment.Center,
             TextTrimming = TextTrimming.CharacterEllipsis,
-            Margin = new Thickness(16, 0),
+            Margin = new Thickness(Gaps.Group, 0),
         };
         emptyTitle.Bind(TextBlock.ForegroundProperty, emptyTitle.GetResourceObservable(TokenKeys.Text));
-        emptyHint = new TextBlock { Classes = { StyleClasses.EmptyText }, Text = "Open a solution, project or folder to start.", Margin = new Thickness(16, 0) };
-        folderHint = new StackPanel { Spacing = 10, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, Children = { emptyTitle, emptyHint } };
+        emptyHint = new TextBlock { Classes = { StyleClasses.EmptyText }, Text = "Open a solution, project or folder to start.", Margin = new Thickness(Gaps.Group, 0) };
+        folderHint = new StackPanel { Spacing = Gaps.Normal, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, Children = { emptyTitle, emptyHint } };
         emptyState.Content = folderHint;
         main = NewFrame(new EditorFrame.Leaf(activeGroup), activeGroup, emptyState);
         Content = main.Surface;

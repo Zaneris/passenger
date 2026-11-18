@@ -76,7 +76,7 @@ public sealed class HistoryTab : DockPanel
         diffPlaceholder.VerticalAlignment = VerticalAlignment.Center;
         diffHost.Content = diffPlaceholder;
 
-        filter = new TextBox { Classes = { StyleClasses.Search }, PlaceholderText = isFolder ? "Search by file name" : "Search by content", Width = 240, Margin = new Thickness(8, 0) };
+        filter = new TextBox { Classes = { StyleClasses.Search }, PlaceholderText = isFolder ? "Search by file name" : "Search by content", Width = 240, Margin = new Thickness(Gaps.Normal, 0) };
         filter.TextChanged += (_, _) => IdeErrors.Observe(FilterAsync());
         Button revert = ToolButtons.Of(IconKeys.Rollback, "Revert Selected and Later Changes", () => IdeErrors.Observe(RevertAsync()));
         Border top = ToolBars.Top(new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center, Children = { filter, revert } });
@@ -96,7 +96,7 @@ public sealed class HistoryTab : DockPanel
             {
                 Orientation = Orientation.Horizontal,
                 VerticalAlignment = VerticalAlignment.Center,
-                Margin = new Thickness(4, 0),
+                Margin = new Thickness(Gaps.Tight, 0),
                 Children = { ToolButtons.Of(IconKeys.Rollback, "Revert Selection", () => IdeErrors.Observe(RevertSelectionAsync())) },
             });
             Grid split = new() { RowDefinitions = new RowDefinitions("*,1,2*") };
@@ -385,8 +385,8 @@ public sealed class HistoryTab : DockPanel
         DockPanel line = new() { Height = RowHeight, LastChildFill = true };
         TextBlock time = MutedText.Of(string.Empty);
         time[DockProperty] = Dock.Right;
-        time.Margin = new Thickness(8, 0, 4, 0);
-        RowIcon tag = new() { Width = 12, Height = 12, Margin = new Thickness(0, 0, 6, 0), [DockProperty] = Dock.Left };
+        time.Margin = new Thickness(Gaps.Normal, 0, Gaps.Tight, 0);
+        RowIcon tag = new() { Width = 12, Height = 12, Margin = new Thickness(0, 0, Gaps.Small, 0), [DockProperty] = Dock.Left };
         TextBlock title = new() { VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
         line.Children.Add(time);
         line.Children.Add(tag);

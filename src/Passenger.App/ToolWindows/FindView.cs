@@ -75,7 +75,7 @@ public sealed class FindView : DockPanel
 
     private readonly List<Search> searches = [];
     private readonly TreeRows<FindRow> rows = [];
-    private readonly StackPanel tabs = new() { Orientation = Orientation.Horizontal, Spacing = 2, VerticalAlignment = VerticalAlignment.Center };
+    private readonly StackPanel tabs = new() { Orientation = Orientation.Horizontal, Spacing = Gaps.Hair, VerticalAlignment = VerticalAlignment.Center };
     private readonly TreeList list;
     private readonly CodeEditor preview;
     private readonly TextBlock placeholder;
@@ -109,12 +109,12 @@ public sealed class FindView : DockPanel
         GeneratedCode = ToolButtons.Counted(IconKeys.Wand, TokenKeys.Icon, "Show only usages in generated code", out generatedCount);
         YourCode.Click += (_, _) => Choose(UsageSide.Yours);
         GeneratedCode.Click += (_, _) => Choose(UsageSide.Generated);
-        sides = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 2, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0), IsVisible = false };
+        sides = new StackPanel { Orientation = Orientation.Horizontal, Spacing = Gaps.Hair, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(Gaps.Normal, 0, 0, 0), IsVisible = false };
         sides.Children.AddRange([YourCode, GeneratedCode]);
         DockPanel.SetDock(sides, Dock.Right);
         tabBar = ToolBars.Top(new DockPanel
         {
-            Margin = new Thickness(8, 0),
+            Margin = new Thickness(Gaps.Normal, 0),
             Children = { sides, new ScrollViewer { HorizontalScrollBarVisibility = ScrollBarVisibility.Hidden, Content = tabs } },
         });
         tabBar.IsVisible = false;
@@ -147,7 +147,7 @@ public sealed class FindView : DockPanel
         placeholder = new TextBlock { Classes = { StyleClasses.EmptyText } };
         ActionTips.SetWords(placeholder, AppActions.FindUsages, keys => $"{ActionTips.Named("Find Usages", keys)} lists a symbol's usages here");
         note = MutedText.Wrapped(string.Empty);
-        note.Margin = new Thickness(8, 4);
+        note.Margin = new Thickness(Gaps.Normal, Gaps.Tight);
         note.IsVisible = false;
         DockPanel.SetDock(note, Dock.Top);
         DockPanel shown = new() { IsVisible = false, Children = { note, body } };
@@ -455,10 +455,10 @@ public sealed class FindView : DockPanel
     {
         TextBlock number = new TextBlock { MinWidth = 36, FontSize = 12, VerticalAlignment = VerticalAlignment.Center }.InCodeFont();
         number.Classes.Add(StyleClasses.Muted);
-        RowIcon chevron = new() { Width = 10, Height = 10, Margin = new Thickness(0, 0, 6, 0) };
-        RowIcon icon = new() { Margin = new Thickness(0, 0, 6, 0) };
+        RowIcon chevron = new() { Width = 10, Height = 10, Margin = new Thickness(0, 0, Gaps.Small, 0) };
+        RowIcon icon = new() { Margin = new Thickness(0, 0, Gaps.Small, 0) };
         TextBlock label = new() { VerticalAlignment = VerticalAlignment.Center };
-        TextBlock count = new() { FontSize = 12, Margin = new Thickness(10, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
+        TextBlock count = new() { FontSize = 12, Margin = new Thickness(Gaps.Wide, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
         count.Classes.Add(StyleClasses.Muted);
         StackPanel panel = new() { Orientation = Orientation.Horizontal, Height = ListRow.Height, Children = { number, chevron, icon, label, count } };
         string? labelFont = null;
@@ -472,7 +472,7 @@ public sealed class FindView : DockPanel
         };
         return panel.Showing<FindRow>(row =>
         {
-            panel.Margin = new Thickness(8 + (row.Depth * 16), 0, 8, 0);
+            panel.Margin = new Thickness(Gaps.Normal + (row.Depth * Gaps.Indent), 0, Gaps.Normal, 0);
             bool usage = row.Usage is not null;
             number.IsVisible = usage;
             number.Text = usage ? row.Detail : null;

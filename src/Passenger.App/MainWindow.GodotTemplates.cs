@@ -67,7 +67,7 @@ public partial class MainWindow
             return (false, Refusals.NoGodotProject);
         }
         List<CheckBox> boxes = [.. GodotScriptTemplates.Bases.Select(b => new CheckBox { Content = b, IsChecked = true })];
-        StackPanel checks = new() { Spacing = 4 };
+        StackPanel checks = new() { Spacing = Gaps.Tight };
         checks.Children.AddRange(boxes);
         string shape = style.Namespace is not { } space ? "in no namespace" : style.FileScoped ? $"in the file-scoped namespace {space}" : $"in the namespace {space}";
         working.Say("Asking which base classes to write templates for");

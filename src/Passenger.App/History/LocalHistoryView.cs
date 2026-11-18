@@ -12,7 +12,7 @@ namespace Passenger.App.History;
 public sealed class LocalHistoryView : DockPanel
 {
     private readonly List<(string Path, string Title, HistoryTab Tab)> histories = [];
-    private readonly StackPanel tabs = new() { Orientation = Orientation.Horizontal, Spacing = 2, VerticalAlignment = VerticalAlignment.Center };
+    private readonly StackPanel tabs = new() { Orientation = Orientation.Horizontal, Spacing = Gaps.Hair, VerticalAlignment = VerticalAlignment.Center };
     private readonly ContentControl body = new();
     private readonly TextBlock empty;
 

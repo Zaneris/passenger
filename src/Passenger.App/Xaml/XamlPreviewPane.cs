@@ -69,7 +69,7 @@ public sealed class XamlPreviewPane : DockPanel
             [DockProperty] = Dock.Right,
             Classes = { StyleClasses.Compact },
             VerticalAlignment = VerticalAlignment.Center,
-            Margin = new Thickness(10, 0, 0, 0),
+            Margin = new Thickness(Gaps.Wide, 0, 0, 0),
             IsVisible = false,
             ItemsSource = (string[])[DesignSize, .. Passenger.Xaml.Features.PreviewSize.Offered.Select(s => s.Shown)],
             SelectedIndex = 0,
@@ -84,20 +84,20 @@ public sealed class XamlPreviewPane : DockPanel
         themes.SelectionChanged += (_, _) => Choose(preview.Look with { Theme = themes.SelectedIndex >= 0 ? Themes[themes.SelectedIndex] : null });
         Border header = ToolWindows.ToolBars.OverEditor(new DockPanel
         {
-            Margin = new Thickness(10, 0),
+            Margin = new Thickness(ListRow.TextStart, 0),
             Children =
             {
-                new TextBlock { Text = "Preview", FontWeight = FontWeight.SemiBold, FontSize = 12, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 10, 0) },
+                new TextBlock { Text = "Preview", FontWeight = FontWeight.SemiBold, FontSize = 12, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, Gaps.Normal, 0) },
                 sizes,
                 status,
             },
         });
         // A bar of their own under the header, so in a narrow pane they wrap to rows rather than crowd the header out.
-        looks = ToolWindows.ToolBars.OverEditor(new ToolWindows.ToolFlow { Margin = new Thickness(10, 2), Spacing = 6, Children = { screens, platforms, themes } });
+        looks = ToolWindows.ToolBars.OverEditor(new ToolWindows.ToolFlow { Margin = new Thickness(ListRow.TextStart, Gaps.Hair), Spacing = Gaps.Small, Children = { screens, platforms, themes } });
         looks.IsVisible = false;
         error = new TextBlock { FontSize = 12, TextWrapping = TextWrapping.Wrap };
         error.Classes.Add(StyleClasses.Error);
-        errorBar = new Border { [DockProperty] = Dock.Top, Padding = new Thickness(10, 6), IsVisible = false, Child = error };
+        errorBar = new Border { [DockProperty] = Dock.Top, Padding = new Thickness(Gaps.Wide, Gaps.Small), IsVisible = false, Child = error };
         errorBar.Bind(Border.BackgroundProperty, errorBar.GetResourceObservable(TokenKeys.Banner));
         image = new Image { Stretch = Stretch.Fill };
         // The element at the caret, drawn over the frame in the frame's own units, so it shrinks with it.
@@ -108,7 +108,7 @@ public sealed class XamlPreviewPane : DockPanel
         framed.PointerPressed += OnFramePressed;
         // An edge, so a frame of the editor's own colour still shows where the design ends.
         scaled = new LayoutTransformControl { Child = framed };
-        edge = new Border { Child = scaled, BorderThickness = new Thickness(1), Margin = new Thickness(16), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
+        edge = new Border { Child = scaled, BorderThickness = Hairlines.Round, Margin = new Thickness(Gaps.Group), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
         edge.Bind(Border.BorderBrushProperty, edge.GetResourceObservable(TokenKeys.Divider));
         waiting = new ToolWindows.EmptyState { MaxWidth = 320, HorizontalAlignment = HorizontalAlignment.Center };
         waiting.ActionRequested += (_, action) => ActionRequested?.Invoke(this, action);
@@ -131,12 +131,12 @@ public sealed class XamlPreviewPane : DockPanel
         properties = new Border
         {
             [DockProperty] = Dock.Bottom,
-            BorderThickness = new Thickness(0, 1, 0, 0),
-            Padding = new Thickness(10, 6),
+            BorderThickness = Hairlines.Above,
+            Padding = new Thickness(Gaps.Wide, Gaps.Small),
             // One height for every element, so the frame above stays where it is as the caret moves.
             Height = 200,
             IsVisible = false,
-            Child = new ScrollViewer { Content = new StackPanel { Spacing = 4, Children = { propertiesTitle, propertyRows, unknown } } },
+            Child = new ScrollViewer { Content = new StackPanel { Spacing = Gaps.Tight, Children = { propertiesTitle, propertyRows, unknown } } },
         };
         properties.Bind(Border.BorderBrushProperty, properties.GetResourceObservable(TokenKeys.Divider));
         Children.Add(header);
@@ -239,7 +239,7 @@ public sealed class XamlPreviewPane : DockPanel
                 Height = ListRow.Height,
                 Children =
                 {
-                    new TextBlock { [DockProperty] = Dock.Right, Text = from, Classes = { StyleClasses.Muted }, FontSize = 11, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0) },
+                    new TextBlock { [DockProperty] = Dock.Right, Text = from, Classes = { StyleClasses.Muted }, FontSize = 11, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(Gaps.Normal, 0, 0, 0) },
                     new TextBlock { [DockProperty] = Dock.Left, Text = property, Width = 130, FontSize = 12, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis },
                     new TextBlock { Text = value, FontSize = 12, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis }.InCodeFont(),
                 },

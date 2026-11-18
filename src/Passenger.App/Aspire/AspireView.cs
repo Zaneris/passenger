@@ -36,13 +36,13 @@ public sealed class AspireView : DockPanel, IDisposable
     private const string TelemetryTab = AspireModel.TelemetryTab;
     private const string StatsTab = AspireModel.StatsTab;
 
-    private readonly TextBlock status = new() { Classes = { StyleClasses.Muted }, Margin = new Thickness(8, 0), VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
+    private readonly TextBlock status = new() { Classes = { StyleClasses.Muted }, Margin = new Thickness(Gaps.Normal, 0), VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
     private readonly TextBlock empty = new() { Classes = { StyleClasses.EmptyText } };
     private readonly List<(Button Button, string Action)> tools = [];
     private readonly Button commands;
     private readonly ContentControl page = new();
     private readonly ContentControl appHostConsole = new();
-    private readonly TextBlock readiness = new() { Classes = { StyleClasses.Muted }, Margin = new Thickness(8, 6), TextWrapping = TextWrapping.Wrap };
+    private readonly TextBlock readiness = new() { Classes = { StyleClasses.Muted }, Margin = new Thickness(Gaps.Normal, Gaps.Small), TextWrapping = TextWrapping.Wrap };
     private readonly IReadOnlyDictionary<string, ToggleButton> tabs;
     private readonly Dictionary<string, Control> pages;
     private readonly TextBlock consoleStatus = Said();
@@ -64,7 +64,7 @@ public sealed class AspireView : DockPanel, IDisposable
     public AspireView(AspireModel model)
     {
         this.model = model;
-        AppSelector = new ComboBox { MaxWidth = 300, MinWidth = 200, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 6, 0) };
+        AppSelector = new ComboBox { MaxWidth = 300, MinWidth = 200, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, Gaps.Small, 0) };
         AutomationProperties.SetName(AppSelector, "Aspire AppHost");
         ToolTip.SetTip(AppSelector, "Running AppHost (every request uses its absolute project path)");
         ToolFlow bar = RunWindowFrame.Tools(AppSelector);

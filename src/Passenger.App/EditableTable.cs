@@ -11,7 +11,7 @@ namespace Passenger.App;
 public abstract class EditableTable : Border
 {
     private readonly ColumnTitles titles;
-    private readonly TextBlock said = new() { Classes = { StyleClasses.Muted }, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(8, 6), IsVisible = false };
+    private readonly TextBlock said = new() { Classes = { StyleClasses.Muted }, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(Gaps.Normal, Gaps.Small), IsVisible = false };
 
     /// <param name="columns">The rows' column widths, as their grid has them.</param>
     /// <param name="titled">The columns' titles in order, empty for none.</param>

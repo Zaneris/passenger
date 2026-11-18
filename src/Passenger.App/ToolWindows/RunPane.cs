@@ -27,8 +27,8 @@ public sealed class RunPane : DockPanel
         StackPanel strip = new()
         {
             Orientation = Orientation.Horizontal,
-            Spacing = 2,
-            Margin = new Thickness(8, 0),
+            Spacing = Gaps.Hair,
+            Margin = new Thickness(Gaps.Normal, 0),
             VerticalAlignment = VerticalAlignment.Center,
             Children = { consoleTab, telemetryTab },
         };

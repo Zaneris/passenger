@@ -21,9 +21,9 @@ public sealed class BandOverTable : Panel
     {
         band = new Border
         {
-            BorderThickness = new Thickness(0, 0, 0, 1),
+            BorderThickness = Hairlines.Below,
             Child = new ScrollViewer { Content = said, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled, VerticalScrollBarVisibility = ScrollBarVisibility.Auto },
-            Padding = new Thickness(0, 4, 0, 0),
+            Padding = new Thickness(0, Gaps.Tight, 0, 0),
         };
         band.Bind(Border.BorderBrushProperty, band.GetResourceObservable(TokenKeys.Divider));
         this.titles = titles;
