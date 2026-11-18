@@ -718,7 +718,7 @@ public sealed class FolderWatchTests : IDisposable
         string deleted = Path.Combine("Old", "Gone.cs");
         MainWindow window = Open(FolderWatching.WholeTree, languageServer: false);
         Ui.WaitFor(() => window.FileIndex.Files.Contains(deleted) && window.Vcs.Changes.Any(c => c.Name == "One.cs"), "the folder's files in Go to File and the changed file in Git's status");
-        FileSystemWatcher beat = WatchLag.Canary ?? throw new InvalidOperationException("Nothing checks the system's watcher for lagging while a folder is watched");
+        FileSystemWatcher beat = WatchLag.Canary?.Watcher ?? throw new InvalidOperationException("Nothing checks the system's watcher for lagging while a folder is watched");
         List<FileSystemWatcher> watchers = [.. window.FolderWatcher!.Watches.Values, beat];
         watchers.ForEach(w => w.EnableRaisingEvents = false);
         try

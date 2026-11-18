@@ -20,19 +20,22 @@ public sealed class WatchedFile : IDisposable
     private FileStamp? seen;
 
     /// <summary>Watches a file, its folder made where it is not there, <paramref name="moved"/> told from the first look on
-    /// (the file as it stands now taken for seen where <paramref name="asSeen"/>), on the thread that looked: one heard as
-    /// the watch begins is told too; false from it, the file not taken (being written), has the next look tell it again.
-    /// One that cannot be watched is said in the log, as <paramref name="owner"/>'s, and looked at only as <see
-    /// cref="LookAgain"/> asks.</summary>
-    public WatchedFile(string path, string owner, Func<FileStamp?, bool> moved, bool asSeen = false)
+    /// (the file as it stands now taken for seen where <paramref name="asSeen"/>), on the thread that looked; false from it
+    /// has the next look tell it again. It is looked at while the system's watcher is behind but where it is the beat that
+    /// says so (<paramref name="followsLag"/>). One that cannot be watched is said in the log, as <paramref name="owner"/>'s.</summary>
+    public WatchedFile(string path, string owner, Func<FileStamp?, bool> moved, bool asSeen = false, bool followsLag = true)
     {
         Path = path;
         this.moved = moved;
+        this.followsLag = followsLag;
         if (asSeen)
         {
             (looked, seen) = (true, FileStamp.Of(path));
         }
-        WatchLag.Behind += OnBehind;
+        if (followsLag)
+        {
+            WatchLag.Behind += OnBehind;
+        }
         try
         {
             string folder = System.IO.Path.GetDirectoryName(path) ?? string.Empty;
@@ -66,6 +69,9 @@ public sealed class WatchedFile : IDisposable
     /// took the file as it stands.</summary>
     private readonly Func<FileStamp?, bool> moved;
 
+    /// <summary>Whether the file is looked at while the system's watcher is behind (<see cref="WatchLag"/>).</summary>
+    private readonly bool followsLag;
+
     /// <summary>The file as its owner has just read or written it, so a look finding it so tells nothing; any thread.</summary>
     public void Saw(FileStamp? stamp)
     {
@@ -88,7 +94,10 @@ public sealed class WatchedFile : IDisposable
     public void Dispose()
     {
         disposed = true;
-        WatchLag.Behind -= OnBehind;
+        if (followsLag)
+        {
+            WatchLag.Behind -= OnBehind;
+        }
         Watcher?.Dispose();
     }
 

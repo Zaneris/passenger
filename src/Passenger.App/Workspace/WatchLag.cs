@@ -21,7 +21,7 @@ public static class WatchLag
 
     private static readonly Lock Gate = new();
     private static Action<DateTime>? behind;
-    private static FileSystemWatcher? canary;
+    private static WatchedFile? canary;
     private static string? folder;
     private static CancellationTokenSource? beating;
     private static bool exitHooked;
@@ -91,7 +91,7 @@ public static class WatchLag
     /// on macOS while anything follows it and anything holds it.</summary>
     private static void Follow(Action change)
     {
-        FileSystemWatcher? stopped = null;
+        WatchedFile? stopped = null;
         lock (Gate)
         {
             change();
@@ -109,9 +109,9 @@ public static class WatchLag
         stopped?.Dispose();
     }
 
-    /// <summary>The system's watcher of the beat's file, while anything follows <see cref="Behind"/> on macOS: a test stops
-    /// it to have the system's watcher lag.</summary>
-    public static FileSystemWatcher? Canary
+    /// <summary>The watch on the beat's file, while the beat goes on: a test stops its system's watcher to have the system's
+    /// watcher lag.</summary>
+    public static WatchedFile? Canary
     {
         get
         {
@@ -141,12 +141,13 @@ public static class WatchLag
         {
             ClearLeft();
             Directory.CreateDirectory(own);
-            FileSystemWatcher watcher = new(own, CanaryName) { NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName | NotifyFilters.Size };
-            watcher.Changed += (_, _) => Heard();
-            watcher.Created += (_, _) => Heard();
-            watcher.Renamed += (_, _) => Heard();
-            watcher.EnableRaisingEvents = true;
-            (folder, canary) = (own, watcher);
+            // Not following the lag itself: a look at the beat's file while behind would take the beat for heard.
+            WatchedFile watch = new(Path.Combine(own, CanaryName), "The system's watcher's beat", _ =>
+            {
+                Heard();
+                return true;
+            }, followsLag: false);
+            (folder, canary) = (own, watch);
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or ArgumentException)
         {
@@ -164,12 +165,12 @@ public static class WatchLag
         IdeErrors.Observe(BackgroundWork.Unheld(() => BeatAsync(ending.Token)));
     }
 
-    /// <summary>The beat ended and its file deleted: the system's watcher of it, to dispose of off the gate.</summary>
-    private static FileSystemWatcher? Stop()
+    /// <summary>The beat ended and its file deleted: the watch on it, to dispose of off the gate.</summary>
+    private static WatchedFile? Stop()
     {
         beating?.Cancel();
         beating = null;
-        FileSystemWatcher? stopped = canary;
+        WatchedFile? stopped = canary;
         canary = null;
         if (folder is { } own)
         {
