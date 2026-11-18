@@ -9,15 +9,16 @@ public enum EditorTabsPlace
     Right,
 }
 
-/// <summary>How docked tool windows are named: by their icons on the stripes alone, or also by titled tabs along the foot
-/// of each place where several dock, the open one's tab joined to it.</summary>
+/// <summary>How tool windows are named and gone between, each a whole of its own: by their icons on the stripes alone, or,
+/// no stripe standing, by titled tabs, a place's windows along its foot (the open one's joined to it) and a hidden one's
+/// along the window's edge.</summary>
 public enum ToolWindowLook
 {
     StripeIcons,
     TitledTabs,
 }
 
-/// <summary>What closing a tool window does to its stripe icon: keeps it, or takes it off the stripe until the window is
+/// <summary>What closing a tool window does to its stripe icon or its tab: keeps it, or takes it away until the window is
 /// opened again from the View menu, Find Action or its keys.</summary>
 public enum ClosedToolWindows
 {
@@ -31,12 +32,4 @@ public enum FindResults
 {
     Popup,
     FindWindow,
-}
-
-/// <summary>Which tool windows the stripes show icons of while titled tabs name them: every one, or only those no titled
-/// tab names (in a place shown with several docked), so a window is named once.</summary>
-public enum StripeIcons
-{
-    All,
-    Untabbed,
 }

@@ -1,0 +1,133 @@
+using Avalonia;
+using Avalonia.Automation;
+using Avalonia.Controls;
+using Avalonia.Input;
+using Avalonia.Layout;
+using Avalonia.Media;
+using Passenger.Editor;
+
+namespace Passenger.App.Docking;
+
+/// <summary>Under titled tabs, one edge of the frame (a side's, or the foot's) where each window of its places that stands
+/// hidden is a tab of its name: a click opens a docked one over the editors beside the edge (<see cref="DockHost.Peek"/>)
+/// and closes it again, opens one that floats or stands among the editors there, and a drag moves it as its titled tab's
+/// does. A side's tabs run down it, the upper place's before the lower's; the foot's run across, the left place's from its
+/// start and the right's to its end.</summary>
+internal sealed class EdgeTabs : Border
+{
+    /// <summary>How broad an edge with tabs stands.</summary>
+    public const double Breadth = 32;
+
+    private readonly DockHost host;
+    private readonly ToolAnchor first;
+    private readonly ToolAnchor second;
+    private readonly bool down;
+    private readonly StackPanel firstTabs;
+    private readonly StackPanel secondTabs;
+    private readonly Dictionary<ToolWindow, Border> tabs = [];
+
+    public EdgeTabs(DockHost host, ToolAnchor first, ToolAnchor second, bool down)
+    {
+        this.host = host;
+        this.first = first;
+        this.second = second;
+        this.down = down;
+        Orientation orientation = down ? Orientation.Vertical : Orientation.Horizontal;
+        firstTabs = new StackPanel { Orientation = orientation };
+        secondTabs = new StackPanel { Orientation = orientation };
+        Panel groups = down
+            ? new StackPanel { Spacing = 12, Children = { firstTabs, secondTabs } }
+            : new DockPanel { Children = { new Panel { [DockPanel.DockProperty] = Dock.Right, Children = { secondTabs } }, firstTabs } };
+        Child = new Panel { Children = { new ThemeBackdrop(BackgroundPlaces.Frame), groups } };
+        Classes.Add(StyleClasses.EdgeTabs);
+        Classes.Set(StyleClasses.EdgeTabsDown, down);
+        IsVisible = false;
+    }
+
+    /// <summary>Styled as a Border of its own class (Shell.axaml's edgeTabs), its look the theme's.</summary>
+    protected override Type StyleKeyOverride => typeof(Border);
+
+    /// <summary>Whether any window has a tab here.</summary>
+    public bool HasTabs => firstTabs.Children.Count + secondTabs.Children.Count > 0;
+
+    /// <summary>The windows whose tabs stand here, in their order.</summary>
+    public IReadOnlyList<ToolWindow> Named => [.. firstTabs.Children.Concat(secondTabs.Children).Select(tab => tabs.First(t => t.Value == tab).Key)];
+
+    /// <summary>A tab for each of these windows docked at its places, in their order, the one open over the editors marked
+    /// chosen; a group already in order is left as it is.</summary>
+    public void Fill(IEnumerable<ToolWindow> windows, ToolWindow? peeked)
+    {
+        Keymap keymap = host.Actions?.Keymap ?? AppActions.Keymap();
+        List<ToolWindow> here = [.. windows.Where(w => w.Anchor == first || w.Anchor == second).OrderBy(w => w.Order)];
+        foreach ((StackPanel group, ToolAnchor anchor) in ((StackPanel, ToolAnchor)[])[(firstTabs, first), (secondTabs, second)])
+        {
+            Border[] wanted = [.. here.Where(w => w.Anchor == anchor).Select(TabOf)];
+            if (!group.Children.SequenceEqual(wanted))
+            {
+                group.Children.Clear();
+            }
+        }
+        foreach ((StackPanel group, ToolAnchor anchor) in ((StackPanel, ToolAnchor)[])[(firstTabs, first), (secondTabs, second)])
+        {
+            if (group.Children.Count == 0)
+            {
+                group.Children.AddRange(here.Where(w => w.Anchor == anchor).Select(TabOf));
+            }
+            group.IsVisible = group.Children.Count > 0;
+        }
+        foreach ((ToolWindow window, Border tab) in tabs)
+        {
+            tab.Classes.Set(StyleClasses.Active, window == peeked);
+            string? keys = window.Action is { } action ? keymap.ShortcutsFor(action).FirstOrDefault()?.Display() : null;
+            ToolTip.SetTip(tab, keys is null ? window.Title : $"{window.Title} ({keys})");
+        }
+    }
+
+    /// <summary>The place a window dropped on this edge at a point (in its coordinates) docks in: the half of it the point is in.</summary>
+    public ToolAnchor AnchorAt(Point at) => (down ? at.Y < Bounds.Height / 2 : at.X < Bounds.Width / 2) ? first : second;
+
+    /// <summary>A window's tab, made the first time: its icon and its name, the name turned to run down a side.</summary>
+    private Border TabOf(ToolWindow window)
+    {
+        if (tabs.TryGetValue(window, out Border? made))
+        {
+            return made;
+        }
+        RowIcon icon = new() { Width = 14, Height = 14, DataKey = window.Icon };
+        TextBlock name = new() { Classes = { StyleClasses.TabName }, Text = window.Title, VerticalAlignment = VerticalAlignment.Center };
+        Control content = down
+            ? new StackPanel { Spacing = 6, HorizontalAlignment = HorizontalAlignment.Center, Children = { icon, new LayoutTransformControl { LayoutTransform = new RotateTransform(90), Child = name } } }
+            : new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, VerticalAlignment = VerticalAlignment.Center, Children = { icon, name } };
+        Border tab = new() { Classes = { StyleClasses.Tab }, Tag = window.Id };
+        ChosenMark.Hold(tab, content);
+        AutomationProperties.SetName(tab, window.Title);
+        // Tool windows live as long as the dock, as their tabs do.
+        window.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(ToolWindow.Title))
+            {
+                name.Text = window.Title;
+                AutomationProperties.SetName(tab, window.Title);
+            }
+        };
+        tab.PointerPressed += (_, e) =>
+        {
+            if (e.GetCurrentPoint(tab).Properties.IsLeftButtonPressed)
+            {
+                host.Drag.Begin(window, e, tab);
+                e.Handled = true;
+            }
+        };
+        tab.PointerMoved += (_, e) => host.Drag.Continue(e);
+        tab.PointerReleased += (_, e) =>
+        {
+            // A drag is no click; a click is a left press let go over its tab.
+            if (!host.Drag.End(e) && e.InitialPressMouseButton == MouseButton.Left && new Rect(tab.Bounds.Size).Contains(e.GetPosition(tab)))
+            {
+                host.EdgeTabClicked(window);
+            }
+        };
+        tabs[window] = tab;
+        return tab;
+    }
+}

@@ -113,10 +113,14 @@ public class ThemeLayoutTests
     }
 
     [Fact]
-    public void A_layout_gives_which_windows_keep_stripe_icons_beside_titled_tabs_and_one_that_gives_none_keeps_Passengers_own()
+    public void A_format_1_layout_still_giving_stripe_icons_reads_whole_and_says_nothing_of_them()
     {
-        Assert.Equal([StripeIcons.All, StripeIcons.Untabbed], ((string[])["all", "untabbed"]).Select(word => Read($$$"""{"stripeIcons": "{{{word}}}"}""").StripeIcons));
-        Assert.Null(Read("""{"editorTabs": "left"}""").StripeIcons);
+        ThemeRead<ThemeFile> read = Theme("""
+            "layout": {"toolWindows": "tabs", "stripeIcons": "untabbed", "closedWindows": "leave"}
+            """);
+        Assert.True(read.Read?.Layout is { ToolWindows: ToolWindowLook.TitledTabs, ClosedWindows: ClosedToolWindows.LeaveStripe } && read.Problems.Count == 0,
+            $"A theme made when stripeIcons arranged the stripes reads as {read.Read?.Layout?.ToolWindows}, {read.Read?.Layout?.ClosedWindows}, "
+            + $"saying {string.Join("; ", read.Problems)}: it would lose its look or tell the person of a key they cannot act on");
     }
 
     [Fact]

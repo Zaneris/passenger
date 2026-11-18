@@ -260,6 +260,34 @@
     <Style Selector="Border.tabStrip.toolTabStrip">
         <Setter Property="Padding" Value="4,0,0,0" />
     </Style>
+    <!-- Under titled tabs, the hidden tool windows' tabs along the frame's edge, on the frame as a stripe stands; down a
+         side, each as narrow as its turned name and as far from the next as a tab across is. -->
+    <Style Selector="Border.edgeTabs">
+        <Setter Property="Background" Value="{DynamicResource Passenger.Frame}" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Padding" Value="4,0" />
+    </Style>
+    <Style Selector="Border.edgeTabs.edgeTabsDown">
+        <Setter Property="Padding" Value="0,4" />
+    </Style>
+    <Style Selector="Border.edgeTabs Border.tab">
+        <Setter Property="Margin" Value="2,4" />
+        <Setter Property="Padding" Value="8,0" />
+    </Style>
+    <Style Selector="Border.edgeTabsDown Border.tab">
+        <Setter Property="Margin" Value="4,2" />
+        <Setter Property="Padding" Value="0,8" />
+    </Style>
+    <Style Selector="Border.edgeTabsDown Border.tab > Panel > app|ChosenMark">
+        <Setter Property="Side" Value="Left" />
+    </Style>
+    <!-- A tool window opened over the editors from its edge tab: on its own ground, lifted off the editors as a popup is,
+         its edge toward them drawn. -->
+    <Style Selector="Border.toolPeek">
+        <Setter Property="Background" Value="{DynamicResource Passenger.Panel}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource Passenger.Divider}" />
+        <Setter Property="BoxShadow" Value="{DynamicResource Passenger.PopupShadow}" />
+    </Style>
     <Style Selector="Border.statusBar">
         <Setter Property="Height" Value="26" />
         <Setter Property="Background" Value="{DynamicResource Passenger.Frame}" />

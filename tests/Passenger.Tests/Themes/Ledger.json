@@ -21,7 +21,7 @@
     "DialogFooterPadding": [12, 8, 12, 8]
   },
   "fonts": {"code": {"family": "IBM Plex Mono", "size": 13}, "window": {"family": "IBM Plex Sans"}},
-  "layout": {"places": {"leftTop": ["explorer", "commit"], "leftBottom": ["structure", "bookmarks"], "bottomLeft": ["build", "run", "debug", "tests", "terminal", "find"], "bottomRight": ["problems"]}, "open": ["explorer", "structure", "build", "problems"], "sizes": {"left": 280, "bottom": 220}, "toolWindows": "tabs", "stripeIcons": "untabbed", "findResults": "window"},
+  "layout": {"places": {"leftTop": ["explorer", "commit"], "leftBottom": ["structure", "bookmarks"], "bottomLeft": ["build", "run", "debug", "tests", "terminal", "find"], "bottomRight": ["problems"]}, "open": ["explorer", "structure", "build", "problems"], "sizes": {"left": 280, "bottom": 220}, "toolWindows": "tabs", "findResults": "window"},
   "background": {"image": "pictures/ledger.webp", "opacity": 0.12, "places": ["welcome", "toolWindows"], "fit": "tile", "light": {"opacity": 0.16}},
   "dark": {
     "Frame": "#06090F",

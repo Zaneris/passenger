@@ -140,7 +140,6 @@ public partial class MainWindow
     {
         Editors.TabsPlace = next.TabsPlace();
         Dock.TitledTabs = next.ToolWindowsAs() == ToolWindowLook.TitledTabs;
-        Dock.IconsBesideTabs = next.IconsBesideTabs() == StripeIcons.All;
         Dock.ClosesOffStripe = next.ClosedWindows() == ClosedToolWindows.LeaveStripe;
     }
 

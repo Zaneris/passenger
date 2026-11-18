@@ -109,7 +109,7 @@ public sealed class WindowArrangementTests : IDisposable
     }
 
     [AvaloniaFact]
-    public void Titled_tabs_name_the_windows_docked_in_a_place_where_a_click_opens_one_and_a_drag_takes_it_to_a_stripe()
+    public void Titled_tabs_name_the_windows_docked_in_a_place_where_a_click_opens_one_and_a_drag_takes_it_to_another_side()
     {
         MainWindow window = Open();
         try
@@ -132,7 +132,7 @@ public sealed class WindowArrangementTests : IDisposable
 
             Ui.Drag(window, Ui.Centre(ToolTab(window, ToolWindowIds.Run), window), new Point(window.Bounds.Width - 20, 120));
             Assert.True(dock[ToolWindowIds.Run] is { Anchor: ToolAnchor.RightTop, IsShown: true },
-                $"Run's tab dragged to the right stripe left it {dock[ToolWindowIds.Run].Anchor}");
+                $"Run's tab dragged to the right side left it {dock[ToolWindowIds.Run].Anchor}");
             Assert.True(Ui.Centre(ToolTab(window, ToolWindowIds.Run), window).X > window.Bounds.Width / 2,
                 "Run's tab did not go with it to the place it was dragged to, at the right");
 
@@ -153,7 +153,8 @@ public sealed class WindowArrangementTests : IDisposable
         string state = TestFolders.Create("arrangement-state-");
         try
         {
-            File.WriteAllText(Path.Combine(state, Passenger.App.State.StateStore.SettingsFile), """{ "version": 5, "closedToolWindows": "LeaveStripe" }""");
+            // A key no setting reads (stripeIcons) is passed over, the rest read as written.
+            File.WriteAllText(Path.Combine(state, Passenger.App.State.StateStore.SettingsFile), """{ "version": 5, "closedToolWindows": "LeaveStripe", "stripeIcons": "Untabbed" }""");
             MainWindow window = Keeping(state);
             try
             {
@@ -252,9 +253,9 @@ public sealed class WindowArrangementTests : IDisposable
             window.ApplySettings(window.Settings with { Look = SourcedTheme.BuiltIn("Cubicle") });
             Ui.Settle();
             DockHost dock = window.DockHost;
-            Assert.True(window.EditorArea.ActiveGroup.TabsPlace == EditorTabsPlace.Top && dock.TitledTabs && !dock.IconsBesideTabs && dock.ClosesOffStripe
+            Assert.True(window.EditorArea.ActiveGroup.TabsPlace == EditorTabsPlace.Top && dock.TitledTabs && dock.ClosesOffStripe
                 && window.Settings.FindResultsIn() == FindResults.FindWindow && ToolTabs(window).Length > 0,
-                $"Cubicle arranges the tabs {window.EditorArea.ActiveGroup.TabsPlace}, titled tabs {dock.TitledTabs}, icons beside them {dock.IconsBesideTabs}, closed windows leaving {dock.ClosesOffStripe}, "
+                $"Cubicle arranges the tabs {window.EditorArea.ActiveGroup.TabsPlace}, titled tabs {dock.TitledTabs}, closed windows leaving {dock.ClosesOffStripe}, "
                 + $"Find in Files' results {window.Settings.FindResultsIn()}, {ToolTabs(window).Length} tool tabs shown");
         }
         finally
@@ -378,35 +379,200 @@ public sealed class WindowArrangementTests : IDisposable
         window.DockHost.GetVisualDescendants().OfType<ToggleButton>().FirstOrDefault(b => Equals(b.Tag, id));
 
     [AvaloniaFact]
-    public void Stripe_icons_beside_titled_tabs_go_for_the_windows_a_tab_names_and_come_back_once_their_place_closes()
+    public void Under_stripe_icons_a_window_docked_beside_another_or_opened_again_takes_no_icon_off_the_stripes_and_no_tab_names_it()
     {
         MainWindow window = Open();
         try
         {
+            window.ApplySettings(window.Settings with { ClosedToolWindows = ClosedToolWindows.LeaveStripe });
+            Ui.Settle();
             DockHost dock = window.DockHost;
-            dock.Show(ToolWindowIds.Build);
-            window.ApplySettings(window.Settings with { ToolWindowLook = ToolWindowLook.TitledTabs, StripeIcons = StripeIcons.Untabbed });
-            Ui.Settle();
-            Assert.True(StripeButton(window, ToolWindowIds.Build) is null && StripeButton(window, ToolWindowIds.Run) is null && ToolTab(window, ToolWindowIds.Run) is not null,
-                "Build and Run, named by tabs along their open place's foot, kept their stripe icons too");
-            Assert.True(StripeButton(window, ToolWindowIds.Bookmarks) is not null, "Bookmarks, docked in a closed place with no tab, lost its stripe icon");
+            Ui.Drag(window, Ui.Centre(StripeButton(window, ToolWindowIds.Bookmarks)!, window), new Point(Placed(window, dock[ToolWindowIds.Explorer].Content).X + 60, 80));
+            Assert.True(dock[ToolWindowIds.Bookmarks].Anchor == ToolAnchor.LeftTop && dock.IsShown(ToolWindowIds.Explorer),
+                $"Bookmarks dragged into the Explorer's place stands in {dock[ToolWindowIds.Bookmarks].Anchor}, the Explorer shown {dock.IsShown(ToolWindowIds.Explorer)}");
+            Assert.True(Iconless(window).Length == 0 && ToolTabs(window).Length == 0,
+                $"With Bookmarks docked beside the Explorer, {string.Join(", ", Iconless(window))} lost their stripe icons, {ToolTabs(window).Length} tabs name windows");
 
-            dock.Hide(ToolWindowIds.Build);
+            dock.Close(ToolWindowIds.Explorer);
             Ui.Settle();
-            Assert.True(StripeButton(window, ToolWindowIds.Build) is not null && StripeButton(window, ToolWindowIds.Run) is not null,
-                "Their place closed, no tab names Build and Run, which did not get their stripe icons back");
-
-            Ui.Click(StripeButton(window, ToolWindowIds.Run)!);
-            window.ApplySettings(window.Settings with { StripeIcons = StripeIcons.All });
+            Assert.Null(StripeButton(window, ToolWindowIds.Explorer));
+            Assert.True(window.Perform(AppActions.FocusExplorer), "View | Tool Windows | Explorer was refused");
             Ui.Settle();
-            Assert.True(StripeButton(window, ToolWindowIds.Run) is not null && ToolTab(window, ToolWindowIds.Run) is not null,
-                "Every window's icon chosen, Run named by its tab lost its stripe icon");
+            Assert.True(dock.IsShown(ToolWindowIds.Explorer) && Iconless(window).Length == 0 && ToolTabs(window).Length == 0,
+                $"The Explorer opened again into the place Bookmarks holds left {string.Join(", ", Iconless(window))} without stripe icons, {ToolTabs(window).Length} tabs naming windows");
         }
         finally
         {
             window.ApplySettings(new AppSettings());
             window.Close();
         }
+    }
+
+    [AvaloniaFact]
+    public void Under_titled_tabs_no_stripe_stands_and_a_window_docked_beside_another_or_opened_again_is_named_by_a_tab_or_its_header()
+    {
+        MainWindow window = Open();
+        try
+        {
+            window.ApplySettings(window.Settings with { ToolWindowLook = ToolWindowLook.TitledTabs, ClosedToolWindows = ClosedToolWindows.LeaveStripe });
+            Ui.Settle();
+            DockHost dock = window.DockHost;
+            Assert.True(Unnamed(window).Length == 0 && StripeButtons(window).Length == 0,
+                $"Under titled tabs {string.Join(", ", Unnamed(window))} are named by no tab or header, {StripeButtons(window).Length} stripe icons standing");
+            Assert.True(EdgeTab(window, ToolWindowIds.Bookmarks) is not null && Header(window, "Explorer") is not null,
+                "Bookmarks, hidden, has no tab along the left edge, or the Explorer, alone in its place, no header naming it");
+
+            Ui.Drag(window, Ui.Centre(EdgeTab(window, ToolWindowIds.Bookmarks)!, window), new Point(Placed(window, dock[ToolWindowIds.Explorer].Content).X + 60, 80));
+            Assert.True(dock[ToolWindowIds.Bookmarks].Anchor == ToolAnchor.LeftTop && FootTab(window, ToolWindowIds.Explorer) is not null && FootTabs(window).Any(t => Equals(t.Tag, ToolWindowIds.Bookmarks)),
+                $"Bookmarks' edge tab dragged into the Explorer's place left it in {dock[ToolWindowIds.Bookmarks].Anchor}, the place's foot naming {string.Join(", ", FootTabs(window).Select(t => t.Tag))}");
+            Assert.True(Unnamed(window).Length == 0 && StripeButtons(window).Length == 0,
+                $"With Bookmarks docked beside the Explorer, {string.Join(", ", Unnamed(window))} are named by nothing, {StripeButtons(window).Length} stripe icons standing");
+
+            dock.Close(ToolWindowIds.Explorer);
+            Ui.Settle();
+            Assert.True(window.Perform(AppActions.FocusExplorer), "View | Tool Windows | Explorer was refused");
+            Ui.Settle();
+            Assert.True(dock.IsShown(ToolWindowIds.Explorer) && FootTab(window, ToolWindowIds.Explorer) is not null && Unnamed(window).Length == 0 && StripeButtons(window).Length == 0,
+                $"The Explorer opened again beside Bookmarks: shown {dock.IsShown(ToolWindowIds.Explorer)}, {string.Join(", ", Unnamed(window))} named by nothing, {StripeButtons(window).Length} stripe icons");
+
+            // The bottom's many windows: each tab whole or behind the strip's last button, none cut.
+            dock.Show(ToolWindowIds.Build);
+            window.Width = 900;
+            Ui.Settle();
+            Border[] cut = [.. FootTabs(window).Where(t => Seen(t) is { } part && part != Placed(window, t))];
+            Assert.Empty(cut);
+            Button more = window.DockHost.GetVisualDescendants().OfType<Button>().First(b => ToolTip.GetTip(b) is "Hidden Tool Windows" && b.FindAncestorOfType<Border>() is { } strip
+                && strip.Classes.Contains(StyleClasses.ToolTabStrip) && strip.GetVisualDescendants().OfType<Border>().Any(t => Equals(t.Tag, ToolWindowIds.Build)));
+            string[] gone = [.. FootTabs(window).Where(t => dock[(string)t.Tag!].Anchor == ToolAnchor.BottomLeft && Seen(t) is null).Select(t => dock[(string)t.Tag!].Title)];
+            Assert.True(gone.Length > 0 && Seen(more) is not null, $"At 900 wide the bottom's tabs all fit, or no button lists those gone ({string.Join(", ", gone)})");
+            Ui.Click(more);
+            string[] listed = [.. (dock.HiddenTabsMenu?.Items.OfType<MenuItem>() ?? []).Select(i => i.Header as string ?? "")];
+            Assert.True(listed.SequenceEqual(gone), $"The strip's last button lists {string.Join(", ", listed)}, where {string.Join(", ", gone)} have no room");
+            dock.HiddenTabsMenu?.Close();
+        }
+        finally
+        {
+            window.ApplySettings(new AppSettings());
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact]
+    public void Every_window_of_a_place_hidden_is_a_click_away_by_its_icon_or_by_its_tab_along_the_edge_which_opens_it_over_the_editors()
+    {
+        MainWindow window = Open();
+        try
+        {
+            DockHost dock = window.DockHost;
+            dock.Show(ToolWindowIds.Build);
+            Ui.Settle();
+            dock.Hide(ToolWindowIds.Build);
+            Ui.Settle();
+            string[] bottom = [.. dock.Windows.Where(w => w.Anchor == ToolAnchor.BottomLeft && !w.IsClosed).Select(w => w.Id)];
+            Assert.True(bottom.All(id => StripeButton(window, id) is not null), $"Hidden, {string.Join(", ", bottom.Where(id => StripeButton(window, id) is null))} have no stripe icon");
+            Ui.Click(StripeButton(window, ToolWindowIds.Run)!);
+            Assert.True(dock.IsShown(ToolWindowIds.Run), "Run's icon did not open it");
+            dock.Hide(ToolWindowIds.Run);
+
+            window.ApplySettings(window.Settings with { ToolWindowLook = ToolWindowLook.TitledTabs });
+            Ui.Settle();
+            Assert.True(bottom.All(id => EdgeTab(window, id) is not null), $"Hidden, {string.Join(", ", bottom.Where(id => EdgeTab(window, id) is null))} have no tab along the edge");
+            double editors = Placed(window, window.EditorArea).Height;
+            Ui.Click(EdgeTab(window, ToolWindowIds.Run)!);
+            Assert.True(dock.Peeked == dock[ToolWindowIds.Run] && dock[ToolWindowIds.Run].Content.IsEffectivelyVisible && dock[ToolWindowIds.Run].Content.IsKeyboardFocusWithin
+                && Placed(window, window.EditorArea).Height == editors && EdgeTab(window, ToolWindowIds.Run)!.Classes.Contains(StyleClasses.Active),
+                $"Run's edge tab opened it over the editors {dock.Peeked?.Id}, shown {dock[ToolWindowIds.Run].Content.IsEffectivelyVisible}, with the keys {dock[ToolWindowIds.Run].Content.IsKeyboardFocusWithin}, "
+                + $"the editors {Placed(window, window.EditorArea).Height} high where they were {editors}");
+            Rect over = Placed(window, dock[ToolWindowIds.Run].Content);
+            Assert.True(over.Intersects(Placed(window, window.EditorArea)), $"Run, open from its edge tab at {over}, is not over the editors at {Placed(window, window.EditorArea)}");
+
+            Ui.Click(window.EditorArea.CodeEditor);
+            Assert.True(dock.Peeked is null && !dock.IsShown(ToolWindowIds.Run) && EdgeTab(window, ToolWindowIds.Run) is not null,
+                "A click in the editor left Run over it, or took its edge tab away");
+
+            Ui.Click(EdgeTab(window, ToolWindowIds.Run)!);
+            Ui.Click(window.DockHost.GetVisualDescendants().OfType<Button>().Single(b => ToolTip.GetTip(b) is "Dock" && b.IsEffectivelyVisible));
+            Assert.True(dock.Peeked is null && dock.IsShown(ToolWindowIds.Run) && FootTab(window, ToolWindowIds.Run) is not null && EdgeTab(window, ToolWindowIds.Run) is null
+                && Placed(window, window.EditorArea).Height < editors,
+                $"Run's Dock left it over the editors {dock.Peeked?.Id}, shown {dock.IsShown(ToolWindowIds.Run)}, the editors {Placed(window, window.EditorArea).Height} high");
+        }
+        finally
+        {
+            window.ApplySettings(new AppSettings());
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact]
+    public void A_theme_choosing_either_look_gets_that_look_whole()
+    {
+        string icons = Kept("""{"toolWindows": "icons"}""");
+        MainWindow window = Open();
+        try
+        {
+            window.DockHost.Show(ToolWindowIds.Build);
+            window.ApplySettings(window.Settings with { Look = SourcedTheme.BuiltIn("Cubicle") });
+            Ui.Settle();
+            Assert.True(window.DockHost.TitledTabs && StripeButtons(window).Length == 0 && FootTabs(window).Length > 0 && EdgeTabs(window).Length > 0 && Unnamed(window).Length == 0,
+                $"Cubicle, choosing titled tabs, shows {StripeButtons(window).Length} stripe icons, {FootTabs(window).Length} tabs at places' feet, {EdgeTabs(window).Length} along the edges, "
+                + $"{string.Join(", ", Unnamed(window))} named by nothing");
+
+            window.ApplySettings(window.Settings with { Look = new SourcedTheme(ThemeSource.Added.Name, icons) });
+            Ui.Settle();
+            Assert.True(!window.DockHost.TitledTabs && Iconless(window).Length == 0 && ToolTabs(window).Length == 0,
+                $"A theme choosing icons leaves {string.Join(", ", Iconless(window))} without stripe icons and {ToolTabs(window).Length} tabs naming windows");
+        }
+        finally
+        {
+            window.ApplySettings(new AppSettings());
+            window.Close();
+        }
+    }
+
+    /// <summary>The windows on the stripes (closed off them by none) with no stripe icon, shown or behind More.</summary>
+    private static string[] Iconless(MainWindow window) =>
+        [.. window.DockHost.Windows.Where(w => !w.IsClosed && StripeButton(window, w.Id) is not { IsEffectivelyVisible: true } && !(StripeButton(window, w.Id) is { } hidden && hidden.FindAncestorOfType<Border>() is { IsEffectivelyVisible: true }))
+            .Select(w => w.Id)];
+
+    /// <summary>The stripe icons a person sees.</summary>
+    private static ToggleButton[] StripeButtons(MainWindow window) =>
+        [.. window.DockHost.GetVisualDescendants().OfType<ToggleButton>().Where(b => b.Tag is string && b.IsEffectivelyVisible)];
+
+    /// <summary>The docked windows named by nothing a person sees: no tab along an edge or at a place's foot (whole, or
+    /// listed by its strip's last button for want of room), no header; those closed are left out.</summary>
+    private static string[] Unnamed(MainWindow window) =>
+        [.. window.DockHost.Windows.Where(w => !w.IsClosed && w.Mode == ToolMode.Docked && EdgeTab(window, w.Id) is null && !FootTabs(window).Any(t => Equals(t.Tag, w.Id))
+            && !(w.IsShown && Header(window, w.Title) is not null)).Select(w => w.Id)];
+
+    /// <summary>A shown pane's header naming a window by its title.</summary>
+    private static TextBlock? Header(MainWindow window, string title) =>
+        window.DockHost.GetVisualDescendants().OfType<TextBlock>().FirstOrDefault(t => t.Classes.Contains(StyleClasses.ToolTitle) && t.Text == title && t.IsEffectivelyVisible);
+
+    /// <summary>The tabs along the frame's edges.</summary>
+    private static Border[] EdgeTabs(MainWindow window) =>
+        [.. ToolTabs(window).Where(t => t.FindAncestorOfType<Border>() is { } edge && edge.GetVisualAncestors().Prepend(edge).OfType<Border>().Any(b => b.Classes.Contains(StyleClasses.EdgeTabs)))];
+
+    private static Border? EdgeTab(MainWindow window, string id) => EdgeTabs(window).FirstOrDefault(t => Equals(t.Tag, id));
+
+    /// <summary>The tabs at the places' feet a person sees, each whole: one with no room is in none.</summary>
+    private static Border[] FootTabs(MainWindow window) =>
+        [.. ToolTabs(window).Where(t => t.GetVisualAncestors().OfType<Border>().Any(b => b.Classes.Contains(StyleClasses.ToolTabStrip)))];
+
+    private static Border? FootTab(MainWindow window, string id) => FootTabs(window).FirstOrDefault(t => Equals(t.Tag, id) && Seen(t) is not null);
+
+    /// <summary>The part of a control a person sees inside what clips it, in the window's coordinates; null for none.</summary>
+    private static Rect? Seen(Control control)
+    {
+        if (TopLevel.GetTopLevel(control) is not { } top)
+        {
+            return null;
+        }
+        Rect part = Placed(top, control);
+        foreach (Visual clip in control.GetVisualAncestors().Where(a => a.ClipToBounds))
+        {
+            part = part.Intersect(Placed(top, clip));
+        }
+        return part.Width >= 1 && part.Height >= 1 ? part : null;
     }
 
     private static Border[] ToolTabs(MainWindow window) =>

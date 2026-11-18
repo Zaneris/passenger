@@ -49,24 +49,16 @@ public static class Declared
     public static readonly ThemedChoiceSetting<ToolWindowLook> ToolWindowLook = new(s => s.ToolWindowLook, s => s.ToolWindowsAs(), (s, v) => s with { ToolWindowLook = v },
         [(Passenger.App.ToolWindowLook.StripeIcons, "Stripe icons"), (Passenger.App.ToolWindowLook.TitledTabs, "Titled tabs")],
         new(D.Appearance, "Tool windows", "tool windows docked tabs titles names stripe icons wells side bottom panels layout arrangement",
-            "How docked tool windows are named: by their icons on the stripes, or by tabs with their names along the foot of each "
-            + "place where several dock as well, a click on one opening it and a drag moving it as its icon does."));
-
-    public static readonly ThemedChoiceSetting<StripeIcons> StripeIcons = new(s => s.StripeIcons, s => s.IconsBesideTabs(), (s, v) => s with { StripeIcons = v },
-        [(Passenger.App.StripeIcons.All, "Every window"), (Passenger.App.StripeIcons.Untabbed, "Only windows with no titled tab")],
-        new(D.Appearance, "Stripe icons beside titled tabs", "tool windows stripe icons wells titled tabs twice repeated duplicate declutter layout arrangement",
-            "Which tool windows keep an icon on the stripes while titled tabs name them: every one, or only those no titled tab "
-            + "shows, so a window whose place is open with its tab is named once.")
-        {
-            When = new(s => s.ToolWindowsAs() == Passenger.App.ToolWindowLook.TitledTabs, "Tool windows are named by stripe icons alone"),
-        });
+            "How tool windows are named and gone between: by their icons on the stripes down the window's sides, or by tabs with "
+            + "their names, no stripe standing: a place's windows along its foot, and a hidden one along the window's edge, a click "
+            + "on which opens it over the editors until you work elsewhere. A drag on an icon, a tab or a header moves the window."));
 
     public static readonly ThemedChoiceSetting<ClosedToolWindows> ClosedToolWindows = new(s => s.ClosedToolWindows, s => s.ClosedWindows(),
         (s, v) => s with { ClosedToolWindows = v },
-        [(Passenger.App.ClosedToolWindows.KeepIcons, "Keep their stripe icons"), (Passenger.App.ClosedToolWindows.LeaveStripe, "Leave the stripe")],
+        [(Passenger.App.ClosedToolWindows.KeepIcons, "Keep their icons or tabs"), (Passenger.App.ClosedToolWindows.LeaveStripe, "Leave until opened again")],
         new(D.Appearance, "Closed tool windows", "tool windows close closed hide remove declutter stripe icons wells view menu reopen layout arrangement",
-            "Whether a tool window closed by its × keeps its icon on the stripe, or leaves the stripe until it is opened again from "
-            + "View | Tool Windows, Find Action or its keys. Hide always keeps it."));
+            "Whether a tool window closed by its × keeps its icon on the stripe (or its tab, under titled tabs), or leaves until it is "
+            + "opened again from View | Tool Windows, Find Action or its keys. Hide always keeps it."));
 
     public static readonly ThemedChoiceSetting<FindResults> FindResults = new(s => s.FindResults, s => s.FindResultsIn(), (s, v) => s with { FindResults = v },
         [(Passenger.App.FindResults.Popup, "In its popup"), (Passenger.App.FindResults.FindWindow, "Kept in the Find window")],

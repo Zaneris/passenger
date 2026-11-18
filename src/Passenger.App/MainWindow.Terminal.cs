@@ -110,7 +110,7 @@ public partial class MainWindow
             }
             return;
         }
-        ShowToolWindow(ToolWindowIds.Terminal);
+        Dock.Bring(ToolWindowIds.Terminal);
         TerminalPanel.FocusView();
     }
 

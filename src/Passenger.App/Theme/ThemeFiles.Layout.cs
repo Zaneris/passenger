@@ -25,9 +25,6 @@ public sealed record ThemeLayout(IReadOnlyList<PlacedWindow> Places, IReadOnlyLi
     /// <summary>What closing a tool window does to its stripe icon.</summary>
     public ClosedToolWindows? ClosedWindows { get; init; }
 
-    /// <summary>Which windows the stripes show icons of while titled tabs name them.</summary>
-    public StripeIcons? StripeIcons { get; init; }
-
     /// <summary>Where Find in Files' results stay.</summary>
     public FindResults? FindResults { get; init; }
 }
@@ -57,6 +54,7 @@ public static partial class ThemeFiles
         {
             throw new FormatException($"gives layout as {ThemeJson.Shown(layout.Value)}: layout is {{\"places\": {{…}}, \"open\": […], \"sizes\": {{…}}}}");
         }
+        // A format 1 file may still give stripeIcons, which arranges nothing now and so is passed over unsaid.
         PassOver(file, layout.Value, ["places", "open", "sizes", "editorTabs", "toolWindows", "stripeIcons", "closedWindows", "findResults"], "layout", problems);
         List<PlacedWindow> places = [];
         List<string> inEditor = [];
@@ -97,7 +95,6 @@ public static partial class ThemeFiles
             InEditor = [.. inEditor.Distinct(StringComparer.Ordinal)],
             EditorTabs = Word(layout.Value, "editorTabs", [("top", EditorTabsPlace.Top), ("left", EditorTabsPlace.Left), ("right", EditorTabsPlace.Right)]),
             ToolWindows = Word(layout.Value, "toolWindows", [("icons", ToolWindowLook.StripeIcons), ("tabs", ToolWindowLook.TitledTabs)]),
-            StripeIcons = Word(layout.Value, "stripeIcons", [("all", Passenger.App.StripeIcons.All), ("untabbed", Passenger.App.StripeIcons.Untabbed)]),
             ClosedWindows = Word(layout.Value, "closedWindows", [("keep", ClosedToolWindows.KeepIcons), ("leave", ClosedToolWindows.LeaveStripe)]),
             FindResults = Word(layout.Value, "findResults", [("popup", Passenger.App.FindResults.Popup), ("window", Passenger.App.FindResults.FindWindow)]),
         };

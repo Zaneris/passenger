@@ -21,7 +21,7 @@
     "DialogFooterPadding": [18, 12, 18, 12]
   },
   "fonts": {"code": {"family": "JetBrains Mono", "size": 14}, "window": {"family": "Nunito"}},
-  "layout": {"places": {"bottomLeft": ["terminal", "run", "build"]}, "open": ["explorer", "terminal"], "sizes": {"left": 260, "bottom": 200}, "toolWindows": "tabs", "stripeIcons": "untabbed"},
+  "layout": {"places": {"bottomLeft": ["terminal", "run", "build"]}, "open": ["explorer", "terminal"], "sizes": {"left": 260, "bottom": 200}, "toolWindows": "tabs"},
   "background": {"image": "pictures/bonbon.webp", "opacity": 0.18, "places": ["welcome", "toolWindows"], "fit": "tile", "light": {"opacity": 0.26}},
   "languages": {"markdown": {"dark": {"Syntax.Heading": "#F28BC2"}, "light": {"Syntax.Heading": "#B8287A"}}},
   "dark": {

@@ -37,15 +37,17 @@ internal sealed class ToolPane : DockPanel
     /// <summary>The titled tabs along its foot of the windows docked in its place, while several are and the dock names them
     /// so (<see cref="ShowTabs"/>).</summary>
     private readonly Border tabStrip;
-    private readonly StackPanel tabRow = new() { Orientation = Orientation.Horizontal };
-    private readonly ScrollViewer tabView;
+    private readonly FittingTabs tabRow;
     private readonly Dictionary<ToolWindow, Border> tabs = [];
 
-    /// <summary>At the tabs' end, shown while some are out of sight: a menu of them.</summary>
+    /// <summary>At the tabs' end, shown while some have no room: a menu of them.</summary>
     private readonly Button hiddenTabs;
 
     /// <summary>The header's ×, shown while a window closed leaves its stripe.</summary>
     private readonly Button close;
+
+    /// <summary>The header's Dock, shown while the pane stands over the editors (<see cref="Peeking"/>).</summary>
+    private readonly Button dock;
 
     /// <summary>The window's own action's button (<see cref="ToolWindow.HeaderAction"/>), made as the pane shows it.</summary>
     private Button? own;
@@ -58,6 +60,15 @@ internal sealed class ToolPane : DockPanel
         Button options = HeaderButton(IconKeys.More, "Options");
         Button hide = HeaderButton(IconKeys.Minimize, "Hide");
         close = HeaderButton(IconKeys.Close, "Close");
+        dock = HeaderButton(IconKeys.Pin, "Dock");
+        dock.IsVisible = false;
+        dock.Click += (_, _) =>
+        {
+            if (Window is { } window)
+            {
+                host.Show(window.Id);
+            }
+        };
         close.Name = AppActions.CloseToolWindow;
         ActionTips.Set(close, AppActions.CloseToolWindow, "Close");
         close.IsVisible = false;
@@ -101,7 +112,7 @@ internal sealed class ToolPane : DockPanel
                 host.Hide(window.Id);
             }
         };
-        foreach (Button going in (Button[])[expandAll, collapseAll, hide, close])
+        foreach (Button going in (Button[])[expandAll, collapseAll, dock, hide, close])
         {
             ShrinkingRow.SetGoesWhole(going, true);
         }
@@ -114,7 +125,7 @@ internal sealed class ToolPane : DockPanel
             Spacing = 2,
             Margin = new Thickness(8, 0, 6, 0),
             VerticalAlignment = VerticalAlignment.Center,
-            Children = { expandAll, collapseAll, options, hide, close },
+            Children = { expandAll, collapseAll, options, dock, hide, close },
         };
         headerRow = new ToolbarRow { Children = { buttons, new ShrinkingRow { VerticalAlignment = VerticalAlignment.Center, Children = { title, tools } } } };
         header = new Border
@@ -129,7 +140,12 @@ internal sealed class ToolPane : DockPanel
             {
                 return;
             }
-            if (e.ClickCount == 2 && Floating is null)
+            if (e.ClickCount == 2 && Peeking)
+            {
+                host.Show(window.Id);
+                e.Handled = true;
+            }
+            else if (e.ClickCount == 2 && Floating is null)
             {
                 host.ToggleMaximize(window);
                 e.Handled = true;
@@ -146,19 +162,16 @@ internal sealed class ToolPane : DockPanel
         header.PointerMoved += (_, e) => host.Drag.Continue(e);
         header.PointerReleased += (_, e) => host.Drag.End(e);
         Children.Add(header);
-        tabView = new ScrollViewer { HorizontalScrollBarVisibility = ScrollBarVisibility.Hidden, VerticalScrollBarVisibility = ScrollBarVisibility.Disabled, Content = tabRow };
         hiddenTabs = ToolButtons.Of(IconKeys.ChevronDown, "Hidden Tool Windows", ShowHiddenTabs);
-        hiddenTabs.IsVisible = false;
         hiddenTabs.VerticalAlignment = VerticalAlignment.Center;
         hiddenTabs.Margin = new Thickness(0, 0, 6, 0);
-        hiddenTabs[DockProperty] = Dock.Right;
-        tabView.ScrollChanged += (_, _) => hiddenTabs.IsVisible = HiddenTabs.Count > 0;
+        tabRow = new FittingTabs(hiddenTabs);
         tabStrip = new Border
         {
             Classes = { StyleClasses.TabStrip, StyleClasses.ToolTabStrip },
             [DockProperty] = Dock.Bottom,
             IsVisible = false,
-            Child = new DockPanel { Children = { hiddenTabs, tabView } },
+            Child = tabRow,
         };
         Children.Add(tabStrip);
         Children.Add(new Panel { Children = { body, new ThemeBackdrop(BackgroundPlaces.ToolWindows) } });
@@ -219,6 +232,14 @@ internal sealed class ToolPane : DockPanel
         set => close.IsVisible = value;
     }
 
+    /// <summary>Whether it stands over the editors beside its edge (<see cref="DockHost.Peek"/>): its header then offers
+    /// Dock, as a double click on it does, which puts the window in its place.</summary>
+    public bool Peeking
+    {
+        get => dock.IsVisible;
+        init => dock.IsVisible = value;
+    }
+
     public void Show(ToolWindow? window)
     {
         if (Window == window)
@@ -271,42 +292,18 @@ internal sealed class ToolPane : DockPanel
     {
         bool shown = docked.Count > 1;
         tabStrip.IsVisible = shown;
-        if (!shown)
-        {
-            tabRow.Children.Clear();
-            return;
-        }
-        Border[] wanted = [.. docked.Select(TabOf)];
-        if (!tabRow.Children.SequenceEqual(wanted))
-        {
-            tabRow.Children.Clear();
-            tabRow.Children.AddRange(wanted);
-        }
+        tabRow.Hold(shown ? [.. docked.Select(TabOf)] : []);
         foreach ((ToolWindow window, Border tab) in tabs)
         {
             tab.Classes.Set(StyleClasses.Active, window == Window);
         }
-        // The open window's tab scrolled into sight once laid out, however many crowd the strip.
-        if (Window is { } open && tabs.TryGetValue(open, out Border? shownTab))
-        {
-            Avalonia.Threading.Dispatcher.UIThread.Post(shownTab.BringIntoView, Avalonia.Threading.DispatcherPriority.Loaded);
-        }
+        // The open window's tab stays in the strip, however many crowd it.
+        tabRow.Kept = Window is { } open && tabs.TryGetValue(open, out Border? shownTab) ? shownTab : null;
     }
 
-    /// <summary>Whether its titled tabs name a window.</summary>
-    public bool Names(ToolWindow window) => tabStrip.IsVisible && tabs.TryGetValue(window, out Border? tab) && tabRow.Children.Contains(tab);
-
-    /// <summary>The windows whose tabs are out of the strip's sight, wholly or in part, in its order.</summary>
-    public IReadOnlyList<ToolWindow> HiddenTabs
-    {
-        get
-        {
-            double from = tabView.Offset.X;
-            double to = from + tabView.Viewport.Width;
-            return [.. tabs.Where(t => tabRow.Children.Contains(t.Value) && (t.Value.Bounds.X < from - 0.5 || t.Value.Bounds.Right > to + 0.5))
-                .OrderBy(t => tabRow.Children.IndexOf(t.Value)).Select(t => t.Key)];
-        }
-    }
+    /// <summary>The windows whose tabs have no room in the strip, in its order, which its last button lists.</summary>
+    public IReadOnlyList<ToolWindow> HiddenTabs =>
+        [.. tabRow.Tabs.Where(tabRow.IsGone).Select(tab => tabs.First(t => t.Value == tab).Key)];
 
     /// <summary>The menu of the tabs out of sight, each opening its window as its tab would.</summary>
     private void ShowHiddenTabs()
@@ -321,6 +318,8 @@ internal sealed class ToolPane : DockPanel
             item.Click += (_, _) => host.Show(id);
             menu.Items.Add(item);
         }
+        host.HiddenTabsMenu = menu;
+        menu.Closed += (_, _) => host.HiddenTabsMenu = host.HiddenTabsMenu == menu ? null : host.HiddenTabsMenu;
         menu.Open(hiddenTabs);
     }
 
@@ -409,7 +408,7 @@ internal sealed class ToolPane : DockPanel
             };
             mode.Items.Add(item);
         }
-        MenuItem maximize = new() { Header = host.IsMaximized ? "Restore Size" : "Maximize", IsEnabled = Floating is null };
+        MenuItem maximize = new() { Header = host.IsMaximized ? "Restore Size" : "Maximize", IsEnabled = Floating is null && !Peeking };
         maximize.Click += (_, _) => host.ToggleMaximize(Window);
         MenuItem hide = new() { Header = "Hide" };
         hide.Click += (_, _) =>

@@ -14,9 +14,9 @@ public static class Refusals
     /// <summary>No tool window is open, for an action on the one open last.</summary>
     public const string NoToolWindowOpen = "No tool window is open";
 
-    /// <summary>Closed tool windows keep their stripe icons, so Close is Hide.</summary>
+    /// <summary>Closed tool windows keep their stripe icons or tabs, so Close is Hide.</summary>
     public static readonly string ClosedKeepIcons =
-        $"Closed tool windows keep their stripe icons: Hide closes them ({SettingsDialog.PlaceOfPage(SettingsDialog.Appearance)} | Closed tool windows)";
+        $"Closed tool windows keep their icons or tabs: Hide closes them ({SettingsDialog.PlaceOfPage(SettingsDialog.Appearance)} | Closed tool windows)";
 
     /// <summary>No file is shown in the editor.</summary>
     public const string NoFile = "No file is open";

@@ -2,20 +2,25 @@ using Avalonia;
 
 namespace Passenger.App.Docking;
 
-/// <summary>Where a tool window dragged by its stripe button or its header drops: on a stripe, into the group under the
-/// pointer at its place among the buttons; over the frame, into the place whose part of it the pointer is over, which
-/// lights up as about the size the window will have there.</summary>
+/// <summary>Where a tool window dragged by its stripe button, its header or a tab drops: on a stripe, into the group under
+/// the pointer at its place among the buttons; on a side's edge tabs, into the half of the side the pointer is beside; over
+/// the frame, into the place whose part of it the pointer is over, which lights up as about the size the window will have
+/// there.</summary>
 internal sealed class DockDrag
 {
     private readonly DockHost host;
     private readonly Stripe left;
     private readonly Stripe right;
+    private readonly EdgeTabs leftEdge;
+    private readonly EdgeTabs rightEdge;
 
-    public DockDrag(DockHost host, Stripe left, Stripe right)
+    public DockDrag(DockHost host, Stripe left, Stripe right, EdgeTabs leftEdge, EdgeTabs rightEdge)
     {
         this.host = host;
         this.left = left;
         this.right = right;
+        this.leftEdge = leftEdge;
+        this.rightEdge = rightEdge;
         Gesture = new DragGesture<ToolWindow>(host, Overlay, Zone, Drop);
     }
 
@@ -35,11 +40,11 @@ internal sealed class DockDrag
         double end = width - host.RightStripeWidth;
         if (at.X < start)
         {
-            return left.AnchorAt(host.TranslatePoint(at, left) ?? at);
+            return left.IsVisible ? left.AnchorAt(host.TranslatePoint(at, left) ?? at) : leftEdge.AnchorAt(host.TranslatePoint(at, leftEdge) ?? at);
         }
         if (at.X > end)
         {
-            return right.AnchorAt(host.TranslatePoint(at, right) ?? at);
+            return right.IsVisible ? right.AnchorAt(host.TranslatePoint(at, right) ?? at) : rightEdge.AnchorAt(host.TranslatePoint(at, rightEdge) ?? at);
         }
         if (at.Y > height * 0.7)
         {
@@ -59,7 +64,7 @@ internal sealed class DockDrag
     private int? StripeIndex(ToolWindow window, ToolAnchor anchor, Point at)
     {
         Stripe? stripe = at.X < host.LeftStripeWidth ? left : at.X > host.Bounds.Width - host.RightStripeWidth ? right : null;
-        return stripe?.IndexAt(anchor, host.TranslatePoint(at, stripe) ?? at, window);
+        return stripe is { IsVisible: true } ? stripe.IndexAt(anchor, host.TranslatePoint(at, stripe) ?? at, window) : null;
     }
 
     /// <summary>Where a window dragged from elsewhere (its editor tab) would dock at a point, lit in the frame's overlay.</summary>
