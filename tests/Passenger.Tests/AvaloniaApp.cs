@@ -71,10 +71,13 @@ internal static class AvaloniaApp
 
     /// <summary>The project file of an app of tests/Debuggees made a desktop app as a person's is: on the desktop's own
     /// platforms (Avalonia.Desktop), with no headless platform of its own unless it takes that package too.</summary>
-    public static string DesktopProject(params string[] more)
+    public static string DesktopProject(params string[] more) => DesktopProjectOn(Version, more);
+
+    /// <summary><see cref="DesktopProject"/> on another Avalonia, one tests/AvaloniaGraphs restores.</summary>
+    public static string DesktopProjectOn(string avalonia, params string[] more)
     {
         string packages = string.Concat(new[] { "Avalonia", "Avalonia.Themes.Fluent", "Avalonia.Fonts.Inter", "Avalonia.Desktop" }.Concat(more)
-            .Select(p => $"    <PackageReference Include=\"{p}\" Version=\"{Version}\" />\n"));
+            .Select(p => $"    <PackageReference Include=\"{p}\" Version=\"{avalonia}\" />\n"));
         return TestProjects.Console("<Nullable>enable</Nullable>", "<ImplicitUsings>enable</ImplicitUsings>").With($"  <ItemGroup>\n{packages}  </ItemGroup>\n");
     }
 

@@ -1,0 +1,12 @@
+<Project>
+  <!-- What Passenger's hooks into an Avalonia app (the inspector, the test frames' hook) are compiled against: the first
+       Avalonia 12's implementation assemblies (AvaloniaOldestVersion), not the reference ones a package gives a build, which
+       leave out what Avalonia marks [PrivateApi]. A hook calls only what that Avalonia has, which every later 12.x keeps,
+       so it runs in an app on any of them. -->
+  <PropertyGroup>
+    <OldestAvalonia>$(NuGetPackageRoot)avalonia/$(AvaloniaOldestVersion)/lib/net8.0/</OldestAvalonia>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageDownload Include="Avalonia" Version="[$(AvaloniaOldestVersion)]" />
+  </ItemGroup>
+</Project>

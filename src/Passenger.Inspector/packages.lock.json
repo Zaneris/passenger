@@ -2,17 +2,6 @@
   "version": 2,
   "dependencies": {
     "net8.0": {
-      "Avalonia": {
-        "type": "Direct",
-        "requested": "[12.1.6, )",
-        "resolved": "12.1.6",
-        "contentHash": "juogZu7ASS2KMtSqOMa8nGJ5I1Ile/3PG3JR+tD73liDr30qgilEsqNVQw3KIXJvuFc9m3Mf9NzGWc3sQvnlXA==",
-        "dependencies": {
-          "Avalonia.BuildServices": "11.3.2",
-          "Avalonia.Remote.Protocol": "12.1.6",
-          "MicroCom.Runtime": "0.11.6"
-        }
-      },
       "Avalonia.Headless": {
         "type": "Direct",
         "requested": "[12.1.6, )",
@@ -68,6 +57,17 @@
         "type": "Transitive",
         "resolved": "0.11.6",
         "contentHash": "NdNWGDiZ6eS/Mf/9+QHR91cj1K7Hy+PX9yrHI/zM7xFYuj9IWT2uxtB6sCHjrnxAeLV9fut1R6zHDUGKX6f9lQ=="
+      },
+      "Avalonia": {
+        "type": "CentralTransitive",
+        "requested": "[12.1.6, )",
+        "resolved": "12.1.6",
+        "contentHash": "juogZu7ASS2KMtSqOMa8nGJ5I1Ile/3PG3JR+tD73liDr30qgilEsqNVQw3KIXJvuFc9m3Mf9NzGWc3sQvnlXA==",
+        "dependencies": {
+          "Avalonia.BuildServices": "11.3.2",
+          "Avalonia.Remote.Protocol": "12.1.6",
+          "MicroCom.Runtime": "0.11.6"
+        }
       },
       "Avalonia.Fonts.Inter": {
         "type": "CentralTransitive",

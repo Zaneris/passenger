@@ -245,7 +245,8 @@
   </Target>
 
   <!-- The inspector becomes this project's output under inspector/: its own assembly, XAML Hot Reload's compiler and the
-       headless platform, since the app it loads into brings the Avalonia it uses. -->
+       headless platform (an older Avalonia's in its folder there), since the app it loads into brings the Avalonia it
+       uses. -->
   <Target Name="IncludeInspector" BeforeTargets="AssignTargetPaths">
     <MSBuild Projects="../Passenger.Inspector/Passenger.Inspector.csproj" Targets="GetTargetPath"
              RemoveProperties="RuntimeIdentifier;SelfContained;PublishReadyToRun" BuildInParallel="$(BuildInParallel)">
@@ -257,7 +258,7 @@
     </MSBuild>
     <ItemGroup>
       <InspectorFile Include="@(InspectorAssembly->'%(RootDir)%(Directory)%(Filename).dll');@(InspectorAssembly->'%(RootDir)%(Directory)%(Filename).pdb')" />
-      <None Include="@(InspectorFile)" Link="inspector/%(InspectorFile.Filename)%(InspectorFile.Extension)"
+      <None Include="@(InspectorFile)" Link="inspector/%(InspectorFile.Folder)%(InspectorFile.Filename)%(InspectorFile.Extension)"
             CopyToOutputDirectory="PreserveNewest" Visible="false" />
     </ItemGroup>
   </Target>

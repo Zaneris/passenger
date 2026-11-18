@@ -49,13 +49,17 @@ internal static class AvaloniaHooks
 
 /// <summary>Where a hook runs: its own context, which takes Avalonia's assemblies from the program whatever their 12.x
 /// version, since the default context would refuse one older than the 12.x the hook was compiled against, and those of
-/// Avalonia's the hook carries from beside it where the program has none of its own (<see cref="Carried"/>). Nothing of it
-/// touches Avalonia, so a hook asks it before Avalonia is loaded.</summary>
+/// Avalonia's the hook carries, the build fitting the program's Avalonia, where the program has none of its own
+/// (<see cref="Carried"/>). Nothing of it touches Avalonia, so a hook asks it before Avalonia is loaded.</summary>
 internal sealed class AppAvaloniaContext(string what, string hook) : AssemblyLoadContext($"{what} ({Path.GetFileName(hook)})")
 {
     /// <summary>What a program seldom carries of Avalonia's and the inspector brings: the runtime XAML compiler (XAML Hot
-    /// Reload's) and the headless platform (an app nobody is to see).</summary>
+    /// Reload's) and the headless platform (an app nobody is to see), each built against an Avalonia 12, Passenger's beside
+    /// the hook and older ones' in a folder each under <see cref="OlderFolder"/>.</summary>
     private static readonly string[] Carried = ["Avalonia.Markup.Xaml.Loader", "Avalonia.Headless"];
+
+    /// <summary>The folder beside the hook holding what it carries built against older Avalonias than Passenger's.</summary>
+    private const string OlderFolder = "avalonia";
 
     /// <summary>Avalonia's platforms that draw where people see them, by their assemblies.</summary>
     public static readonly string[] ScreenPlatforms = ["Avalonia.Native", "Avalonia.X11", "Avalonia.Win32", "Avalonia.LinuxFramebuffer"];
@@ -101,9 +105,24 @@ internal sealed class AppAvaloniaContext(string what, string hook) : AssemblyLoa
         }
     }
 
+    /// <summary>Of the builds of an assembly a hook carries, the one the program takes: the newest built against an Avalonia no
+    /// newer than the program's, as each implements Avalonia's platform interfaces as its own version declares them, else the
+    /// oldest (an app on a device is given Passenger's alone), which may still fit it; null where none is carried.</summary>
+    private static string? CarriedFor(string hook, string name)
+    {
+        string beside = Path.GetDirectoryName(hook)!;
+        string older = Path.Combine(beside, OlderFolder);
+        IEnumerable<string> folders = Directory.Exists(older) ? Directory.GetDirectories(older).Prepend(beside) : [beside];
+        Version? avalonia = Taken("Avalonia.Base");
+        // Avalonia's packages ship at one version, so a carried assembly's own is the Avalonia it was built against.
+        (string Path, Version Version)[] builds = [.. folders.Select(folder => Path.Combine(folder, name + ".dll")).Where(File.Exists)
+            .Select(path => (Path: path, Version: AssemblyName.GetAssemblyName(path).Version ?? new Version())).OrderBy(build => build.Version)];
+        return builds.LastOrDefault(build => avalonia is null || build.Version <= avalonia).Path ?? builds.FirstOrDefault().Path;
+    }
+
     protected override Assembly? Load(AssemblyName name) =>
         name.Name is { } own && Carried.Contains(own) && StartupHooks.TrustedAssembly(own + ".dll") is null
-            && Path.Combine(Path.GetDirectoryName(hook)!, own + ".dll") is { } carried && File.Exists(carried)
+            && CarriedFor(hook, own) is { } carried
             ? LoadFromAssemblyPath(carried)
             : name.Name is { } simple && (simple.StartsWith("Avalonia", StringComparison.Ordinal) || simple.StartsWith("MicroCom", StringComparison.Ordinal))
             ? Default.LoadFromAssemblyName(new AssemblyName(simple))

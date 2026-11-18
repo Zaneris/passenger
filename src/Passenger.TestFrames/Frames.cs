@@ -159,7 +159,7 @@ public static class Frames
             }
         }
         using MemoryStream png = new();
-        frame.Save(png, PngBitmapEncoderOptions.Default);
+        frame.Save(png);
         return png.ToArray();
     }
 

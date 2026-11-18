@@ -18,7 +18,8 @@ public static class Unseen
     private static AppBuilder? prepared;
 
     /// <summary>Makes the app's builder and gives it the headless platform; why it cannot, else null: no builder beside its
-    /// Main, one choosing no renderer, or no text shaping in its build.</summary>
+    /// Main, no text shaping in its build, a headless platform that does not fit its Avalonia, or a builder choosing no
+    /// renderer.</summary>
     public static string? Prepare()
     {
         MethodInfo? build = Assembly.GetEntryAssembly()?.EntryPoint?.DeclaringType?.GetMethod(Builder, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static, Type.EmptyTypes);
@@ -30,6 +31,10 @@ public static class Unseen
         {
             return "its build carries no Avalonia.HarfBuzz, which shapes its text there";
         }
+        if (Unfit() is { } unfit)
+        {
+            return unfit;
+        }
         AppBuilder app = (AppBuilder)build.Invoke(null, BindingFlags.DoNotWrapExceptions, null, null, null)!;
         if (app.RenderingSubsystemName is null)
         {
@@ -37,6 +42,36 @@ public static class Unseen
         }
         prepared = Headless(app);
         return null;
+    }
+
+    /// <summary>Why the headless platform the app is given (its own, else the build Passenger carries for its Avalonia) does
+    /// not fit the app's Avalonia, null where it does: each of its types loaded and each method compiled, so what its
+    /// Avalonia lacks refuses the app here, saying so, rather than ending it as it starts. A method of its own, compiled only
+    /// once <see cref="Prepare"/> has found HarfBuzz, which the platform names, in the app's build.</summary>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static string? Unfit()
+    {
+        const BindingFlags declared = BindingFlags.DeclaredOnly | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static;
+        Assembly platform = typeof(AvaloniaHeadlessPlatform).Assembly;
+        try
+        {
+            foreach (Type type in platform.GetTypes().Where(type => !type.ContainsGenericParameters))
+            {
+                foreach (MethodBase method in type.GetMethods(declared).Concat<MethodBase>(type.GetConstructors(declared)))
+                {
+                    if (!method.ContainsGenericParameters && method.GetMethodBody() is not null)
+                    {
+                        RuntimeHelpers.PrepareMethod(method.MethodHandle);
+                    }
+                }
+            }
+            return null;
+        }
+        catch (Exception error) when (error is ReflectionTypeLoadException or TypeLoadException or MissingMemberException or FileNotFoundException or FileLoadException or BadImageFormatException)
+        {
+            Exception first = error is ReflectionTypeLoadException loading ? loading.LoaderExceptions.OfType<Exception>().FirstOrDefault() ?? error : error;
+            return $"the headless platform built against Avalonia {platform.GetName().Version?.ToString(3)} does not fit its Avalonia {AppAvaloniaContext.ProgramAvalonia().Version?.ToString(3)} ({first.Message})";
+        }
     }
 
     /// <summary>The app's builder on the headless platform, shaping its text with HarfBuzz where it chose nothing to and

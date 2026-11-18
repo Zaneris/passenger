@@ -53,7 +53,7 @@ internal static class Pictures
         using MemoryStream png = new();
         if (part.Width == size.Width && part.Height == size.Height)
         {
-            whole.Save(png, PngBitmapEncoderOptions.Default);
+            whole.Save(png);
         }
         else
         {
@@ -63,7 +63,7 @@ internal static class Pictures
             {
                 whole.CopyPixels(part, target.Address, target.RowBytes * part.Height, target.RowBytes);
             }
-            cropped.Save(png, PngBitmapEncoderOptions.Default);
+            cropped.Save(png);
         }
         return new Picture(png.ToArray(), part.Width, part.Height, scale,
             new Box(part.X / scale, part.Y / scale, part.Width / scale, part.Height / scale));

@@ -70,6 +70,13 @@ public sealed class HeadlessCarryingAppFolder : DesktopAgentAppFolder
     protected override string Project => AvaloniaApp.DesktopProject("Avalonia.Headless");
 }
 
+/// <summary>The desktop app on Avalonia 12.0 (Avalonia120Version), carrying no headless platform of its own, as a person's
+/// app on an older Avalonia than Passenger's is.</summary>
+public sealed class Avalonia120AppFolder : DesktopAgentAppFolder
+{
+    protected override string Project => AvaloniaApp.DesktopProjectOn(AvaloniaApp.Metadata("Avalonia120Version"));
+}
+
 /// <summary>The desktop app run by a launch profile that names its program, the app's assembly under dotnet, rather than its
 /// project's.</summary>
 public sealed class NamedProgramAppFolder : DesktopAgentAppFolder
@@ -166,21 +173,24 @@ public sealed class DesktopHeadAppFolder : IAsyncLifetime
 /// so no window reaches a screen and the app tools see and use it as they do any app's.</summary>
 [Collection(Alone.Name)]
 public sealed class McpUnseenAppTests : McpRig, IClassFixture<DesktopAgentAppFolder>, IClassFixture<HeadlessCarryingAppFolder>, IClassFixture<PlatformChoosingAppFolder>,
-    IClassFixture<NamedProgramAppFolder>, IClassFixture<DesktopHeadAppFolder>
+    IClassFixture<NamedProgramAppFolder>, IClassFixture<DesktopHeadAppFolder>, IClassFixture<Avalonia120AppFolder>
 {
     private readonly string appFolder;
     private readonly string carryingFolder;
     private readonly string choosingFolder;
     private readonly string namedFolder;
     private readonly string headFolder;
+    private readonly string olderFolder;
 
-    public McpUnseenAppTests(DesktopAgentAppFolder app, HeadlessCarryingAppFolder carrying, PlatformChoosingAppFolder choosing, NamedProgramAppFolder named, DesktopHeadAppFolder head)
+    public McpUnseenAppTests(DesktopAgentAppFolder app, HeadlessCarryingAppFolder carrying, PlatformChoosingAppFolder choosing, NamedProgramAppFolder named, DesktopHeadAppFolder head,
+        Avalonia120AppFolder older)
     {
         appFolder = app.Folder;
         carryingFolder = carrying.Folder;
         choosingFolder = choosing.Folder;
         namedFolder = named.Folder;
         headFolder = head.Folder;
+        olderFolder = older.Folder;
     }
 
     /// <summary>Run with no window on any screen: its window and picture are the app's own, a click and a XAML edit Hot
@@ -230,6 +240,36 @@ public sealed class McpUnseenAppTests : McpRig, IClassFixture<DesktopAgentAppFol
         JsonElement frames = (await Call(client, McpTools.Profile, new() { ["arguments"] = "--quit-once-drawn" })).GetProperty("frames");
         Assert.True(frames.GetProperty("count").GetInt32() > 0, $"The profile of the desktop app on the headless platform has no frames: {frames}");
         Assert.DoesNotContain(DesktopAgentAppFolder.MainRan, Text(await Call(client, McpTools.Output)), StringComparison.Ordinal);
+    }
+
+    /// <summary>An app on an older Avalonia 12 than Passenger's is given the headless platform and XAML compiler built against
+    /// its own Avalonia, whose platform's interfaces they implement and call as it declares them, and the inspector calls
+    /// nothing it lacks: it runs where nobody sees it, its picture is taken, and a click and a XAML edit reach it.</summary>
+    [Fact]
+    public async Task A_desktop_app_on_avalonia_12_0_runs_on_the_headless_platform_built_for_its_avalonia_and_its_tools_use_it()
+    {
+        await using McpClient client = await Start(["--mcp", olderFolder], languageServer: false);
+        JsonElement built = await Call(client, McpTools.Build);
+        Assert.True(built.GetProperty("succeeded").GetBoolean(), $"The app on Avalonia {AvaloniaApp.Metadata("Avalonia120Version")} did not build: {built}");
+
+        JsonElement ran = await Call(client, McpTools.Run, new() { ["waitSeconds"] = 3600, ["hotReload"] = false });
+
+        Assert.True(ran.GetProperty("stillRunning").GetBoolean() && ran.GetProperty("status").GetString()!.Contains("its BuildAvaloniaApp() started in place of its Main", StringComparison.Ordinal),
+            $"The app on Avalonia {AvaloniaApp.Metadata("Avalonia120Version")} did not come up on the headless platform: {ran}\n{Text(await Call(client, McpTools.Output))}");
+        Assert.DoesNotContain(DesktopAgentAppFolder.MainRan, Text(await Call(client, McpTools.Output)), StringComparison.Ordinal);
+        JsonElement main = Assert.Single((await Call(client, McpTools.AppWindows)).GetProperty("windows").EnumerateArray());
+        CallToolResult picture = await Result(client, McpTools.AppScreenshot);
+        ImageContentBlock image = Assert.Single(picture.Content.OfType<ImageContentBlock>());
+        double scaling = main.GetProperty("scaling").GetDouble();
+        Assert.Equal(((int)(480 * scaling), (int)(360 * scaling)), PngSize(image.DecodedData.ToArray()));
+        Assert.True(image.DecodedData.Length > 4000, $"The app's picture is {image.DecodedData.Length} bytes, as a blank one would be");
+        Assert.StartsWith("Clicked Button#Count @", Text(await Call(client, McpTools.AppClick, new() { ["control"] = "#Count" })), StringComparison.Ordinal);
+        Assert.Contains("\"Clicked once\"", Text(await Call(client, McpTools.AppTree, new() { ["control"] = "#Counter" })), StringComparison.Ordinal);
+        await Call(client, McpTools.Edit, new() { ["path"] = "MainWindow.axaml", ["oldText"] = "Text=\"Nobody greeted\"", ["newText"] = "Text=\"Greeted unseen\"" });
+        JsonElement reloaded = await Call(client, McpTools.HotReload);
+        Assert.True(reloaded.GetProperty("result").GetString() == "applied", $"The window's XAML edit was not applied to the app: {reloaded}");
+        Assert.Contains("\"Greeted unseen\"", Text(await Call(client, McpTools.AppTree, new() { ["control"] = "#Greeting" })), StringComparison.Ordinal);
+        await Call(client, McpTools.Stop);
     }
 
     /// <summary>A desktop head is an Avalonia app to Run with Hot Reload, however little it says so itself: its inspector goes

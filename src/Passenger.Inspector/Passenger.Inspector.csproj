@@ -15,21 +15,28 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
+  <!-- Compiled against the first Avalonia 12's implementation assemblies (AvaloniaHooks.props), the value store's
+       diagnostics (which frame gave a value, which style it is, whether it is active) and a popup's host among what
+       Avalonia marks [PrivateApi]. -->
+  <Import Project="../AvaloniaHooks.props" />
+
   <ItemGroup>
-    <!-- Compiled against Avalonia's implementation assemblies, not the reference ones the package gives a build: those
-         leave out what Avalonia marks [PrivateApi], among it the value store's diagnostics (which frame gave a value,
-         which style it is, whether it is active) and a popup's host. -->
-    <PackageReference Include="Avalonia" GeneratePathProperty="true" ExcludeAssets="compile" />
-    <Reference Include="$(PkgAvalonia)/lib/net8.0/Avalonia.Base.dll" Private="false" />
-    <Reference Include="$(PkgAvalonia)/lib/net8.0/Avalonia.Controls.dll" Private="false" />
-    <Reference Include="$(PkgAvalonia)/lib/net8.0/Avalonia.Markup.dll" Private="false" />
-    <Reference Include="$(PkgAvalonia)/lib/net8.0/Avalonia.Markup.Xaml.dll" Private="false" />
-    <!-- XAML Hot Reload's runtime compiler, carried beside the inspector for an app that does not have its own
-         (AppAvaloniaContext). -->
-    <PackageReference Include="Avalonia.Markup.Xaml.Loader" GeneratePathProperty="true" Private="false" />
-    <!-- Avalonia's headless platform, which an app nobody is to see is started on (Unseen.cs), carried beside the
-         inspector for an app that does not have its own; its text shaping is the app's (Avalonia.HarfBuzz). -->
-    <PackageReference Include="Avalonia.Headless" GeneratePathProperty="true" Private="false" />
+    <Reference Include="$(OldestAvalonia)Avalonia.Base.dll" Private="false" />
+    <Reference Include="$(OldestAvalonia)Avalonia.Controls.dll" Private="false" />
+    <Reference Include="$(OldestAvalonia)Avalonia.Markup.dll" Private="false" />
+    <Reference Include="$(OldestAvalonia)Avalonia.Markup.Xaml.dll" Private="false" />
+    <!-- XAML Hot Reload's runtime compiler and Avalonia's headless platform, which an app nobody is to see is started on
+         (Unseen.cs), its text shaping the app's (Avalonia.HarfBuzz): carried beside the inspector for an app that does not
+         have its own (AppAvaloniaContext), at Passenger's Avalonia and at each older one an app may need
+         (AvaloniaCarriedVersions), and compiled against the first. -->
+    <PackageReference Include="Avalonia.Markup.Xaml.Loader" GeneratePathProperty="true" ExcludeAssets="compile" Private="false" />
+    <PackageReference Include="Avalonia.Headless" GeneratePathProperty="true" ExcludeAssets="compile" Private="false" />
+    <PackageDownload Include="Avalonia.Markup.Xaml.Loader;Avalonia.Headless" Version="[$(AvaloniaCarriedVersions.Replace(';', '];['))]" />
+    <Reference Include="$(NuGetPackageRoot)avalonia.markup.xaml.loader/$(AvaloniaOldestVersion)/lib/net8.0/Avalonia.Markup.Xaml.Loader.dll" Private="false" />
+    <Reference Include="$(NuGetPackageRoot)avalonia.headless/$(AvaloniaOldestVersion)/lib/net8.0/Avalonia.Headless.dll" Private="false" />
+    <!-- The headless platform's text shaping, which an app chose none of is given (Unseen.cs). -->
+    <PackageDownload Include="Avalonia.HarfBuzz" Version="[$(AvaloniaOldestVersion)]" />
+    <Reference Include="$(NuGetPackageRoot)avalonia.harfbuzz/$(AvaloniaOldestVersion)/lib/net8.0/Avalonia.HarfBuzz.dll" Private="false" />
   </ItemGroup>
 
   <ItemGroup>
@@ -69,11 +76,13 @@
   </ItemGroup>
 
   <!-- What Passenger carries under inspector/ beside the inspector's own assembly: XAML Hot Reload's compiler and the
-       headless platform. -->
+       headless platform, Passenger's Avalonia's beside it and each older one's in a folder of its own (Folder). -->
   <Target Name="GetCarriedFiles" Returns="@(CarriedFile)">
     <ItemGroup>
-      <CarriedFile Include="$(PkgAvalonia_Markup_Xaml_Loader)/lib/net8.0/Avalonia.Markup.Xaml.Loader.dll" />
-      <CarriedFile Include="$(PkgAvalonia_Headless)/lib/net8.0/Avalonia.Headless.dll" />
+      <CarriedFile Include="$(PkgAvalonia_Markup_Xaml_Loader)/lib/net8.0/Avalonia.Markup.Xaml.Loader.dll;$(PkgAvalonia_Headless)/lib/net8.0/Avalonia.Headless.dll" Folder="" />
+      <CarriedAvalonia Include="$(AvaloniaCarriedVersions)" />
+      <CarriedFile Include="$(NuGetPackageRoot)avalonia.markup.xaml.loader/%(CarriedAvalonia.Identity)/lib/net8.0/Avalonia.Markup.Xaml.Loader.dll;$(NuGetPackageRoot)avalonia.headless/%(CarriedAvalonia.Identity)/lib/net8.0/Avalonia.Headless.dll"
+                   Folder="avalonia/%(CarriedAvalonia.Identity)/" />
     </ItemGroup>
   </Target>
 </Project>

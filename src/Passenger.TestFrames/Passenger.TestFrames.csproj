@@ -10,12 +10,13 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
+  <!-- Compiled against the first Avalonia 12's implementation assemblies (AvaloniaHooks.props): a popup's owner is not in
+       the reference ones a package gives a build. -->
+  <Import Project="../AvaloniaHooks.props" />
+
   <ItemGroup>
-    <!-- Compiled against Avalonia's implementation assemblies: a popup's owner is not in the reference ones the package
-         gives a build. -->
-    <PackageReference Include="Avalonia" GeneratePathProperty="true" ExcludeAssets="compile" />
-    <Reference Include="$(PkgAvalonia)/lib/net8.0/Avalonia.Base.dll" Private="false" />
-    <Reference Include="$(PkgAvalonia)/lib/net8.0/Avalonia.Controls.dll" Private="false" />
+    <Reference Include="$(OldestAvalonia)Avalonia.Base.dll" Private="false" />
+    <Reference Include="$(OldestAvalonia)Avalonia.Controls.dll" Private="false" />
   </ItemGroup>
 
   <ItemGroup>

@@ -49,6 +49,7 @@
     <AssemblyMetadata Include="NuGetPackageRoot" Value="$(NuGetPackageRoot)" />
     <AssemblyMetadata Include="AvaloniaTemplatesVersion" Value="$(AvaloniaTemplatesVersion)" />
     <AssemblyMetadata Include="AvaloniaOlderVersion" Value="$(AvaloniaOlderVersion)" />
+    <AssemblyMetadata Include="Avalonia120Version" Value="$(Avalonia120Version)" />
     <AssemblyMetadata Include="CommunityToolkitMvvmVersion" Value="$(CommunityToolkitMvvmVersion)" />
     <AssemblyMetadata Include="ReactiveUiVersion" Value="$(ReactiveUiVersion)" />
     <AssemblyMetadata Include="ReactiveUiGeneratorsVersion" Value="$(ReactiveUiGeneratorsVersion)" />

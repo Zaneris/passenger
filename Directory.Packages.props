@@ -12,6 +12,18 @@
     <AvaloniaTemplatesVersion>12.1.6</AvaloniaTemplatesVersion>
     <!-- Avalonia 11's last release, for the previewer's test of an app still on it (tests/AvaloniaGraphs). -->
     <AvaloniaOlderVersion>11.3.23</AvaloniaOlderVersion>
+    <!-- The first Avalonia 12, which Passenger's hooks into an Avalonia app are compiled against (src/AvaloniaHooks.props),
+         so they call nothing an app on any Avalonia 12 lacks. -->
+    <AvaloniaOldestVersion>12.0.0</AvaloniaOldestVersion>
+    <!-- Avalonia 12.0's last release, for the tests' desktop app on an older Avalonia 12 than Passenger's
+         (tests/AvaloniaGraphs). -->
+    <Avalonia120Version>12.0.5</Avalonia120Version>
+    <!-- The older Avalonia 12s whose headless platform and XAML compiler the inspector carries beside Passenger's own: each
+         serves an app from its version to the next one's, as Avalonia changed what the headless platform implements or
+         calls at 12.1.0 (a window's frame theme), 12.1.2 (a popup's hit testing) and 12.1.3 (the mouse device it resets),
+         so an app on any Avalonia 12 up to Passenger's is given one built against its own platform's interfaces. A move of
+         Passenger's Avalonia adds the version it leaves, and any between where the platform changed. -->
+    <AvaloniaCarriedVersions>$(AvaloniaOldestVersion);12.1.0;12.1.2</AvaloniaCarriedVersions>
     <!-- The MVVM Toolkit at the version Avalonia's MVVM template above writes, downloaded for the tests' package cache, so
          an app of theirs restores with its generators and reaches no feed. -->
     <CommunityToolkitMvvmVersion>8.4.2</CommunityToolkitMvvmVersion>
