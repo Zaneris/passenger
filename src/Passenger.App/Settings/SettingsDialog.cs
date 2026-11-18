@@ -547,7 +547,6 @@ public sealed partial class SettingsDialog : IdeWindow
             Text = label,
             Padding = new Thickness(0, 0, Gaps.Group, 0),
             TextWrapping = TextWrapping.Wrap,
-            VerticalAlignment = firstLine < 0 ? VerticalAlignment.Center : VerticalAlignment.Top,
         };
         AutomationProperties.SetLabeledBy(editor, name);
         TextBlock? said = note is null ? null : new TextBlock { Text = note, TextWrapping = TextWrapping.Wrap, HorizontalAlignment = HorizontalAlignment.Left, Classes = { StyleClasses.Muted } };

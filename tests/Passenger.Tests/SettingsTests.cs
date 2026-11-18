@@ -498,6 +498,83 @@ public sealed class SettingsTests : IDisposable
         Assert.True(found.Count == 0, string.Join("\n", found.Distinct()));
     }
 
+    /// <summary>Every row of every Settings page, at the dialog's usual width and at its least, stands its editor level with
+    /// its label's first line where the two stand side by side, and lays its note a gap below what stands over it in its
+    /// column, so a label running on below its editor (Remote Stylesheets') leaves no empty room beside it under the editor.</summary>
+    [AvaloniaFact]
+    public void Every_rows_editor_stands_by_its_labels_first_line_with_its_note_right_under_it()
+    {
+        MainWindow window = Open();
+        SettingsDialog dialog = window.ShowSettings();
+        List<string> found = [];
+        int rows = 0;
+        int longBeside = 0;
+        try
+        {
+            Ui.Settle();
+            foreach (double width in (double[])[dialog.Width, dialog.MinWidth])
+            {
+                dialog.Width = width;
+                foreach (string page in dialog.Pages.ToList())
+                {
+                    dialog.Page = page;
+                    Ui.Settle();
+                    foreach (OptionRow row in dialog.GetVisualDescendants().OfType<OptionRow>().Where(r => r.IsEffectivelyVisible))
+                    {
+                        rows++;
+                        string what = $"Settings › {page}, at {width:0} wide, '{row.Label.Text}'";
+                        found.AddRange(RoomBesideEditor(row, what));
+                        if (!row.IsStacked && row.Label.TextLayout.TextLines.Count > 1 && row.Note is { IsVisible: true })
+                        {
+                            longBeside++;
+                        }
+                    }
+                }
+            }
+        }
+        finally
+        {
+            dialog.Close();
+            window.Close();
+        }
+        Assert.True(rows >= 200, $"Only {rows} rows of Settings were found at the two widths: the search no longer reads them");
+        Assert.True(longBeside > 0, "No row with a label of several lines and a note stood beside its editor: nothing here reads the room beside an editor under a long label");
+        Assert.True(found.Count == 0, $"These rows leave empty room beside their editors, a person's eye crossing a gap from the label to what edits it "
+            + $"or from the editor to its note:\n{string.Join("\n", found.Distinct())}");
+    }
+
+    /// <summary>Where a row's label and editor stand side by side and not level (the editor's box and the label's first
+    /// line, neither within the other), and each line under them begun more than the row's gap below what stands over it
+    /// in its column.</summary>
+    private static IEnumerable<string> RoomBesideEditor(OptionRow row, string what)
+    {
+        const double Slack = 0.5;
+        Rect label = row.Label.Bounds;
+        Rect editor = row.Editor.Bounds;
+        bool across = label.Right <= editor.Left + Slack || editor.Right <= label.Left + Slack;
+        if (across && row.Label.TextLayout.TextLines is [{ } first, ..])
+        {
+            double top = label.Top + row.Label.Padding.Top;
+            double bottom = top + first.Height;
+            bool level = (top >= editor.Top - Slack && bottom <= editor.Bottom + Slack) || (editor.Top >= top - Slack && editor.Bottom <= bottom + Slack);
+            if (!level)
+            {
+                yield return $"{what} stands its editor at {editor.Top:0.#}–{editor.Bottom:0.#} px beside its label's first line at {top:0.#}–{bottom:0.#} px";
+            }
+        }
+        List<Rect> over = [label, editor];
+        foreach (TextBlock under in ((TextBlock?[])[row.Note, row.SaidOver]).OfType<TextBlock>().Where(t => t.IsVisible))
+        {
+            Rect line = under.Bounds;
+            double[] above = [.. over.Where(r => r.Right > line.Left + Slack && r.Left < line.Right - Slack && r.Bottom <= line.Top + Slack).Select(r => r.Bottom)];
+            if (above.Length > 0 && line.Top - above.Max() > Gaps.Tight + Slack)
+            {
+                yield return $"{what} leaves {line.Top - above.Max():0.#} px empty over '{under.Text}', which stands a gap of {Gaps.Tight:0} below what is over it in its column";
+            }
+            over.Add(line);
+        }
+    }
+
     [AvaloniaFact]
     public void A_search_keeps_the_pages_and_options_it_matches()
     {
