@@ -625,8 +625,17 @@ public partial class MainWindow
         }
     }
 
-    /// <summary>A diff's view as its host shows it: its Jump to Source opens the file here (<see cref="JumpToSource"/>).</summary>
-    private void WireDiff(DiffView view, IDiffHost host) => view.SourceRequested += (_, _) => JumpToSource(view, host);
+    /// <summary>A diff's view as its host shows it: its Jump to Source opens the file here (<see cref="JumpToSource"/>), and
+    /// its side that is the open file's own text shows the card of what the pointer rests on, as the file's editor does,
+    /// while its tab is the active group's or in its own window.</summary>
+    private void WireDiff(DiffView view, IDiffHost host)
+    {
+        view.SourceRequested += (_, _) => JumpToSource(view, host);
+        if (view.IsEditable && host.Shown.File is { } file && view.Right.Document == file.Text)
+        {
+            assist.HoverIn(view.Right, file, host is DiffWindow ? () => true : () => Editors.ActiveGroup.Diff == view, (host as DiffWindow)?.Assist);
+        }
+    }
 
     /// <summary>The diffs open go where Settings now opens them: each window's into a tab, or each tab's into a window,
     /// the file each edits held open throughout.</summary>

@@ -148,6 +148,24 @@ public sealed class CodeAssist
         };
     }
 
+    /// <summary>A diff's side that is an open file's own text answers the pointer resting on it as the file's editor does,
+    /// with the card of what is there, while <paramref name="worked"/> says its diff is the one worked in; on
+    /// <paramref name="layer"/>, over the diff's own window, else over the editors. A side of another version is never
+    /// given: no language server has read it, so it shows no card.</summary>
+    public void HoverIn(CodeEditor side, OpenDocument file, Func<bool> worked, Canvas? layer)
+    {
+        side.Hovered += (_, e) =>
+        {
+            if (worked() && !quickInfo.ValuesInUse && e.Annotation is null && e.Hint is null)
+            {
+                IdeErrors.Observe(quickInfo.ShowIn(side, file, layer, e.Offset, e.Point));
+            }
+        };
+        side.HoverEnded += (_, _) => quickInfo.PointerLeft();
+        side.Typed += (_, _) => quickInfo.LetGo(side, null);
+        side.DetachedFromVisualTree += (_, _) => quickInfo.LetGo(side, layer);
+    }
+
     /// <summary>A place to go: a file and a line and column (from zero).</summary>
     public event EventHandler<(string Path, TextPosition Position)>? Navigate
     {

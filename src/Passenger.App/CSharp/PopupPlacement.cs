@@ -119,9 +119,40 @@ internal sealed class PopupPlacement
     /// is more room, moved in as far as it must to show whole, though it then hides some of the line.</summary>
     public void Place(Control popup, Point at, bool above)
     {
+        if (cards.Contains(popup))
+        {
+            OnLayer(popup);
+        }
+        PlaceOn(popup, Editor, layer, at, above);
+    }
+
+    /// <summary>Puts a card under a line of an editor no group shows, a diff's side, as at the active editor's
+    /// (<see cref="Place(Control, Point, bool)"/>): on <paramref name="onto"/>, the layer over a diff's own window, else
+    /// over the editors.</summary>
+    public void Place(Control popup, Passenger.Editor.CodeEditor editor, Canvas? onto, Point at, bool above)
+    {
+        onto ??= layer;
+        OnLayer(popup, onto);
+        PlaceOn(popup, editor, onto, at, above);
+    }
+
+    /// <summary>A card put back on the layer over the editors (<paramref name="onto"/> null), or onto another window's, from
+    /// the one it stands on: a card shown over a diff window's side comes back for the editors'.</summary>
+    public void OnLayer(Control popup, Canvas? onto = null)
+    {
+        onto ??= layer;
+        if (popup.Parent != onto)
+        {
+            (popup.Parent as Panel)?.Children.Remove(popup);
+            onto.Children.Add(popup);
+        }
+    }
+
+    private void PlaceOn(Control popup, Passenger.Editor.CodeEditor editor, Canvas onto, Point at, bool above)
+    {
         Heard(popup);
-        at = InLayer(at);
-        (popup as IHeldToEditor)?.Within(Widest);
+        at = editor.TranslatePoint(at, onto) ?? at;
+        (popup as IHeldToEditor)?.Within(Math.Max(0, onto.Bounds.Width - RightEdge));
         // A list shown again measures as its last rows did until a layout pass measures the rows it shows now.
         if (popup.IsAttachedToVisualTree())
         {
@@ -132,8 +163,8 @@ internal sealed class PopupPlacement
             popup.Measure(Size.Infinity);
         }
         Size size = popup.DesiredSize;
-        Size room = layer.Bounds.Size;
-        double lineHeight = Editor.LineHeight;
+        Size room = onto.Bounds.Size;
+        double lineHeight = editor.LineHeight;
         double x = Math.Clamp(at.X - 4, 0, Math.Max(0, room.Width - size.Width - RightEdge));
         double below = at.Y + lineHeight + 2;
         double over = at.Y - size.Height - 2;
@@ -217,12 +248,11 @@ internal sealed class PopupPlacement
         {
             return;
         }
+        layer = context.Editors.AssistLayer;
         foreach (Control popup in cards)
         {
-            layer.Children.Remove(popup);
-            context.Editors.AssistLayer.Children.Add(popup);
+            OnLayer(popup);
         }
-        layer = context.Editors.AssistLayer;
     }
 
     public void ShowModal(ChoicePopup popup, int offset, string what, Func<Choice?, Task> done)
