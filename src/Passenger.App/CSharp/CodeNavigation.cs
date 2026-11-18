@@ -30,7 +30,16 @@ internal sealed class CodeNavigation(AssistContext context, PopupPlacement popup
             }
             try
             {
-                Go(await CopiedAsync(await lsp.ImplementationAsync(offset)), offset, "Implementations", "No implementations found");
+                string name = context.NameAt(offset);
+                IReadOnlyList<LspLocation> found = await CopiedAsync(await lsp.ImplementationAsync(offset));
+                if (found.Count < 2)
+                {
+                    Go(found, offset, "Implementations", "No implementations found");
+                    return;
+                }
+                // The same list as Show Usages', in the popup or the Find window, as Find Usages' results are kept.
+                context.ShowUsages(name.Length > 0 ? $"Implementations of {name}" : "Implementations", found, context.KeepsPlaces() ? null : offset,
+                    noun: "implementation", kinds: false);
             }
             catch (LanguageServerFailed failed)
             {
