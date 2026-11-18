@@ -61,7 +61,7 @@ public static class DotnetReleases
     public static Uri PageOf(string? channel) => channel is null ? DownloadPage : new Uri($"https://dotnet.microsoft.com/download/dotnet/{channel}");
 
     /// <summary>This system's runtime identifier as Microsoft names its archives ("osx-arm64", "linux-musl-x64"), by the
-    /// system's processor, not the process's: an x64 Passenger under emulation installs the native SDK.</summary>
+    /// system's processor, not the process's.</summary>
     public static string ThisSystem()
     {
         string own = RuntimeInformation.RuntimeIdentifier;

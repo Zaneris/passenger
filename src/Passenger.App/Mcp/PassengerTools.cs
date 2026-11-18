@@ -4070,12 +4070,13 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
 
     /// <summary>What .NET the machine or the folder lacks and how it is mended, as workspace says it; null lacking nothing.</summary>
     private string? SdkMissingSaid(ProjectSession session) =>
-        window.DotnetWant is { Install: not null } wanted && Refusals.Dotnet(wanted, session.Folder) is { } lacking
+        window.DotnetWant is { Installs: not null } wanted && Refusals.Dotnet(wanted, session.Folder) is { } lacking
             ? window.AgentsOwn
                 ? $"{lacking}. This Passenger, an agent's own, installs nothing: the person installs it with Install .NET SDK in the banner over their Passenger's window"
                 : $"{lacking}. Install .NET SDK installs it: the person's, from the banner over Passenger's window, or an agent's ide_action {AppActions.InstallDotnetSdk}, which asks them first"
-            : window.DotnetWant is { Lack: DotnetLack.OtherProcessor } other && Refusals.Dotnet(other, session.Folder) is { } loadsNone
-                ? $"{loadsNone}. The person downloads the Passenger built for this computer from {Updates.Releases.ThisSystemsDownload}"
+            : window.DotnetWant is { Lack: DotnetLack.OtherProcessor } or { Translated: true, Install: not null } && Refusals.Dotnet(window.DotnetWant, session.Folder) is { } loadsNone
+                ? $"{loadsNone}{(window.DotnetWant.Install is null ? string.Empty : $". {Refusals.InstallsOnlyNative}")}. "
+                    + $"The person downloads the Passenger built for this computer from {Updates.Releases.ThisSystemsDownload}"
             : session.Models.MissingSdk is { } missing ? Refusals.NoSdk(missing, session.Folder) : null;
 
     /// <summary>Why the folder's projects cannot load for the C# code tools to search: they have no .NET SDK to load with,

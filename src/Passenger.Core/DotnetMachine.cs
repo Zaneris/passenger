@@ -52,9 +52,14 @@ public sealed record DotnetMachine(DotnetFound? Found, DotnetInstallation? Insta
         DotnetInstallation? installation = found is null ? null : read(found.Root);
         return new DotnetMachine(found, installation)
         {
+            Translated = translated,
             SystemsOwn = translated && found is not null ? SystemsOwnOf(found, installation!, every, read) : null,
         };
     }
+
+    /// <summary>Whether it was read by an x64 process the system translates (<see cref="Dotnet.Translated"/>), which loads
+    /// MSBuild only from an x64 SDK.</summary>
+    public bool Translated { get; init; }
 
     /// <summary>For a process the system translates, which loads MSBuild only from an x64 SDK, where the dotnet found holds
     /// none: the installation of the system's own processor holding the SDK there is instead, the one found where it is

@@ -188,7 +188,7 @@ public static class Refusals
             + "asks for is not installed: install it, or have global.json name one that is",
         { NoHost: true } => NoDotnet,
         { ForOtherProcessor: true } => OnlyNativeSdk,
-        { NoneInstalled: true } => $"Only the .NET runtime is installed: {NeedsTheSdk}",
+        { NoneInstalled: true } => $"{RuntimeAlone(null)}: {NeedsTheSdk}",
         _ => $"No .NET SDK was found for this folder: {ChildResult.FirstLineOf(missing.Said)}",
     };
 
@@ -221,14 +221,39 @@ public static class Refusals
 
     /// <summary>An x64 Passenger the system translates found only a .NET SDK of the system's own processor, whose MSBuild it
     /// cannot load (<see cref="MissingSdk.ForOtherProcessor"/>).</summary>
-    public static string OnlyNativeSdk => OperatingSystem.IsMacOS()
-        ? "This Intel build of Passenger, run by Rosetta, loads projects only with an Intel (x64) .NET SDK, and this Mac's is Apple Silicon's: "
-            + "download Passenger for Apple Silicon, which suits this Mac, or install the x64 .NET SDK beside it"
-        : "This x64 build of Passenger, run by emulation, loads projects only with an x64 .NET SDK, and this computer's is Arm64's: "
-            + "download Passenger for Arm64, which suits this computer, or install the x64 .NET SDK beside it";
+    public static string OnlyNativeSdk => $"This {TranslatedBuild}, loads projects only with {X64Sdk}, and {ThisComputer}'s is {SystemsProcessor}'s: "
+        + $"{SystemsOwnPassenger}, or install the x64 .NET SDK beside it";
+
+    /// <summary>An x64 Passenger the system translates with no .NET SDK at all: no .NET, or a runtime alone, in
+    /// <paramref name="runtime"/>.</summary>
+    public static string TranslatedWithoutSdk(string? runtime) =>
+        $"{(runtime is null ? NoneOfDotnet : RuntimeAlone(runtime))}, and this {TranslatedBuild}, loads projects "
+        + $"only with {X64Sdk}: {SystemsOwnPassenger} and installs the .NET SDK for it, or install the x64 .NET SDK yourself";
+
+    /// <summary>Install .NET SDK in an x64 Passenger the system translates: the SDK it installs, the system's own processor's,
+    /// is one this Passenger cannot load.</summary>
+    public static string InstallsOnlyNative => $"Install .NET SDK installs only {ThisComputer}'s own .NET SDK, {SystemsProcessor}'s, which this {TranslatedBuild}, cannot load: "
+        + $"{SystemsOwnPassenger}, or install the x64 .NET SDK yourself";
+
+    /// <summary>An x64 build of Passenger, as the system translating it runs it.</summary>
+    private static string TranslatedBuild => OperatingSystem.IsMacOS() ? "Intel build of Passenger, run by Rosetta" : "x64 build of Passenger, run by emulation";
+
+    private static string X64Sdk => OperatingSystem.IsMacOS() ? "an Intel (x64) .NET SDK" : "an x64 .NET SDK";
+
+    private static string ThisComputer => OperatingSystem.IsMacOS() ? "this Mac" : "this computer";
+
+    private static string SystemsProcessor => OperatingSystem.IsMacOS() ? "Apple Silicon" : "Arm64";
+
+    /// <summary>The way on for an x64 Passenger the system translates: the build for the system's own processor.</summary>
+    private static string SystemsOwnPassenger => $"download Passenger for {SystemsProcessor}, which suits {ThisComputer}";
 
     /// <summary>No dotnet at all, runtime or SDK, was found.</summary>
-    public const string NoDotnet = $"No .NET is installed: files open and edit, and Git and the terminal work, but {NeedsTheSdk}";
+    public const string NoDotnet = $"{NoneOfDotnet}: files open and edit, and Git and the terminal work, but {NeedsTheSdk}";
+
+    private const string NoneOfDotnet = "No .NET is installed";
+
+    /// <summary>A dotnet with runtimes alone, in <paramref name="root"/> where it is known.</summary>
+    private static string RuntimeAlone(string? root) => $"Only the .NET runtime is installed{(root is { } at ? $", in {PathNames.Shown(at, null)}" : string.Empty)}";
 
     private const string NeedsTheSdk = "projects need the .NET SDK to load, build, run and test";
 
@@ -237,8 +262,8 @@ public static class Refusals
     public static string? Dotnet(DotnetWant want, string? folder) => want.Lack switch
     {
         DotnetLack.NoDotnet => NoDotnet,
-        DotnetLack.RuntimeOnly => $"Only the .NET runtime is installed{(want.Root is { } root ? $", in {PathNames.Shown(root, null)}" : string.Empty)}: {NeedsTheSdk}",
-        DotnetLack.OtherProcessor => OnlyNativeSdk,
+        DotnetLack.RuntimeOnly => $"{RuntimeAlone(want.Root)}: {NeedsTheSdk}",
+        DotnetLack.OtherProcessor => want.SystemsOwn is null ? TranslatedWithoutSdk(want.Root) : OnlyNativeSdk,
         DotnetLack.GlobalJsonSdk or DotnetLack.NoSdk => NoSdk(want.Missing!, folder),
         DotnetLack.OlderThanProject when want.ChosenBy is { } asked => $"{want.Newer!.Value.Project} targets .NET {want.Newer.Value.Framework}, which the .NET SDK {want.Sdk} "
             + $"does not build: {PathNames.Shown(asked.Path, folder)} chose it, asking for {asked.Version}{(asked.RollForward is { } roll ? $" with rollForward {roll}" : string.Empty)}; "
@@ -271,9 +296,9 @@ public static class Refusals
         $"{file} is a C# file of no project, which knows no framework types until a .NET SDK is installed: Roslyn reads a loose file's framework only from a project the SDK's MSBuild builds";
 
     /// <summary>Install .NET SDK with nothing it installs mending the want: the newest SDK found, and where; or, for a
-    /// Passenger the system translates, which loads none of the system's own SDKs, what does.</summary>
+    /// Passenger the system translates, which loads none of the system's own SDKs, that it installs none it loads.</summary>
     public static string NothingToInstall(DotnetMachine? machine, DotnetWant want) =>
-        want.Lack == DotnetLack.OtherProcessor ? OnlyNativeSdk
+        want.Lack == DotnetLack.OtherProcessor || want is { Translated: true, Install: not null } ? InstallsOnlyNative
         : machine?.NewestSdk is { } sdk && machine.Found is { } found
             ? $"The .NET SDK {want.Sdk ?? sdk} is installed, in {PathNames.Shown(found.Root, null)}: nothing is missing"
             : "Passenger is still looking for .NET";

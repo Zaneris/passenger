@@ -172,6 +172,41 @@ public class DotnetWantTests
         Assert.Equal((DotnetLack.OtherProcessor, (string?)"/arm64", (string?)"11.0.100"), (beside.Lack, beside.SystemsOwn, beside.Sdk));
     }
 
+    /// <summary>An x64 Passenger the system translates with no .NET SDK at all, no .NET or a runtime alone, lacks an SDK of
+    /// its processor as it does beside the system's own SDK, Install .NET SDK installing none: the one it would install is
+    /// the system's own. Not translated, the same machine wants the newest SDK installed.</summary>
+    [Fact]
+    public void A_translated_Passenger_with_no_SDK_at_all_lacks_an_SDK_of_its_processor_and_installs_none()
+    {
+        DotnetWant none = DotnetWant.Of(new DotnetMachine(null, null) { Translated = true }, null, null, TenOnly);
+        Assert.Equal((DotnetLack.OtherProcessor, (SdkWanted?)null, (SdkWanted?)null, true, (string?)null, (string?)null),
+            (none.Lack, none.Install, none.Installs, none.NoSdkAtAll, none.Root, none.SystemsOwn));
+        DotnetWant runtime = DotnetWant.Of(Machine(DotnetPlace.Path) with { Translated = true }, null, null, TenOnly);
+        Assert.Equal((DotnetLack.OtherProcessor, (SdkWanted?)null, true, (string?)Root, (string?)null),
+            (runtime.Lack, runtime.Installs, runtime.NoSdkAtAll, runtime.Root, runtime.SystemsOwn));
+
+        DotnetWant untranslated = DotnetWant.Of(new DotnetMachine(null, null), null, null, TenOnly);
+        Assert.Equal((DotnetLack.NoDotnet, SdkWanted.Newest), (untranslated.Lack, untranslated.Installs));
+        DotnetWant alone = DotnetWant.Of(Machine(DotnetPlace.Path), null, null, TenOnly);
+        Assert.Equal((DotnetLack.RuntimeOnly, SdkWanted.Newest), (alone.Lack, alone.Installs));
+    }
+
+    /// <summary>An x64 Passenger the system translates whose x64 SDK is not the one global.json asks for, or builds no project's
+    /// .NET, wants that SDK as any Passenger does, but Install .NET SDK installs none: it would install the system's own
+    /// processor's, which this Passenger cannot load.</summary>
+    [Fact]
+    public void A_translated_Passengers_want_of_an_SDK_beside_its_x64_one_is_none_Install_dotnet_SDK_installs()
+    {
+        MissingSdk missing = MissingSdk.From("A compatible .NET SDK was not found.\n\nRequested SDK version: 9.0.100\nglobal.json file: /work/global.json\n");
+        DotnetMachine translated = Machine(DotnetPlace.Path, "10.0.403") with { Translated = true };
+        DotnetWant asked = DotnetWant.Of(translated, missing, null, TenOnly);
+        Assert.Equal((DotnetLack.GlobalJsonSdk, new SdkWanted("9.0.100"), (SdkWanted?)null, true), (asked.Lack, asked.Install, asked.Installs, asked.Translated));
+        DotnetWant newer = DotnetWant.Of(translated, null, "10.0.403", [("App", ["net11.0"])]);
+        Assert.Equal((DotnetLack.OlderThanProject, new SdkWanted(Channel: "11.0"), (SdkWanted?)null), (newer.Lack, newer.Install, newer.Installs));
+
+        Assert.Equal(new SdkWanted("9.0.100"), DotnetWant.Of(Machine(DotnetPlace.Path, "10.0.403"), missing, null, TenOnly).Installs);
+    }
+
     /// <summary>An installation in <paramref name="folder"/> whose dotnet is a Mach-O program of <paramref name="cpu"/>,
     /// holding the runtime 11.0.0 and these SDKs.</summary>
     private static DotnetFound Installation(string folder, int cpu, params string[] sdks)
