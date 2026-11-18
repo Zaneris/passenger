@@ -159,6 +159,62 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
         }
     }
 
+    /// <summary>A widget's menu opens beside the widget that opened it and never over it, wherever the widget stands, by
+    /// the window's edges too, where the menu opens the other way: every tool window's Options, and the toolbar's and the
+    /// status bar's widgets.</summary>
+    [AvaloniaFact]
+    public void A_widgets_menu_never_covers_the_widget_that_opened_it()
+    {
+        MainWindow window = Open(1200, 800);
+        try
+        {
+            window.OpenFile(project.PathOf("Notes.txt"));
+            Ui.Settle();
+            List<string> covered = [];
+            void Beside(Button widget, string what, Action close)
+            {
+                Ui.Click(widget);
+                Ui.WaitFor(() => OpenFrame(window) is not null, $"{what}'s menu");
+                Rect drawn = Placed(window, OpenFrame(window)!);
+                Rect at = Placed(window, widget);
+                if (drawn.Intersects(at))
+                {
+                    covered.Add($"{what}'s menu at {drawn} over it at {at}");
+                }
+                close();
+                Ui.Settle();
+            }
+            Passenger.App.Docking.DockHost dock = window.DockHost;
+            foreach (Passenger.App.Docking.ToolWindow tool in dock.Windows.ToList())
+            {
+                dock.Show(tool.Id);
+                Ui.Settle();
+                Button options = tool.Content.GetVisualAncestors().OfType<DockPanel>().First(p => p.Classes.Contains(StyleClasses.ToolPane))
+                    .GetVisualDescendants().OfType<Border>().First(b => b.Classes.Contains(StyleClasses.ToolHeader))
+                    .GetVisualDescendants().OfType<Button>().First(b => ToolTip.GetTip(b) as string == "Options");
+                Beside(options, $"{tool.Title}'s Options", () => dock.OpenOptions?.Hide());
+            }
+            foreach (string name in (string[])["MenuButton", "ProjectButton", "BranchButton", "RunConfigButton", "LineSeparatorButton", "EncodingButton"])
+            {
+                Button widget = Named<Button>(window, name);
+                if (widget.IsEffectivelyVisible && widget.IsHitTestVisible)
+                {
+                    Beside(widget, name, () => Ui.Press(window, "ESCAPE"));
+                }
+            }
+            Assert.True(covered.Count == 0, $"A menu covers the widget that opened it, so a second click there lands on the menu: {string.Join("; ", covered)}");
+        }
+        finally
+        {
+            window.Close();
+        }
+
+        // The frame of the menu open over the window: a context menu's, or a menu flyout's (Options, the main menu).
+        static Border? OpenFrame(MainWindow window) =>
+            (window.OpenContextMenu is { IsOpen: true } menu ? menu : window.GetVisualDescendants().OfType<MenuFlyoutPresenter>().FirstOrDefault(p => p.IsEffectivelyVisible) as Control)
+                ?.GetVisualDescendants().OfType<Border>().FirstOrDefault(b => b.BoxShadow.Count > 0);
+    }
+
     [Gate]
     [AvaloniaFact]
     public void The_open_editor_tab_shows_its_close_button_as_Rider_s_does_and_the_others_only_under_the_pointer()

@@ -125,8 +125,8 @@ public sealed class ToolHeaderTests : IDisposable
     }
 
     /// <summary>Each window's Options clicked several times over open its menu on each click that found it closed and close
-    /// it on each that found it open; and a click on them while another window's menu is open opens theirs, the click
-    /// that closes the other passed on to them.</summary>
+    /// it on each that found it open; and a click on them while another side's window's menu is open opens theirs, the
+    /// click that closes the other passed on to them.</summary>
     [AvaloniaFact]
     public void Each_tool_windows_options_open_their_menu_on_every_click_that_finds_it_closed()
     {
@@ -137,10 +137,12 @@ public sealed class ToolHeaderTests : IDisposable
             List<string> wrong = [];
             foreach (ToolWindow tool in dock.Windows.ToList())
             {
+                // Another side's window, whose menu lies over none of this one's header (the Explorer's covers the one below).
+                string beside = tool.Anchor is ToolAnchor.LeftTop or ToolAnchor.LeftBottom ? ToolWindowIds.Run : ToolWindowIds.Explorer;
                 dock.Show(tool.Id);
-                dock.Show(tool.Anchor == ToolAnchor.LeftTop ? ToolWindowIds.Run : ToolWindowIds.Explorer);
+                dock.Show(beside);
                 Ui.Settle();
-                ToolWindow other = dock.Windows.First(w => w != tool && w.IsShown && w.Mode == ToolMode.Docked);
+                ToolWindow other = dock.Windows.First(w => w.Id == beside && w != tool && w.IsShown && w.Mode == ToolMode.Docked);
                 Button options = OptionsOf(tool);
                 List<string> seen = [];
                 for (int click = 0; click < 4; click++)
