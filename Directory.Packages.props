@@ -152,7 +152,7 @@
     <PackageVersion Include="Svg.Skia" Version="5.2.3" />
     <!-- TextMate grammars' tokenizer, with GregsEx's managed regular expressions: colour for every
          language but C#. -->
-    <PackageVersion Include="Tint" Version="0.2.3" />
+    <PackageVersion Include="Tint" Version="0.3.0" />
     <!-- Cucumber's own Gherkin reader (every language its keywords are written in) and Cucumber Expressions, which read a
          .feature file and match its steps to their step definitions as Reqnroll does: at the versions Reqnroll 3 takes,
          so a step reads and matches in the editor as it does in a test run. -->
