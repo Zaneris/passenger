@@ -40,7 +40,7 @@ jobs:
   # from a branch takes a vX.Y.Z tag on the commit, else Directory.Build.props' Version.
   version:
     name: Version
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 5
     outputs:
       version: ${{ steps.version.outputs.version }}
@@ -463,7 +463,7 @@ jobs:
     needs: [version, package, container-tools]
     # Its own word on what it needs, as a skipped Test would otherwise skip it too.
     if: ${{ !cancelled() && needs.version.result == 'success' && needs.package.result == 'success' && needs.container-tools.result == 'success' }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 20
     env:
       VERSION: ${{ needs.version.outputs.version }}
@@ -548,7 +548,7 @@ jobs:
     name: Publish
     needs: [version, assets]
     if: ${{ !cancelled() && needs.assets.result == 'success' && needs.version.outputs.publish == 'true' }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 30
     permissions:
       contents: write
