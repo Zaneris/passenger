@@ -11,7 +11,7 @@
          reaches nuget.org for them. -->
     <AvaloniaTemplatesVersion>12.1.6</AvaloniaTemplatesVersion>
     <!-- Avalonia 11's last release, for the previewer's test of an app still on it (tests/AvaloniaGraphs). -->
-    <AvaloniaOlderVersion>11.3.22</AvaloniaOlderVersion>
+    <AvaloniaOlderVersion>11.3.23</AvaloniaOlderVersion>
     <!-- The MVVM Toolkit at the version Avalonia's MVVM template above writes, downloaded for the tests' package cache, so
          an app of theirs restores with its generators and reaches no feed. -->
     <CommunityToolkitMvvmVersion>8.4.2</CommunityToolkitMvvmVersion>
@@ -20,7 +20,7 @@
     <AspireTemplatesVersion>13.6.5</AspireTemplatesVersion>
     <!-- The Azure Functions app (.NET isolated worker) the Aspire tests write: its MSBuild SDK, downloaded for the tests'
          local feed, and its worker and HTTP triggers, whose graph tests/AspireGraphs restores. -->
-    <AzureFunctionsSdkVersion>1.0.2</AzureFunctionsSdkVersion>
+    <AzureFunctionsSdkVersion>1.1.0</AzureFunctionsSdkVersion>
     <AzureFunctionsWorkerVersion>2.52.0</AzureFunctionsWorkerVersion>
     <AzureFunctionsHttpVersion>3.3.0</AzureFunctionsHttpVersion>
     <!-- WPF's reference pack at the version global.json's SDK gives its own WPF (its TargetingPackVersion), downloaded
@@ -33,8 +33,8 @@
     <MauiVersion>11.0.0</MauiVersion>
     <!-- EF Core and the dotnet-ef tool for the Migrations window's tests, downloaded for the tests' local feed: at its
          version, and at the one before for a tool that does not match and a stand-in provider that trails it. -->
-    <EfCoreVersion>10.0.14</EfCoreVersion>
-    <EfCoreOlderVersion>10.0.13</EfCoreOlderVersion>
+    <EfCoreVersion>10.0.15</EfCoreVersion>
+    <EfCoreOlderVersion>10.0.14</EfCoreOlderVersion>
     <!-- EF Core 11 and its dotnet-ef, whose options' defaults .config/dotnet-ef.json gives, for the Migrations window's
          test of them, downloaded for the tests' local feed. -->
     <EfCore11Version>11.0.0</EfCore11Version>
