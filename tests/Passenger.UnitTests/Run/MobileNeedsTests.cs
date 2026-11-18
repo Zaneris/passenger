@@ -449,6 +449,19 @@ public class MobileNeedsTests
     }
 
     [Fact]
+    public void A_dotnet_installs_an_SDKs_workloads_for_each_user_by_the_marker_of_its_feature_band_whatever_its_pre_release()
+    {
+        string root = Path.Combine("/usr", "lib64", "dotnet");
+        string Band(string band) => Path.Combine(root, "metadata", "workloads", band, "userlocal");
+
+        Assert.Equal(Band("11.0.100"), WorkloadInstalls.UserLocalMarker(root, "11.0.100-rc.3.26522.148"));
+        Assert.Equal(Band("10.0.100"), WorkloadInstalls.UserLocalMarker(root, "10.0.113"));
+        Assert.Equal(Band("9.0.300"), WorkloadInstalls.UserLocalMarker(root, "9.0.305+abc"));
+        Assert.Null(WorkloadInstalls.UserLocalMarker(root, "11.0"));
+        Assert.Null(WorkloadInstalls.UserLocalMarker(root, "eleven"));
+    }
+
+    [Fact]
     public void A_workload_install_downloads_onto_disk_where_the_temporary_folder_is_held_in_memory_and_reads_dotnets_words()
     {
         string cache = Path.Combine("/home", "ann", ".local", "share", "Passenger", "cache");
