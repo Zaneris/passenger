@@ -37,13 +37,51 @@ public static class AndroidDevices
         MSBuildAnswer listed = await MSBuildQuestions.AskAsync(project, null, globals, new MSBuildQuestion([MSBuildNames.Restore]), cancel);
         if (listed.Succeeded)
         {
+            if ((Adbs.TryGetValue(project, out string? known) && File.Exists(known) ? known : await AdbOfAsync(project, framework, globals, cancel)) is { } adb)
+            {
+                await ServeAsync(adb, cancel);
+            }
             listed = await MSBuildQuestions.AskAsync(project, framework, globals, new MSBuildQuestion([MSBuildNames.ComputeAvailableDevices])
             {
                 Items = [MSBuildNames.Devices],
                 Properties = [MSBuildNames.AdbToolPath, MSBuildNames.EmulatorToolPath, MSBuildNames.AndroidSdkDirectory, MSBuildNames.TargetPlatformVersion],
             }, cancel);
+            if (listed.Succeeded && listed.Property(MSBuildNames.AdbToolPath) is { Length: > 0 } tools)
+            {
+                Adbs[project] = Tool(tools, "adb");
+            }
         }
         return Listed(listed);
+    }
+
+    /// <summary>Each project's adb as its workload last named it, so a listing starts adb's server before the workload's
+    /// adb would (<see cref="ServeAsync"/>) without asking where it is again.</summary>
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, string> Adbs = new(PathNames.Comparer);
+
+    /// <summary>The project's adb as its workload resolves it (its AdbToolPath, else its Android SDK's platform-tools),
+    /// asked of a target that runs no adb; null where the workload names no Android SDK or no adb is there.</summary>
+    private static async Task<string?> AdbOfAsync(string project, string framework, IReadOnlyDictionary<string, string> globals, CancellationToken cancel)
+    {
+        MSBuildAnswer resolved = await MSBuildQuestions.AskAsync(project, framework, globals, new MSBuildQuestion([MSBuildNames.GetAndroidDependencies])
+        {
+            Properties = [MSBuildNames.AdbToolPath, MSBuildNames.AndroidSdkDirectory],
+        }, cancel);
+        string? folder = resolved.Property(MSBuildNames.AdbToolPath) is { Length: > 0 } named ? named
+            : resolved.Property(MSBuildNames.AndroidSdkDirectory) is { Length: > 0 } sdk ? Path.Combine(sdk, "platform-tools")
+            : null;
+        string? adb = folder is null ? null : Tool(folder, "adb");
+        return File.Exists(adb) ? adb : null;
+    }
+
+    /// <summary>adb's server started in Passenger's own folder where none runs, before a target of the workload runs adb:
+    /// adb's client starts the server in the folder it works in, which the server keeps for as long as it runs, and a
+    /// target's adb works in the project's folder, which Windows then lets no one delete or rename.</summary>
+    private static async Task ServeAsync(string adb, CancellationToken cancel)
+    {
+        if (await AdbAsync(adb, ["start-server"], cancel) is { Succeeded: false } unserved)
+        {
+            IdeLog.Write(IdeLog.Ide, $"adb's server did not start in Passenger's folder, so the workload's adb may start it in the project's: {unserved.Said}");
+        }
     }
 
     /// <summary>The targets and the SDK's tools a listing answered, or why it listed none, in words for the person.</summary>
@@ -178,6 +216,7 @@ public static class AndroidDevices
     public static async Task<(AndroidApp? App, string? Problem)> DeployAsync(string project, string framework, string serial, string adb,
         IReadOnlyDictionary<string, string> globals, CancellationToken cancel)
     {
+        await ServeAsync(adb, cancel);
         MSBuildAnswer deployed = await MSBuildQuestions.AskAsync(project, framework, globals,
             new MSBuildQuestion([MSBuildNames.DeployToDevice, MSBuildNames.ComputeRunArguments])
             {

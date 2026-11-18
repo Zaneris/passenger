@@ -3030,7 +3030,8 @@ public static partial class Processes
     }
 
     /// <summary>The folder a process works in on Windows, which Windows lets nobody delete while it does, read from its
-    /// parameters in its memory (CurrentDirectory at 0x38); null elsewhere, or where its memory does not read.</summary>
+    /// parameters in its memory (CurrentDirectory at 0x38), a 32-bit program's from its own 32-bit ones (at 0x24, as adb's
+    /// is); null elsewhere, or where its memory does not read.</summary>
     public static string? WindowsWorkingFolder(int id)
     {
         if (!OperatingSystem.IsWindows())
@@ -3041,6 +3042,12 @@ public static partial class Processes
         {
             using System.Diagnostics.Process process = System.Diagnostics.Process.GetProcessById(id);
             IntPtr handle = process.Handle;
+            long[] wow64 = new long[1];
+            if (NtQueryInformationProcess(handle, 26, wow64, sizeof(long), out _) == 0 && wow64[0] != 0)
+            {
+                return ReadMemory(handle, wow64[0] + 0x10, 4) is { } at32 && ReadMemory(handle, BitConverter.ToUInt32(at32) + 0x24, 8) is { } folder32
+                    && ReadMemory(handle, BitConverter.ToUInt32(folder32, 4), BitConverter.ToUInt16(folder32, 0)) is { } name32 ? System.Text.Encoding.Unicode.GetString(name32) : null;
+            }
             long[] basic = new long[6];
             if (NtQueryInformationProcess(handle, 0, basic, basic.Length * sizeof(long), out _) != 0 || ReadMemory(handle, basic[1] + 0x20, 8) is not { } at
                 || ReadMemory(handle, BitConverter.ToInt64(at) + 0x38, 16) is not { } folder)
