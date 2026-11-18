@@ -1566,6 +1566,8 @@ public sealed class ContainersTests
         }
     }
 
+    /// <summary>A stopped container's log, read whole (its lines and its command's end), stays as it was read while the window
+    /// reads the engine again.</summary>
     [AvaloniaFact]
     public void A_stopped_containers_log_stays_as_it_was_read_while_the_window_reads_the_engine_again()
     {
@@ -1578,19 +1580,81 @@ public sealed class ContainersTests
             ContainersView view = Shown(window);
             Ui.WaitFor(() => view.Choose(r => r.Kind == ContainerRowKind.Container && r.Label == name), $"{name}'s row");
             OutputView console = view.Log.Console;
-            Ui.WaitFor(() => Text(console).Contains("stopped line 5", StringComparison.Ordinal), "the stopped container's log");
-            int changes = 0;
-            console.Document.Changed += (_, _) => changes++;
-            Ui.Await(view.RefreshAsync().ContinueWith(_ => true, TaskScheduler.Default), "the window's next read of the engine");
-            Ui.Await(view.RefreshAsync().ContinueWith(_ => true, TaskScheduler.Default), "the window's read after that");
-            Ui.Settle();
-            Assert.Equal(0, changes);
+            // The engine's CLI may go on a moment after its last line, the end then said after it.
+            Ui.WaitFor(() => Text(console).Contains("stopped line 5", StringComparison.Ordinal) && Text(console).Contains(LogEnded, StringComparison.Ordinal),
+                () => $"the stopped container's log read whole: [{Text(console)}]");
+            StaysAsRead(view);
             Assert.Equal(5, Text(console).Split('\n').Count(l => l.StartsWith("stopped line", StringComparison.Ordinal)));
         }
         finally
         {
             window.Close();
         }
+    }
+
+    /// <summary>A stopped container's log whose command ends only well after its last line has landed (the engine's CLI goes
+    /// on a moment after its last line, longer on a loaded machine) stays as it was read while the window reads the engine
+    /// again before that end and after it, the end said once beneath the lines.</summary>
+    [AvaloniaFact]
+    public void A_stopped_containers_log_whose_end_comes_after_its_last_line_stays_as_read_while_the_window_reads_the_engine_again()
+    {
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "The stand-in engine is a shell script");
+        string folder = TestFolders.Create("ctr-late-end-");
+        string release = Path.Combine(folder, "release");
+        // Its lines written, the log's command ends only once the test lets it.
+        (string cli, _) = StandInEngine(folder, up: true,
+            logs: $"for i in 1 2 3 4 5; do echo \"stopped line $i\"; done; while [ ! -e '{release}' ]; do sleep 0.1; done");
+        MainWindow window = new() { Width = 1200, Height = 800, Engine = new ContainerEngine(cli: cli) };
+        window.Show();
+        window.OpenFolder(TestFolders.Create("ctr-late-end-window-"));
+        Ui.Settle();
+        try
+        {
+            ContainersView view = Shown(window);
+            Ui.WaitFor(() => view.Choose(r => r.Kind == ContainerRowKind.Container && r.Label == "solo"), "solo's row");
+            OutputView console = view.Log.Console;
+            Ui.WaitFor(() => Text(console).Contains("stopped line 5", StringComparison.Ordinal), "the stopped container's log");
+            Assert.True(view.Log.Streaming is not null && !Text(console).Contains(LogEnded, StringComparison.Ordinal),
+                $"The log's command was said to have ended while it still ran: [{Text(console)}]");
+            string lines = StaysAsRead(view);
+
+            File.WriteAllText(release, string.Empty);
+            Ui.WaitFor(() => Text(console).Contains(LogEnded, StringComparison.Ordinal), () => $"the log's command said to have ended: [{Text(console)}]");
+            string read = Text(console);
+            Assert.True(read.StartsWith(lines, StringComparison.Ordinal) && read.Split('\n').Count(l => l.StartsWith("stopped line", StringComparison.Ordinal)) == 5,
+                $"The log's end took the place of what was read before it, [{lines}], where it was said beneath it: [{read}]");
+            StaysAsRead(view);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>What the Containers window's console says as a log's command ends.</summary>
+    private const string LogEnded = "Process finished with exit code 0.";
+
+    /// <summary>Has the window read the engine again twice, finding its log as it was read, and gives that log.</summary>
+    private static string StaysAsRead(ContainersView view)
+    {
+        OutputView console = view.Log.Console;
+        string read = Text(console);
+        int changes = 0;
+        console.Document.Changed += Count;
+        try
+        {
+            Ui.Await(view.RefreshAsync().ContinueWith(_ => true, TaskScheduler.Default), "the window's next read of the engine");
+            Ui.Await(view.RefreshAsync().ContinueWith(_ => true, TaskScheduler.Default), "the window's read after that");
+            Ui.Settle();
+        }
+        finally
+        {
+            console.Document.Changed -= Count;
+        }
+        Assert.True(changes == 0, $"The log changed {changes} times as the window read the engine again, from [{read}] to [{Text(console)}]");
+        return read;
+
+        void Count(object? sender, Passenger.Text.DocumentChangedEventArgs change) => changes++;
     }
 
     [AvaloniaFact]
