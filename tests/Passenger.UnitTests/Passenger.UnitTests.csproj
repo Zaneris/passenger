@@ -262,7 +262,8 @@
        Avalonia. -->
   <ItemGroup>
     <Compile Include="../../src/Passenger.Languages/CSharp/TypeHints.cs" Link="Languages/TypeHints.cs" />
-    <Compile Include="../../src/Passenger.Languages/CSharp/VisionDeclarations.cs" Link="Languages/VisionDeclarations.cs" />
+    <Compile Include="../../src/Passenger.Languages/CSharp/SpyglassDeclarations.cs" Link="Languages/SpyglassDeclarations.cs" />
+    <Compile Include="../../src/Passenger.Languages/CSharp/SpyglassReading.cs" Link="Languages/SpyglassReading.cs" />
   </ItemGroup>
 
   <!-- What an MSBuild file's elements say, read from its markup alone, compiled in since its project is the app's. -->

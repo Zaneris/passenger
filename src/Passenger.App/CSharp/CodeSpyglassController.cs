@@ -11,13 +11,13 @@ using Passenger.Vcs;
 
 namespace Passenger.App.CSharp;
 
-/// <summary>What the window gives Code Vision to read and to do: the editors, the language server, Git's blame of a text, an
+/// <summary>What the window gives Code Spyglass to read and to do: the editors, the language server, Git's blame of a text, an
 /// action run by its id, a place to go to and a commit to show.</summary>
-internal sealed record CodeVisionParts(EditorArea Editors, Func<CSharpService?> CSharp, Func<OpenDocument, TextSnapshot, Task<IReadOnlyList<BlameLine>?>> Blame,
+internal sealed record CodeSpyglassParts(EditorArea Editors, Func<CSharpService?> CSharp, Func<OpenDocument, TextSnapshot, Task<IReadOnlyList<BlameLine>?>> Blame,
     Action<string> Perform, Action<LspLocation> Arrive, Func<BlameLine, Task> ShowCommit);
 
-/// <summary>What a Code Vision hint says.</summary>
-internal enum VisionKind
+/// <summary>What a Code Spyglass hint says.</summary>
+internal enum SpyglassKind
 {
     Usages,
     Inheritors,
@@ -27,13 +27,13 @@ internal enum VisionKind
 /// <summary>What a hint is known by (the data of its annotation): its declaration's name and column on the line it was made
 /// for, and what pressing it needs: the one place a declaration is used, or the newest commit of its authors with the words
 /// of its hover card.</summary>
-internal sealed record VisionHint(VisionKind Kind, string Name, int Column, LspLocation? Only = null, BlameLine? Commit = null, string? Words = null);
+internal sealed record SpyglassHint(SpyglassKind Kind, string Name, int Column, LspLocation? Only = null, BlameLine? Commit = null, string? Words = null);
 
-/// <summary>Code Vision: after the line of each C# type and member shown, how many places use it, what implements or overrides
+/// <summary>Code Spyglass: after the line of each C# type and member shown, how many places use it, what implements or overrides
 /// it and who changed it most (Git blame), each a hint pressed to see them. Read only for the lines on screen and a few beyond,
 /// after typing and scrolling pause, one request of the server at a time; what was read stays through edits until it is
 /// read again (once the file is saved, or its numbers are a while old), so typing never takes a hint away. A UI-thread object.</summary>
-internal sealed class CodeVisionController
+internal sealed class CodeSpyglassController
 {
     /// <summary>How long typing and scrolling pause before the lines shown are read.</summary>
     private static readonly TimeSpan Pause = TimeSpan.FromMilliseconds(800);
@@ -41,20 +41,17 @@ internal sealed class CodeVisionController
     /// <summary>How long before a server that is not ready, or a file it does not have yet, is asked again.</summary>
     private static readonly TimeSpan NotReady = TimeSpan.FromSeconds(3);
 
-    /// <summary>How old the numbers of an edited file are let to grow before they are read again, a save reading them at once.</summary>
-    private static readonly TimeSpan StaleAfter = TimeSpan.FromSeconds(10);
-
     /// <summary>How many lines beyond those on screen are read, so a short scroll shows hints at once.</summary>
     private const int Beyond = 10;
 
-    private readonly CodeVisionParts parts;
+    private readonly CodeSpyglassParts parts;
     private readonly Debounce soon;
     private readonly Debounce later;
     private readonly Dictionary<OpenDocument, Memory> memories = [];
     private AppSettings settings;
     private CancellationTokenSource? running;
 
-    public CodeVisionController(CodeVisionParts parts, AppSettings settings)
+    public CodeSpyglassController(CodeSpyglassParts parts, AppSettings settings)
     {
         this.parts = parts;
         this.settings = settings;
@@ -100,12 +97,12 @@ internal sealed class CodeVisionController
     /// override it, for the version of the text and when (<see cref="Stopwatch.GetTimestamp"/>).</summary>
     private sealed record Counted(int? Usages, LspLocation? Only, int? Inheritors, int Version, long At);
 
-    /// <summary>Takes in the settings as they stand: reads again where Code Vision's changed.</summary>
+    /// <summary>Takes in the settings as they stand: reads again where Code Spyglass's changed.</summary>
     public void Follow(AppSettings next)
     {
         UiThread.Check();
-        bool same = settings.CodeVision == next.CodeVision && settings.CodeVisionUsages == next.CodeVisionUsages
-            && settings.CodeVisionInheritors == next.CodeVisionInheritors && settings.CodeVisionAuthors == next.CodeVisionAuthors;
+        bool same = settings.CodeSpyglass == next.CodeSpyglass && settings.CodeSpyglassUsages == next.CodeSpyglassUsages
+            && settings.CodeSpyglassInheritors == next.CodeSpyglassInheritors && settings.CodeSpyglassAuthors == next.CodeSpyglassAuthors;
         settings = next;
         if (same)
         {
@@ -124,8 +121,8 @@ internal sealed class CodeVisionController
         Clear();
     }
 
-    /// <summary>Whether Code Vision is on with some kind of hint to show; off, nothing here waits for or reads anything.</summary>
-    private bool IsOn => settings.CodeVision && (settings.CodeVisionUsages || settings.CodeVisionInheritors || settings.CodeVisionAuthors);
+    /// <summary>Whether Code Spyglass is on with some kind of hint to show; off, nothing here waits for or reads anything.</summary>
+    private bool IsOn => settings.CodeSpyglass && (settings.CodeSpyglassUsages || settings.CodeSpyglassInheritors || settings.CodeSpyglassAuthors);
 
     private void Track(OpenDocument document)
     {
@@ -152,7 +149,7 @@ internal sealed class CodeVisionController
         {
             document.Text.Changed -= memory.OnChanged;
             document.Saved -= memory.OnSaved;
-            document.CodeVision = [];
+            document.CodeSpyglass = [];
         }
     }
 
@@ -173,9 +170,9 @@ internal sealed class CodeVisionController
     {
         foreach (OpenDocument document in memories.Keys)
         {
-            if (document.CodeVision.Count > 0)
+            if (document.CodeSpyglass.Count > 0)
             {
-                document.CodeVision = [];
+                document.CodeSpyglass = [];
             }
         }
     }
@@ -244,11 +241,12 @@ internal sealed class CodeVisionController
             later.Restart();
             return;
         }
-        IReadOnlyList<VisionDeclaration> all = await BackgroundWork.Run(() => VisionDeclarations.Of(parsed), cancel);
-        if (now.CodeVisionAuthors && memory.BlameVersion != version)
+        IReadOnlyList<SpyglassDeclaration> all = await BackgroundWork.Run(() => SpyglassDeclarations.Of(parsed), cancel);
+        if (now.CodeSpyglassAuthors && memory.BlameVersion != version)
         {
             memory.Blame = await parts.Blame(document, text);
-            memory.BlameVersion = version;
+            // Git may not have found the repository yet, or not track the file: asked again at the next read.
+            memory.BlameVersion = memory.Blame is null ? -1 : version;
         }
         cancel.ThrowIfCancellationRequested();
         if (!ReferenceEquals(document.Text.Snapshot, text))
@@ -256,7 +254,7 @@ internal sealed class CodeVisionController
             return;
         }
         Publish(document, memory, all, text, now);
-        foreach (VisionDeclaration declaration in all)
+        foreach (SpyglassDeclaration declaration in all)
         {
             if (declaration.Line < shown.First - Beyond || declaration.Line > shown.Last + Beyond)
             {
@@ -282,33 +280,27 @@ internal sealed class CodeVisionController
         memory.Saved = false;
     }
 
-    /// <summary>Whether a declaration's numbers are to be read: none yet, a kind shown that was not read, or edited text with
-    /// them a while old or the file saved.</summary>
-    private static bool Needs(Counted? had, VisionDeclaration declaration, Memory memory, int version, AppSettings now)
-    {
-        if (had is null || now.CodeVisionUsages && had.Usages is null
-            || now.CodeVisionInheritors && declaration.Heritage != Heritage.None && had.Inheritors is null)
-        {
-            return true;
-        }
-        return had.Version != version && (memory.Saved || Stopwatch.GetElapsedTime(had.At) > StaleAfter);
-    }
+    private static bool Needs(Counted? had, SpyglassDeclaration declaration, Memory memory, int version, AppSettings now) =>
+        SpyglassReading.Needs(had is not null, had?.Usages, had?.Inheritors, had?.Version ?? 0, declaration.Heritage, now.CodeSpyglassUsages,
+            now.CodeSpyglassInheritors, version, memory.Saved, had is null ? TimeSpan.Zero : Stopwatch.GetElapsedTime(had.At));
 
-    private static async Task<Counted> CountAsync(LspDocument lsp, VisionDeclaration declaration, Counted? had, (TextSnapshot Text, int Version) read,
+    private static async Task<Counted> CountAsync(LspDocument lsp, SpyglassDeclaration declaration, Counted? had, (TextSnapshot Text, int Version) read,
         AppSettings now, CancellationToken cancel)
     {
         int? usages = had?.Usages;
         LspLocation? only = had?.Only;
         int? inheritors = had?.Inheritors;
         LspPosition at = ServerLines.Of(read.Text).PositionOf(declaration.NameOffset);
-        if (now.CodeVisionUsages)
+        if (now.CodeSpyglassUsages)
         {
             // The declaration is among the places the server names, which is no use of it.
-            List<LspLocation> used = [.. (await lsp.ReferencesAsync(declaration.NameOffset, cancel)).Where(l => l.Range.Start != at || !string.Equals(l.Uri, lsp.Identifier.Uri, StringComparison.OrdinalIgnoreCase))];
+            (string Uri, int Line, int Character) asked = (lsp.Identifier.Uri, at.Line, at.Character);
+            List<LspLocation> used = [.. (await lsp.ReferencesAsync(declaration.NameOffset, cancel))
+                .Where(l => !SpyglassReading.IsDeclaration((l.Uri, l.Range.Start.Line, l.Range.Start.Character), asked))];
             usages = used.Count;
             only = used.Count == 1 ? used[0] : null;
         }
-        if (now.CodeVisionInheritors && declaration.Heritage != Heritage.None)
+        if (now.CodeSpyglassInheritors && declaration.Heritage != Heritage.None)
         {
             inheritors = (await lsp.ImplementationAsync(declaration.NameOffset, cancel)).Count;
         }
@@ -316,42 +308,30 @@ internal sealed class CodeVisionController
     }
 
     /// <summary>Shows the hints of every declaration there is a number or an author for, after its line.</summary>
-    private static void Publish(OpenDocument document, Memory memory, IReadOnlyList<VisionDeclaration> all, TextSnapshot text, AppSettings now)
+    private static void Publish(OpenDocument document, Memory memory, IReadOnlyList<SpyglassDeclaration> all, TextSnapshot text, AppSettings now)
     {
         List<LineAnnotation> notes = [];
-        foreach (VisionDeclaration declaration in all)
+        foreach (SpyglassDeclaration declaration in all)
         {
             int column = declaration.NameOffset - text.GetLineStart(declaration.Line);
             Counted? counted = memory.Counts.GetValueOrDefault(declaration.Key);
-            if (now.CodeVisionUsages && counted?.Usages is { } usages)
+            if (now.CodeSpyglassUsages && counted?.Usages is { } usages)
             {
-                notes.Add(new LineAnnotation(declaration.Line, usages == 0 ? "no usages" : Plural.Of(usages, "usage"), LineAnnotationLook.Vision,
-                    new VisionHint(VisionKind.Usages, declaration.Name, column, Only: counted.Only)));
+                notes.Add(new LineAnnotation(declaration.Line, SpyglassReading.Usages(usages), LineAnnotationLook.Spyglass,
+                    new SpyglassHint(SpyglassKind.Usages, declaration.Name, column, Only: counted.Only)));
             }
-            if (now.CodeVisionInheritors && declaration.Heritage != Heritage.None && counted?.Inheritors is { } inheritors)
+            if (now.CodeSpyglassInheritors && declaration.Heritage != Heritage.None && counted?.Inheritors is { } inheritors)
             {
-                notes.Add(new LineAnnotation(declaration.Line, Inheriting(declaration.Heritage, inheritors), LineAnnotationLook.Vision,
-                    new VisionHint(VisionKind.Inheritors, declaration.Name, column)));
+                notes.Add(new LineAnnotation(declaration.Line, SpyglassReading.Inheriting(declaration.Heritage, inheritors), LineAnnotationLook.Spyglass,
+                    new SpyglassHint(SpyglassKind.Inheritors, declaration.Name, column)));
             }
-            if (now.CodeVisionAuthors && memory.Blame is { } blame && BlameAuthors.Of(blame, declaration.FirstLine, declaration.LastLine) is { } authors)
+            if (now.CodeSpyglassAuthors && memory.Blame is { } blame && BlameAuthors.Of(blame, declaration.FirstLine, declaration.LastLine) is { } authors)
             {
-                notes.Add(new LineAnnotation(declaration.Line, authors.Label, LineAnnotationLook.Vision,
-                    new VisionHint(VisionKind.Authors, declaration.Name, column, Commit: authors.IsCommitted ? authors.Latest : null, Words: Words(authors))));
+                notes.Add(new LineAnnotation(declaration.Line, authors.Label, LineAnnotationLook.Spyglass,
+                    new SpyglassHint(SpyglassKind.Authors, declaration.Name, column, Commit: authors.IsCommitted ? authors.Latest : null, Words: Words(authors))));
             }
         }
-        document.CodeVision = notes;
-    }
-
-    /// <summary>What a declaration's implementations or overrides are called, by what it is.</summary>
-    private static string Inheriting(Heritage heritage, int count)
-    {
-        string noun = heritage switch
-        {
-            Heritage.Overrides => "override",
-            Heritage.Inheritors => "inheritor",
-            _ => "implementation",
-        };
-        return count == 0 ? $"no {noun}s" : Plural.Of(count, noun);
+        document.CodeSpyglass = notes;
     }
 
     /// <summary>The commit an author hint's card names: who made it and when, and its subject.</summary>
@@ -368,14 +348,14 @@ internal sealed class CodeVisionController
     /// <summary>The card for a hint the pointer rests on: what pressing it does, and for the authors the newest commit.</summary>
     public bool Card(OpenDocument document, LineAnnotation note, IHoverCard card)
     {
-        if (note.Data is not VisionHint hint || !memories.ContainsKey(document))
+        if (note.Data is not SpyglassHint hint || !memories.ContainsKey(document))
         {
             return false;
         }
         card.AddText(hint.Kind switch
         {
-            VisionKind.Usages => hint.Only is not null ? "Go to the one place it is used" : "Show where it is used",
-            VisionKind.Inheritors => "Go to what implements or overrides it",
+            SpyglassKind.Usages => hint.Only is not null ? "Go to the one place it is used" : "Show where it is used",
+            SpyglassKind.Inheritors => "Go to what implements or overrides it",
             _ => hint.Words ?? string.Empty,
         });
         return true;
@@ -385,11 +365,11 @@ internal sealed class CodeVisionController
     /// Go to Implementation does, the authors' commit in the Git window.</summary>
     private void Pressed(CodeEditor editor, LineAnnotation note)
     {
-        if (note.Data is not VisionHint hint || parts.Editors.Active is not { } document || editor.Document != document.Text)
+        if (note.Data is not SpyglassHint hint || parts.Editors.Active is not { } document || editor.Document != document.Text)
         {
             return;
         }
-        if (hint.Kind == VisionKind.Authors)
+        if (hint.Kind == SpyglassKind.Authors)
         {
             if (hint.Commit is { } commit)
             {
@@ -397,41 +377,16 @@ internal sealed class CodeVisionController
             }
             return;
         }
-        if (hint.Kind == VisionKind.Usages && hint.Only is { } only)
+        if (hint.Kind == SpyglassKind.Usages && hint.Only is { } only)
         {
             parts.Arrive(only);
             return;
         }
-        if (NameOffset(document.Text.Snapshot, note.Line, hint) is not { } at)
+        if (SpyglassReading.NameOffset(document.Text.Snapshot, note.Line, hint.Name, hint.Column) is not { } at)
         {
             return;
         }
         editor.Selections = SelectionSet.Single(at);
-        parts.Perform(hint.Kind == VisionKind.Usages ? AppActions.ShowUsages : AppActions.GoToImplementation);
-    }
-
-    /// <summary>Where a hint's declaration is named on its line now: its column when the name is still there, else the first
-    /// whole word that is it; none when the line no longer names it.</summary>
-    private static int? NameOffset(TextSnapshot text, int line, VisionHint hint)
-    {
-        if (line >= text.LineCount)
-        {
-            return null;
-        }
-        int start = text.GetLineStart(line);
-        string code = text.GetLineText(line);
-        if (hint.Column >= 0 && hint.Column + hint.Name.Length <= code.Length && string.CompareOrdinal(code, hint.Column, hint.Name, 0, hint.Name.Length) == 0)
-        {
-            return start + hint.Column;
-        }
-        for (int at = code.IndexOf(hint.Name, StringComparison.Ordinal); at >= 0; at = code.IndexOf(hint.Name, at + 1, StringComparison.Ordinal))
-        {
-            int end = at + hint.Name.Length;
-            if ((at == 0 || !AssistContext.IsIdentifierChar(code[at - 1])) && (end >= code.Length || !AssistContext.IsIdentifierChar(code[end])))
-            {
-                return start + at;
-            }
-        }
-        return null;
+        parts.Perform(hint.Kind == SpyglassKind.Usages ? AppActions.ShowUsages : AppActions.GoToImplementation);
     }
 }

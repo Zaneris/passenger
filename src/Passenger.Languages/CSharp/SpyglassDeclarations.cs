@@ -5,7 +5,7 @@ using Passenger.Text;
 
 namespace Passenger.Languages.CSharp;
 
-/// <summary>What may inherit from a declaration, which decides whether Code Vision asks for its implementations.</summary>
+/// <summary>What may inherit from a declaration, which decides whether Code Spyglass asks for its implementations.</summary>
 public enum Heritage
 {
     /// <summary>Nothing is asked: a sealed, concrete or ordinary declaration.</summary>
@@ -21,20 +21,20 @@ public enum Heritage
     Inheritors,
 }
 
-/// <summary>A type or member Code Vision hints after: the name Roslyn is asked about, the lines the declaration spans (for its
+/// <summary>A type or member Code Spyglass hints after: the name Roslyn is asked about, the lines the declaration spans (for its
 /// authors) and the line its hints go after. <see cref="Key"/> tells it from another declaration of the file through edits
 /// that do not rename it.</summary>
-public sealed record VisionDeclaration(string Key, string Name, int NameOffset, int Line, int FirstLine, int LastLine, Heritage Heritage);
+public sealed record SpyglassDeclaration(string Key, string Name, int NameOffset, int Line, int FirstLine, int LastLine, Heritage Heritage);
 
-/// <summary>The types and members of a C# file that Code Vision hints after: a type, delegate, method, constructor, property,
+/// <summary>The types and members of a C# file that Code Spyglass hints after: a type, delegate, method, constructor, property,
 /// event and field, one declaration on each line (the first), none of what a body holds. Reads only the syntax it is given, so
 /// it runs on any thread.</summary>
-public static class VisionDeclarations
+public static class SpyglassDeclarations
 {
     /// <summary>The declarations of a parsed file, in the order they stand.</summary>
-    public static IReadOnlyList<VisionDeclaration> Of(ParsedText parsed)
+    public static IReadOnlyList<SpyglassDeclaration> Of(ParsedText parsed)
     {
-        List<VisionDeclaration> found = [];
+        List<SpyglassDeclaration> found = [];
         if (parsed.Root is CompilationUnitSyntax unit)
         {
             Collect(unit.Members, [], inInterface: false, parsed.Text, found, []);
@@ -43,7 +43,7 @@ public static class VisionDeclarations
     }
 
     private static void Collect(SyntaxList<MemberDeclarationSyntax> members, List<string> path, bool inInterface, TextSnapshot text,
-        List<VisionDeclaration> found, HashSet<int> lines)
+        List<SpyglassDeclaration> found, HashSet<int> lines)
     {
         foreach (MemberDeclarationSyntax member in members)
         {
@@ -83,7 +83,7 @@ public static class VisionDeclarations
     }
 
     private static void Add(MemberDeclarationSyntax member, SyntaxToken name, string signature, List<string> path, Heritage heritage,
-        TextSnapshot text, List<VisionDeclaration> found, HashSet<int> lines)
+        TextSnapshot text, List<SpyglassDeclaration> found, HashSet<int> lines)
     {
         if (name.IsMissing || name.SpanStart >= text.Length)
         {
@@ -98,7 +98,7 @@ public static class VisionDeclarations
         int first = text.GetLineFromOffset(Math.Min(member.SpanStart, text.Length));
         int last = text.GetLineFromOffset(Math.Min(Math.Max(member.SpanStart, member.Span.End - 1), text.Length));
         string key = $"{(int)member.Kind()}:{string.Join('.', path)}.{name.ValueText}{signature}";
-        found.Add(new VisionDeclaration(key, name.ValueText, name.SpanStart, line, first, Math.Max(first, last), heritage));
+        found.Add(new SpyglassDeclaration(key, name.ValueText, name.SpanStart, line, first, Math.Max(first, last), heritage));
     }
 
     /// <summary>The types of a method's or constructor's parameters, which tell its overloads apart.</summary>

@@ -12,9 +12,9 @@ public enum LineAnnotationLook
     /// <summary>In the error colour, italic, on a tinted ground that sets it apart from the rest.</summary>
     ErrorOnGround,
 
-    /// <summary>A hint the pointer may press (Code Vision's usages and authors): muted, and given to <see cref="CodeEditor.AnnotationPressed"/>
+    /// <summary>A hint the pointer may press (Code Spyglass's usages and authors): muted, and given to <see cref="CodeEditor.AnnotationPressed"/>
     /// when pressed.</summary>
-    Vision,
+    Spyglass,
 }
 
 /// <summary>Text drawn after a line's (from zero) code, part of no document: never selected, copied or

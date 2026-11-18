@@ -168,27 +168,27 @@ public static class Declared
     public static readonly ToggleSetting TypeHints = new(s => s.TypeHints, (s, v) => s with { TypeHints = v },
         new(D.EditorPage, "Show type name hints", "inlay hints type names var lambda parameters new inferred"));
 
-    public static readonly ToggleSetting CodeVision = new(s => s.CodeVision, (s, v) => s with { CodeVision = v },
-        new(D.EditorPage, "Show Code Vision hints", "code vision lens usages references implementations overrides authors blame inheritors declarations hints",
+    public static readonly ToggleSetting CodeSpyglass = new(s => s.CodeSpyglass, (s, v) => s with { CodeSpyglass = v },
+        new(D.EditorPage, "Show Code Spyglass hints", "code spyglass lens usages references implementations overrides authors blame inheritors declarations hints",
             "After each C# type and member's declaration: how many places use it, what implements or overrides it and who last "
             + "changed it. A hint is pressed to see them."));
 
-    public static readonly ToggleSetting CodeVisionUsages = new(s => s.CodeVisionUsages, (s, v) => s with { CodeVisionUsages = v },
-        new(D.EditorPage, "Code Vision: show usages", "code vision usages references count")
+    public static readonly ToggleSetting CodeSpyglassUsages = new(s => s.CodeSpyglassUsages, (s, v) => s with { CodeSpyglassUsages = v },
+        new(D.EditorPage, "Code Spyglass: show usages", "code spyglass usages references count")
         {
-            When = new SettingWhen(s => s.CodeVision, "Code Vision is off"),
+            When = new SettingWhen(s => s.CodeSpyglass, "Code Spyglass is off"),
         });
 
-    public static readonly ToggleSetting CodeVisionInheritors = new(s => s.CodeVisionInheritors, (s, v) => s with { CodeVisionInheritors = v },
-        new(D.EditorPage, "Code Vision: show implementations and overrides", "code vision implementations overrides inheritors interface abstract virtual")
+    public static readonly ToggleSetting CodeSpyglassInheritors = new(s => s.CodeSpyglassInheritors, (s, v) => s with { CodeSpyglassInheritors = v },
+        new(D.EditorPage, "Code Spyglass: show implementations and overrides", "code spyglass implementations overrides inheritors interface abstract virtual")
         {
-            When = new SettingWhen(s => s.CodeVision, "Code Vision is off"),
+            When = new SettingWhen(s => s.CodeSpyglass, "Code Spyglass is off"),
         });
 
-    public static readonly ToggleSetting CodeVisionAuthors = new(s => s.CodeVisionAuthors, (s, v) => s with { CodeVisionAuthors = v },
-        new(D.EditorPage, "Code Vision: show authors", "code vision authors git blame last changed who")
+    public static readonly ToggleSetting CodeSpyglassAuthors = new(s => s.CodeSpyglassAuthors, (s, v) => s with { CodeSpyglassAuthors = v },
+        new(D.EditorPage, "Code Spyglass: show authors", "code spyglass authors git blame last changed who")
         {
-            When = new SettingWhen(s => s.CodeVision, "Code Vision is off"),
+            When = new SettingWhen(s => s.CodeSpyglass, "Code Spyglass is off"),
         });
 
     public static readonly ToggleSetting SoftWrapIndent = new(s => s.SoftWrapIndent, (s, v) => s with { SoftWrapIndent = v },

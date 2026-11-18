@@ -777,7 +777,7 @@ public sealed class VcsController : IDisposable
     /// <summary>The blame an annotated file shows, line by line, or null when it shows none.</summary>
     public IReadOnlyList<BlameLine>? BlameOf(OpenDocument document) => documents.GetValueOrDefault(document)?.Blame;
 
-    /// <summary>Git blame of a file's text as it stands, for what shows no gutter column of it (Code Vision's authors); null where
+    /// <summary>Git blame of a file's text as it stands, for what shows no gutter column of it (Code Spyglass's authors); null where
     /// there is no repository or Git does not track the file.</summary>
     public async Task<IReadOnlyList<BlameLine>?> BlameTextAsync(OpenDocument document, TextSnapshot text)
     {
