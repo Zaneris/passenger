@@ -521,8 +521,8 @@ public sealed class DockHost : Grid
     /// <summary>Takes a theme's layout as the default (null for Passenger's own), window by window, a change the layout
     /// kept follows: a window still in the place and the mode the default before gave it goes where the new one puts it,
     /// and one still open or hidden as that default said opens as the new one says; an area still at that default's size
-    /// takes the new one's. What the person arranged stays as they left it, and where nothing was, the whole of the new
-    /// default is laid as Restore Default Layout lays it.</summary>
+    /// takes the new one's, but a window serving nothing in the folder keeps its place. What the person arranged stays as
+    /// they left it, and where nothing was, the whole of the new default is laid as Restore Default Layout lays it.</summary>
     public void UseDefault(ThemeLayout? layout)
     {
         if (ReferenceEquals(layout, themed))
@@ -532,7 +532,7 @@ public sealed class DockHost : Grid
         DockLayout before = Default();
         bool unarranged = Stands(before);
         themed = layout;
-        if (unarranged && windows.All(w => w.Unserved is null))
+        if (unarranged)
         {
             RestoreDefault();
             return;

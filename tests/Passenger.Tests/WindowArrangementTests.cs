@@ -475,7 +475,7 @@ public sealed class WindowArrangementTests : IDisposable
             Ui.Settle();
             dock.Hide(ToolWindowIds.Build);
             Ui.Settle();
-            string[] bottom = [.. dock.Windows.Where(w => w.Anchor == ToolAnchor.BottomLeft && !w.IsClosed).Select(w => w.Id)];
+            string[] bottom = [.. dock.Windows.Where(w => w.Anchor == ToolAnchor.BottomLeft && w is { IsClosed: false, Unserved: null }).Select(w => w.Id)];
             Assert.True(bottom.All(id => StripeButton(window, id) is not null), $"Hidden, {string.Join(", ", bottom.Where(id => StripeButton(window, id) is null))} have no stripe icon");
             Ui.Click(StripeButton(window, ToolWindowIds.Run)!);
             Assert.True(dock.IsShown(ToolWindowIds.Run), "Run's icon did not open it");
@@ -721,9 +721,10 @@ public sealed class WindowArrangementTests : IDisposable
     private static IEnumerable<string> Astray(DockHost dock, DockLayout layout, params string[] but) =>
         dock.Windows.Where(w => !but.Contains(w.Id) && (w.Anchor, w.Mode) != (layout.Windows[w.Id].Anchor, layout.Windows[w.Id].Mode)).Select(w => $"{w.Id} in {w.Anchor}");
 
-    /// <summary>The windows on the stripes (closed off them by none) with no stripe icon, shown or behind More.</summary>
+    /// <summary>The windows on the stripes (closed off them by none, serving the folder) with no stripe icon, shown or behind
+    /// More.</summary>
     private static string[] Iconless(MainWindow window) =>
-        [.. window.DockHost.Windows.Where(w => !w.IsClosed && StripeButton(window, w.Id) is not { IsEffectivelyVisible: true } && !(StripeButton(window, w.Id) is { } hidden && hidden.FindAncestorOfType<Border>() is { IsEffectivelyVisible: true }))
+        [.. window.DockHost.Windows.Where(w => w is { IsClosed: false, Unserved: null } && StripeButton(window, w.Id) is not { IsEffectivelyVisible: true } && !(StripeButton(window, w.Id) is { } hidden && hidden.FindAncestorOfType<Border>() is { IsEffectivelyVisible: true }))
             .Select(w => w.Id)];
 
     /// <summary>The stripe icons a person sees.</summary>
@@ -731,9 +732,10 @@ public sealed class WindowArrangementTests : IDisposable
         [.. window.DockHost.GetVisualDescendants().OfType<ToggleButton>().Where(b => b.Tag is string && b.IsEffectivelyVisible)];
 
     /// <summary>The docked windows named by nothing a person sees: no tab along an edge or at a place's foot (whole, or
-    /// listed by its strip's last button for want of room), no header; those closed are left out.</summary>
+    /// listed by its strip's last button for want of room), no header; those closed, or serving nothing in the folder, are
+    /// left out.</summary>
     private static string[] Unnamed(MainWindow window) =>
-        [.. window.DockHost.Windows.Where(w => !w.IsClosed && w.Mode == ToolMode.Docked && EdgeTab(window, w.Id) is null && !FootTabs(window).Any(t => Equals(t.Tag, w.Id))
+        [.. window.DockHost.Windows.Where(w => !w.IsClosed && w is { Mode: ToolMode.Docked, Unserved: null } && EdgeTab(window, w.Id) is null && !FootTabs(window).Any(t => Equals(t.Tag, w.Id))
             && !(w.IsShown && Header(window, w.Title) is not null)).Select(w => w.Id)];
 
     /// <summary>A shown pane's header naming a window by its title.</summary>

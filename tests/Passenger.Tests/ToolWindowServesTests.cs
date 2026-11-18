@@ -4,6 +4,7 @@ using Avalonia.Headless.XUnit;
 using Avalonia.VisualTree;
 using Passenger.App;
 using Passenger.App.Docking;
+using Passenger.App.Settings;
 
 namespace Passenger.Tests;
 
@@ -165,6 +166,66 @@ public sealed class ToolWindowServesTests
         }
     }
 
+    /// <summary>Under titled tabs, as Cubicle names the tool windows, a console solution names no window of a kind of project
+    /// it lacks by a tab along an edge or at a place's foot, and a Godot project come brings the Game window's tab.</summary>
+    [AvaloniaFact]
+    public void Under_titled_tabs_a_console_solution_names_no_Game_window_and_a_Godot_project_come_brings_its_tab()
+    {
+        string folder = ConsoleSolution();
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        try
+        {
+            window.ApplySettings(window.Settings with { Look = SourcedTheme.BuiltIn("Cubicle") });
+            Ui.Settle();
+            Assert.True(window.DockHost.TitledTabs && StripeButton(window, ToolWindowIds.Run) is null, "Cubicle did not name the tool windows by titled tabs");
+            Assert.True(Tab(window, ToolWindowIds.Run) is not null, "Run, every folder's, has no tab under titled tabs");
+            string[] tabbed = [.. OfAKind.Select(k => k.Id).Where(id => Tab(window, id) is not null)];
+            Assert.True(tabbed.Length == 0, $"A plain console solution names {string.Join(", ", tabbed)} by a tab under titled tabs");
+
+            TestFolders.Write(folder, "game/project.godot", ProjectGodot);
+            Ui.WaitFor(() => Tab(window, ToolWindowIds.Game) is not null,
+                () => $"the Game window's tab once a Godot project came, where it says {window.DockHost[ToolWindowIds.Game].Unserved}");
+        }
+        finally
+        {
+            window.ApplySettings(new AppSettings());
+            window.Close();
+        }
+    }
+
+    /// <summary>A theme chosen over a layout the person arranged moves, window by window, only those serving the folder: one
+    /// serving nothing that the theme places elsewhere keeps its place for when it serves.</summary>
+    [AvaloniaFact]
+    public void A_theme_chosen_over_an_arranged_layout_leaves_a_window_serving_nothing_where_it_stood()
+    {
+        string folder = ConsoleSolution();
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        try
+        {
+            DockHost dock = window.DockHost;
+            dock.Move(dock[ToolWindowIds.Terminal], ToolAnchor.RightBottom);
+            Ui.Settle();
+            ToolAnchor game = dock[ToolWindowIds.Game].Anchor;
+            string name = $"Placing {Guid.NewGuid():N}";
+            string json = $$$"""{"format": 1, "name": "{{{name}}}", "layout": {"places": {"leftBottom": ["game", "find"]}} }""";
+            Assert.Null(KeptThemes.Keep(ThemeSource.Added, false, name, System.Text.Encoding.UTF8.GetBytes(json)));
+            window.ApplySettings(window.Settings with { Look = new SourcedTheme(ThemeSource.Added.Name, name) });
+            Ui.Settle();
+            Assert.True(dock[ToolWindowIds.Find].Anchor == ToolAnchor.LeftBottom && dock[ToolWindowIds.Terminal].Anchor == ToolAnchor.RightBottom,
+                $"The theme left Find in {dock[ToolWindowIds.Find].Anchor}, where it places it at the left, or took the Terminal the person moved to {dock[ToolWindowIds.Terminal].Anchor}");
+            Assert.True(dock[ToolWindowIds.Game].Anchor == game, $"The Game window, serving nothing here, went to {dock[ToolWindowIds.Game].Anchor} as the theme places it, from {game}");
+        }
+        finally
+        {
+            window.ApplySettings(new AppSettings());
+            window.Close();
+        }
+    }
+
+    /// <summary>A window's tab under titled tabs, along an edge or at a place's foot, as a person sees it.</summary>
+    private static Border? Tab(MainWindow window, string id) =>
+        window.DockHost.GetVisualDescendants().OfType<Border>().FirstOrDefault(b => b.Classes.Contains(StyleClasses.Tab) && Equals(b.Tag, id) && b.IsEffectivelyVisible);
+
     /// <summary>A Godot project's file, of a game of GDScript alone.</summary>
     private const string ProjectGodot = "config_version=5\n\n[application]\n\nconfig/name=\"Hop\"\n";
 
@@ -190,6 +251,7 @@ public sealed class ToolWindowServesTests
         return folder;
     }
 
+    /// <summary>A window's stripe icon as a person sees it.</summary>
     private static ToggleButton? StripeButton(MainWindow window, string id) =>
-        window.DockHost.GetVisualDescendants().OfType<ToggleButton>().FirstOrDefault(b => Equals(b.Tag, id));
+        window.DockHost.GetVisualDescendants().OfType<ToggleButton>().FirstOrDefault(b => Equals(b.Tag, id) && b.IsEffectivelyVisible);
 }
