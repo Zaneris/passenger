@@ -9,7 +9,7 @@ namespace Passenger.App.Mobile;
 /// so. Where the workload's Linux pack is installed, its aapt2 answers for itself, by the processor its header names.</summary>
 public static class AndroidHosts
 {
-    /// <summary>The pack holding the Android workload's build tools on Linux, in .NET's packs folder.</summary>
+    /// <summary>The pack holding the Android workload's build tools on Linux, in the workloads' packs folders.</summary>
     private const string LinuxPack = "Microsoft.Android.Sdk.Linux";
 
     /// <summary>Where Android apps are built, as the words for where they are not say it.</summary>
@@ -23,9 +23,26 @@ public static class AndroidHosts
     public static string Elsewhere(string host) => $"for Android only on {Builders}: {Why(host)}";
 
     /// <summary>This machine as a person names it ("Linux on Arm64") where it builds no Android app, asked of the packs of
-    /// the .NET <paramref name="folder"/>'s projects take; null where it builds them.</summary>
-    public static string? Unbuilt(string? folder) =>
-        OperatingSystem.IsLinux() ? Unbuilt(RuntimeInformation.OSArchitecture, ToolsProcessors(folder)) : null;
+    /// the .NET <paramref name="folder"/>'s projects take, wherever it keeps them (<see cref="Dotnet.WorkloadsAsync"/>); null
+    /// where it builds them. Off the window's thread.</summary>
+    public static async Task<string?> UnbuiltAsync(string? folder)
+    {
+        if (!OperatingSystem.IsLinux())
+        {
+            return null;
+        }
+        IReadOnlyList<Architecture> tools;
+        try
+        {
+            tools = ToolsProcessors(await Dotnet.WorkloadsAsync(folder).ConfigureAwait(false));
+        }
+        catch (FileNotFoundException)
+        {
+            // No .NET: no pack's tools to read.
+            tools = [];
+        }
+        return Unbuilt(RuntimeInformation.OSArchitecture, tools);
+    }
 
     /// <summary>Linux on <paramref name="processor"/> as a person names it where it builds no Android app, given the
     /// processors the installed pack's aapt2 is built for (<see cref="ProgramProcessors"/>; none with none installed or
@@ -33,16 +50,15 @@ public static class AndroidHosts
     public static string? Unbuilt(Architecture processor, IReadOnlyList<Architecture> tools) =>
         (tools.Count > 0 ? !tools.Contains(processor) : processor is not Architecture.X64) ? $"Linux on {Named(processor)}" : null;
 
-    /// <summary>The processors the newest installed Linux pack's aapt2 is built for; none where there is no .NET, none is
-    /// installed or it can't be read.</summary>
-    private static IReadOnlyList<Architecture> ToolsProcessors(string? folder)
+    /// <summary>The processors the aapt2 of the newest Linux pack installed in <paramref name="folders"/> is built for; none
+    /// where none is installed or it can't be read.</summary>
+    public static IReadOnlyList<Architecture> ToolsProcessors(WorkloadFolders folders)
     {
         try
         {
-            string packs = Path.Combine(Dotnet.Root(folder), "packs", LinuxPack);
-            return Directory.Exists(packs) && VersionOrder.Newest(Directory.EnumerateDirectories(packs)) is { } newest
-                ? ProgramProcessors.Of(Path.Combine(newest, "tools", "Linux", "aapt2"))
-                : [];
+            string[] versions = [.. folders.Under(WorkloadFolders.Packs).Select(packs => Path.Combine(packs, LinuxPack)).Where(Directory.Exists)
+                .SelectMany(Directory.EnumerateDirectories)];
+            return VersionOrder.Newest(versions) is { } newest ? ProgramProcessors.Of(Path.Combine(newest, "tools", "Linux", "aapt2")) : [];
         }
         catch (Exception unread) when (unread is IOException or UnauthorizedAccessException)
         {

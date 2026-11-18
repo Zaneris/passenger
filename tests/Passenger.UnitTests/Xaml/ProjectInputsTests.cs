@@ -72,10 +72,37 @@ public sealed class ProjectInputsTests : IDisposable
         Write("dotnet/packs/Microsoft.NETCore.App.Ref/10.0.0/ref/net10.0/Release.dll", string.Empty);
         Write("dotnet/packs/Microsoft.NETCore.App.Ref/9.0.11/ref/net9.0/Nine.dll", string.Empty);
 
-        ProjectInputs inputs = ProjectInputs.Read(project, dotnet, new ProjectEvaluation(assets, null, new Dictionary<string, string>()));
+        ProjectInputs inputs = ProjectInputs.Read(project, new WorkloadFolders(dotnet, null), new ProjectEvaluation(assets, null, new Dictionary<string, string>()));
 
         string[] shared = [.. inputs.References.Where(r => r.StartsWith(dotnet, StringComparison.Ordinal)).Select(Path.GetFileName).OfType<string>()];
         Assert.True(shared is ["Release.dll"], $"net10.0's XAML reads the reference assemblies [{string.Join(", ", shared)}], not 10.0.0's release");
+    }
+
+    /// <summary>A workload's reference pack where the .NET installs workloads for each user (its SDK's band's userlocal
+    /// marker), in the user's own .dotnet alone, is read there, the .NET's own packs still read from its own folder.</summary>
+    [Fact]
+    public void A_workloads_reference_pack_in_the_users_own_dotnet_is_read_where_the_dotnet_installs_workloads_there()
+    {
+        string project = Write("App/App.csproj", "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+        string assets = Write("App/obj/project.assets.json", """
+            { "version": 3, "targets": { "net10.0-android": {} }, "libraries": {}, "packageFolders": {},
+              "project": { "frameworks": { "net10.0-android": { "frameworkReferences": { "Microsoft.Android": {}, "Microsoft.NETCore.App": {} } } } } }
+            """);
+        string dotnet = Path.Combine(root, "usr", "lib64", "dotnet");
+        Write("usr/lib64/dotnet/metadata/workloads/10.0.100/userlocal", string.Empty);
+        Write("usr/lib64/dotnet/packs/Microsoft.NETCore.App.Ref/10.0.0/ref/net10.0/System.Runtime.dll", string.Empty);
+        Write("home/ann/.dotnet/packs/Microsoft.Android.Ref.36/36.1.2/ref/net10.0/Mono.Android.dll", string.Empty);
+        ProjectEvaluation evaluation = new(assets, null, new Dictionary<string, string>())
+        {
+            Packs = [new ReferencePack("Microsoft.Android", "Microsoft.Android.Ref.36", null), new ReferencePack("Microsoft.NETCore.App", "Microsoft.NETCore.App.Ref", "10.0.0")],
+        };
+
+        string[] Read(WorkloadFolders folders) => [.. ProjectInputs.Read(project, folders, evaluation).References.Select(Path.GetFileName).OfType<string>().Order(StringComparer.Ordinal)];
+
+        string[] forEachUser = Read(WorkloadFolders.Of(dotnet, "10.0.113", Path.Combine(root, "home", "ann")));
+        Assert.True(forEachUser is ["Mono.Android.dll", "System.Runtime.dll"],
+            $"An Android project's XAML reads [{string.Join(", ", forEachUser)}], missing the workload's reference pack in the user's own .dotnet");
+        Assert.Equal(["System.Runtime.dll"], Read(WorkloadFolders.Of(dotnet, "11.0.100", Path.Combine(root, "home", "ann"))));
     }
 
     [Fact]

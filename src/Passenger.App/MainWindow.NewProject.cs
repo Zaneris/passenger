@@ -47,7 +47,7 @@ public partial class MainWindow
     /// <summary>New Solution: the dialog over this window, and the solution opened, built, once it is made.</summary>
     public NewProjectDialog ShowNewSolution()
     {
-        NewProjectDialog dialog = new(BesideLast(), null, ContainersWhyNot(), settings.GodotExecutable) { Workloads = InstallAskedWorkloadsAsync };
+        NewProjectDialog dialog = new(BesideLast(), null, ContainersWhyNot(), settings.GodotExecutable) { Workloads = InstallAskedWorkloadsAsync, WorkloadPlace = WorkloadFoldersAsync };
         dialog.Closed += (_, _) =>
         {
             // What Passenger made is the person's own code, opened trusted, but in a Git repository only the person trusts.
@@ -86,7 +86,7 @@ public partial class MainWindow
         }
         ProjectTarget target = new(solution.Path, into, [.. solution.Projects.Select(p => Path.GetFileNameWithoutExtension(p.Path))],
             Projects.FirstOrDefault(p => p.Exists && p.IsAspireHost)?.Name);
-        NewProjectDialog dialog = new(ProjectFolderFor(solution, into), target, ContainersWhyNot(), settings.GodotExecutable) { Workloads = InstallAskedWorkloadsAsync };
+        NewProjectDialog dialog = new(ProjectFolderFor(solution, into), target, ContainersWhyNot(), settings.GodotExecutable) { Workloads = InstallAskedWorkloadsAsync, WorkloadPlace = WorkloadFoldersAsync };
         dialog.Closed += (_, _) =>
         {
             if (dialog.Created is { } made && Solution?.Path == solution.Path)

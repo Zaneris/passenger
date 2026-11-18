@@ -303,7 +303,8 @@ internal static class Evaluation
     }
 
     /// <summary>Where imports never change but with their versions, which the imports kept say: the .NET install (the
-    /// SDK, its props and targets) and the NuGet package folders.</summary>
+    /// SDK, its props and targets), the workloads' packs and manifests in the user's own folder where it installs them for
+    /// each user (<see cref="WorkloadFolders"/>), and the NuGet package folders.</summary>
     internal static HashSet<string> OutsideRoots(Project project)
     {
         HashSet<string> roots = new(PathNames.Comparer);
@@ -314,6 +315,13 @@ internal static class Evaluation
         foreach (string folder in project.GetPropertyValue(CarriedProperties.NuGetPackageFolders).Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
         {
             Add(folder);
+        }
+        string root = project.GetPropertyValue("NetCoreRoot");
+        if (root.Length > 0 && Path.IsPathFullyQualified(root)
+            && WorkloadFolders.Of(root, project.GetPropertyValue("NETCoreSdkVersion"), WorkloadFolders.CliHome(Environment.GetEnvironmentVariable)).UserLocal is { } own)
+        {
+            Add(Path.Combine(own, WorkloadFolders.Packs));
+            Add(Path.Combine(own, WorkloadFolders.Manifests));
         }
         return roots;
 

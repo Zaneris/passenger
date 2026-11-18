@@ -430,6 +430,59 @@ public class MobileNeedsTests
         Assert.Equal("Linux on Arm64", AndroidHosts.Unbuilt(Architecture.Arm64, Processors("#!/bin/bash -e\nexec as\n"u8.ToArray())));
     }
 
+    /// <summary>Where the .NET installs workloads for each user, the Android workload's Linux pack is in the user's own
+    /// .dotnet alone: its aapt2 is read there, the newest version of either folder's.</summary>
+    [Fact]
+    public void The_Android_workloads_tools_are_read_from_the_users_own_dotnet_where_the_dotnet_installs_workloads_there()
+    {
+        string place = PathNames.Canonical(Directory.CreateTempSubdirectory("passenger-unit-").FullName);
+        try
+        {
+            string root = Directory.CreateDirectory(Path.Combine(place, "usr", "lib64", "dotnet")).FullName;
+            string home = Directory.CreateDirectory(Path.Combine(place, "home", "ann")).FullName;
+            string marker = WorkloadFolders.UserLocalMarker(root, "10.0.113")!;
+            Directory.CreateDirectory(Path.GetDirectoryName(marker)!);
+            File.WriteAllText(marker, string.Empty);
+            void Aapt2(string under, string version, byte[] header)
+            {
+                string tools = Directory.CreateDirectory(Path.Combine(under, "packs", "Microsoft.Android.Sdk.Linux", version, "tools", "Linux")).FullName;
+                File.WriteAllBytes(Path.Combine(tools, "aapt2"), header);
+            }
+            WorkloadFolders folders = WorkloadFolders.Of(root, "10.0.113", home);
+            Assert.Empty(AndroidHosts.ToolsProcessors(folders));
+
+            Aapt2(Path.Combine(home, ".dotnet"), "37.2.31", [.. X64Aapt2[..18], 183, 0]);
+            Assert.Equal([Architecture.Arm64], AndroidHosts.ToolsProcessors(folders));
+            Assert.Empty(AndroidHosts.ToolsProcessors(new WorkloadFolders(root, null)));
+
+            Aapt2(root, "36.1.2", X64Aapt2);
+            Assert.Equal([Architecture.Arm64], AndroidHosts.ToolsProcessors(folders));
+            Aapt2(root, "37.3.0", X64Aapt2);
+            Assert.Equal([Architecture.X64], AndroidHosts.ToolsProcessors(folders));
+        }
+        finally
+        {
+            Directory.Delete(place, recursive: true);
+        }
+    }
+
+    /// <summary>Where Install puts a workload, as an offer and a question say it, and the command an administrator runs
+    /// where it needs one, naming the .NET's dotnet by its path wherever sudo runs it.</summary>
+    [Fact]
+    public void A_workload_install_says_where_it_puts_the_workload_and_an_administrators_command_names_the_dotnet_by_its_path()
+    {
+        Assert.Equal("into the .NET in /usr/share/dotnet", WorkloadInstalls.Into(new WorkloadFolders("/usr/share/dotnet", null)));
+        Assert.Equal("into /home/ann/.dotnet, for you alone, as the .NET in /usr/lib64/dotnet installs workloads for each user",
+            WorkloadInstalls.Into(new WorkloadFolders("/usr/lib64/dotnet", "/home/ann/.dotnet")));
+        if (OperatingSystem.IsWindows())
+        {
+            Assert.Equal("dotnet workload install android ios", WorkloadInstalls.AsAdministrator(@"C:\Program Files\dotnet", ["android", "ios"]));
+            return;
+        }
+        Assert.Equal("sudo /usr/share/dotnet/dotnet workload install android ios", WorkloadInstalls.AsAdministrator("/usr/share/dotnet", ["android", "ios"]));
+        Assert.Equal("sudo '/opt/my dotnet/dotnet' workload install android", WorkloadInstalls.AsAdministrator("/opt/my dotnet", ["android"]));
+    }
+
     [Fact]
     public void On_Linux_on_Arm64_an_Android_app_is_said_to_build_elsewhere_its_workload_still_offered_and_no_Android_SDK_or_JDK_asked()
     {
@@ -467,19 +520,6 @@ public class MobileNeedsTests
         Assert.Equal(["maui-android", "android"], x64.Select(p => p.Id));
         Assert.All([.. x64, .. mac], p => Assert.True(p.Unbuilt is null && p.WhyNotFor("App") is null, $"{p.Named} is not offered where it builds: {p.WhyNotFor("App")}"));
         Assert.Equal(["maui", "android", "ios", "maccatalyst"], mac.Select(p => p.Id));
-    }
-
-    [Fact]
-    public void A_dotnet_installs_an_SDKs_workloads_for_each_user_by_the_marker_of_its_feature_band_whatever_its_pre_release()
-    {
-        string root = Path.Combine("/usr", "lib64", "dotnet");
-        string Band(string band) => Path.Combine(root, "metadata", "workloads", band, "userlocal");
-
-        Assert.Equal(Band("11.0.100"), WorkloadInstalls.UserLocalMarker(root, "11.0.100-rc.3.26522.148"));
-        Assert.Equal(Band("10.0.100"), WorkloadInstalls.UserLocalMarker(root, "10.0.113"));
-        Assert.Equal(Band("9.0.300"), WorkloadInstalls.UserLocalMarker(root, "9.0.305+abc"));
-        Assert.Null(WorkloadInstalls.UserLocalMarker(root, "11.0"));
-        Assert.Null(WorkloadInstalls.UserLocalMarker(root, "eleven"));
     }
 
     [Fact]

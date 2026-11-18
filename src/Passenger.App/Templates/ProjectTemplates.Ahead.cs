@@ -30,8 +30,9 @@ public static partial class ProjectTemplates
     /// <summary>What the watches below are held by.</summary>
     private static readonly Lock WatchGate = new();
 
-    /// <summary>The watch on the .NET install's folders the templates come from, kept for the process's life.</summary>
-    private static InstallFolders? installWatch;
+    /// <summary>The watches on the folders the templates of the .NETs read come from (<see cref="WorkloadFolders"/>), by
+    /// each one's canonical path, kept for the process's life.</summary>
+    private static readonly Dictionary<string, InstallFolders> InstallWatches = new(PathNames.Comparer);
 
     /// <summary>The watch on packages.json in the home or hive dotnet new reads, with that folder: watched again where
     /// the hive changes.</summary>
@@ -42,6 +43,8 @@ public static partial class ProjectTemplates
     /// <summary>The template home the templates were last read ahead for (<see cref="Hive"/>, dotnet new's own as the empty
     /// string); null before any read ahead, or once one failed.</summary>
     private static string? preloaded;
+
+    /// <summary>1 once anything read is watched, so a change of <see cref="Hive"/> moves the watch on its packages.json.</summary>
     private static int watching;
     private static long changes;
 
@@ -136,6 +139,16 @@ public static partial class ProjectTemplates
         }
     }
 
+    /// <summary>The watch on a folder the templates come from (<see cref="InstallFolders"/>), by its path; null where none
+    /// watches it.</summary>
+    public static WatchedTree? InstallWatch(string folder)
+    {
+        lock (WatchGate)
+        {
+            return InstallWatches.GetValueOrDefault(PathNames.Canonical(folder));
+        }
+    }
+
     /// <summary>Looks off the UI thread whether what the templates come from moved since it was last seen, as a window comes
     /// in front, and reads them again only if it did: an install or an SDK whose change the system dropped without a word
     /// (macOS's watcher passes over its word that it did) is found then.</summary>
@@ -143,38 +156,51 @@ public static partial class ProjectTemplates
     {
         UiThread.Check();
         WatchedFile? packages;
-        InstallFolders? install;
+        InstallFolders[] installs;
         lock (WatchGate)
         {
-            (packages, install) = (packagesWatch?.Watch, installWatch);
+            (packages, installs) = (packagesWatch?.Watch, [.. InstallWatches.Values]);
         }
         packages?.LookAgain();
-        install?.LookAgain();
+        foreach (InstallFolders install in installs)
+        {
+            install.LookAgain();
+        }
     }
 
     /// <summary>Watches, once there is something read: dotnet new's packages.json in its home or the hive (<see
-    /// cref="WatchPackages"/>), which an install or uninstall rewrites, and the .NET install's folders the templates come
-    /// from (<see cref="InstallFolders"/>), which an SDK or a workload changes. dotnet new list itself writes none of them.</summary>
-    private static void Watch()
+    /// cref="WatchPackages"/>), which an install or uninstall rewrites, and the folders of <paramref name="folders"/>, the
+    /// .NET's own and the user's own where it installs workloads there (<see cref="InstallFolders"/>), which an SDK or a
+    /// workload changes, each folder once there. dotnet new list itself writes none of them.</summary>
+    private static void Watch(WorkloadFolders? folders)
     {
+        Volatile.Write(ref watching, 1);
         WatchPackages();
-        if (Interlocked.Exchange(ref watching, 1) == 1)
+        foreach (string folder in folders?.All ?? [])
         {
-            return;
+            string canonical = PathNames.Canonical(folder);
+            lock (WatchGate)
+            {
+                // The user's own comes as the SDK first writes there: the next read watches it.
+                if (!InstallWatches.ContainsKey(canonical) && Directory.Exists(canonical))
+                {
+                    InstallWatches[canonical] = new InstallFolders(canonical, Seen);
+                }
+            }
         }
-        string dotnet;
+    }
+
+    /// <summary>The folders a read of a folder's templates is watched in (<see cref="Dotnet.WorkloadsAsync"/>); none with no
+    /// .NET to watch, which the read says.</summary>
+    private static async Task<WorkloadFolders?> InstallOfAsync(string folder)
+    {
         try
         {
-            dotnet = PathNames.Canonical(Dotnet.Root());
+            return await Dotnet.WorkloadsAsync(folder);
         }
         catch (FileNotFoundException)
         {
-            // No .NET to watch: the read says so.
-            return;
-        }
-        lock (WatchGate)
-        {
-            installWatch = new InstallFolders(dotnet, Seen);
+            return null;
         }
     }
 
@@ -250,12 +276,12 @@ public static partial class ProjectTemplates
         }));
     }
 
-    /// <summary>The .NET install's folders the templates come from, watched for an SDK or a workload changing them: its sdk,
-    /// templates and template-packs folders, each on its own (what is under their entries is passed over), and the install's
-    /// own folder for one of them come or gone.</summary>
+    /// <summary>A folder the templates come from, the .NET install's own or the user's own where it installs workloads
+    /// there, watched for an SDK or a workload changing them: its sdk, templates and template-packs folders, each on its own
+    /// (what is under their entries is passed over), and the folder itself for one of them come or gone.</summary>
     private sealed class InstallFolders : WatchedTree
     {
-        private static readonly string[] Sources = ["sdk", "templates", "template-packs"];
+        private static readonly string[] Sources = ["sdk", "templates", WorkloadFolders.TemplatePacks];
 
         private readonly Action moved;
         private bool changed;

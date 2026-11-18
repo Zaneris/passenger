@@ -49,7 +49,7 @@ public static partial class TemplatePacks
     /// <summary>The workloads whose templates New Project offers where they are not installed, each on the systems it
     /// installs on, Apple's where <paramref name="apple"/> (macOS, Windows), MAUI's elsewhere as its Android part alone, which
     /// none is offered to install where this machine builds no Android app (<paramref name="androidHost"/>, as
-    /// <see cref="AndroidHosts.Unbuilt(string?)"/> names it); their kinds from each workload's templates at the version named.</summary>
+    /// <see cref="AndroidHosts.UnbuiltAsync"/> names it); their kinds from each workload's templates at the version named.</summary>
     public static IEnumerable<TemplatePack> Workloads(bool apple, string? androidHost)
     {
         yield return new TemplatePack(apple ? "maui" : "maui-android", "Install the .NET MAUI workload for creating apps for Android, iOS, Mac Catalyst and Windows from one project",

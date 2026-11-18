@@ -86,7 +86,7 @@ public sealed record MobileWant
 
     /// <summary>What the folder's projects need, from their answers: <paramref name="usualSdk"/> is where the Android SDK
     /// is looked for where the workload found none, <paramref name="exists"/> whether a file or folder is there, and
-    /// <paramref name="androidHost"/> this machine where it builds no Android app (<see cref="AndroidHosts.Unbuilt(string?)"/>),
+    /// <paramref name="androidHost"/> this machine where it builds no Android app (<see cref="AndroidHosts.UnbuiltAsync"/>),
     /// whose projects' workloads are still offered, as they let them load to be edited, and never the Android SDK or a JDK.</summary>
     public static MobileWant Of(IReadOnlyList<ProjectNeeds> projects, bool onMac, Func<string, string?> environment, string usualSdk, Func<string, bool> exists,
         string? androidHost = null)

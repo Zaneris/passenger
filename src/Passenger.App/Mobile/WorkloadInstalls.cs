@@ -1,3 +1,6 @@
+using Passenger.Core;
+using Passenger.Terminal;
+
 namespace Passenger.App.Mobile;
 
 /// <summary>How a .NET workload install is run and what its words say: its downloads (gigabytes for Android's or MAUI's)
@@ -24,20 +27,18 @@ public static class WorkloadInstalls
     public static bool NoRoom(IReadOnlyList<string> said) =>
         said.Any(l => l.Contains("No space left on device", StringComparison.Ordinal) || l.Contains("Disk quota exceeded", StringComparison.Ordinal));
 
-    /// <summary>The file whose presence in the .NET at <paramref name="root"/> makes the SDK <paramref name="sdk"/> install
-    /// workloads into each user's own folder (~/.dotnet), so an install needs no rights over that .NET: the marker the SDK
-    /// reads under metadata/workloads/ for its feature band, its pre-release left out (11.0.100 for 11.0.100-rc.3.26522.148,
-    /// 10.0.100 for 10.0.113), which Fedora's packaged .NET and others carry. Null for a version that names no band.</summary>
-    public static string? UserLocalMarker(string root, string sdk)
-    {
-        string[] parts = sdk.Split('-', '+')[0].Split('.');
-        if (parts.Length != 3 || !int.TryParse(parts[0], out int major) || !int.TryParse(parts[1], out int minor)
-            || !int.TryParse(parts[2], out int patch))
-        {
-            return null;
-        }
-        return Path.Combine(root, "metadata", "workloads", $"{major}.{minor}.{patch / 100 * 100}", "userlocal");
-    }
+    /// <summary>Where a workload install puts the workloads, in the words of an offer or a question ("into the .NET in
+    /// /usr/share/dotnet"): the user's own folder where the .NET installs workloads for each user, else the .NET's own.</summary>
+    public static string Into(WorkloadFolders folders) => folders.UserLocal is { } own
+        ? $"into {PathNames.Shown(own, null)}, for you alone, as the .NET in {PathNames.Shown(folders.Root, null)} installs workloads for each user"
+        : $"into the .NET in {PathNames.Shown(folders.Root, null)}";
+
+    /// <summary>dotnet workload install of <paramref name="ids"/> as an administrator runs it for the .NET in
+    /// <paramref name="root"/>: through sudo, naming that .NET's dotnet by its path, as sudo's own PATH may find another;
+    /// on Windows as written, in a terminal run as administrator, whose PowerShell and cmd quote a path apart.</summary>
+    public static string AsAdministrator(string root, IReadOnlyList<string> ids) => OperatingSystem.IsWindows()
+        ? $"dotnet workload install {string.Join(' ', ids)}"
+        : $"sudo {ShellWords.Quoted(Path.Combine(root, Dotnet.HostName), ShellKind.Posix)} workload install {string.Join(' ', ids)}";
 }
 
 /// <summary>What a test's workload install takes in place of the .NET it installs into: that .NET's folder, which is

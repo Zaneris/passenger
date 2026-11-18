@@ -88,10 +88,11 @@ public sealed record ProjectInputs(
         return null;
     }
 
-    /// <summary>Reads a project's inputs; <paramref name="dotnetRoot"/> is the folder of the <c>dotnet</c> that builds it,
-    /// whose <c>packs/</c> hold the framework's reference assemblies, and <paramref name="evaluation"/> what MSBuild's evaluation
-    /// says of where its restore and build put things, when there is one, which is taken before what the folders suggest.</summary>
-    public static ProjectInputs Read(string projectPath, string? dotnetRoot, ProjectEvaluation? evaluation = null)
+    /// <summary>Reads a project's inputs; <paramref name="dotnet"/> is where the .NET that builds it keeps its packs, whose
+    /// <c>packs/</c> hold the framework's reference assemblies, its own folder's and, where it installs workloads for each
+    /// user, the user's own, and <paramref name="evaluation"/> what MSBuild's evaluation says of where its restore and build
+    /// put things, when there is one, which is taken before what the folders suggest.</summary>
+    public static ProjectInputs Read(string projectPath, WorkloadFolders? dotnet, ProjectEvaluation? evaluation = null)
     {
         string folder = Path.GetDirectoryName(projectPath)!;
         XDocument? project = Load(projectPath);
@@ -113,7 +114,7 @@ public sealed record ProjectInputs(
             {
                 // The SDK's own name for the framework's pack where the evaluation gives it, a workload's (Microsoft.Android.Ref.37) included.
                 ReferencePack? named = evaluation?.Packs.FirstOrDefault(p => string.Equals(p.Framework, shared, StringComparison.OrdinalIgnoreCase));
-                references.AddRange(FrameworkAssemblies(dotnetRoot, read, named?.Name ?? PackOf(shared), named?.Version));
+                references.AddRange(FrameworkAssemblies(dotnet, read, named?.Name ?? PackOf(shared), named?.Version));
             }
         }
         // The project file's own references, should the project not be restored yet.
@@ -417,9 +418,10 @@ public sealed record ProjectInputs(
     private static string PackOf(string framework) => (FrameworkNames.IsWindowsDesktop(framework) ? FrameworkNames.WindowsDesktop : framework) + ".Ref";
 
     /// <summary>A reference pack's assemblies: the pack the restore downloaded into a package folder, else the SDK's own
-    /// (<c>packs/Microsoft.NETCore.App.Ref/10.0.x/ref/net10.0/</c>), at the version the SDK names, else the newest of the
-    /// target's major version, else the newest of any. A target's platform is not part of the pack's folder.</summary>
-    private static IEnumerable<string> FrameworkAssemblies(string? dotnetRoot, Assets read, string pack, string? version)
+    /// (<c>packs/Microsoft.NETCore.App.Ref/10.0.x/ref/net10.0/</c>, in any of <paramref name="dotnet"/>'s folders, the
+    /// user's own first), at the version the SDK names, else the newest of the target's major version, else the newest of
+    /// any. A target's platform is not part of the pack's folder.</summary>
+    private static IEnumerable<string> FrameworkAssemblies(WorkloadFolders? dotnet, Assets read, string pack, string? version)
     {
         string target = FrameworkNames.VersionOf(read.Framework) is { Major: >= 5 } net ? $"net{net.Major}.{net.Minor}" : read.Framework;
         foreach ((string id, string downloaded) in read.Downloads.Where(d => string.Equals(d.Id, pack, StringComparison.OrdinalIgnoreCase)))
@@ -433,13 +435,13 @@ public sealed record ProjectInputs(
                 }
             }
         }
-        string packs = dotnetRoot is null ? string.Empty : Path.Combine(dotnetRoot, "packs", pack);
-        if (dotnetRoot is null || !Directory.Exists(packs))
+        if (dotnet is null)
         {
             return [];
         }
         int? major = FrameworkNames.Major(target);
-        List<(string Version, string Folder)> versions = [.. VersionOrder.NewestFirst(Directory.EnumerateDirectories(packs)).Select(d => (Version: Path.GetFileName(d), Folder: d))];
+        IEnumerable<string> packs = dotnet.Under(WorkloadFolders.Packs).Select(folder => Path.Combine(folder, pack)).Where(Directory.Exists);
+        List<(string Version, string Folder)> versions = [.. VersionOrder.NewestFirst(packs.SelectMany(Directory.EnumerateDirectories)).Select(d => (Version: Path.GetFileName(d), Folder: d))];
         // The version the SDK names first; a workload's pack, versioned by the platform's own numbers, at its newest.
         IEnumerable<(string Version, string Folder)> named = version is null ? [] : versions.Where(v => string.Equals(v.Version, version, StringComparison.OrdinalIgnoreCase));
         foreach ((_, string folder) in named.Concat(versions.Where(v => major is not null && VersionOrder.Major(v.Version) == major)).Concat(versions))

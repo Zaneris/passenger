@@ -10,13 +10,13 @@ namespace Passenger.Tests;
 /// <summary>What a mobile project needs, said over the window as it opens and got from there: a project whose workload
 /// the .NET lacks (tvOS on a Mac, Android elsewhere) says so, and Install Workloads asks, runs the install (a stand-in
 /// of dotnet's), a workload set first where the .NET has none, saying a download out of room plainly, and loads the
-/// project again, asking no administrator where the .NET installs for each user; an Android project whose workload's
-/// answers (stand-ins of its targets) say it lacks its SDK's platform and a JDK offers the workload's installer, run
-/// only once the person accepted the licences Google's repository (a stand-in) gives; the JDK it installs is found
-/// after with no JAVA_HOME, and a JAVA_HOME where the workload finds no JDK is said and never given to the installer;
-/// on a Mac an iOS project lacking its simulator runtime says how Xcode installs one, and one whose Xcode the workload
-/// refuses offers Get Xcode; New Project offers each mobile template a missing workload brings. It sets a process-wide
-/// stand-in and the environment (ANDROID_HOME, DEVELOPER_DIR, HOME, JAVA_HOME, TMPDIR): it runs alone.</summary>
+/// project again, into the user's own .dotnet where the .NET installs for each user, whose template packs are heard; an
+/// Android project lacking its SDK's platform and a JDK (stand-ins of its targets) offers the workload's installer, run
+/// once the person accepted the licences Google's repository (a stand-in) gives; the JDK it installs is found after with
+/// no JAVA_HOME, one where the workload finds no JDK said and never given to it; on a Mac an iOS project lacking its
+/// simulator runtime says how Xcode installs one, one whose Xcode the workload refuses offers Get Xcode; New Project
+/// offers each mobile template a missing workload brings. It sets process-wide stand-ins (the .NET's too) and the
+/// environment (ANDROID_HOME, DEVELOPER_DIR, HOME, JAVA_HOME, TMPDIR): it runs alone.</summary>
 [Collection(Alone.Name)]
 public sealed class MobileNeedsWindowTests : IDisposable
 {
@@ -93,7 +93,7 @@ public sealed class MobileNeedsWindowTests : IDisposable
         (MainWindow window, _, string platform, _) = LackingWorkload();
         string sdk = Ui.Await(Dotnet.SdkAsync(folder), "the SDK the folder takes", Slow);
         string shared = Directory.CreateDirectory(Path.Combine(folder, "obj", "shared-dotnet")).FullName;
-        string marker = WorkloadInstalls.UserLocalMarker(shared, sdk) ?? throw new InvalidOperationException($"dotnet --version named {sdk}, which names no feature band");
+        string marker = WorkloadFolders.UserLocalMarker(shared, sdk) ?? throw new InvalidOperationException($"dotnet --version named {sdk}, which names no feature band");
         Directory.CreateDirectory(Path.GetDirectoryName(marker)!);
         File.WriteAllText(marker, string.Empty);
         File.SetUnixFileMode(shared, UnixFileMode.UserRead | UnixFileMode.UserExecute);
@@ -106,23 +106,103 @@ public sealed class MobileNeedsWindowTests : IDisposable
                 installed.Add(arguments);
                 return ChildProcesses.DotnetCommand(["--version"]);
             });
-            List<string> asked = [];
-            window.Confirm = (title, _, _) =>
+            List<(string Title, string Text)> asked = [];
+            window.Confirm = (title, text, _) =>
             {
-                asked.Add(title);
+                asked.Add((title, text));
                 return Task.FromResult(true);
             };
             Ui.ClickButton(window, "Install Workloads…");
             Ui.WaitFor(() => window.Actions.Work.Of(AppActions.InstallWorkloads) is null, () => $"the install to end: {window.Status}", Slow);
 
             Assert.True(asked.Count == 1, $"Install Workloads was refused as needing an administrator, where the .NET installs for each user: {window.Status}");
-            Assert.Equal($"Install the .NET workload {platform}?", asked[0]);
+            Assert.Equal($"Install the .NET workload {platform}?", asked[0].Title);
+            string own = PathNames.Canonical(Path.Combine(Dotnet.CliHome()!, ".dotnet"));
+            Assert.Contains($"installs them into {own}, for you alone, as the .NET in {shared} installs workloads for each user", asked[0].Text, StringComparison.Ordinal);
             Assert.Equal(["workload", "install", platform], Assert.Single(installed));
             window.Close();
         }
         finally
         {
             File.SetUnixFileMode(shared, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        }
+    }
+
+    /// <summary>Where the .NET installs workloads for each user (a stand-in carrying its SDK's band's userlocal marker,
+    /// this machine's SDKs, and a dotnet running this machine's), the window's workloads go into the user's own .dotnet,
+    /// DOTNET_CLI_HOME's, which New Solution's templates are watched in: a template pack a workload installed from a
+    /// terminal writes there has them read again once the person is back in the window, heard or, where macOS's watcher
+    /// dropped the change, found as the window comes in front.</summary>
+    [AvaloniaFact]
+    public void A_template_pack_put_in_the_users_own_dotnet_is_found_where_the_dotnet_installs_workloads_there()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            Assert.Skip("Each user's own .dotnet is the person's on Windows, where the test run names no DOTNET_CLI_HOME of its own");
+            return;
+        }
+        string sdk = Ui.Await(Dotnet.SdkAsync(folder), "the SDK the folder takes", Slow);
+        string host = Dotnet.Host(folder);
+        // Kept for the run, as the templates' watch on it is kept for the process; its SDKs and runtimes this machine's.
+        string standIn = PathNames.Canonical(Directory.CreateDirectory(Path.Combine(TestRun.Root, "userlocal-dotnet")).FullName);
+        foreach (string held in (string[])["host", "sdk", "shared"])
+        {
+            if (!Path.Exists(Path.Combine(standIn, held)))
+            {
+                Directory.CreateSymbolicLink(Path.Combine(standIn, held), Path.Combine(Path.GetDirectoryName(host)!, held));
+            }
+        }
+        string marker = WorkloadFolders.UserLocalMarker(standIn, sdk) ?? throw new InvalidOperationException($"dotnet --version named {sdk}, which names no feature band");
+        Directory.CreateDirectory(Path.GetDirectoryName(marker)!);
+        File.WriteAllText(marker, string.Empty);
+        string dotnet = Path.Combine(standIn, Dotnet.HostName);
+        File.WriteAllText(dotnet, $"#!/bin/sh\nexec '{host}' \"$@\"\n");
+        File.SetUnixFileMode(dotnet, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        string own = PathNames.Canonical(Directory.CreateDirectory(Path.Combine(Dotnet.CliHome()!, ".dotnet")).FullName);
+        string packs = Path.Combine(own, WorkloadFolders.TemplatePacks);
+        string pack = Path.Combine(packs, $"probe.userlocal.templates.{Guid.NewGuid():N}.nupkg");
+        bool made = !Directory.Exists(packs);
+        int changes = 0;
+        void Changed() => changes++;
+        Dotnet.HostSearch = () => dotnet;
+        Dotnet.ForgetSdks();
+        ProjectTemplates.Changed += Changed;
+        try
+        {
+            MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+            Assert.Equal(new WorkloadFolders(standIn, own), Ui.Await(window.WorkloadFoldersAsync(), "where the window's workloads go", Slow));
+            window.Perform(AppActions.NewSolution);
+            Ui.Settle();
+            NewProjectDialog dialog = Assert.Single(window.OwnedWindows.OfType<NewProjectDialog>(), d => d.IsVisible);
+            Ui.WaitFor(() => dialog.TemplatesRead.IsCompleted, "dotnet new's templates to be read", Slow);
+            Assert.True(dialog.Problem is null, $"The templates could not be read through the stand-in .NET: {dialog.Problem}");
+            Passenger.App.Workspace.WatchedTree watch = ProjectTemplates.InstallWatch(own)
+                ?? throw new InvalidOperationException($"New Solution's templates are watched in {standIn}'s own folder alone, not in {own}, where it installs workloads");
+            Ui.Await(watch.Ready, $"the watch on {own} to begin", Slow);
+            int before = changes;
+            int logged = Ui.Shared(IdeLog.PathOf(IdeLog.Ide)).Length;
+
+            Directory.CreateDirectory(packs);
+            File.WriteAllText(pack, string.Empty);
+            window.Activate();
+            Ui.WaitFor(() => changes > before, () => $"New Solution's templates to be read again once a template pack came into {packs}; the IDE said meanwhile:\n"
+                + Ui.Shared(IdeLog.PathOf(IdeLog.Ide))[logged..], Slow);
+            dialog.Cancel();
+            window.Close();
+        }
+        finally
+        {
+            ProjectTemplates.Changed -= Changed;
+            Dotnet.HostSearch = null;
+            Dotnet.ForgetSdks();
+            if (File.Exists(pack))
+            {
+                File.Delete(pack);
+            }
+            if (made && Directory.Exists(packs) && !Directory.EnumerateFileSystemEntries(packs).Any())
+            {
+                Directory.Delete(packs);
+            }
         }
     }
 
@@ -186,10 +266,10 @@ public sealed class MobileNeedsWindowTests : IDisposable
     }
 
     /// <summary>New Project's Install of a template a workload brings (a .NET lacking the workload stood in by dotnet
-    /// new without the SDK's templates, its dotnet by a stand-in) is Install Workloads' own: refused where the .NET is
-    /// not this user's to write, in the status bar and the dialog, which copies the command to run; else run asking
-    /// nothing more, a workload set first where the .NET knows none, its lines shown, the project loaded again, dotnet
-    /// new still listing none of its templates. None is offered where this machine builds no Android app.</summary>
+    /// new without the SDK's templates, its dotnet by a stand-in), offered saying where it goes, is Install Workloads'
+    /// own: refused where the .NET is not this user's to write, in the status bar and the dialog, which copies the
+    /// command to run; else run asking nothing more, a workload set first, its lines shown, the project loaded again,
+    /// dotnet new still listing none of its templates. None is offered where this machine builds no Android app.</summary>
     [AvaloniaFact]
     public void New_Projects_Install_of_a_workloads_template_is_Install_Workloads_own_refused_where_the_dotnet_is_not_writable_and_loading_the_projects_again()
     {
@@ -242,7 +322,7 @@ public sealed class MobileNeedsWindowTests : IDisposable
                 Ui.Settle();
             }
             Assert.Equal(android.Name, dialog.Chosen?.Name);
-            if (AndroidHosts.Unbuilt(folder) is { } host)
+            if (Unbuilt() is { } host)
             {
                 Assert.False(dialog.InstallButton.IsEffectivelyVisible, $"{host}, which builds no Android app, was offered the Android workload's install");
                 Assert.StartsWith($"{android.Name} builds for Android only on {AndroidHosts.Builders}: {AndroidHosts.Why(host)}\n", dialog.Offer, StringComparison.Ordinal);
@@ -250,14 +330,17 @@ public sealed class MobileNeedsWindowTests : IDisposable
                 window.Close();
                 return;
             }
+            string into = WorkloadInstalls.Into(new WorkloadFolders(unwritable, null));
+            Ui.WaitFor(() => dialog.Offer?.Contains($"which installs it from NuGet {into}.", StringComparison.Ordinal) == true,
+                () => $"the offer to say where Install puts the workload, {into}: {dialog.Offer}");
 
             Ui.Click(dialog.InstallButton);
             Ui.WaitFor(() => !dialog.IsInstalling, () => $"the install to end: {window.Status}", Slow);
-            string refused = Refusals.WorkloadsNeedAdministrator(unwritable, "dotnet workload install android");
+            string toRun = WorkloadInstalls.AsAdministrator(unwritable, ["android"]);
+            string refused = Refusals.WorkloadsNeedAdministrator(unwritable, toRun);
             Assert.Empty(asked);
             Assert.Equal(refused, dialog.Problem);
             Assert.Equal(refused, window.Status);
-            string toRun = Refusals.AsAdministrator("dotnet workload install android");
             Assert.True(dialog.CopyCommandButton.IsEffectivelyVisible, "The refusal asks the person to run a command, but offers no Copy Command beside it");
             Ui.Click(dialog.CopyCommandButton);
             Ui.WaitFor(() => Ui.Clipboard(dialog) == toRun, () => $"Copy Command to put {toRun} on the clipboard, which holds {Ui.Clipboard(dialog)}");
@@ -312,8 +395,14 @@ public sealed class MobileNeedsWindowTests : IDisposable
     }
 
     /// <summary>Skips a test of the Android SDK's install where this machine builds no Android app, which offers none.</summary>
-    private void SkipWhereAndroidIsNotBuilt() =>
-        Assert.SkipWhen(AndroidHosts.Unbuilt(folder) is not null, $"{AndroidHosts.Unbuilt(folder)} builds no Android app, so nothing of the Android SDK is offered there");
+    private void SkipWhereAndroidIsNotBuilt()
+    {
+        string? host = Unbuilt();
+        Assert.SkipWhen(host is not null, $"{host} builds no Android app, so nothing of the Android SDK is offered there");
+    }
+
+    /// <summary>This machine as a person names it where it builds no Android app, asked of the folder's .NET; null where it does.</summary>
+    private string? Unbuilt() => Ui.Await(AndroidHosts.UnbuiltAsync(folder), "whether this machine builds Android apps");
 
     /// <summary>A window on a project of a platform whose workload this .NET lacks, as it is said; skipped where it has it.
     /// tvOS on a Mac, which neither this Mac nor CI's runners have, else Android, which builds there (on Linux on Arm, it
@@ -338,7 +427,7 @@ public sealed class MobileNeedsWindowTests : IDisposable
             Assert.Skip($"This .NET has the {platform} workload, so nothing is lacking to say");
         }
         Assert.Equal([platform], window.MobileWant.Workloads);
-        string said = AndroidHosts.Unbuilt(folder) is { } host && platform == FrameworkNames.Android
+        string said = Unbuilt() is { } host && platform == FrameworkNames.Android
             ? $"{name} builds for Android only on {AndroidHosts.Builders}: .NET's Android build tools are x64 programs, which {host} does not run"
             : $"{name} needs the .NET workload {platform}";
         Assert.Equal(said, window.MobileSaid);

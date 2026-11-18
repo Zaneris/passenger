@@ -306,9 +306,31 @@ public static partial class Dotnet
     public static string? CliHome()
     {
         ShellEnvironment.Ready();
-        return Set("DOTNET_CLI_HOME") ?? Set(OperatingSystem.IsWindows() ? "USERPROFILE" : "HOME");
+        return WorkloadFolders.CliHome(Environment.GetEnvironmentVariable);
+    }
 
-        static string? Set(string name) => Environment.GetEnvironmentVariable(name) is { Length: > 0 } value ? value : null;
+    /// <summary>Where the .NET a folder's projects take (<see cref="Root(string?)"/>), or the one in <paramref name="root"/>,
+    /// keeps the workloads of the SDK it runs for the folder, with no folder of the one it runs in the home folder
+    /// (<see cref="WorkloadFolders"/>): that SDK asked only where the installation carries a marker of some band. Off the
+    /// window's thread; a <see cref="FileNotFoundException"/> with no .NET found.</summary>
+    public static async Task<WorkloadFolders> WorkloadsAsync(string? folder, string? root = null)
+    {
+        string installation = root ?? Root(folder);
+        if (!WorkloadFolders.MayInstallForEachUser(installation))
+        {
+            return new WorkloadFolders(installation, null);
+        }
+        string? sdk;
+        try
+        {
+            sdk = await SdkAsync(folder ?? Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)).ConfigureAwait(false);
+        }
+        catch (InvalidOperationException)
+        {
+            // dotnet names no SDK here, so none can be said to install for this user.
+            sdk = null;
+        }
+        return WorkloadFolders.Of(installation, sdk, CliHome());
     }
 
     /// <summary>Where Microsoft's installers, the package managers, then the install script and Passenger

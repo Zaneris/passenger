@@ -30,7 +30,7 @@ public static class AndroidDevices
     public static async Task<(IReadOnlyList<DeviceTarget> Targets, AndroidTools? Tools, string? Problem)> ListAsync(string project, string framework,
         IReadOnlyDictionary<string, string> globals, CancellationToken cancel)
     {
-        if (AndroidHosts.Unbuilt(Path.GetDirectoryName(project)!) is { } host)
+        if (await AndroidHosts.UnbuiltAsync(Path.GetDirectoryName(project)!) is { } host)
         {
             return ([], null, Refusals.AndroidBuiltElsewhere(host));
         }

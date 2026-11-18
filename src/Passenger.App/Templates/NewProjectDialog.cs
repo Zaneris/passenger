@@ -5,6 +5,7 @@ using Avalonia.Media;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using Passenger.App.MSBuild;
+using Passenger.App.Mobile;
 using Passenger.App.Run;
 using Passenger.App.ToolWindows;
 using Passenger.Core;
@@ -126,6 +127,12 @@ public sealed class NewProjectDialog : IdeWindow
 
     /// <summary>What Install runs for a template a .NET workload brings: the window's one install of workloads.</summary>
     public required WorkloadInstall Workloads { get; init; }
+
+    /// <summary>Where that install puts a workload (<see cref="MainWindow.WorkloadFoldersAsync"/>), asked as the dialog opens.</summary>
+    public required Func<Task<WorkloadFolders>> WorkloadPlace { get; init; }
+
+    /// <summary>Where Install puts a workload, as the offer of one says it; null until known.</summary>
+    private WorkloadFolders? workloadsInto;
 
     /// <summary>Why no container can be set up here (no container engine's command), once asked; null while it can.</summary>
     private string? noEngine;
@@ -363,7 +370,26 @@ public sealed class NewProjectDialog : IdeWindow
         {
             FocusName();
             Dispatcher.UIThread.Post(FocusName, DispatcherPriority.Loaded);
+            IdeErrors.Observe(AskWorkloadPlaceAsync());
         };
+    }
+
+    /// <summary>Where Install puts a workload, said in the offer of one shown once known.</summary>
+    private async Task AskWorkloadPlaceAsync()
+    {
+        try
+        {
+            workloadsInto = await WorkloadPlace();
+        }
+        catch (FileNotFoundException)
+        {
+            // No .NET: the offer names no place, and Install says what is missing.
+            return;
+        }
+        if (template is { Pack: { IsWorkload: true } pack } shown && pack.WhyNotFor(shown.Name) is null)
+        {
+            offerCommand.Text = Offered(pack);
+        }
     }
 
     /// <summary>The read of the folder's templates, done once they are listed or the dialog says why they could not be.</summary>
@@ -1566,9 +1592,7 @@ public sealed class NewProjectDialog : IdeWindow
             string? whyNot = pack.WhyNotFor(chosen.Name);
             offerText.Text = whyNot ?? pack.Offer;
             offerCommand.Text = whyNot is not null ? $"{char.ToUpperInvariant(pack.Named[0])}{pack.Named[1..]} is not installed, and Passenger offers no install of it here."
-                : pack.IsWorkload
-                ? $"{char.ToUpperInvariant(pack.Named[0])}{pack.Named[1..]} is not installed. Install runs {pack.Command}, which installs it into the .NET Passenger builds with, from NuGet."
-                : $"{pack.Id} is not installed. Install runs {pack.Command}, which takes it from the NuGet feeds this directory uses.";
+                : Offered(pack);
             install.IsVisible = whyNot is null;
             installOutput.IsVisible = false;
         }
@@ -1579,6 +1603,13 @@ public sealed class NewProjectDialog : IdeWindow
             windowsNote.IsVisible = false;
         }
     }
+
+    /// <summary>What the offer of a package not installed says Install does: where a workload goes once that is known
+    /// (<see cref="WorkloadInstalls.Into"/>), the feeds a package comes from.</summary>
+    private string Offered(TemplatePack pack) => pack.IsWorkload
+        ? $"{char.ToUpperInvariant(pack.Named[0])}{pack.Named[1..]} is not installed. Install runs {pack.Command}, which installs it from NuGet"
+            + $"{(workloadsInto is { } into ? $" {WorkloadInstalls.Into(into)}" : string.Empty)}."
+        : $"{pack.Id} is not installed. Install runs {pack.Command}, which takes it from the NuGet feeds this directory uses.";
 
     /// <summary>Puts the dialog's own name in a box; one with the keys keeps it chosen, so what is typed replaces it.</summary>
     private void Set(TextBox box, string text)

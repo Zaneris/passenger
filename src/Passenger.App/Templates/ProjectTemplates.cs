@@ -217,7 +217,7 @@ public static partial class ProjectTemplates
         {
             TemplateCatalog catalog = await once.Value;
             Newest[key] = catalog;
-            Watch();
+            Watch(await InstallOfAsync(folder));
             return catalog;
         }
         catch
@@ -274,7 +274,7 @@ public static partial class ProjectTemplates
         List<ProjectTemplate> templates = Groups(all.Where(t => Tag(t, "type") is "project" or "solution" && Usable(t)), ide);
         List<ProjectTemplate> items = Groups(all.Where(t => Tag(t, "type") == "item" && Usable(t)), ide);
         (IReadOnlyList<string> formats, string format) = SolutionFormats(all);
-        IEnumerable<ProjectTemplate> offered = TemplatePacks.Offered(templates, Mobile.AndroidHosts.Unbuilt(folder));
+        IEnumerable<ProjectTemplate> offered = TemplatePacks.Offered(templates, await Mobile.AndroidHosts.UnbuiltAsync(folder));
         return new TemplateCatalog(sdk, TemplateFamilies.Of([.. templates, .. offered]), formats, format, items);
     }
 

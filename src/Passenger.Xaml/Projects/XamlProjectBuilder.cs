@@ -13,7 +13,8 @@ namespace Passenger.Xaml.Projects;
 public sealed class XamlProjectBuilder
 {
     private readonly object gate = new();
-    private readonly string? dotnetRoot;
+    /// <summary>Where the .NET that builds the projects keeps its packs; null for none found.</summary>
+    private readonly WorkloadFolders? dotnet;
 
     /// <summary>What MSBuild's evaluation says of where a project's restore and build put things and what its C# is parsed
     /// with, by its path; any thread asks it.</summary>
@@ -40,12 +41,12 @@ public sealed class XamlProjectBuilder
     /// declares none anew keeps it.</summary>
     private string classes = string.Empty;
 
-    private XamlProjectBuilder(ProjectInputs inputs, XamlDialect dialect, string? dotnetRoot, CSharpParseOptions unevaluated, Action<Exception>? failed,
+    private XamlProjectBuilder(ProjectInputs inputs, XamlDialect dialect, WorkloadFolders? dotnet, CSharpParseOptions unevaluated, Action<Exception>? failed,
         Func<string, ProjectEvaluation?>? evaluations)
     {
         this.inputs = inputs;
         Dialect = dialect;
-        this.dotnetRoot = dotnetRoot;
+        this.dotnet = dotnet;
         this.unevaluated = unevaluated;
         this.failed = failed;
         this.evaluations = evaluations;
@@ -58,14 +59,15 @@ public sealed class XamlProjectBuilder
     public string Folder => inputs.Folder;
 
     /// <summary>A builder for a project whose XAML Passenger reads (an Avalonia, WPF or MAUI project), or null for another;
+    /// <paramref name="dotnet"/> is where the .NET that builds it keeps its packs (<see cref="ProjectInputs.Read"/>),
     /// <paramref name="failed"/> hears of a file a load could not read, which it leaves out, <paramref name="evaluations"/>
     /// answers what MSBuild's evaluation says of a project (where its restore and build put things, what its C# is parsed
     /// with), from any thread, and a project it says nothing of has its C# parsed with <paramref name="unevaluated"/>.</summary>
-    public static XamlProjectBuilder? For(string projectPath, string? dotnetRoot, CSharpParseOptions unevaluated, Action<Exception>? failed = null,
+    public static XamlProjectBuilder? For(string projectPath, WorkloadFolders? dotnet, CSharpParseOptions unevaluated, Action<Exception>? failed = null,
         Func<string, ProjectEvaluation?>? evaluations = null)
     {
-        ProjectInputs inputs = ProjectInputs.Read(projectPath, dotnetRoot, evaluations?.Invoke(projectPath));
-        return DialectOf(inputs) is { } dialect ? new XamlProjectBuilder(inputs, dialect, dotnetRoot, unevaluated, failed, evaluations) : null;
+        ProjectInputs inputs = ProjectInputs.Read(projectPath, dotnet, evaluations?.Invoke(projectPath));
+        return DialectOf(inputs) is { } dialect ? new XamlProjectBuilder(inputs, dialect, dotnet, unevaluated, failed, evaluations) : null;
     }
 
     /// <summary>The dialect a project's XAML is in, by the framework it references: MAUI's for a project that says
@@ -98,7 +100,7 @@ public sealed class XamlProjectBuilder
     {
         lock (gate)
         {
-            inputs = ProjectInputs.Read(inputs.ProjectPath, dotnetRoot, evaluations?.Invoke(inputs.ProjectPath));
+            inputs = ProjectInputs.Read(inputs.ProjectPath, dotnet, evaluations?.Invoke(inputs.ProjectPath));
             assemblies = [.. inputs.References.AsParallel().AsOrdered().Select(AssemblyTypes.Get).OfType<AssemblyTypes>()];
             themeKeys = ThemeKeys(assemblies);
             referenced = [];
@@ -313,7 +315,7 @@ public sealed class XamlProjectBuilder
             {
                 continue;
             }
-            ProjectInputs read = ProjectInputs.Read(project, dotnetRoot, evaluations?.Invoke(project));
+            ProjectInputs read = ProjectInputs.Read(project, dotnet, evaluations?.Invoke(project));
             referenced.Add((read, [.. XamlFilesUnder(read.Folder)]));
             CollectReferences(read, seen);
         }

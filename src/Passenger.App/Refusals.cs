@@ -760,13 +760,10 @@ public static class Refusals
     public const string NoMobileEdits = "No mobile app's head of the folder needs an edit Passenger makes";
 
     /// <summary>A .NET installed for every user that installs workloads into itself, not each user's own folder, which takes
-    /// an administrator's rights.</summary>
+    /// an administrator's rights: <paramref name="command"/> as an administrator runs it (<see cref="WorkloadInstalls.AsAdministrator"/>).</summary>
     public static string WorkloadsNeedAdministrator(string root, string command) =>
         $"The .NET in {PathNames.Shown(root, null)} was installed for every user, so its workloads install only with an administrator's rights: run "
-        + $"{AsAdministrator(command)} in a terminal{(OperatingSystem.IsWindows() ? " run as administrator" : string.Empty)}";
-
-    /// <summary>A command as an administrator runs it: through sudo, but on Windows as written, in a terminal run as administrator.</summary>
-    public static string AsAdministrator(string command) => OperatingSystem.IsWindows() ? command : $"sudo {command}";
+        + $"{command} in a terminal{(OperatingSystem.IsWindows() ? " run as administrator" : string.Empty)}";
 
     /// <summary>A Functions app an AppHost asks for, with no Azure Functions Core Tools' func on the PATH to host it.</summary>
     public static string NoFunc(string project) =>

@@ -5,7 +5,7 @@ public static partial class TemplatePacks
 {
     /// <summary>Each known kind dotnet new has no template for (none of the installed has its short name), as a template
     /// whose <see cref="ProjectTemplate.Pack"/> is the package that brings it; <paramref name="androidHost"/> is this
-    /// machine where it builds no Android app (<see cref="Mobile.AndroidHosts.Unbuilt(string?)"/>).</summary>
+    /// machine where it builds no Android app (<see cref="Mobile.AndroidHosts.UnbuiltAsync"/>).</summary>
     public static IEnumerable<ProjectTemplate> Offered(IReadOnlyList<ProjectTemplate> installed, string? androidHost)
     {
         HashSet<string> had = new(installed.SelectMany(t => t.ShortNames), StringComparer.OrdinalIgnoreCase);
