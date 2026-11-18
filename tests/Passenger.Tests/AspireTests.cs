@@ -188,7 +188,7 @@ public sealed class AspireTests : IClassFixture<AspireApp>, IDisposable
             Assert.Equal(0, ServiceChoice(dialog, "webfrontend")!.SelectedIndex);
             Ui.Click(dialog.CopyButton);
             Ui.Click(dialog.NameBox);
-            Ui.Press(dialog, "control A");
+            Ui.Press(dialog, Ui.Command("A"));
             dialog.KeyTextInput("API debug, frontend run");
             Ui.Settle();
             ComboBox api = ServiceChoice(dialog, "apiservice")!;
@@ -439,7 +439,7 @@ public sealed class AspireTests : IClassFixture<AspireApp>, IDisposable
             AspireInteractionDialog form = Prompt(window, "API settings");
             TextBox input = Assert.IsType<TextBox>(form.InputControls["value"]);
             Ui.Click(input);
-            Ui.Press(form, "control A");
+            Ui.Press(form, Ui.Command("A"));
             form.KeyTextInput("typed while connected");
             Ui.Click(form.Primary);
             Ui.WaitFor(() => form.Problem.Text?.Contains("Choose another value", StringComparison.Ordinal) == true,
@@ -447,7 +447,7 @@ public sealed class AspireTests : IClassFixture<AspireApp>, IDisposable
             input = Assert.IsType<TextBox>(form.InputControls["value"]);
             Assert.Equal("typed while connected", input.Text);
             Ui.Click(input);
-            Ui.Press(form, "control A");
+            Ui.Press(form, Ui.Command("A"));
             form.KeyTextInput("latest value");
             Ui.Click(form.Primary);
             Ui.WaitFor(() => File.Exists(project.InteractionAnswer), "the real AppHost's submitted value");

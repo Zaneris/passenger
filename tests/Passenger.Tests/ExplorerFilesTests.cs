@@ -1073,13 +1073,12 @@ public sealed class ExplorerFilesTests : IDisposable
         Assert.True(window.Actions.Context().ToolWindow?.Id == ToolWindowIds.Explorer, $"The Explorer did not take the keys on {row.Name}");
     }
 
-    /// <summary>Clicks a row with the platform's key for choosing another row held (Cmd on macOS, Ctrl elsewhere and on the
-    /// headless platform everywhere), failing unless it is then chosen with those before.</summary>
+    /// <summary>Clicks a row with the system's command key held, the key for choosing another row (Cmd on macOS, Ctrl
+    /// elsewhere), failing unless it is then chosen with those before.</summary>
     private static void AlsoChoose(MainWindow window, ExplorerNode row)
     {
         int before = window.ExplorerView.SelectedNodes.Count;
-        KeyModifiers command = Application.Current?.PlatformSettings?.HotkeyConfiguration.CommandModifiers ?? KeyModifiers.Control;
-        Ui.Click(Ui.Row(window.ExplorerView, row), modifiers: (RawInputModifiers)command);
+        Ui.Click(Ui.Row(window.ExplorerView, row), modifiers: (RawInputModifiers)Keystroke.Command);
         Assert.True(window.ExplorerView.SelectedNodes.Count == before + 1 && window.ExplorerView.SelectedNodes.Contains(row),
             $"A click on {row.Name} with the key for choosing another held left [{string.Join(", ", window.ExplorerView.SelectedNodes.Select(n => n.Name))}] chosen");
     }

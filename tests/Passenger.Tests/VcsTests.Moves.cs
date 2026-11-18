@@ -44,8 +44,8 @@ public sealed partial class VcsTests
         ExplorerNode lines = ExplorerRow(window, Path.Combine(tree, "Lines"));
         ExplorerNode shelf = ExplorerRow(window, Path.Combine(tree, "Shelf"));
         Ui.ClickRow(window, basket);
-        // The platform's key for choosing another row, which on the headless platform is Ctrl everywhere.
-        Ui.Click(Ui.Row(window.ExplorerView, lines), modifiers: (RawInputModifiers)(Application.Current?.PlatformSettings?.HotkeyConfiguration.CommandModifiers ?? KeyModifiers.Control));
+        // The system's command key, the key for choosing another row.
+        Ui.Click(Ui.Row(window.ExplorerView, lines), modifiers: (RawInputModifiers)Keystroke.Command);
         Assert.Equal(["Basket.cs", "Lines"], window.ExplorerView.SelectedNodes.Select(n => n.Name).Order(StringComparer.Ordinal));
 
         IReadOnlyList<string> writes = IndexWrites(tree, () =>

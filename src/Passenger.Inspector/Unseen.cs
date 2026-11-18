@@ -2,8 +2,6 @@ using System.Reflection;
 using System.Runtime.CompilerServices;
 using Avalonia;
 using Avalonia.Headless;
-using Avalonia.Input;
-using Avalonia.Input.Platform;
 using Passenger.Core;
 
 namespace Passenger.Inspector;
@@ -47,21 +45,7 @@ public static class Unseen
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static AppBuilder Headless(AppBuilder app) =>
         (app.TextShapingSubsystemName is null ? app.UseHarfBuzz() : app).UseHeadless(new AvaloniaHeadlessPlatformOptions { UseHeadlessDrawing = false })
-            .AfterPlatformServicesSetup(_ => SystemHotkeys());
-
-    /// <summary>Gives the headless platform the hotkeys the app has on its system's own, so its text boxes and the commands
-    /// it binds to its platform's command key take Cmd on a Mac as they would on its screen, as an agent's primary does
-    /// (<see cref="CommandKey"/>): Avalonia's Apple set where the app's Avalonia has one, else Cmd's with Alt's word moves.</summary>
-    private static void SystemHotkeys()
-    {
-        if (!CommandKey.IsCmd)
-        {
-            return;
-        }
-        PlatformHotkeyConfiguration apple = typeof(PlatformHotkeyConfiguration).GetProperty(nameof(PlatformHotkeyConfiguration.Apple), BindingFlags.Public | BindingFlags.Static)?
-            .GetValue(null) as PlatformHotkeyConfiguration ?? new PlatformHotkeyConfiguration(KeyModifiers.Meta, wholeWordTextActionModifiers: KeyModifiers.Alt);
-        AvaloniaLocator.CurrentMutable.Bind<PlatformHotkeyConfiguration>().ToConstant(apple);
-    }
+            .WithSystemHotkeys();
 
     /// <summary>Runs the app <see cref="Prepare"/> made with the classic desktop lifetime a Main gives it, its arguments the
     /// Main's; its exit code once it ends.</summary>

@@ -21,18 +21,15 @@ using Xunit.v3;
 
 namespace Passenger.Tests;
 
-/// <summary>The real app on the headless platform, drawing with Skia so text measures as it does on
-/// a desktop.</summary>
+/// <summary>The real app on the headless platform a Passenger nobody sees draws on (<see cref="Passenger.App.HeadlessPlatform"/>):
+/// drawing with Skia so text measures as it does on a desktop, with the system's hotkeys.</summary>
 public static class TestApp
 {
     /// <summary>The application's menu as the test's app ended its setup, where macOS's platform takes it before any
     /// window is made, showing Avalonia's own About in place of none.</summary>
     public static NativeMenu? ApplicationMenuAtSetup { get; private set; }
 
-    public static AppBuilder BuildAvaloniaApp() => AppBuilder.Configure<Passenger.App.App>()
-        .UseSkia()
-        .UseHarfBuzz()
-        .UseHeadless(new AvaloniaHeadlessPlatformOptions { UseHeadlessDrawing = false })
+    public static AppBuilder BuildAvaloniaApp() => Passenger.App.HeadlessPlatform.UseHeadlessPlatform(AppBuilder.Configure<Passenger.App.App>())
         .AfterSetup(built => ApplicationMenuAtSetup = NativeMenu.GetMenu(built.Instance!));
 }
 
@@ -933,6 +930,10 @@ public static class Ui
             Settle();
         }
     }
+
+    /// <summary>A key held with the system's command key (<see cref="Keystroke.Command"/>: Cmd on a Mac, Ctrl elsewhere), as
+    /// <see cref="Press"/> takes it: a text box's Select All is <c>Command("A")</c>, on the headless platform as on the screen.</summary>
+    public static string Command(string key) => new Keystroke(Keystroke.Parse(key).Key, Keystroke.Command).Notation();
 
     private static void Stroke(TopLevel window, Keystroke stroke)
     {

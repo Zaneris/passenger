@@ -114,6 +114,9 @@
                       GlobalPropertiesToRemove="RuntimeIdentifier;SelfContained;PublishReadyToRun" />
     <!-- What Passenger and the inspector say to each other, one definition for both ends. -->
     <Compile Include="../Passenger.Inspector/Protocol.cs" Link="LiveTree/InspectorProtocol.cs" />
+    <!-- The system's hotkeys on the headless platform, which Passenger's own windows drawn on no screen take as an unseen
+         app does. -->
+    <Compile Include="../Passenger.Inspector/SystemHotkeys.cs" Link="HeadlessHotkeys.cs" />
     <!-- Built first and carried under inspector/maui/, never linked: a .NET MAUI app Passenger runs on a device loads it
          (LiveTree/LiveApp.cs). It is built once for every platform, as MAUI's cross-platform assemblies it is compiled
          against are the same on each. -->

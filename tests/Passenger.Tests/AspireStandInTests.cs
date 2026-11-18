@@ -3273,12 +3273,11 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
             "the prompt the AppHost completed to close");
     }
 
-    /// <summary>Select All (the headless platform's, Ctrl+A, on every system) and typing, pressed without waiting for the window
-    /// to settle, since a held answer holds it.</summary>
+    /// <summary>Select All (the system's command key with A) and typing, pressed without waiting for the window to settle,
+    /// since a held answer holds it.</summary>
     private static void ReplaceDuringWork(TopLevel window, string text)
     {
-        window.KeyPress(Avalonia.Input.Key.A, Avalonia.Input.RawInputModifiers.Control, Avalonia.Input.PhysicalKey.None, null);
-        window.KeyRelease(Avalonia.Input.Key.A, Avalonia.Input.RawInputModifiers.Control, Avalonia.Input.PhysicalKey.None, null);
+        Ui.Press(window, Ui.Command("A"), settle: false);
         window.KeyTextInput(text);
     }
 

@@ -287,6 +287,28 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         Assert.Contains("ActionPopup", found, StringComparison.Ordinal);
     }
 
+    /// <summary>A text box of a Passenger drawn on no screen takes the hotkeys of the system it runs on, as one on the screen
+    /// does: an agent's primary+A in Find Action's search selects what it typed there for the next key to replace.</summary>
+    [Fact]
+    public async Task An_agents_primary_A_in_a_text_box_of_a_passenger_drawn_on_no_screen_selects_its_text_for_the_next_key_to_replace()
+    {
+        string folder = PathNames.Canonical(TestFolders.Create("mcp-select-all-"));
+        DeleteAtEnd(folder);
+        File.WriteAllText(Path.Combine(folder, "Notes.txt"), "one\n");
+        await using McpClient client = await Start(["--mcp", folder], languageServer: false);
+        Dictionary<string, object?> findAction = new() { ["app"] = "ide", ["filter"] = "ActionPopup" };
+        await Call(client, McpTools.AppKey, new() { ["app"] = "ide", ["keys"] = "primary+shift+A" });
+        string found = string.Empty;
+        Assert.True(await Waiting.UntilAsync(async () => !(found = Text(await Call(client, McpTools.AppTree, findAction))).StartsWith("Nothing in", StringComparison.Ordinal),
+            TimeSpan.FromMinutes(1), Cancel, TimeSpan.FromMilliseconds(100)), $"primary+shift+A did not open Find Action: {found}");
+
+        string typed = Text(await Call(client, McpTools.AppType, new() { ["app"] = "ide", ["text"] = "Settings" }));
+        Assert.True(typed.Contains("it shows \"Settings\"", StringComparison.Ordinal), $"Typing into Find Action's search did not reach it: {typed}");
+        string replaced = Text(await Call(client, McpTools.AppKey, new() { ["app"] = "ide", ["keys"] = "primary+A G" }));
+        Assert.True(replaced.Contains("it shows \"g\"", StringComparison.Ordinal),
+            $"primary+A, {(CommandKey.IsCmd ? "Cmd" : "Ctrl")}+A, did not select Find Action's search for G to replace, as the system's own Select All does: {replaced}");
+    }
+
     /// <summary>A folder whose .slnx does not read: workspace names it with where its reader stopped and why, and no
     /// solution open.</summary>
     [Fact]
