@@ -2971,6 +2971,8 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
     private MainWindow Open(double width, double height)
     {
         MainWindow window = Ui.OpenFolder(project.Folder, width: width, height: height, languageServer: false, autosaves: false);
+        // The rules hold every tool window, whatever this folder's projects bring.
+        Ui.ServeEveryWindow(window);
         return window;
     }
 

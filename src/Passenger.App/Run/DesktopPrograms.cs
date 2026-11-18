@@ -25,6 +25,8 @@ public static class DesktopPrograms
 
     private const string MacApp = "a native macOS app";
 
+    private const string Maui = "a .NET MAUI app";
+
     /// <summary>The assembly found beside an Avalonia app: its Application, its windows and their controls, which a program
     /// taking Avalonia.Base alone (Avalonia's geometry, colours, values) has none of.</summary>
     public const string AvaloniaAssembly = "Avalonia.Controls.dll";
@@ -45,7 +47,7 @@ public static class DesktopPrograms
     /// it, and the package a project takes the framework by, or a package named under it.</summary>
     private static readonly (string File, string Called, string Package)[] Frameworks =
     [
-        (AvaloniaAssembly, Avalonia, AvaloniaPackage), ("Microsoft.WinUI.dll", "a WinUI app", "Microsoft.WindowsAppSDK"), ("Microsoft.Maui.dll", "a .NET MAUI app", "Microsoft.Maui.Controls"),
+        (AvaloniaAssembly, Avalonia, AvaloniaPackage), ("Microsoft.WinUI.dll", "a WinUI app", "Microsoft.WindowsAppSDK"), ("Microsoft.Maui.dll", Maui, "Microsoft.Maui.Controls"),
         ("Uno.UI.dll", "an Uno Platform app", "Uno.WinUI"), ("Eto.dll", "an Eto.Forms app", "Eto.Forms"), ("GtkSharp.dll", "a GTK app", "GtkSharp"),
     ];
 
@@ -153,6 +155,11 @@ public static class DesktopPrograms
     public static bool TakesXaml(ProjectModel project, IReadOnlyList<ProjectModel> projects) =>
         (OfProject(project, projects) == Avalonia && !project.Packages.Any(p => AvaloniaElsewhere.Contains(p.Name, StringComparer.OrdinalIgnoreCase)))
         || project.WithReferenced(projects).Any(p => p.Evaluated?.Dependencies.Any(d => FrameworkNames.UsesWpf(d.FrameworkReferences)) == true);
+
+    /// <summary>Whether Passenger's inspector looks into the app a project builds, by what it and the projects it references
+    /// say: an Avalonia or WPF app of this computer's desktop (<see cref="TakesXaml"/>), or a .NET MAUI app.</summary>
+    public static bool Inspected(ProjectModel project, IReadOnlyList<ProjectModel> projects) =>
+        TakesXaml(project, projects) || OfProject(project, projects) == Maui;
 
     /// <summary>Whether a restore resolved Avalonia for this computer's desktop, whichever package or project brought it.</summary>
     public static bool RestoredXaml(RestoredVersions restored) => restored.Holds(AvaloniaPackage) && !AvaloniaElsewhere.Any(restored.Holds);

@@ -109,6 +109,8 @@ public sealed class ProjectSession : IAsyncDisposable
         Folder = folder;
         reached = folder is null ? null : FoundPaths.Reach(folder);
         Configurations = new RunConfigurations(folder, () => Workspace);
+        // Made again as the projects are read, evaluated, unloaded or a single-file AppHost comes: what the folder holds too.
+        Configurations.Changed += (_, _) => FollowHolds(projects: true);
         Aspire = new AspireController(this, setup.StateFolder);
         Aspire.Inspected = app => Reloaded(app);
         AspireFiles = new AspireFiles(this);
@@ -178,6 +180,9 @@ public sealed class ProjectSession : IAsyncDisposable
             ReloadsScripts = scripts => games.Any(g => g.ReloadsScripts
                 && (g.Debugged == scripts || (g.Debugged is not null && Debug?.TabOf(scripts)?.Name == DebugController.ScriptsTab(g.Name)))),
         };
+        // Before any other hears it, an app inspected is one Live Visual Tree serves.
+        LiveAppChanged += (_, _) => FollowHolds(projects: false);
+        InspectedChanged += (_, _) => FollowHolds(projects: false);
         Debug.SelectionChanged += (_, _) =>
         {
             Aspire.SelectDebugger(Debug.Chosen);
@@ -267,6 +272,9 @@ public sealed class ProjectSession : IAsyncDisposable
         // And the .editorconfig files Settings says the keys of.
         session.Index.Walked += (_, _) => session.EditorConfigs.Walked();
         session.Index.Changed += (_, change) => session.EditorConfigs.CameAndWent(change.Came, change.Gone);
+        // And the .http and .rest files the Endpoints window sends.
+        session.Index.Walked += (_, _) => IdeErrors.Observe(session.LookForRequestsAsync(session.Index.Files));
+        session.Index.Changed += (_, change) => session.RequestsCameOrWent(change.Came, change.Gone);
         session.Index.Build(folder);
         session.Watcher = new FolderWatcher(folder, setup.Watching);
         session.Web = new Web.WebLanguages(folder, setup.Settings, setup.Engine)
@@ -747,6 +755,69 @@ public sealed class ProjectSession : IAsyncDisposable
 
     /// <summary>What the folder's .editorconfig files set over Settings' rows.</summary>
     public Settings.FolderEditorConfigs EditorConfigs { get; }
+
+    /// <summary>What the folder holds of the kinds of project tool windows serve (<see cref="FolderHolding"/>), as its run
+    /// configurations were last made from its projects, the files its index lists and the apps inspected say.</summary>
+    public FolderHolds Holds { get; private set; }
+
+    /// <summary>What the folder holds changed (<see cref="Holds"/>), on the window's thread.</summary>
+    public event EventHandler? HoldsChanged;
+
+    /// <summary>Whether the index lists an .http or .rest file, as its last walk and what came and went since say.</summary>
+    private bool holdsRequests;
+
+    /// <summary>What the folder's projects and files hold, as last read, before the apps inspected are taken in.</summary>
+    private FolderHolds projectsHold;
+
+    /// <summary>Bumped by each look for .http and .rest files, so one overtaken lands nothing.</summary>
+    private int requestLooks;
+
+    /// <summary>What the folder holds, asked again as its projects or its files change (<paramref name="projects"/>), or the
+    /// apps inspected, which alone ask nothing of the projects.</summary>
+    private void FollowHolds(bool projects)
+    {
+        if (Folder is null || IsEnded)
+        {
+            return;
+        }
+        if (projects)
+        {
+            projectsHold = FolderHolding.Of(Projects, Workspace?.GodotGames ?? [], Configurations.SingleFileAppHosts.Count > 0, holdsRequests);
+        }
+        FolderHolds now = projectsHold | (LiveSource is not null || Inspecting.Count > 0 ? FolderHolds.InspectedApp : FolderHolds.None);
+        if (now != Holds)
+        {
+            Holds = now;
+            HoldsChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    /// <summary>The .http and .rest files looked for among the files a walk listed, off the window's thread.</summary>
+    private async Task LookForRequestsAsync(IReadOnlyList<string> files)
+    {
+        int look = ++requestLooks;
+        bool found = await BackgroundWork.Run(() => files.Any(FolderHolding.IsRequests));
+        if (look == requestLooks)
+        {
+            holdsRequests = found;
+            FollowHolds(projects: true);
+        }
+    }
+
+    /// <summary>Files come or gone since the walk: one of requests come is enough, one gone asks the files listed again.</summary>
+    private void RequestsCameOrWent(IReadOnlyList<string> came, IReadOnlyList<string> gone)
+    {
+        if (came.Any(FolderHolding.IsRequests))
+        {
+            requestLooks++;
+            holdsRequests = true;
+            FollowHolds(projects: true);
+        }
+        else if (holdsRequests && gone.Any(FolderHolding.IsRequests))
+        {
+            IdeErrors.Observe(LookForRequestsAsync(Index.Files));
+        }
+    }
 
     /// <summary>The folder's builds, rebuilds and cleans, in the window's Build console.</summary>
     public ProcessRunner Builder { get; }

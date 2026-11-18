@@ -182,6 +182,15 @@ public sealed class ToolWindow([IdentifierOf(typeof(ToolWindowIds))] string id, 
     /// <summary>Open in the layout the IDE starts with (the Explorer), and so after Restore Default Layout.</summary>
     public bool OpenAtFirst { get; init; }
 
+    /// <summary>What it serves, declared as it is made: every folder, or kinds of project the open folder must hold one of
+    /// for it to show (<see cref="Unserved"/>).</summary>
+    public required ToolWindowServes Serves { get; init; }
+
+    /// <summary>Why it serves nothing in the open folder (<see cref="ToolWindowServes.WhyNot"/>), which keeps it off the
+    /// stripes, its place and its tabs, its action greyed saying so, its place in the layout kept; null while it serves the
+    /// folder, as a window of every folder always does.</summary>
+    public string? Unserved { get; internal set; }
+
     /// <summary>The action that shows it, as the dock adds it: an agent's shows it with the keys left where they are.</summary>
     internal IdeAction? ShowAction(DockHost dock) => Action is { } id
         ? new IdeAction(id, ActionTitle ?? Title, "Tool Windows", context =>
@@ -198,6 +207,7 @@ public sealed class ToolWindow([IdentifierOf(typeof(ToolWindowIds))] string id, 
         {
             Menus = Menus,
             FromTerminal = true,
+            WhyNot = _ => Unserved,
         }
         : null;
 

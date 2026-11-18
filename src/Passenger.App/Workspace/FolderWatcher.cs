@@ -270,7 +270,8 @@ public sealed class FolderWatcher : WatchedTree
                 comeOrGone.Add(named);
             }
         }
-        projects |= IsProjectFile(path);
+        // A Godot project's file come or gone brings or takes a game the walk finds, as a project file does.
+        projects |= IsProjectFile(path) || (created && !saved && Path.GetFileName(path.AsSpan()).Equals(GodotProject.FileName, StringComparison.Ordinal));
         launchProfiles |= Path.GetFileName(path.AsSpan()).Equals(Run.LaunchProfile.SettingsFile, StringComparison.OrdinalIgnoreCase)
             || path.EndsWith(".run.json", StringComparison.OrdinalIgnoreCase) || SolutionLaunch.IsFile(path);
     }

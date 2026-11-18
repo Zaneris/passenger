@@ -104,7 +104,7 @@ public sealed class SideDockTests
     {
         MainWindow window = new() { Width = 1200, Height = 800, StateFolder = Passenger.App.State.StateStore.DefaultRoot };
         window.Show();
-        Ui.Settle();
+        Ui.ServeEveryWindow(window);
         return window;
     }
 }

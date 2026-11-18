@@ -1659,6 +1659,15 @@ public static class Ui
     private static string Covering(Control control) => control.TemplatedParent is Control owner ? $"{Named(control)} of {Covering(owner)}"
         : string.Join(" in ", control.GetVisualAncestors().OfType<Control>().Take(6).Prepend(control).Select(Named));
 
+    /// <summary>Every tool window serving the window's folder whatever it holds, for a test of the dock or of a window's own
+    /// parts, whose subject is not which windows a folder's projects bring (ToolWindowServesTests is).</summary>
+    public static void ServeEveryWindow(Passenger.App.MainWindow window)
+    {
+        window.DockHost.WhyUnserved = _ => null;
+        window.DockHost.Serve();
+        Settle();
+    }
+
     /// <summary>A person's window shown on a folder, once the folder's opening work has landed; without the C# language
     /// server for a test that asks nothing of C# (<see cref="Passenger.App.MainWindow.StartsLanguageServer"/>), which then
     /// waits for no server's start, load or restore; saving only when asked for a test that reads what it left unsaved; on

@@ -25,6 +25,7 @@ public partial class MainWindow
             return hierarchy;
         }, Docking.ToolAnchor.RightTop)
         {
+            Serves = ToolWindowServes.EveryFolder,
             ExpandAll = () => IdeErrors.Observe(Hierarchy.ExpandAllAsync()),
             CollapseAll = () => Hierarchy.CollapseAll(),
         });

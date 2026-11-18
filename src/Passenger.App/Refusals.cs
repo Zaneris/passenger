@@ -290,6 +290,21 @@ public static class Refusals
     /// <summary>An action on a Godot project asked for in a folder that holds none.</summary>
     public const string NoGodotProject = "The open folder holds no Godot project (project.godot)";
 
+    /// <summary>The Aspire window, in a folder holding no AppHost: no project Aspire's SDK makes one, no single-file AppHost.</summary>
+    public const string NoAppHost = "The open folder holds no Aspire AppHost";
+
+    /// <summary>The Requests window, in a folder holding no project a web SDK builds.</summary>
+    public const string NoWebApp = "The open folder holds no ASP.NET Core app";
+
+    /// <summary>The Endpoints window, in a folder holding no web app's routes and no .http or .rest file's requests.</summary>
+    public const string NoWebRequests = "The open folder holds no ASP.NET Core app and no .http file";
+
+    /// <summary>The Step Library, in a folder holding no project that takes Reqnroll's or SpecFlow's packages.</summary>
+    public const string NoStepDefinitions = "The open folder holds no Reqnroll or SpecFlow project";
+
+    /// <summary>Live Visual Tree, in a folder holding no app Passenger's inspector looks into, with none inspected now.</summary>
+    public const string NoInspectedApp = "The open folder holds no Avalonia, WPF, .NET MAUI or Godot app, and no app is inspected";
+
     /// <summary>Set Next Statement asked of a program whose debugger cannot move where a paused thread goes on (a Godot game's
     /// GDScript).</summary>
     public const string NoNextStatement = "The paused program's debugger cannot move where it goes on, so there is no Set Next Statement there";

@@ -51,6 +51,7 @@ public partial class MainWindow
             return view;
         }, Docking.ToolAnchor.BottomLeft)
         {
+            Serves = ToolWindowServes.EfCore,
             Action = A.ShowMigrations,
             Menus = [new MenuPlace("Tools", 0, 5)],
             Chosen = () => migrationsView?.Chosen,

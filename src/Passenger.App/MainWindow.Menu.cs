@@ -409,11 +409,14 @@ public partial class MainWindow
         flyout.ShowAt(MenuButton);
     }
 
-    /// <summary>What a listed submenu holds as it opens: every tool window the dock has, the recent solutions, or the
-    /// solution windows open.</summary>
+    /// <summary>What a listed submenu holds as it opens: every tool window the dock has, one serving nothing in the open folder
+    /// greyed with its action's why; the recent solutions; or the solution windows open.</summary>
     private IReadOnlyList<ListedItem> Listed(string submenu) => submenu switch
     {
-        MainMenu.ToolWindows => [.. Dock.Windows.OrderBy(w => w.Title, StringComparer.Ordinal).Select(w => new ListedItem(w.Title, () => ShowToolWindow(w.Id)))],
+        MainMenu.ToolWindows => [.. Dock.Windows.OrderBy(w => w.Title, StringComparer.Ordinal).Select(w => new ListedItem(w.Title, () => ShowToolWindow(w.Id))
+        {
+            WhyNot = w.Action is { } shows ? actions!.WhyNot(shows, actions.Context()) : w.Unserved,
+        })],
         MainMenu.RecentSolutions => [.. RecentMenu().Select(r => new ListedItem(r.Title, r.Open))],
         MainMenu.OpenSolutionWindows => SolutionWindows(),
         _ => throw new InvalidOperationException($"No window lists a submenu called {submenu}"),
@@ -422,6 +425,8 @@ public partial class MainWindow
     private static NativeMenuItem NativeListed(ListedItem item) => new(NativeWords(item.Title))
     {
         Command = new MenuCommand(item.Run),
+        IsEnabled = item.WhyNot is null,
+        ToolTip = item.WhyNot,
         ToggleType = item.Checked is null ? MenuItemToggleType.None : MenuItemToggleType.Radio,
         IsChecked = item.Checked == true,
     };
@@ -455,7 +460,11 @@ public partial class MainWindow
 
     /// <summary>A menu item a list gives: its title, what choosing it does, and whether it is the one checked (null for a
     /// list that checks none).</summary>
-    private sealed record ListedItem(string Title, Action Run, bool? Checked = null);
+    private sealed record ListedItem(string Title, Action Run, bool? Checked = null)
+    {
+        /// <summary>Why it cannot be chosen, which greys it and is its tip; null where it can.</summary>
+        public string? WhyNot { get; init; }
+    }
 
     /// <summary>Where an inline list's items stand in their native menu, and how many there are.</summary>
     private sealed class InlineList(string title, int start)
@@ -552,7 +561,9 @@ public partial class MainWindow
             Header = listed.Title,
             ToggleType = listed.Checked is null ? MenuItemToggleType.None : MenuItemToggleType.Radio,
             IsChecked = listed.Checked == true,
+            IsEnabled = listed.WhyNot is null,
         };
+        ToolTip.SetTip(item, listed.WhyNot);
         item.Click += (_, _) => listed.Run();
         return item;
     }

@@ -31,7 +31,11 @@ public partial class MainWindow
 
     private void AddGamePane()
     {
-        Dock.Add(new Docking.ToolWindow(ToolWindowIds.Game, "Game", IconKeys.Preview, () => GamePane, Docking.ToolAnchor.RightTop) { Action = AppActions.ShowGame });
+        Dock.Add(new Docking.ToolWindow(ToolWindowIds.Game, "Game", IconKeys.Preview, () => GamePane, Docking.ToolAnchor.RightTop)
+        {
+            Serves = ToolWindowServes.GodotProjects,
+            Action = AppActions.ShowGame,
+        });
         Actions.Add(new IdeAction(AppActions.GameKeys, "Give the Keys to the Game", "Run", _ =>
         {
             // The same keys take them back from a game drawn as a layer, whose keys are Passenger's to hear.

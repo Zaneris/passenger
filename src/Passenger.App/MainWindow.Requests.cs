@@ -56,6 +56,7 @@ public partial class MainWindow
         requestLog = new RequestLog(RouteReached);
         Dock.Add(new Docking.ToolWindow(ToolWindowIds.Requests, "Requests", IconKeys.Endpoints, MakeRequests, Docking.ToolAnchor.BottomRight)
         {
+            Serves = ToolWindowServes.WebApps,
             Action = AppActions.ShowRequests,
             Menus = [new MenuPlace("Tools", 0, 4)],
         });

@@ -552,7 +552,8 @@ public sealed class KeymapChoiceTests : IDisposable
             Ui.Settle();
             Assert.Equal("Rerun", RunTips(window.BottomPanel.Build)[0]);
 
-            // Neither keymap gives Telemetry's two actions keys.
+            // Neither keymap gives Telemetry's two actions keys: the Aspire window's, which this folder's projects bring none of.
+            Ui.ServeEveryWindow(window);
             window.ShowToolWindow(ToolWindowIds.Aspire);
             window.AspireWindow.ShowTelemetry(TelemetryPage.Logs);
             Ui.Settle();

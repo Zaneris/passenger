@@ -337,11 +337,11 @@ public sealed class LiveRequestsTests
         }
     }
 
-    /// <summary>A console program's folder, restored, whose program says it is up and runs on.</summary>
+    /// <summary>A web app's folder, restored, whose program says it is up and runs on, serving nothing.</summary>
     private static string QuietFolder(string prefix)
     {
         string folder = TestFolders.Create(prefix);
-        TestFolders.Write(folder, "Quiet.csproj", TestProjects.Console());
+        TestFolders.Write(folder, "Quiet.csproj", TestProjects.Web());
         TestFolders.Write(folder, "Properties/launchSettings.json", "{\n  \"profiles\": {\n    \"quiet\": { \"commandName\": \"Project\" }\n  }\n}\n");
         TestFolders.Write(folder, "Program.cs", "System.Console.WriteLine(\"The quiet program is up\");\nSystem.Threading.Thread.Sleep(System.Threading.Timeout.Infinite);\n");
         Restore.Run(folder);
@@ -707,6 +707,8 @@ public sealed class LiveRequestsTests
         MainWindow window = Ui.OpenFolder(folder, languageServer: false);
         try
         {
+            // The Requests window's own rows, whatever the folder holds.
+            Ui.ServeEveryWindow(window);
             window.ShowToolWindow(ToolWindowIds.Requests);
             Ui.Settle();
             int heard = 0;

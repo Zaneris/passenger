@@ -103,6 +103,7 @@ public partial class MainWindow
         AddServiceActions();
         Dock.Add(new Docking.ToolWindow(ToolWindowIds.Containers, "Containers", IconKeys.Containers, MakeContainers, Docking.ToolAnchor.BottomLeft)
         {
+            Serves = ToolWindowServes.EveryFolder,
             Action = AppActions.ShowContainers,
             Menus = [new MenuPlace("Tools", 0, 4)],
             Chosen = () => containersView?.Chosen,

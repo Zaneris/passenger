@@ -2618,7 +2618,10 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         string restart = Assert.Single(listed, l => l.StartsWith($"{AppActions.RestartCSharpServer}: Restart C# Language Server [IDE]", StringComparison.Ordinal));
         Assert.Contains($" - cannot run: {Refusals.NoCSharp}", restart, StringComparison.Ordinal);
 
-        Assert.Equal($"Ran {AppActions.ShowLiveTree}", (await Call(client, McpTools.IdeAction, new() { ["action"] = AppActions.ShowLiveTree })).GetString());
+        Assert.Equal($"Ran {AppActions.ShowStructure}", (await Call(client, McpTools.IdeAction, new() { ["action"] = AppActions.ShowStructure })).GetString());
+        // A console app's folder holds no Godot project, which the Game window serves.
+        string game = Assert.Single(listed, l => l.StartsWith($"{AppActions.ShowGame}: ", StringComparison.Ordinal));
+        Assert.Contains($" - cannot run: {Refusals.NoGodotProject}", game, StringComparison.Ordinal);
     }
 
     /// <summary>debug_state of processes says each program's command line as Attach to Process shows it, its secrets masked:

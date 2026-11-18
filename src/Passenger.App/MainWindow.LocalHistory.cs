@@ -38,6 +38,7 @@ public partial class MainWindow
         Dock.Add(new Docking.ToolWindow(ToolWindowIds.LocalHistory, "Local History", IconKeys.History, () => localHistoryView = new LocalHistoryView(),
             Docking.ToolAnchor.BottomLeft)
         {
+            Serves = ToolWindowServes.EveryFolder,
             Tools = () => localHistoryView?.Tabs,
         });
         // The menus' names, and Find Action's (Show Local History...) beside the Git window's Show History.

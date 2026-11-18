@@ -38,6 +38,7 @@ public partial class MainWindow
             return find;
         }, Docking.ToolAnchor.BottomLeft)
         {
+            Serves = ToolWindowServes.EveryFolder,
             Action = AppActions.ShowFind,
             ActionTitle = "Find Tool Window",
             ExpandAll = () => Find.ExpandAll(),

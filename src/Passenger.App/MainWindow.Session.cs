@@ -278,6 +278,15 @@ public partial class MainWindow
     private void Bind(ProjectSession next)
     {
         session = next;
+        // The tool windows follow what the folder holds, before anything of the session shows one.
+        Dock.Serve();
+        next.HoldsChanged += (_, _) =>
+        {
+            if (session == next)
+            {
+                Dock.Serve();
+            }
+        };
         ForgetRunMarks();
         buildRun = new BuildRunController(next, BuildRunParts());
         BuildRunController runs = buildRun;

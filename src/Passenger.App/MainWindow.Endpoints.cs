@@ -33,6 +33,7 @@ public partial class MainWindow
             return view;
         }, Docking.ToolAnchor.RightTop)
         {
+            Serves = ToolWindowServes.WebRequests,
             Action = AppActions.ShowEndpoints,
             Menus = [new MenuPlace("Tools", 0, 3)],
             Chosen = () => endpoints?.Chosen,

@@ -266,13 +266,14 @@ internal sealed class Stripe : Border
         return nearest ?? AnchorAt(at);
     }
 
-    /// <summary>A place's windows in their order, each checked while it is on the stripe: unchecked, it is taken off as a
-    /// window closed off it is, open or not; checked, it is put back. After them, each other place of this stripe whose
-    /// windows are all off it, so none is out of reach. Opened at the pointer, or beside the stripe for the menu key.</summary>
+    /// <summary>A place's windows serving the open folder in their order, each checked while it is on the stripe: unchecked,
+    /// it is taken off as a window closed off it is, open or not; checked, it is put back. After them, each other place of
+    /// this stripe whose windows are all off it, so none is out of reach. Opened at the pointer, or beside the stripe for the
+    /// menu key.</summary>
     private void ShowChecklist(ToolAnchor anchor, bool atPointer)
     {
         ContextMenu menu = new() { ItemsSource = Checklist(anchor) };
-        List<ToolAnchor> emptied = [.. groups.Keys.Where(a => a != anchor && host.Windows.Any(w => w.Anchor == a) && host.Windows.Where(w => w.Anchor == a).All(w => w.IsClosed))];
+        List<ToolAnchor> emptied = [.. groups.Keys.Where(a => a != anchor && host.Served.Any(w => w.Anchor == a) && host.Served.Where(w => w.Anchor == a).All(w => w.IsClosed))];
         if (emptied.Count > 0)
         {
             menu.ItemsSource = (Control[])[.. Checklist(anchor), new Separator(), .. emptied.Select(a => new MenuItem { Header = ToolWindow.Name(a), ItemsSource = Checklist(a) })];
@@ -289,7 +290,7 @@ internal sealed class Stripe : Border
     }
 
     private List<Control> Checklist(ToolAnchor anchor) =>
-        [.. host.Windows.Where(w => w.Anchor == anchor).OrderBy(w => w.Order).Select(window =>
+        [.. host.Served.Where(w => w.Anchor == anchor).OrderBy(w => w.Order).Select(window =>
         {
             PathIcon glyph = new();
             glyph.Bind(PathIcon.DataProperty, glyph.GetResourceObservable(window.Icon));

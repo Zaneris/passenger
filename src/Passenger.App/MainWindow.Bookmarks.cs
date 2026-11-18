@@ -24,6 +24,7 @@ public partial class MainWindow
             return bookmarksView;
         }, Docking.ToolAnchor.LeftBottom)
         {
+            Serves = ToolWindowServes.EveryFolder,
             Action = AppActions.ShowBookmarks,
             Menus = [new MenuPlace("Navigate/Bookmarks", 0, 3)],
         });

@@ -933,7 +933,8 @@ public sealed class DockingTests
     {
         MainWindow window = new() { Width = 1200, Height = 800, StateFolder = state ?? Passenger.App.State.StateStore.DefaultRoot };
         window.Show();
-        Ui.Settle();
+        // The dock's own ways, with every window in it, whatever a folder would bring.
+        Ui.ServeEveryWindow(window);
         return window;
     }
 

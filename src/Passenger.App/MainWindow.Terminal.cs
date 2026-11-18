@@ -17,6 +17,7 @@ public partial class MainWindow
     {
         Dock.Add(new Docking.ToolWindow(ToolWindowIds.Terminal, "Terminal", IconKeys.Terminal, MakeTerminal, Docking.ToolAnchor.BottomLeft)
         {
+            Serves = ToolWindowServes.EveryFolder,
             Action = AppActions.ShowTerminal,
             Tools = () => terminal?.HeaderTools,
             Menus = [new MenuPlace("Tools", 0, 2)],

@@ -50,6 +50,7 @@ public partial class MainWindow
             return view;
         }, Docking.ToolAnchor.RightTop)
         {
+            Serves = ToolWindowServes.StepDefinitions,
             Action = AppActions.ShowStepLibrary,
             Menus = [new MenuPlace("Tools", 0, 5)],
             Chosen = () => stepLibrary?.Chosen,

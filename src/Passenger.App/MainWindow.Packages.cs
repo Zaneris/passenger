@@ -25,6 +25,7 @@ public partial class MainWindow
             return view;
         }, Docking.ToolAnchor.BottomLeft)
         {
+            Serves = ToolWindowServes.EveryFolder,
             Action = AppActions.ShowNuGet,
             Tools = () => nuget?.Tabs,
             Menus = [new MenuPlace("Tools", 0, 0)],
