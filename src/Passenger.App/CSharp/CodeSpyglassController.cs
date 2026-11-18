@@ -291,21 +291,25 @@ internal sealed class CodeSpyglassController
         LspLocation? only = had?.Only;
         int? inheritors = had?.Inheritors;
         LspPosition at = ServerLines.Of(read.Text).PositionOf(declaration.NameOffset);
+        // A member's references hold its implementations' declarations, which the server also names as its implementations.
+        IReadOnlyList<LspLocation> implemented = declaration.Heritage != Heritage.None && (now.CodeSpyglassUsages || now.CodeSpyglassInheritors)
+            ? await lsp.ImplementationAsync(declaration.NameOffset, cancel) : [];
         if (now.CodeSpyglassUsages)
         {
-            // The declaration is among the places the server names, which is no use of it.
-            (string Uri, int Line, int Character) asked = (lsp.Identifier.Uri, at.Line, at.Character);
-            List<LspLocation> used = [.. (await lsp.ReferencesAsync(declaration.NameOffset, cancel))
-                .Where(l => !SpyglassReading.IsDeclaration((l.Uri, l.Range.Start.Line, l.Range.Start.Character), asked))];
-            usages = used.Count;
-            only = used.Count == 1 ? used[0] : null;
+            IReadOnlyList<LspLocation> references = await lsp.ReferencesAsync(declaration.NameOffset, cancel);
+            List<int> uses = SpyglassReading.UsesAmong([.. references.Select(Placed)], new SpyglassReading.Place(lsp.Identifier.Uri, at.Line, at.Character),
+                [.. implemented.Select(Placed)]);
+            usages = uses.Count;
+            only = uses.Count == 1 ? references[uses[0]] : null;
         }
         if (now.CodeSpyglassInheritors && declaration.Heritage != Heritage.None)
         {
-            inheritors = (await lsp.ImplementationAsync(declaration.NameOffset, cancel)).Count;
+            inheritors = implemented.Count;
         }
         return new Counted(usages, only, inheritors, read.Version, Stopwatch.GetTimestamp());
     }
+
+    private static SpyglassReading.Place Placed(LspLocation location) => new(location.Uri, location.Range.Start.Line, location.Range.Start.Character);
 
     /// <summary>Shows the hints of every declaration there is a number or an author for, after its line.</summary>
     private static void Publish(OpenDocument document, Memory memory, IReadOnlyList<SpyglassDeclaration> all, TextSnapshot text, AppSettings now)

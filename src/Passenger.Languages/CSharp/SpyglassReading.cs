@@ -26,10 +26,29 @@ public static class SpyglassReading
         return count == 0 ? $"no {noun}s" : Plural.Of(count, noun);
     }
 
-    /// <summary>Whether a place the server names is the declaration asked about, which is among its references and is no use of
-    /// it: the same place of the same document, however the server's URI is cased.</summary>
-    public static bool IsDeclaration((string Uri, int Line, int Character) place, (string Uri, int Line, int Character) declaration) =>
-        place.Line == declaration.Line && place.Character == declaration.Character && string.Equals(place.Uri, declaration.Uri, StringComparison.OrdinalIgnoreCase);
+    /// <summary>A place a language server names: a document's URI, a line and a character, both from zero.</summary>
+    public readonly record struct Place(string Uri, int Line, int Character);
+
+    /// <summary>Whether two places are the same place of the same document, however the server's URI is cased.</summary>
+    public static bool IsSame(Place place, Place other) =>
+        place.Line == other.Line && place.Character == other.Character && string.Equals(place.Uri, other.Uri, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>Which of the places a server names as the references of a declaration are uses of it, by their index: not the
+    /// declaration itself, nor the declaration of a member that implements or overrides it, which the server lists among
+    /// them as well (an interface method's eighteen implementations come with its three calls).</summary>
+    public static List<int> UsesAmong(IReadOnlyList<Place> references, Place declaration, IReadOnlyList<Place> implementations)
+    {
+        List<int> uses = [];
+        for (int i = 0; i < references.Count; i++)
+        {
+            Place place = references[i];
+            if (!IsSame(place, declaration) && !implementations.Any(implemented => IsSame(place, implemented)))
+            {
+                uses.Add(i);
+            }
+        }
+        return uses;
+    }
 
     /// <summary>Where a declaration's name stands on its line now: at the column it had when it was read while the name is still
     /// there, else the first whole word that is it; none when the line no longer names it.</summary>

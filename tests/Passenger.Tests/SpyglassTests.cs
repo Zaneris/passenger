@@ -48,7 +48,7 @@ public sealed class SpyglassTests : IClassFixture<SpyglassTests.Project>
         string.Join("; ", Hints(editor).GroupBy(h => h.Line).Select(g => $"line {g.Key + 1}: {string.Join(", ", g.Select(h => h.Text))}"));
 
     /// <summary>Waits for each declaration to be followed by exactly these words, or, where <paramref name="exact"/> is false,
-    /// by these among others (the server counts what a member's implementations declare among its references, or not).</summary>
+    /// by these among others.</summary>
     private static void WaitForHints(CodeEditor editor, (string Code, string[] Words)[] expected, bool exact = true) =>
         Ui.WaitFor(() => expected.All(e =>
             {
@@ -65,9 +65,10 @@ public sealed class SpyglassTests : IClassFixture<SpyglassTests.Project>
 
     private static readonly (string Code, string[] Words)[] ShapesHints =
     [
-        ("interface IShape", ["1 usage", "1 implementation"]), ("int Sides { get; }", ["1 implementation"]), ("class Square : IShape", ["no usages"]),
-        ("class Figure", ["1 usage"]), ("virtual double Perimeter()", ["1 override"]), ("class Disc : Figure", ["no usages"]),
-        ("abstract class Animal", ["1 usage", "1 inheritor"]), ("abstract string Name", ["1 implementation"]), ("class Dog : Animal", ["no usages"]),
+        ("interface IShape", ["2 usages", "1 implementation"]), ("int Sides { get; }", ["1 usage", "1 implementation"]), ("class Square : IShape", ["no usages"]),
+        ("class Figure", ["1 usage"]), ("virtual double Perimeter()", ["no usages", "1 override"]), ("class Disc : Figure", ["no usages"]),
+        ("abstract class Animal", ["1 usage", "1 inheritor"]), ("abstract string Name", ["no usages", "1 implementation"]), ("class Dog : Animal", ["no usages"]),
+        ("class Reader", ["no usages"]), ("int Read(IShape shape)", ["no usages"]),
     ];
 
     /// <summary>With Spyglass on, each declaration of a file is followed by how many places use it, on its own line: a type
@@ -134,7 +135,7 @@ public sealed class SpyglassTests : IClassFixture<SpyglassTests.Project>
         {
             CodeEditor editor = window.EditorArea.CodeEditor;
             window.ApplySettings(Only(window.Settings, usages: true, inheritors: true));
-            WaitForHints(editor, ShapesHints, exact: false);
+            WaitForHints(editor, ShapesHints);
 
             window.ApplySettings(window.Settings with { CodeSpyglassUsages = false });
             Ui.WaitFor(() => Hints(editor).Count > 0 && Hints(editor).All(h => !h.Text.Contains("usage", StringComparison.Ordinal)), () => $"the usages taken away ({Shown(editor)})");
@@ -269,7 +270,8 @@ public sealed class SpyglassTests : IClassFixture<SpyglassTests.Project>
                 + "static class Callers\n{\n    public static int Run() => Counts.Once() + Counts.Twice() + Counts.Twice();\n}\n");
             File.WriteAllText(PathOf("Shapes.cs"), "interface IShape\n{\n    int Sides { get; }\n}\n\nclass Square : IShape\n{\n    public int Sides => 4;\n}\n\n"
                 + "class Figure\n{\n    public virtual double Perimeter() => 0;\n}\n\nclass Disc : Figure\n{\n    public override double Perimeter() => 1;\n}\n\n"
-                + "abstract class Animal\n{\n    public abstract string Name { get; }\n}\n\nclass Dog : Animal\n{\n    public override string Name => \"dog\";\n}\n");
+                + "abstract class Animal\n{\n    public abstract string Name { get; }\n}\n\nclass Dog : Animal\n{\n    public override string Name => \"dog\";\n}\n\n"
+                + "class Reader\n{\n    public static int Read(IShape shape) => shape.Sides;\n}\n");
             Directory.CreateDirectory(PathOf("bin"));
         }
 
