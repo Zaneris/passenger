@@ -474,6 +474,11 @@ public sealed class LanguageServer : IAsyncDisposable
         if (stateCache is not null && RoslynServerFolder.TemporaryOf(stateCache) is { } temporary)
         {
             start.Environment[RoslynServerFolder.TemporaryVariable] = temporary;
+            // NuGet's scratch stays where Passenger's own restores take it, its extraction locks shared with them.
+            if (!(start.Environment.TryGetValue(NuGetScratch.Variable, out string? named) && !string.IsNullOrEmpty(named)) && NuGetScratch.Shared() is { } scratch)
+            {
+                start.Environment[NuGetScratch.Variable] = scratch;
+            }
         }
         // The server's restore takes no properties, and off Windows a WPF project restores only with this (NETSDK1100).
         if (!OperatingSystem.IsWindows() && !start.Environment.ContainsKey(MSBuildNames.EnableWindowsTargeting))
