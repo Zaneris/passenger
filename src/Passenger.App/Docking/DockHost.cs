@@ -95,6 +95,12 @@ public sealed class DockHost : Grid
         {
             ToolPane pane = new(this);
             panes[anchor] = pane;
+            // A size the splitter's keys changed is kept first, as a resize keeps it.
+            pane.LeastChanged += (_, _) =>
+            {
+                Remember();
+                Fit();
+            };
             (Grid area, int slot) = Area(anchor);
             if (area == bottomArea)
             {
@@ -605,6 +611,14 @@ public sealed class DockHost : Grid
         }
         FloatWindow created = new(this, window.WindowBounds, new Size(520, 420)) { Title = window.Title, ShowInTaskbar = window.Mode == ToolMode.Windowed, ShowActivated = forward };
         ToolPane pane = new(this) { Floating = created, Closes = closesOffStripe };
+        pane.LeastChanged += (_, _) =>
+        {
+            // Told after a layout, by which the window may have closed.
+            if (created.IsVisible)
+            {
+                created.HoldAtLeast(new Size(pane.LeastWidth, created.MinHeight));
+            }
+        };
         pane.Show(window);
         created.Content = pane;
         created.Dismissed += (_, _) => FloatClosed(window, created);
@@ -871,10 +885,14 @@ public sealed class DockHost : Grid
             bottom = Math.Min(bottom, down * (1 - share));
         }
         ColumnDefinitions[1].Width = new GridLength(left);
+        ColumnDefinitions[1].MinWidth = Math.Max(Least(ToolAnchor.LeftTop), Least(ToolAnchor.LeftBottom));
         ColumnDefinitions[2].Width = new GridLength(leftOpen ? 1 : 0);
         ColumnDefinitions[3].MinWidth = across * share;
         ColumnDefinitions[4].Width = new GridLength(rightOpen ? 1 : 0);
         ColumnDefinitions[5].Width = new GridLength(right);
+        ColumnDefinitions[5].MinWidth = Math.Max(Least(ToolAnchor.RightTop), Least(ToolAnchor.RightBottom));
+        bottomArea.ColumnDefinitions[0].MinWidth = Least(ToolAnchor.BottomLeft);
+        bottomArea.ColumnDefinitions[2].MinWidth = Least(ToolAnchor.BottomRight);
         RowDefinitions[0].MinHeight = down * share;
         RowDefinitions[1].Height = new GridLength(bottomOpen ? 1 : 0);
         RowDefinitions[2].Height = new GridLength(bottom);
@@ -886,6 +904,9 @@ public sealed class DockHost : Grid
         rightSeam.IsVisible = rightOpen && bottomOpen;
         given = (left, right, bottom);
     }
+
+    /// <summary>The least a place may be while it shows a window: what its header holds at its least.</summary>
+    private double Least(ToolAnchor anchor) => panes[anchor] is { Window: not null } pane ? pane.LeastWidth : 0;
 
     /// <summary>A side's two halves: both shown share it, as the person last split it while both were; one shown fills
     /// it.</summary>

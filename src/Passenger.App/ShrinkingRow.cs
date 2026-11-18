@@ -6,10 +6,10 @@ namespace Passenger.App;
 
 /// <summary>A row whose children take their own widths while they fit and, when the row is narrower, give way from the
 /// last one back, each down to its MinWidth (its Width when it has one or keeps it, <see cref="KeepsWidthProperty"/>,
-/// its item's when it holds a list's): a list's row (a frame's place before its method's name, a branch's upstream
-/// before its name) or the main toolbar narrowing (the branch's name before the project's). Its words end in an
-/// ellipsis (Shell.axaml), so none is cut mid-letter. A child that goes whole (<see cref="GoesWholeProperty"/>) goes
-/// where the row cannot hold every child at its least.</summary>
+/// its item's when it holds a list's, a row's least when it holds a row): a list's row (a frame's place before its
+/// method's name, a branch's upstream before its name), the main toolbar or a tool window's header narrowing (the
+/// branch's name before the project's). Its words end in an ellipsis (Shell.axaml), so none is cut mid-letter. A child
+/// that goes whole (<see cref="GoesWholeProperty"/>) goes where the row cannot hold every child at its least.</summary>
 public sealed class ShrinkingRow : Panel
 {
     private double[] widths = [];
@@ -55,7 +55,7 @@ public sealed class ShrinkingRow : Panel
             if (Children[i].IsVisible)
             {
                 double its = LeastOf(Children[i], i);
-                least += its;
+                least += GetGivesWayLast(Children[i]) ? widths[i] : its;
                 shown++;
                 if (!GetGoesWhole(Children[i]))
                 {
@@ -67,7 +67,7 @@ public sealed class ShrinkingRow : Panel
         double gaps = Spacing * Math.Max(0, shown - 1);
         least += gaps;
         LeastWidth = staysLeast + Spacing * Math.Max(0, staying - 1);
-        // Those that go whole go before any other is cut below its least, the last first.
+        // Those that go whole go, last first, before another is cut below its least (one giving way last, its width).
         for (int i = Math.Min(Children.Count, 64) - 1; i >= 0 && least > availableSize.Width; i--)
         {
             if (Children[i].IsVisible && GetGoesWhole(Children[i]))
@@ -128,9 +128,40 @@ public sealed class ShrinkingRow : Panel
     /// tab's few letters, its ellipsis and its ×.</summary>
     public static readonly AttachedProperty<double> LeastProperty = AvaloniaProperty.RegisterAttached<ShrinkingRow, Control, double>("Least");
 
-    private double Least(Control child, int i) => !double.IsNaN(child.Width) || GetKeepsWidth(child) ? widths[i]
-        : Math.Max(Math.Max(child.MinWidth, child.GetValue(LeastProperty)), ItemOf(child) is { } item ? Math.Max(item.MinWidth, item.GetValue(LeastProperty)) + item.Margin.Left + item.Margin.Right : 0)
-            + child.Margin.Left + child.Margin.Right;
+    private double Least(Control child, int i)
+    {
+        if (!double.IsNaN(child.Width) || GetKeepsWidth(child))
+        {
+            return widths[i];
+        }
+        double least = Declared(child);
+        if (ItemOf(child) is { } item)
+        {
+            least = Math.Max(least, Declared(item) + item.Margin.Left + item.Margin.Right);
+        }
+        if (RowIn(child) is { } row)
+        {
+            least = Math.Max(least, row.LeastWidth);
+        }
+        else if (least <= 0 && GetGoesWhole(child))
+        {
+            // Nothing says how far it may be cut, so it is never cut: whole, or gone.
+            return widths[i];
+        }
+        return least + child.Margin.Left + child.Margin.Right;
+    }
+
+    private static double Declared(Control child) => Math.Max(child.MinWidth, child.GetValue(LeastProperty));
+
+    /// <summary>A row of parts a child is or holds (a window's tabs, as a list's panel), whose least is the child's.</summary>
+    private static ShrinkingRow? RowIn(Control? child) => child switch
+    {
+        ShrinkingRow row => row,
+        ItemsControl { ItemsPanelRoot: ShrinkingRow row } => row,
+        ContentControl { Content: Control content } => RowIn(content),
+        Avalonia.Controls.Presenters.ContentPresenter { Child: { } content } => RowIn(content),
+        _ => null,
+    };
 
     /// <summary>A child that never gives way, so those before it give way first: a package's version and its tags after
     /// its name, which is cut before them.</summary>
@@ -141,20 +172,35 @@ public sealed class ShrinkingRow : Panel
     public static void SetKeepsWidth(Control child, bool value) => child.SetValue(KeepsWidthProperty, value);
 
     /// <summary>A child that goes whole where the row cannot hold every child at its least, the last first, before any is
-    /// cut below its least: unseen, taking no pointer and no Tab, as the main menu's titles go behind its button.</summary>
+    /// cut below its least: unseen, taking no pointer and no Tab, as the main menu's titles go behind its button. One
+    /// with no least of its own is never cut.</summary>
     public static readonly AttachedProperty<bool> GoesWholeProperty = AvaloniaProperty.RegisterAttached<ShrinkingRow, Control, bool>("GoesWhole");
 
     public static bool GetGoesWhole(Control child) => child.GetValue(GoesWholeProperty);
 
     public static void SetGoesWhole(Control child, bool value) => child.SetValue(GoesWholeProperty, value);
 
+    /// <summary>A child that gives way only once every child that goes whole has gone: a tool window's title, kept whole
+    /// while what follows it can go.</summary>
+    public static readonly AttachedProperty<bool> GivesWayLastProperty = AvaloniaProperty.RegisterAttached<ShrinkingRow, Control, bool>("GivesWayLast");
+
+    public static bool GetGivesWayLast(Control child) => child.GetValue(GivesWayLastProperty);
+
+    public static void SetGivesWayLast(Control child, bool value) => child.SetValue(GivesWayLastProperty, value);
+
     /// <summary>Whether a child has gone whole as its row was last measured, so what it shows is shown elsewhere.</summary>
     public static bool HasGone(Control child) => child.Parent is ShrinkingRow row && row.Gone(row.Children.IndexOf(child));
 
     private bool Gone(int i) => i is >= 0 and < 64 && (gone & (1UL << i)) != 0;
 
-    /// <summary>An item a list's container holds (a row's panel of an ItemsControl's tabs), whose least width is its container's.</summary>
-    private static Control? ItemOf(Control child) => child is Avalonia.Controls.Presenters.ContentPresenter { Child: { } item } ? item : null;
+    /// <summary>An item a list's container holds (a row's panel of an ItemsControl's tabs), or a holder's content (a tool
+    /// window header's view switch), whose least width is its holder's.</summary>
+    private static Control? ItemOf(Control child) => child switch
+    {
+        Avalonia.Controls.Presenters.ContentPresenter { Child: { } item } => item,
+        ContentControl { Content: Control item } => item,
+        _ => null,
+    };
 
     protected override Size ArrangeOverride(Size finalSize)
     {

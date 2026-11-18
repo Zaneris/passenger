@@ -2,26 +2,37 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Input;
+using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.VisualTree;
 
 namespace Passenger.App.Docking;
 
 /// <summary>One place's window: its header (title, its own action's button, a tree's Expand All and Collapse All, Move
-/// to and Hide in a menu, a hide button) over its content. The header drags the window elsewhere; in a narrow one, what
-/// follows the title gives way, then the title, each ending in an ellipsis, never under the buttons.</summary>
+/// to and Hide in a menu, a hide button) over its content. The header drags the window elsewhere. In a narrow one, what
+/// follows the title gives way, then goes whole, then the title gives way down to a few letters, then the buttons go
+/// whole, Close and Hide first (Options holds both), then the window's own: nothing is cut or drawn over another
+/// (<see cref="ToolbarRow"/>), and the place is never narrower than that (<see cref="LeastWidth"/>).</summary>
 internal sealed class ToolPane : DockPanel
 {
     private readonly DockHost host;
     private readonly TextBlock title = new() { Classes = { StyleClasses.ToolTitle }, VerticalAlignment = VerticalAlignment.Center };
     private readonly ContentControl body = new();
-    // What the window puts after its title (its tabs) narrows before the title does and never draws past its room, over
-    // the header's buttons.
-    private readonly ContentControl tools = new() { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0), ClipToBounds = true };
+    // What the window puts after its title (its tabs, the Explorer's view switch) narrows before the title does, down to
+    // its own least, then goes whole.
+    private readonly ContentControl tools = new() { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0), [ShrinkingRow.GoesWholeProperty] = true };
     private readonly Border header;
+    private readonly ToolbarRow headerRow;
     private readonly Button expandAll;
     private readonly Button collapseAll;
-    private readonly StackPanel treeButtons;
+
+    /// <summary>The header's buttons, one apart from the next, as the main toolbar's are.</summary>
+    private readonly ShrinkingRow buttons;
+
+    /// <summary>The Options menu this pane opened, while it may be open, and whether the last press on Options came while it
+    /// was: that press closed it, and its click opens nothing.</summary>
+    private MenuFlyout? optionsMenu;
+    private bool pressedOpen;
 
     /// <summary>The titled tabs along its foot of the windows docked in its place, while several are and the dock names them
     /// so (<see cref="ShowTabs"/>).</summary>
@@ -59,13 +70,28 @@ internal sealed class ToolPane : DockPanel
         };
         hide.Name = AppActions.HideToolWindow;
         ActionTips.Set(hide, AppActions.HideToolWindow, "Hide");
+        // Read before the open menu's light dismiss closes it, which then passes the press on to Options.
+        options.AddHandler(PointerPressedEvent, (_, _) => pressedOpen = optionsMenu is { IsOpen: true }, RoutingStrategies.Tunnel, handledEventsToo: true);
+        options.AddHandler(PointerReleasedEvent, (_, _) => pressedOpen = false, handledEventsToo: true);
         options.Click += (_, _) =>
         {
+            if (pressedOpen)
+            {
+                pressedOpen = false;
+                return;
+            }
             MenuFlyout menu = OptionsMenu();
             // Down from the ⋮ and inside the pane, where Fluent's default centres it on the button.
             menu.Placement = PlacementMode.BottomEdgeAlignedRight;
+            // A click elsewhere that closes it does what it does there too: another window's Options opens its menu.
+            menu.OverlayDismissEventPassThrough = true;
             host.OpenOptions = menu;
-            menu.Closed += (_, _) => host.OpenOptions = host.OpenOptions == menu ? null : host.OpenOptions;
+            optionsMenu = menu;
+            menu.Closed += (_, _) =>
+            {
+                host.OpenOptions = host.OpenOptions == menu ? null : host.OpenOptions;
+                optionsMenu = optionsMenu == menu ? null : optionsMenu;
+            };
             menu.ShowAt(options);
         };
         hide.Click += (_, _) =>
@@ -75,20 +101,27 @@ internal sealed class ToolPane : DockPanel
                 host.Hide(window.Id);
             }
         };
-        treeButtons = new StackPanel { [DockProperty] = Dock.Right, Orientation = Orientation.Horizontal, Spacing = 2, Margin = new Thickness(0, 0, 8, 0), Children = { expandAll, collapseAll } };
+        foreach (Button going in (Button[])[expandAll, collapseAll, hide, close])
+        {
+            ShrinkingRow.SetGoesWhole(going, true);
+        }
+        // Whole while what follows it can go, then down to a few letters and its ellipsis before a button goes.
+        title[ShrinkingRow.LeastProperty] = 32;
+        ShrinkingRow.SetGivesWayLast(title, true);
+        buttons = new ShrinkingRow
+        {
+            [DockProperty] = Dock.Right,
+            Spacing = 2,
+            Margin = new Thickness(8, 0, 6, 0),
+            VerticalAlignment = VerticalAlignment.Center,
+            Children = { expandAll, collapseAll, options, hide, close },
+        };
+        headerRow = new ToolbarRow { Children = { buttons, new ShrinkingRow { VerticalAlignment = VerticalAlignment.Center, Children = { title, tools } } } };
         header = new Border
         {
             Classes = { StyleClasses.ToolHeader },
             [DockProperty] = Dock.Top,
-            Child = new DockPanel
-            {
-                Children =
-                {
-                    new StackPanel { [DockProperty] = Dock.Right, Orientation = Orientation.Horizontal, Spacing = 2, Margin = new Thickness(0, 0, 6, 0), Children = { options, hide, close } },
-                    treeButtons,
-                    new ShrinkingRow { Children = { title, tools } },
-                },
-            },
+            Child = headerRow,
         };
         header.PointerPressed += (_, e) =>
         {
@@ -155,6 +188,28 @@ internal sealed class ToolPane : DockPanel
     /// <summary>The window of its own it stands in, floating or windowed, if any: its header then moves that window.</summary>
     public Window? Floating { get; init; }
 
+    /// <summary>The least its place may be, where its header holds Options and its title's few letters, every other part
+    /// gone whole: known once it has been laid out.</summary>
+    public double LeastWidth => headerRow.LeastWidth + header.Padding.Left + header.Padding.Right;
+
+    /// <summary>Its <see cref="LeastWidth"/> as it was last told.</summary>
+    private double toldLeast;
+
+    /// <summary>Its <see cref="LeastWidth"/> changed as it was laid out (a theme's sizes), told once that layout is done, so
+    /// its place is held to it.</summary>
+    public event EventHandler? LeastChanged;
+
+    protected override Size MeasureOverride(Size availableSize)
+    {
+        Size measured = base.MeasureOverride(availableSize);
+        if (Math.Abs(LeastWidth - toldLeast) > 0.5)
+        {
+            toldLeast = LeastWidth;
+            UiThread.Post(() => LeastChanged?.Invoke(this, EventArgs.Empty));
+        }
+        return measured;
+    }
+
     public ToolWindow? Window { get; private set; }
 
     /// <summary>Whether its header offers Close beside Hide: a window closed leaves its stripe until opened again.</summary>
@@ -193,15 +248,17 @@ internal sealed class ToolPane : DockPanel
             }
             tools.Content = window.HeaderTools;
         }
+        tools.IsVisible = tools.Content is not null;
         if (own is not null)
         {
-            treeButtons.Children.Remove(own);
+            buttons.Children.Remove(own);
             own = null;
         }
         if (window?.HeaderAction is { } asked)
         {
             own = ToolButtons.Of(asked.Action, asked.Icon, asked.Title, Ask);
-            treeButtons.Children.Insert(0, own);
+            ShrinkingRow.SetGoesWhole(own, true);
+            buttons.Children.Insert(0, own);
         }
         expandAll.IsVisible = window?.ExpandAll is not null;
         collapseAll.IsVisible = window?.CollapseAll is not null;

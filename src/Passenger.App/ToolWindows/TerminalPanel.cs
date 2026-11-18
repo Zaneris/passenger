@@ -61,7 +61,8 @@ public sealed class TerminalPanel : DockPanel
         {
             ItemsSource = tabs,
             VerticalAlignment = VerticalAlignment.Center,
-            ItemsPanel = new FuncTemplate<Panel?>(() => new StackPanel { Orientation = Orientation.Horizontal, Spacing = 2 }),
+            // In a narrow window the last tabs give way first, each name ending in an ellipsis, as the Debug window's do.
+            ItemsPanel = new FuncTemplate<Panel?>(() => new ShrinkingRow { Spacing = 2 }),
         };
         ReusedRows.Use(strip, Tab);
         Children.Add(view);
@@ -84,7 +85,7 @@ public sealed class TerminalPanel : DockPanel
             FocusView();
         };
         Button add = ToolButtons.Of(AppActions.NewTerminalSession, IconKeys.Add, "New Session", action => ActionRequested?.Invoke(this, action));
-        HeaderTools = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4, Children = { strip, add } };
+        HeaderTools = new ShrinkingRow { Spacing = 4, Children = { strip, add } };
     }
 
     /// <summary>Raised when the last shell has ended, so the window can hide.</summary>

@@ -4,8 +4,9 @@
              x:Class="Passenger.App.Explorer.ExplorerView">
     <DockPanel Background="{DynamicResource Passenger.Panel}">
         <DockPanel Name="OwnHeader" DockPanel.Dock="Top" Margin="12,6,8,2">
-            <!-- The view switch: the solution's projects, or the folder as it is on disk. Narrowed, its name gives way. -->
-            <Button Name="ViewSwitch" DockPanel.Dock="Right" Classes="widget" IsVisible="False"
+            <!-- The view switch: the solution's projects, or the folder as it is on disk. Narrowed, its name gives way, down
+                 to a letter or two as the toolbar's widgets do, then it goes whole. -->
+            <Button Name="ViewSwitch" DockPanel.Dock="Right" Classes="widget" MinWidth="52" IsVisible="False"
                     ToolTip.Tip="Switch between the solution and the files on disk">
                 <DockPanel>
                     <PathIcon DockPanel.Dock="Right" Margin="5,0,0,0" Classes="chevron" Data="{StaticResource Icon.ChevronDown}" />
