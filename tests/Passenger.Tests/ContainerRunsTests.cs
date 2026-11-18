@@ -259,6 +259,65 @@ public sealed class ContainerRunsTests(RestoredFolders folders) : IClassFixture<
         }
     }
 
+    /// <summary>A compose configuration builds only what it brings up: one naming its backing service alone starts it with no
+    /// dotnet build, and one naming web builds Web, which it runs beside the cache it depends on, and not Api, which nothing
+    /// it starts needs.</summary>
+    [AvaloniaFact]
+    public void A_compose_configuration_builds_only_the_services_it_starts_and_what_they_depend_on()
+    {
+        Assert.SkipWhen(Docker.WhyNot is not null, Docker.WhyNot ?? string.Empty);
+        (string folder, string project) = Restored("only");
+        List<string> builds = [];
+        EventHandler<ChildStart> started = (_, child) =>
+        {
+            if (child.Command.Contains(" build ", StringComparison.Ordinal))
+            {
+                lock (builds)
+                {
+                    builds.Add(child.Command);
+                }
+            }
+        };
+        ChildProcesses.Started += started;
+        MainWindow window = Open(folder);
+        RunConfiguration compose = window.Configurations.First(c => c.Kind == RunKind.Compose);
+        RunConfiguration cache = compose.Copied() with { Name = "Cache alone", Services = ["cache"], Generated = false };
+        RunConfiguration web = compose.Copied() with { Name = "Web and its cache", Services = ["web"], Generated = false };
+        window.SetConfigurations([cache, web], cache.Name);
+        try
+        {
+            Launched(window, "the cache alone to come up");
+            Assert.StartsWith("Running Cache alone: 0 .NET services from Passenger's build, 1 other service", window.Status, StringComparison.Ordinal);
+            Assert.True(Builds().Length == 0, $"Cache alone, which starts no .NET service, started dotnet builds first:\n{string.Join('\n', Builds())}");
+            Assert.Equal(["cache"], States(project).Keys);
+            Docker.Stopped(window, project, "Stop to take the cache down");
+            Ui.WaitFor(() => !window.IsRunning, "the log to stop being followed");
+
+            Assert.True(window.SelectConfiguration(web.Name));
+            Launched(window, "web to come up beside its cache");
+            Assert.StartsWith("Running Web and its cache: 1 .NET service from Passenger's build, 1 other service", window.Status, StringComparison.Ordinal);
+            Assert.Equal("web 1", Served(window, project, "web"));
+            Assert.Equal(["cache", "web"], States(project).Keys.Order(StringComparer.Ordinal));
+            Assert.True(Builds().Length == 1, $"Web and its cache was to build once, but started {Builds().Length} dotnet builds:\n{string.Join('\n', Builds())}");
+            Assert.True(File.Exists(Path.Combine(folder, "Web", "bin", "Debug", TestProjects.Framework, "Web.dll")), "web ran without Web built");
+            Assert.False(Directory.Exists(Path.Combine(folder, "Api", "bin")), "Web and its cache built Api, which nothing it starts runs");
+        }
+        finally
+        {
+            ChildProcesses.Started -= started;
+            Docker.Stopped(window, project, "Stop to take every container down");
+            window.Close();
+        }
+
+        string[] Builds()
+        {
+            lock (builds)
+            {
+                return [.. builds];
+            }
+        }
+    }
+
     /// <summary>A compose run builds its .NET services side by side in one dotnet build: with an error in each, it starts
     /// nothing, says the build failed in both, and Problems lists each one's error under its own project; mended, it comes
     /// up from one more build, and Rerun with nothing changed builds nothing, the Build window saying both are up to date.</summary>

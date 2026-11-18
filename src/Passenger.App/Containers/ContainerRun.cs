@@ -47,14 +47,15 @@ public sealed record ContainerPlan(string Name, string Folder, string ProjectNam
     /// where it names one (<see cref="ProjectSession.WorkspaceOfAsync"/>); null for the folder's.</summary>
     public WorkspaceModel? Workspace { get; init; }
 
-    /// <summary>The projects Run builds first: each .NET service's that starts, once, in fast mode (images mode builds its
+    /// <summary>The projects Run builds first: each one's of <see cref="Running"/>, once, in fast mode (images mode builds its
     /// images as Compose says, from their Dockerfiles).</summary>
     public IReadOnlyList<string> Builds => Mode == ContainerMode.Fast
-        ? [.. Dotnet.Where(d => d.Starts).Select(d => d.Project).Distinct(StringComparer.Ordinal)]
+        ? [.. Running.Select(d => d.Project).Distinct(StringComparer.Ordinal)]
         : [];
 
-    /// <summary>The services Rerun may restart, those Passenger builds.</summary>
-    public IEnumerable<DotnetService> Restartable => Dotnet.Where(d => d.Starts);
+    /// <summary>The .NET services <c>up</c> brings up (<see cref="Touched"/>), those marked Don't start aside: those fast mode
+    /// runs from Passenger's build, and Rerun may restart.</summary>
+    public IEnumerable<DotnetService> Running => Dotnet.Where(d => d.Starts && Touched.Contains(d.Service));
 
     /// <summary>Writes Passenger's override into the state, which <see cref="Compose"/> names: after the host's build, with the
     /// services held at their start (for the debugger or the profiler), and those of them whose code the debugger may change
@@ -1532,7 +1533,7 @@ public sealed class ContainerRun(ContainerPlan plan, ContainerEngine engine, Con
 
     /// <summary>The .NET services whose build changed since they started (or were last restarted), Rerun's to restart.</summary>
     public IReadOnlyList<DotnetService> Changed() =>
-        [.. Plan.Restartable.Where(d => !stamps.TryGetValue(d.Service, out string? was) || was != BuiltInputs.Stamp(d.Output))];
+        [.. Plan.Running.Where(d => !stamps.TryGetValue(d.Service, out string? was) || was != BuiltInputs.Stamp(d.Output))];
 
     /// <summary>Restarts services (their containers kept, the same mount reading the new build), saying so in the console
     /// (<paramref name="why"/>, else that their build changed). A service whose container was made held, or unheld, other
@@ -1639,7 +1640,7 @@ public sealed class ContainerRun(ContainerPlan plan, ContainerEngine engine, Con
 
     private void Stamp(IEnumerable<DotnetService>? services = null)
     {
-        foreach (DotnetService service in services ?? Plan.Restartable)
+        foreach (DotnetService service in services ?? Plan.Running)
         {
             stamps[service.Service] = BuiltInputs.Stamp(service.Output);
         }
