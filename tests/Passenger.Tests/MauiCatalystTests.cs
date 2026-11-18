@@ -271,7 +271,7 @@ public sealed class MauiCatalystTests : McpRig
             Assert.Skip("A .NET MAUI app's Mac Catalyst head runs only on a Mac");
         }
         string runtime = $"maccatalyst-{(RuntimeInformation.OSArchitecture == Architecture.Arm64 ? "arm64" : "x64")}";
-        if (!File.Exists(Path.Combine(AppContext.BaseDirectory, "debugger", "relay", runtime, MacCatalystApp.RelayFile)))
+        if (!File.Exists(CarriedFiles.Relay(runtime, MacCatalystApp.RelayFile)))
         {
             Assert.Skip($"This build carries no debug relay for {runtime}, which `just debug-relay apple` makes before a build carries it");
         }

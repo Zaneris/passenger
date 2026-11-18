@@ -254,7 +254,7 @@ public static class DeviceLaunches
             {
                 return (null, null, $"Passenger's debugger does not reach an app on an {(abi.Length > 0 ? abi : "unknown")} device: it debugs arm64-v8a and x86_64 ones");
             }
-            relay = Path.Combine(AppContext.BaseDirectory, "debugger", "relay", runtime, AndroidApp.RelayFile);
+            relay = CarriedFiles.Relay(runtime, AndroidApp.RelayFile);
             if (!File.Exists(relay))
             {
                 return (null, null, $"This Passenger carries no debug relay for {runtime} ({relay})");

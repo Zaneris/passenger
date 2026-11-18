@@ -197,17 +197,8 @@ public sealed class WebLanguages : IAsyncDisposable
         return null;
     }
 
-    /// <summary>Where the servers, their schemas and Passenger's scripts for them are carried: beside the app, or in a
-    /// macOS bundle its Resources, since codesign takes a folder under Contents/MacOS named with a dot (a package's
-    /// .github, yaml's dist/schema/yaml-1.1) for a nested bundle and refuses to sign the app.</summary>
-    public static string Carried { get; } = CarriedFolder();
-
-    private static string CarriedFolder()
-    {
-        string beside = Path.Combine(AppContext.BaseDirectory, "web");
-        string resources = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "Resources", "web"));
-        return !Directory.Exists(beside) && Directory.Exists(resources) ? resources : beside;
-    }
+    /// <summary>Where the servers, their schemas and Passenger's scripts for them are carried.</summary>
+    public static string Carried { get; } = CarriedFiles.Folder("web");
 
     /// <summary>The Node.js found for the servers, once one has been looked for.</summary>
     public NodeRuntime? Node => finding is { IsCompletedSuccessfully: true } found ? found.Result : null;

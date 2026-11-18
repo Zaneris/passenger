@@ -14,7 +14,7 @@ public sealed partial record SimulatorApp : IDeviceApp
     /// <summary>The relay Passenger carries for the runtime identifier the app was built for; null where it carries none.</summary>
     public string? Relay()
     {
-        string relay = Path.Combine(AppContext.BaseDirectory, "debugger", "relay", RuntimeIdentifier, RelayFile);
+        string relay = CarriedFiles.Relay(RuntimeIdentifier, RelayFile);
         return File.Exists(relay) ? relay : null;
     }
 
@@ -27,7 +27,7 @@ public sealed partial record SimulatorApp : IDeviceApp
         string? relay = relayed ? Relay() : null;
         if (relayed && relay is null)
         {
-            return (null, null, $"This Passenger carries no debug relay for {RuntimeIdentifier} ({Path.Combine(AppContext.BaseDirectory, "debugger", "relay", RuntimeIdentifier, RelayFile)})");
+            return (null, null, $"This Passenger carries no debug relay for {RuntimeIdentifier} ({CarriedFiles.Relay(RuntimeIdentifier, RelayFile)})");
         }
         int? port = relayed ? FreePort() : null;
         if (relayed && port is null)

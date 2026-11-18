@@ -33,7 +33,7 @@ public sealed class AvaloniaSimulatorTests
             Assert.Skip(Refusals.IosOnMacAlone);
         }
         string runtime = $"iossimulator-{(RuntimeInformation.OSArchitecture == Architecture.Arm64 ? "arm64" : "x64")}";
-        if (!File.Exists(Path.Combine(AppContext.BaseDirectory, "debugger", "relay", runtime, SimulatorApp.RelayFile)))
+        if (!File.Exists(CarriedFiles.Relay(runtime, SimulatorApp.RelayFile)))
         {
             Assert.Skip($"This build carries no debug relay for {runtime}, which `just debug-relay apple` makes before a build carries it");
         }

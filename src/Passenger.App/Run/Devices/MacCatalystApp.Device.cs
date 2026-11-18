@@ -16,7 +16,7 @@ public sealed partial record MacCatalystApp : IDeviceApp
         return File.Exists(relay) ? relay : null;
     }
 
-    private string RelayCarried() => Path.Combine(AppContext.BaseDirectory, "debugger", "relay", RuntimeIdentifier, RelayFile);
+    private string RelayCarried() => CarriedFiles.Relay(RuntimeIdentifier, RelayFile);
 
     /// <summary>The app's process this start opened, found by the start's own token and kept to its end.</summary>
     public AppProcess Process { get; init; } = new();

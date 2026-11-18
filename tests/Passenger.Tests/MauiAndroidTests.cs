@@ -45,7 +45,7 @@ public sealed class MauiAndroidTests
             Assert.Skip("No Android device is connected and no emulator is made (an AVD of an installed system image), so there is nothing to run on");
             return;
         }
-        if (!((string[])["android-arm64", "android-x64"]).Any(runtime => File.Exists(Path.Combine(AppContext.BaseDirectory, "debugger", "relay", runtime, AndroidApp.RelayFile))))
+        if (!((string[])["android-arm64", "android-x64"]).Any(runtime => File.Exists(CarriedFiles.Relay(runtime, AndroidApp.RelayFile))))
         {
             Assert.Skip("This build carries no Android debug relay, which `just debug-relay android` makes before a build carries it");
         }

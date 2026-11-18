@@ -568,7 +568,7 @@ public sealed class AndroidDeviceTests
     {
         string abi = Adb(tools, app.Serial, "shell", "getprop", "ro.product.cpu.abi").Trim();
         string runtime = AndroidApp.RelayRuntime(abi) ?? throw new InvalidOperationException($"No relay is built for the emulator's {abi}");
-        string relay = Path.Combine(AppContext.BaseDirectory, "debugger", "relay", runtime, AndroidApp.RelayFile);
+        string relay = CarriedFiles.Relay(runtime, AndroidApp.RelayFile);
         string environment = Path.Combine(TestFolders.Create("android-left"), "environment");
         File.WriteAllBytes(environment, AndroidEnvironment.Write(AndroidEnvironment.With(AndroidEnvironment.Read(File.ReadAllBytes(app.BuiltEnvironment(abi))),
             app.RelayVariables(abi, "passenger-debug-left", "left"))));
@@ -609,7 +609,7 @@ public sealed class AndroidDeviceTests
         {
             Assert.Skip("No Android device is connected and no emulator is made (an AVD of an installed system image), so there is nothing to run on");
         }
-        if (!((string[])["android-arm64", "android-x64"]).Any(runtime => File.Exists(Path.Combine(AppContext.BaseDirectory, "debugger", "relay", runtime, AndroidApp.RelayFile))))
+        if (!((string[])["android-arm64", "android-x64"]).Any(runtime => File.Exists(CarriedFiles.Relay(runtime, AndroidApp.RelayFile))))
         {
             Assert.Skip("This build carries no Android debug relay, which `just debug-relay android` makes before a build carries it");
         }

@@ -183,6 +183,13 @@ mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
 cp -R "$publish/." "$app/Contents/MacOS/"
 # The web servers go in Resources, since codesign takes a dotted folder under Contents/MacOS for a nested bundle.
 mv "$app/Contents/MacOS/web" "$app/Contents/Resources/web"
+# The debug relays too, files Passenger copies to where an app loads them: Gatekeeper refuses a notarized app carrying
+# another platform's Mach-O (an iOS simulator's relay) among its code.
+relays="$app/Contents/Resources/debugger/relay"
+if [ -d "$app/Contents/MacOS/debugger/relay" ]; then
+    mkdir -p "$(dirname "$relays")"
+    mv "$app/Contents/MacOS/debugger/relay" "$relays"
+fi
 cp "$root/src/Passenger.App/Assets/Passenger.icns" "$app/Contents/Resources/Passenger.icns"
 # The document types Open With and the Dock offer Passenger: solutions, C# projects and folders, never as default.
 cat > "$app/Contents/Info.plist" <<EOF
@@ -285,6 +292,14 @@ find "$app/Contents/MacOS" -type f ! -path "$app/Contents/MacOS/Passenger" | whi
         *) sign "$file" ;;
     esac
 done
+# The notary takes a relay's Mach-O only as the Developer ID signed it, though the bundle seals it as a resource.
+if [ -d "$relays" ]; then
+    find "$relays" -type f | while IFS= read -r file; do
+        case $(file -b "$file") in
+            Mach-O*) sign "$file" ;;
+        esac
+    done
+fi
 sign --entitlements "$entitlements" "$app"
 codesign --verify --deep --strict "$app"
 # Stapled, the app opens with no Gatekeeper warning offline too, once copied out of the image.
@@ -362,7 +377,17 @@ done
 for part in web/passenger/prettier.cjs web/passenger/docker-hub.cjs web/passenger/yaml-schemas.mjs web/schemas/compose-spec.json; do
     [ -f "$shipped/Contents/Resources/$part" ] || fail "the app has no $part in its Resources"
 done
+# Every relay the build carried is a resource of the app, none left among its code.
+[ ! -e "$shipped/Contents/MacOS/debugger/relay" ] || fail "the app carries its debug relays among its code"
+if [ -d "$publish/debugger/relay" ]; then
+    for part in $(cd "$publish/debugger/relay" && find . -type f); do
+        [ -f "$shipped/Contents/Resources/debugger/relay/$part" ] || fail "the app has no debug relay ${part#./} in its Resources"
+    done
+fi
 find "$shipped/Contents/MacOS" -type f -exec file -F '|' {} + | grep '| *Mach-O' | cut -d'|' -f1 > "$work/mach-o"
+if [ -d "$shipped/Contents/Resources/debugger/relay" ]; then
+    find "$shipped/Contents/Resources/debugger/relay" -type f -exec file -F '|' {} + | grep '| *Mach-O' | cut -d'|' -f1 >> "$work/mach-o"
+fi
 [ -s "$work/mach-o" ] || fail "the app has no Mach-O file"
 while IFS= read -r file; do
     lipo "$file" -verify_arch "$machine" || fail "${file#"$shipped/"} is built for $(lipo -archs "$file"), not $machine"
