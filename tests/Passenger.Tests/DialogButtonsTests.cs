@@ -102,11 +102,13 @@ public sealed class DialogButtonsTests : IDisposable
 
     /// <summary>Holds a dialog's buttons to the rule: each one shown has its words (or icon) centred in it unless it
     /// reads as text; its text buttons (plain or the default) are one height and one corner radius; and the default
-    /// button and Cancel, when it has both, stand in the platform's order. Returns the dialog.</summary>
+    /// button and Cancel, when it has both, stand in the platform's order. Holds its whole layout too: no words cut and
+    /// nothing drawn over another, at its least width and at display scale 2 (LayoutFaults). Returns the dialog.</summary>
     public static T Check<T>(T dialog) where T : Window
     {
         Ui.Settle();
         string title = dialog.Title ?? dialog.GetType().Name;
+        LayoutFaults.Hold(dialog, title);
         Button[] shown = [.. dialog.GetVisualDescendants().OfType<Button>()
             .Where(b => b is not ToggleButton and not RepeatButton && b.IsEffectivelyVisible && b.Bounds.Width > 0 && b.Bounds.Height > 0)];
         foreach (Button button in shown.Where(b => !b.Classes.Any(ReadAsText.Contains)))

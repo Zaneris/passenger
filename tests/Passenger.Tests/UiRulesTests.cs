@@ -399,11 +399,14 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
         }
     }
 
-    /// <summary>A popup's frame as every popup's is: a width of the popups' scale (<see cref="PopupFrame"/>) and its rows
-    /// <see cref="ListRow.Height"/> tall; a popup that lives elsewhere (the debugger's hover card) is held to it here too.</summary>
+    /// <summary>A popup's frame as every popup's is: a width of the popups' scale (<see cref="PopupFrame"/>), its rows
+    /// <see cref="ListRow.Height"/> tall, and no word cut nor anything drawn over another in it (LayoutFaults); a popup
+    /// that lives elsewhere (the debugger's hover card) is held to it here too.</summary>
     internal static void HoldsToPopupRules(string what, Border frame)
     {
         Assert.True(frame.Classes.Contains(StyleClasses.Popup), $"{what} is not framed as the popups are (Border.popup)");
+        List<string> faults = LayoutFaults.Of((Visual?)TopLevel.GetTopLevel(frame) ?? frame, frame, what);
+        Assert.True(faults.Count == 0, string.Join("\n", faults));
         Assert.True(PopupFrame.Widths.Any(w => Math.Abs(frame.Bounds.Width - w) < 0.5),
             $"{what} is {frame.Bounds.Width:0.#} px wide, not one of the popups' widths ({string.Join(", ", PopupFrame.Widths)})");
         foreach (ListBoxItem row in frame.GetVisualDescendants().OfType<ListBoxItem>().Where(r => r.IsEffectivelyVisible))
@@ -1212,6 +1215,70 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
         Ui.Settle();
     }
 
+    /// <summary>At the window's least width every tool window, shown in turn where its layout docks it, cuts no word and
+    /// draws nothing over anything, in it or round it (the toolbar, the stripes, the status bar), at display scales 1 and
+    /// 2, dark and light, under each look; each finding is fixed where it comes from, never in the one window.</summary>
+    [AvaloniaFact]
+    public void At_the_least_width_every_tool_window_cuts_no_word_and_lays_nothing_over_anything()
+    {
+        MainWindow window = Open(MainWindow.SmallestWidth, MainWindow.SmallestHeight + 268);
+        List<string> found = [];
+        try
+        {
+            window.OpenFile(project.PathOf("Program.cs"));
+            Ui.Settle();
+            UnderEachLook(window, () =>
+            {
+                foreach (ThemeChoice variant in (ThemeChoice[])[ThemeChoice.Dark, ThemeChoice.Light])
+                {
+                    window.ApplySettings(window.Settings with { Theme = variant });
+                    foreach (double scale in (double[])[1, 2])
+                    {
+                        window.SetRenderScaling(scale);
+                        Ui.Settle();
+                        foreach (Passenger.App.Docking.ToolWindow tool in window.DockHost.Windows.ToList())
+                        {
+                            window.DockHost.Show(tool.Id);
+                            Ui.Settle();
+                            found.AddRange(LayoutFaults.Of(window, window, $"Under {window.Settings.Look?.Name ?? CarriedThemes.Own}, {variant}, at scale {scale}, with {tool.Title} shown, the window"));
+                        }
+                    }
+                }
+            });
+        }
+        finally
+        {
+            window.SetRenderScaling(1);
+            window.ApplySettings(new AppSettings());
+            window.Close();
+        }
+        Assert.True(found.Count == 0, $"At the window's least width:\n{string.Join("\n", found.Distinct().Take(60))}");
+    }
+
+    /// <summary>The layout faults' check finds what it is for, so its silence over the window means something: words wider
+    /// than their room with no ellipsis, and two buttons laid in one cell, are each found; words that end in an ellipsis,
+    /// and a field's own options inside it, are not.</summary>
+    [AvaloniaFact]
+    public void The_layout_faults_check_finds_words_cut_and_controls_drawn_over_each_other()
+    {
+        TextBlock cut = new() { Text = "Words far wider than their room", Width = 60 };
+        TextBlock trimmed = new() { Text = "Words far wider than their room", Width = 60, TextTrimming = TextTrimming.CharacterEllipsis };
+        Grid laidOver = new() { Children = { new Button { Content = "First" }, new Button { Content = "Second" } } };
+        Window window = new() { Width = 400, Height = 300, Content = new StackPanel { Children = { cut, trimmed, laidOver } } };
+        window.Show();
+        try
+        {
+            Ui.Settle();
+            List<string> found = LayoutFaults.Of(window, window, "The test window");
+            Assert.True(found.Count(f => f.Contains("cuts", StringComparison.Ordinal)) == 1 && found.Any(f => f.Contains("one over the other", StringComparison.Ordinal)),
+                $"The check found {found.Count} faults where one cut word and two buttons laid over each other stand:\n{string.Join("\n", found)}");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     /// <summary>The tool window a view is shown in, its header and all.</summary>
     private static Visual PaneOf(Visual view) =>
         view.GetVisualAncestors().OfType<DockPanel>().FirstOrDefault(p => p.Classes.Contains(StyleClasses.ToolPane))
@@ -1222,33 +1289,8 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
     /// it.</summary>
     internal static void FitsItsRoom(Visual window, Visual part, string what)
     {
-        Control[] drawn = [.. part.GetVisualDescendants().OfType<Control>().Where(c => (c is TextBlock { Text.Length: > 0 } or Button or ComboBox or TextBox)
-            && c.IsEffectivelyVisible && c.FindAncestorOfType<Passenger.Editor.CodeEditor>() is null && c.FindAncestorOfType<ScrollBar>() is null)];
-        foreach (TextBlock text in drawn.OfType<TextBlock>().Where(t => t.Bounds.Width >= 1))
-        {
-            double room = text.Bounds.Width - text.Padding.Left - text.Padding.Right;
-            Assert.True(text.TextLayout.Width <= room + 0.5,
-                $"{what} cuts '{text.Text}' to {room:0.#} px of its {text.TextLayout.Width:0.#}, where words with no room end in an ellipsis");
-        }
-        Rect[] seen = [.. drawn.Select(c => Visible(window, c))];
-        for (int i = 0; i < drawn.Length; i++)
-        {
-            for (int j = i + 1; j < drawn.Length; j++)
-            {
-                Rect both = seen[i].Intersect(seen[j]);
-                // A field's own options stand inside it, as Find's do, its text kept clear of them by its padding.
-                bool inField = (drawn[i] is TextBox && seen[i].Contains(seen[j])) || (drawn[j] is TextBox && seen[j].Contains(seen[i]));
-                Assert.True(both.Width <= 1 || both.Height <= 1 || inField || drawn[i].IsVisualAncestorOf(drawn[j]) || drawn[j].IsVisualAncestorOf(drawn[i]),
-                    $"{what} draws {Named(drawn[i])} and {Named(drawn[j])} one over the other, across {both.Width:0.#} by {both.Height:0.#} px");
-            }
-        }
-
-        static string Named(Control control) => control switch
-        {
-            TextBlock text => $"'{text.Text}'",
-            ContentControl { Content: string words } => $"'{words}'",
-            _ => $"the {control.GetType().Name} {ToolTip.GetTip(control) ?? control.Name}".TrimEnd(),
-        };
+        List<string> found = LayoutFaults.Of(window, part, what);
+        Assert.True(found.Count == 0, string.Join("\n", found));
     }
 
     /// <summary>A greyed button shows its tooltip under the pointer, which says why it is greyed: Live Templates' Delete,
