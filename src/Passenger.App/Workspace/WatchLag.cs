@@ -16,11 +16,15 @@ public static class WatchLag
     private static readonly TimeSpan Settled = TimeSpan.FromSeconds(10);
     private const string CanaryName = "beat";
 
+    /// <summary>What begins the name of each process's folder of the beat, its id after it.</summary>
+    private const string Prefix = "passenger-watch-";
+
     private static readonly Lock Gate = new();
     private static Action<DateTime>? behind;
     private static FileSystemWatcher? canary;
     private static string? folder;
     private static CancellationTokenSource? beating;
+    private static bool exitHooked;
 
     /// <summary>When the earliest write of the beat still unheard was made, a timestamp of <see cref="Stopwatch.GetTimestamp"/>'s,
     /// or 0; when one was last found late, or 0; and since when, on the wall clock, changes may have gone unheard.</summary>
@@ -86,9 +90,10 @@ public static class WatchLag
 
     private static void Start()
     {
-        string own = Path.Combine(UserTemporary.Folder(), $"passenger-watch-{Environment.ProcessId.ToString(System.Globalization.CultureInfo.InvariantCulture)}");
+        string own = Path.Combine(UserTemporary.Folder(), Prefix + Environment.ProcessId.ToString(System.Globalization.CultureInfo.InvariantCulture));
         try
         {
+            ClearLeft();
             Directory.CreateDirectory(own);
             FileSystemWatcher watcher = new(own, CanaryName) { NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName | NotifyFilters.Size };
             watcher.Changed += (_, _) => Heard();
@@ -101,6 +106,11 @@ public static class WatchLag
         {
             IdeErrors.Write($"The system's watcher is not checked for lagging behind ({error.Message}): a change it drops is found as a window comes in front");
             return;
+        }
+        if (!exitHooked)
+        {
+            exitHooked = true;
+            AppDomain.CurrentDomain.ProcessExit += (_, _) => Delete(own);
         }
         CancellationTokenSource ending = new();
         beating = ending;
@@ -117,18 +127,37 @@ public static class WatchLag
         canary = null;
         if (folder is { } own)
         {
-            try
-            {
-                Directory.Delete(own, recursive: true);
-            }
-            catch (Exception error) when (error is IOException or UnauthorizedAccessException)
-            {
-                // Left for the system's clean-up of its temporary folder.
-            }
+            Delete(own);
         }
         folder = null;
         (unheard, lastLate, since) = (0, 0, null);
         return stopped;
+    }
+
+    /// <summary>The beat's folder taken away, or left for the system's clean-up of its temporary folder where it cannot be.</summary>
+    private static void Delete(string own)
+    {
+        try
+        {
+            Directory.Delete(own, recursive: true);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            IdeErrors.Write($"The system's watcher's beat left {own} ({error.Message})");
+        }
+    }
+
+    /// <summary>The beats' folders of processes no longer running, which ended before they could take theirs away.</summary>
+    private static void ClearLeft()
+    {
+        foreach (string left in Directory.EnumerateDirectories(UserTemporary.Folder(), Prefix + "*"))
+        {
+            if (int.TryParse(Path.GetFileName(left.AsSpan())[Prefix.Length..], System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out int id)
+                && id != Environment.ProcessId && !DotnetProcesses.Runs(id))
+            {
+                Delete(left);
+            }
+        }
     }
 
     private static async Task BeatAsync(CancellationToken ending)
