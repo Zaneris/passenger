@@ -12,7 +12,7 @@ namespace Passenger.Tests;
 /// template's Windows profile, and the target chosen beside it says where it runs. An Android emulator's plan builds
 /// the app's Android head with no Windows profile; on Windows, Windows chosen from the widget's menu runs the template's
 /// own profile on this machine, as it does with nothing chosen; on a Mac, nothing chosen runs its Mac Catalyst head on
-/// this machine, with no Windows profile; on Linux a target must be chosen. Plans are worked out with no build, so no
+/// this machine, with no Windows profile; on Linux a target must be chosen. An app's Avalonia desktop head runs on this machine with nothing chosen, on every system. Plans are worked out with no build, so no
 /// emulator is needed; where MSBuild cannot say what a head builds for want of MAUI's workloads, it skips there, saying so.</summary>
 public sealed class MauiRunTargetTests
 {
@@ -98,6 +98,52 @@ public sealed class MauiRunTargetTests
         }
     }
 
+    /// <summary>A MAUI app with an Avalonia desktop head (<c>net11.0</c> carrying Avalonia.Controls.Maui.Desktop) and an Android
+    /// head runs its desktop head on this machine with nothing chosen, on every system, Linux too, where the template's app
+    /// waits for a device: the widget names it, and chosen again after an Android emulator, it runs there again.</summary>
+    [AvaloniaFact]
+    public void A_maui_apps_avalonia_desktop_head_runs_on_this_machine_with_nothing_chosen_and_again_once_chosen_after_a_device()
+    {
+        string folder = PathNames.Canonical(TestFolders.Create("maui-desktop-"));
+        TestFolders.Write(folder, "MauiApp1/MauiApp1.csproj", DesktopProject);
+        TestFolders.Write(folder, "MauiApp1/MauiProgram.cs", "namespace MauiApp1;\n\npublic static class MauiProgram\n{\n}\n");
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        try
+        {
+            Ui.WaitFor(() => window.Session.Projects.Any(p => p.IsEvaluated && p.Evaluated!.Dependencies.Count > 1) && window.Configurations.Count > 0,
+                () => $"the app's project evaluated and its configurations made; it has {string.Join(", ", window.Configurations.Select(c => c.Name))}", Slow);
+            ProjectModel app = window.Session.Projects.Single();
+            DeviceTarget desktop = DeviceTargets.Here(TargetPlatform.Desktop);
+
+            (LaunchPlan? unchosen, string? refused) = Ui.Await(window.Builds.ResolvePlanAsync(window.Session.Configurations.Chosen!, null), "the app's plan", Slow);
+            if (unchosen is null)
+            {
+                SkipWithoutWorkloads(window, refused);
+            }
+            LaunchPlan here = unchosen ?? throw new Xunit.Sdk.XunitException($"MauiApp1 with no target chosen was refused, though its desktop head runs here: {refused}");
+            Assert.Null(here.Device);
+            Assert.Null(here.MacCatalyst);
+            Assert.Equal("net11.0", here.Framework);
+            Assert.Equal(desktop.Shown, window.FindControl<TextBlock>("RunTargetName")!.Text);
+
+            window.ChooseRunTarget(app, new DeviceTarget(TargetPlatform.Android, "emulator-5554", "Pixel 9", TargetKind.Emulator, true) { Avd = "Pixel_9" });
+            Ui.Settle();
+            Assert.Equal("net11.0-android", Plan(window).Framework);
+
+            window.ChooseRunTarget(app, desktop);
+            Ui.Settle();
+            LaunchPlan again = Plan(window);
+            Assert.Null(again.Device);
+            Assert.Equal("net11.0", again.Framework);
+            Assert.Equal(desktop.Shown, window.FindControl<TextBlock>("RunTargetName")!.Text);
+        }
+        finally
+        {
+            window.Close();
+            TestFolders.Delete(folder);
+        }
+    }
+
     /// <summary>Skips, saying which, where this .NET lacks a workload of the app's heads, without which MSBuild cannot say what
     /// a head builds (<paramref name="unplanned"/>).</summary>
     private static void SkipWithoutWorkloads(MainWindow window, string? unplanned)
@@ -137,6 +183,28 @@ public sealed class MauiRunTargetTests
           </PropertyGroup>
           <ItemGroup>
             <PackageReference Include="Microsoft.Maui.Controls" Version="$(MauiVersion)" />
+          </ItemGroup>
+        </Project>
+        """;
+
+    /// <summary>A MAUI app of an Avalonia desktop head beside its Android head, as Avalonia.Controls.Maui's template writes
+    /// one, its frameworks the same on every system.</summary>
+    private const string DesktopProject = """
+        <Project Sdk="Microsoft.NET.Sdk">
+          <PropertyGroup>
+            <TargetFrameworks>net11.0;net11.0-android</TargetFrameworks>
+            <OutputType>Exe</OutputType>
+            <RootNamespace>MauiApp1</RootNamespace>
+            <UseMaui>true</UseMaui>
+            <SingleProject>true</SingleProject>
+            <ImplicitUsings>enable</ImplicitUsings>
+            <Nullable>enable</Nullable>
+            <ApplicationId>com.companyname.mauiapp1</ApplicationId>
+          </PropertyGroup>
+          <ItemGroup>
+            <PackageReference Include="Microsoft.Maui.Controls" Version="$(MauiVersion)" />
+            <PackageReference Include="Avalonia.Controls.Maui" Version="11.0.0-preview.6" />
+            <PackageReference Include="Avalonia.Controls.Maui.Desktop" Version="11.0.0-preview.6" Condition="'$(TargetFramework)' == 'net11.0'" />
           </ItemGroup>
         </Project>
         """;

@@ -12,7 +12,7 @@ namespace Passenger.App;
 /// <summary>Where the chosen configuration's app runs: for a project whose frameworks run on devices, emulators or
 /// simulators, the widget beside the run configuration's names the target chosen, and its action lists what the
 /// project's platforms run on as their workloads list it (Android's devices and emulators, iOS's simulators on a Mac,
-/// those not running too, which Run and Debug start), with this machine for a platform whose apps run here (Windows'). The choice is the project's,
+/// those not running too, which Run and Debug start), with this machine for a platform whose apps run here (Windows') and for a desktop head (a MAUI app's Avalonia head, Linux's too). The choice is the project's,
 /// kept with the folder, and decides the framework built and the launch profile tied to its platform; one no longer
 /// listed is said.</summary>
 public partial class MainWindow
@@ -115,6 +115,10 @@ public partial class MainWindow
         ProjectSession listing = session;
         List<DeviceTarget> found = DeviceTargets.OfThisMachine is { } here && DeviceTargets.FrameworkFor(project.TargetFrameworks, here) is not null
             ? [DeviceTargets.Here(here)] : [];
+        if (DeviceTargets.DesktopHead(project) is not null)
+        {
+            found.Add(DeviceTargets.Here(TargetPlatform.Desktop));
+        }
         List<string> problems = [];
         Dictionary<string, string> globals = ProjectModels.Properties(listing.Workspace, project);
         if (DeviceTargets.FrameworkFor(project.TargetFrameworks, TargetPlatform.Android) is { } android)

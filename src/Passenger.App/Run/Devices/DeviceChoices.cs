@@ -22,8 +22,10 @@ public sealed class DeviceChoices
     public KeptTarget? Of(ProjectModel project) => chosen.GetValueOrDefault(project.Path);
 
     /// <summary>Where a project runs: the target chosen for it, else this machine where it has a head of this machine's
-    /// platform (<see cref="DeviceTargets.Unchosen"/>); null where a target must be chosen.</summary>
-    public KeptTarget? InForce(ProjectModel project) => Of(project) ?? DeviceTargets.Unchosen(project.TargetFrameworks, DeviceTargets.OfThisMachine);
+    /// platform (<see cref="DeviceTargets.Unchosen"/>) or a desktop head (<see cref="DeviceTargets.UnchosenDesktop"/>); null
+    /// where a target must be chosen.</summary>
+    public KeptTarget? InForce(ProjectModel project) =>
+        Of(project) ?? DeviceTargets.Unchosen(project.TargetFrameworks, DeviceTargets.OfThisMachine) ?? DeviceTargets.UnchosenDesktop(project);
 
     /// <summary>The project's targets as last listed; none before its first listing.</summary>
     public IReadOnlyList<DeviceTarget> Listed(ProjectModel project) => listed.GetValueOrDefault(project.Path) ?? [];
