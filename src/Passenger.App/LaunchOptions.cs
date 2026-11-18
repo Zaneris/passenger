@@ -256,9 +256,16 @@ public sealed record LaunchOptions(string? Folder, IReadOnlyList<string> Files, 
                     break;
                 case "--hover":
                     string hoverText = Value(args, ref i, flag);
-                    double[] at = Numbers(flag, hoverText, ',', 2, "X,Y");
+                    // The keys held as the pointer moves come first, joined by + as a keystroke's are: meta+400,300.
+                    string[] held = hoverText.Split('+');
+                    KeyModifiers holding = KeyModifiers.None;
+                    foreach (string word in held[..^1])
+                    {
+                        holding |= Keystroke.ModifierOf(word) ?? throw new FormatException($"--hover takes the keys held before its point, such as meta+400,300, not '{hoverText}'");
+                    }
+                    double[] at = Numbers(flag, held[^1], ',', 2, "[KEYS+]X,Y");
                     points.Add((flag, hoverText, new Point(at[0], at[1])));
-                    steps.Add(new ScriptStep.Hover(new Point(at[0], at[1])));
+                    steps.Add(new ScriptStep.Hover(new Point(at[0], at[1])) { Held = holding });
                     break;
                 case "--click" or "--double-click" or "--right-click":
                     string clickText = Value(args, ref i, flag);
@@ -570,8 +577,12 @@ public abstract record ScriptStep
     /// the drag itself (a tool window over its drop place).</summary>
     public sealed record Drag(Point From, Point To, bool Release) : ScriptStep;
 
-    /// <summary>The pointer moved to a point and left to rest there, long enough for a hover card.</summary>
-    public sealed record Hover(Point At) : ScriptStep;
+    /// <summary>The pointer moved to a point and left to rest there, long enough for a hover card, with the keys held that
+    /// are still held as the picture is taken.</summary>
+    public sealed record Hover(Point At) : ScriptStep
+    {
+        public KeyModifiers Held { get; init; }
+    }
 
     /// <summary>Time for what the screenshot does not wait on by itself: a program running.</summary>
     public sealed record Wait(TimeSpan For) : ScriptStep;

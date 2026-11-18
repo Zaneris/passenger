@@ -198,6 +198,8 @@ public sealed partial class CodeEditor
             e.Handled = true;
             return;
         }
+        // A drag the press may begin is no gesture held over a stretch.
+        DropReach();
         MouseShortcut gesture = MouseShortcut.Of(e);
         Keymap? gestures = point.Position.X >= GutterWidth ? GesturesKeymap : null;
         string? clicked = gestures?.ActionFor(gesture);
@@ -329,6 +331,8 @@ public sealed partial class CodeEditor
         RestartHover(position);
         Cursor = position.X < GutterWidth || drag.Mode == DragMode.Gutter ? Cursor.Default : IbeamCursor;
         FollowLinks(position, drag.Mode != DragMode.None && e.GetCurrentPoint(this).Properties.IsLeftButtonPressed);
+        pointer = position;
+        FollowGesture(e.KeyModifiers);
         bool inGutter = position.X < GutterWidth;
         if (inGutter != overGutter)
         {
@@ -420,6 +424,8 @@ public sealed partial class CodeEditor
         hoverAt = new Point(double.NaN, double.NaN);
         HideFoldPreview();
         hovered.Release();
+        pointer = null;
+        DropReach();
     }
 
     /// <summary>Whether Ctrl+wheel (Cmd+wheel on macOS) asks for a bigger or smaller font rather than scrolling.</summary>

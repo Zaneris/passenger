@@ -251,6 +251,47 @@ public sealed class GoToTests : IClassFixture<GoToTests.Project>
         window.Close();
     }
 
+    /// <summary>While Go to Declaration's gesture is held (Cmd on macOS, Ctrl elsewhere, as the keymap gives its click), the
+    /// name under the pointer that a click would go to is underlined and the pointer is the hand; letting go of the key, or
+    /// the pointer moving on with none held, puts both back. A line's indent, where a click goes nowhere, is never underlined.</summary>
+    [AvaloniaFact]
+    public void Holding_the_declarations_gesture_over_a_name_underlines_it_with_the_hand_until_the_key_is_let_go()
+    {
+        MainWindow window = project.Open("Program.cs");
+        try
+        {
+            CodeEditor editor = window.EditorArea.CodeEditor;
+            bool mac = OperatingSystem.IsMacOS();
+            RawInputModifiers command = mac ? RawInputModifiers.Meta : RawInputModifiers.Control;
+            TextSnapshot text = editor.Document.Snapshot;
+            int area = text.GetLineStart(6) + text.GetLineText(6).IndexOf("Area", StringComparison.Ordinal);
+
+            Ui.Hover(editor, Inside(editor, 6, "Area"), command);
+            Ui.WaitFor(() => editor.PointedRange is not null, "the held gesture's underline under shape.Area");
+            Assert.True(editor.PointedRange == new TextRange(area, "Area".Length),
+                $"Holding {(mac ? "Cmd" : "Ctrl")} over shape.Area underlined {editor.PointedRange}, not the name Area at {area}");
+            Assert.True(editor.ShowsHand, "Holding the gesture over a name a click goes to, the pointer is not the hand");
+
+            window.KeyRelease(mac ? Key.LWin : Key.LeftCtrl, RawInputModifiers.None, mac ? PhysicalKey.MetaLeft : PhysicalKey.ControlLeft, null);
+            Ui.Settle();
+            Assert.True(editor.PointedRange is null, $"Letting go of the key left {editor.PointedRange} underlined");
+            Assert.False(editor.ShowsHand, "Letting go of the key left the pointer the hand");
+
+            Ui.Hover(editor, Inside(editor, 4, "Square"), command);
+            Ui.WaitFor(() => editor.PointedRange is not null, "the held gesture's underline under Square");
+            Ui.Hover(editor, Inside(editor, 4, "Square"));
+            Assert.True(editor.PointedRange is null && !editor.ShowsHand, "The pointer moved with no key held left the name underlined, or the hand");
+
+            Ui.Hover(editor, editor.PointOf(text.GetLineStart(5) + 2) + new Point(1, editor.LineHeight / 2), command);
+            Ui.Hold(TimeSpan.FromMilliseconds(500), "a rest past the gesture's ask over the line's indent");
+            Assert.True(editor.PointedRange is null && !editor.ShowsHand, $"Holding the gesture over a line's indent underlined {editor.PointedRange}");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     /// <summary>The middle button goes where the keymap in force sends it: to the declaration in Visual Studio's keymap off
     /// macOS and in VS Code's on macOS; with Shift to the type's declaration in Visual Studio's on macOS, and with Ctrl to
     /// Quick Documentation in VS Code's there, a card no rest of the pointer shows. Where its keymap drags a column with it,

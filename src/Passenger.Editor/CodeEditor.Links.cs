@@ -13,14 +13,31 @@ public sealed record TextLink(TextRange Range, object Target);
 /// <summary>Links: the decorations' links found by line (<see cref="DocumentDecorations.Links"/>) and the addresses in each
 /// row's comments and strings (<see cref="DocumentDecorations.Addresses"/>), each drawn underlined in the link colour. Where
 /// a plain click opens them the pointer over one takes the hand and a click on it that selects nothing opens it
-/// (<see cref="LinkClicked"/>); a drag that begins on one selects as anywhere else.</summary>
+/// (<see cref="LinkClicked"/>); a drag that begins on one selects as anywhere else. While a mouse gesture's keys are held
+/// over a stretch its click acts on (<see cref="ClickReach"/>), that stretch is underlined the same and takes the hand.</summary>
 public sealed partial class CodeEditor
 {
+    /// <summary>How long the pointer rests with a gesture's keys held before the host is asked what its click reaches.</summary>
+    private static readonly TimeSpan ReachDelay = TimeSpan.FromMilliseconds(100);
+
     /// <summary>The link under the pointer.</summary>
     private readonly HeldLink hovered = new();
 
     /// <summary>The link a press began on, opened by the release if it lands on it with nothing selected.</summary>
     private readonly HeldLink pressed = new();
+
+    /// <summary>What a held gesture's click reaches under the pointer, its target the gesture's action.</summary>
+    private readonly HeldLink pointed = new();
+
+    /// <summary>Where the pointer stands over the editor; null once it left.</summary>
+    private Point? pointer;
+
+    /// <summary>The gesture's action, the stretch under the pointer and the text the host was last asked of.</summary>
+    private (string Action, TextRange Token, int Offset, TextSnapshot Text)? reachAsked;
+
+    private Debounce? reachWait;
+    private CancellationTokenSource? reaching;
+    private bool reachRunning;
 
     /// <summary>The links on a line (from zero) of a text, in its offsets, as the host finds them, which a plain click opens
     /// (a console's): the decorations' (<see cref="DocumentDecorations.SetLinks"/>), whose host's highlighter gives them
@@ -37,6 +54,18 @@ public sealed partial class CodeEditor
     /// <summary>A link was clicked: the host opens what it names.</summary>
     public event EventHandler<TextLink>? LinkClicked;
 
+    /// <summary>The stretch a click of a mouse gesture would act from at an offset of the text as it stands, as the host's
+    /// language finds it, given the gesture's action from the keymap: while that gesture's keys are held over it, it is
+    /// underlined as a link and the pointer takes the hand. Null where the click would act on nothing there; asked once the
+    /// pointer rests, and cancelled as it moves on.</summary>
+    public Func<string, int, CancellationToken, Task<TextRange?>>? ClickReach { get; set; }
+
+    /// <summary>The stretch a held gesture's click reaches under the pointer, underlined; null with none.</summary>
+    public TextRange? PointedRange => pointed.Link?.Range;
+
+    /// <summary>Whether the pointer shows the hand: over a link a click opens, or a stretch a held gesture reaches.</summary>
+    public bool ShowsHand => ReferenceEquals(Cursor, HandCursor);
+
     /// <summary>The link holding the character at an offset: the decorations' for its line, else an address in the row's
     /// comments and strings; null on none.</summary>
     public TextLink? LinkOn(int offset)
@@ -48,6 +77,37 @@ public sealed partial class CodeEditor
         }
         (RowSpan span, _) = RowOfOffset(text, offset, beforeWrap: false);
         return LinkIn(text, span, ViewOf(text, span), offset);
+    }
+
+    /// <summary>The stretch a click at an offset is on, as the editor draws it: the link holding it, else its coloured run (a
+    /// name, a keyword, a string) unless a comment's, else its word (<see cref="WordCharacters"/>); null on none.</summary>
+    public TextRange? TokenAt(int offset)
+    {
+        TextSnapshot text = document.Snapshot;
+        if (offset < 0 || offset >= text.Length)
+        {
+            return null;
+        }
+        (RowSpan span, _) = RowOfOffset(text, offset, beforeWrap: false);
+        LineView view = ViewOf(text, span);
+        if (LinkIn(text, span, view, offset) is { } link)
+        {
+            return link.Range;
+        }
+        int column = offset - span.Start;
+        foreach (LineRun run in view.Runs ?? [])
+        {
+            if (run.Start <= column && column < run.Start + run.Length)
+            {
+                if (run.Kind is TokenKind.Comment or TokenKind.DocComment or TokenKind.Punctuation or TokenKind.Operator
+                    or TokenKind.Brace1 or TokenKind.Brace2 or TokenKind.Brace3 or TokenKind.Brace4 or TokenKind.Brace5 or TokenKind.Brace6)
+                {
+                    break;
+                }
+                return new TextRange(span.Start + run.Start, run.Length);
+            }
+        }
+        return WordCharacters.IsWordAt(text, offset) ? TextNavigation.WordAt(text, offset) : null;
     }
 
     /// <summary>The character under a point in the control, the row it is on and its view; null past a row's end.</summary>
@@ -147,6 +207,7 @@ public sealed partial class CodeEditor
     {
         hovered.Follow();
         pressed.Follow();
+        pointed.Follow();
     }
 
     /// <summary>Lets go of the links held, for decorations or links other than those they were found in.</summary>
@@ -154,6 +215,124 @@ public sealed partial class CodeEditor
     {
         hovered.Release();
         pressed.Release();
+        DropReach();
+    }
+
+    /// <summary>The pointer or the keys held moved: where a gesture's keys are held over a stretch, the host is asked, once
+    /// the pointer rests, what its click reaches there; anywhere else what was underlined goes.</summary>
+    private void FollowGesture(KeyModifiers keys)
+    {
+        if (ClickReach is null || pointer is not { } at || keys == KeyModifiers.None || drag.Mode != DragMode.None
+            || GesturesKeymap?.ActionFor(new MouseShortcut(MouseButton.Left, keys)) is not { } action
+            || CharacterAt(at) is not (int offset, _, _))
+        {
+            DropReach();
+            return;
+        }
+        if (pointed.Link is { } shown && (string)shown.Target == action && shown.Range.Start <= offset && offset < shown.Range.End)
+        {
+            Cursor = HandCursor;
+            return;
+        }
+        Unpoint();
+        TextSnapshot text = document.Snapshot;
+        if (TokenAt(offset) is not { } token)
+        {
+            StopReaching();
+            return;
+        }
+        if (reachAsked is { } asked && asked.Action == action && asked.Token == token && ReferenceEquals(asked.Text, text))
+        {
+            return;
+        }
+        StopReaching();
+        reachAsked = (action, token, offset, text);
+        (reachWait ??= new Debounce(ReachDelay, ReachAsync)).Restart();
+    }
+
+    /// <summary>Asks the host what the gesture's click reaches where the pointer rests, one ask at a time, and underlines it
+    /// if the pointer is still there with the same keys and the text is as it was.</summary>
+    private async Task ReachAsync()
+    {
+        if (reachRunning || reachAsked is not { } asked || ClickReach is not { } reach)
+        {
+            return;
+        }
+        reachRunning = true;
+        CancellationTokenSource cancel = reaching = new CancellationTokenSource();
+        TextRange? found;
+        try
+        {
+            found = await reach(asked.Action, asked.Offset, cancel.Token);
+        }
+        catch (OperationCanceledException) when (cancel.IsCancellationRequested)
+        {
+            found = null;
+        }
+        finally
+        {
+            reachRunning = false;
+            if (reaching == cancel)
+            {
+                reaching = null;
+            }
+            cancel.Dispose();
+        }
+        if (reachAsked != asked)
+        {
+            // The pointer moved on while the host answered: what it rests on now is asked in turn.
+            if (reachAsked is not null)
+            {
+                reachWait?.Restart();
+            }
+            return;
+        }
+        if (found is not { } range || !ReferenceEquals(document.Snapshot, asked.Text) || range.Start > asked.Offset || asked.Offset >= range.End)
+        {
+            return;
+        }
+        pointed.Hold(document, new TextLink(range, asked.Action));
+        Cursor = HandCursor;
+        RedrawChanged();
+    }
+
+    /// <summary>Stops asking what a gesture reaches and lets go of what it underlined.</summary>
+    private void DropReach()
+    {
+        StopReaching();
+        Unpoint();
+    }
+
+    private void StopReaching()
+    {
+        reachAsked = null;
+        reachWait?.Stop();
+        reaching?.Cancel();
+    }
+
+    /// <summary>Lets go of what a held gesture underlined, the pointer back to the text's I-beam.</summary>
+    private void Unpoint()
+    {
+        if (pointed.Link is null)
+        {
+            return;
+        }
+        pointed.Release();
+        if (pointer is { } at && HoveredLink is null)
+        {
+            Cursor = at.X < GutterWidth ? Cursor.Default : IbeamCursor;
+        }
+        RedrawChanged();
+    }
+
+    /// <summary>A key went down or up: the keys held over the text may now make or end a gesture.</summary>
+    private void HeardKeys(object? sender, KeyEventArgs e)
+    {
+        if (pointer is not null && e.Key is Key.LeftCtrl or Key.RightCtrl or Key.LeftAlt or Key.RightAlt or Key.LeftShift or Key.RightShift
+            or Key.LWin or Key.RWin)
+        {
+            FollowGesture(e.KeyModifiers);
+        }
     }
 
     /// <summary>A link held on a range of the text, carried with it; one an edit touched is gone.</summary>
@@ -235,7 +414,7 @@ public sealed partial class CodeEditor
     private static bool HoldsAddresses(TokenKind kind) => kind is TokenKind.Comment or TokenKind.DocComment or TokenKind.String;
 
     /// <summary>The links' underlines on a row, in the link's underline colour, under the text's baseline: the decorations'
-    /// links and its addresses.</summary>
+    /// links, its addresses and what a held gesture reaches.</summary>
     private void DrawLinks(DrawingContext context, TextSnapshot text, LineView view, Gap[] gaps, double left, double y)
     {
         double under = Math.Round(y + ((metrics.LineHeight - view.Height) / 2) + view.Baseline) + 1.5;
@@ -248,9 +427,17 @@ public sealed partial class CodeEditor
                 Underline(link.Range.Start, link.Range.End);
             }
         }
+        TextRange? reach = pointed.Link?.Range;
         foreach (Address address in AddressesOf(view))
         {
-            Underline(span.Start + address.Start, span.Start + address.Start + address.Length);
+            TextRange range = new(span.Start + address.Start, address.Length);
+            Underline(range.Start, range.End);
+            // What a held gesture reaches is drawn once where it is an address already.
+            reach = reach == range ? null : reach;
+        }
+        if (reach is { } reached)
+        {
+            Underline(reached.Start, reached.End);
         }
 
         void Underline(int start, int end)

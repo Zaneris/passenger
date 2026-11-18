@@ -179,7 +179,7 @@ public static class Screenshot
                 Pump(wait.For);
                 break;
             case ScriptStep.Hover hover:
-                window.MouseMove(hover.At, RawInputModifiers.None);
+                window.MouseMove(hover.At, Raw(hover.Held));
                 // Past the editor's hover delay, and the card's answer.
                 Take(window, new ScriptStep.Wait(TimeSpan.FromMilliseconds(1500)));
                 break;

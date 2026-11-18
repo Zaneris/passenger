@@ -751,7 +751,14 @@ public sealed partial class CodeEditor : Control
         base.OnAttachedToVisualTree(e);
         RefreshStyle();
         RestartBlink();
+        // A modifier pressed or let go anywhere in the window may begin or end a gesture held over the text of any split.
+        keysHeard = TopLevel.GetTopLevel(this);
+        keysHeard?.AddHandler(KeyDownEvent, HeardKeys, RoutingStrategies.Tunnel, handledEventsToo: true);
+        keysHeard?.AddHandler(KeyUpEvent, HeardKeys, RoutingStrategies.Tunnel, handledEventsToo: true);
     }
+
+    /// <summary>The window whose keys the editor hears while it is shown in it.</summary>
+    private TopLevel? keysHeard;
 
     /// <summary>Gone from the screen (its popup, dialog or window closed), it stops its timers, which would hold it from the
     /// dispatcher for as long as they ran.</summary>
@@ -760,6 +767,11 @@ public sealed partial class CodeEditor : Control
         base.OnDetachedFromVisualTree(e);
         blink.Stop();
         hover?.Stop();
+        keysHeard?.RemoveHandler(KeyDownEvent, HeardKeys);
+        keysHeard?.RemoveHandler(KeyUpEvent, HeardKeys);
+        keysHeard = null;
+        pointer = null;
+        DropReach();
     }
 
     protected override void OnGotFocus(FocusChangedEventArgs e)
@@ -774,6 +786,8 @@ public sealed partial class CodeEditor : Control
     {
         base.OnLostFocus(e);
         blink.Stop();
+        // A gesture's key let go while another window has the keys goes unheard.
+        DropReach();
         ownKeys?.Reset();
         document.BreakUndoGroup();
         Redraw();

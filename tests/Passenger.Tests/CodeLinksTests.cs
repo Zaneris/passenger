@@ -102,9 +102,10 @@ public sealed class CodeLinksTests : IDisposable
         }
     }
 
-    /// <summary>The card the pointer's rest shows says the address and the keys that open it.</summary>
+    /// <summary>The card the pointer's rest shows says the address and the keys that open it; with the gesture held the
+    /// address takes the hand.</summary>
     [AvaloniaFact]
-    public void A_comments_address_says_where_it_leads_when_the_pointer_rests_on_it()
+    public void A_comments_address_says_where_it_leads_when_the_pointer_rests_on_it_and_takes_the_hand_with_the_gesture_held()
     {
         MainWindow window = Open(out CodeEditor editor);
         try
@@ -116,6 +117,12 @@ public sealed class CodeLinksTests : IDisposable
             Ui.WaitFor(() => window.Assist.HoverText is not null, "the card of a comment's address");
             Assert.Contains(Issue, window.Assist.HoverText, StringComparison.Ordinal);
             Assert.Contains(window.Actions.ShortcutsShown(AppActions.GoToDeclaration)!, window.Assist.HoverText, StringComparison.Ordinal);
+            Assert.False(editor.ShowsHand, "A comment's address took the hand with no key held, where a click only places the caret");
+
+            Ui.Hover(editor, on + new Point(2, 0), OperatingSystem.IsMacOS() ? RawInputModifiers.Meta : RawInputModifiers.Control);
+            Ui.WaitFor(() => editor.PointedRange is not null, "the held gesture to reach the comment's address");
+            Assert.True(editor.PointedRange == new TextRange(start, Issue.Length) && editor.ShowsHand,
+                $"With the gesture held a comment's address reached {editor.PointedRange} and the hand is {(editor.ShowsHand ? "shown" : "not shown")}");
         }
         finally
         {
