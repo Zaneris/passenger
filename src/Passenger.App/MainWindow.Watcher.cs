@@ -158,6 +158,7 @@ public partial class MainWindow
         session.GodotScenes.CameOrWent(changes.ComeOrGone, every: changes.Lost);
         session.GodotScenes.FilesChanged(changes.Paths);
         session.MSBuild.FilesChanged(changes.Paths, changes.Structure);
+        session.MSBuild.Restored(changes.Restored);
         session.Web?.FilesChanged(changes.Paths);
         session.Stylesheets.FilesChanged([.. changes.Paths, .. changes.ComeOrGone, .. changes.Restored], every: changes.Lost || changes.Overflowed);
         EndpointFilesChanged(changes);

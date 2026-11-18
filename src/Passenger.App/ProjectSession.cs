@@ -214,6 +214,8 @@ public sealed class ProjectSession : IAsyncDisposable
         {
             Feed = () => Packages.FeedAsync(null),
             Vulnerabilities = () => Packages.VulnerabilitiesAsync(),
+            Brought = path => Projects.FirstOrDefault(p => PathNames.Same(p.Path, path)) is { } project ? Packages.BroughtAsync(project)
+                : Task.FromResult<IReadOnlyDictionary<string, IReadOnlyList<Passenger.Packages.TransitiveUse>>>(new Dictionary<string, IReadOnlyList<Passenger.Packages.TransitiveUse>>()),
             ReadDeprecations = Packages.DeprecationsReadAsync,
             Deprecated = Packages.DeprecationOf,
         };

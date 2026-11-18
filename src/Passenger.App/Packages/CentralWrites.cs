@@ -132,6 +132,52 @@ internal sealed record CentralWrites(IReadOnlyDictionary<string, (FileText Had, 
         return writer.Written() with { Moved = left.Count == packages.Count ? None.Moved : null, Left = left };
     }
 
+    /// <summary>A package referenced in some of a project's frameworks alone at a version, as a vulnerable version they get
+    /// through others is fixed (<see cref="ProjectEdits.WithFrameworkPackage"/>), read off the window's thread: without central
+    /// package management (no <paramref name="props"/>) each reference carries the version; under it, none where the
+    /// evaluation's central version (<paramref name="insight"/>) is at or above it, a VersionOverride where it is below, so
+    /// the frameworks referencing the package already keep theirs, and a PackageVersion added where there is none.</summary>
+    public static CentralWrites InFrameworks(MSBuildInsight? insight, string project, string? props, string id, string version, IReadOnlyList<string> frameworks)
+    {
+        try
+        {
+            if (props is null)
+            {
+                FileText had = FileText.Load(project) ?? throw new IOException($"{Path.GetFileName(project)} is not a text file");
+                (string? text, string? why) = ProjectEdits.WithFrameworkPackage(had.Text, id, version, overriding: false, frameworks);
+                return text is null ? Refusing($"{Path.GetFileName(project)} can't take {id}: {why}")
+                    : new CentralWrites(new Dictionary<string, (FileText, string)>(PathNames.Comparer) { [project] = (had, text) }, null);
+            }
+            if (insight is null)
+            {
+                return Refusing($"Where {Path.GetFileName(project)} keeps its package versions is not known");
+            }
+            Writer writer = new(insight);
+            bool held = insight.CentralVersions().TryGetValue(id, out (string Version, MSBuildPlace Place) central) && central.Version.Length > 0;
+            bool overriding = held && Move(version, central.Version) == PackageMove.Update;
+            if (overriding && insight.Value("CentralPackageVersionOverrideEnabled").Equals("false", StringComparison.OrdinalIgnoreCase))
+            {
+                return Refusing($"{id}'s central version {central.Version} is below {version}, and the folder takes no VersionOverride: move the central version");
+            }
+            (string? moved, string? refused) = ProjectEdits.WithFrameworkPackage(writer.Text(project), id, overriding ? version : null, overriding, frameworks);
+            if (moved is null)
+            {
+                return Refusing($"{Path.GetFileName(project)} can't take {id}: {refused}");
+            }
+            writer.Set(project, moved);
+            if (!held)
+            {
+                writer.Set(props, ProjectEdits.WithPackageVersion(writer.Text(props), id, version) ?? CentralPackages.Pinned(writer.Text(props), [(id, version)]));
+                writer.Moved.Add(id);
+            }
+            return writer.Written() with { Moved = writer.Moved };
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            return Refusing(error.Message);
+        }
+    }
+
     /// <summary>What moving a central version held to <paramref name="version"/> is.</summary>
     private static PackageMove Move(string version, string held) => InstalledVersion.Move(version, [new InstalledVersion(null, held)]);
 

@@ -4,6 +4,7 @@ using Avalonia.Controls.Primitives;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Threading;
+using Passenger.App.MSBuild;
 using Passenger.App.Packages;
 using Passenger.Core;
 using Passenger.Editor;
@@ -47,6 +48,13 @@ public sealed record PackageRow(string Id, string Version, string Description, s
     public bool IsDeprecated => Deprecated is not null;
 
     public string? UpdateVersion { get; init; }
+
+    /// <summary>By project, what fixes a vulnerable version it gets only through others, the Updates tab's: a reference at
+    /// the fixed version in the frameworks that get one.</summary>
+    public IReadOnlyDictionary<string, TransitiveFix> Fixes { get; init; } = new Dictionary<string, TransitiveFix>();
+
+    /// <summary>The version the Updates tab moves it to: its references' newest, else the newest of its fixes.</summary>
+    public string? MovesTo => UpdateVersion ?? Fixes.Values.Select(f => f.Version).Max(VersionOrder.Instance);
 
     public IReadOnlyList<string> AvailableVersions { get; init; } = [];
 }
@@ -595,17 +603,12 @@ public sealed partial class NuGetView : DockPanel
         Dictionary<string, IReadOnlyList<TransitiveUse>> kept = new(Passenger.Core.PathNames.Comparer);
         foreach ((string project, IReadOnlyList<TransitiveUse> uses) in byProject)
         {
-            IReadOnlyList<InstalledVersion> at = row.Installed.GetValueOrDefault(project) ?? [];
-            if (uses.Where(u => !at.Any(v => Covers(v, u))).ToArray() is { Length: > 0 } left)
+            if (TransitiveFix.Left(uses, row.Installed.GetValueOrDefault(project) ?? []) is { Count: > 0 } left)
             {
                 kept[project] = left;
             }
         }
         return row with { Transitive = kept };
-
-        // A reference read with no framework (a project of one, or one not evaluated) stands for every framework's.
-        static bool Covers(InstalledVersion reference, TransitiveUse use) =>
-            reference.Framework is null || use.Framework is null || reference.Framework.Equals(use.Framework, StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>The status over the installed packages: how many, how many of them are transitive, how many have a known
@@ -674,6 +677,18 @@ public sealed partial class NuGetView : DockPanel
     /// it goes on as asked (false when the person cancelled, or it was made another way, as EF Core's packages moved
     /// together).</summary>
     public Func<ProjectModel, string, string, Passenger.App.Editors.CommandHistory.Recording?, CancellationToken, Task<bool>>? BeforeInstall { get; set; }
+
+    /// <summary>Fixes the vulnerable versions a project gets of the chosen package only through others (Fix): a reference at
+    /// the fixed version in the frameworks that get them alone; refused, saying why, while the audit's feeds are still asked.</summary>
+    public async Task<bool> FixAsync(ProjectModel project, TransitiveFix fix)
+    {
+        if (model.IsAuditing)
+        {
+            Hold(Refusals.VulnerabilitiesUnread);
+            return false;
+        }
+        return Said(await model.InstallAsync(project, fix.Id, fix.Version, frameworks: fix.Frameworks));
+    }
 
     /// <summary>Takes the chosen package out of a project (Remove).</summary>
     public async Task<bool> RemoveAsync(ProjectModel project) => Selected is { } row && Said(await model.RemoveAsync(project, row.Id));
@@ -1095,6 +1110,14 @@ public sealed partial class NuGetView : DockPanel
                 Spacing = 8,
                 Children = { name, version, mark },
             };
+            // Beside the mark: the one click from a vulnerable version brought in to a reference of the project's own that fixes it.
+            if (TransitiveFix.Of(row.Id, brought, at, project.TargetFrameworks, Known, versions) is { } fix)
+            {
+                string taken = CentralPackages.PropsOf(project) is null ? fix.Version : $"its central version, {fix.Version} where that is lower,";
+                line.Children.Add(Action("Fix", putsIn: true, () => FixAsync(project, fix),
+                    $"References {taken}{fix.Where}, in place of the vulnerable {Plural.Listed([.. fix.Fixes.Select(f => f.Version).Distinct(StringComparer.OrdinalIgnoreCase)])} "
+                    + $"brought in by {BroughtBy(fix.Fixes)}"));
+            }
             if (!has)
             {
                 line.Children.Add(Action("Install", putsIn: true, () => InstallAsync(project)));
@@ -1173,7 +1196,7 @@ public sealed partial class NuGetView : DockPanel
         {
             id.Text = row.Id;
             id.FontWeight = row.IsInstalled ? FontWeight.SemiBold : FontWeight.Normal;
-            version.Text = row.UpdateVersion is { } latest ? $"{row.Version} → {latest}" : row.Version;
+            version.Text = row.MovesTo is { } latest ? $"{row.Version} → {latest}" : row.Version;
             transitive.IsVisible = row.IsTransitive;
             deprecated.IsVisible = row.IsDeprecated;
             ToolTip.SetTip(deprecated, row.Deprecated is { } said ? DeprecationTip(said.Version, said.Said) : null);

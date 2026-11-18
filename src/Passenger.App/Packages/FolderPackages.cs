@@ -252,6 +252,35 @@ public sealed partial class FolderPackages
         return transitive;
     }
 
+    /// <summary>The packages a project gets only through a package or project it references, in the frameworks where none
+    /// of its own references stands (<see cref="TransitiveFix.Left"/>), as its restore resolved them: by package, each
+    /// framework's use; none before it is restored.</summary>
+    public async Task<IReadOnlyDictionary<string, IReadOnlyList<TransitiveUse>>> BroughtAsync(ProjectModel project)
+    {
+        IReadOnlyDictionary<string, IReadOnlyList<TransitiveUse>> uses = project.Exists ? await BackgroundWork.Run(() => RestoredSince(project).Transitive()) : new Dictionary<string, IReadOnlyList<TransitiveUse>>();
+        ILookup<string, InstalledVersion> referenced = References(project).ToLookup(r => r.Id, r => r.Version, StringComparer.OrdinalIgnoreCase);
+        return uses.Select(u => (u.Key, Left: TransitiveFix.Left(u.Value, [.. referenced[u.Key]]))).Where(u => u.Left.Count > 0)
+            .ToDictionary(u => u.Key, u => u.Left, StringComparer.OrdinalIgnoreCase);
+    }
+
+    /// <summary>What fixes the vulnerable versions a project gets of a package only through others (<see cref="TransitiveFix.Of"/>),
+    /// as its restore resolved them, the audit knows them and the folder's feeds offer versions; null where there is none.</summary>
+    public async Task<TransitiveFix?> TransitiveFixAsync(ProjectModel project, string id, CancellationToken cancel)
+    {
+        if ((await BroughtAsync(project)).GetValueOrDefault(id) is not { } brought)
+        {
+            return null;
+        }
+        VulnerabilityData known = await VulnerabilitiesAsync();
+        if (!brought.Any(b => known.Of(id, b.Version).Count > 0))
+        {
+            return null;
+        }
+        IReadOnlyList<string> offered = await (await FeedAsync(null)).VersionsAsync(id, prerelease: brought.Any(b => VersionOrder.IsPrerelease(b.Version)), cancel);
+        return TransitiveFix.Of(id, brought, [.. References(project).Where(r => r.Id.Equals(id, StringComparison.OrdinalIgnoreCase)).Select(r => r.Version)],
+            project.TargetFrameworks, known, offered);
+    }
+
     /// <summary>What a project's restore resolved: its project.assets.json, where its evaluation says, else in its obj
     /// folder or an artifacts folder above it; none before it is restored, or while its file does not read.</summary>
     internal static RestoredVersions Restored(ProjectModel project) => AssetsOf(project) is { } assets ? Read(assets, null) : RestoredVersions.None;
@@ -297,9 +326,15 @@ public sealed partial class FolderPackages
 
     /// <summary>Adds a package to a project at a version, or moves it to that version, a pin kept a pin: the one way a
     /// package goes in (<see cref="ChangeAsync"/>). Passenger writes the files where dotnet add package would write them
-    /// otherwise than the evaluation keeps them (<see cref="WrittenChangeAsync"/>), then restores.</summary>
-    public Task<PackageOutcome> InstallAsync(ProjectModel project, string id, string version, CommandHistory.Recording? within = null)
+    /// otherwise than the evaluation keeps them (<see cref="WrittenChangeAsync"/>), then restores. With
+    /// <paramref name="frameworks"/>, a reference in those alone (<see cref="InFrameworksAsync"/>).</summary>
+    public Task<PackageOutcome> InstallAsync(ProjectModel project, string id, string version, CommandHistory.Recording? within = null,
+        IReadOnlyList<string>? frameworks = null)
     {
+        if (frameworks is { Count: > 0 })
+        {
+            return InFrameworksAsync(project, id, version, frameworks, within);
+        }
         string stage = $"Installing {id} {version} in {project.Name}…";
         string name = $"Install {id} {version} in {project.Name}";
         return Kept(project, [id]) is { } kept
@@ -355,24 +390,59 @@ public sealed partial class FolderPackages
     private async Task<CentralWrites> WritesAsync(ProjectModel project, IReadOnlyList<(string Id, string Version)> packages, string kept,
         IReadOnlyList<(string Id, string Version)> alongside)
     {
-        IReadOnlyDictionary<string, string> properties = EvaluationProperties?.Invoke(project) ?? ProjectModels.Properties(null, project);
-        MSBuildInsight? insight = null;
-        string? unread = null;
-        try
-        {
-            ProjectHost host = await ProjectHosts.ForAsync(project.Folder, CancellationToken.None);
-            insight = await BackgroundWork.Run(async () => new MSBuildInsight(await host.InspectAsync(project.Path, properties, new Dictionary<string, string>())));
-            unread = insight.Evaluated ? null : $"{project.Name} does not evaluate, so where it keeps its package versions is not known";
-        }
-        catch (ProjectHostFailed failed)
-        {
-            unread = $"Where {project.Name} keeps its package versions could not be read: {failed.Reason}";
-        }
+        (MSBuildInsight? insight, string? unread) = await InsightAsync(project);
         if (unread is not null || insight is null)
         {
             return kept.Length > 0 ? CentralWrites.Refusing(unread ?? string.Empty) : CentralWrites.None with { Left = packages };
         }
         return await BackgroundWork.Run(() => kept.Length > 0 ? CentralWrites.Of(insight, project.Path, kept, packages, alongside) : CentralWrites.OfReferences(insight, packages));
+    }
+
+    /// <summary>A project's evaluation as the session evaluates it, read once the open files are saved, or why it could not be.</summary>
+    private async Task<(MSBuildInsight? Insight, string? Unread)> InsightAsync(ProjectModel project)
+    {
+        IReadOnlyDictionary<string, string> properties = EvaluationProperties?.Invoke(project) ?? ProjectModels.Properties(null, project);
+        try
+        {
+            ProjectHost host = await ProjectHosts.ForAsync(project.Folder, CancellationToken.None);
+            MSBuildInsight insight = await BackgroundWork.Run(async () => new MSBuildInsight(await host.InspectAsync(project.Path, properties, new Dictionary<string, string>())));
+            return (insight, insight.Evaluated ? null : $"{project.Name} does not evaluate, so where it keeps its package versions is not known");
+        }
+        catch (ProjectHostFailed failed)
+        {
+            return (null, $"Where {project.Name} keeps its package versions could not be read: {failed.Reason}");
+        }
+    }
+
+    /// <summary>A package referenced in some of a project's frameworks alone, at a version, as a vulnerable version they get
+    /// through others is fixed: Passenger writes a reference under each framework's condition where the project's own
+    /// references are, its version there or under central package management where the evaluation keeps central versions
+    /// (<see cref="CentralWrites.InFrameworks"/>), then restores; one change (<see cref="ChangeAsync"/>), the other frameworks'
+    /// references as they were.</summary>
+    private async Task<PackageOutcome> InFrameworksAsync(ProjectModel project, string id, string version, IReadOnlyList<string> frameworks, CommandHistory.Recording? within)
+    {
+        string where = TransitiveFix.Within(frameworks);
+        string name = $"Install {id} {version} in {project.Name}{where}";
+        if (frameworks.FirstOrDefault(f => !project.TargetFrameworks.Contains(f, StringComparer.OrdinalIgnoreCase)) is { } unbuilt)
+        {
+            string built = project.TargetFrameworks.Count > 0 ? $": it builds for {Plural.Listed([.. project.TargetFrameworks])}" : string.Empty;
+            return new PackageOutcome(false, [], []) { Name = name, Refused = $"{project.Name} is not built for {unbuilt}{built}" };
+        }
+        string? props = CentralPackages.PropsOf(project);
+        CentralWrites writes = CentralWrites.None;
+        PackageOutcome outcome = await ChangeAsync($"Installing {id} {version} in {project.Name}{where}…", name, project, within, () => manager.RestoreAsync(project.Path),
+            () => manager.RestoreAsync(project.Path), () => WrittenAsync(project, writes), async () =>
+            {
+                (MSBuildInsight? insight, string? unread) = props is null ? (null, null) : await InsightAsync(project);
+                writes = unread is not null ? CentralWrites.Refusing(unread)
+                    : await BackgroundWork.Run(() => CentralWrites.InFrameworks(insight, project.Path, props, id, version, frameworks));
+                return writes.Texts.Keys;
+            });
+        if (bulkRecording is not null && outcome.Done)
+        {
+            Reached(project, writes.Moved, outcome.Written);
+        }
+        return props is not null ? outcome with { Moved = writes.Moved } : outcome;
     }
 
     /// <summary>A change's own texts written (<see cref="CentralWrites"/>), off the window's thread, their saves waited for:

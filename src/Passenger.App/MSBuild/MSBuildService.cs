@@ -29,6 +29,10 @@ public sealed class MSBuildService(Func<string?> folder, Func<WorkspaceModel?> w
     /// <summary>What the folder's audit feeds know of vulnerable packages, its session's packages'.</summary>
     public Func<Task<VulnerabilityData>>? Vulnerabilities { get; set; }
 
+    /// <summary>What a project (by path) gets only through the packages and projects it references, in the frameworks no
+    /// reference of its own stands for, as its restore resolved them, by package; its session's packages'.</summary>
+    public Func<string, Task<IReadOnlyDictionary<string, IReadOnlyList<TransitiveUse>>>>? Brought { get; set; }
+
     /// <summary>Reads whether package versions are deprecated, its session's packages': ended once each is known, or its
     /// feeds did not answer.</summary>
     public Func<IReadOnlyCollection<(string Id, string Version)>, Task>? ReadDeprecations { get; set; }
@@ -82,6 +86,17 @@ public sealed class MSBuildService(Func<string?> folder, Func<WorkspaceModel?> w
     {
         UiThread.Check();
         foreach (MSBuildDocument document in documents.Values.Where(d => d.Walks))
+        {
+            document.Again();
+        }
+    }
+
+    /// <summary>Restores written (each project's project.assets.json, canonical): an open project file whose restore one is is
+    /// evaluated again, so its marks of the vulnerable versions it gets through others follow what the restore resolved.</summary>
+    public void Restored(IReadOnlySet<string> assets)
+    {
+        UiThread.Check();
+        foreach (MSBuildDocument document in documents.Values.Where(d => d.Restores(assets)).ToList())
         {
             document.Again();
         }

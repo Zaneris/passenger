@@ -1254,6 +1254,131 @@ public sealed class NuGetTests : IDisposable
         window.Close();
     }
 
+    /// <summary>A project built for two frameworks that references the package at 1.1.0 in net11.0 and gets the vulnerable
+    /// 1.0.0 through Passenger.Charts in the other has Fix on its line beside the mark: one click references 1.0.1, which
+    /// fixes it, in that framework alone, where Downgrade would move net11.0's reference, and the restore it ends with
+    /// resolves 1.0.1 there, net11.0's 1.1.0 and its reference as they were; the package is no longer marked.</summary>
+    [AvaloniaFact]
+    public void Fix_on_a_projects_line_references_the_fixed_version_in_the_framework_that_gets_the_vulnerable_one_alone()
+    {
+        const string Charts = "Passenger.Charts";
+        feed.Add(Charts, "1.0.0", (Id, "1.0.0"));
+        string own = $"  <ItemGroup Condition=\"'$(TargetFramework)' == '{Restorable}'\">\n    <PackageReference Include=\"{Id}\" Version=\"1.1.0\" />\n  </ItemGroup>\n";
+        Project("Lib", $"{Restorable};{TestProjects.Framework}", $"  <ItemGroup>\n    <PackageReference Include=\"{Charts}\" Version=\"1.0.0\" />\n  </ItemGroup>\n" + own);
+        // By its real path, as the window reads it: a restore through TMPDIR's /var link writes another assets file.
+        Restore.Run(Passenger.Core.PathNames.Canonical(lib));
+        MainWindow window = Open();
+        NuGetView nuget = window.NuGet;
+        ChoosePackage(nuget, Id);
+        Ui.WaitFor(() => nuget.Versions.Count == 3 && Action(nuget, "Lib", "Fix") is { IsEnabled: true },
+            () => $"Lib's line to offer Fix for {TestProjects.Framework}'s 1.0.0 once the audit answered: [{string.Join(", ", Labels(nuget, "Lib"))}], {nuget.Status}");
+        Button fix = Action(nuget, "Lib", "Fix")!;
+        Assert.True(Labels(nuget, "Lib").SequenceEqual(["Fix", "Downgrade", "Remove"])
+            && ToolTip.GetTip(fix) as string == $"References 1.0.1 for {TestProjects.Framework}, in place of the vulnerable 1.0.0 brought in by {Charts}",
+            $"Lib's line offers [{string.Join(", ", Labels(nuget, "Lib"))}], its Fix telling \"{ToolTip.GetTip(fix)}\"");
+
+        Ui.Click(fix, settle: false);
+        Ui.Landed(() => !nuget.IsBusy, "Lib's fix");
+        string text = File.ReadAllText(lib);
+        Assert.True(text.Contains(own, StringComparison.Ordinal)
+            && text.Contains($"  <ItemGroup Condition=\"'$(TargetFramework)' == '{TestProjects.Framework}'\">\n    <PackageReference Include=\"{Id}\" Version=\"1.0.1\" />\n  </ItemGroup>\n", StringComparison.Ordinal),
+            $"The fix left Lib.csproj without a reference at 1.0.1 for {TestProjects.Framework} alone, or moved {Restorable}'s ({nuget.Status}):\n{text}\n{nuget.Log}");
+        Passenger.Packages.RestoredVersions restored = Assets("Lib");
+        Assert.True(restored.Of(TestProjects.Framework, Id) == "1.0.1" && restored.Of(Restorable, Id) == "1.1.0",
+            $"The fix's restore resolved {restored.Of(TestProjects.Framework, Id)} for {TestProjects.Framework} and {restored.Of(Restorable, Id)} for {Restorable}, "
+            + "not 1.0.1 and the 1.1.0 it had");
+        Ui.WaitFor(() => nuget.Selected is { Id: Id, IsVulnerable: false } && Action(nuget, "Lib", "Fix") is null,
+            () => $"{Id} no longer marked, and Fix gone from Lib's line, once fixed: [{string.Join(", ", Labels(nuget, "Lib"))}], {nuget.Status}");
+        window.Close();
+    }
+
+    /// <summary>Under central package management, a project built for two frameworks that gets the vulnerable 1.0.0 through
+    /// Passenger.Charts in the one that references Charts is marked on that reference in its file, and the code action there
+    /// references the package in that framework alone, its 1.0.1 a PackageVersion in Directory.Packages.props; the restore
+    /// resolves 1.0.1 there, the other framework getting none, and the mark goes.</summary>
+    [AvaloniaFact]
+    public void Under_central_management_the_fix_at_a_project_files_mark_puts_the_central_version_in_and_references_it_in_that_framework_alone()
+    {
+        const string Charts = "Passenger.Charts";
+        feed.Add(Charts, "1.0.0", (Id, "1.0.0"));
+        string props = Path.Combine(folder, "Directory.Packages.props");
+        File.WriteAllText(props, "<Project>\n  <PropertyGroup>\n    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>\n  </PropertyGroup>\n"
+            + $"  <ItemGroup>\n    <PackageVersion Include=\"{Charts}\" Version=\"1.0.0\" />\n  </ItemGroup>\n</Project>\n");
+        string charted = $"  <ItemGroup Condition=\"'$(TargetFramework)' == '{TestProjects.Framework}'\">\n    <PackageReference Include=\"{Charts}\" />\n  </ItemGroup>\n";
+        Project("Lib", $"{Restorable};{TestProjects.Framework}", charted);
+        Project("App", Restorable, string.Empty);
+        Restore.Run(Passenger.Core.PathNames.Canonical(lib));
+        MainWindow window = Open();
+        window.OpenFile(lib);
+        Ui.Settle();
+        Passenger.App.Workspace.OpenDocument document = window.EditorArea.Active!;
+        string said = $"NU1902: Package '{Id}' 1.0.0, which {Charts} brings in for {TestProjects.Framework}, has a known moderate severity vulnerability, {Advisory}";
+        Ui.WaitFor(() => document.Markers.Any(m => m.Message == said),
+            () => $"the vulnerable version {Charts} brings in marked on its reference: [{string.Join("; ", document.Markers.Select(m => m.Message))}]");
+        Assert.Equal(Charts, document.Text.Snapshot.ToString().Substring(document.Markers.First(m => m.Message == said).Range.Start, Charts.Length));
+
+        string fix = $"Reference {Id}'s fixed version for {TestProjects.Framework}";
+        Ui.PlaceAfter(window.EditorArea.CodeEditor, $"Include=\"{Charts[..4]}");
+        Ui.Run(window, AppActions.QuickFix);
+        Ui.WaitFor(() => window.Assist.Offered.Contains(fix), () => $"\"{fix}\" offered at the mark: [{string.Join("; ", window.Assist.Offered)}]");
+        int index = window.Assist.Offered.ToList().IndexOf(fix);
+        for (int i = 0; i < index; i++)
+        {
+            Ui.Press(window, "DOWN");
+        }
+        Ui.Press(window, "ENTER");
+        NuGetView nuget = window.NuGet;
+        Ui.WaitFor(() => File.ReadAllText(props).Contains($"Include=\"{Id}\"", StringComparison.Ordinal), () => $"the fix to write {Id}'s central version: {window.Status}\n{nuget.Log}");
+        Ui.Landed(() => !nuget.IsBusy, "the fix's restore");
+        Assert.True(File.ReadAllText(props).Contains($"<PackageVersion Include=\"{Id}\" Version=\"1.0.1\" />", StringComparison.Ordinal),
+            $"The fix wrote no PackageVersion of {Id} at 1.0.1:\n{File.ReadAllText(props)}");
+        string text = File.ReadAllText(lib);
+        Assert.True(text.Contains(charted.Replace($"<PackageReference Include=\"{Charts}\" />\n", $"<PackageReference Include=\"{Charts}\" />\n    <PackageReference Include=\"{Id}\" />\n",
+            StringComparison.Ordinal), StringComparison.Ordinal), $"The fix left Lib.csproj without a reference of {Id} for {TestProjects.Framework} alone, under its central version:\n{text}");
+        Passenger.Packages.RestoredVersions restored = Assets("Lib");
+        Assert.True(restored.Of(TestProjects.Framework, Id) == "1.0.1" && restored.Of(Restorable, Id) is null,
+            $"The fix's restore resolved {restored.Of(TestProjects.Framework, Id)} for {TestProjects.Framework} and {restored.Of(Restorable, Id) ?? "none"} for {Restorable}, not 1.0.1 and none");
+        Ui.WaitFor(() => !document.Markers.Any(m => m.Message.StartsWith("NU1902", StringComparison.Ordinal)),
+            () => $"the mark gone once fixed: [{string.Join("; ", document.Markers.Select(m => m.Message))}]");
+        window.Close();
+    }
+
+    /// <summary>The Updates tab lists a vulnerable version a project's framework gets only through another package beside the
+    /// updates, with the version that fixes it, though the project's own references are current; Update All references it
+    /// there, and the tab then lists no fix, the reference made at 1.0.1 at most an update to 1.1.0 like any other.</summary>
+    [AvaloniaFact]
+    public void The_updates_tab_lists_a_vulnerable_version_brought_in_with_its_fix_and_update_all_makes_the_fix()
+    {
+        const string Charts = "Passenger.Charts";
+        feed.Add(Charts, "1.0.0", (Id, "1.0.0"));
+        Project("Lib", $"{Restorable};{TestProjects.Framework}", $"  <ItemGroup>\n    <PackageReference Include=\"{Charts}\" Version=\"1.0.0\" />\n  </ItemGroup>\n"
+            + $"  <ItemGroup Condition=\"'$(TargetFramework)' == '{Restorable}'\">\n    <PackageReference Include=\"{Id}\" Version=\"1.1.0\" />\n  </ItemGroup>\n");
+        Restore.Run(Passenger.Core.PathNames.Canonical(lib));
+        MainWindow window = Open();
+        NuGetView nuget = window.NuGet;
+        Ui.Click(nuget.Tabs.GetLogicalDescendants().OfType<ToggleButton>().Single(b => Equals(b.Content, "Updates")));
+        Ui.WaitFor(() => nuget.Status == "1 vulnerable transitive version to fix", () => $"the Updates tab's check: {nuget.Status}");
+        PackageRow row = Assert.Single(nuget.Rows);
+        Assert.True(row is { Id: Id, Version: "1.0.0", MovesTo: "1.0.1", IsVulnerable: true } && row.Fixes.Single().Value.Frameworks.SequenceEqual([TestProjects.Framework]),
+            $"Updates lists {row.Id} {row.Version} → {row.MovesTo} ({(row.IsVulnerable ? "marked" : "unmarked")}), not {TestProjects.Framework}'s 1.0.0 brought in, fixed by 1.0.1 there");
+        Assert.Equal("1.0.1", nuget.ChosenVersion);
+
+        Ui.Click(nuget.GetLogicalDescendants().OfType<Button>().Single(b => Equals(b.Content, "Update All")));
+        Ui.Landed(() => !nuget.IsBusy && nuget.Rows.All(r => r.Fixes.Count == 0 && r.UpdateVersion == "1.1.0"),
+            $"the fix made and no fix left to list: {nuget.Status}\n{nuget.Log}");
+        Assert.True(nuget.Status == "Updated 1 package reference" && Assets("Lib").Of(TestProjects.Framework, Id) == "1.0.1" && Assets("Lib").Of(Restorable, Id) == "1.1.0",
+            $"Update All says \"{nuget.Status}\", {TestProjects.Framework} resolving {Assets("Lib").Of(TestProjects.Framework, Id)} and {Restorable} "
+            + $"{Assets("Lib").Of(Restorable, Id)}:\n{File.ReadAllText(lib)}\n{nuget.Log}");
+        window.Close();
+    }
+
+    /// <summary>What a project of the folder's last restore resolved, read from its project.assets.json.</summary>
+    private Passenger.Packages.RestoredVersions Assets(string project)
+    {
+        using FileStream stream = File.OpenRead(Path.Combine(folder, project, "obj", "project.assets.json"));
+        return Passenger.Packages.RestoredVersions.Read(stream);
+    }
+
     /// <summary>A tag of a package's row shown in the list, by its words.</summary>
     private static Rect Placed(Visual window, Visual control) => new(control.TranslatePoint(default, window)!.Value, control.Bounds.Size);
 

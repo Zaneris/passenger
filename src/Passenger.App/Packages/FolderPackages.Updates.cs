@@ -9,7 +9,13 @@ using Passenger.Workspace;
 
 namespace Passenger.App.Packages;
 
-public sealed record PackageUpdate(string Id, string Version, IReadOnlyList<string> Projects);
+/// <summary>A package moved to a version in projects; or, with <see cref="Frameworks"/>, a vulnerable version they get only
+/// through others fixed by a reference of their own at that version (<see cref="TransitiveFix"/>).</summary>
+public sealed record PackageUpdate(string Id, string Version, IReadOnlyList<string> Projects)
+{
+    /// <summary>The frameworks a fix references the package in (none for the project's whole); null for an update.</summary>
+    public IReadOnlyList<string>? Frameworks { get; init; }
+}
 
 public sealed record PackageUpdateResult(int Updated, IReadOnlyList<string> Skipped, int Remaining, string? Failure)
 {
@@ -86,7 +92,7 @@ public sealed partial class FolderPackages
                     }
                     project = await FreshAsync(project, stopping.Token);
                     List<(string Id, string Version)> targets = [];
-                    foreach (PackageUpdate target in asked)
+                    foreach (PackageUpdate target in asked.Where(a => a.Frameworks is null))
                     {
                         InstalledVersion[] at = await VersionsInAsync(project, target.Id);
                         if (at.Length == 0 || at.Any(v => v.Version is null) || InstalledVersion.Lowered(target.Version, at).Count > 0)
@@ -140,24 +146,50 @@ public sealed partial class FolderPackages
                             remaining--;
                         }
                     }
-                    if (eligible.Count == 0)
+                    if (eligible.Count > 0)
                     {
-                        if (await RestoredAsync(project, recording, written) is { } broke)
+                        PackageOutcome outcome = await InstallSetAsync(project, eligible, recording, Alongside(project, eligible, updates));
+                        written.AddRange(outcome.Written);
+                        if (!outcome.Done)
                         {
-                            failure = broke;
+                            failure = stopping.IsCancellationRequested ? $"Stopped in {project.Name}" : $"{project.Name}: {outcome.Failure("Update failed")}";
                             break;
                         }
-                        continue;
+                        updated += eligible.Count;
+                        remaining -= eligible.Count;
                     }
-                    PackageOutcome outcome = await InstallSetAsync(project, eligible, recording, Alongside(project, eligible, updates));
-                    written.AddRange(outcome.Written);
-                    if (!outcome.Done)
+                    bool fixedAny = false;
+                    foreach (PackageUpdate fix in asked.Where(a => a.Frameworks is not null))
                     {
-                        failure = stopping.IsCancellationRequested ? $"Stopped in {project.Name}" : $"{project.Name}: {outcome.Failure("Update failed")}";
+                        // What the updates and the fixes before it wrote, read again.
+                        project = await FreshAsync(project, stopping.Token);
+                        InstalledVersion[] at = await VersionsInAsync(project, fix.Id);
+                        if (at.Any(v => v.Framework is null || fix.Frameworks!.Count == 0 || fix.Frameworks.Contains(v.Framework, StringComparer.OrdinalIgnoreCase)))
+                        {
+                            skipped.Add($"{project.Name}/{fix.Id}: referenced already where the fix would reference it");
+                            remaining--;
+                            continue;
+                        }
+                        PackageOutcome outcome = await InstallAsync(project, fix.Id, fix.Version, recording, fix.Frameworks);
+                        written.AddRange(outcome.Written);
+                        if (!outcome.Done)
+                        {
+                            failure = stopping.IsCancellationRequested ? $"Stopped in {project.Name}" : $"{project.Name}: {outcome.Failure("Fix failed")}";
+                            break;
+                        }
+                        fixedAny = true;
+                        updated++;
+                        remaining--;
+                    }
+                    if (failure is not null)
+                    {
                         break;
                     }
-                    updated += eligible.Count;
-                    remaining -= eligible.Count;
+                    if (eligible.Count == 0 && !fixedAny && await RestoredAsync(project, recording, written) is { } broke)
+                    {
+                        failure = broke;
+                        break;
+                    }
                 }
                 foreach (string path in bulkStale.Order(PathNames.Comparer).ToList())
                 {

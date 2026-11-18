@@ -100,6 +100,58 @@ public static class ProjectEdits
         return (text, false);
     }
 
+    /// <summary>A project file's text with a package referenced in some of its frameworks alone, as dotnet add package
+    /// --framework writes it: for each a reference in the item group of its condition, the project's own, else a new one after
+    /// its last group of package references (else before &lt;/Project&gt;), with <paramref name="version"/> (none under central
+    /// package management), a VersionOverride where <paramref name="overriding"/>. Else why not: the text does not read as
+    /// XML, or a framework's group references the package already.</summary>
+    public static (string? Text, string? Why) WithFrameworkPackage(string text, string id, string? version, bool overriding, IReadOnlyList<string> frameworks)
+    {
+        if (Read(text) is not { } xml)
+        {
+            return (null, "the project does not read as XML");
+        }
+        string versioned = version is null ? string.Empty : $" {(overriding ? "VersionOverride" : "Version")}=\"{XmlEntities.Encode(version, '"')}\"";
+        string element = $"<PackageReference Include=\"{XmlEntities.Encode(id, '"')}\"{versioned} />";
+        foreach (string framework in frameworks)
+        {
+            XElement? group = xml.Root.Elements().FirstOrDefault(g => ProjectItems.IsItemGroup(g) && ForFramework(g, framework));
+            if (group?.Elements().Any(e => e.Name.LocalName == "PackageReference" && Names(e, id)) == true)
+            {
+                return (null, $"it references {id} for {framework} already");
+            }
+            if (group?.Elements().LastOrDefault(e => e.Name.LocalName == "PackageReference") is { } last)
+            {
+                xml.After(last, element);
+            }
+            else if (group is not null)
+            {
+                xml.Append(group, element, ownLine: true);
+            }
+            else
+            {
+                string condition = XmlEntities.Encode($"'$(TargetFramework)' == '{framework}'", '"');
+                string outer = xml.IndentIn(xml.Root);
+                string written = $"<ItemGroup Condition=\"{condition}\">{xml.NewLine}{outer}{xml.Unit}{element}{xml.NewLine}{outer}</ItemGroup>";
+                if (xml.Root.Elements().LastOrDefault(g => ProjectItems.IsItemGroup(g) && g.Elements().Any(e => e.Name.LocalName == "PackageReference")) is { } referencing)
+                {
+                    xml.After(referencing, written);
+                }
+                else
+                {
+                    xml.Append(xml.Root, written, ownLine: true);
+                }
+            }
+        }
+        return (xml.Text, null);
+    }
+
+    /// <summary>Whether an item group's condition holds for one framework alone, as dotnet add package --framework writes
+    /// it ('$(TargetFramework)' == 'net10.0', spaces and letter case aside).</summary>
+    private static bool ForFramework(XElement group, string framework) =>
+        group.Attributes().FirstOrDefault(a => a.Name.LocalName.Equals("Condition", StringComparison.OrdinalIgnoreCase)) is { } condition
+        && string.Concat(condition.Value.Where(c => !char.IsWhiteSpace(c))).Equals($"'$(TargetFramework)'=='{framework}'", StringComparison.OrdinalIgnoreCase);
+
     /// <summary>A Directory.Packages.props' text with its PackageVersion of a package set to a version, as dotnet add
     /// package sets it (its Version attribute, else element); null where it has none for the package or does not read as
     /// XML. The PackageVersion at <paramref name="line"/> (MSBuild's, from 1) where one is, else its first.</summary>

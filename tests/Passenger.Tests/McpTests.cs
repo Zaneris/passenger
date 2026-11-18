@@ -1018,6 +1018,64 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
             !change.TryGetProperty(member, out JsonElement said) || said.ValueKind == JsonValueKind.Null ? [] : [said.GetString()!];
     }
 
+    /// <summary>A project built for two frameworks that gets a vulnerable version through another package in one: an agent
+    /// finds it among the project file's diagnostics on what brings it in, is offered its fix there among code_actions, and
+    /// nuget_install with that framework references the fixed version there alone, the other framework's reference as it
+    /// was, as the NuGet window's Fix does; a framework the project is not built for is refused, naming those it is.</summary>
+    [Fact]
+    public async Task An_agents_install_for_one_framework_fixes_the_vulnerable_version_it_gets_through_another_package_there_alone()
+    {
+        const string Advisory = "https://github.com/advisories/GHSA-pass-mcp2-test";
+        string folder = PathNames.Canonical(TestFolders.Create("mcp-nuget-framework-"));
+        DeleteAtEnd(folder);
+        await using StandInFeed feed = new();
+        feed.Add("Passenger.Sample", "1.0.0");
+        feed.Add("Passenger.Sample", "1.0.1");
+        feed.Add("Passenger.Charts", "1.0.0", ("Passenger.Sample", "1.0.0"));
+        feed.Advise("Passenger.Sample", 1, Advisory, "[1.0.0, 1.0.1)");
+        File.WriteAllText(Path.Combine(folder, "nuget.config"), $"""
+            <configuration>
+              <packageSources>
+                <clear />
+                <add key="stand-in" value="{feed.Index}" protocolVersion="3" allowInsecureConnections="true" />
+              </packageSources>
+              <auditSources>
+                <clear />
+                <add key="stand-in" value="{feed.Index}" allowInsecureConnections="true" />
+              </auditSources>
+              <config>
+                <add key="globalPackagesFolder" value="packages" />
+              </config>
+            </configuration>
+            """);
+        string own = "  <ItemGroup Condition=\"'$(TargetFramework)' == 'net11.0'\">\n    <PackageReference Include=\"Passenger.Sample\" Version=\"1.0.1\" />\n  </ItemGroup>\n";
+        string lib = Path.Combine(folder, "Lib.csproj");
+        File.WriteAllText(lib, $"<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <TargetFrameworks>net11.0;{TestProjects.Framework}</TargetFrameworks>\n  </PropertyGroup>\n"
+            + "  <ItemGroup>\n    <PackageReference Include=\"Passenger.Charts\" Version=\"1.0.0\" />\n  </ItemGroup>\n" + own + "</Project>\n");
+        await Restore.RunAsync(lib);
+        await using McpClient client = await Start(["--mcp", folder], languageServer: false);
+
+        JsonElement[] found = [.. (await Call(client, McpTools.Diagnostics, new() { ["path"] = "Lib.csproj" })).EnumerateArray()];
+        Assert.True(found.Any(f => f.GetProperty("code").GetString() == "NU1902" && f.GetProperty("line").GetInt32() == 6),
+            $"diagnostics of Lib.csproj leave out the vulnerable Passenger.Sample 1.0.0 that Passenger.Charts brings in for {TestProjects.Framework}: "
+            + string.Join("; ", found.Select(f => f.GetRawText())));
+        string[] offered = [.. (await Call(client, McpTools.CodeActions, new() { ["path"] = "Lib.csproj", ["line"] = 6, ["column"] = 32 })).EnumerateArray().Select(a => a.GetString()!)];
+        Assert.True(offered.Any(a => a.StartsWith($"Reference Passenger.Sample's fixed version for {TestProjects.Framework}", StringComparison.Ordinal)),
+            $"code_actions at Passenger.Charts' reference offer [{string.Join("; ", offered)}], not the fix of what it brings in");
+
+        CallToolResult refused = await Result(client, McpTools.NugetInstall,
+            new() { ["project"] = "Lib", ["id"] = "Passenger.Sample", ["version"] = "1.0.1", ["framework"] = "net9.0" });
+        Assert.True(refused.IsError == true && Text(refused).Contains($"Lib is not built for net9.0: it builds for net11.0 and {TestProjects.Framework}", StringComparison.Ordinal),
+            $"nuget_install for a framework Lib is not built for answered: {Text(refused)}");
+        JsonElement installed = await Call(client, McpTools.NugetInstall,
+            new() { ["project"] = "Lib", ["id"] = "Passenger.Sample", ["version"] = "1.0.1", ["framework"] = TestProjects.Framework });
+        string text = File.ReadAllText(lib);
+        Assert.True(installed.GetProperty("changed").EnumerateArray().Select(c => c.GetString()).Contains("Lib.csproj") && text.Contains(own, StringComparison.Ordinal)
+            && text.Contains($"  <ItemGroup Condition=\"'$(TargetFramework)' == '{TestProjects.Framework}'\">\n    <PackageReference Include=\"Passenger.Sample\" Version=\"1.0.1\" />\n",
+                StringComparison.Ordinal),
+            $"nuget_install for {TestProjects.Framework} answered {installed.GetRawText()}, leaving Lib.csproj as:\n{text}");
+    }
+
     /// <summary>In a project that restores with a lock file, the files nuget_install names are all it changed: the lock file
     /// its restore made, then rewrote for the next version, so an agent committing them leaves a locked restore whole.</summary>
     [Fact]

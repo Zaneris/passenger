@@ -503,10 +503,17 @@ public sealed partial class PassengerTools
         "files it changed (the project, its packages.lock.json, and Directory.Packages.props under central package management), " +
         "and as nuget_search says them whether that version is vulnerable, with the version that fixes it, or deprecated. " +
         "Moving one of EF Core's packages moves the project's others with it (with); another maker's provider it leaves behind " +
-        "stays as it is, said with the version that fits.")]
-    public Task<PackageChange> NuGetInstall(string project, string id, string? version = null, bool remove = false, CancellationToken cancel = default) => OnUi(cancel, async () =>
+        "stays as it is, said with the version that fits. With framework, a reference in that framework alone, as fixing a " +
+        "vulnerable version it gets through other packages does, the others' references as they were.")]
+    public Task<PackageChange> NuGetInstall(string project, string id, string? version = null, bool remove = false,
+        [Description("A framework the project builds for, or several separated by ;")] string? framework = null, CancellationToken cancel = default) => OnUi(cancel, async () =>
     {
         ProjectModel chosen = Project(project);
+        string[] frameworks = framework?.Split([';', ','], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries) ?? [];
+        if (remove && frameworks.Length > 0)
+        {
+            throw new ArgumentException("remove takes the package out of every framework: omit framework");
+        }
         if (remove)
         {
             AgentCall.Follow(window.Actions.Work, FolderPackages.Changing);
@@ -518,6 +525,10 @@ public sealed partial class PassengerTools
         string at = version ?? offered?.FirstOrDefault() ?? throw new ArgumentException($"{feeds.Name} has no package {id}");
         AgentCall.Say(null);
         AgentCall.Follow(window.Actions.Work, FolderPackages.Changing);
+        if (frameworks.Length > 0)
+        {
+            return await WarnedAsync(new PackageChange(id, at, chosen.Name, Changed(await Session.Packages.InstallAsync(chosen, id, at, frameworks: frameworks))), feeds, offered, cancel);
+        }
         EfUpdate weighed = await window.Migrations.UpdateAsync(chosen, id, at, null, cancel);
         PackageChange done = weighed.AsAsked
             ? new PackageChange(id, at, chosen.Name, Changed(await Session.Packages.InstallAsync(chosen, id, at))) { Said = weighed.Said }

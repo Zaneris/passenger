@@ -100,11 +100,18 @@ public sealed partial class NuGetView
                 checkedCount += batch.Length;
                 Tell($"Checking for updates… {checkedCount}/{installed.Count}");
             }
+            Dictionary<string, Dictionary<string, IReadOnlyList<TransitiveUse>>> transitive = await folder.TransitiveAsync();
             VulnerabilityData known = await folder.VulnerabilitiesAsync();
             cancel.Token.ThrowIfCancellationRequested();
-            updateRows = Marked(found, known);
+            int updates = found.Count;
+            found = [.. found.Select(r => Brought(r, transitive))];
+            int fixes = await FixesAsync(found, installed, transitive, known, feed, preview, problems, cancel.Token);
+            cancel.Token.ThrowIfCancellationRequested();
+            updateRows = Marked([.. found.OrderBy(r => r.Id, StringComparer.OrdinalIgnoreCase)], known);
             FilterUpdates(chosen);
-            string result = problems.Count == 0 && found.Count == 0 ? "No updates found" : $"{Plural.Of(found.Count, "update")} available";
+            string result = problems.Count == 0 && updates == 0 && fixes == 0 ? "No updates found"
+                : string.Join(", ", new[] { updates > 0 || fixes == 0 ? $"{Plural.Of(updates, "update")} available" : null,
+                    fixes > 0 ? $"{Plural.Of(fixes, "vulnerable transitive version")} to fix" : null }.OfType<string>());
             if (problems.Count > 0)
             {
                 result += $"; check incomplete: {string.Join("; ", problems.Distinct())}";
@@ -127,6 +134,72 @@ public sealed partial class NuGetView
         await deprecating;
     }
 
+    /// <summary>The Updates tab's fixes of vulnerable versions projects get only through others, beside the updates: each
+    /// package with such a use has its fix per project (<see cref="TransitiveFix.Of"/>) among the feeds' versions, on its
+    /// row of updates where it has one, else on a row of its own; how many projects' uses are fixed.</summary>
+    private async Task<int> FixesAsync(List<PackageRow> found, Dictionary<string, Dictionary<string, IReadOnlyList<InstalledVersion>>> installed,
+        Dictionary<string, Dictionary<string, IReadOnlyList<TransitiveUse>>> transitive, VulnerabilityData known, IPackageFeed feed, bool preview, List<string> problems,
+        CancellationToken cancel)
+    {
+        int fixes = 0;
+        foreach (string id in transitive.Keys.Order(StringComparer.OrdinalIgnoreCase))
+        {
+            Dictionary<string, IReadOnlyList<InstalledVersion>> at = installed.GetValueOrDefault(id) ?? [];
+            PackageRow row = found.FirstOrDefault(r => r.Id.Equals(id, StringComparison.OrdinalIgnoreCase))
+                ?? Brought(new PackageRow(id, string.Empty, string.Empty, string.Empty, 0, at), transitive);
+            if (!row.Transitive.Values.SelectMany(u => u).Any(u => known.Of(id, u.Version).Count > 0))
+            {
+                continue;
+            }
+            IReadOnlyList<string> offered = row.AvailableVersions;
+            try
+            {
+                if (offered.Count == 0)
+                {
+                    FeedVersions answer = feed is FeedSet set ? await set.VersionsEachAsync(id, preview, cancel) : new FeedVersions(await feed.VersionsAsync(id, preview, cancel), []);
+                    problems.AddRange(answer.Failed.Select(f => $"{id}: {f.Feed}: {f.Problem}"));
+                    offered = answer.Versions;
+                }
+            }
+            catch (Exception failed) when (!cancel.IsCancellationRequested && FeedSet.IsFeedFailure(failed))
+            {
+                problems.Add($"{id}: {failed.Message}");
+                continue;
+            }
+            Dictionary<string, TransitiveFix> each = new(PathNames.Comparer);
+            foreach ((string path, IReadOnlyList<TransitiveUse> uses) in row.Transitive)
+            {
+                if (model.Projects.FirstOrDefault(p => PathNames.Same(p.Path, path)) is { } project
+                    && TransitiveFix.Of(id, uses, at.GetValueOrDefault(path) ?? [], project.TargetFrameworks, known, offered) is { } fix)
+                {
+                    each[path] = fix;
+                }
+            }
+            if (each.Count == 0)
+            {
+                continue;
+            }
+            fixes += each.Count;
+            int i = found.IndexOf(row);
+            PackageRow fixing = row with
+            {
+                Version = row.Version.Length > 0 ? row.Version
+                    : string.Join(", ", each.Values.SelectMany(f => f.Fixes).Select(u => u.Version).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(v => v, VersionOrder.Instance)),
+                Fixes = each,
+                AvailableVersions = offered,
+            };
+            if (i >= 0)
+            {
+                found[i] = fixing;
+            }
+            else
+            {
+                found.Add(fixing);
+            }
+        }
+        return fixes;
+    }
+
     public async Task UpdateAllAsync()
     {
         if (!CanUpdateAll)
@@ -135,7 +208,8 @@ public sealed partial class NuGetView
             return;
         }
         FolderPackages folder = model;
-        PackageUpdate[] targets = [.. updateRows.Select(r => new PackageUpdate(r.Id, r.UpdateVersion!, [.. r.Installed.Keys]))];
+        PackageUpdate[] targets = [.. updateRows.Where(r => r.UpdateVersion is not null).Select(r => new PackageUpdate(r.Id, r.UpdateVersion!, [.. r.Installed.Keys])),
+            .. updateRows.SelectMany(r => r.Fixes.Select(f => new PackageUpdate(r.Id, f.Value.Version, [f.Key]) { Frameworks = f.Value.Frameworks }))];
         updatingAll = true;
         EnableActions();
         try

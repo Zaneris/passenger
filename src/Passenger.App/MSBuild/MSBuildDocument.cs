@@ -31,6 +31,9 @@ public sealed class MSBuildDocument : IDisposable
     /// for the card over one.</summary>
     private IReadOnlyDictionary<(string Id, string Version), Deprecation> deprecated = new Dictionary<(string, string), Deprecation>();
 
+    /// <summary>The project's vulnerable versions it gets only through others, by package, as its marks read them.</summary>
+    private IReadOnlyDictionary<string, IReadOnlyList<TransitiveUse>> exposed = new Dictionary<string, IReadOnlyList<TransitiveUse>>();
+
     private bool disposed;
 
     internal MSBuildDocument(MSBuildService service, OpenDocument document)
@@ -96,6 +99,13 @@ public sealed class MSBuildDocument : IDisposable
         paths.Any(p => PathNames.Same(p, Document.Path)) || Insight?.Raw.Inputs.Any(i => paths.Any(p => PathNames.Same(p, i.Path))) == true
             || (Project is { } project && paths.Any(p => PathNames.Same(p, project)))
             || (cameOrWent && Insight is { } last && paths.Any(last.Walked));
+
+    /// <summary>Whether the file is a project whose restore (its project.assets.json, as its evaluation names it) is among
+    /// those written.</summary>
+    internal bool Restores(IReadOnlySet<string> assets) =>
+        assets.Count > 0 && Project is { } own && PathNames.Same(own, Document.Path)
+        && (Insight?.Value(CarriedProperties.ProjectAssetsFile) is { Length: > 0 } named ? named : Passenger.Xaml.Projects.ProjectInputs.FindAssets(own)) is { } restore
+        && assets.Any(a => PathNames.Same(a, PathNames.Canonical(restore)));
 
     /// <summary>Whether the last evaluation walked folders, whose files coming or going would change what its items take in.</summary>
     internal bool Walks => Insight?.Raw.Folders.Count > 0;
@@ -347,9 +357,13 @@ public sealed class MSBuildDocument : IDisposable
                 packages.Add((element, id, given.Version, include.ValueRange));
             }
         }
-        if (packages.Count == 0)
+        // A project file's own: the packages it gets only through others, which no reference of its marks.
+        IReadOnlyDictionary<string, IReadOnlyList<TransitiveUse>> brought = Project is { } own && PathNames.Same(own, Document.Path) && service.Brought is { } bringing
+            ? await bringing(own) : new Dictionary<string, IReadOnlyList<TransitiveUse>>();
+        if (packages.Count == 0 && brought.Count == 0)
         {
             deprecated = new Dictionary<(string, string), Deprecation>();
+            exposed = new Dictionary<string, IReadOnlyList<TransitiveUse>>();
             return ([], Task.CompletedTask);
         }
         VulnerabilityData known = await service.KnownVulnerabilitiesAsync();
@@ -357,6 +371,8 @@ public sealed class MSBuildDocument : IDisposable
         {
             return ([], Task.CompletedTask);
         }
+        exposed = brought.Select(b => (b.Key, Uses: (IReadOnlyList<TransitiveUse>)[.. b.Value.Where(u => known.Of(b.Key, u.Version).Count > 0)]))
+            .Where(b => b.Uses.Count > 0).ToDictionary(b => b.Key, b => b.Uses, StringComparer.OrdinalIgnoreCase);
         Task deprecating = service.DeprecationsAsync([.. packages.Select(p => (p.Id, p.Version)).Distinct()]);
         Dictionary<(string Id, string Version), Deprecation> told = [];
         foreach ((_, string id, string at, _) in packages)
@@ -371,11 +387,60 @@ public sealed class MSBuildDocument : IDisposable
             .Select(p => Marker.Coded(p.Range, MarkerKind.Warning, p.Advice!.Value.Code, p.Advice.Value.Message));
         IEnumerable<Marker> outdated = packages.Where(p => told.ContainsKey((p.Id, p.Version)))
             .Select(p => new Marker(p.Range, MarkerKind.Warning, Deprecated(p.Id, p.Version, told[(p.Id, p.Version)])));
-        return ([.. vulnerable, .. outdated], deprecating);
+        return ([.. vulnerable, .. outdated, .. Exposed(tree, exposed, known)], deprecating);
+    }
+
+    /// <summary>NuGet's audit warning on each vulnerable version the project gets only through others, on each reference of
+    /// the file that brings it in, else on the project's element: what brings it in, for which frameworks.</summary>
+    private static IEnumerable<Marker> Exposed(XmlTree tree, IReadOnlyDictionary<string, IReadOnlyList<TransitiveUse>> exposed, VulnerabilityData known)
+    {
+        foreach ((string id, IReadOnlyList<TransitiveUse> uses) in exposed)
+        {
+            foreach (IGrouping<(string By, string Version), TransitiveUse> each in uses.SelectMany(u => u.BroughtBy.Select(by => (By: by, Use: u)))
+                .GroupBy(b => (b.By, b.Use.Version), b => b.Use))
+            {
+                string[] frameworks = [.. each.Select(u => u.Framework).OfType<string>().Distinct(StringComparer.OrdinalIgnoreCase)];
+                string through = $", which {each.Key.By} brings in{(frameworks.Length > 0 ? $" for {Plural.Listed(frameworks)}" : string.Empty)},";
+                if ((BringerOf(tree, each.Key.By) ?? tree.Root?.NameRange) is { } at && Advise(known, id, each.Key.Version, through) is { } advice)
+                {
+                    yield return Marker.Coded(at, MarkerKind.Warning, advice.Code, advice.Message);
+                }
+            }
+        }
+    }
+
+    /// <summary>The include of the file's reference to a package or project that brings others in, by its name; null where
+    /// the file has none (another file's reference brings it in).</summary>
+    private static TextRange? BringerOf(XmlTree tree, string name) =>
+        tree.Elements.FirstOrDefault(e => MSBuildSyntax.RoleOf(e) == MSBuildRole.Item && e.Attribute("Include") is { HasValue: true } include
+            && ((e.LocalName == "PackageReference" && include.Value.Trim().Equals(name, StringComparison.OrdinalIgnoreCase))
+                || (e.LocalName == "ProjectReference" && Path.GetFileNameWithoutExtension(include.Value.Trim().Replace('\\', '/')).Equals(name, StringComparison.OrdinalIgnoreCase))))
+            ?.Attribute("Include")?.ValueRange;
+
+    /// <summary>The vulnerable versions the project gets only through others whose mark holds an offset of the file as it
+    /// stands, by package: those a reference there brings in, or on the project's element those no reference of the file
+    /// brings in; none in a file that is no project, or before its marks were read.</summary>
+    public IReadOnlyList<(string Id, IReadOnlyList<TransitiveUse> Uses)> ExposedAt(int offset)
+    {
+        if (exposed.Count == 0)
+        {
+            return [];
+        }
+        XmlTree tree = Tree;
+        List<(string, IReadOnlyList<TransitiveUse>)> found = [];
+        foreach ((string id, IReadOnlyList<TransitiveUse> uses) in exposed)
+        {
+            TextRange?[] places = [.. uses.SelectMany(u => u.BroughtBy).Distinct(StringComparer.OrdinalIgnoreCase).Select(by => BringerOf(tree, by) ?? tree.Root?.NameRange)];
+            if (places.Any(p => p is { } at && offset >= at.Start && offset <= at.End))
+            {
+                found.Add((id, uses));
+            }
+        }
+        return found;
     }
 
     /// <summary>NuGet's audit words for a package version's gravest known advisory (NU1901 low to NU1904 critical).</summary>
-    private static (string Code, string Message)? Advise(VulnerabilityData known, string id, string version) =>
+    private static (string Code, string Message)? Advise(VulnerabilityData known, string id, string version, string through = "") =>
         known.Of(id, version) is [{ } gravest, ..]
             ? (gravest.Severity switch
             {
@@ -383,7 +448,7 @@ public sealed class MSBuildDocument : IDisposable
                 AdvisorySeverity.Moderate => "NU1902",
                 AdvisorySeverity.High => "NU1903",
                 _ => "NU1904",
-            }, $"Package '{id}' {version} has a known {gravest.Severity.ToString().ToLowerInvariant()} severity vulnerability, {gravest.Address}")
+            }, $"Package '{id}' {version}{through} has a known {gravest.Severity.ToString().ToLowerInvariant()} severity vulnerability, {gravest.Address}")
             : null;
 
     /// <summary>The evaluation's problems in this file placed on its lines, with the advisories, in the text as it stands and
