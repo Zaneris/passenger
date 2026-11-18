@@ -21,10 +21,16 @@ public sealed class TypeSystem
     private readonly IReadOnlyList<string> globalUsings;
 
     /// <summary>The types of the assemblies and C# given; <paramref name="implied"/> are the xmlns definitions a dialect's
-    /// compiler adds to the project's own assembly (<see cref="Dialects.XamlDialect.ImpliedDefinitions"/>).</summary>
+    /// compiler adds to the project's own assembly (<see cref="Dialects.XamlDialect.ImpliedDefinitions"/>), and
+    /// <paramref name="generated"/> what source generators add to the C#'s types, each a part of the type the C# declares.</summary>
     public TypeSystem(IReadOnlyList<AssemblyTypes> assemblies, IReadOnlyList<SourceTypes> sources, string assemblyName, IReadOnlyList<string>? implicitUsings = null,
-        IReadOnlyList<XmlnsDefinition>? implied = null)
+        IReadOnlyList<XmlnsDefinition>? implied = null, IReadOnlyList<GeneratedPart>? generated = null)
     {
+        Dictionary<string, GeneratedPart> made = new(StringComparer.Ordinal);
+        foreach (GeneratedPart part in generated ?? [])
+        {
+            made[part.FullName] = part;
+        }
         AssemblyName = assemblyName;
         Assemblies = assemblies;
         foreach (AssemblyTypes assembly in assemblies)
@@ -42,7 +48,12 @@ public sealed class TypeSystem
         List<string> usings = [.. implicitUsings ?? []];
         foreach (IGrouping<string, ClrType> parts in sources.SelectMany(s => s.Types).GroupBy(t => t.FullName, StringComparer.Ordinal))
         {
-            ClrType type = parts.Count() == 1 ? parts.First() : Merged([.. parts]);
+            List<ClrType> all = [.. parts];
+            if (made.TryGetValue(parts.Key, out GeneratedPart? part))
+            {
+                all.Add(Generated([.. parts], part));
+            }
+            ClrType type = all.Count == 1 ? all[0] : Merged(all);
             this.parts[type.FullName] = [.. parts.Select(p => p.Origin.Place).OfType<SourcePlace>()];
             if (byName.TryGetValue(type.FullName, out ClrType? metadata))
             {
@@ -349,6 +360,21 @@ public sealed class TypeSystem
                 }
             }
         }
+    }
+
+    /// <summary>A part of a type of the project's own C# holding the members generators add to it that its own parts do not
+    /// declare themselves (a toolkit's member read from its field or method, a partial property), placed in no file of its own.</summary>
+    private static ClrType Generated(IReadOnlyList<ClrType> written, GeneratedPart part)
+    {
+        ClrType first = written[0];
+        return new ClrType(first.Namespace, first.MetadataName, first.Kind, first.Origin with { Place = null }, type =>
+        {
+            HashSet<(string, MemberKind, int)> declared = [.. written.SelectMany(p => p.Members).Select(Key)];
+            return ClrTypeDetails.None with { Members = [.. part.Members.Select(m => m.Of(type)).Where(m => !declared.Contains(Key(m)))] };
+        }, first.DeclaringTypeName);
+
+        // A method by its parameters' count too, as overloads are each a member.
+        static (string, MemberKind, int) Key(ClrMember member) => (member.Name, member.Kind, member.Kind == MemberKind.Method ? member.Parameters.Count : 0);
     }
 
     /// <summary>A partial type's parts as one: every part's members and attributes, the base whichever part names it.</summary>

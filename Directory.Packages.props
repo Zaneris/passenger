@@ -15,6 +15,11 @@
     <!-- The MVVM Toolkit at the version Avalonia's MVVM template above writes, downloaded for the tests' package cache, so
          an app of theirs restores with its generators and reaches no feed. -->
     <CommunityToolkitMvvmVersion>8.4.2</CommunityToolkitMvvmVersion>
+    <!-- ReactiveUI and its source generators, whose [Reactive] and [ReactiveCommand] members the XAML tests bind to:
+         restored for the tests' package cache (tests/AvaloniaGraphs), so an app of theirs restores with its generators and
+         reaches no feed. -->
+    <ReactiveUiVersion>27.0.1</ReactiveUiVersion>
+    <ReactiveUiGeneratorsVersion>5.1.0</ReactiveUiGeneratorsVersion>
     <!-- Aspire's templates, AppHost SDK and package, dashboard, orchestrator and CLI at one version, downloaded for the
          tests' local feed. -->
     <AspireTemplatesVersion>13.6.5</AspireTemplatesVersion>
@@ -220,6 +225,8 @@
     <PackageVersion Include="Microsoft.EntityFrameworkCore.Design" Version="$(EfCoreVersion)" />
     <PackageVersion Include="Microsoft.EntityFrameworkCore.Sqlite" Version="$(EfCoreVersion)" />
     <PackageVersion Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="$(NpgsqlEfVersion)" />
+    <PackageVersion Include="ReactiveUI" Version="$(ReactiveUiVersion)" />
+    <PackageVersion Include="ReactiveUI.SourceGenerators" Version="$(ReactiveUiGeneratorsVersion)" />
     <PackageVersion Include="Avalonia.Headless.XUnit" Version="12.1.6" />
     <PackageVersion Include="Microsoft.CodeAnalysis.BannedApiAnalyzers" Version="5.6.0" />
     <!-- The analyzers' (src/Passenger.Analyzers): the last release, MIT where netstandard2.0's 1.1.0 is not. -->

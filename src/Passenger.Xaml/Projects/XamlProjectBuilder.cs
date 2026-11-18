@@ -25,6 +25,10 @@ public sealed class XamlProjectBuilder
     private readonly Action<Exception>? failed;
     private readonly Dictionary<string, SourceTypes> sources = new(StringComparer.Ordinal);
     private readonly Dictionary<string, XamlFileSummary> files = new(StringComparer.Ordinal);
+
+    /// <summary>What the language server's source generators add to the C#'s types, by each type's full name, as last told
+    /// (<see cref="Generated"/>).</summary>
+    private Dictionary<string, GeneratedPart> generated = new(StringComparer.Ordinal);
     private ProjectInputs inputs;
     private List<(ProjectInputs Inputs, List<string> Files)> referenced = [];
     private IReadOnlyList<AssemblyTypes> assemblies = [];
@@ -173,6 +177,40 @@ public sealed class XamlProjectBuilder
         }
     }
 
+    /// <summary>The project file and those of the projects it references, whose C# its XAML reads.</summary>
+    public IReadOnlyList<string> ProjectFiles
+    {
+        get
+        {
+            lock (gate)
+            {
+                return [inputs.ProjectPath, .. referenced.Select(r => r.Inputs.ProjectPath)];
+            }
+        }
+    }
+
+    /// <summary>What the language server's source generators add to the C#'s types, as its compilation has it now: in place
+    /// of all that was known where <paramref name="files"/> is null (the projects' every type asked), else of what was known
+    /// of the types those C# files declare. Null where it says nothing new.</summary>
+    public XamlProject? Generated(IReadOnlyList<GeneratedPart> found, IReadOnlyCollection<string>? files)
+    {
+        lock (gate)
+        {
+            Dictionary<string, GeneratedPart> now = files is null ? new(StringComparer.Ordinal)
+                : new(generated.Where(g => !g.Value.Files.Any(f => files.Contains(f, PathNames.Comparer))), StringComparer.Ordinal);
+            foreach (GeneratedPart part in found)
+            {
+                now[part.FullName] = part;
+            }
+            if (now.Count == generated.Count && now.All(g => generated.TryGetValue(g.Key, out GeneratedPart? known) && known.Signature == g.Value.Signature))
+            {
+                return null;
+            }
+            generated = now;
+            return built = Make();
+        }
+    }
+
     /// <summary>A XAML file's text changed: its summary is made again; a file deleted goes.</summary>
     public XamlProject XamlChanged(string path, string? text, XmlTree? tree = null)
     {
@@ -218,10 +256,11 @@ public sealed class XamlProjectBuilder
     private XamlProject Make()
     {
         IReadOnlyList<XmlnsDefinition> implied = Dialect.ImpliedDefinitions(inputs.AssemblyName);
-        TypeSystem types = new(assemblies, [.. sources.Values], inputs.AssemblyName, inputs.ImplicitUsings, implied);
+        IReadOnlyList<GeneratedPart> made = [.. generated.Values];
+        TypeSystem types = new(assemblies, [.. sources.Values], inputs.AssemblyName, inputs.ImplicitUsings, implied, made);
         if (XamlClasses(types) is { Count: > 0 } declared)
         {
-            types = new TypeSystem(assemblies, [.. sources.Values, .. declared], inputs.AssemblyName, inputs.ImplicitUsings, implied);
+            types = new TypeSystem(assemblies, [.. sources.Values, .. declared], inputs.AssemblyName, inputs.ImplicitUsings, implied, made);
         }
         classes = ClassesSaid();
         return With(types);

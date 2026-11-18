@@ -119,6 +119,13 @@ public sealed class CodeRenameTests
     }
 
     [Fact]
+    public void A_name_another_generator_makes_by_a_rule_of_its_own_renames_neither_its_field_nor_its_method()
+    {
+        Assert.Null(CodeSymbol.NameFor("Save", "SaveCmd", "StoreCmd"));
+        Assert.Null(CodeSymbol.NameFor("_title", "TitleText", "HeadingText"));
+    }
+
+    [Fact]
     public void A_bound_property_renamed_respells_each_binding_of_it_and_nothing_else()
     {
         Assert.Equal(View.Replace("Binding Greeting", "Binding Salutation", StringComparison.Ordinal).Replace("Path=Greeting", "Path=Salutation", StringComparison.Ordinal),

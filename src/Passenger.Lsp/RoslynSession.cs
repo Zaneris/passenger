@@ -404,6 +404,14 @@ public sealed class RoslynSession : IAsyncDisposable, IDocumentHost
             ? (await ExtensionAsync<Roslyn.Extension.GeneratedFound>(Roslyn.Extension.Handlers.GeneratedNamed, new Roslyn.Extension.GeneratedNameAsked(project, file), cancel).ConfigureAwait(false)).Texts
             : null;
 
+    /// <summary>The members source generators add to the types of the projects named by their files and to those the C# files
+    /// named declare (Passenger's extension's <see cref="Roslyn.Extension.GeneratedMembersAsked"/>), as the compilation has them
+    /// now; null when the server has no extension to ask.</summary>
+    public async Task<IReadOnlyList<Roslyn.Extension.GeneratedType>?> GeneratedMembersAsync(IReadOnlyList<string> projects, IReadOnlyList<string> files, CancellationToken cancel = default) =>
+        Server.ExtensionProblem is null
+            ? (await ExtensionAsync<Roslyn.Extension.GeneratedMembersFound>(Roslyn.Extension.Handlers.GeneratedMembers, new Roslyn.Extension.GeneratedMembersAsked(projects, files), cancel).ConfigureAwait(false)).Types
+            : null;
+
     /// <summary>Whether each document the server names is generated code as Roslyn's own check tells it (Passenger's
     /// extension's <see cref="Roslyn.Extension.GeneratedDocumentsAsked"/>), in order; null when the server has no extension
     /// to ask.</summary>

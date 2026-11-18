@@ -1568,7 +1568,7 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
     }
 
     /// <summary>The usages Find Usages lists from the caret, each as its file's name, its line and its code.</summary>
-    private static IReadOnlyList<string> FoundUsages(MainWindow window)
+    internal static IReadOnlyList<string> FoundUsages(MainWindow window)
     {
         int searches = window.Find.Searches.Count;
         Ui.Run(window, AppActions.FindUsages);

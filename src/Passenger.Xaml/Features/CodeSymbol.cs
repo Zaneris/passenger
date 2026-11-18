@@ -129,20 +129,24 @@ public sealed class CodeSymbol
 
     /// <summary>The name a C# symbol named <paramref name="declared"/> takes for a XAML use written <paramref name="written"/>
     /// to read <paramref name="typed"/>: the field or method the MVVM Toolkit makes that property or a command of, where the
-    /// use is one (null where the toolkit makes no such name of any), else the name typed.</summary>
+    /// use is one (null where the toolkit makes no such name of any), else the name typed where the use is the symbol's own
+    /// name in any letter case; null for a member another generator makes of it by a rule of its own.</summary>
     public static string? NameFor(string declared, string written, string typed) =>
         written == declared ? typed
         : written == ToolkitNames.PropertyOf(declared) ? ToolkitNames.FieldFor(declared, typed)
         : ToolkitNames.ReturnsTask(declared, written) is { } task ? ToolkitNames.MethodFor(declared, typed, task)
         : written == ToolkitNames.CancelCommandOf(declared) ? ToolkitNames.MethodForCancel(declared, typed)
-        : typed;
+        : string.Equals(written, declared, StringComparison.OrdinalIgnoreCase) ? typed
+        : null;
 
     /// <summary>Whether a member is declared where the symbol is: the symbol itself, or a member the MVVM Toolkit makes of it.</summary>
     public bool IsDeclaredAs(ClrMember member) => IsDeclared(member.Place);
 
-    /// <summary>Whether the method returns a Task, as the command its type's source makes of it says; null where none says.</summary>
+    /// <summary>Whether the method returns a Task, as the toolkit's command its type's source makes of it says; null where none
+    /// says (another generator's command, of a type of its own).</summary>
     private bool? ReturnsTask(TypeSystem? types) =>
-        types is not null && Owner(types)?.Members.FirstOrDefault(m => m.Kind == MemberKind.Property && IsDeclared(m.Place)) is { } made
+        types is not null && Owner(types)?.Members.FirstOrDefault(m => m.Kind == MemberKind.Property && IsDeclared(m.Place)
+            && (m.Type.Name == ToolkitNames.CommandTypeOf(task: true) || m.Type.Name == ToolkitNames.CommandTypeOf(task: false))) is { } made
             ? made.Type.Name == ToolkitNames.CommandTypeOf(task: true) : null;
 
     /// <summary>The type a member is declared in, its nested types' names joined with '+' as metadata joins them where a

@@ -50,6 +50,7 @@ public static class Handlers
     public const string GodotNameStrings = "Passenger.Roslyn.Extension.GodotNameStrings";
     public const string GodotFix = "Passenger.Roslyn.Extension.GodotFix";
     public const string ToolkitRenames = "Passenger.Roslyn.Extension.ToolkitRenames";
+    public const string GeneratedMembers = "Passenger.Roslyn.Extension.GeneratedMembers";
     public const string MauiExpressionCompletion = "Passenger.Roslyn.Extension.MauiExpressionCompletion";
     public const string MauiExpressionSymbol = "Passenger.Roslyn.Extension.MauiExpressionSymbol";
     public const string MauiXamlChecks = "Passenger.Roslyn.Extension.MauiXamlChecks";
@@ -63,7 +64,7 @@ public static class Handlers
         DescribeSignature, ChangeSignature, DescribeInterface, ExtractInterface, DescribeType, MoveTypeToFile, MoveTypeToNamespace,
         DescribeHierarchy, PullMembersUp, PushMembersDown, DocumentTexts, DocumentsWritten, ReferencesRead, ReferencedFiles, GeneratorsRun, AspireProjectDeclaration, AspireCodeHelp, AspireReferenceFix, AspireRunResources,
         AspireRename, AspireParameters, ConnectionReads, WebRoutes, RouteBody, LocalizedReads, SymbolsNamed, SymbolAt, SymbolContainers, WrittenPlaces,
-        ComponentClass, GeneratedTexts, GeneratedNamed, PartialHalf, GeneratedParts, GeneratedDocuments, JsInteropCalls, GodotCode, GodotNames, GodotPaths, GodotKindStrings, GodotNameStrings, GodotFix, ToolkitRenames,
+        ComponentClass, GeneratedTexts, GeneratedNamed, PartialHalf, GeneratedParts, GeneratedDocuments, JsInteropCalls, GodotCode, GodotNames, GodotPaths, GodotKindStrings, GodotNameStrings, GodotFix, ToolkitRenames, GeneratedMembers,
         MauiExpressionCompletion, MauiExpressionSymbol, MauiXamlChecks, MauiExpressionUses, MauiExpressionHover,
         CompletionCall, StepBindings,
     ];
@@ -894,6 +895,51 @@ public sealed record ToolkitFound(
 {
     public static readonly ToolkitFound None = new([], null);
 }
+
+/// <summary>The members source generators add to the types the solution's own files declare: every such type of the
+/// projects named by their files (<paramref name="Projects"/>), and each a C# file named declares (<paramref name="Files"/>).</summary>
+public sealed record GeneratedMembersAsked(
+    [property: JsonPropertyName("projects")] IReadOnlyList<string> Projects,
+    [property: JsonPropertyName("files")] IReadOnlyList<string> Files);
+
+/// <summary>Each type asked of that generators add members to.</summary>
+public sealed record GeneratedMembersFound([property: JsonPropertyName("types")] IReadOnlyList<GeneratedType> Types);
+
+/// <summary>A type of the solution's own files by its metadata name (a nested one's after its declaring type's and a '+'),
+/// the files of its own that declare it, and the members only generators declare.</summary>
+public sealed record GeneratedType(
+    [property: JsonPropertyName("name")] string Name,
+    [property: JsonPropertyName("files")] IReadOnlyList<string> Files,
+    [property: JsonPropertyName("members")] IReadOnlyList<GeneratedMember> Members);
+
+/// <summary>A member a generator declares, its kind as a documentation id names it (P, F, M or E), reachable from the
+/// project's own code; and where a person goes to it in the type's own files (<paramref name="Path"/>, <paramref name="At"/>):
+/// the field or method of the type marked for the generator that the member's code uses, else the type's own declaration.</summary>
+public sealed record GeneratedMember(
+    [property: JsonPropertyName("name")] string Name,
+    [property: JsonPropertyName("kind")] string Kind,
+    [property: JsonPropertyName("type")] MemberType Type,
+    [property: JsonPropertyName("static")] bool IsStatic,
+    [property: JsonPropertyName("writable")] bool CanWrite,
+    [property: JsonPropertyName("parameters")] IReadOnlyList<MemberType> Parameters,
+    [property: JsonPropertyName("parameterNames")] IReadOnlyList<string> ParameterNames,
+    [property: JsonPropertyName("attributes")] IReadOnlyList<MemberAttribute> Attributes,
+    [property: JsonPropertyName("path")] string Path,
+    [property: JsonPropertyName("at")] Place At);
+
+/// <summary>A type as metadata names it (<c>System.Collections.Generic.List`1</c>), with its generic arguments; an array of
+/// it; or a generic parameter by its name.</summary>
+public sealed record MemberType(
+    [property: JsonPropertyName("name")] string Name,
+    [property: JsonPropertyName("arguments")] IReadOnlyList<MemberType> Arguments,
+    [property: JsonPropertyName("array")] bool IsArray,
+    [property: JsonPropertyName("parameter")] bool IsParameter);
+
+/// <summary>An attribute on a generated member by its class's full name, with its constructor's arguments written as text
+/// (a <c>typeof</c> as the type's full name), null for one that is not a constant.</summary>
+public sealed record MemberAttribute(
+    [property: JsonPropertyName("name")] string Name,
+    [property: JsonPropertyName("arguments")] IReadOnlyList<string?> Arguments);
 
 /// <summary>Where a use of a member the MVVM Toolkit makes is written, and the name it takes.</summary>
 public sealed record ToolkitUse(

@@ -584,7 +584,7 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
             string own = text.GetText(TextNavigation.WordAt(text, offset));
             if (Passenger.Xaml.Features.CodeSymbol.NameFor(own, written, name) is not { } renamed)
             {
-                return RefactorOutcome.Refused($"Rename was not applied: the MVVM Toolkit makes {written} of {own}, and no name of {own}'s makes '{name}'");
+                return RefactorOutcome.Refused($"Rename was not applied: a source generator makes {written} of {own}, and no name of {own}'s is known to make '{name}'");
             }
             return renamed == own ? new RefactorOutcome($"{name} is its name already", null, [], [])
                 : await RenameSymbolAsync(code, offset, renamed, renameFiles, patience);

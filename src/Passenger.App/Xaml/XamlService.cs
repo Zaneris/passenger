@@ -44,6 +44,10 @@ public sealed class XamlService : IDisposable
     private readonly Dictionary<OpenDocument, TypedSource> sources = [];
     private readonly List<SourcesPending> pending = [];
 
+    /// <summary>Each project's last ask of the language server for what its source generators add (<see cref="AskGenerated"/>),
+    /// which its next waits for.</summary>
+    private readonly Dictionary<string, Task> generatedAsked = new(PathNames.Comparer);
+
     /// <summary>The changes of the projects' C# under way off the UI thread (<see cref="UpdateAsync"/>), each one's end awaited by <see cref="CurrentAsync"/>.</summary>
     private Task updating = Task.CompletedTask;
 
@@ -119,13 +123,18 @@ public sealed class XamlService : IDisposable
     }
 
     /// <summary>The C# language server has loaded the projects, first or again: each open file whose check asks it is checked
-    /// again, as one checked while it loaded was answered nothing, and one checked before a restore had no generator to run.</summary>
+    /// again, as one checked while it loaded was answered nothing, and one checked before a restore had no generator to run;
+    /// and each project read is told anew what the generators add to its types (<see cref="AskGenerated"/>).</summary>
     public void ServerLoaded()
     {
         UiThread.Check();
         foreach (XamlDocument document in documents.Values.Where(d => d.AsksServer))
         {
             document.Recheck();
+        }
+        foreach (XamlLoading loading in projects.Values.Where(l => l.Loaded.IsCompletedSuccessfully && l.Loaded.Result is not null).ToList())
+        {
+            AskGenerated(loading, null);
         }
     }
 
@@ -297,6 +306,10 @@ public sealed class XamlService : IDisposable
                 }
                 return made;
             }));
+            if (files.Where(f => f.EndsWith(".cs", StringComparison.OrdinalIgnoreCase)).ToList() is { Count: > 0 } code)
+            {
+                AskGenerated(loading, code);
+            }
         }
     }
 
@@ -403,6 +416,10 @@ public sealed class XamlService : IDisposable
             {
                 IdeErrors.Write($"XAML for {Path.GetFileName(loading.ProjectPath)} read: {project.Types.All.Count()} types, {project.Files.Count} XAML files");
                 ProjectChanged?.Invoke(this, project);
+                if (projects.GetValueOrDefault(loading.ProjectPath) == loading)
+                {
+                    AskGenerated(loading, null);
+                }
             }
         }
         catch (Exception error) when (error is not OperationCanceledException)
@@ -493,7 +510,12 @@ public sealed class XamlService : IDisposable
             held.Holding.SetResult();
             await held.Until;
         }
-        await Task.WhenAll(Reading(path).ToList().Select(loading => UpdateAsync(loading, builder => source.Give(builder, path, text, version))));
+        List<XamlLoading> reading = [.. Reading(path)];
+        await Task.WhenAll(reading.Select(loading => UpdateAsync(loading, builder => source.Give(builder, path, text, version))));
+        foreach (XamlLoading loading in reading)
+        {
+            AskGenerated(loading, [path]);
+        }
     }
 
     /// <summary>Holds the next text of an open C# file, taken as its typing pauses, from the projects that read it until
@@ -514,6 +536,70 @@ public sealed class XamlService : IDisposable
         await TypedNowAsync();
         await updating;
     }
+
+    /// <summary>Asks the language server what its source generators add to a project's types, whichever generator made it
+    /// (<see cref="XamlProjectBuilder.Generated"/>): to all of them (<paramref name="files"/> null), or to those the C# files
+    /// given declare, as they stand in the server now. A project's asks are answered in turn, each after the one before, and
+    /// awaited as its C# changes are (<see cref="CurrentAsync"/>); none while no server has loaded, whose load asks for all
+    /// (<see cref="ServerLoaded"/>).</summary>
+    private void AskGenerated(XamlLoading loading, IReadOnlyList<string>? files)
+    {
+        if (disposed || Server?.Invoke() is not { IsLoaded: true, Server.ExtensionProblem: null } server)
+        {
+            return;
+        }
+        Task asked = GeneratedAsync(generatedAsked.GetValueOrDefault(loading.ProjectPath) ?? Task.CompletedTask, loading, server, files);
+        generatedAsked[loading.ProjectPath] = asked.Ended();
+        updating = updating.IsCompleted ? asked.Ended() : Task.WhenAll(updating, asked.Ended());
+        IdeErrors.Observe(asked);
+    }
+
+    private async Task GeneratedAsync(Task before, XamlLoading loading, Passenger.Lsp.RoslynSession server, IReadOnlyList<string>? files)
+    {
+        using IDisposable held = BackgroundWork.Scope();
+        await before;
+        if (await loading.Loaded is null || await loading.Builder is not { } builder || disposed)
+        {
+            return;
+        }
+        IReadOnlyList<Roslyn.Extension.GeneratedType>? types;
+        try
+        {
+            if (files is null)
+            {
+                // A load's generators run a moment after it, before which the server answers with what they made before.
+                await server.GeneratorsRunAsync();
+            }
+            types = await server.GeneratedMembersAsync(files is null ? builder.ProjectFiles : [], files ?? []);
+        }
+        catch (Passenger.Lsp.LanguageServerFailed)
+        {
+            // A server gone or refusing tells nothing; its next load asks again.
+            return;
+        }
+        if (types is null || disposed)
+        {
+            return;
+        }
+        List<Passenger.Xaml.Metadata.GeneratedPart> parts = [.. types.Select(Part)];
+        await ChangeAsync(loading, b => b.Generated(parts, files));
+    }
+
+    /// <summary>A type's generated members as the language server tells them, as the project's types hold them.</summary>
+    private static Passenger.Xaml.Metadata.GeneratedPart Part(Roslyn.Extension.GeneratedType type) =>
+        new(type.Name, type.Files, [.. type.Members.Select(m => new Passenger.Xaml.Metadata.GeneratedMember(m.Name, m.Kind switch
+        {
+            "P" => Passenger.Xaml.Metadata.MemberKind.Property,
+            "F" => Passenger.Xaml.Metadata.MemberKind.Field,
+            "E" => Passenger.Xaml.Metadata.MemberKind.Event,
+            _ => Passenger.Xaml.Metadata.MemberKind.Method,
+        }, Reference(m.Type), m.IsStatic, m.CanWrite, [.. m.Parameters.Select(Reference)], m.ParameterNames,
+            [.. m.Attributes.Select(a => new Passenger.Xaml.Metadata.ClrAttribute(a.Name, [.. a.Arguments], []))],
+            new Passenger.Xaml.Metadata.SourcePlace(m.Path, m.At.Line, m.At.Character)))]);
+
+    /// <summary>A type as the language server names it, nested no deeper than its answer's JSON was read.</summary>
+    private static Passenger.Xaml.Metadata.TypeRef Reference(Roslyn.Extension.MemberType type) =>
+        new(type.Name, [.. type.Arguments.Select(Reference)], type.IsArray, IsGenericParameter: type.IsParameter);
 
     /// <summary>A change made to a loaded project off the UI thread; its open XAML files read against the result.</summary>
     private Task UpdateAsync(XamlLoading loading, Func<XamlProjectBuilder, XamlProject?> change)
@@ -596,8 +682,8 @@ public sealed class XamlService : IDisposable
 
     /// <summary>The projects given whose XAML has been read, each read first where no open file has had it read and its
     /// folders hold XAML (that may use <paramref name="naming"/>, where given, as no other can:
-    /// reading a project's XAML reads every C# file of it), with the C# typed in that they have yet to read taken in; none
-    /// once the service has ended.</summary>
+    /// reading a project's XAML reads every C# file of it), with the C# typed in that they have yet to read taken in, and
+    /// what the server's generators add as last asked; none once the service has ended.</summary>
     private async Task<IReadOnlyList<XamlProject>> ReadAsync(IEnumerable<string> projectFiles, CodeSymbol? naming = null)
     {
         UiThread.Check();
@@ -646,6 +732,12 @@ public sealed class XamlService : IDisposable
             }
             if (await loading.Loaded is not null)
             {
+                // What the server's generators add, asked for as the load ended, is part of the types the uses are read against.
+                if (!generatedAsked.ContainsKey(loading.ProjectPath))
+                {
+                    AskGenerated(loading, null);
+                }
+                await (generatedAsked.GetValueOrDefault(loading.ProjectPath) ?? Task.CompletedTask);
                 read.Add(builder.Current);
             }
         }

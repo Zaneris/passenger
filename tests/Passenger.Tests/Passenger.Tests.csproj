@@ -50,6 +50,8 @@
     <AssemblyMetadata Include="AvaloniaTemplatesVersion" Value="$(AvaloniaTemplatesVersion)" />
     <AssemblyMetadata Include="AvaloniaOlderVersion" Value="$(AvaloniaOlderVersion)" />
     <AssemblyMetadata Include="CommunityToolkitMvvmVersion" Value="$(CommunityToolkitMvvmVersion)" />
+    <AssemblyMetadata Include="ReactiveUiVersion" Value="$(ReactiveUiVersion)" />
+    <AssemblyMetadata Include="ReactiveUiGeneratorsVersion" Value="$(ReactiveUiGeneratorsVersion)" />
     <AssemblyMetadata Include="AspireTemplatesVersion" Value="$(AspireTemplatesVersion)" />
   </ItemGroup>
 
