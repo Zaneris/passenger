@@ -297,7 +297,10 @@ public sealed class AttachToProcessDialog : IdeWindow
     /// and in its tip).</summary>
     private static Control Row()
     {
-        TextBlock heading = new() { Classes = { StyleClasses.Muted }, FontSize = 11, FontWeight = FontWeight.SemiBold, Margin = new Thickness(Gaps.Tight, Gaps.Small, 0, Gaps.Hair) };
+        TextBlock heading = new()
+        {
+            Classes = { StyleClasses.Muted }, FontSize = 11, FontWeight = FontWeight.SemiBold, Margin = new Thickness(Gaps.Tight, Gaps.Small, 0, Gaps.Hair), TextWrapping = TextWrapping.Wrap,
+        };
         TextBlock name = Cell(0, muted: false);
         TextBlock id = Cell(1, muted: false);
         TextBlock user = Cell(2, muted: true);

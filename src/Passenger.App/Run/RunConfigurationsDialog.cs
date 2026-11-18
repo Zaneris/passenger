@@ -279,7 +279,8 @@ public sealed class RunConfigurationsDialog : IdeWindow
             (builtRows[0] = Row("Target framework", FrameworkBox, fields: ["framework"]), [RunKind.Project, RunKind.Dockerfile, RunKind.SdkContainer]),
             (buildConfigurationRow = Row("Build configuration", BuildConfigurationBox, fields: ["buildConfiguration"]),
                 [RunKind.Project, RunKind.Compose, RunKind.Dockerfile, RunKind.SdkContainer]),
-            (builtRows[1] = Row("Launch profile", new StackPanel { Orientation = Orientation.Horizontal, Spacing = Gaps.Normal, Children = { ProfileBox, SaveAsProfileButton } }), [RunKind.Project]),
+            // Narrower than both, Save as Launch Profile goes under the drop-down rather than past the form's edge.
+            (builtRows[1] = Row("Launch profile", new WrapPanel { ItemSpacing = Gaps.Normal, LineSpacing = Gaps.Small, Children = { ProfileBox, SaveAsProfileButton } }, top: true), [RunKind.Project]),
             (launchRows[0] = Row("Exe path", ProgramBox, fields: ["program"]), [RunKind.Project]),
             (Row("Script", ScriptText, fields: ["script"]), [RunKind.Script]),
             (launchRows[1] = Row("Program arguments", ArgumentsBox, fields: ["arguments"]), [RunKind.Project, RunKind.Script]),

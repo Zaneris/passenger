@@ -192,8 +192,9 @@ public sealed class RunRowView : DockPanel
     private readonly string linkName;
     private readonly RowIcon chevron;
     private readonly Ellipse dot = new() { Width = 8, Height = 8, Margin = new Thickness(0, 0, Gaps.Normal, 0), VerticalAlignment = VerticalAlignment.Center };
-    private readonly StackPanel right = new() { Orientation = Orientation.Horizontal, Spacing = Gaps.Small, VerticalAlignment = VerticalAlignment.Center };
-    private readonly StackPanel links = new() { Orientation = Orientation.Horizontal, Spacing = Gaps.Small, VerticalAlignment = VerticalAlignment.Center };
+    // Where the row is narrower than its parts at its right, they give way from the last, their words ending in an ellipsis.
+    private readonly ShrinkingRow right = new() { Spacing = Gaps.Small, VerticalAlignment = VerticalAlignment.Center, [TextBlock.TextTrimmingProperty] = TextTrimming.CharacterEllipsis };
+    private readonly ShrinkingRow links = new() { Spacing = Gaps.Small, VerticalAlignment = VerticalAlignment.Center };
     private readonly TextBlock trailing = RunRows.Words(string.Empty, muted: true, dock: null);
     private readonly TextBlock name = RunRows.Words(string.Empty, muted: false, dock: Dock.Left);
     private readonly TextBlock detail = RunRows.Words(string.Empty, muted: true, dock: null);

@@ -302,10 +302,11 @@ public sealed class CommitView : DockPanel, IOwnKeys
         commit.Click += (_, _) => IdeErrors.Observe(CommitAsync(push: false));
         commitAndPush = new Button { Content = "Commit and Push…" };
         commitAndPush.Click += (_, _) => IdeErrors.Observe(CommitAsync(push: true));
-        StackPanel buttons = new()
+        // Narrower than both, Commit and Push… goes under Commit rather than being cut at the window's edge.
+        WrapPanel buttons = new()
         {
-            Orientation = Orientation.Horizontal,
-            Spacing = Gaps.Normal,
+            ItemSpacing = Gaps.Normal,
+            LineSpacing = Gaps.Normal,
             Margin = new Thickness(ListRow.TextStart, 0, ListRow.TextStart, ListRow.TextStart),
             Children = { commit, commitAndPush },
         };
