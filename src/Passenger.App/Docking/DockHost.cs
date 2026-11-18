@@ -88,9 +88,9 @@ public sealed class DockHost : Grid
         rightStripe = new Stripe(this, ToolAnchor.RightTop, ToolAnchor.RightBottom, ToolAnchor.BottomRight);
         Place(leftStripe, 0, 0, rowSpan: 4);
         Place(rightStripe, 0, 6, rowSpan: 4);
-        leftEdge = new EdgeTabs(this, ToolAnchor.LeftTop, ToolAnchor.LeftBottom, down: true);
-        rightEdge = new EdgeTabs(this, ToolAnchor.RightTop, ToolAnchor.RightBottom, down: true);
-        bottomEdge = new EdgeTabs(this, ToolAnchor.BottomLeft, ToolAnchor.BottomRight, down: false);
+        leftEdge = new EdgeTabs(this, ToolAnchor.LeftTop, ToolAnchor.LeftBottom, down: true, "Hidden tool windows, left edge");
+        rightEdge = new EdgeTabs(this, ToolAnchor.RightTop, ToolAnchor.RightBottom, down: true, "Hidden tool windows, right edge");
+        bottomEdge = new EdgeTabs(this, ToolAnchor.BottomLeft, ToolAnchor.BottomRight, down: false, "Hidden tool windows, bottom edge");
         Place(leftEdge, 0, 0, rowSpan: 4);
         Place(rightEdge, 0, 6, rowSpan: 4);
         Place(bottomEdge, 3, 1, columnSpan: 5);
@@ -136,6 +136,7 @@ public sealed class DockHost : Grid
         rightArea.Children.Add(new HairlineDivider(GridResizeDirection.Rows) { [Grid.RowProperty] = 1 });
         bottomArea.Children.Add(new HairlineDivider(GridResizeDirection.Columns) { [Grid.ColumnProperty] = 1 });
         peekPane = new ToolPane(this) { Peeking = true };
+        peekPane.LeastChanged += (_, _) => Fit();
         peekFrame.Child = peekPane;
         Place(peekFrame, 0, 1, rowSpan: 3, columnSpan: 5);
         drag = new(this, leftStripe, rightStripe, leftEdge, rightEdge);
@@ -164,10 +165,10 @@ public sealed class DockHost : Grid
         {
             host = window;
             host.Closed += (_, _) => CloseFloats();
-            // The keys gone anywhere in the IDE's window but the window over the editors put it away.
+            // The keys gone anywhere in the IDE's window but the window over the editors and the edges' tabs put it away.
             host.AddHandler(GotFocusEvent, (_, e) =>
             {
-                if (peeked is not null && e.Source is Visual focused && !Within(focused, peekFrame))
+                if (peeked is not null && e.Source is Visual focused && !Within(focused, peekFrame, leftEdge, rightEdge, bottomEdge))
                 {
                     Hide(peeked.Id);
                 }
@@ -480,7 +481,7 @@ public sealed class DockHost : Grid
         if (peeked == window)
         {
             // Shown in its place, a window over the editors docks there.
-            peeked = null;
+            PeekAt(null);
         }
         if (window.Mode == ToolMode.Docked)
         {
@@ -520,10 +521,10 @@ public sealed class DockHost : Grid
 
     /// <summary>Shows a window as the person asks for it (its keys, View | Tool Windows, Find Action): under titled tabs, a
     /// docked one whose place stands hidden opens over the editors (<see cref="Peek"/>), its place left hidden; else in its
-    /// place, as <see cref="Show"/> does.</summary>
+    /// place, as <see cref="Show"/> does. For an attached agent's call, it is shown behind, never over the editors.</summary>
     public void Bring([IdentifierOf(typeof(ToolWindowIds))] string id)
     {
-        if (PeeksAt(this[id]))
+        if (PeeksAt(this[id]) && !AgentAsks.Beside)
         {
             Peek(id);
         }
@@ -540,27 +541,28 @@ public sealed class DockHost : Grid
     /// <summary>Opens a window whose place stands hidden over the editors beside its edge, as large as its area, until the
     /// keys or a press go elsewhere in the IDE's window, Escape or Hide puts it away, or its edge tab is clicked again; its
     /// place stays hidden, and a click on its header's Dock, or any show in its place, docks it there. Where it would not
-    /// (<see cref="PeeksAt"/>), it is shown as <see cref="Show"/> shows it.</summary>
+    /// (<see cref="PeeksAt"/>), or for an attached agent's call, which never takes the person's keys, it is shown as
+    /// <see cref="Show"/> shows it; for an agent's input into the window, it comes without the keys.</summary>
     public void Peek([IdentifierOf(typeof(ToolWindowIds))] string id)
     {
         ToolWindow window = this[id];
-        if (!PeeksAt(window))
+        if (!PeeksAt(window) || AgentAsks.Beside)
         {
             Show(id);
             return;
         }
         hiddenAll = null;
         window.IsClosed = false;
-        foreach (ToolWindow other in windows.Where(w => w.Anchor == window.Anchor && w != window && w.Mode == ToolMode.Docked))
+        foreach (ToolWindow other in windows.Where(w => (w.Anchor == window.Anchor && w.Mode == ToolMode.Docked) || w == peeked).Where(w => w != window))
         {
             other.IsShown = false;
         }
-        peeked = window;
         window.IsShown = true;
+        PeekAt(window);
         Active = window;
         Layout();
         LayoutChanged?.Invoke(this, EventArgs.Empty);
-        if (!AgentAsks.Beside)
+        if (!AgentAsks.Inputting)
         {
             UpdateLayout();
             window.TakeKeys();
@@ -569,6 +571,37 @@ public sealed class DockHost : Grid
 
     /// <summary>The window open over the editors, if one is.</summary>
     public ToolWindow? Peeked => peeked;
+
+    /// <summary>A window opened over the editors (true), or put away from there, hidden or docked (false): for the window to
+    /// tell a screen reader.</summary>
+    public event EventHandler<(ToolWindow Window, bool Over)>? PeekChanged;
+
+    private void PeekAt(ToolWindow? window)
+    {
+        if (peeked == window)
+        {
+            return;
+        }
+        ToolWindow? was = peeked;
+        peeked = window;
+        if (was is not null)
+        {
+            PeekChanged?.Invoke(this, (was, false));
+        }
+        if (window is not null)
+        {
+            PeekChanged?.Invoke(this, (window, true));
+        }
+    }
+
+    /// <summary>The edge whose tabs name the hidden windows of a side (a left or right place's) or of the foot (a bottom
+    /// place's), while it shows; null while it has none, or the stripes name the windows.</summary>
+    internal EdgeTabs? EdgeOf(ToolAnchor place) => place switch
+    {
+        ToolAnchor.LeftTop or ToolAnchor.LeftBottom => leftEdge,
+        ToolAnchor.RightTop or ToolAnchor.RightBottom => rightEdge,
+        _ => bottomEdge,
+    } is { IsVisible: true } edge ? edge : null;
 
     /// <summary>An edge tab clicked: a docked window opens over the editors, or is put away where it is open there; one
     /// floating, windowed or among the editors opens where it stands.</summary>
@@ -917,7 +950,7 @@ public sealed class DockHost : Grid
         }
         Restore();
         hiddenAll = null;
-        peeked = null;
+        PeekAt(null);
         others = layout.Windows.Where(w => Find(w.Key) is null).ToDictionary();
         foreach (ToolWindow window in windows)
         {
@@ -985,7 +1018,7 @@ public sealed class DockHost : Grid
     {
         if (peeked is { } over && !(titledTabs && over is { IsShown: true, IsClosed: false, Mode: ToolMode.Docked }))
         {
-            peeked = null;
+            PeekAt(null);
         }
         foreach ((ToolAnchor anchor, ToolPane pane) in panes)
         {
@@ -1094,7 +1127,8 @@ public sealed class DockHost : Grid
     }
 
     /// <summary>The window over the editors beside its edge, as wide (or, from the foot, as high) as its area is kept,
-    /// though never over more than the editors' share leaves, its edge toward the editors drawn.</summary>
+    /// though never over more than the editors' share leaves nor narrower than its header at its least, its edge toward the
+    /// editors drawn.</summary>
     private void PlacePeek(double across, double down)
     {
         peekFrame.IsVisible = peeked is not null;
@@ -1103,10 +1137,11 @@ public sealed class DockHost : Grid
             return;
         }
         double most = 1 - EditorShare;
+        double least = peekPane.LeastWidth;
         (HorizontalAlignment h, VerticalAlignment v, double width, double height, Thickness edge) = window.Anchor switch
         {
-            ToolAnchor.LeftTop or ToolAnchor.LeftBottom => (HorizontalAlignment.Left, VerticalAlignment.Stretch, Math.Min(leftWidth, across * most), double.NaN, new Thickness(0, 0, 1, 0)),
-            ToolAnchor.RightTop or ToolAnchor.RightBottom => (HorizontalAlignment.Right, VerticalAlignment.Stretch, Math.Min(rightWidth, across * most), double.NaN, new Thickness(1, 0, 0, 0)),
+            ToolAnchor.LeftTop or ToolAnchor.LeftBottom => (HorizontalAlignment.Left, VerticalAlignment.Stretch, Math.Max(least, Math.Min(leftWidth, across * most)), double.NaN, new Thickness(0, 0, 1, 0)),
+            ToolAnchor.RightTop or ToolAnchor.RightBottom => (HorizontalAlignment.Right, VerticalAlignment.Stretch, Math.Max(least, Math.Min(rightWidth, across * most)), double.NaN, new Thickness(1, 0, 0, 0)),
             _ => (HorizontalAlignment.Stretch, VerticalAlignment.Bottom, double.NaN, Math.Min(bottomHeight, down * most), new Thickness(0, 1, 0, 0)),
         };
         peekFrame.HorizontalAlignment = h;

@@ -1,5 +1,6 @@
 using Avalonia;
 using Avalonia.Automation;
+using Avalonia.Automation.Peers;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Layout;
@@ -12,7 +13,8 @@ namespace Passenger.App.Docking;
 /// hidden is a tab of its name: a click opens a docked one over the editors beside the edge (<see cref="DockHost.Peek"/>)
 /// and closes it again, opens one that floats or stands among the editors there, and a drag moves it as its titled tab's
 /// does. A side's tabs run down it, the upper place's before the lower's; the foot's run across, the left place's from its
-/// start and the right's to its end.</summary>
+/// start and the right's to its end. Each takes the keys as a tab of the window's regions, Enter or Space opening it, and
+/// is a button of its name to a screen reader, as a stripe icon is.</summary>
 internal sealed class EdgeTabs : Border
 {
     /// <summary>How broad an edge with tabs stands.</summary>
@@ -26,15 +28,17 @@ internal sealed class EdgeTabs : Border
     private readonly StackPanel secondTabs;
     private readonly Dictionary<ToolWindow, Border> tabs = [];
 
-    public EdgeTabs(DockHost host, ToolAnchor first, ToolAnchor second, bool down)
+    public EdgeTabs(DockHost host, ToolAnchor first, ToolAnchor second, bool down, string said)
     {
         this.host = host;
+        Said = said;
         this.first = first;
         this.second = second;
         this.down = down;
         Orientation orientation = down ? Orientation.Vertical : Orientation.Horizontal;
-        firstTabs = new StackPanel { Orientation = orientation };
-        secondTabs = new StackPanel { Orientation = orientation };
+        // Down a side, tabs as narrow as a stripe's buttons stand apart as those do.
+        firstTabs = new StackPanel { Orientation = orientation, Spacing = down ? 4 : 0 };
+        secondTabs = new StackPanel { Orientation = orientation, Spacing = down ? 4 : 0 };
         Panel groups = down
             ? new StackPanel { Spacing = 12, Children = { firstTabs, secondTabs } }
             : new DockPanel { Children = { new Panel { [DockPanel.DockProperty] = Dock.Right, Children = { secondTabs } }, firstTabs } };
@@ -46,6 +50,12 @@ internal sealed class EdgeTabs : Border
 
     /// <summary>Styled as a Border of its own class (Shell.axaml's edgeTabs), its look the theme's.</summary>
     protected override Type StyleKeyOverride => typeof(Border);
+
+    /// <summary>What the edge is told as, entered as one of the window's regions.</summary>
+    public string Said { get; }
+
+    /// <summary>Gives the keys, as by Tab, to the edge's first tab; false with none.</summary>
+    public bool TakeKeys() => firstTabs.Children.Concat(secondTabs.Children).FirstOrDefault() is { } tab && tab.Focus(NavigationMethod.Tab);
 
     /// <summary>Whether any window has a tab here.</summary>
     public bool HasTabs => firstTabs.Children.Count + secondTabs.Children.Count > 0;
@@ -98,9 +108,18 @@ internal sealed class EdgeTabs : Border
         Control content = down
             ? new StackPanel { Spacing = 6, HorizontalAlignment = HorizontalAlignment.Center, Children = { icon, new LayoutTransformControl { LayoutTransform = new RotateTransform(90), Child = name } } }
             : new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, VerticalAlignment = VerticalAlignment.Center, Children = { icon, name } };
-        Border tab = new() { Classes = { StyleClasses.Tab }, Tag = window.Id };
+        Border tab = new() { Classes = { StyleClasses.Tab }, Tag = window.Id, Focusable = true };
         ChosenMark.Hold(tab, content);
         AutomationProperties.SetName(tab, window.Title);
+        AutomationProperties.SetControlTypeOverride(tab, AutomationControlType.Button);
+        tab.KeyDown += (_, e) =>
+        {
+            if (e.Key is Key.Enter or Key.Space && e.KeyModifiers == KeyModifiers.None)
+            {
+                host.EdgeTabClicked(window);
+                e.Handled = true;
+            }
+        };
         // Tool windows live as long as the dock, as their tabs do.
         window.PropertyChanged += (_, e) =>
         {

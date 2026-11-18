@@ -385,6 +385,54 @@ public sealed class AccessibilityTests : IDisposable
         && layer.Children.OfType<FocusRing>().Any(r => r.IsVisible && AdornerLayer.GetAdornedElement(r) == focused);
 
     [AvaloniaFact]
+    public void Under_titled_tabs_an_edge_of_hidden_tool_windows_is_a_region_of_tabs_named_as_buttons_Tab_goes_along_and_Enter_opens_over_the_editors_saying_so()
+    {
+        File.WriteAllText(Path.Combine(folder, "Notes.txt"), "one\ntwo\n");
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        try
+        {
+            window.ApplySettings(window.Settings with { ToolWindowLook = ToolWindowLook.TitledTabs });
+            window.OpenFile("Notes.txt");
+            Ui.Settle();
+            DockHost dock = window.DockHost;
+            string[] edge = [.. dock.Windows.Where(w => w.Anchor is ToolAnchor.LeftTop or ToolAnchor.LeftBottom && !w.IsShown && !w.IsClosed && w.Mode == ToolMode.Docked
+                && !(w.Anchor == dock[ToolWindowIds.Explorer].Anchor && dock.IsShown(ToolWindowIds.Explorer))).OrderBy(w => w.Anchor).ThenBy(w => w.Order).Select(w => w.Id)];
+            Assert.True(edge.Length >= 2, $"The left edge names {string.Join(", ", edge)}, too few to Tab between");
+            List<(string Words, AutomationLiveSetting Live)> heard = Listen(window);
+            window.EditorArea.CodeEditor.Focus();
+            Ui.Settle();
+            string previous = OperatingSystem.IsMacOS() ? "control meta shift BACK_QUOTE" : "control alt shift BACK_QUOTE";
+            Ui.Press(window, previous);
+            Ui.Press(window, previous);
+            Ui.Settle();
+            Control first = window.FocusManager?.GetFocusedElement() as Control ?? throw new Xunit.Sdk.XunitException("Previous Region twice from the editor left the keys on nothing");
+            Assert.True(Equals(first.Tag, edge[0]) && Ringed(first) && heard.Any(h => h.Words == "Hidden tool windows, left edge"),
+                $"Previous Region twice from the editor came to {first.GetType().Name} {first.Tag}, ringed {Ringed(first)}, heard as {Said(heard)}, not to {edge[0]}'s tab on the left edge");
+            AutomationPeer peer = ControlAutomationPeer.CreatePeerForElement(first);
+            Assert.True(peer.GetName() == dock[edge[0]].Title && peer.GetAutomationControlType() == AutomationControlType.Button,
+                $"{edge[0]}'s edge tab is heard as \"{peer.GetName()}\", a {peer.GetAutomationControlType()}, not as a button of its name");
+
+            Ui.Press(window, "TAB");
+            Control second = window.FocusManager?.GetFocusedElement() as Control ?? first;
+            Assert.True(Equals(second.Tag, edge[1]), $"Tab from {edge[0]}'s edge tab went to {second.GetType().Name} {second.Tag}, not to {edge[1]}'s");
+
+            heard.Clear();
+            Ui.Press(window, "ENTER");
+            Assert.True(dock.Peeked == dock[edge[1]] && dock[edge[1]].Content.IsKeyboardFocusWithin && heard.Any(h => h.Words == $"{dock[edge[1]].Title}, tool window over the editors"),
+                $"Enter on {edge[1]}'s edge tab opened {dock.Peeked?.Id} over the editors, its keys {(dock[edge[1]].Content.IsKeyboardFocusWithin ? "in it" : "elsewhere")}, heard as {Said(heard)}");
+            heard.Clear();
+            Ui.Press(window, "ESCAPE");
+            Assert.True(dock.Peeked is null && window.EditorArea.CodeEditor.IsKeyboardFocusWithin && heard.Any(h => h.Words == $"{dock[edge[1]].Title} hidden"),
+                $"Escape left {dock.Peeked?.Id} over the editors, or the keys out of the editor, heard as {Said(heard)}");
+        }
+        finally
+        {
+            window.ApplySettings(new AppSettings());
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact]
     public void A_settings_field_is_named_by_its_label_and_the_project_button_by_the_project()
     {
         MainWindow window = Ui.OpenFolder(folder, languageServer: false);

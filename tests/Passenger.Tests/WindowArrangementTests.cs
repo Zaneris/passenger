@@ -445,6 +445,11 @@ public sealed class WindowArrangementTests : IDisposable
                 && strip.Classes.Contains(StyleClasses.ToolTabStrip) && strip.GetVisualDescendants().OfType<Border>().Any(t => Equals(t.Tag, ToolWindowIds.Build)));
             string[] gone = [.. FootTabs(window).Where(t => dock[(string)t.Tag!].Anchor == ToolAnchor.BottomLeft && Seen(t) is null).Select(t => dock[(string)t.Tag!].Title)];
             Assert.True(gone.Length > 0 && Seen(more) is not null, $"At 900 wide the bottom's tabs all fit, or no button lists those gone ({string.Join(", ", gone)})");
+            Avalonia.Automation.Peers.AutomationPeer morePeer = Avalonia.Automation.Peers.ControlAutomationPeer.CreatePeerForElement(more);
+            Avalonia.Automation.Peers.AutomationPeer tabPeer = Avalonia.Automation.Peers.ControlAutomationPeer.CreatePeerForElement(FootTab(window, ToolWindowIds.Build)!);
+            Assert.True(more.Focusable && morePeer.GetName() == "Hidden Tool Windows" && tabPeer.GetName() == "Build"
+                && tabPeer.GetAutomationControlType() == Avalonia.Automation.Peers.AutomationControlType.Button && FootTab(window, ToolWindowIds.Build)!.Focusable,
+                $"The strip's last button takes the keys {more.Focusable}, heard as \"{morePeer.GetName()}\"; Build's tab heard as \"{tabPeer.GetName()}\", a {tabPeer.GetAutomationControlType()}");
             Ui.Click(more);
             string[] listed = [.. (dock.HiddenTabsMenu?.Items.OfType<MenuItem>() ?? []).Select(i => i.Header as string ?? "")];
             Assert.True(listed.SequenceEqual(gone), $"The strip's last button lists {string.Join(", ", listed)}, where {string.Join(", ", gone)} have no room");
@@ -491,10 +496,38 @@ public sealed class WindowArrangementTests : IDisposable
                 "A click in the editor left Run over it, or took its edge tab away");
 
             Ui.Click(EdgeTab(window, ToolWindowIds.Run)!);
+            Ui.Click(dock.GetVisualDescendants().OfType<Button>().Single(b => ToolTip.GetTip(b) is "Options" && b.IsEffectivelyVisible && b.GetVisualAncestors().OfType<Border>().Any(a => a.Classes.Contains(StyleClasses.ToolPeek))));
+            string[] options = [.. (dock.OpenOptions?.Items.OfType<MenuItem>() ?? []).Select(i => i.Header as string ?? "")];
+            dock.OpenOptions?.Hide();
+            Assert.True(options.Contains("Dock") && dock.Peeked == dock[ToolWindowIds.Run], $"Run's Options over the editors offer {string.Join(", ", options)}, no Dock, or put it away");
             Ui.Click(window.DockHost.GetVisualDescendants().OfType<Button>().Single(b => ToolTip.GetTip(b) is "Dock" && b.IsEffectivelyVisible));
             Assert.True(dock.Peeked is null && dock.IsShown(ToolWindowIds.Run) && FootTab(window, ToolWindowIds.Run) is not null && EdgeTab(window, ToolWindowIds.Run) is null
                 && Placed(window, window.EditorArea).Height < editors,
                 $"Run's Dock left it over the editors {dock.Peeked?.Id}, shown {dock.IsShown(ToolWindowIds.Run)}, the editors {Placed(window, window.EditorArea).Height} high");
+        }
+        finally
+        {
+            window.ApplySettings(new AppSettings());
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact]
+    public void An_agents_call_for_a_window_whose_place_is_hidden_docks_it_behind_never_over_the_editors_with_the_persons_keys()
+    {
+        MainWindow window = Open();
+        try
+        {
+            window.ApplySettings(window.Settings with { ToolWindowLook = ToolWindowLook.TitledTabs });
+            window.EditorArea.CodeEditor.Focus();
+            Ui.Settle();
+            DockHost dock = window.DockHost;
+            Assert.True(!dock.IsShown(ToolWindowIds.Bookmarks) && EdgeTab(window, ToolWindowIds.Bookmarks) is not null, "Bookmarks is not hidden along the edge to begin with");
+            Assert.Null(window.Actions.RunForAgent(AppActions.ShowBookmarks));
+            Ui.Settle();
+            Assert.True(dock.Peeked is null && dock.IsShown(ToolWindowIds.Bookmarks) && Header(window, "Bookmarks") is not null && window.EditorArea.CodeEditor.IsKeyboardFocusWithin,
+                $"An agent's call for Bookmarks left it over the editors {dock.Peeked?.Id}, shown in its place {Header(window, "Bookmarks") is not null}, "
+                + $"the person's keys {(window.EditorArea.CodeEditor.IsKeyboardFocusWithin ? "in the editor" : "taken")}");
         }
         finally
         {

@@ -163,6 +163,8 @@ internal sealed class ToolPane : DockPanel
         header.PointerReleased += (_, e) => host.Drag.End(e);
         Children.Add(header);
         hiddenTabs = ToolButtons.Of(IconKeys.ChevronDown, "Hidden Tool Windows", ShowHiddenTabs);
+        // Unlike a toolbar's button, it takes the keys: it lists windows to go to, as the tabs beside it do.
+        hiddenTabs.Focusable = true;
         hiddenTabs.VerticalAlignment = VerticalAlignment.Center;
         hiddenTabs.Margin = new Thickness(0, 0, 6, 0);
         tabRow = new FittingTabs(hiddenTabs);
@@ -233,7 +235,7 @@ internal sealed class ToolPane : DockPanel
     }
 
     /// <summary>Whether it stands over the editors beside its edge (<see cref="DockHost.Peek"/>): its header then offers
-    /// Dock, as a double click on it does, which puts the window in its place.</summary>
+    /// Dock, as its Options menu and a double click on it do, which puts the window in its place.</summary>
     public bool Peeking
     {
         get => dock.IsVisible;
@@ -287,7 +289,8 @@ internal sealed class ToolPane : DockPanel
     }
 
     /// <summary>Titled tabs along its foot for the windows docked in its place, in their order, the one shown joined to it;
-    /// none while fewer than two dock there. A tab opens its window as a click on its stripe icon does, and drags it.</summary>
+    /// none while fewer than two dock there. A tab opens its window as a click on its stripe icon does, and drags it; each
+    /// takes the keys by Tab, Enter or Space opening its window, and is a button of its name to a screen reader.</summary>
     public void ShowTabs(IReadOnlyList<ToolWindow> docked)
     {
         bool shown = docked.Count > 1;
@@ -332,9 +335,18 @@ internal sealed class ToolPane : DockPanel
         }
         RowIcon icon = new() { Width = 14, Height = 14, DataKey = window.Icon };
         TextBlock name = new() { Classes = { StyleClasses.TabName }, Text = window.Title, VerticalAlignment = VerticalAlignment.Center };
-        Border tab = new() { Classes = { StyleClasses.Tab }, Tag = window.Id };
+        Border tab = new() { Classes = { StyleClasses.Tab }, Tag = window.Id, Focusable = true };
         ChosenMark.Hold(tab, new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, VerticalAlignment = VerticalAlignment.Center, Children = { icon, name } });
         Avalonia.Automation.AutomationProperties.SetName(tab, window.Title);
+        Avalonia.Automation.AutomationProperties.SetControlTypeOverride(tab, Avalonia.Automation.Peers.AutomationControlType.Button);
+        tab.KeyDown += (_, e) =>
+        {
+            if (e.Key is Key.Enter or Key.Space && e.KeyModifiers == KeyModifiers.None)
+            {
+                host.Show(window.Id);
+                e.Handled = true;
+            }
+        };
         // Tool windows live as long as the dock, as their tabs do.
         window.PropertyChanged += (_, e) =>
         {
@@ -430,6 +442,18 @@ internal sealed class ToolPane : DockPanel
         menu.Items.Add(move);
         menu.Items.Add(maximize);
         menu.Items.Add(new Separator());
+        if (Peeking)
+        {
+            MenuItem docking = new() { Header = "Dock" };
+            docking.Click += (_, _) =>
+            {
+                if (Window is { } window)
+                {
+                    host.Show(window.Id);
+                }
+            };
+            menu.Items.Add(docking);
+        }
         menu.Items.Add(hide);
         if (Closes)
         {

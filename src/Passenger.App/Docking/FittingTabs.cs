@@ -1,12 +1,13 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Input;
 
 namespace Passenger.App.Docking;
 
 /// <summary>A place's titled tabs in a row that shows each tab whole or not at all: all of them where they fit, else the
 /// open one (<see cref="Kept"/>) and the others in their order while they fit beside it, the rest gone and listed by the
 /// button the row ends with (<see cref="More"/>), shown only while some are gone. A tab gone is laid out past the row's
-/// end, which clips it, so it is neither seen nor pressed.</summary>
+/// end, which clips it, so it is neither seen nor pressed, and Tab passes it over.</summary>
 internal sealed class FittingTabs : Panel
 {
     private readonly HashSet<Control> gone = [];
@@ -91,6 +92,7 @@ internal sealed class FittingTabs : Panel
         double x = 0;
         foreach (Control tab in Tabs)
         {
+            KeyboardNavigation.SetIsTabStop(tab, !gone.Contains(tab));
             if (gone.Contains(tab))
             {
                 tab.Arrange(new Rect(finalSize.Width, 0, tab.DesiredSize.Width, finalSize.Height));
@@ -99,6 +101,7 @@ internal sealed class FittingTabs : Panel
             tab.Arrange(new Rect(x, 0, tab.DesiredSize.Width, finalSize.Height));
             x += tab.DesiredSize.Width;
         }
+        KeyboardNavigation.SetIsTabStop(More, gone.Count > 0);
         More.Arrange(gone.Count > 0 ? new Rect(finalSize.Width - More.DesiredSize.Width, 0, More.DesiredSize.Width, finalSize.Height)
             : new Rect(finalSize.Width, 0, More.DesiredSize.Width, finalSize.Height));
         return finalSize;
