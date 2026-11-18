@@ -637,24 +637,26 @@ public partial class MainWindow
     }
 
     /// <summary>Lets go of what is about to go or move until disposed: the design-time builds of the projects under it are
-    /// held off, done once those running have ended or <see cref="BuildsGoing"/> has passed, saying <paramref name="waiting"/>
-    /// meanwhile, and nothing under it is watched for the C# language server. A build still writing a project's obj/ would
-    /// make its folder again where it was; on Windows a folder the build works in, or with one inside it watched, won't move.</summary>
+    /// held off, and nothing under it is watched or read for the C# language server, done once the builds running and the
+    /// watchers' reads there have ended or <see cref="BuildsGoing"/> has passed, saying <paramref name="waiting"/> meanwhile.
+    /// A build still writing a project's obj/ would make its folder again where it was; on Windows a folder the build works
+    /// in, or with a folder inside it watched or a file or folder inside it open, won't move.</summary>
     private async Task<IDisposable> LetGoAsync(IReadOnlyList<string> paths, string waiting)
     {
         (IDisposable held, Task built) = session.DesignTimeBuilds.HoldOff(paths);
-        IDisposable? unwatched = session.CSharp?.LetGoOf(paths);
-        if (!built.IsCompleted)
+        (IDisposable? unwatched, Task unread) = session.CSharp is { } csharp ? csharp.LetGoOf(paths) : (null, Task.CompletedTask);
+        Task going = Task.WhenAll(built, unread.Ended());
+        if (!going.IsCompleted)
         {
             status.Text = waiting;
             try
             {
-                await built.WaitAsync(BuildsGoing);
+                await going.WaitAsync(BuildsGoing);
             }
             catch (TimeoutException)
             {
                 // Gone or moved anyway: what the build writes after makes only build output there again.
-                IdeErrors.Write($"Waited {Durations.Said(BuildsGoing)} for the design-time builds in {string.Join(", ", paths)} to end, and went on without them");
+                IdeErrors.Write($"Waited {Durations.Said(BuildsGoing)} for the design-time builds in {string.Join(", ", paths)}, and the watchers stopped there, to end, and went on without them");
             }
         }
         return new LetGo(held, unwatched);

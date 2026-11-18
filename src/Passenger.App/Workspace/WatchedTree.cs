@@ -183,6 +183,20 @@ public abstract class WatchedTree : IDisposable
         WatchLag.Behind += OnBehind;
     }
 
+    /// <summary>Once disposed, done when what it had queued has run: a walk under way stops at the next folder and nothing
+    /// is queued after, so nothing of it reads its folders from then on, which Windows would refuse a move or delete of
+    /// one above them for.</summary>
+    public Task Stopped
+    {
+        get
+        {
+            lock (gate)
+            {
+                return following;
+            }
+        }
+    }
+
     public virtual void Dispose()
     {
         WatchLag.Behind -= OnBehind;
@@ -494,11 +508,16 @@ public abstract class WatchedTree : IDisposable
 
     /// <summary>Changes which folders are watched off the thread that saw why, after those already asked for, held as
     /// background work until it is done, since a file made in a folder only watched from then on shows only then; behind
-    /// a walk apart, held only once it runs. A change that fails is reported as it fails, and those after it still run.</summary>
-    private void Follow(Action change)
+    /// a walk apart, held only once it runs. A change that fails is reported as it fails, and those after it still run.
+    /// False, nothing queued, once the watcher is disposed.</summary>
+    private bool Follow(Action change)
     {
         lock (gate)
         {
+            if (disposed)
+            {
+                return false;
+            }
             bool behind = walksApart > 0;
             IDisposable? held = behind ? null : BackgroundWork.Scope();
             following = following.ContinueWith(_ =>
@@ -516,6 +535,7 @@ public abstract class WatchedTree : IDisposable
             }, TaskScheduler.Default);
             IdeErrors.Observe(following);
         }
+        return true;
     }
 
     /// <summary>Makes the record anew in turn as <see cref="Follow"/> does, once <paramref name="after"/> ends (a test's
@@ -525,6 +545,10 @@ public abstract class WatchedTree : IDisposable
         bool apart = WalksApart;
         lock (gate)
         {
+            if (disposed)
+            {
+                return;
+            }
             IDisposable? held = apart ? null : BackgroundWork.Scope();
             walksApart += apart ? 1 : 0;
             Task before = after is null ? following : following.ContinueWith(_ => after.Ended(), TaskScheduler.Default).Unwrap();
@@ -612,7 +636,7 @@ public abstract class WatchedTree : IDisposable
     /// it is taken as its parent's listing found it, a folder and no link.</summary>
     private void WatchFrom(string top, Action<string>? found = null, (DateTime From, List<string> Files)? written = null)
     {
-        if (!Directory.Exists(top) || new DirectoryInfo(top).LinkTarget is not null)
+        if (IsDisposed || !Directory.Exists(top) || new DirectoryInfo(top).LinkTarget is not null)
         {
             return;
         }
@@ -803,7 +827,11 @@ public abstract class WatchedTree : IDisposable
             }
             asked = looking = new(TaskCreationOptions.RunContinuationsAsynchronously);
         }
-        Follow(() => Look(asked));
+        if (!Follow(() => Look(asked)))
+        {
+            // Disposed meanwhile: there is nothing to look at.
+            asked.TrySetResult();
+        }
         return asked.Task;
     }
 

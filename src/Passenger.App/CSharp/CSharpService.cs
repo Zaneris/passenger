@@ -501,18 +501,24 @@ public sealed partial class CSharpService : IAsyncDisposable
     public ServerWatches? Watching => watching;
 
     /// <summary>Stops watching for the server what is under folders about to go or move, deleted, renamed or moved by the IDE
-    /// (<see cref="ServerWatches.LetGo"/>), in the watches of a server started or taken up meanwhile too, until disposed:
-    /// Windows moves and deletes no folder with a folder inside it watched.</summary>
-    public IDisposable LetGoOf(IReadOnlyList<string> folders)
+    /// (<see cref="ServerWatches.LetGo"/>), in the watches of a server started or taken up meanwhile too, until disposed
+    /// (<c>Held</c>): Windows moves and deletes no folder with a folder inside it watched. <c>Stopped</c> is done once the
+    /// watchers stopped now have stopped reading there.</summary>
+    public (IDisposable Held, Task Stopped) LetGoOf(IReadOnlyList<string> folders)
     {
         UiThread.Check();
         FoldersGoing letting = new(this, folders);
+        Task stopped = Task.CompletedTask;
         lock (goingGate)
         {
-            letting.Watches = watching?.LetGo(folders);
+            if (watching?.LetGo(folders) is ({ } held, Task watchersStopped))
+            {
+                letting.Watches = held;
+                stopped = watchersStopped;
+            }
             going.Add(letting);
         }
-        return letting;
+        return (letting, stopped);
     }
 
     /// <summary>Has a server's new watches let go of every folder still going (<see cref="LetGoOf"/>), as they are made.</summary>
@@ -522,7 +528,7 @@ public sealed partial class CSharpService : IAsyncDisposable
         {
             foreach (FoldersGoing letting in going)
             {
-                letting.Watches = watches.LetGo(letting.Folders);
+                letting.Watches = watches.LetGo(letting.Folders).Held;
             }
         }
     }

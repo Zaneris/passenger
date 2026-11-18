@@ -228,7 +228,7 @@ public sealed class ServerWatchTests : IClassFixture<ServerWatchTests.Project>
         string busy;
         try
         {
-            watches.LetGo([walked]).Dispose();
+            watches.LetGo([walked]).Held.Dispose();
             Assert.True(Ui.Pumped(() => holding.IsCompleted, TimeSpan.FromSeconds(30)), $"The watcher of {walked}, started again, never came to its first walk: {WatchLog(window)}");
             File.WriteAllText(project.PathOf("Meanwhile.cs"), "static class Meanwhile\n{\n}\n");
             File.WriteAllText(project.PathOf(Path.Combine("obj", "Beside.cs")), "static class Beside\n{\n}\n");

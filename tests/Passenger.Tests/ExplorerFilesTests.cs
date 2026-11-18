@@ -192,6 +192,46 @@ public sealed class ExplorerFilesTests : IDisposable
         window.Close();
     }
 
+    /// <summary>A loaded project's folder renamed while a watcher of its build output for the C# language server walks it
+    /// waits for that walk to end, which lists nothing there once let go of: on Windows a folder with a folder under it open
+    /// does not move. The walk is held at its start, as a busy machine holds it.</summary>
+    [AvaloniaFact]
+    public void A_loaded_projects_folders_rename_waits_for_a_walk_of_its_build_output_under_way_for_the_language_server()
+    {
+        string library = Directory.CreateDirectory(Path.Combine(folder, "Lib")).FullName;
+        File.WriteAllText(Path.Combine(library, "Lib.csproj"), TestProjects.Library());
+        File.WriteAllText(Path.Combine(library, "Code.cs"), "class Code\n{\n}\n");
+        Restore.Run(Path.Combine(library, "Lib.csproj"));
+        MainWindow window = Ui.OpenFolder(folder);
+        string lib = PathNames.Canonical(library);
+        Ui.WaitFor(() => window.CSharpService?.Watching?.Watching.Any(w => PathNames.Within(w.Folder, lib)) == true,
+            () => $"Lib's build output to be watched for the C# language server, where {string.Join(", ", (window.CSharpService?.Watching?.Watching ?? []).Select(w => w.Folder))} are",
+            TimeSpan.FromMinutes(2));
+        ServerWatches watches = window.CSharpService!.Watching!;
+        string walked = watches.Watching.First(w => PathNames.Within(w.Folder, lib)).Folder;
+        TaskCompletionSource released = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        Task holding = watches.HoldNextWalk(at => PathNames.Same(at, walked), released.Task);
+        watches.LetGo([walked]).Held.Dispose();
+        window.Confirm = (_, _, _) => Task.FromResult(true);
+        Task<string?> renaming;
+        try
+        {
+            Assert.True(Ui.Pumped(() => holding.IsCompleted, TimeSpan.FromSeconds(30)), $"The watcher of {walked}, started again, never came to its first walk");
+            renaming = window.RenameAsync(lib, "Core");
+            // Pumped, not settled: the walk held holds the IDE's quiet.
+            Ui.PumpUntil(() => renaming.IsCompleted || window.Status?.StartsWith("Waiting for the design-time build of Lib", StringComparison.Ordinal) == true,
+                "the rename to wait for the walk of Lib's build output");
+            Assert.False(renaming.IsCompleted, $"Lib was renamed while the watcher of {walked} let go of was still to walk it, which on Windows refuses the rename: {window.Status}");
+        }
+        finally
+        {
+            released.TrySetResult();
+        }
+        Assert.Null(Ui.Await(renaming, "the rename"));
+        Assert.True(File.Exists(Path.Combine(folder, "Core", "Lib.csproj")), $"Lib's rename did not take it to Core: {window.Status}");
+        window.Close();
+    }
+
     /// <summary>A loaded project's folder moved into another folder is moved back by Undo and into it again by Redo, each once
     /// its build output is watched for the C# language server where it is: what watches inside it lets go first, as for the
     /// move itself, as Windows moves no folder with one inside it watched, and the folder is not made again where it was.</summary>
@@ -301,7 +341,7 @@ public sealed class ExplorerFilesTests : IDisposable
         Ui.WaitFor(() => csharp.Watching?.Watching.Any(w => PathNames.Within(w.Folder, lib)) == true,
             () => $"Lib's build output to be watched for the C# language server, where {Folders()} are", TimeSpan.FromMinutes(2));
         ServerWatches first = csharp.Watching!;
-        IDisposable letting = csharp.LetGoOf([lib]);
+        IDisposable letting = csharp.LetGoOf([lib]).Held;
         Assert.DoesNotContain(first.Watching, w => PathNames.Within(w.Folder, lib));
 
         csharp.Restart();
