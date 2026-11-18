@@ -125,7 +125,7 @@ public partial class MainWindow
         IReadOnlyList<ProjectModel> all = Projects;
         ProjectModel? host = all.FirstOrDefault(p => p.Exists && p.IsAspireHost);
         // The AppHost's services reference theirs; else one is known by its name or the service discovery it brings.
-        bool Served(ProjectModel defaults) => host is not null && all.Any(s => host.ProjectReferences.Any(r => PathNames.Same(r, s.Path))
+        bool Served(ProjectModel defaults) => host is not null && all.Any(s => session.AspireFiles.AppHostsRunning(s.Path).Contains(host.Path, PathNames.Comparer)
             && s.ProjectReferences.Any(r => PathNames.Same(r, defaults.Path)));
         ProjectModel? defaults = all.Where(p => p.Exists && !p.IsAspireHost && !p.IsRunnable && !p.IsTestProject
                 && p.TargetFrameworks.Any(project.TargetFrameworks.Contains)

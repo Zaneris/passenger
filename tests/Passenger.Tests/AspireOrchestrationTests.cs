@@ -571,6 +571,21 @@ public sealed class AspireOrchestrationTests : IClassFixture<AspireOrchestration
             + $"(it said {said}, the file in [{string.Join(", ", document.ProjectContexts)}]; {window.CSharpService?.State})");
     }
 
+    /// <summary>Adds orchestration for <paramref name="services"/> through the dialog, into the AppHost and ServiceDefaults named,
+    /// and says what it came to.</summary>
+    internal static string Add(MainWindow window, IReadOnlyList<string> services, string host, string defaults)
+    {
+        AspireOrchestrationDialog dialog = Show(window, services[0]);
+        foreach (string service in services.Skip(1))
+        {
+            Ui.Click(Assert.Single(dialog.ServiceProjects.ItemsSource!.Cast<CheckBox>(), c => Equals(c.Content, service)));
+        }
+        Select(dialog, dialog.AppHost, host);
+        Select(dialog, dialog.ServiceDefaults, defaults);
+        Ui.Click(dialog.Add);
+        return Finished(window);
+    }
+
     private static AspireOrchestrationDialog Show(MainWindow window, string service)
     {
         Ui.Settle();

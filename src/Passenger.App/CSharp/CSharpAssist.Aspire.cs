@@ -236,8 +236,8 @@ internal sealed partial class CSharpAssist
                 ?? new Refactored(Refusals.NotRenamed(old, "no resource is named there any longer"), []),
             files => $"Renamed {old} to {name} in {Passenger.Core.Plural.Of(files, "file")}", patience);
 
-    /// <summary>Aspire's Go to Declaration, in an AppHost's or a service's file: AddProject's project file, not its generated
-    /// metadata type, and from a service's connection string or service-discovery name the AppHost's line that declares the
+    /// <summary>Aspire's Go to Declaration, in an AppHost's or a service's file: the project file a service is added by (its
+    /// path, or its generated metadata type), and from a service's connection string or service-discovery name the AppHost's line that declares the
     /// resource; null elsewhere, or without Passenger's extension, for the server's own.</summary>
     private async Task<Declared?> AspireDeclaredAsync(LspDocument lsp, OpenDocument document, int offset)
     {

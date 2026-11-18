@@ -56,7 +56,7 @@ public sealed record ServiceProgram(int Id, AdapterPlace? Place, Profiler.Profil
 /// process), said as the service's action's failure.</summary>
 public sealed class ServiceUnreachedException(string message, Exception? inner = null) : Exception(message, inner);
 
-/// <summary>A .NET service of a run named where it is written (a compose file's service, an AppHost's <c>AddProject</c>,
+/// <summary>A .NET service of a run named where it is written (a compose file's service, an AppHost's <c>AddProject</c> or <c>AddDotnetProject</c>,
 /// whose gutter icon names it), which the service actions act on: its run and its name there, whether it runs now or not.</summary>
 public sealed record ChosenService(ServiceRun Run, string Name);
 

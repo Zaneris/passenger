@@ -7,6 +7,7 @@ using Passenger.App.MSBuild;
 using Passenger.App.Templates;
 using Passenger.Core;
 using Passenger.Languages.CSharp;
+using Passenger.Roslyn.Extension;
 using Passenger.Text;
 using Passenger.Workspace;
 
@@ -80,11 +81,14 @@ public static class AspireOrchestration
             Copy(service.Path);
             Copy(Path.Combine(service.Folder, "Program.cs"));
         }
+        // An AppHost that adds its services by path references none, so its framework need not reach theirs.
+        bool byPath = false;
         if (choice.AppHost is not null)
         {
             Copy(host);
             Copy(HostSourcePath(host, hostParsing));
-            if (choice.Services.Any(service => !CanReference(choice.AppHost.TargetFrameworks, service.TargetFrameworks)))
+            byPath = await AddsByPathAsync(host, Read(Staged(host)).Text, choice.AppHost, cancel);
+            if (!byPath && choice.Services.Any(service => !CanReference(choice.AppHost.TargetFrameworks, service.TargetFrameworks)))
             {
                 throw new InvalidOperationException("The selected AppHost framework cannot reference every selected service: choose a newer AppHost");
             }
@@ -161,13 +165,17 @@ public static class AspireOrchestration
                 }
             }
         }
+        if (choice.AppHost is null)
+        {
+            byPath = await AddsByPathAsync(host, Read(Staged(host)).Text, null, cancel);
+        }
         foreach (ProjectModel service in choice.Services)
         {
             if (!service.ProjectReferences.Any(p => PathNames.Same(p, defaults)))
             {
                 Check(ProjectEdits.AddReference(Staged(service.Path), Staged(defaults)));
             }
-            if (!(choice.AppHost?.ProjectReferences.Any(p => PathNames.Same(p, service.Path)) ?? false))
+            if (!byPath && !(choice.AppHost?.ProjectReferences.Any(p => PathNames.Same(p, service.Path)) ?? false))
             {
                 Check(ProjectEdits.AddReference(Staged(host), Staged(service.Path)));
             }
@@ -176,9 +184,10 @@ public static class AspireOrchestration
         }
         string hostProgram = HostSourcePath(Staged(host), hostParsing);
         Dictionary<string, BackingNeeds> needs = choice.Services.ToDictionary(service => service.Path, service => BackingService.Needs(service), PathNames.Comparer);
-        Save(hostProgram, HostSource(Read(hostProgram).Text, host, choice.Services, needs, hostParsing));
+        Save(hostProgram, HostSource(Read(hostProgram).Text, host, choice.Services, needs, hostParsing, byPath ? AspireServices.Dotnet : AspireServices.Project));
         string hostText = Read(Staged(host)).Text;
         List<string> hosting = [.. BackingService.Known.Where(k => needs.Values.Any(n => n.Services.Contains(k))).Select(k => k.AspirePackage)
+            .Prepend(byPath ? AspireServices.Dotnet.Package : null).OfType<string>()
             .Where(package => !ProjectEdits.HasPackage(hostText, package))];
         CentralPackages? hostCentral = hosting.Count > 0 ? await CentralPackages.OfAsync(host, hostText, cancel) : null;
         if (hosting.Count > 0)
@@ -351,8 +360,10 @@ public static class AspireOrchestration
         return Insert(text, insertions);
     }
 
+    /// <summary>An AppHost's source with each service it lacks added by <paramref name="adding"/> (by its path from the AppHost's
+    /// folder), and referencing and waiting for the backing services it reads; a service it names already, by either call, kept.</summary>
     private static string HostSource(string text, string host, IReadOnlyList<ProjectModel> services, IReadOnlyDictionary<string, BackingNeeds> needs,
-        CSharpParseOptions parsing)
+        CSharpParseOptions parsing, AspireServices.Adding adding)
     {
         CompilationUnitSyntax root = Parse(text, host, parsing);
         (VariableDeclaratorSyntax builder, _) = Builder(root, ["DistributedApplication"], host);
@@ -363,7 +374,8 @@ public static class AspireOrchestration
         List<(int At, string Text)> referenced = [];
         HashSet<string> names = new(StringComparer.OrdinalIgnoreCase);
         List<(InvocationExpressionSyntax Call, string Name, string? ProjectPath, string? ProjectType)> projects =
-            [.. Calls(root, builder.Identifier.Text, "AddProject").Select(BindProjectArguments)];
+            [.. AspireServices.In(root).Where(service => service.Call.Expression is MemberAccessExpressionSyntax { Expression: IdentifierNameSyntax receiver }
+                && receiver.Identifier.Text == builder.Identifier.Text).Select(BindProjectArguments)];
         foreach (ProjectModel service in services)
         {
             string name = Path.GetFileNameWithoutExtension(service.Path).ToLowerInvariant().Replace('.', '-').Replace('_', '-');
@@ -373,19 +385,9 @@ public static class AspireOrchestration
             }
             string relative = PathNames.Route(service.Path, Path.GetDirectoryName(host)!);
             string generatedType = Path.GetFileNameWithoutExtension(service.Path).Replace('.', '_').Replace('-', '_');
-            bool SameProject((InvocationExpressionSyntax Call, string Name, string? ProjectPath, string? ProjectType) project)
-            {
-                try
-                {
-                    return project.ProjectPath is { } path
-                        ? PathNames.Same(PathNames.Canonical(Path.GetFullPath(path.Replace('\\', '/'), Path.GetDirectoryName(host)!)), service.Path)
-                        : project.ProjectType == "Projects." + generatedType;
-                }
-                catch (ArgumentException error)
-                {
-                    throw new InvalidOperationException($"Cannot resolve AppHost projectPath in {project.Call}: {error.Message}", error);
-                }
-            }
+            bool SameProject((InvocationExpressionSyntax Call, string Name, string? ProjectPath, string? ProjectType) project) => project.ProjectPath is { } path
+                ? AspireServices.ProjectOf(path, Path.GetDirectoryName(host)!) is { } named && PathNames.Same(PathNames.Canonical(named), service.Path)
+                : project.ProjectType == "Projects." + generatedType;
             bool exists = projects.Any(SameProject);
             bool occupied = root.DescendantNodes().OfType<InvocationExpressionSyntax>().Any(call =>
                 call.Expression is MemberAccessExpressionSyntax { Expression: IdentifierNameSyntax receiver } member
@@ -393,7 +395,7 @@ public static class AspireOrchestration
                 && (call.ArgumentList.Arguments.FirstOrDefault(a => a.NameColon?.Name.Identifier.ValueText == "name")
                     ?? call.ArgumentList.Arguments.FirstOrDefault(a => a.NameColon is null))?.Expression is LiteralExpressionSyntax literal
                 && literal.Token.ValueText == name
-                && !(member.Name.Identifier.ValueText == "AddProject" && projects.Any(p => p.Call == call && SameProject(p))));
+                && !(AspireServices.CalledAs(call) is not null && projects.Any(p => p.Call == call && SameProject(p))));
             if (occupied)
             {
                 throw new InvalidOperationException($"The AppHost already uses resource name {name} for another resource: add {service.Name} by hand with a unique name");
@@ -402,7 +404,7 @@ public static class AspireOrchestration
             IReadOnlyList<string> uses = backing.Used(needs.GetValueOrDefault(service.Path) ?? new BackingNeeds([], []));
             if (!exists)
             {
-                additions.Add($"var {backing.Variable(name)} = {builder.Identifier.Text}.AddProject({SymbolDisplay.FormatLiteral(name, true)}, {SymbolDisplay.FormatLiteral(relative, true)}){References(uses, string.Empty)};");
+                additions.Add($"var {backing.Variable(name)} = {builder.Identifier.Text}.{adding.Method}({SymbolDisplay.FormatLiteral(name, true)}, {SymbolDisplay.FormatLiteral(relative, true)}){References(uses, string.Empty)};");
             }
             else if (projects.FirstOrDefault(SameProject) is { Call: { } call } && uses.Count > 0)
             {
@@ -513,44 +515,26 @@ public static class AspireOrchestration
             "Aspire\\.AppHost\\.Sdk/(?<v>[0-9][^\"\\s;]*)|Name=\"Aspire\\.AppHost\\.Sdk\"\\s+Version=\"(?<v>[^\"]+)\"|Include=\"Aspire\\.Hosting\\.AppHost\"\\s+Version=\"(?<v>[^\"]+)\"",
             System.Text.RegularExpressions.RegexOptions.IgnoreCase) is { Success: true } found ? found.Groups["v"].Value : null;
 
-    private static (InvocationExpressionSyntax Call, string Name, string? ProjectPath, string? ProjectType) BindProjectArguments(InvocationExpressionSyntax call)
+    /// <summary>What a service the AppHost names already gives (<see cref="AspireServices.Read"/>): its name and its path or
+    /// type, each written as a literal; refused where the syntax leaves either unknown.</summary>
+    private static (InvocationExpressionSyntax Call, string Name, string? ProjectPath, string? ProjectType) BindProjectArguments(AspireServices.Service service)
     {
-        GenericNameSyntax? generic = ((MemberAccessExpressionSyntax)call.Expression).Name as GenericNameSyntax;
-        int required = generic is null ? 2 : 1;
-        Dictionary<int, ExpressionSyntax> arguments = [];
-        bool reordered = false;
-        for (int position = 0; position < call.ArgumentList.Arguments.Count; position++)
+        if (!service.Placed || service.Call.Expression is MemberAccessExpressionSyntax { Name: GenericNameSyntax { TypeArgumentList.Arguments.Count: not 1 } }
+            || AspireServices.Written(service.Name) is not { } name || string.IsNullOrWhiteSpace(name)
+            || service.Type is null && string.IsNullOrWhiteSpace(AspireServices.Written(service.Path)))
         {
-            ArgumentSyntax argument = call.ArgumentList.Arguments[position];
-            int parameter = argument.NameColon?.Name.Identifier.ValueText switch
-            {
-                null => position,
-                "name" => 0,
-                "projectPath" when generic is null => 1,
-                "launchProfileName" or "configure" => required,
-                _ => -1,
-            };
-            if (parameter < 0 || parameter > required || argument.RefKindKeyword.RawKind != 0
-                || argument.NameColon is null && reordered || !arguments.TryAdd(parameter, argument.Expression))
-            {
-                throw Unresolved();
-            }
-            reordered |= parameter != position;
+            throw new InvalidOperationException($"Cannot resolve AppHost {service.Adding.Method} arguments: {service.Call}; use literal name and {service.Adding.PathParameter} arguments and a supported Aspire overload before adding orchestration");
         }
-        if (generic is not null && generic.TypeArgumentList.Arguments.Count != 1
-            || !arguments.TryGetValue(0, out ExpressionSyntax? name) || name is not LiteralExpressionSyntax { Token.Value: string resourceName }
-            || string.IsNullOrWhiteSpace(resourceName)
-            || generic is null && (!arguments.TryGetValue(1, out ExpressionSyntax? path)
-                || path is not LiteralExpressionSyntax { Token.Value: string projectPath } || string.IsNullOrWhiteSpace(projectPath)))
-        {
-            throw Unresolved();
-        }
-        return (call, ((LiteralExpressionSyntax)arguments[0]).Token.ValueText,
-            generic is null ? ((LiteralExpressionSyntax)arguments[1]).Token.ValueText : null,
-            generic?.TypeArgumentList.Arguments[0].ToString());
-
-        InvalidOperationException Unresolved() => new($"Cannot resolve AppHost AddProject arguments: {call}; use literal name and projectPath arguments and a supported Aspire overload before adding orchestration");
+        return (service.Call, name, service.Type is null ? AspireServices.Written(service.Path) : null, service.Type?.ToString());
     }
+
+    /// <summary>Whether an AppHost adds its services by path alone (<see cref="AspireServices.Dotnet"/>), referencing none: one
+    /// that references that call's package, or one of an Aspire that does (<see cref="Host.AspireHosts.AddsByPath"/>) by the
+    /// version its project file writes, else its evaluation's, else its central package management's.</summary>
+    private static async Task<bool> AddsByPathAsync(string host, string text, ProjectModel? evaluated, CancellationToken cancel) =>
+        ProjectEdits.HasPackage(text, AspireServices.Dotnet.Package)
+        || Passenger.Host.AspireHosts.AddsByPath(AspireVersion(text) ?? (evaluated is null ? null : AppHostSteps.HostingVersionOf(evaluated))
+            ?? (await CentralPackages.OfAsync(host, text, cancel))?.Versions.GetValueOrDefault(Passenger.Host.AspireHosts.Package));
 
     /// <summary>A file to change, read as its project compiles it (<paramref name="parsing"/>).</summary>
     private static CompilationUnitSyntax Parse(string text, string path, CSharpParseOptions parsing)

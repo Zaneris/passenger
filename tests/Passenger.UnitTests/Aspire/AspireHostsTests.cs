@@ -33,4 +33,16 @@ public sealed class AspireHostsTests
     [InlineData("", new string[0], false)]
     public void A_project_is_an_AppHost_as_it_says_or_saying_nothing_by_the_AppHost_package_it_references(string property, string[] packages, bool appHost) =>
         Assert.Equal(appHost, AspireHosts.Is(property, packages));
+
+    [Theory]
+    [InlineData("17.0.0", true)]
+    [InlineData("17.1.2-preview.1", true)]
+    [InlineData("18.0.0", true)]
+    [InlineData("13.6.5", false)]
+    [InlineData("9.4.0", false)]
+    [InlineData("", false)]
+    [InlineData(null, false)]
+    [InlineData("$(AspireVersion)", false)]
+    public void An_AppHost_adds_its_services_by_path_from_Aspire_17(string? version, bool byPath) =>
+        Assert.Equal(byPath, AspireHosts.AddsByPath(version));
 }

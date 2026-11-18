@@ -21,6 +21,11 @@
     <Compile Include="../Passenger.Roslyn.Extension/RefactoringChecks.cs" Link="CSharp/RefactoringChecks.cs" />
   </ItemGroup>
 
+  <!-- The services an Aspire AppHost names, one reader for the extension and the window's syntax reads. -->
+  <ItemGroup>
+    <Compile Include="../Passenger.Roslyn.Extension/AspireServices.cs" Link="CSharp/AspireServices.cs" />
+  </ItemGroup>
+
   <!-- VS Code's TextMate grammars and dotnet/roslyn's Razor and C# ones, unchanged (THIRD_PARTY_NOTICES.md says where each
        came from), read by their file name. -->
   <ItemGroup>

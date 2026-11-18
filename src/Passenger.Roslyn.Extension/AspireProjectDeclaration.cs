@@ -5,8 +5,9 @@ using static Passenger.Roslyn.Extension.SyntaxReads;
 
 namespace Passenger.Roslyn.Extension;
 
-/// <summary>Aspire's Go to Declaration: AddProject's actual project rather than its generated Projects type, else the AppHost's
-/// declaration of the resource a service names in a string (a connection string's name, a service it discovers).</summary>
+/// <summary>Aspire's Go to Declaration: the project an AppHost adds as a service (<see cref="AspireServices"/>), by its path or
+/// its generated Projects type, else the AppHost's declaration of the resource a service names in a string (a connection
+/// string's name, a service it discovers).</summary>
 public sealed class AspireProjectDeclaration : IExtensionDocumentMessageHandler<Caret, AspireProjectTarget>
 {
     public async Task<AspireProjectTarget> ExecuteAsync(Caret message, ExtensionDocumentMessageContext context, CancellationToken cancellationToken) =>
@@ -25,41 +26,19 @@ public sealed class AspireProjectDeclaration : IExtensionDocumentMessageHandler<
         SyntaxNode node = root.FindToken(Math.Clamp(offset, 0, Math.Max(0, root.FullSpan.End - 1))).Parent!;
         foreach (InvocationExpressionSyntax invocation in node.AncestorsAndSelf().OfType<InvocationExpressionSyntax>())
         {
-            if (model.GetSymbolInfo(invocation, cancellationToken).Symbol is not IMethodSymbol method
-                || method.Name != "AddProject"
-                || method.ContainingType.ToDisplayString() != "Aspire.Hosting.ProjectResourceBuilderExtensions"
-                || method.ContainingAssembly.Name != "Aspire.Hosting")
+            if (model.GetSymbolInfo(invocation, cancellationToken).Symbol is not IMethodSymbol method || AspireServices.Of(method) is not { } adding)
             {
                 continue;
             }
-            if (method.TypeArguments is [INamedTypeSymbol projectType])
-            {
-                GenericNameSyntax? generic = invocation.Expression switch
-                {
-                    MemberAccessExpressionSyntax { Name: GenericNameSyntax name } => name,
-                    GenericNameSyntax name => name,
-                    _ => null,
-                };
-                if (generic is null || !generic.Span.Contains(offset))
-                {
-                    return new AspireProjectTarget(null);
-                }
-                return new AspireProjectTarget(await MetadataPathAsync(projectType, model.Compilation, cancellationToken).ConfigureAwait(false));
-            }
-            foreach (ArgumentSyntax argument in invocation.ArgumentList.Arguments)
-            {
-                if (!argument.Span.Contains(offset))
-                {
-                    continue;
-                }
-                IParameterSymbol? parameter = Parameter(method, invocation, argument);
-                if (parameter?.Name == "projectPath" && Constant(argument.Expression, model, cancellationToken) is { } path)
-                {
-                    return new AspireProjectTarget(Path.IsPathFullyQualified(path) ? path
-                        : await AspireSource.ProjectPathAsync(document, invocation, model, cancellationToken).ConfigureAwait(false));
-                }
-            }
-            return new AspireProjectTarget(null);
+            // From the Projects type a project is added by, or from its path.
+            bool atProject = method.TypeArguments is [INamedTypeSymbol]
+                ? invocation.Expression switch { MemberAccessExpressionSyntax { Name: GenericNameSyntax name } => name, GenericNameSyntax name => name, _ => null }
+                    is { } generic && generic.Span.Contains(offset)
+                : AspireServices.Read(invocation, adding, argument => Parameter(method, invocation, argument)?.Name).Path is { Parent: ArgumentSyntax argument }
+                    && argument.Span.Contains(offset);
+            return new AspireProjectTarget(atProject
+                ? (await AspireSource.ServiceAsync(invocation, method, model, document.Project.FilePath, cancellationToken).ConfigureAwait(false))?.Project
+                : null);
         }
         return new AspireProjectTarget(null);
     }

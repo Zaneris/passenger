@@ -92,35 +92,12 @@ internal static class AspireSource
             string hash = TextHash.Of(text.ToString());
             foreach (InvocationExpressionSyntax added in root.DescendantNodes().OfType<InvocationExpressionSyntax>())
             {
-                if (model.GetSymbolInfo(added, cancel).Symbol is not IMethodSymbol method || method.Name != "AddProject"
-                    || method.ContainingType.ToDisplayString() != "Aspire.Hosting.ProjectResourceBuilderExtensions"
-                    || method.ContainingAssembly.Name != "Aspire.Hosting")
+                if (AspireServices.CalledAs(added) is null || model.GetSymbolInfo(added, cancel).Symbol is not IMethodSymbol method
+                    || await ServiceAsync(added, method, model, project.FilePath, cancel).ConfigureAwait(false) is not ({ } name, { } projectPath))
                 {
                     continue;
                 }
-                string? name = null;
-                string? projectPath = null;
-                foreach (ArgumentSyntax argument in added.ArgumentList.Arguments)
-                {
-                    string? parameter = AspireProjectDeclaration.Parameter(method, added, argument)?.Name;
-                    if (Constant(argument.Expression, model, cancel) is not { } value)
-                    {
-                        continue;
-                    }
-                    if (parameter == "name")
-                    {
-                        name = value;
-                    }
-                    else if (parameter == "projectPath")
-                    {
-                        projectPath = ResolvePath(value, AppHostDirectory(model.Compilation) ?? Path.GetDirectoryName(project.FilePath));
-                    }
-                }
-                if (method.TypeArguments is [INamedTypeSymbol projectType])
-                {
-                    projectPath = await AspireProjectDeclaration.MetadataPathAsync(projectType, model.Compilation, cancel).ConfigureAwait(false);
-                }
-                if (!string.IsNullOrWhiteSpace(name) && projectPath is not null)
+                if (!string.IsNullOrWhiteSpace(name))
                 {
                     resources.Add(new(name, projectPath, document.FilePath, PlaceAt(text, added.SpanStart), hash));
                 }
@@ -361,20 +338,9 @@ internal static class AspireSource
                 return null;
             }
             string? projectPath = null;
-            if (method.ContainingType.ToDisplayString() == "Aspire.Hosting.ProjectResourceBuilderExtensions" && method.Name == "AddProject")
+            if (AspireServices.Of(method) is not null)
             {
-                if (method.TypeArguments is [INamedTypeSymbol metadata])
-                {
-                    projectPath = await AspireProjectDeclaration.MetadataPathAsync(metadata, model.Compilation, cancel).ConfigureAwait(false);
-                }
-                else
-                {
-                    ArgumentSyntax? pathArgument = add.ArgumentList.Arguments.FirstOrDefault(a => AspireProjectDeclaration.Parameter(method, add, a)?.Name == "projectPath");
-                    if (pathArgument is not null && Constant(pathArgument.Expression, model, cancel) is { } path)
-                    {
-                        projectPath = ResolvePath(path, AppHostDirectory(model.Compilation));
-                    }
-                }
+                projectPath = (await ServiceAsync(add, method, model, document.Project.FilePath, cancel).ConfigureAwait(false))?.Project;
                 if (projectPath is null)
                 {
                     return null;
@@ -711,29 +677,32 @@ internal static class AspireSource
         }
     }
 
-    private static string? ResolvePath(string path, string? directory)
+    /// <summary>The resource a call of Aspire's that adds a service names (<see cref="AspireServices"/>) and the project it adds,
+    /// by its Projects type or its path from the AppHost's folder (<paramref name="appHost"/>'s, its project's file), each as
+    /// the compilation knows it; null for another call.</summary>
+    internal static async Task<(string? Name, string? Project)?> ServiceAsync(InvocationExpressionSyntax call, IMethodSymbol method, SemanticModel model,
+        string? appHost, CancellationToken cancel)
     {
-        try
-        {
-            return Path.IsPathFullyQualified(path) ? Path.GetFullPath(path) : directory is null ? null : Path.GetFullPath(path, directory);
-        }
-        catch (ArgumentException)
+        if (AspireServices.Of(method) is not { } adding)
         {
             return null;
         }
-        catch (NotSupportedException)
-        {
-            return null;
-        }
+        AspireServices.Service service = AspireServices.Read(call, adding, argument => AspireProjectDeclaration.Parameter(method, call, argument)?.Name);
+        string? project = method.TypeArguments is [INamedTypeSymbol metadata]
+            ? await AspireProjectDeclaration.MetadataPathAsync(metadata, model.Compilation, cancel).ConfigureAwait(false)
+            : Constant(service.Path, model, cancel) is { } path ? AspireServices.ProjectOf(path, AppHostDirectory(model.Compilation, appHost)) : null;
+        return (Constant(service.Name, model, cancel), project);
     }
 
-    private static string? AppHostDirectory(Compilation compilation)
+    /// <summary>The AppHost's folder, its relative paths' start: as its build records it (Aspire's <c>apphostprojectpath</c>,
+    /// read in any letter case), else the folder of its project's file, <paramref name="project"/>.</summary>
+    internal static string? AppHostDirectory(Compilation compilation, string? project)
     {
         string[] directories = [.. compilation.Assembly.GetAttributes()
             .Where(a => a.AttributeClass?.ToDisplayString() == "System.Reflection.AssemblyMetadataAttribute")
-            .Where(a => a.ConstructorArguments is [{ Value: "AppHostProjectPath" }, { Value: string }])
+            .Where(a => a.ConstructorArguments is [{ Value: string key }, { Value: string }] && key.Equals("AppHostProjectPath", StringComparison.OrdinalIgnoreCase))
             .Select(a => (string)a.ConstructorArguments[1].Value!)];
-        return directories.Length == 1 ? directories[0] : null;
+        return directories.Length == 1 ? directories[0] : Path.GetDirectoryName(project);
     }
 
     /// <summary>A resource's name as a service writes it in a string: the name of a connection string it reads (an argument
@@ -955,11 +924,4 @@ internal static class AspireSource
         : name.Any(c => !char.IsAsciiLetterOrDigit(c) && c != '-') ? "A resource's name has only letters, digits and dashes"
         : name.EndsWith('-') || name.Contains("--", StringComparison.Ordinal) ? "A resource's name has no dash at its end and no two together"
         : null;
-
-    internal static async Task<string?> ProjectPathAsync(Document document, InvocationExpressionSyntax call, SemanticModel model, CancellationToken cancel)
-    {
-        SyntaxNode? root = await document.GetSyntaxRootAsync(cancel).ConfigureAwait(false);
-        Graph? graph = root is null ? null : await ReadGraphAsync(document, root, model, cancel).ConfigureAwait(false);
-        return graph?.Resources.SingleOrDefault(r => r.Declaration.Span.Contains(call.Span))?.ProjectPath;
-    }
 }

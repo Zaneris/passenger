@@ -114,6 +114,12 @@ public sealed class ProjectSession : IAsyncDisposable
         Aspire = new AspireController(this, setup.StateFolder);
         Aspire.Inspected = app => Reloaded(app);
         AspireFiles = new AspireFiles(this);
+        // A file of a service an AppHost came to name, or ceased to, is read as one, and its configuration with the AppHost's.
+        AspireFiles.ServicesChanged += (_, _) =>
+        {
+            CSharp?.AspireRolesChanged();
+            CSharp?.ConfigurationChanged();
+        };
         NodeFiles = new Web.NodeFiles(this);
         EditorConfigs = new Settings.FolderEditorConfigs(this);
         Builder = new ProcessRunner(setup.Views.Build, builds: true);
@@ -587,8 +593,8 @@ public sealed class ProjectSession : IAsyncDisposable
     }
 
     /// <summary>A program's configuration: its evaluated UserSecretsId, the folders from its own up to the folder open whose
-    /// compose files may run it, the folders of the AppHosts among <paramref name="all"/> that reference it, and the projects
-    /// whose code it runs.</summary>
+    /// compose files may run it, the folders of the AppHosts that run it as a service (<see cref="AspireFiles.AppHostsRunning"/>),
+    /// and the projects among <paramref name="all"/> whose code it runs.</summary>
     private ConfigurationProject ConfigurationOf(ProjectModel project, IReadOnlyList<ProjectModel> all)
     {
         List<string> composing = [];
@@ -600,7 +606,7 @@ public sealed class ProjectSession : IAsyncDisposable
                 break;
             }
         }
-        string[] hosts = [.. all.Where(p => p.IsAspireHost && p.ProjectReferences.Any(r => PathNames.Same(r, project.Path))).Select(p => Path.GetDirectoryName(p.Path)!)];
+        string[] hosts = [.. AspireFiles.AppHostsRunning(project.Path).Select(host => Path.GetDirectoryName(host)!)];
         return new ConfigurationProject(project.Path, project.Property(Passenger.Host.CarriedProperties.UserSecretsId) is { Length: > 0 } id ? id : null, composing, hosts,
             [.. project.CodeItRuns(all).Select(p => p.Path)]);
     }

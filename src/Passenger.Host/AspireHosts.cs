@@ -28,5 +28,13 @@ public static class AspireHosts
     public static bool Is(string property, IEnumerable<string> packages) => property.Equals("true", StringComparison.OrdinalIgnoreCase)
         || property.Length == 0 && packages.Any(package => package.Equals(Package, StringComparison.OrdinalIgnoreCase));
 
+    /// <summary>The first Aspire whose AppHost adds its services by path alone, referencing none of them.</summary>
+    public const int AddsByPathFrom = 17;
+
+    /// <summary>Whether an AppHost of an Aspire version (its AppHost package's or SDK's) adds its services by path alone
+    /// (<see cref="AddsByPathFrom"/>); false for a version unknown.</summary>
+    public static bool AddsByPath(string? version) => version?.Split('.')[0] is { } major
+        && int.TryParse(major, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out int number) && number >= AddsByPathFrom;
+
     private static bool Names(string value, string name) => value.Split('@')[0].Trim().Equals(name, StringComparison.OrdinalIgnoreCase);
 }

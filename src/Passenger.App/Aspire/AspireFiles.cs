@@ -1,11 +1,16 @@
+using Microsoft.CodeAnalysis.CSharp;
+using Passenger.App.CSharp;
 using Passenger.App.Run;
 using Passenger.Core;
+using Passenger.Languages.CSharp;
+using Passenger.Roslyn.Extension;
 using Passenger.Workspace;
 
 namespace Passenger.App.Aspire;
 
 /// <summary>What a C# file is to Aspire's code help and run marks: nothing, which they cost nothing; a service's, a file of
-/// a project an AppHost references; or an AppHost's, a file of an AppHost project or a single-file AppHost.</summary>
+/// a project an AppHost runs (<see cref="AspireFiles.AppHostsRunning"/>); or an AppHost's, a file of an AppHost project or a
+/// single-file AppHost.</summary>
 public enum AspireRole
 {
     None,
@@ -15,11 +20,21 @@ public enum AspireRole
 
 /// <summary>The folder's AppHosts and what each C# file is to them, for one session (<see cref="ProjectSession.AspireFiles"/>).
 /// Single-file AppHosts are found among the files of the folder's one walk (<see cref="FileIndex.Walked"/>): a C# file's
-/// head is read as a walk first lists it, and again only as the folder watcher says it changed. A file's role comes from the
-/// projects as MSBuild evaluated them, kept until the run configurations are made again (an evaluation landed, a project
-/// unloaded, a single-file AppHost found or gone), so asking it as a key is typed costs a lookup.</summary>
-public sealed class AspireFiles(ProjectSession session)
+/// head is read as a walk first lists it, and again only as the folder watcher says it changed; each AppHost's sources are
+/// read for the services they name by path (<see cref="AspireServices"/>) as it comes and as the watcher says one changed. A
+/// file's role comes from the projects as MSBuild evaluated them and those services, kept until the run configurations are
+/// made again (an evaluation landed, a project unloaded, a single-file AppHost found or gone) or the services named change,
+/// so asking it as a key is typed costs a lookup.</summary>
+public sealed class AspireFiles
 {
+    private readonly ProjectSession session;
+
+    public AspireFiles(ProjectSession session)
+    {
+        this.session = session;
+        session.Configurations.Changed += (_, _) => FollowAppHosts();
+    }
+
     /// <summary>The most single-file AppHosts a folder offers, so a folder of generated ones cannot flood the configurations.</summary>
     private const int AppHostLimit = 200;
 
@@ -33,6 +48,9 @@ public sealed class AspireFiles(ProjectSession session)
     /// <summary>Whether the next walk reads every C# file it lists again, the watcher having lost changes; the reads' alone too.</summary>
     private bool again;
 
+    /// <summary>The C# files changed, come or gone since the last read of the AppHosts' services; touched only by the reads.</summary>
+    private readonly HashSet<string> touched = new(PathNames.Comparer);
+
     private readonly TaskCompletionSource firstWalk = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private Task reading = Task.CompletedTask;
 
@@ -41,6 +59,19 @@ public sealed class AspireFiles(ProjectSession session)
     private HashSet<string> hosts = new(PathNames.Comparer);
     private HashSet<string> services = new(PathNames.Comparer);
     private HashSet<string> singles = new(PathNames.Comparer);
+
+    /// <summary>The AppHost projects the reads read the sources of, each with how it compiles them; given on the UI thread.</summary>
+    private IReadOnlyList<(string Path, CSharpParseOptions Parsing)> projectHosts = [];
+
+    /// <summary>The services each AppHost's sources name by path, by the AppHost as a run configuration names it; touched only
+    /// by the reads.</summary>
+    private readonly Dictionary<string, string[]> namedBy = new(PathNames.Comparer);
+
+    /// <summary>The services named as the last read left them, by each AppHost; on the UI thread.</summary>
+    private IReadOnlyDictionary<string, string[]> named = new Dictionary<string, string[]>();
+
+    /// <summary>The services the AppHosts' sources name changed: what a service's file is, and what configures it, with them.</summary>
+    public event EventHandler? ServicesChanged;
 
     /// <summary>Done once the folder's first walk has been read for its single-file AppHosts, and after it each later read:
     /// what an agent's open waits for before it says what the workspace runs.</summary>
@@ -64,6 +95,7 @@ public sealed class AspireFiles(ProjectSession session)
                     if (again || !read.Contains(relative))
                     {
                         Found(path, IsAppHost(path));
+                        touched.Add(path);
                     }
                     if (appHosts.Contains(path))
                     {
@@ -72,6 +104,7 @@ public sealed class AspireFiles(ProjectSession session)
                 }
             }
             again = false;
+            touched.UnionWith(read.Where(relative => !listed.Contains(relative)).Select(relative => Path.Join(root, relative)));
             read = listed;
             appHosts.IntersectWith(hostsListed);
         });
@@ -90,6 +123,7 @@ public sealed class AspireFiles(ProjectSession session)
                 {
                     read.Remove(relative);
                     appHosts.Remove(Path.Join(root, relative));
+                    touched.Add(Path.Join(root, relative));
                 }
             }
             foreach (string relative in came)
@@ -98,6 +132,7 @@ public sealed class AspireFiles(ProjectSession session)
                 {
                     string path = Path.Join(root, relative);
                     Found(path, IsAppHost(path) ?? false);
+                    touched.Add(path);
                 }
             }
         });
@@ -123,6 +158,7 @@ public sealed class AspireFiles(ProjectSession session)
             again |= every;
             foreach (string path in sources)
             {
+                touched.Add(path);
                 if (IsAppHost(path) is { } appHost)
                 {
                     read.Add(PathNames.Below(path, root).ToString());
@@ -139,6 +175,24 @@ public sealed class AspireFiles(ProjectSession session)
     /// single-file AppHost itself; null for any other file.</summary>
     public string? AppHostOf(string path) => Of(path).AppHost;
 
+    /// <summary>The AppHosts that run a project as a service, by their files as run configurations name them: those that
+    /// reference it, as an AppHost SDK's does, and those whose sources name it by path (<see cref="AspireServices"/>).</summary>
+    public IReadOnlyList<string> AppHostsRunning(string project) =>
+        [.. session.Projects.Where(p => p.IsAspireHost && p.ProjectReferences.Any(r => PathNames.Same(r, project))).Select(p => p.Path)
+            .Concat(named.Where(n => n.Value.Contains(project, PathNames.Comparer)).Select(n => n.Key)).Distinct(PathNames.Comparer)];
+
+    /// <summary>The run configurations were made again: the AppHost projects' sources are read for their services where
+    /// the AppHosts are others than those read.</summary>
+    private void FollowAppHosts()
+    {
+        (string Path, CSharpParseOptions Parsing)[] now = [.. session.Projects.Where(p => p.IsAspireHost).Select(p => (p.Path, CompilationSymbols.Of(p)))];
+        if (!now.Select(h => h.Path).SequenceEqual(projectHosts.Select(h => h.Path), PathNames.Comparer))
+        {
+            projectHosts = now;
+            Then(walk: false, () => { });
+        }
+    }
+
     private (AspireRole Role, string? AppHost) Of(string path)
     {
         if (!ReferenceEquals(rolesOf, session.Configurations.All))
@@ -147,7 +201,7 @@ public sealed class AspireFiles(ProjectSession session)
             roles.Clear();
             ProjectModel[] appHosts = [.. session.Projects.Where(p => p.IsAspireHost)];
             hosts = new(appHosts.Select(p => p.Path), PathNames.Comparer);
-            services = new(appHosts.SelectMany(p => p.ProjectReferences), PathNames.Comparer);
+            services = new(appHosts.SelectMany(p => p.ProjectReferences).Concat(named.Values.SelectMany(s => s)), PathNames.Comparer);
             singles = new(session.Configurations.SingleFileAppHosts, PathNames.Comparer);
         }
         if (roles.TryGetValue(path, out (AspireRole, string?) known))
@@ -167,6 +221,7 @@ public sealed class AspireFiles(ProjectSession session)
     private void Then(bool walk, Action work)
     {
         Task previous = reading;
+        IReadOnlyList<(string Path, CSharpParseOptions Parsing)> given = projectHosts;
         reading = ReadAsync();
 
         async Task ReadAsync()
@@ -178,14 +233,28 @@ public sealed class AspireFiles(ProjectSession session)
                 {
                     return;
                 }
-                IReadOnlyList<string> found = await BackgroundWork.Run(() =>
+                (IReadOnlyList<string> found, IReadOnlyDictionary<string, string[]>? services) = await BackgroundWork.Run(() =>
                 {
                     work();
-                    return (IReadOnlyList<string>)[.. appHosts.Order(StringComparer.Ordinal).Take(AppHostLimit)];
+                    IReadOnlyList<string> offered = [.. appHosts.Order(StringComparer.Ordinal).Take(AppHostLimit)];
+                    return (offered, ReadNamed(given, offered) ? new Dictionary<string, string[]>(namedBy, PathNames.Comparer) : null);
                 });
-                if (!session.IsEnded && !found.SequenceEqual(session.Configurations.SingleFileAppHosts, PathNames.Comparer))
+                if (session.IsEnded)
+                {
+                    return;
+                }
+                if (services is not null)
+                {
+                    named = services;
+                    rolesOf = null;
+                }
+                if (!found.SequenceEqual(session.Configurations.SingleFileAppHosts, PathNames.Comparer))
                 {
                     session.Configurations.ConfigureAppHosts(found);
+                }
+                if (services is not null)
+                {
+                    ServicesChanged?.Invoke(this, EventArgs.Empty);
                 }
             }
             catch (Exception error)
@@ -200,6 +269,72 @@ public sealed class AspireFiles(ProjectSession session)
                 }
             }
         }
+    }
+
+    /// <summary>Reads the services the AppHosts' sources name (<see cref="namedBy"/>): each never read, or whose sources a read
+    /// since the last saw change, came or go; those gone forgotten. Whether what they name changed.</summary>
+    private bool ReadNamed(IReadOnlyList<(string Path, CSharpParseOptions Parsing)> projects, IReadOnlyList<string> singleFiles)
+    {
+        bool changed = false;
+        HashSet<string> current = new(PathNames.Comparer);
+        foreach ((string host, bool single, CSharpParseOptions parsing) in projects.Select(p => (p.Path, false, p.Parsing))
+            .Concat(singleFiles.Select(s => (s, true, CSharpParsing.Default))))
+        {
+            current.Add(host);
+            string folder = Path.GetDirectoryName(host)!;
+            if (namedBy.ContainsKey(host) && !touched.Any(path => single ? PathNames.Same(path, host) : PathNames.Same(Path.GetDirectoryName(path)!, folder)))
+            {
+                continue;
+            }
+            IReadOnlyList<string> sources;
+            try
+            {
+                sources = single ? [host] : AspireOrchestration.AppHostSources(host);
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+            {
+                sources = [];
+            }
+            string[] found = NamedIn(sources, folder, parsing);
+            if (!namedBy.TryGetValue(host, out string[]? before) || !before.SequenceEqual(found, PathNames.Comparer))
+            {
+                namedBy[host] = found;
+                changed = true;
+            }
+        }
+        foreach (string gone in namedBy.Keys.Where(host => !current.Contains(host)).ToList())
+        {
+            namedBy.Remove(gone);
+            changed = true;
+        }
+        touched.Clear();
+        return changed;
+    }
+
+    /// <summary>The projects an AppHost's sources name by a path written in them (<see cref="AspireServices"/>), from its folder.</summary>
+    private static string[] NamedIn(IReadOnlyList<string> sources, string folder, CSharpParseOptions parsing)
+    {
+        List<string> found = [];
+        foreach (string source in sources)
+        {
+            string text;
+            try
+            {
+                text = File.ReadAllText(source);
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+            {
+                continue;
+            }
+            if (!AspireServices.Calls.Any(call => text.Contains(call.Method, StringComparison.Ordinal)))
+            {
+                continue;
+            }
+            found.AddRange(AspireServices.In(CSharpParsing.Parse(text, parsing).GetRoot())
+                .Select(service => service.Type is null && AspireServices.Written(service.Path) is { } path ? AspireServices.ProjectOf(path, folder) : null)
+                .OfType<string>().Select(PathNames.Canonical));
+        }
+        return [.. found.Distinct(PathNames.Comparer)];
     }
 
     /// <summary>Whether a file, by its path from the folder, is a C# file a single-file AppHost may be: not under a hidden

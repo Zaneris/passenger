@@ -360,6 +360,11 @@
     <Compile Include="../../src/Passenger.Roslyn.Extension/RefactoringChecks.cs" Link="Roslyn/RefactoringChecks.cs" />
   </ItemGroup>
 
+  <!-- The services an Aspire AppHost names, read from its syntax as Passenger.Languages compiles the reader. -->
+  <ItemGroup>
+    <Compile Include="../../src/Passenger.Roslyn.Extension/AspireServices.cs" Link="Roslyn/AspireServices.cs" />
+  </ItemGroup>
+
   <!-- Where a launch profile's browser opens, read from its URLs alone, the Node.js versions a package.json's engines
        range takes, read from its text alone, a game's copies' names and arguments, and whether a project's inputs changed
        since a build began, read from a temporary folder, compiled in since their project is the app's. -->
