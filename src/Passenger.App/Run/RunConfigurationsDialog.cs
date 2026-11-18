@@ -1415,9 +1415,9 @@ public sealed class RunConfigurationsDialog : IdeWindow
         nameBox.Text = name;
         valueBox.Text = value;
         Button remove = ToolButtons.Of(IconKeys.Close, "Remove Variable");
-        Grid row = new() { ColumnDefinitions = new ColumnDefinitions("240,8,*,4,Auto") };
-        Grid.SetColumn(valueBox, 2);
-        Grid.SetColumn(remove, 4);
+        Grid row = new() { ColumnDefinitions = VariableColumns(), ColumnSpacing = Gaps.Normal };
+        Grid.SetColumn(valueBox, 1);
+        Grid.SetColumn(remove, 2);
         row.Children.Add(nameBox);
         row.Children.Add(valueBox);
         row.Children.Add(remove);
@@ -1448,12 +1448,17 @@ public sealed class RunConfigurationsDialog : IdeWindow
         }
     }
 
+    /// <summary>A variable's name, its value taking more of what the row leaves, and its Remove: the name no wider than a
+    /// name needs, both narrowing together with the dialog.</summary>
+    private static ColumnDefinitions VariableColumns() =>
+        [new ColumnDefinition(2, GridUnitType.Star) { MaxWidth = 240 }, new ColumnDefinition(3, GridUnitType.Star), new ColumnDefinition(GridLength.Auto)];
+
     private static Control VariablesHeader()
     {
-        Grid header = new() { ColumnDefinitions = new ColumnDefinitions("240,8,*") };
+        Grid header = new() { ColumnDefinitions = VariableColumns(), ColumnSpacing = Gaps.Normal };
         TextBlock name = new() { Text = "Name", Classes = { StyleClasses.Muted } };
         TextBlock value = new() { Text = "Value", Classes = { StyleClasses.Muted } };
-        Grid.SetColumn(value, 2);
+        Grid.SetColumn(value, 1);
         header.Children.Add(name);
         header.Children.Add(value);
         return header;

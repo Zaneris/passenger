@@ -31,7 +31,7 @@ public sealed class FileNestingDialog : IdeWindow
                 {
                     Text = text,
                     Margin = new Thickness(0, Gaps.Hair, Gaps.Wide, Gaps.Hair),
-                    TextWrapping = TextWrapping.WrapWithOverflow,
+                    TextWrapping = TextWrapping.Wrap,
                     FontWeight = heading ? FontWeight.SemiBold : FontWeight.Normal,
                     [Grid.RowProperty] = row,
                     [Grid.ColumnProperty] = column,
@@ -51,7 +51,7 @@ public sealed class FileNestingDialog : IdeWindow
         Row(FileNesting.EnvironmentParent, FileNesting.EnvironmentChildren);
         Row(FileNesting.ComposeParent, FileNesting.ComposeChildren);
         Rules = table;
-        Border framed = new() { Classes = { StyleClasses.Framed }, Child = new ScrollViewer { Content = table } };
+        Border framed = new() { Classes = { StyleClasses.Framed }, Child = new ScrollViewer { Content = table, HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled } };
         Rules.IsEnabled = nest;
         NestBox.IsCheckedChanged += (_, _) => Rules.IsEnabled = NestBox.IsChecked == true;
 
