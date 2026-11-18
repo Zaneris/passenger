@@ -1382,7 +1382,7 @@ public abstract class FileColoursFolder : IDisposable
 
     /// <summary>The colour of the most ink in a stretch of text as drawn: of every pixel in its boxes, the one farthest
     /// from the editor's background, which is where a glyph's stroke covers the pixel whole.</summary>
-    protected static Color Ink(MainWindow window, CodeEditor editor, int start, int length)
+    internal static Color Ink(MainWindow window, CodeEditor editor, int start, int length)
     {
         Ui.Settle();
         Color background = Token(window.ActualThemeVariant, TokenKeys.Editor_Background);
@@ -1413,10 +1413,10 @@ public abstract class FileColoursFolder : IDisposable
         return inkiest;
     }
 
-    protected static double Distance(Color a, Color b) =>
+    internal static double Distance(Color a, Color b) =>
         Math.Sqrt(Math.Pow(a.R - b.R, 2) + Math.Pow(a.G - b.G, 2) + Math.Pow(a.B - b.B, 2));
 
-    protected static Color Token(ThemeVariant theme, string key) =>
+    internal static Color Token(ThemeVariant theme, string key) =>
         Application.Current!.TryFindResource(key, theme, out object? brush) && brush is ISolidColorBrush solid
             ? solid.Color
             : throw new InvalidOperationException($"The {theme} theme has no {key}");

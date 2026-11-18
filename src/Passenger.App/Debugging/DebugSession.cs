@@ -402,7 +402,7 @@ public sealed class DebugSession
             Program = place?.ToProgram(plan.Program) ?? plan.Program,
             Args = plan.Arguments,
             Cwd = place?.ToProgram(plan.WorkingDirectory) ?? plan.WorkingDirectory,
-            Env = plan.Environment,
+            Env = runInTerminal is null ? ToolWindows.ConsoleSink.TellColours(plan.Environment) : plan.Environment,
             Console = runInTerminal is null ? "internalConsole" : "integratedTerminal",
             JustMyCode = true,
             StopAtEntry = false,

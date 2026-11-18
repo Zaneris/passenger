@@ -8,13 +8,15 @@ using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Passenger.Editor;
+using Passenger.Terminal;
 using Passenger.Text;
 
 namespace Passenger.App.ToolWindows;
 
 /// <summary>A program's or a build's console: the code editor, read-only, following the end while the output grows, with
 /// the run toolbar down its left side (rerun, stop, clear) and Find over its text. Output comes through its <see cref="Sink"/> from any thread;
-/// standard error is drawn in the error colour, a build's error and warning lines in their severities' colours, and what a
+/// standard error is drawn in the error colour, a program's own colours and styles as it set them (in the theme's terminal
+/// colours, as the terminal draws them), a build's error and warning lines in their severities' colours, and what a
 /// person types goes to the program's <see cref="Input"/> a line at a time, in the input colour. It keeps a cycle buffer of
 /// text, the oldest lines dropped past it. Its file locations, web addresses and the folder a publish landed in are links
 /// (<see cref="Links"/>).</summary>
@@ -660,13 +662,29 @@ public sealed class OutputView : DockPanel, IOwnKeys
         bool following = editor is not null && !editor.Selections.HasMultiple && caret.IsEmpty && caret.Caret >= at;
         int typedCaret = caret.Caret - at;
         Edit(at, 0, text);
-        colours.Insert(at, text.Length, runs.Where(r => r.Stream == ConsoleStream.Error).Select(r => (at + r.Start, r.Length)));
+        colours.Insert(at, text.Length, Coloured(at, runs));
         typedFrom += text.Length;
         Trim();
         if (following)
         {
             // A caret at the end, or in the line being typed, stays where it was in that line.
             editor!.Selections = SelectionSet.Single(typedFrom + typedCaret);
+        }
+    }
+
+    /// <summary>The stretches of a batch put in at an offset that are drawn in colours of their own: standard error's in the
+    /// error colour, and a program's own colours and styles (<see cref="TerminalColours.Look"/>) over its stream's.</summary>
+    private static IEnumerable<SyntaxSpan> Coloured(int at, IReadOnlyList<ConsoleRun> runs)
+    {
+        foreach (ConsoleRun run in runs)
+        {
+            bool error = run.Stream == ConsoleStream.Error;
+            TokenKind? kind = run.Style == CellStyle.Plain ? null
+                : TextLooks.KindOf(TerminalColours.Look(run.Style, error ? TokenKeys.Syntax_ErrorOutput : TokenKeys.Editor_Text, TokenKeys.Editor_Background));
+            if ((kind ?? (error ? TokenKind.ErrorOutput : null)) is { } coloured)
+            {
+                yield return new SyntaxSpan(at + run.Start, run.Length, coloured);
+            }
         }
     }
 
@@ -784,7 +802,7 @@ public sealed class OutputView : DockPanel, IOwnKeys
         }
         int end = Document.Snapshot.Length;
         Edit(end, 0, text);
-        colours.Insert(end, text.Length, [(end, text.Length)], TokenKind.UserInput);
+        colours.Insert(end, text.Length, [new SyntaxSpan(end, text.Length, TokenKind.UserInput)]);
         Editor.Selections = SelectionSet.Single(Document.Snapshot.Length);
     }
 
@@ -846,9 +864,9 @@ public sealed class OutputView : DockPanel, IOwnKeys
         }
     }
 
-    /// <summary>The console's coloured stretches (standard error, what was typed), in order and apart. They are kept in
-    /// offsets from the start of all the console has held since it was last cleared, so dropping its oldest lines moves
-    /// none of them, and a line's colours are found by halving. A line naming a build's or a compiler's problem is found
+    /// <summary>The console's coloured stretches (standard error, a program's own colours, what was typed), in order and
+    /// apart. They are kept in offsets from the start of all the console has held since it was last cleared, so dropping
+    /// its oldest lines moves none of them, and a line's colours are found by halving. A line naming a build's or a compiler's problem is found
     /// as it is drawn, in its severity's colour over the stream's, as every console showing a build draws it.</summary>
     private sealed class ConsoleColours : IHighlighter
     {
@@ -878,19 +896,19 @@ public sealed class OutputView : DockPanel, IOwnKeys
         }
 
         /// <summary>Text put in at an offset: the stretches from there on move after it, and those given are coloured.</summary>
-        public void Insert(int at, int length, IEnumerable<(int Start, int Length)> coloured, TokenKind kind = TokenKind.ErrorOutput)
+        public void Insert(int at, int length, IEnumerable<SyntaxSpan> coloured)
         {
             int index = First(at + dropped);
             for (int i = index; i < spans.Count; i++)
             {
                 spans[i] = spans[i] with { Start = spans[i].Start + length };
             }
-            foreach ((int start, int count) in coloured)
+            foreach (SyntaxSpan given in coloured)
             {
-                SyntaxSpan span = new(start + dropped, count, kind);
-                if (index > 0 && spans[index - 1].Kind == kind && spans[index - 1].End == span.Start)
+                SyntaxSpan span = given with { Start = given.Start + dropped };
+                if (index > 0 && spans[index - 1].Kind == span.Kind && spans[index - 1].End == span.Start)
                 {
-                    spans[index - 1] = spans[index - 1] with { Length = spans[index - 1].Length + count };
+                    spans[index - 1] = spans[index - 1] with { Length = spans[index - 1].Length + span.Length };
                 }
                 else
                 {

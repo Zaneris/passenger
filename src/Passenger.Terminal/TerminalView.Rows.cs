@@ -106,7 +106,7 @@ public sealed partial class TerminalView
             }
             if (part.Dim)
             {
-                using (context.PushOpacity(0.6))
+                using (context.PushOpacity(TerminalColours.Faint))
                 {
                     DrawInk(context, part, y);
                 }

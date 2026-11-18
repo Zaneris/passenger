@@ -491,8 +491,8 @@ public sealed partial class TerminalView : Control
         InvalidateVisual();
     }
 
-    /// <summary>A cell's colour: the theme's for the sixteen named ones, xterm's 6x6x6 cube and grey ramp for the rest
-    /// of the 256, or the 24-bit colour given.</summary>
+    /// <summary>A cell's colour, as <see cref="TerminalColours"/> names it: the theme's for the sixteen named ones, else
+    /// the colour itself.</summary>
     private IBrush Colour(int colour, IBrush fallback)
     {
         if (colour == CellStyle.Default)
@@ -503,26 +503,8 @@ public sealed partial class TerminalView : Control
         {
             return known;
         }
-        IBrush brush;
-        if ((colour & CellStyle.Rgb) != 0)
-        {
-            brush = new SolidColorBrush(Color.FromRgb((byte)(colour >> 16), (byte)(colour >> 8), (byte)colour));
-        }
-        else if (colour < 16)
-        {
-            brush = Find($"Passenger.Terminal.Ansi{colour}") ?? fallback;
-        }
-        else if (colour < 232)
-        {
-            int index = colour - 16;
-            static byte Level(int step) => (byte)(step == 0 ? 0 : 55 + (step * 40));
-            brush = new SolidColorBrush(Color.FromRgb(Level(index / 36), Level(index / 6 % 6), Level(index % 6)));
-        }
-        else
-        {
-            byte grey = (byte)(8 + ((colour - 232) * 10));
-            brush = new SolidColorBrush(Color.FromRgb(grey, grey, grey));
-        }
+        IBrush brush = TerminalColours.Token(colour) is { } token ? Find(token) ?? fallback
+            : new SolidColorBrush(Color.FromUInt32(0xFF000000 | (uint)TerminalColours.Rgb(colour)!.Value));
         palette[colour] = brush;
         return brush;
     }

@@ -829,9 +829,13 @@ public sealed class BuildRunTests : IClassFixture<RestoredFolders>, IDisposable
             Assert.Contains("\nbefore red after\n", output, StringComparison.Ordinal);
             text = run.Document.Snapshot;
             Passenger.Editor.IHighlighter colours = run.Editor.Highlighter!;
-            Passenger.Editor.SyntaxSpan error = Assert.Single(colours.GetSpans(text, 0, text.Length));
-            Assert.Equal(Passenger.Editor.TokenKind.ErrorOutput, error.Kind);
-            Assert.Equal("error bold\n", text.GetText(error.Start, error.Length));
+            // Each sequence read whole however it was split: green, red, and standard error's bold red in the error colour.
+            IReadOnlyList<Passenger.Editor.SyntaxSpan> coloured = colours.GetSpans(text, 0, text.Length);
+            Assert.Equal(["green", "red", "error ", "bold", "\n"], coloured.Select(s => text.GetText(s.Start, s.Length)));
+            Assert.Equal(Passenger.Editor.TokenKind.ErrorOutput, coloured[2].Kind);
+            Assert.Equal(Passenger.Editor.TokenKind.ErrorOutput, coloured[4].Kind);
+            Assert.True(Passenger.Editor.TextLooks.TryGet(coloured[3].Kind, out Passenger.Editor.TextLook bold), $"The bold red is drawn as {coloured[3].Kind}");
+            Assert.Equal(new Passenger.Editor.TextLook(Passenger.Editor.LookColour.Of(TokenKeys.Terminal_Ansi1), default, Passenger.Editor.LookStyle.Bold), bold);
 
             // Below the first line's top, which is the splitter's to grab.
             Ui.RightClick(run.Editor, run.Editor.PointOf(14) + new Avalonia.Vector(1, run.Editor.LineHeight / 2));

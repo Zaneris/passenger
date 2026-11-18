@@ -22,7 +22,7 @@ public enum MouseTracking
 
 /// <summary>The screen a terminal shows: rows of cells, the cursor, the lines scrolled off the top, and the modes a
 /// program sets. Bytes from the program go in through <see cref="Feed"/> and are read as xterm reads them: UTF-8 text,
-/// C0 controls, and ESC, CSI, OSC and DCS sequences after the state machine in vt100.net's DEC parser, covering what
+/// C0 controls, and ESC, CSI, OSC and DCS sequences through the one reader of them (<see cref="SequenceReader"/>), covering what
 /// shells, editors and full-screen programs use (cursor movement, erasing, scroll regions, the alternate screen, 16,
 /// 256 and 24-bit colours, the line-drawing set, bracketed paste, mouse reports, the kitty keyboard protocol's flags,
 /// OSC 8's links).
@@ -36,25 +36,13 @@ public sealed class TerminalScreen
     /// <summary>The longest grapheme a cell holds, in UTF-16 units: a letter's marks beyond it are dropped.</summary>
     private const int MostJoined = 32;
 
-    /// <summary>The longest text an OSC keeps, in UTF-16 units: what a program writes past it is dropped.</summary>
-    private const int MostOsc = 8192;
-
     private readonly LineRing scrollback = new(ScrollbackLimit);
     private readonly Decoder utf8 = new UTF8Encoding(false).GetDecoder();
-    private readonly Parameters parameters = new();
-    private char[] osc = new char[256];
-    private int oscLength;
+    private readonly SequenceReader sequences = new();
     private char[] decoded = new char[4096];
     private TerminalLine[] main;
     private TerminalLine[]? alternate;
     private bool[] tabStops;
-    private State state;
-    private char privateMarker;
-
-    /// <summary>The sequence's first intermediate byte (ESC ( and CSI SP q's), and how many it has.</summary>
-    private int intermediate;
-    private int intermediates;
-
     private char highSurrogate;
     private CellStyle style = CellStyle.Plain;
     private int top;
@@ -84,18 +72,6 @@ public sealed class TerminalScreen
         Lines = main;
         bottom = Rows - 1;
         tabStops = Stops(Columns);
-    }
-
-    private enum State
-    {
-        Ground,
-        Escape,
-        EscapeIntermediate,
-        Csi,
-        Osc,
-        OscEscape,
-        Text,
-        TextEscape,
     }
 
     /// <summary>An answer for the program, to be written to its input: a cursor position, the terminal's identity.</summary>
@@ -217,7 +193,7 @@ public sealed class TerminalScreen
                 at += take;
                 continue;
             }
-            if (state == State.Ground)
+            if (sequences.InText)
             {
                 int run = rest.IndexOfAnyExceptInRange((byte)0x20, (byte)0x7E);
                 if (run != 0)
@@ -541,187 +517,22 @@ public sealed class TerminalScreen
         }
     }
 
-    private void Process(int rune)
-    {
-        switch (state)
-        {
-            case State.Ground:
-                if (rune == 0x1b)
-                {
-                    Begin(State.Escape);
-                }
-                else if (rune < 0x20 || rune == 0x7f)
-                {
-                    Control(rune);
-                }
-                else
-                {
-                    Print(rune);
-                }
-                break;
-            case State.Escape:
-                if (Interrupts(rune))
-                {
-                    break;
-                }
-                switch (rune)
-                {
-                    case '[':
-                        state = State.Csi;
-                        break;
-                    case ']':
-                        oscLength = 0;
-                        state = State.Osc;
-                        break;
-                    case 'P' or 'X' or '^' or '_':
-                        state = State.Text;
-                        break;
-                    case >= 0x20 and <= 0x2f:
-                        Intermediate(rune);
-                        state = State.EscapeIntermediate;
-                        break;
-                    default:
-                        Escape((char)rune);
-                        state = State.Ground;
-                        break;
-                }
-                break;
-            case State.EscapeIntermediate:
-                if (Interrupts(rune))
-                {
-                    break;
-                }
-                if (rune is >= 0x20 and <= 0x2f)
-                {
-                    Intermediate(rune);
-                }
-                else
-                {
-                    Escape((char)rune);
-                    state = State.Ground;
-                }
-                break;
-            case State.Csi:
-                if (Interrupts(rune))
-                {
-                    break;
-                }
-                if (rune is '<' or '=' or '>' or '?' && parameters.IsEmpty && privateMarker == '\0')
-                {
-                    privateMarker = (char)rune;
-                }
-                else if (rune is >= 0x30 and <= 0x3f)
-                {
-                    parameters.Take(rune);
-                }
-                else if (rune is >= 0x20 and <= 0x2f)
-                {
-                    Intermediate(rune);
-                }
-                else if (rune is >= 0x40 and <= 0x7e)
-                {
-                    parameters.End();
-                    Csi((char)rune);
-                    state = State.Ground;
-                }
-                break;
-            case State.Osc:
-                if (rune == 0x07)
-                {
-                    Osc();
-                    state = State.Ground;
-                }
-                else if (rune == 0x1b)
-                {
-                    state = State.OscEscape;
-                }
-                else if (oscLength < MostOsc)
-                {
-                    if (osc.Length < oscLength + 2)
-                    {
-                        Array.Resize(ref osc, Math.Min(osc.Length * 2, MostOsc + 1));
-                    }
-                    oscLength += new Rune(rune).EncodeToUtf16(osc.AsSpan(oscLength));
-                }
-                break;
-            case State.OscEscape:
-                Osc();
-                if (rune == '\\')
-                {
-                    state = State.Ground;
-                }
-                else
-                {
-                    Begin(State.Escape);
-                    Process(rune);
-                }
-                break;
-            case State.Text:
-                // DCS, SOS, PM and APC: nothing here needs their contents, so they are passed over to their end.
-                if (rune == 0x1b)
-                {
-                    state = State.TextEscape;
-                }
-                else if (rune is 0x07 or 0x18 or 0x1a)
-                {
-                    state = State.Ground;
-                }
-                break;
-            case State.TextEscape:
-                if (rune == '\\')
-                {
-                    state = State.Ground;
-                }
-                else
-                {
-                    Begin(State.Escape);
-                    Process(rune);
-                }
-                break;
-        }
-    }
+    /// <summary>A character through the reader of control sequences, which tells the screen what it is or what it ends.</summary>
+    private void Process(int rune) => sequences.Take(rune, new Reading(this));
 
-    /// <summary>A control inside a sequence: CAN and SUB abandon it, ESC starts another, the rest act as they would
-    /// outside it.</summary>
-    private bool Interrupts(int rune)
+    /// <summary>What the reader finds, acted on by the screen.</summary>
+    private readonly struct Reading(TerminalScreen screen) : ISequenceActions
     {
-        if (rune is 0x18 or 0x1a)
-        {
-            state = State.Ground;
-            return true;
-        }
-        if (rune == 0x1b)
-        {
-            Begin(State.Escape);
-            return true;
-        }
-        if (rune < 0x20 || rune == 0x7f)
-        {
-            Control(rune);
-            return true;
-        }
-        return false;
-    }
+        public void Print(int rune) => screen.Print(rune);
 
-    private void Begin(State next)
-    {
-        parameters.Clear();
-        intermediate = 0;
-        intermediates = 0;
-        privateMarker = '\0';
-        state = next;
-    }
+        public void Control(int rune) => screen.Control(rune);
 
-    private void Intermediate(int rune)
-    {
-        if (intermediates++ == 0)
-        {
-            intermediate = rune;
-        }
-    }
+        public void Escape(SequenceReader sequence, char final) => screen.Escape(final);
 
-    /// <summary>Whether the sequence's intermediates are just this one byte.</summary>
-    private bool Only(char middle) => intermediates == 1 && intermediate == middle;
+        public void Csi(SequenceReader sequence, char final) => screen.Csi(final);
+
+        public void Osc(ReadOnlySpan<char> text) => screen.Osc(text);
+    }
 
     private void Control(int rune)
     {
@@ -1010,12 +821,12 @@ public sealed class TerminalScreen
 
     private void Escape(char final)
     {
-        if (Only('('))
+        if (sequences.Only('('))
         {
             lineDrawing = final == '0';
             return;
         }
-        if (Only('#') && final == '8')
+        if (sequences.Only('#') && final == '8')
         {
             // DECALN: the screen filled with Es, for aligning a display.
             foreach (TerminalLine line in Lines)
@@ -1028,7 +839,7 @@ public sealed class TerminalScreen
             }
             return;
         }
-        if (intermediates > 0)
+        if (sequences.Intermediates > 0)
         {
             return;
         }
@@ -1061,7 +872,9 @@ public sealed class TerminalScreen
 
     private void Csi(char final)
     {
-        Parameters groups = parameters;
+        SequenceParameters groups = sequences.Parameters;
+        char privateMarker = sequences.PrivateMarker;
+        int intermediates = sequences.Intermediates;
         int Get(int index, int fallback) => index < groups.Count && groups[index, 0] > 0 ? groups[index, 0] : fallback;
         int Raw(int index) => index < groups.Count ? Math.Max(0, groups[index, 0]) : 0;
 
@@ -1117,7 +930,7 @@ public sealed class TerminalScreen
         {
             return;
         }
-        if (Only(' ') && final == 'q')
+        if (sequences.Only(' ') && final == 'q')
         {
             int requested = Raw(0);
             if (requested is < 0 or > 6)
@@ -1134,7 +947,7 @@ public sealed class TerminalScreen
             RequestedCursorBlinking = requested == 0 ? null : requested % 2 == 1;
             return;
         }
-        if (Only('!') && final == 'p')
+        if (sequences.Only('!') && final == 'p')
         {
             SoftReset();
             return;
@@ -1237,7 +1050,7 @@ public sealed class TerminalScreen
                 }
                 break;
             case 'm':
-                Sgr(groups);
+                style = GraphicRendition.Apply(style, groups);
                 break;
             case 'n':
                 if (Raw(0) == 5)
@@ -1349,148 +1162,9 @@ public sealed class TerminalScreen
         wrapPending = false;
     }
 
-    private void Sgr(Parameters groups)
-    {
-        if (groups.Count == 0)
-        {
-            style = CellStyle.Plain;
-            return;
-        }
-        for (int i = 0; i < groups.Count; i++)
-        {
-            int code = groups[i, 0] >= 0 ? groups[i, 0] : 0;
-            CellFlags flags = style.Flags;
-            switch (code)
-            {
-                case 0:
-                    style = CellStyle.Plain;
-                    continue;
-                case 1:
-                    flags |= CellFlags.Bold;
-                    break;
-                case 2:
-                    flags |= CellFlags.Dim;
-                    break;
-                case 3:
-                    flags |= CellFlags.Italic;
-                    break;
-                case 4:
-                    flags = groups.Parts(i) > 1 && groups[i, 1] == 0 ? flags & ~CellFlags.Underline : flags | CellFlags.Underline;
-                    break;
-                case 7:
-                    flags |= CellFlags.Inverse;
-                    break;
-                case 8:
-                    flags |= CellFlags.Hidden;
-                    break;
-                case 9:
-                    flags |= CellFlags.Strike;
-                    break;
-                case 21:
-                    flags |= CellFlags.Underline;
-                    break;
-                case 22:
-                    flags &= ~(CellFlags.Bold | CellFlags.Dim);
-                    break;
-                case 23:
-                    flags &= ~CellFlags.Italic;
-                    break;
-                case 24:
-                    flags &= ~CellFlags.Underline;
-                    break;
-                case 27:
-                    flags &= ~CellFlags.Inverse;
-                    break;
-                case 28:
-                    flags &= ~CellFlags.Hidden;
-                    break;
-                case 29:
-                    flags &= ~CellFlags.Strike;
-                    break;
-                case >= 30 and <= 37:
-                    style = style with { Fore = code - 30 };
-                    continue;
-                case 38:
-                    if (Extended(groups, ref i) is int fore)
-                    {
-                        style = style with { Fore = fore };
-                    }
-                    continue;
-                case 39:
-                    style = style with { Fore = CellStyle.Default };
-                    continue;
-                case >= 40 and <= 47:
-                    style = style with { Back = code - 40 };
-                    continue;
-                case 48:
-                    if (Extended(groups, ref i) is int back)
-                    {
-                        style = style with { Back = back };
-                    }
-                    continue;
-                case 49:
-                    style = style with { Back = CellStyle.Default };
-                    continue;
-                case 58:
-                    // The underline's own colour: read past it, since it is not drawn.
-                    _ = Extended(groups, ref i);
-                    continue;
-                case >= 90 and <= 97:
-                    style = style with { Fore = code - 90 + 8 };
-                    continue;
-                case >= 100 and <= 107:
-                    style = style with { Back = code - 100 + 8 };
-                    continue;
-            }
-            style = style with { Flags = flags };
-        }
-    }
-
-    /// <summary>A colour after 38 or 48: 5;N from the palette or 2;R;G;B, in its own group's parts (38:2::R:G:B) or in
-    /// the groups after it (38;2;R;G;B), which it then consumes.</summary>
-    private static int? Extended(Parameters groups, ref int i)
-    {
-        int parts = groups.Parts(i);
-        if (parts > 1)
-        {
-            if (groups[i, 1] == 5 && parts > 2)
-            {
-                return Math.Clamp(groups[i, 2], 0, 255);
-            }
-            if (groups[i, 1] == 2 && parts >= 5)
-            {
-                // 38:2:R:G:B, or 38:2:SPACE:R:G:B with a colour space first.
-                int first = parts >= 6 ? 3 : 2;
-                return CellStyle.FromRgb(Byte(groups[i, first]), Byte(groups[i, first + 1]), Byte(groups[i, first + 2]));
-            }
-            return null;
-        }
-        int at = i;
-        switch (Next(groups, at + 1))
-        {
-            case 5:
-                int index = Next(groups, at + 2);
-                i += 2;
-                return index >= 0 ? Math.Min(index, 255) : null;
-            case 2:
-                int r = Next(groups, at + 2);
-                int g = Next(groups, at + 3);
-                int b = Next(groups, at + 4);
-                i += 4;
-                return CellStyle.FromRgb(Byte(r), Byte(g), Byte(b));
-            default:
-                return null;
-        }
-
-        static int Next(Parameters groups, int index) => index < groups.Count ? groups[index, 0] : -1;
-
-        static int Byte(int value) => Math.Clamp(value, 0, 255);
-    }
-
     /// <summary>An OSC's text read where it was kept: a string is made only for a title or a folder that is new.</summary>
-    private void Osc()
+    private void Osc(ReadOnlySpan<char> text)
     {
-        ReadOnlySpan<char> text = osc.AsSpan(0, oscLength);
         int semicolon = text.IndexOf(';');
         ReadOnlySpan<char> code = semicolon < 0 ? text : text[..semicolon];
         ReadOnlySpan<char> value = semicolon < 0 ? [] : text[(semicolon + 1)..];
@@ -1784,107 +1458,6 @@ public sealed class TerminalScreen
         {
             depth = 0;
             entries[0] = 0;
-        }
-    }
-
-    /// <summary>A CSI's parameters, read as their bytes arrive: groups apart at semicolons, each group's parts apart at
-    /// colons (SGR's 38:2:R:G:B), each part a number up to 65535, or -1 when it is empty, holds a byte other than a digit
-    /// or is past an int's range. A sequence keeps its first <see cref="Most"/> parts and drops the rest, so millions of
-    /// separators (a binary file written out) take no more memory or work than those.</summary>
-    private sealed class Parameters
-    {
-        /// <summary>The most parts a sequence keeps, its groups' together.</summary>
-        private const int Most = 32;
-
-        private readonly int[] values = new int[Most];
-
-        /// <summary>Where each group's parts start among <see cref="values"/>.</summary>
-        private readonly int[] starts = new int[Most];
-
-        private int count;
-        private long number;
-        private bool digits;
-        private bool bad;
-
-        /// <summary>Whether the sequence has <see cref="Most"/> parts, so what comes after them is dropped.</summary>
-        private bool full;
-
-        /// <summary>How many groups the sequence has: none until a parameter byte comes.</summary>
-        public int Count { get; private set; }
-
-        /// <summary>Whether no parameter byte has come yet.</summary>
-        public bool IsEmpty => Count == 0;
-
-        /// <summary>A group's part; every group has its first.</summary>
-        public int this[int group, int part] => values[starts[group] + part];
-
-        public int Parts(int group) => (group + 1 < Count ? starts[group + 1] : count) - starts[group];
-
-        public void Clear()
-        {
-            Count = 0;
-            count = 0;
-            number = 0;
-            digits = false;
-            bad = false;
-            full = false;
-        }
-
-        /// <summary>Takes a parameter byte, 0x30 to 0x3F.</summary>
-        public void Take(int c)
-        {
-            if (Count == 0)
-            {
-                Open();
-            }
-            if (full)
-            {
-                return;
-            }
-            switch (c)
-            {
-                case >= '0' and <= '9':
-                    digits = true;
-                    if (!bad)
-                    {
-                        number = (number * 10) + (c - '0');
-                        bad = number > int.MaxValue;
-                    }
-                    break;
-                case ';':
-                    EndPart();
-                    if (!full)
-                    {
-                        Open();
-                    }
-                    break;
-                case ':':
-                    EndPart();
-                    break;
-                default:
-                    bad = true;
-                    break;
-            }
-        }
-
-        /// <summary>The sequence's final byte has come: its last part ends, unless it was dropped.</summary>
-        public void End()
-        {
-            if (Count > 0 && !full)
-            {
-                EndPart();
-            }
-        }
-
-        private void Open() => starts[Count++] = count;
-
-        private void EndPart()
-        {
-            values[count++] = digits && !bad ? (int)Math.Min(number, 65535) : -1;
-            number = 0;
-            digits = false;
-            bad = false;
-            full = count == Most;
         }
     }
 }

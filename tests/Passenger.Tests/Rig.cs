@@ -188,7 +188,7 @@ public sealed class TestRun : IAsyncDisposable
         Environment.SetEnvironmentVariable("npm_config_audit", "false");
         Environment.SetEnvironmentVariable("npm_config_fund", "false");
         // Nor the person's colour choices: what a test runs writes in colour on a terminal alone, as with none of them set.
-        foreach (string colour in (string[])["NO_COLOR", "FORCE_COLOR", "CLICOLOR_FORCE", "DOTNET_SYSTEM_CONSOLE_ALLOW_ANSI_COLOR_REDIRECTION"])
+        foreach (string colour in (string[])["NO_COLOR", "FORCE_COLOR", "CLICOLOR_FORCE", RuntimeVariables.AnsiColorRedirection])
         {
             OwnEnvironment.Set(colour, null);
         }

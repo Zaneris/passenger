@@ -2998,7 +2998,9 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
         // The ground of a web page setting none of its own: a browser's white, in every look.
         (_, "Brushes.White") when path.EndsWith("Editors/HtmlPreview.cs", StringComparison.Ordinal) => true,
         // A colour the program in the terminal names: xterm's 24-bit colours, its 256-colour cube and grey ramp.
-        (_, "Color.FromRgb" or "new SolidColorBrush(Color.") when path.EndsWith("TerminalView.cs", StringComparison.Ordinal) => true,
+        (_, "new SolidColorBrush(Color.") when path.EndsWith("TerminalView.cs", StringComparison.Ordinal) => true,
+        // A colour a highlighter's look names of its own: a program's 24-bit or 256-colour text in a console.
+        (_, "Color.FromUInt32") when path.EndsWith("Editor/CodeEditor.Render.cs", StringComparison.Ordinal) => true,
         _ => false,
     };
 

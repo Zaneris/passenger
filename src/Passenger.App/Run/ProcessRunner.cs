@@ -7,9 +7,10 @@ using Passenger.Text;
 namespace Passenger.App.Run;
 
 /// <summary>A child process whose output and errors stream into a console as they arrive, through its sink: read off the
-/// UI thread, colour codes taken out, standard error in the error colour. A program run (not a build) reads what the
-/// person types into the console; a build's input is closed, so a step that reads ends rather than waits. Stopping kills
-/// the whole process tree, and a runner of builds the MSBuild nodes its builds left with what they run (<see cref="Stop"/>).
+/// UI thread, its colour codes read into its colours, standard error in the error colour. A program run (not a build)
+/// reads what the person types into the console and is told it may write its colours there; a build's input is closed,
+/// so a step that reads ends rather than waits. Stopping kills the whole process tree, and a runner of builds the MSBuild
+/// nodes its builds left with what they run (<see cref="Stop"/>).
 /// The console is the window's; a runner lets go of it when disposed, its folder left, and another folder's runner writes
 /// there.</summary>
 public sealed class ProcessRunner : IDisposable, IRunningProgram
@@ -212,6 +213,10 @@ public sealed class ProcessRunner : IDisposable, IRunningProgram
         // Otherwise ChildProcesses closes it as the program starts.
         start.RedirectStandardInput = takesInput;
         ChildProcesses.WithVariables(start, environment);
+        if (takesInput)
+        {
+            ConsoleSink.TellColours(start.Environment);
+        }
         if (ownNodes is not null && start.Environment.TryGetValue(MSBuildNames.NodeHandshakeSalt, out string? salt) && salt is not null)
         {
             start.Environment[MSBuildNames.NodeHandshakeSalt] = salt + ownNodes;

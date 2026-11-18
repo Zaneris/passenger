@@ -2082,10 +2082,15 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
         }
     }
 
+    /// <summary>A program debugged prints 100,000 lines each in a colour of its own, then a line in .NET's console colour
+    /// (with TERM set, as an IDE started from a terminal passes on): the Debug console keeps the end of them within its
+    /// limit, free of colour codes, each line in its colour, .NET's too where it writes colours into a pipe once told.</summary>
     [AvaloniaFact]
-    public void Debugging_a_program_that_prints_100000_coloured_lines_leaves_the_console_free_of_colour_codes_within_its_limit()
+    public void Debugging_a_program_that_prints_100000_coloured_lines_shows_them_in_their_colours_free_of_colour_codes_within_its_limit()
     {
-        Write("Program.cs", "for (int i = 0; i < 100_000; i++)\n{\n    Console.WriteLine($\"\\u001b[3{i % 7 + 1}mline {i}\\u001b[0m\");\n}\nConsole.WriteLine(\"printed\");\n");
+        Write("Program.cs", "Environment.SetEnvironmentVariable(\"TERM\", \"xterm-256color\");\n"
+            + "for (int i = 0; i < 100_000; i++)\n{\n    Console.WriteLine($\"\\u001b[3{i % 7 + 1}mline {i}\\u001b[0m\");\n}\n"
+            + "Console.ForegroundColor = ConsoleColor.DarkCyan;\nConsole.Write(\"printed\");\nConsole.ResetColor();\nConsole.WriteLine();\n");
         MainWindow window = Open();
         Passenger.App.ToolWindows.OutputView console = window.BottomPanel.Debug.Console;
         string Text() => console.Document.Snapshot.ToString();
@@ -2100,6 +2105,13 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
             Assert.DoesNotContain("[0m", text, StringComparison.Ordinal);
             Assert.Contains("\nline 99999\nprinted\n", text, StringComparison.Ordinal);
             Assert.True(text.Length <= Passenger.App.ToolWindows.OutputView.DefaultLimitKb * 1024, $"The console kept {text.Length} characters");
+            Assert.Equal(TokenKeys.Terminal_Ansi5, ConsoleColoursTests.LookAt(console, "line 99999")?.Fore.Token);
+            Assert.Equal(TokenKeys.Terminal_Ansi4, ConsoleColoursTests.LookAt(console, "line 99998")?.Fore.Token);
+            if (!OperatingSystem.IsWindows())
+            {
+                // Windows' .NET sets a console's colours through the console alone, writing none into a pipe.
+                Assert.Equal(TokenKeys.Terminal_Ansi6, ConsoleColoursTests.LookAt(console, "printed")?.Fore.Token);
+            }
         }
         finally
         {

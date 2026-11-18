@@ -1,12 +1,15 @@
+using System.Buffers;
 using System.Diagnostics;
 using System.Text;
 using Avalonia.Threading;
 using Passenger.Core;
+using Passenger.Terminal;
 
 namespace Passenger.App.ToolWindows;
 
 /// <summary>Where text written to a console came from: a program's output or errors, or the debugger's own words. Each
-/// has its colour-code state of its own, so one stream's unfinished sequence never swallows another's text.</summary>
+/// has its control-code state of its own, so one stream's unfinished sequence never swallows another's text, nor its
+/// colours another's.</summary>
 public enum ConsoleStream
 {
     Output,
@@ -14,8 +17,12 @@ public enum ConsoleStream
     System,
 }
 
-/// <summary>A stretch of a batch of console text and the stream it came from.</summary>
-public readonly record struct ConsoleRun(int Start, int Length, ConsoleStream Stream);
+/// <summary>A stretch of a batch of console text, the stream it came from and the colours and style its program gave it
+/// (SGR), plain where it gave none.</summary>
+public readonly record struct ConsoleRun(int Start, int Length, ConsoleStream Stream)
+{
+    public CellStyle Style { get; init; } = CellStyle.Plain;
+}
 
 /// <summary>A batch of a program's text as its console took it in, and the stretches of it each of the program's streams
 /// wrote, in the order they came: a line one stream began may end after another stream's text.</summary>
@@ -30,8 +37,10 @@ public delegate void ConsoleRead(ReadOnlySpan<char> text);
 public sealed record ConsoleInput(Action<string> Send, Action Close);
 
 /// <summary>The one way output reaches a console (Run, Build and Debug alike), from any thread: terminal control codes are
-/// taken out as it comes, each stream's state (a pump's its own) kept from one write to the next, so a sequence split
-/// between two reads never shows as text, nor a "\r\n" split so as an extra line. A program's output is read in by
+/// read as they come by the terminal's own reader (<see cref="SequenceReader"/>), the colours and styles a program sets
+/// (SGR) kept with its text as runs and every other sequence left out, each stream's state (a pump's its own) kept from one
+/// write to the next, so a sequence split between two reads never shows as text, nor a "\r\n" split so as an extra line.
+/// What it costs is a run for each change of colour, never anything for each character. A program's output is read in by
 /// <see cref="PumpAsync"/>, the one loop from a reader into a console. The console takes what waits a batch at a time,
 /// at most once a frame and below the window's input and drawing, so a program that writes without pause never floods
 /// the window; what waits is never more than the console keeps, the oldest dropped first.</summary>
@@ -49,6 +58,9 @@ public sealed class ConsoleSink
     private readonly object gate = new();
     private readonly Action take;
     private readonly ControlCodes[] streams = [new(), new(), new()];
+
+    /// <summary>Each stream's way into what waits.</summary>
+    private readonly Waiting[] into;
     private Pending waiting = new();
     private List<ConsoleRun> runs = [];
     private int limit;
@@ -61,7 +73,20 @@ public sealed class ConsoleSink
     {
         this.take = take;
         this.limit = limit;
+        into = [new(this, ConsoleStream.Output), new(this, ConsoleStream.Error), new(this, ConsoleStream.System)];
     }
+
+    /// <summary>Tells a program whose output a console reads that .NET's console may write its colours there
+    /// (<see cref="RuntimeVariables.AnsiColorRedirection"/>), unless the environment it starts with names that already.</summary>
+    public static void TellColours(IDictionary<string, string?> environment) => environment.TryAdd(RuntimeVariables.AnsiColorRedirection, "1");
+
+    /// <summary><see cref="TellColours(IDictionary{string, string?})"/> for the variables a program is given over Passenger's
+    /// own environment, which it inherits.</summary>
+    public static IReadOnlyDictionary<string, string> TellColours(IReadOnlyDictionary<string, string> given) =>
+        Environment.GetEnvironmentVariable(RuntimeVariables.AnsiColorRedirection) is not null
+            || given.Keys.Any(k => k.Equals(RuntimeVariables.AnsiColorRedirection, StringComparison.OrdinalIgnoreCase))
+            ? given
+            : new Dictionary<string, string>(given) { [RuntimeVariables.AnsiColorRedirection] = "1" };
 
     /// <summary>How much text the console keeps, in characters: what waits beyond it could never be shown.</summary>
     internal int Limit
@@ -89,8 +114,49 @@ public sealed class ConsoleSink
                 return;
             }
             int before = waiting.Length;
-            codes.Strip(text, waiting);
-            post = Added(before, stream);
+            codes.Read(text, into[(int)stream]);
+            post = Added(before);
+        }
+        if (post)
+        {
+            Post();
+        }
+    }
+
+    /// <summary>Text read already, with its runs (a masked stream's), added as it is.</summary>
+    private void Write(Styled text, ConsoleStream stream, CancellationToken letGo)
+    {
+        bool post;
+        lock (gate)
+        {
+            if (letGo.IsCancellationRequested)
+            {
+                return;
+            }
+            int before = waiting.Length;
+            text.CopyTo(into[(int)stream]);
+            post = Added(before);
+        }
+        if (post)
+        {
+            Post();
+        }
+    }
+
+    /// <summary>A merged log's whole lines (<see cref="Prefixed"/>), each under its source's name in plain text, read
+    /// through the source's own state, so one source's colours never reach another's lines or a name.</summary>
+    private void Write(Prefixed lines, ConsoleStream stream, ControlCodes codes, CancellationToken letGo)
+    {
+        bool post;
+        lock (gate)
+        {
+            if (letGo.IsCancellationRequested)
+            {
+                return;
+            }
+            int before = waiting.Length;
+            lines.ReadInto(codes, into[(int)stream]);
+            post = Added(before);
         }
         if (post)
         {
@@ -102,7 +168,7 @@ public sealed class ConsoleSink
     public void Write(string text, ConsoleStream stream = ConsoleStream.Output) => Write(text.AsSpan(), stream);
 
     /// <summary>A stream has ended (its program has): a '\r' it held back, in case a '\n' came next, is let go, and an
-    /// unfinished control sequence is dropped, so the next program's text starts clean.</summary>
+    /// unfinished control sequence and the colours in force are dropped, so the next program's text starts clean.</summary>
     public void End(ConsoleStream stream) => End(stream, streams[(int)stream]);
 
     private void End(ConsoleStream stream, ControlCodes codes)
@@ -111,8 +177,8 @@ public sealed class ConsoleSink
         lock (gate)
         {
             int before = waiting.Length;
-            codes.End(waiting);
-            post = Added(before, stream);
+            codes.End(into[(int)stream]);
+            post = Added(before);
         }
         if (post)
         {
@@ -121,16 +187,17 @@ public sealed class ConsoleSink
     }
 
     /// <summary>Reads a program's stream into the console as it comes, a read at a time (a prompt with no line end too),
-    /// with colour-code state of its own, and ends it there however it ends, a '\r' held back let go. Each line read is
-    /// told to <paramref name="lines"/>, each read to <paramref name="chunks"/>. Once <paramref name="letGo"/> is cancelled
-    /// what comes is dropped; <paramref name="shown"/> writes its text as shown (secrets masked), whole lines at a time, and
-    /// <paramref name="prefix"/> each whole line under it (<see cref="Prefixed"/>). Any thread; never throws.</summary>
+    /// with control-code state of its own, and ends it there however it ends. Each line read is told to <paramref name="lines"/>,
+    /// each read to <paramref name="chunks"/>. Once <paramref name="letGo"/> is cancelled what comes is dropped; <paramref name="shown"/>
+    /// makes whole lines as shown (secrets masked) from their text read out of its codes, so a code splits no secret from
+    /// its mask, and <paramref name="prefix"/> heads each whole line (<see cref="Prefixed"/>). Any thread; never throws.</summary>
     public async Task PumpAsync(TextReader reader, ConsoleStream stream, CancellationToken letGo = default, Action<string>? lines = null,
         ConsoleRead? chunks = null, Func<string, string>? shown = null, string? prefix = null)
     {
         ControlCodes codes = new();
         LineSplitter? split = lines is null ? null : new LineSplitter(lines);
         Held? held = shown is null ? null : new Held();
+        Styled? styled = shown is null ? null : new Styled();
         Prefixed? prefixed = prefix is null ? null : new Prefixed(prefix);
         char[] buffer = new char[8192];
         try
@@ -145,10 +212,9 @@ public sealed class ConsoleSink
                 ReadOnlySpan<char> came = buffer.AsSpan(0, read);
                 if (prefixed is not null)
                 {
-                    // Whole lines, each under the prefix, through the console's own state for the stream, as a merged log's.
-                    if (prefixed.Lines(came) is { Length: > 0 } whole)
+                    if (prefixed.Lines(came))
                     {
-                        Write(whole, stream, streams[(int)stream], letGo);
+                        Write(prefixed, stream, codes, letGo);
                     }
                 }
                 else if (held is null)
@@ -157,7 +223,7 @@ public sealed class ConsoleSink
                 }
                 else if (held.Whole(came) is { } whole)
                 {
-                    Write(shown!(whole), stream, codes, letGo);
+                    Write(styled!.Read(whole, codes).Shown(shown!), stream, letGo);
                 }
                 split?.Add(came);
                 chunks?.Invoke(came);
@@ -173,16 +239,16 @@ public sealed class ConsoleSink
         }
         if (prefixed is not null)
         {
-            // The console's state for the stream is every source's in the merged log: its last line let out, not ended.
-            if (prefixed.Rest() is { Length: > 0 } last)
+            // Its last line let out whole, under the prefix, with nothing held back for an end to let go.
+            if (prefixed.Rest())
             {
-                Write(last, stream, streams[(int)stream], letGo);
+                Write(prefixed, stream, codes, letGo);
             }
             return;
         }
         if (held?.Rest() is { } rest)
         {
-            Write(shown!(rest), stream, codes, letGo);
+            Write(styled!.Read(rest, codes).Shown(shown!), stream, letGo);
         }
         End(stream, codes);
         split?.End();
@@ -233,19 +299,21 @@ public sealed class ConsoleSink
 
     /// <summary>A stream's lines, each ending at its '\n', written under a prefix with the '\r's before that dropped (a
     /// container's in a merged log): what follows a read's last '\n' waits for the next, a line past <see cref="LongestLine"/>
-    /// let out in pieces of that length, and what still waits let out at the end (<see cref="Rest"/>).</summary>
+    /// let out in pieces of that length, and what still waits let out at the end (<see cref="Rest"/>). The lines a read lets
+    /// out are kept until they are read into the console (<see cref="ReadInto"/>).</summary>
     private sealed class Prefixed(string prefix)
     {
+        private readonly List<int> ends = [];
         private char[] line = new char[256];
         private int length;
         private char[] written = new char[1024];
         private int count;
 
-        /// <summary>The lines a read ends, with what waited before the first, and the pieces of a line grown past the
-        /// longest, each under the prefix; empty when it lets out none.</summary>
-        public ReadOnlySpan<char> Lines(ReadOnlySpan<char> came)
+        /// <summary>Takes a read: whether it lets out a line, with what waited before the first, or a piece of a line grown
+        /// past the longest.</summary>
+        public bool Lines(ReadOnlySpan<char> came)
         {
-            count = 0;
+            Clear();
             for (int end = came.IndexOf('\n'); end >= 0; end = came.IndexOf('\n'))
             {
                 Put(line.AsSpan(0, length), came[..end], ended: true);
@@ -268,32 +336,48 @@ public sealed class ConsoleSink
                 line.AsSpan(from, length - from).CopyTo(line);
                 length -= from;
             }
-            return written.AsSpan(0, count);
+            return ends.Count > 0;
         }
 
-        /// <summary>What waits at the stream's end as its last line under the prefix; empty when nothing does.</summary>
-        public ReadOnlySpan<char> Rest()
+        /// <summary>Takes the stream's end: whether what waits makes a last line.</summary>
+        public bool Rest()
         {
-            count = 0;
+            Clear();
             if (length > 0)
             {
                 Put(line.AsSpan(0, length), [], ended: true);
                 length = 0;
             }
-            return written.AsSpan(0, count);
+            return ends.Count > 0;
         }
 
-        /// <summary>A line written under the prefix, from what waited and what came, its '\r's at its end dropped where it
-        /// <paramref name="ended"/> (a piece of a longer line keeps them).</summary>
+        /// <summary>The lines let out, each under the prefix in plain text and read through <paramref name="codes"/>.</summary>
+        public void ReadInto(ControlCodes codes, IStyledInto into)
+        {
+            int start = 0;
+            foreach (int end in ends)
+            {
+                into.Put(prefix, CellStyle.Plain);
+                codes.Read(written.AsSpan(start, end - start), into);
+                start = end;
+            }
+        }
+
+        private void Clear()
+        {
+            count = 0;
+            ends.Clear();
+        }
+
+        /// <summary>A line from what waited and what came, its '\r's at its end dropped where it <paramref name="ended"/> (a
+        /// piece of a longer line keeps them).</summary>
         private void Put(ReadOnlySpan<char> waited, ReadOnlySpan<char> rest, bool ended)
         {
-            int needed = count + prefix.Length + waited.Length + rest.Length + 1;
+            int needed = count + waited.Length + rest.Length + 1;
             if (needed > written.Length)
             {
                 Array.Resize(ref written, Math.Max(2 * written.Length, needed));
             }
-            prefix.CopyTo(written.AsSpan(count));
-            count += prefix.Length;
             int start = count;
             waited.CopyTo(written.AsSpan(count));
             count += waited.Length;
@@ -304,6 +388,7 @@ public sealed class ConsoleSink
                 count--;
             }
             written[count++] = '\n';
+            ends.Add(count);
         }
     }
 
@@ -392,22 +477,13 @@ public sealed class ConsoleSink
         }
     }
 
-    /// <summary>Notes the text a write added, keeps what waits within the console's limit, and says whether the console
-    /// must be told: once for all that comes before it takes the batch.</summary>
-    private bool Added(int before, ConsoleStream stream)
+    /// <summary>Keeps what waits within the console's limit once a write added to it, and says whether the console must
+    /// be told: once for all that comes before it takes the batch.</summary>
+    private bool Added(int before)
     {
-        int added = waiting.Length - before;
-        if (added == 0)
+        if (waiting.Length == before)
         {
             return false;
-        }
-        if (runs.Count > 0 && runs[^1].Stream == stream && runs[^1].Start + runs[^1].Length == before)
-        {
-            runs[^1] = runs[^1] with { Length = runs[^1].Length + added };
-        }
-        else
-        {
-            runs.Add(new ConsoleRun(before, added, stream));
         }
         // Twice the limit before cutting, so a flood moves the waiting text along now and then rather than at every write.
         if (waiting.Length > 2 * limit)
@@ -420,6 +496,22 @@ public sealed class ConsoleSink
         }
         queued = true;
         return true;
+    }
+
+    /// <summary>Text in a stream's colours put after what waits, the last run lengthened where it is the same stream's in
+    /// the same colours; under the gate.</summary>
+    private void Append(ReadOnlySpan<char> text, ConsoleStream stream, CellStyle style)
+    {
+        int before = waiting.Length;
+        waiting.Append(text);
+        if (runs.Count > 0 && runs[^1].Stream == stream && runs[^1].Style == style && runs[^1].Start + runs[^1].Length == before)
+        {
+            runs[^1] = runs[^1] with { Length = runs[^1].Length + text.Length };
+        }
+        else
+        {
+            runs.Add(new ConsoleRun(before, text.Length, stream) { Style = style });
+        }
     }
 
     private void Cut(int length)
@@ -491,8 +583,6 @@ public sealed class ConsoleSink
             }
         }
 
-        public void Append(char c) => Append([c]);
-
         /// <summary>Drops the first characters, each chunk they empty moved to the end as room for what comes.</summary>
         public void Remove(int count)
         {
@@ -535,158 +625,291 @@ public sealed class ConsoleSink
         });
     }
 
-    /// <summary>One stream's terminal control sequences taken out of its text, in the shapes ECMA-48 gives them and xterm
-    /// reads them: CSI (colours, cursor moves) to its final byte, OSC (titles, links) to BEL or ST, DCS, SOS, PM and APC
-    /// strings to ST, and the other escapes. A sequence broken by a line break, or longer than any real one, is given up
-    /// and the text after it kept.</summary>
-    private sealed class ControlCodes
+    /// <summary>Where a stream's text goes as it is read, a stretch of one style at a time.</summary>
+    private interface IStyledInto
     {
-        private const char Escape = '\u001b';
-        private const char Bell = '\u0007';
-        private const int Longest = 4096;
+        void Put(ReadOnlySpan<char> text, CellStyle style);
+    }
 
-        private State state;
-        private int length;
-        private bool carriageReturn;
-
-        private enum State
+    /// <summary>A stream's way into what waits for the console; under the gate.</summary>
+    private sealed class Waiting(ConsoleSink sink, ConsoleStream stream) : IStyledInto
+    {
+        public void Put(ReadOnlySpan<char> text, CellStyle style)
         {
-            Text,
-            Escape,
-            EscapeIntermediate,
-            Csi,
-            String,
-            StringEscape,
+            if (!text.IsEmpty)
+            {
+                sink.Append(text, stream, style);
+            }
+        }
+    }
+
+    /// <summary>Text read and held apart with its runs, for what is shown of it (secrets masked) to be made from the text
+    /// as the console shows it; kept for the next read, nothing made for one but its string.</summary>
+    private sealed class Styled : IStyledInto
+    {
+        private readonly List<(int Start, int Length, CellStyle Style)> runs = [];
+        private readonly StringBuilder text = new();
+
+        /// <summary>The text as shown, once <see cref="Shown"/> made it.</summary>
+        private string? shown;
+
+        /// <summary>A stream's text read through its state, what was held before let go.</summary>
+        public Styled Read(ReadOnlySpan<char> written, ControlCodes codes)
+        {
+            text.Clear();
+            runs.Clear();
+            shown = null;
+            codes.Read(written, this);
+            return this;
         }
 
-        public void Strip(ReadOnlySpan<char> text, Pending into)
+        public void Put(ReadOnlySpan<char> put, CellStyle style)
         {
+            if (put.IsEmpty)
+            {
+                return;
+            }
+            if (runs.Count > 0 && runs[^1].Style == style)
+            {
+                runs[^1] = runs[^1] with { Length = runs[^1].Length + put.Length };
+            }
+            else
+            {
+                runs.Add((text.Length, put.Length, style));
+            }
+            text.Append(put);
+        }
+
+        /// <summary>The text as <paramref name="show"/> makes it: each stretch it changed (a secret masked), found line by
+        /// line, takes the colours where it begins, and the rest keep theirs.</summary>
+        public Styled Shown(Func<string, string> show)
+        {
+            string read = text.ToString();
+            shown = show(read);
+            if (string.Equals(shown, read, StringComparison.Ordinal))
+            {
+                return this;
+            }
+            List<(int From, int To, int ShownFrom, int ShownTo)> changes = [];
+            if (read.Count('\n') == shown.Count('\n'))
+            {
+                for (int from = 0, shownFrom = 0; from <= read.Length;)
+                {
+                    int to = read.IndexOf('\n', from) is >= 0 and int end ? end : read.Length;
+                    int shownTo = shown.IndexOf('\n', shownFrom) is >= 0 and int shownEnd ? shownEnd : shown.Length;
+                    Changed(from, to, shownFrom, shownTo);
+                    from = to + 1;
+                    shownFrom = shownTo + 1;
+                }
+            }
+            else
+            {
+                Changed(0, read.Length, 0, shown.Length);
+            }
+            List<(int Start, int Length, CellStyle Style)> kept = [];
+            int change = 0;
+            int moved = 0;
+            int changedTo = 0;
+            CellStyle last = CellStyle.Plain;
+            foreach ((int start, int length, CellStyle style) in runs)
+            {
+                last = style;
+                int end = start + length;
+                for (int at = Math.Max(start, changedTo); at < end;)
+                {
+                    if (change < changes.Count && changes[change].From == at)
+                    {
+                        (int from, int to, int shownFrom, int shownTo) = changes[change++];
+                        kept.Add((shownFrom, shownTo - shownFrom, style));
+                        moved += (shownTo - shownFrom) - (to - from);
+                        at = changedTo = to;
+                        continue;
+                    }
+                    int stop = change < changes.Count ? Math.Min(end, changes[change].From) : end;
+                    kept.Add((at + moved, stop - at, style));
+                    at = stop;
+                }
+            }
+            for (; change < changes.Count; change++)
+            {
+                kept.Add((changes[change].ShownFrom, changes[change].ShownTo - changes[change].ShownFrom, last));
+            }
+            runs.Clear();
+            foreach ((int start, int length, CellStyle style) in kept)
+            {
+                if (length > 0)
+                {
+                    runs.Add((start, length, style));
+                }
+            }
+            return this;
+
+            void Changed(int from, int to, int shownFrom, int shownTo)
+            {
+                ReadOnlySpan<char> line = read.AsSpan(from, to - from);
+                ReadOnlySpan<char> made = shown.AsSpan(shownFrom, shownTo - shownFrom);
+                if (line.SequenceEqual(made))
+                {
+                    return;
+                }
+                int same = line.CommonPrefixLength(made);
+                int after = 0;
+                while (after < Math.Min(line.Length, made.Length) - same && line[^(after + 1)] == made[^(after + 1)])
+                {
+                    after++;
+                }
+                changes.Add((from + same, to - after, shownFrom + same, shownTo - after));
+            }
+        }
+
+        /// <summary>The text as shown, in its runs.</summary>
+        public void CopyTo(IStyledInto into)
+        {
+            ReadOnlySpan<char> all = shown ?? text.ToString();
+            foreach ((int start, int length, CellStyle style) in runs)
+            {
+                into.Put(all.Slice(start, length), style);
+            }
+        }
+    }
+
+    /// <summary>One stream's control codes read out of its text by the terminal's reader (<see cref="SequenceReader"/>): the
+    /// colours and style an SGR sets kept in force for the text after it, until the next or a reset; every other sequence
+    /// (a cursor move, a title, a link) and the bell left out. An OSC or other string a line break comes into is given up,
+    /// and the text after it kept, so one never ended swallows no more than its line.</summary>
+    private sealed class ControlCodes
+    {
+        private static readonly SearchValues<char> Stops = SearchValues.Create("\u001b\r\u0007");
+
+        private readonly SequenceReader reader = new();
+        private CellStyle style = CellStyle.Plain;
+        private bool carriageReturn;
+        private char highSurrogate;
+
+        public void Read(ReadOnlySpan<char> text, IStyledInto into)
+        {
+            Acting acting = new(this, into);
             int i = 0;
             while (i < text.Length)
             {
-                if (state == State.Text)
+                if (reader.InText && highSurrogate == '\0')
                 {
-                    if (carriageReturn)
+                    ReadOnlySpan<char> rest = text[i..];
+                    int stop = rest.IndexOfAny(Stops);
+                    int take = stop < 0 ? rest.Length : stop;
+                    if (take > 0)
                     {
-                        carriageReturn = false;
-                        if (text[i] != '\n')
-                        {
-                            into.Append('\r');
-                        }
+                        Put(rest[..take], into);
+                        i += take;
                     }
-                    int found = text[i..].IndexOfAny(Escape, '\r', Bell);
-                    int end = found < 0 ? text.Length : i + found;
-                    into.Append(text[i..end]);
-                    if (found < 0)
+                    if (stop >= 0)
                     {
-                        return;
-                    }
-                    i = end + 1;
-                    if (text[end] == '\r')
-                    {
-                        // Held back until the next character says whether it begins a line break.
-                        carriageReturn = true;
-                    }
-                    else if (text[end] == Escape)
-                    {
-                        state = State.Escape;
-                        length = 0;
+                        reader.Take(text[i++], acting);
                     }
                     continue;
                 }
-                if (Take(text[i]))
+                char c = text[i++];
+                if (c is '\n' or '\r' && reader.InString)
                 {
-                    i++;
+                    reader.Abandon();
+                    i--;
+                    continue;
                 }
-                else
+                if (highSurrogate != '\0')
                 {
-                    // Not part of a sequence: the sequence is given up, and the character is text again.
-                    state = State.Text;
+                    char high = highSurrogate;
+                    highSurrogate = '\0';
+                    if (char.IsLowSurrogate(c))
+                    {
+                        reader.Take(char.ConvertToUtf32(high, c), acting);
+                        continue;
+                    }
+                    reader.Take(0xFFFD, acting);
                 }
+                if (char.IsHighSurrogate(c))
+                {
+                    highSurrogate = c;
+                    continue;
+                }
+                reader.Take(char.IsLowSurrogate(c) ? 0xFFFD : c, acting);
             }
         }
 
-        public void End(Pending into)
+        /// <summary>The stream's end: a '\r' held back let go, and the sequence under way and the colours in force dropped.</summary>
+        public void End(IStyledInto into)
         {
             if (carriageReturn)
             {
-                into.Append('\r');
+                into.Put("\r", style);
             }
             carriageReturn = false;
-            state = State.Text;
+            highSurrogate = '\0';
+            reader.Abandon();
+            style = CellStyle.Plain;
         }
 
-        /// <summary>Takes one character of a sequence under way; false when it cannot belong to it.</summary>
-        private bool Take(char c)
+        /// <summary>Text in the colours in force, after a '\r' held back unless the text begins the line break it starts.</summary>
+        private void Put(ReadOnlySpan<char> text, IStyledInto into)
         {
-            if (++length > Longest || c is '\n' or '\r')
+            if (carriageReturn)
             {
-                return false;
+                carriageReturn = false;
+                if (text[0] != '\n')
+                {
+                    into.Put("\r", style);
+                }
             }
-            switch (state)
-            {
-                case State.Escape:
-                    state = c switch
-                    {
-                        '[' => State.Csi,
-                        ']' or 'P' or 'X' or '^' or '_' => State.String,
-                        >= ' ' and <= '/' => State.EscapeIntermediate,
-                        >= '0' and <= '~' => State.Text,
-                        Escape => State.Escape,
-                        _ => State.Text,
-                    };
-                    return c is >= ' ' and <= '~' or Escape;
-                case State.EscapeIntermediate:
-                    if (c is >= ' ' and <= '/')
-                    {
-                        return true;
-                    }
-                    return Final(c, '0');
-                case State.Csi:
-                    if (c is >= '0' and <= '?' or >= ' ' and <= '/')
-                    {
-                        return true;
-                    }
-                    return Final(c, '@');
-                case State.String:
-                    if (c == Bell)
-                    {
-                        state = State.Text;
-                    }
-                    else if (c == Escape)
-                    {
-                        state = State.StringEscape;
-                    }
-                    return true;
-                case State.StringEscape:
-                    if (c == '\\')
-                    {
-                        state = State.Text;
-                        return true;
-                    }
-                    // Another escape begins: the string ended with this one.
-                    state = State.Escape;
-                    return Take(c);
-                default:
-                    return false;
-            }
+            into.Put(text, style);
         }
 
-        /// <summary>A sequence's last character, from <paramref name="first"/> to '~'; ESC begins another instead.</summary>
-        private bool Final(char c, char first)
+        /// <summary>What the reader finds, acted on as a console shows it.</summary>
+        private readonly struct Acting(ControlCodes codes, IStyledInto into) : ISequenceActions
         {
-            if (c >= first && c <= '~')
+            public void Print(int rune)
             {
-                state = State.Text;
-                return true;
+                Span<char> chars = stackalloc char[2];
+                codes.Put(chars[..new System.Text.Rune(rune).EncodeToUtf16(chars)], into);
             }
-            if (c == Escape)
+
+            public void Control(int rune)
             {
-                state = State.Escape;
-                length = 0;
-                return true;
+                switch (rune)
+                {
+                    case '\r':
+                        // Held back until the next character says whether it begins a line break.
+                        if (codes.carriageReturn)
+                        {
+                            into.Put("\r", codes.style);
+                        }
+                        codes.carriageReturn = true;
+                        break;
+                    case 0x07:
+                        break;
+                    default:
+                        codes.Put([(char)rune], into);
+                        break;
+                }
             }
-            return false;
+
+            public void Escape(SequenceReader sequence, char final)
+            {
+                if (final == 'c' && sequence.Intermediates == 0)
+                {
+                    codes.style = CellStyle.Plain;
+                }
+            }
+
+            public void Csi(SequenceReader sequence, char final)
+            {
+                if (final == 'm' && sequence.PrivateMarker == '\0' && sequence.Intermediates == 0)
+                {
+                    codes.style = GraphicRendition.Apply(codes.style, sequence.Parameters);
+                }
+            }
+
+            public void Osc(ReadOnlySpan<char> text)
+            {
+            }
         }
     }
 }
