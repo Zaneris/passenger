@@ -130,7 +130,7 @@ public static class ProjectEdits
             }
             else
             {
-                string condition = XmlEntities.Encode($"'$(TargetFramework)' == '{framework}'", '"');
+                string condition = XmlEntities.Encode(FrameworkCondition(framework, " == "), '"');
                 string outer = xml.IndentIn(xml.Root);
                 string written = $"<ItemGroup Condition=\"{condition}\">{xml.NewLine}{outer}{xml.Unit}{element}{xml.NewLine}{outer}</ItemGroup>";
                 if (xml.Root.Elements().LastOrDefault(g => ProjectItems.IsItemGroup(g) && g.Elements().Any(e => e.Name.LocalName == "PackageReference")) is { } referencing)
@@ -150,7 +150,11 @@ public static class ProjectEdits
     /// it ('$(TargetFramework)' == 'net10.0', spaces and letter case aside).</summary>
     private static bool ForFramework(XElement group, string framework) =>
         group.Attributes().FirstOrDefault(a => a.Name.LocalName.Equals("Condition", StringComparison.OrdinalIgnoreCase)) is { } condition
-        && string.Concat(condition.Value.Where(c => !char.IsWhiteSpace(c))).Equals($"'$(TargetFramework)'=='{framework}'", StringComparison.OrdinalIgnoreCase);
+        && string.Concat(condition.Value.Where(c => !char.IsWhiteSpace(c))).Equals(FrameworkCondition(framework, "=="), StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>The condition an item group takes for one framework, as dotnet add package --framework writes it, its
+    /// operator spaced as <paramref name="equals"/> says.</summary>
+    private static string FrameworkCondition(string framework, string equals) => $"'$({MSBuildNames.TargetFramework})'{equals}'{framework}'";
 
     /// <summary>A Directory.Packages.props' text with its PackageVersion of a package set to a version, as dotnet add
     /// package sets it (its Version attribute, else element); null where it has none for the package or does not read as

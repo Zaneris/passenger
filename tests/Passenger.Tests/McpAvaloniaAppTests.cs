@@ -270,7 +270,7 @@ public sealed class McpAvaloniaAppTests : McpRig, IClassFixture<AgentAppFolder>
     /// <summary>The engine's log from the last step it was asked for on: what its steppers did.</summary>
     private string StepsLogged()
     {
-        string log = File.Exists(EngineLog) ? File.ReadAllText(EngineLog) : "";
+        string log = Ui.Shared(EngineLog);
         return $"The engine's log from the last step on:\n{log[Math.Max(0, log.LastIndexOf("StepOver on thread", StringComparison.Ordinal))..]}";
     }
 
