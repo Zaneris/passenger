@@ -735,20 +735,25 @@ public sealed class FolderWatchTests : IDisposable
     }
 
     /// <summary>While macOS's watcher hands nothing over, as under a load of changes it falls minutes behind without a word,
-    /// a commit made in a terminal, a file made in a new folder and one deleted are found without the window coming in
-    /// front: the watcher's own beat goes unheard, so the watchers look for themselves until it is heard again, and Git's
-    /// status and Go to File follow. The system's watchers, the beat's too, stop while the files change.</summary>
+    /// a commit made in a terminal, a file made in a new folder, one deleted, one made a folder of its name and an open one
+    /// written in place are found without the window coming in front: the beat goes unheard, so the watchers look for
+    /// themselves until it is heard again, and Git's status, Go to File and the open file follow. The system's watchers,
+    /// the beat's too, hear nothing while the files change.</summary>
     [AvaloniaFact]
     public void Changes_made_while_the_systems_watcher_is_behind_are_found_as_it_lags()
     {
         Assert.SkipUnless(OperatingSystem.IsMacOS(), "Only macOS's watcher falls behind without a word; the others say when they lose changes");
         Write("One.cs", "class One { }\n");
         Write("Old/Gone.cs", "class Gone { }\n");
+        Write("Old/Turned.cs", "class Turned { }\n");
         TestGit.Init(folder);
         Write("One.cs", "sealed class One { }\n");
+        Write("Notes.txt", "notes\n");
         string made = Path.Combine("Fresh", "Fresh.cs");
         string deleted = Path.Combine("Old", "Gone.cs");
+        string turned = Path.Combine("Old", "Turned.cs", "Inner.cs");
         MainWindow window = Open(FolderWatching.WholeTree, languageServer: false);
+        window.OpenFile(Path.Combine(folder, "Notes.txt"));
         Ui.WaitFor(() => window.FileIndex.Files.Contains(deleted) && window.Vcs.Changes.Any(c => c.Name == "One.cs"), "the folder's files in Go to File and the changed file in Git's status");
         WatchedFile beat = WatchLag.Canary ?? throw new InvalidOperationException("Nothing checks the system's watcher for lagging while a folder is watched");
         IDisposable deafFolder = window.FolderWatcher!.Deaf();
@@ -758,15 +763,56 @@ public sealed class FolderWatchTests : IDisposable
             Git("commit", "-q", "-am", "More");
             File.Delete(Path.Combine(folder, deleted));
             Write(made, "class Fresh { }\n");
-            Ui.WaitFor(() => window.Vcs.Changes.Count == 2 && window.FileIndex.Files.Contains(made) && !window.FileIndex.Files.Contains(deleted),
-                () => $"the commit, the file made and the one deleted while the system's watcher was behind to be found as it lagged, where Git's status lists "
-                    + $"{string.Join(", ", window.Vcs.Changes.Select(c => $"{c.Name} ({c.Kind})"))} and Go to File {string.Join(", ", window.FileIndex.Files)}");
+            File.Delete(Path.Combine(folder, "Old", "Turned.cs"));
+            Write(turned, "class Inner { }\n");
+            // In place, as an editor that writes over a file's own bytes saves it, which moves no folder's stamp.
+            using (FileStream notes = new(Path.Combine(folder, "Notes.txt"), FileMode.Open, FileAccess.Write))
+            {
+                notes.Write("lagged\n"u8);
+            }
+            Ui.WaitFor(() => window.Vcs.Changes.Count(c => c.Name is "Gone.cs" or "Fresh.cs") == 2 && !window.Vcs.Changes.Any(c => c.Name == "One.cs")
+                    && window.FileIndex.Files.Contains(made) && !window.FileIndex.Files.Contains(deleted) && window.FileIndex.Files.Contains(turned)
+                    && window.EditorArea.Active!.Text.Snapshot.ToString() == "lagged\n",
+                () => $"the commit, the file made, the one deleted, the one made a folder and the open one written in place while the system's watcher was behind to be found as it lagged, "
+                    + $"where Git's status lists {string.Join(", ", window.Vcs.Changes.Select(c => $"{c.Name} ({c.Kind})"))}, Go to File {string.Join(", ", window.FileIndex.Files)} "
+                    + $"and the open file holds [{window.EditorArea.Active!.Text.Snapshot.ToString().Trim()}]");
             Assert.True(WatchLag.IsBehind, "The system's watcher was not taken for behind while its beat went unheard");
         }
         finally
         {
             deafFolder.Dispose();
             deafBeat.Dispose();
+        }
+        window.Close();
+    }
+
+    /// <summary>A window opened while macOS's watcher is still behind from before, its beat having ended with the window
+    /// before it, finds a file made in a new folder as it opens: the system's watcher stays behind as the beat ends, and the
+    /// beat begun again goes on looking from when it fell behind. The window's own watcher hears nothing meanwhile, and Go
+    /// to File lists only what a watcher found.</summary>
+    [AvaloniaFact]
+    public void A_file_made_as_a_window_opens_while_the_systems_watcher_is_still_behind_is_found()
+    {
+        Assert.SkipUnless(OperatingSystem.IsMacOS(), "Only macOS's watcher falls behind without a word; the others say when they lose changes");
+        Write("One.cs", "class One { }\n");
+        string made = Path.Combine("Fresh", "Fresh.cs");
+        MainWindow before = Open(FolderWatching.WholeTree, languageServer: false);
+        WatchedFile beat = WatchLag.Canary ?? throw new InvalidOperationException("Nothing checks the system's watcher for lagging while a folder is watched");
+        using (beat.Deaf())
+        {
+            Ui.WaitFor(() => WatchLag.IsBehind, "the system's watcher taken for behind as its beat went unheard");
+            before.Close();
+        }
+        Assert.True(!WatchLag.IsBeating && WatchLag.IsBehind,
+            $"With its window closed the beat went on ({WatchLag.IsBeating}), or the system's watcher was taken for in time ({!WatchLag.IsBehind}) though nothing was heard in time since it fell behind");
+
+        MainWindow window = Open(FolderWatching.WholeTree, languageServer: false);
+        Ui.WaitFor(() => window.FileIndex.Files.Contains("One.cs"), "the folder's file in Go to File");
+        using (window.FolderWatcher!.Deaf())
+        {
+            Write(made, "class Fresh { }\n");
+            Ui.WaitFor(() => window.FileIndex.Files.Contains(made),
+                () => $"the file made as the window opened, while the system's watcher was still behind, in Go to File, which lists {string.Join(", ", window.FileIndex.Files)}");
         }
         window.Close();
     }

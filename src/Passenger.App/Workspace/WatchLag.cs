@@ -8,7 +8,8 @@ namespace Passenger.App.Workspace;
 /// and a window holds the beat (<see cref="Hold"/>: one in front, or one nobody sees), a file of the process's own in the
 /// user's temporary folder is written at each <see cref="Beat"/> and its change awaited: one unheard <see cref="Late"/>
 /// after it was written has the watchers look for themselves at each beat, and once more as changes have been heard in
-/// time for <see cref="Settled"/>. Other systems' watchers say when they lose changes, so nothing is written there.</summary>
+/// time for <see cref="Settled"/>, a beat ended meanwhile and begun again still behind. Other systems' watchers say when
+/// they lose changes, so nothing is written there.</summary>
 public static class WatchLag
 {
     private static readonly TimeSpan Beat = TimeSpan.FromSeconds(2);
@@ -170,6 +171,11 @@ public static class WatchLag
             exitHooked = true;
             AppDomain.CurrentDomain.ProcessExit += (_, _) => Delete(own);
         }
+        if (since is not null)
+        {
+            // Begun again while behind, whatever was heard before it ended: in time only once heard so again.
+            lastLate = Stopwatch.GetTimestamp();
+        }
         CancellationTokenSource ending = new();
         beating = ending;
         // Unheld: the beat goes on for as long as anything is watched, which no screenshot or test waits out.
@@ -188,7 +194,8 @@ public static class WatchLag
             Delete(own);
         }
         folder = null;
-        (unheard, lastLate, since) = (0, 0, null);
+        // Behind it may still be: a beat begun again goes on from when it fell behind.
+        unheard = 0;
         return stopped;
     }
 
@@ -260,8 +267,8 @@ public static class WatchLag
             {
                 if (since is null)
                 {
-                    // Anything since the beat before the one unheard may have gone unheard too.
-                    since = DateTime.UtcNow - Stopwatch.GetElapsedTime(unheard, now) - Beat - Late;
+                    // Anything a while before the beat unheard may have gone unheard too: the system hands changes over out of turn.
+                    since = DateTime.UtcNow - Stopwatch.GetElapsedTime(unheard, now) - Beat - Late - Settled;
                     IdeErrors.Write($"The system's watcher has not handed over a change in {Durations.Said(Stopwatch.GetElapsedTime(unheard, now))}: the watchers look for themselves until it keeps up");
                 }
                 lastLate = now;

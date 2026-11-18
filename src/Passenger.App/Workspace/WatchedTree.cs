@@ -40,7 +40,8 @@ public abstract class WatchedTree : IDisposable
     /// <summary>How many holds on the watcher's hearing nothing are let go of not yet (<see cref="Deaf"/>).</summary>
     private int deaf;
 
-    /// <summary>When each kept path was last heard of, and each kept folder had one of its paths heard, for the last moments.</summary>
+    /// <summary>When each kept path was last heard of, and each kept folder had one of its paths heard, for the last moments
+    /// (each path for as long as the system's watcher is behind).</summary>
     private readonly Dictionary<string, DateTime> heardAt = new(StringComparer.Ordinal);
     private readonly Dictionary<string, DateTime> touched = new(StringComparer.Ordinal);
 
@@ -70,8 +71,10 @@ public abstract class WatchedTree : IDisposable
     private readonly Dictionary<string, Listed> record = new(StringComparer.Ordinal);
     private int recorded;
 
-    /// <summary>When the record of the whole folder was done, or null while it is made or once it passed its limit.</summary>
+    /// <summary>When the record of the whole folder was done, or null while it is made or once it passed its limit; and when
+    /// the walk that made it began, on the wall clock, written there by the work that keeps the record.</summary>
     private DateTime? recordedAt;
+    private long recordBeganTicks;
 
     /// <summary>The changes to which folders are watched, made one at a time in the order they were seen.</summary>
     private Task following = Task.CompletedTask;
@@ -107,6 +110,14 @@ public abstract class WatchedTree : IDisposable
     /// when the last such look began on the wall clock (<see cref="OnBehind"/>).</summary>
     private bool lookingBehind;
     private DateTime? lookedBehind;
+
+    /// <summary>How often a look while the system's watcher is behind lists every recorded folder, for a file written in
+    /// place, which moves no folder's stamp; the looks between list only those whose stamp moved. When the last such
+    /// listing began, a timestamp of <see cref="Stopwatch.GetTimestamp"/>'s, or 0, and on the wall clock, from which the next
+    /// takes in what was written.</summary>
+    private static readonly TimeSpan SweepEvery = TimeSpan.FromSeconds(10);
+    private long swept;
+    private DateTime? sweptAt;
 
     /// <summary>The tree under <paramref name="folder"/> (canonical), watched the system's way, or each kept folder on its own
     /// (<paramref name="eachFolder"/>); nothing is watched until <see cref="Begin"/>.</summary>
@@ -754,6 +765,7 @@ public abstract class WatchedTree : IDisposable
         record.Clear();
         recorded = 0;
         recordedAt = null;
+        Volatile.Write(ref recordBeganTicks, DateTime.UtcNow.Ticks);
         walk();
         if (recorded > RecordLimit)
         {
@@ -1015,10 +1027,10 @@ public abstract class WatchedTree : IDisposable
         }
     }
 
-    /// <summary>The system's watcher is behind (<see cref="WatchLag"/>): the folders whose stamp moved are listed again, as
-    /// <see cref="LookAgain"/> lists them, each file there written since the last such look (from <paramref name="since"/>
-    /// at first) and not heard of after it taken in too, in turn, one look asked at a time. Not while the first walk, or a
-    /// walk apart, is under way, which reads what is there itself.</summary>
+    /// <summary>The system's watcher is behind (<see cref="WatchLag"/>): the folders whose stamp moved, and every recorded
+    /// folder at each <see cref="SweepEvery"/>, are listed again against the record, each file there written since the last
+    /// such look (from <paramref name="since"/>, or the record's walk, at first) and not heard of after it taken in too, in
+    /// turn, one look asked at a time. Not while the first walk, or a walk apart, is under way, which reads what is there.</summary>
     private void OnBehind(DateTime since)
     {
         DateTime from;
@@ -1029,23 +1041,38 @@ public abstract class WatchedTree : IDisposable
                 return;
             }
             lookingBehind = true;
-            // A moment before the last look began, for a write its listing of the folder may have just missed.
-            from = lookedBehind is { } last && last - Lag > since ? last - Lag : since;
+            // Nothing written before the record's walk began went unheard of it.
+            DateTime recorded = new(Volatile.Read(ref recordBeganTicks), DateTimeKind.Utc);
+            from = recorded > since ? recorded : since;
         }
         Follow(() => LookBehind(from));
     }
 
     /// <summary>The look <see cref="OnBehind"/> asks for, in turn: what it found handed over at once.</summary>
-    private void LookBehind(DateTime since)
+    private void LookBehind(DateTime first)
     {
         Dictionary<string, DateTime> heard;
+        DateTime? last;
+        DateTime began = DateTime.UtcNow;
+        long now = Stopwatch.GetTimestamp();
+        bool sweep = swept == 0 || Stopwatch.GetElapsedTime(swept, now) >= SweepEvery;
         lock (gate)
         {
             lookingBehind = false;
-            lookedBehind = DateTime.UtcNow;
+            // From a moment before the last look of the kind began, for a write its listing just missed.
+            last = sweep ? sweptAt : lookedBehind;
+            lookedBehind = began;
+            sweptAt = sweep ? began : sweptAt;
             heard = new Dictionary<string, DateTime>(heardAt, StringComparer.Ordinal);
         }
-        if (recordedAt is null || IsDisposed || StampsMoved() is not { Count: > 0 } listing)
+        if (recordedAt is null || IsDisposed)
+        {
+            return;
+        }
+        swept = sweep ? now : swept;
+        DateTime since = last is { } previous && previous - Lag > first ? previous - Lag : first;
+        HashSet<string> listing = sweep ? new(record.Keys, StringComparer.Ordinal) : StampsMoved();
+        if (listing.Count == 0)
         {
             return;
         }
@@ -1055,7 +1082,7 @@ public abstract class WatchedTree : IDisposable
         }
         else if (found.Found > 0)
         {
-            IdeErrors.Write($"{Shown} found {Plural.Of(found.Found, "change")} the system's watcher, behind, had not handed over, looking at {Plural.Of(listing.Count, "folder")} whose stamp moved");
+            IdeErrors.Write($"{Shown} found {Plural.Of(found.Found, "change")} the system's watcher, behind, had not handed over, looking at {Plural.Of(listing.Count, "folder")}");
         }
         else
         {
@@ -1118,13 +1145,20 @@ public abstract class WatchedTree : IDisposable
             foreach (Entry entry in entries)
             {
                 string path = Path.Join(at, entry.Name);
-                if (!was.Names.Contains(entry.Name))
+                if (!was.Names.Contains(entry.Name) || entry.Folder && !entry.Link && Kept(path) && !record.ContainsKey(path))
                 {
+                    // Come, or a folder now where a file was: what is in it comes with it.
                     Find(path, created: true);
                     if (entry.Folder && !entry.Link && Kept(path))
                     {
                         WatchFrom(path, file => Find(file, created: true));
                     }
+                }
+                else if (!entry.Folder && record.ContainsKey(path))
+                {
+                    // A file now where a folder was: what was in it is gone.
+                    Forget(path, file => Find(file, created: true));
+                    Find(path, created: true);
                 }
                 else if (!entry.Folder && since is { } from && entry.Written >= from && !(heard.TryGetValue(PathNames.Canonical(path), out DateTime last) && last >= entry.Written))
                 {
@@ -1358,7 +1392,11 @@ public abstract class WatchedTree : IDisposable
                 batches.Dequeue();
             }
             DateTime since = now - Burst - Gather - Lag;
-            Prune(heardAt, since);
+            // Kept while the system's watcher is behind, whose looks pass over what was heard after it was written.
+            if (!WatchLag.IsBehind)
+            {
+                Prune(heardAt, since);
+            }
             Prune(touched, since);
             foreach ((string path, (DateTime _, DateTime at)) in handed)
             {
