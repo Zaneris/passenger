@@ -103,6 +103,11 @@ public abstract class McpRig : IDisposable
         {
             TestFolders.Delete(sum);
         }
+        // The language servers' temporary folders of the test's state, in the person's own temporary folder.
+        if (UserTemporary.Of(Path.Combine(OwnState, "cache"), global::Passenger.Lsp.RoslynServerFolder.TemporariesKind) is var servers && Directory.Exists(servers))
+        {
+            TestFolders.Delete(servers);
+        }
         TestFolders.Delete(OwnState);
         foreach (string folder in made)
         {
