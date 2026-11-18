@@ -187,6 +187,11 @@ public sealed record NamedSymbol(
     /// solution's own files (<see cref="At"/> its place there); null otherwise.</summary>
     [JsonPropertyName("generated")]
     public string? Generated { get; init; }
+
+    /// <summary>The field or method the MVVM Toolkit makes it of, where it is a property the toolkit's generators make (an
+    /// <c>[ObservableProperty]</c> field's, a <c>[RelayCommand]</c> method's command); null otherwise.</summary>
+    [JsonPropertyName("madeOf")]
+    public NamedSymbol? MadeOf { get; init; }
 }
 
 /// <summary>Declarations whose symbols' containers are asked for, each by its name's span as the server names it (a

@@ -178,7 +178,11 @@ internal static class SymbolNames
     {
         (string? path, Place? at) = Declared(solution, symbol);
         NamedSymbol named = new(symbol.Name, symbol.ToDisplayString(Short), KindOf(symbol), symbol.OriginalDefinition.GetDocumentationCommentId(), ContainerOf(symbol), path, at);
-        return path is null && GeneratedPlace(solution, symbol) is { } made ? named with { Generated = made.Uri, At = made.At } : named;
+        if (path is not null || GeneratedPlace(solution, symbol) is not { } made)
+        {
+            return named;
+        }
+        return named with { Generated = made.Uri, At = made.At, MadeOf = ToolkitRenames.MakerOf(symbol, solution) is { } maker ? Named(solution, maker) : null };
     }
 
     /// <summary>What a symbol is in, as an agent is told it: a member's or a nested type's type, else its namespace; null in

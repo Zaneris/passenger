@@ -128,7 +128,8 @@ public sealed class MauiExpressionHover : IExtensionWorkspaceMessageHandler<Maui
 }
 
 /// <summary>Where a MAUI XAML file's expressions name a C# symbol, each bound as MAUI's source generator writes it: a name
-/// whose symbol, or the definition it was made from, has the documentation id asked for.</summary>
+/// whose symbol, the definition it was made from, or the field or method the MVVM Toolkit makes it of, has the
+/// documentation id asked for.</summary>
 public sealed class MauiExpressionUses : IExtensionWorkspaceMessageHandler<MauiUsesAsked, MauiUsesFound>
 {
     public async Task<MauiUsesFound> ExecuteAsync(MauiUsesAsked message, ExtensionWorkspaceMessageContext context, CancellationToken cancellationToken)
@@ -150,7 +151,8 @@ public sealed class MauiExpressionUses : IExtensionWorkspaceMessageHandler<MauiU
                     continue;
                 }
                 SymbolInfo bound = model.GetSymbolInfo(name, cancellationToken);
-                if ((bound.Symbol is { } symbol ? [symbol] : bound.CandidateSymbols).Any(s => Named(s, message.Id)))
+                if ((bound.Symbol is { } symbol ? [symbol] : bound.CandidateSymbols).Any(s => Named(s, message.Id)
+                    || ToolkitRenames.MakerOf(s, made.Document.Project.Solution) is { } maker && Named(maker, message.Id)))
                 {
                     TextSpan span = name.Identifier.Span;
                     (int start, int end) = placed.Code.WrittenOver(placed.CodeAt(span.Start), placed.CodeAt(span.End));

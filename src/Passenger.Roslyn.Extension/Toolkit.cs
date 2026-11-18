@@ -67,6 +67,23 @@ public sealed class ToolkitRenames : IExtensionDocumentMessageHandler<ToolkitAsk
         return new ToolkitFound(uses, null);
     }
 
+    /// <summary>The field or method the MVVM Toolkit makes a generated property of: an <c>[ObservableProperty]</c> field's
+    /// property, a <c>[RelayCommand]</c> method's command or cancel command; null for any other symbol.</summary>
+    internal static ISymbol? MakerOf(ISymbol symbol, Solution solution)
+    {
+        if (symbol.OriginalDefinition is not IPropertySymbol { ContainingType: { } type } property || !SymbolNames.IsGenerated(property, solution))
+        {
+            return null;
+        }
+        return type.GetMembers().FirstOrDefault(member => member switch
+        {
+            IFieldSymbol field => Marked(field, ObservableProperty) && ToolkitNames.PropertyOf(field.Name) == property.Name,
+            IMethodSymbol { MethodKind: MethodKind.Ordinary } method => Marked(method, RelayCommand)
+                && (ToolkitNames.CommandOf(method.Name, ReturnsTask(method)) == property.Name || ToolkitNames.CancelCommandOf(method.Name) == property.Name),
+            _ => false,
+        });
+    }
+
     /// <summary>A member's declarations and uses in the solution's own files, a generator's left out, each to take <paramref name="name"/>.</summary>
     private static async Task<List<ToolkitUse>> UsesOfAsync(Solution solution, ISymbol member, HashSet<(string, int)> seen, string name, CancellationToken cancel)
     {

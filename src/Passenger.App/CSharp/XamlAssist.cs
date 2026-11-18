@@ -681,7 +681,7 @@ internal sealed partial class XamlAssist : LanguageAssist
             return ([], problem);
         }
         (IReadOnlyList<(string Path, TextSnapshot Text, IReadOnlyList<TextEdit> Edits)> reads, string? unfollowed) =
-            ExpressionRenames(await xaml.ExpressionUsesAsync(projects, symbol, id, Texts), named.Name, name);
+            ExpressionRenames(await xaml.ExpressionUsesAsync(projects, symbol, id, Texts), symbol, named.Name, name);
         if (unfollowed is not null)
         {
             return ([], unfollowed);
@@ -694,11 +694,12 @@ internal sealed partial class XamlAssist : LanguageAssist
         })], null);
     }
 
-    /// <summary>The edits MAUI expressions take as a symbol they read is renamed from <paramref name="old"/> to
-    /// <paramref name="name"/>: each use's name as written, a prefixed type's after its prefix; or why a use written
-    /// otherwise cannot follow.</summary>
+    /// <summary>The edits MAUI expressions take as a symbol they read, declared as <paramref name="old"/>, is renamed to
+    /// <paramref name="name"/>: each use's name, a prefixed type's after its prefix, respelled as XAML's uses are
+    /// (<see cref="CodeSymbol.Respells"/>: the property or command the MVVM Toolkit makes of a field or method by the new
+    /// name's); or why a use written otherwise cannot follow.</summary>
     private static (IReadOnlyList<(string Path, TextSnapshot Text, IReadOnlyList<TextEdit> Edits)> Files, string? Problem) ExpressionRenames(
-        IReadOnlyList<(string Path, TextSnapshot Text, IReadOnlyList<TextRange> Uses)> reads, string old, string name)
+        IReadOnlyList<(string Path, TextSnapshot Text, IReadOnlyList<TextRange> Uses)> reads, CodeSymbol symbol, string old, string name)
     {
         List<(string, TextSnapshot, IReadOnlyList<TextEdit>)> files = [];
         foreach ((string path, TextSnapshot text, IReadOnlyList<TextRange> uses) in reads)
@@ -707,11 +708,21 @@ internal sealed partial class XamlAssist : LanguageAssist
             foreach (TextRange use in uses)
             {
                 string written = text.GetText(use);
-                if (!written.EndsWith(old, StringComparison.Ordinal))
+                string part = written[(written.LastIndexOf(':') + 1)..];
+                if (!symbol.Respells(part, name, out string? renamed))
                 {
                     return ([], $"{Path.GetFileName(path)} writes {old} as {written} in an expression, which a rename cannot follow");
                 }
-                edits.Add(new TextEdit(use.End - old.Length, old.Length, name));
+                if (renamed is null)
+                {
+                    return ([], $"the MVVM Toolkit would make no property of '{name}' for the {part} {Path.GetFileName(path)} reads on line {text.GetLineFromOffset(use.Start) + 1}");
+                }
+                // C# reads a keyword as a name only after its @.
+                string respelled = name.StartsWith('@') && renamed == name[1..] ? name : renamed;
+                if (respelled != part)
+                {
+                    edits.Add(new TextEdit(use.End - part.Length, part.Length, respelled));
+                }
             }
             files.Add((path, text, edits));
         }
@@ -799,10 +810,11 @@ internal sealed partial class XamlAssist : LanguageAssist
         {
             await service.CurrentAsync();
         }
-        if (await ExpressionElementAsync(xaml, caret) is { } read)
+        if (await ExpressionRenamedAsync(xaml, caret) is ({ } read, var declared))
         {
-            actions.AskRename(xaml.Document, context.WordStart(caret), read, async (_, name, patience) =>
-                await XamlRenameAsync(xaml.Document.Path, read, name, patience) ?? RefactorOutcome.Refused(Unread(xaml.Document.Path)));
+            actions.AskRename(xaml.Document, context.WordStart(caret), read, async (_, name, patience) => declared is not null
+                ? await actions.RenameDeclaredAsync(declared, read, name, actions.RenameSettings.RenameFiles, patience)
+                : await XamlRenameAsync(xaml.Document.Path, read, name, patience) ?? RefactorOutcome.Refused(Unread(xaml.Document.Path)));
             return;
         }
         if (await XamlSymbolAt(xaml, caret, XamlRenamesWhat) is not { } found)
@@ -830,51 +842,19 @@ internal sealed partial class XamlAssist : LanguageAssist
 
     /// <summary>Where the folder's C# declares the type or member a XAML name leads to; null for a name of none of it.</summary>
     internal static SourcePlace? DeclarationOf(XamlSymbol symbol) =>
-        symbol.Targets.FirstOrDefault(t => t.Kind is XamlTargetKind.Type or XamlTargetKind.Member && t.Place is { } place
-            && Languages.Language.ForPath(place.Path).Service == Languages.LanguageService.CSharp && !GeneratedCode.IsCopy(place.Path))?.Place;
+        symbol.Targets.FirstOrDefault(t => t.Kind is XamlTargetKind.Type or XamlTargetKind.Member && t.Place is { } place && IsFolderCode(place.Path))?.Place;
+
+    /// <summary>Whether a file declaring a name XAML reads is of the folder's C#, a generated file's read-only copy not.</summary>
+    private static bool IsFolderCode(string path) =>
+        Languages.Language.ForPath(path).Service == Languages.LanguageService.CSharp && !GeneratedCode.IsCopy(path);
 
     /// <summary>A type or member of the folder's C# a XAML name leads to, renamed from its declaration as C#'s Rename renames
-    /// it (<see cref="CodeActions.RenameSymbolAsync"/>), its C#, every XAML use and what the MVVM Toolkit makes of it following
+    /// it (<see cref="CodeActions.RenameDeclaredAsync"/>), its C#, every XAML use and what the MVVM Toolkit makes of it following
     /// as one command of Undo; a property or command the toolkit makes renamed through its field or method, named so it makes
-    /// <paramref name="name"/>; a type's files renamed with it when <paramref name="renameFiles"/>. Its file is read for the
-    /// rename where it is not open. Null for a name of none of the C#.</summary>
-    internal async Task<RefactorOutcome?> DeclaredRenameAsync(XamlSymbol symbol, string name, bool renameFiles, Patience? patience)
-    {
-        if (DeclarationOf(symbol) is not { } declared)
-        {
-            return null;
-        }
-        OpenDocument code;
-        IDisposable hold;
-        try
-        {
-            (code, hold) = context.Editors.Lend(declared.Path);
-        }
-        catch (Exception unread) when (unread is IOException or UnauthorizedAccessException)
-        {
-            return RefactorOutcome.Refused($"Rename was not applied: {Path.GetFileName(declared.Path)} could not be read: {unread.Message}");
-        }
-        try
-        {
-            if (context.CSharp?.For(code)?.Lsp is not { } lsp)
-            {
-                return RefactorOutcome.Refused($"Rename was not applied: the C# language server has yet to read {Path.GetFileName(declared.Path)}");
-            }
-            int offset = lsp.OffsetOf(new LspPosition(declared.Line, declared.Column));
-            TextSnapshot text = code.Text.Snapshot;
-            string own = text.GetText(TextNavigation.WordAt(text, offset));
-            if (CodeSymbol.NameFor(own, symbol.Name, name) is not { } renamed)
-            {
-                return RefactorOutcome.Refused($"Rename was not applied: the MVVM Toolkit makes {symbol.Name} of {own}, and no name of {own}'s makes '{name}'");
-            }
-            return renamed == own ? new RefactorOutcome($"{name} is its name already", null, [], [])
-                : await actions.RenameSymbolAsync(code, offset, renamed, renameFiles, patience);
-        }
-        finally
-        {
-            hold.Dispose();
-        }
-    }
+    /// <paramref name="name"/>; a type's files renamed with it when <paramref name="renameFiles"/>. Null for a name of none of
+    /// the C#.</summary>
+    internal async Task<RefactorOutcome?> DeclaredRenameAsync(XamlSymbol symbol, string name, bool renameFiles, Patience? patience) =>
+        DeclarationOf(symbol) is { } declared ? await actions.RenameDeclaredAsync(declared, symbol.Name, name, renameFiles, patience) : null;
 
     /// <summary>An element's name renamed where its XAML file (<paramref name="path"/>, open or not) names it or a MAUI
     /// page's expressions read it, and where its code-behind uses its field, as one command undone whole: the files it

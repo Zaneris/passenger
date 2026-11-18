@@ -297,17 +297,19 @@ public sealed partial class PassengerTools
             ? ServerSettledAsync(xaml.Document.Path, _ => true, cancel) : Task.CompletedTask;
 
     /// <summary>Rename in XAML: an element's name, from it or a MAUI expression reading it, in its file and where its
-    /// code-behind uses its field; a type or member of the folder's C# a name leads to, from its declaration
-    /// (<see cref="XamlAssist.DeclaredRenameAsync"/>); saved.</summary>
+    /// code-behind uses its field; a type or member of the folder's C# a name or an expression leads to, from its
+    /// declaration (<see cref="CodeActions.RenameDeclaredAsync"/>); saved.</summary>
     private async Task<string> XamlRename(XamlServed xaml, int offset, string newName, bool renameFiles, Patience patience, CancellationToken cancel)
     {
         await CodeBehindRead(cancel);
         await ExpressionSettledAsync(xaml, offset, cancel);
         // Read against the C# as it stands: the agent's own rename a moment before may have written it.
         await Session.Xaml.CurrentAsync();
-        if (await window.Assist.Languages.Xaml.ExpressionElementAsync(xaml.Xaml, offset) is { } read)
+        if (await window.Assist.Languages.Xaml.ExpressionRenamedAsync(xaml.Xaml, offset) is ({ } read, var declared))
         {
-            return await ElementRenamed(xaml, read, newName, patience, cancel);
+            return declared is null ? await ElementRenamed(xaml, read, newName, patience, cancel)
+                : read == newName ? $"{newName} is its name already"
+                : await SymbolRenamed(await window.Assist.Actions.RenameDeclaredAsync(declared, read, newName, renameFiles, patience), cancel);
         }
         XamlFile file = await xaml.Xaml.FileAsync() ?? xaml.File;
         XamlSymbol? symbol = await BackgroundWork.Run(() => XamlNavigation.At(file, offset));

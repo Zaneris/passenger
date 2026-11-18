@@ -10,7 +10,7 @@ using Passenger.Xaml.Syntax;
 namespace Passenger.App.CSharp;
 
 /// <summary>A XAML file's C# expressions (MAUI's), answered by the language server as it answers C#: completion, Go to
-/// Declaration, Find Usages and the hover card at a place in one, asked of Passenger's extension, which reads the
+/// Declaration, Find Usages, Rename and the hover card at a place in one, asked of Passenger's extension, which reads the
 /// expression as MAUI's source generator writes it into the page's code.</summary>
 internal sealed partial class XamlAssist
 {
@@ -151,10 +151,22 @@ internal sealed partial class XamlAssist
         return new XamlTarget(XamlTargetKind.Member, symbol.Name) { Type = owner, Member = owner.Members.FirstOrDefault(m => m.Name == member) };
     }
 
-    /// <summary>The name of the page's own element an expression reads at a place, through the field MAUI's generator makes
-    /// for it; null at any other place.</summary>
-    internal async Task<string?> ExpressionElementAsync(XamlDocument xaml, int offset) =>
-        await ExpressionSymbolAsync(xaml, offset) is ({ } file, { } symbol) && NamedElementOf(file, symbol) is not null ? symbol.Name : null;
+    /// <summary>What Rename renames from a place in an expression, and the name the expression reads it by: the page's own
+    /// element it reads through the field MAUI's generator makes for it (no declaration), else where the folder's C# declares
+    /// what it reads, a property the MVVM Toolkit makes at the field or method it is made of; null at any other place.</summary>
+    internal async Task<(string Name, SourcePlace? Declared)?> ExpressionRenamedAsync(XamlDocument xaml, int offset)
+    {
+        if (await ExpressionSymbolAsync(xaml, offset) is not ({ } file, { } symbol))
+        {
+            return null;
+        }
+        if (NamedElementOf(file, symbol) is not null)
+        {
+            return (symbol.Name, null);
+        }
+        return (symbol.MadeOf ?? symbol) is { Path: { } path, At: { } at } && IsFolderCode(path)
+            ? (symbol.Name, new SourcePlace(PathNames.Canonical(path), at.Line, at.Character)) : null;
+    }
 
     /// <summary>Find Usages from a place in an expression: where the folder's C# and XAML use the symbol it names, as Find
     /// Usages finds them from its declaration. False outside an expression.</summary>

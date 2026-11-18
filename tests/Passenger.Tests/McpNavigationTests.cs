@@ -106,7 +106,8 @@ public sealed class McpNavigationTests : McpRig, IClassFixture<RestoredFolders>
     }
 
     /// <summary>An agent's rename of a method, then of its type, that a MAUI page's C# expression names through a XAML
-    /// prefix renames the expression with them, as their C# uses, so the page still names what it calls.</summary>
+    /// prefix renames the expression with them, as their C# uses, so the page still names what it calls; and a rename from
+    /// the expression renames the method as from its declaration.</summary>
     [Fact]
     public async Task Renaming_a_method_and_its_type_a_maui_expression_names_renames_the_expression_with_them()
     {
@@ -124,6 +125,17 @@ public sealed class McpNavigationTests : McpRig, IClassFixture<RestoredFolders>
         string renamed = File.ReadAllText(Path.Combine(folder, "MainPage.xaml"));
         Assert.True(renamed == page.Replace("{local:Helper.Shout(", "{local:Speaker.Yell(", StringComparison.Ordinal),
             $"renaming Shout to Yell and Helper to Speaker left the expression naming them otherwise, or changed more: {renamed}");
+
+        // Renamed again from the expression itself, as from the method's declaration.
+        int at = renamed.IndexOf("Yell(", StringComparison.Ordinal);
+        await Call(client, McpTools.Rename, new()
+        {
+            ["path"] = "MainPage.xaml", ["line"] = renamed[..at].Count(c => c == '\n') + 1, ["column"] = at - renamed.LastIndexOf('\n', at) + 1, ["newName"] = "Cheer",
+        });
+        Assert.Contains("public static string Cheer(string text)", File.ReadAllText(Path.Combine(folder, "Speaker.cs")), StringComparison.Ordinal);
+        string again = File.ReadAllText(Path.Combine(folder, "MainPage.xaml"));
+        Assert.True(again == page.Replace("{local:Helper.Shout(", "{local:Speaker.Cheer(", StringComparison.Ordinal),
+            $"renaming Yell to Cheer from the expression left it naming Yell, or changed more: {again}");
     }
 
     /// <summary>An agent's first question of a MAUI page's C# expression, asked as a folder never restored opens, waits as its

@@ -556,6 +556,45 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
         }
     }
 
+    /// <summary>What the folder's C# declares at <paramref name="declared"/> (Roslyn's line and column), read as
+    /// <paramref name="written"/>, its own name or the property or a command the MVVM Toolkit makes of it, renamed from its
+    /// declaration (<see cref="RenameSymbolAsync(OpenDocument, int, string, bool, Patience?)"/>) so it is read as
+    /// <paramref name="name"/>: a field or method by the name that makes it, refused where none would. Its file is read for
+    /// the rename where it is not open.</summary>
+    internal async Task<RefactorOutcome> RenameDeclaredAsync(Passenger.Xaml.Metadata.SourcePlace declared, string written, string name, bool renameFiles, Patience? patience)
+    {
+        OpenDocument code;
+        IDisposable hold;
+        try
+        {
+            (code, hold) = context.Editors.Lend(declared.Path);
+        }
+        catch (Exception unread) when (unread is IOException or UnauthorizedAccessException)
+        {
+            return RefactorOutcome.Refused($"Rename was not applied: {Path.GetFileName(declared.Path)} could not be read: {unread.Message}");
+        }
+        try
+        {
+            if (context.CSharp?.For(code)?.Lsp is not { } lsp)
+            {
+                return RefactorOutcome.Refused($"Rename was not applied: the C# language server has yet to read {Path.GetFileName(declared.Path)}");
+            }
+            int offset = lsp.OffsetOf(new LspPosition(declared.Line, declared.Column));
+            TextSnapshot text = code.Text.Snapshot;
+            string own = text.GetText(TextNavigation.WordAt(text, offset));
+            if (Passenger.Xaml.Features.CodeSymbol.NameFor(own, written, name) is not { } renamed)
+            {
+                return RefactorOutcome.Refused($"Rename was not applied: the MVVM Toolkit makes {written} of {own}, and no name of {own}'s makes '{name}'");
+            }
+            return renamed == own ? new RefactorOutcome($"{name} is its name already", null, [], [])
+                : await RenameSymbolAsync(code, offset, renamed, renameFiles, patience);
+        }
+        finally
+        {
+            hold.Dispose();
+        }
+    }
+
     /// <summary>Writes in the IDE's log a rename the server answered with nothing, none of its files known to be behind: where
     /// it says the name is declared, and each file of its solution written in the last minute, how long before the
     /// request, whether it holds the file as the disk has it, and when it was told the file changed.</summary>
@@ -643,6 +682,12 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
         }
         if (renamed is not { } edit)
         {
+            // A property the MVVM Toolkit makes, which the server renames nowhere, is renamed through the field or method it is made of.
+            if (component is null && godot is null && document.Language == Languages.Language.CSharp
+                && await context.Now(document).SymbolAtAsync(at.Offset) is { MadeOf: { Path: { } maker, At: { } made } } toolkitMade)
+            {
+                return await RenameDeclaredAsync(new Passenger.Xaml.Metadata.SourcePlace(PathNames.Canonical(maker), made.Line, made.Character), toolkitMade.Name, name, renameFiles, patience);
+            }
             // A server behind a file it reads from disk (the class's XAML making a field, however long ago written) may not know the name yet.
             if (await StaleAsync(document, NoEdit, asked, patience, await MarkupOfClassAtAsync(document, at.Offset)) is { } unread)
             {
