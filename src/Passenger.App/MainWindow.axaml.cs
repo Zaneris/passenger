@@ -201,6 +201,7 @@ public partial class MainWindow : IdeWindow
         Editors.Refused += (_, problem) => status.Text = problem;
         Editors.Opened += (_, document) => session.Attach(document);
         Editors.Opened += (_, document) => document.EnsuresFinalLineBreak = () => settings.EnsureFinalLineBreak;
+        Editors.Opened += (_, document) => document.Decorations.SetAddresses(WrittenLink);
         Editors.Closed += (_, document) => session.Detach(document);
         Editors.ForEachEditor(editor => editor.ProblemsRequested += (_, _) => ShowToolWindow(ToolWindowIds.Problems));
         // A gesture's action at its press in a file's editor (Cmd+click's Go to Declaration), the keymap's as a key's is.
@@ -286,6 +287,8 @@ public partial class MainWindow : IdeWindow
         assist.Navigate += (_, target) => NavigateTo(target.Path, target.Position);
         assist.Message += (_, message) => status.Text = message;
         assist.Browse += (_, page) => Browse(page);
+        assist.FollowLink += (_, target) => OpenLink((ToolWindows.LinkTarget)target);
+        assist.FollowKeys = () => actions?.ShortcutsShown(AppActions.GoToDeclaration);
         assist.Play += (_, file) => IdeErrors.Observe(PlaySoundAsync(file));
         assist.FilesChanging = FollowingAsync;
         assist.KeepsPlaces = () => settings.FindResultsIn() == FindResults.FindWindow;

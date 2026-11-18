@@ -230,6 +230,7 @@ public sealed partial class CodeEditor : Control
             }
             decorations = shown;
             decorations.Changed += OnDecorationsChanged;
+            ForgetLinks();
         }
         ownsDecorations = owned;
         wrappedHints = decorations.InlayHints;
@@ -263,8 +264,12 @@ public sealed partial class CodeEditor : Control
                 FollowInputMethod();
                 break;
         }
-        // The gutter's columns read change marks and bookmarks, which a row's key leaves to them; a fold moves rows.
-        if (kind is DecorationKind.ChangeMarks or DecorationKind.Bookmarks or DecorationKind.Folds)
+        if (kind == DecorationKind.Links)
+        {
+            ForgetLinks();
+        }
+        // The gutter's columns read change marks and bookmarks; a fold moves rows; a row's key holds no address found in it.
+        if (kind is DecorationKind.ChangeMarks or DecorationKind.Bookmarks or DecorationKind.Folds or DecorationKind.Links)
         {
             Redraw();
         }

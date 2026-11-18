@@ -86,7 +86,7 @@ public sealed class CodeAssist
         CSharpAssist csharp = new(context, popups, completion, parameterInfo, navigation, actions, xaml);
         GDScriptAssist gdscript = new(context, completion, parameterInfo, navigation, actions);
         parameterInfo.Own = gdscript;
-        context.Languages = new LanguageAssists(new HttpAssist(context, navigation), new MSBuildAssist(context, popups, completion), xaml,
+        context.Languages = new LanguageAssists(new LinkAssist(context), new HttpAssist(context, navigation), new MSBuildAssist(context, popups, completion), xaml,
             new ComposeAssist(context, popups, completion, navigation, actions), new SettingsAssist(context, completion, navigation),
             new CssClassAssist(context, completion, navigation), gdscript, new WebAssist(context, popups, completion, parameterInfo, actions),
             new GodotShaderAssist(context, completion, navigation, csharp), new GodotAssist(context, popups, completion, navigation, actions, csharp),
@@ -193,6 +193,19 @@ public sealed class CodeAssist
     {
         add => context.Browsed += value;
         remove => context.Browsed -= value;
+    }
+
+    /// <summary>A link to follow, an address written in a file's comment or string: what it opens, its target.</summary>
+    public event EventHandler<object>? FollowLink
+    {
+        add => context.Followed += value;
+        remove => context.Followed -= value;
+    }
+
+    /// <summary>The keys that follow a link (Go to Declaration's), as a tip shows them; null with none.</summary>
+    public Func<string?> FollowKeys
+    {
+        set => context.FollowKeys = value;
     }
 
     /// <summary>A sound a card's Play asks for.</summary>
@@ -578,7 +591,7 @@ public sealed class CodeAssist
             Menus = [new("Refactor", 4, 1)],
         });
         Code(AppActions.GoToDeclaration, "Go to Declaration", context => IdeErrors.Observe(navigation.GoToDefinition(Caret)), new("Navigate", 2, 0), xaml: true, msbuild: true, http: true,
-            godot: true, shader: true, gherkin: true);
+            godot: true, shader: true, gherkin: true, link: true);
         Code(AppActions.DerivedSymbols, "Derived Symbols", context => IdeErrors.Observe(navigation.GoToDerivedSymbols(Caret)), new("Navigate", 2, 1));
         Code(AppActions.GoToImplementation, "Go to Implementation", context => IdeErrors.Observe(navigation.GoToImplementation(Caret)), new("Navigate", 2, 2));
         Code(AppActions.GoToTypeDeclaration, "Go to Type Declaration", context => IdeErrors.Observe(navigation.GoToTypeDeclaration(Caret)), new("Navigate", 2, 3));
@@ -603,7 +616,7 @@ public sealed class CodeAssist
 
         // One that edits the file shown (writes) greys on a read-only one, a file the language server serves too.
         void Code(string id, string title, Action<ActionContext> run, MenuPlace menu, bool server = true, bool syntax = false, bool xaml = false, bool markup = false, bool msbuild = false,
-            bool http = false, bool godot = false, bool shader = false, bool gdscript = false, bool gherkin = false, bool writes = false) =>
+            bool http = false, bool godot = false, bool shader = false, bool gdscript = false, bool gherkin = false, bool writes = false, bool link = false) =>
             registry.Add(new IdeAction(id, title, "Code", run)
             {
                 // .http requests, Godot scenes' paths, shaders' names and features' steps are read with no language server.
@@ -611,7 +624,7 @@ public sealed class CodeAssist
                     || shader && action.File is { } file && Godot.GodotShaderMarks.IsShader(file.Path)
                     || gherkin && action.File is { } feature && Passenger.App.Bdd.FeatureChecks.IsFeature(feature.Path) ? null
                     : gdscript && CodeActions.IsGDScript(action.File) ? (action.Editor.IsReadOnly ? Refusals.ReadOnly(action.File!.Name) : null)
-                    : WhyNot(action, server, syntax, xaml, markup, msbuild))
+                    : WhyNot(action, server, syntax, xaml, markup, msbuild) is { } why && !(link && action.File is not null && action.Editor.LinkOn(action.Editor.Selections.Primary.Caret) is not null) ? why : null)
                     ?? (writes && action.File is { } shown && action.Editor.IsReadOnly ? Refusals.ReadOnly(shown.Name) : null),
                 Menus = [menu],
             });

@@ -540,7 +540,7 @@ public sealed partial class CodeEditor
                 }
             }
         }
-        if (links is not null)
+        if (decorations.Links is { } links)
         {
             foreach (TextLink link in links(frameText!, line))
             {

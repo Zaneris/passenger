@@ -315,15 +315,29 @@ public sealed partial class CodeEditor
 
     /// <summary>A formatted line, the last frame that drew or measured with it, and the x of the last few columns asked of it
     /// (where squiggles, selections and hints stand), which the line's layout allocates to read again in every frame.</summary>
-    private sealed class Formatted(TextLine line)
+    private sealed class Formatted(TextLine line, FormatKey key)
     {
         private const int KeptDistances = 8;
 
         private (int Column, double X)[]? distances;
         private int kept;
         private int replaced;
+        private Address[]? addresses;
+        private Func<string, object?>? addressesBy;
 
         public TextLine Line { get; } = line;
+
+        /// <summary>The addresses in the line's comments and strings, in its columns, as <paramref name="by"/> takes them:
+        /// found the first time they are asked for.</summary>
+        public Address[] Addresses(Func<string, object?> by)
+        {
+            if (addresses is null || !ReferenceEquals(addressesBy, by))
+            {
+                addresses = FindAddresses(key.Text, key.Runs, by);
+                addressesBy = by;
+            }
+            return addresses;
+        }
         public long Frame { get; private set; }
         public bool Disposed { get; private set; }
 
@@ -719,7 +733,7 @@ public sealed partial class CodeEditor
 
         public Formatted Add(FormatKey key, TextLine text)
         {
-            Formatted line = new(text);
+            Formatted line = new(text, key);
             formatted[key] = line;
             line.Touch(Frame);
             return line;

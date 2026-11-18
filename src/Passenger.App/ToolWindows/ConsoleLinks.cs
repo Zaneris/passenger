@@ -253,9 +253,9 @@ public sealed partial class ConsoleLinks : IHighlighter
         }
         waited = false;
         List<FoundLink> found = [];
-        foreach (Match url in Url().Matches(line))
+        foreach (ValueMatch url in WebAddresses.In(line))
         {
-            if (Web(url.Value) is { } target)
+            if (Web(line.Substring(url.Index, url.Length)) is { } target)
             {
                 Claim(found, new FoundLink(url.Index, url.Length, target));
             }
@@ -344,11 +344,7 @@ public sealed partial class ConsoleLinks : IHighlighter
     /// <summary>An address the browser opens (www. taken as http); a file: URL opens its file in the editor.</summary>
     private LinkTarget? Web(string text)
     {
-        if (text.StartsWith("www.", StringComparison.OrdinalIgnoreCase))
-        {
-            text = "http://" + text;
-        }
-        if (!Uri.TryCreate(text, UriKind.Absolute, out Uri? address))
+        if (WebAddresses.Parse(text) is not { } address)
         {
             return null;
         }
@@ -526,11 +522,6 @@ public sealed partial class ConsoleLinks : IHighlighter
             return null;
         }
     }
-
-    /// <summary>A web address (mailto:, http, https, ftp, ftps, news, and www. without a scheme) to its last character that
-    /// cannot end a sentence, or a file: URL.</summary>
-    [GeneratedRegex(@"\b(?:mailto:|(?:news|(?:ht|f)tps?)://|(?<![\p{L}0-9_.])www\.)[-A-Za-z0-9+$&@#/%?=~_|!:,.;]*[-A-Za-z0-9+$&@#/%=~_|]|\bfile:(?:/|[A-Za-z]:)[^\s()\[\]]*[^\s()\[\]:;?!,.]")]
-    private static partial Regex Url();
 
     /// <summary>A .NET stack frame, a line beginning "at": "at Type.Method(args) in /path/File.cs:line 12", the path after
     /// the method's closing parenthesis, so one with spaces (or " in ") is whole.</summary>

@@ -56,6 +56,11 @@ internal sealed class AssistContext(EditorArea editors, Func<CSharpService?> ser
 
     public event EventHandler<Uri>? Browsed;
 
+    public event EventHandler<object>? Followed;
+
+    /// <summary>The keys that follow a link, as a tip shows them; null with none.</summary>
+    public Func<string?> FollowKeys { get; set; } = () => null;
+
     public event EventHandler<string>? Played;
 
     public CodeEditor Editor => editors.CodeEditor;
@@ -235,6 +240,9 @@ internal sealed class AssistContext(EditorArea editors, Func<CSharpService?> ser
 
     /// <summary>A page to open in the browser: an ESLint rule's, an image's registry page.</summary>
     public void Browse(Uri page) => Browsed?.Invoke(this, page);
+
+    /// <summary>A link to follow: an address written in a file's comment or string, by what it opens.</summary>
+    public void Follow(object target) => Followed?.Invoke(this, target);
 
     /// <summary>A sound file to play: one a path in the code names, its card's Play pressed.</summary>
     public void Play(string file) => Played?.Invoke(this, file);

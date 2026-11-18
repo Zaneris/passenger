@@ -13,10 +13,11 @@ public enum DecorationKind
     Annotations,
     ChangeMarks,
     Bookmarks,
+    Links,
 }
 
 /// <summary>What is drawn on one document's text for whoever shows it: its markers, inlay hints, folds, line-end
-/// annotations, change marks and bookmarks. Every editor showing the document reads this one (<see cref="CodeEditor.Show"/>),
+/// annotations, change marks, bookmarks and links. Every editor showing the document reads this one (<see cref="CodeEditor.Show"/>),
 /// so a split or another window draws what the first does; an editor given a text alone has one of its own. The markers,
 /// the hints and the folds are carried through each change ahead of everyone who hears of it, as runs an edit moves only
 /// where it reaches, so their owners set them again only with others; the rest are set again by their owners. Each list
@@ -70,6 +71,18 @@ public sealed class DocumentDecorations
     public IReadOnlyList<int> Bookmarks => BookmarksByLine.Items;
 
     public LineOrdered<int> BookmarksByLine { get; private set; } = NoBookmarks;
+
+    /// <summary>The links on a line (from zero) of a text, in its offsets, as the owner finds them (a console's); null for a
+    /// text with none. Asked for each line drawn and the line under the pointer as it moves, so the owner keeps what it found.</summary>
+    public Func<TextSnapshot, int, IReadOnlyList<TextLink>>? Links { get; private set; }
+
+    /// <summary>What an address written in a comment or a string opens, as the owner takes it, null leaving it text; null for
+    /// a text whose addresses are none. Each editor finds them in the rows it draws, by the colours its highlighter gave.</summary>
+    public Func<string, object?>? Addresses { get; private set; }
+
+    /// <summary>Whether a plain click opens a link (a console's); else a click places the caret, and the keymap's gesture that
+    /// follows a name follows a link too.</summary>
+    public bool ClickOpensLinks { get; private set; }
 
     /// <summary>How many times markers were given out of order and sorted here: what a host that gives them so costs a key.</summary>
     public int MarkersSorted { get; private set; }
@@ -138,6 +151,29 @@ public sealed class DocumentDecorations
         }
         BookmarksByLine = lines.Count == 0 ? NoBookmarks : new LineOrdered<int>(lines, static l => l, static l => l);
         Changed?.Invoke(this, DecorationKind.Bookmarks);
+    }
+
+    /// <summary>Sets the links the owner finds by line, which a plain click opens or not.</summary>
+    public void SetLinks(Func<TextSnapshot, int, IReadOnlyList<TextLink>>? links, bool clickOpens)
+    {
+        if (ReferenceEquals(links, Links) && clickOpens == ClickOpensLinks)
+        {
+            return;
+        }
+        Links = links;
+        ClickOpensLinks = clickOpens;
+        Changed?.Invoke(this, DecorationKind.Links);
+    }
+
+    /// <summary>Sets what an address in a comment or a string opens: each editor showing the text finds them again.</summary>
+    public void SetAddresses(Func<string, object?>? addresses)
+    {
+        if (ReferenceEquals(addresses, Addresses))
+        {
+            return;
+        }
+        Addresses = addresses;
+        Changed?.Invoke(this, DecorationKind.Links);
     }
 
     /// <summary>Carries the markers, hints and folds through a change once, whichever of its hearers asks first: an editor

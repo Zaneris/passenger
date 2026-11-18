@@ -2,6 +2,8 @@ using Avalonia.Platform.Storage;
 using Passenger.App.Run;
 using Passenger.App.ToolWindows;
 using Passenger.Core;
+using Passenger.Editor;
+using Passenger.Text;
 
 namespace Passenger.App;
 
@@ -99,6 +101,14 @@ public partial class MainWindow
         }
         return FoundPaths.OfFileAddress(uri) is { } path ? new ProgramFileLink(path) : null;
     }
+
+    /// <summary>What an address written in a file's comment or string opens (<see cref="DocumentDecorations.Addresses"/>), its
+    /// editor's Go to Declaration following it: a web address in the browser, a file address on this machine its file or
+    /// folder once followed, as a program's link in the terminal (<see cref="ProgramLink"/>), so drawing it asks nothing of
+    /// the disk; null for any other, which stays text.</summary>
+    public static readonly Func<string, object?> WrittenLink = address => WebAddresses.Parse(address) is not { } uri ? null
+        : uri.IsFile ? (FoundPaths.OfFileAddress(uri) is { } path ? new ProgramFileLink(path) : null)
+        : new WebLink(uri);
 
     /// <summary>Opens a path a program linked, once clicked: its file in the editor, else its folder in the file manager,
     /// as the disk has them, asked off the window's thread; one that is neither is said in the status bar.</summary>
