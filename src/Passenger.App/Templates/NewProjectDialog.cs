@@ -110,10 +110,9 @@ public sealed class NewProjectDialog : IdeWindow
     private readonly TextBlock progress = new() { Classes = { StyleClasses.Muted }, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center };
     private readonly StackPanel working;
     private readonly TextBlock problem = new() { TextWrapping = TextWrapping.Wrap, IsVisible = false, VerticalAlignment = VerticalAlignment.Center };
-    private readonly Button copyCommand = new() { Content = "Copy Command", IsVisible = false, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(Gaps.Normal, 0, 0, 0) };
 
-    /// <summary>The command the problem shown asks the person to run themselves, which Copy Command copies; null for none.</summary>
-    private string? toRun;
+    /// <summary>Copies the command the problem shown asks the person to run themselves, shown while there is one.</summary>
+    private readonly CopyButton copyCommand = new("Copy Command") { IsVisible = false, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(Gaps.Normal, 0, 0, 0) };
     private readonly Button create = DialogFooter.Default("Create");
     private readonly Button browse = new() { Content = "Browse…", Margin = new Thickness(Gaps.Normal, 0, 0, 0) };
     private readonly ComboBox setup = new() { Classes = { StyleClasses.Form } };
@@ -341,7 +340,6 @@ public sealed class NewProjectDialog : IdeWindow
             followFolder.Stop();
         };
         DockPanel.SetDock(left, Dock.Left);
-        copyCommand.Click += (_, _) => IdeErrors.Observe(CopyCommandAsync());
         DockPanel.SetDock(copyCommand, Dock.Right);
         Content = DialogFooter.Page(new DockPanel { Children = { left, rightPane } },
             DialogFooter.OkCancel(create, Cancel, new Panel { Children = { new DockPanel { Children = { copyCommand, problem } }, working } }));
@@ -541,7 +539,7 @@ public sealed class NewProjectDialog : IdeWindow
     public string? Problem => problem.IsVisible ? problem.Text : null;
 
     /// <summary>Copy Command, shown beside a problem that asks the person to run a command themselves.</summary>
-    public Button CopyCommandButton => copyCommand;
+    public CopyButton CopyCommandButton => copyCommand;
 
     private bool SolutionNamed => SolutionName.Length > 0 && SolutionName != solutionGiven;
 
@@ -1645,25 +1643,14 @@ public sealed class NewProjectDialog : IdeWindow
     private void Fail(string? why, string? run = null)
     {
         TemplateList.Fail(problem, why);
-        toRun = why is null ? null : run;
-        copyCommand.Content = "Copy Command";
-        copyCommand.IsVisible = toRun is not null;
-    }
-
-    /// <summary>The command the problem asks the person to run, to the clipboard, the button then saying Copied.</summary>
-    private async Task CopyCommandAsync()
-    {
-        if (toRun is { } command)
-        {
-            await ListMenus.CopyAsync(this, command);
-            copyCommand.Content = "Copied";
-        }
+        copyCommand.Text = why is null ? null : run;
+        copyCommand.IsVisible = copyCommand.Text is not null;
     }
 
     private void Busy(bool busy)
     {
         TemplateList.Busy(problem, working, busy);
-        copyCommand.IsVisible = !busy && toRun is not null;
+        copyCommand.IsVisible = !busy && copyCommand.Text is not null;
         create.IsEnabled = !busy && template is { Pack: null };
         install.IsEnabled = !busy;
         installSetup.IsEnabled = !busy;

@@ -2777,6 +2777,23 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
             + $"make each with DialogFooter (Default, Cancel, OkCancel, or Popup in a popup):\n{string.Join("\n", found)}");
     }
 
+    /// <summary>A button that copies words for the person to paste elsewhere, then says Copied, is a CopyButton (Copy
+    /// Command beside a refusal, each agent's setup in Settings), so every one copies and says so one way: a button worded
+    /// Copy, Copy and a name, or Copied by hand fails here, naming its line.</summary>
+    [Fact]
+    public void Every_button_that_copies_then_says_Copied_is_a_CopyButton()
+    {
+        Regex byHand = new(@"\bContent\s*=\s*[^;,}]*""Cop(?:y(?: [A-Z]\w*)?|ied)""");
+        string[] found = [.. UiFiles().Where(f => !f.Path.EndsWith("/CopyButton.cs", StringComparison.Ordinal))
+            .SelectMany(f => f.Text.Split('\n').Select((line, i) => (f.Path, Line: i + 1, Text: line)))
+            .Where(l => byHand.IsMatch(l.Text)).Select(l => $"{l.Path}:{l.Line}")];
+        Assert.True(found.Length == 0, $"{found.Length} buttons copy and say so by hand, so their words and clipboard drift from every other copy's: "
+            + $"make each a CopyButton:\n{string.Join("\n", found)}");
+        Assert.Matches(byHand, "        other.Content = other == copy ? \"Copied\" : \"Copy\";");
+        Assert.Matches(byHand, "    Button copyCommand = new() { Content = \"Copy Command\", IsVisible = false };");
+        Assert.DoesNotMatch(byHand, "        Button copy = new() { Content = \"Copy and Close\" };");
+    }
+
     /// <summary>A tool window's two panes, and an editor and its file's own pane (a preview), are a PaneSplit, so a side
     /// dock's width or a narrow window's editors stand them one over the other: panes side by side over a divider of their
     /// own stay that way however narrow, the Git window's log a line of letters. The dock's areas, an editor's splits and a
