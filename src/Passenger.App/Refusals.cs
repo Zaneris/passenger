@@ -529,6 +529,12 @@ public static class Refusals
     /// paused, and its runtime answers the profiler only as it runs.</summary>
     public static string PausedInDebugger(string program, string doing) => $"{program} is paused in the debugger: continue it to {doing}";
 
+    /// <summary>Why a Blazor app's WebAssembly half is not debugged in the browser a run names (<paramref name="where"/>, a
+    /// place in words that begins a sentence): <paramref name="program"/> is known to be no Chromium browser, the one kind
+    /// .NET's browser debug proxy drives.</summary>
+    public static string NotChromium(string where, string program) =>
+        $"{where} names {program}, which is no Chromium browser, and only a Chromium browser debugs them: name Chrome, Edge, Chromium or Brave there to debug them";
+
     /// <summary>A program's metrics asked for while the debugger holds it paused, read once it runs.</summary>
     public static string MetricsWhilePaused(string program) => $"{program} is paused in the debugger: its metrics come once it runs";
 

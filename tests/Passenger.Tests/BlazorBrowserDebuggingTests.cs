@@ -15,7 +15,7 @@ namespace Passenger.Tests;
 /// in its WebAssembly tab alone; a component's breakpoint stops as the page renders it, Step Over goes to the next line
 /// and Variables shows its field; a server component's breakpoint stops in the same run; a page whose browser's network
 /// service ended as it loaded is loaded again. With no browser where Settings names one, Debug says so and how to get
-/// one, and of one the system refuses its sandbox, why and how to run one. The apps
+/// one, of Firefox named there that it is no Chromium, and of one the system refuses its sandbox, why and how to run one. The apps
 /// are the SDK's templates, restored from the package cache tests/BlazorGraphs fills. Skipped without a Chromium browser.
 /// Debugged through the window, so run alone.</summary>
 [Collection(Alone.Name)]
@@ -269,7 +269,7 @@ public sealed class BlazorBrowserDebuggingTests(StandInAppHost appHost) : IDispo
         MainWindow window = Ui.OpenFolder(folder, languageServer: false);
         // The browser found, told to keep its own log of every request it makes.
         string netLog = Path.Combine(folder, "net-log.json");
-        window.ApplySettings(window.Settings with { DebugBrowser = $"\"{ChromiumBrowsers.Find(null)!.Program}\" --log-net-log={netLog}" });
+        window.ApplySettings(window.Settings with { Browser = $"\"{ChromiumBrowsers.Find(null)!.Program}\" --log-net-log={netLog}" });
         try
         {
             Ui.WaitFor(() => window.Configurations.Any(c => c.Name == "Wasm: http"), () => $"Wasm's http configuration; the window has {string.Join(", ", window.Configurations.Select(c => c.Name))}",
@@ -403,7 +403,7 @@ public sealed class BlazorBrowserDebuggingTests(StandInAppHost appHost) : IDispo
         try
         {
             string nowhere = Path.Combine(folder, "no-browser", "chrome");
-            window.ApplySettings(window.Settings with { DebugBrowser = nowhere });
+            window.ApplySettings(window.Settings with { Browser = nowhere });
             Ui.WaitFor(() => window.Configurations.Any(c => c.Name == "Wasm: http"), () => $"Wasm's http configuration; the window has {string.Join(", ", window.Configurations.Select(c => c.Name))}",
                 TimeSpan.FromMinutes(2));
             Assert.True(window.SelectConfiguration("Wasm: http"));
@@ -417,6 +417,40 @@ public sealed class BlazorBrowserDebuggingTests(StandInAppHost appHost) : IDispo
         }
         finally
         {
+            End(window);
+        }
+    }
+
+    /// <summary>With Firefox where Settings names the browser, Debug of a standalone app runs its development server under
+    /// the debugger as before, saying its components in the browser are not debugged, as Firefox is no Chromium browser, and
+    /// which to name there instead; no browser is started to debug them.</summary>
+    [AvaloniaFact]
+    public void Debug_where_Settings_names_Firefox_says_it_is_no_chromium_browser_and_which_to_name()
+    {
+        Make("blazorwasm", "Wasm");
+        Profile(Path.Combine(folder, "Properties", "launchSettings.json"), 0);
+        Restore.Run(Path.Combine(folder, "Wasm.csproj"));
+        string firefox = TestFolders.StandIn(Path.Combine(folder, "browsers"), "firefox", "exit /b 0", "exit 0");
+        int started = 0;
+        void Heard(object? sender, ChildStart child) => Interlocked.Add(ref started, child.Start?.FileName == firefox ? 1 : 0);
+        ChildProcesses.Started += Heard;
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        try
+        {
+            window.ApplySettings(window.Settings with { Browser = $"\"{firefox}\" --private-window" });
+            Ui.WaitFor(() => window.Configurations.Any(c => c.Name == "Wasm: http"), () => $"Wasm's http configuration; the window has {string.Join(", ", window.Configurations.Select(c => c.Name))}",
+                TimeSpan.FromMinutes(2));
+            Assert.True(window.SelectConfiguration("Wasm: http"));
+            Ui.Launched(window, window.DebugAsync(), "Wasm's development server to start under the debugger", TimeSpan.FromMinutes(3));
+            Ui.WaitFor(() => window.Debugger.Session?.State is DebugState.Running or DebugState.Ended, "the development server to run under the debugger", TimeSpan.FromMinutes(1));
+            string said = window.BottomPanel.Debug.Console.Document.Snapshot.ToString();
+            Assert.Contains(Refusals.NotChromium(Passenger.App.Run.PageBrowsers.SettingPlace, firefox), said, StringComparison.Ordinal);
+            Assert.Contains("and their breakpoints are not hit: only the development server that serves them runs under the debugger", said, StringComparison.Ordinal);
+            Assert.True(Volatile.Read(ref started) == 0, "Debug started Firefox to debug the app's components in");
+        }
+        finally
+        {
+            ChildProcesses.Started -= Heard;
             End(window);
         }
     }
@@ -438,7 +472,7 @@ public sealed class BlazorBrowserDebuggingTests(StandInAppHost appHost) : IDispo
         MainWindow window = Ui.OpenFolder(folder, languageServer: false);
         try
         {
-            window.ApplySettings(window.Settings with { DebugBrowser = browser });
+            window.ApplySettings(window.Settings with { Browser = browser });
             Ui.WaitFor(() => window.Configurations.Any(c => c.Name == "Wasm: http"), () => $"Wasm's http configuration; the window has {string.Join(", ", window.Configurations.Select(c => c.Name))}",
                 TimeSpan.FromMinutes(2));
             Assert.True(window.SelectConfiguration("Wasm: http"));
@@ -477,7 +511,7 @@ public sealed class BlazorBrowserDebuggingTests(StandInAppHost appHost) : IDispo
         MainWindow window = Ui.OpenFolder(folder, languageServer: false);
         try
         {
-            window.ApplySettings(window.Settings with { DebugBrowser = browser });
+            window.ApplySettings(window.Settings with { Browser = browser });
             Ui.WaitFor(() => window.Configurations.Any(c => c.Name == "Wasm: http"), () => $"Wasm's http configuration; the window has {string.Join(", ", window.Configurations.Select(c => c.Name))}",
                 TimeSpan.FromMinutes(2));
             Assert.True(window.SelectConfiguration("Wasm: http"));

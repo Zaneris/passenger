@@ -10,6 +10,7 @@ using Avalonia.LogicalTree;
 using Avalonia.Media;
 using Avalonia.VisualTree;
 using Passenger.App;
+using Passenger.App.Run;
 using Passenger.App.Settings;
 using Passenger.App.State;
 using Passenger.Editor;
@@ -725,6 +726,43 @@ public sealed class SettingsTests : IDisposable
         {
             // The keymap in force is the process's; the next test starts on the platform's own.
             window.ApplySettings(new AppSettings());
+            window.Close();
+        }
+    }
+
+    /// <summary>The browser debugging was given, kept as debugBrowser, is Settings' Browser, the one pages open and are
+    /// debugged in: Settings › Run shows it there, the system's default browser said where it is empty, and a change to it is
+    /// kept under browser alone.</summary>
+    [AvaloniaFact]
+    public void The_browser_kept_for_debugging_is_the_browser_settings_shows_and_keeps_under_its_name()
+    {
+        string file = Path.Combine(settings, StateStore.SettingsFile);
+        string line = $"\"{Path.Combine(folder, "Chrome Dev", "chrome")}\" --lang=fr";
+        File.WriteAllText(file, new JsonObject { ["version"] = AppSettings.Upgrades.Count, ["debugBrowser"] = line }.ToJsonString());
+        MainWindow window = Open();
+        try
+        {
+            window.KeepSettings();
+            Assert.Equal(line, window.Settings.Browser);
+            SettingsDialog dialog = window.ShowSettings();
+            Ui.Settle();
+            dialog.Page = SettingsDialog.RunPage;
+            Ui.Settle();
+            TextBox browser = Editor<TextBox>(dialog, PageBrowsers.Row);
+            Assert.True(browser.Text == line && browser.PlaceholderText == PageBrowsers.SystemDefault,
+                $"Settings › Run's Browser shows \"{browser.Text}\" over \"{browser.PlaceholderText}\", where the browser kept for debugging is {line}");
+            browser.Text = $"{line} --incognito";
+            Ui.Settle();
+            dialog.Ok();
+            Ui.Settle();
+            Assert.Equal($"{line} --incognito", window.Settings.Browser);
+            StateStore.Open(settings).Settings.Flush();
+            JsonObject written = JsonNode.Parse(File.ReadAllText(file))!.AsObject();
+            Assert.True(written["browser"]?.GetValue<string>() == $"{line} --incognito" && !written.ContainsKey("debugBrowser"),
+                $"settings.json keeps the browser so: {written.ToJsonString()}");
+        }
+        finally
+        {
             window.Close();
         }
     }

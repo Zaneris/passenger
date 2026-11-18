@@ -400,8 +400,10 @@ public sealed partial class BuildRunController
         if (plan.BrowserUrl is not null && await run.BrowserUrlAsync(CancellationToken.None) is { } url)
         {
             run.Address = url;
-            parts.OpenBrowser(new LaunchPlan { Name = chosen.Name, Program = engine.Cli!, WorkingDirectory = plan.Folder, BrowserUrl = url, BrowserService = plan.LaunchService ?? chosen.Name },
-                session.Runner.Ended);
+            parts.OpenBrowser(new LaunchPlan
+            {
+                Name = chosen.Name, Program = engine.Cli!, WorkingDirectory = plan.Folder, BrowserUrl = url, BrowserService = plan.LaunchService ?? chosen.Name, BrowserLine = chosen.Browser,
+            }, session.Runner.Ended);
         }
         return null;
     }

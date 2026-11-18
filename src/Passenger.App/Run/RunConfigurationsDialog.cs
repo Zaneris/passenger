@@ -158,6 +158,10 @@ public sealed class RunConfigurationsDialog : IdeWindow
         BrowserBox = new CheckBox { Content = "After launch" };
         ToolTip.SetTip(BrowserBox, "Opens the URL in the browser once the program listens there");
         BrowserUrlBox = Field();
+        BrowserLineBox = Field(BrowserPlaceholder(null));
+        BrowserLineBox.Name = "BrowserLineBox";
+        ToolTip.SetTip(BrowserLineBox, $"The browser the URL opens in, a program with any arguments to give it before the address, in place of {PageBrowsers.SettingPlace}; "
+            + "Debug drives it to debug a Blazor app's WebAssembly components, which only a Chromium browser does");
         AddVariableButton = new Button
         {
             Content = new StackPanel { Orientation = Orientation.Horizontal, Spacing = Gaps.Small, Children = { Glyph(IconKeys.Add), new TextBlock { Text = "Add variable" } } },
@@ -191,6 +195,7 @@ public sealed class RunConfigurationsDialog : IdeWindow
         ConsoleBox.IsCheckedChanged += (_, _) => Edit(c => c with { Console = ConsoleBox.IsChecked == true ? ConsoleKind.Terminal : ConsoleKind.Internal }, reshow: true);
         BrowserBox.IsCheckedChanged += (_, _) => Edit(c => c with { LaunchBrowser = BrowserBox.IsChecked == true });
         BrowserUrlBox.TextChanged += (_, _) => Edit(c => c with { BrowserUrl = BrowserUrlBox.Text?.Trim() ?? string.Empty });
+        BrowserLineBox.TextChanged += (_, _) => Edit(c => c with { Browser = BrowserLineBox.Text?.Trim() ?? string.Empty });
         AddVariableButton.Click += (_, _) => AddVariable(string.Empty, string.Empty, focus: true);
 
         KindText = new TextBlock { VerticalAlignment = VerticalAlignment.Center };
@@ -266,7 +271,7 @@ public sealed class RunConfigurationsDialog : IdeWindow
         sceneRow = Row("Scene", SceneBox, fields: ["godotScene"]);
         copyRows[0] = Row("Copies", CopiesBox, fields: ["godotCopies"]);
         copyRows[1] = Row("Each copy's arguments", CopyArgumentsBox, top: true, fields: ["copyArguments"]);
-        browserRows = [Row("Open browser", BrowserBox, fields: ["launchBrowser"]), Row("URL", BrowserUrlBox, fields: ["browserUrl"])];
+        browserRows = [Row("Open browser", BrowserBox, fields: ["launchBrowser"]), Row("URL", BrowserUrlBox, fields: ["browserUrl"]), Row(PageBrowsers.Row, BrowserLineBox, fields: ["browser"])];
         pages =
         [
             (projectRow, [RunKind.Project, RunKind.Dockerfile, RunKind.SdkContainer]),
@@ -301,6 +306,7 @@ public sealed class RunConfigurationsDialog : IdeWindow
             (launchRows[4] = Row(string.Empty, ConsoleBox, marked: consoleWords, fields: ["console"]), [RunKind.Project, RunKind.Script]),
             (browserRows[0], [RunKind.Project, RunKind.Compose, RunKind.Dockerfile, RunKind.SdkContainer]),
             (browserRows[1], [RunKind.Project, RunKind.Compose, RunKind.Dockerfile, RunKind.SdkContainer]),
+            (browserRows[2], [RunKind.Project, RunKind.Compose, RunKind.Dockerfile, RunKind.SdkContainer]),
             (Row("Launched service", LaunchServiceBox, fields: ["launchService"]), [RunKind.Compose]),
             (builtRows[2] = Row("Before launch", BuildBox, fields: ["buildBeforeLaunch"]), [RunKind.Project]),
             (Row("Projects", StartsTable, top: true), [RunKind.Projects]),
@@ -525,6 +531,27 @@ public sealed class RunConfigurationsDialog : IdeWindow
     public CheckBox BrowserBox { get; }
 
     public TextBox BrowserUrlBox { get; }
+
+    /// <summary>The browser the configuration's page opens in, in place of Settings' (<see cref="PageBrowsers"/>).</summary>
+    public TextBox BrowserLineBox { get; }
+
+    private readonly string? browserSetting;
+
+    /// <summary>Settings' command line for the browser, which a configuration naming none opens its page in; null for the
+    /// system's default.</summary>
+    public string? BrowserSetting
+    {
+        get => browserSetting;
+        init
+        {
+            browserSetting = value;
+            BrowserLineBox.PlaceholderText = BrowserPlaceholder(value);
+        }
+    }
+
+    /// <summary>What the browser box says left empty: the browser Settings names, or the system's default.</summary>
+    private static string BrowserPlaceholder(string? setting) =>
+        $"{(string.IsNullOrWhiteSpace(setting) ? PageBrowsers.SystemDefault : setting.Trim())}, from {PageBrowsers.SettingPlace}";
 
     /// <summary>The configuration's kind, which its page follows: a .NET project, Docker Compose, a Dockerfile, an SDK container.</summary>
     public TextBlock KindText { get; }
@@ -1250,6 +1277,7 @@ public sealed class RunConfigurationsDialog : IdeWindow
             ConsoleBox.IsChecked = shown.Console == ConsoleKind.Terminal;
             BrowserBox.IsChecked = shown.LaunchBrowser;
             BrowserUrlBox.Text = shown.BrowserUrl;
+            BrowserLineBox.Text = shown.Browser;
             KindText.Text = project?.IsScriptGame == true ? "Godot Project (GDScript)" : godot ? "Godot Project" : KindName(shown.Kind);
             ComposeFilesBox.Text = string.Join("; ", shown.ComposeFiles.Select(Shown));
             EnvFilesBox.Text = string.Join("; ", shown.EnvFiles.Select(Shown));

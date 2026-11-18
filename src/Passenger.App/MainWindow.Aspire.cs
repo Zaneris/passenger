@@ -88,7 +88,7 @@ public partial class MainWindow
         view.Metrics.Paused = MetricsPaused;
         view.BindActions(Actions, id => Request(id), RowMenuItem);
         view.RowChosen += (_, _) => lastServiceWindow = ToolWindowIds.Aspire;
-        view.Browse = Browse;
+        view.Browse = BrowsePage;
         view.LinkClicked += (_, link) => GoToAspireSource(link);
         view.AttachedToVisualTree += (_, _) => aspireDisplayChanged?.Invoke(this, EventArgs.Empty);
         view.DetachedFromVisualTree += (_, _) => aspireDisplayChanged?.Invoke(this, EventArgs.Empty);

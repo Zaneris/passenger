@@ -2613,8 +2613,8 @@ public sealed partial class BuildRunController
         }
         // A Blazor app's code in the browser is debugged in a Chromium browser, where one is found.
         IReadOnlyList<ProjectModel> projects = session.Projects;
-        string? browserSetting = parts.Settings().DebugBrowser;
-        (Debugging.BrowserDebugging? inBrowser, string? notInBrowser) = await BackgroundWork.Run(() => Debugging.BrowserDebugging.For(listened, projects, browserSetting));
+        PageBrowser? named = PageBrowsers.Of(listened.BrowserLine, listened.Name, parts.Settings().Browser);
+        (Debugging.BrowserDebugging? inBrowser, string? notInBrowser) = await BackgroundWork.Run(() => Debugging.BrowserDebugging.For(listened, projects, named));
         listened = listened with { Browser = inBrowser, BrowserWhyNot = notInBrowser };
         if (inBrowser is not null && PathNames.Same(listened.InBrowser[0], listened.Project!))
         {

@@ -164,8 +164,8 @@ public sealed partial class BuildRunController
     {
         LaunchPlan paged = plan with { Name = name, Page = PageOf(plan) };
         IReadOnlyList<Passenger.Workspace.ProjectModel> projects = session.Projects;
-        string? setting = parts.Settings().DebugBrowser;
-        (Debugging.BrowserDebugging? inBrowser, string? notInBrowser) = await BackgroundWork.Run(() => Debugging.BrowserDebugging.For(paged, projects, setting));
+        PageBrowser? named = PageBrowsers.Of(paged.BrowserLine, paged.Name, parts.Settings().Browser);
+        (Debugging.BrowserDebugging? inBrowser, string? notInBrowser) = await BackgroundWork.Run(() => Debugging.BrowserDebugging.For(paged, projects, named));
         if (session.IsEnded || session.Debug.SessionNamed(name) is not { State: not DebugState.Ended } server)
         {
             return;

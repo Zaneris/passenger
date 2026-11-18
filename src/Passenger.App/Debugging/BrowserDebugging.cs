@@ -1,4 +1,4 @@
-using Passenger.App.Settings;
+using Passenger.App.Run;
 using Passenger.Core;
 using Passenger.Workspace;
 
@@ -21,17 +21,23 @@ public sealed record BrowserDebugging(ChromiumFound Browser, string Proxy, Uri P
         + "the WebAssembly half comes through dotnet watch's browser refresh (Run with Hot Reload), not through the debugger; and only Chromium browsers "
         + "(Chrome, Edge, Chromium, Brave) are debugged";
 
-    /// <summary>What a plan's browser half needs on this machine, or why it cannot be debugged there (no browser, no proxy
-    /// restored, no page); none at all for a plan with no code in the browser.</summary>
-    public static (BrowserDebugging? Ready, string? WhyNot) For(Run.LaunchPlan plan, IReadOnlyList<ProjectModel> projects, string? browserSetting)
+    /// <summary>What a plan's browser half needs on this machine, or why it cannot be debugged there (no Chromium browser,
+    /// the one named no Chromium, no proxy restored, no page); none at all for a plan with no code in the browser. The browser
+    /// is the one its run names (<paramref name="chosen"/>, <see cref="PageBrowsers"/>), else the first found.</summary>
+    public static (BrowserDebugging? Ready, string? WhyNot) For(LaunchPlan plan, IReadOnlyList<ProjectModel> projects, PageBrowser? chosen)
     {
         if (plan.InBrowser.Count == 0 || plan.Project is not { } own)
         {
             return (null, null);
         }
-        if (ChromiumBrowsers.Find(Chosen(browserSetting)) is not { } browser)
+        (string Program, IReadOnlyList<string> Arguments)? named = PageBrowsers.Named(chosen?.Line);
+        if (chosen is not null && named is ({ } program, _) && ChromiumBrowsers.NotChromium(program))
         {
-            return (null, ChromiumBrowsers.NoneFound(browserSetting, $"{SettingsDialog.PlaceOfPage(SettingsDialog.RunPage)} › {BrowserRow}"));
+            return (null, Refusals.NotChromium(chosen.Where, program));
+        }
+        if (ChromiumBrowsers.Find(named) is not { } browser)
+        {
+            return (null, ChromiumBrowsers.NoneFound(chosen?.Line, chosen?.Where ?? PageBrowsers.SettingPlace));
         }
         if (plan.Page is not { } page)
         {
@@ -46,25 +52,5 @@ public sealed record BrowserDebugging(ChromiumFound Browser, string Proxy, Uri P
             return (null, $"{Path.GetFileNameWithoutExtension(plan.InBrowser[0])}'s restore brought no .NET browser debug proxy ({BrowserProxy.FileName}, in {WebAssemblyPack}): restore it, then debug again");
         }
         return (new BrowserDebugging(browser, proxy, page, plan.InBrowser), null);
-    }
-
-    /// <summary>The setting's row, which names the browser to debug in.</summary>
-    public const string BrowserRow = "Browser for WebAssembly";
-
-    /// <summary>The program and the arguments the setting's command line gives: the whole line when it is a path that is
-    /// there (one with spaces needs no quotes), else its first word and those after it; null for none.</summary>
-    public static (string Program, IReadOnlyList<string> Arguments)? Chosen(string? setting)
-    {
-        if (string.IsNullOrWhiteSpace(setting))
-        {
-            return null;
-        }
-        string line = setting.Trim();
-        if (File.Exists(line))
-        {
-            return (line, []);
-        }
-        IReadOnlyList<string> words = Run.CommandLine.Split(line);
-        return words is [{ Length: > 0 } program, ..] ? (program, [.. words.Skip(1)]) : null;
     }
 }

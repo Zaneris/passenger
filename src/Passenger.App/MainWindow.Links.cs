@@ -22,6 +22,12 @@ public partial class MainWindow
     /// launcher opens nothing.</summary>
     public IReadOnlyList<Uri> Browsed => browsed;
 
+    private readonly List<string> browsersStarted = [];
+
+    /// <summary>Every browser program the window started to open a page in (<see cref="PageBrowsers"/>), as its command line,
+    /// in order, or would have where nobody sees it.</summary>
+    public IReadOnlyList<string> BrowsersStarted => browsersStarted;
+
     private void AddLinks()
     {
         foreach (OutputView console in (OutputView[])[Bottom.Run, Bottom.Build])
@@ -180,13 +186,57 @@ public partial class MainWindow
         }
     }
 
-    /// <summary>Opens an address in the person's browser, through the system's launcher as every link the IDE opens is:
-    /// the browser is the person's, never ended with the IDE.</summary>
-    public void Browse(Uri address)
+    /// <summary>Opens an address in the person's browser, through the system's launcher as every link the IDE opens is: the
+    /// browser is the person's, never ended with the IDE.</summary>
+    public void Browse(Uri address) => Browse(address, null);
+
+    /// <summary>Opens a page a run serves (a resource's endpoint, a container's port) in the browser Settings names, else the
+    /// system's default.</summary>
+    private void BrowsePage(Uri page) => Browse(page, PageBrowsers.Of(settings.Browser));
+
+    /// <summary>Opens an address in the person's browser: through the system's launcher as every link the IDE opens is, or
+    /// in the browser program a run names (<paramref name="browser"/>), started apart, which a window nobody sees never
+    /// starts. The browser is the person's, never ended with the IDE.</summary>
+    public void Browse(Uri address, PageBrowser? browser)
     {
         UiThread.Check();
         browsed.Add(address);
-        IdeErrors.Observe(Launcher.LaunchUriAsync(address));
+        IdeErrors.Observe(browser is null ? Launcher.LaunchUriAsync(address) : BrowseInAsync(address, browser));
+    }
+
+    /// <summary>Opens an address in a browser program, its command found off the window's thread (a name on the PATH as
+    /// the login shell has it); what fails is said in the status bar.</summary>
+    private async Task BrowseInAsync(Uri address, PageBrowser browser)
+    {
+        (System.Diagnostics.ProcessStartInfo? start, bool bundle, string? whyNot) = await BackgroundWork.Run(() => PageBrowsers.Opening(browser, address));
+        if (start is null)
+        {
+            status.Text = PageBrowsers.NotOpened(address, whyNot!);
+            return;
+        }
+        browsersStarted.Add(ChildProcesses.Display(start));
+        if (Unseen)
+        {
+            return;
+        }
+        try
+        {
+            if (bundle)
+            {
+                // The system's open ends once the app has the page.
+                ChildResult opened = await ChildProcesses.RunAsync(start, limit: TimeSpan.FromSeconds(30));
+                if (!opened.Succeeded)
+                {
+                    status.Text = PageBrowsers.NotOpened(address, $"{browser.Where} names {browser.Line}, which did not open it: {opened.Said}");
+                }
+                return;
+            }
+            ChildProcesses.StartApart(start);
+        }
+        catch (Exception failed) when (ChildFailures.Of(failed))
+        {
+            status.Text = PageBrowsers.NotOpened(address, $"{browser.Where} names {browser.Line}, which did not start: {failed.Message}");
+        }
     }
 
     private readonly List<string> played = [];
@@ -276,7 +326,7 @@ public partial class MainWindow
                 }
                 if (up == true)
                 {
-                    Browse(address);
+                    Browse(address, PageBrowsers.Of(plan.BrowserLine, plan.Name, settings.Browser));
                 }
                 else
                 {

@@ -21,6 +21,35 @@ public sealed class ChromiumBrowsersTests
     }
 
     [Fact]
+    public void An_app_bundle_a_setting_names_is_the_program_inside_it_named_as_it_is()
+    {
+        string bundle = Path.Combine("/Applications", "Brave Browser.app");
+        string program = Path.Combine(bundle, "Contents", "MacOS", "Brave Browser");
+        ChromiumFound? found = ChromiumBrowsers.Find((bundle, ["--incognito"]), [], [], windows: false, Present(program));
+        Assert.True(found is { Name: "Brave Browser" } && found.Program == program && found.Arguments.SequenceEqual(["--incognito"]),
+            $"The bundle Settings names gave {found}, so Debug would not start the browser inside it");
+        Assert.Null(ChromiumBrowsers.Find((Path.Combine("/Applications", "Gone.app"), []), [], [], windows: false, Present(program)));
+    }
+
+    [Fact]
+    public void Firefox_Safari_and_their_kin_are_known_to_be_no_chromium_and_chromium_browsers_or_unknown_ones_are_not_said_to_be()
+    {
+        string[] others =
+        [
+            Path.Combine("/usr", "bin", "firefox"), Path.Combine("/usr", "bin", "firefox-esr"), Path.Combine("/Applications", "Firefox.app"),
+            Path.Combine("/Applications", "Firefox Developer Edition.app", "Contents", "MacOS", "firefox"), Path.Combine("/Applications", "Safari.app"),
+            Path.Combine("/Applications", "Safari.app", "Contents", "MacOS", "Safari"), Path.Combine("/opt", "librewolf", "librewolf"), "firefox.exe",
+        ];
+        Assert.True(others.All(ChromiumBrowsers.NotChromium), $"Not known as no Chromium: {string.Join(", ", others.Where(o => !ChromiumBrowsers.NotChromium(o)))}");
+        string[] chromiums =
+        [
+            Path.Combine("/Applications", "Google Chrome.app", "Contents", "MacOS", "Google Chrome"), Path.Combine("/Applications", "Microsoft Edge.app"),
+            Path.Combine("/usr", "bin", "chromium"), Path.Combine("/opt", "vivaldi", "vivaldi"), "msedge.exe", "chrome.exe", Path.Combine("/usr", "local", "bin", "my-browser"),
+        ];
+        Assert.True(!chromiums.Any(ChromiumBrowsers.NotChromium), $"Said to be no Chromium: {string.Join(", ", chromiums.Where(ChromiumBrowsers.NotChromium))}");
+    }
+
+    [Fact]
     public void Chrome_comes_before_Edge_in_Applications_and_Edge_is_found_in_the_users_own_Applications()
     {
         string home = Path.Combine("/Users", "someone", "Applications");

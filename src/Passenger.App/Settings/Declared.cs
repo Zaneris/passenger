@@ -438,11 +438,13 @@ public static class Declared
     public static readonly ProgramSetting TerminalShell = new(s => s.TerminalShell, (s, v) => s with { TerminalShell = v },
         () => Passenger.Terminal.TerminalSession.DefaultShell().App, new(D.TerminalPage, "Shell path", "shell zsh bash powershell program"));
 
-    public static readonly ProgramSetting DebugBrowser = new(s => s.DebugBrowser, (s, v) => s with { DebugBrowser = v },
-        () => Core.ChromiumBrowsers.Find(null) is { } found ? found.Program : "Not found",
-        new(D.RunPage, Debugging.BrowserDebugging.BrowserRow, "browser chrome edge chromium brave blazor webassembly wasm debug debugger page",
-            "The Chromium browser Debug opens a Blazor app's page in, to debug its WebAssembly components, on a profile of Passenger's own, with any arguments "
-            + "to give each start after it. Empty, it is the first of Chrome, Edge, Chromium and Brave found where they install, else on the PATH."));
+    public static readonly ProgramSetting Browser = new(s => s.Browser, (s, v) => s with { Browser = v },
+        () => Run.PageBrowsers.SystemDefault,
+        new(D.RunPage, Run.PageBrowsers.Row, "browser browsers chrome edge firefox safari chromium brave open page url launch web app blazor webassembly wasm debug debugger",
+            "The browser a web app's page opens in once it listens, as its launch profile's launchBrowser asks: a program (on macOS an app bundle too) "
+            + "with any arguments to give it before the page's address; a run configuration may name its own. Debug drives it, on a profile of "
+            + "Passenger's own, to debug a Blazor app's WebAssembly components, which takes a Chromium browser. Empty, pages open in the system's "
+            + "default browser, and Debug drives the first of Chrome, Edge, Chromium and Brave found where they install, else on the PATH."));
 
     public static readonly ProgramSetting GodotExecutable = new(s => s.GodotExecutable, (s, v) => s with { GodotExecutable = v },
         () => Run.GodotLaunch.Found(null) is { Exists: true } found ? found.Executable : "Not found",

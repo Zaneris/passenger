@@ -67,7 +67,7 @@ public partial class MainWindow
         {
             if (Aspire.TakePendingLink() is { Scheme: "http" or "https" } link)
             {
-                Browse(link);
+                BrowsePage(link);
             }
             else
             {

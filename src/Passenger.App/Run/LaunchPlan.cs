@@ -115,6 +115,10 @@ public sealed partial record LaunchPlan
     /// <summary>Where the browser opens once the program listens, or null when the configuration opens none.</summary>
     public string? BrowserUrl { get; init; }
 
+    /// <summary>The browser its configuration names for its page, as a command line, in place of Settings' (<see cref="PageBrowsers"/>);
+    /// empty for Settings'.</summary>
+    public string BrowserLine { get; init; } = string.Empty;
+
     /// <summary>The container's service whose HTTP answer at <see cref="BrowserUrl"/> opens the browser, since the engine
     /// takes connections on its published port before its program listens; null for a program whose port taking a connection
     /// opens it.</summary>
@@ -276,7 +280,11 @@ public sealed partial record LaunchPlan
     public static async Task<LaunchPlan> ResolveAsync(RunConfiguration configuration, IReadOnlyList<ProjectModel> projects, WorkspaceModel? workspace, string stateFolder,
         CancellationToken cancel = default, string? godot = null, string? atHand = null, IReadOnlyDictionary<string, string>? godotFolders = null, bool? unseen = null,
         Func<ProjectModel, Devices.KeptTarget?>? targets = null) =>
-        await ResolveWithinAsync(configuration, projects, workspace, stateFolder, cancel, godot, atHand, godotFolders, unseen, targets) with { Workspace = workspace };
+        await ResolveWithinAsync(configuration, projects, workspace, stateFolder, cancel, godot, atHand, godotFolders, unseen, targets) with
+        {
+            Workspace = workspace,
+            BrowserLine = configuration.Browser,
+        };
 
     private static async Task<LaunchPlan> ResolveWithinAsync(RunConfiguration configuration, IReadOnlyList<ProjectModel> projects, WorkspaceModel? workspace, string stateFolder,
         CancellationToken cancel, string? godot, string? atHand, IReadOnlyDictionary<string, string>? godotFolders, bool? unseen,

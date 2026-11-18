@@ -426,7 +426,7 @@ public sealed class McpReachTests : McpRig
         KeepSettings(new JsonObject { ["terminalShell"] = "/bin/sh" });
         await using McpClient client = await Start(["--mcp", folder], languageServer: false);
         string[] named = [.. AppSettings.NamingPrograms.Select(JsonNamingPolicy.CamelCase.ConvertName).Order(StringComparer.Ordinal)];
-        Assert.Equal(["debugBrowser", "eslintPackage", "godotExecutable", "nodeInterpreter", "prettierPackage", "terminalShell"], named);
+        Assert.Equal(["browser", "eslintPackage", "godotExecutable", "nodeInterpreter", "prettierPackage", "terminalShell"], named);
         Assert.All(Declared.Every.OfType<ProgramSetting>(), program => Assert.Contains(program.Member, named));
         List<string> answered = [];
         foreach (string name in named)

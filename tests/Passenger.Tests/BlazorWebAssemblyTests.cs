@@ -42,7 +42,7 @@ public sealed class BlazorWebAssemblyTests : IDisposable
         try
         {
             string nowhere = Path.Combine(folder, "no-browser", "chrome");
-            window.ApplySettings(window.Settings with { DebugBrowser = nowhere });
+            window.ApplySettings(window.Settings with { Browser = nowhere });
             Ui.WaitFor(() => window.Configurations.Any(c => c.Name == "Wasm: http"), () => $"Wasm's http configuration; the window has {string.Join(", ", window.Configurations.Select(c => c.Name))}",
                 TimeSpan.FromMinutes(2));
             Assert.True(window.SelectConfiguration("Wasm: http"));
@@ -65,7 +65,7 @@ public sealed class BlazorWebAssemblyTests : IDisposable
             {
                 Ui.WaitFor(() => window.Debugger.Session?.State is DebugState.Running or DebugState.Ended, "the development server to run under the debugger", TimeSpan.FromMinutes(1));
                 string notDebugged = "Wasm's components run in the browser on .NET's WebAssembly runtime, and their breakpoints are not hit: "
-                    + $"only the development server that serves them runs under the debugger. Settings | Run › Browser for WebAssembly names {nowhere} as the browser to debug "
+                    + $"only the development server that serves them runs under the debugger. Settings | Run › Browser names {nowhere} as the browser to debug "
                     + "them in, and there is no program there: name a Chromium browser that is, or install Google Chrome (google.com/chrome) or Microsoft Edge (microsoft.com/edge)";
                 Answers(window, () => window.BottomPanel.Debug.Console.Document.Snapshot.ToString());
                 Assert.Contains(notDebugged, window.BottomPanel.Debug.Console.Document.Snapshot.ToString(), StringComparison.Ordinal);

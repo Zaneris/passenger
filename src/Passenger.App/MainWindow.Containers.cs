@@ -115,7 +115,7 @@ public partial class MainWindow
     /// <summary>The Containers window's view, as it is first shown or asked for.</summary>
     private ContainersView MakeContainers()
     {
-        ContainersView view = new(new ContainersParts(() => Engine, work, Say, Browse, () => StateFolder, id => actions![id]!.Title, RowMenuItem));
+        ContainersView view = new(new ContainersParts(() => Engine, work, Say, BrowsePage, () => StateFolder, id => actions![id]!.Title, RowMenuItem));
         containersView = view;
         view.Metrics.Paused = MetricsPaused;
         view.RowChosen += (_, _) => lastServiceWindow = ToolWindowIds.Containers;

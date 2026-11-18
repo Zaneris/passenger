@@ -8,11 +8,11 @@ public sealed record ChromiumFound(string Program, string Name)
 }
 
 /// <summary>The Chromium browsers (Chrome, Edge, Chromium, Brave) a Blazor app's WebAssembly half is debugged in, found as
-/// their installers put them: the one a setting names, else on macOS each app bundle in /Applications and the account's own
-/// ~/Applications (its home as the system has it, whatever HOME says),
-/// on Windows each under Program Files and the user's local app data, then the first on the PATH as the login shell gives
-/// it (<see cref="ShellEnvironment"/>), Chrome before Edge before the rest. Firefox is no Chromium, and its debugging
-/// protocol is another.</summary>
+/// their installers put them: the one a setting names (an app bundle by the program inside it named as it is), else on
+/// macOS each app bundle in /Applications and the account's own ~/Applications (its home as the system has it, whatever
+/// HOME says), on Windows each under Program Files and the user's local app data, then the first on the PATH as the login
+/// shell gives it (<see cref="ShellEnvironment"/>), Chrome before Edge before the rest. Firefox and Safari are no Chromium,
+/// and their debugging protocols are others (<see cref="NotChromium"/>).</summary>
 public static class ChromiumBrowsers
 {
     /// <summary>Where a person gets one, in words that end a sentence saying none was found.</summary>
@@ -52,7 +52,8 @@ public static class ChromiumBrowsers
     {
         if (chosen is ({ } named, { } arguments))
         {
-            return exists(named) ? new ChromiumFound(named, Path.GetFileNameWithoutExtension(named)) { Arguments = arguments } : null;
+            string program = MacBundles.Named(named) ? Path.Combine(MacBundles.Programs(named), Path.GetFileNameWithoutExtension(Path.TrimEndingDirectorySeparator(named))) : named;
+            return exists(program) ? new ChromiumFound(program, Path.GetFileNameWithoutExtension(program)) { Arguments = arguments } : null;
         }
         foreach ((string name, string bundle, string inWindows, _) in Known)
         {
@@ -81,6 +82,18 @@ public static class ChromiumBrowsers
         }
         return null;
     }
+
+    /// <summary>The names the programs and app bundles of browsers known to be no Chromium go by: Firefox and those built
+    /// from it, Safari, GNOME Web and Orion.</summary>
+    private static readonly HashSet<string> Others = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "firefox", "firefox-esr", "firefox-developer-edition", "Firefox Developer Edition", "Firefox Nightly", "librewolf", "waterfox", "floorp",
+        "zen", "zen-browser", "Zen Browser", "Tor Browser", "start-tor-browser", "Safari", "Safari Technology Preview", "epiphany", "epiphany-browser", "Orion",
+    };
+
+    /// <summary>Whether a browser program (or app bundle) is one known to be no Chromium (Firefox, Safari), which no debug
+    /// proxy drives; false for any other, a Chromium browser or one not known.</summary>
+    public static bool NotChromium(string program) => Others.Contains(Path.GetFileNameWithoutExtension(Path.TrimEndingDirectorySeparator(program)));
 
     /// <summary>Chromium's page on a browser the system refuses its sandbox, and the AppArmor profile that lets it run.</summary>
     public const string SandboxPage = "https://chromium.googlesource.com/chromium/src/+/main/docs/security/apparmor-userns-restrictions.md";

@@ -55,6 +55,7 @@ public partial class MainWindow
             Folder = Folder,
             WriteProfiles = WriteLaunchProfilesAsync,
             GodotSetting = settings.GodotExecutable,
+            BrowserSetting = settings.Browser,
             ReadServices = ReadServices(Projects, Engine),
             WriteToProfile = WriteToLaunchProfileAsync,
             Actions = Actions,

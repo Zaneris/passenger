@@ -396,7 +396,7 @@ public sealed partial class SettingsDialog : IdeWindow
         Add(Declared.XamlHotReloadOnSave);
         Add(Declared.RestartOnRudeEdit);
         Add(Declared.ConsoleBufferKb);
-        Add(Declared.DebugBrowser);
+        Add(Declared.Browser);
 
         string? onPath = Passenger.Core.Programs.Node();
         TextBox node = new() { Classes = { StyleClasses.Search }, Text = Working.NodeInterpreter ?? string.Empty, PlaceholderText = onPath ?? "Not found on the PATH", MaxWidth = OptionRow.EditorWidth };

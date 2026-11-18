@@ -152,6 +152,11 @@ public sealed record RunConfiguration
     /// Visual Studio's <c>{Scheme}://{ServiceHost}:{ServicePort}</c> filled from the published port.</summary>
     public string BrowserUrl { get; init; } = string.Empty;
 
+    /// <summary>The browser its page opens in, and Debug drives to debug a Blazor app's WebAssembly half, as a command line
+    /// naming a program and its arguments, in place of Settings' (<see cref="PageBrowsers"/>): the person's alone, kept with
+    /// the folder and never written to a launch profile; empty for Settings'.</summary>
+    public string Browser { get; init; } = string.Empty;
+
     /// <summary>A Compose configuration's files, the first the base and the rest its overrides, as <c>-f</c> gives them:
     /// canonical paths in the window, relative to the open folder in the store.</summary>
     public List<string> ComposeFiles { get; init; } = [];
@@ -510,6 +515,7 @@ public sealed record RunConfiguration
         WorkingDirectory = WorkingDirectory ?? string.Empty,
         BuildConfiguration = BuildConfiguration ?? string.Empty,
         BrowserUrl = BrowserUrl ?? string.Empty,
+        Browser = Browser?.Trim() ?? string.Empty,
         Console = Enum.IsDefined(Console) ? Console : ConsoleKind.Internal,
         ComposeFiles = [.. (ComposeFiles ?? []).Where(f => !string.IsNullOrWhiteSpace(f))],
         EnvFiles = [.. (EnvFiles ?? []).Where(f => !string.IsNullOrWhiteSpace(f))],

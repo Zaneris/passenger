@@ -1104,6 +1104,96 @@ public sealed class RunConfigurationsTests : IClassFixture<RestoredFolders>, IDi
         }
     }
 
+    /// <summary>Browser: a web app's page opens once its program listens in the system's default browser, starting no
+    /// program; in the browser program Settings › Run › Browser names, with that line's arguments before the page's address;
+    /// and in the one its run configuration names in Edit Configurations, over Settings'.</summary>
+    [AvaloniaFact]
+    public void A_web_apps_page_opens_in_the_browser_Settings_names_with_its_arguments_and_in_its_run_configurations_own_over_it()
+    {
+        Restored();
+        using HeldPort held = new();
+        int port = held.Port;
+        string gates = TestFolders.Create("gates-");
+        string listen = Path.Combine(gates, "listen");
+        string done = Path.Combine(gates, "done");
+        Write("Hello/Program.cs", "using System.Net;\nusing System.Net.Sockets;\n\n"
+            + $"while (!File.Exists(@\"{listen}\"))\n{{\n    Thread.Sleep(20);\n}}\n"
+            + "TcpListener listener = new(IPAddress.Loopback, int.Parse(Environment.GetEnvironmentVariable(\"PORT\")!));\n"
+            + $"listener.Start();\nConsole.WriteLine(\"Listening\");\nwhile (!File.Exists(@\"{done}\"))\n{{\n    Thread.Sleep(20);\n}}\n");
+        Write("Hello/Properties/launchSettings.json", "{ \"profiles\": { \"Serve\": { \"commandName\": \"Project\", \"launchBrowser\": true, \"launchUrl\": \"status\", "
+            + $"\"applicationUrl\": \"http://127.0.0.1:{port}\", \"environmentVariables\": {{ \"PORT\": \"{port}\" }} }} }} }}");
+        string page = $"http://127.0.0.1:{port}/status";
+        string browsers = TestFolders.Create("browsers-");
+        (string settingsBrowser, string settingsRecord) = Browser(browsers, "settings-browser");
+        (string ownBrowser, string ownRecord) = Browser(browsers, "own-browser");
+        // Seen, as a window nobody sees starts no browser program.
+        MainWindow window = Keeping(unseen: false);
+        try
+        {
+            Served();
+            Assert.Equal([page], window.Browsed.Select(u => u.AbsoluteUri));
+            Assert.True(window.BrowsersStarted.Count == 0, $"With no browser named, the page opened in a program: {string.Join(", ", window.BrowsersStarted)}");
+
+            window.ApplySettings(window.Settings with { Browser = $"\"{settingsBrowser}\" --incognito --lang=fr" });
+            Served();
+            Assert.Equal(["--incognito", "--lang=fr", page], Said(settingsRecord, "the browser Settings names"));
+
+            RunConfigurationsDialog dialog = window.ShowRunConfigurations();
+            Assert.Equal("Hello: Serve", dialog.Chosen?.Name);
+            Assert.True(dialog.BrowserLineBox.IsEffectivelyVisible, "Edit Configurations shows no Browser for a web app's configuration");
+            Assert.Equal($"\"{settingsBrowser}\" --incognito --lang=fr, from {PageBrowsers.SettingPlace}", dialog.BrowserLineBox.PlaceholderText);
+            Type(dialog.BrowserLineBox, $"\"{ownBrowser}\" --new-window");
+            Assert.Contains("Browser", dialog.Marked);
+            Ui.Click(dialog.OkButton);
+            Ui.Settle();
+            Assert.Equal($"\"{ownBrowser}\" --new-window", window.Configuration?.Browser);
+            File.Delete(settingsRecord);
+            Served();
+            Assert.Equal(["--new-window", page], Said(ownRecord, "the browser the run configuration names"));
+            Assert.False(File.Exists(settingsRecord), "The browser Settings names opened the page though the run configuration names its own");
+            Assert.Equal([page, page, page], window.Browsed.Select(u => u.AbsoluteUri));
+        }
+        finally
+        {
+            // A program a failure left listening ends; one still waiting to listen ends with the window.
+            File.WriteAllText(done, string.Empty);
+            window.Close();
+            TestFolders.Delete(browsers);
+        }
+
+        // A run of the chosen configuration that opens its page once it listens, then ends.
+        void Served()
+        {
+            int before = window.Browsed.Count;
+            File.Delete(done);
+            held.Hold(listen);
+            Ui.Launched(window, window.RunAsync(), "the site's run to start", TimeSpan.FromMinutes(2));
+            held.LetGo(listen);
+            Ui.WaitFor(() => window.Browsed.Count > before, "the page to open once the site listens", TimeSpan.FromSeconds(60));
+            File.WriteAllText(done, string.Empty);
+            Ui.WaitFor(() => window.Runner.Ended.IsCompleted, "the site's run to end");
+        }
+
+        // The words a stand-in browser was started with, once it has written them.
+        static IReadOnlyList<string> Said(string record, string browser)
+        {
+            Ui.WaitFor(() => File.Exists(record), $"{browser} to start with the page", TimeSpan.FromSeconds(30));
+            string[] lines = File.ReadAllLines(record);
+            // A batch file's %* is the line cmd.exe was given, a word quoted where cmd needs it to be.
+            return OperatingSystem.IsWindows() ? [.. CommandLine.Split(lines[0])] : lines;
+        }
+    }
+
+    /// <summary>A stand-in browser that writes the words it was started with to its record, a line each (a line of them on
+    /// Windows), and ends, as a browser already running hands its page over: its program and its record.</summary>
+    private static (string Program, string Record) Browser(string folder, string name)
+    {
+        string record = Path.Combine(folder, $"{name}.txt");
+        string program = TestFolders.StandIn(folder, name, $"echo %*> \"{record}.part\"\r\nmove /y \"{record}.part\" \"{record}\" > nul",
+            $"for word in \"$@\"; do printf '%s\\n' \"$word\"; done > '{record}.part' && mv '{record}.part' '{record}'");
+        return (program, record);
+    }
+
     [Gate]
     [AvaloniaFact]
     public void A_configuration_removed_in_the_dialog_is_gone_from_the_toolbar_and_the_folder()
@@ -1356,9 +1446,9 @@ public sealed class RunConfigurationsTests : IClassFixture<RestoredFolders>, IDi
         }
     }
 
-    private MainWindow Keeping()
+    private MainWindow Keeping(bool? unseen = null)
     {
-        MainWindow window = new() { Width = 1200, Height = 800, StateFolder = settings, StartsLanguageServer = false };
+        MainWindow window = new() { Width = 1200, Height = 800, StateFolder = settings, StartsLanguageServer = false, Unseen = unseen ?? PassengerApp.ShowsNoWindow };
         window.Show();
         window.KeepLayout();
         window.OpenFolder(folder);

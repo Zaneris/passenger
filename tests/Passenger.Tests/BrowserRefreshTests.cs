@@ -72,7 +72,7 @@ public sealed class BrowserRefreshTests : IDisposable
         try
         {
             // No browser debugs the client, so only the refresh client is a page.
-            window.ApplySettings(window.Settings with { DebugBrowser = Path.Combine(folder, "no-browser", "chrome") });
+            window.ApplySettings(window.Settings with { Browser = Path.Combine(folder, "no-browser", "chrome") });
             Ui.WaitFor(() => window.Configurations.Any(c => c.Name == "Bwa: http"), "Bwa's http configuration", TimeSpan.FromMinutes(2));
             Assert.True(window.SelectConfiguration("Bwa: http"));
             Ui.Launched(window, window.DebugAsync(), "Bwa to start under the debugger", TimeSpan.FromMinutes(3));
