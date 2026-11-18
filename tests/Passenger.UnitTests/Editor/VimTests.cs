@@ -1126,7 +1126,9 @@ public class VimTests
     }
 
     /// <summary>gq and gw make each line's indent again from its columns, as Vim 9.1's do with autoindent: spaces under
-    /// expandtab, tabs as far as they go without, the first line's too, and the text after the indent as it was.</summary>
+    /// expandtab, tabs as far as they go without, the first line's too, and the text after the indent as it was; a caret
+    /// gw leaves in the indent stays as far from the line's start, up to the indent made again, and one on a mark or the
+    /// blanks after it moves with them.</summary>
     [Theory]
     [InlineData(false, "\t|one two", "gqq", "    |one two")]
     [InlineData(false, "\t|one two three four five six", "gqq", "    one two three\n    |four five six")]
@@ -1144,6 +1146,14 @@ public class VimTests
     [InlineData(true, "        |one two three four five six\n        seven", "gqip", "\t\tone two\n\t\tthree four\n\t\tfive six\n\t\t|seven")]
     [InlineData(true, "      |one two three four five six", "gqip", "\t  one two three\n\t  |four five six")]
     [InlineData(true, "  - |one two three four five six\n    seven", "gqip", "  - one two three\n\tfour five six\n\t|seven")]
+    [InlineData(false, "\t/|/ one two three four five six", "gwip", "    /|/ one two three\n    // four five six")]
+    [InlineData(false, "\t|// one two three four five six", "gwip", "    |// one two three\n    // four five six")]
+    [InlineData(false, "\t-| one two three four five six", "gwip", "    -| one two three\n      four five six")]
+    [InlineData(false, "\t|\tone two three four five six", "gwip", " |       one two\n        three four\n        five six")]
+    [InlineData(false, "\t-\t|one two three four five six", "gqip", "    -\tone two\n        three four\n        |five six")]
+    [InlineData(true, "    /|/ one two three four five six", "gwip", "\t/|/ one two three\n\t// four five six")]
+    [InlineData(true, "  |  // one two three four five six", "gwip", "\t|// one two three\n\t// four five six")]
+    [InlineData(true, "   | - one two three four five six", "gwip", "\t|- one two three\n\t  four five six")]
     public void Gq_makes_each_lines_indent_again_by_expandtab(bool tabs, string before, string keys, string after)
     {
         Vim vim = new();

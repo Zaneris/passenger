@@ -326,7 +326,7 @@ public sealed partial class Vim
         return edits.Count == 0 ? new VimResult(true, carets) : new VimResult(true, Edits: [new EditPlan(edits, carets, EditKind.Other)]);
     }
 
-    internal static string IndentOf(int width, IndentOptions indent) =>
+    private static string IndentOf(int width, IndentOptions indent) =>
         indent.UseTabs && indent.TabWidth > 0 ? new string('\t', width / indent.TabWidth) + new string(' ', width % indent.TabWidth) : new string(' ', width);
 
     private VimResult Case(Command command, string op, TextSnapshot text, SelectionSet selections, List<Stretch> stretches, IVimView view)

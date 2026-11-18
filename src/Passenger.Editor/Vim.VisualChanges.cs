@@ -511,8 +511,8 @@ public sealed partial class Vim
     }
 
     /// <summary>p and P over a visual stretch: the register's text in place of what is shown, which p keeps in the
-    /// unnamed register unless it was nothing (v$ on the last line) and P doesn't; whole lines put over characters go
-    /// on lines of their own, over a block below the line its cursor stands on (<paramref name="below"/>). From an
+    /// unnamed register unless it held nothing (v$ on an empty last line) and P doesn't; whole lines put over characters
+    /// go on lines of their own, over a block below the line its cursor stands on (<paramref name="below"/>). From an
     /// empty register the stretch is deleted alone, as a d into the unnamed register (for P into none); . after either
     /// deletes as much again so, putting nothing.</summary>
     private VimResult PutOver(Command command, bool keep, TextSnapshot text, List<Stretch> stretches, SelectionSet carets, bool block, IVimView view, int top, int below)
