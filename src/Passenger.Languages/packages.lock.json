@@ -20,11 +20,11 @@
       },
       "Tint": {
         "type": "Direct",
-        "requested": "[0.2.3, )",
-        "resolved": "0.2.3",
-        "contentHash": "nIs4K4wMj1T9b7QPgdK4eDCRXENtsH2gl9JMZGH2TcWhqLhsaPuCfbrIjaGCQFZ279gluYgRqBxzw5JxeuKf1Q==",
+        "requested": "[0.3.0, )",
+        "resolved": "0.3.0",
+        "contentHash": "3cdtk66iQW8ROjvmog1J8TI1dBsmU5tKYTVfxeP0ddyiP4jiyqaggaYxx9GjNwLBQkASXiDc8N1LYKepbUAk7w==",
         "dependencies": {
-          "GregsEx": "0.5.7"
+          "GregsEx": "0.7.0"
         }
       },
       "Avalonia.BuildServices": {
@@ -44,8 +44,8 @@
       },
       "GregsEx": {
         "type": "Transitive",
-        "resolved": "0.5.7",
-        "contentHash": "N9B3TvoU9cYT3KlF1vwhsXE8SDMCcOORtMDuXiGTbIMolfKGAFGQPpF+Z+x/Wq328zZgdxlIxR/NxMMOYzOuag=="
+        "resolved": "0.7.0",
+        "contentHash": "8yELnyaxvcVYi+avbsA4rchJiZTJWWuZ4ztvLJ2Qm21AErSUXmbEjxMuCJFHrgUoiTWCJSSIbJx3Z6PyMe6ssQ=="
       },
       "MessagePack": {
         "type": "Transitive",

@@ -251,14 +251,15 @@ public sealed class FileColoursTests : FileColoursFolder
         MainWindow window = Window();
         try
         {
-            // Each "<a" sends the grammar's first search of the line far along it: tens of milliseconds in all, however warm.
-            string comment = "// " + string.Concat(Enumerable.Repeat("<a ", 6400));
+            // JSDoc tags the grammar has no name for keep it searching along the line: tens of milliseconds, however warm.
+            string comment = "/** " + string.Concat(Enumerable.Repeat("@a ", 6600)) + "*/";
             CodeEditor editor = Open(window, "site.js", comment + "\nfunction greet(name) {\n    return \"Hello, \" + name;\n}\n");
             TextMateHighlighter colours = (TextMateHighlighter)window.EditorArea.Active!.Highlighter!;
             Assert.True(colours.LinesOutOfTime > 0, "The grammar read the long comment within a millisecond, twice, so nothing here ran out of its time");
             Assert.True(KindOf(editor, "function") == TokenKind.Keyword,
                 $"The line after a comment the grammar ran out of time on is coloured {KindOf(editor, "function")?.ToString() ?? "in several kinds"}: the comment's rule reached past its line");
-            Assert.Equal(TokenKind.Comment, KindOf(editor, comment[..30]));
+            // Its tags take their own colour wherever the reading reached them, so only the comment's opening is the comment's.
+            Assert.Equal(TokenKind.Comment, KindOf(editor, "/**"));
         }
         finally
         {
