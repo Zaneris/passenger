@@ -553,11 +553,11 @@ public static class Refusals
     public static string ReadOnly(string name) => $"{name} is read-only";
 
     /// <summary>A path an agent named that its tools may not reach (<see cref="Mcp.AgentReach"/>): outside the open folder
-    /// and the projects its trusted solution names beside it, and to read, outside the files made or installed to be read
-    /// too; <paramref name="changes"/> for one it would change.</summary>
+    /// and the projects its trusted solution and AppHosts name beside it, and to read, outside the files made or installed to
+    /// be read too; <paramref name="changes"/> for one it would change.</summary>
     public static string OutOfReach(string path, string? folder, bool changes) =>
         $"{path} is outside {(folder is null ? "any open folder" : $"the open folder {folder}")}: an agent's tools {(changes ? "change" : "read and change")} "
-        + "only the folder's files and, where it is trusted, those of the projects its solution names beside it"
+        + "only the folder's files and, where it is trusted, those of the projects its solution and AppHosts name beside it"
         + (changes ? string.Empty
             : ", and read outside them only what Go to Declaration leads to: the packages its projects restore, the SDK's MSBuild files, "
             + "and the copies Passenger makes to be read (a source generator's code, a library's decompiled or linked source)");
@@ -739,6 +739,32 @@ public static class Refusals
     /// <summary>A service an AppHost's orchestrator asked to start with a variable loading code from where another user may
     /// write (<see cref="LoadingVariables"/>), which it is not.</summary>
     public static string LoadsOthersCode(string project, string why) => $"{project} was not started: {why}";
+
+    /// <summary>A service an AppHost's orchestrator asked to start outside the open folder and what it reaches beside it
+    /// (<see cref="ProjectSession.Reaches"/>).</summary>
+    public static string NotReached(string project) =>
+        $"{project} was not started: it lies outside the open folder and the projects its solution and AppHosts name beside it";
+
+    /// <summary>A service an AppHost in the open folder names by path in a folder no workspace lends its trust to
+    /// (<see cref="WorkspaceTrust.WhyNotLent"/>), which its orchestrator asked to start.</summary>
+    public static string NotLent(string project, string folder, Unlent why) =>
+        $"{project} was not started: its AppHost names it in {Unlendable(folder, why)}, to which the open folder lends none of its trust, "
+        + "as that would trust what you never chose: open a folder holding both";
+
+    /// <summary>A folder no workspace lends its trust to, said with why.</summary>
+    private static string Unlendable(string folder, Unlent why) => why switch
+    {
+        Unlent.Root => $"the disk's root {folder}",
+        Unlent.HoldsOpen => $"{folder}, which holds the open folder",
+        Unlent.HoldsHome when PathNames.Same(folder, PathNames.Canonical(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile))) => $"your home folder {folder}",
+        Unlent.HoldsHome => $"{folder}, which holds your home folder",
+        _ => folder,
+    };
+
+    /// <summary>A service only an agent's edit of an AppHost in the open folder names by path beside it, which lends it no
+    /// trust (<see cref="Mcp.AgentReach.WroteFor"/>), its orchestrator asking to start it.</summary>
+    public static string NamedByAgent(string project) =>
+        $"{project} was not started: only an agent's edit of its AppHost names it beside the open folder, which lends it no trust until you save that AppHost yourself";
 
     /// <summary>Profile of a Functions app (its own project's, or an AppHost's), whose worker func starts and the profiler
     /// does not reach.</summary>

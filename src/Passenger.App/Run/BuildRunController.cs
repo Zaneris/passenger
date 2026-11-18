@@ -219,7 +219,7 @@ public sealed partial class BuildRunController
             }
             return refused;
         };
-        session.Aspire.RunsUndebugged += (_, said) =>
+        session.Aspire.Said += (_, said) =>
         {
             if (!session.IsEnded)
             {

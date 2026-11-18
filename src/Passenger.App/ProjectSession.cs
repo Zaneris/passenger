@@ -114,11 +114,13 @@ public sealed class ProjectSession : IAsyncDisposable
         Aspire = new AspireController(this, setup.StateFolder);
         Aspire.Inspected = app => Reloaded(app);
         AspireFiles = new AspireFiles(this);
-        // A file of a service an AppHost came to name, or ceased to, is read as one, and its configuration with the AppHost's.
+        // A service an AppHost came to name, or ceased to: its files, configuration and folder beside the open one follow.
         AspireFiles.ServicesChanged += (_, _) =>
         {
             CSharp?.AspireRolesChanged();
             CSharp?.ConfigurationChanged();
+            FollowReach();
+            LendTrust();
         };
         NodeFiles = new Web.NodeFiles(this);
         EditorConfigs = new Settings.FolderEditorConfigs(this);
@@ -311,18 +313,21 @@ public sealed class ProjectSession : IAsyncDisposable
     /// trusting began ended where it could be.</summary>
     public event EventHandler? TrustChanged;
 
-    /// <summary>The folders a trusted folder's solution reaches outside it, its projects' beside it: trusted with it while
+    /// <summary>The folders a trusted folder's solution and AppHosts reach outside it, the projects' beside it that its
+    /// solution names and that its AppHosts name as services by path (<see cref="AspireFiles.Named"/>): trusted with it while
     /// it is open (<see cref="WorkspaceTrust.Lend"/>), and an agent's to work in as the folder is (<see cref="Mcp.AgentReach"/>).
     /// None while the folder is not trusted.</summary>
     public IReadOnlyList<string> Reached => Trusted ? beside : [];
 
-    /// <summary>The folders of the solution's real projects outside the open folder, as last worked out (<see cref="FollowReach"/>).</summary>
+    /// <summary>The folders of the real projects the solution and AppHosts name outside the open folder, as last worked out
+    /// (<see cref="FollowReach"/>).</summary>
     private IReadOnlyList<string> beside = [];
 
-    /// <summary>The folders the solution reaches outside the open folder, worked out again as it is read: each project's own
-    /// folder where its project file is there, one no workspace may lend passed over (<see cref="WorkspaceTrust.Lends"/>).
-    /// A solution Passenger wrote for an agent's call reaches no further than before (<see cref="Mcp.AgentReach.WroteFor"/>),
-    /// until the person writes it or opens it, so an agent's own edit never widens its reach or the trust lent.</summary>
+    /// <summary>The folders the solution and the AppHosts in the open folder reach outside it, worked out again as either is
+    /// read: each project's own folder where its project file is there, one no workspace may lend passed over
+    /// (<see cref="WorkspaceTrust.Lends"/>). A solution or an AppHost's source Passenger wrote for an agent's call reaches no
+    /// further than before (<see cref="Mcp.AgentReach.WroteFor"/>), until the person writes it (or opens the solution), so an
+    /// agent's own edit never widens its reach or the trust lent.</summary>
     private void FollowReach()
     {
         if (Folder is not { } open || workspace is not { } now)
@@ -330,13 +335,45 @@ public sealed class ProjectSession : IAsyncDisposable
             beside = [];
             return;
         }
-        List<string> real = [.. now.Projects.Where(p => !PathNames.Within(p.Folder, open) && IsProjectFile(p.Path) && File.Exists(p.Path))
-            .Select(p => p.Folder).Where(f => WorkspaceTrust.Lends(f, open)).Distinct(PathNames.Comparer)];
+        bool agentsSolution = now.ReadFrom.Any(r => Mcp.AgentReach.WroteFor(PathNames.Canonical(r.Path)));
+        string[] solution = [.. now.Projects.Select(p => p.Path)];
+        NamedServices[] hosts = [.. OwnAppHosts(open)];
+        string[] persons = [.. agentsSolution ? [] : solution, .. hosts.SelectMany(h => h.Persons)];
+        string[] agents = [.. agentsSolution ? solution : [], .. hosts.SelectMany(h => h.Agents)];
         IReadOnlyList<string> before = beside;
-        beside = now.ReadFrom.Any(r => Mcp.AgentReach.WroteFor(PathNames.Canonical(r.Path))) ? [.. real.Where(f => before.Contains(f, PathNames.Comparer))] : real;
+        beside = [.. Folders(persons).Union(Folders(agents).Where(f => before.Contains(f, PathNames.Comparer)), PathNames.Comparer)];
+
+        IEnumerable<string> Folders(IEnumerable<string> projects) => projects.Where(p => IsProjectFile(p) && File.Exists(p)).Select(p => Path.GetDirectoryName(p)!)
+            .Where(f => !PathNames.Within(f, open) && WorkspaceTrust.Lends(f, open)).Distinct(PathNames.Comparer);
 
         // Any of MSBuild's project files (.csproj, .esproj, .sqlproj), never another file a solution names as one.
         static bool IsProjectFile(string path) => Path.GetExtension(path) is { Length: > 5 } extension && extension.EndsWith("proj", StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>What the AppHosts in the open folder name as their services by path, as last read (<see cref="AspireFiles.Named"/>):
+    /// an AppHost lent beside the folder lends nothing further.</summary>
+    private IEnumerable<NamedServices> OwnAppHosts(string open) => AspireFiles.Named.Where(n => PathNames.Within(n.Key, open)).Select(n => n.Value);
+
+    /// <summary>Whether a project is the folder's or one it reaches beside it (<see cref="Reached"/>): one an Aspire AppHost's
+    /// orchestrator may have the IDE start.</summary>
+    public bool Reaches(string project) =>
+        Folder is { } open && PathNames.IsUnder(project, open) || Reached.Any(folder => PathNames.Within(project, folder));
+
+    /// <summary>Why a project outside the folder and what it reaches (<see cref="Reaches"/>) is not reached, in Refusals'
+    /// words: an AppHost in the folder naming it in a folder no workspace lends (<see cref="WorkspaceTrust.WhyNotLent"/>), or
+    /// only an agent's edit of one naming it; any other lies outside both.</summary>
+    public string WhyNotReached(string project)
+    {
+        string name = Path.GetFileNameWithoutExtension(project);
+        NamedServices[] hosts = Folder is { } open ? [.. OwnAppHosts(open)] : [];
+        if (Folder is null || !hosts.Any(h => h.All.Contains(project, PathNames.Comparer)))
+        {
+            return Refusals.NotReached(name);
+        }
+        string folder = Path.GetDirectoryName(project)!;
+        return WorkspaceTrust.WhyNotLent(folder, Folder) is { } unlent ? Refusals.NotLent(name, folder, unlent)
+            : hosts.Any(h => h.Persons.Contains(project, PathNames.Comparer)) ? Refusals.NotReached(name)
+            : Refusals.NamedByAgent(name);
     }
 
     /// <summary>A trusted folder's projects outside it (a solution's beside it) are trusted with it while it is open, so what

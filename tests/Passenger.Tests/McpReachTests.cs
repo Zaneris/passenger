@@ -268,6 +268,70 @@ public sealed class McpReachTests : McpRig
         }
     }
 
+    /// <summary>A trusted folder's single-file AppHost naming a service beside it by path (Aspire 17's AddDotnetProject) puts
+    /// the service's files in an agent's reach and lends them the folder's trust; an agent's edit of the AppHost naming another
+    /// project beside it reaches and lends nothing new, the service named before still read and trusted; once the person saves
+    /// the AppHost themselves, the project it names is theirs.</summary>
+    [AvaloniaFact]
+    public void An_agents_edit_of_an_AppHost_reaches_and_lends_nothing_beside_what_the_person_had()
+    {
+        string root = PathNames.Canonical(TestFolders.Create("mcp-apphost-"));
+        DeleteAtEnd(root);
+        string folder = Directory.CreateDirectory(Path.Combine(root, "App")).FullName;
+        string appHost = TestFolders.Write(folder, "apphost.cs", $"#:sdk Aspire.AppHost.Sdk@{AspireApp.TemplatesVersion}\n\n"
+            + "var builder = DistributedApplication.CreateBuilder(args);\nbuilder.AddDotnetProject(\"svc\", \"../Svc/Svc.csproj\");\nbuilder.Build().Run();\n");
+        TestFolders.Write(root, "Svc/Svc.csproj", TestProjects.Library());
+        string greeter = TestFolders.Write(root, "Svc/Greeter.cs", "namespace Svc;\n\npublic sealed class Greeter\n{\n}\n");
+        string other = TestFolders.Write(root, "Other/Other.csproj", TestProjects.Library());
+        string kept = TestFolders.Write(root, "Other/Kept.cs", "namespace Other;\n");
+        string service = Path.GetDirectoryName(greeter)!;
+        string elsewhere = Path.GetDirectoryName(kept)!;
+        // Each trusted only as the open folder lends it, in a process that trusts every other folder.
+        using IDisposable askedService = WorkspaceTrust.Ask(service);
+        using IDisposable askedElsewhere = WorkspaceTrust.Ask(elsewhere);
+        MainWindow window = AgentsWindow(folder, languageServer: false);
+        McpClient client = Await(Waiting.Apart(() => Start(["--mcp-attach", ProcessId, folder])), "the agent attaching");
+        try
+        {
+            Ui.WaitFor(() => window.Session.Reached.Contains(service, PathNames.Comparer),
+                () => $"the service the AppHost names beside the folder to be reached; it reaches {string.Join(", ", window.Session.Reached)}");
+            Assert.True(WorkspaceTrust.Trusts(greeter), "The service the trusted folder's AppHost names beside it was not trusted with it");
+            Assert.Contains("class Greeter", Text(Await(Waiting.Apart(() => Result(client, McpTools.EditorText, new() { ["path"] = greeter })), "the service's read")),
+                StringComparison.Ordinal);
+
+            Task<CallToolResult> editing = Waiting.Apart(() => Result(client, McpTools.Edit, new()
+            {
+                ["path"] = "apphost.cs",
+                ["oldText"] = "builder.Build().Run();",
+                ["newText"] = "builder.AddDotnetProject(\"other\", \"../Other/Other.csproj\");\nbuilder.Build().Run();",
+            }));
+            Press(Question(window, "the question for the agent's edit"), AgentToolDialog.AllowForSession);
+            CallToolResult edited = Await(editing, "the agent's edit of the AppHost");
+            Assert.True(edited.IsError != true, $"The agent's edit of the AppHost answered: {Text(edited)}");
+            Ui.WaitFor(() => window.Session.AspireFiles.AppHostsRunning(PathNames.Canonical(other)).Count > 0, "the AppHost read again as the agent wrote it");
+
+            CallToolResult read = Await(Waiting.Apart(() => Result(client, McpTools.EditorText, new() { ["path"] = kept })), "the read of the project the agent named");
+            Assert.True(read.IsError == true && Text(read).Contains(Refusals.OutOfReach(kept, folder, changes: false), StringComparison.Ordinal),
+                $"editor_text of {kept}, which the agent's edit of the AppHost named the way to, answered: {Text(read)}");
+            Assert.Equal([service], window.Session.Reached);
+            Assert.False(WorkspaceTrust.Trusts(kept), "The project the agent's edit of the AppHost named beside the folder was trusted with it");
+            Assert.Equal(Refusals.NamedByAgent("Other"), window.Session.WhyNotReached(PathNames.Canonical(other)));
+            Assert.True(WorkspaceTrust.Trusts(greeter), "The service the AppHost named before the agent's edit was no longer trusted with it");
+
+            window.OpenFile(appHost);
+            Typing.Replace(window, "\"other\"", "\"others\"");
+            Ui.Run(window, AppActions.SaveAll);
+            Ui.WaitFor(() => window.Session.Reached.Contains(elsewhere, PathNames.Comparer),
+                () => $"the person's save of the AppHost to reach the project it names; it reaches {string.Join(", ", window.Session.Reached)}");
+            Assert.True(WorkspaceTrust.Trusts(kept), "The project the AppHost names was not trusted with the folder once the person saved it");
+        }
+        finally
+        {
+            Gone(client);
+            window.Close();
+        }
+    }
+
     /// <summary>A package's file, restored to a package folder outside the open folder, where definition leads, and a source
     /// generator's code copied outside it, where usages lead, are an agent's to read; edit refuses each as read-only, leaving
     /// it as it was.</summary>

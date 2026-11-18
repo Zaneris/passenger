@@ -65,10 +65,14 @@ public sealed class AspireFiles
 
     /// <summary>The services each AppHost's sources name by path, by the AppHost as a run configuration names it; touched only
     /// by the reads.</summary>
-    private readonly Dictionary<string, string[]> namedBy = new(PathNames.Comparer);
+    private readonly Dictionary<string, NamedServices> namedBy = new(PathNames.Comparer);
 
     /// <summary>The services named as the last read left them, by each AppHost; on the UI thread.</summary>
-    private IReadOnlyDictionary<string, string[]> named = new Dictionary<string, string[]>();
+    private IReadOnlyDictionary<string, NamedServices> named = new Dictionary<string, NamedServices>();
+
+    /// <summary>The services each AppHost's sources name by path as the last read left them, by the AppHost as a run
+    /// configuration names it: what the folder lends its trust to beside it (<see cref="ProjectSession.Reached"/>).</summary>
+    public IReadOnlyDictionary<string, NamedServices> Named => named;
 
     /// <summary>The services the AppHosts' sources name changed: what a service's file is, and what configures it, with them.</summary>
     public event EventHandler? ServicesChanged;
@@ -179,7 +183,7 @@ public sealed class AspireFiles
     /// reference it, as an AppHost SDK's does, and those whose sources name it by path (<see cref="AspireServices"/>).</summary>
     public IReadOnlyList<string> AppHostsRunning(string project) =>
         [.. session.Projects.Where(p => p.IsAspireHost && p.ProjectReferences.Any(r => PathNames.Same(r, project))).Select(p => p.Path)
-            .Concat(named.Where(n => n.Value.Contains(project, PathNames.Comparer)).Select(n => n.Key)).Distinct(PathNames.Comparer)];
+            .Concat(named.Where(n => n.Value.All.Contains(project, PathNames.Comparer)).Select(n => n.Key)).Distinct(PathNames.Comparer)];
 
     /// <summary>The run configurations were made again: the AppHost projects' sources are read for their services where
     /// the AppHosts are others than those read.</summary>
@@ -201,7 +205,7 @@ public sealed class AspireFiles
             roles.Clear();
             ProjectModel[] appHosts = [.. session.Projects.Where(p => p.IsAspireHost)];
             hosts = new(appHosts.Select(p => p.Path), PathNames.Comparer);
-            services = new(appHosts.SelectMany(p => p.ProjectReferences).Concat(named.Values.SelectMany(s => s)), PathNames.Comparer);
+            services = new(appHosts.SelectMany(p => p.ProjectReferences).Concat(named.Values.SelectMany(s => s.All)), PathNames.Comparer);
             singles = new(session.Configurations.SingleFileAppHosts, PathNames.Comparer);
         }
         if (roles.TryGetValue(path, out (AspireRole, string?) known))
@@ -233,11 +237,11 @@ public sealed class AspireFiles
                 {
                     return;
                 }
-                (IReadOnlyList<string> found, IReadOnlyDictionary<string, string[]>? services) = await BackgroundWork.Run(() =>
+                (IReadOnlyList<string> found, IReadOnlyDictionary<string, NamedServices>? services) = await BackgroundWork.Run(() =>
                 {
                     work();
                     IReadOnlyList<string> offered = [.. appHosts.Order(StringComparer.Ordinal).Take(AppHostLimit)];
-                    return (offered, ReadNamed(given, offered) ? new Dictionary<string, string[]>(namedBy, PathNames.Comparer) : null);
+                    return (offered, ReadNamed(given, offered) ? new Dictionary<string, NamedServices>(namedBy, PathNames.Comparer) : null);
                 });
                 if (session.IsEnded)
                 {
@@ -295,8 +299,8 @@ public sealed class AspireFiles
             {
                 sources = [];
             }
-            string[] found = NamedIn(sources, folder, parsing);
-            if (!namedBy.TryGetValue(host, out string[]? before) || !before.SequenceEqual(found, PathNames.Comparer))
+            NamedServices found = NamedIn(sources, folder, parsing);
+            if (!namedBy.TryGetValue(host, out NamedServices? before) || !before.Equals(found))
             {
                 namedBy[host] = found;
                 changed = true;
@@ -311,10 +315,12 @@ public sealed class AspireFiles
         return changed;
     }
 
-    /// <summary>The projects an AppHost's sources name by a path written in them (<see cref="AspireServices"/>), from its folder.</summary>
-    private static string[] NamedIn(IReadOnlyList<string> sources, string folder, CSharpParseOptions parsing)
+    /// <summary>The projects an AppHost's sources name by a path written in them (<see cref="AspireServices"/>), from its folder,
+    /// those only sources an agent's call wrote name apart (<see cref="Mcp.AgentReach.WroteFor"/>).</summary>
+    private static NamedServices NamedIn(IReadOnlyList<string> sources, string folder, CSharpParseOptions parsing)
     {
-        List<string> found = [];
+        List<string> persons = [];
+        List<string> agents = [];
         foreach (string source in sources)
         {
             string text;
@@ -330,11 +336,12 @@ public sealed class AspireFiles
             {
                 continue;
             }
-            found.AddRange(AspireServices.In(CSharpParsing.Parse(text, parsing).GetRoot())
+            (Mcp.AgentReach.WroteFor(PathNames.Canonical(source)) ? agents : persons).AddRange(AspireServices.In(CSharpParsing.Parse(text, parsing).GetRoot())
                 .Select(service => service.Type is null && AspireServices.Written(service.Path) is { } path ? AspireServices.ProjectOf(path, folder) : null)
                 .OfType<string>().Select(PathNames.Canonical));
         }
-        return [.. found.Distinct(PathNames.Comparer)];
+        string[] person = [.. persons.Distinct(PathNames.Comparer)];
+        return new NamedServices(person, [.. agents.Distinct(PathNames.Comparer).Except(person, PathNames.Comparer)]);
     }
 
     /// <summary>Whether a file, by its path from the folder, is a C# file a single-file AppHost may be: not under a hidden
@@ -374,4 +381,17 @@ public sealed class AspireFiles
             return null;
         }
     }
+}
+
+/// <summary>The .NET projects an AppHost's sources name by path (<see cref="AspireServices"/>): those the person's sources name,
+/// and those only sources an agent's call wrote name (<see cref="Mcp.AgentReach.WroteFor"/>), which lend nothing new.</summary>
+public sealed record NamedServices(IReadOnlyList<string> Persons, IReadOnlyList<string> Agents)
+{
+    /// <summary>Every project its sources name, whoever wrote them.</summary>
+    public IEnumerable<string> All => Persons.Concat(Agents);
+
+    public bool Equals(NamedServices? other) => other is not null && Persons.SequenceEqual(other.Persons, PathNames.Comparer)
+        && Agents.SequenceEqual(other.Agents, PathNames.Comparer);
+
+    public override int GetHashCode() => HashCode.Combine(Persons.Count, Agents.Count);
 }

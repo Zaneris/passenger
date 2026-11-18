@@ -938,9 +938,16 @@ public sealed partial class AspireController(ProjectSession workspace, string st
         }
         ProjectModel? known = workspace.Projects.FirstOrDefault(project => PathNames.Same(project.Path, path));
         bool referenced = workspace.Projects.Any(project => project.ProjectReferences.Any(reference => PathNames.Same(reference, path)));
-        if (!WorkspaceModel.IsProject(path) || (known is null && !referenced && (workspace.Folder is null || !PathNames.IsUnder(path, workspace.Folder))))
+        if (!WorkspaceModel.IsProject(path))
         {
             throw new LaunchException("DCP requested a project outside this workspace and its project references");
+        }
+        // One the folder holds, or reaches as its solution's and its AppHosts' projects beside it (lent its trust), or one referenced.
+        if (known is null && !referenced && !workspace.Reaches(path))
+        {
+            string refused = workspace.WhyNotReached(path);
+            Say(app, refused);
+            throw new LaunchException(refused);
         }
         ProjectModel project = known ?? ProjectModel.Unevaluated(path);
         string? profileName = request.DisableLaunchProfile ? null : request.LaunchProfile ?? app.Configuration.LaunchProfile;
@@ -1089,10 +1096,8 @@ public sealed partial class AspireController(ProjectSession workspace, string st
                 {
                     await LetGoAsync(resource.ProcessId);
                 }
-                string said = $"{serviceName} of {app.Name} runs without the debugger, which could not attach: {unattached}"
-                    + (request.Functions ? "; func was started again, its worker not held for one" : string.Empty);
-                app.Console.Append(said + "\n", error: true);
-                RunsUndebugged?.Invoke(this, said);
+                Say(app, $"{serviceName} of {app.Name} runs without the debugger, which could not attach: {unattached}"
+                    + (request.Functions ? "; func was started again, its worker not held for one" : string.Empty));
             }
             cancellation.ThrowIfCancellationRequested();
             if (profiling)
@@ -1149,8 +1154,16 @@ public sealed partial class AspireController(ProjectSession workspace, string st
         }
     }
 
-    /// <summary>A service held at its start for a debugger that could not reach it, which then runs on unheld: said.</summary>
-    public event EventHandler<string>? RunsUndebugged;
+    /// <summary>What a service's start says of itself the person is to hear, said in the window: a service held at its start
+    /// for a debugger that could not reach it, which then runs on unheld; a start refused before it began.</summary>
+    public event EventHandler<string>? Said;
+
+    /// <summary>Says what a service's start says of itself (<see cref="Said"/>), written in its AppHost's console too.</summary>
+    private void Say(AspireAppRun app, string said)
+    {
+        app.Console.Append(said + "\n", error: true);
+        Said?.Invoke(this, said);
+    }
 
     /// <summary>How long a start DCP gave arguments waits for its AppHost to say them (<see cref="ArgumentsSaidAsync"/>).</summary>
     private static readonly TimeSpan ArgumentsWait = TimeSpan.FromSeconds(5);

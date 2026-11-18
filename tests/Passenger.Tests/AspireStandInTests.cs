@@ -874,6 +874,79 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
         }
     }
 
+    /// <summary>A service an Aspire 17 AppHost adds by a path outside the open folder (AddDotnetProject, which no ProjectReference
+    /// backs) is lent the folder's trust as a solution's project beside it is, while the window holds it: its start, as DCP asks,
+    /// runs it. One the AppHost names in a folder holding the open folder is lent nothing: its start is refused, the status and the
+    /// AppHost's console saying why. The window is open on the AppHost's own folder, the stand-in's folder holding it.</summary>
+    [AvaloniaFact]
+    public void A_service_an_AppHost_adds_by_path_beside_the_open_folder_starts_lent_its_trust_and_one_above_it_is_refused_saying_why()
+    {
+        project.Reset();
+        string beside = PathNames.Canonical(TestFolders.Create("aspire-beside-"));
+        string service = PathNames.Canonical(TestFolders.Write(beside, "Beside.Api/Beside.Api.csproj", TestProjects.Console()));
+        TestFolders.Write(beside, "Beside.Api/Program.cs", "System.Console.WriteLine(\"The service beside is up\");\nSystem.Threading.Thread.Sleep(System.Threading.Timeout.Infinite);\n");
+        ChildResult built = Ui.Await(ChildProcesses.RunAsync(ChildProcesses.DotnetCommand(["build", service, "-nologo", "-v:q"]), limit: TimeSpan.FromMinutes(3).Scaled()),
+            "the service beside's build", TimeSpan.FromMinutes(3));
+        Assert.True(built.Succeeded, $"The service beside did not build: {built.Output}{built.Error}");
+        string serviceFolder = Path.GetDirectoryName(service)!;
+        string appHost = PathNames.Canonical(project.PathOf(StandInAppHost.Name));
+        string above = PathNames.Canonical(project.Write("Above.Api.csproj", TestProjects.Console()));
+        project.Write($"{StandInAppHost.Name}/Services.cs", $$"""
+            // The services an Aspire 17 AppHost adds by path, as its builder's calls name them.
+            internal static class StandInServices
+            {
+                internal static void Add(StandInBuilder builder)
+                {
+                    builder.AddDotnetProject("beside", "{{PathNames.Route(service, appHost)}}");
+                    builder.AddDotnetProject("above", "../Above.Api.csproj");
+                }
+            }
+
+            internal sealed class StandInBuilder
+            {
+                internal StandInBuilder AddDotnetProject(string name, string path) => this;
+            }
+
+            """);
+        // Trusted only as the open folder lends it, in a process that trusts every other folder.
+        using IDisposable asked = WorkspaceTrust.Ask(serviceFolder);
+        AspireInteractionHost backend = Ui.Await(AspireInteractionHost.StartAsync(project.KeyFile), "the stand-in resource service");
+        project.Serve(backend);
+        MainWindow window = Ui.OpenFolder(appHost, languageServer: false, autosaves: false);
+        System.Net.WebSockets.ClientWebSocket? subscribed = null;
+        try
+        {
+            Ui.WaitFor(() => window.Session.Reached.Contains(serviceFolder, PathNames.Comparer),
+                () => $"the folder of the service the AppHost names beside the open folder to be reached; it reaches {string.Join(", ", window.Session.Reached)}");
+            Assert.True(WorkspaceTrust.Trusts(service), "The service the AppHost names beside the open folder was not lent its trust");
+            Assert.DoesNotContain(PathNames.Canonical(project.Folder), window.Session.Reached);
+            Ui.WaitFor(() => window.Configurations.Any(configuration => configuration.Name == StandInAppHost.Configuration), "the stand-in AppHost's Aspire configuration");
+            Assert.True(window.SelectConfiguration(StandInAppHost.Configuration));
+            Ui.Launched(window, window.RunAsync(), "the stand-in AppHost to come up");
+            Ui.WaitFor(() => backend.Connected.Task.IsCompleted, $"the window to connect to the stand-in AppHost's resource service ({window.Status})");
+
+            (subscribed, System.Net.HttpStatusCode refused) = project.AskToStartApi("above", projectPath: above);
+            Assert.False((int)refused is >= 200 and < 300, "The IDE started a service in a folder holding the open folder, which it lends no trust");
+            string why = Refusals.NotLent("Above.Api", PathNames.Canonical(project.Folder), Unlent.HoldsOpen);
+            Ui.WaitFor(() => window.Status == why, () => $"the status to say why the service above was refused; it says {window.Status}");
+            Assert.Contains(why, window.AspireRuntime.LastAppConsole?.Document.Snapshot.ToString() ?? string.Empty, StringComparison.Ordinal);
+
+            (System.Net.WebSockets.ClientWebSocket unsubscribed, System.Net.HttpStatusCode answer) = Ui.Await(Waiting.Apart(() =>
+                project.StartApiAsync("beside", subscribe: false, projectPath: service)), "the IDE's answer to the start of the service beside");
+            unsubscribed.Dispose();
+            Assert.True((int)answer is >= 200 and < 300, $"The IDE refused the start of the service the AppHost names beside the open folder: {answer} ({window.Status})");
+            Ui.WaitFor(() => window.AspireRuntime.Apps.Single().Services.Any(s => PathNames.Same(s.Project, service) && s.ProcessId is > 0),
+                $"the service beside started as DCP asked ({window.Status})");
+        }
+        finally
+        {
+            window.Close();
+            subscribed?.Dispose();
+            Ui.Await(Complete(backend.DisposeAsync().AsTask()), "the stand-in resource service to stop");
+        }
+        Ui.WaitFor(() => !WorkspaceTrust.Trusts(service), "the service beside to be no longer trusted once the window that lent it closed");
+    }
+
     /// <summary>Profile of an AppHost the window runs asks which of its running .NET services to profile, in a dialog held to
     /// the dialogs' rules: the stand-in AppHost's service started by the IDE as DCP asks it to (the execution protocol, with
     /// the endpoint and token the IDE gave the AppHost), listed by its resource; Cancel starts no profile.</summary>

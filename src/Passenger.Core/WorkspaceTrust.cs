@@ -103,14 +103,26 @@ public static class WorkspaceTrust
     /// <summary>Whether a workspace whose own folder is <paramref name="open"/> may lend its trust to <paramref name="folder"/>,
     /// a folder of one of its projects outside it: never a disk's root, the home folder or a folder holding it, nor a folder
     /// holding <paramref name="open"/>, each of which would trust what the person never chose. Canonical paths.</summary>
-    public static bool Lends(string folder, string open)
+    public static bool Lends(string folder, string open) => WhyNotLent(folder, open) is null;
+
+    /// <summary>Why a workspace whose own folder is <paramref name="open"/> may not lend its trust to <paramref name="folder"/>
+    /// (<see cref="Lends"/>); null where it may. Canonical paths.</summary>
+    public static Unlent? WhyNotLent(string folder, string open)
     {
-        if (!Path.IsPathFullyQualified(folder) || Path.GetDirectoryName(Path.TrimEndingDirectorySeparator(folder)) is null || PathNames.Within(open, folder))
+        if (!Path.IsPathFullyQualified(folder))
         {
-            return false;
+            return Unlent.Relative;
+        }
+        if (Path.GetDirectoryName(Path.TrimEndingDirectorySeparator(folder)) is null)
+        {
+            return Unlent.Root;
+        }
+        if (PathNames.Within(open, folder))
+        {
+            return Unlent.HoldsOpen;
         }
         string home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        return home.Length == 0 || !PathNames.Within(PathNames.Canonical(home), folder);
+        return home.Length > 0 && PathNames.Within(PathNames.Canonical(home), folder) ? Unlent.HoldsHome : null;
     }
 
     /// <summary>A folder held to the person's answer while the hold lasts, in a process that trusts every other: a test's
@@ -182,6 +194,22 @@ public static class WorkspaceTrust
             }
         }
     }
+}
+
+/// <summary>Why a workspace lends a folder none of its trust (<see cref="WorkspaceTrust.WhyNotLent"/>).</summary>
+public enum Unlent
+{
+    /// <summary>The folder is named by no full path.</summary>
+    Relative,
+
+    /// <summary>The folder is a disk's root.</summary>
+    Root,
+
+    /// <summary>The folder is the open folder or holds it.</summary>
+    HoldsOpen,
+
+    /// <summary>The folder is the home folder or holds it.</summary>
+    HoldsHome,
 }
 
 /// <summary>A run of a folder's code refused at <see cref="WorkspaceTrust.Check"/>: the path is not trusted.</summary>

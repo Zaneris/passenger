@@ -12,21 +12,21 @@ using Passenger.Workspace;
 namespace Passenger.App.Mcp;
 
 /// <summary>What of the disk an agent's tools reach, every path a tool takes asked here: the folder open in the window and
-/// the folders its trusted solution reaches beside it (<see cref="ProjectSession.Reached"/>), to read and change; and only
+/// the folders its trusted solution and AppHosts reach beside it (<see cref="ProjectSession.Reached"/>), to read and change; and only
 /// to read, what Go to Declaration leads to outside them, each read-only in the editor: a package's file in a folder an
 /// evaluation names, an MSBuild file the .NET SDK installed, and the copies made to be read (a source generator's code, a
 /// library's code the C# language server or Passenger decompiled or took from its symbols, a stylesheet a page links). A
 /// path is canonical (<see cref="PathNames.Canonical"/>), so one through a link out of the folder is where it leads.</summary>
 public static class AgentReach
 {
-    /// <summary>The solutions and filters Passenger wrote for an agent's call, by canonical path, until written again outside
-    /// one (the person's save) or opened by the person: what each names beside the folder reaches no further than before
-    /// (<see cref="ProjectSession.Reached"/>).</summary>
+    /// <summary>The solutions, filters and C# files (an AppHost's sources among them) Passenger wrote for an agent's call, by
+    /// canonical path, until written again outside one (the person's save) or opened by the person: what each names beside
+    /// the folder reaches no further than before (<see cref="ProjectSession.Reached"/>).</summary>
     private static readonly ConcurrentDictionary<string, byte> Written = new(PathNames.Comparer);
 
     static AgentReach() => FileText.Writing += path =>
     {
-        if (WorkspaceModel.IsSolution(path))
+        if (WorkspaceModel.IsSolution(path) || PathNames.HasExtension(path, [".cs"]))
         {
             string canonical = PathNames.Canonical(path);
             if (AgentCall.Current is not null)
@@ -40,8 +40,8 @@ public static class AgentReach
         }
     };
 
-    /// <summary>Whether an agent's call wrote a solution or filter (a canonical path) since the person last wrote or opened
-    /// it.</summary>
+    /// <summary>Whether an agent's call wrote a solution, filter or C# file (a canonical path) since the person last wrote or
+    /// opened it.</summary>
     public static bool WroteFor(string path) => Written.ContainsKey(path);
 
     /// <summary>A solution or filter the person opened (a canonical path): what it names is theirs to reach from now on, as
@@ -68,7 +68,7 @@ public static class AgentReach
     });
 
     /// <summary>Whether an agent may change a file or folder (a canonical path): only the open folder's, and those of the
-    /// folders its trusted solution reaches (<paramref name="reached"/>).</summary>
+    /// folders its trusted solution and AppHosts reach (<paramref name="reached"/>).</summary>
     public static bool Changes(string path, string? folder, IReadOnlyList<string> reached) =>
         folder is not null && PathNames.Within(path, folder) || reached.Any(r => PathNames.Within(path, r));
 

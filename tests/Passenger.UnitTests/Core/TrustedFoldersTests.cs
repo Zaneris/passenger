@@ -73,6 +73,24 @@ public sealed class TrustedFoldersTests
     }
 
     [Fact]
+    public void Why_a_workspace_lends_a_folder_nothing_names_the_disks_root_the_open_folder_or_the_home_folder_it_is_or_holds()
+    {
+        string open = At("repo", "app");
+        string home = PathNames.Canonical(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile));
+
+        Assert.Null(WorkspaceTrust.WhyNotLent(At("repo", "lib"), open));
+        Assert.Equal(Unlent.Root, WorkspaceTrust.WhyNotLent(Path.GetPathRoot(open)!, open));
+        Assert.Equal(Unlent.HoldsOpen, WorkspaceTrust.WhyNotLent(At("repo"), open));
+        Assert.Equal(Unlent.HoldsOpen, WorkspaceTrust.WhyNotLent(open, open));
+        Assert.Equal(Unlent.HoldsHome, WorkspaceTrust.WhyNotLent(home, open));
+        Assert.Equal(Unlent.Relative, WorkspaceTrust.WhyNotLent("relative", open));
+        if (Path.GetDirectoryName(home) is { } above && Path.GetDirectoryName(above) is not null)
+        {
+            Assert.Equal(Unlent.HoldsHome, WorkspaceTrust.WhyNotLent(above, open));
+        }
+    }
+
+    [Fact]
     public void A_folder_in_a_Git_repository_is_trusted_as_the_repositorys_top_and_one_in_none_as_itself()
     {
         string root = PathNames.Canonical(Directory.CreateTempSubdirectory("passenger-unit-").FullName);
