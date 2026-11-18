@@ -22,3 +22,6 @@
 ._*
 Thumbs.db
 [Dd]esktop.ini
+
+# Python writes compiled modules beside a tool imported by another (theme-pictures.py takes themes.py).
+__pycache__/
