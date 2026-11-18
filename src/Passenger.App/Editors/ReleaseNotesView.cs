@@ -13,8 +13,9 @@ using Passenger.Editor;
 namespace Passenger.App.Editors;
 
 /// <summary>A group's view of release notes the app carries (What's New): Passenger's mark and the notes' title over
-/// their Markdown rendered (<see cref="Markdown"/>), on the editor's ground and scrolled as one page. Its links open in
-/// the person's browser through the window.</summary>
+/// their Markdown rendered (<see cref="Markdown"/>), then each earlier version's of a patch release's minor version under
+/// its own heading, newest first (<see cref="ReleaseNotes.Earlier"/>), laid as one Markdown text on the editor's ground
+/// and scrolled as one page. Its links open in the person's browser through the window.</summary>
 public sealed class ReleaseNotesView : ScrollViewer
 {
     protected override Type StyleKeyOverride => typeof(ScrollViewer);
@@ -25,9 +26,20 @@ public sealed class ReleaseNotesView : ScrollViewer
         Focusable = true;
         HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled;
         string version = ReleaseNotes.VersionOf(document.Path) ?? Product.Version;
+        List<Markdown.Block> blocks = [.. Markdown.Parse(document.Text.Snapshot.ToString())];
+        List<string> versions = [version];
+        foreach (ReleaseNotes earlier in new ReleaseNotes(Path.GetDirectoryName(document.Path) ?? ReleaseNotes.CarriedFolder, version).Earlier())
+        {
+            if (earlier.Read() is { } text)
+            {
+                versions.Add(earlier.Version);
+                blocks.AddRange([new Markdown.Rule(), new Markdown.Heading(1, ReleaseNotes.HeadingOf(earlier.Version)), .. Markdown.Parse(text)]);
+            }
+        }
+        Versions = versions;
         Image mark = new() { Classes = { StyleClasses.NotesMark }, Source = new Bitmap(AssetLoader.Open(new Uri("avares://Passenger/Assets/passenger.png"))) };
         RenderOptions.SetBitmapInterpolationMode(mark, BitmapInterpolationMode.HighQuality);
-        Title = $"What's New in Passenger {version}";
+        Title = ReleaseNotes.HeadingOf(version);
         Grid hero = new() { Classes = { StyleClasses.NotesHero }, ColumnDefinitions = new ColumnDefinitions("Auto,*") };
         hero.Children.Add(mark);
         hero.Children.Add(new StackPanel
@@ -40,13 +52,14 @@ public sealed class ReleaseNotesView : ScrollViewer
                 new TextBlock
                 {
                     Classes = { StyleClasses.NotesSubtitle },
-                    Text = "Help, What's New shows these notes again.",
+                    Text = versions.Count == 1 ? "Help, What's New shows these notes again."
+                        : $"{Plural.Listed([.. versions.Skip(1).Select(v => v + "'s")])} notes follow. Help, What's New shows these notes again.",
                     TextWrapping = TextWrapping.Wrap,
                 },
             },
         });
         page = new StackPanel { Classes = { StyleClasses.NotesPage }, Children = { hero } };
-        Markdown.Render(Markdown.Parse(document.Text.Snapshot.ToString()), page, browse);
+        Markdown.Render(blocks, page, browse);
         Content = page;
     }
 
@@ -83,6 +96,9 @@ public sealed class ReleaseNotesView : ScrollViewer
 
     /// <summary>The page's heading: what the notes are of.</summary>
     public string Title { get; }
+
+    /// <summary>The versions whose notes the page lays, in order: its own, then its minor version's earlier ones.</summary>
+    public IReadOnlyList<string> Versions { get; }
 
     /// <summary>The notes' blocks of words, as drawn, in order.</summary>
     public IEnumerable<MarkdownText> Blocks => page.GetLogicalDescendants().OfType<MarkdownText>();

@@ -4,14 +4,23 @@ using Passenger.Packages;
 
 namespace Passenger.App;
 
-/// <summary>What's New: the running version's release notes, carried beside the app (<see cref="ReleaseNotes"/>), in an
-/// editor tab of their own, rendered and read-only. The person's window shows them once after an update, as it starts, in
-/// front of the folder's own tabs once those are back; Help, What's New shows them whenever asked, Find Action and an
-/// agent's ide_action too.</summary>
+/// <summary>What's New: the running version's release notes, carried beside the app (<see cref="ReleaseNotes"/>), with a
+/// patch release's minor version's earlier notes beneath, in an editor tab of their own, rendered and read-only. The
+/// person's window shows them once after an update, as it starts, in front of the folder's own tabs once those are back;
+/// Help, What's New shows them whenever asked, Find Action and an agent's ide_action too.</summary>
 public partial class MainWindow
 {
-    /// <summary>The notes the window shows: this build's, by the version it is, unless others are given.</summary>
-    public ReleaseNotes Notes { get; init; } = ReleaseNotes.Carried;
+    /// <summary>The notes the window shows: this build's, by the version it is, unless others are given, whose folder's
+    /// files are then shown as notes (<see cref="ReleaseNotes.Give"/>).</summary>
+    public ReleaseNotes Notes
+    {
+        get;
+        init
+        {
+            field = value;
+            ReleaseNotes.Give(value.Folder);
+        }
+    } = ReleaseNotes.Carried;
 
     private void AddWhatsNew()
     {

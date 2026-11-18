@@ -17,6 +17,10 @@ public sealed class VersionOrder : IComparer<string>
         int.TryParse(Release(version.Trim()).Split('-', 2)[0].Split('.')[0], System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out int major)
             ? major : null;
 
+    /// <summary>Whether two versions share their first two numbers, as a patch release shares its minor version's (0.4.1
+    /// and 0.4.0).</summary>
+    public static bool SameMinor(string x, string y) => Parse(x).Numbers is var a && Parse(y).Numbers is var b && a[0] == b[0] && a[1] == b[1];
+
     /// <summary>The folder of these whose name is the newest version (<see cref="NewestFirst"/>); null for none.</summary>
     public static string? Newest(IEnumerable<string> folders) => NewestFirst(folders).FirstOrDefault();
 

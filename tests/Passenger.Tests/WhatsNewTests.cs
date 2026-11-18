@@ -12,15 +12,17 @@ namespace Passenger.Tests;
 
 /// <summary>What's New: the release notes a version carries beside it, shown in the person's window the first time that
 /// version starts after an update, once, in a tab of their own, rendered and read-only, in front of the folder it opens
-/// (whose own tabs come back behind them); never for a fresh state; and again from Help whenever asked. Each window keeps
-/// its state in the test's own folder, as the person's keeps theirs, and is the version whose notes the build carries
-/// (docs/release-notes/0.2.2.md), so each reads that real file.</summary>
+/// (whose own tabs come back behind them); never for a fresh state; and again from Help whenever asked; a patch release's
+/// with its minor version's earlier notes beneath. Each window keeps its state in the test's own folder, as the person's
+/// keeps theirs, and is a version whose notes the build carries (docs/release-notes/0.3.0.md), so each reads that real
+/// file, but where a test gives a folder of notes of its own.</summary>
 public sealed class WhatsNewTests : IDisposable
 {
     private const string Version = "0.3.0";
 
     private readonly string state = TestFolders.Create("whatsnew-state-");
     private readonly string folder = TestFolders.Create("whatsnew-folder-");
+    private readonly string notes = TestFolders.Create("whatsnew-notes-");
 
     public WhatsNewTests() => File.WriteAllText(Path.Combine(folder, "Program.cs"), "Console.WriteLine(\"Hello\");\n");
 
@@ -28,6 +30,7 @@ public sealed class WhatsNewTests : IDisposable
     {
         TestFolders.Delete(state);
         TestFolders.Delete(folder);
+        TestFolders.Delete(notes);
     }
 
     [AvaloniaFact]
@@ -149,6 +152,54 @@ public sealed class WhatsNewTests : IDisposable
         window.Close();
     }
 
+    /// <summary>A patch release's page lays its own notes, then its minor version's earlier ones, newest first, each under
+    /// its own heading, as one page a screen reader reads whole; a minor release's lays its own alone. Neither takes another
+    /// minor version's notes, nor a newer version's the folder carries.</summary>
+    [AvaloniaFact]
+    public void A_patch_releases_notes_show_its_minor_versions_earlier_notes_beneath_newest_first_and_a_minor_releases_its_own_alone()
+    {
+        Write("0.3.4", "Passenger 0.3.4 mends the older line.");
+        Write("0.4.0", "Passenger 0.4.0 brings mobile apps.");
+        Write("0.4.1", "Passenger 0.4.1 fixes what 0.4.0 left.");
+        Write("0.4.2", "Passenger 0.4.2 is a later patch.");
+        Write("0.5.0", "Passenger 0.5.0 is the next minor version.");
+
+        MainWindow window = Started("0.4.1", notes);
+        Assert.Null(window.ShowWhatsNew());
+        Ui.Settle();
+        Assert.Equal("What's New in 0.4.1", window.EditorArea.Active?.Title);
+        ReleaseNotesView view = Rendered(window);
+        Assert.Equal("What's New in Passenger 0.4.1", view.Title);
+        Assert.True(view.Versions.SequenceEqual(["0.4.1", "0.4.0"]), $"0.4.1's page lays the notes of [{string.Join(", ", view.Versions)}], not 0.4.1's then 0.4.0's");
+        string[] laid = [.. view.Blocks.Select(b => b.Shown)];
+        int own = Array.IndexOf(laid, "Passenger 0.4.1 fixes what 0.4.0 left.");
+        int heading = Array.IndexOf(laid, "What's New in Passenger 0.4.0");
+        int earlier = Array.IndexOf(laid, "Passenger 0.4.0 brings mobile apps.");
+        Assert.True(own >= 0 && own < heading && heading < earlier,
+            $"0.4.1's notes are not above 0.4.0's heading and its notes beneath it, in that order; the page says:\n{view.Text}");
+        Assert.True(laid.Count(b => b == "Fixed") == 2 && laid.Count(b => b == "Highlights") == 2,
+            $"Each version's sections are not drawn under its own heading; the page says:\n{view.Text}");
+        Assert.True(!view.Text.Contains("0.3.4", StringComparison.Ordinal) && !view.Text.Contains("0.4.2", StringComparison.Ordinal) && !view.Text.Contains("0.5.0", StringComparison.Ordinal),
+            $"0.4.1's page shows notes of another minor version or a newer one; it says:\n{view.Text}");
+        window.Close();
+        Ui.Settle();
+
+        window = Started("0.4.0", notes);
+        Assert.Null(window.ShowWhatsNew());
+        Ui.Settle();
+        view = Rendered(window);
+        Assert.Equal("What's New in Passenger 0.4.0", view.Title);
+        Assert.True(view.Versions.SequenceEqual(["0.4.0"]), $"0.4.0's page lays the notes of [{string.Join(", ", view.Versions)}], not its own alone");
+        Assert.True(view.Text.Contains("Passenger 0.4.0 brings mobile apps.", StringComparison.Ordinal) && !view.Text.Contains("What's New in", StringComparison.Ordinal)
+            && !view.Text.Contains("0.4.1", StringComparison.Ordinal) && !view.Text.Contains("0.3.4", StringComparison.Ordinal),
+            $"0.4.0's page does not show its own notes alone; it says:\n{view.Text}");
+        window.Close();
+    }
+
+    /// <summary>A version's notes in the test's folder of notes, with the two sections each version's have.</summary>
+    private void Write(string version, string lead) =>
+        File.WriteAllText(Path.Combine(notes, version + ".md"), $"{lead}\n\n## Highlights\n\n- **{version}'s highlight**, said.\n\n## Fixed\n\n- {version}'s fix.\n");
+
     /// <summary>Where the page's top stands after a key, which must have moved it.</summary>
     private static double Moved(MainWindow window, ReleaseNotesView view, string keys, string where)
     {
@@ -159,13 +210,13 @@ public sealed class WhatsNewTests : IDisposable
     }
 
     /// <summary>A person's window over the test's state, keeping its layout and settings there, the version whose notes the
-    /// build carries (or another's it carries); no C# server, since nothing here asks one.</summary>
-    private MainWindow Started(string version = Version)
+    /// build carries (or another's it carries, or the given folder holds); no C# server, since nothing here asks one.</summary>
+    private MainWindow Started(string version = Version, string? from = null)
     {
         MainWindow window = new()
         {
             Width = 1200, Height = 800, StateFolder = state, StartsLanguageServer = false,
-            Notes = new ReleaseNotes(ReleaseNotes.CarriedFolder, version),
+            Notes = new ReleaseNotes(from ?? ReleaseNotes.CarriedFolder, version),
         };
         window.Show();
         window.KeepLayout();

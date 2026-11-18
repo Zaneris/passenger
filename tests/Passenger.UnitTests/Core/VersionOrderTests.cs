@@ -41,6 +41,18 @@ public sealed class VersionOrderTests
         Assert.Null(VersionOrder.Newest([]));
     }
 
+    [Theory]
+    [InlineData("0.4.1", "0.4.0", true)]
+    [InlineData("0.4.0", "0.4.2", true)]
+    [InlineData("0.4", "0.4.3", true)]
+    [InlineData("0.4.1-rc.1", "0.4.0", true)]
+    [InlineData("0.4.0", "0.3.4", false)]
+    [InlineData("1.4.0", "0.4.0", false)]
+    public void Versions_share_a_minor_version_where_their_first_two_numbers_agree(string one, string other, bool same) =>
+        Assert.True(VersionOrder.SameMinor(one, other) == same, same
+            ? $"{one} and {other} were taken as of different minor versions, so a patch release's What's New would leave out the earlier notes of its own"
+            : $"{one} and {other} were taken as of one minor version, so a patch release's What's New would show another minor version's notes");
+
     [Fact]
     public void Newest_first_lists_every_version_folder_from_the_newest()
     {
