@@ -659,6 +659,31 @@ public sealed class KeymapChoiceTests : IDisposable
         }
     }
 
+    /// <summary>The Switcher has in each keymap the keys Rider's of that preset here resolves its Switcher to, Ctrl+Tab going
+    /// on and Ctrl+Shift+Tab going back (Control on the Mac too), and no other action has them.</summary>
+    [AvaloniaFact]
+    public void Each_keymaps_Switcher_keys_are_those_Riders_keymap_resolves_them_to()
+    {
+        foreach (KeymapPreset preset in SettingsDialog.KeymapChoices)
+        {
+            AppActions.Choose(preset, new Dictionary<string, string[]>());
+            Keymap keymap = AppActions.Keymap();
+            string rider = RiderKeymaps.Of(preset);
+            IReadOnlyList<Shortcut> theirs = RiderKeymaps.Resolve(rider, "Switcher");
+            foreach ((string action, bool back) in new[] { (AppActions.Switcher, false), (AppActions.SwitcherBackward, true) })
+            {
+                string[] ours = [.. keymap.ShortcutsFor(action).Select(s => s.Notation()).Order(StringComparer.Ordinal)];
+                string[] expected = [.. theirs.Where(s => s.First.Modifiers.HasFlag(KeyModifiers.Shift) == back).Select(s => s.Notation()).Order(StringComparer.Ordinal)];
+                Assert.True(expected.Length > 0 && ours.SequenceEqual(expected),
+                    $"In {DefaultKeymaps.NameOf(preset)}'s keymap {action} runs from [{string.Join("; ", ours)}], where Rider's {rider} gives its Switcher [{string.Join("; ", expected)}]");
+                foreach (Shortcut key in keymap.ShortcutsFor(action))
+                {
+                    Assert.True(keymap.ActionFor(key) == action, $"In {DefaultKeymaps.NameOf(preset)}'s keymap {key.Notation()} runs {keymap.ActionFor(key)}, not {action}");
+                }
+            }
+        }
+    }
+
     /// <summary>Duplicate's key in Visual Studio's keymap (Cmd+D on the Mac, Ctrl+D elsewhere) duplicates the caret's line in
     /// the editor and, pressed in the Explorer on a file, compares it with the file chosen, leaving the editor's text as it
     /// was: Rider gives the key both, told apart by where it is pressed.</summary>

@@ -34,9 +34,11 @@ internal static class RiderKeymaps
             ["ExternalJavaDoc"] = ["shift F1"],
             ["ShowUsages"] = ["control alt F7"],
             ["QuickEvaluateExpression"] = ["control alt F8", "alt button1"],
+            ["Switcher"] = ["ctrl TAB", "ctrl shift TAB"],
         }),
         [MacOS] = (Default, new()
         {
+            ["Switcher"] = ["ctrl TAB", "ctrl shift TAB"],
             ["Generate"] = ["meta N", "control ENTER"],
             ["NewElement"] = ["meta N", "control ENTER"],
             ["EditorUp"] = ["UP", "control P"],

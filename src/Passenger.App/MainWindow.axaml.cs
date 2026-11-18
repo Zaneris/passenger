@@ -116,6 +116,7 @@ public partial class MainWindow : IdeWindow
         AddRunMarks();
         AddRunHere();
         AddPlaces();
+        AddSwitcher();
         AddHierarchy();
         AddFileOperations();
         AcceptDrops(this);

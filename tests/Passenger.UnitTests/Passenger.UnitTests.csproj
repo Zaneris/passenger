@@ -71,6 +71,11 @@
     <Compile Include="../../src/Passenger.App/OnePlaying.cs" Link="App/OnePlaying.cs" />
   </ItemGroup>
 
+  <!-- The order the Switcher lists tabs in, from what came forward and went alone, compiled in since its project is the app's. -->
+  <ItemGroup>
+    <Compile Include="../../src/Passenger.App/Editors/UsedOrder.cs" Link="App/UsedOrder.cs" />
+  </ItemGroup>
+
   <!-- How a tool window shares out its room, from widths alone, compiled in since its project is the app's. -->
   <ItemGroup>
     <Compile Include="../../src/Passenger.App/ToolWindows/ToolLayout.cs" Link="App/ToolLayout.cs" />

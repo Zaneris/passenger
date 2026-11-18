@@ -25,19 +25,24 @@ public sealed class HiddenTabsPopup : SearchPopup<HiddenTab>
     }
 
     /// <summary>A tab's row: its icon, its title and its file's folder, muted.</summary>
-    protected override Control Row()
+    protected override Control Row() => TabRow<HiddenTab>((tab, icon, name, folder) =>
+    {
+        icon.Data = tab.Icon;
+        icon.Foreground = tab.IconBrush;
+        name.Text = tab.Name;
+        folder.Text = tab.Folder;
+    });
+
+    /// <summary>A row of a list of tabs (the hidden tabs', the Switcher's): an icon, a name and muted words after it, which
+    /// <paramref name="show"/> fills from each item the list hands the row.</summary>
+    internal static Control TabRow<T>(Action<T, RowIcon, TextBlock, TextBlock> show)
+        where T : class
     {
         RowIcon icon = new() { VerticalAlignment = VerticalAlignment.Center };
         TextBlock name = new() { VerticalAlignment = VerticalAlignment.Center };
-        TextBlock folder = MutedText.Of(string.Empty);
-        StackPanel row = new() { Orientation = Orientation.Horizontal, Spacing = 8, Height = ListRow.Height, Children = { icon, name, folder } };
-        return row.Showing<HiddenTab>(tab =>
-        {
-            icon.Data = tab.Icon;
-            icon.Foreground = tab.IconBrush;
-            name.Text = tab.Name;
-            folder.Text = tab.Folder;
-        });
+        TextBlock after = MutedText.Of(string.Empty);
+        StackPanel row = new() { Orientation = Orientation.Horizontal, Spacing = 8, Height = ListRow.Height, Children = { icon, name, after } };
+        return row.Showing<T>(item => show(item, icon, name, after));
     }
 }
 

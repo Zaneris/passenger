@@ -47,6 +47,7 @@ public abstract class SearchPopup<T> : UserControl, IAnswers<T?>
         ReusedRows.Use(results, Row);
         empty = new TextBlock { Classes = { StyleClasses.Muted }, Margin = new Thickness(12, 0, 12, 12), IsVisible = false };
         ListKeys.Act(results, new ListActs { Open = Choose });
+        results.SelectionChanged += (_, _) => ChoiceMoved();
         query.TextChanged += (_, _) => QueryChanged();
         query.AddHandler(KeyDownEvent, OnQueryKeyDown, RoutingStrategies.Tunnel);
         if (option is { } shown)
@@ -135,6 +136,18 @@ public abstract class SearchPopup<T> : UserControl, IAnswers<T?>
 
     /// <summary>A key of the popup's own in its query, beyond those every search popup has; whether it was taken.</summary>
     protected virtual bool TakesKey(KeyEventArgs e) => false;
+
+    /// <summary>The row chosen changed: by a key, a click, or what is listed.</summary>
+    protected virtual void ChoiceMoved()
+    {
+    }
+
+    /// <summary>Chooses the row at an index of those listed, brought into sight.</summary>
+    protected void ChooseAt(int index)
+    {
+        results.SelectedIndex = index;
+        results.ScrollIntoView(index);
+    }
 
     /// <summary>Lists what a query found, <paramref name="chosen"/> chosen and in sight, or <paramref name="none"/> when it
     /// found nothing.</summary>

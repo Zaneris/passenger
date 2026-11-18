@@ -52,6 +52,11 @@ public static class AppActions
     public const string CloseTab = "app.closeTab";
     public const string NextTab = "app.nextTab";
     public const string PreviousTab = "app.previousTab";
+
+    // Rider's Switcher: Ctrl+Tab, and Ctrl+Shift+Tab going the other way, in $default's and Mac OS X 10.5+'s own lists,
+    // which every keymap here takes; Control on the Mac too.
+    public const string Switcher = "app.switcher";
+    public const string SwitcherBackward = "app.switcherBackward";
     public const string GoToFile = "app.goToFile";
     public const string GoToLine = "app.goToLine";
     public const string GoToSymbol = "app.goToSymbol";
@@ -667,7 +672,10 @@ public static class AppActions
         // A chord no keymap here takes and a game is unlikely to want, as the game hears it while it has the keys.
         Keymap keymap = Base(preset).Bind(GameKeys, "control F11")
             .Bind(NextRegion, OperatingSystem.IsMacOS() ? "control meta BACK_QUOTE" : "control alt BACK_QUOTE")
-            .Bind(PreviousRegion, OperatingSystem.IsMacOS() ? "control meta shift BACK_QUOTE" : "control alt shift BACK_QUOTE");
+            .Bind(PreviousRegion, OperatingSystem.IsMacOS() ? "control meta shift BACK_QUOTE" : "control alt shift BACK_QUOTE")
+            // The Switcher's keys are the same in every keymap of Rider's (Switcher).
+            .Bind(Switcher, "control TAB")
+            .Bind(SwitcherBackward, "control shift TAB");
         foreach ((string action, string[] shortcuts) in overrides)
         {
             List<Shortcut> keys = [];

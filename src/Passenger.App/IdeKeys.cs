@@ -32,6 +32,9 @@ public sealed class IdeKeys(Window main, KeymapDispatcher keys, PopupHost popups
     /// <summary>The window a key is being handled in, while it is: what an action it runs acts on there.</summary>
     public TopLevel? Pressing { get; private set; }
 
+    /// <summary>The modifiers held with the key being handled, while it is: what an action it runs may wait to see let go.</summary>
+    public KeyModifiers PressedWith { get; private set; }
+
     /// <summary>Takes a window in as the IDE's own, before it shows: its keys, its chords and double taps (forgotten on a
     /// click, a move of the focus or the window left; a double tap on any other key too, wherever it goes), what its
     /// editors refuse typed, its activity, its popups, and the gestures of its editors and of the side buttons.</summary>
@@ -80,6 +83,7 @@ public sealed class IdeKeys(Window main, KeymapDispatcher keys, PopupHost popups
     private void OnKeyDown(TopLevel window, KeyEventArgs e)
     {
         Pressing = window;
+        PressedWith = e.KeyModifiers;
         popups.WorkIn(window);
         try
         {
@@ -103,6 +107,7 @@ public sealed class IdeKeys(Window main, KeymapDispatcher keys, PopupHost popups
         finally
         {
             Pressing = null;
+            PressedWith = KeyModifiers.None;
         }
     }
 

@@ -376,6 +376,7 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
         Popup("Go to File", () => window.Perform(AppActions.GoToFile));
         Popup("Go to Symbol", () => window.Perform(AppActions.GoToSymbol));
         Popup("Recent Files", () => window.ShowRecentFiles());
+        Popup("Switcher", () => window.Perform(AppActions.Switcher));
         Popup("Recent Locations", () => window.Perform(AppActions.RecentLocations));
         Popup("Find in Files", () => window.ShowFindInFiles(false));
         Popup("Stash Changes", () => window.Perform(AppActions.Stash));
