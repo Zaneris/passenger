@@ -16,11 +16,11 @@ internal sealed class VimMappingsFile : IDisposable
 
     public VimMappingsFile(string folder)
     {
-        watched = new WatchedFile(System.IO.Path.Combine(folder, FileName), "Vim mode");
-        watched.Moved += ReadMoved;
+        Path = System.IO.Path.Combine(folder, FileName);
+        watched = new WatchedFile(Path, "Vim mode", ReadMoved);
     }
 
-    public string Path => watched.Path;
+    public string Path { get; }
 
     /// <summary>The file read, on the UI thread, each time it moved since it was last read.</summary>
     public event EventHandler<VimMappings>? Read;
@@ -41,8 +41,8 @@ internal sealed class VimMappingsFile : IDisposable
         watched.Dispose();
     }
 
-    /// <summary>Off the UI thread: the file as it moved to read and handed on.</summary>
-    private void ReadMoved(FileStamp? now)
+    /// <summary>Off the UI thread: the file as it moved to read and handed on; false where it could not be read.</summary>
+    private bool ReadMoved(FileStamp? now)
     {
         string text;
         try
@@ -51,9 +51,8 @@ internal sealed class VimMappingsFile : IDisposable
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
-            // Being written: the write's own change reads it again.
-            watched.Unseen();
-            return;
+            // Being written: the next look, the write's own change's, reads it again.
+            return false;
         }
         VimMappings mappings = VimMappings.Read(text);
         UiThread.Post(() =>
@@ -63,5 +62,6 @@ internal sealed class VimMappingsFile : IDisposable
                 Read?.Invoke(this, mappings);
             }
         });
+        return true;
     }
 }

@@ -49,6 +49,10 @@ public sealed class FolderWatcher : WatchedTree
     /// <summary>How long after a save its file's events are taken for the save's own.</summary>
     private static readonly TimeSpan OwnWriteHeard = TimeSpan.FromSeconds(5);
 
+    /// <summary>How long a save taken in as it landed passes over the system's own word of it, which may come that late
+    /// behind (<see cref="WatchLag"/>).</summary>
+    private static readonly TimeSpan SaveEchoes = TimeSpan.FromMinutes(5);
+
     /// <summary>The file a restore writes in a project's obj (or, with UseArtifactsOutput, in artifacts/obj/Project).</summary>
     private const string Assets = "project.assets.json";
 
@@ -58,6 +62,10 @@ public sealed class FolderWatcher : WatchedTree
     private readonly HashSet<string> comeOrGone = new(StringComparer.Ordinal);
     /// <summary>Until when each file's events are taken for a save's own, by its canonical path.</summary>
     private readonly Dictionary<string, Deadline> ownWrites = new(StringComparer.Ordinal);
+
+    /// <summary>Each file a save wrote, taken in as it landed, by its canonical path: its last write then, and until when a
+    /// change of it seen is passed over while the file still stands as written.</summary>
+    private readonly Dictionary<string, (DateTime Written, Deadline Until)> landed = new(StringComparer.Ordinal);
     private bool structure;
     private bool projects;
     private bool launchProfiles;
@@ -69,6 +77,7 @@ public sealed class FolderWatcher : WatchedTree
     {
         this.folder = folder;
         FileText.Writing += OnWriting;
+        FileText.Wrote += OnWrote;
         Begin();
     }
 
@@ -94,12 +103,54 @@ public sealed class FolderWatcher : WatchedTree
         }
     }
 
+    /// <summary>A save landed: its file under the folder is taken in at once, as written, rather than when the system's
+    /// watcher says so, which may be minutes behind under load (macOS's); what it says of the file later, while the file
+    /// stands as the save left it, is passed over.</summary>
+    private void OnWrote(string path, byte[]? before, byte[] bytes)
+    {
+        string canonical = PathNames.Canonical(path);
+        if (!PathNames.IsUnder(canonical, folder) || IsDisposed)
+        {
+            return;
+        }
+        TakeWritten(canonical);
+        DateTime written = Written(canonical);
+        lock (Gate)
+        {
+            long now = Stopwatch.GetTimestamp();
+            foreach ((string saved, (DateTime _, Deadline until)) in landed)
+            {
+                if (until.PassedAt(now))
+                {
+                    landed.Remove(saved);
+                }
+            }
+            landed[canonical] = (written, Deadline.In(SaveEchoes, now));
+        }
+    }
+
+    /// <summary>Whether a change seen of a file is a save's taken in already, the file standing as the save left it.</summary>
+    private bool Echoes(string canonical)
+    {
+        DateTime written;
+        lock (Gate)
+        {
+            if (!landed.TryGetValue(canonical, out (DateTime Written, Deadline Until) save) || save.Until.Passed)
+            {
+                return false;
+            }
+            written = save.Written;
+        }
+        return Written(canonical) == written;
+    }
+
     /// <summary>Raised on the UI thread with what changed since the last time.</summary>
     public event EventHandler<FolderChanges>? Changed;
 
     public override void Dispose()
     {
         FileText.Writing -= OnWriting;
+        FileText.Wrote -= OnWrote;
         base.Dispose();
     }
 
@@ -245,6 +296,10 @@ public sealed class FolderWatcher : WatchedTree
             return default;
         }
         string canonical = PathNames.Canonical(path);
+        if (Echoes(canonical))
+        {
+            return default;
+        }
         return new Notice(Takes: true, Counts: true, canonical, created ? PathNames.Walked(path, canonical) : null);
     }
 

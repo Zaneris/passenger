@@ -33,8 +33,11 @@ public sealed class SettingsStore : IDisposable
         {
             return;
         }
-        watched = new WatchedFile(document.Path, "Settings");
-        watched.Moved += _ => UiThread.Post(ReadAgain);
+        watched = new WatchedFile(document.Path, "Settings", _ =>
+        {
+            UiThread.Post(ReadAgain);
+            return true;
+        });
         document.Wrote += Saw;
     }
 

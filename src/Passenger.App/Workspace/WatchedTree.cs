@@ -100,6 +100,11 @@ public abstract class WatchedTree : IDisposable
     private bool pending;
     private bool disposed;
 
+    /// <summary>Whether a look for what the system's watcher, behind, has not handed over is asked for and not yet begun, and
+    /// when the last such look began on the wall clock (<see cref="OnBehind"/>).</summary>
+    private bool lookingBehind;
+    private DateTime? lookedBehind;
+
     /// <summary>The tree under <paramref name="folder"/> (canonical), watched the system's way, or each kept folder on its own
     /// (<paramref name="eachFolder"/>); nothing is watched until <see cref="Begin"/>.</summary>
     protected WatchedTree(string folder, FolderWatching watching, bool eachFolder)
@@ -175,10 +180,12 @@ public abstract class WatchedTree : IDisposable
         {
             Ready = following;
         }
+        WatchLag.Behind += OnBehind;
     }
 
     public virtual void Dispose()
     {
+        WatchLag.Behind -= OnBehind;
         List<FileSystemWatcher> stopped;
         lock (gate)
         {
@@ -834,6 +841,55 @@ public abstract class WatchedTree : IDisposable
         }
     }
 
+    /// <summary>The system's watcher is behind (<see cref="WatchLag"/>): the folders whose stamp moved are listed again, as
+    /// <see cref="LookAgain"/> lists them, each file there written since the last such look (from <paramref name="since"/>
+    /// at first) and not heard of after it taken in too, in turn, one look asked at a time. Not while the first walk, or a
+    /// walk apart, is under way, which reads what is there itself.</summary>
+    private void OnBehind(DateTime since)
+    {
+        DateTime from;
+        lock (gate)
+        {
+            if (disposed || lookingBehind || !Ready.IsCompleted || walksApart > 0)
+            {
+                return;
+            }
+            lookingBehind = true;
+            // A moment before the last look began, for a write its listing of the folder may have just missed.
+            from = lookedBehind is { } last && last - Lag > since ? last - Lag : since;
+        }
+        Follow(() => LookBehind(from));
+    }
+
+    /// <summary>The look <see cref="OnBehind"/> asks for, in turn: what it found handed over at once.</summary>
+    private void LookBehind(DateTime since)
+    {
+        Dictionary<string, DateTime> heard;
+        lock (gate)
+        {
+            lookingBehind = false;
+            lookedBehind = DateTime.UtcNow;
+            heard = new Dictionary<string, DateTime>(heardAt, StringComparer.Ordinal);
+        }
+        if (recordedAt is null || IsDisposed || StampsMoved() is not { Count: > 0 } listing)
+        {
+            return;
+        }
+        if (ListAgain(listing, since, heard) is not { } found)
+        {
+            Lose();
+        }
+        else if (found.Found > 0)
+        {
+            IdeErrors.Write($"{Shown} found {Plural.Of(found.Found, "change")} the system's watcher, behind, had not handed over, looking at {Plural.Of(listing.Count, "folder")} whose stamp moved");
+        }
+        else
+        {
+            return;
+        }
+        HandOver();
+    }
+
     /// <summary>The recorded folders whose stamp moved since they were listed.</summary>
     private HashSet<string> StampsMoved()
     {
@@ -916,6 +972,10 @@ public abstract class WatchedTree : IDisposable
     /// <summary>Takes in a change found by listing or walking rather than heard, marked handed over, so its own change heard
     /// later is not handed over twice.</summary>
     private void Found(string path, bool created) => Found(path, PathNames.Canonical(path), created);
+
+    /// <summary>Takes in a file written as it stands, as one found rather than heard: one the watcher knows of before the
+    /// system's watcher says so (a save of the IDE's own), which may be minutes behind.</summary>
+    protected void TakeWritten(string path) => Found(path, created: false);
 
     /// <inheritdoc cref="Found(string, bool)"/>
     private void Found(string path, string canonical, bool created)

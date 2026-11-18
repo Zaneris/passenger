@@ -195,9 +195,11 @@ public static partial class ProjectTemplates
             packagesWatch = null;
             if (root is not null && Directory.Exists(root))
             {
-                WatchedFile watch = new(Path.Combine(root, "packages.json"), "New Solution's templates");
-                watch.Moved += _ => Seen();
-                watch.Saw(FileStamp.Of(watch.Path));
+                WatchedFile watch = new(Path.Combine(root, "packages.json"), "New Solution's templates", _ =>
+                {
+                    Seen();
+                    return true;
+                }, asSeen: true);
                 packagesWatch = (root, watch);
             }
         }

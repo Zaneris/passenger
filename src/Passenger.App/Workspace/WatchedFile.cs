@@ -3,11 +3,11 @@ using Passenger.Core;
 namespace Passenger.App.Workspace;
 
 /// <summary>One file watched alone (settings.json, vimrc), where a folder is watched through <see cref="WatchedTree"/>:
-/// <see cref="Moved"/> is raised each time the file is found moved since it was last seen, by its <see cref="FileStamp"/>
-/// through its links. It is looked at as its watcher hears it written, made, deleted or renamed onto or from its name; as
-/// the watcher fails, since a change it lost is in the file; and as <see cref="LookAgain"/> asks, as a window comes in
-/// front, for a change the system dropped without a word (macOS's watcher passes over its word that it did) or made to a
-/// link's file elsewhere, which no watcher here hears. The first look always tells.</summary>
+/// its owner is told each time the file is found moved since it was last seen, by its <see cref="FileStamp"/> through
+/// its links. It is looked at as its watcher hears it written, made, deleted or renamed onto or from its name; as the
+/// watcher fails, since a change it lost is in the file; while the system's watcher is behind (<see cref="WatchLag"/>);
+/// and as <see cref="LookAgain"/> asks, as a window comes in front, for a change the system dropped without a word or
+/// made to a link's file elsewhere, which no watcher here hears. The first look always tells.</summary>
 public sealed class WatchedFile : IDisposable
 {
     private readonly Lock stamped = new();
@@ -19,11 +19,20 @@ public sealed class WatchedFile : IDisposable
     /// <summary>The file's stamp as last seen, under <see cref="stamped"/>; null for a file not there.</summary>
     private FileStamp? seen;
 
-    /// <summary>Watches a file, its folder made where it is not there; one that cannot be watched is said in the log, as
-    /// <paramref name="owner"/>'s, and looked at only as <see cref="LookAgain"/> asks.</summary>
-    public WatchedFile(string path, string owner)
+    /// <summary>Watches a file, its folder made where it is not there, <paramref name="moved"/> told from the first look on
+    /// (the file as it stands now taken for seen where <paramref name="asSeen"/>), on the thread that looked: one heard as
+    /// the watch begins is told too; false from it, the file not taken (being written), has the next look tell it again.
+    /// One that cannot be watched is said in the log, as <paramref name="owner"/>'s, and looked at only as <see
+    /// cref="LookAgain"/> asks.</summary>
+    public WatchedFile(string path, string owner, Func<FileStamp?, bool> moved, bool asSeen = false)
     {
         Path = path;
+        this.moved = moved;
+        if (asSeen)
+        {
+            (looked, seen) = (true, FileStamp.Of(path));
+        }
+        WatchLag.Behind += OnBehind;
         try
         {
             string folder = System.IO.Path.GetDirectoryName(path) ?? string.Empty;
@@ -53,9 +62,9 @@ public sealed class WatchedFile : IDisposable
     /// <summary>The system's watcher of the file; null where it could not be watched.</summary>
     public FileSystemWatcher? Watcher { get; }
 
-    /// <summary>The file found moved since it was last seen, with its stamp now (null: not there); raised off the UI thread,
-    /// on the thread that looked.</summary>
-    public event Action<FileStamp?>? Moved;
+    /// <summary>What is told the file found moved since it was last seen, with its stamp now (null: not there): whether it
+    /// took the file as it stands.</summary>
+    private readonly Func<FileStamp?, bool> moved;
 
     /// <summary>The file as its owner has just read or written it, so a look finding it so tells nothing; any thread.</summary>
     public void Saw(FileStamp? stamp)
@@ -63,15 +72,6 @@ public sealed class WatchedFile : IDisposable
         lock (stamped)
         {
             (looked, seen) = (true, stamp);
-        }
-    }
-
-    /// <summary>The file told again at the next look however it stands, where what it was told for could not be read.</summary>
-    public void Unseen()
-    {
-        lock (stamped)
-        {
-            looked = false;
         }
     }
 
@@ -88,8 +88,12 @@ public sealed class WatchedFile : IDisposable
     public void Dispose()
     {
         disposed = true;
+        WatchLag.Behind -= OnBehind;
         Watcher?.Dispose();
     }
+
+    /// <summary>The system's watcher is behind: the file is looked at, as what it would have heard may be minutes late.</summary>
+    private void OnBehind(DateTime since) => Look();
 
     private void Look()
     {
@@ -106,6 +110,12 @@ public sealed class WatchedFile : IDisposable
             }
             (looked, seen) = (true, now);
         }
-        Moved?.Invoke(now);
+        if (!moved(now))
+        {
+            lock (stamped)
+            {
+                looked = false;
+            }
+        }
     }
 }

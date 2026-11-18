@@ -577,6 +577,33 @@ public sealed class ProjectFileHelpTests : IClassFixture<ProjectFileHelpTests.Sh
         window.Close();
     }
 
+    /// <summary>A project file saved while the system's watcher hears nothing, as macOS's falls minutes behind under a load
+    /// of changes, has the Solution view show what it says now: the folder's watcher takes the IDE's own save in as it
+    /// lands rather than as the system says so.</summary>
+    [AvaloniaFact]
+    public void A_project_file_saved_while_the_systems_watcher_hears_nothing_has_the_solution_view_take_what_it_says_now()
+    {
+        MainWindow window = Open("App/App.csproj");
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        Assert.DoesNotContain("Passenger.Sample", Children(window, "Dependencies"));
+        List<FileSystemWatcher> watchers = [.. window.FolderWatcher!.Watches.Values];
+        watchers.ForEach(w => w.EnableRaisingEvents = false);
+        try
+        {
+            Ui.PlaceAfter(editor, "<ProjectReference Include=\"../\" />");
+            Ui.Press(window, "ENTER");
+            window.KeyTextInput("<PackageReference Include=\"Passenger.Sample\" Version=\"2.0.0\" />");
+            Ui.Press(window, "ESCAPE");
+            Ui.Run(window, AppActions.Save);
+            Ui.WaitFor(() => window.ExplorerView.Tree.Rows.Any(r => r.Name == "Passenger.Sample"), "the Dependencies to show the package the project saved unheard references");
+        }
+        finally
+        {
+            watchers.ForEach(w => w.EnableRaisingEvents = true);
+        }
+        window.Close();
+    }
+
     /// <summary>A window on the solution, with no C# language server unless asked for, since the project files' help is the
     /// MSBuild host's; asked for, on the server the class's last window left.</summary>
     /// <summary>A typing pause in a project file of 4,000 items costs the window's thread about what one in a file of 40

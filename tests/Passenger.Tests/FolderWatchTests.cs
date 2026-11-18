@@ -702,6 +702,42 @@ public sealed class FolderWatchTests : IDisposable
         bool Listed(Passenger.Vcs.ChangeKind kind, string relative) => window.Vcs.Changes.Any(c => c.Kind == kind && PathNames.Same(c.Path, Path.Combine(folder, relative)));
     }
 
+    /// <summary>While macOS's watcher hands nothing over, as under a load of changes it falls minutes behind without a word,
+    /// a commit made in a terminal, a file made in a new folder and one deleted are found without the window coming in
+    /// front: the watcher's own beat goes unheard, so the watchers look for themselves until it is heard again, and Git's
+    /// status and Go to File follow. The system's watchers, the beat's too, stop while the files change.</summary>
+    [AvaloniaFact]
+    public void Changes_made_while_the_systems_watcher_is_behind_are_found_as_it_lags()
+    {
+        Assert.SkipUnless(OperatingSystem.IsMacOS(), "Only macOS's watcher falls behind without a word; the others say when they lose changes");
+        Write("One.cs", "class One { }\n");
+        Write("Old/Gone.cs", "class Gone { }\n");
+        TestGit.Init(folder);
+        Write("One.cs", "sealed class One { }\n");
+        string made = Path.Combine("Fresh", "Fresh.cs");
+        string deleted = Path.Combine("Old", "Gone.cs");
+        MainWindow window = Open(FolderWatching.WholeTree, languageServer: false);
+        Ui.WaitFor(() => window.FileIndex.Files.Contains(deleted) && window.Vcs.Changes.Any(c => c.Name == "One.cs"), "the folder's files in Go to File and the changed file in Git's status");
+        FileSystemWatcher beat = WatchLag.Canary ?? throw new InvalidOperationException("Nothing checks the system's watcher for lagging while a folder is watched");
+        List<FileSystemWatcher> watchers = [.. window.FolderWatcher!.Watches.Values, beat];
+        watchers.ForEach(w => w.EnableRaisingEvents = false);
+        try
+        {
+            Git("commit", "-q", "-am", "More");
+            File.Delete(Path.Combine(folder, deleted));
+            Write(made, "class Fresh { }\n");
+            Ui.WaitFor(() => window.Vcs.Changes.Count == 2 && window.FileIndex.Files.Contains(made) && !window.FileIndex.Files.Contains(deleted),
+                () => $"the commit, the file made and the one deleted while the system's watcher was behind to be found as it lagged, where Git's status lists "
+                    + $"{string.Join(", ", window.Vcs.Changes.Select(c => $"{c.Name} ({c.Kind})"))} and Go to File {string.Join(", ", window.FileIndex.Files)}");
+            Assert.True(WatchLag.IsBehind, "The system's watcher was not taken for behind while its beat went unheard");
+        }
+        finally
+        {
+            watchers.ForEach(w => w.EnableRaisingEvents = true);
+        }
+        window.Close();
+    }
+
     /// <summary>A branch switched from outside while the watcher of Git's folder heard nothing is read once that watcher's
     /// watch fails, which says at once that anything there may have moved, rather than at the next change it hears: in a
     /// folder opened below the repository's top, whose Git folder is outside it and watched apart.</summary>
