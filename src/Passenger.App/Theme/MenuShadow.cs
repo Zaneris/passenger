@@ -3,6 +3,7 @@ using Avalonia.Controls;
 using Avalonia.Controls.Presenters;
 using Avalonia.Controls.Primitives;
 using Avalonia.Controls.Primitives.PopupPositioning;
+using Avalonia.Input;
 using Avalonia.Media;
 using Avalonia.VisualTree;
 
@@ -20,12 +21,13 @@ internal static class MenuShadow
         TemplatedControl.TemplateAppliedEvent.AddClassHandler<ContextMenu>((menu, _) => Fit(menu));
         ContextMenu.PlacementProperty.Changed.AddClassHandler<ContextMenu>((menu, _) => Fit(menu));
         PopupFlyoutBase.PlacementProperty.Changed.AddClassHandler<MenuFlyout>((flyout, _) => Fit(flyout));
-        TemplatedControl.TemplateAppliedEvent.AddClassHandler<MenuItem>((_, e) => Beside(e.NameScope.Find<Popup>("PART_Popup")));
+        TemplatedControl.TemplateAppliedEvent.AddClassHandler<MenuItem>((item, e) => Beside(item, e.NameScope.Find<Popup>("PART_Popup")));
     }
 
     /// <summary>A submenu's popup opens beside its item on whichever side it has room, and the room its shadow is drawn in
-    /// is the submenu's own: a pointer resting there keeps it open, as one on the frame does.</summary>
-    private static void Beside(Popup? popup)
+    /// is the submenu's own: a pointer resting there keeps it open, as one on the frame does, and the pointer coming in
+    /// chooses its item again, so an item it crossed on the way (the one below, on a slant) neither opens nor closes it.</summary>
+    private static void Beside(MenuItem item, Popup? popup)
     {
         if (popup is null)
         {
@@ -33,13 +35,34 @@ internal static class MenuShadow
         }
         popup.Placement = PlacementMode.Custom;
         popup.CustomPopupPlacementCallback = Place;
+        ContentPresenter? shown = null;
+        void Entered(object? sender, PointerEventArgs e) => Choose(item);
         popup.Opened += (_, _) =>
         {
             if (popup.Child?.GetVisualParent() is ContentPresenter room)
             {
+                shown = room;
                 room.Background = Brushes.Transparent;
+                room.PointerEntered += Entered;
             }
         };
+        popup.Closed += (_, _) =>
+        {
+            if (shown is not null)
+            {
+                shown.PointerEntered -= Entered;
+                shown = null;
+            }
+        };
+    }
+
+    /// <summary>An item chosen in its menu and each menu above it, as the pointer on it chooses it.</summary>
+    private static void Choose(MenuItem item)
+    {
+        for (MenuItem? at = item; at?.Parent is SelectingItemsControl menu; at = menu as MenuItem)
+        {
+            menu.SelectedIndex = menu.IndexFromContainer(at);
+        }
     }
 
     /// <summary>A submenu's place: right of its item, else left, its item's row widened by the room for the shadow on the

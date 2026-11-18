@@ -472,6 +472,86 @@ public sealed class MenuTests : IDisposable
         }
     }
 
+    /// <summary>The pointer carried from an item's middle across the gap into its submenu, 2 px a step at a hand's pace,
+    /// slowing in the gap past the delay a menu waits before it acts on a move: straight to the submenu's first item,
+    /// and on a slant to a lower one across the item below, which has a submenu of its own (the editor's Local History,
+    /// Git below it). The submenu never closes, no other opens, and the item reached takes the pointer: the gap is the
+    /// submenu's, so resting there gives the menu back to its item.</summary>
+    [AvaloniaFact]
+    public void A_pointer_carried_from_an_item_across_the_gap_into_its_submenu_keeps_it_open_and_reaches_its_items()
+    {
+        File.WriteAllText(Path.Combine(folder, "One.cs"), "class One { }\n");
+        TestGit.Init(folder);
+        MainWindow window = OpenOne();
+        try
+        {
+            foreach (bool slant in (bool[])[false, true])
+            {
+                MenuItem item = EditorMenuItem(window, left: false, "Local History");
+                MenuItem below = window.OpenContextMenu!.Items.OfType<MenuItem>().Single(i => i.Header as string == "Git");
+                Popup popup = OpenSubmenu(item);
+                Border frame = (Border)popup.Child!;
+                MenuItem[] others = [.. window.OpenContextMenu.Items.OfType<MenuItem>().Where(i => i != item && i.ItemCount > 0)];
+                MenuItem target = frame.GetVisualDescendants().OfType<MenuItem>().ElementAt(slant ? 1 : 0);
+                Rect row = Placed(window, item);
+                Rect reached = Placed(window, target);
+                Point from = row.Center;
+                Point to = new(reached.Left + 24, reached.Center.Y);
+                // Where the path crosses the middle of the gap between the item and the submenu's frame.
+                double middle = (row.Right + Placed(window, frame).Left) / 2;
+                Point gap = from + ((to - from) * ((middle - from.X) / (to.X - from.X)));
+                string path = $"{(slant ? "on a slant" : "straight")} from Local History's middle to {target.Header}";
+                bool crossed = false;
+                int closed = 0;
+                popup.Closed += (_, _) => closed++;
+                void Holds(Point at, string where)
+                {
+                    crossed |= below.IsPointerOver;
+                    MenuItem? opened = others.FirstOrDefault(o => o.IsSubMenuOpen);
+                    Assert.True(item.IsSubMenuOpen && closed == 0 && opened is null,
+                        $"With the pointer carried {path}, at {at} ({where}), Local History's submenu {(closed > 0 ? "closed" : "is open")}{(opened is null ? "" : $" and {opened.Header}'s opened")}, so the pointer never reaches it");
+                }
+                Carry(window, from, gap, at => Holds(at, "on its way to the gap"));
+                Assert.True(crossed == slant, $"The pointer carried {path} {(crossed ? "crossed" : "never crossed")} Git below it");
+                Ui.Hold(DefaultMenuInteractionHandler.MenuShowDelay * 2, "a hand slowing in the gap past the delay a menu waits before it acts on a move");
+                Holds(gap, "resting in the gap");
+                Carry(window, gap, to, at => Holds(at, "on its way into the submenu"));
+                Ui.Hold(DefaultMenuInteractionHandler.MenuShowDelay * 2, "past the delay a menu waits before it acts on a move");
+                Holds(to, $"resting on {target.Header}");
+                Assert.True(target.IsPointerOver && target.IsSelected,
+                    $"With the pointer carried {path}, {target.Header} is {(target.IsPointerOver ? "" : "not ")}under it and {(target.IsSelected ? "" : "not ")}chosen");
+                window.OpenContextMenu!.Close();
+                Ui.Settle();
+            }
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>The pointer moved from one point to another 2 px a step at a hand's 1,000 px a second, each step when the
+    /// hand would reach it, a step already due going at once, so a wait longer than asked slows the hand by no more than
+    /// itself. <paramref name="each"/> checks where the pointer is after each step.</summary>
+    private static void Carry(MainWindow window, Point from, Point to, Action<Point> each)
+    {
+        Vector way = to - from;
+        double length = Math.Sqrt((way.X * way.X) + (way.Y * way.Y));
+        int steps = Math.Max(1, (int)Math.Ceiling(length / 2));
+        long start = System.Diagnostics.Stopwatch.GetTimestamp();
+        for (int step = 1; step <= steps; step++)
+        {
+            Point at = from + (way * ((double)step / steps));
+            window.MouseMove(at);
+            each(at);
+            TimeSpan due = TimeSpan.FromSeconds(length * step / steps / 1000) - System.Diagnostics.Stopwatch.GetElapsedTime(start);
+            if (due > TimeSpan.Zero)
+            {
+                Ui.Hold(due, "a hand's pace");
+            }
+        }
+    }
+
     /// <summary>A window on a C# file, with no language server: a menu's place is the window's.</summary>
     private MainWindow OpenOne()
     {
@@ -483,8 +563,8 @@ public sealed class MenuTests : IDisposable
     }
 
     /// <summary>The editor's menu opened, from the keys at the caret, or by a right click by the window's right edge, where
-    /// a submenu has no room to its right; its Refactor item.</summary>
-    private static MenuItem EditorMenuItem(MainWindow window, bool left)
+    /// a submenu has no room to its right; its item of a title, Refactor unless named.</summary>
+    private static MenuItem EditorMenuItem(MainWindow window, bool left, string title = "Refactor")
     {
         CodeEditor editor = window.EditorArea.CodeEditor;
         if (left)
@@ -498,7 +578,7 @@ public sealed class MenuTests : IDisposable
         }
         Ui.WaitFor(() => window.OpenContextMenu is not null, "the editor's menu");
         Ui.Settle();
-        return window.OpenContextMenu!.Items.OfType<MenuItem>().First(i => i.Header as string == "Refactor");
+        return window.OpenContextMenu!.Items.OfType<MenuItem>().First(i => i.Header as string == title);
     }
 
     /// <summary>The main menu opened by the toolbar's button; its item of a menu's title.</summary>
