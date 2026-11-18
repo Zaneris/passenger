@@ -133,7 +133,7 @@ public partial class MainWindow
         try
         {
             await game.FirstSceneAsync(TimeSpan.FromMinutes(1), CancellationToken.None);
-            await game.AskAsync(Godot.GodotAgent.KeysBack, Godot.GodotAgent.KeyName(keys.Key.ToString()), modifiers);
+            await game.AskAsync(Godot.GodotAgent.KeysBack, Godot.GodotAgent.KeyName(keys.Key), modifiers);
         }
         catch (LiveAppException unheard)
         {

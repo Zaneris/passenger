@@ -177,6 +177,31 @@ public sealed class McpGodotScriptGameTests : McpRig
         await Call(client, McpTools.Stop);
     }
 
+    /// <summary>Punctuation keys an agent presses by the characters they type reach the game as a US keyboard gives them to
+    /// Godot: each typed into its text box, a shifted one its Shift's character, and held with Ctrl heard by the key's own
+    /// code whatever Shift holds, ctrl+/ as Ctrl with the slash key and ctrl+plus as Ctrl and Shift with the equal sign's,
+    /// typing nothing.</summary>
+    [Fact]
+    public async Task Punctuation_keys_pressed_by_their_characters_type_them_into_a_games_text_box_and_with_ctrl_are_heard_by_their_keys()
+    {
+        File.WriteAllText(Path.Combine(folder, "main.tscn"), TwoWindows);
+        File.WriteAllText(Path.Combine(folder, "second.gd"), "extends Control\n\nfunc _input(event: InputEvent) -> void:\n\tvar key := event as InputEventKey\n"
+            + "\tif key != null and key.pressed and key.ctrl_pressed:\n"
+            + "\t\tprint(\"heard ctrl+%s%s typing %d\" % [\"shift+\" if key.shift_pressed else \"\", OS.get_keycode_string(key.keycode), key.unicode])\n");
+        await using McpClient client = await Start(["--mcp", folder], languageServer: false,
+            environment: new() { [Passenger.App.Godot.GodotUserFolders.HomeVariable] = folder + "-home" });
+        await Call(client, McpTools.DebugStart, new() { ["configuration"] = "Ticker", ["waitSeconds"] = 10 });
+        await Until(async () => await Result(client, McpTools.AppTree) is { IsError: not true } tree && Text(tree).Contains("#Field", StringComparison.Ordinal), "the game's text box");
+
+        const string Typed = "/?+=[}`~\\|";
+        string pressed = Text(await Call(client, McpTools.AppKey, new() { ["control"] = "#Field", ["keys"] = string.Join(' ', Typed.Select(c => c.ToString())) }));
+        Assert.True(pressed.Contains($"it shows \"{Typed}\"", StringComparison.Ordinal), $"The punctuation keys pressed by their characters typed something else: {pressed}");
+        string held = Text(await Call(client, McpTools.AppKey, new() { ["control"] = "#Field", ["keys"] = "ctrl+/ ctrl+plus" }));
+        await Until(async () => Text(await Call(client, McpTools.Output)) is var said && said.Contains("heard ctrl+Slash typing 0", StringComparison.Ordinal)
+            && said.Contains("heard ctrl+shift+Equal typing 0", StringComparison.Ordinal), $"the game to hear ctrl+/ and ctrl+plus by their keys ({held})");
+        await Call(client, McpTools.Stop);
+    }
+
     /// <summary>A control whose script names a <c>text</c>, <c>disabled</c> and <c>editable</c> of its own, each read counted:
     /// its getter, its <c>_get</c>, and a plain <c>note</c>.</summary>
     private const string Counting = "extends Control\n\nvar getter_reads := 0\nvar get_reads := 0\nvar text := \"stored\":\n\tget:\n\t\tgetter_reads += 1\n\t\treturn \"by getter\"\n"

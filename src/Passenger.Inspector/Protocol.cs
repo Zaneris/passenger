@@ -256,7 +256,12 @@ public static class InputKinds
 }
 
 /// <summary>A key and the modifiers held with it.</summary>
-public sealed record Chord(string Key, IReadOnlyList<Modifier> Modifiers);
+public sealed record Chord(string Key, IReadOnlyList<Modifier> Modifiers)
+{
+    /// <summary>The character the key types on a US keyboard with the Shift held, where nothing else is: what the app's text
+    /// input takes when nothing takes the key itself.</summary>
+    public string? Text { get; init; }
+}
 
 /// <summary>A modifier held with a key, a click or a scroll; Primary is the command key of the system the window's
 /// program runs on (<see cref="HeldModifiers.Held"/>).</summary>

@@ -292,9 +292,9 @@ public sealed partial class PassengerTools
     [McpServerTool(Name = McpTools.AppKey, Title = "Press keys in the app", Destructive = true), Description(
         "Presses keys as a keyboard would, chords split by spaces, a chord's keys joined by + (\"Enter\", \"Tab Tab Space\", " +
         "\"ctrl+A Delete\", \"primary+S\"), into control, given the focus first, else what has it. Keys by Avalonia's names, " +
-        "which WPF shares (Escape, Back, PageDown, F5, A, D1 or 1); modifiers ctrl, shift, alt, cmd (meta), primary (the " +
-        "command key of the app's system: Cmd on macOS and iOS, Ctrl elsewhere). Key bindings and commands run; a printable " +
-        "key nothing takes types its character.")]
+        "which WPF shares (Escape, Back, PageDown, F5, A, D1 or 1), or as a US keyboard types them (/, ?); modifiers ctrl, " +
+        "shift, alt, cmd (meta), primary (the command key of the app's system: Cmd on macOS and iOS, Ctrl elsewhere). Key " +
+        "bindings and commands run; a printable key nothing takes types its character.")]
     public Task<string> AppKey(
         string keys,
         string? app = null,
@@ -306,13 +306,13 @@ public sealed partial class PassengerTools
         {
             return await GameKeyAsync(game, keys, control, window);
         }
-        IReadOnlyList<Chord> chords = Chords(keys);
+        List<Pressed> chords = Chords(keys);
         (LiveApp live, AppNode? element, AppNode target) = await Target(app, control, window, needsPoint: false, null, null, cancel);
         (InputDone? sent, string? paused) = await SendAsync(live, new InputAction(InputKinds.Key)
         {
             Window = target.Window.Id,
             Element = element?.Element.Id,
-            Keys = chords,
+            Keys = [.. chords.Select(c => c.Chord)],
         }, cancel);
         if (sent is not { } done)
         {
@@ -627,47 +627,56 @@ public sealed partial class PassengerTools
         },
     };
 
-    /// <summary>Chords as an agent writes them, "ctrl+shift+S Enter", as Avalonia's keys and modifiers.</summary>
-    private static List<Chord> Chords(string keys)
+    /// <summary>Chords as an agent writes them ("ctrl+shift+S Enter", "ctrl+/"), each one's modifiers before its key, which
+    /// is read as every key written as text is (<see cref="Keystroke.Parse"/>): by its name, or as the character a US keyboard
+    /// types, with the Shift that takes.</summary>
+    private static List<Pressed> Chords(string keys)
     {
-        List<Chord> chords = [];
+        List<Pressed> chords = [];
         foreach (string written in keys.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
         {
-            // The plus key is a chord's last + when it ends in two, or the whole chord.
-            string[] parts = written == "+" ? ["+"] : written.EndsWith("++", StringComparison.Ordinal) ? [.. written[..^2].Split('+'), "+"] : written.Split('+');
+            string[] parts = Keystroke.JoinedParts(written);
             List<Modifier> held = [.. parts[..^1].Select(ModifierNamed)];
-            chords.Add(new Chord(KeyName(parts[^1]), held));
+            Keystroke key = KeyNamed(parts[^1]);
+            held.AddRange(HeldWith(key.Modifiers));
+            // Primary is Ctrl or Cmd wherever the app runs, either typing nothing.
+            KeyModifiers holding = held.Aggregate(KeyModifiers.None, (all, one) => all | one switch
+            {
+                Modifier.Shift => KeyModifiers.Shift,
+                Modifier.Alt => KeyModifiers.Alt,
+                Modifier.Meta => KeyModifiers.Meta,
+                _ => KeyModifiers.Control,
+            });
+            chords.Add(new Pressed(key.Key, [.. held.Distinct()], new Keystroke(key.Key, holding).Types));
         }
         return chords.Count > 0 ? chords : throw new ArgumentException("Name the keys to press");
     }
 
-    /// <summary>A key as Avalonia names it, from what an agent writes: Enter, esc, 1, a, PageDown, F5, +.</summary>
-    private static string KeyName(string key)
+    /// <summary>A chord's key, or an error naming the ways a key is written.</summary>
+    private static Keystroke KeyNamed(string written)
     {
-        string name = key.ToLowerInvariant() switch
+        try
         {
-            "esc" => "Escape",
-            "return" => "Enter",
-            "backspace" => "Back",
-            "del" => "Delete",
-            "ins" => "Insert",
-            "pgup" => "PageUp",
-            "pgdn" => "PageDown",
-            "up" => "Up",
-            "down" => "Down",
-            "left" => "Left",
-            "right" => "Right",
-            "space" or " " => "Space",
-            "+" or "plus" => "OemPlus",
-            "-" or "minus" => "OemMinus",
-            "," or "comma" => "OemComma",
-            "." or "period" => "OemPeriod",
-            _ when key.Length == 1 && char.IsAsciiDigit(key[0]) => "D" + key,
-            _ => key,
-        };
-        return Enum.TryParse(name, ignoreCase: true, out Avalonia.Input.Key parsed) && !int.TryParse(name, out _) && parsed != Avalonia.Input.Key.None
-            ? parsed.ToString()
-            : throw new ArgumentException($"No key '{key}': keys are Avalonia's names (Enter, Escape, Back, Delete, Left, PageDown, F5, A, 1)");
+            return Keystroke.Parse(written);
+        }
+        catch (FormatException)
+        {
+            throw new ArgumentException($"No key '{written}': keys are Avalonia's names (Enter, Escape, Back, Delete, Left, PageDown, F5, A, 1) or the character a US keyboard types (/, ?, [)");
+        }
+    }
+
+    /// <summary>The modifiers a key read alone holds: Shift for a character typed with it, a modifier's own for its key.</summary>
+    private static IEnumerable<Modifier> HeldWith(KeyModifiers modifiers) => KeyModifiersHeld.Where(m => modifiers.HasFlag(m.Of)).Select(m => m.Held);
+
+    /// <summary>Each of Avalonia's modifiers as the inspectors' wire holds it.</summary>
+    private static readonly (KeyModifiers Of, Modifier Held)[] KeyModifiersHeld =
+        [(KeyModifiers.Control, Modifier.Control), (KeyModifiers.Shift, Modifier.Shift), (KeyModifiers.Alt, Modifier.Alt), (KeyModifiers.Meta, Modifier.Meta)];
+
+    /// <summary>A chord as an agent wrote it: its key, the modifiers held with it (primary as written, read where the input is
+    /// given) and the text it types (<see cref="Keystroke.Types"/>).</summary>
+    private sealed record Pressed(Key Key, IReadOnlyList<Modifier> Held, string? Text)
+    {
+        public Chord Chord => new(Key.ToString(), Held) { Text = Text };
     }
 
     private static string Id(long id) => "@" + id.ToString(CultureInfo.InvariantCulture);

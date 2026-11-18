@@ -373,9 +373,9 @@ public sealed partial class PassengerTools
     private async Task<string> GameKeyAsync(GodotGame game, string keys, string? control, string? window)
     {
         using IDisposable asking = GodotGame.Within(GameLimit);
-        IReadOnlyList<Chord> chords = Chords(keys);
+        List<Pressed> chords = Chords(keys);
         (List<AppNode> nodes, AppNode? element, AppNode target) = await GameTarget(game, control, window, needsPoint: false, null, null);
-        List<object?> pressed = [.. chords.Select(c => (object?)new List<object?> { GodotAgent.KeyName(c.Key), GameModifiers(c.Modifiers) })];
+        List<object?> pressed = [.. chords.Select(c => (object?)new List<object?> { GodotAgent.KeyName(c.Key), GameModifiers(c.Held), c.Text ?? string.Empty })];
         List<object?> said = await game.AskAsync("key", element?.Element.Id ?? 0L, target.Element.Id, pressed);
         InputDone done = GameDone(nodes, target, said);
         return $"Pressed {keys.Trim()} in {done.Focused ?? "the window, nothing having the focus"}{KeysHeld(element, done, said)}{Said(done)}";

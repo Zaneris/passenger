@@ -5,7 +5,8 @@ namespace Passenger.UnitTests.Editor;
 
 /// <summary>The modifier words of the keymap's notation, in any case: a keymap's and the aliases an agent writes alike,
 /// each naming one modifier, another word none, and a keystroke read with them; a key by its name or as the character it
-/// types on a US keyboard, its parts apart by spaces or, on a command line, joined by +.</summary>
+/// types on a US keyboard, its parts apart by spaces or, on a command line or in an agent's keys, joined by +; and the
+/// character a keystroke types there.</summary>
 public class KeystrokeTests
 {
     private const KeyModifiers None = KeyModifiers.None;
@@ -87,9 +88,65 @@ public class KeystrokeTests
         Assert.Equal(Keystroke.Parse("meta shift SLASH"), Keystroke.Parse("meta ?"));
 
     [Theory]
+    [InlineData("esc", Key.Escape, None)]
+    [InlineData("Return", Key.Enter, None)]
+    [InlineData("backspace", Key.Back, None)]
+    [InlineData("del", Key.Delete, None)]
+    [InlineData("ins", Key.Insert, None)]
+    [InlineData("pgup", Key.PageUp, None)]
+    [InlineData("ctrl+pgdn", Key.PageDown, KeyModifiers.Control)]
+    [InlineData("comma", Key.OemComma, None)]
+    [InlineData("minus", Key.OemMinus, None)]
+    [InlineData("ctrl+plus", Key.OemPlus, KeyModifiers.Control | Shift)]
+    [InlineData("OemQuestion", Key.OemQuestion, None)]
+    [InlineData("pagedown", Key.PageDown, None)]
+    public void A_key_an_agent_names_by_a_word_of_its_own_or_avalonias_name_in_any_case_is_that_key(string written, Key key, KeyModifiers modifiers) =>
+        Assert.True(Keystroke.ParseJoined(written) == new Keystroke(key, modifiers),
+            $"\"{written}\" was read as {Keystroke.ParseJoined(written)}, not {modifiers} with {key}, so an agent's key presses another");
+
+    [Theory]
+    [InlineData("ctrl++", new[] { "ctrl", "+" })]
+    [InlineData("+", new[] { "+" })]
+    [InlineData("cmd+shift+L", new[] { "cmd", "shift", "L" })]
+    [InlineData("ctrl+/", new[] { "ctrl", "/" })]
+    public void A_keystroke_joined_by_plus_is_parted_at_each_plus_but_the_plus_key(string joined, string[] parts) =>
+        Assert.Equal(parts, Keystroke.JoinedParts(joined));
+
+    [Theory]
+    [InlineData("/", "/")]
+    [InlineData("?", "?")]
+    [InlineData("shift+4", "$")]
+    [InlineData("=", "=")]
+    [InlineData("+", "+")]
+    [InlineData("`", "`")]
+    [InlineData("~", "~")]
+    [InlineData("A", "a")]
+    [InlineData("shift+A", "A")]
+    [InlineData("Space", " ")]
+    [InlineData("NumPad1", "1")]
+    [InlineData("Add", "+")]
+    public void A_keystroke_types_the_character_its_key_gives_on_a_US_keyboard_with_its_shift(string written, string typed) =>
+        Assert.True(Keystroke.ParseJoined(written).Types == typed,
+            $"\"{written}\" types \"{Keystroke.ParseJoined(written).Types}\", not \"{typed}\", so a text box it is pressed in shows another character");
+
+    [Theory]
+    [InlineData("ctrl+/")]
+    [InlineData("alt+A")]
+    [InlineData("meta+shift+,")]
+    [InlineData("Enter")]
+    [InlineData("Tab")]
+    [InlineData("Escape")]
+    [InlineData("F5")]
+    [InlineData("Left")]
+    public void A_keystroke_held_with_ctrl_alt_or_meta_or_of_a_key_typing_no_character_types_nothing(string written) =>
+        Assert.True(Keystroke.ParseJoined(written).Types is null,
+            $"\"{written}\" types \"{Keystroke.ParseJoined(written).Types}\", where a keyboard types nothing, so a shortcut or a key that moves or ends puts a character in a text box");
+
+    [Theory]
     [InlineData("meta+§", "unknown key '§'")]
     [InlineData("meta+,+.", "names two keys")]
     [InlineData("shift+1000", "unknown key '1000'")]
+    [InlineData("None", "unknown key 'None'")]
     public void A_keystroke_of_no_key_a_US_keyboard_types_or_of_two_keys_is_refused_saying_why(string joined, string why)
     {
         FormatException refused = Assert.Throws<FormatException>(() => Keystroke.ParseJoined(joined));

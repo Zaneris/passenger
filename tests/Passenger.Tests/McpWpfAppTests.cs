@@ -70,6 +70,9 @@ public sealed class McpWpfAppTests : McpRig
         await Call(client, McpTools.AppKey, new() { ["keys"] = "Enter" });
         Assert.Contains("\"Hello, Ada\"", Text(await Call(client, McpTools.AppTree, new() { ["control"] = "#Hello" })), StringComparison.Ordinal);
         Assert.Contains("it shows \"Grace\"", Text(await Call(client, McpTools.AppType, new() { ["control"] = "#NameBox", ["text"] = "Grace", ["replace"] = true })), StringComparison.Ordinal);
+        // Keys pressed by the characters a US keyboard types, a shifted one Shift's.
+        string punctuated = Text(await Call(client, McpTools.AppKey, new() { ["control"] = "#NameBox", ["keys"] = "/ ? + = [ } ` ~ \\ |" }));
+        Assert.True(punctuated.Contains("it shows \"Grace/?+=[}`~\\|\"", StringComparison.Ordinal), $"The punctuation keys pressed by their characters typed something else: {punctuated}");
 
         await Call(client, McpTools.AppClick, new() { ["control"] = "#Colour" });
         string picked = Text(await Call(client, McpTools.AppClick, new() { ["control"] = "ComboBoxItem \"Blue\"" }));

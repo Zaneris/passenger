@@ -1,23 +1,32 @@
+using Avalonia.Input;
 using Passenger.App.Godot;
 
 namespace Passenger.UnitTests.Godot;
 
-/// <summary>What Passenger's helper in a Godot game is sent: a key app_key names, by Avalonia's name, as Godot names it for
-/// <c>OS.find_keycode_from_string</c>, and the node paths its live editing names; and the helper as Passenger carries it.</summary>
+/// <summary>What Passenger's helper in a Godot game is sent: a key app_key names, by Avalonia's key, as Godot names it for
+/// <c>OS.find_keycode_from_string</c> (one that types a character by the one it types without Shift), and the node paths
+/// its live editing names; and the helper as Passenger carries it.</summary>
 public class GodotAgentTests
 {
     [Theory]
-    [InlineData("Back", "Backspace")]
-    [InlineData("Enter", "Enter")]
-    [InlineData("Escape", "Escape")]
-    [InlineData("D7", "7")]
-    [InlineData("OemPlus", "Plus")]
-    [InlineData("OemComma", "Comma")]
-    [InlineData("PageDown", "PageDown")]
-    [InlineData("A", "A")]
-    [InlineData("F5", "F5")]
-    public void A_key_is_sent_by_the_name_Godot_gives_it(string avalonia, string godot) =>
-        Assert.Equal(godot, GodotAgent.KeyName(avalonia));
+    [InlineData(Key.Back, "Backspace")]
+    [InlineData(Key.Enter, "Enter")]
+    [InlineData(Key.Escape, "Escape")]
+    [InlineData(Key.D7, "7")]
+    [InlineData(Key.OemPlus, "Equal")]
+    [InlineData(Key.OemComma, "Comma")]
+    [InlineData(Key.OemQuestion, "Slash")]
+    [InlineData(Key.OemSemicolon, "Semicolon")]
+    [InlineData(Key.OemQuotes, "Apostrophe")]
+    [InlineData(Key.OemOpenBrackets, "BracketLeft")]
+    [InlineData(Key.OemCloseBrackets, "BracketRight")]
+    [InlineData(Key.OemPipe, "Backslash")]
+    [InlineData(Key.OemTilde, "QuoteLeft")]
+    [InlineData(Key.PageDown, "PageDown")]
+    [InlineData(Key.A, "A")]
+    [InlineData(Key.F5, "F5")]
+    public void A_key_is_sent_by_the_name_Godot_gives_it(Key avalonia, string godot) =>
+        Assert.True(GodotAgent.KeyName(avalonia) == godot, $"{avalonia} was sent as Godot's {GodotAgent.KeyName(avalonia)}, not {godot}, so the game hears another key");
 
     [Fact]
     public void A_node_path_is_absolute_from_the_root_and_relative_otherwise()

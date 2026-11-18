@@ -317,7 +317,7 @@ internal sealed class Driver(Inspector inspector) : Driving<DependencyObject, Vi
                 Command(top, key, held, chord);
                 continue;
             }
-            Press(top, key, held);
+            Press(top, key, held, chord.Text);
         }
         return Into(top);
     }
@@ -424,7 +424,7 @@ internal sealed class Driver(Inspector inspector) : Driving<DependencyObject, Vi
 
     /// <summary>A key down and up on the element with the focus (Tab moves the focus as WPF's keyboard navigation does), the
     /// default or cancel button pressed by an Enter or Escape nothing took, then the text the key types when nothing took it.</summary>
-    private void Press(Visual top, Key key, ModifierKeys held)
+    private void Press(Visual top, Key key, ModifierKeys held, string? text = null)
     {
         if (KeyTarget(top) is not { } target)
         {
@@ -451,7 +451,7 @@ internal sealed class Driver(Inspector inspector) : Driving<DependencyObject, Vi
         {
             taken = true;
         }
-        if (!taken && Typed(key, held) is { } text)
+        if (!taken && text is not null)
         {
             Text(top, text);
         }
@@ -521,24 +521,6 @@ internal sealed class Driver(Inspector inspector) : Driving<DependencyObject, Vi
         {
             TextCompositionManager.StartComposition(new TextComposition(InputManager.Current, target, text));
         }
-    }
-
-    /// <summary>The character a key types on a US keyboard, Shift held or not, when it types one.</summary>
-    private static string? Typed(Key key, ModifierKeys held)
-    {
-        bool shift = held == ModifierKeys.Shift;
-        return key switch
-        {
-            >= Key.A and <= Key.Z => ((char)((shift ? 'A' : 'a') + (key - Key.A))).ToString(),
-            >= Key.D0 and <= Key.D9 when !shift => ((char)('0' + (key - Key.D0))).ToString(),
-            >= Key.NumPad0 and <= Key.NumPad9 => ((char)('0' + (key - Key.NumPad0))).ToString(),
-            Key.Space => " ",
-            Key.OemPlus => shift ? "+" : "=",
-            Key.OemMinus => shift ? "_" : "-",
-            Key.OemComma => shift ? "<" : ",",
-            Key.OemPeriod => shift ? ">" : ".",
-            _ => null,
-        };
     }
 
     /// <summary>What keys went to (whatever has the focus since, a Tab having moved it) and what it shows now.</summary>

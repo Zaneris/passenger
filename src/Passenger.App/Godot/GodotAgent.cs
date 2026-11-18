@@ -1,3 +1,5 @@
+using Avalonia.Input;
+
 namespace Passenger.App.Godot;
 
 /// <summary>Passenger's helper in a Godot game it debugs (<c>PassengerAgent.gd</c>, carried in the App): a node of
@@ -65,19 +67,27 @@ public static partial class GodotAgent
     /// <summary>Whether a script's file, as Godot names it, is the helper's.</summary>
     public static bool IsScript(string file) => file.EndsWith(FileName, StringComparison.Ordinal);
 
-    /// <summary>A key as Godot names it (<c>OS.find_keycode_from_string</c>), from Avalonia's name for it as app_key reads one.</summary>
-    public static string KeyName(string avalonia) => avalonia switch
+    /// <summary>A key as Godot names it (<c>OS.find_keycode_from_string</c>), from Avalonia's: a key that types a character
+    /// by the one it types without Shift, as Godot's key codes name a key on a US keyboard whatever Shift holds.</summary>
+    public static string KeyName(Key key) => key switch
     {
-        "Back" => "Backspace",
-        "Return" => "Enter",
-        "OemPlus" => "Plus",
-        "OemMinus" => "Minus",
-        "OemComma" => "Comma",
-        "OemPeriod" => "Period",
-        "Next" => "PageDown",
-        "Prior" => "PageUp",
-        ['D', >= '0' and <= '9'] digit => digit[1..],
-        _ => avalonia,
+        Key.Back => "Backspace",
+        Key.Enter => "Enter",
+        Key.PageDown => "PageDown",
+        Key.PageUp => "PageUp",
+        Key.OemPlus => "Equal",
+        Key.OemMinus => "Minus",
+        Key.OemComma => "Comma",
+        Key.OemPeriod => "Period",
+        Key.OemQuestion => "Slash",
+        Key.OemSemicolon => "Semicolon",
+        Key.OemQuotes => "Apostrophe",
+        Key.OemOpenBrackets => "BracketLeft",
+        Key.OemCloseBrackets => "BracketRight",
+        Key.OemPipe => "Backslash",
+        Key.OemTilde => "QuoteLeft",
+        >= Key.D0 and <= Key.D9 => ((char)('0' + (key - Key.D0))).ToString(),
+        _ => key.ToString(),
     };
 
     /// <summary>A node path from its text: "/root", "..", "../PassengerAgent".</summary>

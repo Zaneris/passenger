@@ -158,6 +158,31 @@ public sealed class McpAvaloniaAppTests : McpRig, IClassFixture<AgentAppFolder>
             $"The longest frame is not the one the frames say: {frames}");
     }
 
+    /// <summary>An agent presses each key a US keyboard types other than a letter or digit by the character it types, as the
+    /// keymap and a screenshot's --key read one: into the app's text box each types its character, a shifted one Shift's, and
+    /// held with Ctrl the app hears Ctrl with the key that character is on, ctrl+/ the slash key.</summary>
+    [Fact]
+    public async Task An_agent_presses_each_punctuation_key_by_its_character_typing_it_and_held_with_ctrl_the_app_hears_ctrl_with_that_key()
+    {
+        await using McpClient client = await Start(["--mcp", appFolder], languageServer: false);
+        JsonElement built = await Call(client, McpTools.Build);
+        Assert.True(built.GetProperty("succeeded").GetBoolean(), $"The app did not build: {built}");
+        JsonElement ran = await Call(client, McpTools.Run, new() { ["waitSeconds"] = 3600 });
+        Assert.True(ran.GetProperty("stillRunning").GetBoolean(), $"The app ended as it started: {ran}");
+
+        const string Typed = "/;'[]\\=`,.-?:\"{}|+~<>_";
+        string pressed = Text(await Call(client, McpTools.AppKey, new() { ["control"] = "#NameBox", ["keys"] = string.Join(' ', Typed.Select(c => c.ToString())) }));
+        Assert.True(pressed.Contains($"it shows \"{Typed}\"", StringComparison.Ordinal), $"The punctuation keys pressed by their characters typed something else: {pressed}");
+
+        (string Key, string Physical)[] keys = [("/", "Slash"), (";", "Semicolon"), ("'", "Quote"), ("[", "BracketLeft"), ("]", "BracketRight"),
+            ("\\", "Backslash"), ("=", "Equal"), ("`", "Backquote"), (",", "Comma"), (".", "Period"), ("-", "Minus")];
+        string held = Text(await Call(client, McpTools.AppKey, new() { ["control"] = "#NameBox", ["keys"] = string.Join(' ', keys.Select(k => "ctrl+" + k.Key)) }));
+        string heard = Text(await Call(client, McpTools.AppTree, new() { ["control"] = "#Greeting" }));
+        string expected = "Pressed " + string.Join(' ', keys.Select(k => "Control+" + k.Physical));
+        Assert.True(heard.Contains($"\"{expected}\"", StringComparison.Ordinal), $"Ctrl with each punctuation key ({held}) reached the app as other keys: {heard}");
+        await Call(client, McpTools.Stop);
+    }
+
     /// <summary>What the Live Visual Tree and the editor give a person debugging the app, given an agent: debug_start back
     /// once the app's UI is up; a click into a breakpoint told at once where it stopped; a button's properties with where each
     /// value came from and its styles with why each applies or not; Break When Value Changes on the counter's text, which a

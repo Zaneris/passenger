@@ -489,6 +489,7 @@ func _keyed(viewport: Viewport, holding: Window) -> Array:
     return _after(holding if holds else viewport, Vector2.ZERO, null, null, false) + [1 if holds and holding.exclusive else 0]
 
 
+## Each chord pressed as a keyboard gives it: [its key as Godot names it, the modifiers held, the character it types or none].
 func key(ask: int, id: int, window: int, chords: Array) -> void:
     if _gone(ask, id):
         return
@@ -501,13 +502,14 @@ func key(ask: int, id: int, window: int, chords: Array) -> void:
             _say(ask, false, ["Godot has no key %s" % chord[0]])
             return
         var modifiers: int = chord[1]
+        var typed: String = chord[2]
         var press := InputEventKey.new()
         press.keycode = code
         press.physical_keycode = code
         press.pressed = true
         _modifiers(press, modifiers)
-        if modifiers & (CTRL | ALT | META) == 0 and code >= KEY_SPACE and code <= KEY_ASCIITILDE:
-            press.unicode = code + 32 if code >= KEY_A and code <= KEY_Z and modifiers & SHIFT == 0 else code
+        if not typed.is_empty():
+            press.unicode = typed.unicode_at(0)
         _send(press, viewport)
         await _frames(1)
         var release := press.duplicate() as InputEventKey

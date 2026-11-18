@@ -135,13 +135,7 @@ internal sealed class Driver(Inspector inspector) : Driving<Visual, TopLevel>
             {
                 throw new Refusal($"No key '{chord.Key}'");
             }
-            RawInputModifiers held = Held(chord.Modifiers);
-            string? symbol = (held & (RawInputModifiers.Control | RawInputModifiers.Alt | RawInputModifiers.Meta)) == 0
-                && Physical.TryGetValue(key, out PhysicalKey physical) && physical.ToQwertyKeySymbol((held & RawInputModifiers.Shift) != 0) is { } said
-                && said.All(c => c >= ' ' && c != '\u007f')
-                    ? said
-                    : null;
-            Press(top, (key, held), symbol);
+            Press(top, (key, Held(chord.Modifiers)), chord.Text);
         }
         return Into(top, focused);
     }
