@@ -853,8 +853,8 @@ public sealed partial class NuGetView : DockPanel
     }
 
     /// <summary>Reads, while the window is shown, the advisories the audit's feeds know, and waits for an audit asked already
-    /// either way: once it ends, the projects' actions it greyed act again, and the versions the details name are said
-    /// vulnerable as far as known, unless another package was chosen meanwhile.</summary>
+    /// either way: once it ends, the projects' actions it greyed act again, and the versions the details and the projects'
+    /// lines name are said vulnerable as far as known, unless another package was chosen meanwhile.</summary>
     private async Task ChosenVulnerabilityAsync(PackageRow row, Panel said, CancellationTokenSource cancel)
     {
         Task<VulnerabilityData>? asked = IsShown && ChosenVersion is { Length: > 0 } ? model.Audit() : model.AuditAsked;
@@ -874,6 +874,8 @@ public sealed partial class NuGetView : DockPanel
         if (!cancel.IsCancellationRequested && Selected == row)
         {
             ShowVulnerable(row, said);
+            // The projects' marks, and Fix where a version brought in is vulnerable, as the audit now says.
+            ShowProjects(row);
         }
     }
 
