@@ -345,8 +345,9 @@ jobs:
         run: |
           tools/package-linux.sh "$RID"
           contents=$(tar -tzf artifacts/package/Passenger-linux-*.tar.gz)
+          # Read from a here-string: a pipe's writer, cut off as grep -q finds its line, fails the step under pipefail.
           for part in android-arm64 android-x64; do
-            echo "$contents" | grep -q "debugger/relay/$part/libpassenger-debug.so$" || { echo "The archive has no debug relay for $part" >&2; exit 1; }
+            grep -q "debugger/relay/$part/libpassenger-debug.so$" <<< "$contents" || { echo "The archive has no debug relay for $part" >&2; exit 1; }
           done
 
       # The version the app reads is the tag's, stamped into the informational version with the commit
@@ -442,7 +443,7 @@ jobs:
           contents=$(tar -tzf "artifacts/release/Passenger-container-tools-$RID.tar.gz")
           # The tools, with their licence and the notices their build wrote of what they carry.
           for part in passenger-tools LICENSE.txt THIRD-PARTY-NOTICES.txt; do
-            echo "$contents" | grep -qx "./$part" || { echo "The archive has no $part" >&2; exit 1; }
+            grep -qx "./$part" <<< "$contents" || { echo "The archive has no $part" >&2; exit 1; }
           done
           ls -l artifacts/release
 
