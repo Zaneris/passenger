@@ -1043,6 +1043,46 @@ public sealed class FolderWatchTests : IDisposable
         window.Close();
     }
 
+    /// <summary>A project and a program brought into a folder with no solution with their folders whole, as a copy, a clone or
+    /// an unzip lands them (which the system may tell as each folder alone, never the files in it), are the folder's, each
+    /// with its run configuration; the project's folder deleted and the program's moved out (as to the Trash), both are
+    /// gone. Watched the system's way and as on Linux, each folder on its own.</summary>
+    [AvaloniaTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_project_and_a_program_moved_in_with_their_folders_whole_are_found_and_gone_with_their_folders(bool asOnLinux)
+    {
+        Write("App/App.csproj", Project);
+        MainWindow window = Open(asOnLinux ? FolderWatching.Inotify : FolderWatching.Platform, languageServer: false);
+        Assert.Equal(["App"], window.Configurations.Select(c => c.Name));
+        string elsewhere = PathNames.Canonical(TestFolders.Create("elsewhere-"));
+        try
+        {
+            TestFolders.Write(elsewhere, "Tool/Tool.csproj", Project);
+            TestFolders.Write(elsewhere, "Tool/Program.cs", "Console.WriteLine(\"tool\");\n");
+            TestFolders.Write(elsewhere, "scripts/hello.cs", "#:property PublishAot=false\nConsole.WriteLine(\"hello\");\n");
+            Directory.Move(Path.Combine(elsewhere, "Tool"), Path.Combine(folder, "Tool"));
+            Directory.Move(Path.Combine(elsewhere, "scripts"), Path.Combine(folder, "scripts"));
+            Ui.WaitFor(() => Projects(window) is ["App", "Tool", "hello"] && Configurations(window) is ["App", "Tool", "hello"],
+                () => $"Tool and hello.cs, moved in with their folders, the folder's with their run configurations; its projects are {string.Join(", ", Projects(window))} "
+                    + $"and its run configurations {string.Join(", ", Configurations(window))}");
+
+            Directory.Delete(Path.Combine(folder, "Tool"), recursive: true);
+            Directory.Move(Path.Combine(folder, "scripts"), Path.Combine(elsewhere, "scripts"));
+            Ui.WaitFor(() => Projects(window) is ["App"] && Configurations(window) is ["App"],
+                () => $"Tool and hello.cs gone with their folders, and their run configurations; the folder's projects are {string.Join(", ", Projects(window))} "
+                    + $"and its run configurations {string.Join(", ", Configurations(window))}");
+        }
+        finally
+        {
+            window.Close();
+            TestFolders.Delete(elsewhere);
+        }
+
+        static IReadOnlyList<string> Projects(MainWindow window) => [.. window.Projects.Select(p => p.Name).Order(StringComparer.Ordinal)];
+        static IReadOnlyList<string> Configurations(MainWindow window) => [.. window.Configurations.Select(c => c.Name).Order(StringComparer.Ordinal)];
+    }
+
     [AvaloniaFact]
     public void A_folders_sln_and_slnx_listing_different_projects_give_the_explorer_and_the_language_server_the_same_one()
     {
