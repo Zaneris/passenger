@@ -42,10 +42,10 @@ public abstract class SearchPopup<T> : UserControl, IAnswers<T?>
         {
             Classes = { StyleClasses.Tree },
             MaxHeight = listHeight,
-            Margin = new Thickness(0, 0, 0, 8),
+            Margin = new Thickness(0, 0, 0, Gaps.Normal),
         };
         ReusedRows.Use(results, Row);
-        empty = new TextBlock { Classes = { StyleClasses.Muted }, Margin = new Thickness(12, 0, 12, 12), IsVisible = false };
+        empty = new TextBlock { Classes = { StyleClasses.Muted }, Margin = new Thickness(Gaps.Wide, 0, Gaps.Wide, Gaps.Wide), IsVisible = false };
         ListKeys.Act(results, new ListActs { Open = Choose });
         results.SelectionChanged += (_, _) => ChoiceMoved();
         query.TextChanged += (_, _) => QueryChanged();
@@ -59,7 +59,7 @@ public abstract class SearchPopup<T> : UserControl, IAnswers<T?>
             heading.Children.Add(this.option);
         }
         heading.Children.Add(this.title);
-        StackPanel top = new() { Margin = new Thickness(12, 10, 12, 8), Spacing = 8, Children = { heading, query } };
+        StackPanel top = new() { Margin = new Thickness(Gaps.Wide, Gaps.Wide, Gaps.Wide, Gaps.Normal), Spacing = Gaps.Normal, Children = { heading, query } };
         DockPanel.SetDock(top, Dock.Top);
         DockPanel.SetDock(empty, Dock.Top);
         Content = new Border { Classes = { StyleClasses.Popup }, Child = new DockPanel { Children = { top, empty, results } } };

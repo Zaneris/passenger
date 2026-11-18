@@ -37,11 +37,11 @@ public sealed class ActionPopup : SearchPopup<IdeAction>
     protected override Control Row()
     {
         TextBlock title = new() { VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
-        TextBlock group = new() { FontSize = 12, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(10, 0, 0, 0) };
+        TextBlock group = new() { FontSize = 12, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(Gaps.Wide, 0, 0, 0) };
         group.Classes.Add(StyleClasses.Muted);
-        TextBlock keys = new() { FontSize = 12, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(10, 0, 4, 0) };
+        TextBlock keys = new() { FontSize = 12, VerticalAlignment = VerticalAlignment.Center, Margin = ListRow.Detail };
         keys.Classes.Add(StyleClasses.Muted);
-        DockPanel row = new() { Height = ListRow.Height, Margin = new Thickness(4, 0) };
+        DockPanel row = new() { Height = ListRow.Height, Margin = ListRow.Inset };
         DockPanel.SetDock(keys, Dock.Right);
         row.Children.Add(keys);
         row.Children.Add(new StackPanel

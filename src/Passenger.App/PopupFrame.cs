@@ -21,6 +21,14 @@ public static class PopupFrame
     /// <summary>A search with a preview or a list beside its details (Find in Files, Breakpoints).</summary>
     public const double Widest = 860;
 
+    /// <summary>The room round what a popup holds inside its frame, every one's the same (a list popup's rows reach its
+    /// sides: <see cref="ListRow.PopupList"/>).</summary>
+    public static readonly Thickness Inset = new(Gaps.Wide);
+
+    /// <summary>A card's room (hover, Parameter Info): a popup's at its sides, less above and below, so a card over the
+    /// code covers as little of it as it can.</summary>
+    public static readonly Thickness CardInset = new(Gaps.Wide, Gaps.Normal);
+
     /// <summary>Every width a popup may have.</summary>
     public static IReadOnlyList<double> Widths { get; } = [Narrow, Medium, Wide, Widest];
 
@@ -29,7 +37,7 @@ public static class PopupFrame
     public static Control Framed(Control popup) =>
         IsFrame(popup) || popup is ContentControl { Content: Control held } && IsFrame(held) ? popup
         : popup.Parent is Border made && IsFrame(made) ? made
-        : new Border { Classes = { StyleClasses.Popup }, Padding = new Thickness(12, 10), Child = popup };
+        : new Border { Classes = { StyleClasses.Popup }, Padding = Inset, Child = popup };
 
     /// <summary>The frame a popup shows in, as <see cref="Framed"/> has it shown: itself, its content, or what holds it.</summary>
     public static Border? FrameOf(Control popup) =>

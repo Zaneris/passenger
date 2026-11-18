@@ -114,15 +114,15 @@ public sealed class SymbolPopup : SearchPopup<SymbolRow>
     /// is handed: its badge (a file's icon for a file), its name and type, where it is.</summary>
     public static Control ReusedRow()
     {
-        RowIcon icon = new() { Margin = new Thickness(0, 0, 8, 0), VerticalAlignment = VerticalAlignment.Center };
+        RowIcon icon = new() { Margin = new Thickness(0, 0, Gaps.Small, 0), VerticalAlignment = VerticalAlignment.Center };
         TextBlock letter = BadgeLetter();
         Border badge = BadgeOf(letter);
-        badge.Margin = new Thickness(0, 0, 8, 0);
+        badge.Margin = new Thickness(0, 0, Gaps.Small, 0);
         TextBlock where = new()
         {
             [DockPanel.DockProperty] = Dock.Right,
             FontSize = 12,
-            Margin = new Thickness(12, 0, 8, 0),
+            Margin = ListRow.Detail,
             TextTrimming = TextTrimming.CharacterEllipsis,
             MaxWidth = 260,
             VerticalAlignment = VerticalAlignment.Center,
@@ -162,8 +162,8 @@ public sealed class SymbolPopup : SearchPopup<SymbolRow>
             name.Text = symbol.Name;
             detail.Text = symbol.Detail ?? string.Empty;
             detail.Foreground = InfoCard.Brush(TokenKeys.TextMuted);
-            detail.Margin = new Thickness(symbol.Detail?.StartsWith(':') == true ? 0 : 8, 0, 0, 0);
-            row.Margin = new Thickness(symbol.Depth * 16, 0, 0, 0);
+            detail.Margin = new Thickness(symbol.Detail?.StartsWith(':') == true ? 0 : Gaps.Normal, 0, 0, 0);
+            row.Margin = new Thickness(symbol.Depth * Gaps.Indent, 0, 0, 0);
         });
     }
 

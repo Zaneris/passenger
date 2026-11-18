@@ -33,7 +33,7 @@ public sealed class NamePopup : UserControl, IAnswers<bool>
         Width = PopupFrame.Narrow;
         name = new TextBox { Classes = { StyleClasses.Search }, Text = initial };
         problem = new TextBlock { Classes = { StyleClasses.Muted }, FontSize = 12, IsVisible = false, TextWrapping = TextWrapping.Wrap };
-        StackPanel body = new() { Spacing = 8, Children = { new TextBlock { Classes = { StyleClasses.PopupTitle }, Text = title }, name } };
+        StackPanel body = new() { Spacing = Gaps.Normal, Children = { new TextBlock { Classes = { StyleClasses.PopupTitle }, Text = title }, name } };
         if (option is { } asked)
         {
             this.option = new CheckBox { Content = asked.Text, IsChecked = asked.On, Focusable = false, FontSize = 12, MinHeight = 0 };
@@ -51,9 +51,9 @@ public sealed class NamePopup : UserControl, IAnswers<bool>
                 ItemsSource = kinds.Select(k => new StackPanel
                 {
                     Orientation = Orientation.Horizontal,
-                    Spacing = 8,
+                    Spacing = Gaps.Normal,
                     Height = ListRow.Height,
-                    Margin = new Thickness(4, 0),
+                    Margin = ListRow.Inset,
                     Children = { k.Icon, new TextBlock { Text = k.Name, VerticalAlignment = VerticalAlignment.Center } },
                 }).ToList(),
                 SelectedIndex = 0,
@@ -65,7 +65,7 @@ public sealed class NamePopup : UserControl, IAnswers<bool>
         Content = new Border
         {
             Classes = { StyleClasses.Popup },
-            Padding = new Thickness(12, 10),
+            Padding = PopupFrame.Inset,
             Child = body,
         };
         name.AddHandler(KeyDownEvent, OnKeyDown, RoutingStrategies.Tunnel);

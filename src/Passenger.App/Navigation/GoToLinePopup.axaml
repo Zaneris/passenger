@@ -3,8 +3,8 @@
              xmlns:app="using:Passenger.App"
              x:Class="Passenger.App.Navigation.GoToLinePopup"
              Width="{x:Static app:PopupFrame.Narrow}">
-    <Border Classes="popup" Padding="12,10">
-        <StackPanel Spacing="8">
+    <Border Classes="popup" Padding="{x:Static app:PopupFrame.Inset}">
+        <StackPanel Spacing="{x:Static app:Gaps.Normal}">
             <TextBlock Classes="popupTitle" Text="Go to Line:Column" />
             <TextBox Name="Query" Classes="search" />
             <TextBlock Name="Problem" Classes="muted" FontSize="12" IsVisible="False" />

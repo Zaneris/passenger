@@ -25,7 +25,7 @@ internal sealed class InfoCard : Border, IHoverCard, IHeldToEditor, IHeardPopup
     /// <summary>The most rows of a value the card shows before it scrolls.</summary>
     private const int MostRows = 16;
 
-    private readonly StackPanel parts = new() { Spacing = 6 };
+    private readonly StackPanel parts = new() { Spacing = Gaps.Small };
 
     /// <summary>The width a card of values has taken: it only grows while it shows them, so a row closed never narrows it
     /// under the pointer.</summary>
@@ -38,7 +38,7 @@ internal sealed class InfoCard : Border, IHoverCard, IHeldToEditor, IHeardPopup
     {
         Called = called;
         Classes.Add(StyleClasses.Popup);
-        Padding = new Thickness(10, 8);
+        Padding = PopupFrame.CardInset;
         MaxWidth = WordsWidth;
         Child = parts;
         IsHitTestVisible = false;
@@ -164,7 +164,7 @@ internal sealed class InfoCard : Border, IHoverCard, IHeldToEditor, IHeardPopup
                 parts.Children.Add(new StackPanel
                 {
                     Orientation = Orientation.Horizontal,
-                    Spacing = 6,
+                    Spacing = Gaps.Small,
                     Children = { play, new TextBlock { Text = preview.Named, FontSize = 12.5, VerticalAlignment = VerticalAlignment.Center, Foreground = Brush(TokenKeys.TextMuted) } },
                 });
                 Usable = true;
@@ -307,7 +307,7 @@ internal sealed class CompletionPopup : Border, IHeardPopup
         Classes.Add(StyleClasses.Popup);
         MinWidth = LeastWidth;
         MaxWidth = MostWidth;
-        Padding = new Thickness(0, 4);
+        Padding = ListRow.PopupList;
         // Its places stand in a plain panel, which lets go of none it hides; its own scrolling never moves them.
         List = new ListBox
         {
@@ -553,7 +553,7 @@ internal sealed class CompletionRowView : DockPanel
             Width = 16,
             Height = 16,
             Classes = { StyleClasses.KindBadge },
-            Margin = new Thickness(0, 0, 8, 0),
+            Margin = new Thickness(0, 0, Gaps.Normal, 0),
             VerticalAlignment = VerticalAlignment.Center,
             Child = letter,
         };
@@ -570,7 +570,7 @@ internal sealed class CompletionRowView : DockPanel
         {
             Foreground = InfoCard.Brush(TokenKeys.TextMuted),
             FontSize = 12,
-            Margin = new Thickness(12, 0, 4, 0),
+            Margin = ListRow.Detail,
             TextTrimming = TextTrimming.CharacterEllipsis,
             MaxWidth = 200,
             HorizontalAlignment = HorizontalAlignment.Right,
@@ -623,7 +623,7 @@ internal sealed class ChoicePopup : Border, IHeardPopup
         Classes.Add(StyleClasses.Popup);
         MinWidth = 320;
         MaxWidth = 760;
-        Padding = new Thickness(0, 6);
+        Padding = ListRow.PopupList;
         list = new ListBox
         {
             Classes = { StyleClasses.Tree },
@@ -636,10 +636,10 @@ internal sealed class ChoicePopup : Border, IHeardPopup
         ReusedRows.Use(list, () => ChoiceRow(numbered));
         Child = new StackPanel
         {
-            Spacing = 4,
+            Spacing = Gaps.Tight,
             Children =
             {
-                new TextBlock { Text = title, Classes = { StyleClasses.PopupTitle }, Margin = new Thickness(12, 2, 12, 2) },
+                new TextBlock { Text = title, Classes = { StyleClasses.PopupTitle }, Margin = new Thickness(Gaps.Wide, Gaps.Hair) },
                 list,
             },
         };
@@ -685,7 +685,7 @@ internal sealed class ChoicePopup : Border, IHeardPopup
         TextBlock digit = new TextBlock { Width = 10, IsVisible = numbered, VerticalAlignment = VerticalAlignment.Center }.InCodeFont();
         TextBlock text = new() { VerticalAlignment = VerticalAlignment.Center };
         TextBlock detail = new() { FontSize = 12, TextTrimming = TextTrimming.CharacterEllipsis, MaxWidth = 460, VerticalAlignment = VerticalAlignment.Center };
-        StackPanel row = new() { Orientation = Orientation.Horizontal, Spacing = 10, Height = ListRow.Height, Children = { digit, text, detail } };
+        StackPanel row = new() { Orientation = Orientation.Horizontal, Spacing = Gaps.Normal, Height = ListRow.Height, Children = { digit, text, detail } };
         AutomationProperties.SetLabeledBy(row, text);
         string? detailFont = null;
         return row.Showing<Choice>(choice =>
@@ -733,13 +733,13 @@ internal sealed class RenameBox : Border, IHeardPopup
     {
         Called = caption;
         Classes.Add(StyleClasses.Popup);
-        Padding = new Thickness(8, 6);
+        Padding = new Thickness(Gaps.Normal, Gaps.Small);
         name = new TextBox { Text = current, Classes = { StyleClasses.Search }, MinWidth = 220 }.InCodeFont();
         TextBlock captioned = new() { Text = caption, Classes = { StyleClasses.Muted }, FontSize = 11 };
         AutomationProperties.SetLabeledBy(name, captioned);
         body = new StackPanel
         {
-            Spacing = 4,
+            Spacing = Gaps.Tight,
             Children =
             {
                 captioned,

@@ -165,7 +165,7 @@ public sealed class PopupHost
     }
 
     /// <summary>The least room between a popup's frame and the edge of the window it is over.</summary>
-    private const double Gap = 8;
+    private const double Gap = Gaps.Normal;
 
     /// <summary>A layer's popup fitted again to the window it is over, resized.</summary>
     private static void Refit(Panel layer, ContentControl host)

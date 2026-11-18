@@ -62,12 +62,12 @@ public sealed class UsagesPopup : SearchPopup<Usage>
     /// there at the right, muted.</summary>
     protected override Control Row()
     {
-        RowIcon icon = new() { Width = 14, Height = 14, Margin = new Thickness(0, 0, 6, 0), VerticalAlignment = VerticalAlignment.Center };
-        TextBlock place = new() { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 10, 0) };
+        RowIcon icon = new() { Width = 14, Height = 14, Margin = new Thickness(0, 0, Gaps.Small, 0), VerticalAlignment = VerticalAlignment.Center };
+        TextBlock place = new() { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, Gaps.Wide, 0) };
         TextBlock code = new TextBlock { VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis }.InCodeFont();
-        TextBlock kind = new() { FontSize = 12, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(10, 0, 4, 0) };
+        TextBlock kind = new() { FontSize = 12, VerticalAlignment = VerticalAlignment.Center, Margin = ListRow.Detail };
         kind.Classes.Add(StyleClasses.Muted);
-        DockPanel row = new() { Height = ListRow.Height, Margin = new Thickness(4, 0) };
+        DockPanel row = new() { Height = ListRow.Height, Margin = ListRow.Inset };
         DockPanel.SetDock(icon, Dock.Left);
         DockPanel.SetDock(place, Dock.Left);
         DockPanel.SetDock(kind, Dock.Right);

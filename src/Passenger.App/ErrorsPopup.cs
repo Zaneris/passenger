@@ -55,10 +55,10 @@ public sealed class ErrorsPopup : UserControl
         Content = new Border
         {
             Classes = { StyleClasses.Popup },
-            Padding = new Thickness(14, 12),
+            Padding = PopupFrame.Inset,
             Child = new StackPanel
             {
-                Spacing = 10,
+                Spacing = Gaps.Wide,
                 Children =
                 {
                     new TextBlock { Classes = { StyleClasses.PopupTitle }, Text = "IDE Internal Errors" },
@@ -77,7 +77,7 @@ public sealed class ErrorsPopup : UserControl
                     {
                         Orientation = Orientation.Horizontal,
                         HorizontalAlignment = HorizontalAlignment.Right,
-                        Spacing = 8,
+                        Spacing = Gaps.Normal,
                         Children = { log, clear, close },
                     },
                 },
@@ -94,7 +94,7 @@ public sealed class ErrorsPopup : UserControl
         TextBlock count = new()
         {
             Classes = { StyleClasses.Muted },
-            Margin = new Thickness(12, 0, 0, 0),
+            Margin = new Thickness(Gaps.Wide, 0, 0, 0),
             VerticalAlignment = VerticalAlignment.Center,
             [DockPanel.DockProperty] = Dock.Right,
         };

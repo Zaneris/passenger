@@ -84,8 +84,8 @@ public sealed class FindInFilesPopup : UserControl, IAnswers<SearchMatch?>
         matchCase = Option(OptionGlyph(IconKeys.MatchCase), "Match case", "Alt+C");
         words = Option(OptionGlyph(IconKeys.WholeWord), "Words", "Alt+O");
         regex = Option(new TextBlock { Text = ".*", FontWeight = FontWeight.Bold, FontSize = 12 }.InCodeFont(), "Regex", "Alt+X");
-        DockPanel find = new() { Margin = new Thickness(10, 0, 10, 6) };
-        StackPanel toggles = new() { Orientation = Orientation.Horizontal, Spacing = 2, Margin = new Thickness(6, 0, 0, 0), Children = { matchCase, words, regex } };
+        DockPanel find = new() { Margin = new Thickness(Gaps.Wide, 0, Gaps.Wide, Gaps.Small) };
+        StackPanel toggles = new() { Orientation = Orientation.Horizontal, Spacing = Gaps.Hair, Margin = new Thickness(Gaps.Small, 0, 0, 0), Children = { matchCase, words, regex } };
         DockPanel.SetDock(toggles, Dock.Right);
         find.Children.Add(toggles);
         find.Children.Add(query);
@@ -96,8 +96,8 @@ public sealed class FindInFilesPopup : UserControl, IAnswers<SearchMatch?>
         maskBox.Width = 150;
         maskBox.Text = choices.Start.Mask ?? choices.Masks.FirstOrDefault() ?? "*.cs";
         maskBox.IsEnabled = maskOn.IsChecked == true;
-        StackPanel mask = new() { Orientation = Orientation.Horizontal, Spacing = 6, Children = { maskOn, maskBox } };
-        DockPanel header = new() { Margin = new Thickness(12, 8, 10, 6) };
+        StackPanel mask = new() { Orientation = Orientation.Horizontal, Spacing = Gaps.Small, Children = { maskOn, maskBox } };
+        DockPanel header = new() { Margin = new Thickness(Gaps.Wide, Gaps.Normal, Gaps.Wide, Gaps.Small) };
         DockPanel.SetDock(mask, Dock.Right);
         header.Children.Add(mask);
         header.Children.Add(new TextBlock { Classes = { StyleClasses.PopupTitle }, Text = replace ? "Replace in Files" : "Find in Files", VerticalAlignment = VerticalAlignment.Center });
@@ -106,9 +106,9 @@ public sealed class FindInFilesPopup : UserControl, IAnswers<SearchMatch?>
         {
             replacement = new TextBox { Classes = { StyleClasses.Search }, PlaceholderText = "Replacement" };
             Editors.ReplaceBoxes.Take(replacement);
-            Button all = new() { Content = "Replace All", Classes = { StyleClasses.Primary }, Margin = new Thickness(6, 0, 0, 0) };
+            Button all = new() { Content = "Replace All", Classes = { StyleClasses.Primary }, Margin = new Thickness(Gaps.Small, 0, 0, 0) };
             all.Click += (_, _) => RequestReplace();
-            DockPanel row = new() { Margin = new Thickness(10, 0, 10, 6) };
+            DockPanel row = new() { Margin = new Thickness(Gaps.Wide, 0, Gaps.Wide, Gaps.Small) };
             DockPanel.SetDock(all, Dock.Right);
             row.Children.Add(all);
             row.Children.Add(replacement);
@@ -127,7 +127,7 @@ public sealed class FindInFilesPopup : UserControl, IAnswers<SearchMatch?>
         recursive = Option(Glyph(IconKeys.Structure), "Recursively", "Alt+Y");
         recursive.IsChecked = choices.Start.Recursive;
         Button browse = ToolButtons.Of(IconKeys.FolderOpen, "Choose a directory", () => IdeErrors.Observe(BrowseAsync()));
-        browse.Margin = new Thickness(4, 0, 2, 0);
+        browse.Margin = new Thickness(Gaps.Tight, 0, Gaps.Hair, 0);
         DockPanel directory = new() { Children = { recursive, browse, directoryBox } };
         DockPanel.SetDock(recursive, Dock.Right);
         DockPanel.SetDock(browse, Dock.Right);
@@ -137,7 +137,7 @@ public sealed class FindInFilesPopup : UserControl, IAnswers<SearchMatch?>
         details[SearchScopeKind.Project] = projectBox;
         details[SearchScopeKind.Directory] = directory;
         details[SearchScopeKind.Scope] = scopeBox;
-        StackPanel kinds = new() { Orientation = Orientation.Horizontal, Spacing = 2, Margin = new Thickness(0, 0, 8, 0) };
+        StackPanel kinds = new() { Orientation = Orientation.Horizontal, Spacing = Gaps.Hair, Margin = new Thickness(0, 0, Gaps.Normal, 0) };
         foreach ((SearchScopeKind each, string name, Key key) in Kinds)
         {
             ToggleButton tab = new() { Classes = { StyleClasses.Segment }, Content = name, FontSize = 12 };
@@ -151,7 +151,7 @@ public sealed class FindInFilesPopup : UserControl, IAnswers<SearchMatch?>
         {
             shown.Children.Add(detail);
         }
-        DockPanel scope = new() { Margin = new Thickness(10, 0, 10, 6), Children = { kinds, shown } };
+        DockPanel scope = new() { Margin = new Thickness(Gaps.Wide, 0, Gaps.Wide, Gaps.Small), Children = { kinds, shown } };
         DockPanel.SetDock(kinds, Dock.Left);
         top.Children.Add(scope);
         Show(choices.Start.Kind);
@@ -161,7 +161,7 @@ public sealed class FindInFilesPopup : UserControl, IAnswers<SearchMatch?>
         ToolTip.SetTip(FindWindow, $"Open in Find Window ({(OperatingSystem.IsMacOS() ? "⌘↩" : "Ctrl+Enter")})");
         ToolTip.SetShowOnDisabled(FindWindow, true);
         FindWindow.Click += (_, _) => KeepInFindWindow();
-        top.Children.Add(new DockPanel { Margin = new Thickness(12, 0, 12, 6), Children = { FindWindow, status } });
+        top.Children.Add(new DockPanel { Margin = new Thickness(Gaps.Wide, 0, Gaps.Wide, Gaps.Small), Children = { FindWindow, status } });
         results = new ListBox
         {
             Classes = { StyleClasses.Tree },
@@ -178,7 +178,7 @@ public sealed class FindInFilesPopup : UserControl, IAnswers<SearchMatch?>
         ]);
         preview = new CodeEditor { IsReadOnly = true, ReadOnlyWhy = Refusals.PreviewReadOnly, ShowErrorStripe = false, Height = PreviewHeight, Focusable = false, Ligatures = ligatures };
         // Clear of the frame's rounded foot, which the editor's square corners would cover.
-        Border previewFrame = new() { BorderThickness = new Thickness(0, 1, 0, 0), Padding = new Thickness(0, 0, 0, 8), Child = preview };
+        Border previewFrame = new() { BorderThickness = Hairlines.Above, Padding = new Thickness(0, 0, 0, Gaps.Normal), Child = preview };
         previewFrame.Bind(Border.BorderBrushProperty, previewFrame.GetResourceObservable(TokenKeys.Divider));
         Content = new Border
         {
@@ -632,9 +632,9 @@ public sealed class FindInFilesPopup : UserControl, IAnswers<SearchMatch?>
             FontFeatures = CSharp.Fonts.Features(ligatures),
             Inlines = [],
         }.InCodeFont();
-        TextBlock where = new() { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(12, 0, 4, 0), FontSize = 12 };
+        TextBlock where = new() { VerticalAlignment = VerticalAlignment.Center, Margin = ListRow.Detail, FontSize = 12 };
         where.Classes.Add(StyleClasses.Muted);
-        DockPanel row = new() { Height = ListRow.Height, Margin = new Thickness(8, 0) };
+        DockPanel row = new() { Height = ListRow.Height, Margin = ListRow.Inset };
         DockPanel.SetDock(where, Dock.Right);
         row.Children.Add(where);
         row.Children.Add(text);

@@ -50,16 +50,16 @@ public sealed class UnstashPopup : UserControl
             {
                 Children =
                 {
-                    new TextBlock { Classes = { StyleClasses.PopupTitle }, Text = "Unstash Changes", Margin = new Thickness(12, 10, 12, 6) },
+                    new TextBlock { Classes = { StyleClasses.PopupTitle }, Text = "Unstash Changes", Margin = new Thickness(Gaps.Wide, Gaps.Wide, Gaps.Wide, Gaps.Small) },
                     stashes.Count == 0
-                        ? new TextBlock { Classes = { StyleClasses.Muted }, Text = "Nothing is stashed", Margin = new Thickness(12, 0, 12, 10) }
+                        ? new TextBlock { Classes = { StyleClasses.Muted }, Text = "Nothing is stashed", Margin = new Thickness(Gaps.Wide, 0, Gaps.Wide, Gaps.Wide) }
                         : list,
                     new StackPanel
                     {
                         Orientation = Orientation.Horizontal,
                         HorizontalAlignment = HorizontalAlignment.Right,
-                        Spacing = 6,
-                        Margin = new Thickness(12, 8, 12, 10),
+                        Spacing = Gaps.Small,
+                        Margin = new Thickness(Gaps.Wide, Gaps.Normal, Gaps.Wide, Gaps.Wide),
                         IsVisible = stashes.Count > 0,
                         Children = { remove, apply, pop },
                     },
@@ -176,10 +176,10 @@ public sealed class UnstashPopup : UserControl
     /// <summary>A stash's row: its message, and when it was made at the right, muted.</summary>
     private static Control Row()
     {
-        TextBlock when = new() { VerticalAlignment = VerticalAlignment.Center, FontSize = 12, Margin = new Thickness(12, 0, 4, 0) };
+        TextBlock when = new() { VerticalAlignment = VerticalAlignment.Center, FontSize = 12, Margin = ListRow.Detail };
         when.Classes.Add(StyleClasses.Muted);
         TextBlock message = new() { VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
-        DockPanel row = new() { Height = ListRow.Height, Margin = new Thickness(8, 0) };
+        DockPanel row = new() { Height = ListRow.Height, Margin = ListRow.Inset };
         DockPanel.SetDock(when, Dock.Right);
         row.Children.Add(when);
         row.Children.Add(message);

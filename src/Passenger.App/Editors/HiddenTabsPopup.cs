@@ -41,7 +41,7 @@ public sealed class HiddenTabsPopup : SearchPopup<HiddenTab>
         RowIcon icon = new() { VerticalAlignment = VerticalAlignment.Center };
         TextBlock name = new() { VerticalAlignment = VerticalAlignment.Center };
         TextBlock after = MutedText.Of(string.Empty);
-        StackPanel row = new() { Orientation = Orientation.Horizontal, Spacing = 8, Height = ListRow.Height, Children = { icon, name, after } };
+        StackPanel row = new() { Orientation = Orientation.Horizontal, Spacing = Gaps.Normal, Height = ListRow.Height, Children = { icon, name, after } };
         return row.Showing<T>(item => show(item, icon, name, after));
     }
 }

@@ -57,7 +57,7 @@ public sealed partial class GoToFilePopup : SearchPopup<FileHit>
         RowIcon icon = new() { VerticalAlignment = VerticalAlignment.Center };
         TextBlock name = new() { VerticalAlignment = VerticalAlignment.Center };
         TextBlock folder = MutedText.Of(string.Empty);
-        StackPanel row = new() { Orientation = Orientation.Horizontal, Spacing = 8, Height = ListRow.Height, Children = { icon, name, folder } };
+        StackPanel row = new() { Orientation = Orientation.Horizontal, Spacing = Gaps.Normal, Height = ListRow.Height, Children = { icon, name, folder } };
         return row.Showing<FileHit>(hit =>
         {
             icon.Data = hit.Icon;

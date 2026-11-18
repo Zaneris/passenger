@@ -94,14 +94,14 @@ public sealed class RecentLocationsPopup : SearchPopup<RecentLocation>
         {
             Width = 14,
             Height = 14,
-            Margin = new Thickness(0, 0, 6, 0),
+            Margin = new Thickness(0, 0, Gaps.Small, 0),
             VerticalAlignment = VerticalAlignment.Center,
         };
         TextBlock name = new() { FontWeight = FontWeight.SemiBold, VerticalAlignment = VerticalAlignment.Center };
         TextBlock member = new()
         {
             FontSize = 12,
-            Margin = new Thickness(10, 0, 0, 0),
+            Margin = new Thickness(Gaps.Wide, 0, 0, 0),
             VerticalAlignment = VerticalAlignment.Center,
             TextTrimming = TextTrimming.CharacterEllipsis,
         };
@@ -130,18 +130,18 @@ public sealed class RecentLocationsPopup : SearchPopup<RecentLocation>
             LineHeight = code.LineHeight,
             TextAlignment = TextAlignment.Right,
             MinWidth = 28,
-            Margin = new Thickness(8, 0, 10, 0),
+            Margin = new Thickness(Gaps.Normal, 0, Gaps.Wide, 0),
         };
         numbers.Bind(TextBlock.ForegroundProperty, numbers.GetResourceObservable(TokenKeys.Editor_LineNumber));
         DockPanel fragment = new();
         DockPanel.SetDock(numbers, Dock.Left);
         fragment.Children.Add(numbers);
         fragment.Children.Add(code);
-        Border frame = new() { Child = fragment, Classes = { StyleClasses.Box }, ClipToBounds = true, Padding = new Thickness(0, 4) };
+        Border frame = new() { Child = fragment, Classes = { StyleClasses.Box }, ClipToBounds = true, Padding = new Thickness(0, Gaps.Tight) };
         frame.Bind(Border.BackgroundProperty, frame.GetResourceObservable(TokenKeys.Editor_Background));
         // A row the list let go of lets go of the colours it was shown with, whose changes would otherwise still reach it.
         code.DetachedFromVisualTree += (_, _) => code.Highlighter = null;
-        StackPanel row = new() { Margin = new Thickness(0, 2, 0, 6), Children = { header, frame } };
+        StackPanel row = new() { Margin = new Thickness(0, Gaps.Hair, 0, Gaps.Small), Children = { header, frame } };
         return row.Showing<RecentLocation>(place =>
         {
             icon.Data = Explorer.FileIcons.ForFile(place.Place.Path);

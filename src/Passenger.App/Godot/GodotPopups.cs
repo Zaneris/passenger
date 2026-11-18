@@ -25,7 +25,7 @@ public sealed class GodotResourcePicker : Border
         this.folder = folder;
         Classes.Add(StyleClasses.Popup);
         Width = PopupFrame.Narrow;
-        Padding = new Thickness(8);
+        Padding = PopupFrame.Inset;
         filter = new TextBox { Classes = { StyleClasses.Search }, PlaceholderText = classes.Count > 0 ? $"Filter {string.Join(", ", classes)}" : "Filter resources" };
         list = new ListBox { Classes = { StyleClasses.Tree }, Height = ListRow.Height * 12 };
         ReusedRows.Use(list, Row);
@@ -42,7 +42,7 @@ public sealed class GodotResourcePicker : Border
         AddHandler(KeyDownEvent, OnKeyDown, RoutingStrategies.Tunnel);
         Child = new StackPanel
         {
-            Spacing = 6,
+            Spacing = Gaps.Small,
             Children =
             {
                 new TextBlock { Classes = { StyleClasses.PopupTitle }, Text = "Choose a Resource" },
@@ -114,10 +114,10 @@ public sealed class GodotResourcePicker : Border
     /// <summary>A resource's row: its thumbnail, its file's name, and its folder muted after it.</summary>
     private Control Row()
     {
-        Image thumbnail = new() { Width = 18, Height = 18, Stretch = Stretch.Uniform, Margin = new Thickness(0, 0, 6, 0) };
+        Image thumbnail = new() { Width = 18, Height = 18, Stretch = Stretch.Uniform, Margin = new Thickness(0, 0, Gaps.Small, 0) };
         TextBlock name = new() { VerticalAlignment = VerticalAlignment.Center };
-        TextBlock where = new() { Classes = { StyleClasses.Muted }, FontSize = 11, Margin = new Thickness(6, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
-        StackPanel line = new() { Orientation = Orientation.Horizontal, Height = ListRow.Height, Margin = new Thickness(4, 0), Children = { thumbnail, name, where } };
+        TextBlock where = new() { Classes = { StyleClasses.Muted }, FontSize = 11, Margin = new Thickness(Gaps.Small, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
+        StackPanel line = new() { Orientation = Orientation.Horizontal, Height = ListRow.Height, Margin = ListRow.Inset, Children = { thumbnail, name, where } };
         return line.Showing<string>(path =>
         {
             name.Text = path.Split('/')[^1];
@@ -147,12 +147,12 @@ public sealed class GodotKeepPreview : Border
     {
         Classes.Add(StyleClasses.Popup);
         Width = PopupFrame.Medium;
-        Padding = new Thickness(12, 10);
-        StackPanel page = new() { Spacing = 8 };
+        Padding = PopupFrame.Inset;
+        StackPanel page = new() { Spacing = Gaps.Normal };
         page.Children.Add(new TextBlock { Classes = { StyleClasses.PopupTitle }, Text = title });
         foreach (GodotKept one in kept)
         {
-            StackPanel block = new() { Spacing = 2 };
+            StackPanel block = new() { Spacing = Gaps.Hair };
             block.Children.Add(new TextBlock { Classes = { StyleClasses.Muted }, FontSize = 11, Text = $"{Path.GetFileName(one.File)}:{one.Line + 1}{(one.Before is null ? ", a line added" : string.Empty)}" });
             if (one.Before is { } before)
             {
@@ -216,7 +216,7 @@ public sealed class GodotUnkeptPanel : DockPanel
 
     public GodotUnkeptPanel(string game, GodotTuning of, Action<GodotTuned, Control> keep, Action<Control> keepAll, Action discard)
     {
-        said = new TextBlock { TextWrapping = TextWrapping.Wrap, FontSize = 12, Margin = new Thickness(10, 8, 10, 4) };
+        said = new TextBlock { TextWrapping = TextWrapping.Wrap, FontSize = 12, Margin = new Thickness(Gaps.Wide, Gaps.Normal, Gaps.Wide, Gaps.Tight) };
         SetDock(said, Dock.Top);
         list = new ListBox { Classes = { StyleClasses.Tree } };
         ReusedRows.Use(list, () => Row(keep));
@@ -226,7 +226,7 @@ public sealed class GodotUnkeptPanel : DockPanel
         ToolTip.SetTip(drop, "Let go of these values, writing none of them");
         drop.Click += (_, _) => discard();
         StackPanel answers = DialogFooter.Listed(drop, all);
-        answers.Margin = new Thickness(10, 6);
+        answers.Margin = new Thickness(Gaps.Wide, Gaps.Small);
         answers.HorizontalAlignment = HorizontalAlignment.Right;
         SetDock(answers, Dock.Bottom);
         Children.Add(said);
@@ -260,11 +260,11 @@ public sealed class GodotUnkeptPanel : DockPanel
     private static Control Row(Action<GodotTuned, Control> keep)
     {
         TextBlock name = new() { VerticalAlignment = VerticalAlignment.Center };
-        TextBlock values = new TextBlock { Classes = { StyleClasses.Muted }, FontSize = 11, Margin = new Thickness(8, 0, 8, 0), VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis }.InCodeFont();
+        TextBlock values = new TextBlock { Classes = { StyleClasses.Muted }, FontSize = 11, Margin = new Thickness(Gaps.Normal, 0), VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis }.InCodeFont();
         Button link = new() { Classes = { StyleClasses.Link }, Content = "Keep…", FontSize = 12, VerticalAlignment = VerticalAlignment.Center };
         DockPanel.SetDock(link, Dock.Right);
         DockPanel.SetDock(name, Dock.Left);
-        DockPanel line = new() { Height = ListRow.Height, Margin = new Thickness(10, 0), Children = { link, name, values } };
+        DockPanel line = new() { Height = ListRow.Height, Margin = ListRow.Inset, Children = { link, name, values } };
         link.Click += (_, _) =>
         {
             if (line.DataContext is GodotTuned tuned)

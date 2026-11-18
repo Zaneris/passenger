@@ -42,7 +42,7 @@ public sealed class FilterMenu
     /// <summary>The button put at the end of a list's search field, inside it.</summary>
     public void Inside(TextBox search)
     {
-        Button.Margin = new Thickness(0, 0, 2, 0);
+        Button.Margin = new Thickness(0, 0, Gaps.Hair, 0);
         Button.Width = Button.Height = 24;
         search.InnerRightContent = Button;
     }

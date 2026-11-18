@@ -36,7 +36,7 @@ public sealed class GodotPinPopup : UserControl
         };
         list = new ListBox { Classes = { StyleClasses.Tree }, Height = ListRow.Height * 6, ItemsSource = pin.Occurrences.Reverse().ToList() };
         ReusedRows.Use(list, Row);
-        stack = new StackPanel { Spacing = 1 };
+        stack = new StackPanel();
         list.SelectionChanged += (_, _) => ShowStack(list.SelectedItem as GodotOccurrence);
         Button clear = new() { Content = "Clear Pin" };
         clear.Click += (_, _) => Cleared?.Invoke(this, false);
@@ -49,10 +49,10 @@ public sealed class GodotPinPopup : UserControl
         Content = new Border
         {
             Classes = { StyleClasses.Popup },
-            Padding = new Thickness(14, 12),
+            Padding = PopupFrame.Inset,
             Child = new StackPanel
             {
-                Spacing = 8,
+                Spacing = Gaps.Normal,
                 Children =
                 {
                     title,
@@ -128,7 +128,7 @@ public sealed class GodotPinPopup : UserControl
         TextBlock when = new TextBlock { Classes = { StyleClasses.Muted }, FontSize = 11.5, Width = 80, VerticalAlignment = VerticalAlignment.Center }.InCodeFont();
         TextBlock said = new() { VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
         DockPanel.SetDock(when, Dock.Left);
-        DockPanel line = new() { Height = ListRow.Height, Margin = new Thickness(8, 0), Children = { when, said } };
+        DockPanel line = new() { Height = ListRow.Height, Margin = ListRow.Inset, Children = { when, said } };
         return line.Showing<GodotOccurrence>(occurrence =>
         {
             when.Text = Time(occurrence.Milliseconds);

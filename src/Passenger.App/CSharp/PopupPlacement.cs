@@ -199,7 +199,7 @@ internal sealed class PopupPlacement
     private const double RightEdge = 8;
 
     /// <summary>How far a card sits from the popup it describes, and from the editor's edge.</summary>
-    private const double Gap = 4;
+    private const double Gap = Gaps.Tight;
     private const double Edge = 4;
 
     /// <summary>The narrowest a card beside a popup is made, its words a few to a line; narrower, it goes over or under it.</summary>
