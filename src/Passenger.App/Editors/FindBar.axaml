@@ -1,14 +1,16 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:app="using:Passenger.App"
+             xmlns:editors="using:Passenger.App.Editors"
              x:Class="Passenger.App.Editors.FindBar">
     <!-- The find bar: across the top of the editor, the query with its toggles inside the field,
          the count and the arrows beside it, the replace row under it when replacing. On a tool window's ground, told
          from the editor under it by shade. -->
-    <Border Background="{DynamicResource Passenger.Panel}" Padding="8,6">
+    <Border Background="{DynamicResource Passenger.Panel}" Padding="{x:Static editors:FindBar.BarPadding}">
         <Grid ColumnDefinitions="Auto,*,Auto" RowDefinitions="Auto,Auto">
             <Panel Grid.Column="0" Width="380">
-                <TextBox Name="Query" Classes="search" PlaceholderText="Find" Padding="8,4,96,4" />
-                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,4,0" Spacing="1">
+                <TextBox Name="Query" Classes="search" PlaceholderText="Find" Padding="{x:Static editors:FindBar.QueryPadding}" />
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="{x:Static editors:FindBar.OptionsMargin}" Spacing="{x:Static app:Gaps.Hair}">
                     <ToggleButton Name="MatchCase" Classes="option" ToolTip.Tip="Match case" AutomationProperties.Name="Match case">
                         <PathIcon Data="{StaticResource Icon.MatchCase}" />
                     </ToggleButton>
@@ -20,8 +22,8 @@
                     </ToggleButton>
                 </StackPanel>
             </Panel>
-            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="2" Margin="10,0,0,0" VerticalAlignment="Center">
-                <TextBlock Name="Count" Classes="muted" Margin="0,0,8,0" VerticalAlignment="Center" />
+            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="{x:Static app:Gaps.Hair}" Margin="{x:Static editors:FindBar.CountRowMargin}" VerticalAlignment="Center">
+                <TextBlock Name="Count" Classes="muted" Margin="{x:Static editors:FindBar.CountMargin}" VerticalAlignment="Center" />
                 <Button Name="PreviousButton" Classes="tool" ToolTip.Tip="Previous occurrence" AutomationProperties.Name="Previous occurrence">
                     <PathIcon Data="{StaticResource Icon.ArrowUp}" />
                 </Button>
@@ -32,8 +34,8 @@
             <Button Name="CloseButton" Grid.Column="2" Classes="tool" ToolTip.Tip="Close" AutomationProperties.Name="Close" VerticalAlignment="Center">
                 <PathIcon Classes="small" Data="{StaticResource Icon.Close}" />
             </Button>
-            <StackPanel Name="ReplaceRow" Grid.Row="1" Grid.ColumnSpan="2" Orientation="Horizontal" Spacing="6" Margin="0,6,0,0" IsVisible="False">
-                <TextBox Name="ReplaceWith" Classes="search" Width="380" PlaceholderText="Replace" Padding="8,4" />
+            <StackPanel Name="ReplaceRow" Grid.Row="1" Grid.ColumnSpan="2" Orientation="Horizontal" Spacing="{x:Static app:Gaps.Small}" Margin="{x:Static editors:FindBar.ReplaceRowMargin}" IsVisible="False">
+                <TextBox Name="ReplaceWith" Classes="search" Width="380" PlaceholderText="Replace" />
                 <Button Name="ReplaceButton" Content="Replace" />
                 <Button Name="ReplaceAllButton" Content="Replace All" />
             </StackPanel>

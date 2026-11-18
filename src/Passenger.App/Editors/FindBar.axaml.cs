@@ -1,3 +1,4 @@
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
@@ -15,6 +16,26 @@ namespace Passenger.App.Editors;
 /// its cells are searched instead (read-only: replacing is the Text view's); a read-only file's replace row is greyed.</summary>
 public partial class FindBar : UserControl
 {
+    /// <summary>The bar's room round its rows.</summary>
+    public static readonly Thickness BarPadding = new(Gaps.Normal, Gaps.Small);
+
+    /// <summary>The room the query's option toggles take over its right end, and a step clear of them.</summary>
+    private const double OptionsRoom = 96;
+
+    /// <summary>The query's room: its words where every search field's start, clear at its right of the toggles over it.</summary>
+    public static readonly Thickness QueryPadding = new(SearchFields.Padding.Left, SearchFields.Padding.Top, OptionsRoom, SearchFields.Padding.Bottom);
+
+    /// <summary>The toggles a tight step in from the field's right edge.</summary>
+    public static readonly Thickness OptionsMargin = new(0, 0, Gaps.Tight, 0);
+
+    /// <summary>The count and arrows a wide step after the query, the count a normal step before the arrows.</summary>
+    public static readonly Thickness CountRowMargin = new(Gaps.Wide, 0, 0, 0);
+
+    public static readonly Thickness CountMargin = new(0, 0, Gaps.Normal, 0);
+
+    /// <summary>The replace row a small step under the query's.</summary>
+    public static readonly Thickness ReplaceRowMargin = new(0, Gaps.Small, 0, 0);
+
     private const string Searching = "Searching…";
 
     private CodeEditor? editor;

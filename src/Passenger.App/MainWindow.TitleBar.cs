@@ -74,7 +74,7 @@ public partial class MainWindow
     {
         bool fullScreen = WindowState == WindowState.FullScreen;
         WindowButtons.IsVisible = TitleBarMerged && !OperatingSystem.IsMacOS() && !fullScreen;
-        ToolbarContent.Margin = new Thickness(ShowsTrafficLights ? MacWindowButtons : 8, 0, WindowButtons.IsVisible ? 0 : 8, 0);
+        ToolbarContent.Margin = new Thickness(ShowsTrafficLights ? MacWindowButtons : Gaps.Normal, 0, WindowButtons.IsVisible ? 0 : Gaps.Normal, 0);
         bool maximized = WindowState == WindowState.Maximized;
         MaximizeGlyph.Data = Geometry.Parse(maximized ? "M0.5,2.5 H7.5 V9.5 H0.5 Z M2.5,2.5 V0.5 H9.5 V7.5 H7.5" : "M0.5,0.5 H9.5 V9.5 H0.5 Z");
         AutomationProperties.SetName(MaximizeButton, maximized ? "Restore" : "Maximize");

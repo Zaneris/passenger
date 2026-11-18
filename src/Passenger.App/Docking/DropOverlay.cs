@@ -9,8 +9,9 @@ namespace Passenger.App.Docking;
 /// and stands above the hairline dividers, which stand above the panes.</summary>
 public sealed class DropOverlay : Canvas
 {
-    private readonly Border zone = new() { BorderThickness = new Thickness(2), Classes = { StyleClasses.Box } };
-    private readonly TextBlock label = new() { FontWeight = FontWeight.SemiBold, Margin = new Thickness(10, 8) };
+    // Ringed as broad as the focus ring, which marks where the keys go as this marks where the drop would.
+    private readonly Border zone = new() { BorderThickness = new Thickness(FocusRing.RingWidth), Classes = { StyleClasses.Box } };
+    private readonly TextBlock label = new() { FontWeight = FontWeight.SemiBold, Margin = new Thickness(Gaps.Wide, Gaps.Normal) };
 
     public DropOverlay()
     {

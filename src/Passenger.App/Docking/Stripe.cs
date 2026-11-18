@@ -46,18 +46,18 @@ internal sealed class Stripe : Border
             [bottom] = Group(),
         };
         // Wide apart and drawn plainly, so the upper and lower windows read as two places, not one list.
-        gap = new Rectangle { Height = 1, Width = 22, Margin = new Thickness(0, 12) };
+        gap = new Rectangle { Height = 1, Width = 22, Margin = new Thickness(0, Gaps.Wide) };
         gap.Bind(Shape.FillProperty, gap.GetResourceObservable(TokenKeys.StripeSeparator));
         // A window too short for every button puts the last ones behind More.
         PathIcon dots = new();
         dots.Bind(PathIcon.DataProperty, dots.GetResourceObservable(IconKeys.More));
-        more = new ToggleButton { Classes = { StyleClasses.Stripe }, Content = dots, IsVisible = false, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 4, 0, 0) };
+        more = new ToggleButton { Classes = { StyleClasses.Stripe }, Content = dots, IsVisible = false, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, Gaps.Tight, 0, 0) };
         ToolButtons.Tip(more, "More Tool Windows");
         more.Click += (_, _) => ShowMore();
         StackPanel sides = new() { [DockPanel.DockProperty] = Dock.Top, Children = { groups[upper], gap, groups[lower], more } };
         groups[bottom].VerticalAlignment = VerticalAlignment.Bottom;
         groups[bottom][DockPanel.DockProperty] = Dock.Bottom;
-        Child = new Panel { Children = { new DockPanel { Margin = new Thickness(0, 6), Children = { sides, groups[bottom] } }, new ThemeBackdrop(BackgroundPlaces.Frame) } };
+        Child = new Panel { Children = { new DockPanel { Margin = new Thickness(0, Gaps.Small), Children = { sides, groups[bottom] } }, new ThemeBackdrop(BackgroundPlaces.Frame) } };
         SizeChanged += (_, _) => FitButtons();
         Classes.Add(StyleClasses.StripeBar);
         AddHandler(ContextRequestedEvent, OnContextRequested);
@@ -181,7 +181,7 @@ internal sealed class Stripe : Border
         return button;
     }
 
-    private static StackPanel Group() => new() { Spacing = 4, HorizontalAlignment = HorizontalAlignment.Center };
+    private static StackPanel Group() => new() { Spacing = Gaps.Tight, HorizontalAlignment = HorizontalAlignment.Center };
 
     /// <summary>The windows whose buttons the stripe has no room for, which More lists.</summary>
     public IReadOnlyList<ToolWindow> Overflowing => [.. cut.Select(button => buttons.First(b => b.Value == button).Key)];

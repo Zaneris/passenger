@@ -21,7 +21,7 @@ internal sealed class ToolPane : DockPanel
     private readonly ContentControl body = new();
     // What the window puts after its title (its tabs, the Explorer's view switch) narrows before the title does, down to
     // its own least, then goes whole.
-    private readonly ContentControl tools = new() { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0), [ShrinkingRow.GoesWholeProperty] = true };
+    private readonly ContentControl tools = new() { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(Gaps.Normal, 0, 0, 0), [ShrinkingRow.GoesWholeProperty] = true };
     private readonly Border header;
     private readonly ToolbarRow headerRow;
     private readonly Button expandAll;
@@ -133,8 +133,8 @@ internal sealed class ToolPane : DockPanel
         buttons = new ShrinkingRow
         {
             [DockProperty] = Dock.Right,
-            Spacing = 2,
-            Margin = new Thickness(8, 0, 6, 0),
+            Spacing = Gaps.Hair,
+            Margin = new Thickness(Gaps.Normal, 0, Gaps.Small, 0),
             VerticalAlignment = VerticalAlignment.Center,
             Children = { expandAll, collapseAll, options, dock, hide, close },
         };
@@ -177,7 +177,7 @@ internal sealed class ToolPane : DockPanel
         // Unlike a toolbar's button, it takes the keys: it lists windows to go to, as the tabs beside it do.
         hiddenTabs.Focusable = true;
         hiddenTabs.VerticalAlignment = VerticalAlignment.Center;
-        hiddenTabs.Margin = new Thickness(0, 0, 6, 0);
+        hiddenTabs.Margin = new Thickness(0, 0, Gaps.Small, 0);
         tabRow = new FittingTabs(hiddenTabs);
         tabStrip = new Border
         {
@@ -374,7 +374,7 @@ internal sealed class ToolPane : DockPanel
         RowIcon icon = new() { Width = 14, Height = 14, DataKey = window.Icon };
         TextBlock name = new() { Classes = { StyleClasses.TabName }, Text = window.Title, VerticalAlignment = VerticalAlignment.Center };
         Border tab = new() { Classes = { StyleClasses.Tab }, Tag = window.Id, Focusable = true };
-        ChosenMark.Hold(tab, new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, VerticalAlignment = VerticalAlignment.Center, Children = { icon, name } });
+        ChosenMark.Hold(tab, new StackPanel { Orientation = Orientation.Horizontal, Spacing = Gaps.Small, VerticalAlignment = VerticalAlignment.Center, Children = { icon, name } });
         Avalonia.Automation.AutomationProperties.SetName(tab, window.Title);
         Avalonia.Automation.AutomationProperties.SetControlTypeOverride(tab, Avalonia.Automation.Peers.AutomationControlType.Button);
         tab.KeyDown += (_, e) =>

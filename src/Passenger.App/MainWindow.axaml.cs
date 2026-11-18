@@ -74,6 +74,9 @@ public partial class MainWindow : IdeWindow
         status = new StatusBar(StatusMessage, StatusText, StatusIcon, StatusWorking, VimModeText, CaretButton, CaretText, IndentButton, IndentText, LanguageText, LineSeparatorButton,
             LineEndingText, EncodingButton, EncodingText, announcer);
         popups = new PopupHost(Overlay, OverlayHost, Editors, () => session.Debug.Breakpoints);
+        // A search popup (Go to File, Find Action) stands just under the toolbar and the editor tabs, as tall as the theme draws them.
+        OverlayHost.Bind(MarginProperty, OverlayHost.GetResourceObservable(TokenKeys.TabStripHeight,
+            tabs => new Thickness(0, Toolbar.Height + (tabs is double strip ? strip : 0) + Gaps.Small, 0, 0)));
         navigator = new Navigation.Navigator(new Navigation.NavigatorParts(Editors, () => session, popups, status, path => OpenFile(path), Editors.TextOf)
         {
             Declare = () => Request(AppActions.GoToDeclaration),

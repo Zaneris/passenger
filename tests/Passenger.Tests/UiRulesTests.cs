@@ -2143,16 +2143,6 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
     /// moves, and the list goes once it is empty.</summary>
     private static readonly HashSet<string> SpacingStillToMove =
     [
-        "src/Passenger.App/Docking/DockHost.cs",
-        "src/Passenger.App/Docking/DropOverlay.cs",
-        "src/Passenger.App/Docking/EdgeTabs.cs",
-        "src/Passenger.App/Docking/Stripe.cs",
-        "src/Passenger.App/Docking/ToolPane.cs",
-        "src/Passenger.App/Editors/FindBar.axaml",
-        "src/Passenger.App/Explorer/ExplorerView.axaml",
-        "src/Passenger.App/Explorer/ExplorerView.axaml.cs",
-        "src/Passenger.App/MainWindow.axaml",
-        "src/Passenger.App/MainWindow.TitleBar.cs",
         "src/Passenger.App/Theme/Shell.axaml",
         "src/Passenger.App/Welcome/FirstStartView.cs",
         "src/Passenger.App/Welcome/WelcomeView.cs",

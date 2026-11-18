@@ -1407,9 +1407,9 @@ public sealed class DockHost : Grid
         peekRoom = side ? across * most : down * most;
         (HorizontalAlignment h, VerticalAlignment v, double width, double height, Thickness edge) = window.Anchor switch
         {
-            ToolAnchor.LeftTop or ToolAnchor.LeftBottom => (HorizontalAlignment.Left, VerticalAlignment.Stretch, Math.Max(least, Math.Min(leftWidth, across * most)), double.NaN, new Thickness(0, 0, 1, 0)),
-            ToolAnchor.RightTop or ToolAnchor.RightBottom => (HorizontalAlignment.Right, VerticalAlignment.Stretch, Math.Max(least, Math.Min(rightWidth, across * most)), double.NaN, new Thickness(1, 0, 0, 0)),
-            _ => (HorizontalAlignment.Stretch, VerticalAlignment.Bottom, double.NaN, Math.Min(bottomHeight, down * most), new Thickness(0, 1, 0, 0)),
+            ToolAnchor.LeftTop or ToolAnchor.LeftBottom => (HorizontalAlignment.Left, VerticalAlignment.Stretch, Math.Max(least, Math.Min(leftWidth, across * most)), double.NaN, Hairlines.After),
+            ToolAnchor.RightTop or ToolAnchor.RightBottom => (HorizontalAlignment.Right, VerticalAlignment.Stretch, Math.Max(least, Math.Min(rightWidth, across * most)), double.NaN, Hairlines.Before),
+            _ => (HorizontalAlignment.Stretch, VerticalAlignment.Bottom, double.NaN, Math.Min(bottomHeight, down * most), Hairlines.Above),
         };
         peekFrame.HorizontalAlignment = h;
         peekFrame.VerticalAlignment = v;

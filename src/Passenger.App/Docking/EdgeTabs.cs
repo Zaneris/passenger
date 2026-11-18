@@ -37,10 +37,10 @@ internal sealed class EdgeTabs : Border
         this.down = down;
         Orientation orientation = down ? Orientation.Vertical : Orientation.Horizontal;
         // Down a side, tabs as narrow as a stripe's buttons stand apart as those do.
-        firstTabs = new StackPanel { Orientation = orientation, Spacing = down ? 4 : 0 };
-        secondTabs = new StackPanel { Orientation = orientation, Spacing = down ? 4 : 0 };
+        firstTabs = new StackPanel { Orientation = orientation, Spacing = down ? Gaps.Tight : 0 };
+        secondTabs = new StackPanel { Orientation = orientation, Spacing = down ? Gaps.Tight : 0 };
         Panel groups = down
-            ? new StackPanel { Spacing = 12, Children = { firstTabs, secondTabs } }
+            ? new StackPanel { Spacing = Gaps.Wide, Children = { firstTabs, secondTabs } }
             : new DockPanel { Children = { new Panel { [DockPanel.DockProperty] = Dock.Right, Children = { secondTabs } }, firstTabs } };
         Child = new Panel { Children = { new ThemeBackdrop(BackgroundPlaces.Frame), groups } };
         Classes.Add(StyleClasses.EdgeTabs);
@@ -106,8 +106,8 @@ internal sealed class EdgeTabs : Border
         RowIcon icon = new() { Width = 14, Height = 14, DataKey = window.Icon };
         TextBlock name = new() { Classes = { StyleClasses.TabName }, Text = window.Title, VerticalAlignment = VerticalAlignment.Center };
         Control content = down
-            ? new StackPanel { Spacing = 6, HorizontalAlignment = HorizontalAlignment.Center, Children = { icon, new LayoutTransformControl { LayoutTransform = new RotateTransform(90), Child = name } } }
-            : new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, VerticalAlignment = VerticalAlignment.Center, Children = { icon, name } };
+            ? new StackPanel { Spacing = Gaps.Small, HorizontalAlignment = HorizontalAlignment.Center, Children = { icon, new LayoutTransformControl { LayoutTransform = new RotateTransform(90), Child = name } } }
+            : new StackPanel { Orientation = Orientation.Horizontal, Spacing = Gaps.Small, VerticalAlignment = VerticalAlignment.Center, Children = { icon, name } };
         Border tab = new() { Classes = { StyleClasses.Tab }, Tag = window.Id, Focusable = true };
         ChosenMark.Hold(tab, content);
         AutomationProperties.SetName(tab, window.Title);
