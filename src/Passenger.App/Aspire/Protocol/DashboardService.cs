@@ -77,7 +77,7 @@ namespace Passenger.App.Aspire.Protocol {
             "EiUKBXZhbHVlGAMgASgLMhYuZ29vZ2xlLnByb3RvYnVmLlZhbHVlEhkKDGlz",
             "X3NlbnNpdGl2ZRgEIAEoCEgBiAEBEhYKDmlzX2hpZ2hsaWdodGVkGAUgASgI",
             "EhcKCnNvcnRfb3JkZXIYBiABKAVIAogBAUIPCg1fZGlzcGxheV9uYW1lQg8K",
-            "DV9pc19zZW5zaXRpdmVCDQoLX3NvcnRfb3JkZXIi3wYKCFJlc291cmNlEgwK",
+            "DV9pc19zZW5zaXRpdmVCDQoLX3NvcnRfb3JkZXIipwcKCFJlc291cmNlEgwK",
             "BG5hbWUYASABKAkSFQoNcmVzb3VyY2VfdHlwZRgCIAEoCRIUCgxkaXNwbGF5",
             "X25hbWUYAyABKAkSCwoDdWlkGAQgASgJEhIKBXN0YXRlGAUgASgJSACIAQES",
             "MwoKY3JlYXRlZF9hdBgGIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3Rh",
@@ -94,73 +94,76 @@ namespace Passenger.App.Aspire.Protocol {
             "dGlvbnNoaXASEQoJaXNfaGlkZGVuGBUgASgIEiMKG3N1cHBvcnRzX2RldGFp",
             "bGVkX3RlbGVtZXRyeRgWIAEoCBIWCglpY29uX25hbWUYFyABKAlIBYgBARIx",
             "CgxpY29uX3ZhcmlhbnQYGCABKA4yFi5hc3BpcmUudjEuSWNvblZhcmlhbnRI",
-            "BogBAUIICgZfc3RhdGVCDQoLX2NyZWF0ZWRfYXRCDgoMX3N0YXRlX3N0eWxl",
-            "Qg0KC19zdGFydGVkX2F0Qg0KC19zdG9wcGVkX2F0QgwKCl9pY29uX25hbWVC",
-            "DwoNX2ljb25fdmFyaWFudEoECAgQCUoECAkQCkoECAoQC0oECBAQESJuChNJ",
-            "bml0aWFsUmVzb3VyY2VEYXRhEiYKCXJlc291cmNlcxgBIAMoCzITLmFzcGly",
-            "ZS52MS5SZXNvdXJjZRIvCg5yZXNvdXJjZV90eXBlcxgCIAMoCzIXLmFzcGly",
-            "ZS52MS5SZXNvdXJjZVR5cGUiQAoQUmVzb3VyY2VEZWxldGlvbhIVCg1yZXNv",
-            "dXJjZV9uYW1lGAEgASgJEhUKDXJlc291cmNlX3R5cGUYAiABKAkidAoUV2F0",
-            "Y2hSZXNvdXJjZXNDaGFuZ2USLQoGZGVsZXRlGAEgASgLMhsuYXNwaXJlLnYx",
-            "LlJlc291cmNlRGVsZXRpb25IABIlCgZ1cHNlcnQYAiABKAsyEy5hc3BpcmUu",
-            "djEuUmVzb3VyY2VIAEIGCgRraW5kIkcKFVdhdGNoUmVzb3VyY2VzQ2hhbmdl",
-            "cxIuCgV2YWx1ZRgBIAMoCzIfLmFzcGlyZS52MS5XYXRjaFJlc291cmNlc0No",
-            "YW5nZSJDChVXYXRjaFJlc291cmNlc1JlcXVlc3QSGQoMaXNfcmVjb25uZWN0",
-            "GAEgASgISACIAQFCDwoNX2lzX3JlY29ubmVjdCKLAQoUV2F0Y2hSZXNvdXJj",
-            "ZXNVcGRhdGUSNgoMaW5pdGlhbF9kYXRhGAEgASgLMh4uYXNwaXJlLnYxLklu",
-            "aXRpYWxSZXNvdXJjZURhdGFIABIzCgdjaGFuZ2VzGAIgASgLMiAuYXNwaXJl",
-            "LnYxLldhdGNoUmVzb3VyY2VzQ2hhbmdlc0gAQgYKBGtpbmQiWwoOQ29uc29s",
-            "ZUxvZ0xpbmUSDAoEdGV4dBgBIAEoCRIXCgppc19zdGRfZXJyGAIgASgISACI",
-            "AQESEwoLbGluZV9udW1iZXIYAyABKAVCDQoLX2lzX3N0ZF9lcnIiUQofV2F0",
-            "Y2hSZXNvdXJjZUNvbnNvbGVMb2dzUmVxdWVzdBIVCg1yZXNvdXJjZV9uYW1l",
-            "GAEgASgJEhcKD3N1cHByZXNzX2ZvbGxvdxgCIAEoCCJOCh5XYXRjaFJlc291",
-            "cmNlQ29uc29sZUxvZ3NVcGRhdGUSLAoJbG9nX2xpbmVzGAEgAygLMhkuYXNw",
-            "aXJlLnYxLkNvbnNvbGVMb2dMaW5lItoDCh5XYXRjaEludGVyYWN0aW9uc1Jl",
-            "cXVlc3RVcGRhdGUSFgoOaW50ZXJhY3Rpb25faWQYASABKAUSMgoIY29tcGxl",
-            "dGUYAiABKAsyHi5hc3BpcmUudjEuSW50ZXJhY3Rpb25Db21wbGV0ZUgAEjcK",
-            "C21lc3NhZ2VfYm94GAMgASgLMiAuYXNwaXJlLnYxLkludGVyYWN0aW9uTWVz",
-            "c2FnZUJveEgAEjsKDWlucHV0c19kaWFsb2cYBCABKAsyIi5hc3BpcmUudjEu",
-            "SW50ZXJhY3Rpb25JbnB1dHNEaWFsb2dIABI6Cgxub3RpZmljYXRpb24YBSAB",
-            "KAsyIi5hc3BpcmUudjEuSW50ZXJhY3Rpb25Ob3RpZmljYXRpb25IABI/Cg9w",
-            "cm9tcHRfcHJvZ3Jlc3MYByABKAsyJC5hc3BpcmUudjEuSW50ZXJhY3Rpb25Q",
-            "cm9tcHRQcm9ncmVzc0gAEj8KD3Byb21wdF90ZXJtaW5hbBgIIAEoCzIkLmFz",
-            "cGlyZS52MS5JbnRlcmFjdGlvblByb21wdFRlcm1pbmFsSAASHAoPcmVzcG9u",
-            "c2VfdXBkYXRlGAYgASgISAGIAQFCBgoEa2luZEISChBfcmVzcG9uc2VfdXBk",
-            "YXRlItsECh9XYXRjaEludGVyYWN0aW9uc1Jlc3BvbnNlVXBkYXRlEhYKDmlu",
-            "dGVyYWN0aW9uX2lkGAEgASgFEg0KBXRpdGxlGAIgASgJEg8KB21lc3NhZ2UY",
-            "AyABKAkSGwoTcHJpbWFyeV9idXR0b25fdGV4dBgEIAEoCRIdChVzZWNvbmRh",
-            "cnlfYnV0dG9uX3RleHQYBSABKAkSHQoVc2hvd19zZWNvbmRhcnlfYnV0dG9u",
-            "GAYgASgIEhQKDHNob3dfZGlzbWlzcxgHIAEoCBIfChdlbmFibGVfbWVzc2Fn",
-            "ZV9tYXJrZG93bhgIIAEoCBIyCghjb21wbGV0ZRgQIAEoCzIeLmFzcGlyZS52",
-            "MS5JbnRlcmFjdGlvbkNvbXBsZXRlSAASNwoLbWVzc2FnZV9ib3gYESABKAsy",
-            "IC5hc3BpcmUudjEuSW50ZXJhY3Rpb25NZXNzYWdlQm94SAASOwoNaW5wdXRz",
-            "X2RpYWxvZxgSIAEoCzIiLmFzcGlyZS52MS5JbnRlcmFjdGlvbklucHV0c0Rp",
-            "YWxvZ0gAEjoKDG5vdGlmaWNhdGlvbhgTIAEoCzIiLmFzcGlyZS52MS5JbnRl",
-            "cmFjdGlvbk5vdGlmaWNhdGlvbkgAEj8KD3Byb21wdF9wcm9ncmVzcxgUIAEo",
-            "CzIkLmFzcGlyZS52MS5JbnRlcmFjdGlvblByb21wdFByb2dyZXNzSAASPwoP",
-            "cHJvbXB0X3Rlcm1pbmFsGBUgASgLMiQuYXNwaXJlLnYxLkludGVyYWN0aW9u",
-            "UHJvbXB0VGVybWluYWxIAEIGCgRraW5kIhUKE0ludGVyYWN0aW9uQ29tcGxl",
-            "dGUiYQoVSW50ZXJhY3Rpb25NZXNzYWdlQm94EigKBmludGVudBgBIAEoDjIY",
-            "LmFzcGlyZS52MS5NZXNzYWdlSW50ZW50EhMKBnJlc3VsdBgCIAEoCEgAiAEB",
-            "QgkKB19yZXN1bHQiiAEKF0ludGVyYWN0aW9uTm90aWZpY2F0aW9uEigKBmlu",
-            "dGVudBgBIAEoDjIYLmFzcGlyZS52MS5NZXNzYWdlSW50ZW50EhMKBnJlc3Vs",
-            "dBgCIAEoCEgAiAEBEhEKCWxpbmtfdGV4dBgDIAEoCRIQCghsaW5rX3VybBgE",
-            "IAEoCUIJCgdfcmVzdWx0IjsKGUludGVyYWN0aW9uUHJvbXB0UHJvZ3Jlc3MS",
-            "EwoGcmVzdWx0GAEgASgISACIAQFCCQoHX3Jlc3VsdCJQChlJbnRlcmFjdGlv",
-            "blByb21wdFRlcm1pbmFsEhMKC3Rlcm1pbmFsX2lkGAEgASgJEhMKBnJlc3Vs",
-            "dBgCIAEoCEgAiAEBQgkKB19yZXN1bHQiSwoXSW50ZXJhY3Rpb25JbnB1dHNE",
-            "aWFsb2cSMAoLaW5wdXRfaXRlbXMYASADKAsyGy5hc3BpcmUudjEuSW50ZXJh",
-            "Y3Rpb25JbnB1dCKNBAoQSW50ZXJhY3Rpb25JbnB1dBINCgVsYWJlbBgBIAEo",
-            "CRITCgtwbGFjZWhvbGRlchgCIAEoCRIoCgppbnB1dF90eXBlGAMgASgOMhQu",
-            "YXNwaXJlLnYxLklucHV0VHlwZRIQCghyZXF1aXJlZBgEIAEoCBI5CgdvcHRp",
-            "b25zGAUgAygLMiguYXNwaXJlLnYxLkludGVyYWN0aW9uSW5wdXQuT3B0aW9u",
-            "c0VudHJ5Eg0KBXZhbHVlGAYgASgJEhkKEXZhbGlkYXRpb25fZXJyb3JzGAcg",
-            "AygJEhMKC2Rlc2NyaXB0aW9uGAggASgJEiMKG2VuYWJsZV9kZXNjcmlwdGlv",
-            "bl9tYXJrZG93bhgJIAEoCBISCgptYXhfbGVuZ3RoGAogASgFEhsKE2FsbG93",
-            "X2N1c3RvbV9jaG9pY2UYCyABKAgSDwoHbG9hZGluZxgMIAEoCBIeChZ1cGRh",
-            "dGVfc3RhdGVfb25fY2hhbmdlGA0gASgIEgwKBG5hbWUYDiABKAkSEAoIZGlz",
-            "YWJsZWQYDyABKAgSFQoNbWF4X2ZpbGVfc2l6ZRgQIAEoAxIcChRhbGxvd19t",
-            "dWx0aXBsZV9maWxlcxgRIAEoCBITCgtmaWxlX2ZpbHRlchgSIAEoCRouCgxP",
+            "BogBARInChpyZXNvdXJjZV90eXBlX2Rpc3BsYXlfbmFtZRgZIAEoCUgHiAEB",
+            "QggKBl9zdGF0ZUINCgtfY3JlYXRlZF9hdEIOCgxfc3RhdGVfc3R5bGVCDQoL",
+            "X3N0YXJ0ZWRfYXRCDQoLX3N0b3BwZWRfYXRCDAoKX2ljb25fbmFtZUIPCg1f",
+            "aWNvbl92YXJpYW50Qh0KG19yZXNvdXJjZV90eXBlX2Rpc3BsYXlfbmFtZUoE",
+            "CAgQCUoECAkQCkoECAoQC0oECBAQESJuChNJbml0aWFsUmVzb3VyY2VEYXRh",
+            "EiYKCXJlc291cmNlcxgBIAMoCzITLmFzcGlyZS52MS5SZXNvdXJjZRIvCg5y",
+            "ZXNvdXJjZV90eXBlcxgCIAMoCzIXLmFzcGlyZS52MS5SZXNvdXJjZVR5cGUi",
+            "QAoQUmVzb3VyY2VEZWxldGlvbhIVCg1yZXNvdXJjZV9uYW1lGAEgASgJEhUK",
+            "DXJlc291cmNlX3R5cGUYAiABKAkidAoUV2F0Y2hSZXNvdXJjZXNDaGFuZ2US",
+            "LQoGZGVsZXRlGAEgASgLMhsuYXNwaXJlLnYxLlJlc291cmNlRGVsZXRpb25I",
+            "ABIlCgZ1cHNlcnQYAiABKAsyEy5hc3BpcmUudjEuUmVzb3VyY2VIAEIGCgRr",
+            "aW5kIkcKFVdhdGNoUmVzb3VyY2VzQ2hhbmdlcxIuCgV2YWx1ZRgBIAMoCzIf",
+            "LmFzcGlyZS52MS5XYXRjaFJlc291cmNlc0NoYW5nZSJDChVXYXRjaFJlc291",
+            "cmNlc1JlcXVlc3QSGQoMaXNfcmVjb25uZWN0GAEgASgISACIAQFCDwoNX2lz",
+            "X3JlY29ubmVjdCKLAQoUV2F0Y2hSZXNvdXJjZXNVcGRhdGUSNgoMaW5pdGlh",
+            "bF9kYXRhGAEgASgLMh4uYXNwaXJlLnYxLkluaXRpYWxSZXNvdXJjZURhdGFI",
+            "ABIzCgdjaGFuZ2VzGAIgASgLMiAuYXNwaXJlLnYxLldhdGNoUmVzb3VyY2Vz",
+            "Q2hhbmdlc0gAQgYKBGtpbmQiWwoOQ29uc29sZUxvZ0xpbmUSDAoEdGV4dBgB",
+            "IAEoCRIXCgppc19zdGRfZXJyGAIgASgISACIAQESEwoLbGluZV9udW1iZXIY",
+            "AyABKAVCDQoLX2lzX3N0ZF9lcnIiUQofV2F0Y2hSZXNvdXJjZUNvbnNvbGVM",
+            "b2dzUmVxdWVzdBIVCg1yZXNvdXJjZV9uYW1lGAEgASgJEhcKD3N1cHByZXNz",
+            "X2ZvbGxvdxgCIAEoCCJOCh5XYXRjaFJlc291cmNlQ29uc29sZUxvZ3NVcGRh",
+            "dGUSLAoJbG9nX2xpbmVzGAEgAygLMhkuYXNwaXJlLnYxLkNvbnNvbGVMb2dM",
+            "aW5lItoDCh5XYXRjaEludGVyYWN0aW9uc1JlcXVlc3RVcGRhdGUSFgoOaW50",
+            "ZXJhY3Rpb25faWQYASABKAUSMgoIY29tcGxldGUYAiABKAsyHi5hc3BpcmUu",
+            "djEuSW50ZXJhY3Rpb25Db21wbGV0ZUgAEjcKC21lc3NhZ2VfYm94GAMgASgL",
+            "MiAuYXNwaXJlLnYxLkludGVyYWN0aW9uTWVzc2FnZUJveEgAEjsKDWlucHV0",
+            "c19kaWFsb2cYBCABKAsyIi5hc3BpcmUudjEuSW50ZXJhY3Rpb25JbnB1dHNE",
+            "aWFsb2dIABI6Cgxub3RpZmljYXRpb24YBSABKAsyIi5hc3BpcmUudjEuSW50",
+            "ZXJhY3Rpb25Ob3RpZmljYXRpb25IABI/Cg9wcm9tcHRfcHJvZ3Jlc3MYByAB",
+            "KAsyJC5hc3BpcmUudjEuSW50ZXJhY3Rpb25Qcm9tcHRQcm9ncmVzc0gAEj8K",
+            "D3Byb21wdF90ZXJtaW5hbBgIIAEoCzIkLmFzcGlyZS52MS5JbnRlcmFjdGlv",
+            "blByb21wdFRlcm1pbmFsSAASHAoPcmVzcG9uc2VfdXBkYXRlGAYgASgISAGI",
+            "AQFCBgoEa2luZEISChBfcmVzcG9uc2VfdXBkYXRlItsECh9XYXRjaEludGVy",
+            "YWN0aW9uc1Jlc3BvbnNlVXBkYXRlEhYKDmludGVyYWN0aW9uX2lkGAEgASgF",
+            "Eg0KBXRpdGxlGAIgASgJEg8KB21lc3NhZ2UYAyABKAkSGwoTcHJpbWFyeV9i",
+            "dXR0b25fdGV4dBgEIAEoCRIdChVzZWNvbmRhcnlfYnV0dG9uX3RleHQYBSAB",
+            "KAkSHQoVc2hvd19zZWNvbmRhcnlfYnV0dG9uGAYgASgIEhQKDHNob3dfZGlz",
+            "bWlzcxgHIAEoCBIfChdlbmFibGVfbWVzc2FnZV9tYXJrZG93bhgIIAEoCBIy",
+            "Cghjb21wbGV0ZRgQIAEoCzIeLmFzcGlyZS52MS5JbnRlcmFjdGlvbkNvbXBs",
+            "ZXRlSAASNwoLbWVzc2FnZV9ib3gYESABKAsyIC5hc3BpcmUudjEuSW50ZXJh",
+            "Y3Rpb25NZXNzYWdlQm94SAASOwoNaW5wdXRzX2RpYWxvZxgSIAEoCzIiLmFz",
+            "cGlyZS52MS5JbnRlcmFjdGlvbklucHV0c0RpYWxvZ0gAEjoKDG5vdGlmaWNh",
+            "dGlvbhgTIAEoCzIiLmFzcGlyZS52MS5JbnRlcmFjdGlvbk5vdGlmaWNhdGlv",
+            "bkgAEj8KD3Byb21wdF9wcm9ncmVzcxgUIAEoCzIkLmFzcGlyZS52MS5JbnRl",
+            "cmFjdGlvblByb21wdFByb2dyZXNzSAASPwoPcHJvbXB0X3Rlcm1pbmFsGBUg",
+            "ASgLMiQuYXNwaXJlLnYxLkludGVyYWN0aW9uUHJvbXB0VGVybWluYWxIAEIG",
+            "CgRraW5kIhUKE0ludGVyYWN0aW9uQ29tcGxldGUiYQoVSW50ZXJhY3Rpb25N",
+            "ZXNzYWdlQm94EigKBmludGVudBgBIAEoDjIYLmFzcGlyZS52MS5NZXNzYWdl",
+            "SW50ZW50EhMKBnJlc3VsdBgCIAEoCEgAiAEBQgkKB19yZXN1bHQiqAEKF0lu",
+            "dGVyYWN0aW9uTm90aWZpY2F0aW9uEigKBmludGVudBgBIAEoDjIYLmFzcGly",
+            "ZS52MS5NZXNzYWdlSW50ZW50EhMKBnJlc3VsdBgCIAEoCEgAiAEBEhEKCWxp",
+            "bmtfdGV4dBgDIAEoCRIQCghsaW5rX3VybBgEIAEoCRIeChZyZWxhdGVkX3Jl",
+            "c291cmNlX25hbWVzGAUgAygJQgkKB19yZXN1bHQiOwoZSW50ZXJhY3Rpb25Q",
+            "cm9tcHRQcm9ncmVzcxITCgZyZXN1bHQYASABKAhIAIgBAUIJCgdfcmVzdWx0",
+            "IlAKGUludGVyYWN0aW9uUHJvbXB0VGVybWluYWwSEwoLdGVybWluYWxfaWQY",
+            "ASABKAkSEwoGcmVzdWx0GAIgASgISACIAQFCCQoHX3Jlc3VsdCJLChdJbnRl",
+            "cmFjdGlvbklucHV0c0RpYWxvZxIwCgtpbnB1dF9pdGVtcxgBIAMoCzIbLmFz",
+            "cGlyZS52MS5JbnRlcmFjdGlvbklucHV0IqwEChBJbnRlcmFjdGlvbklucHV0",
+            "Eg0KBWxhYmVsGAEgASgJEhMKC3BsYWNlaG9sZGVyGAIgASgJEigKCmlucHV0",
+            "X3R5cGUYAyABKA4yFC5hc3BpcmUudjEuSW5wdXRUeXBlEhAKCHJlcXVpcmVk",
+            "GAQgASgIEjkKB29wdGlvbnMYBSADKAsyKC5hc3BpcmUudjEuSW50ZXJhY3Rp",
+            "b25JbnB1dC5PcHRpb25zRW50cnkSDQoFdmFsdWUYBiABKAkSGQoRdmFsaWRh",
+            "dGlvbl9lcnJvcnMYByADKAkSEwoLZGVzY3JpcHRpb24YCCABKAkSIwobZW5h",
+            "YmxlX2Rlc2NyaXB0aW9uX21hcmtkb3duGAkgASgIEhIKCm1heF9sZW5ndGgY",
+            "CiABKAUSGwoTYWxsb3dfY3VzdG9tX2Nob2ljZRgLIAEoCBIPCgdsb2FkaW5n",
+            "GAwgASgIEh4KFnVwZGF0ZV9zdGF0ZV9vbl9jaGFuZ2UYDSABKAgSDAoEbmFt",
+            "ZRgOIAEoCRIQCghkaXNhYmxlZBgPIAEoCBIVCg1tYXhfZmlsZV9zaXplGBAg",
+            "ASgDEhwKFGFsbG93X211bHRpcGxlX2ZpbGVzGBEgASgIEhMKC2ZpbGVfZmls",
+            "dGVyGBIgASgJEh0KFXJlbGF0ZWRfcmVzb3VyY2VfbmFtZRgTIAEoCRouCgxP",
             "cHRpb25zRW50cnkSCwoDa2V5GAEgASgJEg0KBXZhbHVlGAIgASgJOgI4ASJe",
             "Cg9VcGxvYWRGaWxlQ2h1bmsSDAoEZGF0YRgBIAEoDBIRCglmaWxlX25hbWUY",
             "AiABKAkSFgoOaW50ZXJhY3Rpb25faWQYAyABKAUSEgoKaW5wdXRfbmFtZRgE",
@@ -246,7 +249,7 @@ namespace Passenger.App.Aspire.Protocol {
             new pbr::GeneratedClrTypeInfo(typeof(global::Passenger.App.Aspire.Protocol.HealthReport), global::Passenger.App.Aspire.Protocol.HealthReport.Parser, new[]{ "Status", "Key", "Description", "Exception", "LastRunAt" }, new[]{ "Status", "LastRunAt" }, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Passenger.App.Aspire.Protocol.ResourceRelationship), global::Passenger.App.Aspire.Protocol.ResourceRelationship.Parser, new[]{ "ResourceName", "Type" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Passenger.App.Aspire.Protocol.ResourceProperty), global::Passenger.App.Aspire.Protocol.ResourceProperty.Parser, new[]{ "Name", "DisplayName", "Value", "IsSensitive", "IsHighlighted", "SortOrder" }, new[]{ "DisplayName", "IsSensitive", "SortOrder" }, null, null, null),
-            new pbr::GeneratedClrTypeInfo(typeof(global::Passenger.App.Aspire.Protocol.Resource), global::Passenger.App.Aspire.Protocol.Resource.Parser, new[]{ "Name", "ResourceType", "DisplayName", "Uid", "State", "CreatedAt", "Environment", "Commands", "Properties", "Urls", "StateStyle", "Volumes", "HealthReports", "StartedAt", "StoppedAt", "Relationships", "IsHidden", "SupportsDetailedTelemetry", "IconName", "IconVariant" }, new[]{ "State", "CreatedAt", "StateStyle", "StartedAt", "StoppedAt", "IconName", "IconVariant" }, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::Passenger.App.Aspire.Protocol.Resource), global::Passenger.App.Aspire.Protocol.Resource.Parser, new[]{ "Name", "ResourceType", "DisplayName", "Uid", "State", "CreatedAt", "Environment", "Commands", "Properties", "Urls", "StateStyle", "Volumes", "HealthReports", "StartedAt", "StoppedAt", "Relationships", "IsHidden", "SupportsDetailedTelemetry", "IconName", "IconVariant", "ResourceTypeDisplayName" }, new[]{ "State", "CreatedAt", "StateStyle", "StartedAt", "StoppedAt", "IconName", "IconVariant", "ResourceTypeDisplayName" }, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Passenger.App.Aspire.Protocol.InitialResourceData), global::Passenger.App.Aspire.Protocol.InitialResourceData.Parser, new[]{ "Resources", "ResourceTypes" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Passenger.App.Aspire.Protocol.ResourceDeletion), global::Passenger.App.Aspire.Protocol.ResourceDeletion.Parser, new[]{ "ResourceName", "ResourceType" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Passenger.App.Aspire.Protocol.WatchResourcesChange), global::Passenger.App.Aspire.Protocol.WatchResourcesChange.Parser, new[]{ "Delete", "Upsert" }, new[]{ "Kind" }, null, null, null),
@@ -260,11 +263,11 @@ namespace Passenger.App.Aspire.Protocol {
             new pbr::GeneratedClrTypeInfo(typeof(global::Passenger.App.Aspire.Protocol.WatchInteractionsResponseUpdate), global::Passenger.App.Aspire.Protocol.WatchInteractionsResponseUpdate.Parser, new[]{ "InteractionId", "Title", "Message", "PrimaryButtonText", "SecondaryButtonText", "ShowSecondaryButton", "ShowDismiss", "EnableMessageMarkdown", "Complete", "MessageBox", "InputsDialog", "Notification", "PromptProgress", "PromptTerminal" }, new[]{ "Kind" }, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Passenger.App.Aspire.Protocol.InteractionComplete), global::Passenger.App.Aspire.Protocol.InteractionComplete.Parser, null, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Passenger.App.Aspire.Protocol.InteractionMessageBox), global::Passenger.App.Aspire.Protocol.InteractionMessageBox.Parser, new[]{ "Intent", "Result" }, new[]{ "Result" }, null, null, null),
-            new pbr::GeneratedClrTypeInfo(typeof(global::Passenger.App.Aspire.Protocol.InteractionNotification), global::Passenger.App.Aspire.Protocol.InteractionNotification.Parser, new[]{ "Intent", "Result", "LinkText", "LinkUrl" }, new[]{ "Result" }, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::Passenger.App.Aspire.Protocol.InteractionNotification), global::Passenger.App.Aspire.Protocol.InteractionNotification.Parser, new[]{ "Intent", "Result", "LinkText", "LinkUrl", "RelatedResourceNames" }, new[]{ "Result" }, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Passenger.App.Aspire.Protocol.InteractionPromptProgress), global::Passenger.App.Aspire.Protocol.InteractionPromptProgress.Parser, new[]{ "Result" }, new[]{ "Result" }, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Passenger.App.Aspire.Protocol.InteractionPromptTerminal), global::Passenger.App.Aspire.Protocol.InteractionPromptTerminal.Parser, new[]{ "TerminalId", "Result" }, new[]{ "Result" }, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Passenger.App.Aspire.Protocol.InteractionInputsDialog), global::Passenger.App.Aspire.Protocol.InteractionInputsDialog.Parser, new[]{ "InputItems" }, null, null, null, null),
-            new pbr::GeneratedClrTypeInfo(typeof(global::Passenger.App.Aspire.Protocol.InteractionInput), global::Passenger.App.Aspire.Protocol.InteractionInput.Parser, new[]{ "Label", "Placeholder", "InputType", "Required", "Options", "Value", "ValidationErrors", "Description", "EnableDescriptionMarkdown", "MaxLength", "AllowCustomChoice", "Loading", "UpdateStateOnChange", "Name", "Disabled", "MaxFileSize", "AllowMultipleFiles", "FileFilter" }, null, null, null, new pbr::GeneratedClrTypeInfo[] { null, }),
+            new pbr::GeneratedClrTypeInfo(typeof(global::Passenger.App.Aspire.Protocol.InteractionInput), global::Passenger.App.Aspire.Protocol.InteractionInput.Parser, new[]{ "Label", "Placeholder", "InputType", "Required", "Options", "Value", "ValidationErrors", "Description", "EnableDescriptionMarkdown", "MaxLength", "AllowCustomChoice", "Loading", "UpdateStateOnChange", "Name", "Disabled", "MaxFileSize", "AllowMultipleFiles", "FileFilter", "RelatedResourceName" }, null, null, null, new pbr::GeneratedClrTypeInfo[] { null, }),
             new pbr::GeneratedClrTypeInfo(typeof(global::Passenger.App.Aspire.Protocol.UploadFileChunk), global::Passenger.App.Aspire.Protocol.UploadFileChunk.Parser, new[]{ "Data", "FileName", "InteractionId", "InputName" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Passenger.App.Aspire.Protocol.UploadFileResponse), global::Passenger.App.Aspire.Protocol.UploadFileResponse.Parser, new[]{ "FileId" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Passenger.App.Aspire.Protocol.TerminalClientFrame), global::Passenger.App.Aspire.Protocol.TerminalClientFrame.Parser, new[]{ "Data", "TerminalId" }, null, null, null, null),
@@ -5091,6 +5094,7 @@ namespace Passenger.App.Aspire.Protocol {
       supportsDetailedTelemetry_ = other.supportsDetailedTelemetry_;
       iconName_ = other.iconName_;
       iconVariant_ = other.iconVariant_;
+      resourceTypeDisplayName_ = other.resourceTypeDisplayName_;
       _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
     }
 
@@ -5434,6 +5438,36 @@ namespace Passenger.App.Aspire.Protocol {
       _hasBits0 &= ~1;
     }
 
+    /// <summary>Field number for the "resource_type_display_name" field.</summary>
+    public const int ResourceTypeDisplayNameFieldNumber = 25;
+    private readonly static string ResourceTypeDisplayNameDefaultValue = "";
+
+    private string resourceTypeDisplayName_;
+    /// <summary>
+    /// Human-readable resource type label, independent of resource_type and telemetry service identity.
+    /// Consumers fall back to resource_type when absent.
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public string ResourceTypeDisplayName {
+      get { return resourceTypeDisplayName_ ?? ResourceTypeDisplayNameDefaultValue; }
+      set {
+        resourceTypeDisplayName_ = pb::ProtoPreconditions.CheckNotNull(value, "value");
+      }
+    }
+    /// <summary>Gets whether the "resource_type_display_name" field is set</summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool HasResourceTypeDisplayName {
+      get { return resourceTypeDisplayName_ != null; }
+    }
+    /// <summary>Clears the value of the "resource_type_display_name" field</summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void ClearResourceTypeDisplayName() {
+      resourceTypeDisplayName_ = null;
+    }
+
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public override bool Equals(object other) {
@@ -5469,6 +5503,7 @@ namespace Passenger.App.Aspire.Protocol {
       if (SupportsDetailedTelemetry != other.SupportsDetailedTelemetry) return false;
       if (IconName != other.IconName) return false;
       if (IconVariant != other.IconVariant) return false;
+      if (ResourceTypeDisplayName != other.ResourceTypeDisplayName) return false;
       return Equals(_unknownFields, other._unknownFields);
     }
 
@@ -5496,6 +5531,7 @@ namespace Passenger.App.Aspire.Protocol {
       if (SupportsDetailedTelemetry != false) hash ^= SupportsDetailedTelemetry.GetHashCode();
       if (HasIconName) hash ^= IconName.GetHashCode();
       if (HasIconVariant) hash ^= IconVariant.GetHashCode();
+      if (HasResourceTypeDisplayName) hash ^= ResourceTypeDisplayName.GetHashCode();
       if (_unknownFields != null) {
         hash ^= _unknownFields.GetHashCode();
       }
@@ -5573,6 +5609,10 @@ namespace Passenger.App.Aspire.Protocol {
         output.WriteRawTag(192, 1);
         output.WriteEnum((int) IconVariant);
       }
+      if (HasResourceTypeDisplayName) {
+        output.WriteRawTag(202, 1);
+        output.WriteString(ResourceTypeDisplayName);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(output);
       }
@@ -5642,6 +5682,10 @@ namespace Passenger.App.Aspire.Protocol {
         output.WriteRawTag(192, 1);
         output.WriteEnum((int) IconVariant);
       }
+      if (HasResourceTypeDisplayName) {
+        output.WriteRawTag(202, 1);
+        output.WriteString(ResourceTypeDisplayName);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(ref output);
       }
@@ -5697,6 +5741,9 @@ namespace Passenger.App.Aspire.Protocol {
       }
       if (HasIconVariant) {
         size += 2 + pb::CodedOutputStream.ComputeEnumSize((int) IconVariant);
+      }
+      if (HasResourceTypeDisplayName) {
+        size += 2 + pb::CodedOutputStream.ComputeStringSize(ResourceTypeDisplayName);
       }
       if (_unknownFields != null) {
         size += _unknownFields.CalculateSize();
@@ -5764,6 +5811,9 @@ namespace Passenger.App.Aspire.Protocol {
       }
       if (other.HasIconVariant) {
         IconVariant = other.IconVariant;
+      }
+      if (other.HasResourceTypeDisplayName) {
+        ResourceTypeDisplayName = other.ResourceTypeDisplayName;
       }
       _unknownFields = pb::UnknownFieldSet.MergeFrom(_unknownFields, other._unknownFields);
     }
@@ -5873,6 +5923,10 @@ namespace Passenger.App.Aspire.Protocol {
             IconVariant = (global::Passenger.App.Aspire.Protocol.IconVariant) input.ReadEnum();
             break;
           }
+          case 202: {
+            ResourceTypeDisplayName = input.ReadString();
+            break;
+          }
         }
       }
     #endif
@@ -5979,6 +6033,10 @@ namespace Passenger.App.Aspire.Protocol {
           }
           case 192: {
             IconVariant = (global::Passenger.App.Aspire.Protocol.IconVariant) input.ReadEnum();
+            break;
+          }
+          case 202: {
+            ResourceTypeDisplayName = input.ReadString();
             break;
           }
         }
@@ -10051,6 +10109,7 @@ namespace Passenger.App.Aspire.Protocol {
       result_ = other.result_;
       linkText_ = other.linkText_;
       linkUrl_ = other.linkUrl_;
+      relatedResourceNames_ = other.relatedResourceNames_.Clone();
       _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
     }
 
@@ -10123,6 +10182,23 @@ namespace Passenger.App.Aspire.Protocol {
       }
     }
 
+    /// <summary>Field number for the "related_resource_names" field.</summary>
+    public const int RelatedResourceNamesFieldNumber = 5;
+    private static readonly pb::FieldCodec<string> _repeated_relatedResourceNames_codec
+        = pb::FieldCodec.ForString(42);
+    private readonly pbc::RepeatedField<string> relatedResourceNames_ = new pbc::RepeatedField<string>();
+    /// <summary>
+    /// The resources the notification is about. A client can offer to show these resources, where the user can act on
+    /// them, in place of the notification's primary button. Showing them doesn't answer the notification: the client
+    /// answers it as usual, for example once its UI for those resources takes over. The notification still works as a
+    /// normal notification for clients that ignore it.
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public pbc::RepeatedField<string> RelatedResourceNames {
+      get { return relatedResourceNames_; }
+    }
+
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public override bool Equals(object other) {
@@ -10142,6 +10218,7 @@ namespace Passenger.App.Aspire.Protocol {
       if (Result != other.Result) return false;
       if (LinkText != other.LinkText) return false;
       if (LinkUrl != other.LinkUrl) return false;
+      if(!relatedResourceNames_.Equals(other.relatedResourceNames_)) return false;
       return Equals(_unknownFields, other._unknownFields);
     }
 
@@ -10153,6 +10230,7 @@ namespace Passenger.App.Aspire.Protocol {
       if (HasResult) hash ^= Result.GetHashCode();
       if (LinkText.Length != 0) hash ^= LinkText.GetHashCode();
       if (LinkUrl.Length != 0) hash ^= LinkUrl.GetHashCode();
+      hash ^= relatedResourceNames_.GetHashCode();
       if (_unknownFields != null) {
         hash ^= _unknownFields.GetHashCode();
       }
@@ -10187,6 +10265,7 @@ namespace Passenger.App.Aspire.Protocol {
         output.WriteRawTag(34);
         output.WriteString(LinkUrl);
       }
+      relatedResourceNames_.WriteTo(output, _repeated_relatedResourceNames_codec);
       if (_unknownFields != null) {
         _unknownFields.WriteTo(output);
       }
@@ -10213,6 +10292,7 @@ namespace Passenger.App.Aspire.Protocol {
         output.WriteRawTag(34);
         output.WriteString(LinkUrl);
       }
+      relatedResourceNames_.WriteTo(ref output, _repeated_relatedResourceNames_codec);
       if (_unknownFields != null) {
         _unknownFields.WriteTo(ref output);
       }
@@ -10235,6 +10315,7 @@ namespace Passenger.App.Aspire.Protocol {
       if (LinkUrl.Length != 0) {
         size += 1 + pb::CodedOutputStream.ComputeStringSize(LinkUrl);
       }
+      size += relatedResourceNames_.CalculateSize(_repeated_relatedResourceNames_codec);
       if (_unknownFields != null) {
         size += _unknownFields.CalculateSize();
       }
@@ -10259,6 +10340,7 @@ namespace Passenger.App.Aspire.Protocol {
       if (other.LinkUrl.Length != 0) {
         LinkUrl = other.LinkUrl;
       }
+      relatedResourceNames_.Add(other.relatedResourceNames_);
       _unknownFields = pb::UnknownFieldSet.MergeFrom(_unknownFields, other._unknownFields);
     }
 
@@ -10294,6 +10376,10 @@ namespace Passenger.App.Aspire.Protocol {
             LinkUrl = input.ReadString();
             break;
           }
+          case 42: {
+            relatedResourceNames_.AddEntriesFrom(input, _repeated_relatedResourceNames_codec);
+            break;
+          }
         }
       }
     #endif
@@ -10327,6 +10413,10 @@ namespace Passenger.App.Aspire.Protocol {
           }
           case 34: {
             LinkUrl = input.ReadString();
+            break;
+          }
+          case 42: {
+            relatedResourceNames_.AddEntriesFrom(ref input, _repeated_relatedResourceNames_codec);
             break;
           }
         }
@@ -11056,6 +11146,7 @@ namespace Passenger.App.Aspire.Protocol {
       maxFileSize_ = other.maxFileSize_;
       allowMultipleFiles_ = other.allowMultipleFiles_;
       fileFilter_ = other.fileFilter_;
+      relatedResourceName_ = other.relatedResourceName_;
       _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
     }
 
@@ -11279,6 +11370,23 @@ namespace Passenger.App.Aspire.Protocol {
       }
     }
 
+    /// <summary>Field number for the "related_resource_name" field.</summary>
+    public const int RelatedResourceNameFieldNumber = 19;
+    private string relatedResourceName_ = "";
+    /// <summary>
+    /// The resource the input provides a value for, for example the parameter an unresolved parameters prompt asks
+    /// for. A client must use it, not the input's name, to know which resource an input is for: an input's name is
+    /// chosen by whoever creates the input and can match a different resource. Empty when the input isn't for a resource.
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public string RelatedResourceName {
+      get { return relatedResourceName_; }
+      set {
+        relatedResourceName_ = pb::ProtoPreconditions.CheckNotNull(value, "value");
+      }
+    }
+
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public override bool Equals(object other) {
@@ -11312,6 +11420,7 @@ namespace Passenger.App.Aspire.Protocol {
       if (MaxFileSize != other.MaxFileSize) return false;
       if (AllowMultipleFiles != other.AllowMultipleFiles) return false;
       if (FileFilter != other.FileFilter) return false;
+      if (RelatedResourceName != other.RelatedResourceName) return false;
       return Equals(_unknownFields, other._unknownFields);
     }
 
@@ -11337,6 +11446,7 @@ namespace Passenger.App.Aspire.Protocol {
       if (MaxFileSize != 0L) hash ^= MaxFileSize.GetHashCode();
       if (AllowMultipleFiles != false) hash ^= AllowMultipleFiles.GetHashCode();
       if (FileFilter.Length != 0) hash ^= FileFilter.GetHashCode();
+      if (RelatedResourceName.Length != 0) hash ^= RelatedResourceName.GetHashCode();
       if (_unknownFields != null) {
         hash ^= _unknownFields.GetHashCode();
       }
@@ -11421,6 +11531,10 @@ namespace Passenger.App.Aspire.Protocol {
         output.WriteRawTag(146, 1);
         output.WriteString(FileFilter);
       }
+      if (RelatedResourceName.Length != 0) {
+        output.WriteRawTag(154, 1);
+        output.WriteString(RelatedResourceName);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(output);
       }
@@ -11497,6 +11611,10 @@ namespace Passenger.App.Aspire.Protocol {
         output.WriteRawTag(146, 1);
         output.WriteString(FileFilter);
       }
+      if (RelatedResourceName.Length != 0) {
+        output.WriteRawTag(154, 1);
+        output.WriteString(RelatedResourceName);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(ref output);
       }
@@ -11556,6 +11674,9 @@ namespace Passenger.App.Aspire.Protocol {
       }
       if (FileFilter.Length != 0) {
         size += 2 + pb::CodedOutputStream.ComputeStringSize(FileFilter);
+      }
+      if (RelatedResourceName.Length != 0) {
+        size += 2 + pb::CodedOutputStream.ComputeStringSize(RelatedResourceName);
       }
       if (_unknownFields != null) {
         size += _unknownFields.CalculateSize();
@@ -11618,6 +11739,9 @@ namespace Passenger.App.Aspire.Protocol {
       }
       if (other.FileFilter.Length != 0) {
         FileFilter = other.FileFilter;
+      }
+      if (other.RelatedResourceName.Length != 0) {
+        RelatedResourceName = other.RelatedResourceName;
       }
       _unknownFields = pb::UnknownFieldSet.MergeFrom(_unknownFields, other._unknownFields);
     }
@@ -11710,6 +11834,10 @@ namespace Passenger.App.Aspire.Protocol {
             FileFilter = input.ReadString();
             break;
           }
+          case 154: {
+            RelatedResourceName = input.ReadString();
+            break;
+          }
         }
       }
     #endif
@@ -11799,6 +11927,10 @@ namespace Passenger.App.Aspire.Protocol {
           }
           case 146: {
             FileFilter = input.ReadString();
+            break;
+          }
+          case 154: {
+            RelatedResourceName = input.ReadString();
             break;
           }
         }

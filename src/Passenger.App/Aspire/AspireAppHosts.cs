@@ -19,50 +19,8 @@ public static class AspireAppHosts
             ? $"Aspire CLI {AspireClient.SupportedVersion} requires apphost.cs to have no sibling .csproj project" : null;
     }
 
-    public static bool IsSingleFile(string path)
-    {
-        if (!Path.GetExtension(path).Equals(".cs", StringComparison.OrdinalIgnoreCase))
-        {
-            return false;
-        }
-        bool comment = false;
-        foreach (string line in SharedRead.Lines(path))
-        {
-            string text = line.Trim();
-            if (comment)
-            {
-                int end = text.IndexOf("*/", StringComparison.Ordinal);
-                if (end < 0)
-                {
-                    continue;
-                }
-                comment = false;
-                text = text[(end + 2)..].TrimStart();
-            }
-            while (text.StartsWith("/*", StringComparison.Ordinal))
-            {
-                int end = text.IndexOf("*/", 2, StringComparison.Ordinal);
-                if (end < 0)
-                {
-                    comment = true;
-                    break;
-                }
-                text = text[(end + 2)..].TrimStart();
-            }
-            if (comment)
-            {
-                continue;
-            }
-            if (text.StartsWith("#:sdk", StringComparison.Ordinal) && text.Length > 5 && char.IsWhiteSpace(text[5])
-                && text[6..].TrimStart().Split('@')[0].Equals("Aspire.AppHost.Sdk", StringComparison.OrdinalIgnoreCase))
-            {
-                return true;
-            }
-            if (text.Length > 0 && !text.StartsWith('#') && !text.StartsWith("//", StringComparison.Ordinal))
-            {
-                return false;
-            }
-        }
-        return false;
-    }
+    /// <summary>Whether a C# file is a single-file AppHost, as its head says (<see cref="Passenger.Host.AspireHosts.IsHead"/>);
+    /// throws as its read does, so a file that could not be read keeps what was known of it.</summary>
+    public static bool IsSingleFile(string path) => Passenger.Host.ProgramFiles.IsProgram(path)
+        && Passenger.Host.AspireHosts.IsHead(Passenger.Host.ProgramFiles.Head(SharedRead.Lines(path)));
 }

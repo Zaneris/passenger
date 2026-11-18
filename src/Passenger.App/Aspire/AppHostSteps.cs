@@ -67,13 +67,11 @@ public static class AppHostSteps
 
     /// <summary>The Aspire an AppHost hosts with: its Aspire.Hosting reference's version, else its AppHost SDK's.</summary>
     public static string? HostingVersionOf(ProjectModel host) =>
-        host.Packages.Where(p => (p.Name.Equals(HostingPackage, StringComparison.OrdinalIgnoreCase) || p.Name.Equals(AppHostPackage, StringComparison.OrdinalIgnoreCase))
+        host.Packages.Where(p => (p.Name.Equals(HostingPackage, StringComparison.OrdinalIgnoreCase) || p.Name.Equals(Host.AspireHosts.Package, StringComparison.OrdinalIgnoreCase))
             && p.Version is { Length: > 0 }).Select(p => p.Version).FirstOrDefault()
         ?? host.Property(Host.CarriedProperties.AspireHostingSDKVersion);
 
     private const string HostingPackage = "Aspire.Hosting";
-
-    private const string AppHostPackage = "Aspire.Hosting.AppHost";
 
     /// <summary>The steps of an AppHost of a hosting version, run as <paramref name="configured"/> gives it (the build
     /// configuration chosen), or why none: its version, a build that failed (its last words said), an AppHost that ended or

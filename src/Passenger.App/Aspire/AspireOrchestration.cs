@@ -184,7 +184,7 @@ public static class AspireOrchestration
         if (hosting.Count > 0)
         {
             // Aspire's hosting integrations at the AppHost's own Aspire version: its SDK's, else its Aspire.Hosting.AppHost's.
-            string version = AspireVersion(hostText) ?? hostCentral?.Versions.GetValueOrDefault("Aspire.Hosting.AppHost")
+            string version = AspireVersion(hostText) ?? hostCentral?.Versions.GetValueOrDefault(Passenger.Host.AspireHosts.Package)
                 ?? throw new InvalidOperationException($"The AppHost's Aspire version could not be read from its project, for {hosting[0]} to be added at it; no file was changed");
             foreach (string package in hosting)
             {

@@ -531,6 +531,7 @@ public sealed partial class AspireInteractions
             displayName = resource.DisplayName,
             type = resource.ResourceType,
             resourceType = resource.ResourceType,
+            resourceTypeDisplayName = resource.HasResourceTypeDisplayName && resource.ResourceTypeDisplayName.Length > 0 ? resource.ResourceTypeDisplayName : null,
             uid = resource.Uid,
             state = resource.HasState ? resource.State : null,
             stateStyle = resource.HasStateStyle ? resource.StateStyle : null,

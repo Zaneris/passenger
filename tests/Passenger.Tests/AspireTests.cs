@@ -575,7 +575,7 @@ public sealed class AspireTests : IClassFixture<AspireApp>, IDisposable
 
             Assert.True(window.SelectConfiguration(window.Configurations.Single(configuration => PathNames.Same(configuration.Project, loose)).Name));
             string? beside = Ui.Await(window.RunAsync(), "the pinned CLI's sibling-project refusal");
-            Assert.Contains("13.x (13.6.0 or newer)", beside, StringComparison.Ordinal);
+            Assert.Contains("13.x (13.6.0 or newer) or 17.x", beside, StringComparison.Ordinal);
             Assert.Contains("sibling .csproj", beside, StringComparison.Ordinal);
             Assert.Empty(window.AspireRuntime.Apps);
             Assert.False(window.IsRunning);

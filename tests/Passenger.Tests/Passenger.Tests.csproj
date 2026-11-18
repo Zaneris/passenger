@@ -44,7 +44,7 @@
   <ItemGroup>
     <PackageDownload Include="Avalonia.Templates" Version="[$(AvaloniaTemplatesVersion)]" />
     <PackageDownload Include="CommunityToolkit.Mvvm" Version="[$(CommunityToolkitMvvmVersion)]" />
-    <PackageDownload Include="Aspire.ProjectTemplates" Version="[$(AspireTemplatesVersion)]" />
+    <PackageDownload Include="Aspire.ProjectTemplates" Version="[$(AspireTemplatesVersion)];[$(AspirePackageTemplatesVersion)]" />
     <PackageDownload Include="Aspire.AppHost.Sdk" Version="[$(AspireTemplatesVersion)]" />
     <AssemblyMetadata Include="NuGetPackageRoot" Value="$(NuGetPackageRoot)" />
     <AssemblyMetadata Include="AvaloniaTemplatesVersion" Value="$(AvaloniaTemplatesVersion)" />
@@ -53,6 +53,7 @@
     <AssemblyMetadata Include="ReactiveUiVersion" Value="$(ReactiveUiVersion)" />
     <AssemblyMetadata Include="ReactiveUiGeneratorsVersion" Value="$(ReactiveUiGeneratorsVersion)" />
     <AssemblyMetadata Include="AspireTemplatesVersion" Value="$(AspireTemplatesVersion)" />
+    <AssemblyMetadata Include="AspirePackageTemplatesVersion" Value="$(AspirePackageTemplatesVersion)" />
   </ItemGroup>
 
   <!-- Aspire's dashboard and orchestrator (DCP) for this machine, about 900 MB in the package cache, which only a test
@@ -72,8 +73,11 @@
        (TestRun): the tests never run the person's. On Windows an AppHost and the CLI keep their record of running AppHosts in
        the person's profile whatever the environment says, so there the tests that would run one skip. -->
   <ItemGroup Condition="'$(PassengerAspireRuntime)' == 'true' and !$([MSBuild]::IsOSPlatform('Windows'))">
-    <PackageDownload Include="Aspire.Cli.$(NETCoreSdkRuntimeIdentifier)" Version="[$(AspireTemplatesVersion)]" />
+    <PackageDownload Include="Aspire.Cli.$(NETCoreSdkRuntimeIdentifier)" Version="[$(AspireTemplatesVersion)];[$(AspirePackageTemplatesVersion)]" />
     <AssemblyMetadata Include="AspireCli" Value="$(NuGetPackageRoot)aspire.cli.$(NETCoreSdkRuntimeIdentifier.ToLowerInvariant())/$(AspireTemplatesVersion)/tools/net10.0/$(NETCoreSdkRuntimeIdentifier)/aspire" />
+    <!-- The CLI of Aspire's package-only AppHosts, whose bundle (their dashboard and orchestrator) the run unpacks into a
+         folder of its own (AspirePackageApp). -->
+    <AssemblyMetadata Include="AspirePackageCli" Value="$(NuGetPackageRoot)aspire.cli.$(NETCoreSdkRuntimeIdentifier.ToLowerInvariant())/$(AspirePackageTemplatesVersion)/tools/any/$(NETCoreSdkRuntimeIdentifier)/aspire" />
   </ItemGroup>
   <ItemGroup>
     <AssemblyMetadata Include="AspireRuntime" Value="$(PassengerAspireRuntime)" />
@@ -87,6 +91,9 @@
     <ProjectReference Include="../AspireGraphs/ApiService/AspireGraphs.ApiService.csproj" ReferenceOutputAssembly="false" />
     <ProjectReference Include="../AspireGraphs/FunctionsHost/AspireGraphs.FunctionsHost.csproj" ReferenceOutputAssembly="false" />
     <ProjectReference Include="../AspireGraphs/Functions/AspireGraphs.Functions.csproj" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="../AspireGraphs/PackageAppHost/AspireGraphs.PackageAppHost.csproj" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="../AspireGraphs/PackageServiceDefaults/AspireGraphs.PackageServiceDefaults.csproj" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="../AspireGraphs/PackageApiService/AspireGraphs.PackageApiService.csproj" ReferenceOutputAssembly="false" />
     <AssemblyMetadata Include="AzureFunctionsSdkVersion" Value="$(AzureFunctionsSdkVersion)" />
     <AssemblyMetadata Include="AzureFunctionsWorkerVersion" Value="$(AzureFunctionsWorkerVersion)" />
     <AssemblyMetadata Include="AzureFunctionsHttpVersion" Value="$(AzureFunctionsHttpVersion)" />

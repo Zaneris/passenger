@@ -8,11 +8,11 @@ using Passenger.Core;
 
 namespace Passenger.App.Aspire;
 
-/// <summary>Bounded snapshots from the documented CLI JSON of Aspire 13.x from 13.6.0. Credentials stay internal; public resource snapshots mask values.
+/// <summary>Bounded snapshots from the documented CLI JSON of Aspire 13.x from 13.6.0, and of 17.x. Credentials stay internal; public resource snapshots mask values.
 /// The CLI is the one on the PATH, or the program a window names (<see cref="MainWindow.AspireCliFrom"/>).</summary>
 public sealed class AspireClient(string? program = null)
 {
-    internal const string SupportedVersion = "13.x (13.6.0 or newer)";
+    internal const string SupportedVersion = "13.x (13.6.0 or newer) or 17.x";
     public const int ResourceLimit = 256;
     public const int LogLimit = 1000;
     public const int TraceLimit = 50;
@@ -38,12 +38,12 @@ public sealed class AspireClient(string? program = null)
                 .OfType<Version>().ToArray();
             if (versions.Length != 1)
             {
-                return new(false, "Aspire CLI did not report one valid stable version token. Version 13.6.0 or newer within 13.x is required.");
+                return new(false, $"Aspire CLI did not report one valid stable version token. Aspire {SupportedVersion} is required.");
             }
             Version actual = versions[0];
-            bool supported = actual.Major == 13 && actual >= new Version(13, 6, 0);
+            bool supported = actual.Major == 13 && actual >= new Version(13, 6, 0) || actual.Major == 17;
             return new(supported, supported ? $"Aspire CLI {actual}" : actual.Major > 13
-                ? $"Aspire CLI {actual} uses an unverified protocol major. This view supports 13.x, starting at 13.6.0."
+                ? $"Aspire CLI {actual} uses an unverified protocol major. This view supports {SupportedVersion}."
                 : $"Aspire CLI {actual} is below the minimum supported version 13.6.0 (protocol major 13).");
         }
         catch (Exception error) when (ChildFailures.Of(error))

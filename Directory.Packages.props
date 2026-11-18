@@ -23,6 +23,13 @@
     <!-- Aspire's templates, AppHost SDK and package, dashboard, orchestrator and CLI at one version, downloaded for the
          tests' local feed. -->
     <AspireTemplatesVersion>13.6.5</AspireTemplatesVersion>
+    <!-- And Aspire's whose AppHost is a plain project or program with Aspire's AppHost package, no AppHost SDK, whose
+         dashboard and orchestrator come from the aspire CLI's bundle: its templates, AppHost and .NET project packages and
+         CLI, the AppHost's graph and its starter's restored at their own versions (tests/AspireGraphs/Package*). -->
+    <AspirePackageTemplatesVersion>17.0.0</AspirePackageTemplatesVersion>
+    <!-- What those templates write where it differs from what AspireTemplatesVersion's write (the tests' section below). -->
+    <AspirePackageOpenTelemetryVersion>1.18.0</AspirePackageOpenTelemetryVersion>
+    <AspirePackageOpenApiVersion>10.0.15</AspirePackageOpenApiVersion>
     <!-- The Azure Functions app (.NET isolated worker) the Aspire tests write: its MSBuild SDK, downloaded for the tests'
          local feed, and its worker and HTTP triggers, whose graph tests/AspireGraphs restores. -->
     <AzureFunctionsSdkVersion>1.1.0</AzureFunctionsSdkVersion>
@@ -196,6 +203,7 @@
   <ItemGroup>
     <PackageVersion Include="Aspire.Hosting.AppHost" Version="$(AspireTemplatesVersion)" />
     <PackageVersion Include="Aspire.Hosting.Azure.Functions" Version="$(AspireTemplatesVersion)" />
+    <PackageVersion Include="Aspire.Hosting.Dotnet" Version="$(AspirePackageTemplatesVersion)" />
     <!-- The analyzers and generators at the versions Azure.Functions.Sdk (AzureFunctionsSdkVersion) adds them. -->
     <PackageVersion Include="Microsoft.Azure.Functions.Worker" Version="$(AzureFunctionsWorkerVersion)" />
     <PackageVersion Include="Microsoft.Azure.Functions.Worker.Extensions.Http" Version="$(AzureFunctionsHttpVersion)" />

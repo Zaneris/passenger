@@ -1,0 +1,36 @@
+using Passenger.Host;
+using Passenger.Workspace;
+
+namespace Passenger.UnitTests.Aspire;
+
+/// <summary>What makes an AppHost: a program whose head names Aspire's AppHost SDK or its AppHost package, at any version, is
+/// one (so never a plain file-based program), and a project is one that says so or, saying nothing, references the package,
+/// whose props say so once restored.</summary>
+public sealed class AspireHostsTests
+{
+    [Theory]
+    [InlineData(new[] { "#:sdk Aspire.AppHost.Sdk@13.6.5" }, true)]
+    [InlineData(new[] { "#:package Aspire.Hosting.AppHost@17.0.0", "#:package Aspire.Hosting.Dotnet@17.0.0" }, true)]
+    [InlineData(new[] { "#!/usr/bin/env dotnet", "#:property Nullable=enable", "#:package aspire.hosting.apphost@17.0.0" }, true)]
+    [InlineData(new[] { "#:sdk Aspire.AppHost.Sdk" }, true)]
+    [InlineData(new[] { "#:package Aspire.Hosting.Redis@17.0.0" }, false)]
+    [InlineData(new[] { "#:package Aspire.Hosting.AppHost.Extra@1.0.0" }, false)]
+    [InlineData(new[] { "#:sdk Microsoft.NET.Sdk.Web" }, false)]
+    [InlineData(new string[0], false)]
+    public void A_programs_head_makes_it_an_AppHost_by_Aspires_SDK_or_its_AppHost_package(string[] head, bool appHost)
+    {
+        Assert.Equal(appHost, AspireHosts.IsHead(head));
+        Assert.Equal(head.Length > 0 && !appHost, WorkspaceModel.IsProgram("/work/apphost.cs", head));
+    }
+
+    [Theory]
+    [InlineData("true", new string[0], true)]
+    [InlineData("True", new string[0], true)]
+    [InlineData("", new[] { "Aspire.Hosting.AppHost", "Aspire.Hosting.Dotnet" }, true)]
+    [InlineData("", new[] { "aspire.hosting.apphost" }, true)]
+    [InlineData("false", new[] { "Aspire.Hosting.AppHost" }, false)]
+    [InlineData("", new[] { "Aspire.Hosting.Testing" }, false)]
+    [InlineData("", new string[0], false)]
+    public void A_project_is_an_AppHost_as_it_says_or_saying_nothing_by_the_AppHost_package_it_references(string property, string[] packages, bool appHost) =>
+        Assert.Equal(appHost, AspireHosts.Is(property, packages));
+}

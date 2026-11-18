@@ -393,7 +393,7 @@ public sealed record WorkspaceModel(string Folder, SolutionModel? Solution, IRea
     /// outside every project's folder, whose files are the project's; in a folder with no project, a file of no directive
     /// that begins with top-level statements is one too (<see cref="TakesPlainPrograms"/>).</summary>
     public static bool IsProgram(string path, IReadOnlyList<string> head) =>
-        ProgramFiles.IsProgram(path) && head.Count > 0 && !head.Any(IsAspireSdk);
+        ProgramFiles.IsProgram(path) && head.Count > 0 && !AspireHosts.IsHead(head);
 
     /// <summary>Whether its C# files of no directive that begin with top-level statements are programs, as <c>dotnet run</c>
     /// runs them: a folder opened with no solution or project in it, nor any found under it.</summary>
@@ -429,7 +429,4 @@ public sealed record WorkspaceModel(string Folder, SolutionModel? Solution, IRea
             return false;
         }
     }
-
-    private static bool IsAspireSdk(string directive) =>
-        ProgramFiles.Parse(directive) is ("sdk", { } sdk) && sdk.Split('@')[0].Trim().Equals("Aspire.AppHost.Sdk", StringComparison.OrdinalIgnoreCase);
 }

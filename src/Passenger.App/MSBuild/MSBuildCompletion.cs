@@ -71,7 +71,7 @@ public static class MSBuildCompletion
     private static readonly string[] CommonTargets = ["Build", "Rebuild", "Clean", "Restore", "Publish", "Pack", "Test", "BeforeBuild", "AfterBuild", "CoreCompile"];
 
     /// <summary>SDKs that come from NuGet rather than the .NET install, which a project may name all the same.</summary>
-    private static readonly string[] PackageSdks = ["MSTest.Sdk", "Aspire.AppHost.Sdk", "Microsoft.Build.NoTargets", "Microsoft.Build.Traversal", "Microsoft.Build.Sql"];
+    private static readonly string[] PackageSdks = ["MSTest.Sdk", AspireHosts.Sdk, "Microsoft.Build.NoTargets", "Microsoft.Build.Traversal", "Microsoft.Build.Sql"];
 
     /// <summary>The properties a project sets most, which the list offers first.</summary>
     private static readonly string[] CommonProperties =

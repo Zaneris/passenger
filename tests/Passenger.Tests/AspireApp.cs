@@ -12,8 +12,12 @@ namespace Passenger.Tests;
 /// <summary>Two official, container-free starters, restored together and shared by the window tests.</summary>
 public sealed class AspireApp : SharedProject
 {
-    private static readonly Lazy<Task<string>> Hive = new(InstallAsync, LazyThreadSafetyMode.ExecutionAndPublication);
+    private static readonly Lazy<Task<string>> Hive = new(() => InstallAsync(TemplatesVersion), LazyThreadSafetyMode.ExecutionAndPublication);
+    private static readonly Lazy<Task<string>> PackageHive = new(() => InstallAsync(PackageTemplatesVersion), LazyThreadSafetyMode.ExecutionAndPublication);
     public static string TemplatesVersion => AvaloniaApp.Metadata("AspireTemplatesVersion");
+
+    /// <summary>The Aspire whose AppHost is a project or program of Aspire's AppHost package alone, no AppHost SDK.</summary>
+    public static string PackageTemplatesVersion => AvaloniaApp.Metadata("AspirePackageTemplatesVersion");
     public const string Name = "PassengerAspire";
     public const string CompanionName = "CompanionAspire";
     public const string RequestLog = "Passenger request {RequestValue}";
@@ -152,13 +156,20 @@ public sealed class AspireApp : SharedProject
         return ((IPEndPoint)listener.LocalEndpoint).Port;
     }
 
+    /// <summary>Makes what one of Aspire's templates at <paramref name="version"/> makes, from a hive of the run's own, without
+    /// restore or changes to the person's template hive.</summary>
+    public static async Task MakeAsync(string version, string template, string folder, string name, params string[] options)
+    {
+        string hive = await (version == PackageTemplatesVersion ? PackageHive : Hive).Value;
+        ChildResult made = await Run(["new", template, "--output", folder, "--name", name, "--framework", TestProjects.Framework, .. options,
+            "--no-update-check", "--debug:custom-hive", hive], Path.GetDirectoryName(hive));
+        Assert.True(made.Succeeded, $"Aspire {version}'s {template} did not generate:\n{made.Output}{made.Error}");
+    }
+
     /// <summary>Generates the pinned upstream starter, without restore or changes to the person's template hive.</summary>
     public static async Task CreateAsync(string folder, string name)
     {
-        string hive = await Hive.Value;
-        ChildResult made = await Run(["new", "aspire-starter", "--output", folder, "--name", name, "--framework", TestProjects.Framework,
-            "--use-redis-cache", "false", "--skipRestore", "--no-update-check", "--debug:custom-hive", hive], Path.GetDirectoryName(hive));
-        Assert.True(made.Succeeded, $"The official Aspire starter did not generate:\n{made.Output}{made.Error}");
+        await MakeAsync(TemplatesVersion, "aspire-starter", folder, name, "--use-redis-cache", "false", "--skipRestore");
         AvaloniaApp.UseFeed(folder);
         string hostFolder = Path.Combine(folder, name + ".AppHost");
         string project = Path.Combine(hostFolder, name + ".AppHost.csproj");
@@ -190,30 +201,7 @@ public sealed class AspireApp : SharedProject
             """;
         File.WriteAllText(hostSource, recordConnection + hostText.Replace("(\"apiservice\")", "(\"apiservice\", launchProfileName: \"http\")", StringComparison.Ordinal)
             .Replace("(\"webfrontend\")", "(\"webfrontend\", launchProfileName: \"http\")", StringComparison.Ordinal));
-        string settings = Path.Combine(hostFolder, "Properties", "launchSettings.json");
-        JsonObject launch = JsonNode.Parse(File.ReadAllText(settings))!.AsObject();
-        JsonObject http = launch["profiles"]!["http"]!.AsObject();
-        http["launchBrowser"] = false;
-        http["applicationUrl"] = $"http://localhost:{FreePort()}";
-        http["environmentVariables"]![AspireVariables.DashboardOtlpEndpoint] = $"http://localhost:{FreePort()}";
-        http["environmentVariables"]![AspireVariables.ResourceServiceEndpoint] = $"http://localhost:{FreePort()}";
-        http["environmentVariables"]![AspireVariables.AllowUnsecuredTransport] = "true";
-        http["environmentVariables"]!["ASPIRE_VERSION_CHECK_DISABLED"] = "true";
-        // Where the AppHost keeps its record of running AppHosts (aspire ps's), the run's own, never the person's ~/.aspire.
-        http["environmentVariables"]!["HOME"] = AspireCli.Home;
-        // Under obj, so a run leaves the project's own files as written.
-        string dashboardData = Path.Combine(hostFolder, "obj", "passenger-dashboard");
-        if (OperatingSystem.IsWindows())
-        {
-            Directory.CreateDirectory(dashboardData);
-        }
-        else
-        {
-            Directory.CreateDirectory(dashboardData, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
-        }
-        http["environmentVariables"]!["ASPIRE_DASHBOARD_DATA_DIRECTORY"] = dashboardData;
-        launch["profiles"]!.AsObject().Remove("https");
-        File.WriteAllText(settings, launch.ToJsonString());
+        KeepToTheRun(hostFolder);
 
         string api = Path.Combine(folder, name + ".ApiService", "Program.cs");
         string apiText = File.ReadAllText(api);
@@ -241,6 +229,36 @@ public sealed class AspireApp : SharedProject
             });
             app.Run();
             """, StringComparison.Ordinal));
+    }
+
+    /// <summary>An AppHost's HTTP launch profile kept to the run: no browser, free ports for it, its telemetry and its resource
+    /// service, served over HTTP, no version check, the run's own home and its dashboard's data under obj; its HTTPS one gone.</summary>
+    public static void KeepToTheRun(string hostFolder)
+    {
+        string settings = Path.Combine(hostFolder, "Properties", "launchSettings.json");
+        JsonObject launch = JsonNode.Parse(File.ReadAllText(settings))!.AsObject();
+        JsonObject http = launch["profiles"]!["http"]!.AsObject();
+        http["launchBrowser"] = false;
+        http["applicationUrl"] = $"http://localhost:{FreePort()}";
+        http["environmentVariables"]![AspireVariables.DashboardOtlpEndpoint] = $"http://localhost:{FreePort()}";
+        http["environmentVariables"]![AspireVariables.ResourceServiceEndpoint] = $"http://localhost:{FreePort()}";
+        http["environmentVariables"]![AspireVariables.AllowUnsecuredTransport] = "true";
+        http["environmentVariables"]!["ASPIRE_VERSION_CHECK_DISABLED"] = "true";
+        // Where the AppHost keeps its record of running AppHosts (aspire ps's), the run's own, never the person's ~/.aspire.
+        http["environmentVariables"]!["HOME"] = AspireCli.Home;
+        // Under obj, so a run leaves the project's own files as written.
+        string dashboardData = Path.Combine(hostFolder, "obj", "passenger-dashboard");
+        if (OperatingSystem.IsWindows())
+        {
+            Directory.CreateDirectory(dashboardData);
+        }
+        else
+        {
+            Directory.CreateDirectory(dashboardData, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        }
+        http["environmentVariables"]!["ASPIRE_DASHBOARD_DATA_DIRECTORY"] = dashboardData;
+        launch["profiles"]!.AsObject().Remove("https");
+        File.WriteAllText(settings, launch.ToJsonString());
     }
 
     /// <summary>What the class's tests ask of the first starter, written before it is restored, so no test writes a file of its
@@ -314,19 +332,24 @@ public sealed class AspireApp : SharedProject
         File.WriteAllText(FileService, $"File.WriteAllText({JsonSerializer.Serialize(FileServiceRan)}, \"executed\");\n");
     }
 
-    private static async Task<string> InstallAsync()
+    /// <summary>A hive of the run's own holding Aspire's templates at <paramref name="version"/>; for the AppHost SDK's version,
+    /// its SDK put in the run's feed for the starters it makes.</summary>
+    private static async Task<string> InstallAsync(string version)
     {
-        string folder = Directory.CreateDirectory(Path.Combine(TestRun.Root, "aspire-templates")).FullName;
+        string folder = Directory.CreateDirectory(Path.Combine(TestRun.Root, "aspire-templates", version)).FullName;
         string hive = Path.Combine(folder, "hive");
-        string version = TemplatesVersion.ToLowerInvariant();
-        string package = Path.Combine(AvaloniaApp.Metadata("NuGetPackageRoot"), "aspire.projecttemplates", version,
-            $"aspire.projecttemplates.{version}.nupkg");
-        Assert.True(File.Exists(package), $"Aspire.ProjectTemplates {TemplatesVersion} is missing at {package}; restore the test project first");
+        string lower = version.ToLowerInvariant();
+        string package = Path.Combine(AvaloniaApp.Metadata("NuGetPackageRoot"), "aspire.projecttemplates", lower,
+            $"aspire.projecttemplates.{lower}.nupkg");
+        Assert.True(File.Exists(package), $"Aspire.ProjectTemplates {version} is missing at {package}; restore the test project first");
         string localPackage = Path.Combine(folder, Path.GetFileName(package));
         File.Copy(package, localPackage, overwrite: true);
-        string sdk = Path.Combine(AvaloniaApp.Metadata("NuGetPackageRoot"), "aspire.apphost.sdk", version, $"aspire.apphost.sdk.{version}.nupkg");
-        Assert.True(File.Exists(sdk), $"Aspire.AppHost.Sdk {TemplatesVersion} is missing at {sdk}; restore the test project first");
-        File.Copy(sdk, Path.Combine(AvaloniaApp.Feed, Path.GetFileName(sdk)), overwrite: true);
+        if (version == TemplatesVersion)
+        {
+            string sdk = Path.Combine(AvaloniaApp.Metadata("NuGetPackageRoot"), "aspire.apphost.sdk", lower, $"aspire.apphost.sdk.{lower}.nupkg");
+            Assert.True(File.Exists(sdk), $"Aspire.AppHost.Sdk {version} is missing at {sdk}; restore the test project first");
+            File.Copy(sdk, Path.Combine(AvaloniaApp.Feed, Path.GetFileName(sdk)), overwrite: true);
+        }
         AvaloniaApp.UseFeed(folder);
         ChildResult installed = await Run(["new", "install", localPackage, "--debug:custom-hive", hive], folder);
         Assert.True(installed.Succeeded, $"Aspire templates did not install into the private hive:\n{installed.Output}{installed.Error}");

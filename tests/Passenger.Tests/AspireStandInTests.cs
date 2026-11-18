@@ -599,7 +599,7 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
         };
         // As the AppHost sends arguments one of which it marks sensitive: both lists marked sensitive, the marks numbers.
         backend.PushResource(WithArguments(service, ["--api-key", "arg-never-shown", "--port", "5310", "positional-never-shown"], [0, 0, 0, 0, 1], marked: true));
-        backend.PushResource(new Resource { Name = "cache", DisplayName = "cache", Uid = "cache", ResourceType = "Container", State = "Starting" });
+        backend.PushResource(new Resource { Name = "cache", DisplayName = "cache", Uid = "cache", ResourceType = "Container", ResourceTypeDisplayName = "Redis Insight", State = "Starting" });
         MainWindow window = OpenRunning(backend);
         try
         {
@@ -619,6 +619,9 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
             Ui.WaitFor(() => details.Resource?.Name == "apiservice", "the API's details");
             string[] shown = [.. details.GetVisualDescendants().OfType<SelectableTextBlock>().Select(text => text.Text ?? string.Empty)];
             Assert.Contains("hello-shown", shown);
+            // A type in the AppHost's words for people where it gives them (the cache's), else by its type's name (the API's).
+            Assert.Contains("Project", shown);
+            Assert.Contains(Row(window, "cache").GetVisualDescendants().OfType<TextBlock>(), text => text.IsEffectivelyVisible && text.Text == "Redis Insight");
             Assert.Contains(Passenger.App.Containers.ContainerSecrets.Masked, shown);
             Assert.DoesNotContain(shown, text => text.Contains("never-shown", StringComparison.Ordinal));
             Assert.Contains(shown, text => text.StartsWith("postgres://app:", StringComparison.Ordinal) && text.EndsWith("@db/shop", StringComparison.Ordinal));
@@ -2765,10 +2768,10 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
     }
 
     /// <summary>Discover asks the window's aspire CLI (a stand-in's, <see cref="MainWindow.AspireCliFrom"/>) its version first:
-    /// within 13.x from 13.6.0, any patch, it lists the AppHosts the CLI finds; below it, or another major, it says why and
-    /// lists none.</summary>
+    /// within 13.x from 13.6.0, any patch, or 17.x, it lists the AppHosts the CLI finds; below it, or another major, it says
+    /// why and lists none.</summary>
     [AvaloniaFact]
-    public void Discover_takes_a_CLI_of_13_6_or_later_within_13_and_says_why_it_will_not_take_another()
+    public void Discover_takes_a_CLI_of_13_6_or_later_within_13_or_of_17_and_says_why_it_will_not_take_another()
     {
         Assert.SkipWhen(OperatingSystem.IsWindows(), "The stand-in aspire CLI is a shell script, and Windows runs no shell script as a program");
         project.Reset();
@@ -2781,7 +2784,8 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
         try
         {
             foreach ((string version, string? refusal) in ((string, string?)[])[("13.6.0", null), ("13.6.3", null), ("13.7.0", null),
-                ("13.5.4", "below the minimum supported version 13.6.0"), ("14.0.0", "uses an unverified protocol major")])
+                ("17.0.0", null), ("17.1.2", null), ("13.5.4", "below the minimum supported version 13.6.0"),
+                ("14.0.0", "uses an unverified protocol major"), ("18.0.0", "uses an unverified protocol major")])
             {
                 File.WriteAllText(Path.Combine(Path.GetDirectoryName(cli)!, "version"), version + "\n");
                 FindAction(window, "Discover Aspire AppHosts");

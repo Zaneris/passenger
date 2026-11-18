@@ -131,7 +131,7 @@ internal static class Evaluation
             OutputType = NonEmpty(first.GetPropertyValue(MSBuildNames.OutputType)),
             TargetFrameworks = frameworks,
             IsTestProject = each.Any(p => p.GetPropertyValue("IsTestProject").Equals("true", StringComparison.OrdinalIgnoreCase)),
-            IsAspireHost = each.Any(p => p.GetPropertyValue("IsAspireHost").Equals("true", StringComparison.OrdinalIgnoreCase)),
+            IsAspireHost = each.Any(p => AspireHosts.Is(p.GetPropertyValue(AspireHosts.Property), p.GetItems("PackageReference").Select(i => i.EvaluatedInclude))),
             IsWeb = each.Any(p => WebSdks.Any(sdk => p.GetPropertyValue(sdk).Equals("true", StringComparison.OrdinalIgnoreCase))),
             Dependencies = [.. each.Select((p, i) => Dependencies(p, named[i]))],
             Symbols = [.. each.Select(DefinedSymbols.Of).OfType<FrameworkSymbols>()],

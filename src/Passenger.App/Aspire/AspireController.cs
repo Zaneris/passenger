@@ -793,7 +793,7 @@ public sealed partial class AspireController(ProjectSession workspace, string st
         {
             if (!AspireAppHosts.IsSingleFile(configuration.Project))
             {
-                throw new LaunchException("The selected C# file does not declare the Aspire AppHost SDK");
+                throw new LaunchException($"The selected C# file names neither {Passenger.Host.AspireHosts.Sdk} nor {Passenger.Host.AspireHosts.Package} in its directives, so it is no Aspire AppHost");
             }
             if (AspireAppHosts.SingleFileWhyNot(configuration.Project, Directory.EnumerateFiles(folder, "*", SearchOption.TopDirectoryOnly)) is { } unsupported)
             {

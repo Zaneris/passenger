@@ -52,7 +52,7 @@ public sealed class AspireDetailsPane(Action<Uri> browse, Action<string> open, A
     {
         JsonElement data = resource.Data;
         IReadOnlyList<(string Name, string Type)> own = Relations(resource);
-        List<(string, Control)> about = [("Type", Words(JsonMembers.Text(data, "resourceType") ?? JsonMembers.Text(data, "type") ?? "Unknown"))];
+        List<(string, Control)> about = [("Type", Words(resource.TypeShown ?? "Unknown"))];
         about.Add(("State", leftUnstarted ? State(AspireAppRun.NotStarted, null) : State(resource.State ?? "Unknown", Health(resource))));
         if (leftUnstarted)
         {

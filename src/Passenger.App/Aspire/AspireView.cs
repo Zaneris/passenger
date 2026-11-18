@@ -589,7 +589,7 @@ public sealed class AspireView : DockPanel, IDisposable
             Health = AspireDetailsPane.Health(resource),
             Links = [.. AspireModel.Links(resource).Take(3).Select(url => new RunLink(url.Authority, url, url.AbsoluteUri))],
             Detail = resource.Source is { } source ? Path.IsPathFullyQualified(source) ? Path.GetFileName(source) : source
-                : AspireJson.String(resource.Data, "resourceType"),
+                : resource.TypeShown,
             Tip = resource.ToString(),
         };
     }
