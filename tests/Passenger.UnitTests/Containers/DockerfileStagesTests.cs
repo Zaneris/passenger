@@ -45,6 +45,6 @@ public sealed class DockerfileStagesTests
     [Fact]
     public void An_ENTRYPOINT_of_another_program_runs_no_assembly()
     {
-        Assert.Null(DockerfileStages.Read("FROM busybox:1.37\nENTRYPOINT [\"sh\", \"-c\", \"sleep 600\"]\n").Final?.EntryAssembly);
+        Assert.Null(DockerfileStages.Read("FROM busybox:1.38\nENTRYPOINT [\"sh\", \"-c\", \"sleep 600\"]\n").Final?.EntryAssembly);
     }
 }

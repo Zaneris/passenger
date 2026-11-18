@@ -1142,7 +1142,7 @@ public sealed class RunConfigurationsTests : IClassFixture<RestoredFolders>, IDi
     [AvaloniaFact]
     public void A_compose_configuration_added_in_the_dialog_shows_its_kinds_page_and_is_kept_with_its_files_and_choices()
     {
-        Write("compose.yaml", "services:\n  web:\n    image: busybox:1.37\n");
+        Write("compose.yaml", "services:\n  web:\n    image: busybox:1.38\n");
         Write("compose.override.yaml", "services:\n  web:\n    environment: { A: \"1\" }\n");
         MainWindow window = Keeping();
         RunConfigurationsDialog dialog = window.ShowRunConfigurations();

@@ -199,8 +199,8 @@ public sealed class AspireContainersTests : IClassFixture<AspireApp>
     {
         string source = Path.Combine(hostFolder, "AppHost.cs");
         string added = $"""
-            builder.AddContainer("{Session}", "busybox", "1.37").WithArgs("sleep", "3600").WithContainerRuntimeArgs("--label", "{Docker.RunLabel}");
-            {(kept ? $"builder.AddContainer(\"{Kept}\", \"busybox\", \"1.37\").WithArgs(\"sleep\", \"3600\").WithLifetime(ContainerLifetime.Persistent).WithContainerRuntimeArgs(\"--label\", \"{Docker.RunLabel}\");" : string.Empty)}
+            builder.AddContainer("{Session}", "busybox", "1.38").WithArgs("sleep", "3600").WithContainerRuntimeArgs("--label", "{Docker.RunLabel}");
+            {(kept ? $"builder.AddContainer(\"{Kept}\", \"busybox\", \"1.38\").WithArgs(\"sleep\", \"3600\").WithLifetime(ContainerLifetime.Persistent).WithContainerRuntimeArgs(\"--label\", \"{Docker.RunLabel}\");" : string.Empty)}
 
             """;
         string text = File.ReadAllText(source);

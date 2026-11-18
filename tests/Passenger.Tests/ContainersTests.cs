@@ -26,7 +26,7 @@ internal static class Docker
     /// run's end removes whatever carries it, and a later run what carries a run's of this machine whose process is gone.</summary>
     public static readonly string RunLabel = $"{RunKey}={ContainerLabels.MachineValue}.{ContainerLabels.ProcessValue}";
 
-    public const string Image = "busybox:1.37";
+    public const string Image = "busybox:1.38";
 
     /// <summary>What every test's <c>docker run</c> takes: Docker's CLI on Podman's socket otherwise makes a container that
     /// holds one process (pids.max 1, Podman 5.7's reading of what the CLI sends; Compose's are Podman's 2048), where no
@@ -364,13 +364,13 @@ public sealed class ContainersTests
     /// <summary>A web server answering on a port the engine chooses, healthy once it answers, and a worker that ticks.</summary>
     private const string Shop = """
           web:
-            image: busybox:1.37
+            image: busybox:1.38
             command: ["sh", "-c", "mkdir -p /www && echo hello > /www/index.html && echo 'web listening on http://localhost:8080/ at /app/Program.cs:line 12' && exec httpd -f -v -p 8080 -h /www"]
             ports: ["8080"]
             labels: { $LABEL }
             healthcheck: { test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:8080/"], interval: 1s, retries: 30 }
           worker:
-            image: busybox:1.37
+            image: busybox:1.38
             command: ["sh", "-c", "i=0; while true; do i=$$((i+1)); echo \"worker tick $$i\"; sleep 1; done"]
             labels: { $LABEL }
         """;
@@ -1480,7 +1480,7 @@ public sealed class ContainersTests
     /// <c>network ls -q</c> while a file <c>up</c> is, else none; every command it is given written to <c>calls</c>. The CLI.</summary>
     private static string StandInComposeEngine(string folder, string host, int port)
     {
-        const string Model = """{"name":"remote","services":{"web":{"image":"busybox:1.37","ports":[{"mode":"ingress","target":80,"published":"8080","protocol":"tcp"}],"networks":{"default":null}}},"networks":{"default":{"name":"remote_default"}}}""";
+        const string Model = """{"name":"remote","services":{"web":{"image":"busybox:1.38","ports":[{"mode":"ingress","target":80,"published":"8080","protocol":"tcp"}],"networks":{"default":null}}},"networks":{"default":{"name":"remote_default"}}}""";
         const string Wait = "while [ ! -f \"$here/down\" ]; do sleep 0.2; done; exit 0";
         string cli = Path.Combine(folder, "docker");
         File.WriteAllText(cli, string.Join('\n', (string[])[
@@ -1523,9 +1523,9 @@ public sealed class ContainersTests
     {
         Assert.SkipWhen(OperatingSystem.IsWindows(), "The stand-in engine is a shell script");
         (string cli, _) = StandInEngine(TestFolders.Create("ctr-failed-"), up: true, more: [
-            """{"ID":"5a5d0c0ffee3","Names":"crashy","Image":"busybox:1.37","State":"restarting","Status":"Restarting (1) 3 seconds ago","Ports":"","Labels":""}""",
-            """{"ID":"5a5d0c0ffee4","Names":"broken","Image":"busybox:1.37","State":"exited","Status":"Exited (1) 2 minutes ago","Ports":"","Labels":""}""",
-            """{"ID":"5a5d0c0ffee5","Names":"halted","Image":"busybox:1.37","State":"exited","Status":"Exited (137) 1 minute ago","Ports":"","Labels":""}"""]);
+            """{"ID":"5a5d0c0ffee3","Names":"crashy","Image":"busybox:1.38","State":"restarting","Status":"Restarting (1) 3 seconds ago","Ports":"","Labels":""}""",
+            """{"ID":"5a5d0c0ffee4","Names":"broken","Image":"busybox:1.38","State":"exited","Status":"Exited (1) 2 minutes ago","Ports":"","Labels":""}""",
+            """{"ID":"5a5d0c0ffee5","Names":"halted","Image":"busybox:1.38","State":"exited","Status":"Exited (137) 1 minute ago","Ports":"","Labels":""}"""]);
         MainWindow window = new() { Width = 1200, Height = 800, Engine = new ContainerEngine(cli: cli) };
         window.Show();
         window.OpenFolder(TestFolders.Create("ctr-failed-window-"));
@@ -1652,8 +1652,8 @@ public sealed class ContainersTests
             "if [ \"$1\" = events ] && [ \"$running\" = held ]; then while [ \"$(cat \"$here/state\")\" = held ]; do sleep 0.2; done; echo events-ended >> \"$here/calls\"; fi",
             $"[ \"$running\" = up ] || {{ {Down}; }}",
             "case \"$1\" in",
-            "  ps) echo '{\"ID\":\"5a5d0c0ffee1\",\"Names\":\"shop-web-1\",\"Image\":\"busybox:1.37\",\"State\":\"running\",\"Status\":\"Up 5 minutes\",\"Ports\":\"0.0.0.0:8080->80/tcp\",\"Labels\":\"com.docker.compose.project=shop,com.docker.compose.service=web\"}'",
-            "    echo '{\"ID\":\"5a5d0c0ffee2\",\"Names\":\"solo\",\"Image\":\"busybox:1.37\",\"State\":\"exited\",\"Status\":\"Exited (0) 2 minutes ago\",\"Ports\":\"\",\"Labels\":\"\"}'",
+            "  ps) echo '{\"ID\":\"5a5d0c0ffee1\",\"Names\":\"shop-web-1\",\"Image\":\"busybox:1.38\",\"State\":\"running\",\"Status\":\"Up 5 minutes\",\"Ports\":\"0.0.0.0:8080->80/tcp\",\"Labels\":\"com.docker.compose.project=shop,com.docker.compose.service=web\"}'",
+            "    echo '{\"ID\":\"5a5d0c0ffee2\",\"Names\":\"solo\",\"Image\":\"busybox:1.38\",\"State\":\"exited\",\"Status\":\"Exited (0) 2 minutes ago\",\"Ports\":\"\",\"Labels\":\"\"}'",
             .. (more ?? []).Select(line => $"    echo '{line}'"),
             "    ;;",
             "  images|volume|network) ;;",

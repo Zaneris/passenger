@@ -408,7 +408,7 @@ public sealed class DockerFilesTests : IClassFixture<DockerFilesTests.Shop>
             configs:
               - source: nginx
           api:
-            image: busybox:1.37
+            image: busybox:1.38
             extends:
               file: ../ops/common.yaml
               service: base

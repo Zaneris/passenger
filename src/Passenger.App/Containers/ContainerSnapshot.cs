@@ -319,7 +319,7 @@ public sealed record ContainerSnapshot(IReadOnlyList<ComposeProject> Projects, I
 
     private static string ImageName(JsonElement image)
     {
-        // Podman's own command names an image in full ("docker.io/library/busybox:1.37"), with no repository and tag apart.
+        // Podman's own command names an image in full ("docker.io/library/busybox:1.38"), with no repository and tag apart.
         if (JsonMembers.Scalar(image, "Repository") is null && ContainerInfo.First(image, "Names") is { } named)
         {
             return named;

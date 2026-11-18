@@ -23,7 +23,7 @@ public sealed class ComposeProjectEditingTests
     public void A_Docker_Compose_project_is_read_as_MSBuilds_and_never_marked_for_the_Visual_Studio_SDK_it_names()
     {
         string own = PathNames.Canonical(TestFolders.Create("project-dcproj-"));
-        TestFolders.Write(own, "docker-compose.yml", "services:\n  web:\n    image: busybox:1.37\n");
+        TestFolders.Write(own, "docker-compose.yml", "services:\n  web:\n    image: busybox:1.38\n");
         TestFolders.Write(own, "docker-compose.dcproj", """
             <?xml version="1.0" encoding="utf-8"?>
             <Project ToolsVersion="15.0" Sdk="Microsoft.Docker.Sdk">
@@ -92,9 +92,9 @@ public sealed class ComposeProjectEditingTests
     public void A_Docker_Compose_project_at_the_solutions_root_shows_only_the_files_it_holds()
     {
         string own = PathNames.Canonical(TestFolders.Create("solution-dcproj-"));
-        TestFolders.Write(own, "docker-compose.foo.yml", "services:\n  internal-api:\n    image: busybox:1.37\n");
+        TestFolders.Write(own, "docker-compose.foo.yml", "services:\n  internal-api:\n    image: busybox:1.38\n");
         TestFolders.Write(own, "docker-compose.foo.override.yml", "services:\n  internal-api:\n    environment: { GREETING: hi }\n");
-        TestFolders.Write(own, "docker/configuration/dotnet-api/Dockerfile", "FROM busybox:1.37\n");
+        TestFolders.Write(own, "docker/configuration/dotnet-api/Dockerfile", "FROM busybox:1.38\n");
         TestFolders.Write(own, "docker/configuration/notes.txt", "Not the project's.\n");
         TestFolders.Write(own, "launchSettings.json", "{}\n");
         TestFolders.Write(own, "Properties/launchSettings.json", "{ \"profiles\": {} }\n");

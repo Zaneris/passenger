@@ -28,7 +28,7 @@ namespace Passenger.Tests;
 /// no Linux engine runs (no Node.js is needed: the markers stand without the files' servers).</summary>
 public sealed class EngineChecksTests
 {
-    private const string Dockerfile = "FROM busybox:1.37 as build\nRUN echo built > /built\n\nFROM busybox:1.37\nCOPY --from=build /built /built\nCMD [\"cat\", \"/built\"]\n";
+    private const string Dockerfile = "FROM busybox:1.38 as build\nRUN echo built > /built\n\nFROM busybox:1.38\nCOPY --from=build /built /built\nCMD [\"cat\", \"/built\"]\n";
 
     /// <summary>A frontend image no registry has: were it pulled, the check would fail, saying only that its host is unknown.</summary>
     private const string Frontend = "passenger.invalid/unknown-frontend:1";
@@ -75,7 +75,7 @@ public sealed class EngineChecksTests
             Ui.WaitFor(() => document.Markers.Any(m => m.Message.EndsWith("(FromAsCasing)", StringComparison.Ordinal)), $"BuildKit's FromAsCasing on the first line ({window.Status})");
             Marker casing = document.Markers.Single(m => m.Message.EndsWith("(FromAsCasing)", StringComparison.Ordinal));
             Assert.Equal(MarkerKind.Warning, casing.Kind);
-            Assert.Equal("FROM busybox:1.37 as build", text.GetText(casing.Range.Start, casing.Range.Length));
+            Assert.Equal("FROM busybox:1.38 as build", text.GetText(casing.Range.Start, casing.Range.Length));
             Assert.Equal("BuildKit: 'as' and 'FROM' keywords' casing do not match (FromAsCasing)", casing.Message);
             Assert.Equal(new Uri("https://docs.docker.com/go/dockerfile/rule/from-as-casing/"), casing.Link);
             Assert.Equal("FromAsCasing", casing.LinkText);
@@ -146,7 +146,7 @@ public sealed class EngineChecksTests
         Assert.SkipWhen(Docker.WhyNot is not null, Docker.WhyNot ?? string.Empty);
         const string Compose = "services:\n  db:\n    image: postgres:17\n    environment:\n      POSTGRES_PASSWORD: ${DB_PASS}\n      OPENAI: ${APIKEY}\n"
             + "      ADMIN: ${DBPASSWORD}\n      DATABASE_URL: postgres://u:${PGPASS}@db/x\n      CACHE_PASSWORD: ${CACHE_VALUE}\n      BROKER: ${BROKER_URL}\n"
-            + "      ZOO: $MONKEY\n  api:\n    image: busybox:1.37\n    environment:\n      - SIGNING_KEY=${SIGNER}\n    volumes:\n      - $PWD/data:/data\n";
+            + "      ZOO: $MONKEY\n  api:\n    image: busybox:1.38\n    environment:\n      - SIGNING_KEY=${SIGNER}\n    volumes:\n      - $PWD/data:/data\n";
         string[] secrets = ["pass-one", "key-two", "pass-three", "pass-four", "value-five", "hunter-six", "signer-seven"];
         string folder = Folder(("compose.yaml", Compose), (".env", $"DB_PASS={secrets[0]}\nAPIKEY={secrets[1]}\nDBPASSWORD={secrets[2]}\nPGPASS={secrets[3]}\n"
             + $"CACHE_VALUE={secrets[4]}\nBROKER_URL=amqp://app:{secrets[5]}@rabbit:5672\nSIGNER={secrets[6]}\nMONKEY=banana\n"));
@@ -174,8 +174,8 @@ public sealed class EngineChecksTests
     {
         Assert.SkipWhen(Docker.WhyNot is not null, Docker.WhyNot ?? string.Empty);
         using Listener host = new();
-        string folder = Folder(("git/compose.yaml", $"include:\n  - https://127.0.0.1:{host.Port}/shop.git\nservices:\n  web:\n    image: busybox:${{TAG:-1.37}}\n"),
-            ("oci/compose.yaml", $"include:\n  - oci://127.0.0.1:{host.Port}/shop/compose:1\nservices:\n  web:\n    image: busybox:${{TAG:-1.37}}\n"));
+        string folder = Folder(("git/compose.yaml", $"include:\n  - https://127.0.0.1:{host.Port}/shop.git\nservices:\n  web:\n    image: busybox:${{TAG:-1.38}}\n"),
+            ("oci/compose.yaml", $"include:\n  - oci://127.0.0.1:{host.Port}/shop/compose:1\nservices:\n  web:\n    image: busybox:${{TAG:-1.38}}\n"));
         MainWindow window = Open(folder, "git/compose.yaml");
         try
         {
@@ -183,7 +183,7 @@ public sealed class EngineChecksTests
             window.OpenFile(PathOf(folder, "oci/compose.yaml"));
             Ui.Settle();
             OpenDocument oci = window.EditorArea.Active!;
-            string[] expected = ["${TAG:-1.37}|= 1.37"];
+            string[] expected = ["${TAG:-1.38}|= 1.38"];
             Ui.WaitFor(() => Hints(git, expected).SequenceEqual(expected) && Hints(oci, expected).SequenceEqual(expected), "both files checked");
             Assert.True(host.Connections == 0, $"Checking a compose file reached an included repository's host {host.Connections} times");
             string marked = string.Join(", ", git.Markers.Concat(oci.Markers).Where(m => m.Message.StartsWith("Compose:", StringComparison.Ordinal)).Select(m => m.Message));
@@ -243,7 +243,7 @@ public sealed class EngineChecksTests
     public void A_compose_files_error_is_marked_where_compose_names_it_and_listed_in_problems_until_it_is_fixed()
     {
         Assert.SkipWhen(Docker.WhyNot is not null, Docker.WhyNot ?? string.Empty);
-        string folder = Folder(("compose.yaml", "services:\n  web:\n    image: busybox:1.37\n    depends_on:\n      - cache\n"));
+        string folder = Folder(("compose.yaml", "services:\n  web:\n    image: busybox:1.38\n    depends_on:\n      - cache\n"));
         MainWindow window = Open(folder, "compose.yaml");
         try
         {
@@ -257,7 +257,7 @@ public sealed class EngineChecksTests
 
             // The service it depends on added (typed, not saved): Compose reads the text as typed once typing pauses.
             CodeEditor editor = window.EditorArea.CodeEditor;
-            editor.ApplyEdits([new TextEdit(document.Text.Snapshot.Length, 0, "  cache:\n    image: busybox:1.37\n")]);
+            editor.ApplyEdits([new TextEdit(document.Text.Snapshot.Length, 0, "  cache:\n    image: busybox:1.38\n")]);
             Ui.WaitFor(() => !document.Markers.Any(m => m.Message.StartsWith("Compose:", StringComparison.Ordinal)) && window.BottomPanel.Problems.ContainerProblems.Count == 0,
                 "Compose's error gone once the service is there");
         }
@@ -276,7 +276,7 @@ public sealed class EngineChecksTests
     {
         Assert.SkipWhen(Docker.WhyNot is not null, Docker.WhyNot ?? string.Empty);
         const string Secret = "s3cr3t-hunter2";
-        string folder = Folder(("compose.yaml", "services:\n  web:\n    image: busybox:1.37\n    cpus: ${DB_PASSWORD}\n"), (".env", $"DB_PASSWORD={Secret}\n"));
+        string folder = Folder(("compose.yaml", "services:\n  web:\n    image: busybox:1.38\n    cpus: ${DB_PASSWORD}\n"), (".env", $"DB_PASSWORD={Secret}\n"));
         MainWindow window = Open(folder, "compose.yaml");
         try
         {
@@ -315,8 +315,8 @@ public sealed class EngineChecksTests
     public void A_compose_files_undeclared_names_are_fixed_by_changing_removing_or_declaring_them_each_one_undo_step()
     {
         Assert.SkipWhen(Docker.WhyNot is not null, Docker.WhyNot ?? string.Empty);
-        const string Compose = "services:\n  web:\n    image: busybox:1.37\n    depends_on:\n      - dbb\n      - cache\n  db:\n    image: busybox:1.37\n"
-            + "  cache:\n    image: busybox:1.37\n";
+        const string Compose = "services:\n  web:\n    image: busybox:1.38\n    depends_on:\n      - dbb\n      - cache\n  db:\n    image: busybox:1.38\n"
+            + "  cache:\n    image: busybox:1.38\n";
         string folder = Folder(("compose.yaml", Compose));
         MainWindow window = Open(folder, "compose.yaml");
         try
@@ -350,7 +350,7 @@ public sealed class EngineChecksTests
             Fixes(window, Marked(window, document, "data"), ["Declare data at the top level"]);
             Ui.Press(window, "ENTER");
             string declared = editor.Document.Snapshot.ToString();
-            Assert.EndsWith("    image: busybox:1.37\nvolumes:\n  data:\n", declared, StringComparison.Ordinal);
+            Assert.EndsWith("    image: busybox:1.38\nvolumes:\n  data:\n", declared, StringComparison.Ordinal);
             Ui.Run(window, EditorActions.Undo);
             Assert.DoesNotContain("\nvolumes:", editor.Document.Snapshot.ToString(), StringComparison.Ordinal);
             Ui.Run(window, EditorActions.Redo);
@@ -375,7 +375,7 @@ public sealed class EngineChecksTests
     public void A_compose_fix_is_worked_out_again_as_it_is_chosen_and_refused_once_the_file_no_longer_needs_it()
     {
         Assert.SkipWhen(Docker.WhyNot is not null, Docker.WhyNot ?? string.Empty);
-        const string Compose = "services:\n    web:\n        image: busybox:1.37\n        secrets:\n            - api_key\nsecrets:\n    other:\n        file: ./other.txt\n";
+        const string Compose = "services:\n    web:\n        image: busybox:1.38\n        secrets:\n            - api_key\nsecrets:\n    other:\n        file: ./other.txt\n";
         string folder = Folder(("compose.yaml", Compose));
         MainWindow window = Open(folder, "compose.yaml");
         try
@@ -410,7 +410,7 @@ public sealed class EngineChecksTests
     {
         Assert.SkipWhen(Docker.WhyNot is not null, Docker.WhyNot ?? string.Empty);
         DockerFilesTests.Shop.SkipWithoutNode(yaml: true);
-        const string Compose = "services:\n  web:\n    image: busybox:1.37\n    networks:\n      - backend\n";
+        const string Compose = "services:\n  web:\n    image: busybox:1.38\n    networks:\n      - backend\n";
         string folder = Folder(("compose.yaml", Compose));
         MainWindow window = Open(folder, "compose.yaml");
         try
@@ -679,7 +679,7 @@ public sealed class EngineChecksTests
     public void Without_a_node_js_an_agents_diagnostics_of_a_compose_file_are_the_engines_with_why_the_servers_are_missing()
     {
         Assert.SkipWhen(Docker.WhyNot is not null, Docker.WhyNot ?? string.Empty);
-        const string Broken = "services:\n  web:\n    image: busybox:1.37\n    depends_on:\n      - cache\n";
+        const string Broken = "services:\n  web:\n    image: busybox:1.38\n    depends_on:\n      - cache\n";
         string folder = Folder(("compose.yaml", Broken), ("other/compose.yaml", Broken));
         string missing = Path.Combine(TestRun.Root, "no-node-here", OperatingSystem.IsWindows() ? "node.exe" : "node");
         MainWindow window = new() { Width = 1200, Height = 800 };
