@@ -470,7 +470,8 @@ public sealed class LanguageServer : IAsyncDisposable
         ProcessStartInfo start = ChildProcesses.ConservingMemory(ChildProcesses.NamingDotnet(ChildProcesses.HelperCommand(server, arguments), folder));
         // A server's MSBuild nodes are its own: a restart ends them, which would cut short a build that took one up.
         start.Environment[MSBuildNames.NodeHandshakeSalt] += $"-server-{Interlocked.Increment(ref started)}";
-        if (stateCache is not null && RoslynServerFolder.Temporary(stateCache) is { } temporary)
+        // A temporary folder of its own, where no other server takes away the library code it writes for Go to Declaration.
+        if (stateCache is not null && RoslynServerFolder.TemporaryOf(stateCache) is { } temporary)
         {
             start.Environment[RoslynServerFolder.TemporaryVariable] = temporary;
         }

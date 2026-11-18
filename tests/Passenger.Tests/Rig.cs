@@ -354,8 +354,9 @@ public sealed class TestRun : IAsyncDisposable
     /// tries each once.</summary>
     private static void End(bool waiting)
     {
-        // The windows' agent sockets are in a folder named for the run's state, outside it.
-        foreach (string folder in (string[])[Root, Passenger.App.Mcp.McpHost.SocketFolder, AspireCli.Home])
+        // The windows' agent sockets and the language servers' temporary folders are in folders named for the run's state, outside it.
+        foreach (string folder in (string[])[Root, Passenger.App.Mcp.McpHost.SocketFolder, AspireCli.Home,
+            .. UserTemporary.Of(Passenger.App.CSharp.CSharpService.ServerCache, Passenger.Lsp.RoslynServerFolder.TemporariesKind) is var servers && Directory.Exists(servers) ? [servers] : (string[])[]])
         {
             try
             {

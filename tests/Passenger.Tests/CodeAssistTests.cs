@@ -1573,15 +1573,12 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
 
         window.OpenFile(project.PathOf("Program.cs"));
         Ui.Settle();
-        Ui.PlaceAfter(editor, "        in");
-        Ui.Press(window, Ui.Shortcut(AppActions.GoToDeclaration));
-        Ui.WaitFor(() => window.EditorArea.Active?.IsDecompiled == true, "the decompiled source to open");
-        Passenger.App.Workspace.OpenDocument decompiled = window.EditorArea.Active!;
+        Passenger.App.Workspace.OpenDocument decompiled = Decompiled(window, "        in");
         Assert.Equal("Int32.cs", decompiled.Name);
-        // On Linux, whose /tmp every user shares, in a temporary folder of the person's own.
-        if (Passenger.Lsp.RoslynServerFolder.Temporary(Passenger.App.CSharp.CSharpService.ServerCache) is { } own)
+        // Off Windows, in the server's own temporary folder, among those of the person's own.
+        if (Passenger.Lsp.RoslynServerFolder.Temporaries(Passenger.App.CSharp.CSharpService.ServerCache) is { } own)
         {
-            Assert.True(PathNames.IsUnder(decompiled.Path, PathNames.Canonical(own)), $"The language server wrote {decompiled.Path}, outside the temporary folder of the person's own it was given, {own}");
+            Assert.True(PathNames.IsUnder(decompiled.Path, PathNames.Canonical(own)), $"The language server wrote {decompiled.Path}, outside the temporary folders of the person's own its servers are given, {own}");
         }
         Assert.Contains("struct Int32", decompiled.Text.Snapshot.ToString(), StringComparison.Ordinal);
         Assert.Contains("struct Int32", decompiled.Text.Snapshot.GetLineText(editor.CaretPosition.Line), StringComparison.Ordinal);
@@ -1600,11 +1597,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
     public void Code_cleanup_and_optimize_imports_grey_on_a_decompiled_file_saying_it_is_read_only()
     {
         MainWindow window = project.Open("Program.cs");
-        CodeEditor editor = window.EditorArea.CodeEditor;
-        Ui.PlaceAfter(editor, "        in");
-        Ui.Press(window, Ui.Shortcut(AppActions.GoToDeclaration));
-        Ui.WaitFor(() => window.EditorArea.Active?.IsDecompiled == true, "the decompiled source to open");
-        Passenger.App.Workspace.OpenDocument decompiled = window.EditorArea.Active!;
+        Passenger.App.Workspace.OpenDocument decompiled = Decompiled(window, "        in");
         string before = decompiled.Text.Snapshot.ToString();
 
         foreach (string action in new[] { AppActions.CodeCleanup, AppActions.OptimizeUsings, AppActions.Reformat })
@@ -1626,10 +1619,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
     public void Every_action_of_the_code_and_refactor_menus_that_would_change_a_decompiled_file_greys_saying_it_is_read_only()
     {
         MainWindow window = project.Open("Program.cs");
-        Ui.PlaceAfter(window.EditorArea.CodeEditor, "        in");
-        Ui.Press(window, Ui.Shortcut(AppActions.GoToDeclaration));
-        Ui.WaitFor(() => window.EditorArea.Active?.IsDecompiled == true, "the decompiled source to open");
-        Passenger.App.Workspace.OpenDocument decompiled = window.EditorArea.Active!;
+        Passenger.App.Workspace.OpenDocument decompiled = Decompiled(window, "        in");
         string before = decompiled.Text.Snapshot.ToString();
         string readOnly = $"{decompiled.Name} is read-only";
         HashSet<string> reading = [EditorActions.Unfold, EditorActions.UnfoldAll, EditorActions.Fold, EditorActions.FoldToDefinitions, EditorActions.FoldAll,
@@ -1663,6 +1653,48 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         window.Close();
 
         static IEnumerable<string> ActionsIn(MenuEntry menu) => menu.Action is { } id ? [id] : (menu.Items ?? []).SelectMany(ActionsIn);
+    }
+
+    /// <summary>A library type's source the language server decompiled for one window stays where it was written, and Go
+    /// to Declaration there opens it again, after another window's server, a program of its own, decompiles one too.</summary>
+    [AvaloniaFact]
+    public void A_library_types_source_decompiled_for_one_window_stays_as_another_windows_server_decompiles_one()
+    {
+        MainWindow window = project.Open("Program.cs");
+        string written = Decompiled(window, "        in").Path;
+        string other = TestFolders.Create("assist-beside-");
+        File.WriteAllText(Path.Combine(other, "Beside.csproj"), TestProjects.Console());
+        File.WriteAllText(Path.Combine(other, "Program.cs"), "class Program\n{\n    static void Main()\n    {\n        string text = \"\";\n    }\n}\n");
+        Restore.Run(other);
+        MainWindow beside = Ui.OpenFolder(other);
+        try
+        {
+            beside.OpenFile("Program.cs");
+            Ui.WaitFor(() => beside.CSharpService is { IsReady: true }, () => $"the other window's language server to load its project ({beside.CSharpService?.State})", TimeSpan.FromMinutes(3));
+            string besides = Decompiled(beside, "        str").Path;
+            Assert.True(File.Exists(written), $"{written}, the source of Int32 the first window's server decompiled, was deleted as the other window's server decompiled {besides}");
+        }
+        finally
+        {
+            beside.Close();
+        }
+        Passenger.App.Workspace.OpenDocument shown = window.EditorArea.Active!;
+        Assert.True(window.EditorArea.CloseTab(window.EditorArea.Groups.First(g => g.Has(shown)), shown), $"{shown.Name}'s tab did not close");
+        window.OpenFile(project.PathOf("Program.cs"));
+        Ui.Settle();
+        Assert.Equal(written, Decompiled(window, "        in").Path);
+        window.Close();
+    }
+
+    /// <summary>Go to Declaration from the first keyword after <paramref name="before"/> in the file shown, a library type
+    /// the language server decompiles, and the file it opens once the editor shows it.</summary>
+    private static Passenger.App.Workspace.OpenDocument Decompiled(MainWindow window, string before)
+    {
+        Ui.PlaceAfter(window.EditorArea.CodeEditor, before);
+        Ui.Press(window, Ui.Shortcut(AppActions.GoToDeclaration));
+        Ui.WaitFor(() => window.EditorArea.Active?.IsDecompiled == true,
+            () => $"the decompiled source to open: the window shows {window.EditorArea.Active?.Path}, saying {window.Status}, C# {window.CSharpService?.State}{Ui.IdeLogTail()}{Ui.ServerLogTail()}");
+        return window.EditorArea.Active!;
     }
 
     [Gate]

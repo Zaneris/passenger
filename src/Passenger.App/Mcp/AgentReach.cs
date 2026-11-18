@@ -48,18 +48,29 @@ public static class AgentReach
     /// it would be in a Passenger started anew.</summary>
     public static void Opened(string path) => Written.TryRemove(path, out _);
 
-    /// <summary>Where the C# language server writes what Go to Declaration of a library's symbol opens (its metadata as code,
-    /// decompiled, or its source from its PDB or Source Link), in the temporary folder it takes (<see
-    /// cref="RoslynServerFolder.Temporary"/>, else Passenger's own), made the person's own (<see cref="UserTemporary.Own"/>);
-    /// null where it is not theirs (a link, another user's folder on a shared /tmp), which no agent then reads in.</summary>
-    public static string? ServerStubs => Stubs.Value;
+    /// <summary>Whether a file or folder (a canonical path) is what a C# language server wrote for Go to Declaration of a
+    /// library's symbol (its metadata as code, decompiled, or its source from its PDB or Source Link): under its MetadataAsSource
+    /// in its own temporary folder (<see cref="RoslynServerFolder.TemporaryOf"/>), else in Passenger's own, made the person's
+    /// own (<see cref="UserTemporary.Own"/>); never where that is not theirs (a link, another user's folder on a shared /tmp).</summary>
+    public static bool IsServerStub(string path) => Stubs.Value switch
+    {
+        (string temporaries, true) => PathNames.Relative(path, temporaries)?.Split('/') is [_, ServerStubs, _, ..],
+        (string stubs, false) => PathNames.IsUnder(path, stubs),
+        _ => false,
+    };
 
-    private static readonly Lazy<string?> Stubs = new(() =>
+    /// <summary>The folder a server writes its library code in, in its temporary folder.</summary>
+    private const string ServerStubs = "MetadataAsSource";
+
+    /// <summary>The folder of the servers' own temporary folders, or where there is none, Passenger's own temporary folder's
+    /// MetadataAsSource; null where it is not the person's own.</summary>
+    private static readonly Lazy<(string Folder, bool EachServer)?> Stubs = new(() =>
     {
         try
         {
-            string temporary = RoslynServerFolder.Temporary(CSharpService.ServerCache) ?? Path.GetTempPath();
-            return PathNames.Canonical(UserTemporary.Own(Path.Combine(temporary, "MetadataAsSource")));
+            return RoslynServerFolder.Temporaries(CSharpService.ServerCache) is { } temporaries
+                ? (PathNames.Canonical(temporaries), true)
+                : (PathNames.Canonical(UserTemporary.Own(Path.Combine(Path.GetTempPath(), ServerStubs))), false);
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
@@ -76,5 +87,5 @@ public static class AgentReach
     /// them made or installed to be read.</summary>
     public static bool Reads(string path, string? folder, IReadOnlyList<string> reached) => Changes(path, folder, reached) || PackageFolders.Holds(path) || MSBuildFiles.IsInstalled(path)
         || GeneratedCode.IsCopy(path) || RemoteStylesheets.IsCopy(path) || PathNames.IsUnder(path, PathNames.Canonical(LibrarySources.Folder))
-        || ServerStubs is { } stubs && PathNames.IsUnder(path, stubs);
+        || IsServerStub(path);
 }
