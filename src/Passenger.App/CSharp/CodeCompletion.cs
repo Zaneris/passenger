@@ -153,8 +153,12 @@ internal sealed partial class CodeCompletion
         }
     }
 
+    /// <summary>What was last said of the open list's choice (<see cref="TellChosen"/>); null once it closes.</summary>
+    private string? choiceSaid;
+
     /// <summary>Tells a screen reader the item chosen: its name, its kind and where it stands, at once as the keys move it,
-    /// after what it is saying as the list opens or narrows to another.</summary>
+    /// after what it is saying as the list opens or narrows to another. A choice said already is not said again, however
+    /// late the rows that keep it come (a list the server is asked again for as the name is typed, its items new).</summary>
     private void TellChosen(bool opening)
     {
         if (completion.Selected is not { } row)
@@ -162,6 +166,11 @@ internal sealed partial class CodeCompletion
             return;
         }
         string said = PopupPlacement.Chosen(row.Item.Label, KindWords(row.Item.Kind), completion.ChosenAt, completion.Rows.Count);
+        if (!opening && said == choiceSaid)
+        {
+            return;
+        }
+        choiceSaid = said;
         popups.Tell(opening ? $"Completion, {said}" : said, moving ? Urgency.Assertive : Urgency.Polite, completion);
     }
 
@@ -1011,6 +1020,7 @@ internal sealed partial class CodeCompletion
         completing?.Cancel();
         describing?.Cancel();
         documentationAsked = null;
+        choiceSaid = null;
         open = null;
         lastAsked = null;
         completion.IsVisible = false;

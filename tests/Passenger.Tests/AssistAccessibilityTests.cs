@@ -11,8 +11,9 @@ namespace Passenger.Tests;
 /// <summary>The popups the code's help places at a line, as a screen reader meets and hears them on a real project: each
 /// is found in a walk of the window by its role and name, and what it says is heard through the window's announcing
 /// region (<see cref="AccessibilityTests.Listen"/>), the editor keeping the keys: completion's choice as it opens, as Down
-/// moves it and as it closes, and its documentation when asked; Parameter Info's signature, then its parameter as a comma
-/// is typed and as the caret moves back; a card a key shows, never one the pointer brings; the fixes' list as completion's.</summary>
+/// moves it, once as the list asked again for the name keeps it, and as it closes, and its documentation when asked;
+/// Parameter Info's signature, then its parameter as a comma is typed and as the caret moves back; a card a key shows,
+/// never one the pointer brings; the fixes' list as completion's.</summary>
 public sealed class AssistAccessibilityTests : IClassFixture<AssistAccessibilityTests.Project>
 {
     private const string Program = "class Program\n{\n    static void Main()\n    {\n        int result = Helper.Twice(2);\n        int area = Area.Of(3);\n        Missing gone = null;\n    }\n}\n";
@@ -79,6 +80,49 @@ public sealed class AssistAccessibilityTests : IClassFixture<AssistAccessibility
         heard.Clear();
         Ui.Press(window, "ESCAPE");
         Assert.True(heard is [("Completion closed", AutomationLiveSetting.Polite)], $"The list closed by Escape was heard as {AccessibilityTests.Said(heard)}");
+        window.Close();
+    }
+
+    /// <summary>Helper's members after its dot are a list the server says left items out, so typing on asks for it again:
+    /// the narrowed rows' choice is heard as the key narrows them, and the rows answered again, held until it was heard,
+    /// keep that choice without its being heard a second time.</summary>
+    [AvaloniaFact]
+    public void A_narrowed_choice_is_heard_once_however_late_the_list_asked_again_for_the_name_comes()
+    {
+        MainWindow window = project.Open("Program.cs");
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        List<(string Words, AutomationLiveSetting Live)> heard = AccessibilityTests.Listen(window);
+        Ui.PlaceAfter(editor, "int result = Helper.Twice(2);");
+        editor.Focus();
+        Ui.Press(window, "ENTER");
+        window.KeyTextInput("Helper");
+        Ui.Settle();
+        window.KeyTextInput(".");
+        Ui.WaitFor(() => window.Assist.IsCompletionOpen, "Helper's members after its dot");
+        Ui.Settle();
+        Passenger.Lsp.LspDocument lsp = window.CSharpService!.For(window.EditorArea.Active!)!.Lsp!;
+        Passenger.Lsp.LanguageServer server = window.CSharpService!.Session!.Server;
+
+        heard.Clear();
+        TaskCompletionSource answered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        Task held = server.HoldNextAnswer(lsp.CompletionMethod,
+            asked => asked is Passenger.Lsp.CompletionParams { Context.TriggerKind: Passenger.Lsp.CompletionTriggerKind.TriggerForIncompleteCompletions }, answered.Task);
+        string said;
+        try
+        {
+            window.KeyTextInput("Tw");
+            Ui.AwaitPumped(held, "Helper's members asked again as Tw was typed into the list the server said left items out, answered and held");
+            Ui.PumpUntil(() => window.Assist.CompletionNarrowedBy == "Tw" && heard.Count > 0, "the rows narrowed by Tw and their choice heard");
+            said = $"Twice, method, item {window.Assist.CompletionLabels.ToList().IndexOf("Twice") + 1} of {window.Assist.CompletionLabels.Count}";
+        }
+        finally
+        {
+            answered.SetResult();
+        }
+        Ui.Settle();
+        Assert.True(window.Assist.CompletionChosen == "Twice" && heard is [(var typed, AutomationLiveSetting.Polite)] && typed == said,
+            $"Narrowed by Tw to {window.Assist.CompletionChosen} chosen, the list was heard as {AccessibilityTests.Said(heard)}, not \"{said}\" once as the rows asked again came");
+        Ui.Press(window, "ESCAPE");
         window.Close();
     }
 
