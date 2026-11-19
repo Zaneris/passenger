@@ -30,6 +30,18 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 
 ## 2026-11-19
 
+- `RunningLinesTests`' `Finding_the_next_line_that_runs_is_one_walk_however_long_the_class`, CI 44473130591 (Linux
+  gate shard 2, at af9e5dcf8): "Finding the next line in 4000 properties allocated 102256 bytes against 784 in 200".
+  **The test counted the runtime's cast cache**, the walk one as it is: `UpdateHandlersTests` loads the tests' own
+  assembly into collectible load contexts and unloads them beside every other class, and as each context's loader
+  allocator goes, once a collection takes it, the runtime empties its cast cache, which the next thread whose cast
+  misses builds again at the size it had, a 98,352-byte `int[]` at its 4,096 entries, as its own allocation. CI's
+  102,256 bytes are the walk's 784, one such table and a 3,120-byte one of 128 entries after a second flush. A probe
+  unloading contexts beside the walk took such tables in at any token on the Mac and the Ubuntu VM, the allocation
+  ticks on the walk's thread naming `System.Int32[]`. `UpdateHandlersTests` now runs in the unit tests' own Alone
+  collection, after the rest; `AllocationCountTests`' `Every_class_unloading_a_load_context_runs_alone` holds every
+  class unloading a context there and failed with `UpdateHandlersTests` before; the check then passed 6,900 repeats
+  beside the other unit tests on the Mac and 30,352 on the Ubuntu VM (869dbc9ce, #1975).
 - `ProfilerTests`' `A_trace_of_allocations_and_collections_alone_lists_them`, CI 44464475986 (Windows report shard 4,
   at 0714bb0bd): "The byte arrays allocated are not listed, of []". **The test waited wrong**, on the runtime's order:
   .NET 11's diagnostics server answers a session's start before it turns the session's providers on (.NET 10 turned
