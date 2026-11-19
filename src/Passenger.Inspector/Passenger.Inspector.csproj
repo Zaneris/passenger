@@ -76,13 +76,14 @@
   </ItemGroup>
 
   <!-- What Passenger carries under inspector/ beside the inspector's own assembly: XAML Hot Reload's compiler and the
-       headless platform, Passenger's Avalonia's beside it and each older one's in a folder of its own (Folder). -->
+       headless platform, Passenger's Avalonia's beside it and each older one's in a folder of its own (Folder), named by
+       its version with no dot, as codesign takes a dotted folder among a Mac app's code for a bundle of its own. -->
   <Target Name="GetCarriedFiles" Returns="@(CarriedFile)">
     <ItemGroup>
       <CarriedFile Include="$(PkgAvalonia_Markup_Xaml_Loader)/lib/net8.0/Avalonia.Markup.Xaml.Loader.dll;$(PkgAvalonia_Headless)/lib/net8.0/Avalonia.Headless.dll" Folder="" />
       <CarriedAvalonia Include="$(AvaloniaCarriedVersions)" />
       <CarriedFile Include="$(NuGetPackageRoot)avalonia.markup.xaml.loader/%(CarriedAvalonia.Identity)/lib/net8.0/Avalonia.Markup.Xaml.Loader.dll;$(NuGetPackageRoot)avalonia.headless/%(CarriedAvalonia.Identity)/lib/net8.0/Avalonia.Headless.dll"
-                   Folder="avalonia/%(CarriedAvalonia.Identity)/" />
+                   Folder="avalonia/$([System.String]::Copy('%(CarriedAvalonia.Identity)').Replace('.', '-'))/" />
     </ItemGroup>
   </Target>
 </Project>

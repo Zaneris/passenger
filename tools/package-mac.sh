@@ -190,6 +190,12 @@ if [ -d "$app/Contents/MacOS/debugger/relay" ]; then
     mkdir -p "$(dirname "$relays")"
     mv "$app/Contents/MacOS/debugger/relay" "$relays"
 fi
+# Nothing dotted may stay among the code, or codesign refuses the app's seal as a bundle it cannot read.
+dotted_code() {
+    dotted=$(find "$1/Contents/MacOS" -mindepth 1 -type d -name '*.*' | head -n 1)
+    [ -z "$dotted" ] || fail "the app's code carries a dotted folder, which codesign takes for a bundle: ${dotted#"$1/"}"
+}
+dotted_code "$app"
 cp "$root/src/Passenger.App/Assets/Passenger.icns" "$app/Contents/Resources/Passenger.icns"
 # The document types Open With and the Dock offer Passenger: solutions, C# projects and folders, never as default.
 cat > "$app/Contents/Info.plist" <<EOF
@@ -361,6 +367,7 @@ xattr -px com.apple.FinderInfo "$mount" | grep -q '^00 00 00 00 00 00 00 00 04' 
 python3 -I "$root/tools/dmg-layout.py" check "$mount" "$volume_name"
 [ "$(ls -A "$mount/.fseventsd")" = no_log ] || fail "the image carries the event log of its read-write mount"
 codesign --verify --deep --strict "$shipped"
+dotted_code "$shipped"
 if codesign -d --entitlements - --xml "$shipped" 2>/dev/null | grep -q get-task-allow; then
     fail "the app's entitlements carry get-task-allow"
 fi
@@ -370,12 +377,16 @@ said=$(plutil -extract CFBundleShortVersionString raw -o - "$plist")
 said=$(plutil -extract CFBundleVersion raw -o - "$plist")
 [ "$said" = "$build" ] || fail "the app's Info.plist says build $said, not $build"
 for part in roslyn/Microsoft.CodeAnalysis.LanguageServer.dll roslyn-extension/Passenger.Roslyn.Extension.dll debugger/Passenger.DebugAdapter.dll \
-    debugger/libdbgshim.dylib passenger-helper passenger-helper.dll passenger-helper.deps.json passenger-helper.runtimeconfig.json \
-    LICENSE.txt THIRD-PARTY-NOTICES.txt; do
+    debugger/libdbgshim.dylib inspector/Passenger.Inspector.dll inspector/Avalonia.Headless.dll passenger-helper passenger-helper.dll \
+    passenger-helper.deps.json passenger-helper.runtimeconfig.json LICENSE.txt THIRD-PARTY-NOTICES.txt; do
     [ -f "$shipped/Contents/MacOS/$part" ] || fail "the app has no $part"
 done
 for part in web/passenger/prettier.cjs web/passenger/docker-hub.cjs web/passenger/yaml-schemas.mjs web/schemas/compose-spec.json; do
     [ -f "$shipped/Contents/Resources/$part" ] || fail "the app has no $part in its Resources"
+done
+# Every headless platform the inspector carries for an older Avalonia is the app's too.
+for part in $(cd "$publish/inspector" && find avalonia -type f); do
+    [ -f "$shipped/Contents/MacOS/inspector/$part" ] || fail "the app has no inspector/$part"
 done
 # Every relay the build carried is a resource of the app, none left among its code.
 [ ! -e "$shipped/Contents/MacOS/debugger/relay" ] || fail "the app carries its debug relays among its code"
