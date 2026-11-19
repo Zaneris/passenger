@@ -10,10 +10,13 @@ namespace Passenger.UnitTests.Debugger;
 /// <summary>The debugger's end of the relay in an app on a device: a call answered by the frame that names its number, its
 /// rooms and objects as asked for, and a relay answering more ending its session; once the app has gone, every call
 /// failing, the one waiting and each made after it, as an app that died mid-call leaves a forward that still takes what is
-/// written; a relay reached at a Unix socket's path (a Mac Catalyst app's, in its container) as at a port.</summary>
+/// written; a relay reached at a Unix socket's path (a Mac Catalyst app's, in its container) as at a port. Each test waits
+/// for what it checks, however long a busy machine keeps the threads that bring it waiting: a call that waits for good
+/// holds its test, which the run's own limit on a test names.</summary>
 public class RelayConnectionTests
 {
-    private static readonly TimeSpan Patience = TimeSpan.FromSeconds(10);
+    /// <summary>How long a connection waits for the app's relay to listen, which the stand-ins here do before it asks.</summary>
+    private static readonly TimeSpan Listening = TimeSpan.FromSeconds(10);
 
     [Fact]
     public async Task A_call_is_answered_by_the_frame_naming_its_number()
@@ -21,7 +24,7 @@ public class RelayConnectionTests
         StandInRelay app = new() { Answers = true };
         using RelayConnection relay = new(app, token: null, log: null);
         Assert.True(relay.ProcessId == StandInRelay.ProcessId, $"The relay's hello named process {relay.ProcessId}, not {StandInRelay.ProcessId}");
-        RelayReply reply = await CallAsync(relay, "A call the relay answered");
+        RelayReply reply = await CallAsync(relay);
         Assert.True(reply.Hr == StandInRelay.Answer, $"A call came back with 0x{reply.Hr:X8}, not the 0x{StandInRelay.Answer:X8} the relay answered it with");
     }
 
@@ -30,7 +33,7 @@ public class RelayConnectionTests
     {
         StandInRelay app = new() { Reply = Answer(room: 8, objects: 2) };
         using RelayConnection relay = new(app, token: null, log: null);
-        RelayReply reply = await Within(Calling(relay, [RelayArg.Out(8), RelayArg.Objects(2)]), "A call the relay answered at the size asked for");
+        RelayReply reply = await Calling(relay, [RelayArg.Out(8), RelayArg.Objects(2)]).WaitAsync(TestContext.Current.CancellationToken);
         Assert.True(reply.Outs[0].AsSpan().SequenceEqual(Enumerable.Range(1, 8).Select(i => (byte)i).ToArray())
             && reply.Objects[0].SequenceEqual([new RemotePointer(0x100, 0x101), new RemotePointer(0x200, 0x201)]),
             $"The room came back as {Convert.ToHexString(reply.Outs[0])} with {reply.Objects[0].Length} objects, not as the relay answered it");
@@ -55,10 +58,8 @@ public class RelayConnectionTests
         });
         using ManualResetEventSlim gone = new();
         relay.WhenGone(gone.Set);
-        IOException refused = await Assert.ThrowsAsync<IOException>(() => Within(Calling(relay, [RelayArg.Out(8), RelayArg.Objects(2)]),
-            $"A call the relay answered with a room of {room} bytes and {objects} objects"));
-        Assert.True(gone.Wait(Patience, TestContext.Current.CancellationToken),
-            $"The session went on with a relay that answered a room of {room} bytes and {objects} objects where 8 and 2 were asked for: {refused.Message}");
+        await Assert.ThrowsAsync<IOException>(() => Calling(relay, [RelayArg.Out(8), RelayArg.Objects(2)]).WaitAsync(TestContext.Current.CancellationToken));
+        gone.Wait(TestContext.Current.CancellationToken);
         lock (said)
         {
             Assert.True(said.Any(line => line.Contains("broken", StringComparison.Ordinal)), $"The session ended without saying the relay broke: {string.Join(" | ", said)}");
@@ -73,11 +74,11 @@ public class RelayConnectionTests
         using ManualResetEventSlim gone = new();
         relay.WhenGone(gone.Set);
         Task<RelayReply> waiting = Calling(relay);
-        Assert.True(await app.Asked.WaitAsync(Patience, TestContext.Current.CancellationToken), "The call was never written to the relay");
+        await app.Asked.WaitAsync(TestContext.Current.CancellationToken);
         app.Die();
-        await Assert.ThrowsAsync<IOException>(() => Within(waiting, "A call waiting as the app's relay went away"));
-        Assert.True(gone.Wait(Patience, TestContext.Current.CancellationToken), "The connection never said the relay had gone");
-        await Assert.ThrowsAsync<IOException>(() => CallAsync(relay, "A call made after the app's relay went away"));
+        await Assert.ThrowsAsync<IOException>(() => waiting.WaitAsync(TestContext.Current.CancellationToken));
+        gone.Wait(TestContext.Current.CancellationToken);
+        await Assert.ThrowsAsync<IOException>(() => CallAsync(relay));
     }
 
     [Fact]
@@ -91,9 +92,9 @@ public class RelayConnectionTests
             listener.Bind(new UnixDomainSocketEndPoint(path));
             listener.Listen(1);
             Task<byte[]> heard = BackgroundWork.UnheldThread(() => Hello(listener));
-            using RelayConnection relay = await BackgroundWork.UnheldThread(() => RelayConnection.Connect(path, "abc", Patience, log: null))
-                .WaitAsync(Patience, TestContext.Current.CancellationToken);
-            byte[] token = await heard.WaitAsync(Patience, TestContext.Current.CancellationToken);
+            using RelayConnection relay = await BackgroundWork.UnheldThread(() => RelayConnection.Connect(path, "abc", Listening, log: null))
+                .WaitAsync(TestContext.Current.CancellationToken);
+            byte[] token = await heard.WaitAsync(TestContext.Current.CancellationToken);
             Assert.True(token.AsSpan().SequenceEqual((byte[])[8, 0, 0, 0, 0, 0, 0, 0, 4, (byte)'a', (byte)'b', (byte)'c']),
                 $"The relay at {path} was first told {Convert.ToHexString(token)}, not the session's token, so it would turn the debugger away");
             Assert.True(relay.ProcessId == StandInRelay.ProcessId, $"The relay at {path} was heard naming process {relay.ProcessId}, not {StandInRelay.ProcessId}");
@@ -140,7 +141,7 @@ public class RelayConnectionTests
         return said;
     }
 
-    private static Task<RelayReply> CallAsync(RelayConnection relay, string what) => Within(Calling(relay), what);
+    private static Task<RelayReply> CallAsync(RelayConnection relay) => Calling(relay).WaitAsync(TestContext.Current.CancellationToken);
 
     /// <summary>A call made on a thread of its own, as the engine's are, held by nothing: one that waits for good must not
     /// hold the tests beside it.</summary>
@@ -164,18 +165,6 @@ public class RelayConnectionTests
             BinaryPrimitives.WriteUInt64LittleEndian(answer.AsSpan(at + 12 + i * 16), (ulong)(0x100 * (i + 1) + 1));
         }
         return answer;
-    }
-
-    private static async Task<RelayReply> Within(Task<RelayReply> call, string what)
-    {
-        try
-        {
-            return await call.WaitAsync(Patience, TestContext.Current.CancellationToken);
-        }
-        catch (TimeoutException)
-        {
-            throw new Xunit.Sdk.XunitException($"{what} still waits for an answer after {Patience.TotalSeconds:0} s: the debugger's thread that made it would wait for good");
-        }
     }
 
     /// <summary>The app's end of the relay's stream: its hello, then an answer to each call where it <see cref="Answers"/>;

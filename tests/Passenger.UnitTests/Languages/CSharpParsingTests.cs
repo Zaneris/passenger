@@ -368,7 +368,9 @@ public class CSharpParsingTests
     }
 
     /// <summary>A key typed in a statement of a long file reads that statement, not the file: what measuring it reads and
-    /// allocates in a file of 4,000 methods is what it does in one of 40.</summary>
+    /// allocates in a file of 4,000 methods is what it does in one of 40. Roslyn holds a method body's statements only weakly,
+    /// so a collection between two reads of a tree has them made again: the tree's nodes are held while it is measured, and
+    /// what is counted is the measuring's own.</summary>
     [Fact]
     public void A_key_typed_is_measured_by_its_statement_not_the_file()
     {
@@ -381,13 +383,16 @@ public class CSharpParsingTests
             }
             SourceText text = SourceText.From(written.Append("}\n").ToString());
             SyntaxTree tree = CSharpParsing.Parse(text);
+            SyntaxNode[] held = [.. tree.GetRoot(TestContext.Current.CancellationToken).DescendantNodes()];
             int at = text.ToString().IndexOf("?[1]", text.Length / 2, StringComparison.Ordinal);
             SourceText typed = text.WithChanges(new TextChange(new TextSpan(at, 0), "?[2]"));
             IReadOnlyList<TextChangeRange> changes = typed.GetChangeRanges(text);
             Assert.False(CSharpParsing.TypedMayGoDeep(tree, typed, changes));
             (long read, long bytes) = (CSharpParsing.TypedRead, GC.GetAllocatedBytesForCurrentThread());
             Assert.False(CSharpParsing.TypedMayGoDeep(tree, typed, changes));
-            return (CSharpParsing.TypedRead - read, GC.GetAllocatedBytesForCurrentThread() - bytes);
+            (long Read, long Bytes) measured = (CSharpParsing.TypedRead - read, GC.GetAllocatedBytesForCurrentThread() - bytes);
+            GC.KeepAlive(held);
+            return measured;
         }
         (long smallRead, long small) = Measured(40);
         (long largeRead, long large) = Measured(4_000);
