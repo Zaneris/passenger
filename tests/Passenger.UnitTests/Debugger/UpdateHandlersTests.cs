@@ -35,6 +35,7 @@ internal static class UpdateHandlerProbe
 
 /// <summary>A program's update handlers across its load contexts: a plugin's assembly loaded twice holds two sets of statics,
 /// so a Hot Reload update reaches the handlers of both, in the order references ask for.</summary>
+[Collection(Alone.Name)]
 public sealed class UpdateHandlersTests
 {
     private static (Assembly First, Assembly Second, Action Unload) LoadedTwice(Assembly assembly)
