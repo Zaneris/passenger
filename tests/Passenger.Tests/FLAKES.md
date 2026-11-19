@@ -28,6 +28,19 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
   - Outside the code: 7 (the runner, GitHub, xunit, Rosetta).
   - Unlabelled: 7.
 
+## 2026-11-19
+
+- `DecompiledSymbolsTests`' `A_disconnect_while_CoreLib_is_decompiled_is_answered_before_it_ends_and_leaves_no_symbols_half_written`,
+  CI 44455952846 (Windows report shard 4, at 21271dbb4, 43 s where macOS took 3 s): "CoreLib's frame was resolved
+  before the disconnect was answered: the disconnect waited for the decompile". **A starvation in the debugger**, no
+  lock shared and the test's moment right: the decompile's parallel loop ran on the adapter's thread pool, its workers
+  taking every thread and each finishing a turn and queueing the next often enough that the pool added none, so the
+  protocol's reads and answers waited until the loop ended (on the Mac a threads request took 26 s with the adapter's
+  pool held to its processors). The loop now runs on threads of its own (`ApartScheduler`), requests answered in 70 ms
+  at most beside it; `A_request_and_a_disconnect_are_answered_while_a_decompile_takes_every_processor_and_the_thread_pool_cannot_grow`
+  holds each thread of CoreLib's decompile (`PASSENGER_ENGINE_HOLD_DECOMPILE`) in an adapter whose pool cannot grow past
+  8, and failed before on the Mac and the Windows VM (f77ec10ff, #1967).
+
 ## 2026-11-18
 
 - `TestHostLastWordsTests`' `A_test_host_that_writes_a_last_line_and_exits_at_once_has_that_line_in_its_failure_every_time`,
