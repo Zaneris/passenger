@@ -6,6 +6,7 @@ using System.Text.Json.Serialization.Metadata;
 using System.Threading.Channels;
 using ModelContextProtocol;
 using ModelContextProtocol.Protocol;
+using Passenger.Core;
 
 namespace Passenger.App.Mcp;
 
@@ -347,7 +348,7 @@ internal sealed partial class RelayTransport : ITransport
     {
         fixed (byte* bytes = chunk)
         {
-            nint count = ReadDescriptor(0, bytes, (nuint)chunk.Length);
+            nint count = Libc.Read(0, bytes, (nuint)chunk.Length);
             if (count >= 0)
             {
                 return (int)count;
@@ -373,9 +374,6 @@ internal sealed partial class RelayTransport : ITransport
 
     [LibraryImport("libc", EntryPoint = "select", SetLastError = true)]
     private static unsafe partial int Select(int count, byte* readable, byte* writable, byte* failed, TimeLimit* limit);
-
-    [LibraryImport("libc", EntryPoint = "read", SetLastError = true)]
-    private static unsafe partial nint ReadDescriptor(int descriptor, byte* buffer, nuint count);
 
     /// <summary>A request of the agent's not answered yet: its line as it came, its method, the tool it calls, and whether
     /// a window is making it.</summary>

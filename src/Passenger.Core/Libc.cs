@@ -36,6 +36,24 @@ public static partial class Libc
     [LibraryImport("libc", EntryPoint = "close", SetLastError = true)]
     public static partial int Close(int descriptor);
 
+    /// <summary>open's O_RDONLY: the file opened for reading.</summary>
+    public const int ReadOnly = 0;
+
+    /// <summary>open's O_NONBLOCK: macOS's 0x4, Linux's 0x800.</summary>
+    public static readonly int NonBlocking = OperatingSystem.IsMacOS() ? 0x4 : 0x800;
+
+    /// <summary>open's O_CLOEXEC, the descriptor closed as the process becomes another program: macOS's 0x1000000, Linux's 0x80000.</summary>
+    public static readonly int ClosedOnExec = OperatingSystem.IsMacOS() ? 0x1000000 : 0x80000;
+
+    /// <summary>open: a descriptor of the file named by <paramref name="path"/>'s NUL-ended UTF-8 bytes, or -1.</summary>
+    [LibraryImport("libc", EntryPoint = "open", SetLastError = true)]
+    public static unsafe partial int Open(byte* path, int flags);
+
+    /// <summary>read: up to <paramref name="count"/> bytes of a descriptor into <paramref name="buffer"/>; how many, 0 at
+    /// its end, or -1.</summary>
+    [LibraryImport("libc", EntryPoint = "read", SetLastError = true)]
+    public static unsafe partial nint Read(int descriptor, byte* buffer, nuint count);
+
     /// <summary>FIOCLEX: macOS's _IO('f', 1), Linux's 0x5451.</summary>
     private static readonly nuint CloseOnExecRequest = OperatingSystem.IsMacOS() ? 0x20006601u : 0x5451u;
 

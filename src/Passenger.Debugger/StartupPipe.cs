@@ -1,4 +1,5 @@
-using System.Runtime.InteropServices;
+using System.Text;
+using Passenger.Core;
 
 namespace Passenger.Debugger;
 
@@ -6,27 +7,24 @@ namespace Passenger.Debugger;
 /// until a reader has it open and is tried again only after 500 ms. This opens that FIFO for reading the moment it
 /// exists, so dbgshim's first try finds a reader; it never reads, and closes once the runtime has answered (the
 /// runtime's own end open by then) or never will.</summary>
-internal sealed partial class StartupPipe : IDisposable
+internal sealed class StartupPipe : IDisposable
 {
-    private const int ReadOnly = 0x0000;
-    private const int NonBlocking = 0x0004;
-    private const int CloseOnExec = 0x01000000;
-
-    private readonly string path;
+    /// <summary>The FIFO's path, NUL-ended in UTF-8, as open takes it.</summary>
+    private readonly byte[] path;
     private readonly Thread watching;
     private volatile bool stopped;
     private int descriptor = -1;
 
     private StartupPipe(string path)
     {
-        this.path = path;
+        this.path = Encoding.UTF8.GetBytes(path + '\0');
         using ManualResetEventSlim running = new();
         watching = new Thread(() =>
         {
             running.Set();
             while (!stopped)
             {
-                int opened = Open(path, ReadOnly | NonBlocking | CloseOnExec);
+                int opened = Opened();
                 if (opened >= 0)
                 {
                     descriptor = opened;
@@ -70,7 +68,7 @@ internal sealed partial class StartupPipe : IDisposable
         }
         stopped = true;
         watching.Join();
-        if (descriptor < 0 && Open(path, ReadOnly | NonBlocking | CloseOnExec) is >= 0 and int opened)
+        if (descriptor < 0 && Opened() is >= 0 and int opened)
         {
             descriptor = opened;
         }
@@ -82,10 +80,16 @@ internal sealed partial class StartupPipe : IDisposable
         int held = Interlocked.Exchange(ref descriptor, -1);
         if (held >= 0)
         {
-            _ = Core.Libc.Close(held);
+            _ = Libc.Close(held);
         }
     }
 
-    [LibraryImport("libc", EntryPoint = "open", SetLastError = true, StringMarshalling = StringMarshalling.Utf8)]
-    private static partial int Open(string path, int flags);
+    /// <summary>The FIFO opened for reading without waiting for a writer, or -1 while it is not there.</summary>
+    private unsafe int Opened()
+    {
+        fixed (byte* named = path)
+        {
+            return Libc.Open(named, Libc.ReadOnly | Libc.NonBlocking | Libc.ClosedOnExec);
+        }
+    }
 }

@@ -210,7 +210,9 @@ internal static partial class Lifeline
             return;
         }
         // Taken while they run: a killed program's runtime leaves its socket and pipes, named for its start.
-        RuntimeFiles[] left = Holds(group) ? [.. DotnetProcesses.InGroup(group).Select(id => RuntimeFiles.Of(id)).OfType<RuntimeFiles>()] : [];
+        RuntimeFiles[] left = Holds(group) && Libc.Signal(-group, 0) == 0
+            ? [.. DotnetProcesses.InGroup(group).Select(id => RuntimeFiles.Of(id)).OfType<RuntimeFiles>()]
+            : [];
         if (Signalled(group))
         {
             UnawaitedWork.Observe(BackgroundWork.Run(() => KillAgainAsync(group)));
