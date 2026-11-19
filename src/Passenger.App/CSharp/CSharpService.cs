@@ -4,6 +4,7 @@ using System.Threading.Channels;
 using Passenger.App.Run;
 using Passenger.App.Workspace;
 using Passenger.Core;
+using Passenger.Editor;
 using Passenger.Lsp;
 using Passenger.Text;
 using Passenger.Workspace;
@@ -75,6 +76,7 @@ public sealed partial class CSharpService : IAsyncDisposable
         this.warm = warm;
         this.headStart = headStart;
         Generated = new GeneratedCode(() => session);
+        othersPause = new Debounce(CSharpDocument.Pause, PullOthers);
     }
 
     /// <summary>The code source generators made, copied where places lead into it and shown read-only.</summary>
@@ -1378,6 +1380,8 @@ public sealed partial class CSharpService : IAsyncDisposable
     {
         UiThread.Check();
         disposed = true;
+        othersPause.Stop();
+        typedIn = null;
         Generated.Stop();
         analysing?.Cancel();
         starting?.Cancel();
@@ -2332,6 +2336,47 @@ public sealed partial class CSharpService : IAsyncDisposable
 
     /// <summary>Whether no tab shows an open file, which the server's refresh leaves to be pulled once shown or asked.</summary>
     public Func<OpenDocument, bool> Unseen { get; init; } = _ => false;
+
+    /// <summary>A file's text changed: the server's diagnostics of another file may depend on it (a global using it
+    /// declares, a type or member it holds), of which the server says nothing, so the others are pulled again once typing
+    /// pauses (<see cref="PullOthers"/>).</summary>
+    internal void OthersMayHaveMoved(OpenDocument changed)
+    {
+        typedIn = changed;
+        othersPause.Restart();
+    }
+
+    /// <summary>The pause after an edit that the other files' pull waits for (<see cref="OthersMayHaveMoved"/>).</summary>
+    private readonly Debounce othersPause;
+
+    /// <summary>The file typed in last, which pulls its own diagnostics after the same pause.</summary>
+    private OpenDocument? typedIn;
+
+    /// <summary>Each file shown but the one typed in last pulled again, one no tab shows once shown.</summary>
+    private Task PullOthers()
+    {
+        if (disposed)
+        {
+            return Task.CompletedTask;
+        }
+        foreach ((OpenDocument open, CSharpDocument features) in documents)
+        {
+            if (open == typedIn)
+            {
+                continue;
+            }
+            if (Unseen(open))
+            {
+                features.Stale = true;
+            }
+            else
+            {
+                features.RefreshDiagnostics();
+            }
+        }
+        typedIn = null;
+        return Task.CompletedTask;
+    }
 
     /// <summary>A file shown: one a refresh passed over while unseen is pulled now.</summary>
     public void Shown(OpenDocument? document)
