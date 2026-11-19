@@ -30,6 +30,23 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 
 ## 2026-11-19
 
+- `ProfilerTests`' `A_trace_of_allocations_and_collections_alone_lists_them`, CI 44464475986 (Windows report shard 4,
+  at 0714bb0bd): "The byte arrays allocated are not listed, of []". **The test waited wrong**, on the runtime's order:
+  .NET 11's diagnostics server answers a session's start before it turns the session's providers on (.NET 10 turned
+  them on first), so where the test's thread ran ahead of the server's, its arrays and collections came before the GC's
+  events were on. On the Windows VM a probe allocating as its start was answered held no allocation tick in 8 of 10
+  sessions, and every tick in 10 of 10 once it waited for a provider of its own. Not #1056's shape below, where the
+  session was on. The test's session now holds a provider of its own and allocates once that is on; a failure says
+  whether the session was on at its answer and what the trace held (fe0e7853c, #1973).
+- `InterpreterTests`' `A_multi_dimensional_array_is_made_as_the_program_would_make_it`, CI 44464475986 (Windows report
+  shard 2, at 0714bb0bd): "The expression took too long to evaluate: it was stopped after 3 s", five evaluations in the
+  program taking 2.8 s, one 2 s, the debugger 179 ms, other tests' builds beside. **Neither: the runner's processors.**
+  Each evaluation is a round trip through the program's threads and the debugger's, which on the Windows VM grew with
+  load alone (the end came 5 ms after the program was let go at the median with two busy loops beside, 113 ms with
+  six, the program spending no measurable processor time meanwhile; the debugger heard it 0.3 and 28 ms later, its
+  pool idle, so not #1967's starvation). Not reproduced past 3 s. The engine's log now says, of the longest evaluation,
+  how long its end took to come and how long it took to be heard (1b0d43e51, #1972).
+
 - `DecompiledSymbolsTests`' `A_disconnect_while_CoreLib_is_decompiled_is_answered_before_it_ends_and_leaves_no_symbols_half_written`,
   CI 44455952846 (Windows report shard 4, at 21271dbb4, 43 s where macOS took 3 s): "CoreLib's frame was resolved
   before the disconnect was answered: the disconnect waited for the decompile". **A starvation in the debugger**, no
