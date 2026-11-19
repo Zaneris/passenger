@@ -30,6 +30,18 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 
 ## 2026-11-19
 
+- `RelayConnectionTests`' `Once_the_apps_relay_goes_away_the_call_waiting_fails_and_so_does_every_call_after_it`, the
+  Mac's whole unit-test assembly at a load average near 265 (#1979's runs): "A call waiting as the app's relay went away
+  still waits for an answer after 10 s". **The test waited wrong**: it held the call's failure to 10 s of its own on the
+  wall clock, and that failure comes through four threads, each waiting its turn for a processor; the relay times
+  nothing. On the Ubuntu VM beside 300 busy processes 14 of 14 rounds ran past it (10.5 to 12.8 s). The class waits for
+  what it checks with no limit of its own, the run's own limit naming one that waits for good (3fe7c62af, #1985).
+- `CSharpParsingTests`' `A_key_typed_is_measured_by_its_statement_not_the_file`, the same run: "Measuring a key
+  allocated 560 bytes in a long file against 96 in a short one". **The test counted Roslyn making nodes again**: a
+  method body's statements are held only weakly (BlockSyntax's `WithManyWeakChildren`), so a collection between the
+  test's two reads took the typed statement's nodes and the measured read's `FindToken` made them again, 464 bytes
+  whatever the file's size (28 of 110,631 measures on a quiet Mac, none of 39,460 once the path's nodes were held). The
+  test holds the tree's nodes while it measures (3fe7c62af, #1985).
 - `CarriedSchemasTests`' `Every_default_a_carried_schema_offers_is_a_value_its_own_schema_takes` and `VimTests`'
   `Star_and_hash_with_no_keyword_search_for_the_run_of_other_non_blanks(before: "x |\"y\" \"y\"", keys: "*", …)`, the
   Mac's whole unit-test assembly at a load average near 150 (#1975's runs): `RegexMatchTimeoutException`, and the caret
