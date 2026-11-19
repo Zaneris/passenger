@@ -1,4 +1,5 @@
 using Passenger.App.Editors;
+using Passenger.App.Explorer;
 using Passenger.App.Templates;
 using Passenger.Core;
 using Passenger.Text;
@@ -18,8 +19,8 @@ public partial class MainWindow
     {
         actions!.Add(new IdeAction(AppActions.NewItem, "New Item…", ExplorerGroup, c => IdeErrors.Observe(ShowNewItemAsync(NewItemPlace(c)!)))
         {
-            WhyNot = c => RowOf(c) is { } row ? NewGoesIn(row) is null ? $"Nothing new goes in {row.Name}" : null
-                : NewItemPlace(c) is null ? Refusals.NoFolder : null,
+            WhyNot = c => NewItemPlace(c) is { } place ? ExplorerNode.KeptOut(place)
+                : RowOf(c) is { } row ? $"Nothing new goes in {row.Name}" : Refusals.NoFolder,
             // Shown in the Explorer's menus, where it takes the keys.
             KeysOf = () => AppActions.KeysIn(AppActions.NewItem) is var keys && keys != AppActions.NewItem ? keys : null,
         });

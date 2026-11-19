@@ -273,7 +273,7 @@ internal static class Evaluation
 
     /// <summary>The project's files, every evaluation's, each once: of the file item types and those the project names as
     /// such, but those it hides (Visible false), each a shared project brings in naming its items file, and each a NuGet
-    /// package's own build file names from its folder marked so.</summary>
+    /// package's own build file names from that package's folder (<see cref="PackageLayout"/>) marked so.</summary>
     internal static List<EvaluatedItem> Items(IReadOnlyList<Project> evaluations)
     {
         List<EvaluatedItem> items = [];
@@ -297,7 +297,7 @@ internal static class Evaluation
                     }
                     string? from = item.Xml?.ContainingProject?.FullPath;
                     string? shared = from is not null && from.EndsWith(EvaluatedItem.SharedItemsExtension, StringComparison.OrdinalIgnoreCase) ? from : null;
-                    bool packaged = from is not null && packageFolders.Any(f => PathNames.IsUnder(full, f) && PathNames.IsUnder(Path.GetFullPath(from), f));
+                    bool packaged = from is not null && packageFolders.Any(f => PackageLayout.VersionFolder(from, f) is { } package && PathNames.IsUnder(full, package.Folder));
                     items.Add(new EvaluatedItem(type, full, NonEmpty(item.GetMetadataValue("Link")), NonEmpty(item.GetMetadataValue("DependentUpon")), shared, packaged));
                 }
             }
@@ -317,14 +317,11 @@ internal static class Evaluation
     internal static HashSet<string> OutsideRoots(Project project)
     {
         HashSet<string> roots = new(PathNames.Comparer);
-        foreach (string property in new[] { "NetCoreRoot", "NetCoreTargetingPackRoot", "MSBuildBinPath", MSBuildNames.ExtensionsPath, CarriedProperties.NuGetPackageRoot })
+        foreach (string property in new[] { "NetCoreRoot", "NetCoreTargetingPackRoot", "MSBuildBinPath", MSBuildNames.ExtensionsPath })
         {
             Add(project.GetPropertyValue(property));
         }
-        foreach (string folder in project.GetPropertyValue(CarriedProperties.NuGetPackageFolders).Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
-        {
-            Add(folder);
-        }
+        roots.UnionWith(PackageFolders(project));
         string root = project.GetPropertyValue("NetCoreRoot");
         if (root.Length > 0 && Path.IsPathFullyQualified(root)
             && WorkloadFolders.Of(root, project.GetPropertyValue("NETCoreSdkVersion"), WorkloadFolders.CliHome(Environment.GetEnvironmentVariable)).UserLocal is { } own)

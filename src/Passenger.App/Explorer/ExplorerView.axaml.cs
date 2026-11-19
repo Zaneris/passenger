@@ -735,7 +735,8 @@ public partial class ExplorerView : UserControl
     }
 
     /// <summary>The folder or project what is dragged would go into at a point: the one under it, or a file's; none where
-    /// it would not move (all of it there already), a folder would go inside itself, or a folder the SDK reads would move.</summary>
+    /// it would not move (all of it there already), a folder would go inside itself, a folder the SDK reads would move, or
+    /// it would go into a NuGet package's folder.</summary>
     private ExplorerNode? TargetAt(IReadOnlyList<ExplorerNode> items, Point at)
     {
         if (Surface.TranslatePoint(at, Rows) is not { } inRows || RowAt(inRows) is not { } row)
@@ -748,7 +749,7 @@ public partial class ExplorerView : UserControl
         {
             target = Tree.Rows.Holder(target);
         }
-        if (target?.Into is not { } into)
+        if (target?.Into is not { } into || ExplorerNode.KeptOut(into) is not null)
         {
             return null;
         }

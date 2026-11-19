@@ -472,6 +472,7 @@ public partial class MainWindow
         E.Cut or E.Copy when !row.IsMovable => $"{row.Name} cannot be moved",
         E.Cut when RowsHeld(row).FirstOrDefault(n => n.Kept is not null) is { Kept: { } kept } => kept,
         E.Paste when row.Into is null => $"Nothing can be pasted into {row.Name}",
+        E.Paste when row.Into is { } into && ExplorerNode.KeptOut(into) is { } kept => kept,
         E.Paste when held is null => NothingHeld,
         E.Delete or E.Backspace => WhyNotDeleted(row),
         _ => null,

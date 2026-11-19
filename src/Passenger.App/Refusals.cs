@@ -563,8 +563,10 @@ public static class Refusals
     public static string RemovedAlone(string name, string from) =>
         $"Delete moves several files and folders to the Trash at once, but {name} only leaves {from}, its files staying on disk: choose it alone to remove it";
 
-    /// <summary>A file of a NuGet package folder, every project's copy of that version, which no restore writes again.</summary>
-    public static string OfPackage(string name, string package) => $"{name} is a file of the package {package}, as NuGet restored it for every project";
+    /// <summary>A file or <paramref name="folder"/> of a NuGet package folder, every project's copy of that version, which no
+    /// restore writes again.</summary>
+    public static string OfPackage(string name, string package, bool folder = false) =>
+        $"{name} is a {(folder ? "folder" : "file")} of the package {package}, as NuGet restored it for every project";
 
     /// <summary>A file shown read-only (decompiled, installed, carried by the app, a copy to read), which nothing edits or
     /// saves.</summary>

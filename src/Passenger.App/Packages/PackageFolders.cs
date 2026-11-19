@@ -42,31 +42,28 @@ public static class PackageFolders
 
     /// <summary>Whether a file (a canonical path) is a package's, in a package folder below folders NuGet laid out as its id's
     /// and version's: a project may name an ancestor of its own source its package folder, whose other files are no package's.</summary>
-    public static bool Holds(string path) => PackageFolder(path) is not null;
+    public static bool Holds(string path) => PackageFolder(path, orItself: false) is not null;
 
     /// <summary>The package a file (a canonical path) is part of, by its id and version as its nuspec gives them ("Kit
     /// 1.0.0"), or as its folders do where that cannot be read; null for a file of no package folder.</summary>
-    public static string? PackageOf(string path) => PackageFolder(path) is { } package
-        ? Shown.GetOrAdd(package.Folder, _ => Read(package.Folder, package.Id) ?? $"{package.Id} {package.Version}")
+    public static string? PackageOf(string path) => Said(PackageFolder(path, orItself: false));
+
+    /// <summary>The package a file made in a folder (a canonical path) would be part of, its version's own folder too, named as
+    /// <see cref="PackageOf"/> names it; null for a folder of no package.</summary>
+    public static string? PackageIn(string folder) => Said(PackageFolder(folder, orItself: true));
+
+    private static string? Said((string Folder, string Id, string Version)? package) => package is { } found
+        ? Shown.GetOrAdd(found.Folder, _ => Read(found.Folder, found.Id) ?? $"{found.Id} {found.Version}")
         : null;
 
-    /// <summary>The folder of the package version a file lies in, with that id's and version's folder names.</summary>
-    private static (string Folder, string Id, string Version)? PackageFolder(string path)
+    /// <summary>The folder of the package version a path lies in, with that id's and version's folder names.</summary>
+    private static (string Folder, string Id, string Version)? PackageFolder(string path, bool orItself)
     {
         foreach (string folder in folders)
         {
-            ReadOnlySpan<char> below = PathNames.Below(path, folder);
-            int id = below.IndexOfAny('/', Path.DirectorySeparatorChar);
-            int version = id < 0 ? -1 : below[(id + 1)..].IndexOfAny('/', Path.DirectorySeparatorChar);
-            if (id > 0 && version > 0 && id + 1 + version + 1 < below.Length)
+            if (PackageLayout.VersionFolder(path, folder, orItself) is { } package)
             {
-                string name = below[..id].ToString();
-                string at = below.Slice(id + 1, version).ToString();
-                string package = Path.Combine(folder, name, at);
-                if (File.Exists(Path.Combine(package, ".nupkg.metadata")) || File.Exists(Path.Combine(package, $"{name}.nuspec")))
-                {
-                    return (package, name, at);
-                }
+                return package;
             }
         }
         return null;

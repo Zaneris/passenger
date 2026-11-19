@@ -38,6 +38,8 @@
     <Compile Include="../Passenger.Core/CSharpNames.cs" Link="CSharpNames.cs" />
     <!-- Where a .NET keeps its workloads, the user's own folder too, whose imports are no project's own. -->
     <Compile Include="../Passenger.Core/WorkloadFolders.cs" Link="WorkloadFolders.cs" />
+    <!-- NuGet's layout of a package folder, by which a package's own build file tells its files from a project's. -->
+    <Compile Include="../Passenger.Core/PackageLayout.cs" Link="PackageLayout.cs" />
   </ItemGroup>
 
   <!-- MSBuild's own dependencies come from the SDK with it: copied here, an older one would be loaded in their place. -->

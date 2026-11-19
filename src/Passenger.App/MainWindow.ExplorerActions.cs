@@ -117,7 +117,7 @@ public partial class MainWindow
         });
         ActionButtons.Bind(Explorer.ViewSwitchButton, A.SwitchExplorerView, actions, id => Request(id));
 
-        static string? Holds(ExplorerNode row) => NewGoesIn(row) is null ? $"Nothing new goes in {row.Name}" : null;
+        static string? Holds(ExplorerNode row) => NewGoesIn(row) is { } into ? ExplorerNode.KeptOut(into) : $"Nothing new goes in {row.Name}";
         static string? Referencing(ExplorerNode row) => row.Kind == NodeKind.Project && !row.IsProgram ? row.Path
             : row.Kind == NodeKind.Dependencies && row.Owner is { } owner && !Passenger.Host.ProgramFiles.IsProgram(owner) ? owner : null;
     }

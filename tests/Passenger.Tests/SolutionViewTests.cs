@@ -1006,19 +1006,7 @@ public sealed class SolutionViewTests : IDisposable
     [AvaloniaFact]
     public void A_package_folders_file_a_project_names_is_listed_only_where_linked_and_refuses_rename_delete_and_cut_saying_whose_it_is()
     {
-        Write("packages/kit/1.0.0/.nupkg.metadata", "{ \"version\": 2 }\n");
-        Write("packages/kit/1.0.0/build/Kit.targets",
-            "<Project>\n  <ItemGroup>\n    <None Include=\"$(MSBuildThisFileDirectory)../proguard/proguard.txt\" />\n  </ItemGroup>\n</Project>\n");
-        Write("packages/kit/1.0.0/proguard/proguard.txt", "-keep class kit.** { *; }\n");
-        Write("packages/kit/1.0.0/content/notes.txt", "Kit's notes.\n");
-        Write("Shop/Shop.csproj", "<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n"
-            + $"    <TargetFramework>{TestProjects.Framework}</TargetFramework>\n"
-            + "    <NuGetPackageRoot>$(MSBuildThisFileDirectory)../packages/</NuGetPackageRoot>\n  </PropertyGroup>\n"
-            + "  <ItemGroup>\n    <None Include=\"../packages/kit/1.0.0/content/notes.txt\" Link=\"notes.txt\" />\n  </ItemGroup>\n"
-            + "  <Import Project=\"../packages/kit/1.0.0/build/Kit.targets\" />\n</Project>\n");
-        Write("Shop/Catalog.cs", "namespace Shop;\n\npublic class Catalog\n{\n}\n");
-        Write("Shop.slnx", "<Solution>\n  <Project Path=\"Shop/Shop.csproj\" />\n</Solution>\n");
-        string package = PathNames.Canonical(Path.Combine(folder, "packages", "kit", "1.0.0"));
+        string package = WriteKitShop();
         string rules = Path.Combine(package, "proguard", "proguard.txt");
         string notes = Path.Combine(package, "content", "notes.txt");
         MainWindow window = Ui.OpenFolder(folder, languageServer: false);
@@ -1046,6 +1034,88 @@ public sealed class SolutionViewTests : IDisposable
         Assert.Empty(asked);
         Assert.True(File.Exists(notes) && File.Exists(rules), "Delete took a file out of the package folder");
         window.Close();
+    }
+
+    /// <summary>A linked file of a NuGet package stands in the package's folder on disk, every project's copy: nothing is
+    /// pasted beside it or made new there, by keys or for an agent, each refused saying whose folder it is, and the
+    /// package's folder holds only what it held.</summary>
+    [AvaloniaFact]
+    public void Nothing_is_pasted_or_made_new_beside_a_linked_file_of_a_package_saying_whose_folder_it_is()
+    {
+        string content = Path.Combine(WriteKitShop(), "content");
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        List<string> asked = Answer(window);
+        Ui.WaitFor(() => window.Projects.Any(p => p.IsEvaluated), "MSBuild to evaluate Shop");
+        Ui.ClickRow(window, Show(window, Path.Combine(folder, "Shop", "Catalog.cs")));
+        Ui.Run(window, EditorActions.Copy);
+        Ui.WaitFor(() => window.Status == "Copied Catalog.cs", () => $"the copy of Catalog.cs: {window.Status}");
+
+        const string why = "content is a folder of the package kit 1.0.0, as NuGet restored it for every project";
+        Ui.ClickRow(window, Row(window, NodeKind.File, "notes.txt", Path.Combine(content, "notes.txt")));
+        Ui.Run(window, EditorActions.Paste);
+        Assert.Equal(why, window.Status);
+        foreach (string action in (string[])[EditorActions.Paste, AppActions.NewFile, AppActions.NewFolder, AppActions.NewType, AppActions.NewItem])
+        {
+            Assert.Equal(why, window.Actions.Run(action));
+        }
+        Assert.False(window.IsPopupOpen, "New on the package's notes.txt asked a name for something made in the package's folder");
+        Assert.Empty(asked);
+        string[] held = Directory.GetFileSystemEntries(content);
+        Assert.True(held is [{ } only] && Path.GetFileName(only) == "notes.txt", $"The package's content folder took what was pasted or made in it: [{string.Join(", ", held.Select(Path.GetFileName))}]");
+        window.Close();
+    }
+
+    /// <summary>A project may name an ancestor of its own folder its package folder: what its own project file names there
+    /// stays listed, and only a file a package NuGet laid out there names from its own folder is left out.</summary>
+    [AvaloniaFact]
+    public void A_projects_own_items_below_a_package_folder_it_names_stay_listed_and_only_a_packages_own_are_left_out()
+    {
+        string rules = Path.Combine(WriteKit(string.Empty), "proguard", "proguard.txt");
+        Write("docs/guide.md", "# Guide\n");
+        Write("Shelf/Shelf.csproj", "<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n"
+            + $"    <TargetFramework>{TestProjects.Framework}</TargetFramework>\n"
+            + "    <NuGetPackageRoot>$(MSBuildThisFileDirectory)../</NuGetPackageRoot>\n  </PropertyGroup>\n"
+            + "  <ItemGroup>\n    <None Include=\"../docs/guide.md\" Link=\"guide.md\" />\n  </ItemGroup>\n"
+            + "  <Import Project=\"../kit/1.0.0/build/Kit.targets\" />\n</Project>\n");
+        Write("Shelf/Stock.cs", "namespace Shelf;\n\npublic class Stock\n{\n}\n");
+        Write("Shelf.slnx", "<Solution>\n  <Project Path=\"Shelf/Shelf.csproj\" />\n</Solution>\n");
+        string guide = Path.Combine(folder, "docs", "guide.md");
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        Ui.WaitFor(() => window.Projects.Any(p => p.IsEvaluated), "MSBuild to evaluate Shelf");
+        Assert.Contains(window.Projects.Single().Evaluated!.Items, i => PathNames.Same(i.Path, rules));
+
+        Show(window, Path.Combine(folder, "Shelf", "Stock.cs"));
+        IReadOnlyList<ExplorerNode> rows = window.ExplorerView.Tree.Rows;
+        Assert.True(rows.Any(r => r.Kind == NodeKind.File && r.Path == guide), "The Solution view left out guide.md, which Shelf's own project file links in, as a package's file since Shelf names its parent its package folder");
+        Assert.False(rows.Any(r => r.Name == "proguard.txt"), "The Solution view lists the package's proguard.txt, which Shelf names only through the package's targets");
+        window.Close();
+    }
+
+    /// <summary>The package kit 1.0.0 as NuGet lays it out in a package folder (<paramref name="under"/>, from the test's
+    /// folder), its targets naming its ProGuard rules as AndroidX's do, with a file of its own to link in; its folder.</summary>
+    private string WriteKit(string under)
+    {
+        Write($"{under}kit/1.0.0/.nupkg.metadata", "{ \"version\": 2 }\n");
+        Write($"{under}kit/1.0.0/build/Kit.targets",
+            "<Project>\n  <ItemGroup>\n    <None Include=\"$(MSBuildThisFileDirectory)../proguard/proguard.txt\" />\n  </ItemGroup>\n</Project>\n");
+        Write($"{under}kit/1.0.0/proguard/proguard.txt", "-keep class kit.** { *; }\n");
+        Write($"{under}kit/1.0.0/content/notes.txt", "Kit's notes.\n");
+        return PathNames.Canonical(Path.Combine(folder, under, "kit", "1.0.0"));
+    }
+
+    /// <summary>A solution of Shop, whose package folder is packages beside it, holding kit (<see cref="WriteKit"/>), whose
+    /// targets Shop imports and whose notes.txt it links in; the package's folder.</summary>
+    private string WriteKitShop()
+    {
+        string package = WriteKit("packages/");
+        Write("Shop/Shop.csproj", "<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n"
+            + $"    <TargetFramework>{TestProjects.Framework}</TargetFramework>\n"
+            + "    <NuGetPackageRoot>$(MSBuildThisFileDirectory)../packages/</NuGetPackageRoot>\n  </PropertyGroup>\n"
+            + "  <ItemGroup>\n    <None Include=\"../packages/kit/1.0.0/content/notes.txt\" Link=\"notes.txt\" />\n  </ItemGroup>\n"
+            + "  <Import Project=\"../packages/kit/1.0.0/build/Kit.targets\" />\n</Project>\n");
+        Write("Shop/Catalog.cs", "namespace Shop;\n\npublic class Catalog\n{\n}\n");
+        Write("Shop.slnx", "<Solution>\n  <Project Path=\"Shop/Shop.csproj\" />\n</Solution>\n");
+        return package;
     }
 
     /// <summary>The names of the folders shown directly under a project's row, in order.</summary>

@@ -44,4 +44,19 @@ public sealed class PackageFoldersTests : IDisposable
 
         Assert.True(PackageFolders.Holds(restored), "A package holding its nuspec was not taken for one");
     }
+
+    [Fact]
+    public void A_file_made_in_a_packages_folder_or_its_versions_own_is_the_packages_and_in_the_package_folder_or_an_ids_none()
+    {
+        Written("tray/3.0.0/.nupkg.metadata");
+        string content = Path.GetDirectoryName(Written("tray/3.0.0/content/tray.txt"))!;
+        string version = Path.Combine(root, "tray", "3.0.0");
+        PackageFolders.Learn([root]);
+
+        Assert.Equal("tray 3.0.0", PackageFolders.PackageIn(content));
+        Assert.Equal("tray 3.0.0", PackageFolders.PackageIn(version));
+        Assert.Null(PackageFolders.PackageOf(version));
+        Assert.Null(PackageFolders.PackageIn(Path.Combine(root, "tray")));
+        Assert.Null(PackageFolders.PackageIn(root));
+    }
 }
