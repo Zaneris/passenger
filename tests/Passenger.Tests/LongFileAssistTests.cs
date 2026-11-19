@@ -195,8 +195,9 @@ public sealed class LongFileAssistTests : IClassFixture<LongFileAssistTests.Proj
         Ui.Settle();
         Passenger.Languages.CSharp.SemanticHighlighter colours = Assert.IsType<Passenger.Languages.CSharp.SemanticHighlighter>(document.Highlighter);
         Passenger.Lsp.LanguageServer server = window.CSharpService!.Session!.Server;
-        _ = server.RefuseNext(Passenger.Lsp.LspMethods.SemanticTokensRange, 1000);
-        _ = server.RefuseNext(Passenger.Lsp.LspMethods.SemanticTokensFull, 1000);
+        Passenger.Lsp.LspDocument lsp = window.CSharpService!.For(document)!.Lsp!;
+        _ = server.RefuseNext(lsp.RangeColoursMethod, 1000);
+        _ = server.RefuseNext(lsp.ColoursMethod, 1000);
         try
         {
             editor.Selections = SelectionSet.Single(source.IndexOf("seed + 0;", StringComparison.Ordinal) + "seed + 0".Length);
@@ -214,8 +215,8 @@ public sealed class LongFileAssistTests : IClassFixture<LongFileAssistTests.Proj
         }
         finally
         {
-            _ = server.RefuseNext(Passenger.Lsp.LspMethods.SemanticTokensRange, 0);
-            _ = server.RefuseNext(Passenger.Lsp.LspMethods.SemanticTokensFull, 0);
+            _ = server.RefuseNext(lsp.RangeColoursMethod, 0);
+            _ = server.RefuseNext(lsp.ColoursMethod, 0);
         }
         window.Close();
     }
@@ -283,6 +284,9 @@ public sealed class LongFileAssistTests : IClassFixture<LongFileAssistTests.Proj
             int far = source.LastIndexOf("value98 * 3", StringComparison.Ordinal);
             Ui.WaitFor(() => KindAt(far) == TokenKind.Local, "the server's colours on the file's last local");
             Passenger.Languages.CSharp.SemanticHighlighter colours = Assert.IsType<Passenger.Languages.CSharp.SemanticHighlighter>(document.Highlighter);
+            Passenger.Lsp.LspDocument lsp = window.CSharpService!.For(document)!.Lsp!;
+            string wholeMethod = lsp.ColoursMethod;
+            string screenMethod = lsp.RangeColoursMethod;
             // That read counts as drawn down to the file's end, so the server's word would ask for the whole file: a key taken back ends it.
             int at = source.IndexOf("seed + 0;", StringComparison.Ordinal) + "seed + 0;".Length;
             editor.Selections = SelectionSet.Single(at);
@@ -303,11 +307,11 @@ public sealed class LongFileAssistTests : IClassFixture<LongFileAssistTests.Proj
                     string file = System.Text.RegularExpressions.Regex.Match(message, "\"uri\":\"[^\"]*/([^\"/]+)\"") is { Success: true } uri ? $" {uri.Groups[1].Value}" : "";
                     wire.Enqueue($"{clock.ElapsedMilliseconds} ms, server {server}: {message[..3]} {method.Groups[1].Value}{file}");
                 }
-                if (message.StartsWith("-->", StringComparison.Ordinal) && message.Contains($"\"{Passenger.Lsp.LspMethods.SemanticTokensFull}\"", StringComparison.Ordinal))
+                if (message.StartsWith("-->", StringComparison.Ordinal) && message.Contains($"\"{wholeMethod}\"", StringComparison.Ordinal))
                 {
                     Interlocked.Increment(ref whole);
                 }
-                else if (message.StartsWith("-->", StringComparison.Ordinal) && message.Contains($"\"{Passenger.Lsp.LspMethods.SemanticTokensRange}\"", StringComparison.Ordinal))
+                else if (message.StartsWith("-->", StringComparison.Ordinal) && message.Contains($"\"{screenMethod}\"", StringComparison.Ordinal))
                 {
                     Interlocked.Increment(ref screens);
                 }

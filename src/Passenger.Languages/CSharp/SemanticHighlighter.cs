@@ -7,7 +7,7 @@ namespace Passenger.Languages.CSharp;
 
 /// <summary>The language server's colours over the parser's (<see cref="CarriedColours"/>): what only the compiler knows
 /// (that a name is a struct, a field, a local, an extension method) replaces the syntax's guess wherever the server says
-/// something. Tokens are
+/// something, and a name it could not bind it says nothing of (<see cref="LspDocument.ColoursMethod"/>). Tokens are
 /// asked for once edits settle and whenever the server says the code moved: the lines on screen first (a screen takes
 /// the server milliseconds, a long file about a second), then the whole file once typing has stopped
 /// (<see cref="Idle"/>). Each answer is decoded off the UI thread against the snapshot it was asked for and carried

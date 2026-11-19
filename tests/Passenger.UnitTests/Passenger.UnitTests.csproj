@@ -354,6 +354,12 @@
     <Compile Include="../../src/Passenger.Roslyn.Extension/JsInteropImport.cs" Link="Roslyn/JsInteropImport.cs" />
   </ItemGroup>
 
+  <!-- Semantic tokens written again in the legend the server gave, a name it could not bind left out, compiled in since
+       their project is built against Roslyn's server. -->
+  <ItemGroup>
+    <Compile Include="../../src/Passenger.Roslyn.Extension/ColourTokens.cs" Link="Roslyn/ColourTokens.cs" />
+  </ItemGroup>
+
   <!-- What the extension keeps by a solution's documents and projects, each workspace's apart, and each document's read
        while what it was read from stands, over Roslyn's own workspaces, compiled in since its project is built against
        Roslyn's server. -->

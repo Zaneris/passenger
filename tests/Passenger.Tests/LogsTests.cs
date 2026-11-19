@@ -141,13 +141,14 @@ public sealed class LogsTests : IDisposable
             Ui.WaitFor(() => window.CSharpService is { IsReady: true }, $"the language server to load the project ({window.CSharpService?.State})");
             int server = window.CSharpService!.Session!.Server.ProcessId;
             Ui.WaitFor(() => Ui.IdeLog().Contains($"(process {server}) gave an open file its colours", StringComparison.Ordinal), "the first colours to be logged");
+            string colours = window.CSharpService!.For(window.EditorArea.Active!)!.Lsp!.ColoursMethod;
 
             string trace = Logged("lsp.log");
             Assert.True(Traced(trace, $"[server {server}] --> ", "\"method\":\"initialize\""),
                 $"lsp.log in the logs folder does not have the initialize the server was sent:\n{Start(trace)}");
             Assert.True(Traced(trace, $"[server {server}] <-- ", $"\"method\":\"{Passenger.Lsp.LspMethods.ProjectInitializationComplete}\""),
                 $"lsp.log does not have the server's word that the project loaded:\n{Start(trace)}");
-            Assert.True(Traced(trace, $"[server {server}] --> ", $"\"method\":\"{Passenger.Lsp.LspMethods.SemanticTokensFull}\""),
+            Assert.True(Traced(trace, $"[server {server}] --> ", $"\"method\":\"{colours}\""),
                 $"lsp.log does not have the open file's colours asked for:\n{Start(trace)}");
 
             string log = Ui.IdeLog();

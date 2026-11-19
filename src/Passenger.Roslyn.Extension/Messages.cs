@@ -73,9 +73,12 @@ public static class Handlers
 /// <summary>Requests of the server that the extension answers itself, as an LSP method of its own.</summary>
 public static class ExtensionMethods
 {
-    /// <summary>A request about a file in no project, its <c>textDocument</c> and, for part of it, its <c>range</c>: its
-    /// colours, as the server's semantic tokens encode them; null for a file a project holds.</summary>
-    public const string LooseColours = "passenger/looseSemanticTokens";
+    /// <summary>textDocument/semanticTokens/full, in the legend the server gave, a name the server could not bind left out;
+    /// a file in no project is coloured from the references it has.</summary>
+    public const string Colours = "passenger/semanticTokens/full";
+
+    /// <summary>textDocument/semanticTokens/range, its <c>textDocument</c> and <c>range</c>, answered as <see cref="Colours"/>.</summary>
+    public const string RangeColours = "passenger/semanticTokens/range";
 
     /// <summary>workspace/diagnostic with a <c>frameworks</c> map from a multi-targeted project's file to the framework
     /// solution-wide analysis takes it in, its reports and previous results each naming their project (<c>_vs_projectContext</c>).</summary>

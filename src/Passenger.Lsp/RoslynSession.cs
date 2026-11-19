@@ -1008,7 +1008,7 @@ public sealed class LspDocument : IDisposable
         {
             Server.Follow(parameters, sent);
         }
-        SemanticTokens? tokens = await OrLooseAsync(await Server.RequestAsync<SemanticTokens>(LspMethods.SemanticTokensFull, parameters, cancel), parameters, cancel);
+        SemanticTokens? tokens = await Server.RequestAsync<SemanticTokens>(ColoursMethod, parameters, cancel);
         Came(ref coloured, asked);
         if (tokens is { Data.Length: > 0 })
         {
@@ -1028,21 +1028,18 @@ public sealed class LspDocument : IDisposable
         {
             Server.Follow(parameters, sent);
         }
-        SemanticTokens? tokens = await OrLooseAsync(await Server.RequestAsync<SemanticTokens>(LspMethods.SemanticTokensRange, parameters, cancel), parameters, cancel);
+        SemanticTokens? tokens = await Server.RequestAsync<SemanticTokens>(RangeColoursMethod, parameters, cancel);
         Came(ref coloured, asked);
         return (tokens, version);
     }
 
-    /// <summary>The server's colours, or where it gave none, those Passenger's extension gives a file in no project, which
-    /// the server leaves uncoloured; asked with the same document and range.</summary>
-    private async Task<SemanticTokens?> OrLooseAsync(SemanticTokens? tokens, object parameters, CancellationToken cancel)
-    {
-        if (tokens is { Data.Length: > 0 } || Server.ExtensionProblem is not null)
-        {
-            return tokens;
-        }
-        return await Server.RequestAsync<SemanticTokens>(ExtensionMethods.LooseColours, parameters, cancel) ?? tokens;
-    }
+    /// <summary>How a C# file's colours are asked for, the whole file's: through Passenger's extension once it is up, which
+    /// leaves a name the server could not bind to the colour its syntax gives it and colours a file in no project; else as
+    /// the protocol asks them.</summary>
+    public string ColoursMethod => Server.ExtensionProblem is null && !IsRazor ? ExtensionMethods.Colours : LspMethods.SemanticTokensFull;
+
+    /// <summary>How a range's colours are asked for, as <see cref="ColoursMethod"/>.</summary>
+    public string RangeColoursMethod => Server.ExtensionProblem is null && !IsRazor ? ExtensionMethods.RangeColours : LspMethods.SemanticTokensRange;
 
     /// <summary>The symbol at an offset as a call hierarchy's root, if it is one that calls or is called: from a use of a
     /// member declared in another file and at a record's positional parameter too where Passenger's extension answers
