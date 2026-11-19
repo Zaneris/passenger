@@ -175,6 +175,7 @@ public class RelayConnectionTests
         public const int Answer = 0x1234;
 
         private readonly BlockingCollection<byte[]> frames = [];
+        private readonly IEnumerator<byte[]> coming;
         private byte[] reading = [];
         private int read;
 
@@ -184,6 +185,7 @@ public class RelayConnectionTests
             hello[0] = 0x80;
             BinaryPrimitives.WriteUInt32LittleEndian(hello.AsSpan(1), ProcessId);
             frames.Add(Frame(0, hello));
+            coming = frames.GetConsumingEnumerable().GetEnumerator();
         }
 
         public bool Answers { get; init; }
@@ -200,11 +202,11 @@ public class RelayConnectionTests
         {
             if (read == reading.Length)
             {
-                if (!frames.TryTake(out byte[]? next, Timeout.Infinite))
+                if (!coming.MoveNext())
                 {
                     return 0;
                 }
-                (reading, read) = (next, 0);
+                (reading, read) = (coming.Current, 0);
             }
             int given = Math.Min(count, reading.Length - read);
             reading.AsSpan(read, given).CopyTo(buffer.AsSpan(offset));

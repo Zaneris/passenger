@@ -15,12 +15,12 @@ public class ApartStreamTests
         using (CancellationTokenSource givenUp = new())
         {
             Task<int> first = apart.ReadAsync(buffer.AsMemory(), givenUp.Token).AsTask();
-            Assert.True(blocked.Asked.Wait(TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken), "The stream was never read");
+            blocked.Asked.Wait(TestContext.Current.CancellationToken);
             await givenUp.CancelAsync();
             await Assert.ThrowsAnyAsync<OperationCanceledException>(() => first);
         }
         blocked.LetGo.Set();
-        int read = await apart.ReadAsync(buffer.AsMemory(), TestContext.Current.CancellationToken).AsTask().WaitAsync(TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken);
+        int read = await apart.ReadAsync(buffer.AsMemory(), TestContext.Current.CancellationToken);
         Assert.True(read == 5 && buffer.AsSpan(0, read).SequenceEqual("hello"u8),
             $"After a read given up, the next read gave {read} bytes, \"{System.Text.Encoding.UTF8.GetString(buffer, 0, read)}\": what the given-up read's thread read was lost");
         Assert.True(blocked.ReadOnPool == false, "The stream's blocking read ran on a thread of the pool, which it would hold for as long as it waits");

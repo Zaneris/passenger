@@ -36,7 +36,7 @@ public class GodotEditorWireTests
     {
         Wire wire = new(Encoding.UTF8.GetBytes(said + "{\"id\":1}\n"));
 
-        bool greeted = await GodotEditorWire.GreetedAsync(wire, TokenHash, Reply, TimeSpan.FromSeconds(5), CancellationToken.None);
+        bool greeted = await GodotEditorWire.GreetedAsync(wire, TokenHash, Reply, Timeout.InfiniteTimeSpan, CancellationToken.None);
 
         Assert.Equal(taken, greeted);
         Assert.Equal(taken ? Reply + "\n" : string.Empty, Encoding.UTF8.GetString(wire.Written.ToArray()));
@@ -48,7 +48,7 @@ public class GodotEditorWireTests
     {
         Wire wire = new(Encoding.UTF8.GetBytes(new string('A', 4096) + "\n"));
 
-        Assert.False(await GodotEditorWire.GreetedAsync(wire, TokenHash, Reply, TimeSpan.FromSeconds(5), CancellationToken.None));
+        Assert.False(await GodotEditorWire.GreetedAsync(wire, TokenHash, Reply, Timeout.InfiniteTimeSpan, CancellationToken.None));
         Assert.True(wire.Unread.Length > 3000, $"Only the longest secret's bytes and one more were to be read; {wire.Unread.Length} left");
     }
 

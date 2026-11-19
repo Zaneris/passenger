@@ -57,6 +57,6 @@ public class ApartThreadsTests
             Carried.Value = null;
         }
         await started;
-        return await told.Task.WaitAsync(TimeSpan.FromSeconds(30));
+        return await told.Task.WaitAsync(TestContext.Current.CancellationToken);
     }
 }

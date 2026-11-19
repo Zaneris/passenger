@@ -282,7 +282,7 @@ internal static class JsonRpcConversations
         public async Task<string> SlowAsync(JsonElement asked, CancellationToken cancel)
         {
             Say("slow", asked);
-            await Task.Delay(Timeout.Infinite, cancel);
+            await new TaskCompletionSource().Task.WaitAsync(cancel);
             return "never";
         }
     }

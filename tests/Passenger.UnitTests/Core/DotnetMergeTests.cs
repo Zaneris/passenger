@@ -29,6 +29,7 @@ public sealed class DotnetMergeTests : IDisposable
 
     public DotnetMergeTests()
     {
+        // The merge gives a held file up after a second: what stays held past the wait is what its test checks.
         merge = new DotnetMerge(Sdk, stages.Add, TimeSpan.FromSeconds(1));
         Write(Unpacked, "dotnet", "new host\n");
         Write(Unpacked, "LICENSE.txt", "licence\n");

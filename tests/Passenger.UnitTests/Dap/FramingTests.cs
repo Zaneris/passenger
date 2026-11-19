@@ -7,11 +7,11 @@ namespace Passenger.UnitTests.Dap;
 
 /// <summary>The Debug Adapter Protocol's messages as they cross between the IDE and its debugger: a Content-Length header and
 /// a JSON body, written whole and read whole whatever pieces the pipe cuts them into, and what is no message ending the
-/// conversation rather than hanging it.</summary>
+/// conversation rather than hanging it. Each test waits for what it checks with no limit of its own: a conversation that
+/// hangs holds its test, which the run's own limit on a test names.</summary>
 public class FramingTests
 {
     private const string Said = "said";
-    private static readonly TimeSpan Patience = TimeSpan.FromSeconds(10);
 
     [Fact]
     public async Task A_message_sent_is_its_body_length_in_bytes_in_its_header_then_its_JSON_numbered_in_order()
@@ -62,8 +62,8 @@ public class FramingTests
         Task first = connection.RequestAsync("first", null, TestContext.Current.CancellationToken);
         Task<Words> second = connection.RequestAsync<Words>("second", new Words("asked"), TestContext.Current.CancellationToken);
         connection.Start();
-        Assert.Equal(new Words("two"), await second.WaitAsync(Patience, TestContext.Current.CancellationToken));
-        DapException failed = await Assert.ThrowsAsync<DapException>(() => first.WaitAsync(Patience, TestContext.Current.CancellationToken));
+        Assert.Equal(new Words("two"), await second.WaitAsync(TestContext.Current.CancellationToken));
+        DapException failed = await Assert.ThrowsAsync<DapException>(() => first.WaitAsync(TestContext.Current.CancellationToken));
         Assert.Equal("first", failed.Command);
         Assert.Equal("no such thing", failed.Reason);
         await connection.DisposeAsync();
@@ -82,9 +82,9 @@ public class FramingTests
         DapConnection connection = new(new ChunkedStream(Framed(response), 7), new MemoryStream());
         Task pending = connection.RequestAsync("waiting", null, TestContext.Current.CancellationToken);
         connection.Start();
-        DapException failed = await Assert.ThrowsAsync<DapException>(() => pending.WaitAsync(Patience, TestContext.Current.CancellationToken));
+        DapException failed = await Assert.ThrowsAsync<DapException>(() => pending.WaitAsync(TestContext.Current.CancellationToken));
         Assert.Equal("waiting", failed.Command);
-        await connection.Completion.WaitAsync(Patience, TestContext.Current.CancellationToken);
+        await connection.Completion.WaitAsync(TestContext.Current.CancellationToken);
         await connection.DisposeAsync();
     }
 
@@ -99,7 +99,7 @@ public class FramingTests
         DapConnection connection = new(new ChunkedStream(Framed(response), 7), new MemoryStream());
         Task<Words> answer = connection.RequestAsync<Words>("asked", null, TestContext.Current.CancellationToken);
         connection.Start();
-        Assert.Equal(text, (await answer.WaitAsync(Patience, TestContext.Current.CancellationToken)).Text);
+        Assert.Equal(text, (await answer.WaitAsync(TestContext.Current.CancellationToken)).Text);
         await connection.DisposeAsync();
     }
 
@@ -125,12 +125,12 @@ public class FramingTests
             TaskCompletionSource answered = new(TaskCreationOptions.RunContinuationsAsynchronously);
             adapter.Handle<VariablesArguments, VariablesResponse>(DapCommands.Variables, _ => Task.FromResult(sent), () => answered.TrySetResult());
             adapter.Start();
-            await answered.Task.WaitAsync(Patience, cancel);
+            await answered.Task.WaitAsync(cancel);
             await adapter.DisposeAsync();
             DapConnection ide = new(new ChunkedStream(written.ToArray(), 16_384), new MemoryStream());
             Task<VariablesResponse> answer = ide.RequestAsync<VariablesResponse>(DapCommands.Variables, new VariablesArguments(7), cancel);
             ide.Start();
-            read = await answer.WaitAsync(Patience, cancel);
+            read = await answer.WaitAsync(cancel);
             await ide.DisposeAsync();
         }
         finally
@@ -158,8 +158,8 @@ public class FramingTests
         DapConnection connection = new(new ChunkedStream(Encoding.ASCII.GetBytes(text), 4_096), new MemoryStream(), log.Enqueue);
         Task pending = connection.RequestAsync("waiting", null, TestContext.Current.CancellationToken);
         connection.Start();
-        await connection.Completion.WaitAsync(Patience, TestContext.Current.CancellationToken);
-        DapException failed = await Assert.ThrowsAsync<DapException>(() => pending.WaitAsync(Patience, TestContext.Current.CancellationToken));
+        await connection.Completion.WaitAsync(TestContext.Current.CancellationToken);
+        DapException failed = await Assert.ThrowsAsync<DapException>(() => pending.WaitAsync(TestContext.Current.CancellationToken));
         Assert.Equal("the connection closed", failed.Reason);
         await connection.DisposeAsync();
         if (logged is null)
@@ -183,7 +183,7 @@ public class FramingTests
         DapConnection connection = new(new ChunkedStream(input, 3), output);
         connection.Handle<Words, Words>("echo", asked => Task.FromResult(new Words(asked.Text + "!")));
         connection.Start();
-        await connection.Completion.WaitAsync(Patience, TestContext.Current.CancellationToken);
+        await connection.Completion.WaitAsync(TestContext.Current.CancellationToken);
         await connection.DisposeAsync();
         List<JsonElement> answers = Messages(output.ToArray());
         Assert.Equal([7, 8], answers.Select(m => m.GetProperty("request_seq").GetInt32()));
@@ -199,7 +199,7 @@ public class FramingTests
         DapConnection connection = new(input, new MemoryStream());
         connection.OnEvent<Words>(Said, said => heard.Enqueue(said.Text));
         connection.Start();
-        await connection.Completion.WaitAsync(Patience, TestContext.Current.CancellationToken);
+        await connection.Completion.WaitAsync(TestContext.Current.CancellationToken);
         await connection.DisposeAsync();
         return [.. heard];
     }

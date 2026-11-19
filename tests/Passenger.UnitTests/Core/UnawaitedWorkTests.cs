@@ -18,8 +18,7 @@ public class UnawaitedWorkTests
         ran.SetResult();
         failed.SetException(new InvalidOperationException("The work failed"));
         cancelled.SetCanceled(TestContext.Current.CancellationToken);
-        // A guard only: the waits end as the pool runs them.
-        await Task.WhenAll(waits).WaitAsync(TimeSpan.FromMinutes(1), TestContext.Current.CancellationToken);
+        await Task.WhenAll(waits).WaitAsync(TestContext.Current.CancellationToken);
 
         Assert.All(waits, wait => Assert.True(wait.Status == TaskStatus.RanToCompletion,
             $"A wait for work however it ends was {wait.Status}: what awaits it would throw the work's fault in its place"));
