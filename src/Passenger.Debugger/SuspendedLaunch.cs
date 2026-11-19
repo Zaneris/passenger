@@ -42,8 +42,9 @@ public sealed partial class SuspendedLaunch : IDisposable
         this.resumeHandle = resumeHandle;
         this.process = process;
         Input = input;
-        Output = output;
-        Error = error;
+        // Read for as long as the program runs, a read of each blocking its thread.
+        Output = new ApartStream(output, "Passenger program output");
+        Error = new ApartStream(error, "Passenger program errors");
     }
 
     public int ProcessId { get; }
@@ -54,7 +55,10 @@ public sealed partial class SuspendedLaunch : IDisposable
     /// <summary>The program's standard input, written by the client's console.</summary>
     public Stream Input { get; }
 
+    /// <summary>The program's standard output, read on a thread of its own (<see cref="ApartStream"/>).</summary>
     public Stream Output { get; }
+
+    /// <summary>The program's standard error, read as <see cref="Output"/> is.</summary>
     public Stream Error { get; }
 
     /// <summary>Why the program's exit code is not known, once it has ended without one, where it was this process's to
@@ -65,20 +69,20 @@ public sealed partial class SuspendedLaunch : IDisposable
     /// closed on exec so no program ever inherits them, and points 0 at /dev/null and 1 at standard error,
     /// so a stray write to the console can never corrupt the protocol either. On Windows the protocol stays on
     /// the standard handles, made ones a program started does not inherit: held by the program, they would keep
-    /// the client from seeing the adapter's end until the program's.</summary>
+    /// the client from seeing the adapter's end until the program's. The protocol is read on a thread of its own.</summary>
     public static (Stream Input, Stream Output) DetachProtocol()
     {
         if (OperatingSystem.IsWindows())
         {
             StandardHandles.NotInherited();
-            return (Console.OpenStandardInput(), Console.OpenStandardOutput());
+            return (new ApartStream(Console.OpenStandardInput(), "Passenger protocol"), Console.OpenStandardOutput());
         }
         SafeFileHandle input = new(Check(Dup(0), "dup"), ownsHandle: true);
         SafeFileHandle output = new(Check(Dup(1), "dup"), ownsHandle: true);
         using SafeFileHandle nothing = File.OpenHandle("/dev/null", FileMode.Open, FileAccess.Read);
         Check(Libc.DuplicateTo((int)nothing.DangerousGetHandle(), 0), "dup2");
         Check(Libc.DuplicateTo(2, 1), "dup2");
-        return (new FileStream(input, FileAccess.Read, 1), new FileStream(output, FileAccess.Write, 1));
+        return (new ApartStream(new FileStream(input, FileAccess.Read, 1), "Passenger protocol"), new FileStream(output, FileAccess.Write, 1));
     }
 
     /// <summary>Starts a program suspended, in a folder, with an environment (the adapter's, with these

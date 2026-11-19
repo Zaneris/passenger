@@ -162,6 +162,33 @@ public class LaunchTests(ITestOutputHelper testOutputHelper)
         Assert.True(exitCode == 42, $"The program exited with 42, and the debugger said {(exitCode is int code ? code.ToString() : "nothing")}");
     }
 
+    /// <summary>A launched program stopped at its start, then run to its end writing 64 KB, in an adapter whose thread pool
+    /// keeps to two threads and cannot grow: what the session waits on for as long as it lasts (the program's end, its
+    /// output and errors, the protocol's next message) waits on threads of its own, leaving the pool to its requests.</summary>
+    [Fact]
+    public async Task A_launched_session_stops_answers_and_hears_its_programs_output_in_an_adapter_whose_thread_pool_keeps_to_two_threads()
+    {
+        await using DebugSession host = DebugSession.ForLaunch(testOutputHelper, environment: new Dictionary<string, string>
+        {
+            ["DOTNET_PROCESSOR_COUNT"] = "2",
+            // Read in hex, which 2 is written alike in.
+            ["DOTNET_ThreadPool_ForceMaxWorkerThreads"] = "2",
+        });
+        await host
+            .InitializeAsync()
+            .LaunchAsync(Debuggees.Program("PassengerCases"), stopAtEntry: true, justMyCode: true, arguments: ["flood"])
+            .WaitForInitializedEvent();
+        await host.ConfigurationDoneAsync();
+
+        StoppedEvent stop = await host.WaitForStoppedEvent();
+        Assert.NotEmpty((await host.RequestAsync<ThreadsResponse>(DapCommands.Threads)).Threads);
+        Assert.Contains("Main", (await host.TopFrameAsync(stop.ThreadId!.Value)).Name);
+        await host.ContinueAsync();
+        (string output, int? exitCode) = await host.WaitForEnd();
+        Assert.True(output.Length == 1024 * 64 && exitCode == 42,
+            $"The program wrote {output.Length} of its 65,536 characters and the debugger said it exited with {(exitCode is int code ? code.ToString() : "nothing")}, not 42");
+    }
+
     [Gate]
     [Fact]
     public async Task The_thread_running_Main_is_the_one_named_Main_Thread()

@@ -124,8 +124,8 @@ public partial class ManagedDebugger
         _launch = launch;
         _initialThreadId = launch.InitialThreadId;
         _launchOutput = Task.WhenAll(Forward(launch.Output, isError: false), Forward(launch.Error, isError: true));
-        // Not held: it waits for the program to end.
-        Task<int?> launchExit = Core.BackgroundWork.Unheld(launch.WaitForExit);
+        // On a thread of its own: it waits for the program to end.
+        Task<int?> launchExit = Core.BackgroundWork.UnheldThread(launch.WaitForExit);
         _launchExit = launchExit;
         // Told as the program goes, not when the runtime's word of it is handled, which mscordbi may lose tearing down.
         Core.UnawaitedWork.Observe(EndedLaunchAsync(launchExit));
