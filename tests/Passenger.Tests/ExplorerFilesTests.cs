@@ -458,6 +458,97 @@ public sealed class ExplorerFilesTests : IDisposable
         }
     }
 
+    /// <summary>A project whose wildcards take in a folder deleted while its design-time build runs, here Shop over Lib, is
+    /// told to the C# language server only once the folder has gone, though its own build lands first: telling it looks at
+    /// what its build read, and the server then reads its files, Lib's among them, and on Windows a folder with a file under
+    /// it open does not go.</summary>
+    [AvaloniaFact]
+    public void A_project_whose_wildcards_take_in_a_folder_being_deleted_is_told_to_the_language_server_once_it_has_gone()
+    {
+        string library = Directory.CreateDirectory(Path.Combine(folder, "Lib")).FullName;
+        string releaseLib = Path.Combine(folder, "release-lib");
+        string releaseShop = Path.Combine(folder, "release-shop");
+        File.WriteAllText(Path.Combine(library, "Lib.csproj"), TestProjects.Library());
+        File.WriteAllText(Path.Combine(library, "Code.cs"), "class Code\n{\n}\n");
+        File.WriteAllText(Path.Combine(library, "Directory.Build.targets"), Holding(releaseLib));
+        File.WriteAllText(Path.Combine(folder, "Directory.Build.targets"), Holding(releaseShop));
+        Restore.Run(Path.Combine(library, "Lib.csproj"));
+        Restore.Run(Path.Combine(folder, "Shop.csproj"));
+        MainWindow window = new() { Width = 1200, Height = 800 };
+        window.Show();
+        window.OpenFolder(folder);
+        ProjectBuilds builds = window.Session.DesignTimeBuilds;
+        string shop = PathNames.Canonical(Path.Combine(folder, "Shop.csproj"));
+        Task asked = builds.HoldNextAsked(shop, Task.CompletedTask);
+        try
+        {
+            // Pumped, not settled: the language server's load waits for the design-time builds.
+            Ui.PumpUntil(() => File.Exists(Path.Combine(library, "held")) && File.Exists(Path.Combine(folder, "held")),
+                "Shop's and Lib's design-time builds to be held", TimeSpan.FromMinutes(2));
+            Assert.True(Ui.Pumped(() => asked.IsCompleted, TimeSpan.FromMinutes(2)), $"The language server never asked for Shop's design-time build{Ui.IdeLogTail()}");
+            Task<bool>? deleting = null;
+            bool? toldAfter = null;
+            builds.WhileNextLook(shop, () => toldAfter = deleting?.IsCompleted);
+            window.Confirm = (_, _, _) => Task.FromResult(true);
+            deleting = window.DeleteAsync(PathNames.Canonical(library));
+            Ui.PumpUntil(() => deleting.IsCompleted || window.Status?.StartsWith("Waiting for the design-time build of Lib", StringComparison.Ordinal) == true,
+                "the delete to wait for Lib's design-time build");
+            Assert.False(deleting.IsCompleted, $"The delete of Lib did not wait for its design-time build: {window.Status}");
+
+            File.WriteAllText(releaseShop, "go");
+            Ui.PumpUntil(() => deleting.IsCompleted || window.Session.DesignTimeBuilds.Builds > 0, "Shop's design-time build to land, Lib's still held");
+            File.WriteAllText(releaseLib, "go");
+            Assert.True(Ui.AwaitPumped(deleting, "the delete of Lib", TimeSpan.FromMinutes(2)), $"Lib was not deleted: {window.Status}{Holders(window, library)}");
+            Ui.PumpUntil(() => toldAfter is not null, "the language server to be told Shop", TimeSpan.FromMinutes(1));
+            Assert.True(toldAfter, "The language server was told Shop, what its build read looked at, while Lib, whose files Shop's wildcards take in, waited to go: the server then reads them, and on Windows a folder with a file under it open does not go");
+        }
+        finally
+        {
+            File.WriteAllText(releaseLib, "go");
+            File.WriteAllText(releaseShop, "go");
+            window.Close();
+        }
+    }
+
+    /// <summary>A folder let go of for a move or a delete holds off evaluating the projects that reach it, here Shop, whose
+    /// wildcards walk Models though no project lies there, until let go, the round under way waited for: a round reads
+    /// what each project's evaluation read and evaluates in the project host, and on Windows a folder with a file or folder
+    /// under it open does not move.</summary>
+    [AvaloniaFact]
+    public void A_folder_let_go_of_holds_off_evaluating_the_projects_whose_wildcards_walk_it_until_let_go()
+    {
+        File.WriteAllText(Path.Combine(folder, "Models", "Order.cs"), "class Order { }\n");
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        ProjectModels evaluations = window.Session.Models;
+        string models = PathNames.Canonical(Path.Combine(folder, "Models"));
+        string shop = PathNames.Canonical(Path.Combine(folder, "Shop.csproj"));
+        TaskCompletionSource evaluating = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        Task reached = evaluations.HoldEvaluation(shop, evaluating.Task);
+        File.WriteAllText(Path.Combine(folder, "Extra.cs"), "class Extra { }\n");
+        window.Session.Evaluate();
+        Ui.PumpUntil(() => reached.IsCompleted, "Shop's evaluation, its wildcards taking in Extra.cs, to begin");
+        (IDisposable held, Task evaluated) = evaluations.HoldOff([models]);
+        int before;
+        try
+        {
+            Assert.False(evaluated.IsCompleted, "Models was let go of while Shop's evaluation, whose wildcards walk Models, was still under way");
+            evaluating.SetResult();
+            Ui.AwaitPumped(evaluated, "the round evaluating Shop to end");
+            before = evaluations.Rounds;
+            File.WriteAllText(Path.Combine(folder, "More.cs"), "class More { }\n");
+            window.Session.Evaluate();
+            Ui.Settle();
+            Assert.True(evaluations.Rounds == before, $"A round began, looking at Shop, whose wildcards walk Models, while Models was let go of ({evaluations.Rounds - before} begun)");
+        }
+        finally
+        {
+            evaluating.TrySetResult();
+            held.Dispose();
+        }
+        Ui.WaitFor(() => evaluations.Rounds > before, "the round held off to begin once Models was let go of");
+        window.Close();
+    }
+
     /// <summary>A loaded project's folder let go of for a move stays unwatched by the watches of a C# language server started
     /// meanwhile, until the move is done: a move can begin while a server starts (its start waits for the design-time builds
     /// the move waits out), and on Windows a move with the project's build output watched inside it is refused.</summary>

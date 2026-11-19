@@ -636,16 +636,17 @@ public partial class MainWindow
             : $"Move {Plural.Of(files, "file")} and {Plural.Of(folders, "folder")}, with {everything}, to the Trash?";
     }
 
-    /// <summary>Lets go of what is about to go or move until disposed: the design-time builds of the projects under it are
-    /// held off, and nothing under it is watched or read for the C# language server, done once the builds running and the
-    /// watchers' reads there have ended or <see cref="BuildsGoing"/> has passed, saying <paramref name="waiting"/> meanwhile.
-    /// A build still writing a project's obj/ would make its folder again where it was; on Windows a folder the build works
-    /// in, or with a folder inside it watched or a file or folder inside it open, won't move.</summary>
+    /// <summary>Lets go of what is about to go or move until disposed: the builds and evaluations of the projects reaching it
+    /// (<see cref="FolderBuilds.Reaches"/>) are held off and nothing under it is watched or read for the C# language server,
+    /// done once the builds, the round of evaluations and the watchers' reads under way have ended or <see cref="BuildsGoing"/>
+    /// has passed, saying <paramref name="waiting"/> meanwhile. A build writing obj/ would make the folder again; on Windows a
+    /// folder a build works in, or with a folder inside it watched or a file or folder inside it open, won't move.</summary>
     private async Task<IDisposable> LetGoAsync(IReadOnlyList<string> paths, string waiting)
     {
         (IDisposable held, Task built) = session.DesignTimeBuilds.HoldOff(paths);
+        (IDisposable unevaluated, Task evaluated) = session.Models.HoldOff(paths);
         (IDisposable? unwatched, Task unread) = session.CSharp is { } csharp ? csharp.LetGoOf(paths) : (null, Task.CompletedTask);
-        Task going = Task.WhenAll(built, unread.Ended());
+        Task going = Task.WhenAll(built, evaluated, unread.Ended());
         if (!going.IsCompleted)
         {
             status.Text = waiting;
@@ -659,7 +660,7 @@ public partial class MainWindow
                 IdeErrors.Write($"Waited {Durations.Said(BuildsGoing)} for the design-time builds in {string.Join(", ", paths)}, and the watchers stopped there, to end, and went on without them");
             }
         }
-        return new LetGo(held, unwatched);
+        return new LetGo(held, unevaluated, unwatched);
     }
 
     /// <summary>Lets go of the folders an Undo or Redo moves (<see cref="CommandHistory.LetGo"/>) as a move does, saying
@@ -672,11 +673,12 @@ public partial class MainWindow
     }
 
     /// <summary>What was let go of for a move or a delete (<see cref="LetGoAsync"/>), taken up again once it is done.</summary>
-    private sealed class LetGo(IDisposable builds, IDisposable? watches) : IDisposable
+    private sealed class LetGo(IDisposable builds, IDisposable evaluations, IDisposable? watches) : IDisposable
     {
         public void Dispose()
         {
             builds.Dispose();
+            evaluations.Dispose();
             watches?.Dispose();
         }
     }

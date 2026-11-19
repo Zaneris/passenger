@@ -1,4 +1,5 @@
 using Passenger.Core;
+using Passenger.Host;
 
 namespace Passenger.Workspace;
 
@@ -22,6 +23,12 @@ public static class FolderBuilds
         }
         return Task.WhenAll(awaited);
     }
+
+    /// <summary>Whether a project reaches a folder about to go or move: it lies under it, or something its last evaluation
+    /// or build <paramref name="read"/> does (a file, or a folder its wildcards walked), so evaluating or building it, or
+    /// looking at what it read, reads under the folder.</summary>
+    public static bool Reaches(string project, IEnumerable<Stamp>? read, string going) =>
+        PathNames.Within(project, going) || read?.Any(stamp => PathNames.Within(stamp.Path, going)) == true;
 }
 
 /// <summary>A round of design-time builds the project host runs in one build session: the projects asked of it, built or
