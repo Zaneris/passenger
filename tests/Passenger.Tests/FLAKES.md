@@ -28,6 +28,18 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
   - Outside the code: 7 (the runner, GitHub, xunit, Rosetta).
   - Unlabelled: 7.
 
+## 2026-11-18
+
+- `McpWindowTests`' `An_agents_definition_of_what_a_restored_generator_declares_waits_for_the_end_of_the_batch_its_project_loaded_again_in`
+  and `…waits_for_its_run_though_the_server_says_its_diagnostics_moved_first`, loaded rounds on the Mac (#1939's and
+  #1954's agents): "No symbol at MainPage.xaml.cs:9:9". **A race in the IDE**: the design-time build after the restore
+  wrote the global usings and MAUI's editorconfig again in place, and no watcher told the server (the system's watcher
+  was behind, and the fallback looked only at folders whose stamp moved); the generators' wait then ran out and let the
+  question through as of the text before. The wait now tells the server of each file it holds otherwise than the disk
+  itself (`WatchedFiles.TellFound`) and refuses a question that waited for one when it runs out
+  (`CSharpService.RanOutReading`). Two new McpWindowTests hold the watcher's telling back and answered "No symbol" on
+  main (4f3968a34, #1954).
+
 ## 2026-11-16
 
 - `McpNavigationTests`' `Definition_of_a_maui_pages_initialize_component_answers_the_generators_declaration_in_a_copy_of_its_code`,
