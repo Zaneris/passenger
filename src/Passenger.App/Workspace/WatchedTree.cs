@@ -60,20 +60,20 @@ public abstract class WatchedTree : IDisposable
     private readonly Queue<(long At, int Heard)> batches = new();
     private int heardInBatch;
 
-    /// <summary>When the last change was heard, a timestamp of <see cref="Stopwatch.GetTimestamp"/>'s, which measures the quiet;
-    /// and the first after a quiet <see cref="Burst"/> before it, on the wall clock, as the record's moments and files' writes
-    /// it is set against are.</summary>
+    /// <summary>When the last change was heard, which measures the quiet, and the first after a quiet <see cref="Burst"/>
+    /// before it, which is set against when the record was made: timestamps of <see cref="Stopwatch.GetTimestamp"/>'s.</summary>
     private long lastHeard;
-    private DateTime burstBegan;
+    private long burstBegan;
 
     /// <summary>The record, by kept folder: its entries' names and its stamp as last listed. Read and changed only by
     /// the work <see cref="Follow"/> runs in turn.</summary>
     private readonly Dictionary<string, Listed> record = new(StringComparer.Ordinal);
     private int recorded;
 
-    /// <summary>When the record of the whole folder was done, or null while it is made or once it passed its limit; and when
-    /// the walk that made it began, on the wall clock, written there by the work that keeps the record.</summary>
-    private DateTime? recordedAt;
+    /// <summary>When the record of the whole folder was done, a timestamp of <see cref="Stopwatch.GetTimestamp"/>'s, or null
+    /// while it is made or once it passed its limit; and when the walk that made it began, on the wall clock, as files'
+    /// writes are set against it, written there by the work that keeps the record.</summary>
+    private long? recordedAt;
     private long recordBeganTicks;
 
     /// <summary>The changes to which folders are watched, made one at a time in the order they were seen.</summary>
@@ -97,12 +97,12 @@ public abstract class WatchedTree : IDisposable
     private Action? meanwhile;
 
     /// <summary>A burst at risk is looked at once more when it has been quiet a moment, for what it lost after its last
-    /// look: whether that look is due, and asked for now, when the burst was last at risk (a timestamp of
-    /// <see cref="Stopwatch.GetTimestamp"/>'s) and when it began.</summary>
+    /// look: whether that look is due, and asked for now, when the burst was last at risk and when it began (timestamps of
+    /// <see cref="Stopwatch.GetTimestamp"/>'s).</summary>
     private bool recheckDue;
     private bool recheck;
     private long lastRisk;
-    private DateTime riskBegan;
+    private long riskBegan;
     private bool pending;
     private bool disposed;
 
@@ -802,7 +802,7 @@ public abstract class WatchedTree : IDisposable
             record.Clear();
             return;
         }
-        recordedAt = DateTime.UtcNow;
+        recordedAt = Stopwatch.GetTimestamp();
         foreach ((string at, Listed listed) in before ?? [])
         {
             record.TryGetValue(at, out Listed? now);
@@ -973,7 +973,7 @@ public abstract class WatchedTree : IDisposable
     /// listed, are listed again against the record, and each name come or gone and each file written <paramref
     /// name="since"/> and not heard of after it is taken in as heard; the top gone, all it held. Past the record's limit,
     /// or for a burst <paramref name="began"/> before the record was made, the changes are taken for lost.</summary>
-    private void Recover(DateTime began, DateTime since, IReadOnlyCollection<string> folders, Dictionary<string, DateTime> heard)
+    private void Recover(long began, DateTime since, IReadOnlyCollection<string> folders, Dictionary<string, DateTime> heard)
     {
         if (recordedAt is not { } made || (made > began && !FoundFromStart))
         {
@@ -1317,7 +1317,7 @@ public abstract class WatchedTree : IDisposable
                     long ticks = Stopwatch.GetTimestamp();
                     if (Stopwatch.GetElapsedTime(lastHeard, ticks) > Burst)
                     {
-                        burstBegan = now;
+                        burstBegan = ticks;
                     }
                     lastHeard = ticks;
                     heardInBatch++;
@@ -1409,7 +1409,7 @@ public abstract class WatchedTree : IDisposable
     /// <summary>Whether the batch gathered comes in a burst at risk, or is the look at one once quiet, with the folders
     /// touched and the paths heard in its last moments, and whether one more look is to follow; what is older than they
     /// are let go of.</summary>
-    private (DateTime Began, DateTime Since, List<string> Folders, Dictionary<string, DateTime> Heard, bool Again)? Risked()
+    private (long Began, DateTime Since, List<string> Folders, Dictionary<string, DateTime> Heard, bool Again)? Risked()
     {
         lock (gate)
         {
@@ -1445,7 +1445,8 @@ public abstract class WatchedTree : IDisposable
             bool again = risky && !recheckDue;
             if (risky)
             {
-                riskBegan = unlooked ? since : burstBegan;
+                // Said overflowed, it began as far back as a file written since may have been lost.
+                riskBegan = unlooked ? ticks - (long)((Burst + Gather + Lag).TotalSeconds * Stopwatch.Frequency) : burstBegan;
                 lastRisk = ticks;
                 recheckDue = true;
             }
