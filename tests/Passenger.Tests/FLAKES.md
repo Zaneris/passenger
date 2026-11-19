@@ -30,6 +30,12 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 
 ## 2026-11-19
 
+- `ApartSchedulerTests`' `A_loop_given_an_apart_scheduler_runs_on_its_threads_alone_and_they_end_once_it_is_disposed`,
+  the Mac's whole unit-test assembly at load averages of 250 to 415 (#1985's runs, 2 of 3 rounds): "A thread of the
+  scheduler was still running after it was disposed, and would be for as long as the process lives". **The test waited
+  wrong**: it held its threads' arrival, its loop and each thread's end to 30 s of its own on the wall clock, which
+  threads waiting their turn for a processor ran past. The unit tests wait for what they check with the test's token
+  alone, and `WaitLimitsTests` names any wait given a time in their built code (6e0405eeb, #1986).
 - `RelayConnectionTests`' `Once_the_apps_relay_goes_away_the_call_waiting_fails_and_so_does_every_call_after_it`, the
   Mac's whole unit-test assembly at a load average near 265 (#1979's runs): "A call waiting as the app's relay went away
   still waits for an answer after 10 s". **The test waited wrong**: it held the call's failure to 10 s of its own on the
