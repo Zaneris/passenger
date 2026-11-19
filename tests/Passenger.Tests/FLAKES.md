@@ -30,6 +30,14 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 
 ## 2026-11-19
 
+- `UnitTestsTests`' `A_run_whose_test_host_crashes_is_no_pass_in_local_history_and_ends_run_until_failure`, CI
+  44522273860 (macOS report shard 1): "Run 1 broke off: One or more errors occurred. (The…". **A race in VSTest the IDE
+  passed on**: as a test host ends, vstest.console hears its exit and the end of their connection in either order;
+  hearing the exit first, it stops its read of the connection and ends the run with that read's cancellation as its
+  error (an `AggregateException` over the `OperationCanceledException` of `LengthPrefixCommunicationChannel.NotifyDataAvailable`),
+  once in 40 crashed runs in one window on a loaded Mac, and the window said that error in place of the crash VSTest
+  logged and the test running. A run broken off is now said by `BrokenRuns` (a cancellation passed over, the test
+  running named whatever the error); `BrokenRunsTests` holds both orders' words alike (6e5997db8, #1988).
 - `ExplorerFilesTests`' `A_project_whose_wildcards_take_in_a_folder_being_deleted_is_told_to_the_language_server_once_it_has_gone`,
   CI 44522273860 and 44538058686 (macOS report shard 2, 2 to 3 min): "The delete of Lib did not wait for its
   design-time build: Moved Lib to the Trash". **The test's**: it held Shop's and Lib's design-time builds at once, which
