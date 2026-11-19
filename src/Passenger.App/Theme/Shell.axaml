@@ -81,9 +81,10 @@
         <Setter Property="MinHeight" Value="{x:Static app:ListRow.Height}" />
         <Setter Property="Padding" Value="12,2,12,4" />
     </Style>
-    <!-- A long name ends in an ellipsis rather than cut at the menu's edge (a branch's). -->
-    <Style Selector="MenuItem /template/ ContentPresenter#PART_HeaderPresenter TextBlock">
-        <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+    <!-- Words too long for the menu give way rather than being cut at its edge: a quoted name in its middle, the words
+         round it kept whole (Run 'name' Until Failure), others at their end (a branch's). -->
+    <Style Selector="MenuItem /template/ ContentPresenter#PART_HeaderPresenter">
+        <Setter Property="TextTrimming" Value="{x:Static app:MenuTrimming.InTheName}" />
     </Style>
     <!-- The value in force (MenuChoice) is checked with a tick, a radio item's too, in place of Fluent's dot. -->
     <Style Selector="MenuItem:checked:radio /template/ ContentControl#PART_ToggleIconPresenter">

@@ -846,6 +846,62 @@ public sealed class UnitTestsTests : UnitTestsFolders, IClassFixture<RestoredFol
         }
     }
 
+    /// <summary>The editor's menu and the run icon's, on a test whose name is longer than the editor's menu has room for, keep
+    /// each item told apart: its verb and the words after the name (Until Failure) whole, the name giving way in its middle
+    /// where the menu is too narrow, its start and its end shown, where each was cut at the menu's edge to the same words.</summary>
+    [AvaloniaFact]
+    public void A_long_test_names_run_debug_and_until_failure_items_keep_their_own_words_whole()
+    {
+        const string Name = "Parses_a_solution_of_many_projects_when_each_one_names_another_by_its_real_path_after_the_folder_moved";
+        string path = Write("LongNameTests.cs",
+            $"using Xunit;\n\nnamespace Sums.Tests;\n\npublic class LongNameTests\n{{\n    [Fact]\n    public void {Name}()\n    {{\n        Assert.True(true);\n    }}\n}}\n");
+        MainWindow window = Open();
+        window.OpenFile(path);
+        Ui.Settle();
+        Ui.PlaceAfter(window.EditorArea.CodeEditor, "Assert.Tr");
+        window.EditorArea.CodeEditor.RequestContextMenu();
+        Ui.Settle();
+        Avalonia.Controls.ContextMenu menu = window.OpenContextMenu ?? throw new InvalidOperationException("The editor's menu did not open");
+        MenuItem[] items = [.. menu.Items.OfType<MenuItem>()];
+        KeepOwnWords(items, "The editor's menu");
+        Assert.True(items.Count(i => i.Header is string words && words.Contains(Name, StringComparison.Ordinal) && Shown(i) != words) == 3,
+            $"The editor's menu, {menu.Bounds.Width:0} px wide, shows [{string.Join(" | ", items.Select(Shown))}], where its three items naming the test give way in the name");
+        menu.Close();
+        Ui.Settle();
+
+        KeepOwnWords(TestMarkMenu(window, path, $"    public void {Name}()"), "The run icon's menu");
+        window.TestMarkMenu!.Hide();
+        Ui.Settle();
+        window.Close();
+
+        static void KeepOwnWords(MenuItem[] items, string what)
+        {
+            MenuItem[] tests = [.. items.Where(i => i.Header is string h && (h.StartsWith("Run '", StringComparison.Ordinal) || h.StartsWith("Debug '", StringComparison.Ordinal)))];
+            string[] shown = [.. tests.Select(Shown)];
+            string said = string.Join(" | ", shown);
+            Assert.True(shown.Length == 3 && shown.Distinct(StringComparer.Ordinal).Count() == 3,
+                $"{what} shows its test's items as [{said}]: two read the same, so which runs the test until it fails can't be told");
+            (string Verb, string After)[] own = [("Run", "'"), ("Debug", "'"), ("Run", "' Until Failure")];
+            for (int i = 0; i < own.Length; i++)
+            {
+                Assert.True(shown[i].StartsWith($"{own[i].Verb} 'Parses_a", StringComparison.Ordinal) && shown[i].EndsWith($"folder_moved{own[i].After}", StringComparison.Ordinal)
+                    && (shown[i] == (string)tests[i].Header! || shown[i].Contains('\u2026', StringComparison.Ordinal)),
+                    $"{what} shows '{tests[i].Header}' as '{shown[i]}', among [{said}], where its verb, the name's start and end and the words after it stand whole, the name giving way between them");
+            }
+            Visual popup = TopLevel.GetTopLevel(tests[0])!;
+            List<string> faults = LayoutFaults.Of(popup, tests[0].FindAncestorOfType<MenuBase>()!, what);
+            Assert.True(faults.Count == 0, string.Join("\n", faults));
+        }
+
+        // An item's words as its menu draws them, given way to its room.
+        static string Shown(MenuItem item)
+        {
+            TextBlock words = item.GetVisualDescendants().OfType<Avalonia.Controls.Presenters.ContentPresenter>().First(p => p.Name == "PART_HeaderPresenter")
+                .GetVisualDescendants().OfType<TextBlock>().First();
+            return string.Concat(words.TextLayout.TextLines.SelectMany(l => l.TextRuns).Select(r => r.Text.ToString()));
+        }
+    }
+
     /// <summary>A test under a symbol its framework defines (#if NET8_0_OR_GREATER) is one as its project compiles it:
     /// the Unit Tests window lists it from its code, the editor offers it at the caret, and Run Tests runs it there; one
     /// under a symbol the framework lacks is no test.</summary>
