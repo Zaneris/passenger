@@ -13,6 +13,9 @@ public sealed class WatchedFile : IDisposable
     private readonly Lock stamped = new();
     private bool disposed;
 
+    /// <summary>How many of the system's watches of a file every <see cref="WatchedFile"/> holds now.</summary>
+    private static int held;
+
     /// <summary>Whether the file was seen once, under <see cref="stamped"/>.</summary>
     private bool looked;
 
@@ -50,15 +53,24 @@ public sealed class WatchedFile : IDisposable
             // Heard for a rename from the name as well as onto it, by the filter: either moves the file.
             Watcher.Renamed += (_, _) => Heard();
             Watcher.Error += (_, _) => Heard();
+            Interlocked.Increment(ref held);
             Watcher.EnableRaisingEvents = true;
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or ArgumentException or PlatformNotSupportedException)
         {
             IdeErrors.Write($"{owner}: {path} is not watched for changes ({error.Message}), only looked at as a window comes in front");
-            Watcher?.Dispose();
+            if (Watcher is not null)
+            {
+                Interlocked.Decrement(ref held);
+                Watcher.Dispose();
+            }
             Watcher = null;
         }
     }
+
+    /// <summary>How many of the system's watches every file watched alone holds now: back where it was once those made since
+    /// are disposed. For a test.</summary>
+    public static int SystemWatches => Volatile.Read(ref held);
 
     public string Path { get; }
 
@@ -130,12 +142,20 @@ public sealed class WatchedFile : IDisposable
 
     public void Dispose()
     {
+        if (disposed)
+        {
+            return;
+        }
         disposed = true;
         if (followsLag)
         {
             WatchLag.Behind -= OnBehind;
         }
-        Watcher?.Dispose();
+        if (Watcher is not null)
+        {
+            Interlocked.Decrement(ref held);
+            Watcher.Dispose();
+        }
     }
 
     /// <summary>The system's watcher is behind: the file is looked at, as what it would have heard may be minutes late.</summary>
