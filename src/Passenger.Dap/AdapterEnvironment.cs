@@ -25,6 +25,11 @@ public static class AdapterEnvironment
     [IdentifierHome]
     public const string FailAtModuleVariable = "PASSENGER_ENGINE_FAIL_AT_MODULE";
 
+    /// <summary>The variable that, set to 1, has the engine's evaluations hold no other thread, as the runtime's hold once
+    /// missed one: a test's hold.</summary>
+    [IdentifierHome]
+    public const string HoldNoneVariable = "PASSENGER_ENGINE_HOLD_NONE";
+
     /// <summary>The variable that, set to 1, has each thread of a decompile wait after its first file until the session
     /// ends, so the decompile lasts as CoreLib's does on a slow machine, with every thread it runs on taken: a test's hold.</summary>
     [IdentifierHome]
@@ -41,6 +46,10 @@ public static class AdapterEnvironment
     /// <summary>Whether <see cref="LateYieldVariable"/> holds the engine so; a value other than 1 is fatal, as a malformed
     /// flag is.</summary>
     public static bool LateYield => Flag(LateYieldVariable);
+
+    /// <summary>Whether <see cref="HoldNoneVariable"/> holds the engine so; a value other than 1 is fatal, as a malformed
+    /// flag is.</summary>
+    public static bool HoldNone => Flag(HoldNoneVariable);
 
     /// <summary>Whether <see cref="HoldDecompileVariable"/> holds decompiles so; a value other than 1 is fatal, as a
     /// malformed flag is.</summary>

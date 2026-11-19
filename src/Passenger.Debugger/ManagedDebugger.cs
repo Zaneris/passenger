@@ -720,8 +720,8 @@ public partial class ManagedDebugger
         return true;
     }
 
-    /// <summary>Other threads' events queued with the one an evaluation began from, which the runtime hands over before the
-    /// evaluation can run: their threads stay suspended where they were until each is handled, in order.</summary>
+    /// <summary>Other threads' events put off during an evaluation, queued with the one it began from or sent by a thread its
+    /// hold missed: their threads are held where they were until each is handled, in order (<see cref="HoldWaiting"/>).</summary>
     private readonly Queue<CorDebugManagedCallbackEventArgs> _deferredEvents = new();
 
     /// <summary>Other threads' breakpoints handed over just as a step completed, which wait for the step's end to come before
@@ -768,6 +768,10 @@ public partial class ManagedDebugger
     /// <summary>A test's hold: the load of the module of this file name is taken as the runtime's word that its debugging
     /// of the program failed for good (<see cref="HandleDebuggerError"/>), as it once said under load.</summary>
     public static string? FailAtModule { get; set; }
+
+    /// <summary>A test's hold: an evaluation holds no other thread, nor one made while it runs, as the runtime's hold once
+    /// missed a thread that went on to meet breakpoints while the evaluation ran.</summary>
+    public static bool HoldsNoneAtEvaluations { get; set; }
 
     /// <summary>The failure <see cref="FailAtModule"/> stands in for the runtime's with: E_FAIL.</summary>
     private const int HeldFailure = unchecked((int)0x80004005);

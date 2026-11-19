@@ -75,11 +75,25 @@ public partial class ManagedDebugger
 
     /// <summary>Every thread but the evaluation's, held while it runs alone, but the runtime's tiering worker
     /// (<see cref="RuntimeThreads"/>), which runs none of the program's code and is never told to the debugger as one that
-    /// does; one the debugger cannot tell, through a relay to a device, is held with the rest.</summary>
+    /// does; one the debugger cannot tell, through a relay to a device, is held with the rest. A thread whose event waits
+    /// to be handled is held again by itself (<see cref="HoldWaiting"/>).</summary>
     private void HoldOthersDuringEvaluation(ICorDebugThread evaluating)
     {
         ICorDebugProcess process = evaluating.Process;
-        process.SetAllThreadsDebugState(CorDebugThreadState.THREAD_SUSPEND, evaluating);
+        if (HoldsNoneAtEvaluations)
+        {
+            _logger?.Invoke($"Held none: every other thread is left running during the evaluation on thread {evaluating.Id}, a test's hold");
+        }
+        else
+        {
+            process.SetAllThreadsDebugState(CorDebugThreadState.THREAD_SUSPEND, evaluating);
+            LeaveTieringWorkerRunning(process);
+        }
+        HoldWaiting(evaluating.Id);
+    }
+
+    private void LeaveTieringWorkerRunning(ICorDebugProcess process)
+    {
         if (_throughRelay || process.TryGetID(out uint processId) is not Cor.S_OK)
         {
             return;
@@ -95,6 +109,41 @@ public partial class ManagedDebugger
         }
     }
 
+    /// <summary>Each thread whose event was put off, held where the event found it by itself, beside the hold of every
+    /// thread an evaluation takes: the runtime's hold of every thread once missed one, and a thread whose event waits,
+    /// let run, would pass that place and more, the event then tried where it had gone on to.</summary>
+    private void HoldWaiting(int evaluating)
+    {
+        foreach (ICorDebugThread thread in _deferredEvents.Concat(_behindStep).Select(WaitingThread).OfType<ICorDebugThread>().DistinctBy(thread => thread.Id))
+        {
+            if (thread.Id != evaluating)
+            {
+                Hold(thread, $"its event waits while an evaluation runs on thread {evaluating}");
+            }
+        }
+    }
+
+    /// <summary>The thread an event put off is about, which stands where the event found it until it is handled.</summary>
+    private static ICorDebugThread? WaitingThread(CorDebugManagedCallbackEventArgs callbackEvent) => callbackEvent switch
+    {
+        BreakpointCorDebugManagedCallbackEventArgs hit => hit.Thread,
+        StepCompleteCorDebugManagedCallbackEventArgs step => step.Thread,
+        BreakCorDebugManagedCallbackEventArgs pause => pause.Thread,
+        DataBreakpointCorDebugManagedCallbackEventArgs write => write.Thread,
+        DeferredExceptionStop exception => exception.Thread,
+        _ => null,
+    };
+
+    /// <summary>Holds one thread until the threads are let go again, saying so only where it could not be held.</summary>
+    private void Hold(ICorDebugThread thread, string why)
+    {
+        int held = thread.TrySetDebugState(CorDebugThreadState.THREAD_SUSPEND);
+        if (held is not Cor.S_OK)
+        {
+            _logger?.Invoke($"Thread {thread.Id}, {why}, could not be held: 0x{held:X8}");
+        }
+    }
+
     /// <summary>The runtime's own threads left running during an evaluation, each said once in the engine's log.</summary>
     private readonly HashSet<int> _leftRunning = [];
 
@@ -104,6 +153,10 @@ public partial class ManagedDebugger
     /// the thread is.</summary>
     private void HoldDuringEvaluation(ICorDebugThread thread, int evaluating)
     {
+        if (HoldsNoneAtEvaluations)
+        {
+            return;
+        }
         int held = thread.TrySetDebugState(CorDebugThreadState.THREAD_SUSPEND);
         _logger?.Invoke(held is Cor.S_OK
             ? $"Held: thread {thread.Id}, made during an evaluation on thread {evaluating}"
@@ -646,8 +699,8 @@ public partial class ManagedDebugger
     }
 
     /// <summary>An event that came while an evaluation ran: the evaluated code's own is let go, since an evaluation never
-    /// stops part way; another thread's was queued with the event the evaluation began from, and waits, its thread
-    /// suspended where the event found it, until the evaluation's own stop is over. True when the event was either.</summary>
+    /// stops part way; another thread's waits, its thread held where the event found it (<see cref="HoldPutOff"/>), until
+    /// the evaluation's own stop is over. True when the event was either.</summary>
     private bool PutOffDuringEvaluation(CorDebugManagedCallbackEventArgs callbackEvent, ICorDebugThread thread)
     {
         if (EvalStatus.Abandoned.ContainsKey(thread.Id))
@@ -684,10 +737,18 @@ public partial class ManagedDebugger
         {
             _logger?.Invoke($"Put off: {callbackEvent.GetType().Name} on thread {thread.Id}, during an evaluation on thread {evaluating}");
             _deferredEvents.Enqueue(callbackEvent);
+            HoldPutOff(thread, evaluating);
         }
         _process!.Continue(false);
         return true;
     }
+
+    /// <summary>The thread of an event put off during an evaluation, held where the event found it until the event is
+    /// handled. The runtime sends no event from a thread an evaluation's hold reached, so one sent while the evaluation
+    /// runs is from a thread the hold missed: let run, it would pass that place and more, its event then tried where it
+    /// had gone on to.</summary>
+    private void HoldPutOff(ICorDebugThread thread, int evaluating) =>
+        Hold(thread, $"its event put off during an evaluation on thread {evaluating}");
 
     private void HandleBreak(object? sender, BreakCorDebugManagedCallbackEventArgs breakEventArgs)
     {
@@ -816,6 +877,10 @@ public partial class ManagedDebugger
             {
                 _logger?.Invoke($"Put off: a stop at an exception on thread {corThread.Id}, during an evaluation on thread {EvalStatus.ThreadId} or a stop shown");
                 _deferredEvents.Enqueue(new DeferredExceptionStop(corThread, breakMode, handler, exceptionType, shouldStop, rules, stepPast));
+                if (EvalStatus.ThreadId is int evaluating)
+                {
+                    HoldPutOff(corThread, evaluating);
+                }
             }
             _process!.Continue(false);
             return;

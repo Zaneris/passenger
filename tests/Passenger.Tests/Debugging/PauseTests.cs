@@ -209,6 +209,22 @@ public class PauseTests(ITestOutputHelper testOutputHelper)
     public async Task A_condition_that_calls_a_method_stops_a_parallel_loop_on_its_matching_iteration()
     {
         await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
+        await StopsOnMatchingIteration(host);
+    }
+
+    /// <summary>A parallel loop's condition whose evaluations hold no other thread, as the runtime's hold once missed a
+    /// worker: each worker meeting the breakpoint meanwhile is held where its breakpoint came, so the stop is still on the
+    /// matching iteration, never one tried where a worker had run on to.</summary>
+    [Fact]
+    public async Task A_parallel_loops_condition_whose_evaluations_hold_no_other_thread_still_stops_on_its_matching_iteration()
+    {
+        await using DebugSession host = DebugSession.ForLaunch(testOutputHelper,
+            environment: new Dictionary<string, string> { [AdapterEnvironment.HoldNoneVariable] = "1" });
+        await StopsOnMatchingIteration(host);
+    }
+
+    private static async Task StopsOnMatchingIteration(DebugSession host)
+    {
         await Start(host, ["parallel"], host => host.BreakpointsAsync(Debuggees.Source(Looping, "Program.cs"),
             [new DapSourceBreakpoint(Debuggees.Line(Looping, "each iteration"), Condition: "i.ToString() == \"377\"")]));
         StoppedEvent stopped = await host.WaitForStoppedEvent();
@@ -233,6 +249,30 @@ public class PauseTests(ITestOutputHelper testOutputHelper)
         Assert.Equal(turning, stopped.Line);
         string turn = Assert.Single(await host.LocalsAsync(stopped), v => v.Name == "turn").Value;
         Assert.True(turn == "0", $"The started thread's breakpoint showed it at turn {turn}, where it had run on unseen from its first pass while the condition was evaluated");
+    }
+
+    /// <summary>An evaluation whose hold reaches no other thread, as the runtime's once missed a parallel loop's worker: the
+    /// thread started while the condition is evaluated runs until its breakpoint comes, and is held there by its event's
+    /// putting off, so the stop shows that first pass, never a later turn or wherever it had run on to.</summary>
+    [Fact]
+    public async Task A_thread_an_evaluations_hold_misses_is_held_where_its_breakpoint_is_put_off_and_stops_on_that_pass()
+    {
+        await using DebugSession host = DebugSession.ForLaunch(testOutputHelper,
+            environment: new Dictionary<string, string> { [AdapterEnvironment.HoldNoneVariable] = "1" });
+        int turning = Debuggees.Line(Looping, "the started thread's turn");
+        await Start(host, ["starts"], host => host.BreakpointsAsync(Debuggees.Source(Looping, "Program.cs"),
+        [
+            new DapSourceBreakpoint(Debuggees.Line(Looping, "stop where a condition starts a thread"), Condition: "Starter.Begin()"),
+            new DapSourceBreakpoint(turning),
+        ]));
+        StoppedEvent stopped = await host.WaitForStoppedEvent();
+        string log = host.EngineLog();
+        Assert.True(log.Contains("Held none: every other thread is left running", StringComparison.Ordinal),
+            $"The evaluation held the other threads despite the test's hold, so nothing was left for its put-off event to hold; the engine's log:\n{log}");
+        Assert.True(stopped.Line == turning, $"The program stopped at line {stopped.Line}, not at the started thread's turn, line {turning}; the engine's log:\n{log}");
+        string turn = Assert.Single(await host.LocalsAsync(stopped), v => v.Name == "turn").Value;
+        Assert.True(turn == "0", $"The started thread's breakpoint, put off while the condition was evaluated, showed it at turn {turn}: "
+            + $"unheld, it ran on from its first pass, the event tried where it then stood; the engine's log:\n{log}");
     }
 
     [Gate]
