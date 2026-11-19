@@ -1190,8 +1190,8 @@ public sealed class CommandHistory
 
         /// <summary>A file not open the command changes, at its path now, by a change of its text that any thread may run:
         /// made off the window's thread, after the changes queued before it, once the command writes (<see cref="WriteAsync"/>),
-        /// the file read there once and written in its own encoding, its texts kept for Undo. One the command moves meanwhile
-        /// is changed where it went.</summary>
+        /// the file read there once and written in its own encoding, its texts kept for Undo; none written where one is read-only
+        /// by where it lies (<see cref="ReadOnlyFiles"/>). One the command moves meanwhile is changed where it went.</summary>
         public void Change(string path, Func<string, string> change) => queued.Add((Began(path), change));
 
         /// <summary>What names the command's writes in Local History (a refactoring's change set): its saves on the window's
@@ -1306,6 +1306,11 @@ public sealed class CommandHistory
             // From here Local History names only these writes, not what is saved meanwhile.
             LocalHistory.Activity? named = naming.FirstOrDefault();
             Unname();
+            // None is written where one is read-only by where it lies (a package's), whatever queued it.
+            if (files.Select(f => f.At).FirstOrDefault(ReadOnlyFiles.Holds) is { } kept)
+            {
+                return (kept, new IOException(ReadOnlyFiles.Refused(kept, Path.GetFileName(kept))));
+            }
             (List<ChangeMade> made, (string Path, Exception Refused)? refused) = await history.InTurnAsync(name, [.. files.Select(f => f.At).Distinct(PathNames.Comparer)], wrote =>
             {
                 using IDisposable? own = named?.Own();

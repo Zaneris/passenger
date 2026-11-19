@@ -1211,7 +1211,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
     {
         if (Resolve(path) is { } full && !Reaches(full, changes: true))
         {
-            throw new InvalidOperationException(CSharp.CodeActions.Reformatted.Refused("Reformat Code", Refusals.ReadOnly(Path.GetFileName(full))).Said);
+            throw new InvalidOperationException(CSharp.CodeActions.Reformatted.Refused("Reformat Code", ReadOnlyHere(full, Path.GetFileName(full))).Said);
         }
         OpenDocument document;
         LspDocument? lsp = null;
@@ -4097,14 +4097,18 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
     /// <summary>A path an agent gave (<see cref="Named"/>), refused in the one sentence where the agent may not read it, or
     /// with <paramref name="changes"/> change it (<see cref="AgentReach"/>): every path a tool takes but those
     /// <see cref="Named"/> lists. One it reads but never changes is read-only by where it lies (a package's, the SDK's, a
-    /// copy made to be read), whatever its path says.</summary>
+    /// copy made to be read), whatever its path says, a package's naming the package (<see cref="ReadOnlyHere"/>).</summary>
     private string Resolve(string path, bool changes = false)
     {
         string full = Named(path);
         return Reaches(full, changes) ? full
-            : throw new InvalidOperationException(changes && Reaches(full, changes: false) ? $"{Refusals.ReadOnly(Relative(full))}, so nothing changed"
+            : throw new InvalidOperationException(changes && Reaches(full, changes: false) ? $"{ReadOnlyHere(full, Relative(full))}, so nothing changed"
                 : Refusals.OutOfReach(full, Session.Folder, changes));
     }
+
+    /// <summary>A change refused of a file (a canonical path) an agent reads but may not change, the file called
+    /// <paramref name="name"/>: read-only by where it lies, a package's naming the package (<see cref="ReadOnlyFiles.Refused"/>).</summary>
+    private static string ReadOnlyHere(string full, string name) => ReadOnlyFiles.Refused(full, name) ?? Refusals.ReadOnly(name);
 
     /// <summary>Whether the agent may read a file or folder (a canonical path), or with <paramref name="changes"/> change it,
     /// as the window's folder and the folders its trusted solution reaches stand (<see cref="AgentReach"/>).</summary>

@@ -238,13 +238,15 @@ public partial class MainWindow
             }
             found = every;
         }
-        string? left = FilesReplaced.Listed(found.Unreplaceable, Path.GetFileName);
-        if (found.Replaceable.Count == 0)
+        List<(string Path, string Why)> readOnly = ReadOnlyIn(found);
+        string? left = FilesReplaced.Listed([.. found.Unreplaceable, .. readOnly], Path.GetFileName);
+        List<SearchMatch> replacing = [.. found.Replaceable.Where(m => !readOnly.Any(r => r.Path == m.Path))];
+        if (replacing.Count == 0)
         {
             status.Text = $"Nothing replaced; not replaced: {left}";
             return;
         }
-        string what = FilesReplaced.Count(found.Replaceable);
+        string what = FilesReplaced.Count(replacing);
         string leaving = left is null ? string.Empty : $" Not replaced: {left}.";
         if (await Confirm("Replace in Files", $"Replace {what} with '{asked.Replacement}'? A closed file is written; one Undo takes back every file's change.{leaving}", "Replace All"))
         {
@@ -259,27 +261,22 @@ public partial class MainWindow
     /// <summary>Replaces a query's matches where Find in Files found them, as one command of Undo and one change set of Local
     /// History named for it: an open file's matches alone, so its carets and folds stay put; a closed one written off the
     /// window's thread in its encoding (UTF-8 when that cannot hold the replacement, said), answered for once it has landed.
-    /// A file refused (read-only on disk or in the editor, access denied, held past the save's wait), one a regex ran too
-    /// long in, or one edited while it was searched is left as it was and named with why; the rest are replaced all the same.</summary>
+    /// A file refused (read-only on disk, by where it lies or in the editor, access denied, held past the save's wait), one a
+    /// regex ran too long in, or one edited while it was searched is left as it was and named with why; the rest are replaced.</summary>
     public async Task<FilesReplaced> ReplaceInFilesAsync(SearchQuery query, string replacement, FilesFound found)
     {
         SearchPattern pattern = SearchPattern.For(query, TextSearch.Apart);
         List<(string Path, TextSnapshot? Open)> files = [];
-        List<(string Path, string Why)> refused = [.. found.Unreplaceable];
+        List<(string Path, string Why)> readOnly = ReadOnlyIn(found);
+        List<(string Path, string Why)> refused = [.. found.Unreplaceable, .. readOnly];
         foreach (string path in found.Replaceable.Select(m => m.Path).Distinct())
         {
             OpenDocument? open = Editors.Find(path);
-            if (open is { HoldsText: false })
+            // A preview's or a workbook's tab holds no text of the file's to replace in, and its bytes are no text.
+            if (open is not { HoldsText: false } && !readOnly.Any(r => r.Path == path))
             {
-                // A preview's or a workbook's tab holds no text of the file's to replace in, and its bytes are no text.
-                continue;
+                files.Add((path, open?.Text.Snapshot));
             }
-            if (open is { IsReadOnly: true })
-            {
-                refused.Add((path, FileSearch.ReadOnlyWhy));
-                continue;
-            }
-            files.Add((path, open?.Text.Snapshot));
         }
         // Over what another program holds (Godot's editor's unsaved scene) only as the person lets it, asked before any file changes.
         if (files.Count > 0 && await Editors.ClearAsync([.. files.Select(f => f.Path)]) is { } held)
@@ -355,6 +352,23 @@ public partial class MainWindow
         }
         refused.AddRange(unlanded.Select(u => (u.Path, FileSearch.Refusal(u.Refused))));
         return new FilesReplaced([.. written.Where(w => !unlanded.Any(u => u.Path == w.Path)).Select(w => w.Note).OfType<string>()], refused) { Named = activity };
+    }
+
+    /// <summary>The files of a search's matches to replace that Replace in Files leaves as they are whatever the replacement,
+    /// each with why: read-only by where it lies, open or not, a package's naming the package (<see cref="ReadOnlyFiles.Why"/>),
+    /// or in its tab. A tab holding no text of its file is passed over.</summary>
+    private List<(string Path, string Why)> ReadOnlyIn(FilesFound found)
+    {
+        List<(string Path, string Why)> left = [];
+        foreach (string path in found.Replaceable.Select(m => m.Path).Distinct())
+        {
+            OpenDocument? open = Editors.Find(path);
+            if (open is not { HoldsText: false } && (ReadOnlyFiles.Why(path) ?? (open is { IsReadOnly: true } ? FileSearch.ReadOnlyWhy : null)) is { } why)
+            {
+                left.Add((path, why));
+            }
+        }
+        return left;
     }
 
     /// <summary>Recent Files (Ctrl+,): the files opened last, the latest first, narrowed as a name is typed; a file

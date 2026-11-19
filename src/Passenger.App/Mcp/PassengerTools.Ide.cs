@@ -430,10 +430,12 @@ public sealed partial class PassengerTools
 
     /// <summary>A search's matches in the files the agent may read, or with <paramref name="changes"/> change (<see
     /// cref="AgentReach"/>), and the files left out: one the person has open outside the folder, or one a link
-    /// in it leads out to, is none of the agent's.</summary>
+    /// in it leads out to, is none of the agent's. One it reads that is read-only by where it lies stays, for Replace in
+    /// Files to leave as it is, saying why, as the window's does (<see cref="ReadOnlyFiles"/>).</summary>
     private (FilesFound Kept, IReadOnlyList<string> LeftOut) Reached(FilesFound searched, bool changes)
     {
-        List<string> left = [.. searched.Matches.Select(m => m.Path).Concat(searched.Stopped).Distinct(StringComparer.Ordinal).Where(p => !Reaches(p, changes))];
+        List<string> left = [.. searched.Matches.Select(m => m.Path).Concat(searched.Stopped).Distinct(StringComparer.Ordinal)
+            .Where(p => !Reaches(p, changes && !ReadOnlyFiles.Holds(p)))];
         return left.Count == 0 ? (searched, left) : (searched with
         {
             Matches = [.. searched.Matches.Where(m => !left.Contains(m.Path))],

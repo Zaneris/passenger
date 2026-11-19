@@ -375,13 +375,18 @@ public static class WorkspaceEdits
 
     /// <summary>Why an edit's file operations cannot all be made, found before any is: each is played over what the
     /// ones before it leave. The open files a rename moves, writes over or a delete takes are saved now, so their edits are
-    /// what Undo puts back, and one that cannot be stops it here too; a read-only file is never written over.</summary>
+    /// what Undo puts back, and one that cannot be stops it here too; a read-only file is never written over, made, moved or
+    /// deleted, one read-only by where it lies (a package's) saying so (<see cref="ReadOnlyFiles.Refused"/>).</summary>
     private static string? Refusal(EditorArea editors, IReadOnlyList<FileEdits> changes)
     {
         // A read-only file would be refused halfway through, the files before it already changed.
         foreach (FileEdits change in changes.Where(c => c.Operation is null))
         {
             string path = DocumentUris.ToPath(change.Uri);
+            if (ReadOnlyFiles.Refused(path, Path.GetFileName(path)) is { } placed)
+            {
+                return placed;
+            }
             if (editors.Find(path) is { } open ? open.IsReadOnly : FileText.IsReadOnly(path))
             {
                 return Refusals.ReadOnly(Path.GetFileName(path));
@@ -391,6 +396,13 @@ public static class WorkspaceEdits
         bool Exists(string path) => there.TryGetValue(path, out bool known) ? known : File.Exists(path) || Directory.Exists(path);
         foreach (Resource resource in changes.Select(c => c.Operation).OfType<JsonElement>().Select(Resource.Read))
         {
+            foreach (string place in new[] { resource.Path, resource.To }.OfType<string>())
+            {
+                if (ReadOnlyFiles.Refused(place, Path.GetFileName(place)) is { } placed)
+                {
+                    return placed;
+                }
+            }
             bool overwrite = resource.Option("overwrite");
             bool ignored = !overwrite && resource.Option("ignoreIfExists");
             // A new name differing only in case is the same file on macOS and Windows, not one already there; on Linux it is another.

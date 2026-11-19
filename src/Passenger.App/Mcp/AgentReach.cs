@@ -3,6 +3,7 @@ using Passenger.App.CSharp;
 using Passenger.App.MSBuild;
 using Passenger.App.Packages;
 using Passenger.App.Web;
+using Passenger.App.Workspace;
 using Passenger.App.Xaml;
 using Passenger.Core;
 using Passenger.Lsp;
@@ -79,13 +80,18 @@ public static class AgentReach
     });
 
     /// <summary>Whether an agent may change a file or folder (a canonical path): only the open folder's, and those of the
-    /// folders its trusted solution and AppHosts reach (<paramref name="reached"/>).</summary>
-    public static bool Changes(string path, string? folder, IReadOnlyList<string> reached) =>
-        folder is not null && PathNames.Within(path, folder) || reached.Any(r => PathNames.Within(path, r));
+    /// folders its trusted solution and AppHosts reach (<paramref name="reached"/>), but one read-only by where it lies (a
+    /// package folder's inside them, <see cref="ReadOnlyFiles"/>).</summary>
+    public static bool Changes(string path, string? folder, IReadOnlyList<string> reached) => Within(path, folder, reached) && !ReadOnlyFiles.Holds(path);
 
-    /// <summary>Whether an agent may read a file or folder (a canonical path): those it may change, and the files outside
-    /// them made or installed to be read.</summary>
-    public static bool Reads(string path, string? folder, IReadOnlyList<string> reached) => Changes(path, folder, reached) || PackageFolders.Holds(path) || MSBuildFiles.IsInstalled(path)
+    /// <summary>Whether an agent may read a file or folder (a canonical path): those of the folders it may change, and the
+    /// files outside them made or installed to be read.</summary>
+    public static bool Reads(string path, string? folder, IReadOnlyList<string> reached) => Within(path, folder, reached) || PackageFolders.Holds(path) || MSBuildFiles.IsInstalled(path)
         || GeneratedCode.IsCopy(path) || RemoteStylesheets.IsCopy(path) || PathNames.IsUnder(path, PathNames.Canonical(LibrarySources.Folder))
         || IsServerStub(path);
+
+    /// <summary>Whether a file or folder (a canonical path) is the open folder's or of the folders its trusted solution and
+    /// AppHosts reach.</summary>
+    private static bool Within(string path, string? folder, IReadOnlyList<string> reached) =>
+        folder is not null && PathNames.Within(path, folder) || reached.Any(r => PathNames.Within(path, r));
 }

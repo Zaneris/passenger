@@ -1319,15 +1319,17 @@ public sealed class OpenDocument : Observable
 
     /// <summary>Whether the language server made this file from an assembly's metadata (Go to Declaration on a
     /// library's symbol), where nothing typed would reach the library.</summary>
-    public bool IsDecompiled => Path.Contains($"{System.IO.Path.DirectorySeparatorChar}MetadataAsSource{System.IO.Path.DirectorySeparatorChar}", StringComparison.Ordinal);
+    public bool IsDecompiled => Decompiled(Path);
+
+    /// <summary>Whether a file (a canonical path) is one a language server made from an assembly's metadata (<see cref="IsDecompiled"/>).</summary>
+    public static bool Decompiled(string path) => path.Contains($"{System.IO.Path.DirectorySeparatorChar}MetadataAsSource{System.IO.Path.DirectorySeparatorChar}", StringComparison.Ordinal);
 
     /// <summary>Whether the editor shows it read-only, under a bar that says why: decompiled, the licence, notices or release
     /// notes the app carries, a workbook, an asset preview, a diff's tab, a binary file shown as its bytes, an MSBuild file of the .NET
     /// SDK or any file of a package as NuGet restored it, a copy of a container's file or of what the engine says of one, a
-    /// copy of a source generator's code, or a stylesheet a page links on the web as it was downloaded.</summary>
-    public bool IsReadOnly => Asset is not null || Diff is not null || Tool is not null || IsDecompiled || IsWorkbook || IsBinary || Product.Carries(Path) || IsReleaseNotes
-        || MSBuild.MSBuildFiles.IsInstalled(Path) || Packages.PackageFolders.Holds(Path) || Containers.ContainerFilesPane.IsCopy(Path)
-        || Endpoints.RequestLog.IsCommandCopy(Path) || CSharp.GeneratedCode.IsCopy(Path) || Web.RemoteStylesheets.IsCopy(Path);
+    /// copy of a source generator's code, or a stylesheet a page links on the web as it was downloaded: those its path decides
+    /// read-only whether open or not (<see cref="ReadOnlyFiles"/>).</summary>
+    public bool IsReadOnly => Asset is not null || Diff is not null || Tool is not null || IsWorkbook || IsBinary || ReadOnlyFiles.Holds(Path);
 
     /// <summary>The text refuses every change while the file is read-only, whatever asks it: the one place that holds it so.</summary>
     private void FollowReadOnly() => Text.IsReadOnly = IsReadOnly;

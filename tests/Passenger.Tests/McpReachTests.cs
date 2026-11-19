@@ -333,8 +333,8 @@ public sealed class McpReachTests : McpRig
     }
 
     /// <summary>A package's file, restored to a package folder outside the open folder, where definition leads, and a source
-    /// generator's code copied outside it, where usages lead, are an agent's to read; edit refuses each as read-only, leaving
-    /// it as it was.</summary>
+    /// generator's code copied outside it, where usages lead, are an agent's to read; edit refuses each as read-only, the
+    /// package's naming the package, leaving it as it was.</summary>
     [Fact]
     public async Task An_agent_reads_a_packages_file_and_a_generators_code_outside_the_folder_where_its_places_lead_and_changes_neither()
     {
@@ -365,13 +365,17 @@ public sealed class McpReachTests : McpRig
         Assert.True(PathNames.IsUnder(brought, PathNames.Canonical(packages)), $"definition of the package's class led to {brought}, not its file in {packages}");
         (string Path, int Line, int Column, string Text) copied = Used(await Call(client, McpTools.Usages, new() { ["path"] = "Words.cs", ["line"] = 6, ["column"] = 34 }))[^1];
         Assert.EndsWith($"{Path.DirectorySeparatorChar}RegexGenerator.g.cs", copied.Path, StringComparison.Ordinal);
-        foreach ((string file, string text, string changed) in new[] { (brought, "public static string Say()", "\"brought\""), (copied.Path, "Regex Word()", "Word") })
+        string ofPackage = $" is {Refusals.PackagesOwn("Passenger.Sample 1.0.0")}, so nothing changed";
+        foreach ((string file, string text, string changed, string refused) in new[]
+        {
+            (brought, "public static string Say()", "\"brought\"", ofPackage), (copied.Path, "Regex Word()", "Word", " is read-only, so nothing changed"),
+        })
         {
             string before = File.ReadAllText(file);
             string read = (await Call(client, McpTools.EditorText, new() { ["path"] = file })).GetString()!;
             Assert.True(read.Contains(text, StringComparison.Ordinal), $"editor_text of {file}, where the agent's places led, answered:\n{read}");
             CallToolResult edited = await Result(client, McpTools.Edit, new() { ["path"] = file, ["oldText"] = changed, ["newText"] = "written", ["all"] = true });
-            Assert.True(edited.IsError == true && Text(edited).Contains("is read-only, so nothing changed", StringComparison.Ordinal), $"edit of {file} answered: {Text(edited)}");
+            Assert.True(edited.IsError == true && Text(edited).Contains(refused, StringComparison.Ordinal), $"edit of {file} answered: {Text(edited)}");
             Assert.Equal(before, File.ReadAllText(file));
         }
     }

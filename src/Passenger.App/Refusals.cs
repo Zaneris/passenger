@@ -565,8 +565,12 @@ public static class Refusals
 
     /// <summary>A file or <paramref name="folder"/> of a NuGet package folder, every project's copy of that version, which no
     /// restore writes again.</summary>
-    public static string OfPackage(string name, string package, bool folder = false) =>
-        $"{name} is a {(folder ? "folder" : "file")} of the package {package}, as NuGet restored it for every project";
+    public static string OfPackage(string name, string package, bool folder = false) => $"{name} is {PackagesOwn(package, folder)}";
+
+    /// <summary>What a file or <paramref name="folder"/> of a NuGet package folder is (<see cref="OfPackage"/>), said after
+    /// its name where a list of files left as they were names each.</summary>
+    public static string PackagesOwn(string package, bool folder = false) =>
+        $"a {(folder ? "folder" : "file")} of the package {package}, as NuGet restored it for every project";
 
     /// <summary>A file shown read-only (decompiled, installed, carried by the app, a copy to read), which nothing edits or
     /// saves.</summary>

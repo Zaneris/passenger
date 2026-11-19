@@ -16,7 +16,8 @@ namespace Passenger.Tests;
 /// <summary>A file the editor shows read-only (here decompiled code, as Go to Declaration opens it) is never edited or written,
 /// whatever asks: Save greys there, as on a file with nothing to save, Replace in Files names it as not replaced, and the
 /// Edit menu's changes, the find bar's replace row and the colour picker grey saying why, as what is typed there says it;
-/// what the disk holds still reaches its tab. A console's output refuses changes so too.</summary>
+/// what the disk holds still reaches its tab. A console's output refuses changes so too. A NuGet package's file, read-only by
+/// where it lies, is never written open or not: Replace in Files, an agent's replace and edit, and a rename leave it.</summary>
 public sealed class ReadOnlyFilesTests : IDisposable
 {
     private const string Trims = "root = true\n[*]\ntrim_trailing_whitespace = true\ninsert_final_newline = true\n";
@@ -92,6 +93,102 @@ public sealed class ReadOnlyFilesTests : IDisposable
         Assert.Equal("class A\n{\n    // class B\n}\n", File.ReadAllText(decompiled));
         Assert.Equal("class A\n{\n    // class B\n}\n", window.EditorArea.Find(decompiled)!.Text.Snapshot.ToString());
         Assert.Equal("// klass notes\n", File.ReadAllText(Path.Combine(folder, "Notes.cs")));
+        window.Close();
+    }
+
+    /// <summary>Replace All over a directory of a NuGet package folder (an in-repository .nuget/packages, which a directory
+    /// scope walks though the folder's index leaves it out) asks nothing and replaces nothing there, saying whose files they
+    /// are, every one left as NuGet restored it.</summary>
+    [AvaloniaFact]
+    public void Replace_in_files_over_a_package_folder_replaces_nothing_there_saying_whose_files_they_are()
+    {
+        string kit = WriteKitShop();
+        MainWindow window = OpenShop(languageServer: false);
+        List<string> asked = [];
+        window.Confirm = (_, question, _) =>
+        {
+            asked.Add(question);
+            return Task.FromResult(true);
+        };
+        Ui.Press(window, Ui.Shortcut(AppActions.ReplaceInFiles));
+        Passenger.App.Navigation.FindInFilesPopup popup = Assert.IsType<Passenger.App.Navigation.FindInFilesPopup>(window.Popup);
+        popup.ScopeKind = SearchScopeKind.Directory;
+        popup.Directory = Path.Combine(folder, ".nuget", "packages");
+        popup.Text = "Count";
+        Ui.Settle();
+        Ui.WaitFor(() => popup.Searching.IsCompleted, "the search for Count in the package folder");
+        Assert.Equal([kit], popup.Matches.Select(m => m.Path).Distinct());
+        popup.Replacement = "Sum";
+        popup.RequestReplace();
+        Ui.WaitFor(() => window.Status?.Contains("replaced", StringComparison.OrdinalIgnoreCase) == true, () => $"Replace All's word in the status bar, which says '{window.Status}'");
+        Assert.Equal($"Nothing replaced; not replaced: Kit.cs ({KitsOwn})", window.Status);
+        Assert.True(asked.Count == 0, $"Replace All asked to replace in a package's files it leaves: {string.Join("; ", asked)}");
+        Assert.True(File.ReadAllText(kit) == Kit, $"Replace in Files wrote a package's file: {File.ReadAllText(kit)}");
+        window.Close();
+    }
+
+    /// <summary>An agent's replace_in_files over the open folder replaces in its own files and passes over the folder's
+    /// .nuget/packages, which its index leaves out; over that directory it replaces nothing, saying whose files they are,
+    /// and edit refuses a package's file so too, each left as NuGet restored it.</summary>
+    [AvaloniaFact]
+    public void An_agents_replace_in_files_and_edit_leave_a_package_folder_in_the_open_folder_saying_whose_files_they_are()
+    {
+        string kit = WriteKitShop();
+        string catalog = Path.Combine(folder, "Shop", "Catalog.cs");
+        string shown = Path.GetRelativePath(PathNames.Canonical(folder), kit);
+        MainWindow window = OpenShop(languageServer: false);
+        Passenger.App.Mcp.PassengerTools agent = new(window);
+
+        Assert.Equal($"Replaced 1 match in 1 file: {Path.Combine("Shop", "Catalog.cs")}",
+            Ui.Await(agent.ReplaceInFiles("Count", "Sum", matchCase: true), "replace_in_files' answer over the open folder"));
+        Assert.Equal(Catalog.Replace("Count", "Sum", StringComparison.Ordinal), File.ReadAllText(catalog));
+        ModelContextProtocol.McpException replaced = Assert.Throws<ModelContextProtocol.McpException>(() => Ui.Await(
+            agent.ReplaceInFiles("Count", "Sum", matchCase: true, scope: "directory", directory: Path.Combine(".nuget", "packages")), "replace_in_files' answer over the package folder"));
+        Assert.Equal($"Nothing was replaced; not replaced: {shown} ({KitsOwn})", replaced.Message);
+        ModelContextProtocol.McpException edited = Assert.Throws<ModelContextProtocol.McpException>(() => Ui.Await(agent.Edit(shown, "Count", "Sum"), "edit's answer on the package's file"));
+        Assert.Equal($"{shown} is {KitsOwn}, so nothing changed", edited.Message);
+        Assert.True(File.ReadAllText(kit) == Kit, $"An agent's tool wrote a package's file: {File.ReadAllText(kit)}");
+        window.Close();
+    }
+
+    /// <summary>A rename whose edits reach a NuGet package's contentFiles code, which NuGet's props compile into the project
+    /// from the package folder, is refused before anything changes, saying whose file it is: by the keys and for an agent,
+    /// no file written and no command left for Undo.</summary>
+    [AvaloniaFact]
+    public void A_rename_reaching_a_packages_code_is_refused_whole_saying_whose_file_it_is()
+    {
+        string kit = WriteKitShop();
+        string catalog = Path.Combine(folder, "Shop", "Catalog.cs");
+        // A rename waits for its server to read a file written a moment before.
+        foreach (string path in (string[])[kit, catalog])
+        {
+            File.SetLastWriteTimeUtc(path, DateTime.UtcNow - TimeSpan.FromMinutes(1));
+        }
+        Restore.Run(Path.Combine(PathNames.Canonical(folder), "Shop", "Shop.csproj"));
+        MainWindow window = OpenShop(languageServer: true);
+        window.OpenFile(catalog);
+        Ui.Settle();
+        Assert.True(window.CSharpService?.IsReady, window.CSharpService?.State);
+        string refused = $"Rename failed: Kit.cs is {KitsOwn}";
+
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        Ui.PlaceAfter(editor, "Tally.Cou");
+        editor.Focus();
+        Ui.Run(window, AppActions.Rename);
+        Ui.Settle();
+        Assert.True(window.Assist.Renaming is not null, "Rename opened no box on Count");
+        window.KeyTextInput("Sum");
+        Ui.Press(window, "ENTER");
+        Ui.Settle();
+        Assert.Equal(refused, window.Status);
+        Assert.True(window.EditorArea.Commands.ToUndo(null) is null, "The rename refused left a command for Undo to take back");
+
+        ModelContextProtocol.McpException renamed = Assert.Throws<ModelContextProtocol.McpException>(() => Ui.Await(
+            new Passenger.App.Mcp.PassengerTools(window).Rename("Sum", Path.Combine("Shop", "Catalog.cs"), 5, 44), "rename's answer"));
+        Assert.Equal(refused, renamed.Message);
+        Assert.Equal(Catalog, editor.Document.Snapshot.ToString());
+        Assert.Equal(Catalog, File.ReadAllText(catalog));
+        Assert.True(File.ReadAllText(kit) == Kit, $"A rename wrote a package's file: {File.ReadAllText(kit)}");
         window.Close();
     }
 
@@ -345,6 +442,35 @@ public sealed class ReadOnlyFilesTests : IDisposable
         Ui.Press(window, "ESCAPE");
         Assert.Null(window.PickingColour);
         window.Close();
+    }
+
+    /// <summary>The package's code, compiled into Shop from the package folder as NuGet's props compile contentFiles.</summary>
+    private const string Kit = "namespace Kit;\n\npublic static class Tally\n{\n    public static int Count(int value) => value;\n}\n";
+
+    private const string Catalog = "namespace Shop;\n\npublic static class Catalog\n{\n    public static int Total() => Kit.Tally.Count(1);\n}\n";
+
+    /// <summary>What every refusal here says the package's Kit.cs is.</summary>
+    private const string KitsOwn = "a file of the package kit 1.0.0, as NuGet restored it for every project";
+
+    /// <summary>Shop, whose package folder is the folder's own .nuget/packages (as a repository's nuget.config may set it),
+    /// holding kit 1.0.0 as NuGet lays it out, its contentFiles' Kit.cs compiled into Shop; Kit.cs's path.</summary>
+    private string WriteKitShop()
+    {
+        Write(".nuget/packages/kit/1.0.0/.nupkg.metadata", "{ \"version\": 2 }\n");
+        string kit = Write(".nuget/packages/kit/1.0.0/contentFiles/cs/any/Kit.cs", Kit);
+        Write("Shop/Shop.csproj", TestProjects.Library("<NuGetPackageRoot>$(MSBuildThisFileDirectory)../.nuget/packages/</NuGetPackageRoot>")
+            .With("  <ItemGroup>\n    <Compile Include=\"../.nuget/packages/kit/1.0.0/contentFiles/cs/any/Kit.cs\" Link=\"Kit.cs\" />\n  </ItemGroup>\n"));
+        Write("Shop/Catalog.cs", Catalog);
+        Write("Shop.slnx", "<Solution>\n  <Project Path=\"Shop/Shop.csproj\" />\n</Solution>\n");
+        return kit;
+    }
+
+    /// <summary>The folder of <see cref="WriteKitShop"/> open once Shop's evaluation, which names its package folder, landed.</summary>
+    private MainWindow OpenShop(bool languageServer)
+    {
+        MainWindow window = Ui.OpenFolder(folder, languageServer: languageServer);
+        Ui.WaitFor(() => window.Projects.Any(p => p.IsEvaluated), "MSBuild to evaluate Shop");
+        return window;
     }
 
     private string Write(string name, string text)

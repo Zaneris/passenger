@@ -335,7 +335,8 @@ public static class FileSearch
     /// <summary>Why a file written since it was searched is left as it was.</summary>
     public const string ChangedWhy = "edited while it was searched";
 
-    /// <summary>Why a read-only file is left as it was: one marked so on disk, or one the editor shows read-only.</summary>
+    /// <summary>Why a read-only file is left as it was: one marked so on disk, or one the editor shows read-only, by where it
+    /// lies or in its tab (a package's names its package, <see cref="ReadOnlyFiles.Why"/>).</summary>
     public const string ReadOnlyWhy = "read-only";
 
     /// <summary>Why a file a regex ran too long in is left as it was.</summary>
