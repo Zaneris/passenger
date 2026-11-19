@@ -1,8 +1,5 @@
-using System.Reflection;
-using System.Runtime.InteropServices;
 using System.Text;
 using Avalonia.Automation;
-using Avalonia.Automation.Peers;
 using Avalonia.Controls;
 using Avalonia.Headless.XUnit;
 using Passenger.App;
@@ -26,55 +23,55 @@ public sealed partial class MacTextElementsTests
         const string Third = "    int count = 10; // \U0001F469\u200D\U0001F4BB\n";
         const string Text = "class Shop\n{\n" + Third + "}\n";
         EditorRig rig = new(Text);
-        using Pool pool = new();
-        nint element = Native.ElementOf(rig.Editor);
+        using MacBridge.Pool pool = new();
+        nint element = MacBridge.ElementOf(rig.Editor);
 
-        Assert.True(Native.ClassName(element) == MacTextElements.ClassName && Native.String(Native.Send(element, "accessibilityRole")) == "AXTextArea",
-            $"Avalonia's element for the editor is a {Native.ClassName(element)} whose role is {Native.String(Native.Send(element, "accessibilityRole"))}");
-        Assert.True((int)Native.Send(element, "accessibilityNumberOfCharacters") == Text.Length && Native.String(Native.Send(element, "accessibilityValue")) == Text,
-            $"The element reads \"{Native.String(Native.Send(element, "accessibilityValue"))}\" of {(int)Native.Send(element, "accessibilityNumberOfCharacters")} characters");
+        Assert.True(MacBridge.ClassName(element) == MacTextElements.ClassName && MacBridge.String(MacBridge.Send(element, "accessibilityRole")) == "AXTextArea",
+            $"Avalonia's element for the editor is a {MacBridge.ClassName(element)} whose role is {MacBridge.String(MacBridge.Send(element, "accessibilityRole"))}");
+        Assert.True((int)MacBridge.Send(element, "accessibilityNumberOfCharacters") == Text.Length && MacBridge.String(MacBridge.Send(element, "accessibilityValue")) == Text,
+            $"The element reads \"{MacBridge.String(MacBridge.Send(element, "accessibilityValue"))}\" of {(int)MacBridge.Send(element, "accessibilityNumberOfCharacters")} characters");
         int count = Text.IndexOf("count", StringComparison.Ordinal);
-        Native.NSRange line = Native.RangeFor(element, "accessibilityRangeForLine:", 2);
-        Assert.True(Native.Send(element, "accessibilityLineForIndex:", count) == 2 && line == new Native.NSRange(13, (nuint)Third.Length)
-            && Native.String(Native.Send(element, "accessibilityStringForRange:", line)) == Third,
-            $"\"count\" is on line {Native.Send(element, "accessibilityLineForIndex:", count)}, whose range is {line}, reading \"{Native.String(Native.Send(element, "accessibilityStringForRange:", line))}\"");
+        MacBridge.NSRange line = MacBridge.RangeFor(element, "accessibilityRangeForLine:", 2);
+        Assert.True(MacBridge.Send(element, "accessibilityLineForIndex:", count) == 2 && line == new MacBridge.NSRange(13, (nuint)Third.Length)
+            && MacBridge.String(MacBridge.Send(element, "accessibilityStringForRange:", line)) == Third,
+            $"\"count\" is on line {MacBridge.Send(element, "accessibilityLineForIndex:", count)}, whose range is {line}, reading \"{MacBridge.String(MacBridge.Send(element, "accessibilityStringForRange:", line))}\"");
         int emoji = Text.IndexOf("\U0001F469", StringComparison.Ordinal);
-        Assert.True(Native.RangeFor(element, "accessibilityRangeForIndex:", emoji + 3) == new Native.NSRange((nuint)emoji, 5),
-            $"The character holding the emoji's joiner is {Native.RangeFor(element, "accessibilityRangeForIndex:", emoji + 3)}, where it should be the whole emoji at {emoji}");
-        Assert.True(Native.String(Native.Send(Native.Send(element, "accessibilityAttributedStringForRange:", new Native.NSRange((nuint)count, 5)), "string")) == "count",
+        Assert.True(MacBridge.RangeFor(element, "accessibilityRangeForIndex:", emoji + 3) == new MacBridge.NSRange((nuint)emoji, 5),
+            $"The character holding the emoji's joiner is {MacBridge.RangeFor(element, "accessibilityRangeForIndex:", emoji + 3)}, where it should be the whole emoji at {emoji}");
+        Assert.True(MacBridge.String(MacBridge.Send(MacBridge.Send(element, "accessibilityAttributedStringForRange:", new MacBridge.NSRange((nuint)count, 5)), "string")) == "count",
             "The attributed string of \"count\"'s range reads otherwise");
-        Assert.True(Native.RangeOf(element, "accessibilityVisibleCharacterRange") == new Native.NSRange(0, (nuint)Text.Length),
-            $"The visible range of a short file is {Native.RangeOf(element, "accessibilityVisibleCharacterRange")}");
+        Assert.True(MacBridge.RangeOf(element, "accessibilityVisibleCharacterRange") == new MacBridge.NSRange(0, (nuint)Text.Length),
+            $"The visible range of a short file is {MacBridge.RangeOf(element, "accessibilityVisibleCharacterRange")}");
 
         rig.PlaceCaret(count);
         Ui.Settle();
         rig.Press("alt shift RIGHT");
-        Assert.True(Native.Send(element, "accessibilityInsertionPointLineNumber") == 2 && Native.String(Native.Send(element, "accessibilitySelectedText")) is "count" or "count "
-            && Native.RangeOf(element, "accessibilitySelectedTextRange").Location == (nuint)count,
-            $"After choosing \"count\" the caret is on line {Native.Send(element, "accessibilityInsertionPointLineNumber")}, the selection {Native.RangeOf(element, "accessibilitySelectedTextRange")} reading \"{Native.String(Native.Send(element, "accessibilitySelectedText"))}\"");
-        Native.Send(element, "setAccessibilitySelectedTextRange:", new Native.NSRange(6, 4));
+        Assert.True(MacBridge.Send(element, "accessibilityInsertionPointLineNumber") == 2 && MacBridge.String(MacBridge.Send(element, "accessibilitySelectedText")) is "count" or "count "
+            && MacBridge.RangeOf(element, "accessibilitySelectedTextRange").Location == (nuint)count,
+            $"After choosing \"count\" the caret is on line {MacBridge.Send(element, "accessibilityInsertionPointLineNumber")}, the selection {MacBridge.RangeOf(element, "accessibilitySelectedTextRange")} reading \"{MacBridge.String(MacBridge.Send(element, "accessibilitySelectedText"))}\"");
+        MacBridge.Send(element, "setAccessibilitySelectedTextRange:", new MacBridge.NSRange(6, 4));
         Ui.Settle();
         Assert.True(rig.Editor.AccessibleText.Selected is [var chosen] && rig.Text[chosen.Start..chosen.End] == "Shop",
             $"VoiceOver choosing \"Shop\" chose {string.Join(", ", rig.Editor.AccessibleText.Selected)}");
-        Native.Send(element, "setAccessibilitySelectedTextRange:", new Native.NSRange((nuint)Text.IndexOf('}', StringComparison.Ordinal), 0));
+        MacBridge.Send(element, "setAccessibilitySelectedTextRange:", new MacBridge.NSRange((nuint)Text.IndexOf('}', StringComparison.Ordinal), 0));
         Ui.Settle();
-        Assert.True(rig.Caret == Text.IndexOf('}', StringComparison.Ordinal) && Native.Send(element, "accessibilityInsertionPointLineNumber") == 3,
+        Assert.True(rig.Caret == Text.IndexOf('}', StringComparison.Ordinal) && MacBridge.Send(element, "accessibilityInsertionPointLineNumber") == 3,
             $"VoiceOver putting the caret before the closing brace put it at {rig.Caret}");
 
-        Native.CGRect first = Native.FrameFor(element, new Native.NSRange(0, 5));
-        Native.CGRect wider = Native.FrameFor(element, new Native.NSRange(0, 10));
-        Native.CGRect below = Native.FrameFor(element, new Native.NSRange((nuint)count, 5));
+        MacBridge.CGRect first = MacBridge.FrameFor(element, new MacBridge.NSRange(0, 5));
+        MacBridge.CGRect wider = MacBridge.FrameFor(element, new MacBridge.NSRange(0, 10));
+        MacBridge.CGRect below = MacBridge.FrameFor(element, new MacBridge.NSRange((nuint)count, 5));
         Assert.True(first.Height > 0 && Math.Abs(wider.Width - (2 * first.Width)) < 1 && below.Y < first.Y - first.Height + 1 && below.X > first.X,
             $"\"class\" is drawn at {first}, \"class Shop\" at {wider} and \"count\" two lines below at {below}, where the screen's y grows upwards");
-        Native.CGPoint middle = new(below.X + (below.Width / 2), below.Y + (below.Height / 2));
-        Native.NSRange atMiddle = Native.RangeAt(element, middle);
+        MacBridge.CGPoint middle = new(below.X + (below.Width / 2), below.Y + (below.Height / 2));
+        MacBridge.NSRange atMiddle = MacBridge.RangeAt(element, middle);
         Assert.True(atMiddle.Location >= (nuint)count && atMiddle.Location < (nuint)count + 5 && atMiddle.Length == 1,
             $"The character at the middle of \"count\" on the screen is {atMiddle}");
 
-        Assert.True(Native.Allows(element, "setAccessibilityValue:") && Native.Allows(element, "setAccessibilitySelectedTextRange:"),
+        Assert.True(MacBridge.Allows(element, "setAccessibilityValue:") && MacBridge.Allows(element, "setAccessibilitySelectedTextRange:"),
             "VoiceOver may not change the editor's text or choose a range of it");
         rig.Editor.IsReadOnly = true;
-        Assert.True(!Native.Allows(element, "setAccessibilityValue:") && !Native.Allows(element, "setAccessibilitySelectedText:"),
+        Assert.True(!MacBridge.Allows(element, "setAccessibilityValue:") && !MacBridge.Allows(element, "setAccessibilitySelectedText:"),
             "VoiceOver may change a read-only editor's text");
     }
 
@@ -83,8 +80,8 @@ public sealed partial class MacTextElementsTests
     {
         Assert.SkipUnless(OperatingSystem.IsMacOS(), "NSAccessibility is macOS's");
         EditorRig rig = new("int total;\nreturn total;\n");
-        using Pool pool = new();
-        nint element = Native.ElementOf(rig.Editor);
+        using MacBridge.Pool pool = new();
+        nint element = MacBridge.ElementOf(rig.Editor);
         List<MacTextElements.Told> told = [];
         EventHandler<MacTextElements.Told> heard = (_, said) =>
         {
@@ -146,25 +143,25 @@ public sealed partial class MacTextElementsTests
         Window window = new() { Width = 500, Height = 200, Content = view };
         AutomationProperties.SetName(view, "Local");
         window.Show();
-        using Pool pool = new();
+        using MacBridge.Pool pool = new();
         List<MacTextElements.Told> told = [];
         EventHandler<MacTextElements.Told> heard = (_, said) => told.Add(said);
         MacTextElements.Posted += heard;
         try
         {
             Ui.Settle();
-            nint element = Native.ElementOf(view);
+            nint element = MacBridge.ElementOf(view);
             session.Say("$ ls\r\nREADME.md  src\r\n$ ");
             Ui.Settle();
             AccessibleText text = view.AccessibleText;
             string all = text.Read(0, text.Length);
-            Assert.True(Native.String(Native.Send(element, "accessibilityValue")) == all && all.StartsWith("$ ls\nREADME.md  src\n$", StringComparison.Ordinal),
-                $"The terminal's element reads \"{Native.String(Native.Send(element, "accessibilityValue"))}\", its text \"{all}\"");
-            Native.NSRange second = Native.RangeFor(element, "accessibilityRangeForLine:", 1);
-            Assert.True(Native.String(Native.Send(element, "accessibilityStringForRange:", second)) == "README.md  src\n",
-                $"The terminal's second line is {second}, reading \"{Native.String(Native.Send(element, "accessibilityStringForRange:", second))}\"");
-            Assert.True(Native.Send(element, "accessibilityInsertionPointLineNumber") == 2, $"The cursor reads on line {Native.Send(element, "accessibilityInsertionPointLineNumber")}");
-            Assert.True(!Native.Allows(element, "setAccessibilityValue:") && Native.Allows(element, "setAccessibilitySelectedTextRange:"),
+            Assert.True(MacBridge.String(MacBridge.Send(element, "accessibilityValue")) == all && all.StartsWith("$ ls\nREADME.md  src\n$", StringComparison.Ordinal),
+                $"The terminal's element reads \"{MacBridge.String(MacBridge.Send(element, "accessibilityValue"))}\", its text \"{all}\"");
+            MacBridge.NSRange second = MacBridge.RangeFor(element, "accessibilityRangeForLine:", 1);
+            Assert.True(MacBridge.String(MacBridge.Send(element, "accessibilityStringForRange:", second)) == "README.md  src\n",
+                $"The terminal's second line is {second}, reading \"{MacBridge.String(MacBridge.Send(element, "accessibilityStringForRange:", second))}\"");
+            Assert.True(MacBridge.Send(element, "accessibilityInsertionPointLineNumber") == 2, $"The cursor reads on line {MacBridge.Send(element, "accessibilityInsertionPointLineNumber")}");
+            Assert.True(!MacBridge.Allows(element, "setAccessibilityValue:") && MacBridge.Allows(element, "setAccessibilitySelectedTextRange:"),
                 "VoiceOver may change the terminal's text, or may not choose a range of it");
 
             told.Clear();
@@ -208,9 +205,9 @@ public sealed partial class MacTextElementsTests
                 text.Append(System.Globalization.CultureInfo.InvariantCulture, $"    int value{i} = {i};\n");
             }
             EditorRig rig = new(text.ToString());
-            using Pool pool = new();
-            nint element = Native.ElementOf(rig.Editor);
-            Assert.True(Native.String(Native.Send(element, "accessibilityValue"))?.Length == rig.Text.Length, "The element read none of the text");
+            using MacBridge.Pool pool = new();
+            nint element = MacBridge.ElementOf(rig.Editor);
+            Assert.True(MacBridge.String(MacBridge.Send(element, "accessibilityValue"))?.Length == rig.Text.Length, "The element read none of the text");
             rig.PlaceCaret(rig.Text.Length / 2);
             Ui.Settle();
             long least = long.MaxValue;
@@ -242,10 +239,10 @@ public sealed partial class MacTextElementsTests
         static long Asked(int lines)
         {
             EditorRig rig = new(string.Concat(Enumerable.Range(0, lines).Select(i => $"    public int Field{i} = {i} * 2; // a comment {i}\n")));
-            using Pool pool = new();
-            nint element = Native.ElementOf(rig.Editor);
-            Native.NSRange whole = new(0, (nuint)rig.Text.Length);
-            Native.Send(element, "setAccessibilitySelectedTextRange:", whole);
+            using MacBridge.Pool pool = new();
+            nint element = MacBridge.ElementOf(rig.Editor);
+            MacBridge.NSRange whole = new(0, (nuint)rig.Text.Length);
+            MacBridge.Send(element, "setAccessibilitySelectedTextRange:", whole);
             Ui.Settle();
             long least = long.MaxValue;
             for (int round = 0; round < 4; round++)
@@ -253,11 +250,11 @@ public sealed partial class MacTextElementsTests
                 GC.Collect(1, GCCollectionMode.Forced, blocking: true);
                 GC.WaitForPendingFinalizers();
                 long before = GC.GetAllocatedBytesForCurrentThread();
-                nint read = Native.Send(element, "accessibilityStringForRange:", whole);
-                nint attributed = Native.Send(element, "accessibilityAttributedStringForRange:", whole);
-                nint selected = Native.Send(element, "accessibilitySelectedText");
+                nint read = MacBridge.Send(element, "accessibilityStringForRange:", whole);
+                nint attributed = MacBridge.Send(element, "accessibilityAttributedStringForRange:", whole);
+                nint selected = MacBridge.Send(element, "accessibilitySelectedText");
                 least = Math.Min(least, GC.GetAllocatedBytesForCurrentThread() - before);
-                string?[] answers = [Native.String(read), Native.String(Native.Send(attributed, "string")), Native.String(selected)];
+                string?[] answers = [MacBridge.String(read), MacBridge.String(MacBridge.Send(attributed, "string")), MacBridge.String(selected)];
                 Assert.True(answers.All(a => a == rig.Text[..AccessibleText.MostRead]),
                     $"VoiceOver's questions of the whole text were answered with {string.Join(", ", answers.Select(a => a?.Length))} characters, not the text's first {AccessibleText.MostRead:N0}");
             }
@@ -268,124 +265,4 @@ public sealed partial class MacTextElementsTests
 
     private static string Said(IEnumerable<MacTextElements.Told> told) =>
         string.Join("; ", told.Select(t => $"{t.Notification} {t.Change} {t.Direction} {t.Granularity} [{string.Join(", ", t.Edits.Select(e => $"{e.Kind} \"{e.Text}\""))}]"));
-
-    /// <summary>An autorelease pool around a test's messages, which answer objects autoreleased as AppKit's own calls do.</summary>
-    private sealed class Pool : IDisposable
-    {
-        private readonly nint pool = Native.PoolPush();
-
-        public void Dispose() => Native.PoolPop(pool);
-    }
-
-    /// <summary>The Objective-C runtime as the test sends its messages, and Avalonia's native bridge brought into the
-    /// headless test process to make a control's element as it makes it for VoiceOver.</summary>
-    private static partial class Native
-    {
-        private const string Runtime = "/usr/lib/libobjc.A.dylib";
-
-        private static bool loaded;
-
-        [StructLayout(LayoutKind.Sequential)]
-        public readonly record struct NSRange(nuint Location, nuint Length);
-
-        [StructLayout(LayoutKind.Sequential)]
-        public readonly record struct CGPoint(double X, double Y);
-
-        [StructLayout(LayoutKind.Sequential)]
-        public readonly record struct CGRect(double X, double Y, double Width, double Height);
-
-        /// <summary>Avalonia's element for a control's peer, made by its own +acquire: as AppKit's questions make it, through
-        /// the peer's native wrapper Avalonia hands its bridge.</summary>
-        public static nint ElementOf(Control control)
-        {
-            Load();
-            AutomationPeer peer = ControlAutomationPeer.CreatePeerForElement(control);
-            Assembly avalonia = Assembly.Load("Avalonia.Native");
-            Type wrapper = avalonia.GetType("Avalonia.Native.AvnAutomationPeer", throwOnError: true)!;
-            Type face = avalonia.GetType("Avalonia.Native.Interop.IAvnAutomationPeer", throwOnError: true)!;
-            object wrapped = wrapper.GetMethod("Wrap", BindingFlags.Public | BindingFlags.Static)!.Invoke(null, [peer])!;
-            Type runtime = Type.GetType("MicroCom.Runtime.MicroComRuntime, MicroCom.Runtime", throwOnError: true)!;
-            MethodInfo pointer = runtime.GetMethods().Single(m => m.Name == "GetNativeIntPtr" && m.IsGenericMethodDefinition && m.GetParameters().Length == 2).MakeGenericMethod(face);
-            nint native = (nint)pointer.Invoke(null, [wrapped, false])!;
-            nint element = Send(Class(MacTextElements.AvaloniaClassName), Selector("acquire:"), native);
-            Assert.True(element != 0, $"Avalonia's {MacTextElements.AvaloniaClassName} made no element for the {control.GetType().Name}'s peer");
-            return element;
-        }
-
-        /// <summary>Loads Avalonia's native bridge, as the person's Passenger does, and takes its elements as text areas.</summary>
-        private static void Load()
-        {
-            if (!loaded)
-            {
-                NativeLibrary.Load(Path.Combine(AppContext.BaseDirectory, "runtimes", "osx", "native", "libAvaloniaNative.dylib"));
-                loaded = true;
-            }
-            Assert.True(MacTextElements.Install() is null, $"The text areas could not be put in Avalonia's bridge: {MacTextElements.Install()}");
-            Type property = Assembly.Load("Avalonia.Native").GetType("Avalonia.Native.Interop.AvnAutomationProperty", throwOnError: true)!;
-            Assert.True(Convert.ToInt32(Enum.Parse(property, "ValueProvider_Value"), System.Globalization.CultureInfo.InvariantCulture) == MacTextElements.AvaloniaValueProperty,
-                "Avalonia's bridge numbers its value property otherwise than the text areas pass it over");
-        }
-
-        public static string ClassName(nint instance) => Marshal.PtrToStringUTF8(ClassNameOf(instance)) ?? string.Empty;
-
-        public static nint Send(nint receiver, string selector) => Send(receiver, Selector(selector));
-
-        public static nint Send(nint receiver, string selector, nint argument) => Send(receiver, Selector(selector), argument);
-
-        public static nint Send(nint receiver, string selector, NSRange argument) => Send(receiver, Selector(selector), argument);
-
-        public static NSRange RangeOf(nint receiver, string selector) => SendForRange(receiver, Selector(selector));
-
-        public static NSRange RangeFor(nint receiver, string selector, nint argument) => SendForRange(receiver, Selector(selector), argument);
-
-        public static NSRange RangeAt(nint receiver, CGPoint point) => SendForRange(receiver, Selector("accessibilityRangeForPosition:"), point);
-
-        public static CGRect FrameFor(nint receiver, NSRange range) => RuntimeInformation.ProcessArchitecture == Architecture.X64
-            ? SendForRectInMemory(receiver, Selector("accessibilityFrameForRange:"), range)
-            : SendForRect(receiver, Selector("accessibilityFrameForRange:"), range);
-
-        public static bool Allows(nint receiver, string selector) => (byte)Send(receiver, Selector("isAccessibilitySelectorAllowed:"), Selector(selector)) != 0;
-
-        /// <summary>A string of Foundation's as .NET's.</summary>
-        public static string? String(nint value) => value == 0 ? null : Marshal.PtrToStringUTF8(Send(value, Selector("UTF8String")));
-
-        [LibraryImport(Runtime, EntryPoint = "objc_getClass", StringMarshalling = StringMarshalling.Utf8)]
-        private static partial nint Class(string name);
-
-        [LibraryImport(Runtime, EntryPoint = "sel_registerName", StringMarshalling = StringMarshalling.Utf8)]
-        private static partial nint Selector(string name);
-
-        [LibraryImport(Runtime, EntryPoint = "object_getClassName")]
-        private static partial nint ClassNameOf(nint instance);
-
-        [LibraryImport(Runtime, EntryPoint = "objc_autoreleasePoolPush")]
-        public static partial nint PoolPush();
-
-        [LibraryImport(Runtime, EntryPoint = "objc_autoreleasePoolPop")]
-        public static partial void PoolPop(nint pool);
-
-        [LibraryImport(Runtime, EntryPoint = "objc_msgSend")]
-        private static partial nint Send(nint receiver, nint selector);
-
-        [LibraryImport(Runtime, EntryPoint = "objc_msgSend")]
-        private static partial nint Send(nint receiver, nint selector, nint argument);
-
-        [LibraryImport(Runtime, EntryPoint = "objc_msgSend")]
-        private static partial nint Send(nint receiver, nint selector, NSRange argument);
-
-        [LibraryImport(Runtime, EntryPoint = "objc_msgSend")]
-        private static partial NSRange SendForRange(nint receiver, nint selector);
-
-        [LibraryImport(Runtime, EntryPoint = "objc_msgSend")]
-        private static partial NSRange SendForRange(nint receiver, nint selector, nint argument);
-
-        [LibraryImport(Runtime, EntryPoint = "objc_msgSend")]
-        private static partial NSRange SendForRange(nint receiver, nint selector, CGPoint argument);
-
-        [LibraryImport(Runtime, EntryPoint = "objc_msgSend")]
-        private static partial CGRect SendForRect(nint receiver, nint selector, NSRange argument);
-
-        [LibraryImport(Runtime, EntryPoint = "objc_msgSend_stret")]
-        private static partial CGRect SendForRectInMemory(nint receiver, nint selector, NSRange argument);
-    }
 }

@@ -272,6 +272,99 @@ public sealed class AccessibilityTests : IDisposable
         }
     }
 
+    /// <summary>A tree's row reused from a folder for a file, as the list reuses a row a closing took away for one an opening
+    /// brought, answers as a row with nothing under it from then on and tells a reader no open state it no longer has, and
+    /// back again: on macOS, through the elements Avalonia's bridge makes for VoiceOver, it gives no AXExpanded while it is
+    /// a file's, and no question or change of the bridge's throws through the system's call, which ends Passenger; on every
+    /// system, each change of a row's open state comes while the row gives the pattern a reader asks it by.</summary>
+    [AvaloniaFact]
+    public void A_trees_row_reused_from_a_folder_for_a_file_answers_as_a_file_and_tells_a_reader_nothing_it_cannot_ask()
+    {
+        Directory.CreateDirectory(Path.Combine(folder, "Parts", "Inner"));
+        File.WriteAllText(Path.Combine(folder, "Parts", "Inner", "Gear.cs"), "// Gear\n");
+        Directory.CreateDirectory(Path.Combine(folder, "Shelf"));
+        File.WriteAllText(Path.Combine(folder, "Shelf", "Notes.txt"), "notes\n");
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        using MacBridge.Faults faults = new();
+        using MacBridge.Pool? pool = OperatingSystem.IsMacOS() ? new() : null;
+        List<string> refused = [];
+        Dictionary<Control, nint> elements = [];
+        try
+        {
+            ExplorerTree model = window.ExplorerView.Tree;
+            TreeList tree = window.GetVisualDescendants().OfType<TreeList>().First(list => ReferenceEquals(list.ItemsSource, model.Rows));
+            ExplorerNode parts = model.Rows.Single(r => r.Name == "Parts");
+            ExplorerNode shelf = model.Rows.Single(r => r.Name == "Shelf");
+            Key(parts, "Right");
+            ExplorerNode inner = model.Rows.Single(r => r.Name == "Inner");
+            foreach (Control container in tree.GetRealizedContainers())
+            {
+                TreeList.TreeRowPeer peer = Assert.IsType<TreeList.TreeRowPeer>(ControlAutomationPeer.CreatePeerForElement(container));
+                peer.PropertyChanged += (_, e) =>
+                {
+                    if (e.Property == ExpandCollapsePatternIdentifiers.ExpandCollapseStateProperty && peer.GetProvider<IExpandCollapseProvider>() is null)
+                    {
+                        refused.Add($"{peer.GetName()}: {e.OldValue} to {e.NewValue}");
+                    }
+                };
+                if (OperatingSystem.IsMacOS())
+                {
+                    elements[container] = MacBridge.ElementOf(container);
+                }
+            }
+            Control reused = tree.ContainerFromItem(inner) ?? throw new Xunit.Sdk.XunitException("The tree shows no row for Inner");
+            AsReaderHears(reused, "Inner", ExpandCollapseState.Collapsed);
+
+            Key(parts, "Left");
+            Key(shelf, "Right");
+            ExplorerNode notes = model.Rows.Single(r => r.Name == "Notes.txt");
+            Assert.True(ReferenceEquals(tree.ContainerFromItem(notes), reused),
+                "The row that showed the folder Inner was not reused for the file Notes.txt, so the reuse a reader's question met is not what this holds");
+            AsReaderHears(reused, "Notes.txt", ExpandCollapseState.LeafNode);
+
+            Key(shelf, "Left");
+            Key(parts, "Right");
+            Assert.True(ReferenceEquals(tree.ContainerFromItem(inner), reused), "The row reused for Notes.txt was not reused for Inner again");
+            AsReaderHears(reused, "Inner", ExpandCollapseState.Collapsed);
+            if (OperatingSystem.IsMacOS())
+            {
+                MacBridge.Send(elements[reused], "setAccessibilityExpanded:", 1);
+                Ui.Settle();
+                Assert.True(inner.IsExpanded, "VoiceOver's opening of Inner left it closed");
+                AsReaderHears(reused, "Inner", ExpandCollapseState.Expanded);
+            }
+            Assert.True(faults.Thrown.Length == 0, $"Avalonia's bridge met an exception asking a row, which ends a person's Passenger: {string.Join("; ", faults.Thrown)}");
+            Assert.True(refused.Count == 0, $"A row told a reader its open state changed while it gave no way to ask it: {string.Join("; ", refused)}");
+
+            void Key(ExplorerNode row, string key)
+            {
+                tree.SelectedItem = row;
+                tree.ContainerFromItem(row)!.Focus(NavigationMethod.Pointer);
+                Ui.Press(window, key);
+                Ui.Settle();
+            }
+        }
+        finally
+        {
+            window.Close();
+        }
+
+        void AsReaderHears(Control row, string words, ExpandCollapseState state)
+        {
+            TreeList.TreeRowPeer peer = Assert.IsType<TreeList.TreeRowPeer>(ControlAutomationPeer.CreatePeerForElement(row));
+            Assert.True(peer.GetName().StartsWith(words + ",", StringComparison.Ordinal) && peer.ExpandCollapseState == state
+                && (peer.GetProvider<IExpandCollapseProvider>() is null) == (state == ExpandCollapseState.LeafNode),
+                $"The row says \"{peer.GetName()}\", {peer.ExpandCollapseState} (opened or closed by a reader: {peer.GetProvider<IExpandCollapseProvider>() is not null}), where it shows {words}, {state}");
+            if (elements.TryGetValue(row, out nint element))
+            {
+                bool asked = MacBridge.Allows(element, "isAccessibilityExpanded");
+                bool open = MacBridge.Expanded(element);
+                Assert.True(asked == (state != ExpandCollapseState.LeafNode) && open == (state == ExpandCollapseState.Expanded),
+                    $"VoiceOver hears {words} {(asked ? open ? "open" : "closed" : "neither open nor closed")}, where it is {state}");
+            }
+        }
+    }
+
     /// <summary>The peer a reader asks of the row showing <paramref name="item"/>, brought into view.</summary>
     private static TreeList.TreeRowPeer PeerOf(TreeList tree, object item)
     {

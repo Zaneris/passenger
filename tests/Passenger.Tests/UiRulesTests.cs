@@ -12,6 +12,7 @@ using Avalonia.Media;
 using Avalonia.Platform;
 using Avalonia.Styling;
 using System.Buffers.Binary;
+using System.Reflection;
 using System.Text.RegularExpressions;
 using System.Xml.Linq;
 using Avalonia.Markup.Xaml.Styling;
@@ -19,6 +20,7 @@ using Avalonia.Themes.Fluent;
 using Avalonia.VisualTree;
 using Passenger.App;
 using Passenger.App.Settings;
+using Passenger.Editor;
 
 namespace Passenger.Tests;
 
@@ -2976,6 +2978,41 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
             $"The rule found {anywhere.Count} lists declared and few taking ListKeys, so it no longer reads how lists are written");
         Assert.True(found.Count == 0, $"{found.Count} lists hear their keys or double click by a handler of their own, which the rows' own Enter and Space go "
             + $"ahead of, or which does other than Enter does: give each its acts through ListKeys.Act (TreeKeys.Attach for a tree):\n{string.Join("\n", found)}");
+    }
+
+    /// <summary>A peer of Passenger's tells a screen reader of a change only through PeerChanges.Tell, which tells a pattern's
+    /// property only while the peer gives that pattern, as macOS's bridge asks the pattern as it hears the change and a
+    /// refusal there ends Passenger: a RaisePropertyChangedEvent written anywhere else fails here, naming its line, as does a
+    /// pattern's property of Avalonia's that PeerChanges cannot tell the pattern of.</summary>
+    [Fact]
+    public void Every_peers_change_is_told_through_PeerChanges_which_tells_a_patterns_only_while_the_peer_gives_it()
+    {
+        List<string> found = [];
+        int told = 0;
+        foreach ((string path, string text) in UiFiles().Where(f => f.Path.EndsWith(".cs", StringComparison.Ordinal)))
+        {
+            told += Regex.Count(text, @"\bPeerChanges\.Tell\(");
+            if (!path.EndsWith("/PeerChanges.cs", StringComparison.Ordinal))
+            {
+                found.AddRange(Regex.Matches(text, @"\bRaisePropertyChangedEvent\b").Select(m => $"{path}:{LineOf(text, m.Index)}"));
+            }
+        }
+        List<string> unknown = [];
+        foreach (Type identifiers in typeof(AutomationProperty).Assembly.GetExportedTypes().Where(t => t.Namespace == "Avalonia.Automation" && t.Name.EndsWith("PatternIdentifiers", StringComparison.Ordinal)))
+        {
+            string provider = $"Avalonia.Automation.Provider.I{identifiers.Name[..^"PatternIdentifiers".Length]}Provider";
+            foreach (PropertyInfo property in identifiers.GetProperties(BindingFlags.Public | BindingFlags.Static).Where(p => p.PropertyType == typeof(AutomationProperty)))
+            {
+                if (PeerChanges.PatternOf((AutomationProperty)property.GetValue(null)!)?.FullName != provider)
+                {
+                    unknown.Add($"{identifiers.Name}.{property.Name}");
+                }
+            }
+        }
+        Assert.True(told >= 3, $"The rule found {told} changes told through PeerChanges, so it no longer reads how peers tell one");
+        Assert.True(found.Count == 0, $"{found.Count} changes are told to a reader past PeerChanges.Tell, which may tell a pattern's change while the peer "
+            + $"refuses the pattern, so macOS's bridge asks it and ends Passenger:\n{string.Join("\n", found)}");
+        Assert.True(unknown.Count == 0, $"PeerChanges tells these properties as of no pattern, so a change of one is told while the peer may refuse its pattern: {string.Join(", ", unknown)}");
     }
 
     /// <summary>A row a list reuses draws its icons with RowIcon, one control where a PathIcon is five that the list styles

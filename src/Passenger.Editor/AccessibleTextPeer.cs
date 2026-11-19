@@ -30,7 +30,7 @@ public sealed class AccessibleTextPeer : ControlAutomationPeer, IValueProvider
     {
         Text = text;
         id = Keep(this);
-        text.CaretLineChanged += (_, _) => RaisePropertyChangedEvent(ValuePatternIdentifiers.ValueProperty, null, Value);
+        text.CaretLineChanged += (_, _) => PeerChanges.Tell(this, ValuePatternIdentifiers.ValueProperty, null, Value);
     }
 
     /// <summary>The peer a control drawing its own text gives a screen reader: on Windows, where the control stands in a

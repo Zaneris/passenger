@@ -165,7 +165,7 @@ public sealed class Announcer
             string? before = region.Text;
             Live(region, urgency);
             region.Text = words;
-            peer.RaisePropertyChangedEvent(AutomationElementIdentifiers.NameProperty, before, words);
+            PeerChanges.Tell(peer, AutomationElementIdentifiers.NameProperty, before, words);
         }
     }
 }
