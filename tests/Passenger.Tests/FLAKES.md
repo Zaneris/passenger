@@ -30,6 +30,13 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 
 ## 2026-11-19
 
+- `ExplorerFilesTests`' `A_project_whose_wildcards_take_in_a_folder_being_deleted_is_told_to_the_language_server_once_it_has_gone`,
+  CI 44522273860 and 44538058686 (macOS report shard 2, 2 to 3 min): "The delete of Lib did not wait for its
+  design-time build: Moved Lib to the Trash". **The test's**: it held Shop's and Lib's design-time builds at once, which
+  the project host does only on two MSBuild nodes (half of four processors or more); macOS CI's three-processor runners
+  build one at a time, the first held until its Exec's 2-minute limit, and with Lib first its build had ended before
+  the delete, which then rightly had nothing to wait for (reproduced with `DOTNET_PROCESSOR_COUNT=3`). It now skips
+  there, as its two siblings do (`SkipUnlessTwoBuildsAtOnce`, e9a37b2f8, #1940).
 - `ApartSchedulerTests`' `A_loop_given_an_apart_scheduler_runs_on_its_threads_alone_and_they_end_once_it_is_disposed`,
   the Mac's whole unit-test assembly at load averages of 250 to 415 (#1985's runs, 2 of 3 rounds): "A thread of the
   scheduler was still running after it was disposed, and would be for as long as the process lives". **The test waited
