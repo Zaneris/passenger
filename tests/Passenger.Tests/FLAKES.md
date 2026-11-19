@@ -30,6 +30,25 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 
 ## 2026-11-18
 
+- `TestHostLastWordsTests`' `A_test_host_that_writes_a_last_line_and_exits_at_once_has_that_line_in_its_failure_every_time`,
+  CI 44234430125 (Windows report shard 4, round 6 of 20): "PassengerCases (net10.0) ended with exit code 3 before it
+  connected". **A race in the IDE**: the host connects before it writes a word, so it had connected long before it
+  exited; the runner's accept loop woke on its 100 ms tick, found the accept's task not yet completed (on Windows its
+  completion waits its turn on the thread pool, two busy processes beside) and the host gone, and said it never
+  connected. Once it hears the host end the runner now stops the accept and takes what it took, else what waits in the
+  listener's queue (`TestingPlatformRunner`'s `Host.MadeAsync`); `A_test_host_whose_connection_comes_after_its_end_is_heard_is_said_to_have_connected`
+  hands it the connection only once it heard the end (`HoldsConnectionsUntilEnded`) and failed with CI's words before
+  (e5b6b7650, #1879).
+- `NuGetTests`' `A_deprecated_version_chosen_before_install_is_said_in_the_details`, CI 44256034522 (macOS report
+  shard 3, at be67a4a77): "Waited 180 s for 1.5.0 … [1.0.0 is deprecated: critical bugs.]". **Not reproduced** in 9
+  loaded rounds on the Mac. One race in the IDE was found and fixed beside it: whatever lists the packages again while
+  a picked version's deprecation is asked (a refresh, a nuget.config heard, an evaluation, the audit landing) made the
+  details again on the newest version, dropping the pick and never saying its deprecation (`NuGetView.PickedOf`;
+  `A_version_chosen_as_its_deprecation_is_asked_stays_chosen_through_a_refresh_and_is_said_once_answered`, holding the
+  feed's registrations). That order ends "2.0.0 chosen", not CI's words, which need 1.5.0's read failed, the window
+  detached at the pick, or details made again whose versions read failed: the test's failure now names the version
+  chosen, the versions read and whether the window was shown (da2549b3d, #1898).
+
 - `McpWindowTests`' `An_agents_definition_of_what_a_restored_generator_declares_waits_for_the_end_of_the_batch_its_project_loaded_again_in`
   and `…waits_for_its_run_though_the_server_says_its_diagnostics_moved_first`, loaded rounds on the Mac (#1939's and
   #1954's agents): "No symbol at MainPage.xaml.cs:9:9". **A race in the IDE**: the design-time build after the restore
