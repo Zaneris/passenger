@@ -257,6 +257,178 @@ public sealed class ProblemsTests : IClassFixture<ProblemsTests.Project>
         window.Close();
     }
 
+    /// <summary>A file's project-wide pull, which the window makes of its own accord and nobody waits on, held by the server
+    /// past its patience while it answers Passenger's checks, is said in the log alone, never as the notice that the server
+    /// is slow to answer; a hover held as long, which someone waits on, is noticed.</summary>
+    [AvaloniaFact]
+    public void A_files_project_wide_pull_held_past_the_servers_patience_is_said_in_the_log_alone_where_a_hover_is_noticed()
+    {
+        MainWindow window = project.Open("Helper.cs");
+        SlowAnswers slow = new(window, checkLimit: null);
+        try
+        {
+            Task pulled = slow.HoldProjectWidePull();
+            window.KeyTextInput(" ");
+            Ui.PumpUntil(() => pulled.IsCompleted, "the file's project-wide pull to be answered, and its answer held");
+            Passenger.Lsp.LongWait pull = slow.SaidOf(SlowAnswers.ProjectWidePull);
+            Assert.True(pull.Conversation.Contains("it answered Passenger's check", StringComparison.Ordinal),
+                $"The server was to answer Passenger's checks while the pull waited: {pull.Conversation}");
+            Assert.False(pull.Told, $"A pull nobody waits on, past the server's patience while it answers its checks, was to be the log's alone: {pull.Asked}: {pull.Conversation}");
+            slow.HeardByTheWindow();
+            Assert.True(slow.Noticed.Count == 0,
+                $"The window said the server was slow to answer a pull nobody waits on, while it answered its checks: {string.Join(" | ", slow.Noticed)}");
+            Assert.EndsWith(", nobody waiting on it", pull.Asked, StringComparison.Ordinal);
+            Assert.Contains($"(process {slow.Server.ProcessId}): {pull.Asked}: ", Ui.IdeLog(), StringComparison.Ordinal);
+
+            Ui.PlaceAfter(window.EditorArea.CodeEditor, "Twi");
+            Task hovered = slow.Server.HoldNextAnswer(Passenger.Lsp.LspMethods.Hover, _ => true, slow.Released);
+            // Pumped, not settled: the held pull stands for the server's work in flight until it is let go.
+            Ui.Run(window, AppActions.QuickDocumentation, settle: false);
+            Ui.PumpUntil(() => hovered.IsCompleted, "the hover's answer to be held");
+            Passenger.Lsp.LongWait hover = slow.SaidOf(Passenger.Lsp.LspMethods.Hover);
+            Assert.True(hover.Told, $"A hover past the server's patience, which someone waits on, was to be told: {hover.Asked}: {hover.Conversation}");
+            slow.HeardByTheWindow();
+            Assert.True(slow.Noticed.Any(n => n.Contains($"{Passenger.Lsp.LspMethods.Hover} has waited ", StringComparison.Ordinal)),
+                $"The window did not say the server was slow to answer the hover it held; it said: {string.Join(" | ", slow.Noticed)}");
+        }
+        finally
+        {
+            slow.Dispose();
+        }
+        window.Close();
+    }
+
+    /// <summary>A file's project-wide pull, which nobody waits on, held by the server past its patience once Passenger's
+    /// check of it has gone unanswered as long as a request waits before the server is checked, is noticed as the server
+    /// slow to answer: it has stopped answering at all.</summary>
+    [AvaloniaFact]
+    public void A_files_project_wide_pull_held_past_the_servers_patience_is_noticed_once_the_server_leaves_its_check_unanswered()
+    {
+        MainWindow window = project.Open("Helper.cs");
+        // Never called not responding, which would end the server the class shares.
+        SlowAnswers slow = new(window, checkLimit: TimeSpan.FromMinutes(10));
+        try
+        {
+            Task checking = slow.Server.HoldNext(Passenger.Lsp.LspMethods.FoldingRange, Passenger.Lsp.LanguageServer.IsCheck, slow.Released);
+            Task pulled = slow.HoldProjectWidePull();
+            window.KeyTextInput(" ");
+            Ui.PumpUntil(() => pulled.IsCompleted && checking.IsCompleted,
+                "the file's project-wide pull to be answered and Passenger's check of the server to be asked, both held");
+            Passenger.Lsp.LongWait pull = slow.SaidOf(SlowAnswers.ProjectWidePull);
+            Assert.True(pull.Told, $"A pull past the server's patience, its check unanswered, was to be told: {pull.Asked}: {pull.Conversation}");
+            slow.HeardByTheWindow();
+            Assert.True(slow.Noticed.Any(n => n.Contains($"{SlowAnswers.ProjectWidePull} has waited ", StringComparison.Ordinal)),
+                $"The window did not say the server was slow to answer while its check went unanswered; it said: {string.Join(" | ", slow.Noticed)}");
+        }
+        finally
+        {
+            slow.Dispose();
+        }
+        window.Close();
+    }
+
+    /// <summary>A window's server held to short limits with solution-wide analysis on, until let go: checked once a request
+    /// has waited two seconds, patient for six (both as much longer as the run is slower), what it says of each request
+    /// past that and what the window notices of them kept, and its word that diagnostics moved held, so no pull asked again
+    /// lets a held one go. Its limits are put back as it is let go, the server being the class's.</summary>
+    private sealed class SlowAnswers : IDisposable
+    {
+        public static readonly string ProjectWidePull = $"{Passenger.Lsp.LspMethods.DocumentDiagnostic} ({Passenger.Lsp.LspDocument.ProjectWideSource})";
+
+        private readonly TaskCompletionSource released = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly Passenger.App.CSharp.CSharpService csharp;
+        private readonly (TimeSpan Slow, TimeSpan Limit, TimeSpan Patience) kept;
+        private readonly Lock reading = new();
+        private readonly List<Passenger.Lsp.LongWait> said = [];
+        private readonly List<string> noticed = [];
+
+        public SlowAnswers(MainWindow window, TimeSpan? checkLimit)
+        {
+            csharp = window.CSharpService!;
+            Server = csharp.Session!.Server;
+            window.Perform(AppActions.ToggleSolutionAnalysis);
+            Ui.WaitFor(() => Server.DiagnosticSources.Contains(Passenger.Lsp.LspDocument.ProjectWideSource),
+                "the server to give files a project-wide source of diagnostics, as it does analysing the whole solution");
+            kept = (Server.SlowRequest, Server.ResponseLimit, Server.Patience);
+            Server.Waited += OnWaited;
+            csharp.WaitedLong += OnNoticed;
+            (Server.SlowRequest, Server.Patience) = (TimeSpan.FromSeconds(2).Scaled(), TimeSpan.FromSeconds(6).Scaled());
+            Server.ResponseLimit = checkLimit ?? Server.ResponseLimit;
+            csharp.HoldRefreshes(released.Task);
+        }
+
+        public Passenger.Lsp.LanguageServer Server { get; }
+
+        /// <summary>Done once the test lets go of what it holds.</summary>
+        public Task Released => released.Task;
+
+        /// <summary>What the window said the server was slow to answer.</summary>
+        public IReadOnlyList<string> Noticed
+        {
+            get
+            {
+                lock (reading)
+                {
+                    return [.. noticed];
+                }
+            }
+        }
+
+        /// <summary>Holds the answer to the next pull of the open file's project-wide source; done once it is held.</summary>
+        public Task HoldProjectWidePull() => Server.HoldNextAnswer(Passenger.Lsp.LspMethods.DocumentDiagnostic,
+            p => p is Passenger.Lsp.DocumentDiagnosticParams { Identifier: Passenger.Lsp.LspDocument.ProjectWideSource }, Released);
+
+        /// <summary>What the server said once the request <paramref name="named"/> waited past its patience.</summary>
+        public Passenger.Lsp.LongWait SaidOf(string named)
+        {
+            Passenger.Lsp.LongWait? found = null;
+            bool Said()
+            {
+                lock (reading)
+                {
+                    int at = said.FindIndex(w => w.Asked.StartsWith($"{named} has waited ", StringComparison.Ordinal));
+                    found = at < 0 ? null : said[at];
+                }
+                return found is not null;
+            }
+            Assert.True(Ui.Pumped(Said, Server.Patience + TimeSpan.FromSeconds(30).Scaled(), scaled: false),
+                $"The server did not say {named} waited past its patience: {Server.Conversation()}");
+            return found!.Value;
+        }
+
+        /// <summary>Done once the window has taken in what the server said so far, which it hears on its own thread.</summary>
+        public void HeardByTheWindow()
+        {
+            bool heard = false;
+            UiThread.Post(() => heard = true);
+            Ui.PumpUntil(() => heard, "the window to take in what the server said");
+        }
+
+        public void Dispose()
+        {
+            released.TrySetResult();
+            Server.Waited -= OnWaited;
+            csharp.WaitedLong -= OnNoticed;
+            (Server.SlowRequest, Server.ResponseLimit, Server.Patience) = kept;
+        }
+
+        private void OnWaited(object? sender, Passenger.Lsp.LongWait wait)
+        {
+            lock (reading)
+            {
+                said.Add(wait);
+            }
+        }
+
+        private void OnNoticed(object? sender, Passenger.App.CSharp.ServerSaid notice)
+        {
+            lock (reading)
+            {
+                noticed.Add(notice.Text);
+            }
+        }
+    }
+
     /// <summary>Solution-wide analysis turned on as the folder opens, while its language server starts and before the
     /// window has a session of it, reaches the server once it has: the Solution tab lists the error of a file nobody
     /// opened, which a server left analysing the open files alone never reports.</summary>

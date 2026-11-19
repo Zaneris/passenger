@@ -511,6 +511,8 @@ internal sealed class ServerDiagnostics(OpenDocument document, string? checker)
 
     private async Task PullAsync(TimeSpan delay, Func<CancellationToken, Task> ask, CancellationTokenSource cancel, IDisposable? checking, IDisposable? held)
     {
+        // The window keeps the file's marks by it, so nobody waits on what it asks.
+        LanguageServer.NobodyWaits();
         try
         {
             if (delay > TimeSpan.Zero)

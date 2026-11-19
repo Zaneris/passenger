@@ -7,9 +7,10 @@ using StreamJsonRpc;
 
 namespace Passenger.Lsp;
 
-/// <summary>A request that waited past its server's patience: which and how long (<see cref="Asked"/>), and where the
-/// conversation with the server stood (<see cref="LanguageServer.Conversation"/>).</summary>
-public readonly record struct LongWait(string Asked, string Conversation);
+/// <summary>A request that waited past its server's patience: which and how long (<see cref="Asked"/>), where the
+/// conversation with the server stood (<see cref="LanguageServer.Conversation"/>), and whether the person is told
+/// (<see cref="Told"/>): someone waits on it, or the server has stopped answering its check; else it is the log's alone.</summary>
+public readonly record struct LongWait(string Asked, string Conversation, bool Told);
 
 /// <summary>A language server process and the JSON-RPC connection to it over its standard input and
 /// output, or over TCP on a loopback port (Godot's, in its editor: one Passenger started, or the person's own). Requests and notifications go out typed, and each failure of the server's comes back as a
@@ -55,7 +56,12 @@ public sealed class LanguageServer : IAsyncDisposable
     /// <summary>Done once the server's error stream has been read into its log to its end.</summary>
     private readonly Task errorsHeard;
 
-    private readonly Dictionary<long, (string Method, long Since)> waiting = [];
+    /// <summary>The requests waiting on the server, each named, with when it was asked and whether someone waits on its
+    /// answer (<see cref="NobodyWaits"/>).</summary>
+    private readonly Dictionary<long, (string Method, long Since, bool WaitedOn)> waiting = [];
+
+    /// <summary>Whether the requests this flow asks are ones nobody waits on (<see cref="NobodyWaits"/>).</summary>
+    private static readonly AsyncLocal<bool> unwaited = new();
     private readonly Dictionary<string, (int Left, TaskCompletionSource Spent)> refusing = [];
     private readonly List<Hold> holding = [];
     private readonly Timer watch;
@@ -795,7 +801,7 @@ public sealed class LanguageServer : IAsyncDisposable
         process.Dispose();
     }
 
-    /// <summary>A request someone waits for the answer to: one still waiting after <see cref="SlowRequest"/> has the
+    /// <summary>A request the server is watched answering: one still waiting after <see cref="SlowRequest"/> has the
     /// server checked, and raises <see cref="NotResponding"/> if that goes unanswered too; <paramref name="about"/> names
     /// what it asks where the method alone does not (an extension handler's, a diagnostic pull's source). A
     /// <see cref="LanguageServerFailed"/> when the server does not answer it.</summary>
@@ -804,7 +810,7 @@ public sealed class LanguageServer : IAsyncDisposable
         long id = Interlocked.Increment(ref requests);
         lock (waiting)
         {
-            waiting[id] = (about is null ? method : $"{method} ({about[(about.LastIndexOf('.') + 1)..]})", Stopwatch.GetTimestamp());
+            waiting[id] = (about is null ? method : $"{method} ({about[(about.LastIndexOf('.') + 1)..]})", Stopwatch.GetTimestamp(), !unwaited.Value);
         }
         try
         {
@@ -819,6 +825,11 @@ public sealed class LanguageServer : IAsyncDisposable
             }
         }
     }
+
+    /// <summary>Marks the rest of an async method's flow as asking what nobody waits on (an open file's diagnostics pulled
+    /// as the window keeps its marks): a request of it past <see cref="Patience"/> is the log's alone, unless the server
+    /// has stopped answering its check too (<see cref="LongWait.Told"/>). Its caller's flow is left as it was.</summary>
+    public static void NobodyWaits() => unwaited.Value = true;
 
     /// <summary>A notification the caller waits to see sent (the solution to open); a <see cref="LanguageServerFailed"/>
     /// when the server can no longer take it.</summary>
@@ -849,7 +860,8 @@ public sealed class LanguageServer : IAsyncDisposable
 
     /// <summary>Holds the next request or notification of a method whose parameters <paramref name="which"/> takes unsent
     /// until <paramref name="until"/> ends, as a server busy with it holds its answer, or one slow to take in a file
-    /// changed on disk, for a test of what goes on meanwhile. Done once one is held.</summary>
+    /// changed on disk (the server's check too, <see cref="IsCheck"/>), for a test of what goes on meanwhile. Done once
+    /// one is held.</summary>
     public Task HoldNext(string method, Func<object, bool> which, Task until)
     {
         Hold hold = new(method, which, until, Answered: false, new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously));
@@ -1043,7 +1055,7 @@ public sealed class LanguageServer : IAsyncDisposable
         TimeSpan waited = SlowRequest;
         lock (waiting)
         {
-            foreach ((string method, long since) in waiting.Values)
+            foreach ((string method, long since, _) in waiting.Values)
             {
                 TimeSpan age = Stopwatch.GetElapsedTime(since);
                 if (age >= waited)
@@ -1084,6 +1096,11 @@ public sealed class LanguageServer : IAsyncDisposable
     {
         try
         {
+            if (Held(LspMethods.FoldingRange, Check, answered: false) is { } held)
+            {
+                held.Holding.TrySetResult();
+                await held.Until.ConfigureAwait(false);
+            }
             await rpc.InvokeWithParameterObjectAsync<JsonElement>(LspMethods.FoldingRange, Check);
             Interlocked.Exchange(ref checkAnsweredAt, Stopwatch.GetTimestamp());
         }
@@ -1093,20 +1110,30 @@ public sealed class LanguageServer : IAsyncDisposable
         }
     }
 
+    /// <summary>Whether a test's hold (<see cref="HoldNext"/>) takes these parameters for the server's check, which asks
+    /// as a fold of no document does.</summary>
+    public static bool IsCheck(object parameters) => ReferenceEquals(parameters, Check);
+
+    /// <summary>Whether the server answers its checks: none went unanswered past <see cref="ResponseLimit"/>, and none out
+    /// has waited <see cref="SlowRequest"/>, as long as a request waits before the server is checked.</summary>
+    private bool Answering() =>
+        !hung && (Volatile.Read(ref checking) == 0 || Stopwatch.GetElapsedTime(Interlocked.Read(ref checkedAt)) < SlowRequest);
+
     /// <summary>Each request that has waited past <see cref="Patience"/> said once, the conversation's words with it, into
-    /// the server's log and to <see cref="Waited"/>.</summary>
+    /// the server's log and to <see cref="Waited"/>: told to the person where someone waits on it, or the server has
+    /// stopped answering its check, else the log's alone (<see cref="LongWait.Told"/>).</summary>
     private void SayLongWaits()
     {
-        List<(string Method, TimeSpan Age)> past = [];
+        List<(string Method, TimeSpan Age, bool WaitedOn)> past = [];
         lock (waiting)
         {
             waitSaid.RemoveWhere(id => !waiting.ContainsKey(id));
-            foreach ((long id, (string asked, long since)) in waiting)
+            foreach ((long id, (string asked, long since, bool waitedOn)) in waiting)
             {
                 TimeSpan age = Stopwatch.GetElapsedTime(since);
                 if (age >= Patience && waitSaid.Add(id))
                 {
-                    past.Add((asked, age));
+                    past.Add((asked, age, waitedOn));
                 }
             }
         }
@@ -1114,9 +1141,12 @@ public sealed class LanguageServer : IAsyncDisposable
         {
             return;
         }
-        (string method, TimeSpan longest) = past.MaxBy(p => p.Age);
-        LongWait wait = new($"{method} has waited {Durations.Said(longest)}{(past.Count > 1 ? $", with {past.Count - 1} more past {Durations.Said(Patience)}" : string.Empty)}",
-            Conversation());
+        List<(string Method, TimeSpan Age, bool WaitedOn)> told = Answering() ? [.. past.Where(p => p.WaitedOn)] : past;
+        List<(string Method, TimeSpan Age, bool WaitedOn)> named = told.Count > 0 ? told : past;
+        (string method, TimeSpan longest, _) = named.MaxBy(p => p.Age);
+        string more = named.Count > 1 ? $", with {named.Count - 1} more past {Durations.Said(Patience)}" : string.Empty;
+        string unwaitedOn = told.Count > 0 ? string.Empty : named.Count > 1 ? ", none of them waited on" : ", nobody waiting on it";
+        LongWait wait = new($"{method} has waited {Durations.Said(longest)}{more}{unwaitedOn}", Conversation(), told.Count > 0);
         Note($"{wait.Asked}: {wait.Conversation}");
         Waited?.Invoke(this, wait);
     }

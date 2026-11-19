@@ -618,8 +618,9 @@ public sealed partial class CSharpService : IAsyncDisposable
     /// with it (a warning), or C# was ready after it: what the status bar says of it; raised on the UI thread.</summary>
     public event EventHandler<ServerSaid>? LoadRanLong;
 
-    /// <summary>A request waited past its patience (<see cref="LanguageServer.Patience"/>), the server alive or not: what the
-    /// status bar says of it, a warning with the log, which says where the conversation stood; raised on the UI thread.</summary>
+    /// <summary>A request waited past its patience (<see cref="LanguageServer.Patience"/>), someone waiting on it or the
+    /// server leaving its check unanswered (<see cref="LongWait.Told"/>): what the status bar says of it, a warning with the
+    /// log, which says where the conversation stood; raised on the UI thread.</summary>
     public event EventHandler<ServerSaid>? WaitedLong;
 
     /// <summary>The problems the server met loading the projects changed; raised on the UI thread.</summary>
@@ -2251,10 +2252,11 @@ public sealed partial class CSharpService : IAsyncDisposable
         Replace(lost, workspace, "The C# language server ended");
     }
 
-    /// <summary>A request of the session's server waited past its patience: said in the status bar, its words in the log.</summary>
+    /// <summary>A request of the session's server waited past its patience: said in the status bar where the server says
+    /// the person is told of it (<see cref="LongWait.Told"/>), its words in the log however it is.</summary>
     private void OnWaitedLong(RoslynSession slow, LongWait wait)
     {
-        if (disposed || session != slow)
+        if (disposed || session != slow || !wait.Told)
         {
             return;
         }
