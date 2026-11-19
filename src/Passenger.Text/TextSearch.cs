@@ -74,6 +74,29 @@ public static class TextSearch
         return FindAll(snapshot, pattern, limit);
     }
 
+    /// <summary>The places of a whole word chosen in a text (<see cref="TextNavigation.IsWholeWord"/>): each copy of it
+    /// standing as a whole word, its case matched, as Find's Words finds them, the chosen one among them. Past
+    /// <paramref name="limit"/>, the run of that many around the chosen one; none for a range that is no whole word.</summary>
+    public static IReadOnlyList<TextRange> PlacesOfWord(TextSnapshot text, TextRange chosen, int limit = MaxMatches)
+    {
+        if (!TextNavigation.IsWholeWord(text, chosen))
+        {
+            return [];
+        }
+        IReadOnlyList<TextRange> all = FindAll(text, new SearchQuery(text.GetText(chosen), MatchCase: true, WholeWords: true), Apart, int.MaxValue).Matches;
+        if (all.Count <= limit)
+        {
+            return all;
+        }
+        int first = Math.Clamp(Sorted.FirstAtOrAfter(all, static r => r.Start, chosen.Start) - (limit / 2), 0, all.Count - limit);
+        TextRange[] around = new TextRange[limit];
+        for (int i = 0; i < limit; i++)
+        {
+            around[i] = all[first + i];
+        }
+        return around;
+    }
+
     /// <summary>Every match of a pattern read once for a search of many texts: plain text a block at a time where it lies,
     /// a regex over the text read as lines once while the snapshot stands (<see cref="Lines"/>).</summary>
     public static SearchResult FindAll(TextSnapshot snapshot, SearchPattern pattern, int limit = MaxMatches)

@@ -205,6 +205,11 @@ public static class TextNavigation
         return TextRange.FromBounds(start, end);
     }
 
+    /// <summary>Whether a range is one whole word, as a double-click chooses it: no word character carries on from
+    /// either end, and nothing but a word's characters lies between. Reads the word at its start, never past it.</summary>
+    public static bool IsWholeWord(TextSnapshot text, TextRange range) =>
+        range.Length > 0 && range.End <= text.Length && WordCharacters.IsWordAt(text, range.Start) && WordAt(text, range.Start) == range;
+
     /// <summary>Home: to the line's first non-space character, or to column 0 if the caret is already
     /// there (or the line is only spaces).</summary>
     public static int SmartHome(TextSnapshot text, int offset)

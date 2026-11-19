@@ -206,7 +206,7 @@ public sealed partial class CodeEditor
         {
             UsageHighlight use = uses[i];
             Mark(ref count, new StripeMark(use.IsWrite ? StripeMarkKind.WriteUsage : StripeMarkKind.Usage, RowNear(text, Math.Min(use.Range.Start, text.Length)), 1,
-                use.Range.Start, use.IsWrite ? "Write usage" : "Read usage", Item: i));
+                use.Range.Start, use.ByText ? "Same word" : use.IsWrite ? "Write usage" : "Read usage", Item: i));
         }
         MarkProblems(ref count, text, markers);
         StripeMarksBuilt++;

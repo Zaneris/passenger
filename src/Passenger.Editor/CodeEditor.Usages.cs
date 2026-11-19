@@ -5,10 +5,11 @@ using Passenger.Text;
 
 namespace Passenger.Editor;
 
-/// <summary>What the caret lights up: the uses of the symbol it rests on, from the host (writes in a colour of their
-/// own, each marked on the stripe), and the bracket it touches with its pair, from a highlighter that knows the
-/// language's brackets (<see cref="IBraceMatcher"/>). An edit takes the uses away, so none is ever left on text that
-/// changed under it, unless they were kept (Highlight Usages in File), which move with the text until Escape.</summary>
+/// <summary>What the caret lights up: the uses of the symbol it rests on, or the places of a word chosen, from the host
+/// (writes in a colour of their own, each marked on the stripe), and the bracket it touches with its pair, from a
+/// highlighter that knows the language's brackets (<see cref="IBraceMatcher"/>). An edit takes the uses away, so none
+/// is ever left on text that changed under it, unless they were kept (Highlight Usages in File), which move with the
+/// text until Escape.</summary>
 public sealed partial class CodeEditor
 {
     /// <summary>The pair at the primary caret and what it was found in, found again only when one of those changed.</summary>
@@ -17,7 +18,7 @@ public sealed partial class CodeEditor
     /// <summary>The uses of the symbol at the caret, carried with the text while they are kept.</summary>
     private readonly AnchoredList<UsageHighlight> usages = new(u => u.Range, (u, range) => u with { Range = range });
 
-    /// <summary>The uses of the symbol at the caret (sorted), from the host.</summary>
+    /// <summary>The uses of the symbol at the caret, or the places of the word chosen (sorted), from the host.</summary>
     public IReadOnlyList<UsageHighlight> UsageHighlights => usages.Items;
 
     /// <summary>Whether the uses shown were asked to stay (Highlight Usages in File): they move with edits rather than go,

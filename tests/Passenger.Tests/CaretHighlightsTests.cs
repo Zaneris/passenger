@@ -13,14 +13,19 @@ namespace Passenger.Tests;
 
 /// <summary>What the caret lights up in a C# file, through the whole window on a real project: the uses of the symbol it
 /// rests on from the language server, writes apart from reads and marked on the scrollbar, gone the moment the caret
-/// leaves them or the text changes; Highlight Usages in File keeping them; and the bracket at the caret with its pair,
-/// which Move Caret to Matching Brace goes between, from the file's own parse, in windows with no language server.</summary>
+/// leaves them or the text changes; a word chosen that the server lights nothing for (a keyword, a word in a comment)
+/// lighting its other places by their text; Highlight Usages in File keeping them; and the bracket at the caret with its
+/// pair, which Move Caret to Matching Brace goes between, from the file's own parse, in windows with no language server.</summary>
 public sealed class CaretHighlightsTests : IClassFixture<CaretHighlightsTests.Project>
 {
     private const string Totals = "static class Totals\n{\n    public static int Sum(int[] values)\n    {\n        int total = 0;\n"
         + "        foreach (int value in values)\n        {\n            total += value * (value + 1);\n        }\n        return total;\n    }\n}\n";
 
     private const string Braces = "static class Braces\n{\n    public static int Deep(int a)\n    {\n        return ((a + 1) * (a + 2));\n    }\n}\n";
+
+    private const string Words = "static class Words\n{\n    // The public count of a text's words, publicly said: Public in a title.\n"
+        + "    public static int Count(string text)\n    {\n        int count = 0;\n        foreach (string word in text.Split(' '))\n        {\n"
+        + "            count += 1;\n        }\n        return count;\n    }\n\n    public static readonly string Said = \"count every public word\";\n}\n";
 
     private readonly Project project;
 
@@ -187,6 +192,53 @@ public sealed class CaretHighlightsTests : IClassFixture<CaretHighlightsTests.Pr
         window.Close();
     }
 
+    /// <summary>A double-click on a keyword, which the server lights nothing for, lights its other places as whole words
+    /// in its case, in comments and strings too, each marked on the scrollbar where its row is and saying what it is.</summary>
+    [AvaloniaFact]
+    public void Double_clicking_a_keyword_lights_its_other_places_by_their_text_and_marks_each_on_the_scrollbar()
+    {
+        MainWindow window = project.Open("Words.cs");
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        Ui.DoubleClick(editor, editor.PointOf(Words.IndexOf("public static int", StringComparison.Ordinal) + 2) + new Point(1, editor.LineHeight / 2));
+        Ui.WaitFor(() => editor.UsageHighlights.Count == 4, () => $"public's four places lit, not [{Lit(editor)}]");
+
+        Assert.Equal([2, 3, 13, 13], editor.UsageHighlights.Select(u => editor.Document.Snapshot.GetLineFromOffset(u.Range.Start)));
+        Assert.All(editor.UsageHighlights, u => Assert.True(TextOf(editor, u.Range) == "public" && u.ByText && !u.IsWrite,
+            $"The places of public should each be the word, lit by its text as read: [{Lit(editor)}]"));
+        List<CodeEditor.StripeMark> marks = [.. editor.StripeMarks.Where(m => m.Kind is StripeMarkKind.Usage or StripeMarkKind.WriteUsage)];
+        Assert.Equal([2, 3, 13, 13], marks.Select(m => m.Row));
+        Assert.All(marks, m => Assert.Equal("Same word", m.Message));
+        Assert.Equal(Token(window, TokenKeys.Editor_UsageRead), Ui.Pixel(window, InBox(window, editor, editor.UsageHighlights[0].Range.Start)));
+        Assert.Equal(Token(window, TokenKeys.Editor_UsageReadMark), Ui.Pixel(window, editor.TranslatePoint(editor.StripePoint(marks[0]), window)!.Value));
+
+        Ui.DoubleClick(editor, editor.PointOf(Words.IndexOf("static int", StringComparison.Ordinal) + 2) + new Point(1, editor.LineHeight / 2));
+        Ui.WaitFor(() => editor.UsageHighlights.Count == 3 && editor.UsageHighlights.All(u => TextOf(editor, u.Range) == "static"),
+            () => $"static's three places lit, not [{Lit(editor)}]");
+        Assert.Equal([0, 3, 13], editor.UsageHighlights.Select(u => editor.Document.Snapshot.GetLineFromOffset(u.Range.Start)));
+        window.Close();
+    }
+
+    /// <summary>A double-click on a local lights only its uses as the server gives them, never the same word written in a
+    /// comment or a string; the word chosen in the comment, where the server lights nothing, lights every place of it.</summary>
+    [AvaloniaFact]
+    public void Double_clicking_a_symbol_lights_only_its_uses_and_the_same_word_in_a_comment_lights_every_place_of_it()
+    {
+        MainWindow window = project.Open("Words.cs");
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        Ui.DoubleClick(editor, editor.PointOf(Words.IndexOf("return count", StringComparison.Ordinal) + "return co".Length) + new Point(1, editor.LineHeight / 2));
+        Ui.WaitFor(() => editor.UsageHighlights.Count == 3 && !editor.UsageHighlights.Any(u => u.ByText),
+            () => $"the local's three uses from the server, not [{Lit(editor)}]");
+        Assert.Equal([5, 8, 10], editor.UsageHighlights.Select(u => editor.Document.Snapshot.GetLineFromOffset(u.Range.Start)));
+        Assert.Equal([true, true, false], editor.UsageHighlights.Select(u => u.IsWrite));
+        Assert.All(editor.StripeMarks.Where(m => m.Kind is StripeMarkKind.Usage or StripeMarkKind.WriteUsage), m => Assert.NotEqual("Same word", m.Message));
+
+        Ui.DoubleClick(editor, editor.PointOf(Words.IndexOf("count of", StringComparison.Ordinal) + 2) + new Point(1, editor.LineHeight / 2));
+        Ui.WaitFor(() => editor.UsageHighlights.Count == 5, () => $"count's five places by its text, not [{Lit(editor)}]");
+        Assert.All(editor.UsageHighlights, u => Assert.True(TextOf(editor, u.Range) == "count" && u.ByText, $"Lit: [{Lit(editor)}]"));
+        Assert.Equal([2, 5, 8, 10, 13], editor.UsageHighlights.Select(u => editor.Document.Snapshot.GetLineFromOffset(u.Range.Start)));
+        window.Close();
+    }
+
     [AvaloniaFact]
     public void A_bracket_at_the_caret_and_its_pair_are_highlighted_nested_and_across_lines()
     {
@@ -248,6 +300,10 @@ public sealed class CaretHighlightsTests : IClassFixture<CaretHighlightsTests.Pr
 
     private static string TextOf(CodeEditor editor, TextRange range) => editor.Document.Snapshot.GetText(range);
 
+    /// <summary>What is lit, each as its text, line and kind.</summary>
+    private static string Lit(CodeEditor editor) => string.Join(", ", editor.UsageHighlights.Select(u =>
+        $"{TextOf(editor, u.Range)}@{editor.Document.Snapshot.GetLineFromOffset(u.Range.Start)}{(u.ByText ? " by text" : u.IsWrite ? " write" : " read")}"));
+
     /// <summary>A point inside the box drawn behind the character at an offset: at its top, above the glyph, and at its
     /// right, clear of a caret before it.</summary>
     private static Point InBox(MainWindow window, CodeEditor editor, int offset) =>
@@ -268,6 +324,7 @@ public sealed class CaretHighlightsTests : IClassFixture<CaretHighlightsTests.Pr
                 $"<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <OutputType>Library</OutputType>\n    <TargetFramework>{TestProjects.Framework}</TargetFramework>\n  </PropertyGroup>\n</Project>\n");
             File.WriteAllText(PathOf("Totals.cs"), Totals);
             File.WriteAllText(PathOf("Braces.cs"), Braces);
+            File.WriteAllText(PathOf("Words.cs"), Words);
         }
     }
 }

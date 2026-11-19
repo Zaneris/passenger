@@ -170,5 +170,6 @@ public interface IFoldFinder
 }
 
 /// <summary>A use of the symbol at the caret, as the language service highlights it: a write (an assignment, a
-/// declaration with its value) apart from a read.</summary>
-public readonly record struct UsageHighlight(TextRange Range, bool IsWrite);
+/// declaration with its value) apart from a read; or, <see cref="ByText"/>, a place of a word chosen that the language
+/// lights nothing for, found by its text alone and drawn as a read.</summary>
+public readonly record struct UsageHighlight(TextRange Range, bool IsWrite, bool ByText = false);
