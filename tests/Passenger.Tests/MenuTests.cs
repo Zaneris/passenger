@@ -5,6 +5,7 @@ using Avalonia.Controls.Primitives;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.Input;
+using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.VisualTree;
 using Passenger.App;
@@ -382,6 +383,69 @@ public sealed class MenuTests : IDisposable
         {
             MainWindow.SystemMenuBar = OperatingSystem.IsMacOS();
             window.Close();
+        }
+    }
+
+    /// <summary>Every kind of menu holds to the one greatest width (Shell.axaml's Passenger.MenuWidth): a context menu (the
+    /// editor's, a list's), a menu flyout (a widget's, a run icon's, the main menu's) and a submenu of each, an item too long
+    /// for it giving way inside its frame (MenuTrimming) with nothing cut at its edge, where a flyout laid its items out past
+    /// its edge, unshortened.</summary>
+    [AvaloniaFact]
+    public void Every_kind_of_menu_holds_to_the_one_greatest_width_an_items_words_giving_way_inside_it()
+    {
+        MainWindow window = OpenOne();
+        try
+        {
+            double greatest = (double)window.FindResource(TokenKeys.MenuWidth)!;
+            string words = $"Run '{string.Concat(Enumerable.Repeat("A_long_name_", 12))}' Until Failure";
+            CodeEditor editor = window.EditorArea.CodeEditor;
+            List<string> wrong = [];
+            ContextMenu context = new() { ItemsSource = new object[] { new MenuItem { Header = words }, Holding(words) } };
+            context.Open(editor);
+            Ui.Settle();
+            Holds("A context menu", context);
+            Holds("A context menu's submenu", Submenu(context.Items.OfType<MenuItem>().Last()));
+            context.Close();
+            Ui.Settle();
+            MenuFlyout flyout = new() { Items = { new MenuItem { Header = words }, Holding(words) } };
+            flyout.ShowAt(editor);
+            Ui.Settle();
+            Holds("A menu flyout", window.GetVisualDescendants().OfType<MenuFlyoutPresenter>().First(p => p.IsEffectivelyVisible));
+            Holds("A menu flyout's submenu", Submenu(flyout.Items.OfType<MenuItem>().Last()));
+            flyout.Hide();
+            Ui.Settle();
+            Assert.True(wrong.Count == 0, string.Join("\n", wrong));
+
+            void Holds(string what, Control menu)
+            {
+                Border frame = menu.GetSelfAndVisualDescendants().OfType<Border>().First(b => b.BoxShadow.Count > 0);
+                double held = frame.GetSelfAndVisualAncestors().TakeWhile(v => v is not (TopLevel or OverlayPopupHost)).OfType<Layoutable>().Min(v => v.MaxWidth);
+                TextBlock item = menu.GetVisualDescendants().OfType<MenuItem>().First(i => i.Header as string == words).GetVisualDescendants()
+                    .OfType<Avalonia.Controls.Presenters.ContentPresenter>().First(p => p.Name == "PART_HeaderPresenter").GetVisualDescendants().OfType<TextBlock>().First();
+                string shown = string.Concat(item.TextLayout.TextLines.SelectMany(l => l.TextRuns).Select(r => r.Text.ToString()));
+                if (held != greatest || frame.Bounds.Width > greatest + 0.5)
+                {
+                    wrong.Add($"{what} is held to {held:0.#} px and drawn {frame.Bounds.Width:0.#} wide, where every menu is held to {greatest:0.#}");
+                }
+                if (!shown.Contains('…', StringComparison.Ordinal) || !shown.EndsWith("' Until Failure", StringComparison.Ordinal))
+                {
+                    wrong.Add($"{what} shows its long item as '{shown}', where its name gives way inside the menu's width and the words after it stand whole");
+                }
+                wrong.AddRange(LayoutFaults.Of(window, menu, what));
+            }
+        }
+        finally
+        {
+            window.Close();
+        }
+
+        static MenuItem Holding(string words) => new() { Header = "More", ItemsSource = new[] { new MenuItem { Header = words } } };
+
+        static Control Submenu(MenuItem item)
+        {
+            item.Open();
+            Ui.Settle();
+            return item.GetVisualDescendants().OfType<Popup>().Single().Child!;
         }
     }
 

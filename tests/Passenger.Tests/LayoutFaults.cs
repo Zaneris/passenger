@@ -91,8 +91,9 @@ internal static class LayoutFaults
     }
 
     /// <summary>How much of a text's words a scroller holding it shows, where that is less than all of them and the person
-    /// can't scroll it sideways to the rest: one that scrolls no way sideways, or a field's, which moves only to keep its
-    /// caret in view, so only its typed text is scrolled to. Null where none cuts it.</summary>
+    /// can't scroll it sideways to the rest: one that scrolls no way sideways, one with no sideways bar (a menu's, whose
+    /// arrows scroll it only up and down), or a field's, which moves only to keep its caret in view, so only its typed
+    /// text is scrolled to. Null where none cuts it.</summary>
     private static double? CutUnscrolled(TextBlock text)
     {
         TextLine[] lines = [.. text.TextLayout.TextLines];
@@ -104,7 +105,8 @@ internal static class LayoutFaults
         double end = text.Padding.Left + lines.Max(l => l.Start + l.Width);
         foreach (ScrollContentPresenter scroller in text.GetVisualAncestors().OfType<ScrollContentPresenter>())
         {
-            if (scroller.CanHorizontallyScroll && scroller.TemplatedParent is not ScrollViewer { TemplatedParent: TextBox })
+            if (scroller.CanHorizontallyScroll && scroller.TemplatedParent is ScrollViewer viewer and not { TemplatedParent: TextBox }
+                && viewer.GetVisualDescendants().OfType<ScrollBar>().Any(b => b.TemplatedParent == viewer && b.Orientation == Orientation.Horizontal))
             {
                 continue;
             }

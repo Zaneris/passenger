@@ -1545,9 +1545,9 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
 
     /// <summary>A field's placeholder too long for it ends in an ellipsis, where the field's scroller, which only follows
     /// its caret, would have cut it mid-letter; and the layout check finds a word cut inside a scroller the person can't
-    /// scroll to it: a placeholder laid out wider than its field, as every one was, and words wider than a scroller that
-    /// scrolls no way sideways. A field's own typed text, which its caret scrolls to, and words in a scroller with its bar,
-    /// are not cuts.</summary>
+    /// scroll to it: a placeholder laid out wider than its field, as every one was, words wider than a scroller that
+    /// scrolls no way sideways, and words wider than a menu's scroller, which has no sideways bar. A field's own typed
+    /// text, which its caret scrolls to, and words in a scroller with its bar, are not cuts.</summary>
     [AvaloniaFact]
     public void A_fields_long_placeholder_ends_in_an_ellipsis_and_the_check_finds_one_cut_inside_its_scroller()
     {
@@ -1570,7 +1570,13 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
             Width = 160, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled, HorizontalAlignment = HorizontalAlignment.Left,
             Content = new TextBlock { Text = "Words in a scroller that scrolls no way sideways", Width = 400, HorizontalAlignment = HorizontalAlignment.Left },
         };
-        Window window = new() { Width = 400, Height = 400, Content = new StackPanel { Spacing = 8, Children = { field, typed, scrolledPlaceholder, barred, unscrolled } } };
+        ScrollViewer menus = new()
+        {
+            Width = 160, HorizontalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalAlignment = HorizontalAlignment.Left,
+            Theme = (ControlTheme)Application.Current!.FindResource("FluentMenuScrollViewer")!,
+            Content = new TextBlock { Text = "Words in a menu's scroller, which has no sideways bar" },
+        };
+        Window window = new() { Width = 400, Height = 400, Content = new StackPanel { Spacing = 8, Children = { field, typed, scrolledPlaceholder, barred, unscrolled, menus } } };
         window.Show();
         try
         {
@@ -1580,9 +1586,9 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
                 $"A field {field.Bounds.Width:0} px wide lays its placeholder out {placeholder.Bounds.Width:0} px wide, untrimmed: it is cut mid-letter at the field's edge, where words with no room end in an ellipsis");
             List<string> found = LayoutFaults.Of(window, window, "The test window");
             string[] cut = [.. found.Where(f => f.Contains("scroller", StringComparison.Ordinal))];
-            Assert.True(cut.Length == 2 && cut.Any(f => f.Contains(Long, StringComparison.Ordinal)) && cut.Any(f => f.Contains("scrolls no way", StringComparison.Ordinal))
-                && found.Count == cut.Length,
-                $"The check found {found.Count} faults where a placeholder cut inside its field's scroller and words cut by a scroller that scrolls no way sideways stand, and nothing else:\n{string.Join("\n", found)}");
+            Assert.True(cut.Length == 3 && cut.Any(f => f.Contains(Long, StringComparison.Ordinal)) && cut.Any(f => f.Contains("scrolls no way", StringComparison.Ordinal))
+                && cut.Any(f => f.Contains("no sideways bar", StringComparison.Ordinal)) && found.Count == cut.Length,
+                $"The check found {found.Count} faults where a placeholder cut inside its field's scroller, words cut by a scroller that scrolls no way sideways and words cut by a menu's scroller stand, and nothing else:\n{string.Join("\n", found)}");
 
             // Typed into, the field scrolls again to keep its caret, at the end of the words, in view.
             Ui.WaitFor(() => field.Focus() && field.IsFocused, "the field to take the keys");

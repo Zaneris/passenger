@@ -846,9 +846,10 @@ public sealed class UnitTestsTests : UnitTestsFolders, IClassFixture<RestoredFol
         }
     }
 
-    /// <summary>The editor's menu and the run icon's, on a test whose name is longer than the editor's menu has room for, keep
-    /// each item told apart: its verb and the words after the name (Until Failure) whole, the name giving way in its middle
-    /// where the menu is too narrow, its start and its end shown, where each was cut at the menu's edge to the same words.</summary>
+    /// <summary>The editor's menu and the run icon's, on a test whose name is longer than a menu has room for, keep each item
+    /// told apart: its verb and the words after the name (Until Failure) whole, the name giving way in its middle, its start
+    /// and its end shown, however much of it a system's font leaves room for, where each was cut at the menu's edge to the
+    /// same words; the run icon's menu, a flyout, gives way as the editor's does, where it ran its words past its edge.</summary>
     [AvaloniaFact]
     public void A_long_test_names_run_debug_and_until_failure_items_keep_their_own_words_whole()
     {
@@ -862,19 +863,16 @@ public sealed class UnitTestsTests : UnitTestsFolders, IClassFixture<RestoredFol
         window.EditorArea.CodeEditor.RequestContextMenu();
         Ui.Settle();
         Avalonia.Controls.ContextMenu menu = window.OpenContextMenu ?? throw new InvalidOperationException("The editor's menu did not open");
-        MenuItem[] items = [.. menu.Items.OfType<MenuItem>()];
-        KeepOwnWords(items, "The editor's menu");
-        Assert.True(items.Count(i => i.Header is string words && words.Contains(Name, StringComparison.Ordinal) && Shown(i) != words) == 3,
-            $"The editor's menu, {menu.Bounds.Width:0} px wide, shows [{string.Join(" | ", items.Select(Shown))}], where its three items naming the test give way in the name");
+        GiveWayInTheName([.. menu.Items.OfType<MenuItem>()], "The editor's menu");
         menu.Close();
         Ui.Settle();
 
-        KeepOwnWords(TestMarkMenu(window, path, $"    public void {Name}()"), "The run icon's menu");
+        GiveWayInTheName(TestMarkMenu(window, path, $"    public void {Name}()"), "The run icon's menu");
         window.TestMarkMenu!.Hide();
         Ui.Settle();
         window.Close();
 
-        static void KeepOwnWords(MenuItem[] items, string what)
+        static void GiveWayInTheName(MenuItem[] items, string what)
         {
             MenuItem[] tests = [.. items.Where(i => i.Header is string h && (h.StartsWith("Run '", StringComparison.Ordinal) || h.StartsWith("Debug '", StringComparison.Ordinal)))];
             string[] shown = [.. tests.Select(Shown)];
@@ -884,9 +882,11 @@ public sealed class UnitTestsTests : UnitTestsFolders, IClassFixture<RestoredFol
             (string Verb, string After)[] own = [("Run", "'"), ("Debug", "'"), ("Run", "' Until Failure")];
             for (int i = 0; i < own.Length; i++)
             {
-                Assert.True(shown[i].StartsWith($"{own[i].Verb} 'Parses_a", StringComparison.Ordinal) && shown[i].EndsWith($"folder_moved{own[i].After}", StringComparison.Ordinal)
-                    && (shown[i] == (string)tests[i].Header! || shown[i].Contains('\u2026', StringComparison.Ordinal)),
-                    $"{what} shows '{tests[i].Header}' as '{shown[i]}', among [{said}], where its verb, the name's start and end and the words after it stand whole, the name giving way between them");
+                string before = $"{own[i].Verb} '";
+                string[] halves = shown[i].StartsWith(before, StringComparison.Ordinal) && shown[i].EndsWith(own[i].After, StringComparison.Ordinal)
+                    ? shown[i][before.Length..^own[i].After.Length].Split('\u2026') : [];
+                Assert.True(halves is [{ Length: > 0 } start, { Length: > 0 } end] && Name.StartsWith(start, StringComparison.Ordinal) && Name.EndsWith(end, StringComparison.Ordinal),
+                    $"{what} shows '{tests[i].Header}' as '{shown[i]}', among [{said}], where its verb and the words after the name stand whole, the name's start and end either side of an ellipsis");
             }
             Visual popup = TopLevel.GetTopLevel(tests[0])!;
             List<string> faults = LayoutFaults.Of(popup, tests[0].FindAncestorOfType<MenuBase>()!, what);

@@ -16,6 +16,11 @@
         <!-- The room round a menu's frame its shadow is drawn in (Passenger.PopupShadow's reach), inside the menu's own popup:
              the margin of what the popup holds, by which the popup places the frame where it would stand without it. -->
         <Thickness x:Key="Passenger.MenuShadowRoom">12,12,12,20</Thickness>
+        <!-- The widest every menu's frame stands: a context menu's, a menu a widget or a run icon opens, the main menu's and
+             a submenu of each, all of which Fluent sizes by FlyoutThemeMaxWidth; an item's words longer than its room there
+             give way in it (MenuTrimming). -->
+        <x:Double x:Key="Passenger.MenuWidth">456</x:Double>
+        <StaticResource x:Key="FlyoutThemeMaxWidth" ResourceKey="Passenger.MenuWidth" />
         <!-- A submenu opens beside its item, never over it (MenuShadow.Beside), so it is moved across by nothing more. -->
         <x:Double x:Key="MenuFlyoutSubItemPopupHorizontalOffset">0</x:Double>
         <!-- A text box's caret blink until Carets.UseBlink puts the system's in force in the application's resources. -->
@@ -111,8 +116,11 @@
     <Style Selector="ContextMenu /template/ Border">
         <Setter Property="BoxShadow" Value="{DynamicResource Passenger.PopupShadow}" />
     </Style>
+    <!-- A menu flyout framed as a context menu, its items laid out in its width as every other menu's are, so their words
+         give way inside it rather than running on past its edge, where no bar scrolls them sideways. -->
     <Style Selector="MenuFlyoutPresenter">
         <Setter Property="Margin" Value="{DynamicResource Passenger.MenuShadowRoom}" />
+        <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Disabled" />
     </Style>
     <Style Selector="MenuFlyoutPresenter /template/ Border#LayoutRoot">
         <Setter Property="BoxShadow" Value="{DynamicResource Passenger.PopupShadow}" />
