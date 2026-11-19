@@ -324,6 +324,60 @@ public sealed class ExplorerFilesTests : IDisposable
         }
     }
 
+    /// <summary>A project's folder renamed or deleted while its design-time build runs, the C# language server waiting for
+    /// that build, goes before the server is told the project: telling it looks at the project's files, and the server then
+    /// reads them, as the build lands, and on Windows a folder with a file under it open does not move. The project's file
+    /// is shown, so the server asks for it first.</summary>
+    [AvaloniaTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_projects_folder_renamed_or_deleted_as_its_design_time_build_lands_goes_before_the_language_server_is_told_the_project(bool delete)
+    {
+        string library = Directory.CreateDirectory(Path.Combine(folder, "Lib")).FullName;
+        string release = Path.Combine(folder, "release");
+        File.WriteAllText(Path.Combine(library, "Lib.csproj"), TestProjects.Library());
+        File.WriteAllText(Path.Combine(library, "Code.cs"), "class Code\n{\n}\n");
+        File.WriteAllText(Path.Combine(library, "Directory.Build.targets"), Holding(release));
+        Restore.Run(Path.Combine(library, "Lib.csproj"));
+        string lib = PathNames.Canonical(library);
+        string change = delete ? "delete" : "rename";
+        MainWindow window = new() { Width = 1200, Height = 800 };
+        window.Show();
+        window.OpenFolder(folder);
+        window.OpenFile(Path.Combine(lib, "Code.cs"));
+        ProjectBuilds builds = window.Session.DesignTimeBuilds;
+        string project = Path.Combine(lib, "Lib.csproj");
+        Task asked = builds.HoldNextAsked(project, Task.CompletedTask);
+        try
+        {
+            // Pumped, not settled: the language server's load waits for the design-time build.
+            Ui.PumpUntil(() => File.Exists(Path.Combine(library, "held")), "Lib's design-time build to be held", TimeSpan.FromMinutes(2));
+            Assert.True(Ui.Pumped(() => asked.IsCompleted, TimeSpan.FromMinutes(2)),
+                $"The language server never asked for Lib's design-time build, {builds.Awaited} awaited{Ui.IdeLogTail()}{Ui.ServerLogTail()}");
+            Task<string?>? changing = null;
+            bool? toldAfter = null;
+            builds.WhileNextLook(project, () => toldAfter = changing?.IsCompleted);
+            window.Confirm = (_, _, _) => Task.FromResult(true);
+            changing = delete ? Deleted(window, lib) : window.RenameAsync(lib, "Core");
+            Ui.PumpUntil(() => changing.IsCompleted || window.Status?.StartsWith("Waiting for the design-time build of Lib", StringComparison.Ordinal) == true,
+                $"the {change} to wait for Lib's design-time build");
+            Assert.False(changing.IsCompleted, $"The {change} of Lib did not wait for its design-time build: {window.Status}");
+
+            File.WriteAllText(release, "go");
+            string? refused = Ui.AwaitPumped(changing, $"the {change} of Lib", TimeSpan.FromMinutes(2));
+            Assert.True(refused is null && !Directory.Exists(library), $"Lib's {change} was refused: {refused}, the status bar saying {window.Status}{Holders(window, library)}");
+            Ui.PumpUntil(() => toldAfter is not null, "the language server to be told Lib", TimeSpan.FromMinutes(1));
+            Assert.True(toldAfter, $"The language server was told Lib, its files looked at, as its folder's {change} waited to go: the server then reads them, and on Windows a folder with a file under it open does not move");
+        }
+        finally
+        {
+            File.WriteAllText(release, "go");
+            window.Close();
+        }
+
+        static async Task<string?> Deleted(MainWindow window, string lib) => await window.DeleteAsync(lib) ? null : window.Status;
+    }
+
     /// <summary>On Windows a round of design-time builds is over only once the processes its build session started, MSBuild's
     /// nodes, are gone: a node goes on working in the folder of the project it built last until its process is gone, and a
     /// folder going, which waits for the round that built its project, would not move while one does. Shop's and Lib's builds
