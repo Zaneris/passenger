@@ -764,6 +764,8 @@ internal sealed class CilInterpreter(ManagedDebugger debugger, RuntimeAssemblyPr
             ResolvedCilType tokenType = argumentValues[0].Value as ResolvedCilType
                 ?? throw new InvalidOperationException("GetTypeFromHandle requires a type token");
             ICorDebugValue? typeValue = await GetSystemTypeAsync(tokenType, resolver, context, handles);
+            // A typeof may be the expression's answer, which a weak handle kept for the session would not hold.
+            typeValue = typeValue is ICorDebugHandleValue held && debugger.SystemTypes.Holds(held) ? handles.CreateOwnedHandle(held) : typeValue;
             stack.Push(typeValue is null ? CilValue.Null() : CilValue.FromTypeToken(tokenType, typeValue));
             return;
         }
@@ -1227,17 +1229,38 @@ internal sealed class CilInterpreter(ManagedDebugger debugger, RuntimeAssemblyPr
         EvaluationMetadataResolver resolver = run.Resolver;
         ICorDebugValue elementType = await GetSystemTypeAsync(arrayType.ElementType!, resolver, run.Context, run.Handles)
             ?? throw new InvalidOperationException("Failed to resolve the element type for array allocation");
-        string integers = MetadataTypeNames.Of(PrimitiveTypeCode.Int32) + "[]";
-        ResolvedRuntimeMethod createInstance = resolver.ResolveRuntimeMethod("System", "Array", "CreateInstance", "System.Type", integers, integers);
-        ICorDebugValue[] createArguments = [elementType, await IntegersAsync(lengths, run), await IntegersAsync(lowerBounds, run)];
+        string integer = MetadataTypeNames.Of(PrimitiveTypeCode.Int32);
+        string integers = integer + "[]";
+        List<string> parameters = ["System.Type"];
+        List<ICorDebugValue> createArguments = [elementType];
+        // Each array of integers is a call in the program: bounds from zero need none, and two or three lengths none either.
+        if (rank == 1 || lowerBounds.Any(bound => bound != 0))
+        {
+            parameters.AddRange([integers, integers]);
+            createArguments.AddRange([await IntegersAsync(lengths, run), await IntegersAsync(lowerBounds, run)]);
+        }
+        else if (rank is 2 or 3)
+        {
+            foreach (int length in lengths)
+            {
+                parameters.Add(integer);
+                createArguments.Add(await MaterializeAsync(CilValue.FromPrimitive(length), run.Context, run.Handles));
+            }
+        }
+        else
+        {
+            parameters.Add(integers);
+            createArguments.Add(await IntegersAsync(lengths, run));
+        }
+        ResolvedRuntimeMethod createInstance = resolver.ResolveRuntimeMethod("System", "Array", "CreateInstance", [.. parameters]);
         ICorDebugValue? array = run.Handles.Track(await run.Context.Thread.CreateEval().CallParameterizedFunctionAsync(
             debugger.ProcessRuntimeEventsUntilEvalEvent,
             debugger.EvalStatus,
             createInstance.Function,
             0,
             null,
-            createArguments.Length,
-            createArguments,
+            createArguments.Count,
+            [.. createArguments],
             throwOnException: true));
         return array is null ? CilValue.Null() : CilValue.FromCorValue(array);
     }
@@ -1317,8 +1340,16 @@ internal sealed class CilInterpreter(ManagedDebugger debugger, RuntimeAssemblyPr
         return result is not null && CilValue.FromCorValue(result).IsTrue();
     }
 
+    /// <summary>The program's System.Type for <paramref name="type"/>: made there by its name (two calls in the program) the
+    /// first time in the session, then the one kept (<see cref="SystemTypes"/>), which is held weakly, so a caller whose
+    /// value may outlive the expression roots it.</summary>
     private async Task<ICorDebugValue?> GetSystemTypeAsync(ResolvedCilType type, EvaluationMetadataResolver resolver, CompiledExpressionEvaluationContext context, EvaluationHandleScope handles)
     {
+        ICorDebugType? exact = ExactType(type, resolver);
+        if (exact is not null && debugger.SystemTypes.Find(exact) is { } kept)
+        {
+            return kept;
+        }
         ResolvedRuntimeMethod getType = resolver.ResolveRuntimeMethod("System", "Type", "GetType", MetadataTypeNames.Of(PrimitiveTypeCode.String));
         ICorDebugEval eval = context.Thread.CreateEval();
         ICorDebugValue typeName = handles.Track(await eval.NewStringAsync(
@@ -1326,7 +1357,7 @@ internal sealed class CilInterpreter(ManagedDebugger debugger, RuntimeAssemblyPr
             debugger.EvalStatus,
             resolver.GetAssemblyQualifiedTypeName(type),
             throwOnException: true))!;
-        return handles.Track(await eval.CallParameterizedFunctionAsync(
+        ICorDebugValue? made = handles.Track(await eval.CallParameterizedFunctionAsync(
             debugger.ProcessRuntimeEventsUntilEvalEvent,
             debugger.EvalStatus,
             getType.Function,
@@ -1335,6 +1366,24 @@ internal sealed class CilInterpreter(ManagedDebugger debugger, RuntimeAssemblyPr
             1,
             [typeName],
             throwOnException: true));
+        if (made is not null && exact is not null)
+        {
+            debugger.SystemTypes.Keep(exact, made);
+        }
+        return made;
+    }
+
+    /// <summary>The runtime's own type for <paramref name="type"/>, or null for one it has none of (an open generic).</summary>
+    private static ICorDebugType? ExactType(ResolvedCilType type, EvaluationMetadataResolver resolver)
+    {
+        try
+        {
+            return resolver.GetCorDebugType(type);
+        }
+        catch (Exception error) when (error is NotSupportedException or InvalidOperationException || Failures.OfRuntime(error))
+        {
+            return null;
+        }
     }
 
     /// <summary>The array an instruction reads, writes or measures; a null one throws the NullReferenceException the

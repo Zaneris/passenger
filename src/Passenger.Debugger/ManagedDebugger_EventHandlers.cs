@@ -246,6 +246,7 @@ public partial class ManagedDebugger
         _logger?.Invoke($"Module unloaded: {moduleInfo.ModulePath} from 0x{(long)moduleInfo.BaseAddress:X}");
         moduleInfo.Dispose();
         ModuleSet_Version++;
+        SystemTypes.LetGo();
 
         foreach (BreakpointManager.BreakpointInfo breakpoint in _breakpointManager.GetAllBreakpoints())
         {

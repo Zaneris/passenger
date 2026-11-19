@@ -1,3 +1,4 @@
+using Passenger.Core;
 using Passenger.Dap;
 using Passenger.Tests.Debugging.Helpers;
 
@@ -255,6 +256,46 @@ public class InterpreterTests(ITestOutputHelper testOutputHelper)
         string negative = (await Evaluate(host, frame, "new int[letter - 'B', 2]")).Value;
         Assert.True(negative.StartsWith("error: Evaluation threw System.OverflowException", StringComparison.Ordinal),
             $"new int[letter - 'B', 2] answered \"{negative}\", where the program would throw an OverflowException for the length of -1");
+    }
+
+    /// <summary>A multi-dimensional array of bounds from zero costs the program one call, Array.CreateInstance given its
+    /// lengths, once the session has its element type's System.Type, kept from the first such array through a step; a rank
+    /// past three costs one call more, for its lengths' array, and a typeof of the type none. Calls are counted, never timed.</summary>
+    [Fact]
+    public async Task A_multi_dimensional_array_takes_one_call_in_the_program_once_the_session_has_its_element_type()
+    {
+        await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
+        await host
+            .InitializeAsync()
+            .LaunchAsync(Debuggees.Program("PassengerCases"), stopAtEntry: false, justMyCode: true)
+            .WaitForInitializedEvent();
+        string reading = "Console.WriteLine(\"reading\");";
+        await host.BreakpointsAsync([Line(reading)], Debuggees.Source("PassengerCases", "Program.cs")).ConfigurationDoneAsync();
+        StoppedEvent stop = await host.WaitForStoppedEvent();
+        int thread = stop.ThreadId!.Value;
+        int frame = (await host.TopFrameAsync(thread)).Id;
+
+        // Its element type's name made in the program, Type.GetType of it, then Array.CreateInstance.
+        await Called(host, frame, "new int[,] { {1,2},{3,4} }[1,0]", "3", 3);
+        await Called(host, frame, "(new int[2, 3])[1, 2]", "0", 1);
+        await Called(host, frame, "(new int[1, 2, 1, 2])[0, 1, 0, 1]", "0", 2);
+        await Called(host, frame, "typeof(int).Name", "\"Int32\"", 1);
+
+        await host.StepOverAsync(thread).WaitForStoppedEvent();
+        frame = (await host.TopFrameAsync(thread)).Id;
+        await Called(host, frame, "(new int[3, 3])[2, 2]", "0", 1);
+    }
+
+    /// <summary>Evaluates <paramref name="expression"/>, which is to answer <paramref name="answer"/> having run
+    /// <paramref name="calls"/> calls in the program, as the engine's log tells each one's end.</summary>
+    private static async Task Called(DebugSession host, int frame, string expression, string answer, int calls)
+    {
+        string answered = (await Evaluate(host, frame, expression)).Value;
+        string log = host.EngineLog();
+        string[] lines = log[Math.Max(0, log.LastIndexOf($"Evaluate: {expression}", StringComparison.Ordinal))..].Split('\n');
+        int ran = lines.Count(line => line.Contains("Event: EvalComplete", StringComparison.Ordinal) || line.Contains("Event: EvalException", StringComparison.Ordinal));
+        Assert.True(answered == answer && ran == calls,
+            $"{expression} answered {answered} after {Plural.Of(ran, "call")} in the program, where it was to answer {answer} after {calls}; the engine's log:\n{string.Join('\n', lines)}");
     }
 
     /// <summary>A call that throws in the program is named with what its exception says, as the program's own catch reads

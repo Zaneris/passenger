@@ -223,6 +223,9 @@ public partial class ManagedDebugger
 
     internal EvalStatus EvalStatus { get; }
 
+    /// <summary>The System.Type the program made for each type an expression named, kept for the session.</summary>
+    internal ExpressionEvaluator.Cil.SystemTypes SystemTypes { get; } = new();
+
     private readonly Channel<CorDebugManagedCallbackEventArgs> _runtimeEventChannel;
     public readonly EngineLock DapRequestAndRuntimeEventLock = new();
 
@@ -1480,6 +1483,7 @@ public partial class ManagedDebugger
         _breakpointManager.Clear();
         // Before the program is let go: a debug register left set would end it at the next write it watched.
         ForgetDataBreakpoints(exited);
+        SystemTypes.LetGo(exited);
 
         _asyncStepper?.Dispose();
         _asyncStepper = null;
