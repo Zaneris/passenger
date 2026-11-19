@@ -19,7 +19,7 @@ internal sealed class Grammar
     private static readonly string Theme = ThemeText();
 
     private readonly Lazy<(GrammarRegistry Registry, Tint.Theme Theme)> compiled;
-    private readonly Lazy<Tokenizer> rules;
+    private readonly Lazy<(Tokenizer Rules, StateStack FirstLineEnd)> rules;
     private readonly Lazy<Tokenizer> longRules;
     private TokenKind[] kinds = [];
 
@@ -27,7 +27,12 @@ internal sealed class Grammar
     {
         Tags = tags;
         compiled = new(() => Load(scope), LazyThreadSafetyMode.ExecutionAndPublication);
-        rules = new(() => compiled.Value.Registry.CreateTokenizer(scope, compiled.Value.Theme), LazyThreadSafetyMode.ExecutionAndPublication);
+        rules = new(() =>
+        {
+            Tokenizer tokenizer = compiled.Value.Registry.CreateTokenizer(scope, compiled.Value.Theme);
+            _ = tokenizer.TokenizeLineEncoded([], StateStack.Initial, out StateStack firstLineEnd);
+            return (tokenizer, firstLineEnd);
+        }, LazyThreadSafetyMode.ExecutionAndPublication);
         longRules = new(() => compiled.Value.Registry.CreateTokenizer(scope, compiled.Value.Theme), LazyThreadSafetyMode.ExecutionAndPublication);
     }
 
@@ -50,7 +55,12 @@ internal sealed class Grammar
     public Tags Tags { get; }
 
     /// <summary>The compiled rules, loaded on first use (off the UI thread: a grammar is read and its includes with it).</summary>
-    public Tokenizer Rules => rules.Value;
+    public Tokenizer Rules => rules.Value.Rules;
+
+    /// <summary>The state an empty first line ends in: the grammar's root rule open, and any rule it opens at a text's
+    /// start (YAML's version), as a first line that leaves nothing of its own open ends; never <see cref="StateStack.Initial"/>,
+    /// which reads the line after it as a text's first.</summary>
+    public StateStack FirstLineEnd => rules.Value.FirstLineEnd;
 
     /// <summary>Held around everything done with <see cref="LongRules"/>.</summary>
     public object LongGate { get; } = new();

@@ -365,6 +365,43 @@ public sealed class FileColoursTests : FileColoursFolder
         }
     }
 
+    /// <summary>A script's first line that runs out of its time in one pass, as a loaded machine has it, and is read
+    /// within it in the next ends in the same state both times: a key on it that leaves its state as it was reads the
+    /// line too long to colour after it in neither pass but the first. The first pass gives a line 1 ms; the key's, 1 s.</summary>
+    [AvaloniaFact]
+    public void A_first_line_run_out_of_its_time_then_read_within_it_leaves_the_long_line_after_it_unread()
+    {
+        string? was = Environment.GetEnvironmentVariable(TextMateHighlighter.LineTimeVariable);
+        Environment.SetEnvironmentVariable(TextMateHighlighter.LineTimeVariable, "1");
+        MainWindow window = Window();
+        try
+        {
+            // About 20 ms of the grammar's reading however warm: out of 1 ms, well within 1 s.
+            string first = "const before = " + string.Concat(Enumerable.Repeat("(a,b)=>", 700)) + "1;";
+            string longLine = string.Concat(Enumerable.Repeat("(a,b)=>", 10_000)) + "1;";
+            string text = first + "\n" + longLine + "\nfunction after() {}\n";
+            CodeEditor editor = Open(window, "vendor.min.js", text);
+            TextMateHighlighter colours = (TextMateHighlighter)window.EditorArea.Active!.Highlighter!;
+            long outOfTime = colours.LinesOutOfTime;
+            Assert.True(outOfTime >= 1 && colours.LongLines.Read == 1,
+                $"Opening a script with 1 ms a line ran {outOfTime} lines out of their time and read its long line {colours.LongLines.Read} times, where its first line runs out and the long line is read once");
+
+            Environment.SetEnvironmentVariable(TextMateHighlighter.LineTimeVariable, "1000");
+            editor.Selections = SelectionSet.Single(text.IndexOf("before", StringComparison.Ordinal) + 2);
+            editor.Focus();
+            window.KeyTextInput("x");
+            Ui.Settle();
+            Assert.True(colours.LinesOutOfTime == outOfTime, $"The first line ran out of 1 s, {colours.LinesOutOfTime - outOfTime} lines in all, where it takes about 20 ms");
+            Assert.True(colours.LongLines.Read == 1,
+                $"A key on the first line, its state left as it was, had the long line after it read {colours.LongLines.Read - 1} more times: the first line ran out of its time as the file opened, and its state then was not the one it ends in");
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(TextMateHighlighter.LineTimeVariable, was);
+            window.Close();
+        }
+    }
+
     /// <summary>A YAML key that reads as a typed scalar (on, true, null) is a key in a flow mapping as in a block mapping:
     /// the four keys of <c>{ on: 1, true: 2, null: 3, x: 4 }</c> are coloured alike, as keys.</summary>
     [AvaloniaFact]

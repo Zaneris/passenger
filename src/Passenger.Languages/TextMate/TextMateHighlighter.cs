@@ -370,7 +370,8 @@ public sealed partial class TextMateHighlighter : IHighlighter, IBraceMatcher, I
 
     /// <summary>One line's colours and the state it ends in, reusing the pass's buffer between lines. A line read past
     /// <paramref name="limit"/> is read once more, its grammar's patterns now parsed; past it again, it keeps the colours
-    /// found and ends in the state it began in, so a rule it was stopped inside never reaches the lines after it.</summary>
+    /// found and ends in the state it began in (<see cref="Began"/>), so a rule it was stopped inside never reaches the
+    /// lines after it.</summary>
     private TokenLine Read(Tokenizer rules, TimeSpan limit, TextSnapshot text, LineSpan span, StateStack? state, List<SyntaxSpan> scratch, ref char[] buffer)
     {
         if (buffer.Length < span.Length)
@@ -388,7 +389,7 @@ public sealed partial class TextMateHighlighter : IHighlighter, IBraceMatcher, I
             if (rules.StoppedEarly)
             {
                 Interlocked.Increment(ref linesOutOfTime);
-                next = before;
+                next = Began(state);
             }
         }
         scratch.Clear();
@@ -415,7 +416,8 @@ public sealed partial class TextMateHighlighter : IHighlighter, IBraceMatcher, I
 
     /// <summary>The state a line longer than <see cref="LongestLine"/> ends in, read by the grammar's long rules within
     /// <paramref name="longLimit"/>, and once more past it, no hold of the grammar's own rules kept meanwhile; past that
-    /// time twice, the state it began in, so a rule it was stopped inside never reaches the lines after it.</summary>
+    /// time twice, the state it began in (<see cref="Began"/>), so a rule it was stopped inside never reaches the lines
+    /// after it.</summary>
     private StateStack EndOfLong(TextSnapshot text, LineSpan span, StateStack? state, TimeSpan limit, TimeSpan longLimit, ref char[] buffer)
     {
         if (buffer.Length < span.Length)
@@ -448,8 +450,13 @@ public sealed partial class TextMateHighlighter : IHighlighter, IBraceMatcher, I
             }
         }
         Interlocked.Increment(ref longLinesOutOfTime);
-        return before;
+        return Began(state);
     }
+
+    /// <summary>The state a line run out of its time ends in, the one it began in: for a first line, the state an empty
+    /// first line ends in, which a first line read within its time ends in when it leaves nothing open, so the next pass
+    /// that reads it so goes no further.</summary>
+    private StateStack Began(StateStack? state) => state ?? grammar.FirstLineEnd;
 
     /// <summary>Runs work where a pass was asked for: on the UI thread that asked, else at once.</summary>
     private static void OnUi(SynchronizationContext? landing, Action action)
