@@ -30,6 +30,13 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 
 ## 2026-11-19
 
+- `Variables2Tests`' `A_stop_lists_locals_and_fields_of_every_kind_with_their_values_and_types`, CI 44538058686
+  (Windows report shard 3): "IntProperty = Implicit evaluation is disabled: an …". **A race in the IDE**: an evaluation
+  past its 3 s that ended of itself while the debugger looked for a moment an abort would take still turned implicit
+  evaluation off for the stop, so every later getter was refused; the getter before, one that throws, its exception
+  reaching the debugger twice, cost 1.1 s beside 12 busy loops on the Windows VM where the stop's others cost about
+  400 ms, and ran past 3 s on the loaded runner, its value read right. Only an evaluation stopped or held unfinished
+  turns implicit evaluation off now, its words naming it (bf98d2cf5, #1992).
 - `StepTests`' `A_step_out_of_a_web_apps_async_handler_lets_the_program_run_on_where_the_framework_awaits_it`, CI
   44522273860 (Linux report shard 1, at b856ed3b9): "the program stopped again for step at line 20 on thread 5350".
   **A race in the IDE**: an async handler's task completing runs what awaits it, ASP.NET's, on the handler's thread
