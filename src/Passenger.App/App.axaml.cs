@@ -35,7 +35,7 @@ public partial class App : Application
         if (OperatingSystem.IsMacOS())
         {
             // macOS takes the application's menu as setup ends, before any window: none set, it shows Avalonia's About.
-            NativeMenu.SetMenu(this, new NativeMenu());
+            NativeMenus.Of(this, NativeMenu.MenuProperty);
         }
         Themes.TakeAccentFromTokens(this);
         Passenger.Editor.FallbackFonts.Install(PlatformFallback.Named, FaceTracking.Set);

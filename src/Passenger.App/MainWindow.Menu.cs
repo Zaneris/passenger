@@ -304,22 +304,11 @@ public partial class MainWindow
     }
 
     /// <summary>The menus again, with the shortcuts in force now (after Settings changed the keymap), the application
-    /// menu's too. The window keeps the one menu bar it was first given and only its items change, since macOS's menu
-    /// exporter refuses a second NativeMenu for the same window.</summary>
+    /// menu's too, in the one menu bar the window keeps (<see cref="NativeMenus"/>).</summary>
     private void BuildMenuBar()
     {
-        bool first = menuBar is null;
-        menuBar ??= new NativeMenu();
-        menuBar.Items.Clear();
         ActionContext context = actions!.Context();
-        foreach (MenuEntry menu in MainMenu.Build(actions.All))
-        {
-            menuBar.Items.Add(NativeEntry(menu, context));
-        }
-        if (first)
-        {
-            NativeMenu.SetMenu(this, menuBar);
-        }
+        menuBar = NativeMenus.Fill(this, NativeMenu.MenuProperty, MainMenu.Build(actions.All).Select(menu => NativeEntry(menu, context)));
         FollowApplicationMenu();
     }
 

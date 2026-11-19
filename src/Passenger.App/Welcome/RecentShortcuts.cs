@@ -26,14 +26,19 @@ public static class RecentShortcuts
     /// <summary>The window whose recent list the system's lists follow next.</summary>
     private static MainWindow? from;
 
+    /// <summary>Whether the Dock's menu follows in a Passenger nobody sees too: a test's on macOS, which brings in Avalonia's
+    /// exporter of the Dock's menu to stand in for the person's Dock.</summary>
+    public static bool DockFollowsUnseen { get; set; }
+
     /// <summary>The window's recent list changed, or it opened on it: the system's lists follow once it rests, in a
-    /// Passenger a person sees, or where a test's recently used list stands in.</summary>
+    /// Passenger a person sees, or where a test's recently used list or Dock stands in.</summary>
     public static void Follow(MainWindow window)
     {
         UiThread.Check();
         bool recentlyUsed = LinuxRecentlyUsed.StandIn is not null || OperatingSystem.IsLinux() && !PassengerApp.ShowsNoWindow;
-        bool shell = !PassengerApp.ShowsNoWindow && (OperatingSystem.IsWindows() || OperatingSystem.IsMacOS());
-        if (!recentlyUsed && !shell)
+        bool jumpList = OperatingSystem.IsWindows() && !PassengerApp.ShowsNoWindow;
+        bool dock = OperatingSystem.IsMacOS() && (!PassengerApp.ShowsNoWindow || DockFollowsUnseen);
+        if (!recentlyUsed && !jumpList && !dock)
         {
             return;
         }
@@ -71,24 +76,24 @@ public static class RecentShortcuts
         }
         else if (OperatingSystem.IsMacOS() && Application.Current is { } app)
         {
-            NativeDock.SetMenu(app, DockMenu([.. window.Shortcuts.Take(DockShows)]));
+            NativeMenus.Fill(app, NativeDock.MenuProperty, DockItems([.. window.Shortcuts.Take(DockShows)]));
         }
     }
 
-    /// <summary>The Dock's menu: the recent ones titled apart, each opened from the window in front as File, Recent
-    /// Solutions opens it, then New Window.</summary>
-    private static NativeMenu DockMenu(IReadOnlyList<(string Path, RecentShortcut Shortcut)> recent)
+    /// <summary>The Dock's menu's items, in the one menu the application keeps for it (<see cref="NativeMenus"/>): the
+    /// recent ones titled apart, each opened from the window in front as File, Recent Solutions opens it, then New Window.</summary>
+    private static List<NativeMenuItemBase> DockItems(IReadOnlyList<(string Path, RecentShortcut Shortcut)> recent)
     {
-        NativeMenu menu = new();
+        List<NativeMenuItemBase> items = [];
         foreach (((string path, _), RecentShortcut shortcut) in recent.Zip(RecentShortcut.ToldApart(recent, RecentRow.Home)))
         {
             NativeMenuItem item = new(NativeWords(shortcut.Title)) { ToolTip = shortcut.Tip };
             item.Click += (_, _) => PassengerApp.Front?.OpenRecent(path);
-            menu.Add(item);
+            items.Add(item);
         }
-        if (menu.Items.Count > 0)
+        if (items.Count > 0)
         {
-            menu.Add(new NativeMenuItemSeparator());
+            items.Add(new NativeMenuItemSeparator());
         }
         NativeMenuItem newWindow = new(NativeWords(NewWindow.Title));
         newWindow.Click += (_, _) =>
@@ -98,7 +103,7 @@ public static class RecentShortcuts
                 PassengerApp.BringForward(PassengerApp.NewWindow(front));
             }
         };
-        menu.Add(newWindow);
-        return menu;
+        items.Add(newWindow);
+        return items;
     }
 }
