@@ -170,11 +170,11 @@ public partial class MainWindow
         gitView?.Bind(vcs);
         vcs.SaveFirst = Editors.SaveAllLandedAsync;
         vcs.MoveToTrash = TrashForGitAsync;
-        vcs.SignOffChanged += (_, _) =>
+        vcs.KeptChanged += (_, _) =>
         {
             if (session == next)
             {
-                session.State?.Commit.Set(new CommitState { SignOff = vcs.SignOff });
+                session.State?.Commit.Set(new CommitState { SignOff = vcs.SignOff, GroupsByDirectory = vcs.GroupsByDirectory });
             }
         };
         vcs.ChooseRemote = ChooseRemoteAsync;
@@ -831,6 +831,12 @@ public partial class MainWindow
         });
         // The Commit and Git windows' Refresh: the working tree's changes, and the log shown, read again.
         actions.Add(new IdeAction(AppActions.CommitRefresh, "Refresh Changes", "Git", _ => IdeErrors.Observe(session.Vcs.RefreshAsync())) { WhyNot = NeedsRepository });
+        // The Commit window's Group By › Directory: its files under their folders, else listed flat.
+        actions.Add(new IdeAction(AppActions.GroupByDirectory, "Group by Directory", "Git", _ => session.Vcs.GroupsByDirectory = !session.Vcs.GroupsByDirectory)
+        {
+            WhyNot = NeedsRepository,
+            IsChecked = _ => session.Vcs.GroupsByDirectory,
+        });
         actions.Add(new IdeAction(AppActions.GitLogRefresh, "Refresh Git Log", "Git", _ =>
         {
             session.Vcs.Signatures.Forget();

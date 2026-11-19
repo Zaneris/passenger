@@ -1,4 +1,3 @@
-using System.Collections.ObjectModel;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
@@ -14,11 +13,23 @@ using Passenger.Vcs;
 namespace Passenger.App.ToolWindows;
 
 /// <summary>A changed file in the Commit window, and whether it goes into the next commit.</summary>
-public sealed class CommitRow(FileChange change, bool chosen) : Observable
+public sealed class CommitRow(FileChange change, bool chosen) : Observable, ITreeRow
 {
     private bool isChosen = chosen && IsChoosable(change);
+    private int depth = 1;
 
     public FileChange Change { get; } = change;
+
+    /// <summary>How deep it is listed: under its group, or under its folders while the window groups by directory.</summary>
+    public int Depth
+    {
+        get => depth;
+        internal set => Set(ref depth, value);
+    }
+
+    public bool Expands => false;
+
+    public bool IsExpanded => false;
 
     /// <summary>Whether it has a box: a file in conflict is resolved first, and a submodule whose own files alone changed
     /// has nothing to commit here.</summary>
@@ -77,14 +88,34 @@ public sealed class CommitRow(FileChange change, bool chosen) : Observable
     }
 }
 
-/// <summary>A group of the Commit window's files: Changes, or Unversioned Files, and whether every one of them goes in
-/// (true), none (false) or some (null).</summary>
-public sealed class CommitGroup(string name, IReadOnlyList<CommitRow> rows) : Observable
+/// <summary>A row the Commit window's files sit under, a group or a folder: every file under it, the rows right under it,
+/// whether it is open, and whether every file under it goes in (true), none (false) or some (null).</summary>
+public abstract class CommitBranch(string key, int depth, IReadOnlyList<CommitRow> rows, IReadOnlyList<ITreeRow> children) : Observable, ITreeRow
 {
-    private bool? isChosen = State(rows);
+    private bool? isChosen;
+    private bool isExpanded = true;
 
-    public string Name { get; } = name;
+    /// <summary>What it is kept open or closed by, as the list is filled again.</summary>
+    public string Key { get; } = key;
+
+    public int Depth { get; } = depth;
+
+    /// <summary>Every file under it, however deep.</summary>
     public IReadOnlyList<CommitRow> Rows { get; } = rows;
+
+    /// <summary>The folders and files right under it, folders first.</summary>
+    public IReadOnlyList<ITreeRow> Children { get; } = children;
+
+    /// <summary>Whether it has a box: some file under it can be chosen.</summary>
+    public bool CanChoose { get; } = rows.Any(r => r.CanChoose);
+
+    public bool Expands => true;
+
+    public bool IsExpanded
+    {
+        get => isExpanded;
+        set => Set(ref isExpanded, value);
+    }
 
     public bool? IsChosen
     {
@@ -92,21 +123,49 @@ public sealed class CommitGroup(string name, IReadOnlyList<CommitRow> rows) : Ob
         private set => Set(ref isChosen, value);
     }
 
-    /// <summary>Works out <see cref="IsChosen"/> again, after a row's box changed.</summary>
-    internal void Update() => IsChosen = State(Rows);
-
-    private static bool? State(IReadOnlyList<CommitRow> rows)
+    /// <summary>Works out <see cref="IsChosen"/> again from the rows right under it, its folders worked out first.</summary>
+    internal void Update()
     {
-        int count = rows.Count(r => r.CheckState != false);
-        return count == 0 ? false : count == rows.Count(r => r.CanChoose) && rows.All(r => r.CheckState != null) ? true : null;
+        int some = 0;
+        int boxed = 0;
+        bool whole = true;
+        foreach (ITreeRow child in Children)
+        {
+            (bool? state, bool can) = child switch
+            {
+                CommitRow file => (file.CheckState, file.CanChoose),
+                CommitBranch branch => (branch.IsChosen, branch.CanChoose),
+                _ => ((bool?)false, false),
+            };
+            some += state != false ? 1 : 0;
+            boxed += can ? 1 : 0;
+            whole &= state != null;
+        }
+        IsChosen = some == 0 ? false : some == boxed && whole ? true : null;
     }
+}
+
+/// <summary>A group of the Commit window's files: Changes, Unversioned Files or Merge Conflicts.</summary>
+public sealed class CommitGroup(string name, IReadOnlyList<CommitRow> rows, IReadOnlyList<ITreeRow> children) : CommitBranch(name, 0, rows, children)
+{
+    public string Name { get; } = name;
+}
+
+/// <summary>A folder of a group's files as Group by Directory lists them, by its path from the repository's top; a folder
+/// holding only one folder is one row with it ("src/App").</summary>
+public sealed class CommitFolder(string key, string name, int depth, IReadOnlyList<CommitRow> rows, IReadOnlyList<ITreeRow> children)
+    : CommitBranch(key, depth, rows, children)
+{
+    /// <summary>Its name, or the names of the folders it stands for with '/' between them.</summary>
+    public string Name { get; } = name;
 }
 
 /// <summary>The Commit window: the changed files under Changes and the new ones under Unversioned Files, each with a box
 /// for whether it goes in (changes are in and new files out until chosen), and files in conflict above them under Merge
 /// Conflicts, with its Resolve link and no box; Amend, Sign-off (kept for the folder) and whether this commit is signed
 /// and with which key (git's config, turned on or off for one commit; Commit Signing… sets it up), then the message (a
-/// merge's own message while one is under way); Commit and Commit and Push. Double-click opens a file's diff, or a
+/// merge's own message while one is under way); Commit and Commit and Push. Group By › Directory lists each group's files
+/// under their folders, each folder with a box for every file under it. Double-click opens a file's diff, or a
 /// conflicted file's merge; Rollback puts the chosen ones back. In a folder of no repository it shows its empty state
 /// alone.</summary>
 public sealed class CommitView : DockPanel, IOwnKeys
@@ -114,16 +173,21 @@ public sealed class CommitView : DockPanel, IOwnKeys
     /// <summary>A check box's box, as the theme draws one with no words.</summary>
     private const double CheckWidth = 20;
 
-    /// <summary>A group's check box and the room round it, by which a group with none moves its name in line.</summary>
-    private const double GroupBoxRoom = Gaps.Tight + CheckWidth + Gaps.Hair;
-
-    /// <summary>A file's line past its own check box, under its group's name, by which a file with none moves in line.</summary>
-    private const double FileBoxRoom = GroupBoxRoom - Gaps.Tight + CheckWidth + Gaps.Hair;
+    /// <summary>A row's check box and the room after it, which a row with none leaves, so its name lines up with its
+    /// neighbours'.</summary>
+    private const double BoxRoom = CheckWidth + Gaps.Hair;
 
     private VcsController vcs;
-    private readonly ObservableCollection<object> rows = [];
+    private readonly TreeRows<ITreeRow> rows = [];
     private readonly Dictionary<string, bool> chosen = [];
-    private readonly ListBox list;
+
+    /// <summary>The groups as last filled, and every group and folder under them, each before those under it.</summary>
+    private List<CommitGroup> groups = [];
+    private List<CommitBranch> branches = [];
+
+    /// <summary>The groups and folders the person closed, by their keys, kept closed as the list is filled again.</summary>
+    private readonly HashSet<string> closed = [];
+    private readonly TreeList list;
     private readonly TextBox message;
     private readonly CheckBox amend;
     private readonly CheckBox signOff;
@@ -140,6 +204,10 @@ public sealed class CommitView : DockPanel, IOwnKeys
     private readonly Button commit;
     private readonly Button commitAndPush;
     private readonly Button rollback;
+    private readonly Button groupBy;
+
+    /// <summary>Whether the list was last filled grouped by directory.</summary>
+    private bool grouped;
     private readonly EmptyState placeholder;
     private readonly Border form;
     private readonly StackPanel underWay;
@@ -169,7 +237,8 @@ public sealed class CommitView : DockPanel, IOwnKeys
     {
         vcs = git;
         rollback = ToolButtons.Of(IconKeys.Rollback, "Rollback", RollbackChosenOrSelected);
-        list = new ListBox
+        groupBy = ToolButtons.Of(IconKeys.GroupBy, "Group By", ShowGroupBy);
+        list = new TreeList
         {
             Classes = { StyleClasses.Tree },
             ItemsSource = rows,
@@ -202,8 +271,8 @@ public sealed class CommitView : DockPanel, IOwnKeys
             }
             UpdateRollback();
         };
-        // A double click and Enter show the diff, F4 the file, Space flips the chosen rows' boxes.
-        ListKeys.Act(list, new ListActs
+        // A double click and Enter show the diff, F4 the file, Space flips the boxes of the files selected and under them.
+        TreeKeys.Attach<ITreeRow>(list, Toggle, acts: new ListActs
         {
             Open = OpenChosen,
             Source = () =>
@@ -217,7 +286,7 @@ public sealed class CommitView : DockPanel, IOwnKeys
             {
                 if (e.Key == Key.Space && e.KeyModifiers == KeyModifiers.None)
                 {
-                    CommitRow[] selected = [.. list.SelectedItems?.OfType<CommitRow>().Where(r => r.CanChoose) ?? []];
+                    CommitRow[] selected = [.. SelectedFiles().Where(r => r.CanChoose)];
                     Choose(selected, !selected.All(r => r.IsChosen));
                     return true;
                 }
@@ -335,6 +404,7 @@ public sealed class CommitView : DockPanel, IOwnKeys
                         DiffRequested?.Invoke(this, row.Change.Path);
                     }
                 }),
+                groupBy,
             },
         };
         Border top = ToolBars.Top(tools);
@@ -346,6 +416,7 @@ public sealed class CommitView : DockPanel, IOwnKeys
         vcs.BusyChanged += OnBusyChanged;
         vcs.Refreshed += OnSigning;
         vcs.SigningChanged += OnSigning;
+        vcs.KeptChanged += OnKept;
         Fill();
         ShowSigning();
     }
@@ -357,11 +428,13 @@ public sealed class CommitView : DockPanel, IOwnKeys
         vcs.BusyChanged -= OnBusyChanged;
         vcs.Refreshed -= OnSigning;
         vcs.SigningChanged -= OnSigning;
+        vcs.KeptChanged -= OnKept;
         vcs = next;
         vcs.Changed += OnChanged;
         vcs.BusyChanged += OnBusyChanged;
         vcs.Refreshed += OnSigning;
         vcs.SigningChanged += OnSigning;
+        vcs.KeptChanged += OnKept;
         signTurned = false;
         unsigned.IsVisible = false;
         Fill();
@@ -369,6 +442,32 @@ public sealed class CommitView : DockPanel, IOwnKeys
     }
 
     private void OnSigning(object? sender, EventArgs e) => ShowSigning();
+
+    /// <summary>Group by Directory turned on or off lists the files again.</summary>
+    private void OnKept(object? sender, EventArgs e)
+    {
+        if (grouped != vcs.GroupsByDirectory)
+        {
+            Fill();
+        }
+    }
+
+    /// <summary>The Group By menu while it is open, for a test to choose in.</summary>
+    public ContextMenu? GroupByMenu { get; private set; }
+
+    /// <summary>Group By's menu: Directory, ticked while the files are listed under their folders.</summary>
+    private void ShowGroupBy()
+    {
+        GroupByMenu?.Close();
+        ContextMenu menu = new()
+        {
+            ItemsSource = (Control[])[FilterMenu.Toggle("Directory", vcs.GroupsByDirectory, _ => ActionRequested?.Invoke(this, AppActions.GroupByDirectory))],
+            Placement = PlacementMode.BottomEdgeAlignedLeft,
+        };
+        GroupByMenu = menu;
+        menu.Closed += (_, _) => GroupByMenu = GroupByMenu == menu ? null : GroupByMenu;
+        menu.Open(groupBy);
+    }
 
     /// <summary>Reads git's config for how commits are signed and says it: Sign with the key, checked as the config has it
     /// unless the person turned it over for this commit; off with no key to sign with. Sign-off as the folder keeps it.</summary>
@@ -483,14 +582,50 @@ public sealed class CommitView : DockPanel, IOwnKeys
     /// elsewhere while a file is chosen.</summary>
     public bool TakesKey(KeyEventArgs e) => list.IsKeyboardFocusWithin && list.SelectedItem is CommitRow && AppActions.Presses(AppActions.ShowDiff, e);
 
-    /// <summary>What a double-click or Enter opens: a conflicted file's merge, any other file's diff.</summary>
+    /// <summary>What a double-click or Enter opens: a conflicted file's merge, any other file's diff; a group or folder
+    /// opens or closes.</summary>
     private void OpenChosen()
     {
         if (list.SelectedItem is CommitRow row)
         {
             Open(row.Change);
         }
+        else if (list.SelectedItem is CommitBranch branch)
+        {
+            Toggle(branch);
+            list.Retell();
+        }
     }
+
+    /// <summary>Opens or closes a group or folder, kept so as the list is filled again.</summary>
+    private void Toggle(ITreeRow row)
+    {
+        if (row is not CommitBranch branch)
+        {
+            return;
+        }
+        branch.IsExpanded = !branch.IsExpanded;
+        if (branch.IsExpanded)
+        {
+            closed.Remove(branch.Key);
+            rows.Open(branch, TreeRows<ITreeRow>.Shown(branch.Children, ChildrenOf));
+        }
+        else
+        {
+            closed.Add(branch.Key);
+            rows.Close(branch);
+        }
+    }
+
+    private static IEnumerable<ITreeRow>? ChildrenOf(ITreeRow row) => (row as CommitBranch)?.Children;
+
+    /// <summary>Every file listed, open or not.</summary>
+    private IEnumerable<CommitRow> Files => groups.SelectMany(g => g.Rows);
+
+    /// <summary>The files selected and those under the groups and folders selected, each once.</summary>
+    private IEnumerable<CommitRow> SelectedFiles() => (list.SelectedItems?.OfType<ITreeRow>() ?? [])
+        .SelectMany(r => r is CommitBranch branch ? branch.Rows : r is CommitRow file ? [file] : [])
+        .Distinct();
 
     private void Open(FileChange change)
     {
@@ -535,17 +670,17 @@ public sealed class CommitView : DockPanel, IOwnKeys
     /// <summary>Rollback pressed where it puts nothing back: why.</summary>
     public event EventHandler<string>? RollbackRefused;
 
-    /// <summary>The files and the groups over them, as the window lists them.</summary>
+    /// <summary>The files and the groups and folders over them, as the window shows them.</summary>
     public IReadOnlyList<object> Rows => rows;
 
     /// <summary>The files that go into the next commit.</summary>
-    public IReadOnlyList<FileChange> Chosen => [.. rows.OfType<CommitRow>().Where(r => r.IsChosen).Select(r => r.Change)];
+    public IReadOnlyList<FileChange> Chosen => [.. Files.Where(r => r.IsChosen).Select(r => r.Change)];
 
     /// <summary>Gives a diff of a changed file against the last commit a box beside each change, for whether it goes in;
     /// none while a merge's commit, which takes files whole, is under way.</summary>
     public void ConfigureDiff(string path, DiffView view)
     {
-        if (vcs.Merge.CommitsWhole || rows.OfType<CommitRow>().FirstOrDefault(r => PathNames.Same(r.Change.Path, path)) is not { CanChoose: true } row
+        if (vcs.Merge.CommitsWhole || Files.FirstOrDefault(r => PathNames.Same(r.Change.Path, path)) is not { CanChoose: true } row
             || row.Change.Kind is not (ChangeKind.Modified or ChangeKind.Renamed) || row.Change.Mode is not null || row.Change.Submodule != SubmoduleChange.None)
         {
             return;
@@ -576,7 +711,7 @@ public sealed class CommitView : DockPanel, IOwnKeys
     {
         // A merge's commit takes in every change but those left out, which stay changes, once the person agrees.
         bool excluding = vcs.Merge.CommitsWhole && !Amend && vcs.Conflicts.Count == 0
-            && rows.OfType<CommitRow>().Any(r => r.CanChoose && r.CheckState != true && r.Change.Kind is not ChangeKind.Unversioned);
+            && Files.Any(r => r.CanChoose && r.CheckState != true && r.Change.Kind is not ChangeKind.Unversioned);
         if (excluding && Confirm is { } ask
             && !await ask("Changes Excluded from Merge Commit", "Are you sure you want to exclude these changed files from merge commit?", "Commit"))
         {
@@ -593,7 +728,7 @@ public sealed class CommitView : DockPanel, IOwnKeys
         {
             return false;
         }
-        foreach (CommitRow row in rows.OfType<CommitRow>().Where(r => partial.TryGetValue(r.Change.Path, out PartialCommit? submitted) && ReferenceEquals(r.Partial, submitted)))
+        foreach (CommitRow row in Files.Where(r => partial.TryGetValue(r.Change.Path, out PartialCommit? submitted) && ReferenceEquals(r.Partial, submitted)))
         {
             row.IsChosen = false;
         }
@@ -605,7 +740,7 @@ public sealed class CommitView : DockPanel, IOwnKeys
         return true;
     }
 
-    private Dictionary<string, PartialCommit> Partial() => rows.OfType<CommitRow>().Where(r => r.IsChosen && r.Partial is not null)
+    private Dictionary<string, PartialCommit> Partial() => Files.Where(r => r.IsChosen && r.Partial is not null)
         .ToDictionary(r => r.Change.Path, r => r.Partial!, PathNames.Comparer);
 
     /// <summary>The words of the box that commits the moves first.</summary>
@@ -675,7 +810,7 @@ public sealed class CommitView : DockPanel, IOwnKeys
         string Shown(string path) => vcs.Repository is { } repository ? repository.Relative(path) : Path.GetFileName(path);
     }
 
-    /// <summary>Rollback of the files selected, else of those chosen: refused where a chosen file goes in only in part, as
+    /// <summary>Rollback of the files selected (those under a group or folder selected too), else of those chosen: refused where a chosen file goes in only in part, as
     /// a rollback puts back whole files, or where git cannot write one out here (<see cref="RollbackOf"/>).</summary>
     private void RollbackChosenOrSelected()
     {
@@ -691,7 +826,7 @@ public sealed class CommitView : DockPanel, IOwnKeys
     /// <summary>What Rollback puts back, the files selected else those chosen, or why it puts back none of them.</summary>
     private (IReadOnlyList<FileChange> Changes, string? Refused) RollbackOf()
     {
-        if (list.SelectedItems?.OfType<CommitRow>().Any() != true && rows.OfType<CommitRow>().FirstOrDefault(r => r.Partial is not null) is { } part)
+        if (!SelectedFiles().Any() && Files.FirstOrDefault(r => r.Partial is not null) is { } part)
         {
             return ([], $"Rollback puts back whole files, and only some changes to {part.Change.Name} are chosen: select the files to roll back");
         }
@@ -700,7 +835,7 @@ public sealed class CommitView : DockPanel, IOwnKeys
     }
 
     private IReadOnlyList<FileChange> RollbackTargets() =>
-        list.SelectedItems?.OfType<CommitRow>().ToArray() is { Length: > 0 } selected ? [.. selected.Select(r => r.Change)] : Chosen;
+        SelectedFiles().ToArray() is { Length: > 0 } selected ? [.. selected.Select(r => r.Change)] : Chosen;
 
     /// <summary>Rollback greyed where it would put back a file git cannot write out here, its tip saying why.</summary>
     private void UpdateRollback() => ToolButtons.Grey(rollback, vcs.WhyNotRollback(RollbackTargets()));
@@ -710,12 +845,14 @@ public sealed class CommitView : DockPanel, IOwnKeys
 
     /// <summary>Lists the status again in place: a file still changed as it was keeps its row, its box and whether it is
     /// selected, so a refresh with nothing new (the window coming to the front, a save) leaves the list as it was, and
-    /// what Rollback acts on with it. A file changed another way (modified, now deleted) is selected again by path.</summary>
+    /// what Rollback acts on with it. A file changed another way (modified, now deleted) is selected again by path. Under
+    /// Group by Directory each group's files are listed under their folders; a group or folder closed stays closed.</summary>
     private void Fill()
     {
         HashSet<string> selected = [.. list.SelectedItems?.OfType<CommitRow>().Select(r => r.Change.Path) ?? []];
         Dictionary<FileChange, CommitRow> kept = [];
-        foreach (CommitRow row in rows.OfType<CommitRow>())
+        Dictionary<string, CommitBranch> was = branches.ToDictionary(b => b.Key);
+        foreach (CommitRow row in Files)
         {
             // A row with no box (a conflicted file): once it has one, it is chosen as any change is.
             if (row.CanChoose)
@@ -725,27 +862,20 @@ public sealed class CommitView : DockPanel, IOwnKeys
             kept.TryAdd(row.Change, row);
         }
         IReadOnlyList<FileChange> changes = vcs.Changes;
-        List<object> wanted = [];
+        List<CommitGroup> filled = [];
+        List<CommitBranch> under = [];
         Group(MergeConflicts, [.. changes.Where(c => c.Kind is ChangeKind.Conflicted).OrderBy(c => c.Path, StringComparer.Ordinal).Select(c => Row(c, false))]);
         Group("Changes", [.. changes.Where(c => c.Kind is not (ChangeKind.Unversioned or ChangeKind.Conflicted)).OrderBy(c => c.Path, StringComparer.Ordinal).Select(c => Row(c, true))]);
         Group("Unversioned Files", [.. changes.Where(c => c.Kind is ChangeKind.Unversioned).OrderBy(c => c.Path, StringComparer.Ordinal).Select(c => Row(c, false))]);
 
-        // What went is taken out and what came put in at its place; rows kept are in the same order in both lists.
-        HashSet<object> keep = new(wanted, ReferenceEqualityComparer.Instance);
-        for (int i = rows.Count - 1; i >= 0; i--)
+        groups = filled;
+        branches = under;
+        grouped = vcs.GroupsByDirectory;
+        foreach (CommitBranch branch in branches)
         {
-            if (!keep.Contains(rows[i]))
-            {
-                rows.RemoveAt(i);
-            }
+            branch.IsExpanded = !closed.Contains(branch.Key);
         }
-        for (int i = 0; i < wanted.Count; i++)
-        {
-            if (i == rows.Count || !ReferenceEquals(rows[i], wanted[i]))
-            {
-                rows.Insert(i, wanted[i]);
-            }
-        }
+        rows.Show([.. TreeRows<ITreeRow>.Shown(groups, ChildrenOf)]);
         for (int i = 0; i < rows.Count; i++)
         {
             if (rows[i] is CommitRow row && selected.Contains(row.Change.Path) && !list.Selection.IsSelected(i))
@@ -778,8 +908,7 @@ public sealed class CommitView : DockPanel, IOwnKeys
             }
             prefilled = null;
         }
-        UpdateButtons();
-        LookForLostMoves();
+        Recount();
 
         CommitRow Row(FileChange change, bool byDefault)
         {
@@ -788,10 +917,10 @@ public sealed class CommitView : DockPanel, IOwnKeys
                 return same;
             }
             // A file in conflict never goes into a commit as it is, nor a submodule with nothing to commit here.
-            CommitRow row = new(change, chosen.TryGetValue(change.Path, out bool was) ? was : byDefault);
-            row.PropertyChanged += (_, _) =>
+            CommitRow row = new(change, chosen.TryGetValue(change.Path, out bool before) ? before : byDefault);
+            row.PropertyChanged += (_, e) =>
             {
-                if (!choosing)
+                if (!choosing && e.PropertyName != nameof(CommitRow.Depth))
                 {
                     Recount();
                 }
@@ -805,8 +934,80 @@ public sealed class CommitView : DockPanel, IOwnKeys
             {
                 return;
             }
-            wanted.Add(rows.OfType<CommitGroup>().FirstOrDefault(g => g.Name == name && g.Rows.SequenceEqual(members)) ?? new CommitGroup(name, members));
-            wanted.AddRange(members);
+            int at = under.Count;
+            IReadOnlyList<ITreeRow> children = vcs.GroupsByDirectory ? Folders(name, FolderTree.Of(members, vcs.Repository), 1) : Flat(members);
+            CommitGroup group = Kept(new CommitGroup(name, members, children));
+            filled.Add(group);
+            under.Insert(at, group);
+        }
+
+        static IReadOnlyList<ITreeRow> Flat(CommitRow[] members)
+        {
+            foreach (CommitRow member in members)
+            {
+                member.Depth = 1;
+            }
+            return members;
+        }
+
+        // A folder holding one folder and no file is one row with it; folders come before files, each by name.
+        IReadOnlyList<ITreeRow> Folders(string key, FolderTree tree, int depth)
+        {
+            List<ITreeRow> children = [];
+            foreach ((string name, FolderTree folder) in tree.Folders)
+            {
+                string shown = name;
+                FolderTree inner = folder;
+                while (inner.Files.Count == 0 && inner.Folders.Count == 1)
+                {
+                    (string only, inner) = inner.Folders.First();
+                    shown += "/" + only;
+                }
+                string path = key + "/" + shown;
+                int at = under.Count;
+                IReadOnlyList<ITreeRow> below = Folders(path, inner, depth + 1);
+                CommitFolder made = Kept(new CommitFolder(path, shown, depth, [.. inner.All()], below));
+                under.Insert(at, made);
+                children.Add(made);
+            }
+            foreach (CommitRow file in tree.Files)
+            {
+                file.Depth = depth;
+                children.Add(file);
+            }
+            return children;
+        }
+
+        // The row shown before for the same group or folder with the same rows under it, so it stays selected.
+        T Kept<T>(T made)
+            where T : CommitBranch =>
+            was.TryGetValue(made.Key, out CommitBranch? before) && before is T same && same.Rows.SequenceEqual(made.Rows) && same.Children.SequenceEqual(made.Children)
+                ? same : made;
+    }
+
+    /// <summary>A group's files by their folders from the repository's top, each folder's names in ordinal order.</summary>
+    private sealed class FolderTree
+    {
+        public SortedDictionary<string, FolderTree> Folders { get; } = new(StringComparer.Ordinal);
+
+        public List<CommitRow> Files { get; } = [];
+
+        public IEnumerable<CommitRow> All() => Folders.Values.SelectMany(f => f.All()).Concat(Files);
+
+        public static FolderTree Of(IEnumerable<CommitRow> files, Git? repository)
+        {
+            FolderTree top = new();
+            foreach (CommitRow file in files)
+            {
+                FolderTree at = top;
+                string folder = ChangedFileRow.Folder(repository?.Relative(file.Change.Path) ?? file.Change.Path);
+                foreach (string name in folder.Split('/', StringSplitOptions.RemoveEmptyEntries))
+                {
+                    at = at.Folders.TryGetValue(name, out FolderTree? next) ? next : at.Folders[name] = new FolderTree();
+                }
+                at.Files.Add(file);
+            }
+            return top;
         }
     }
 
@@ -835,13 +1036,13 @@ public sealed class CommitView : DockPanel, IOwnKeys
         Recount();
     }
 
-    /// <summary>Each group's box and the buttons follow the rows' boxes.</summary>
+    /// <summary>Each group's and folder's box and the buttons follow the rows' boxes, the deepest folders first.</summary>
     private void Recount()
     {
-        foreach (CommitGroup group in rows.OfType<CommitGroup>())
+        for (int i = branches.Count - 1; i >= 0; i--)
         {
-            RowsCounted += group.Rows.Count;
-            group.Update();
+            RowsCounted += branches[i].Children.Count;
+            branches[i].Update();
         }
         UpdateButtons();
         LookForLostMoves();
@@ -851,7 +1052,7 @@ public sealed class CommitView : DockPanel, IOwnKeys
     /// saying why as a press would.</summary>
     private void UpdateButtons()
     {
-        string? why = vcs.Repository is null ? vcs.NoRepository : vcs.WhyNotCommit(rows.OfType<CommitGroup>().Any(g => g.IsChosen != false), Message, Amend);
+        string? why = vcs.Repository is null ? vcs.NoRepository : vcs.WhyNotCommit(groups.Any(g => g.IsChosen != false), Message, Amend);
         foreach (Button button in (Button[])[commit, commitAndPush])
         {
             string? refused = button == commitAndPush ? why ?? vcs.WhyNotRemote : why;
@@ -877,13 +1078,17 @@ public sealed class CommitView : DockPanel, IOwnKeys
         _ => null,
     };
 
-    /// <summary>A row for whichever group or file the list hands its container: a group's box, name and count (Merge
-    /// Conflicts' with its Resolve link and no box), or a file's box and line (a conflicted file's with no box: it is
-    /// resolved first). A box follows its item while shown, and a click on it chooses the item it shows.</summary>
+    /// <summary>A row for whichever group, folder or file the list hands its container, set in by its depth: a group's or
+    /// folder's chevron, box, name and count (a folder with its icon; Merge Conflicts with its Resolve link and no box), or
+    /// a file's box and line (a conflicted file's with no box: it is resolved first). A box follows its item while shown,
+    /// and a click on it chooses the item it shows, a group's or folder's every file under it.</summary>
     private Control Row()
     {
-        CheckBox groupBox = new() { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(Gaps.Tight, 0, Gaps.Hair, 0) };
-        TextBlock groupName = new() { Classes = { StyleClasses.Strong }, VerticalAlignment = VerticalAlignment.Center };
+        RowIcon chevron = RowIcon.Chevron();
+        Border toggle = new() { Width = Gaps.Indent, Height = ListRow.Height, Background = Brushes.Transparent, Child = chevron };
+        CheckBox box = new() { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, Gaps.Hair, 0) };
+        RowIcon folderIcon = new() { Margin = new Thickness(0, 0, Gaps.Small, 0) };
+        TextBlock branchName = new() { VerticalAlignment = VerticalAlignment.Center };
         TextBlock count = new()
         {
             VerticalAlignment = VerticalAlignment.Center,
@@ -893,54 +1098,74 @@ public sealed class CommitView : DockPanel, IOwnKeys
         count.Classes.Add(StyleClasses.Muted);
         Button resolve = new() { Classes = { StyleClasses.Link }, Content = "Resolve", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(Gaps.Normal, 0, 0, 0) };
         resolve.Click += (_, _) => ResolveRequested?.Invoke(this, EventArgs.Empty);
-        StackPanel groupLine = new() { Orientation = Orientation.Horizontal, Height = ListRow.Height, Children = { groupBox, groupName, count, resolve } };
-        CheckBox fileBox = new() { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(GroupBoxRoom - Gaps.Tight, 0, Gaps.Hair, 0) };
+        StackPanel branchLine = new() { Orientation = Orientation.Horizontal, Children = { folderIcon, branchName, count, resolve } };
         ChangedFileRow shown = new() { Line = { Margin = default } };
-        DockPanel.SetDock(fileBox, Dock.Left);
-        DockPanel fileLine = new() { Height = ListRow.Height, Children = { fileBox, shown.Line } };
-        Panel row = new() { Children = { groupLine, fileLine } };
+        Panel content = new() { Children = { branchLine, shown.Line } };
+        DockPanel.SetDock(toggle, Dock.Left);
+        DockPanel.SetDock(box, Dock.Left);
+        DockPanel row = new() { Height = ListRow.Height, Children = { toggle, box, content } };
         bool setting = false;
-        string? groupColour = null;
-        groupBox.IsCheckedChanged += (_, _) =>
+        string? nameColour = null;
+        toggle.PointerPressed += (_, e) =>
         {
-            if (setting || row.DataContext is not CommitGroup group)
+            if (row.DataContext is CommitBranch branch)
+            {
+                Toggle(branch);
+                e.Handled = true;
+            }
+        };
+        box.IsCheckedChanged += (_, _) =>
+        {
+            if (setting)
             {
                 return;
             }
-            Choose(group.Rows.Where(r => r.CanChoose), groupBox.IsChecked != false);
-        };
-        fileBox.IsCheckedChanged += (_, _) =>
-        {
-            if (!setting && row.DataContext is CommitRow file)
+            if (row.DataContext is CommitBranch branch)
             {
-                file.IsChosen = fileBox.IsChecked == true;
+                Choose(branch.Rows.Where(r => r.CanChoose), box.IsChecked != false);
+            }
+            else if (row.DataContext is CommitRow file)
+            {
+                file.IsChosen = box.IsChecked == true;
             }
         };
-        return row.Showing<object>(item =>
+        return row.Showing<ITreeRow>(item =>
         {
             setting = true;
-            groupLine.IsVisible = item is CommitGroup;
-            fileLine.IsVisible = item is CommitRow;
-            if (item is CommitGroup group)
+            row.Margin = new Thickness(Gaps.Tight + (item.Depth * Gaps.Indent), 0, 0, 0);
+            chevron.IsVisible = item.Expands;
+            chevron.Turned = item.IsExpanded;
+            branchLine.IsVisible = item is CommitBranch;
+            shown.Line.IsVisible = item is CommitRow;
+            bool boxed = false;
+            if (item is CommitBranch branch)
             {
-                bool conflicts = group.Name == MergeConflicts;
+                bool conflicts = branch is CommitGroup { Name: MergeConflicts };
                 // A group none of whose files can be chosen (a submodule's own changes alone) has no box either.
-                bool boxed = !conflicts && group.Rows.Any(r => r.CanChoose);
-                groupBox.IsVisible = boxed;
-                groupBox.IsChecked = group.IsChosen;
-                groupName.Text = group.Name;
-                groupName.Margin = new Thickness(boxed ? 0 : GroupBoxRoom, 0, 0, 0);
-                groupName.Resource(TextBlock.ForegroundProperty, ref groupColour, conflicts ? TokenKeys.Vcs_File_Conflicted : null);
-                count.Text = Core.Plural.Of(group.Rows.Count, "file");
+                boxed = !conflicts && branch.CanChoose;
+                box.IsChecked = branch.IsChosen;
+                CommitFolder? folder = branch as CommitFolder;
+                folderIcon.IsVisible = folder is not null;
+                if (folder is not null)
+                {
+                    string last = folder.Name[(folder.Name.LastIndexOf('/') + 1)..];
+                    folderIcon.Data = Explorer.FileIcons.ForFolder(last, branch.IsExpanded);
+                    folderIcon.Foreground = Explorer.FileIcons.BrushForFolder(last);
+                }
+                branchName.Text = folder?.Name ?? ((CommitGroup)branch).Name;
+                branchName.FontWeight = folder is null ? FontWeight.SemiBold : FontWeight.Normal;
+                branchName.Resource(TextBlock.ForegroundProperty, ref nameColour, conflicts ? TokenKeys.Vcs_File_Conflicted : null);
+                count.Text = Core.Plural.Of(branch.Rows.Count, "file");
                 resolve.IsVisible = conflicts;
             }
             else if (item is CommitRow file)
             {
-                fileBox.IsVisible = file.CanChoose;
-                fileBox.IsChecked = file.CheckState;
-                fileLine.Margin = new Thickness(file.CanChoose ? 0 : FileBoxRoom, 0, 0, 0);
-                ShowFile(shown, file.Change, vcs.Repository);
+                boxed = file.CanChoose;
+                box.IsChecked = file.CheckState;
+                ShowFile(shown, file.Change, vcs.Repository, underFolders: grouped);
             }
+            box.IsVisible = boxed;
+            content.Margin = new Thickness(boxed ? 0 : BoxRoom, 0, 0, 0);
             setting = false;
         });
     }
@@ -969,11 +1194,12 @@ public sealed class CommitView : DockPanel, IOwnKeys
         return line.Line;
     }
 
-    /// <summary>Shows a changed file in a line, its folder from the repository's top.</summary>
-    private static void ShowFile(ChangedFileRow line, FileChange change, Git? repository)
+    /// <summary>Shows a changed file in a line, its folder from the repository's top, none where it is listed under its
+    /// folders.</summary>
+    private static void ShowFile(ChangedFileRow line, FileChange change, Git? repository, bool underFolders = false)
     {
         // A change with nothing to commit here says why in its folder's place.
-        line.Show(change, repository, change.Uncommittable);
+        line.Show(change, repository, change.Uncommittable ?? (underFolders ? string.Empty : null));
         ToolTip.SetTip(line.Line, change.From is { } from ? $"{change.Kind}: {from} -> {change.Path}"
             : change.Uncommittable is { } why ? $"{change.Kind}: {change.Path}\n{why}"
             : $"{change.Kind}: {change.Path}");

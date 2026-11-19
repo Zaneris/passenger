@@ -563,6 +563,9 @@ public static class AppActions
     // Commit Signing…, the Commit window's and the Git menu's: no keys of Rider's.
     public const string CommitSigning = "app.vcs.commitSigning";
     public const string CommitRefresh = "app.vcs.refreshChanges";
+
+    // Rider's ChangesView.GroupBy.Directory, the Commit window's Group By › Directory.
+    public const string GroupByDirectory = "app.vcs.groupByDirectory";
     public const string NuGetRefresh = "app.nuget.refresh";
     public const string NuGetUpdateAll = "app.nuget.updateAll";
     public const string LiveTreeRefresh = "app.liveTree.refresh";
