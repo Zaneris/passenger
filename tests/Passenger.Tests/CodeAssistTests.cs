@@ -600,6 +600,8 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         window.KeyTextInput("System.Console");
         window.KeyTextInput(".");
         Ui.WaitFor(() => window.Assist.CompletionLabels.FirstOrDefault() == "BackgroundColor", "Console's members after its dot, BackgroundColor first");
+        Ui.WaitFor(() => window.Assist.ItemDocumentation?.Contains("BackgroundColor", StringComparison.Ordinal) == true,
+            "BackgroundColor's documentation beside the list before the selection moves");
 
         Ui.Press(window, "ENTER");
         Ui.Settle();

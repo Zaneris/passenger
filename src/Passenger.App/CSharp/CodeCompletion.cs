@@ -567,6 +567,7 @@ internal sealed partial class CodeCompletion
         {
             Tail = listTail,
             WordCharacters = named?.WordCharacters ?? string.Empty,
+            DescribedAsItOpens = lsp.LanguageId == LanguageIds.CSharp,
             Lead = lead,
             Coming = before is null && list?.Later is not null,
         };
