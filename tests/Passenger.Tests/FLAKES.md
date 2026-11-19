@@ -30,6 +30,19 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 
 ## 2026-11-19
 
+- `StepTests`' `A_step_out_of_a_web_apps_async_handler_lets_the_program_run_on_where_the_framework_awaits_it`, CI
+  44522273860 (Linux report shard 1, at b856ed3b9): "the program stopped again for step at line 20 on thread 5350".
+  **A race in the IDE**: an async handler's task completing runs what awaits it, ASP.NET's, on the handler's thread
+  above its frame, and Kestrel took in the next request there at once; the step from
+  `Task.NotifyDebuggerOfWaitCompletion` took the ended handler's frame below, past its last line at its builder's
+  `SetResult`, for the user's code to go back to, so Just My Code stopped it in the next request's handler (1 of 15
+  rounds on the Ubuntu VM under load). Such a frame is now no user code to go back to (`PastItsLastLine`, 3e2a8ca53,
+  #1990).
+- `ContainerRunsBytesTests`' `A_compose_runs_build_and_log_cost_a_small_constant_for_each_line_however_many_come`, the
+  same run: "221 bytes off the window's thread for each line". **The IDE copied each read twice**: since #1814 a masked
+  stream's whole lines were made one string, then read out of their colour codes into a second for the mask, which held
+  the measure at 206 to 211 on the Ubuntu VM, within a few bytes of its bound. The mask's string is now the one copy:
+  144 to 161 there (d8ab045a8, #1989).
 - `UnitTestsTests`' `A_run_whose_test_host_crashes_is_no_pass_in_local_history_and_ends_run_until_failure`, CI
   44522273860 (macOS report shard 1): "Run 1 broke off: One or more errors occurred. (The…". **A race in VSTest the IDE
   passed on**: as a test host ends, vstest.console hears its exit and the end of their connection in either order;
