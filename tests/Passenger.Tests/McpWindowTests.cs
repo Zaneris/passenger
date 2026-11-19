@@ -706,6 +706,51 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
         }
     }
 
+    /// <summary>A file come into a project while the language server's load of the project again for it is held (its
+    /// design-time builds not yet given), so in none of the server's projects once the wait for it runs out: an agent's
+    /// find_symbol over the solution answers with what the loaded code declares, naming the file it went without, where it
+    /// was refused whole; a tool asked of a file of that project still waits for it, refused naming it once the wait runs out.</summary>
+    [AvaloniaFact]
+    public void An_agents_find_symbol_answers_without_a_file_still_loading_naming_it_while_a_tool_of_its_project_waits_for_it()
+    {
+        string folder = PathNames.Canonical(TestFolders.Create("mcp-still-loading-"));
+        DeleteAtEnd(folder);
+        string lib = TestFolders.Write(folder, "Lib/Lib.csproj", TestProjects.Library());
+        TestFolders.Write(folder, "Lib/Greeter.cs", "namespace Lib;\n\npublic class Greeter\n{\n    public string Greet() => \"Hello\";\n}\n");
+        MainWindow window = AgentsWindow(folder);
+        Ui.WaitFor(() => window.CSharpService is { IsReady: true }, () => $"the language server to load Lib ({window.CSharpService?.State})", TimeSpan.FromMinutes(3));
+        McpClient client = Await(Waiting.Apart(() => Start(["--mcp-attach", ProcessId])), "the agent attaching");
+        TaskCompletionSource building = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        try
+        {
+            Task held = window.Session.DesignTimeBuilds.HoldNextAsked(lib, building.Task);
+            TestFolders.Write(folder, "Lib/Late.cs", "namespace Lib;\n\npublic static class Late\n{\n}\n");
+            // Pumped, not settled: the server's load held waits on the window.
+            Ui.PumpUntil(() => held.IsCompleted, "the server's load of Lib again, for the file come into it, to be held", AgentLimit);
+            string late = Path.Combine("Lib", "Late.cs");
+
+            CallToolResult found = Ui.AwaitPumped(Waiting.Apart(() => Result(client, McpTools.FindSymbol, new() { ["query"] = "Greeter" })),
+                "the agent's find_symbol of Greeter", AgentLimit);
+            string[] said = [.. found.Content.OfType<TextContentBlock>().Select(t => t.Text)];
+            JsonElement[] symbols = found.IsError == true ? [] : [.. JsonDocument.Parse(said[0]).RootElement.EnumerateArray()];
+            Assert.True(symbols.Any(s => s.GetProperty("name").GetString() == "Greeter" && s.GetProperty("path").GetString() == Path.Combine("Lib", "Greeter.cs"))
+                && said.Skip(1).Any(words => words.Contains(Refusals.Untaken([late]), StringComparison.Ordinal)),
+                $"find_symbol of Greeter, asked while Late.cs is still loading into Lib, did not find Greeter naming Late.cs as left out: {string.Join(" | ", said)}");
+
+            CallToolResult asked = Ui.AwaitPumped(Waiting.Apart(() => Result(client, McpTools.SymbolInfo, new() { ["path"] = "Lib/Greeter.cs", ["line"] = 3, ["column"] = 14 })),
+                "the agent's symbol_info of Greeter", AgentLimit);
+            string answered = Text(asked);
+            Assert.True(asked.IsError == true && answered.Contains(Refusals.NotTakenIn(late, "Lib"), StringComparison.Ordinal),
+                $"symbol_info in Lib, asked while Late.cs is still loading into it, did not wait for Late.cs and say so: {answered}");
+        }
+        finally
+        {
+            building.TrySetResult();
+            Gone(client);
+            window.Close();
+        }
+    }
+
     /// <summary>A MAUI page's code-behind asked of as its folder first loads: the server's restore brings MAUI's generator,
     /// its load after queues the generator's run, and the server's word that its diagnostics moved, sent of changes made
     /// before that load, is heard just after it ends (held to then). An agent's definition of the InitializeComponent the

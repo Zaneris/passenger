@@ -1276,14 +1276,15 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         {
             throw new ArgumentException($"No kind '{kind}'; Go to Symbol's kinds are {string.Join(", ", SymbolKinds.All)}", nameof(kind));
         }
-        // Found once the C# files come under the folder's projects are in them: a file just made may declare the name.
+        // Found once the C# files come under the folder's projects are in them (one just made may declare it), saying any left out.
         await Server(cancel);
-        await TakenInAsync(null, cancel);
+        IReadOnlyList<(string Path, string Project)> untaken = await UntakenAsync(cancel) ?? [];
         RoslynSession session = await Server(cancel);
+        string? without = WentWithout(untaken);
         if (exact || indexer)
         {
-            SymbolsNamed named = await NamedAsync(session, query, kind, limit, cancel);
-            return Held([.. named.Symbols.Select(Found)], "symbol", NarrowedSymbols, named.More, LargerLimit);
+            SymbolsNamed named = await NamedAsync(session, query, kind, limit, cancel, waited: untaken);
+            return Held([.. named.Symbols.Select(Found)], "symbol", NarrowedSymbols, named.More, LargerLimit, note: without);
         }
         IReadOnlyList<SymbolFound> indexers = query == "Item" && kind is null or "property"
             ? [.. (await NamedAsync(session, "this[]", "property", limit, cancel, noneRefused: false)).Symbols.Select(Found)]
@@ -1306,7 +1307,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         // Each one's container as the exact find names it, a type's namespace too.
         IReadOnlyList<string?> containers = await session.ContainersAsync([.. kept.Select(s => s.Location)], cancel) ?? [.. kept.Select(s => s.Owner)];
         return Held([.. indexers, .. kept.Select((s, i) => new SymbolFound(s.Name, SymbolKinds.Name(s.Kind), containers[i], places[i].Path, places[i].Line, places[i].Column))],
-            "symbol", NarrowedSymbols, matching.Count - kept.Count, LargerLimit);
+            "symbol", NarrowedSymbols, matching.Count - kept.Count, LargerLimit, note: without);
 
         static SymbolFound Found(NamedPlace n) => new(n.Name, n.Kind, n.Container, n.Path, n.Line, n.Column) { Id = n.Id };
     });
@@ -1362,20 +1363,26 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
 
     /// <summary>The solution's own C# symbols a name names exactly, of a kind when one is given, at most limit; none is
     /// refused, saying how to find a name like it, unless <paramref name="noneRefused"/> is false. A name none declares is
-    /// looked for again once the C# files come under the folder's projects are in them: a file just written may declare it.</summary>
-    private async Task<SymbolsNamed> NamedAsync(RoslynSession session, string name, string? kind, int limit, CancellationToken cancel, bool noneRefused = true)
+    /// looked for again once the C# files come under the folder's projects are in them, a file just written may declare it,
+    /// unless the caller waited for them (<paramref name="waited"/>, those still in none); none found is said to be without
+    /// those still in none after the wait (<see cref="UntakenAsync"/>).</summary>
+    private async Task<SymbolsNamed> NamedAsync(RoslynSession session, string name, string? kind, int limit, CancellationToken cancel, bool noneRefused = true,
+        IReadOnlyList<(string Path, string Project)>? waited = null)
     {
         Roslyn.Extension.SymbolsFound found = await session.SymbolsNamedAsync(name, kind is null ? limit : 1000, cancel);
         List<Roslyn.Extension.NamedSymbol> kept = [.. found.Symbols.Where(s => kind is null || s.Kind.Equals(kind, StringComparison.OrdinalIgnoreCase))];
-        if (kept.Count == 0 && noneRefused && await TakenInAsync(null, cancel) && Session.CSharp?.Session is { } now)
+        IReadOnlyList<(string Path, string Project)> untaken = waited ?? [];
+        if (kept.Count == 0 && noneRefused && waited is null && await UntakenAsync(cancel) is { } left && Session.CSharp?.Session is { } now)
         {
+            untaken = left;
             found = await now.SymbolsNamedAsync(name, kind is null ? limit : 1000, cancel);
             kept = [.. found.Symbols.Where(s => kind is null || s.Kind.Equals(kind, StringComparison.OrdinalIgnoreCase))];
         }
         if (kept.Count == 0 && noneRefused)
         {
             string none = $"No {kind ?? "symbol"} of the solution's own code is named {name}";
-            throw new InvalidOperationException(FailedLoads() is { Count: > 0 } failed ? Refusals.NoneWhileUnloaded(none, failed) : $"{none}: find_symbol finds names like it");
+            throw new InvalidOperationException(FailedLoads() is { Count: > 0 } failed ? Refusals.NoneWhileUnloaded(none, failed)
+                : $"{none}: find_symbol finds names like it{(WentWithout(untaken) is { } without ? $". {without}" : string.Empty)}");
         }
         // A symbol only a source generator declares is at its place in a copy of the generator's code.
         IReadOnlyList<Place> places = await Places([.. kept.Select(s => new LspLocation(s.Path is { } path ? DocumentUris.FromPath(path) : s.Generated!,
@@ -3567,12 +3574,12 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
 
     /// <summary>Waits, once the language server has loaded the workspace, until it holds in their projects the C# files come
     /// under the folder's projects since (an agent's just written first) that the file asked about sees (<see
-    /// cref="CSharpService.SeenFrom"/>), else every one, up to <see cref="Patience.Limit"/>, as it answers without a file in none:
-    /// refused, naming the first, when the time is up, and at once while the projects have no SDK (<see cref="Unloadable"/>);
-    /// whether it was waited for (false while the server still loads the workspace).</summary>
-    private async Task<bool> TakenInAsync(string? path, CancellationToken cancel)
+    /// cref="CSharpService.SeenFrom"/>), up to <see cref="Patience.Limit"/>, as it answers without a file in none: refused,
+    /// naming the first, when the time is up, and at once while the projects have no SDK (<see cref="Unloadable"/>); whether
+    /// it was waited for (false while the server still loads the workspace).</summary>
+    private async Task<bool> TakenInAsync(string path, CancellationToken cancel)
     {
-        if ((path is null || Session.ProjectOf(Resolve(path)) is not null) && Unloadable() is { } unloadable)
+        if (Session.ProjectOf(Resolve(path)) is not null && Unloadable() is { } unloadable)
         {
             throw new InvalidOperationException(unloadable);
         }
@@ -3580,10 +3587,29 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         {
             return false;
         }
-        IReadOnlyList<(string Path, string Project)> left = await csharp.UnplacedAsync(Patience.Limit, looking: true, path is null ? null : csharp.SeenFrom(Resolve(path)),
-            SayTakingIn, cancel);
+        IReadOnlyList<(string Path, string Project)> left = await csharp.UnplacedAsync(Patience.Limit, looking: true, csharp.SeenFrom(Resolve(path)), SayTakingIn, cancel);
         return left.Count == 0 ? true : throw new TimeoutException(NotTakenIn(left));
     }
+
+    /// <summary>Waits, as <see cref="TakenInAsync"/> does for a file, until the server holds in their projects every C# file
+    /// come under the folder's projects since, for a question of the solution's whole code: those still in none when the
+    /// time is up, and the projects not loaded again, which its answer goes without, saying so (<see cref="WentWithout"/>),
+    /// rather than refuse whole; refused at once while the projects have no SDK (<see cref="Unloadable"/>); null while the
+    /// server still loads the workspace.</summary>
+    private async Task<IReadOnlyList<(string Path, string Project)>?> UntakenAsync(CancellationToken cancel)
+    {
+        if (Unloadable() is { } unloadable)
+        {
+            throw new InvalidOperationException(unloadable);
+        }
+        return Session.CSharp is { IsReady: true } csharp ? await csharp.UnplacedAsync(Patience.Limit, looking: true, null, SayTakingIn, cancel) : null;
+    }
+
+    /// <summary>What an answer of the solution's whole code went without (<see cref="UntakenAsync"/>): the files the server
+    /// holds in no project yet, and the projects it answered from as they were; null for none.</summary>
+    private string? WentWithout(IReadOnlyList<(string Path, string Project)> untaken) => untaken.Count == 0 ? null
+        : Refusals.WentWithout([.. untaken.Where(u => !CSharpService.IsReload(u)).Select(u => Relative(u.Path))],
+            [.. untaken.Where(CSharpService.IsReload).Select(u => Path.GetFileNameWithoutExtension(u.Project))]);
 
     /// <summary>The agent's progress while a C# file is waited for (null once it is not).</summary>
     private void SayTakingIn(string? file) => AgentCall.Say(file is null ? null
@@ -3969,19 +3995,19 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
     /// <summary>The room kept for an answer's words of what it left out and how to read it.</summary>
     private const int WordsRoom = 1_000;
 
-    /// <summary>A list's answer held within <see cref="AgentAnswers.MostCharacters"/>: its first entries as JSON and, where it
-    /// left some out, after them the words saying how many (<paramref name="noun"/>) and how to read them
-    /// (<paramref name="how"/>); <paramref name="beyond"/> more found past the entries (an agent's limit) are said as left
-    /// out too, read as <paramref name="beyondHow"/> says where the limit alone cut them. Where the size cut them, words of
-    /// the last entry kept (<paramref name="readOn"/>) come before <paramref name="how"/>.</summary>
-    private static CallToolResult Held<T>(IReadOnlyList<T> entries, string noun, string how, int beyond = 0, string? beyondHow = null, Func<T, string>? readOn = null)
+    /// <summary>A list's answer held within <see cref="AgentAnswers.MostCharacters"/>: its first entries as JSON, then words of
+    /// how many it left out (<paramref name="noun"/>) and how to read them (<paramref name="how"/>), <paramref name="beyond"/>
+    /// more past an agent's limit counted too, read as <paramref name="beyondHow"/> says where the limit alone cut them, and
+    /// where the size cut them the last entry kept's words first (<paramref name="readOn"/>); then <paramref name="note"/>'s.</summary>
+    private static CallToolResult Held<T>(IReadOnlyList<T> entries, string noun, string how, int beyond = 0, string? beyondHow = null, Func<T, string>? readOn = null,
+        string? note = null)
     {
         int kept = AgentAnswers.Fitting(entries, Size, AgentAnswers.MostCharacters - WordsRoom);
         int left = entries.Count - kept + beyond;
         string said = kept == entries.Count && beyondHow is not null ? beyondHow
             : kept < entries.Count && kept > 0 && readOn is not null ? $"{readOn(entries[kept - 1])}; {how}"
             : how;
-        return Listed(kept == entries.Count ? entries : [.. entries.Take(kept)], left == 0 ? null : AgentAnswers.More(left, noun, said));
+        return Listed(kept == entries.Count ? entries : [.. entries.Take(kept)], left == 0 ? null : AgentAnswers.More(left, noun, said), note);
     }
 
     /// <summary>A text cut, where its JSON runs past <paramref name="room"/> characters, to a part whose JSON does not.</summary>
@@ -3995,11 +4021,12 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         return cut;
     }
 
-    /// <summary>A list's answer: its entries as JSON and, after them, <paramref name="more"/>'s words where it has some.</summary>
-    private static CallToolResult Listed<T>(IReadOnlyList<T> kept, string? more)
+    /// <summary>A list's answer: its entries as JSON and, after them, <paramref name="more"/>'s words where it has some, then
+    /// <paramref name="note"/>'s, what the whole list went without.</summary>
+    private static CallToolResult Listed<T>(IReadOnlyList<T> kept, string? more, string? note = null)
     {
         TextContentBlock json = new() { Text = System.Text.Json.JsonSerializer.Serialize(kept, McpHost.AnswerJson) };
-        return new CallToolResult { Content = more is null ? [json] : [json, new TextContentBlock { Text = more }] };
+        return new CallToolResult { Content = [json, .. new[] { more, note }.OfType<string>().Select(words => new TextContentBlock { Text = words })] };
     }
 
     /// <summary>A text answer's lines held within <see cref="AgentAnswers.MostCharacters"/>: its first lines, and after them

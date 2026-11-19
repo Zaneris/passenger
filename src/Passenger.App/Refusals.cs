@@ -176,8 +176,21 @@ public static class Refusals
     /// <summary>What an answer given before the C# language server took C# files come under its projects into them went
     /// without (<see cref="CSharp.CSharpService.UntakenAsync"/>), the files named as shown.</summary>
     public static string Untaken(IReadOnlyList<string> files) =>
-        $"Without {string.Join(", ", files.Take(3))}{(files.Count > 3 ? $" and {files.Count - 3} more" : string.Empty)}, which the C# language server "
-        + $"has not loaded into {Plural.Agreeing(files.Count, "its project", "their projects")} yet";
+        $"Without {FirstNamed(files)}, which the C# language server has not loaded into {Plural.Agreeing(files.Count, "its project", "their projects")} yet";
+
+    /// <summary>What an answer of the solution's whole code went without once the wait for the C# language server ran out:
+    /// the files come under its projects it has not taken in (<see cref="Untaken"/>), and the projects it answered from as
+    /// they were before they changed, not loaded again yet.</summary>
+    public static string WentWithout(IReadOnlyList<string> files, IReadOnlyList<string> projects) => string.Join(". ", new[]
+    {
+        files.Count > 0 ? Untaken(files) : null,
+        projects.Count > 0 ? $"From {FirstNamed(projects)} as {Plural.Agreeing(projects.Count, "it was", "they were")} before "
+            + $"{Plural.Agreeing(projects.Count, "it", "they")} changed, which the C# language server has not loaded again yet" : null,
+    }.OfType<string>());
+
+    /// <summary>The first three names, and how many more.</summary>
+    private static string FirstNamed(IReadOnlyList<string> names) =>
+        $"{string.Join(", ", names.Take(3))}{(names.Count > 3 ? $" and {names.Count - 3} more" : string.Empty)}";
 
     /// <summary>The folder's projects have no .NET SDK to load, build and run them with: the one its global.json asks
     /// for (named from <paramref name="folder"/>) is not installed, none is, or dotnet found none for another reason it
