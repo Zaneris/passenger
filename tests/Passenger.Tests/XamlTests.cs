@@ -2464,7 +2464,9 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
         // The frame's width on the window, in the screen's pixels.
         double Shown() => ((frame.TranslatePoint(new Point(preview.FrameSize.Width, 0), window)?.X ?? 0) - (frame.TranslatePoint(default, window)?.X ?? 0)) * scale;
         Ui.WaitFor(() => preview.Frame is { } drawn && Math.Abs(preview.FrameSize.Width - 3000) < 1 && drawn.PixelSize.Width < 3000 * scale * 0.9,
-            () => $"the previewer drawing the 3000-wide window smaller for the pane {pane.Bounds.Width:0} wide (its frame {preview.Frame?.PixelSize}, {preview.FrameSize} in its units)",
+            () => $"the previewer drawing the 3000-wide window smaller for the pane {pane.Bounds.Width:0} wide (its frame {preview.Frame?.PixelSize}, {preview.FrameSize} in its units), "
+                + $"the pane saying '{preview.Status}'{(preview.Error is { } error ? $" over '{error}'" : string.Empty)} with {(preview.Running ? "a previewer" : "no previewer")} running; "
+                + PreviewsLogged(),
             TimeSpan.FromSeconds(60));
         Ui.Settle();
         Assert.True(Math.Abs(Shown() - preview.Frame!.PixelSize.Width) < 0.5,
@@ -2473,6 +2475,17 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
         // XAML Preview is kept on for the next window, which the class's other tests open with it off.
         Assert.True(window.Perform(AppActions.XamlPreview) && window.PreviewOf(document) is null, "XAML Preview stayed on");
         window.Close();
+    }
+
+    /// <summary>What the IDE caught and what passenger.log says of the previews and their previewers, which tell how a preview
+    /// that never drew ended: its start faulted, its previewer refused or ended, or its first frame came.</summary>
+    private static string PreviewsLogged()
+    {
+        IdeErrors.Flush();
+        IEnumerable<string> previews = Ui.Shared(IdeErrors.LogPath).Split('\n')
+            .Where(l => l.Contains("Preview of", StringComparison.Ordinal) || l.Contains("previewer", StringComparison.OrdinalIgnoreCase)).TakeLast(10);
+        return $"the IDE caught {(IdeErrors.Errors.Count == 0 ? "nothing" : string.Join("; ", IdeErrors.Errors.TakeLast(5).Select(e => $"{e.Kind}: {e.Message}")))}, "
+            + $"and its log says of the previews: {string.Join(" | ", previews)}";
     }
 
     /// <summary>An Avalonia preview draws its root at a phone's and a tablet's size beside its design's (#1549): chosen
