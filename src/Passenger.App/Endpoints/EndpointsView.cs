@@ -94,9 +94,8 @@ public sealed class EndpointsView : DockPanel
         ToolTip.SetTip(environments, $"The environment of {HttpVariables.PublicFile} whose variables the requests use");
         Button refresh = ToolButtons.Of(AppActions.EndpointsRefresh, IconKeys.Rerun, "Read the .http files again", action => ActionRequested?.Invoke(this, action));
         TextBlock label = new() { Text = "Environment", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, Gaps.Small, 0) };
-        StackPanel bar = new() { Orientation = Orientation.Horizontal, Margin = new Thickness(Gaps.Normal, Gaps.Tight), Spacing = Gaps.Tight, Children = { label, environments, refresh } };
-        DockPanel.SetDock(bar, Dock.Top);
-        Children.Add(bar);
+        // The shared bar, whose parts take a row of their own where the window is too narrow for them, never running past it.
+        Children.Add(ToolBars.Top(new ToolFlow { Margin = new Thickness(Gaps.Normal, Gaps.Hair), Spacing = Gaps.Tight, Children = { label, environments, refresh } }));
 
         Grid panes = new() { RowDefinitions = new RowDefinitions("*,1,*") };
         Panel top = new() { Children = { list, placeholder } };
