@@ -30,6 +30,14 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 
 ## 2026-11-19
 
+- `EvalTests`' `At_a_stop_the_locals_are_listed_as_they_are_and_an_evaluation_reads_assigns_and_calls_what_the_method_sees`
+  (gate), CI 44554208543 (Windows gate shard 1, at cb60ca68d): "int.Parse(anotherVar) was answered: error: The evaluation
+  took longer than 3 s and could not be stopped, as it runs outside managed code". **A race in the IDE**: an evaluation
+  held every other thread, the runtime's tiering worker too, which, held, stood partway through compiling a method,
+  inside a type's load whose lock it kept (sampled on the Mac in 5 of 12 loaded rounds), so an evaluation needing that
+  type waited past its time with nothing of the program's on its stack. The worker is left running now on Windows and
+  Linux, told by the name the runtime gives it (`RuntimeThreads`); macOS keeps no such name and holds it as before
+  (335539c9e, #1999).
 - `Variables2Tests`' `A_stop_lists_locals_and_fields_of_every_kind_with_their_values_and_types`, CI 44538058686
   (Windows report shard 3): "IntProperty = Implicit evaluation is disabled: an …". **A race in the IDE**: an evaluation
   past its 3 s that ended of itself while the debugger looked for a moment an abort would take still turned implicit
