@@ -76,6 +76,10 @@ public abstract class WatchedTree : IDisposable
     private long? recordedAt;
     private long recordBeganTicks;
 
+    /// <summary>Whether changes were taken for lost since a walk last began, so the next walk to make the record anew reads
+    /// what the burst they came in had done by then (<see cref="Record"/>); under <see cref="gate"/>.</summary>
+    private bool losing;
+
     /// <summary>The changes to which folders are watched, made one at a time in the order they were seen.</summary>
     private Task following = Task.CompletedTask;
 
@@ -229,6 +233,23 @@ public abstract class WatchedTree : IDisposable
     private sealed class Held(List<IDisposable> holds) : IDisposable
     {
         public void Dispose() => holds.ForEach(h => h.Dispose());
+    }
+
+    /// <summary>How far back before the system's word that it dropped changes those changes may reach: a record made since
+    /// may hold some never heard, so the changes are taken for lost, the folder read again. For a test, which lets its
+    /// record grow older than this first (<see cref="RecordAge"/>).</summary>
+    public static TimeSpan DropReach => Burst + Gather + Lag;
+
+    /// <summary>How long ago the record of the whole folder was made; null while it is made, or past its limit. For a test.</summary>
+    public TimeSpan? RecordAge
+    {
+        get
+        {
+            lock (gate)
+            {
+                return recordedAt is { } made ? Stopwatch.GetElapsedTime(made) : null;
+            }
+        }
     }
 
     /// <summary>How many of the system's watches every tree of the process holds now (<see cref="Watch"/>): back where it
@@ -791,13 +812,20 @@ public abstract class WatchedTree : IDisposable
     }
 
     /// <summary>Makes the record of the whole folder anew by a walk, which may stop it at its limit; what a whole record
-    /// held before that a whole walk no longer finds there is taken as gone.</summary>
+    /// held before that a whole walk no longer finds there is taken as gone. One begun after changes were taken for lost
+    /// reads what their burst had done by then, so the burst, looked at again, is listed against it, not lost once more.</summary>
     private void Record(Action walk)
     {
         Dictionary<string, Listed>? before = recordedAt is null ? null : new(record, StringComparer.Ordinal);
         record.Clear();
         recorded = 0;
-        recordedAt = null;
+        bool covering;
+        lock (gate)
+        {
+            recordedAt = null;
+            covering = losing;
+            losing = false;
+        }
         Volatile.Write(ref recordBeganTicks, DateTime.UtcNow.Ticks);
         walk();
         if (recorded > RecordLimit)
@@ -805,7 +833,17 @@ public abstract class WatchedTree : IDisposable
             record.Clear();
             return;
         }
-        recordedAt = Stopwatch.GetTimestamp();
+        lock (gate)
+        {
+            long made = Stopwatch.GetTimestamp();
+            recordedAt = made;
+            if (covering)
+            {
+                // What the burst taken for lost had done by now is in this record, and was handed over as lost.
+                burstBegan = Math.Max(burstBegan, made);
+                riskBegan = Math.Max(riskBegan, made);
+            }
+        }
         foreach ((string at, Listed listed) in before ?? [])
         {
             record.TryGetValue(at, out Listed? now);
@@ -1235,6 +1273,7 @@ public abstract class WatchedTree : IDisposable
         lock (gate)
         {
             lost = true;
+            losing = true;
         }
         IdeErrors.Write($"{Shown} took changes for lost{(overflow ? string.Empty : ", a watch having failed")}: everything in it is read again");
         Note(Top, created: true, heard: false);

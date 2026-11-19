@@ -176,6 +176,25 @@ public sealed class SystemWatchesTests : IDisposable
         Ui.WaitFor(() => Held() == before, () => $"the system's watches of trees, of files and the shared watchers to be back at {before}, where they are {Held()}");
     }
 
+    /// <summary>The system's word that it dropped changes, come as the watcher's record is new, has the changes taken for
+    /// lost and the folder walked again, once: the burst's look once it is quiet lists what it touched against the record
+    /// that walk made, rather than taking the changes for lost again because the record is newer than the burst.</summary>
+    [AvaloniaFact]
+    public void A_drop_taken_for_lost_is_not_taken_for_lost_again_as_its_burst_is_looked_at_once_quiet()
+    {
+        string folder = Directory.CreateDirectory(Path.Combine(apart, "dropped")).FullName;
+        TestFolders.Write(folder, "One.cs", "class One { }\n");
+        using Watched watched = new(folder);
+        Ui.WaitFor(() => watched.Ready.IsCompleted, "the folder's watch to have walked its folder");
+        Assert.True(watched.RecordAge < WatchedTree.DropReach, $"The watcher's record was {watched.RecordAge} old, older than a drop reaches back, so the drop was never taken for lost");
+        watched.Fail(folder, new InternalBufferOverflowException("Too many changes at once; directory listing is required."));
+        Ui.WaitFor(() => watched.Losses > 0, "the drop, said as the record was new, to be taken for lost");
+        Ui.Hold(WatchedTree.DropReach, "the burst's look once it has been quiet a moment");
+        Ui.Settle();
+        Assert.True(watched.Losses == 1, $"A drop taken for lost was taken for lost {watched.Losses} times, each walking the whole folder again, as each look "
+            + "at its burst found the record the last walk made newer than the burst");
+    }
+
     /// <summary>The system's watches of trees and of files held, and the shared watchers.</summary>
     private static (int Trees, int Files, int Shared) Held() => (WatchedTree.SystemWatches, WatchedFile.SystemWatches, WatchedTree.SharedWatchers.Count);
 
@@ -224,6 +243,11 @@ public sealed class SystemWatchesTests : IDisposable
 
         public System.Collections.Concurrent.ConcurrentBag<string> Heard { get; } = [];
 
+        /// <summary>How many batches came with their changes taken for lost.</summary>
+        public int Losses => Volatile.Read(ref losses);
+
+        private int losses;
+
         protected override bool Kept(string path) => PathNames.Same(path, Top);
 
         protected override Notice Noticed(string path, bool created) => new(Takes: true, Counts: true, PathNames.Canonical(path));
@@ -232,6 +256,7 @@ public sealed class SystemWatchesTests : IDisposable
 
         protected override FolderChanges? Gathered(bool lost, bool overflowed)
         {
+            losses += lost ? 1 : 0;
             FolderChanges changes = new(new HashSet<string>(taken, PathNames.Comparer), Structure: false, Projects: false, Git: false) { Lost = lost };
             taken.Clear();
             return changes.Paths.Count > 0 || lost ? changes : null;

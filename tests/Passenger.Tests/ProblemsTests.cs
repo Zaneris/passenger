@@ -882,8 +882,9 @@ public sealed class ProblemsTests : IClassFixture<ProblemsTests.Project>
     }
 
     /// <summary>A thousand files deleted side by side, as a script or a clean deletes them, more at once than macOS's watcher
-    /// names: the folder's watcher lists again the folder they went from, rather than the whole folder, and every one
-    /// leaves Go to File and is told the language server as gone.</summary>
+    /// names (it says it dropped them): the folder's watcher, its record older than such a drop reaches back, lists again
+    /// the folder they went from, rather than the whole folder, and every one leaves Go to File and is told the language
+    /// server as gone.</summary>
     [AvaloniaFact]
     public void A_thousand_files_deleted_side_by_side_each_leave_go_to_file_and_reach_the_server_as_gone()
     {
@@ -892,6 +893,11 @@ public sealed class ProblemsTests : IClassFixture<ProblemsTests.Project>
         MainWindow window = project.Open("Program.cs");
         int Listed() => window.FileIndex.Files.Count(f => f.StartsWith("Side", StringComparison.Ordinal));
         Ui.WaitFor(() => Listed() == Files, $"the {Files} files in Go to File");
+        Ui.WaitFor(() => window.FolderWatcher!.RecordAge is not null, "the folder's watcher to have made its record of the folder");
+        if (Passenger.App.Workspace.WatchedTree.DropReach - window.FolderWatcher!.RecordAge is { } left && left > TimeSpan.Zero)
+        {
+            Ui.Hold(left, "the folder watcher's record to be older than the system's word that it dropped the burst may reach back to");
+        }
         Passenger.Lsp.WatchedFiles watched = window.CSharpService!.Session!.Server.WatchedFiles;
         Assert.True(watched.Watches.Count > 0, "The language server registered no file for the IDE to watch, so it watches the folder itself");
         Passenger.Lsp.LanguageServer server = window.CSharpService.Session.Server;
