@@ -164,7 +164,9 @@
         <Border Name="StatusBarFrame" Classes="statusBar" Grid.Row="2">
             <Panel>
             <!-- The line keeps a sentence's room before the widgets are laid (StatusLine.LeastWidth), so the branch's name
-                 gives way to it, then goes whole, its menu still the toolbar's Git widget's; the others keep their width. -->
+                 gives way to it, then goes whole, its menu still the toolbar's Git widget's; then the indent's and the caret's
+                 words (a choice's count after it) give way, ending in an ellipsis, so no widget stands past the window's
+                 edge; the others keep their width. -->
             <app:ToolbarRow Classes="statusRow">
                 <app:ShrinkingRow Classes="statusWidgets" DockPanel.Dock="Right" Spacing="{x:Static app:Gaps.Group}" VerticalAlignment="Center">
                     <!-- Git, in a working tree: the branch checked out, a click opening the branches as the toolbar's Git
@@ -231,8 +233,9 @@
                          indent offers the others. Their frames reach into the spacing, so their words stand where the
                          other items' do. -->
                     <TextBlock Name="VimModeText" Classes="status" IsVisible="False" ToolTip.Tip="Vim mode's mode, and a command typed so far (Settings › Editor › Vim mode)" />
-                    <Button Name="CaretButton" Classes="statusItem reaching" Focusable="False" IsVisible="False" Click="OnCaretClicked">
-                        <TextBlock Name="CaretText" Classes="status" />
+                    <Button Name="CaretButton" Classes="statusItem reaching" Focusable="False" IsVisible="False" Click="OnCaretClicked"
+                            app:ShrinkingRow.KeepsWidth="False" app:ShrinkingRow.Least="64">
+                        <TextBlock Name="CaretText" Classes="status" TextTrimming="CharacterEllipsis" />
                     </Button>
                     <Button Name="LineSeparatorButton" Classes="statusItem reaching" Focusable="False" IsVisible="False" Click="OnLineSeparatorClicked">
                         <TextBlock Name="LineEndingText" Classes="status" />
@@ -240,8 +243,9 @@
                     <Button Name="EncodingButton" Classes="statusItem reaching" Focusable="False" IsVisible="False" Click="OnEncodingClicked">
                         <TextBlock Name="EncodingText" Classes="status" />
                     </Button>
-                    <Button Name="IndentButton" Classes="statusItem reaching" Focusable="False" IsVisible="False" Click="OnIndentClicked">
-                        <TextBlock Name="IndentText" Classes="status" />
+                    <Button Name="IndentButton" Classes="statusItem reaching" Focusable="False" IsVisible="False" Click="OnIndentClicked"
+                            app:ShrinkingRow.KeepsWidth="False" app:ShrinkingRow.Least="64">
+                        <TextBlock Name="IndentText" Classes="status" TextTrimming="CharacterEllipsis" />
                     </Button>
                     <TextBlock Name="LanguageText" Classes="status" />
                 </app:ShrinkingRow>

@@ -13,11 +13,11 @@ namespace Passenger.Tests;
 
 /// <summary>What a person sees go wrong in a window, a dialog or a part of one, however narrow: words cut short with no
 /// ellipsis or wrap, by their own room or by a scroller that can't scroll to the rest, words laid out past the side of
-/// what holds them or of the room a row gave their part, a field or button laid out past the edge of what shows it with
-/// nothing to scroll it into view, a field left too little room to type in, and two things a person reads or presses
-/// drawn one over the other, each as far as what clips it shows it. A field's own options inside it and what one holds
-/// inside another are laid over each other on purpose. The code editor draws its own rows and a scroll bar its own
-/// thumb, so neither is read here.</summary>
+/// what holds them, of the room a row gave their part or of the window, a field or button laid out past the edge of what
+/// shows it with nothing to scroll it into view, a field left too little room to type in, and two things a person reads
+/// or presses drawn one over the other, each as far as what clips it shows it. A field's own options inside it and what
+/// one holds inside another are laid over each other on purpose. The code editor draws its own rows and a scroll bar its
+/// own thumb, so neither is read here.</summary>
 internal static class LayoutFaults
 {
     /// <summary>The least room a field leaves to type in, a few letters' (a field squeezed by what stands beside it).</summary>
@@ -43,6 +43,10 @@ internal static class LayoutFaults
             else if (Past(text) is { } past)
             {
                 found.Add($"{what} lays '{text.Text}' out {past:0.#} px past the side of what holds it, over the room beside it, where what holds words grows with them");
+            }
+            else if (PastWindow(window, text) is { } off)
+            {
+                found.Add($"{what} lays '{text.Text}' out {off:0.#} px past the window's edge, cut there, where a bar's words give way inside it");
             }
         }
         foreach (TextBox field in drawn.OfType<TextBox>().Where(t => t.FindAncestorOfType<NumericUpDown>() is null && t.FindAncestorOfType<ComboBox>() is null))
@@ -166,6 +170,21 @@ internal static class LayoutFaults
             }
         }
         return null;
+    }
+
+    /// <summary>How far words stand past a side of the window that shows them (a bar's last widget pushed out by what grew
+    /// before it), where no scroller between holds them; null where they stand inside.</summary>
+    private static double? PastWindow(Visual window, TextBlock text)
+    {
+        TextLine[] lines = [.. text.TextLayout.TextLines];
+        if (lines.Length == 0 || text.GetVisualAncestors().TakeWhile(v => v != window).Any(v => v is ScrollContentPresenter))
+        {
+            return null;
+        }
+        double left = text.TranslatePoint(new Point(text.Padding.Left + lines.Min(l => l.Start), 0), window)?.X ?? 0;
+        double right = text.TranslatePoint(new Point(text.Padding.Left + lines.Max(l => l.Start + l.Width), 0), window)?.X ?? 0;
+        double past = Math.Max(right - window.Bounds.Width, -left);
+        return past > 1 ? past : null;
     }
 
     /// <summary>How far words stand past a side of what holds them, laid out wider than the room it was given (a count

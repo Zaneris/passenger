@@ -127,6 +127,10 @@ public sealed class ShrinkingRow : Panel
     /// tab's few letters, its ellipsis and its ×.</summary>
     public static readonly AttachedProperty<double> LeastProperty = AvaloniaProperty.RegisterAttached<ShrinkingRow, Control, double>("Least");
 
+    public static double GetLeast(Control child) => child.GetValue(LeastProperty);
+
+    public static void SetLeast(Control child, double value) => child.SetValue(LeastProperty, value);
+
     private double Least(Control child, int i)
     {
         if (!double.IsNaN(child.Width) || GetKeepsWidth(child))

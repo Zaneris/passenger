@@ -54,9 +54,9 @@ public static class DiffLines
     /// name and <paramref name="status"/>, with <paramref name="end"/> at its right.</summary>
     public static Border Bar(string name, Action<int> step, TextBlock status, IEnumerable<Control> tools, Control? end = null)
     {
-        StackPanel start = new()
+        // In a narrow diff the count, then the file's name, give way, ending in an ellipsis, before the arrows and Settings.
+        ShrinkingRow start = new()
         {
-            Orientation = Orientation.Horizontal,
             Spacing = Gaps.Hair,
             Margin = new Thickness(Gaps.Small, 0),
             VerticalAlignment = VerticalAlignment.Center,

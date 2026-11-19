@@ -125,6 +125,66 @@ public sealed class SmallestWindowTests
         }
     }
 
+    /// <summary>At the smallest width, with a choice's count after the caret's place (1:20 (14 chars)) and Git's changes
+    /// beside it, the status bar's widgets and words all stand inside the window, nothing over another, the path and what
+    /// the bar says giving way first (LayoutFaults); where the last widgets ran past the window's edge.</summary>
+    [AvaloniaFact]
+    public void At_the_smallest_width_a_choices_count_keeps_the_status_bars_widgets_inside_the_window()
+    {
+        (string folder, string notes) = Changed("smallest-status-choice-");
+        MainWindow window = Ui.OpenFolder(folder, width: MainWindow.SmallestWidth, height: MainWindow.SmallestHeight, languageServer: false, autosaves: false);
+        try
+        {
+            window.OpenFile(notes);
+            Ui.Settle();
+            window.EditorArea.CodeEditor.Selections = Passenger.Text.SelectionSet.Single(new Passenger.Text.Selection(5, 19));
+            Ui.WaitFor(() => Named(window, "GitChangesButton").IsEffectivelyVisible, "Git's changed file in the status bar");
+            List<string> faults = LayoutFaults.Of(window, Named(window, "StatusBarFrame"), $"At {MainWindow.SmallestWidth} wide with 14 characters chosen, the status bar");
+            Assert.True(faults.Count == 0, string.Join("\n", faults));
+        }
+        finally
+        {
+            window.Close();
+            TestFolders.Delete(folder);
+        }
+    }
+
+    /// <summary>At the smallest width a diff in an editor tab, as narrow as the editors there, lays its own toolbar out
+    /// inside its room: the file's name and the count of differences give way, ending in an ellipsis, before its arrows and
+    /// Settings, nothing drawn over another (LayoutFaults); where the count was drawn under Settings.</summary>
+    [AvaloniaFact]
+    public void At_the_smallest_width_a_diffs_toolbar_gives_way_with_nothing_over_another()
+    {
+        (string folder, string notes) = Changed("smallest-diff-");
+        MainWindow window = Ui.OpenFolder(folder, width: MainWindow.SmallestWidth, height: MainWindow.SmallestHeight, languageServer: false, autosaves: false);
+        try
+        {
+            // In a tab, as narrow as the editors: the diff's place is what is held here.
+            window.ApplySettings(window.Settings with { OpenDiffsIn = DiffPlace.Tab });
+            Passenger.App.Vcs.IDiffHost diff = Ui.Landed(window.ShowDiffAsync(notes), "the file's diff") ?? throw new Xunit.Sdk.XunitException("No diff opened");
+            Ui.Settle();
+            DiffView view = OpenDiffs.ViewOf(diff);
+            List<string> faults = LayoutFaults.Of(window, view, $"At {MainWindow.SmallestWidth} wide, the diff");
+            Assert.True(faults.Count == 0, string.Join("\n", faults));
+        }
+        finally
+        {
+            window.Close();
+            TestFolders.Delete(folder);
+        }
+    }
+
+    /// <summary>A folder in Git whose Notes.txt is changed since its commit.</summary>
+    private static (string Folder, string Notes) Changed(string prefix)
+    {
+        string folder = TestFolders.Create(prefix);
+        string notes = Path.Combine(folder, "Notes.txt");
+        File.WriteAllText(notes, "find the words here\nand the words here again\n");
+        TestGit.Init(folder);
+        File.WriteAllText(notes, "find the words here\nand the words over there again\nline three\n");
+        return (folder, notes);
+    }
+
     [AvaloniaFact]
     public void At_the_smallest_width_a_refusal_stands_whole_in_front_of_a_deep_files_path()
     {
