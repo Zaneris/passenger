@@ -86,8 +86,9 @@ internal static class TreeKeysCheck
             _ => ExpandCollapseState.LeafNode,
         };
         Assert.True(peer.GetAutomationControlType() == AutomationControlType.TreeItem && peer.ExpandCollapseState == state
-            && (peer.GetProvider<IExpandCollapseProvider>() is null) == (state == ExpandCollapseState.LeafNode),
-            $"A screen reader meets {tree}'s row \"{peer.GetName()}\" as a {peer.GetAutomationControlType()} that is {peer.ExpandCollapseState}, not a tree item that is {state}");
+            && peer.GetProvider<IExpandCollapseProvider>()?.ExpandCollapseState == (state != ExpandCollapseState.LeafNode || TreeList.TreeRowPeer.LeavesOffered ? state : null),
+            $"A screen reader meets {tree}'s row \"{peer.GetName()}\" as a {peer.GetAutomationControlType()} that is {peer.ExpandCollapseState}"
+            + $" (asked: {peer.GetProvider<IExpandCollapseProvider>()?.ExpandCollapseState.ToString() ?? "nothing"}), not a tree item that is {state}, which a reader on macOS must always be able to ask");
         return peer;
     }
 

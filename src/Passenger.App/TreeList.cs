@@ -169,6 +169,11 @@ public class TreeList : ListBox
         /// <summary>Whether the system is told a row's place by its own bridge, which reads the properties set here.</summary>
         private static readonly bool PlaceToldApart = OperatingSystem.IsLinux();
 
+        /// <summary>Whether a row with nothing under it still offers opening: macOS's bridge reads a row's state as it changes
+        /// without asking whether it has one, throwing on the window's thread where it has none (#1966); elsewhere a leaf
+        /// offering it is said to be closed.</summary>
+        public static readonly bool LeavesOffered = OperatingSystem.IsMacOS();
+
         /// <summary>Whether the row was open, closed or neither when a reader was last told.</summary>
         private ExpandCollapseState told;
 
@@ -219,9 +224,12 @@ public class TreeList : ListBox
             return string.IsNullOrWhiteSpace(words) ? said : $"{words}, {said}";
         }
 
-        /// <summary>A row with nothing under it is no row that opens, so a reader says neither open nor closed of it.</summary>
+        /// <summary>A row with nothing under it is no row that opens, so a reader says neither open nor closed of it, but on
+        /// macOS (<see cref="LeavesOffered"/>).</summary>
         protected override object? GetProviderCore(Type providerType) =>
-            providerType == typeof(IExpandCollapseProvider) && ExpandCollapseState == ExpandCollapseState.LeafNode ? null : base.GetProviderCore(providerType);
+            providerType == typeof(IExpandCollapseProvider) && !LeavesOffered && ExpandCollapseState == ExpandCollapseState.LeafNode
+                ? null
+                : base.GetProviderCore(providerType);
 
         /// <summary>Tells a reader whether the row is open now, where that changed, and gives the system its place again.</summary>
         internal void Tell()

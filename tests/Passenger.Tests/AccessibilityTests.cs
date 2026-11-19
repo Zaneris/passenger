@@ -292,8 +292,8 @@ public sealed class AccessibilityTests : IDisposable
             && (AutomationProperties.GetPositionInSet(owner), AutomationProperties.GetSizeOfSet(owner)) == (position, size),
             $"{words} says level {row.Level}, {row.PositionInSet} of {row.SizeOfSet}, and gives the system {AutomationProperties.GetPositionInSet(owner)} of "
             + $"{AutomationProperties.GetSizeOfSet(owner)}, where it stands at level {level}, {position} of {size}");
-        Assert.True(row.ExpandCollapseState == state && (row.GetProvider<IExpandCollapseProvider>() is null) == (state == ExpandCollapseState.LeafNode),
-            $"{words} says it is {row.ExpandCollapseState} (opened or closed by a reader: {row.GetProvider<IExpandCollapseProvider>() is not null}), not {state}");
+        Assert.True(row.ExpandCollapseState == state && row.GetProvider<IExpandCollapseProvider>()?.ExpandCollapseState == (state != ExpandCollapseState.LeafNode || TreeList.TreeRowPeer.LeavesOffered ? state : null),
+            $"{words} says it is {row.ExpandCollapseState} (to a reader asking it: {row.GetProvider<IExpandCollapseProvider>()?.ExpandCollapseState.ToString() ?? "nothing"}), not {state}, which a reader on macOS must always be able to ask");
     }
 
     /// <summary>Next Region and Previous Region take the keys round the window's regions in one order, by their own keys in
