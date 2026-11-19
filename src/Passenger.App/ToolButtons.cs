@@ -41,7 +41,7 @@ public static class ToolButtons
         PathIcon mark = new();
         mark.Bind(PathIcon.DataProperty, mark.GetResourceObservable(icon));
         mark.Bind(PathIcon.ForegroundProperty, mark.GetResourceObservable(brush));
-        count = new TextBlock { VerticalAlignment = VerticalAlignment.Center };
+        count = new TextBlock { VerticalAlignment = VerticalAlignment.Center, Classes = { StyleClasses.Count } };
         ToggleButton button = new()
         {
             Classes = { StyleClasses.Outcome },

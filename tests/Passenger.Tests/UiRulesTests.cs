@@ -1397,22 +1397,28 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
     }
 
     /// <summary>The layout faults' check finds what it is for, so its silence over the window means something: words wider
-    /// than their room with no ellipsis, and two buttons laid in one cell, are each found; words that end in an ellipsis,
-    /// and a field's own options inside it, are not.</summary>
+    /// than their room with no ellipsis, words laid out past the side of a row held narrower than they are, and two buttons
+    /// laid in one cell, are each found; words that end in an ellipsis, and a field's own options inside it, are not.</summary>
     [AvaloniaFact]
     public void The_layout_faults_check_finds_words_cut_and_controls_drawn_over_each_other()
     {
         TextBlock cut = new() { Text = "Words far wider than their room", Width = 60 };
         TextBlock trimmed = new() { Text = "Words far wider than their room", Width = 60, TextTrimming = TextTrimming.CharacterEllipsis };
+        Border held = new()
+        {
+            Width = 60, HorizontalAlignment = HorizontalAlignment.Left,
+            Child = new StackPanel { Orientation = Orientation.Horizontal, Children = { new TextBlock { Text = "Words wider than their row" } } },
+        };
         Grid laidOver = new() { Children = { new Button { Content = "First" }, new Button { Content = "Second" } } };
-        Window window = new() { Width = 400, Height = 300, Content = new StackPanel { Children = { cut, trimmed, laidOver } } };
+        Window window = new() { Width = 400, Height = 300, Content = new StackPanel { Children = { cut, trimmed, held, laidOver } } };
         window.Show();
         try
         {
             Ui.Settle();
             List<string> found = LayoutFaults.Of(window, window, "The test window");
-            Assert.True(found.Count(f => f.Contains("cuts", StringComparison.Ordinal)) == 1 && found.Any(f => f.Contains("one over the other", StringComparison.Ordinal)),
-                $"The check found {found.Count} faults where one cut word and two buttons laid over each other stand:\n{string.Join("\n", found)}");
+            Assert.True(found.Count(f => f.Contains("cuts", StringComparison.Ordinal)) == 1 && found.Count(f => f.Contains("past the side", StringComparison.Ordinal)) == 1
+                && found.Any(f => f.Contains("one over the other", StringComparison.Ordinal)),
+                $"The check found {found.Count} faults where one cut word, words laid past their row and two buttons laid over each other stand:\n{string.Join("\n", found)}");
         }
         finally
         {

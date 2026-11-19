@@ -3,14 +3,16 @@ using Avalonia.Controls;
 using Avalonia.Controls.Presenters;
 using Avalonia.Controls.Primitives;
 using Avalonia.Headless;
+using Avalonia.Layout;
 using Avalonia.Media.TextFormatting;
 using Avalonia.VisualTree;
 
 namespace Passenger.Tests;
 
 /// <summary>What a person sees go wrong in a window, a dialog or a part of one, however narrow: words cut short with no
-/// ellipsis or wrap, by their own room or by a scroller that can't scroll to the rest, and two things a person reads or
-/// presses drawn one over the other, each as far as what clips it shows it. A field's own options inside it and what one
+/// ellipsis or wrap, by their own room or by a scroller that can't scroll to the rest, words laid out past the side of
+/// what holds them, and two things a person reads or presses drawn one over the other, each as far as what clips it shows
+/// it. A field's own options inside it and what one
 /// holds inside another are laid over each other on purpose. The code editor draws its own rows and a scroll bar its own
 /// thumb, so neither is read here.</summary>
 internal static class LayoutFaults
@@ -31,6 +33,10 @@ internal static class LayoutFaults
             else if (CutUnscrolled(text) is { } shown)
             {
                 found.Add($"{what} cuts '{text.Text}' at the edge of a scroller the person can't scroll to it, to {shown:0.#} px of its {text.TextLayout.Width:0.#}, where words with no room end in an ellipsis");
+            }
+            else if (Past(text) is { } past)
+            {
+                found.Add($"{what} lays '{text.Text}' out {past:0.#} px past the side of what holds it, over the room beside it, where what holds words grows with them");
             }
         }
         Rect[] seen = [.. drawn.Select(c => Visible(window, c))];
@@ -109,6 +115,24 @@ internal static class LayoutFaults
             }
         }
         return null;
+    }
+
+    /// <summary>How far words stand past a side of what holds them, laid out wider than the room it was given (a count
+    /// grown a digit in a row that kept its old width); null where they stand inside it, or where it scrolls or places
+    /// what it holds.</summary>
+    private static double? Past(TextBlock text)
+    {
+        TextLine[] lines = [.. text.TextLayout.TextLines];
+        if (lines.Length == 0 || text.GetVisualParent() is not Layoutable holder || holder is ScrollContentPresenter or Canvas)
+        {
+            return null;
+        }
+        // The words' own ends, where the block's are rounded up a pixel.
+        double start = text.Bounds.Left + text.Padding.Left + lines.Min(l => l.Start);
+        double end = text.Bounds.Left + text.Padding.Left + lines.Max(l => l.Start + l.Width);
+        double past = Math.Max(end - holder.Bounds.Width, -start);
+        // A pixel is layout rounding's, which rounds a holder's width to whole pixels and words' not at all.
+        return past > 1 ? past : null;
     }
 
     /// <summary>Whether a control is drawn at all: one laid out but clear (a toolbar widget gone whole keeps its bounds, at

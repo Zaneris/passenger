@@ -544,6 +544,11 @@
         <Setter Property="Width" Value="12" />
         <Setter Property="Height" Value="12" />
     </Style>
+    <!-- A number that counts while it is watched (a filter's tally) in figures of one width, so that while it counts it
+         holds still, and what stands after it with it. -->
+    <Style Selector="TextBlock.count">
+        <Setter Property="FontFeatures" Value="+tnum" />
+    </Style>
 
     <!-- A frame of a test's result in the Unit Tests window: a thumbnail of the window as the test failed, which opens it at
          its size. -->

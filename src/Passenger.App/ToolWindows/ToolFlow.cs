@@ -14,7 +14,7 @@ public sealed class ToolFlow : Panel
 
     private readonly List<(Control[] Parts, ToolLayout.Piece[] Pieces)> rows = [];
 
-    // Words coming to a part may move it to a row of its own, which its measure, held to its row's width, never tells.
+    // Words coming to a part that fills may move it to a row of its own, which its measure, held to its row, never tells.
     static ToolFlow() => AffectsParentMeasure<ToolFlow>(FillsProperty, TextBlock.TextProperty);
 
     /// <summary>The space between parts, and between rows.</summary>
@@ -53,13 +53,19 @@ public sealed class ToolFlow : Panel
             for (int i = 0; i < widths.Length; i++)
             {
                 Control part = parts[row][i];
-                part.Measure(new Size(widths[i], availableSize.Height));
+                part.Measure(new Size(Given(pieces[row][i], widths[i]), availableSize.Height));
                 tallest = Math.Max(tallest, part.DesiredSize.Height);
             }
             height += tallest;
         }
         return new Size(room, height);
     }
+
+    /// <summary>The width a part is measured in: what its row gives one that fills or is cut to the row, and no bound for one
+    /// given all it asked, so words growing in it (a count going from 999 to 1000) are heard and the bar is laid out
+    /// again, where held to its old width they would be drawn past it, over the gap after it.</summary>
+    private static double Given(ToolLayout.Piece piece, double width) =>
+        piece.Fills is null && width >= piece.Width ? double.PositiveInfinity : width;
 
     /// <summary>The least a part that fills asks, which is nothing for words not there to show.</summary>
     private static double LeastOf(Control part, ToolLayout.Fills fills) => part is TextBlock { Text: null or "" } ? 0 : fills.Least;
