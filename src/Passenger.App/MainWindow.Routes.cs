@@ -387,9 +387,9 @@ public partial class MainWindow
         {
             if (Editors.Find(path) is { } document)
             {
-                if (document.IsReadOnly)
+                if (document.ReadOnlyWhy is { } readOnly)
                 {
-                    return (null, string.Empty, Refusals.ReadOnly(Path.GetFileName(path)));
+                    return (null, string.Empty, readOnly);
                 }
                 string before = document.Text.Snapshot.ToString();
                 TextEdit[] edits = [new TextEdit(before.Length, 0, added(before.Replace("\r\n", "\n", StringComparison.Ordinal)))];

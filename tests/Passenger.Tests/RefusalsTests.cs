@@ -27,6 +27,7 @@ public sealed class RefusalsTests
         new(@"(?:^|: )\{\} tracks no remote's branch to update from$"),
         new(@"(?:^|: )\{\} was not renamed: "),
         new(@"(?:^|: )\{\} changed as it was read$"),
+        new(@"(?i:a) (?:file|folder) of the package \{\}, as NuGet restored it"),
     ];
 
     [Fact]
@@ -36,16 +37,9 @@ public sealed class RefusalsTests
             .Where(field => field.IsLiteral && field.FieldType == typeof(string)).Select(field => (string)field.GetRawConstantValue()!)];
         // A constant's words, more after them or not, alone or after what it stopped, its first letter in either case.
         Regex[] said = [.. words.Select(word => new Regex($@"(?:^|: )(?i:{Regex.Escape(word[..1])}){Regex.Escape(word[1..])}(?:$|\W)"))];
-        string root = Debugging.Helpers.Debuggees.Root;
         List<string> found = [];
-        foreach (string file in Directory.EnumerateFiles(Path.Combine(root, "src", "Passenger.App"), "*.cs", SearchOption.AllDirectories).Order(StringComparer.Ordinal))
+        foreach ((string relative, SyntaxTree tree) in Sources().Where(s => s.Relative != "src/Passenger.App/Refusals.cs"))
         {
-            string relative = Path.GetRelativePath(root, file).Replace('\\', '/');
-            if (relative == "src/Passenger.App/Refusals.cs" || relative.Contains("/obj/", StringComparison.Ordinal) || relative.Contains("/bin/", StringComparison.Ordinal))
-            {
-                continue;
-            }
-            SyntaxTree tree = CSharpSyntaxTree.ParseText(File.ReadAllText(file), cancellationToken: TestContext.Current.CancellationToken);
             foreach (SyntaxNode node in tree.GetRoot(TestContext.Current.CancellationToken).DescendantNodes())
             {
                 string? written = node switch
@@ -62,5 +56,42 @@ public sealed class RefusalsTests
         }
         Assert.True(found.Count == 0, $"{found.Count} strings write a refusal's words outside Refusals, so the same want reads differently where an action greys, "
             + $"the status bar says it and an agent is answered, and drifts as one copy changes: say each through Refusals:\n{string.Join("\n", found)}");
+    }
+
+    /// <summary>A file's refusal as read-only is the file's own (<see cref="Passenger.App.Workspace.OpenDocument.ReadOnlyWhy"/>,
+    /// <see cref="Passenger.App.Workspace.ReadOnlyFiles.Refused"/>), which words one read-only by where it lies as every
+    /// refusal of such a file does, a package's naming the package: no code says a file plainly read-only by its name.</summary>
+    [Fact]
+    public void A_files_read_only_refusal_is_worded_by_the_file_never_by_its_name_alone()
+    {
+        List<string> found = [];
+        foreach ((string relative, SyntaxTree tree) in Sources())
+        {
+            foreach (InvocationExpressionSyntax call in tree.GetRoot(TestContext.Current.CancellationToken).DescendantNodes().OfType<InvocationExpressionSyntax>())
+            {
+                bool readOnly = call.Expression is MemberAccessExpressionSyntax { Name.Identifier.ValueText: "ReadOnly", Expression: ExpressionSyntax of } && of.ToString().EndsWith("Refusals", StringComparison.Ordinal)
+                    || relative == "src/Passenger.App/Refusals.cs" && call.Expression is IdentifierNameSyntax { Identifier.ValueText: "ReadOnly" };
+                if (readOnly && call.ArgumentList.Arguments is [{ Expression: MemberAccessExpressionSyntax { Name.Identifier.ValueText: "Name" } }])
+                {
+                    found.Add($"{relative}:{call.GetLocation().GetLineSpan().StartLinePosition.Line + 1}: {call}");
+                }
+            }
+        }
+        Assert.True(found.Count == 0, $"{found.Count} refusals say a file is read-only by its name, so a package's file is refused without naming its package, "
+            + $"unlike every other refusal of it: say the file's own ReadOnlyWhy:\n{string.Join("\n", found)}");
+    }
+
+    /// <summary>The App's source files, by their paths from the repository's root, each read as C#.</summary>
+    private static IEnumerable<(string Relative, SyntaxTree Tree)> Sources()
+    {
+        string root = Debugging.Helpers.Debuggees.Root;
+        foreach (string file in Directory.EnumerateFiles(Path.Combine(root, "src", "Passenger.App"), "*.cs", SearchOption.AllDirectories).Order(StringComparer.Ordinal))
+        {
+            string relative = Path.GetRelativePath(root, file).Replace('\\', '/');
+            if (!relative.Contains("/obj/", StringComparison.Ordinal) && !relative.Contains("/bin/", StringComparison.Ordinal))
+            {
+                yield return (relative, CSharpSyntaxTree.ParseText(File.ReadAllText(file), cancellationToken: TestContext.Current.CancellationToken));
+            }
+        }
     }
 }

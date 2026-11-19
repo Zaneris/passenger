@@ -23,7 +23,7 @@ internal sealed partial class WebAssist
         registry.Add(new IdeAction(AppActions.ReformatWithPrettier, "Reformat with Prettier", "Code", context => IdeErrors.Observe(ReformatWithPrettier()))
         {
             WhyNot = action => action.File is null ? Refusals.NoFile
-                : action.Editor.IsReadOnly ? Refusals.ReadOnly(action.File.Name)
+                : action.ReadOnlyWhy is { } readOnly ? readOnly
                 : context.Web?.Invoke() is not { } web ? Refusals.NoFolder
                 : web.Prettier.PackageFor(action.File.Path) is null ? $"No prettier package formats {action.File.Name}: install it in the project, or name one in {PrettierService.Place}"
                 : null,
@@ -31,7 +31,7 @@ internal sealed partial class WebAssist
         registry.Add(new IdeAction(AppActions.FixEslintProblems, "Fix ESLint Problems", "Code", context => IdeErrors.Observe(FixEslintProblems()))
         {
             WhyNot = context => context.File is null ? Refusals.NoFile
-                : context.Editor.IsReadOnly ? Refusals.ReadOnly(context.File.Name)
+                : context.ReadOnlyWhy is { } readOnly ? readOnly
                 : LintOf(context.File) is null ? $"ESLint does not check {context.File.Name}: it needs the project's eslint package and a file Settings' Run for files covers"
                 : null,
         });

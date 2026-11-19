@@ -78,6 +78,10 @@ public sealed class ActionContext(OpenDocument? file, CodeEditor editor, object?
 
     public TextPosition Caret => editor.CaretPosition;
 
+    /// <summary>Why an action changing the file shown greys while its editor refuses changes, in Refusals' words (<see
+    /// cref="OpenDocument.ReadOnlyWhy"/>); null while it takes them, or none is shown.</summary>
+    public string? ReadOnlyWhy => editor.IsReadOnly ? file?.ReadOnlyWhy : null;
+
     /// <summary>The selection, or the name at the caret with what it is a member of ("order.Total"), as the debugger
     /// evaluates it; null with neither.</summary>
     public string? Symbol

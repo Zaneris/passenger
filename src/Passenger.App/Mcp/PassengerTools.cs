@@ -834,9 +834,9 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             }
         }
         Served served = await Serve(at.Path, cancel);
-        if (served.Document.IsReadOnly)
+        if (served.Document.ReadOnlyWhy is { } readOnly)
         {
-            throw new InvalidOperationException($"Rename was not applied: {Refusals.ReadOnly(served.Document.Name)}");
+            throw new InvalidOperationException($"Rename was not applied: {readOnly}");
         }
         int offset = Offset(served.Document, at.Line, at.Column);
         naming.Names(Renaming(served.Document, offset, newName));
@@ -1148,9 +1148,9 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
     /// asked for.</summary>
     private static void RefuseReadOnly(OpenDocument document, string what)
     {
-        if (document.IsReadOnly)
+        if (document.ReadOnlyWhy is { } readOnly)
         {
-            throw new InvalidOperationException($"{what} was not applied: {Refusals.ReadOnly(document.Name)}");
+            throw new InvalidOperationException($"{what} was not applied: {readOnly}");
         }
     }
 

@@ -87,9 +87,9 @@ public sealed partial class PassengerTools
             throw new ArgumentException($"{named} needs the place it works on: path, line and column", nameof(path));
         }
         (OpenDocument document, LspDocument lsp) = await CSharpOnly(path, named, cancel);
-        if (document.IsReadOnly)
+        if (document.ReadOnlyWhy is { } readOnly)
         {
-            throw new InvalidOperationException($"{Refactoring(named, null)} was not applied: {Refusals.ReadOnly(document.Name)}");
+            throw new InvalidOperationException($"{Refactoring(named, null)} was not applied: {readOnly}");
         }
         int offset = Offset(document, line.Value, column.Value);
         naming.Names(Refactoring(named, NameAt(document, offset)));
@@ -525,9 +525,9 @@ public sealed partial class PassengerTools
                 return new RefactorAnswer(kind, formatted.Said, formatted.Changed ? [new RefactorFile(Relative(markup.Path), Words(RefactoredChange.Changed), [], formatted.Said)] : [], []);
             }
             (OpenDocument document, LspDocument lsp) = await CSharpOnly(path, kind, cancel);
-            if (document.IsReadOnly)
+            if (document.ReadOnlyWhy is { } readOnly)
             {
-                throw new InvalidOperationException($"{name} was not applied: {Refusals.ReadOnly(document.Name)}");
+                throw new InvalidOperationException($"{name} was not applied: {readOnly}");
             }
             if (describe)
             {
@@ -601,7 +601,7 @@ public sealed partial class PassengerTools
             }
             if (document.IsReadOnly)
             {
-                left.Add(Refusals.ReadOnly(Relative(document.Path)));
+                left.Add(ReadOnlyHere(document.Path, Relative(document.Path)));
                 return;
             }
             // Its text's version says whether the tidy changed it, never the text made into a string twice.

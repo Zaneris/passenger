@@ -12,7 +12,7 @@ internal sealed partial class GherkinAssist
     public string? WhyNotInsertStep() =>
         context.Editors.Active is not { } shown ? Refusals.NoFile
         : !IsFeature(shown) ? Refusals.NoFeature
-        : context.Editor.IsReadOnly ? Refusals.ReadOnly(shown.Name)
+        : context.Editor.IsReadOnly ? shown.ReadOnlyWhy
         : null;
 
     /// <summary>Writes a step definition's phrase into the open feature at the caret as completion writes it, its first slot

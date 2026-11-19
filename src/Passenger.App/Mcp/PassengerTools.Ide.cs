@@ -352,7 +352,7 @@ public sealed partial class PassengerTools
         string name = Relative(document.Path);
         if (document.IsReadOnly)
         {
-            throw new InvalidOperationException($"{Refusals.ReadOnly(name)}, so nothing changed");
+            throw new InvalidOperationException($"{ReadOnlyHere(document.Path, name)}, so nothing changed");
         }
         if (await Editors.ClearAsync([document.Path]) is { } held)
         {

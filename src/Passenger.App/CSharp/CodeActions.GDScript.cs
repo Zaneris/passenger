@@ -161,9 +161,9 @@ internal sealed partial class CodeActions
         IReadOnlyList<GDScriptParameterChange>? parameters)
     {
         string title = TitleOf(kind);
-        if (document.IsReadOnly)
+        if (document.ReadOnlyWhy is { } readOnly)
         {
-            return RefactorOutcome.Refused($"{title} was not applied: {Refusals.ReadOnly(document.Name)}");
+            return RefactorOutcome.Refused($"{title} was not applied: {readOnly}");
         }
         if (await GDScriptsAsync(document) is not ({ } scripts, { } own, var folder))
         {
@@ -318,9 +318,9 @@ internal sealed partial class CodeActions
         }
         string old = TextNavigation.WordAt(document.Text.Snapshot, offset) is { Length: > 0 } word ? document.Text.Snapshot.GetText(word) : name;
         string title = "Rename";
-        if (document.IsReadOnly)
+        if (document.ReadOnlyWhy is { } readOnly)
         {
-            return RefactorOutcome.Refused($"{title} was not applied: {Refusals.ReadOnly(document.Name)}");
+            return RefactorOutcome.Refused($"{title} was not applied: {readOnly}");
         }
         List<PlacedEdits> beside = [];
         GDScriptRefactored made;

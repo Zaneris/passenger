@@ -70,7 +70,7 @@ public partial class MainWindow
 
     /// <summary>Why a swatch's colour cannot be written where it is: that file is shown read-only; null when it can.</summary>
     private string? Unwritable(OpenDocument document, ColourUse use) =>
-        Editors.Find(use.WritePath ?? document.Path) is { IsReadOnly: true } open ? Refusals.ReadOnly(open.Name) : null;
+        Editors.Find(use.WritePath ?? document.Path)?.ReadOnlyWhy;
 
     /// <summary>Where a swatch's colour is written as its picker opens: the file, the open file holding it then, the stretch
     /// it is written in, held there through what changes that file meanwhile, and the text it holds (null where the stretch

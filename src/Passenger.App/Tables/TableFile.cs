@@ -286,9 +286,9 @@ public sealed class TableFile
     /// refusal, or what is said when there was nothing to make.</summary>
     private string? Change(string text, string? made, string refused)
     {
-        if (document.IsReadOnly)
+        if (document.ReadOnlyWhy is { } readOnly)
         {
-            return Refusals.ReadOnly(document.Name);
+            return readOnly;
         }
         if (made is null)
         {

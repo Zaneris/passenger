@@ -493,7 +493,7 @@ public sealed class EditorGroup : DockPanel
     private void FollowReadOnly(OpenDocument document)
     {
         Editor.IsReadOnly = document.IsReadOnly;
-        Editor.ReadOnlyWhy = document.IsReadOnly ? Refusals.ReadOnly(document.Name) : null;
+        Editor.ReadOnlyWhy = document.ReadOnlyWhy;
     }
 
     /// <summary>Whether the editor shows the file, rather than a view of its own in the editor's place.</summary>
@@ -588,7 +588,7 @@ public sealed class EditorGroup : DockPanel
     /// <summary>The find bar on the file shown: its text, or its table while one lies over it; a read-only file's replace row
     /// greyed, saying why.</summary>
     private void AttachFind() =>
-        Find.Attach(Editor, Table, Active is { IsReadOnly: true } shown ? Refusals.ReadOnly(shown.Name) : null);
+        Find.Attach(Editor, Table, Active?.ReadOnlyWhy);
 
     /// <summary>The table of the file shown, while it is a CSV, a workbook or a resource, null otherwise.</summary>
     public CellGrid? Table => tables is { ShowsTable: true } ? tables.View : null;

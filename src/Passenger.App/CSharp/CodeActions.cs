@@ -948,7 +948,7 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
         /// <summary>A reformat of a file shown read-only, refused whatever its formatter would make of it; null for a file
         /// that takes one.</summary>
         public static Reformatted? ReadOnly(OpenDocument document, string what) =>
-            document.IsReadOnly ? Refused(what, Refusals.ReadOnly(document.Name)) : null;
+            document.ReadOnlyWhy is { } readOnly ? Refused(what, readOnly) : null;
 
         /// <summary>A reformat's edits, in the offsets of the text as <paramref name="asked"/> began, carried onto the open
         /// file as it is now and applied as one undoable edit; refused where the file is read-only or the code one changes

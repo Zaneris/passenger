@@ -299,9 +299,9 @@ internal sealed partial class GDScriptAssist(AssistContext context, CodeCompleti
     public async Task<string> OrderPartsAsync(OpenDocument document)
     {
         const string what = "Order Script's Parts";
-        if (document.IsReadOnly)
+        if (document.ReadOnlyWhy is { } readOnly)
         {
-            return $"{what} was not applied: {Refusals.ReadOnly(document.Name)}";
+            return $"{what} was not applied: {readOnly}";
         }
         using ChangeTracker asked = new(document.Text);
         TextSnapshot snapshot = asked.Snapshot;

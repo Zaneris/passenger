@@ -546,7 +546,7 @@ public sealed class CodeAssist
         registry.Add(new IdeAction(AppActions.QuickFix, "Show Context Actions", "Code", context => IdeErrors.Observe(actions.ShowFixes(AppActions.QuickFix)))
         {
             WhyNot = context => (actions.OwnFixes(context.File, context.Editor.Selections.Primary.Caret).Count > 0 ? null : WhyNot(context, server: true, xaml: true))
-                ?? (context.File is { } shown && context.Editor.IsReadOnly ? Refusals.ReadOnly(shown.Name) : null),
+                ?? context.ReadOnlyWhy,
             Menus = [new("Code", 0, 1)],
         });
         // Generate: the server's actions that write code for the type (constructors, equality, members, overrides).
@@ -557,7 +557,7 @@ public sealed class CodeAssist
         registry.Add(new IdeAction(AppActions.Reformat, "Reformat Code", "Code", context => IdeErrors.Observe(actions.Reformat()))
         {
             WhyNot = context => (context.File is { } file && (web.PrettierReformats(file) || Godot.GodotScriptTypes.IsScript(file.Path) || Passenger.App.Bdd.FeatureChecks.IsFeature(file.Path))
-                ? null : WhyNot(context, server: true, markup: true)) ?? (context.File is { } shown && context.Editor.IsReadOnly ? Refusals.ReadOnly(shown.Name) : null),
+                ? null : WhyNot(context, server: true, markup: true)) ?? context.ReadOnlyWhy,
             Menus = [new("Code", 1, 0)],
         });
         web.AddLintingActions(registry);
@@ -572,7 +572,7 @@ public sealed class CodeAssist
         registry.Add(new IdeAction(AppActions.OrderScriptParts, "Order Script's Parts", "Code", context => IdeErrors.Observe(OrderScriptParts()))
         {
             WhyNot = context => context.File is not { } file ? Refusals.NoFile : !Godot.GodotScriptTypes.IsScript(file.Path) ? "The file is not a GDScript"
-                : context.Editor.IsReadOnly ? Refusals.ReadOnly(file.Name) : null,
+                : context.ReadOnlyWhy,
             Menus = [new("Code", 1, 3)],
         });
         Code(AppActions.RefactorThis, "Refactor This…", context => IdeErrors.Observe(actions.ShowFixes(AppActions.RefactorThis, a => a.Kind?.StartsWith("refactor", StringComparison.Ordinal) == true, "Refactor This")),
@@ -642,9 +642,9 @@ public sealed class CodeAssist
                 WhyNot = action => (http && this.context.Languages.Http.IsHttpFile(action.File) || godot && IsGodotScene(action.File)
                     || shader && action.File is { } file && Godot.GodotShaderMarks.IsShader(file.Path)
                     || gherkin && action.File is { } feature && Passenger.App.Bdd.FeatureChecks.IsFeature(feature.Path) ? null
-                    : gdscript && CodeActions.IsGDScript(action.File) ? (action.Editor.IsReadOnly ? Refusals.ReadOnly(action.File!.Name) : null)
+                    : gdscript && CodeActions.IsGDScript(action.File) ? action.ReadOnlyWhy
                     : WhyNot(action, server, syntax, xaml, markup, msbuild) is { } why && !(link && action.File is not null && action.Editor.LinkOn(action.Editor.Selections.Primary.Caret) is not null) ? why : null)
-                    ?? (writes && action.File is { } shown && action.Editor.IsReadOnly ? Refusals.ReadOnly(shown.Name) : null),
+                    ?? (writes ? action.ReadOnlyWhy : null),
                 Menus = [menu],
             });
     }
@@ -692,7 +692,7 @@ public sealed class CodeAssist
     /// <summary>Why Rename cannot run at the editor's caret, a file shown read-only included; null when it can.</summary>
     public string? WhyNotRename(ActionContext context) =>
         (IsGodotScene(context.File) || context.File is { } file && Passenger.App.Bdd.FeatureChecks.IsFeature(file.Path) ? null : WhyNot(context, server: true, xaml: true))
-            ?? (context.File is { } shown && context.Editor.IsReadOnly ? Refusals.ReadOnly(shown.Name) : null);
+            ?? context.ReadOnlyWhy;
 
     /// <summary>Whether a file is a text scene or resource of a Godot project, which Passenger reads itself.</summary>
     private bool IsGodotScene(OpenDocument? file) =>
@@ -703,8 +703,7 @@ public sealed class CodeAssist
     private string? WhyNotXaml(ActionContext action) =>
         action.File is null ? Refusals.NoFile
         : context.XamlOf(action.File) is not { } markup || (markup.Loaded.IsCompleted && !markup.IsLoaded) ? "The file is not XAML of an Avalonia or WPF project"
-        : action.Editor.IsReadOnly ? Refusals.ReadOnly(action.File.Name)
-        : null;
+        : action.ReadOnlyWhy;
 
     /// <summary>Why an action cannot run: no file; for one that asks the server, none for the file (a source generator's
     /// code copied, which it has not); for one that edits by the file's syntax, a file not C# or one that cannot be edited.
@@ -712,11 +711,11 @@ public sealed class CodeAssist
     /// answer those they say they do.</summary>
     private string? WhyNot(ActionContext action, bool server, bool syntax = false, bool xaml = false, bool markup = false, bool msbuild = false) =>
         action.File is null ? Refusals.NoFile
-        : markup && XamlService.IsXaml(action.File.Path) ? (action.Editor.IsReadOnly ? Refusals.ReadOnly(action.File.Name) : null)
+        : markup && XamlService.IsXaml(action.File.Path) ? action.ReadOnlyWhy
         : xaml && context.XamlOf(action.File) is { } markupFile && (markupFile.IsLoaded || !markupFile.Loaded.IsCompleted) ? null
         : msbuild && context.MSBuildOf(action.File) is not null ? null
         : syntax && action.File.Syntax is null ? "The file is not C#"
-        : syntax && action.Editor.IsReadOnly ? Refusals.ReadOnly(action.File.Name)
+        : syntax && action.ReadOnlyWhy is { } readOnly ? readOnly
         : !server || context.Current is not null ? null
         : context.CSharp is null ? Refusals.NoCSharp
         : GeneratedCode.IsCopy(action.File.Path) ? Refusals.Generated(action.File.Name)

@@ -192,6 +192,44 @@ public sealed class ReadOnlyFilesTests : IDisposable
         window.Close();
     }
 
+    /// <summary>A NuGet package's file open in the editor refuses every change in the package's words, as every refusal of
+    /// it closed does: what is typed there says so in the status bar, the Edit menu's changes and Rename grey saying it, and
+    /// an agent's rename starting there is refused so, the file left as NuGet restored it.</summary>
+    [AvaloniaFact]
+    public void An_open_package_files_refusals_name_the_package_whether_typed_into_or_an_agent_renames_there()
+    {
+        string kit = WriteKitShop();
+        // A rename waits for its server to read a file written a moment before.
+        foreach (string path in (string[])[kit, Path.Combine(folder, "Shop", "Catalog.cs")])
+        {
+            File.SetLastWriteTimeUtc(path, DateTime.UtcNow - TimeSpan.FromMinutes(1));
+        }
+        Restore.Run(Path.Combine(PathNames.Canonical(folder), "Shop", "Shop.csproj"));
+        MainWindow window = OpenShop(languageServer: true);
+        window.OpenFile(kit);
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        editor.Focus();
+        Ui.Settle();
+        Assert.True(window.CSharpService?.IsReady, window.CSharpService?.State);
+        string refused = $"Kit.cs is {KitsOwn}";
+
+        Assert.NotEqual(refused, window.Status);
+        window.KeyTextInput("x");
+        Ui.Settle();
+        Assert.Equal(Kit, editor.Document.Snapshot.ToString());
+        Assert.Equal(refused, window.Status);
+        Assert.Equal(refused, window.Actions.WhyNot(EditorActions.Duplicate, window.Actions.Context()));
+        Ui.WaitFor(() => window.Actions.WhyNot(AppActions.Rename, window.Actions.Context()) == refused,
+            () => $"Rename to grey on the package's Kit.cs saying whose file it is; it says {window.Actions.WhyNot(AppActions.Rename, window.Actions.Context()) ?? "nothing"}");
+
+        string shown = Path.GetRelativePath(PathNames.Canonical(folder), kit);
+        ModelContextProtocol.McpException renamed = Assert.Throws<ModelContextProtocol.McpException>(() => Ui.Await(
+            new Passenger.App.Mcp.PassengerTools(window).Rename("Sum", shown, 5, 23), "rename's answer at the package's Kit.cs"));
+        Assert.Equal($"Rename was not applied: {refused}", renamed.Message);
+        Assert.True(File.ReadAllText(kit) == Kit, $"A change of an open package file wrote it: {File.ReadAllText(kit)}");
+        window.Close();
+    }
+
     [AvaloniaFact]
     public void The_find_bars_replace_row_is_greyed_in_a_read_only_tab_saying_why()
     {
