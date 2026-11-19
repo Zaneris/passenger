@@ -35,6 +35,10 @@ public sealed class TestingPlatformRunner : ITestRunner
 
     public bool IsUsable => true;
 
+    /// <summary>Whether a test host's connection, once made, reaches the runner only after the runner has heard the host
+    /// end, as a loaded machine may hand the two over (a test's); a host that does not end is then never connected.</summary>
+    public bool HoldsConnectionsUntilEnded { get; init; }
+
     /// <summary>Whether a built assembly is a Testing Platform application, whose own program finds and runs its tests: the
     /// platform's build says so in the assembly (since 1.8); one built by an older platform is a program that references it.</summary>
     public static bool IsApplication(string assembly)
@@ -58,7 +62,7 @@ public sealed class TestingPlatformRunner : ITestRunner
     /// program fails to start or answer is said in the log and told unfound; canceled, every one is ended.</summary>
     public async Task<FoundTests> DiscoverAsync(IReadOnlyList<TestAssembly> assemblies, Action<string>? log = null, CancellationToken cancel = default)
     {
-        (TestAssembly Assembly, IReadOnlyList<PlatformNode> Nodes, string? Failed)[] asked = await Task.WhenAll(assemblies.Select(a => DiscoverIn(a, log, cancel)));
+        (TestAssembly Assembly, IReadOnlyList<PlatformNode> Nodes, string? Failed)[] asked = await Task.WhenAll(assemblies.Select(a => DiscoverIn(a, log, HoldsConnectionsUntilEnded, cancel)));
         cancel.ThrowIfCancellationRequested();
         IReadOnlyList<TestItem> tests = await BackgroundWork.Run(() => Tell([.. asked.Select(a => (a.Assembly, a.Nodes))]));
         return new FoundTests(tests, [.. asked.Where(a => a.Failed is not null).Select(a => UnfoundTests.Of(a.Assembly, a.Failed!))]);
@@ -69,13 +73,13 @@ public sealed class TestingPlatformRunner : ITestRunner
     private static IReadOnlyDictionary<string, string>? HostEnvironment(TestAssembly assembly, bool looking, IReadOnlyDictionary<string, string>? environment, Action<string>? log) =>
         PlatformRunSettings.Given(assembly.RunSettings is { } file ? TestAssemblies.ReadRunSettings(file, log) : null, looking, environment, Environment.GetEnvironmentVariable);
 
-    private static async Task<(TestAssembly, IReadOnlyList<PlatformNode>, string?)> DiscoverIn(TestAssembly assembly, Action<string>? log, CancellationToken cancel)
+    private static async Task<(TestAssembly, IReadOnlyList<PlatformNode>, string?)> DiscoverIn(TestAssembly assembly, Action<string>? log, bool held, CancellationToken cancel)
     {
         List<PlatformNode> nodes = [];
         try
         {
             IReadOnlyDictionary<string, string>? given = await BackgroundWork.Run(() => HostEnvironment(assembly, looking: true, null, log), cancel);
-            await using Host host = await Host.StartAsync(assembly, given, null, null, log, cancel);
+            await using Host host = await Host.StartAsync(assembly, given, null, null, log, held, cancel);
             bool asked = await host.RequestAsync("testing/discoverTests", null, changed =>
             {
                 lock (nodes)
@@ -117,7 +121,7 @@ public sealed class TestingPlatformRunner : ITestRunner
                 break;
             }
             (Dictionary<string, TestItem> byUid, List<Found> chosen) = Asked(tests, assembly.Path);
-            RunSummary part = await RunIn(assembly, byUid, chosen, outcomes, log, debugger, environment, cancel);
+            RunSummary part = await RunIn(assembly, byUid, chosen, outcomes, log, debugger, environment, HoldsConnectionsUntilEnded, cancel);
             summary = summary.And(part);
             if (part.Canceled)
             {
@@ -170,14 +174,14 @@ public sealed class TestingPlatformRunner : ITestRunner
 
     /// <summary>Runs an assembly's tests, the host's updates read by the tests asked for (<see cref="TestUpdate.ReaderOf"/>).</summary>
     private static async Task<RunSummary> RunIn(TestAssembly assembly, Dictionary<string, TestItem> byUid, List<Found> chosen, Action<IReadOnlyList<TestOutcome>> outcomes,
-        Action<string>? log, ITestDebugLauncher? debugger, IReadOnlyDictionary<string, string>? environment, CancellationToken cancel)
+        Action<string>? log, ITestDebugLauncher? debugger, IReadOnlyDictionary<string, string>? environment, bool held, CancellationToken cancel)
     {
         List<TestOutcome> all = new(chosen.Count);
         long began = Stopwatch.GetTimestamp();
         try
         {
             IReadOnlyDictionary<string, string>? given = await BackgroundWork.Run(() => HostEnvironment(assembly, looking: false, environment, log), cancel);
-            await using Host host = await Host.StartAsync(assembly, given, debugger, byUid, log, cancel);
+            await using Host host = await Host.StartAsync(assembly, given, debugger, byUid, log, held, cancel);
             bool ran = await host.RequestAsync("testing/runTests", chosen, changed =>
             {
                 List<TestOutcome> batch = new(changed.Count);
@@ -342,9 +346,10 @@ public sealed class TestingPlatformRunner : ITestRunner
         }
 
         /// <summary>Starts an assembly's program as a server that connects to a port of the IDE's own, and initializes it; its
-        /// updates read by the tests a run asks for, by uid, if any.</summary>
+        /// updates read by the tests a run asks for, by uid, if any; its connection held until it ends where
+        /// <paramref name="held"/> (<see cref="HoldsConnectionsUntilEnded"/>).</summary>
         public static async Task<Host> StartAsync(TestAssembly assembly, IReadOnlyDictionary<string, string>? environment, ITestDebugLauncher? debugger,
-            Dictionary<string, TestItem>? asked, Action<string>? log, CancellationToken cancel)
+            Dictionary<string, TestItem>? asked, Action<string>? log, bool held, CancellationToken cancel)
         {
             string name = $"{Path.GetFileNameWithoutExtension(assembly.Path)} ({assembly.Framework})";
             using TcpListener listener = new(IPAddress.Loopback, 0);
@@ -384,7 +389,7 @@ public sealed class TestingPlatformRunner : ITestRunner
             TcpClient client;
             try
             {
-                client = await AcceptAsync(listener, process, heard, id, name, said, cancel);
+                client = await AcceptAsync(listener, process, heard, id, name, said, held, cancel);
             }
             catch
             {
@@ -514,12 +519,19 @@ public sealed class TestingPlatformRunner : ITestRunner
             return new TestHostFailed(Written(why, said));
         }
 
-        /// <summary>The test host's connection, once its program makes it; failed if the program ends first or, run by the
-        /// runner, takes longer than <see cref="ConnectLimit"/> (under the debugger the person may be stopped in it).</summary>
-        private static async Task<TcpClient> AcceptAsync(TcpListener listener, Process? process, Task heard, int id, string name, StringBuilder said, CancellationToken cancel)
+        /// <summary>The test host's connection, once its program makes it; failed if the program ends without having made it
+        /// or, run by the runner, takes longer than <see cref="ConnectLimit"/> to (under the debugger the person may be
+        /// stopped in it).</summary>
+        private static async Task<TcpClient> AcceptAsync(TcpListener listener, Process? process, Task heard, int id, string name, StringBuilder said, bool held,
+            CancellationToken cancel)
         {
             using CancellationTokenSource giveUp = CancellationTokenSource.CreateLinkedTokenSource(cancel);
+            TaskCompletionSource ended = new(TaskCreationOptions.RunContinuationsAsynchronously);
             Task<TcpClient> accepting = listener.AcceptTcpClientAsync(giveUp.Token).AsTask();
+            if (held)
+            {
+                accepting = HeldAsync(accepting, ended.Task);
+            }
             UnawaitedWork.Dismiss(accepting);
             long began = Stopwatch.GetTimestamp();
             try
@@ -530,6 +542,11 @@ public sealed class TestingPlatformRunner : ITestRunner
                     cancel.ThrowIfCancellationRequested();
                     if (!accepting.IsCompleted && !Alive(process, id))
                     {
+                        ended.SetResult();
+                        if (await MadeAsync(listener, accepting, giveUp, cancel) is { } made)
+                        {
+                            return made;
+                        }
                         string exit = string.Empty;
                         if (process is not null)
                         {
@@ -550,6 +567,29 @@ public sealed class TestingPlatformRunner : ITestRunner
             {
                 giveUp.Cancel();
             }
+
+            static async Task<TcpClient> HeldAsync(Task<TcpClient> accepting, Task until)
+            {
+                TcpClient client = await accepting;
+                await until;
+                return client;
+            }
+        }
+
+        /// <summary>The connection a test host that has ended made before it ended, whichever the runner heard first: what
+        /// the accept under way took, stopped now, else what waits in the listener's queue; null where it made none.</summary>
+        private static async Task<TcpClient?> MadeAsync(TcpListener listener, Task<TcpClient> accepting, CancellationTokenSource giveUp, CancellationToken cancel)
+        {
+            giveUp.Cancel();
+            try
+            {
+                return await accepting;
+            }
+            catch (OperationCanceledException)
+            {
+                // It had taken none.
+            }
+            return listener.Pending() ? await listener.AcceptTcpClientAsync(cancel) : null;
         }
 
         private static bool Alive(Process? process, int id) => process is not null ? DotnetProcesses.Runs(process) : DotnetProcesses.Runs(id);

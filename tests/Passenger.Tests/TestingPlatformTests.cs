@@ -478,4 +478,32 @@ public sealed class TestHostLastWordsTests
             ChildOutputTests.End(busy);
         }
     }
+
+    /// <summary>A test host that connects, writes and ends at once, whose connection the runner is handed only after it has
+    /// heard the host end, as a loaded machine may hand the two over, is said to have ended after it connected, with its
+    /// last line: whether it connected is its connection's to say, never the order the runner heard the two in.</summary>
+    [Fact]
+    public async Task A_test_host_whose_connection_comes_after_its_end_is_heard_is_said_to_have_connected()
+    {
+        CancellationToken cancel = TestContext.Current.CancellationToken;
+        string program = Passenger.Tests.Debugging.Helpers.Debuggees.Program("PassengerCases");
+        TestAssembly assembly = new(new ProjectModel(Path.ChangeExtension(program, ".csproj"), "PassengerCases", "Exe", ["net10.0"], [], [], true), "net10.0", program);
+        using TestingPlatformRunner runner = new() { HoldsConnectionsUntilEnded = true };
+        List<string> said = [];
+        FoundTests found = await runner.DiscoverAsync([assembly], line =>
+        {
+            lock (said)
+            {
+                said.Add(line);
+            }
+        }, cancel);
+        string failure;
+        lock (said)
+        {
+            failure = string.Join("\n", said);
+        }
+        Assert.True(found.Tests.Count == 0 && failure.StartsWith("PassengerCases (net10.0) ended before it answered initialize (exit code 3):\n", StringComparison.Ordinal)
+            && failure.EndsWith($"\n{LastWords}", StringComparison.Ordinal),
+            $"The test host that connected before it ended, its connection heard after its end, was said to fail with '{failure}'");
+    }
 }
