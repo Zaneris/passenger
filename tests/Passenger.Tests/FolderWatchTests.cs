@@ -740,13 +740,20 @@ public sealed class FolderWatchTests : IDisposable
 
     /// <summary>The system's watcher's beat goes on only while it can matter: while a window the person sees is in front,
     /// a write of its file and its change heard at each beat; never while that window is in the background, whose look as
-    /// it comes in front finds what went unheard meanwhile.</summary>
+    /// it comes in front finds what went unheard meanwhile, nor for a window closed as it came in front.</summary>
     [AvaloniaFact]
     public void The_systems_watchers_beat_goes_on_only_while_a_window_the_person_sees_is_in_front()
     {
         Assert.SkipUnless(OperatingSystem.IsMacOS(), "Only macOS's watcher falls behind without a word, so only there is a beat written");
         Write("One.cs", "class One { }\n");
         string state = TestFolders.Create("watch-state-");
+        // Shown and closed at once: its coming in front, posted as it showed, lands after it closed.
+        int holds = WatchLag.Holds;
+        MainWindow brief = new() { Width = 1200, Height = 800, StateFolder = state, StartsLanguageServer = false, Unseen = false };
+        brief.Show();
+        brief.Close();
+        Ui.Settle();
+        Assert.True(WatchLag.Holds == holds, $"A window shown and closed at once still holds the beat ({WatchLag.Holds - holds} holds more), so it never ends once every window is in the background");
         MainWindow window = new() { Width = 1200, Height = 800, StateFolder = state, StartsLanguageServer = false, Unseen = false };
         try
         {

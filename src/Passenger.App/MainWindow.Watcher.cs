@@ -44,10 +44,12 @@ public partial class MainWindow
     private void AddLookingAgain()
     {
         IDisposable? beat = null;
-        Opened += (_, _) => beat ??= Unseen ? WatchLag.Hold() : null;
+        // A window's coming in front the system posted before it closed may land after: it holds nothing then.
+        bool closed = false;
+        Opened += (_, _) => beat ??= Unseen && !closed ? WatchLag.Hold() : null;
         Activated += (_, _) =>
         {
-            beat ??= WatchLag.Hold();
+            beat ??= closed ? null : WatchLag.Hold();
             IdeErrors.Observe(LookAgainAsync());
         };
         Deactivated += (_, _) =>
@@ -60,6 +62,7 @@ public partial class MainWindow
         };
         Closed += (_, _) =>
         {
+            closed = true;
             beat?.Dispose();
             beat = null;
         };

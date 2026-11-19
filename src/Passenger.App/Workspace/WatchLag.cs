@@ -66,6 +66,18 @@ public static class WatchLag
         }
     }
 
+    /// <summary>How many holds on the beat are let go of not yet.</summary>
+    public static int Holds
+    {
+        get
+        {
+            lock (Gate)
+            {
+                return holds;
+            }
+        }
+    }
+
     /// <summary>Whether the beat goes on now.</summary>
     public static bool IsBeating
     {
