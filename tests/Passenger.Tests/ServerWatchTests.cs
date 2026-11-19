@@ -273,6 +273,77 @@ public sealed class ServerWatchTests : IClassFixture<ServerWatchTests.Project>
         window.Close();
     }
 
+    /// <summary>A C# server started ahead of the window, which loads its projects from the head start's design-time builds
+    /// before the window takes it up and starts the folder's watchers for it: their first walks tell the server of nothing
+    /// those builds or the restore before them wrote, which it read as it loaded them, so it says its diagnostics may have
+    /// changed no more after its load's word; but a file of its obj another program writes meanwhile, once the server was
+    /// given them, is told it.</summary>
+    [AvaloniaTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_server_started_ahead_is_told_by_the_first_walks_only_what_was_written_after_it_was_given_its_builds(bool meanwhile)
+    {
+        string folder = PathNames.Canonical(TestFolders.Create("ahead-"));
+        string sum = TestFolders.Write(folder, "Sum.csproj", TestProjects.Library());
+        TestFolders.Write(folder, "Helper.cs", "static class Helper\n{\n}\n");
+        Restore.Run(sum);
+        LaunchOptions launch = LaunchOptions.Parse([folder]);
+        DateTime began = DateTime.UtcNow;
+        HeadStart ahead = HeadStart.Begin(launch, languageServer: true)!;
+        MainWindow window = new() { Width = 1200, Height = 800, HeadStart = ahead };
+        bool started = false;
+        try
+        {
+            string log = string.Empty;
+            // The server's log as it loads, before any window: its watches of the folder are only the window's to start.
+            Ui.PumpUntil(() => Directory.Exists(CSharpService.LogFolder) && new DirectoryInfo(CSharpService.LogFolder).EnumerateFiles("server-*.log")
+                .Where(f => f.CreationTimeUtc >= began).Any(f => Ui.Shared(log = f.FullName).Contains(LanguageServer.LoadedNote, StringComparison.Ordinal)),
+                "the server started ahead to load Sum", TimeSpan.FromMinutes(2));
+            string again = Directory.EnumerateFiles(Path.Combine(folder, "obj"), "*.AssemblyInfo.cs", SearchOption.AllDirectories).Single();
+            if (meanwhile)
+            {
+                File.AppendAllText(again, "// Written again by another program.\n");
+            }
+            window.Show();
+            window.Start(launch);
+            started = true;
+            Ui.WaitFor(() => window.CSharpService?.IsReady == true, () => $"the window to take up the server started ahead: {window.CSharpService?.State}", TimeSpan.FromMinutes(2));
+            Assert.True(PathNames.Same(window.CSharpService!.Session!.Server.LogPath, log), $"The window started a server of its own ({window.CSharpService.Session.Server.LogPath}) in place of the one started ahead ({log})");
+            string obj = $"the watcher of {Path.Combine(folder, "obj")} records";
+            Ui.WaitFor(() => Ui.Shared(IdeLog.PathOf(IdeLog.Ide)).Contains(obj, StringComparison.Ordinal), $"the first walk of {folder}'s obj for the server");
+            // What that walk found is told the server in a turn of its own, which the window's quiet waits for.
+            Ui.Settle();
+            string[] told = Told(log);
+            if (meanwhile)
+            {
+                Assert.True(told is [{ } only] && only.EndsWith($"Told the server of 1 file changed on disk, {again} first", StringComparison.Ordinal),
+                    $"As the window's watchers started, the server was told [{string.Join(" | ", told)}], where it was to be told of {Path.GetFileName(again)} alone, "
+                    + "written by another program after it was given the head start's builds, and of none of what they or the restore wrote, which it read as it loaded them");
+            }
+            else
+            {
+                Assert.True(told.Length == 0, $"As the window's watchers started, the server was told [{string.Join(" | ", told)}], of what the head start's builds or the "
+                    + "restore wrote and it read as it loaded them, so it said its diagnostics may have changed once more after its load's word");
+            }
+        }
+        finally
+        {
+            if (!started)
+            {
+                Ui.AwaitPumped(ahead.EndAsync(), "the language server started ahead to end");
+            }
+            window.Close();
+            TestFolders.Delete(folder);
+        }
+
+        static string[] Told(string log)
+        {
+            string[] lines = Ui.Shared(log).Split('\n');
+            int loaded = Array.FindIndex(lines, l => l.TrimEnd().EndsWith(LanguageServer.LoadedNote, StringComparison.Ordinal));
+            return [.. lines[(loaded + 1)..].Select(l => l.TrimEnd()).Where(l => l.Contains("Told the server of", StringComparison.Ordinal))];
+        }
+    }
+
     /// <summary>A closed file the server has read, written again before the server's watches of the folder are registered
     /// (held back here until it is written, as a registration may come after its load has ended): the server is told of it
     /// as they come, so a rename that reaches it, asked at once, renames it as written, never refused after a wait for a

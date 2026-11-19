@@ -1751,6 +1751,10 @@ public sealed class LanguageServer : IAsyncDisposable
             owner.Changing(Roslyn.Extension.ProjectMethods.Info);
             owner.ProjectAsked?.Invoke(owner, asked.Path);
             FedProject fed = await feed.InfoAsync(asked.Path, CancellationToken.None).ConfigureAwait(false);
+            if (fed.Info.Infos is { } infos)
+            {
+                owner.WatchedFiles.Given(infos, fed.Inputs ?? []);
+            }
             owner.WatchedFiles.Tell(fed.Changed);
             owner.ProjectGiven?.Invoke(owner, new ProjectGiven(asked.Path, at, fed.Changed.Count > 0));
             return fed.Info;

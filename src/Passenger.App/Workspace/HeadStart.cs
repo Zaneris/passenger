@@ -288,16 +288,28 @@ public sealed class HeadStart
                 return null;
             }
             // A build whose inputs changed since it read them (a restore that landed as it ran) is asked for, and made again.
-            List<ProjectToOpen> projects = [.. Loaded(read).Select(path => builds.Projects.TryGetValue(path, out KeptBuild? kept) && kept.Inputs.All(Stamps.Holds)
-                ? new ProjectToOpen(path, kept.Read(), ProjectBuilds.Said(kept.Diagnostics)) : new ProjectToOpen(path, null))];
-            return new FedProjects([], projects, projects.Any(p => p.Infos is not null) ? head.buildsBegan : null);
+            List<ProjectToOpen> projects = [];
+            Dictionary<string, IReadOnlyList<InputRead>> inputs = new(StringComparer.Ordinal);
+            foreach (string path in Loaded(read))
+            {
+                if (builds.Projects.TryGetValue(path, out KeptBuild? kept) && kept.Inputs.All(Stamps.Holds))
+                {
+                    projects.Add(new ProjectToOpen(path, kept.Read(), ProjectBuilds.Said(kept.Diagnostics)));
+                    inputs[path] = ProjectBuilds.AsRead(kept.Inputs);
+                }
+                else
+                {
+                    projects.Add(new ProjectToOpen(path, null));
+                }
+            }
+            return new FedProjects([], projects, projects.Any(p => p.Infos is not null) ? head.buildsBegan : null, inputs);
         }
 
         public async Task<FedProject> InfoAsync(string path, CancellationToken cancel)
         {
             if ((await head.Builds).Projects.TryGetValue(path, out KeptBuild? kept) && kept.Inputs.All(Stamps.Holds))
             {
-                return new FedProject(new ProjectInfoResult(kept.Read(), null, ProjectBuilds.Said(kept.Diagnostics)), []);
+                return new FedProject(new ProjectInfoResult(kept.Read(), null, ProjectBuilds.Said(kept.Diagnostics)), [], ProjectBuilds.AsRead(kept.Inputs));
             }
             if (await head.hosting is not { } host)
             {
@@ -316,7 +328,7 @@ public sealed class HeadStart
             return built switch
             {
                 { Problem: { } problem } => new FedProject(new ProjectInfoResult(null, problem), []),
-                { } done => new FedProject(new ProjectInfoResult(done.Infos.ToString(), null, ProjectBuilds.Said(done.Diagnostics)), ProjectBuilds.Changed(done.Inputs)),
+                { } done => new FedProject(new ProjectInfoResult(done.Infos.ToString(), null, ProjectBuilds.Said(done.Diagnostics)), ProjectBuilds.Changed(done.Inputs), ProjectBuilds.AsRead(done.Inputs)),
                 null => new FedProject(new ProjectInfoResult(null, "the project host built nothing of it"), []),
             };
         }

@@ -55,6 +55,13 @@ public sealed class WatchedFiles
 
     private DateTime since = DateTime.UtcNow;
 
+    /// <summary>Each file the builds the server was given write, as it stood when the server was first given them
+    /// (<see cref="Given"/>), null for one not there then.</summary>
+    private readonly Dictionary<string, FileStamp?> given = new(PathNames.Comparer);
+
+    /// <summary>The most files kept as given (<see cref="Given"/>): past it, the rest are told as a walk finds them.</summary>
+    private const int GivenLimit = 20_000;
+
     internal WatchedFiles(LanguageServer server) => this.server = server;
 
     /// <summary>Whether the server has Passenger's project loader, which takes files gone from disk once the projects holding
@@ -178,6 +185,87 @@ public sealed class WatchedFiles
             server.Note($"Files no longer watched for the server, registration {id}");
         }
         Changed?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>The server is given a project's design-time builds (<paramref name="infos"/>, Roslyn's ProjectFileInfo for
+    /// each of its frameworks), which it reads what they name from as it loads them: each file of the folders they and the
+    /// restore before them write (where the project's assets file and its intermediate assembly lie) is kept as the builds
+    /// read it (<paramref name="inputs"/>), else as it stands now, the first time it is given, so a watcher's first walk
+    /// tells the server of none that stands so still (<see cref="StandsAsGiven"/>).</summary>
+    internal void Given(string infos, IReadOnlyList<InputRead> inputs)
+    {
+        List<string> folders = [];
+        try
+        {
+            using JsonDocument read = JsonDocument.Parse(infos);
+            if (read.RootElement.ValueKind != JsonValueKind.Array)
+            {
+                return;
+            }
+            foreach (JsonElement info in read.RootElement.EnumerateArray())
+            {
+                foreach (string? file in (string?[])[JsonMembers.Text(info, "projectAssetsFilePath"), JsonMembers.Text(info, "intermediateOutputFilePath")])
+                {
+                    if (Path.GetDirectoryName(file) is { Length: > 0 } folder && Path.IsPathFullyQualified(folder) && !folders.Any(f => PathNames.Within(folder, f)))
+                    {
+                        folders.RemoveAll(f => PathNames.IsUnder(f, folder));
+                        folders.Add(folder);
+                    }
+                }
+            }
+        }
+        catch (JsonException)
+        {
+            // Builds the server cannot read either: it loads nothing of them, so nothing it read is left untold.
+            return;
+        }
+        lock (gate)
+        {
+            foreach (InputRead input in inputs)
+            {
+                if (given.Count < GivenLimit && folders.Any(f => PathNames.IsUnder(input.Path, f)))
+                {
+                    given.TryAdd(input.Path, input.Stamp);
+                }
+            }
+        }
+        foreach (string folder in folders)
+        {
+            try
+            {
+                foreach (string file in Directory.EnumerateFiles(folder, "*", new EnumerationOptions { RecurseSubdirectories = true, IgnoreInaccessible = true, AttributesToSkip = 0 }))
+                {
+                    FileStamp? stamp = FileStamp.Of(file);
+                    lock (gate)
+                    {
+                        if (given.Count >= GivenLimit)
+                        {
+                            return;
+                        }
+                        given.TryAdd(file, stamp);
+                    }
+                }
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+            {
+                // Gone or changing as it was listed: what was listed is kept, the rest told as a walk finds it.
+            }
+        }
+    }
+
+    /// <summary>Whether a file stands as it did when the server was first given the builds that write it (<see cref="Given"/>),
+    /// so what the server read of it, after that, is what it holds.</summary>
+    public bool StandsAsGiven(string path)
+    {
+        FileStamp? then;
+        lock (gate)
+        {
+            if (!given.TryGetValue(path, out then))
+            {
+                return false;
+            }
+        }
+        return then is { } stamp && FileStamp.Of(path) == stamp;
     }
 
     /// <summary>The server is given design-time builds that began reading at <paramref name="read"/> (none with null),

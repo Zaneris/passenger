@@ -136,6 +136,13 @@ public sealed class RoslynSession : IAsyncDisposable, IDocumentHost
                 session.Fed = true;
                 server.WatchedFiles.HasLoader = true;
                 server.WatchedFiles.ReadFrom(fed.Read);
+                foreach (ProjectToOpen project in fed.First.Concat(fed.Later))
+                {
+                    if (project.Infos is { } infos)
+                    {
+                        server.WatchedFiles.Given(infos, fed.Inputs?.GetValueOrDefault(project.Path) ?? []);
+                    }
+                }
                 (IReadOnlyList<ProjectToOpen> before, IReadOnlyList<ProjectToOpen> rest) = (fed.First, fed.Later);
                 if (before.Count > 0)
                 {

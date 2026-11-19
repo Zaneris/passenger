@@ -621,7 +621,8 @@ public sealed class ServerWatches : IDisposable
     /// <summary>A folder watched for the server as the folder's watcher watches the open folder, kept to the folders the
     /// registrations over it reach and recording only the files they match: a change the server never asked for (a
     /// build's churn) counts toward a burst but is never told; what was written since the server, or a build it was given,
-    /// may have read it is told as its first walk ends, from the walk's own listings; and with changes lost there, every
+    /// may have read it is told as its first walk ends, from the walk's own listings, but what stands as it did when the
+    /// server was given its project's builds (<see cref="WatchedFiles.StandsAsGiven"/>); and with changes lost there, every
     /// file in it is told, those its record held now gone too. One outside the open folder walks apart from the IDE's
     /// quiet: it holds nothing the window shows, and on a cold disk the walk of one as large as the references' packs
     /// went on for minutes.</summary>
@@ -650,7 +651,8 @@ public sealed class ServerWatches : IDisposable
                 IdeErrors.Write($"{Shown} records {Plural.Of(folders, "folder")} and {Plural.Of(entries, "entry", "entries")} "
                     + $"{Durations.Said(System.Diagnostics.Stopwatch.GetElapsedTime(began))} after it started{(apart ? ", apart from the IDE's quiet" : string.Empty)}");
                 // Told whether or not a registration matches them yet: one the server's load sends later takes those kept for it.
-                owner.InTurn(() => TellAsync([.. written.Select(file => new FileEvent(file, FileChangeType.Changed))]), this);
+                List<FileEvent> changed = [.. written.Where(file => !owner.watched.StandsAsGiven(file)).Select(file => new FileEvent(file, FileChangeType.Changed))];
+                owner.InTurn(() => TellAsync(changed), this);
             }, after: owner.WalkHeld(top));
         }
 

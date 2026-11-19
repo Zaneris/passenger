@@ -1,3 +1,4 @@
+using Passenger.Core;
 using Passenger.Roslyn.Extension;
 
 namespace Passenger.Lsp;
@@ -18,12 +19,17 @@ public interface IProjectFeed
 
 /// <summary>The projects a feed gives a server as it starts, and when the earliest of the builds among them began reading
 /// what it read (the project file, its imports, a restore's assets), a build kept from before counting from when its
-/// inputs were found as they were; null with none among them.</summary>
-public sealed record FedProjects(IReadOnlyList<ProjectToOpen> First, IReadOnlyList<ProjectToOpen> Later, DateTime? Read);
+/// inputs were found as they were; null with none among them. <see cref="Inputs"/>: the files each project's builds
+/// among them read, as they read them, by the project.</summary>
+public sealed record FedProjects(IReadOnlyList<ProjectToOpen> First, IReadOnlyList<ProjectToOpen> Later, DateTime? Read,
+    IReadOnlyDictionary<string, IReadOnlyList<InputRead>>? Inputs = null);
 
 /// <summary>A project's design-time builds as a feed gives them, and the files they read that have changed since, by their
-/// canonical paths: a restore that landed as they were made.</summary>
-public sealed record FedProject(ProjectInfoResult Info, IReadOnlyList<FileEvent> Changed);
+/// canonical paths: a restore that landed as they were made. <see cref="Inputs"/>: the files they read, as they read them.</summary>
+public sealed record FedProject(ProjectInfoResult Info, IReadOnlyList<FileEvent> Changed, IReadOnlyList<InputRead>? Inputs = null);
+
+/// <summary>A file design-time builds read (the project's assets, an import), as they read it: null where it was not there.</summary>
+public readonly record struct InputRead(string Path, FileStamp? Stamp);
 
 /// <summary>A project's design-time builds given to the server's loader (<see cref="LanguageServer.ProjectGiven"/>): the
 /// project, when the server asked for them (UTC), and whether what they read has changed since (<see cref="FedProject.Changed"/>),

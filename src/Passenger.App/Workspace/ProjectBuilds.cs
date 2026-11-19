@@ -248,7 +248,8 @@ public sealed class ProjectBuilds
         {
             IdeErrors.Write($"C# language server loads {string.Join(", ", first.Select(Path.GetFileNameWithoutExtension))} first, for the file shown ({first.Count(standing.ContainsKey)} of them as built before)");
         }
-        return new FedProjects([.. first.Select(Open)], [.. rest.Select(Open)], standing.Count > 0 ? looked : null);
+        return new FedProjects([.. first.Select(Open)], [.. rest.Select(Open)], standing.Count > 0 ? looked : null,
+            standing.Keys.ToDictionary(p => p, p => (IReadOnlyList<InputRead>)AsRead(held[p].Inputs), StringComparer.Ordinal));
 
         ProjectToOpen Open(string path) => standing.GetValueOrDefault(path) ?? new(path, null);
     }
@@ -303,7 +304,7 @@ public sealed class ProjectBuilds
         await LetGoneAsync(path, known.GetValueOrDefault(path)?.Inputs);
         if (!waiting.ContainsKey(path) && known.TryGetValue(path, out KeptBuild? held) && await LookAsync(path, held.Inputs, () => held.Inputs.All(Stamps.Holds)))
         {
-            return new FedProject(new ProjectInfoResult(held.Read(), null, Said(held.Diagnostics)), []);
+            return new FedProject(new ProjectInfoResult(held.Read(), null, Said(held.Diagnostics)), [], AsRead(held.Inputs));
         }
         BuiltProject built;
         Awaited++;
@@ -320,7 +321,7 @@ public sealed class ProjectBuilds
             return new FedProject(new ProjectInfoResult(null, problem), []);
         }
         await LetGoneAsync(path, built.Inputs);
-        return new FedProject(new ProjectInfoResult(built.Infos.ToString(), null, Said(built.Diagnostics)), await LookAsync(path, built.Inputs, () => Changed(built.Inputs)));
+        return new FedProject(new ProjectInfoResult(built.Infos.ToString(), null, Said(built.Diagnostics)), await LookAsync(path, built.Inputs, () => Changed(built.Inputs)), AsRead(built.Inputs));
     }
 
     /// <summary>The looks under way at what a project's builds read, each with its project and what they read, which a
@@ -361,6 +362,11 @@ public sealed class ProjectBuilds
 
     /// <summary>The files among a build's inputs that are no longer as it found them, each as made, changed or gone (a
     /// folder's names changing names no file).</summary>
+    /// <summary>The files builds read, as they read them, as the server is given them with the builds.</summary>
+    internal static List<InputRead> AsRead(IReadOnlyList<Stamp> inputs) =>
+        [.. inputs.Where(input => !input.Folder && !input.Head && !input.Presence)
+            .Select(input => new InputRead(input.Path, input.Length < 0 ? null : new FileStamp(input.Length, new DateTime(input.Ticks, DateTimeKind.Utc))))];
+
     internal static List<FileEvent> Changed(IReadOnlyList<Stamp> inputs)
     {
         List<FileEvent> changed = [];
