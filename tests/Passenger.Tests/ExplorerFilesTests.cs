@@ -390,9 +390,7 @@ public sealed class ExplorerFilesTests : IDisposable
             Assert.Skip("Only Windows keeps a folder a process works in from moving, which the round's end is waited for");
             return;
         }
-        // The project host gives MSBuild half the processors, and only two nodes build Shop and Lib at once.
-        Assert.SkipWhen(Environment.ProcessorCount / 2 < 2,
-            $"The project host builds two projects at once only on two MSBuild nodes, half of four processors, and this machine has {Environment.ProcessorCount}");
+        SkipUnlessTwoBuildsAtOnce();
         string library = Directory.CreateDirectory(Path.Combine(folder, "Lib")).FullName;
         string releaseLib = Path.Combine(folder, "release-lib");
         string releaseShop = Path.Combine(folder, "release-shop");
@@ -465,6 +463,7 @@ public sealed class ExplorerFilesTests : IDisposable
     [AvaloniaFact]
     public void A_project_whose_wildcards_take_in_a_folder_being_deleted_is_told_to_the_language_server_once_it_has_gone()
     {
+        SkipUnlessTwoBuildsAtOnce();
         string library = Directory.CreateDirectory(Path.Combine(folder, "Lib")).FullName;
         string releaseLib = Path.Combine(folder, "release-lib");
         string releaseShop = Path.Combine(folder, "release-shop");
@@ -589,9 +588,7 @@ public sealed class ExplorerFilesTests : IDisposable
     [AvaloniaFact]
     public void A_folders_delete_waits_for_the_round_of_design_time_builds_that_built_its_project_to_end_only_where_a_folder_worked_in_is_held()
     {
-        // The project host gives MSBuild half the processors, and only two nodes build Shop and Lib at once.
-        Assert.SkipWhen(Environment.ProcessorCount / 2 < 2,
-            $"The project host builds two projects at once only on two MSBuild nodes, half of four processors, and this machine has {Environment.ProcessorCount}");
+        SkipUnlessTwoBuildsAtOnce();
         string library = Directory.CreateDirectory(Path.Combine(folder, "Lib")).FullName;
         string releaseLib = Path.Combine(folder, "release-lib");
         string releaseShop = Path.Combine(folder, "release-shop");
@@ -696,6 +693,12 @@ public sealed class ExplorerFilesTests : IDisposable
         }
         window.Close();
     }
+
+    /// <summary>Skips a test that holds Shop's and Lib's design-time builds at once: the project host gives MSBuild half the
+    /// processors, and builds two projects at once only on two nodes; on fewer, one's hold keeps the other from starting
+    /// until its Exec runs out.</summary>
+    private static void SkipUnlessTwoBuildsAtOnce() => Assert.SkipWhen(Environment.ProcessorCount / 2 < 2,
+        $"The project host builds two projects at once only on two MSBuild nodes, half of four processors, and this machine has {Environment.ProcessorCount}");
 
     /// <summary>A Directory.Build.targets holding the design-time builds of the projects below it before CoreCompile, each
     /// writing held into its project's folder, until <paramref name="release"/> is there.</summary>
