@@ -73,12 +73,30 @@ public sealed class PaneSplit : Grid
     /// <summary>The divider between the panes as they stand.</summary>
     public HairlineDivider Divider => stacked ? under : beside;
 
+    private bool? stackedOverride;
+    private bool secondOnly;
+    internal event EventHandler? DirectionChanged;
+
+    internal void SetPresentation(bool? stack, bool onlySecond)
+    {
+        if (stackedOverride == stack && secondOnly == onlySecond)
+        {
+            return;
+        }
+        stackedOverride = stack;
+        secondOnly = onlySecond;
+        first.IsVisible = !onlySecond;
+        Lay();
+        InvalidateMeasure();
+    }
+
     protected override Size MeasureOverride(Size availableSize)
     {
-        if (ToolLayout.Stacks(availableSize.Width, availableSize.Height) != stacked)
+        if ((stackedOverride ?? ToolLayout.Stacks(availableSize.Width, availableSize.Height)) != stacked)
         {
             stacked = !stacked;
             Lay();
+            DirectionChanged?.Invoke(this, EventArgs.Empty);
         }
         return base.MeasureOverride(availableSize);
     }
@@ -86,12 +104,12 @@ public sealed class PaneSplit : Grid
     /// <summary>Each pane in its place and the divider between them as they stand, or the first alone over every cell.</summary>
     private void Lay()
     {
-        beside.IsVisible = second is not null && !stacked;
-        under.IsVisible = second is not null && stacked;
+        beside.IsVisible = second is not null && !secondOnly && !stacked;
+        under.IsVisible = second is not null && !secondOnly && stacked;
         Place(first, 0, second is null);
         if (second is not null)
         {
-            Place(second, 2, alone: false);
+            Place(second, 2, alone: secondOnly);
         }
     }
 

@@ -12,6 +12,7 @@ using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Styling;
 using Avalonia.VisualTree;
+using Passenger.App.State;
 using Passenger.App.Tables;
 using Passenger.App.Workspace;
 using Passenger.Editor;
@@ -56,6 +57,10 @@ public sealed class EditorGroup : DockPanel
     private readonly List<EditorTab> shownOrder = [];
     private readonly Dictionary<OpenDocument, (SelectionSet Selections, Vector Scroll)> views = [];
     private readonly Border tabBar;
+    private readonly StackPanel markdownModes;
+    private readonly ToggleButton markdownEditor;
+    private readonly ToggleButton markdownSplit;
+    private readonly ToggleButton markdownOnly;
     private readonly ItemsControl strip;
     private readonly ScrollViewer stripView;
 
@@ -109,6 +114,14 @@ public sealed class EditorGroup : DockPanel
             // It says what is in force once its action ran, or was refused.
             FollowPreviewToggle();
         };
+        markdownEditor = MarkdownButton(MarkdownView.Editor, IconKeys.DocumentText, "Editor Only");
+        markdownSplit = MarkdownButton(MarkdownView.Split, IconKeys.Diff, "Editor and Preview (click again to change split direction)");
+        markdownOnly = MarkdownButton(MarkdownView.Preview, IconKeys.Preview, "Preview Only");
+        markdownModes = new StackPanel
+        {
+            Orientation = Orientation.Horizontal, IsVisible = false, [DockProperty] = Dock.Right,
+            Children = { markdownEditor, markdownSplit, markdownOnly },
+        };
         stripView = new ScrollViewer { HorizontalScrollBarVisibility = ScrollBarVisibility.Hidden, VerticalScrollBarVisibility = ScrollBarVisibility.Disabled, Content = strip };
         // A narrower strip may leave the active tab out of sight.
         stripView.SizeChanged += (_, _) => RevealActive();
@@ -127,7 +140,7 @@ public sealed class EditorGroup : DockPanel
             {
                 Children =
                 {
-                    new DockPanel { Children = { hiddenTabs, PreviewToggle, stripView } },
+                    new DockPanel { Children = { hiddenTabs, markdownModes, PreviewToggle, stripView } },
                     new ThemeBackdrop(BackgroundPlaces.Frame),
                 },
             },
@@ -152,6 +165,7 @@ public sealed class EditorGroup : DockPanel
         editorPlace = new Panel { Children = { Editor } };
         // The picture over the editor's place, whatever it holds, in a panel of their own; never over the pane beside it.
         body = new ToolWindows.PaneSplit(new Panel { Children = { editorPlace, new ThemeBackdrop(BackgroundPlaces.Editor) } }, null, "*,1,*");
+        body.DirectionChanged += (_, _) => ((PathIcon)markdownSplit.Content!).RenderTransform = body.IsStacked ? new RotateTransform(90) : null;
         Children.Add(body);
         // The group the person works in is the area's active one; while a table lies over the editor, the table takes its focus.
         Editor.GotFocus += (_, _) =>
@@ -179,6 +193,22 @@ public sealed class EditorGroup : DockPanel
             }
         };
         AddHandler(PointerPressedEvent, (_, _) => area.SetActiveGroup(this), RoutingStrategies.Tunnel, handledEventsToo: true);
+    }
+
+    private ToggleButton MarkdownButton(MarkdownView view, string icon, string tip)
+    {
+        ToggleButton button = ToolButtons.Toggle(icon, tip);
+        button.Classes.Add(StyleClasses.TabStripTool);
+        button.Click += (_, _) =>
+        {
+            area.SetActiveGroup(this);
+            MarkdownLayout layout = area.MarkdownLayout;
+            area.MarkdownLayout = view == MarkdownView.Split && layout.View == view
+                ? layout with { Stacked = !SideUnder } : layout with { View = view };
+            button.IsChecked = true;
+            FocusShown();
+        };
+        return button;
     }
 
     /// <summary>Whether this is the group the person works in; the others mark their file quieter.</summary>
@@ -219,8 +249,7 @@ public sealed class EditorGroup : DockPanel
 
     public FindBar Find { get; }
 
-    /// <summary>The tab strip's toggle of the preview beside the editor, shown while the group shows a Markdown file or a
-    /// XAML file the previewer draws.</summary>
+    /// <summary>The tab strip's preview toggle for SVG, HTML and XAML files.</summary>
     public ToggleButton PreviewToggle { get; }
 
     /// <summary>The group's own preview of its Markdown file, made as it first shows one.</summary>
@@ -247,7 +276,12 @@ public sealed class EditorGroup : DockPanel
     {
         OpenDocument? document = active?.Document is { } shown && InEditor(shown) ? shown : null;
         FollowPreviewToggle();
-        if (document?.Language == Languages.Language.Markdown && area.ShowsMarkdownPreview)
+        bool isMarkdown = document?.Language == Languages.Language.Markdown;
+        MarkdownLayout layout = area.MarkdownLayout;
+        bool previewOnly = isMarkdown && layout.View == MarkdownView.Preview;
+        bool moveKeys = previewOnly ? Editor.IsKeyboardFocusWithin : Markdown?.IsKeyboardFocusWithin == true && layout.View == MarkdownView.Editor;
+        body.SetPresentation(isMarkdown ? layout.Stacked : null, previewOnly);
+        if (isMarkdown && layout.View != MarkdownView.Editor)
         {
             markdown ??= new MarkdownPreview(Editor, area);
             Side = markdown;
@@ -260,10 +294,14 @@ public sealed class EditorGroup : DockPanel
                 Side = null;
             }
             markdown?.Show(null);
-            if (!area.ShowsMarkdownPreview)
+            if (layout.View == MarkdownView.Editor)
             {
                 markdown?.Forget();
             }
+        }
+        if (moveKeys)
+        {
+            FocusShown();
         }
         if (document is not null && EditorArea.IsSvg(document) && area.ShowsSvgPreview)
         {
@@ -298,13 +336,15 @@ public sealed class EditorGroup : DockPanel
     /// <summary>The action the strip's preview toggle runs for the file shown, null while it shows none.</summary>
     public string? PreviewAction { get; private set; }
 
-    /// <summary>The strip's preview toggle shows for a Markdown file, an SVG, an HTML file or a XAML file the previewer
-    /// draws, pressed while that kind's preview is on, its tip naming the action it runs.</summary>
+    /// <summary>The active file's layout buttons on the tab strip, with its current choice pressed.</summary>
     internal void FollowPreviewToggle()
     {
         OpenDocument? document = active is { } shown && InEditor(shown.Document) ? shown.Document : null;
+        markdownModes.IsVisible = document?.Language == Languages.Language.Markdown;
+        markdownEditor.IsChecked = area.MarkdownLayout.View == MarkdownView.Editor;
+        markdownSplit.IsChecked = area.MarkdownLayout.View == MarkdownView.Split;
+        markdownOnly.IsChecked = area.MarkdownLayout.View == MarkdownView.Preview;
         (string Action, string Title, bool On)? toggle = document is null ? null
-            : document.Language == Languages.Language.Markdown ? (AppActions.MarkdownPreview, "Markdown Preview", area.ShowsMarkdownPreview)
             : EditorArea.IsSvg(document) ? (AppActions.SvgPreview, "SVG Preview", area.ShowsSvgPreview)
             : document.Language == Languages.Language.Html ? (AppActions.HtmlPreview, "HTML Preview", area.ShowsHtmlPreview)
             : area.HasXamlPreview(document) ? (AppActions.XamlPreview, "XAML Preview", area.ShowsXamlPreview)
@@ -355,6 +395,7 @@ public sealed class EditorGroup : DockPanel
             stripView.VerticalScrollBarVisibility = down ? ScrollBarVisibility.Auto : ScrollBarVisibility.Disabled;
             hiddenTabs[DockProperty] = down ? Dock.Bottom : Dock.Right;
             PreviewToggle[DockProperty] = down ? Dock.Top : Dock.Right;
+            markdownModes[DockProperty] = down ? Dock.Top : Dock.Right;
             tabBar.Styles.Clear();
             if (down)
             {
@@ -512,6 +553,7 @@ public sealed class EditorGroup : DockPanel
         Vcs.DiffView diff => diff.Right.Focus(method),
         ToolTabView tool => tool.Window.TakeKeys(method),
         not null => preview.Focus(method),
+        _ when Markdown is { } page && area.MarkdownLayout.View == MarkdownView.Preview => page.Focus(method),
         _ => Editor.Focus(method),
     };
 
@@ -525,7 +567,7 @@ public sealed class EditorGroup : DockPanel
         {
             return;
         }
-        bool keys = preview?.IsKeyboardFocusWithin == true;
+        bool keys = preview?.IsKeyboardFocusWithin == true || Markdown?.IsKeyboardFocusWithin == true;
         ShowIn(document);
         if (keys)
         {
@@ -714,7 +756,7 @@ public sealed class EditorGroup : DockPanel
         markdown?.Forget(document);
         if (tab == active)
         {
-            bool keys = preview?.IsKeyboardFocusWithin == true;
+            bool keys = preview?.IsKeyboardFocusWithin == true || Markdown?.IsKeyboardFocusWithin == true;
             ClearPreview();
             document.PropertyChanged -= OnDocumentChanged;
             active = null;

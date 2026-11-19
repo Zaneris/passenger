@@ -5,6 +5,7 @@ using Avalonia.Layout;
 using Avalonia.Media;
 using Microsoft.CodeAnalysis.CSharp;
 using Passenger.App.Docking;
+using Passenger.App.State;
 using Passenger.App.ToolWindows;
 using Passenger.App.Workspace;
 using Passenger.Core;
@@ -146,19 +147,38 @@ public sealed partial class EditorArea : UserControl
         }
     }
 
-    private bool showsMarkdownPreview = true;
+    private MarkdownLayout markdownLayout;
 
-    /// <summary>Whether a Markdown file shows its preview beside its editor, in every group showing one.</summary>
+    /// <summary>Whether a Markdown preview is open. Showing a hidden preview through View opens it alongside the editor.</summary>
     public bool ShowsMarkdownPreview
     {
-        get => showsMarkdownPreview;
+        get => MarkdownLayout.View != MarkdownView.Editor;
         set
         {
-            showsMarkdownPreview = value;
+            if (value != ShowsMarkdownPreview)
+            {
+                MarkdownLayout = MarkdownLayout with { View = value ? MarkdownView.Split : MarkdownView.Editor };
+            }
+        }
+    }
+
+    internal event EventHandler? MarkdownLayoutChanged;
+
+    internal MarkdownLayout MarkdownLayout
+    {
+        get => markdownLayout;
+        set
+        {
+            if (markdownLayout == value)
+            {
+                return;
+            }
+            markdownLayout = value;
             foreach (EditorGroup group in AllGroups)
             {
                 group.FollowSidePreview();
             }
+            MarkdownLayoutChanged?.Invoke(this, EventArgs.Empty);
         }
     }
 
