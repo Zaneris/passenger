@@ -30,6 +30,13 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 
 ## 2026-11-19
 
+- `McpNavigationTests`' `A_second_diagnostics_of_an_unchanged_file_answers_from_the_servers_last_pull_sending_none`,
+  CI 44484077195 (macOS): 9 pulls on the second ask again, after #1642. **The test waited wrong**: a server started
+  ahead of the window is taken up a moment after its projects load, and only then do its watchers start; their first
+  walks tell the server of what was written since its head start's builds began reading (those builds' own obj/ files
+  among them), and the server says its diagnostics may have changed about 2 s later, after the word the test took its
+  baseline from. The test now asks again until an ask finds nothing told the server since the one before it, and fails
+  only where an ask pulls though nothing was told; with the cache taken out it fails so (115f2b473, #1978).
 - `RunningLinesTests`' `Finding_the_next_line_that_runs_is_one_walk_however_long_the_class`, CI 44473130591 (Linux
   gate shard 2, at af9e5dcf8): "Finding the next line in 4000 properties allocated 102256 bytes against 784 in 200".
   **The test counted the runtime's cast cache**, the walk one as it is: `UpdateHandlersTests` loads the tests' own
