@@ -43,6 +43,13 @@ public static class FileIcons
             _ => TokenKeys.File_Folder,
         });
 
+    /// <summary>A folder's icon by its name, as the Explorer draws a folder on disk.</summary>
+    public static Geometry ForFolder(string name, bool open) => FileIconSet.ForFolder(name) is { } look
+        ? Find<Geometry>($"FileIcon.{look.Shape}")
+        : Find<Geometry>(open ? IconKeys.FolderOpen : IconKeys.Explorer);
+
+    public static IBrush BrushForFolder(string name) => FileIconSet.ForFolder(name) is { } look ? Tint(look) : Find<IBrush>(TokenKeys.File_Folder);
+
     public static Geometry ForFile(string path) => Find<Geometry>($"FileIcon.{FileIconSet.ForFile(Path.GetFileName(path)).Shape}");
 
     public static IBrush BrushForFile(string path) => Tint(FileIconSet.ForFile(Path.GetFileName(path)));
