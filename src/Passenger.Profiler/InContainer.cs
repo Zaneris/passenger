@@ -88,8 +88,8 @@ public static class InContainer
 
         // A web app's requests and a program's metrics need no rundown: nothing in them is named by address.
         Task<EventPipeSession> StartAsync(DiagnosticsClient client) => requests
-            ? client.StartEventPipeSessionAsync(LiveRequests.Providers, requestRundown: false, circularBufferMB: 64)
-            : metrics ? client.StartEventPipeSessionAsync(LiveMetrics.Providers(LiveMetrics.ContainerSession, LiveMetrics.Shipped), requestRundown: false, circularBufferMB: 16)
+            ? SessionStarts.OnAsync(client, LiveRequests.Providers, circularBufferMB: 64, CancellationToken.None)
+            : metrics ? SessionStarts.OnAsync(client, LiveMetrics.Providers(LiveMetrics.ContainerSession, LiveMetrics.Shipped), circularBufferMB: 16, CancellationToken.None)
             : client.StartEventPipeSessionAsync(ProfilingSession.Providers, requestRundown: true, circularBufferMB: 512);
     }
 

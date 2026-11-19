@@ -10,9 +10,6 @@ namespace Passenger.Profiler;
 /// are held up from one whose own work for the request was.</summary>
 internal static class UnansweredPorts
 {
-    /// <summary>A provider no program registers, so a session of it starts without the program's code running.</summary>
-    private const string NoProvider = "Passenger-No-Provider";
-
     /// <summary>How long the port is given to answer that request.</summary>
     private static TimeSpan AnswerLimit => Waits.Of(TimeSpan.FromSeconds(2));
 
@@ -42,11 +39,9 @@ internal static class UnansweredPorts
     {
         using CancellationTokenSource answered = CancellationTokenSource.CreateLinkedTokenSource(cancel);
         answered.CancelAfter(AnswerLimit);
-        EventPipeSession session;
         try
         {
-            session = await new DiagnosticsClient(processId).StartEventPipeSessionAsync(new EventPipeProvider(NoProvider, EventLevel.Critical), requestRundown: false,
-                circularBufferMB: 1, answered.Token).ConfigureAwait(false);
+            await SessionStarts.NoProviderAsync(new DiagnosticsClient(processId), AnswerLimit, answered.Token).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (!cancel.IsCancellationRequested)
         {
@@ -56,8 +51,6 @@ internal static class UnansweredPorts
         {
             return error.Message;
         }
-        await EventPipeStops.StopAsync(session, AnswerLimit).ConfigureAwait(false);
-        session.Dispose();
         return null;
     }
 }

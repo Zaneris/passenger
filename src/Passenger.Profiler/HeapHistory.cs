@@ -163,8 +163,8 @@ internal sealed class HeapHistory : IAsyncDisposable
     {
         DiagnosticsClient client = new(processId);
         List<DateTime> samples = [];
-        EventPipeSession sampling = await client.StartEventPipeSessionAsync(
-            [new EventPipeProvider(Snapshot.SampleProvider, EventLevel.Informational)], requestRundown: false, circularBufferMB: 64, cancel);
+        EventPipeSession sampling = await SessionStarts.OnAsync(client, [new EventPipeProvider(Snapshot.SampleProvider, EventLevel.Informational)],
+            circularBufferMB: 64, cancel);
         Task reading = EventPipeReads.ToEndAsync(sampling.EventStream, events => events.AllEvents += e =>
         {
             lock (samples)
@@ -307,8 +307,8 @@ internal sealed class HeapHistory : IAsyncDisposable
         {
             return;
         }
-        session = await new DiagnosticsClient(processId).StartEventPipeSessionAsync(
-            [new EventPipeProvider(Runtime, EventLevel.Informational, GcKeyword | MovementKeyword)], requestRundown: false, circularBufferMB: 256, cancel);
+        session = await SessionStarts.OnAsync(new DiagnosticsClient(processId),
+            [new EventPipeProvider(Runtime, EventLevel.Informational, GcKeyword | MovementKeyword)], circularBufferMB: 256, cancel);
         source = new EventPipeEventSource(session.EventStream);
         source.Clr.GCStart += OnStart;
         source.Clr.GCGenerationRange += e => Current(lose: false)?.Range(e.Generation, e.RangeStart, e.RangeUsedLength);
@@ -438,7 +438,8 @@ internal sealed class HeapHistory : IAsyncDisposable
 
     /// <summary>Has the runtime collect in full (a session with the GCHeapCollect keyword), and gives that collection's
     /// number, or -1, as for a program that ended as it collected, whose runtime answered neither the session's start nor
-    /// its stop. The collection is over when the session's start returns.</summary>
+    /// its stop. The collection is over once the stop is taken: the runtime collects as it turns the session on, which may
+    /// come after its answer to the start but always before it takes the stop.</summary>
     private async Task<int> InduceAsync(CancellationToken cancel)
     {
         int found = -1;

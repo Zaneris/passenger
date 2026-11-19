@@ -1246,24 +1246,18 @@ public sealed class ProfilerTests : IClassFixture<ProfilerTests.Waits>, IDisposa
     /// <summary>This process's allocations of 8 MB of small byte arrays and three full collections, recorded by an EventPipe
     /// session of its own into a .nettrace with the runtime's GC events alone: no sampler, so no samples. Small, since on Linux
     /// the runtime can leave most large objects' ticks out once its process has allocated large objects before. Begun once
-    /// the session is on, which the runtime's answer to its start may come before.</summary>
+    /// the session is on, as Passenger's own sessions that hear a program from its first moment are (<see cref="SessionStarts.OnAsync"/>).</summary>
     private static async Task<MemoryRecorded> RecordMemory(string trace)
     {
-        Microsoft.Diagnostics.NETCore.Client.DiagnosticsClient client = new(Environment.ProcessId);
-        using SessionMark mark = new();
         long asked = System.Diagnostics.Stopwatch.GetTimestamp();
-        using Microsoft.Diagnostics.NETCore.Client.EventPipeSession session = client.StartEventPipeSession(
-            [new Microsoft.Diagnostics.NETCore.Client.EventPipeProvider(Snapshot.RuntimeProvider, System.Diagnostics.Tracing.EventLevel.Verbose, 0x1),
-                new Microsoft.Diagnostics.NETCore.Client.EventPipeProvider(SessionMark.Provider, System.Diagnostics.Tracing.EventLevel.Informational)], requestRundown: false);
-        long answered = System.Diagnostics.Stopwatch.GetTimestamp();
-        bool onAtAnswer = mark.IsEnabled();
+        using Microsoft.Diagnostics.NETCore.Client.EventPipeSession session = await SessionStarts.OnAsync(new(Environment.ProcessId),
+            [new Microsoft.Diagnostics.NETCore.Client.EventPipeProvider(Snapshot.RuntimeProvider, System.Diagnostics.Tracing.EventLevel.Verbose, 0x1)], circularBufferMB: 256,
+            TestContext.Current.CancellationToken);
         Task copying = Waiting.Apart(() =>
         {
             using FileStream file = File.Create(trace);
             session.EventStream.CopyTo(file);
         });
-        // A session's providers come on in the order they were made, the runtime's own before the mark.
-        Assert.True(Waiting.Until(mark.IsEnabled, TimeSpan.FromSeconds(5)), "The EventPipe session never turned its providers on");
         long allocating = System.Diagnostics.Stopwatch.GetTimestamp();
         List<byte[]> kept = new(80_000);
         for (int i = 0; i < 80_000; i++)
@@ -1280,21 +1274,12 @@ public sealed class ProfilerTests : IClassFixture<ProfilerTests.Waits>, IDisposa
         session.Stop();
         Assert.True(await Waiting.Within(copying, TimeSpan.FromSeconds(30), scaled: false), "The EventPipe session's trace never ended");
         await copying;
-        return new MemoryRecorded(System.Diagnostics.Stopwatch.GetElapsedTime(asked, answered), onAtAnswer, System.Diagnostics.Stopwatch.GetElapsedTime(answered, allocating),
-            System.Diagnostics.Stopwatch.GetElapsedTime(allocating, collecting), System.Diagnostics.Stopwatch.GetElapsedTime(collecting, collected));
+        return new MemoryRecorded(System.Diagnostics.Stopwatch.GetElapsedTime(asked, allocating), System.Diagnostics.Stopwatch.GetElapsedTime(allocating, collecting),
+            System.Diagnostics.Stopwatch.GetElapsedTime(collecting, collected));
     }
 
-    /// <summary>A provider of the test's own in a memory trace's session, which writes nothing: its being on says the
-    /// session's other providers are.</summary>
-    [System.Diagnostics.Tracing.EventSource(Name = Provider)]
-    private sealed class SessionMark : System.Diagnostics.Tracing.EventSource
-    {
-        public const string Provider = "Passenger-Tests-SessionMark";
-    }
-
-    /// <summary>How long a memory trace's session took to answer its start, whether it was on at its answer, and how long
-    /// after the answer its allocations began, they took, and its collections took.</summary>
-    private readonly record struct MemoryRecorded(TimeSpan Answering, bool OnAtAnswer, TimeSpan Starting, TimeSpan Allocating, TimeSpan Collecting);
+    /// <summary>How long a memory trace's session took to start and come on, and its allocations and its collections took.</summary>
+    private readonly record struct MemoryRecorded(TimeSpan Starting, TimeSpan Allocating, TimeSpan Collecting);
 
     /// <summary>What a memory trace holds, read apart from the snapshot: how many events, of them allocation ticks and
     /// collections begun, and when (from its session's start) its first and last came and each collection began, against
@@ -1327,9 +1312,8 @@ public sealed class ProfilerTests : IClassFixture<ProfilerTests.Waits>, IDisposa
         {
             read = $"cut short: {broken.Message}";
         }
-        return $"the session answered its start in {Durations.Said(recorded.Answering)}, {(recorded.OnAtAnswer ? "on" : "not yet on")} as it answered, and the allocations"
-            + $" began {Durations.Said(recorded.Starting)} after its answer, taking {Durations.Said(recorded.Allocating)}, the collections {Durations.Said(recorded.Collecting)}"
-            + $" after them; the trace ({read}) holds {events:N0} events from {first:F1} to {last:F1} ms of its session, {ticks:N0}"
+        return $"the session took {Durations.Said(recorded.Starting)} to start and come on, the allocations {Durations.Said(recorded.Allocating)} and the collections"
+            + $" {Durations.Said(recorded.Collecting)} after them; the trace ({read}) holds {events:N0} events from {first:F1} to {last:F1} ms of its session, {ticks:N0}"
             + $" allocation ticks and {begun.Count} collections begun, at [{string.Join(", ", begun.Select(at => $"{at:F1}"))}] ms;"
             + $" the snapshot {(snapshot.CutShort is { } cut ? $"was cut short ({cut})" : "was read whole")}, listing {snapshot.Collections.Count} collections";
     }

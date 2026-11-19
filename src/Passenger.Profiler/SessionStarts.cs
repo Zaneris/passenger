@@ -1,3 +1,4 @@
+using System.Diagnostics.Tracing;
 using Microsoft.Diagnostics.NETCore.Client;
 using Passenger.Core;
 
@@ -8,9 +9,13 @@ namespace Passenger.Profiler;
 /// and given <see cref="Limit"/> for its runtime to take it: a client waits for good on a runtime that never answers (on
 /// Windows on a pipe that is not there too). A start refused or past its limit is a <see cref="ProfilingException"/> saying
 /// why, one past its limit with what the port showed then (<see cref="UnansweredPorts"/>); whether to ask again is
-/// <see cref="AskAgain"/>'s to say.</summary>
+/// <see cref="AskAgain"/>'s to say. Every session that must hear the program from its first moment starts through
+/// <see cref="OnAsync"/>.</summary>
 public static class SessionStarts
 {
+    /// <summary>A provider no program registers, so a session of it starts without the program's code running.</summary>
+    internal const string NoProvider = "Passenger-No-Provider";
+
     /// <summary>How long a program's runtime is given to take a session at its diagnostic port.</summary>
     public static TimeSpan Limit => Waits.Of(TimeSpan.FromSeconds(10));
 
@@ -30,7 +35,9 @@ public static class SessionStarts
         answered.CancelAfter(Limit);
         try
         {
-            return await new DiagnosticsClient(processId).StartEventPipeSessionAsync(providers, requestRundown: false, circularBufferMB, answered.Token);
+            DiagnosticsClient client = new(processId);
+            EventPipeSession started = await client.StartEventPipeSessionAsync(providers, requestRundown: false, circularBufferMB, answered.Token);
+            return await TurnedOnAsync(client, started, cancel);
         }
         catch (Exception error) when (DiagnosticsFailures.Of(error))
         {
@@ -41,6 +48,50 @@ public static class SessionStarts
         {
             string why = await UnansweredPorts.WhyAsync(processId, cancel);
             throw new ProfilingException($"{unread}: its runtime took no session in {Durations.Said(Limit)} ({why})", unanswered);
+        }
+    }
+
+    /// <summary>A session of <paramref name="providers"/> at the port <paramref name="client"/> reaches, once its providers
+    /// are on (<see cref="TurnedOnAsync"/>). Given up as <paramref name="cancel"/> is, the session let go.</summary>
+    public static async Task<EventPipeSession> OnAsync(DiagnosticsClient client, IEnumerable<EventPipeProvider> providers, int circularBufferMB,
+        CancellationToken cancel) =>
+        await TurnedOnAsync(client, await client.StartEventPipeSessionAsync(providers, requestRundown: false, circularBufferMB, cancel), cancel);
+
+    /// <summary><paramref name="session"/>, once its providers are on: a runtime may answer a session's start before it turns
+    /// them on (.NET 11 does), and its diagnostics server takes one request at a time, so a session of no provider asked for
+    /// next is answered only once they are, within <see cref="Limit"/> of its own. The session is let go if that fails.</summary>
+    private static async Task<EventPipeSession> TurnedOnAsync(DiagnosticsClient client, EventPipeSession session, CancellationToken cancel)
+    {
+        bool on = false;
+        try
+        {
+            await NoProviderAsync(client, Limit, cancel);
+            on = true;
+            return session;
+        }
+        finally
+        {
+            if (!on)
+            {
+                session.Dispose();
+            }
+        }
+    }
+
+    /// <summary>Starts a session of no provider at the port <paramref name="client"/> reaches and stops it, each within
+    /// <paramref name="limit"/>, its stream read to the end as it stops, since a runtime stopping a session whose stream no
+    /// one reads (a pipe, on Windows) holds its every other request. Throws as a start does, cancelled once past the limit.</summary>
+    internal static async Task NoProviderAsync(DiagnosticsClient client, TimeSpan limit, CancellationToken cancel)
+    {
+        using CancellationTokenSource asked = CancellationTokenSource.CreateLinkedTokenSource(cancel);
+        asked.CancelAfter(limit);
+        using EventPipeSession session = await client.StartEventPipeSessionAsync(new EventPipeProvider(NoProvider, EventLevel.Critical), requestRundown: false,
+            circularBufferMB: 1, asked.Token);
+        Task read = session.EventStream.CopyToAsync(Stream.Null, cancel);
+        UnawaitedWork.Dismiss(read);
+        if (await EventPipeStops.StopAsync(session, limit, cancel))
+        {
+            await read.WaitAsync(limit, cancel).Ended();
         }
     }
 
