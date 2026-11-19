@@ -2,6 +2,7 @@ using System.Text;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Documents;
+using Avalonia.Controls.Primitives;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.LogicalTree;
@@ -458,16 +459,34 @@ public sealed class MarkdownPreviewTests
     }
 
     [AvaloniaFact]
-    public void The_toggle_hides_and_shows_the_preview_each_split_has_its_own_and_the_next_window_keeps_the_choice()
+    public void Markdown_layout_buttons_choose_the_visible_panes_and_direction_and_the_next_window_keeps_the_choice()
     {
         (string folder, string readme) = Shop();
         string state = TestFolders.Create("markdown-state-");
+        File.WriteAllText(Path.Combine(state, "previews.json"), """{"version":1,"markdown":false}""");
         MainWindow window = Started(state, folder);
         Assert.Null(window.OpenFile(readme));
         Ui.Settle();
         EditorGroup group = window.EditorArea.ActiveGroup;
-        Shown(group);
-        Assert.True(group.PreviewToggle.IsVisible && group.PreviewToggle.IsChecked == true, "The README's tab strip has no pressed preview toggle");
+        ToggleButton Mode(string name) => group.TabStrip.GetLogicalDescendants().OfType<ToggleButton>()
+            .Single(button => Avalonia.Automation.AutomationProperties.GetName(button)?.StartsWith(name, StringComparison.Ordinal) == true);
+        Assert.Null(group.Markdown);
+        Assert.True(Mode("Editor Only").IsChecked);
+        Ui.Click(Mode("Editor and Preview"));
+        Assert.True(Mode("Editor and Preview").IsChecked);
+        bool under = group.SideUnder;
+        Ui.Click(Mode("Editor and Preview"));
+        Assert.Equal(!under, group.SideUnder);
+        Ui.Click(Mode("Preview Only"));
+        Assert.True(Mode("Preview Only").IsChecked);
+        Assert.False(group.Editor.IsEffectivelyVisible);
+        Assert.Equal(group.Bounds.Width, Shown(group).Bounds.Width, 1);
+        Assert.True(Shown(group).IsKeyboardFocusWithin);
+        Ui.Click(Mode("Editor and Preview"));
+        Assert.True(group.Editor.IsEffectivelyVisible);
+        Assert.Equal(!under, group.SideUnder);
+        Ui.Click(Mode("Editor and Preview"));
+        Assert.Equal(under, group.SideUnder);
 
         WeakReference<MarkdownPreview> closed = SplitAndClose(window);
         // Avalonia's hold gesture keeps the pressed close button, and so the group, until a frame fires its timer.
@@ -480,11 +499,11 @@ public sealed class MarkdownPreviewTests
         }, "the closed split's preview to be let go (still alive, it is held by the file it showed or the window)", TimeSpan.FromSeconds(10));
         group = Assert.Single(window.EditorArea.Groups);
 
-        Ui.Click(group.PreviewToggle);
-        Assert.True(group.Markdown is null && group.PreviewToggle.IsChecked == false, "The toggle left the preview shown");
+        Ui.Click(Mode("Editor Only"));
+        Assert.True(group.Markdown is null && Mode("Editor Only").IsChecked == true, "The toggle left the preview shown");
         Assert.Null(window.OpenFile(Path.Combine(folder, "Program.cs")));
         Ui.Settle();
-        Assert.False(group.PreviewToggle.IsVisible, "A C# file's tab strip shows the Markdown preview's toggle");
+        Assert.False(Mode("Preview Only").IsEffectivelyVisible, "A C# file's tab strip shows the Markdown preview's toggle");
         window.Close();
         Ui.Settle();
 
@@ -492,20 +511,27 @@ public sealed class MarkdownPreviewTests
         Assert.Null(window.OpenFile(readme));
         Ui.Settle();
         group = window.EditorArea.ActiveGroup;
-        Assert.True(group.Markdown is null && group.PreviewToggle.IsChecked == false, "The next window showed the preview the last one hid");
+        Assert.True(group.Markdown is null && Mode("Editor Only").IsChecked == true, "The next window showed the preview the last one hid");
         NativeMenu view = Ui.Submenu(window.MenuBar, "View");
         NativeMenuItem item = view.Items.OfType<NativeMenuItem>().FirstOrDefault(i => i.Header == "Markdown Preview")
             ?? throw new Xunit.Sdk.XunitException($"View has no Markdown Preview: [{string.Join(", ", view.Items.OfType<NativeMenuItem>().Select(i => i.Header))}]");
         item.Command!.Execute(null);
         Ui.Settle();
         Shown(group);
+        Ui.Click(Mode("Editor and Preview"));
+        Ui.Click(Mode("Preview Only"));
         window.Close();
         Ui.Settle();
 
         window = Started(state, folder);
         Assert.Null(window.OpenFile(readme));
         Ui.Settle();
-        Shown(window.EditorArea.ActiveGroup);
+        group = window.EditorArea.ActiveGroup;
+        Assert.True(Mode("Preview Only").IsChecked);
+        Assert.False(group.Editor.IsEffectivelyVisible);
+        Assert.Equal(group.Bounds.Width, Shown(group).Bounds.Width, 1);
+        Ui.Click(Mode("Editor and Preview"));
+        Assert.Equal(!under, group.SideUnder);
         window.Close();
     }
 

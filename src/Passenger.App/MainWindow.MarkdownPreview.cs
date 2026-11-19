@@ -13,7 +13,7 @@ public partial class MainWindow
 {
     private void AddMarkdownPreview()
     {
-        actions!.Add(new IdeAction(A.MarkdownPreview, "Markdown Preview", "Editor", _ => ToggleMarkdownPreview())
+        actions!.Add(new IdeAction(A.MarkdownPreview, "Markdown Preview", "Editor", _ => Editors.ShowsMarkdownPreview = !Editors.ShowsMarkdownPreview)
         {
             WhyNot = context => context.File is null ? Refusals.NoFile
                 : context.File.Language != Languages.Language.Markdown ? "The preview is for Markdown files" : null,
@@ -36,6 +36,13 @@ public partial class MainWindow
             Menus = [new MenuPlace("View", 4, 3)],
             Words = ["Preview HTML", "Web Page Preview"],
         });
+        Editors.MarkdownLayoutChanged += (_, _) =>
+        {
+            if (keepsWorkspace && state is not null)
+            {
+                state.Previews.Set(state.Previews.Value with { MarkdownLayout = Editors.MarkdownLayout });
+            }
+        };
         Editors.Root = () => Folder;
         Editors.LeftOutUnder = LeftOutUnderAsync;
         Editors.FileLinkClicked += (_, path) => OpenLinkedFile(path);
@@ -75,15 +82,6 @@ public partial class MainWindow
         if (keepsWorkspace && state is not null)
         {
             state.Previews.Set(state.Previews.Value with { Svg = Editors.ShowsSvgPreview });
-        }
-    }
-
-    private void ToggleMarkdownPreview()
-    {
-        Editors.ShowsMarkdownPreview = !Editors.ShowsMarkdownPreview;
-        if (keepsWorkspace && state is not null)
-        {
-            state.Previews.Set(state.Previews.Value with { Markdown = Editors.ShowsMarkdownPreview });
         }
     }
 
