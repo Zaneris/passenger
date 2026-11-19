@@ -10,7 +10,8 @@ namespace Passenger.App.CSharp;
 /// <summary>C# formatted as it is typed, where Settings has it: the ';' that ends a statement formats the statement, and
 /// the '}' that closes a block formats the block, as the language server lays them out by the file's .editorconfig, Reformat
 /// Code's rules. Joined to the key's step of Undo, and made only while the text stands as the key left it
-/// (<see cref="CodeEditor.FormatTyped"/>); a ';' of a for loop's header, a string's or a comment's is left as typed
+/// (<see cref="CodeEditor.FormatTyped"/>); a block a line break opened, its '}' written, formatted as the caret leaves it
+/// (<see cref="FormatLeft"/>). A ';' of a for loop's header, a string's or a comment's is left as typed
 /// (<see cref="TypedFormatting"/>), and so is a file shown read-only, a Razor file, and typing at several carets.</summary>
 internal sealed partial class CSharpAssist
 {
@@ -32,16 +33,28 @@ internal sealed partial class CSharpAssist
         if (FormatsTyped(typed) && Formatting() is { } lsp && context.Editors.Active is { Syntax: { } syntax } shown
             && context.Editor.Selections.Primary is { IsEmpty: true, Caret: int caret })
         {
-            IdeErrors.Observe(FormattedAsync(context.Editor, shown, syntax, lsp, typed, caret));
+            IdeErrors.Observe(FormattedAsync(context.Editor, shown, syntax, lsp, typed, caret, left: false));
         }
     }
 
-    /// <summary>The server's formatting around <paramref name="typed"/>, typed before <paramref name="caret"/>, where the
-    /// file's own parse of the text the key left, landed off the window's thread, says the code ends something with it
-    /// (<see cref="TypedFormatting"/>): given to the editor that typed it, which makes it only where the text still stands
-    /// as it was asked; what was typed itself is never changed, so an answer reaching it is no formatting. Held as the
-    /// window's work until it is made or let go.</summary>
-    private async Task FormattedAsync(CodeEditor editor, OpenDocument shown, CSharpHighlighter syntax, LspDocument lsp, string typed, int caret)
+    /// <summary>A block the caret left, its closer the '}' at <paramref name="closer"/> the editor wrote as a line break
+    /// opened it (<see cref="CodeEditor.LeftBlock"/>), formatted as the server lays it out at that '}' typed, as a step of
+    /// Undo of its own; one where the person typed the '}' was formatted at its key.</summary>
+    public void FormatLeft(int closer)
+    {
+        if (FormatsOnType && Formatting() is { } lsp && lsp.FormatsTyped('}') && !context.Editor.Selections.HasMultiple
+            && context.Editors.Active is { Syntax: { } syntax } shown && closer < shown.Text.Snapshot.Length && shown.Text.Snapshot[closer] == '}')
+        {
+            IdeErrors.Observe(FormattedAsync(context.Editor, shown, syntax, lsp, "}", closer + 1, left: true));
+        }
+    }
+
+    /// <summary>The server's formatting around <paramref name="typed"/>, standing before <paramref name="caret"/>, where the
+    /// file's own parse of the text as it stands, landed off the window's thread, says the code ends something with it
+    /// (<see cref="TypedFormatting"/>): given to the editor, which makes it only where the text still stands as it was
+    /// asked, joined to the key that typed it or, for a block <paramref name="left"/>, a step of its own; the character
+    /// itself is never changed, so an answer reaching it is no formatting. Held as the window's work until made or let go.</summary>
+    private async Task FormattedAsync(CodeEditor editor, OpenDocument shown, CSharpHighlighter syntax, LspDocument lsp, string typed, int caret, bool left)
     {
         using (BackgroundWork.Scope())
         {
@@ -70,7 +83,11 @@ internal sealed partial class CSharpAssist
                 return;
             }
             List<TextEdit> laid = WorkspaceEdits.Convert(asked, answer, shown.LineEnding, indent);
-            if (laid.Count > 0 && laid[^1].End < caret)
+            if (laid.Count > 0 && laid[^1].End < caret && left)
+            {
+                editor.FormatLeftBlock(asked, laid);
+            }
+            else if (laid.Count > 0 && laid[^1].End < caret)
             {
                 editor.FormatTyped(asked, laid);
             }

@@ -155,6 +155,11 @@ public interface IBraceMatcher
     /// language without tags. The pair is looked for near the caret, as every caret move asks for it, unless
     /// <paramref name="far"/> (Move Caret to Matching Brace, asked once).</summary>
     BracePair? TagPairAt(TextSnapshot text, int caret, bool far = false) => null;
+
+    /// <summary>Whether the closing bracket at <paramref name="offset"/> is the code's own for an opener before it, and every
+    /// bracket of what holds them has its pair, so a closer typed before it types over it rather than leaving one more; false
+    /// where it is not, <paramref name="text"/> is not the text this matcher reads, or the language can't tell.</summary>
+    bool ClosesWhole(TextSnapshot text, int offset) => false;
 }
 
 /// <summary>A bracket and the one it pairs with, each as its range in the text.</summary>

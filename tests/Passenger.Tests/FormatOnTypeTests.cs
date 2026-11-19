@@ -9,10 +9,10 @@ using Passenger.Text;
 namespace Passenger.Tests;
 
 /// <summary>C# formatted as it is typed, on a real project and its language server: the ';' that ends a statement lays out
-/// the statement and the '}' that closes a block lays out the block, as Reformat Code would, one Undo taking each back
-/// with its key; a for loop's header, a string and a comment stay as typed, so does everything with the setting off, and an
-/// agent's edit is written as given. In Vim mode the layout joins the insert session's one step, and . types again what
-/// the session typed.</summary>
+/// the statement, and the '}' that closes a block, or leaving a block whose '}' Enter wrote, lays out the block, as
+/// Reformat Code would, one Undo taking each back with its key or alone; a for loop's header, a string and a comment stay
+/// as typed, so does everything with the setting off, and an agent's edit is written as given. In Vim mode the layout
+/// joins the insert session's one step, and . types again what the session typed.</summary>
 public sealed class FormatOnTypeTests : IClassFixture<FormatOnTypeTests.Project>
 {
     /// <summary>A method with an empty line in its body, where each test types at the left margin.</summary>
@@ -26,18 +26,73 @@ public sealed class FormatOnTypeTests : IClassFixture<FormatOnTypeTests.Project>
         project.Reset();
     }
 
-    /// <summary>The issue's loop typed at the left margin as the keys type it here: its header's ';'s change nothing, the
-    /// body's ';' lays out the statement it ends, and the '}' typed over the one '{' wrote lays out the loop whole; one Undo
-    /// takes each layout back with its key, the caret after what was typed throughout.</summary>
+    /// <summary>The issue's loop as laid out once typed, the method around it as written.</summary>
+    private const string Laid = "static class Loop\n{\n    public static void Run()\n    {\n        for (var i = 0; i < 10; i += 1)\n        {\n            var x = i + 1;\n        }\n    }\n}\n";
+
+    /// <summary>The issue's loop typed at the left margin as a person types it here, '{' and Enter writing its '}': its
+    /// header's ';'s change nothing, the body's ';' lays out the statement it ends, the caret after it, and Down, leaving
+    /// the block, lays out the loop whole. Each layout is a step of Undo of its own key or move: Undo takes the loop's
+    /// back alone, and again the ';' with its statement's.</summary>
     [AvaloniaFact]
-    public void The_issues_loop_typed_at_the_left_margin_is_laid_out_at_its_semicolon_and_its_brace_and_one_undo_takes_each_back_with_its_key()
+    public void The_issues_loop_typed_as_a_person_types_it_is_laid_out_at_its_semicolon_and_as_the_caret_leaves_its_block_each_undone_alone()
     {
         MainWindow window = project.Open("Loop.cs");
         CodeEditor editor = window.EditorArea.CodeEditor;
         string Line() => editor.Document.Snapshot.GetLineText(editor.CaretPosition.Line);
+        (string beforeSemicolon, string statement) = TypeTheLoop(window, editor);
+
+        Ui.Run(window, EditorActions.Undo);
+        Assert.True(editor.Document.Snapshot.ToString() == beforeSemicolon,
+            $"One Undo did not take the ';' and its layout back together, to the statement as typed:\n{editor.Document.Snapshot}");
+        Ui.Run(window, EditorActions.Redo);
+        Assert.True(editor.Document.Snapshot.ToString() == statement, $"Redo did not bring the ';' back laid out:\n{editor.Document.Snapshot}");
+
+        // Down goes past the '}' that '{' and Enter wrote: the block is left.
+        Ui.Press(window, "DOWN");
+        Assert.True(editor.Document.Snapshot.ToString() == Laid, $"Leaving the loop's block did not lay the loop out:\n{editor.Document.Snapshot}");
+        Assert.True(Line() == "        }" && editor.CaretPosition.Column == Line().Length,
+            $"The caret did not stay after the block's '}}' it went to: '{Line()}', the caret at {editor.CaretPosition.Column}");
+
+        Ui.Run(window, EditorActions.Undo);
+        Assert.True(editor.Document.Snapshot.ToString() == statement, $"One Undo did not take the loop's layout back alone:\n{editor.Document.Snapshot}");
+        Ui.Run(window, EditorActions.Undo);
+        Assert.True(editor.Document.Snapshot.ToString() == beforeSemicolon, $"A second Undo did not take the ';' and its layout back:\n{editor.Document.Snapshot}");
+        window.Close();
+    }
+
+    /// <summary>A '}' typed on a line of its own above the '}' that '{' and Enter wrote types over that one, the line it was
+    /// typed on taken away, so the loop has one brace, and lays the loop out, the caret after it; one Undo takes the brace
+    /// and the layout back together, the line typed on with them.</summary>
+    [AvaloniaFact]
+    public void A_brace_typed_above_the_one_enter_wrote_closes_the_block_with_one_brace_laid_out_and_one_undo_takes_both_back()
+    {
+        MainWindow window = project.Open("Loop.cs");
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        string Line() => editor.Document.Snapshot.GetLineText(editor.CaretPosition.Line);
+        TypeTheLoop(window, editor);
+        Ui.Press(window, "ENTER");
+        string above = editor.Document.Snapshot.ToString();
+        Assert.True(Line().Trim().Length == 0, $"Enter after the statement did not start a line of its own: '{Line()}'");
+
+        window.KeyTextInput("}");
+        Ui.Settle();
+        Assert.True(editor.Document.Snapshot.ToString() == Laid, $"The '}}' typed above the written one did not close the loop with one brace, laid out:\n{editor.Document.Snapshot}");
+        Assert.True(Line() == "        }" && editor.CaretPosition.Column == Line().Length,
+            $"The caret did not stay after the '}}' typed: '{Line()}', the caret at {editor.CaretPosition.Column}");
+
+        Ui.Run(window, EditorActions.Undo);
+        Assert.True(editor.Document.Snapshot.ToString() == above, $"One Undo did not take the '}}' and the loop's layout back together:\n{editor.Document.Snapshot}");
+        window.Close();
+    }
+
+    /// <summary>Types the issue's loop at the left margin of Run()'s empty line as a person types it: the header in runs
+    /// with each ';' alone, Enter, '{' (which writes its '}'), Enter (which pushes it down), the statement and its ';'.
+    /// Returns the text before that ';' and once it laid its statement out.</summary>
+    private static (string BeforeSemicolon, string Statement) TypeTheLoop(MainWindow window, CodeEditor editor)
+    {
+        string Line() => editor.Document.Snapshot.GetLineText(editor.CaretPosition.Line);
         Ui.PlaceAfter(editor, "Run()\n    {\n");
         editor.Focus();
-
         foreach (string typed in (string[])["for (var i=0", ";", "i<10", ";", "i+=1", ")"])
         {
             window.KeyTextInput(typed);
@@ -49,36 +104,16 @@ public sealed class FormatOnTypeTests : IClassFixture<FormatOnTypeTests.Project>
         window.KeyTextInput("{");
         Ui.Settle();
         Ui.Press(window, "ENTER");
+        Assert.True(editor.Document.Snapshot.GetLineText(editor.CaretPosition.Line + 1) == "}", $"'{{' and Enter did not write the block's '}}' below:\n{editor.Document.Snapshot}");
         window.KeyTextInput("var x=i+1");
         Ui.Settle();
         string beforeSemicolon = editor.Document.Snapshot.ToString();
         window.KeyTextInput(";");
         Ui.Settle();
-        // Indented where the statement stands in the method, as Reformat Code would: the loop around it is laid out at its '}'.
+        // Indented where the statement stands in the method, as Reformat Code would: the loop around it is laid out as its block closes.
         Assert.True(Line() == "            var x = i + 1;" && editor.CaretPosition.Column == Line().Length,
             $"The ';' did not lay out the statement it ends, the caret after it: '{Line()}', the caret at {editor.CaretPosition.Column}\n{editor.Document.Snapshot}");
-        string statement = editor.Document.Snapshot.ToString();
-
-        Ui.Run(window, EditorActions.Undo);
-        Assert.True(editor.Document.Snapshot.ToString() == beforeSemicolon,
-            $"One Undo did not take the ';' and its layout back together, to the statement as typed:\n{editor.Document.Snapshot}");
-        Ui.Run(window, EditorActions.Redo);
-        Assert.True(editor.Document.Snapshot.ToString() == statement, $"Redo did not bring the ';' back laid out:\n{editor.Document.Snapshot}");
-
-        // The '}' that '{' wrote, typed over.
-        Ui.Press(window, "DOWN");
-        Ui.Press(window, "HOME");
-        Assert.Equal("}", Line());
-        window.KeyTextInput("}");
-        Ui.Settle();
-        const string Laid = "static class Loop\n{\n    public static void Run()\n    {\n        for (var i = 0; i < 10; i += 1)\n        {\n            var x = i + 1;\n        }\n    }\n}\n";
-        Assert.True(editor.Document.Snapshot.ToString() == Laid, $"The '}}' closing the loop's block did not lay the loop out:\n{editor.Document.Snapshot}");
-        Assert.True(Line() == "        }" && editor.CaretPosition.Column == Line().Length,
-            $"The caret did not stay after the '}}' typed: '{Line()}', the caret at {editor.CaretPosition.Column}");
-
-        Ui.Run(window, EditorActions.Undo);
-        Assert.True(editor.Document.Snapshot.ToString() == statement, $"One Undo did not take the '}}' and the loop's layout back together:\n{editor.Document.Snapshot}");
-        window.Close();
+        return (beforeSemicolon, editor.Document.Snapshot.ToString());
     }
 
     /// <summary>A ';' typed in a string or a comment changes nothing; turned off in Settings, a statement's ';' leaves it as
@@ -199,6 +234,54 @@ public sealed class FormatOnTypeTests : IClassFixture<FormatOnTypeTests.Project>
         Ui.Settle();
         Assert.True(editor.Document.Snapshot.GetLineText(editor.CaretPosition.Line) == "int x = 1;",
             $". did not type again what the session's keys typed, laid out as they were:\n{editor.Document.Snapshot}");
+        window.Close();
+    }
+
+    /// <summary>In Vim mode a block typed in an insert session and left by o on its '}' line is laid out within o's session,
+    /// whose one step u takes back with the layout and Ctrl+R brings back, and . types again what that session's keys
+    /// typed.</summary>
+    [AvaloniaFact]
+    public void In_vim_mode_a_block_left_by_o_is_laid_out_within_os_one_step_and_dot_types_again_what_its_keys_typed()
+    {
+        MainWindow window = project.Open("Loop.cs");
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        string Line() => editor.Document.Snapshot.GetLineText(editor.CaretPosition.Line);
+        window.ApplySettings(window.Settings with { VimMode = true });
+        Ui.Settle();
+        Ui.PlaceAfter(editor, "Run()\n    {\n");
+        editor.Focus();
+        Ui.Type(window, "I", "i");
+        window.KeyTextInput("for (var i=0;i<10;i+=1)");
+        Ui.Press(window, "ENTER");
+        window.KeyTextInput("{");
+        Ui.Settle();
+        Ui.Press(window, "ENTER");
+        window.KeyTextInput("var x=i+1");
+        Ui.Settle();
+        window.KeyTextInput(";");
+        Ui.Settle();
+        Ui.Press(window, "ESCAPE");
+        string typed = editor.Document.Snapshot.ToString();
+
+        Ui.Type(window, "J", "j");
+        Assert.Equal("}", Line());
+        Ui.Type(window, "O", "o");
+        window.KeyTextInput("int y=2");
+        Ui.Settle();
+        window.KeyTextInput(";");
+        Ui.Settle();
+        Ui.Press(window, "ESCAPE");
+        string laid = Laid.Replace("        }\n    }", "        }\n        int y = 2;\n    }", StringComparison.Ordinal);
+        Assert.True(editor.Document.Snapshot.ToString() == laid, $"o leaving the loop's block did not lay the loop out:\n{editor.Document.Snapshot}");
+
+        Ui.Type(window, "U", "u");
+        Assert.True(editor.Document.Snapshot.ToString() == typed, $"u did not take o's session back whole, the loop's layout with it:\n{editor.Document.Snapshot}");
+        Ui.Press(window, "control R");
+        Assert.True(editor.Document.Snapshot.ToString() == laid, $"Ctrl+R did not bring o's session back, the loop laid out:\n{editor.Document.Snapshot}");
+
+        Ui.Type(window, "PERIOD", ".");
+        Ui.Settle();
+        Assert.True(Line().TrimStart() == "int y = 2;", $". did not type again what o's session typed: '{Line()}'\n{editor.Document.Snapshot}");
         window.Close();
     }
 

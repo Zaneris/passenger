@@ -477,6 +477,9 @@ public sealed class CSharpHighlighter : IHighlighter, IBraceMatcher, IFoldFinder
     public BracePair? PairAt(TextSnapshot snapshot, int offset, bool far = false) =>
         tree is not null && ReferenceEquals(snapshot, document.Snapshot) ? BracePairs.At(Current.Root, offset) : null;
 
+    public bool ClosesWhole(TextSnapshot snapshot, int offset) =>
+        tree is not null && ReferenceEquals(snapshot, document.Snapshot) && BracePairs.ClosesWhole(Current.Root, offset);
+
     public void Dispose()
     {
         disposed = true;

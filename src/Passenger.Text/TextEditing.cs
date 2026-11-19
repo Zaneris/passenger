@@ -12,7 +12,14 @@ public sealed record EditPlan(IReadOnlyList<TextEdit> Edits, SelectionSet Select
 
     /// <summary>The end tags a person may go on to type by hand once this has run, a "&lt;/" having been typed at each caret.</summary>
     public EndTagTyping? EndTags { get; init; }
+
+    /// <summary>The pairs of brackets a line break split, the closer pushed onto a line of its own below the caret: where
+    /// each bracket stands in the text after, one pair for each caret that split one.</summary>
+    public IReadOnlyList<SplitPair> Split { get; init; } = [];
 }
+
+/// <summary>A pair of brackets a line break split (<see cref="EditPlan.Split"/>): the opener's and the closer's places.</summary>
+public readonly record struct SplitPair(int Opener, int Closer);
 
 /// <summary>Text moved whole: <paramref name="Length"/> characters at <paramref name="From"/> in the text before stand at
 /// <paramref name="To"/> in the text after.</summary>
@@ -38,8 +45,10 @@ public static class TextEditing
 
     /// <summary>Typing with the editor's help: a bracket or quote typed over a selection wraps it, an
     /// opener before a space gets its closer, and a closer typed in front of the same closer steps
-    /// over it. Anything else is <see cref="Insert"/>.</summary>
-    public static EditPlan Type(TextSnapshot text, SelectionSet selections, string typed)
+    /// over it; where only white space and a line break stand before that closer, and the code takes it for the
+    /// closer of what the caret is in, every bracket around paired (<paramref name="closesWhole"/>, by its place), it
+    /// types over it all the same (<see cref="OverWritten"/>). Anything else is <see cref="Insert"/>.</summary>
+    public static EditPlan Type(TextSnapshot text, SelectionSet selections, string typed, Func<int, bool>? closesWhole = null)
     {
         if (typed.Length != 1)
         {
@@ -64,6 +73,11 @@ public static class TextEditing
             {
                 replacements.Add(new Replacement(s.Start, s.Start + 1, typed, 1, 1, i));
             }
+            else if (s.IsEmpty && closesWhole is not null && Closers.Contains(c)
+                && OverWritten(text, s.Start, c, i + 1 < selections.Count ? selections.Items[i + 1].Start : text.Length, closesWhole) is { } over)
+            {
+                replacements.Add(over with { Owner = i });
+            }
             else if (s.IsEmpty && opener >= 0 && (char.IsWhiteSpace(next) || Closers.Contains(next) || next is ';' or ','))
             {
                 replacements.Add(new Replacement(s.Start, s.End, c.ToString() + Closers[opener], 1, 1, i));
@@ -78,6 +92,29 @@ public static class TextEditing
             }
         }
         return Build(replacements, selections, EditKind.Typing);
+    }
+
+    /// <summary>A closer typed at <paramref name="caret"/> over the same closer further on, only white space and a line break
+    /// between and the code taking it for the closer of what the caret is in (<paramref name="closesWhole"/>): the white
+    /// space taken out, and where the caret had a line to itself, that line, the closer staying as it stands, else the
+    /// closer brought up to the caret; the caret after it. Null where it types over none.</summary>
+    private static Replacement? OverWritten(TextSnapshot text, int caret, char closer, int limit, Func<int, bool> closesWhole)
+    {
+        int at = caret;
+        bool broken = false;
+        while (at < limit && text[at] is ' ' or '\t' or '\r' or '\n')
+        {
+            broken |= text[at] == '\n';
+            at++;
+        }
+        if (!broken || at >= limit || text[at] != closer || !closesWhole(at))
+        {
+            return null;
+        }
+        LineSpan line = text.GetLine(text.GetLineFromOffset(caret));
+        int from = TextNavigation.IndentEnd(text, line) == caret ? line.Start : caret;
+        int to = from == caret ? at : text.GetLineStart(text.GetLineFromOffset(at));
+        return new Replacement(from, to, string.Empty, at - to + 1, at - to + 1, 0);
     }
 
     /// <summary>The end tag a character just typed in <paramref name="markup"/> completes, a step of its own after the typing:
@@ -308,6 +345,7 @@ public static class TextEditing
     public static EditPlan NewLine(TextSnapshot text, SelectionSet selections, string eol, IndentOptions indent, MarkupKind markup = MarkupKind.None)
     {
         List<Replacement> replacements = [];
+        List<(int Owner, int Opener, int FromCaret)> split = [];
         for (int i = 0; i < selections.Count; i++)
         {
             Selection s = selections.Items[i];
@@ -338,6 +376,7 @@ public static class TextEditing
                 string inserted = eol + lineIndent + extra + eol + lineIndent;
                 int caret = eol.Length + lineIndent.Length + extra.Length;
                 replacements.Add(new Replacement(s.Start, end, inserted, caret, caret, i));
+                split.Add((i, before - 1, eol.Length + lineIndent.Length));
             }
             else
             {
@@ -345,7 +384,11 @@ public static class TextEditing
                 replacements.Add(new Replacement(s.Start, end, inserted, inserted.Length, inserted.Length, i));
             }
         }
-        return Build(replacements, selections, EditKind.Other);
+        EditPlan plan = Build(replacements, selections, EditKind.Other);
+        return split.Count == 0 ? plan : plan with
+        {
+            Split = [.. split.Select(p => new SplitPair(MapOffset(p.Opener, plan.Edits, afterInsertions: false), plan.Selections.Items[p.Owner].Caret + p.FromCaret))],
+        };
     }
 
     /// <summary>Shift+Enter (<paramref name="above"/> false) or Ctrl+Enter: a new indented line below

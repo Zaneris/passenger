@@ -134,13 +134,13 @@ public sealed partial class CodeEditor
             case EditorActions.Undo:
                 if (document.Undo() is { } before)
                 {
-                    SetSelections(before, reveal: true);
+                    SetSelectionsQuietly(before);
                 }
                 return true;
             case EditorActions.Redo:
                 if (document.Redo() is { } after)
                 {
-                    SetSelections(after, reveal: true);
+                    SetSelectionsQuietly(after);
                 }
                 return true;
         }
@@ -248,7 +248,19 @@ public sealed partial class CodeEditor
     }
 
     /// <summary>Types text at every caret as if from the keyboard, the editor's typing help included.</summary>
-    public void Type(string typed) => Apply(TextEditing.Type(document.Snapshot, selections, typed));
+    public void Type(string typed) => Apply(TextEditing.Type(document.Snapshot, selections, typed, ClosesWhole(typed)));
+
+    /// <summary>The highlighter's word whether a closer is its code's own (<see cref="IBraceMatcher.ClosesWhole"/>), for a
+    /// closer typed; null for anything else typed, or where no highlighter tells.</summary>
+    private Func<int, bool>? ClosesWhole(string typed)
+    {
+        if (typed is not (")" or "]" or "}") || highlighter is not IBraceMatcher matcher)
+        {
+            return null;
+        }
+        TextSnapshot text = document.Snapshot;
+        return at => matcher.ClosesWhole(text, at);
+    }
 
     private int PageLines => Math.Max(1, (int)(Viewport.Height / metrics.LineHeight) - 1);
 
@@ -268,6 +280,7 @@ public sealed partial class CodeEditor
         {
             editing = false;
         }
+        KeepSplitBlocks(plan);
         FollowMoves(foldsBefore, plan);
         // A caret the edit leaves where a row wraps stands after the text it typed, at the end of the row before.
         nextWrapLeaning = CaretsAtWraps(plan.Selections);

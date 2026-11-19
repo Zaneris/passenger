@@ -341,10 +341,11 @@ public sealed partial class Vim(VimRegisters registers)
     private void Begin(Command command, string how, SelectionSet carets, int length) =>
         inserting = (command.Keys, command.Count, how, carets.Items[0].Caret, length, carets.Count, carets.Items.Min(c => c.Caret));
 
-    /// <summary>Edits the host made in an insert session of one caret, all before it (its formatting of what was typed),
-    /// sorted and apart in the text before them: what they change before the session's start moves it, so . types again
-    /// what the session's keys did; one taking in that start makes what it writes typed from there.</summary>
-    public void FollowEdits(IReadOnlyList<TextEdit> edits)
+    /// <summary>Edits the host made in an insert session of one caret at <paramref name="caret"/> (its formatting of what was
+    /// typed, of a block left), sorted and apart in the text before them: what they change before the session's start moves
+    /// it, and after the caret is no typing, so . types again what the session's keys did; one taking in that start makes
+    /// what it writes typed from there.</summary>
+    public void FollowEdits(IReadOnlyList<TextEdit> edits, int caret)
     {
         if (inserting is not { Carets: 1 } session)
         {
@@ -358,6 +359,10 @@ public sealed partial class Vim(VimRegisters registers)
             if (edit.End <= session.First)
             {
                 moved += edit.Text.Length - edit.Length;
+            }
+            else if (edit.Start >= caret)
+            {
+                length += edit.Text.Length - edit.Length;
             }
             else if (edit.Start < session.First)
             {

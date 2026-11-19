@@ -447,4 +447,32 @@ public sealed class EditingBehaviourTests
         double bottom = rig.Editor.GutterPoint(line).Y;
         return Within(rig, new Point(top.X + 300, (top.Y + bottom) / 2));
     }
+
+    /// <summary>In C#, a '}' typed on a line of its own above the '}' that '{' and Enter wrote types over it, the line it was
+    /// typed on taken away, so the block keeps one brace; where a block around it lacks its own '}', the parse pairs the
+    /// written one with the block typed in, and the '}' typed is the one the code lacks, put in.</summary>
+    [AvaloniaFact]
+    public void A_brace_typed_above_the_one_enter_wrote_types_over_it_unless_a_block_around_lacks_its_own()
+    {
+        EditorRig rig = new("class C\n{\n    void M()\n    \n}\n");
+        rig.Editor.Highlighter = new Passenger.Languages.CSharp.CSharpHighlighter(rig.Document);
+        Ui.Settle();
+        rig.PlaceCaret("class C\n{\n    void M()\n    ".Length);
+        rig.Type("{");
+        rig.Press("ENTER");
+        rig.Type("x();");
+        rig.Press("ENTER");
+        rig.Type("}");
+        const string Closed = "class C\n{\n    void M()\n    {\n        x();\n    }";
+        Assert.Equal(Closed + "\n}\n", rig.Text);
+        Assert.Equal(Closed.Length, rig.Caret);
+
+        const string Lacking = "class C\n{\n    void M()\n    {\n        if (b)\n        {\n            x();\n            ";
+        EditorRig open = new(Lacking + "\n    }\n}\n");
+        open.Editor.Highlighter = new Passenger.Languages.CSharp.CSharpHighlighter(open.Document);
+        Ui.Settle();
+        open.PlaceCaret(Lacking.Length);
+        open.Type("}");
+        Assert.Equal(Lacking + "}\n    }\n}\n", open.Text);
+    }
 }

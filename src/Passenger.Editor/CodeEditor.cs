@@ -465,6 +465,7 @@ public sealed partial class CodeEditor : Control
         StopWrapping();
         document.ChangedFirst -= OnChangedFirst;
         document.Changed -= OnDocumentChanged;
+        ForgetSplitBlocks();
         document = value;
         document.ChangedFirst += OnChangedFirst;
         document.Changed += OnDocumentChanged;
@@ -815,6 +816,7 @@ public sealed partial class CodeEditor : Control
         bool changed = !clamped.SameAs(selections) || clamped.PrimaryIndex != selections.PrimaryIndex;
         selections = clamped;
         caretsText = document.Snapshot;
+        FollowSplitBlocks();
         CheckSnippet();
         if (reveal)
         {

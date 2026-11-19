@@ -27,6 +27,31 @@ internal static class BracePairs
         return new BracePair(Range(token), Range(pair));
     }
 
+    /// <summary>Whether the bracket at an offset closes a pair of the code's own, and every node holding it ends in what it
+    /// ends with as written, none in a missing closer: then the text's brackets around it all pair, and one typed more would
+    /// leave a closer over. Read from the bracket up its nodes, never across the file.</summary>
+    public static bool ClosesWhole(SyntaxNode root, int offset)
+    {
+        if (offset < 0 || offset >= root.FullSpan.End)
+        {
+            return false;
+        }
+        SyntaxToken token = root.FindToken(offset);
+        if (token.SpanStart != offset || Side(token) != -1 || Pair(token, -1) is null)
+        {
+            return false;
+        }
+        for (SyntaxNode? node = token.Parent; node is not null; node = node.Parent)
+        {
+            SyntaxToken last = node.GetLastToken(includeZeroWidth: true);
+            if (last.IsMissing && last.Kind() is SyntaxKind.CloseBraceToken or SyntaxKind.CloseParenToken or SyntaxKind.CloseBracketToken)
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
     /// <summary>1 for an opening bracket, -1 for a closing one, 0 for anything else; a skipped token is none.</summary>
     private static int Side(SyntaxToken token) => token.Parent is null or { IsStructuredTrivia: true } ? 0 : CSharpClassifier.Bracket(token);
 

@@ -117,6 +117,13 @@ public sealed class CodeAssist
             editor.HoverEnded += (_, _) => quickInfo.PointerLeft();
             editor.ClickReach = (action, offset, cancel) => editor == Editor && action == AppActions.GoToDeclaration ? DeclaredFromAsync(offset, cancel) : NoReach;
             editor.FormatsTyped = typed => editor == Editor && context.Languages.CSharp.FormatsTyped(typed);
+            editor.LeftBlock += (_, closer) =>
+            {
+                if (editor == Editor)
+                {
+                    context.Languages.CSharp.FormatLeft(closer);
+                }
+            };
             editor.Typed += (_, text) =>
             {
                 if (editor == Editor)

@@ -114,7 +114,7 @@ public sealed partial class CodeEditor
             return;
         }
         formattedKey = BeginFormattedKey(typed);
-        Apply(TextEditing.Type(document.Snapshot, selections, typed));
+        Apply(TextEditing.Type(document.Snapshot, selections, typed, ClosesWhole(typed)));
         EditPlan? closing = ClosesTags ? TextEditing.CloseTag(document.Snapshot, selections, typed, Markup) : null;
         if (closing is not null)
         {

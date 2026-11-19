@@ -26,6 +26,30 @@ public class EditingTests
     }
 
     [Theory]
+    [InlineData("{\n    x();\n    |\n}", "}", true, "{\n    x();\n}|")]
+    [InlineData("{\n    x();\n    |\n\n  }", "}", true, "{\n    x();\n  }|")]
+    [InlineData("{\n    x();|\n}", "}", true, "{\n    x();}|")]
+    [InlineData("call(\n    a,\n    |\n)", ")", true, "call(\n    a,\n)|")]
+    [InlineData("{\n    x();\n    |\n}", "}", false, "{\n    x();\n    }|\n}")]
+    [InlineData("(\n    |\n}", ")", true, "(\n    )|\n}")]
+    [InlineData("{ x(); |  }", "}", true, "{ x(); }|  }")]
+    [InlineData("{\r\n    x();\r\n    |\r\n}", "}", true, "{\r\n    x();\r\n}|")]
+    public void A_closer_typed_where_only_white_space_and_a_line_break_stand_before_the_codes_own_types_over_it(string before, string typed, bool whole, string after)
+    {
+        (TextSnapshot text, SelectionSet selections) = Marked.Parse(before);
+        Assert.Equal(after, Marked.After(text, TextEditing.Type(text, selections, typed, _ => whole)));
+    }
+
+    [Fact]
+    public void Enter_between_a_pair_says_where_its_brackets_stand_and_elsewhere_says_none()
+    {
+        (TextSnapshot text, SelectionSet selections) = Marked.Parse("  {|}");
+        Assert.Equal([new SplitPair(2, 13)], TextEditing.NewLine(text, selections, "\n", Spaces).Split);
+        (text, selections) = Marked.Parse("  {|x}");
+        Assert.Empty(TextEditing.NewLine(text, selections, "\n", Spaces).Split);
+    }
+
+    [Theory]
     [InlineData("(|)", "|")]
     [InlineData("\"|\"", "|")]
     [InlineData("one\r\n|two", "one|two")]
