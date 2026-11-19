@@ -6,15 +6,17 @@ using Avalonia.Headless;
 using Avalonia.Layout;
 using Avalonia.Media.TextFormatting;
 using Avalonia.VisualTree;
+using Passenger.App;
+using Passenger.App.ToolWindows;
 
 namespace Passenger.Tests;
 
 /// <summary>What a person sees go wrong in a window, a dialog or a part of one, however narrow: words cut short with no
 /// ellipsis or wrap, by their own room or by a scroller that can't scroll to the rest, words laid out past the side of
-/// what holds them, and two things a person reads or presses drawn one over the other, each as far as what clips it shows
-/// it. A field's own options inside it and what one
-/// holds inside another are laid over each other on purpose. The code editor draws its own rows and a scroll bar its own
-/// thumb, so neither is read here.</summary>
+/// what holds them or of the room a row gave their part, and two things a person reads or presses drawn one over the
+/// other, each as far as what clips it shows it. A field's own options inside it and what one holds inside another are
+/// laid over each other on purpose. The code editor draws its own rows and a scroll bar its own thumb, so neither is read
+/// here.</summary>
 internal static class LayoutFaults
 {
     /// <summary>The faults of <paramref name="part"/>, measured in <paramref name="window"/>, each saying what and where.</summary>
@@ -118,21 +120,48 @@ internal static class LayoutFaults
     }
 
     /// <summary>How far words stand past a side of what holds them, laid out wider than the room it was given (a count
-    /// grown a digit in a row that kept its old width); null where they stand inside it, or where it scrolls or places
-    /// what it holds.</summary>
+    /// grown a digit in a row that kept its old width), or past the room a row of parts gave the part they stand in;
+    /// null where they stand inside, or where what holds them scrolls or places what it holds.</summary>
     private static double? Past(TextBlock text)
     {
         TextLine[] lines = [.. text.TextLayout.TextLines];
-        if (lines.Length == 0 || text.GetVisualParent() is not Layoutable holder || holder is ScrollContentPresenter or Canvas)
+        if (lines.Length == 0)
         {
             return null;
         }
         // The words' own ends, where the block's are rounded up a pixel.
-        double start = text.Bounds.Left + text.Padding.Left + lines.Min(l => l.Start);
-        double end = text.Bounds.Left + text.Padding.Left + lines.Max(l => l.Start + l.Width);
-        double past = Math.Max(end - holder.Bounds.Width, -start);
+        double start = text.Padding.Left + lines.Min(l => l.Start);
+        double end = text.Padding.Left + lines.Max(l => l.Start + l.Width);
+        double past = 0;
+        foreach (Visual holder in Holders(text))
+        {
+            double left = text.TranslatePoint(new Point(start, 0), holder)?.X ?? 0;
+            double right = text.TranslatePoint(new Point(end, 0), holder)?.X ?? 0;
+            past = Math.Max(past, Math.Max(right - holder.Bounds.Width, -left));
+        }
         // A pixel is layout rounding's, which rounds a holder's width to whole pixels and words' not at all.
         return past > 1 ? past : null;
+    }
+
+    /// <summary>What holds words: their own holder, and the part of a row of parts (ShrinkingRow, ToolFlow) they stand in,
+    /// whose room is what the row gave it; none past one that scrolls or places what it holds.</summary>
+    private static IEnumerable<Visual> Holders(TextBlock text)
+    {
+        for (Visual part = text; part.GetVisualParent() is { } holder && holder is not (ScrollContentPresenter or Canvas); part = holder)
+        {
+            if (part == text)
+            {
+                yield return holder;
+            }
+            if (holder is ShrinkingRow or ToolFlow)
+            {
+                if (part != text)
+                {
+                    yield return part;
+                }
+                yield break;
+            }
+        }
     }
 
     /// <summary>Whether a control is drawn at all: one laid out but clear (a toolbar widget gone whole keeps its bounds, at

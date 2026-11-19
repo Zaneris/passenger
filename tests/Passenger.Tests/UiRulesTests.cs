@@ -1397,8 +1397,9 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
     }
 
     /// <summary>The layout faults' check finds what it is for, so its silence over the window means something: words wider
-    /// than their room with no ellipsis, words laid out past the side of a row held narrower than they are, and two buttons
-    /// laid in one cell, are each found; words that end in an ellipsis, and a field's own options inside it, are not.</summary>
+    /// than their room with no ellipsis, words laid out past the side of a row held narrower than they are, words their
+    /// own holder holds laid out past the room a row of parts gave their part, and two buttons laid in one cell, are each
+    /// found; words that end in an ellipsis, and a field's own options inside it, are not.</summary>
     [AvaloniaFact]
     public void The_layout_faults_check_finds_words_cut_and_controls_drawn_over_each_other()
     {
@@ -1409,21 +1410,137 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
             Width = 60, HorizontalAlignment = HorizontalAlignment.Left,
             Child = new StackPanel { Orientation = Orientation.Horizontal, Children = { new TextBlock { Text = "Words wider than their row" } } },
         };
+        ShrinkingRow parts = new()
+        {
+            HorizontalAlignment = HorizontalAlignment.Left,
+            Children =
+            {
+                new Border
+                {
+                    Width = 60,
+                    Child = new StackPanel { Orientation = Orientation.Horizontal, Children = { new StackPanel { Orientation = Orientation.Horizontal, Children = { new TextBlock { Text = "Words wider than their part" } } } } },
+                },
+            },
+        };
         Grid laidOver = new() { Children = { new Button { Content = "First" }, new Button { Content = "Second" } } };
-        Window window = new() { Width = 400, Height = 300, Content = new StackPanel { Children = { cut, trimmed, held, laidOver } } };
+        Window window = new() { Width = 400, Height = 300, Content = new StackPanel { Children = { cut, trimmed, held, parts, laidOver } } };
         window.Show();
         try
         {
             Ui.Settle();
             List<string> found = LayoutFaults.Of(window, window, "The test window");
-            Assert.True(found.Count(f => f.Contains("cuts", StringComparison.Ordinal)) == 1 && found.Count(f => f.Contains("past the side", StringComparison.Ordinal)) == 1
-                && found.Any(f => f.Contains("one over the other", StringComparison.Ordinal)),
-                $"The check found {found.Count} faults where one cut word, words laid past their row and two buttons laid over each other stand:\n{string.Join("\n", found)}");
+            Assert.True(found.Count(f => f.Contains("cuts", StringComparison.Ordinal)) == 1 && found.Count(f => f.Contains("past the side", StringComparison.Ordinal)) == 2
+                && found.Any(f => f.Contains("their part", StringComparison.Ordinal)) && found.Any(f => f.Contains("one over the other", StringComparison.Ordinal)),
+                $"The check found {found.Count} faults where one cut word, words laid past their row, words laid past their part's room and two buttons laid over each other stand:\n{string.Join("\n", found)}");
         }
         finally
         {
             window.Close();
         }
+    }
+
+    /// <summary>A row of parts lays itself out again as a part grows, however the row was measured: a status widget's counts
+    /// (Git's incoming and outgoing), then a widget's name (a run configuration's), growing in a full ShrinkingRow, whose
+    /// last widget gives way for them, in one measured with no bound, and in a tool window's bar (ToolFlow) alike, are each
+    /// given the room they now ask, the name shown whole and no word drawn past its room (LayoutFaults), where a
+    /// ShrinkingRow held the counts' widget to its old width, unheard, and drew them past it.</summary>
+    [AvaloniaFact]
+    public void A_row_lays_itself_out_again_as_a_part_grows_whether_full_or_measured_with_no_bound()
+    {
+        List<(string What, Panel Row, TextBlock Name, TextBlock Count, Control? Last)> rows = [];
+        StackPanel shown = new() { Spacing = Gaps.Wide };
+        foreach (string what in (string[])["A full row", "A row measured with no bound", "A tool window's bar", "A tool window's bar measured with no bound"])
+        {
+            bool flows = what.StartsWith("A tool window's bar", StringComparison.Ordinal);
+            bool bounded = !what.EndsWith("no bound", StringComparison.Ordinal);
+            TextBlock name = new() { Text = "Debug", VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
+            Button widget = new()
+            {
+                Classes = { StyleClasses.Widget }, MinWidth = 52,
+                Content = new DockPanel { Children = { new PathIcon { Classes = { StyleClasses.Chevron }, Data = Icon(IconKeys.ChevronDown), [DockPanel.DockProperty] = Dock.Right }, name } },
+            };
+            TextBlock count = new() { Text = "9", Classes = { StyleClasses.Status } };
+            Button counts = new()
+            {
+                Classes = { StyleClasses.StatusItem },
+                // As the status bar's widgets, which never give way.
+                [ShrinkingRow.KeepsWidthProperty] = true,
+                Content = new StackPanel
+                {
+                    Orientation = Orientation.Horizontal, Spacing = Gaps.Normal,
+                    Children = { Counted(new TextBlock { Text = "2", Classes = { StyleClasses.Status } }), Counted(count) },
+                },
+            };
+            Button? last = flows ? null : new()
+            {
+                Classes = { StyleClasses.Widget }, MinWidth = 76,
+                Content = new TextBlock { Text = "feature/a-branch-whose-name-is-long-enough-to-give-way-for-the-others", TextTrimming = TextTrimming.CharacterEllipsis },
+            };
+            Panel row = flows ? new Passenger.App.ToolWindows.ToolFlow { Children = { widget, counts } } : new ShrinkingRow { Children = { widget, counts, last! } };
+            rows.Add((what, row, name, count, last));
+            shown.Children.Add(bounded ? new Border { HorizontalAlignment = HorizontalAlignment.Left, Child = row } : new StackPanel { Orientation = Orientation.Horizontal, Children = { row } });
+        }
+        Window window = new() { Width = 900, Height = 400, Content = shown };
+        window.Show();
+        try
+        {
+            Ui.Settle();
+            // The full row held 40 px short of what its parts ask, so its last widget has given way; the bar given room to grow in.
+            foreach (Panel row in rows.Select(r => r.Row).Where(r => r.Parent is Border))
+            {
+                double asked = row.Children.Sum(c => c.DesiredSize.Width) + ((row as Passenger.App.ToolWindows.ToolFlow)?.Spacing ?? 0) * (row.Children.Count - 1);
+                ((Border)row.Parent!).Width = asked + (row is ShrinkingRow ? -40 : 160);
+            }
+            Ui.Settle();
+            // The counts grow first, alone: a name growing is heard by chance where its ellipsis moves its width.
+            List<string> wrong = [];
+            double[] before = [.. rows.Select(r => r.Last?.Bounds.Width ?? 0)];
+            foreach ((_, _, _, TextBlock count, _) in rows)
+            {
+                count.Text = "1000";
+            }
+            Ui.Settle();
+            Grew("its counts");
+            before = [.. rows.Select(r => r.Last?.Bounds.Width ?? 0)];
+            foreach ((_, _, TextBlock name, _, _) in rows)
+            {
+                name.Text = "Debug with every test";
+            }
+            Ui.Settle();
+            Grew("its widget's name");
+            foreach ((string what, _, TextBlock name, _, _) in rows.Where(r => r.Name.TextLayout.TextLines.Any(l => l.HasCollapsed)))
+            {
+                wrong.Add($"{what} cuts the widget's grown name to {name.Bounds.Width:0.#} px of its {name.TextLayout.WidthIncludingTrailingWhitespace:0.#}, where the row gives it the room it now asks");
+            }
+            Assert.True(wrong.Count == 0, string.Join("\n", wrong));
+
+            // What growing did to each row: the full row's last widget gave way for it, and no word stands past its room.
+            void Grew(string what)
+            {
+                for (int i = 0; i < rows.Count; i++)
+                {
+                    (string row, Panel panel, _, _, Control? last) = rows[i];
+                    if (last is not null && panel.Parent is Border && last.Bounds.Width > before[i] - 1)
+                    {
+                        wrong.Add($"{row}, {what} grown, left its last widget {last.Bounds.Width:0.#} px wide, as before, where it gives way for them");
+                    }
+                    wrong.AddRange(LayoutFaults.Of(window, panel, $"{row}, {what} grown,"));
+                }
+            }
+        }
+        finally
+        {
+            window.Close();
+        }
+
+        // A count after its icon, as the status bar's Git counts stand.
+        static StackPanel Counted(TextBlock count) => new()
+        {
+            Orientation = Orientation.Horizontal, Spacing = Gaps.Tight,
+            Children = { new PathIcon { Width = 11, Height = 11, Data = Icon(IconKeys.ArrowDown) }, count },
+        };
+
+        static Geometry Icon(string key) => (Geometry)Application.Current!.FindResource(key)!;
     }
 
     /// <summary>A field's placeholder too long for it ends in an ellipsis, where the field's scroller, which only follows

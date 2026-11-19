@@ -9,7 +9,8 @@ namespace Passenger.App;
 /// its item's when it holds a list's, a row's least when it holds a row): a list's row (a frame's place before its
 /// method's name, a branch's upstream before its name), the main toolbar or a tool window's header narrowing (the
 /// branch's name before the project's). Its words end in an ellipsis (Shell.axaml), so none is cut mid-letter. A child
-/// that goes whole (<see cref="GoesWholeProperty"/>) goes where the row cannot hold every child at its least.</summary>
+/// that goes whole (<see cref="GoesWholeProperty"/>) goes where the row cannot hold every child at its least. A child
+/// that grows lays the row out again, full or measured with no bound (<see cref="RoomGiven"/>).</summary>
 public sealed class ShrinkingRow : Panel
 {
     private double[] widths = [];
@@ -104,12 +105,10 @@ public sealed class ShrinkingRow : Panel
             widths[i] -= give;
             excess -= give;
         }
-        // Told the room left over too, so a child that grows by itself (a tab strip) is measured again within it.
-        double slack = double.IsInfinity(room) ? 0 : Math.Max(0, room - widths.Sum());
         double height = 0;
         for (int i = 0; i < Children.Count; i++)
         {
-            Children[i].Measure(new Size(widths[i] + (Children[i] is IGivesWayFirst || Gone(i) ? 0 : slack), availableSize.Height));
+            RoomGiven.Measure(Children[i], widths[i], availableSize.Height);
             height = Math.Max(height, Children[i].DesiredSize.Height);
             if (Children[i] is IGivesWayFirst)
             {
