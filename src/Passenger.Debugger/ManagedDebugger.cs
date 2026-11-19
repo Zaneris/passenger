@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading.Channels;
 using Passenger.Core;
@@ -293,6 +294,10 @@ public partial class ManagedDebugger
         if (e is ExitProcessCorDebugManagedCallbackEventArgs)
         {
             _exited.Set();
+        }
+        else if (e is EvalCompleteCorDebugManagedCallbackEventArgs or EvalExceptionCorDebugManagedCallbackEventArgs)
+        {
+            EvalStatus.EndCame(e);
         }
         _runtimeEventChannel.Writer.TryWrite(e);
     }
@@ -1623,6 +1628,16 @@ internal sealed class EvalStatus
     internal int? ThreadId { get; set; }
 
     internal bool IsRunning => ThreadId is not null;
+
+    /// <summary>When each evaluation's end came from the runtime (a <see cref="System.Diagnostics.Stopwatch"/> timestamp), taken
+    /// on its callback thread, so the time the program took is told from the time the debugger took to hear it.</summary>
+    private readonly ConditionalWeakTable<CorDebugManagedCallbackEventArgs, StrongBox<long>> came = [];
+
+    /// <summary>An evaluation's end has come from the runtime, before it is queued.</summary>
+    internal void EndCame(CorDebugManagedCallbackEventArgs end) => came.AddOrUpdate(end, new StrongBox<long>(System.Diagnostics.Stopwatch.GetTimestamp()));
+
+    /// <summary>When an evaluation's end came (<see cref="EndCame"/>), or null for one never stamped.</summary>
+    internal long? CameAt(CorDebugManagedCallbackEventArgs end) => came.TryGetValue(end, out StrongBox<long>? at) ? at.Value : null;
 
     /// <summary>Cancelled when the running evaluation is given up, so its wait for the runtime's events ends with it and
     /// nothing reads them outside the engine's lock.</summary>

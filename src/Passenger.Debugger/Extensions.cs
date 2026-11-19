@@ -272,6 +272,8 @@ public static class Extensions
         CancellationTokenSource reading = new();
         Task<CorDebugManagedCallbackEventArgs> waiting = Task.FromCanceled<CorDebugManagedCallbackEventArgs>(new CancellationToken(true));
         long started = System.Diagnostics.Stopwatch.GetTimestamp();
+        long letGo = started;
+        (long Came, long Heard)? end = null;
         try
         {
             // Only the evaluation's thread runs, unless the person let every thread go: the others' values hold still and none meets a breakpoint unseen.
@@ -280,6 +282,7 @@ public static class Extensions
                 process.SetAllThreadsDebugState(CorDebugThreadState.THREAD_SUSPEND, thread);
             }
             process.Continue(false);
+            letGo = System.Diagnostics.Stopwatch.GetTimestamp();
             waiting = Read();
             long began = System.Diagnostics.Stopwatch.GetTimestamp();
             Task timeUp = Task.Delay(EvaluationTimeout, leaving);
@@ -366,6 +369,8 @@ public static class Extensions
                 // It ended of itself as it was looked at: its value is read as any other's.
             }
             CorDebugManagedCallbackEventArgs evalEvent = await waiting;
+            long heard = System.Diagnostics.Stopwatch.GetTimestamp();
+            end = (evalStatus.CameAt(evalEvent) ?? heard, heard);
             if (evalEvent is EvalCompleteCorDebugManagedCallbackEventArgs completeEvent)
             {
                 if (completeEvent.Eval != eval)
@@ -399,7 +404,10 @@ public static class Extensions
         }
         finally
         {
-            evalStatus.Expression?.Ran(System.Diagnostics.Stopwatch.GetElapsedTime(started));
+            TimeSpan whole = System.Diagnostics.Stopwatch.GetElapsedTime(started);
+            evalStatus.Expression?.Ran(end is { } at
+                ? new ExpressionEvaluator.Cil.EvaluationTime(whole, System.Diagnostics.Stopwatch.GetElapsedTime(letGo, at.Came), System.Diagnostics.Stopwatch.GetElapsedTime(at.Came, at.Heard))
+                : new ExpressionEvaluator.Cil.EvaluationTime(whole));
             evalStatus.ThreadId = null;
             evalStatus.Reading = default;
             reading.Dispose();
