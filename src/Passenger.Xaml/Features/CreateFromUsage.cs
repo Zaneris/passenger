@@ -22,7 +22,8 @@ public static class CreateFromUsage
 {
     private const string Unit = "    ";
 
-    /// <summary>The namespaces the SDK uses in every file of a project with ImplicitUsings on.</summary>
+    /// <summary>The namespaces the SDK uses in every file of a project with ImplicitUsings on, before a build has written
+    /// them out.</summary>
     private static readonly HashSet<string> ImplicitUsings = new(StringComparer.Ordinal)
     {
         "System", "System.Collections.Generic", "System.IO", "System.Linq", "System.Net.Http", "System.Threading", "System.Threading.Tasks",
@@ -48,10 +49,8 @@ public static class CreateFromUsage
             return null;
         }
         Planned member = Plan(file, owner, name, attribute, last);
-        if (string.Equals(file.Project.Inputs.PropertyValue("ImplicitUsings"), "enable", StringComparison.OrdinalIgnoreCase))
-        {
-            member = member with { Usings = [.. member.Usings.Where(u => !ImplicitUsings.Contains(u))] };
-        }
+        HashSet<string> used = Global(file);
+        member = member with { Usings = [.. member.Usings.Where(u => !used.Contains(u))] };
         return new XamlFix($"Create property '{name}'", path, text => Edits(text, owner, member, parsing))
         {
             Detail = $"{member.Said} in {Path.GetFileName(path)}",
@@ -335,6 +334,18 @@ public static class CreateFromUsage
             : new TextEdit(unit.SpanStart, 0, lines + "\n");
     }
 
+    /// <summary>The namespaces every C# file of the project uses already, which no file it makes needs to write: its global
+    /// usings, in its files and the SDK's, and with ImplicitUsings on the SDK's own before a build wrote them out.</summary>
+    private static HashSet<string> Global(XamlFile file)
+    {
+        HashSet<string> used = new(file.Types.GlobalUsings, StringComparer.Ordinal);
+        if (string.Equals(file.Project.Inputs.PropertyValue("ImplicitUsings"), "enable", StringComparison.OrdinalIgnoreCase))
+        {
+            used.UnionWith(ImplicitUsings);
+        }
+        return used;
+    }
+
     /// <summary>A member's lines after its first indented as the type's members are.</summary>
     private static string Indent(string code, string inside) =>
         string.Join('\n', code.Split('\n').Select((line, i) => i == 0 || line.Length == 0 ? line : inside + line));
@@ -375,7 +386,7 @@ public static class CreateFromUsage
     private static string ConverterText(XamlFile file, string space, string name, bool avalonia)
     {
         bool nullable = string.Equals(file.Project.Inputs.PropertyValue("Nullable"), "enable", StringComparison.OrdinalIgnoreCase);
-        bool implicitUsings = string.Equals(file.Project.Inputs.PropertyValue("ImplicitUsings"), "enable", StringComparison.OrdinalIgnoreCase);
+        HashSet<string> used = Global(file);
         string q = nullable ? "?" : string.Empty;
         // Avalonia's and MAUI's converters are annotated for nullable values; WPF's are not.
         bool annotated = avalonia || file.Dialect is MauiDialect;
@@ -383,12 +394,18 @@ public static class CreateFromUsage
         string value = annotated ? $"object{q}" : "object";
         bool scoped = FileScoped(file);
         StringBuilder made = new();
-        if (!implicitUsings)
-        {
-            made.Append("using System;\n");
-        }
         string converters = avalonia ? "Avalonia.Data.Converters" : file.Dialect is MauiDialect ? "Microsoft.Maui.Controls" : "System.Windows.Data";
-        made.Append("using System.Globalization;\n").Append($"using {converters};\n").Append('\n');
+        foreach (string needed in (string[])["System", "System.Globalization", converters])
+        {
+            if (!used.Contains(needed))
+            {
+                made.Append($"using {needed};\n");
+            }
+        }
+        if (made.Length > 0)
+        {
+            made.Append('\n');
+        }
         string indent = scoped ? string.Empty : Unit;
         made.Append(scoped ? $"namespace {space};\n\n" : $"namespace {space}\n{{\n");
         made.Append($"{indent}public class {(SyntaxFacts.GetKeywordKind(name) == SyntaxKind.None ? name : "@" + name)} : IValueConverter\n{indent}{{\n");

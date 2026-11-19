@@ -136,6 +136,22 @@ public class CreateFromUsageTests
         Assert.Contains($"<local:{Key} x:Key=\"{Key}\" />", XamlFiles.Applied(window, fix.Edits(window)), StringComparison.Ordinal);
     }
 
+    /// <summary>A converter made in a project whose other file declares global usings of the namespaces it takes writes no
+    /// using of its own for them, and compiles with the project's.</summary>
+    [Fact]
+    public void A_converter_writes_no_using_a_global_using_in_another_file_of_the_project_brings_in()
+    {
+        const string Usings = "global using System;\nglobal using System.Globalization;\nglobal using Avalonia.Data.Converters;\n";
+        string window = "<Window xmlns=\"https://github.com/avaloniaui\" xmlns:x=\"http://schemas.microsoft.com/winfx/2006/xaml\">\n"
+            + "    <TextBlock Text=\"{Binding Title, Converter={StaticResource ShoutConverter}}\" />\n</Window>\n";
+        XamlFile file = XamlFiles.Read("MainWindow.axaml", window, AvaloniaDialect.Instance, ("GlobalUsings.cs", Usings));
+        string made = Assert.Single(Assert.IsType<XamlFix>(CreateFromUsage.Converter(file, "ShoutConverter")).Others).Made!;
+        Assert.True(!made.Contains("using ", StringComparison.Ordinal),
+            $"The converter wrote usings the project's other file brings in for every file, which the compiler marks unneeded:\n{made}");
+        IReadOnlyList<Diagnostic> errors = Errors(made, Usings);
+        Assert.True(errors.Count == 0, $"The converter made without the usings does not compile with the project's global ones:\n{string.Join("\n", errors)}\n{made}");
+    }
+
     /// <summary>A converter's namespace is written as its view's code-behind writes its own, block or file-scoped, the
     /// code-behind's namespace named with marks.</summary>
     [Theory]
@@ -161,8 +177,9 @@ public class CreateFromUsageTests
         }
     }
 
-    /// <summary>The errors a file of C# compiles with, Avalonia's IValueConverter declared beside it.</summary>
-    private static IReadOnlyList<Diagnostic> Errors(string code)
+    /// <summary>The errors a file of C# compiles with, Avalonia's IValueConverter declared beside it, and the project's other
+    /// files' code when given.</summary>
+    private static IReadOnlyList<Diagnostic> Errors(string code, string others = "")
     {
         const string Converters = """
             namespace Avalonia.Data.Converters;
@@ -177,7 +194,7 @@ public class CreateFromUsageTests
         IEnumerable<MetadataReference> references = ((string)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES")!).Split(Path.PathSeparator)
             .Where(p => Path.GetFileName(p) is { } name && (name.StartsWith("System.", StringComparison.Ordinal) || name is "netstandard.dll" or "mscorlib.dll"))
             .Select(p => MetadataReference.CreateFromFile(p));
-        CSharpCompilation compilation = CSharpCompilation.Create("Made", [CSharpSyntaxTree.ParseText(code), CSharpSyntaxTree.ParseText(Converters)], references,
+        CSharpCompilation compilation = CSharpCompilation.Create("Made", [CSharpSyntaxTree.ParseText(code), CSharpSyntaxTree.ParseText(Converters), CSharpSyntaxTree.ParseText(others)], references,
             new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary, nullableContextOptions: NullableContextOptions.Enable));
         return [.. compilation.GetDiagnostics().Where(d => d.Severity == DiagnosticSeverity.Error)];
     }

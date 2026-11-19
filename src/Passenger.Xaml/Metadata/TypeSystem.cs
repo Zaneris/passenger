@@ -77,6 +77,10 @@ public sealed class TypeSystem
         Namespaces = [.. byNamespace.Keys.Where(n => n.Length > 0).Order(StringComparer.Ordinal)];
     }
 
+    /// <summary>The namespaces every C# file of the project uses: the SDK's generated global usings (its implicit usings and
+    /// <c>&lt;Using&gt;</c> items) and each <c>global using</c> its files declare.</summary>
+    public IReadOnlyList<string> GlobalUsings => globalUsings;
+
     /// <summary>The project's own assembly's name, which its source types are in.</summary>
     public string AssemblyName { get; }
 
