@@ -108,14 +108,18 @@ public sealed class StylesheetClassesTests : IClassFixture<StyledShop>
         Assert.True(sheet.IsReadOnly && sheet.Text.IsReadOnly && window.EditorArea.CodeEditor.IsReadOnly,
             $"{sheet.Path} opened writable, so a key typed there would change every project's copy of Kit 1.0.0");
 
+        // Every refusal of the open package file names the package, as a refusal of it closed does.
+        string refused = Refusals.OfPackage("kit.css", "Kit 1.0.0");
         window.KeyTextInput("x");
         Ui.Settle();
         Assert.False(sheet.IsModified, "A key typed into the package's stylesheet changed its text");
         Assert.Equal(written, sheet.Text.Snapshot.ToString());
-        Assert.True(window.EditorArea.ActiveGroup.BannerText?.Contains("A file of the package Kit 1.0.0", StringComparison.Ordinal) == true,
+        Assert.Equal(refused, window.Status);
+        Assert.True(window.EditorArea.ActiveGroup.BannerText?.Contains(Refusals.Sentence(Refusals.PackagesOwn("Kit 1.0.0")), StringComparison.Ordinal) == true,
             $"The bar over the package's stylesheet says '{window.EditorArea.ActiveGroup.BannerText}', not which package it is part of");
+        Assert.Equal(refused, window.Actions.WhyNot(AppActions.Save, window.Actions.Context()));
         Ui.Press(window, Ui.Shortcut(AppActions.Save));
-        Assert.Equal("kit.css is read-only", window.Status);
+        Assert.Equal(refused, window.Status);
         Assert.Equal(written, File.ReadAllText(sheet.Path));
         window.Close();
     }
