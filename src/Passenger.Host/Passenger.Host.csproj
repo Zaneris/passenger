@@ -42,6 +42,9 @@
     <Compile Include="../Passenger.Core/WorkloadFolders.cs" Link="WorkloadFolders.cs" />
     <!-- NuGet's layout of a package folder, by which a package's own build file tells its files from a project's. -->
     <Compile Include="../Passenger.Core/PackageLayout.cs" Link="PackageLayout.cs" />
+    <!-- A parallel loop's threads of its own, so the host's other requests never wait for an evaluation's loop to end. -->
+    <Compile Include="../Passenger.Core/ApartScheduler.cs" Link="ApartScheduler.cs" />
+    <Compile Include="../Passenger.Core/ApartThreads.cs" Link="ApartThreads.cs" />
   </ItemGroup>
 
   <!-- MSBuild's own dependencies come from the SDK with it: copied here, an older one would be loaded in their place. -->

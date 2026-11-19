@@ -35,10 +35,9 @@ internal static class Evaluation
     {
         using ProjectCollection collection = new(asked.Properties.ToDictionary(p => p.Key, p => p.Value), loggers: null, ToolsetDefinitionLocations.Default);
         EvaluationContext context = EvaluationContext.Create(EvaluationContext.SharingPolicy.Shared);
-        ParallelOptions parallel = new() { MaxDegreeOfParallelism = Environment.ProcessorCount, CancellationToken = cancel };
         ConcurrentDictionary<string, (EvaluatedProject Outer, IReadOnlyList<string> Frameworks)> targeted = new(PathNames.Comparer);
-        // Load-balanced, so each worker takes the next project in the order asked: the active file's first.
-        Parallel.ForEach(Partitioner.Create(asked.Projects.ToArray(), loadBalance: true), parallel, path =>
+        // Each worker takes the next project in the order asked: the active file's first.
+        ApartScheduler.ForEach("Passenger evaluator", [.. asked.Projects], 0, cancel, path =>
         {
             (EvaluatedProject outer, IReadOnlyList<string> frameworks) = Outer(path, collection, context, asked.Of(path));
             evaluated(outer);
@@ -49,7 +48,7 @@ internal static class Evaluation
         });
         List<(EvaluatedProject Outer, IReadOnlyList<string> Frameworks)> inOrder =
             [.. asked.Projects.Distinct(PathNames.Comparer).Where(targeted.ContainsKey).Select(p => targeted[p])];
-        Parallel.ForEach(Partitioner.Create(inOrder.ToArray(), loadBalance: true), parallel,
+        ApartScheduler.ForEach("Passenger evaluator", inOrder, 0, cancel,
             t => evaluated(Frameworks(t.Outer, t.Frameworks, collection, context, asked.Of(t.Outer.Path))));
     }
 

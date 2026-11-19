@@ -132,12 +132,12 @@ public abstract class SharedProject : IAsyncLifetime
         if (loadsAgain)
         {
             System.Collections.Concurrent.ConcurrentDictionary<string, string> texts = new(StringComparer.Ordinal);
-            Parallel.ForEach(files, file => texts[Written(file.Name, file.Text)] = file.Text);
+            ApartScheduler.ForEach("test writer", [.. files], 0, TestContext.Current.CancellationToken, file => texts[Written(file.Name, file.Text)] = file.Text);
             Heard(texts);
             return;
         }
         Drop();
-        Parallel.ForEach(files, file => Written(file.Name, file.Text));
+        ApartScheduler.ForEach("test writer", [.. files], 0, TestContext.Current.CancellationToken, file => Written(file.Name, file.Text));
     }
 
     /// <inheritdoc cref="Write(string, string)"/>

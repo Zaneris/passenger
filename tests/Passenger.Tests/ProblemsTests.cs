@@ -5,6 +5,7 @@ using Avalonia.Headless.XUnit;
 using Passenger.App;
 using Passenger.App.Run;
 using Passenger.App.ToolWindows;
+using Passenger.Core;
 using Passenger.Text;
 
 namespace Passenger.Tests;
@@ -856,7 +857,7 @@ public sealed class ProblemsTests : IClassFixture<ProblemsTests.Project>
         }
         watched.Sent += sent;
         long rewritten = System.Diagnostics.Stopwatch.GetTimestamp();
-        Parallel.For(0, Files, i => File.WriteAllText(project.PathOf($"Checked{i}.cs"), Checked(i, "after")));
+        ApartScheduler.ForEach("test writer", [.. Enumerable.Range(0, Files)], 0, TestContext.Current.CancellationToken, i => File.WriteAllText(project.PathOf($"Checked{i}.cs"), Checked(i, "after")));
         // Pumped, not settled, so each time is when it happened, not when the work after it ended.
         bool heard = Ui.Pumped(() => Told() == Files || Replaced(), TimeSpan.FromSeconds(90));
         double toldAfter = System.Diagnostics.Stopwatch.GetElapsedTime(rewritten).TotalSeconds;
@@ -920,7 +921,7 @@ public sealed class ProblemsTests : IClassFixture<ProblemsTests.Project>
         };
         watched.Sent += sent;
         long deleted = System.Diagnostics.Stopwatch.GetTimestamp();
-        Parallel.For(0, Files, i => File.Delete(project.PathOf($"Side{i}.cs")));
+        ApartScheduler.ForEach("test writer", [.. Enumerable.Range(0, Files)], 0, TestContext.Current.CancellationToken, i => File.Delete(project.PathOf($"Side{i}.cs")));
         // Pumped, not settled, so each time is when it happened, not when the work after it ended.
         bool heard = Ui.Pumped(() => Told() == Files && Listed() == 0, TimeSpan.FromSeconds(90));
         double after = System.Diagnostics.Stopwatch.GetElapsedTime(deleted).TotalSeconds;

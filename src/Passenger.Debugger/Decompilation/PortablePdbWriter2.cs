@@ -137,17 +137,7 @@ public class PortablePdbWriter2
 
         ConcurrentBag<PerFileResult> perFileResults = new ConcurrentBag<PerFileResult>();
 
-        int parallelism = maxDegreeOfParallelism <= 0 ? Environment.ProcessorCount : maxDegreeOfParallelism;
-        // Threads of its own: on the pool's, the loop would take them all as it runs, the debugger's answers waiting.
-        using ApartScheduler decompilers = new("Passenger decompiler", parallelism);
-        Parallel.ForEach(
-            Partitioner.Create(sourceFiles, loadBalance: true),
-            new ParallelOptions
-            {
-                MaxDegreeOfParallelism = parallelism,
-                CancellationToken = cancellationToken,
-                TaskScheduler = decompilers,
-            },
+        ApartScheduler.ForEach("Passenger decompiler", sourceFiles, maxDegreeOfParallelism, cancellationToken,
             sourceFile =>
             {
                 // Create a per-task decompiler that shares the same type system but is otherwise independent.

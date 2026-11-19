@@ -183,12 +183,11 @@ internal static class BuildReads
         /// each reaches it (a reference with every framework of its own).</summary>
         public void Load(IReadOnlyList<(string Path, string? Framework)> projects, CancellationToken cancel)
         {
-            ParallelOptions parallel = new() { MaxDegreeOfParallelism = Environment.ProcessorCount, CancellationToken = cancel };
             HashSet<string> reached = new(PathNames.Comparer);
             List<(string Path, string? Framework)> round = [.. projects];
             while (round.Count > 0)
             {
-                Parallel.ForEach(round, parallel, each => _ = Get(each.Path, each.Framework));
+                ApartScheduler.ForEach("Passenger build reader", round, 0, cancel, each => _ = Get(each.Path, each.Framework));
                 round = [.. round.SelectMany(each => Get(each.Path, each.Framework).Projects ?? []).SelectMany(each => each.Walk.References)
                     .Where(reference => reached.Add(reference) && !made.ContainsKey(Key(reference, null))).Select(reference => (reference, (string?)null))];
             }

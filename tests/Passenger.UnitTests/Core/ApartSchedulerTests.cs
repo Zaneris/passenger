@@ -3,9 +3,9 @@ using Passenger.Core;
 
 namespace Passenger.UnitTests.Core;
 
-/// <summary>A Parallel loop given an <see cref="ApartScheduler"/> runs on the scheduler's threads alone, so a loop that
-/// keeps every one of them busy (a decompile) takes none of the thread pool's, which a debugger's answers need; its
-/// threads end once it is disposed.</summary>
+/// <summary>A Parallel loop run through an <see cref="ApartScheduler"/> runs on the scheduler's threads alone, so a loop
+/// that keeps every one of them busy (a decompile, an evaluation) takes none of the thread pool's, which a debugger's or a
+/// host's answers need; its threads end once it is disposed.</summary>
 public class ApartSchedulerTests
 {
     [Fact]
@@ -18,8 +18,7 @@ public class ApartSchedulerTests
         Task loop;
         using (ApartScheduler scheduler = new("apart", threads))
         {
-            ParallelOptions options = new() { TaskScheduler = scheduler, MaxDegreeOfParallelism = threads };
-            loop = BackgroundWork.UnheldThread(() => Parallel.ForEach(Partitioner.Create(Enumerable.Range(0, 1000).ToList(), loadBalance: true), options, _ =>
+            loop = BackgroundWork.UnheldThread(() => scheduler.ForEach(Enumerable.Range(0, 1000).ToList(), 0, TestContext.Current.CancellationToken, _ =>
             {
                 if (ran.TryAdd(Thread.CurrentThread, Thread.CurrentThread.IsThreadPoolThread))
                 {

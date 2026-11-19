@@ -318,7 +318,7 @@ public sealed class TestFinder
             TestsCache? kept = cache;
             await BackgroundWork.Run(() =>
             {
-                Parallel.ForEach(reads, read => ReadFile(read.Path, read.With, kept));
+                ApartScheduler.ForEach("Passenger test reader", reads, 0, CancellationToken.None, read => ReadFile(read.Path, read.With, kept));
                 kept?.Save();
             });
             Tell([.. projects.Where(Projects.Contains)]);
@@ -476,10 +476,14 @@ public sealed class TestFinder
             CSharpParseOptions symbols = gut ? CSharpParseOptions.Default : CompilationSymbols.Of(project);
             all.AddRange(files.Select(file => (file, new Reading(project.Path, symbols, attributes, gut ? project.Folder : null))));
         }
-        for (int at = 0; at < all.Count; at += ReadsCounted)
+        if (all.Count > 0)
         {
-            ParallelOptions readers = new() { MaxDegreeOfParallelism = serverLoading ? ReadersWhileLoading : -1 };
-            Parallel.ForEach(all.GetRange(at, Math.Min(ReadsCounted, all.Count - at)), readers, read => ReadFile(read.Path, read.With, kept));
+            using ApartScheduler readers = new("Passenger test reader", Math.Min(Environment.ProcessorCount, all.Count));
+            for (int at = 0; at < all.Count; at += ReadsCounted)
+            {
+                readers.ForEach(all.GetRange(at, Math.Min(ReadsCounted, all.Count - at)), serverLoading ? ReadersWhileLoading : 0, CancellationToken.None,
+                    read => ReadFile(read.Path, read.With, kept));
+            }
         }
         if (kept is not null)
         {

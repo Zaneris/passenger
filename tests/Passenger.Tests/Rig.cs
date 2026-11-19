@@ -778,7 +778,7 @@ public static class TestFolders
     /// <summary>Many files of a test's folder written as <see cref="Write"/> writes each, several at once: Windows scans a
     /// file as it is made, which a test of a thousand files written one after another waits out a thousand times.</summary>
     public static void WriteAll(string folder, IEnumerable<(string Relative, string Text)> files) =>
-        Parallel.ForEach(files, file => Write(folder, file.Relative, file.Text));
+        ApartScheduler.ForEach("test writer", [.. files], 0, TestContext.Current.CancellationToken, file => Write(folder, file.Relative, file.Text));
 
     public static void Begin(string test) => Made[test] = [];
 

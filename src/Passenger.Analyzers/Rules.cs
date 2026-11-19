@@ -115,6 +115,18 @@ internal static class Rules
             + "scanner, an indexer, another Passenger reading it). AtomicFile.Move renames with POSIX semantics, which only a "
             + "program sharing no deletion refuses, and moves plainly where the file system has no such rename (FAT, a share).");
 
+    public static readonly DiagnosticDescriptor BareParallelLoop = new(
+        "PSG0010",
+        "A Parallel loop runs on the thread pool",
+        "{0} runs its loop on the thread pool, every thread of which it may take until the loop ends: run it through ApartScheduler.ForEach, on threads of its own",
+        Category,
+        DiagnosticSeverity.Warning,
+        isEnabledByDefault: true,
+        description: "A synchronous Parallel loop's workers take the pool's threads for as long as the loop lasts, and as each "
+            + "finishes a turn and queues the next the pool sees work done and adds no thread: every other wait of the process "
+            + "on the pool (a protocol's reads and answers, a request, an await) waits until the loop ends. ApartScheduler.ForEach "
+            + "runs the loop on threads of its own, ended with it.");
+
     public static readonly DiagnosticDescriptor KeysUnread = new(
         "PSG9001",
         "A resource keys file is not read",

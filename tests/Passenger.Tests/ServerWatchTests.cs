@@ -66,14 +66,14 @@ public sealed class ServerWatchTests : IClassFixture<ServerWatchTests.Project>
         string folder = Directory.CreateDirectory(project.PathOf(Path.Combine("obj", "gone"))).FullName;
         string Gone(int i) => Path.Combine(folder, $"Gone{i}.cs");
         Told made = new(watched, name => name.StartsWith("Gone", StringComparison.Ordinal), gone: false);
-        Parallel.For(0, Files, i => File.WriteAllText(Gone(i), $"static class Gone{i}\n{{\n}}\n"));
+        ApartScheduler.ForEach("test writer", [.. Enumerable.Range(0, Files)], 0, TestContext.Current.CancellationToken, i => File.WriteAllText(Gone(i), $"static class Gone{i}\n{{\n}}\n"));
         bool heardMade = Ui.Pumped(() => made.Count == Files, TimeSpan.FromSeconds(90));
         made.Dispose();
         Assert.True(heardMade, $"Of the {Files} sources written into obj side by side, the language server was told of {made.Count}: {WatchLog(window)}");
 
         Told gone = new(watched, name => name.StartsWith("Gone", StringComparison.Ordinal), gone: true);
         long deleted = System.Diagnostics.Stopwatch.GetTimestamp();
-        Parallel.For(0, Files, i => File.Delete(Gone(i)));
+        ApartScheduler.ForEach("test writer", [.. Enumerable.Range(0, Files)], 0, TestContext.Current.CancellationToken, i => File.Delete(Gone(i)));
         // Pumped, not settled, so the time is when it happened, not when the work after it ended.
         bool heard = Ui.Pumped(() => gone.Count == Files, TimeSpan.FromSeconds(90));
         double after = System.Diagnostics.Stopwatch.GetElapsedTime(deleted).TotalSeconds;
