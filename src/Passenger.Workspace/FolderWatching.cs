@@ -33,6 +33,11 @@ public sealed class FolderWatching
     /// some (macOS's FSEvents, whose drops .NET's watcher passes over), rather than through .NET's watcher.</summary>
     public static bool ReadsMacEvents => OperatingSystem.IsMacOS();
 
+    /// <summary>Whether one of the system's watchers reads a folder and all below it at the cost of one, so the process's
+    /// folders share a few (macOS's FSEvents, Windows' watcher), rather than each folder taking a watch of its own as Linux's
+    /// inotify does.</summary>
+    public static bool SharesWatches => OperatingSystem.IsMacOS() || OperatingSystem.IsWindows();
+
     /// <summary>What the person is told when a watcher's error says the user's watches ran out, with how to raise the
     /// limit; null for any other error.</summary>
     public string? OutOfWatches(Exception error)

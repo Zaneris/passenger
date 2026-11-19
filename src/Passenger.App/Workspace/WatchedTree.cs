@@ -220,7 +220,7 @@ public abstract class WatchedTree : IDisposable
         List<IDisposable> held;
         lock (gate)
         {
-            held = [.. watches.Values.Select(w => w.Mac?.HoldReading()).OfType<IDisposable>()];
+            held = [.. watches.Values.Select(w => w.Shared?.HoldReading()).OfType<IDisposable>()];
         }
         return new Held(held);
     }
@@ -235,13 +235,13 @@ public abstract class WatchedTree : IDisposable
     /// was once the trees made since are disposed. For a test.</summary>
     public static int SystemWatches => Volatile.Read(ref Watch.Held);
 
-    /// <summary>The folder each of macOS's streams the process holds reads from (<see cref="MacFileEvents"/>), which its trees
-    /// share; none elsewhere. For a test.</summary>
-    public static IReadOnlyList<string> MacStreams => FolderWatching.ReadsMacEvents ? MacFileEvents.Streams : [];
+    /// <summary>The folder each watcher the process's trees share reads from (<see cref="SharedWatch"/>), on macOS and
+    /// Windows; none on Linux, where each folder is watched on its own. For a test.</summary>
+    public static IReadOnlyList<string> SharedWatchers => FolderWatching.SharesWatches ? SharedWatch.Watchers : [];
 
-    /// <summary>One of the system's watches of a folder: on macOS a stream of Passenger's own (<see cref="MacFileEvents"/>),
-    /// which says when it dropped changes, elsewhere .NET's watcher; counted among those held (<see cref="SystemWatches"/>)
-    /// from when it is made until it is disposed.</summary>
+    /// <summary>One of the system's watches of a folder: on macOS and Windows read through a watcher the process shares
+    /// (<see cref="SharedWatch"/>), which on macOS says when it dropped changes, on Linux .NET's watcher of the folder alone;
+    /// counted among those held (<see cref="SystemWatches"/>) from when it is made until it is disposed.</summary>
     private sealed class Watch : IDisposable
     {
         public static int Held;
@@ -258,7 +258,7 @@ public abstract class WatchedTree : IDisposable
 
         public FileSystemWatcher? Watcher { get; set; }
 
-        public MacFileEvents? Mac { get; set; }
+        public SharedWatch? Shared { get; set; }
 
         public void Dispose()
         {
@@ -268,7 +268,7 @@ public abstract class WatchedTree : IDisposable
             }
             Interlocked.Decrement(ref Held);
             Watcher?.Dispose();
-            Mac?.Dispose();
+            Shared?.Dispose();
         }
     }
 
@@ -467,9 +467,9 @@ public abstract class WatchedTree : IDisposable
             }
         }
         Watch watch = new(path);
-        if (FolderWatching.ReadsMacEvents)
+        if (FolderWatching.SharesWatches)
         {
-            return StartMac(watch, recursive);
+            return StartShared(watch, recursive);
         }
         FileSystemWatcher watcher;
         try
@@ -525,9 +525,9 @@ public abstract class WatchedTree : IDisposable
         return true;
     }
 
-    /// <summary>Starts macOS's stream of a folder, or the whole tree under it (<see cref="MacFileEvents"/>), its word that it
-    /// dropped changes taken as too many at once, and its folder moved or deleted as gone.</summary>
-    private bool StartMac(Watch watch, bool recursive)
+    /// <summary>Reads a folder, or the whole tree under it, through a shared watcher (<see cref="SharedWatch"/>), its word
+    /// that it dropped changes taken as too many at once, its folder moved or deleted as gone, and its failure as a watch's.</summary>
+    private bool StartShared(Watch watch, bool recursive)
     {
         if (!Directory.Exists(watch.Path))
         {
@@ -537,7 +537,7 @@ public abstract class WatchedTree : IDisposable
         }
         try
         {
-            watch.Mac = new MacFileEvents(watch.Path, recursive, heard => OnMacEvent(watch, heard));
+            watch.Shared = new SharedWatch(watch.Path, recursive, heard => OnShared(watch, heard));
         }
         catch (IOException error)
         {
@@ -566,7 +566,7 @@ public abstract class WatchedTree : IDisposable
         return watching;
     }
 
-    private void OnMacEvent(Watch watch, MacFileEvent heard)
+    private void OnShared(Watch watch, FolderEvent heard)
     {
         if (IsDeaf)
         {
@@ -574,23 +574,26 @@ public abstract class WatchedTree : IDisposable
         }
         switch (heard.Kind)
         {
-            case MacFileEventKind.Changed:
+            case FolderEventKind.Changed:
                 OnChanged(heard.Path);
                 break;
-            case MacFileEventKind.Made:
+            case FolderEventKind.Made:
                 OnCreated(heard.Path, made: true);
                 break;
-            case MacFileEventKind.MovedIn:
+            case FolderEventKind.MovedIn:
                 OnCreated(heard.Path, made: false);
                 break;
-            case MacFileEventKind.Deleted:
+            case FolderEventKind.Deleted:
                 OnDeleted(heard.Path);
                 break;
-            case MacFileEventKind.Dropped:
-                OnError(watch, new InternalBufferOverflowException($"macOS dropped changes under {watch.Path}, saying so at {heard.Path}"));
+            case FolderEventKind.Dropped:
+                OnError(watch, new InternalBufferOverflowException($"The system dropped changes under {watch.Path}, saying so at {heard.Path}"));
                 break;
-            case MacFileEventKind.Gone:
+            case FolderEventKind.Gone:
                 OnError(watch, new DirectoryNotFoundException($"{watch.Path} was moved or deleted"));
+                break;
+            case FolderEventKind.Failed:
+                OnError(watch, new IOException($"The watch of {heard.Path} failed"));
                 break;
         }
     }
