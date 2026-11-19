@@ -8,6 +8,10 @@
     <ApplicationIcon>Assets/Passenger.ico</ApplicationIcon>
     <!-- Every window wears AppIcon's, so no second copy of the file is carried as the icon of a window with none. -->
     <AvaloniaIncludeApplicationIconAsWindowIcon>false</AvaloniaIncludeApplicationIconAsWindowIcon>
+    <!-- The passenger-ide command this build carries (src/Passenger.Launcher, PassengerCommand.cs): Windows' program, or
+         macOS's script; Linux's archive carries its own launcher (tools/linux). -->
+    <CommandFor Condition="$(RuntimeIdentifier.StartsWith('win')) Or ('$(RuntimeIdentifier)' == '' And $([MSBuild]::IsOSPlatform('Windows')))">windows</CommandFor>
+    <CommandFor Condition="$(RuntimeIdentifier.StartsWith('osx')) Or ('$(RuntimeIdentifier)' == '' And $([MSBuild]::IsOSPlatform('OSX')))">macos</CommandFor>
     <!-- PathNames calls libc's realpath through a generated P/Invoke. -->
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
@@ -36,6 +40,8 @@
     <EmbeddedResource Include="Godot/Addon/plugin.cfg" LogicalName="Godot/Addon/plugin.cfg" />
     <EmbeddedResource Include="Godot/Addon/passenger.gd" LogicalName="Godot/Addon/passenger.gd" />
     <EmbeddedResource Include="Godot/Addon/scenes.gd" LogicalName="Godot/Addon/scenes.gd" />
+    <!-- The passenger-ide command on macOS, under bin/ beside the app (a bundle's Resources/bin: CarriedFiles). -->
+    <None Include="../Passenger.Launcher/passenger-ide" Link="bin/passenger-ide" CopyToOutputDirectory="PreserveNewest" Condition="'$(CommandFor)' == 'macos'" />
     <!-- Passenger's own Prettier runner (Web/Prettier.cs), carried beside the web language servers. -->
     <None Include="Web/prettier.cjs" Link="web/passenger/prettier.cjs" CopyToOutputDirectory="PreserveNewest" />
     <!-- Passenger's preload for the Dockerfile server, which keeps it from Docker Hub while Settings says so
@@ -108,6 +114,10 @@
          run in it (ChildProcesses.HelperCommand). -->
     <ProjectReference Include="../Passenger.Helper/Passenger.Helper.csproj" ReferenceOutputAssembly="false" Private="false"
                       GlobalPropertiesToRemove="PublishReadyToRun" />
+    <!-- Built first, for a publish's system on its runtime pack, and carried beside the app, never linked: the passenger-ide
+         command on Windows (IncludeLauncher). -->
+    <ProjectReference Include="../Passenger.Launcher/Passenger.Launcher.csproj" ReferenceOutputAssembly="false" Private="false"
+                      GlobalPropertiesToRemove="PublishReadyToRun" Condition="'$(CommandFor)' == 'windows'" />
     <!-- Built first and carried under inspector/, never linked: an Avalonia app Passenger debugs loads it (LiveTree/LiveApp.cs).
          It is built once for every platform, as Avalonia's assemblies it is compiled against are the same on each. -->
     <ProjectReference Include="../Passenger.Inspector/Passenger.Inspector.csproj" ReferenceOutputAssembly="false" Private="false"
@@ -382,6 +392,18 @@
     <ItemGroup>
       <None Include="@(HelperHostFile)" Link="%(HelperHostFile.Filename)%(HelperHostFile.Extension)"
             CopyToOutputDirectory="PreserveNewest" Visible="false" />
+    </ItemGroup>
+  </Target>
+
+  <!-- The passenger-ide command on Windows becomes this project's output beside the app: its assembly, .deps.json and
+       runtimeconfig.json, and its apphost alone in bin\, the folder the installer puts on the person's Path. -->
+  <Target Name="IncludeLauncher" BeforeTargets="AssignTargetPaths" Condition="'$(CommandFor)' == 'windows'">
+    <MSBuild Projects="../Passenger.Launcher/Passenger.Launcher.csproj" Targets="GetLauncher"
+             RemoveProperties="PublishReadyToRun" BuildInParallel="$(BuildInParallel)">
+      <Output TaskParameter="TargetOutputs" ItemName="LauncherFile" />
+    </MSBuild>
+    <ItemGroup>
+      <None Include="@(LauncherFile)" Link="%(LauncherFile.Folder)%(LauncherFile.Filename)%(LauncherFile.Extension)" CopyToOutputDirectory="PreserveNewest" Visible="false" />
     </ItemGroup>
   </Target>
 

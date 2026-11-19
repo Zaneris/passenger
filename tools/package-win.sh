@@ -3,8 +3,8 @@
 # artifacts/package/Passenger-windows-x64.exe (or -arm64), a name each release keeps: the Release publish packed by
 # Velopack's vpk into a Setup.exe that installs for the person alone, with no administrator, into
 # %LocalAppData%\PassengerIDE, adds a Start menu entry and an uninstall entry in Settings > Apps, and runs
-# Passenger.exe's install hook. Velopack's release (the full package and its channel's feed) stays in
-# artifacts/package/<rid>/velopack.
+# Passenger.exe's install hook, which puts current\bin, the passenger-ide command's folder, on the person's own Path.
+# Velopack's release (the full package and its channel's feed) stays in artifacts/package/<rid>/velopack.
 #
 # Signed only on Windows, by signtool, when one is set: PASSENGER_SIGNTOOL_PARAMS, signtool sign's parameters (/f or
 # /sha1, /fd sha256, /tr and /td sha256), or PASSENGER_ARTIFACT_SIGNING_METADATA, an Azure Artifact Signing account's
@@ -48,6 +48,12 @@ version=$(release_version "$root")
 
 rm -rf "$work" "$installer"
 publish_app "$root" "$rid" "$version" -o "$publish" -nologo -v quiet
+
+# The passenger-ide command alone in bin\, so the folder on the person's Path offers no other program.
+[ "$(ls "$publish/bin")" = passenger-ide.exe ] || fail "the publish's bin folder holds $(ls "$publish/bin" | tr '\n' ' '), not the passenger-ide command alone"
+for part in passenger-ide.dll passenger-ide.deps.json passenger-ide.runtimeconfig.json; do
+    [ -f "$publish/$part" ] || fail "the publish has no $part, which bin/passenger-ide.exe runs"
+done
 
 # Not Passenger as pack id (its uninstaller empties %LocalAppData%\Passenger, the person's state); --aumid is the process's own, so a pinned button shows the jump list.
 set -- --packId PassengerIDE --packVersion "$version" --packTitle Passenger --packAuthors Passenger \

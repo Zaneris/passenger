@@ -1,0 +1,40 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- passenger-ide on Windows (Program.cs): a Windows program of no console, so a terminal is not held and the Run box
+       opens no console window. Carried as its assembly, .deps.json and runtimeconfig.json beside Passenger.exe, and as its
+       apphost under bin\, which names the assembly above it, so the folder Windows' installer puts on the person's Path
+       holds the command alone. Built for a publish's system it is self-contained on the same runtime pack, so its apphost
+       finds the runtime Passenger carries beside it. macOS's command is the script beside this (passenger-ide). -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <AssemblyName>passenger-ide</AssemblyName>
+    <RootNamespace>Passenger.Launcher</RootNamespace>
+    <SelfContained Condition="'$(RuntimeIdentifier)' != ''">true</SelfContained>
+    <ApplicationIcon>../Passenger.App/Assets/Passenger.ico</ApplicationIcon>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <!-- The apphost again, as bin\passenger-ide.exe naming ..\passenger-ide.dll, made as the SDK makes its own. -->
+  <Target Name="CreateCommandHost" AfterTargets="_CreateAppHost" Condition="'$(AppHostIntermediatePath)' != '' And Exists('$(AppHostSourcePath)')">
+    <PropertyGroup>
+      <CommandHostPath>$([System.IO.Path]::GetFullPath('$(IntermediateOutputPath)bin/$(AssemblyName)$(_NativeExecutableExtension)'))</CommandHostPath>
+    </PropertyGroup>
+    <MakeDir Directories="$([System.IO.Path]::GetDirectoryName('$(CommandHostPath)'))" />
+    <CreateAppHost AppHostSourcePath="$(AppHostSourcePath)"
+                   AppHostDestinationPath="$(CommandHostPath)"
+                   AppBinaryName="../$(AssemblyName)$(TargetExt)"
+                   IntermediateAssembly="@(IntermediateAssembly->'%(FullPath)')"
+                   WindowsGraphicalUserInterface="$(_UseWindowsGraphicalUserInterface)"
+                   Retries="$(CopyRetryCount)"
+                   RetryDelayMilliseconds="$(CopyRetryDelayMilliseconds)"
+                   EnableMacOSCodeSign="$(_EnableMacOSCodeSign)"
+                   DisableCetCompat="$(_DisableCetCompat)" />
+  </Target>
+
+  <!-- The four files Passenger carries of it, each with the folder it goes in beside the app. -->
+  <Target Name="GetLauncher" DependsOnTargets="GetTargetPath" Returns="@(LauncherFile)">
+    <ItemGroup>
+      <LauncherFile Include="$(TargetDir)$(TargetName).dll;$(TargetDir)$(TargetName).deps.json;$(TargetDir)$(TargetName).runtimeconfig.json" Folder="" />
+      <LauncherFile Include="$([System.IO.Path]::GetFullPath('$(IntermediateOutputPath)bin/$(AssemblyName)$(_NativeExecutableExtension)'))" Folder="bin/" />
+    </ItemGroup>
+  </Target>
+</Project>

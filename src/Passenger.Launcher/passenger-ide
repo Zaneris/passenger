@@ -1,0 +1,13 @@
+#!/bin/sh
+# passenger-ide on macOS: runs the Passenger this script is carried by, through a link to it too, with everything it is
+# given: a folder, a solution or a file, and Passenger's flags. Passenger's app is beside the script's bin folder in a
+# build, and in Contents/MacOS where the app's bundle carries the script in Contents/Resources/bin.
+self=$(readlink -f "$0") || self=$0
+bin=$(dirname "$self")
+for app in "$bin/.." "$bin/../../MacOS"; do
+    if [ -x "$app/Passenger" ] && [ -f "$app/Passenger.dll" ]; then
+        exec "$(cd "$app" && pwd -P)/Passenger" "$@"
+    fi
+done
+echo "passenger-ide: no Passenger is beside $self: add the command again from Passenger's Tools menu" >&2
+exit 127

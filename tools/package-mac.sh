@@ -190,6 +190,8 @@ if [ -d "$app/Contents/MacOS/debugger/relay" ]; then
     mkdir -p "$(dirname "$relays")"
     mv "$app/Contents/MacOS/debugger/relay" "$relays"
 fi
+# The passenger-ide command's script too, which Passenger links in ~/.local/bin when the person asks (PassengerCommand.cs).
+mv "$app/Contents/MacOS/bin" "$app/Contents/Resources/bin"
 # Nothing dotted may stay among the code, or codesign refuses the app's seal as a bundle it cannot read.
 dotted_code() {
     dotted=$(find "$1/Contents/MacOS" -mindepth 1 -type d -name '*.*' | head -n 1)
@@ -384,6 +386,8 @@ done
 for part in web/passenger/prettier.cjs web/passenger/docker-hub.cjs web/passenger/yaml-schemas.mjs web/schemas/compose-spec.json; do
     [ -f "$shipped/Contents/Resources/$part" ] || fail "the app has no $part in its Resources"
 done
+[ -x "$shipped/Contents/Resources/bin/passenger-ide" ] || fail "the app has no passenger-ide command in its Resources"
+[ ! -e "$shipped/Contents/MacOS/bin" ] || fail "the app carries its passenger-ide command among its code"
 # Every headless platform the inspector carries for an older Avalonia is the app's too.
 for part in $(cd "$publish/inspector" && find avalonia -type f); do
     [ -f "$shipped/Contents/MacOS/inspector/$part" ] || fail "the app has no inspector/$part"

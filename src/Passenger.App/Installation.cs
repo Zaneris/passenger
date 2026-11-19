@@ -8,7 +8,8 @@ namespace Passenger.App;
 /// <summary>Passenger as its Windows installer left it (tools/package-win.sh): Velopack's, per user, in
 /// <c>%LocalAppData%\PassengerIDE\current</c> beside its manifest (<c>sq.version</c>), Update.exe above. Its installer,
 /// updater and uninstaller run Passenger.exe with a hook's flag before anything else of it, and Passenger answers by
-/// registering or removing the file types it opens, then exits. A copy anywhere else (a build, the tests, macOS) never
+/// registering or removing the file types it opens and the passenger-ide command's folder on the person's own Path
+/// (<see cref="PassengerCommand"/>), then exits. A copy anywhere else (a build, the tests, macOS) never
 /// starts Velopack, which would only add to a log of its own in local app data at every start.</summary>
 internal static partial class Installation
 {
@@ -28,15 +29,42 @@ internal static partial class Installation
     public static bool Installed => File.Exists(Path.Combine(AppContext.BaseDirectory, "sq.version"));
 
     /// <summary>Velopack's start with Passenger's hooks, which are Windows' alone.</summary>
-    public static VelopackApp Hooked(VelopackApp app) => OperatingSystem.IsWindows() ? HookFileTypes(app) : app;
+    public static VelopackApp Hooked(VelopackApp app) => OperatingSystem.IsWindows() ? WithHooks(app) : app;
 
     /// <summary>An update runs the new version's hook too: what it opens may have changed, and current\, the path the
-    /// types name, stays where it was.</summary>
+    /// types and the Path name, stays where it was; an install updated from a release before the command takes it then.</summary>
     [SupportedOSPlatform("windows")]
-    private static VelopackApp HookFileTypes(VelopackApp app) => app
-        .OnAfterInstallFastCallback(_ => RegisterFileTypes())
-        .OnAfterUpdateFastCallback(_ => RegisterFileTypes())
-        .OnBeforeUninstallFastCallback(_ => UnregisterFileTypes());
+    private static VelopackApp WithHooks(VelopackApp app) => app
+        .OnAfterInstallFastCallback(_ => TakeInstall())
+        .OnAfterUpdateFastCallback(_ => TakeInstall())
+        .OnBeforeUninstallFastCallback(_ => TakeUninstall());
+
+    /// <summary>The file types and the command's folder, each made whatever the other came to, a failure failing the hook.</summary>
+    [SupportedOSPlatform("windows")]
+    private static void TakeInstall()
+    {
+        try
+        {
+            RegisterFileTypes();
+        }
+        finally
+        {
+            PassengerCommand.PutOnPath();
+        }
+    }
+
+    [SupportedOSPlatform("windows")]
+    private static void TakeUninstall()
+    {
+        try
+        {
+            PassengerCommand.TakeOffPath();
+        }
+        finally
+        {
+            UnregisterFileTypes();
+        }
+    }
 
     /// <summary>Each type under HKEY_CURRENT_USER, so no administrator is asked: its ProgID, Passenger among the
     /// programs that open it, and Passenger as its default only where no other program has claimed it. Windows keeps a

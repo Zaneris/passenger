@@ -1956,7 +1956,8 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
     }
 
     /// <summary>An agent's own Passenger, which nobody is at, refuses its ide_action of an install, a change of the person's
-    /// shell PATH or Restart to Update in the words a person's window refuses an agent's, never taking them as the window's own.</summary>
+    /// shell PATH or passenger-ide command, or Restart to Update in the words a person's window refuses an agent's, never
+    /// taking them as the window's own.</summary>
     [Fact]
     public async Task An_agents_own_passenger_refuses_its_ide_action_to_install_change_the_shells_path_or_restart_to_update()
     {
@@ -1965,7 +1966,8 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         await using McpClient client = await Start(["--mcp", folder], languageServer: false);
         foreach ((string action, string why) in ((string, string)[])[(AppActions.InstallDotnetSdk, Refusals.AgentInstalls),
             (AppActions.AddDotnetToPath, Refusals.AgentChangesPath), (AppActions.InstallWorkloads, Refusals.AgentInstallsMobile),
-            (AppActions.InstallAndroidDependencies, Refusals.AgentInstallsMobile), (AppActions.RestartToUpdate, Refusals.RestartIsThePersons)])
+            (AppActions.InstallAndroidDependencies, Refusals.AgentInstallsMobile), (AppActions.RestartToUpdate, Refusals.RestartIsThePersons),
+            (AppActions.AddCommand, Refusals.CommandIsThePersons), (AppActions.RemoveCommand, Refusals.CommandIsThePersons)])
         {
             CallToolResult refused = await Result(client, McpTools.IdeAction, new() { ["action"] = action });
             Assert.True(refused.IsError == true && Text(refused).Contains(why, StringComparison.Ordinal),

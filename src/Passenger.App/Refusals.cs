@@ -290,6 +290,44 @@ public static class Refusals
     public const string AgentChangesPath = "An agent never changes the person's shell PATH: ask the person, who does it with the banner over Passenger's window, "
         + "or Tools, Add .NET to the Shell's PATH…";
 
+    /// <summary>An agent's Add or Remove the passenger-ide Command, or its input answering the person's question of it: the
+    /// person's shell is theirs to change.</summary>
+    public static readonly string CommandIsThePersons = $"An agent never adds or removes the person's {PassengerCommand.Name} command: ask the person, who does it "
+        + $"with Tools, Add the {PassengerCommand.Name} Command… or Remove the {PassengerCommand.Name} Command…";
+
+    /// <summary>Add or Remove the passenger-ide Command where Passenger's installer makes the command (Windows) or
+    /// install.sh does (Linux); null on macOS, where the person does.</summary>
+    public static string? CommandMadeElsewhere =>
+        OperatingSystem.IsWindows() ? $"On Windows, Passenger's installer puts the {PassengerCommand.Name} command on your Path, and uninstalling takes it off"
+        : OperatingSystem.IsMacOS() ? null
+        : $"On Linux, install.sh links the {PassengerCommand.Name} command, and install.sh --uninstall removes it";
+
+    /// <summary>The passenger-ide command while the window has not yet read what stands at its place.</summary>
+    public static readonly string CommandStillRead = $"Passenger is still reading where the {PassengerCommand.Name} command stands";
+
+    /// <summary>The passenger-ide command of a Passenger in no app bundle, as a build from source is not.</summary>
+    public static readonly string CommandOfNoBundle = $"This Passenger is in no app bundle, as a build from source is not, so it carries no {PassengerCommand.Name} command";
+
+    /// <summary>The passenger-ide command of a Passenger macOS runs from a copy of its own, which goes as it ends.</summary>
+    public static string CommandOfTranslocated(string bundle) =>
+        $"macOS runs this Passenger from a copy of its own ({bundle}), which goes as it ends: once Passenger is in Applications, its {PassengerCommand.Name} command can be added";
+
+    /// <summary>The passenger-ide command of a Passenger on a disk image, which goes as the image is ejected.</summary>
+    public static string CommandOfDiskImage(string bundle) =>
+        $"This Passenger runs from {bundle}, on a disk image or a disk it cannot write: drag it onto Applications, then add its {PassengerCommand.Name} command";
+
+    /// <summary>The passenger-ide command where the app's bundle carries no launcher for it.</summary>
+    public static string CommandNotCarried(string launcher) => $"This Passenger carries no {PassengerCommand.Name} command at {launcher}";
+
+    /// <summary>The passenger-ide command's place held by another program, a folder, or a link to one: the person's own.</summary>
+    public static string CommandOthers(string link) => $"{PathNames.Shown(link, null)} is another program's, not Passenger's: move it away, then add the command again";
+
+    /// <summary>Add the passenger-ide Command where it is there, leading to this Passenger, its folder on the PATH.</summary>
+    public static string CommandThere(string link) => $"{PathNames.Shown(link, null)} is there already, leading to this Passenger";
+
+    /// <summary>Remove the passenger-ide Command where nothing is at its place.</summary>
+    public static string NoCommand(string link) => $"There is no {PassengerCommand.Name} command at {PathNames.Shown(link, null)} to remove";
+
     /// <summary>The banner's word of a C# file of no project shown while the machine has no .NET SDK: what Roslyn's server
     /// cannot give it, and why.</summary>
     public static string LooseWithoutSdk(string file) =>

@@ -260,12 +260,21 @@ in each look's colours.
 
 [passenger-ide.net](https://passenger-ide.net/#download) has each system's download:
 
-- **macOS:** a disk image for Macs with Apple Silicon, or one for Intel Macs. Drag Passenger onto Applications.
-- **Windows:** an installer for x64 or Arm64, which installs for you alone, with no administrator.
+- **macOS:** a disk image for Macs with Apple Silicon, or one for Intel Macs. Drag Passenger onto Applications. For its
+  command, choose Tools | Add the passenger-ide Command…: it links `~/.local/bin/passenger-ide`, with no administrator,
+  and where your shell's PATH lacks `~/.local/bin`, adds it in your shell's startup file (`~/.zshrc` for zsh), saying
+  which before it asks. Tools | Remove the passenger-ide Command… takes the link away.
+- **Windows:** an installer for x64 or Arm64, which installs for you alone, with no administrator, and puts the
+  `passenger-ide` command on your Path; uninstalling takes it off. A terminal opened after the install finds it; one
+  already open keeps the Path it started with, so open a new one.
 - **Linux:** an archive for x64 or Arm64. Unpack it and run its `install.sh`, for you alone or with `--system` for
-  everyone; the command is `passenger-ide`, so it never meets Phusion Passenger's `passenger`. Its
+  everyone, which links `passenger-ide` in `~/.local/bin` (`/usr/local/bin` for everyone). Its
   [Linux page](https://passenger-ide.net/linux) names the libraries it needs; `install.sh` names your distribution's
   font package where it finds no font, and refreshes fontconfig's cache where it lists none of those installed.
+
+In a terminal, `passenger-ide [folder, solution or file]` opens it in Passenger, handing it to the Passenger already
+running if one is, and `passenger-ide . --file Program.cs --caret 12:5` opens a file of the folder at a line. The
+command is the same on every system, and never `passenger`, which is Phusion Passenger's.
 
 A copy the installer, the disk image or `install.sh` put in place updates itself, then shows what's new. Passenger
 needs:
