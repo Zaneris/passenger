@@ -4,6 +4,7 @@ using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.Input;
 using Avalonia.VisualTree;
+using Microsoft.Win32.SafeHandles;
 using Passenger.App.Debugging;
 using Passenger.App;
 using Passenger.App.CSharp;
@@ -319,6 +320,86 @@ public sealed class ExplorerFilesTests : IDisposable
         finally
         {
             File.WriteAllText(release, "go");
+            window.Close();
+        }
+    }
+
+    /// <summary>On Windows a round of design-time builds is over only once the processes its build session started, MSBuild's
+    /// nodes, are gone: a node goes on working in the folder of the project it built last until its process is gone, and a
+    /// folder going, which waits for the round that built its project, would not move while one does. Shop's and Lib's builds
+    /// are held at once, so one of them runs in a node.</summary>
+    [AvaloniaFact]
+    public void A_round_of_design_time_builds_is_over_only_once_the_msbuild_nodes_its_session_started_are_gone()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Assert.Skip("Only Windows keeps a folder a process works in from moving, which the round's end is waited for");
+            return;
+        }
+        // The project host gives MSBuild half the processors, and only two nodes build Shop and Lib at once.
+        Assert.SkipWhen(Environment.ProcessorCount / 2 < 2,
+            $"The project host builds two projects at once only on two MSBuild nodes, half of four processors, and this machine has {Environment.ProcessorCount}");
+        string library = Directory.CreateDirectory(Path.Combine(folder, "Lib")).FullName;
+        string releaseLib = Path.Combine(folder, "release-lib");
+        string releaseShop = Path.Combine(folder, "release-shop");
+        File.WriteAllText(Path.Combine(library, "Lib.csproj"), TestProjects.Library());
+        File.WriteAllText(Path.Combine(library, "Code.cs"), "class Code\n{\n}\n");
+        File.WriteAllText(Path.Combine(library, "Directory.Build.targets"), Holding(releaseLib));
+        File.WriteAllText(Path.Combine(folder, "Directory.Build.targets"), Holding(releaseShop));
+        Restore.Run(Path.Combine(library, "Lib.csproj"));
+        Restore.Run(Path.Combine(folder, "Shop.csproj"));
+        MainWindow window = new() { Width = 1200, Height = 800 };
+        window.Show();
+        window.OpenFolder(folder);
+        try
+        {
+            // Pumped, not settled: the language server's load waits for the design-time builds.
+            Ui.PumpUntil(() => File.Exists(Path.Combine(library, "held")) && File.Exists(Path.Combine(folder, "held")),
+                "Shop's and Lib's design-time builds to be held at once, in one round", TimeSpan.FromMinutes(2));
+            int host = Ui.AwaitPumped(Waiting.Apart(() => Passenger.Workspace.ProjectHosts.ForAsync(folder)), "the folder's project host").ProcessId;
+            // The round's nodes, held by handles of the test's own so no id is another process's by the time it is asked.
+            List<(SafeProcessHandle Process, string Line)> nodes = [];
+            foreach ((int child, int parent) in Kernel32.Processes())
+            {
+                SafeProcessHandle process = Kernel32.OpenProcess(Kernel32.Synchronize | Kernel32.ProcessQueryLimitedInformation, false, (uint)child);
+                if (parent == host && !process.IsInvalid)
+                {
+                    nodes.Add((process, $"{DotnetProcesses.Describe(child)?.CommandLine ?? "a process"} ({child})"));
+                }
+                else
+                {
+                    process.Dispose();
+                }
+            }
+            try
+            {
+                Assert.True(nodes.Count > 0, $"The project host (process {host}) started no process of its own to build Shop and Lib at once, so no node is there to be waited for");
+                (IDisposable held, Task over) = window.Session.DesignTimeBuilds.HoldOff([PathNames.Canonical(library)]);
+                using (held)
+                {
+                    File.WriteAllText(releaseLib, "go");
+                    File.WriteAllText(releaseShop, "go");
+                    Ui.AwaitPumped(over, "the round that builds Lib to be over", TimeSpan.FromMinutes(2));
+                    List<string> left = [];
+                    foreach ((SafeProcessHandle process, string line) in nodes)
+                    {
+                        if (Kernel32.WaitForSingleObject(process, 0) != 0)
+                        {
+                            left.Add(line);
+                        }
+                    }
+                    Assert.True(left.Count == 0, $"The round that built Lib was over while processes its session started still ran, which work in the folder of the project each built last: {string.Join("; ", left)}");
+                }
+            }
+            finally
+            {
+                nodes.ForEach(n => n.Process.Dispose());
+            }
+        }
+        finally
+        {
+            File.WriteAllText(releaseLib, "go");
+            File.WriteAllText(releaseShop, "go");
             window.Close();
         }
     }

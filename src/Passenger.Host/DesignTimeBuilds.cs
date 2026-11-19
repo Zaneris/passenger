@@ -77,6 +77,7 @@ internal static class DesignTimeBuilds
                 Loggers = [diagnostics],
             };
             EvaluationContext context = EvaluationContext.Create(EvaluationContext.SharingPolicy.Shared);
+            HashSet<(int Id, long Began)> before = SessionProcesses.Running();
             BuildManager.DefaultBuildManager.BeginBuild(parameters);
             try
             {
@@ -89,6 +90,7 @@ internal static class DesignTimeBuilds
                 BuildManager.DefaultBuildManager.EndBuild();
                 // A referenced project's output or a file changed before the next request: nothing of this one is reused.
                 BuildManager.DefaultBuildManager.ResetCaches();
+                SessionProcesses.WaitOut(before);
             }
 
             Dictionary<string, string> Own(string path) => asked.Each?.ContainsKey(path) == true

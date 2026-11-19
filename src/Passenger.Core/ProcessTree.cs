@@ -14,9 +14,6 @@ namespace Passenger.Core;
 [SupportedOSPlatform("windows")]
 internal static partial class ProcessTree
 {
-    /// <summary>TH32CS_SNAPPROCESS.</summary>
-    private const uint SnapProcesses = 0x2;
-
     /// <summary>The exit code a process ended here is given, as .NET's own kill gives it.</summary>
     private const int Killed = -1;
 
@@ -46,7 +43,7 @@ internal static partial class ProcessTree
                 WaitOut(ending, waited);
                 Dictionary<int, long> next = [];
                 ending = [];
-                foreach ((int child, int parent) in Listed())
+                foreach ((int child, int parent) in Kernel32.Processes())
                 {
                     if (found.Contains(child) || !level.TryGetValue(parent, out long parentBegan) || Opened(child, out bool endable) is not { } opened)
                     {
@@ -108,50 +105,6 @@ internal static partial class ProcessTree
             _ = Kernel32.WaitForSingleObject(process, (uint)Math.Ceiling(waited.Left.TotalMilliseconds));
         }
     }
-
-    /// <summary>Each process running, by its id and the id of the process that started it, as one snapshot of the system's.</summary>
-    private static unsafe List<(int Child, int Parent)> Listed()
-    {
-        List<(int Child, int Parent)> listed = [];
-        using SafeFileHandle snapshot = CreateToolhelp32Snapshot(SnapProcesses, 0);
-        if (snapshot.IsInvalid)
-        {
-            return listed;
-        }
-        ProcessEntry entry = new() { Size = (uint)sizeof(ProcessEntry) };
-        for (bool more = Process32First(snapshot, &entry); more; more = Process32Next(snapshot, &entry))
-        {
-            listed.Add(((int)entry.ProcessId, (int)entry.ParentProcessId));
-        }
-        return listed;
-    }
-
-    /// <summary>PROCESSENTRY32W.</summary>
-    [StructLayout(LayoutKind.Sequential)]
-    private unsafe struct ProcessEntry
-    {
-        public uint Size;
-        public uint Usage;
-        public uint ProcessId;
-        public nuint DefaultHeapId;
-        public uint ModuleId;
-        public uint Threads;
-        public uint ParentProcessId;
-        public int PriorityBase;
-        public uint Flags;
-        public fixed char ExeFile[260];
-    }
-
-    [LibraryImport("kernel32.dll", EntryPoint = "CreateToolhelp32Snapshot", SetLastError = true)]
-    private static partial SafeFileHandle CreateToolhelp32Snapshot(uint flags, uint processId);
-
-    [LibraryImport("kernel32.dll", EntryPoint = "Process32FirstW")]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static unsafe partial bool Process32First(SafeFileHandle snapshot, ProcessEntry* entry);
-
-    [LibraryImport("kernel32.dll", EntryPoint = "Process32NextW")]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static unsafe partial bool Process32Next(SafeFileHandle snapshot, ProcessEntry* entry);
 
     [LibraryImport("kernel32.dll", EntryPoint = "TerminateProcess")]
     [return: MarshalAs(UnmanagedType.Bool)]

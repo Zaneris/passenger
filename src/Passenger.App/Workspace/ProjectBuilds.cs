@@ -434,7 +434,7 @@ public sealed class ProjectBuilds
     private string? Under() => solution().GetValueOrDefault(MSBuildNames.SolutionPath);
 
     /// <summary>Builds a round in the host, <paramref name="over"/> once the host has answered for all of it, which it does
-    /// only once its build session has ended, or once the folder is let go.</summary>
+    /// only once its build session has ended and the processes it started are gone, or once the folder is let go.</summary>
     private async Task RoundAsync(int mine, string following, List<string> round, Dictionary<string, string> properties,
         IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>>? each, TaskCompletionSource over, CancellationToken cancel)
     {

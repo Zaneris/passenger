@@ -30,6 +30,42 @@ public static partial class Kernel32
     /// <summary>NtQueryInformationProcess's ProcessBasicInformation.</summary>
     private const int ProcessBasicInformation = 0;
 
+    /// <summary>TH32CS_SNAPPROCESS.</summary>
+    private const uint SnapProcesses = 0x2;
+
+    /// <summary>Each process running, by its id and the id of the process that started it, as one snapshot of the system's.</summary>
+    public static unsafe List<(int Child, int Parent)> Processes()
+    {
+        List<(int Child, int Parent)> listed = [];
+        using SafeFileHandle snapshot = CreateToolhelp32Snapshot(SnapProcesses, 0);
+        if (snapshot.IsInvalid)
+        {
+            return listed;
+        }
+        ProcessEntry entry = new() { Size = (uint)sizeof(ProcessEntry) };
+        for (bool more = Process32First(snapshot, &entry); more; more = Process32Next(snapshot, &entry))
+        {
+            listed.Add(((int)entry.ProcessId, (int)entry.ParentProcessId));
+        }
+        return listed;
+    }
+
+    /// <summary>PROCESSENTRY32W.</summary>
+    [StructLayout(LayoutKind.Sequential)]
+    private unsafe struct ProcessEntry
+    {
+        public uint Size;
+        public uint Usage;
+        public uint ProcessId;
+        public nuint DefaultHeapId;
+        public uint ModuleId;
+        public uint Threads;
+        public uint ParentProcessId;
+        public int PriorityBase;
+        public uint Flags;
+        public fixed char ExeFile[260];
+    }
+
     /// <summary>The id a process names as its parent's, from PROCESS_BASIC_INFORMATION, six pointer-sized fields with that
     /// id last; null when Windows will not say.</summary>
     public static unsafe int? ParentOf(SafeProcessHandle process)
@@ -110,4 +146,15 @@ public static partial class Kernel32
     [LibraryImport("kernel32.dll", EntryPoint = "GetFileInformationByHandleEx", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     public static unsafe partial bool GetFileInformationByHandleEx(SafeFileHandle file, int kind, void* information, uint size);
+
+    [LibraryImport("kernel32.dll", EntryPoint = "CreateToolhelp32Snapshot", SetLastError = true)]
+    private static partial SafeFileHandle CreateToolhelp32Snapshot(uint flags, uint processId);
+
+    [LibraryImport("kernel32.dll", EntryPoint = "Process32FirstW")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static unsafe partial bool Process32First(SafeFileHandle snapshot, ProcessEntry* entry);
+
+    [LibraryImport("kernel32.dll", EntryPoint = "Process32NextW")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static unsafe partial bool Process32Next(SafeFileHandle snapshot, ProcessEntry* entry);
 }
