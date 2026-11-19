@@ -13,10 +13,10 @@ namespace Passenger.Tests;
 
 /// <summary>What a person sees go wrong in a window, a dialog or a part of one, however narrow: words cut short with no
 /// ellipsis or wrap, by their own room or by a scroller that can't scroll to the rest, words laid out past the side of
-/// what holds them or of the room a row gave their part, and two things a person reads or presses drawn one over the
-/// other, each as far as what clips it shows it. A field's own options inside it and what one holds inside another are
-/// laid over each other on purpose. The code editor draws its own rows and a scroll bar its own thumb, so neither is read
-/// here.</summary>
+/// what holds them or of the room a row gave their part, a field or button laid out past the edge of what shows it with
+/// nothing to scroll it into view, and two things a person reads or presses drawn one over the other, each as far as
+/// what clips it shows it. A field's own options inside it and what one holds inside another are laid over each other on
+/// purpose. The code editor draws its own rows and a scroll bar its own thumb, so neither is read here.</summary>
 internal static class LayoutFaults
 {
     /// <summary>The faults of <paramref name="part"/>, measured in <paramref name="window"/>, each saying what and where.</summary>
@@ -39,6 +39,13 @@ internal static class LayoutFaults
             else if (Past(text) is { } past)
             {
                 found.Add($"{what} lays '{text.Text}' out {past:0.#} px past the side of what holds it, over the room beside it, where what holds words grows with them");
+            }
+        }
+        foreach (Control field in drawn.Where(c => c is not TextBlock && c.Bounds.Width >= 1))
+        {
+            if (PastEdge(window, field) is { } past)
+            {
+                found.Add($"{what} lays {Named(field)} out {past:0.#} px past the edge of what shows it, cut there with nothing to scroll it into view, where a field narrows with its room");
             }
         }
         Rect[] seen = [.. drawn.Select(c => Visible(window, c))];
@@ -105,8 +112,7 @@ internal static class LayoutFaults
         double end = text.Padding.Left + lines.Max(l => l.Start + l.Width);
         foreach (ScrollContentPresenter scroller in text.GetVisualAncestors().OfType<ScrollContentPresenter>())
         {
-            if (scroller.CanHorizontallyScroll && scroller.TemplatedParent is ScrollViewer viewer and not { TemplatedParent: TextBox }
-                && viewer.GetVisualDescendants().OfType<ScrollBar>().Any(b => b.TemplatedParent == viewer && b.Orientation == Orientation.Horizontal))
+            if (ScrollsSideways(scroller))
             {
                 continue;
             }
@@ -116,6 +122,35 @@ internal static class LayoutFaults
             if (shown < right - left - 0.5)
             {
                 return Math.Max(shown, 0);
+            }
+        }
+        return null;
+    }
+
+    /// <summary>Whether a scroller brings what it holds into view sideways, by its bar (a field's moves only to keep its caret
+    /// in view, a menu's has no sideways bar).</summary>
+    private static bool ScrollsSideways(ScrollContentPresenter scroller) =>
+        scroller.CanHorizontallyScroll && scroller.TemplatedParent is ScrollViewer viewer and not { TemplatedParent: TextBox }
+        && viewer.GetVisualDescendants().OfType<ScrollBar>().Any(b => b.TemplatedParent == viewer && b.Orientation == Orientation.Horizontal);
+
+    /// <summary>How far a control (a field, a button) stands past a side of what shows it, where nothing brings it into view:
+    /// the nearest scroller holding it, unless that scrolls sideways, else the window's own edge (a fixed-width field in a
+    /// dialog narrower than it); null where it stands inside.</summary>
+    private static double? PastEdge(Visual window, Control control)
+    {
+        Rect placed = Placed(window, control);
+        for (Visual? up = control.GetVisualParent(); up is not null; up = up.GetVisualParent())
+        {
+            if (up is ScrollContentPresenter scroller && ScrollsSideways(scroller))
+            {
+                return null;
+            }
+            if (up is ScrollContentPresenter || up == window)
+            {
+                Rect edge = Placed(window, up);
+                double past = Math.Max(placed.Right - edge.Right, edge.Left - placed.Left);
+                // A pixel is layout rounding's.
+                return past > 1 ? past : null;
             }
         }
         return null;
@@ -191,6 +226,7 @@ internal static class LayoutFaults
     {
         TextBlock text => $"'{text.Text}'",
         ContentControl { Content: string words } => $"'{words}'",
+        _ when Avalonia.Automation.AutomationProperties.GetLabeledBy(control) is TextBlock { Text.Length: > 0 } label => $"the {control.GetType().Name} '{label.Text}'",
         _ => $"the {control.GetType().Name} {ToolTip.GetTip(control) ?? control.Name}".TrimEnd(),
     };
 }

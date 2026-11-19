@@ -104,7 +104,7 @@ public sealed class ThemeExplorer : StackPanel
     };
 
     /// <summary>The order the themes are listed in.</summary>
-    public ComboBox OrderBox { get; } = new() { Classes = { StyleClasses.Form }, Width = 120 };
+    public ComboBox OrderBox { get; } = new() { Width = 120 };
 
     /// <summary>The colour themes found, one row each.</summary>
     public ListBox List { get; } = new() { Classes = { StyleClasses.Tree }, Height = 240 };

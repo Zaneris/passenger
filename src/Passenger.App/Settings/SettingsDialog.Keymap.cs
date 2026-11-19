@@ -42,7 +42,7 @@ public sealed partial class SettingsDialog
 
     /// <summary>The keymap drop-down at the Keymap page's top: the keymap the person's keys follow, their own shortcuts
     /// kept over each apart.</summary>
-    public ComboBox KeymapChoice { get; } = new() { Name = "KeymapChoice", Classes = { StyleClasses.Form } };
+    public ComboBox KeymapChoice { get; } = new FormDropDown { Name = "KeymapChoice" };
 
     /// <summary>Find Actions by Shortcut, the magnifier over a keyboard at the Keymap page's top.</summary>
     public Button FindByShortcut { get; } = new() { Classes = { StyleClasses.Tool } };

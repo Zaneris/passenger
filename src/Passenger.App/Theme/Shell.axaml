@@ -11,7 +11,8 @@
         <x:Double x:Key="Passenger.ControlHeight">28</x:Double>
         <!-- A check box's row as tall as a field's (Fluent's is 32), so a page's rows are evenly spaced. -->
         <StaticResource x:Key="CheckBoxMinHeight" ResourceKey="Passenger.ControlHeight" />
-        <!-- A form's drop-down (ComboBox.form): one width for every drop-down in a column, so their edges line up. -->
+        <!-- A form's drop-down (ComboBox.form, FormDropDown): one width for every drop-down in a column where there is room,
+             so their edges line up. -->
         <x:Double x:Key="Passenger.DropDownWidth">280</x:Double>
         <!-- The room round a menu's frame its shadow is drawn in (Passenger.PopupShadow's reach), inside the menu's own popup:
              the margin of what the popup holds, by which the popup places the frame where it would stand without it. -->
@@ -379,10 +380,11 @@
         <Setter Property="BorderBrush" Value="{DynamicResource Passenger.FieldBorder}" />
         <Setter Property="VerticalContentAlignment" Value="Center" />
     </Style>
-    <!-- A drop-down in a form's column (Settings' options, New Project's, a run configuration's): every one in the column
-         as wide as the others, its edge where theirs is. -->
+    <!-- A drop-down in a form's column (FormDropDown: Settings' options, New Project's, a run configuration's): every one in
+         the column as wide as the others where there is room, its edge where theirs is, and as wide as the room where there
+         is less, never past it. -->
     <Style Selector="ComboBox.form">
-        <Setter Property="Width" Value="{DynamicResource Passenger.DropDownWidth}" />
+        <Setter Property="MaxWidth" Value="{DynamicResource Passenger.DropDownWidth}" />
         <Setter Property="HorizontalAlignment" Value="Left" />
     </Style>
     <!-- An editable drop-down's text centred in it as a chosen item's is, where Fluent's taller text box would put it at the

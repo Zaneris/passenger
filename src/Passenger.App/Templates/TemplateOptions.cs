@@ -63,7 +63,7 @@ public sealed class TemplateOptions
                     row = Row(null, Described(box, said), top: said is not null);
                     break;
                 case TemplateOptionKind.Choice:
-                    ComboBox choices = new() { Classes = { StyleClasses.Form }, ItemsSource = option.Choices.Select(c => c.Label).ToList() };
+                    FormDropDown choices = new() { ItemsSource = option.Choices.Select(c => c.Label).ToList() };
                     choices.SelectedIndex = Math.Max(0, option.Choices.ToList().FindIndex(c => c.Value.Equals(value, StringComparison.OrdinalIgnoreCase)));
                     choices.SelectionChanged += (_, _) =>
                     {

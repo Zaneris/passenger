@@ -1398,8 +1398,9 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
 
     /// <summary>The layout faults' check finds what it is for, so its silence over the window means something: words wider
     /// than their room with no ellipsis, words laid out past the side of a row held narrower than they are, words their
-    /// own holder holds laid out past the room a row of parts gave their part, and two buttons laid in one cell, are each
-    /// found; words that end in an ellipsis, and a field's own options inside it, are not.</summary>
+    /// own holder holds laid out past the room a row of parts gave their part, a field of a fixed width past the edge of a
+    /// scroller that scrolls no way sideways, and two buttons laid in one cell, are each found; words that end in an
+    /// ellipsis, and a field's own options inside it, are not.</summary>
     [AvaloniaFact]
     public void The_layout_faults_check_finds_words_cut_and_controls_drawn_over_each_other()
     {
@@ -1422,16 +1423,18 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
                 },
             },
         };
+        ScrollViewer narrow = new() { Width = 120, HorizontalAlignment = HorizontalAlignment.Left, Content = new ComboBox { Width = 200, HorizontalAlignment = HorizontalAlignment.Left } };
         Grid laidOver = new() { Children = { new Button { Content = "First" }, new Button { Content = "Second" } } };
-        Window window = new() { Width = 400, Height = 300, Content = new StackPanel { Children = { cut, trimmed, held, parts, laidOver } } };
+        Window window = new() { Width = 400, Height = 300, Content = new StackPanel { Children = { cut, trimmed, held, parts, narrow, laidOver } } };
         window.Show();
         try
         {
             Ui.Settle();
             List<string> found = LayoutFaults.Of(window, window, "The test window");
             Assert.True(found.Count(f => f.Contains("cuts", StringComparison.Ordinal)) == 1 && found.Count(f => f.Contains("past the side", StringComparison.Ordinal)) == 2
-                && found.Any(f => f.Contains("their part", StringComparison.Ordinal)) && found.Any(f => f.Contains("one over the other", StringComparison.Ordinal)),
-                $"The check found {found.Count} faults where one cut word, words laid past their row, words laid past their part's room and two buttons laid over each other stand:\n{string.Join("\n", found)}");
+                && found.Any(f => f.Contains("their part", StringComparison.Ordinal)) && found.Count(f => f.Contains("past the edge", StringComparison.Ordinal)) == 1
+                && found.Any(f => f.Contains("one over the other", StringComparison.Ordinal)),
+                $"The check found {found.Count} faults where one cut word, words laid past their row, words laid past their part's room, a field past its scroller's edge and two buttons laid over each other stand:\n{string.Join("\n", found)}");
         }
         finally
         {
@@ -2833,10 +2836,11 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
             + $"SettingsDialog.PlaceOfPage and the dialog's constant for it, one of {string.Join(", ", pages)}:\n{string.Join("\n", found)}");
     }
 
-    /// <summary>No editor of a Settings row, nothing it holds and no note under it is given a width of its own: each narrows
-    /// with the page by its most width, one of the row's (OptionRow.EditorWidth, a number box's OptionRow.NumberWidth), a
-    /// field and what follows it through NarrowingField, a drop-down at the form's width the theme gives. The theme
-    /// explorer is passed over: it lays itself under the theme picker's row at the widths that row took.</summary>
+    /// <summary>No editor of a Settings row, nothing it holds and no note under it is given a width of its own, a field by
+    /// a style either: each narrows with the page by its most width, one of the row's (OptionRow.EditorWidth, a number
+    /// box's OptionRow.NumberWidth), a field and what follows it through NarrowingField, a drop-down at the form's most the
+    /// theme gives (FormDropDown). The theme explorer is passed over: it lays itself under the theme picker's row at the
+    /// widths that row took.</summary>
     [AvaloniaFact]
     public void No_settings_editor_or_note_is_given_a_width_of_its_own_each_narrowing_by_the_rows_most()
     {
@@ -2862,12 +2866,13 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
                     foreach (Control part in row.Note is null ? parts : parts.Append(row.Note))
                     {
                         string what = $"{page}, {row.Label.Text}: a {part.GetType().Name}";
-                        if (double.IsFinite(part.Width) && Avalonia.Diagnostics.AvaloniaObjectExtensions.GetDiagnostic(part, Layoutable.WidthProperty).Priority
-                            == Avalonia.Data.BindingPriority.LocalValue)
+                        // A field held to a width by a style (as every form's drop-down was) stands past a page narrower than it.
+                        if (double.IsFinite(part.Width) && (part is ComboBox or TextBox or NumericUpDown
+                            || Avalonia.Diagnostics.AvaloniaObjectExtensions.GetDiagnostic(part, Layoutable.WidthProperty).Priority == Avalonia.Data.BindingPriority.LocalValue))
                         {
                             held.Add($"{what} given a Width of {part.Width:0}");
                         }
-                        if (double.IsFinite(part.MaxWidth) && !mosts.Contains(part.MaxWidth))
+                        if (double.IsFinite(part.MaxWidth) && !mosts.Contains(part.MaxWidth) && !(part is FormDropDown && part.MaxWidth == dropDown))
                         {
                             held.Add($"{what} given a MaxWidth of {part.MaxWidth:0}");
                         }
@@ -3086,6 +3091,19 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
             .Where(l => byHand.IsMatch(l.Text)).Select(l => $"{l.Path}:{l.Line}")];
         Assert.True(found.Length == 0, $"{found.Length} OK or Cancel buttons are made by hand, so their order and keys drift from every other dialog's: "
             + $"make each with DialogFooter (Default, Cancel, OkCancel, or Popup in a popup):\n{string.Join("\n", found)}");
+    }
+
+    /// <summary>A form's drop-down is a FormDropDown, which narrows with its room up to the form's most, so none stands past
+    /// a form narrower than it: the form's class given to a drop-down by hand, which held it to a width of its own, fails
+    /// here, naming its line.</summary>
+    [Fact]
+    public void Every_forms_drop_down_is_a_FormDropDown_narrowing_with_its_room()
+    {
+        Regex byHand = new(@"\bStyleClasses\.Form\b");
+        string[] found = [.. UiFiles().Where(f => !f.Path.EndsWith("/FormDropDown.cs", StringComparison.Ordinal))
+            .SelectMany(f => f.Text.Split('\n').Select((line, i) => (f.Path, Line: i + 1, Text: line)))
+            .Where(l => byHand.IsMatch(l.Text)).Select(l => $"{l.Path}:{l.Line}")];
+        Assert.True(found.Length == 0, $"{found.Length} drop-downs are given a form's class by hand, so they keep no form's width: make each a FormDropDown:\n{string.Join("\n", found)}");
     }
 
     /// <summary>A button that copies words for the person to paste elsewhere, then says Copied, is a CopyButton (Copy

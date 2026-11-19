@@ -31,7 +31,7 @@ public sealed class ComposeServicesTable : EditableTable
 
     /// <param name="named">What a row stands for, the first column's title: a Compose service, an AppHost's resource.</param>
     public ComposeServicesTable(string named = "Service")
-        : base("*,*,130", [named, "Project", "Run does"])
+        : base("*,*,*", [named, "Project", "Run does"])
     {
     }
 

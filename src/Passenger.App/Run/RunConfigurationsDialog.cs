@@ -123,11 +123,11 @@ public sealed class RunConfigurationsDialog : IdeWindow
         };
 
         NameBox = Field();
-        ProjectBox = new ComboBox { Classes = { StyleClasses.Form } };
-        FrameworkBox = new ComboBox { Classes = { StyleClasses.Form } };
-        BuildConfigurationBox = new ComboBox { Classes = { StyleClasses.Form }, Name = "BuildConfigurationBox" };
+        ProjectBox = new FormDropDown();
+        FrameworkBox = new FormDropDown();
+        BuildConfigurationBox = new FormDropDown { Name = "BuildConfigurationBox" };
         ToolTip.SetTip(BuildConfigurationBox, "What its run builds, evaluates and starts as, in place of the build configuration the folder builds as");
-        ProfileBox = new ComboBox { Classes = { StyleClasses.Form } };
+        ProfileBox = new FormDropDown();
         SaveAsProfileButton = new Button { Name = "SaveAsProfileButton", IsVisible = false };
         SaveAsProfileButton.Click += (_, _) => SaveAsLaunchProfile();
         ReusedRows.Use(ProjectBox, () =>
@@ -135,8 +135,8 @@ public sealed class RunConfigurationsDialog : IdeWindow
             TextBlock name = new();
             return name.Showing<object>(item => name.Text = item is ProjectModel p ? p.Name : item.ToString());
         });
-        GodotBox = new ComboBox { Classes = { StyleClasses.Form }, ItemsSource = godotStartItems, Name = "GodotBox" };
-        SceneBox = new ComboBox { Classes = { StyleClasses.Form }, ItemsSource = SceneStarts, Name = "SceneBox" };
+        GodotBox = new FormDropDown { ItemsSource = godotStartItems, Name = "GodotBox" };
+        SceneBox = new FormDropDown { ItemsSource = SceneStarts, Name = "SceneBox" };
         CopiesBox = new NumericUpDown { Minimum = 1, Maximum = GameCopies.Most, Increment = 1, FormatString = "0", Width = 140, Name = "CopiesBox" };
         ToolTip.SetTip(CopiesBox, "How many copies of the game a launch starts side by side (a server and its clients), each a run of its own with its own console: "
             + "debugged in a Debug tab of its own, or run in a tab of the Terminal window; Stop ends them together");
@@ -210,7 +210,7 @@ public sealed class RunConfigurationsDialog : IdeWindow
             Services = [],
         });
         LaunchServiceBox = Field("The first .NET service");
-        ModeBox = new ComboBox { Classes = { StyleClasses.Form }, ItemsSource = (string[])[FastMode, ImagesMode] };
+        ModeBox = new FormDropDown { ItemsSource = (string[])[FastMode, ImagesMode] };
         ToolTip.SetTip(ModeBox, "Fast runs each .NET service in its image's runtime stage with Passenger's build mounted in, so a code change needs no image rebuild; the other builds every image as Compose says");
         TextBlock keepWords = new() { Text = "Keep backing services running after Stop" };
         KeepBackingBox = new CheckBox { Content = keepWords };

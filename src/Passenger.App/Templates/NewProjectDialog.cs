@@ -72,7 +72,7 @@ public sealed class NewProjectDialog : IdeWindow
     private readonly TextBox search = new() { Classes = { StyleClasses.Search }, PlaceholderText = "Search", Margin = new Thickness(Gaps.Normal, Gaps.Normal, Gaps.Normal, Gaps.Small) };
     private readonly ListBox list;
     private readonly TextBlock loading;
-    private readonly ComboBox typeChooser = new() { Classes = { StyleClasses.Form } };
+    private readonly ComboBox typeChooser = new FormDropDown();
     private readonly Control typeRow;
     private readonly TextBlock heading;
     private readonly TextBlock description;
@@ -81,7 +81,7 @@ public sealed class NewProjectDialog : IdeWindow
     private readonly TextBox projectName = new() { Classes = { StyleClasses.Search } };
     private readonly TextBox directory = new() { Classes = { StyleClasses.Search } };
     private readonly CheckBox sameDirectory = new() { Content = "Put solution and project in the same directory" };
-    private readonly ComboBox format = new() { Classes = { StyleClasses.Form } };
+    private readonly ComboBox format = new FormDropDown();
 
     /// <summary>Whether what the dialog says is a read of the templates that failed, which a later read takes back.</summary>
     private bool readFailed;
@@ -90,13 +90,13 @@ public sealed class NewProjectDialog : IdeWindow
     private readonly Control sameRow;
     private readonly Control? formatRow;
     private readonly TextBlock where = new() { Classes = { StyleClasses.Muted }, FontSize = 12, TextWrapping = TextWrapping.Wrap };
-    private readonly ComboBox framework = new() { Classes = { StyleClasses.Form } };
+    private readonly ComboBox framework = new FormDropDown();
     private readonly TextBlock frameworkNote = new() { Classes = { StyleClasses.Muted }, FontSize = 12, TextWrapping = TextWrapping.Wrap };
     private readonly Control frameworkNoteRow;
 
     /// <summary>The framework the person picked for the template chosen, which a Godot game listed again keeps; null for none.</summary>
     private string? picked;
-    private readonly ComboBox language = new() { Classes = { StyleClasses.Form } };
+    private readonly ComboBox language = new FormDropDown();
     private readonly Control languageRow;
     private readonly TemplateOptions options = new();
     private readonly TextBlock command = new() { Classes = { StyleClasses.Muted }, FontSize = 12, TextWrapping = TextWrapping.Wrap };
@@ -115,7 +115,7 @@ public sealed class NewProjectDialog : IdeWindow
     private readonly CopyButton copyCommand = new("Copy Command") { IsVisible = false, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(Gaps.Normal, 0, 0, 0) };
     private readonly Button create = DialogFooter.Default("Create");
     private readonly Button browse = new() { Content = "Browse…", Margin = new Thickness(Gaps.Normal, 0, 0, 0) };
-    private readonly ComboBox setup = new() { Classes = { StyleClasses.Form } };
+    private readonly ComboBox setup = new FormDropDown();
     private readonly ComboBoxItem[] setups = [.. Enum.GetValues<ProjectSetup>().Select(s => new ComboBoxItem { Content = SetupName(s) })];
     private readonly TextBlock setupNote = new() { Classes = { StyleClasses.Muted }, FontSize = 12, TextWrapping = TextWrapping.Wrap };
     private readonly Button installSetup = new() { Classes = { StyleClasses.Link }, FontSize = 12, HorizontalAlignment = HorizontalAlignment.Left, IsVisible = false };
