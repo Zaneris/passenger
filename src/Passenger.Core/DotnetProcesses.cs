@@ -205,6 +205,73 @@ public static partial class DotnetProcesses
         }
     }
 
+    /// <summary>The start the runtime names a process's socket and pipes for (<see cref="RuntimeFiles"/>): on macOS the second
+    /// it started, on Linux its start in clock ticks since boot; null for one gone, a zombie or unreadable, and on Windows.</summary>
+    internal static unsafe long? StartKey(int id)
+    {
+        if (OperatingSystem.IsMacOS())
+        {
+            byte* info = stackalloc byte[BsdInfoSize];
+            return ProcPidInfo(id, ProcPidTbsdInfo, 0, info, BsdInfoSize) == BsdInfoSize ? *(long*)(info + BsdStartOffset) : null;
+        }
+        if (!OperatingSystem.IsLinux())
+        {
+            return null;
+        }
+        try
+        {
+            string stat = File.ReadAllText($"/proc/{id}/stat");
+            // The fields after the name, which may hold spaces and parentheses itself: the state is the 3rd, the start the 22nd.
+            string[] fields = stat[(stat.LastIndexOf(')') + 2)..].Split(' ');
+            return fields.Length > 19 && fields[0] != "Z" && long.TryParse(fields[19], CultureInfo.InvariantCulture, out long started) ? started : null;
+        }
+        catch (Exception gone) when (gone is IOException or UnauthorizedAccessException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>The processes of process group <paramref name="group"/> now, on macOS and Linux; none elsewhere.</summary>
+    internal static unsafe IReadOnlyList<int> InGroup(int group)
+    {
+        if (OperatingSystem.IsMacOS())
+        {
+            const int GroupOnly = 2;
+            int[] ids = new int[1024];
+            fixed (int* buffer = ids)
+            {
+                int bytes = ProcListPids(GroupOnly, (uint)group, buffer, ids.Length * sizeof(int));
+                return bytes <= 0 ? [] : [.. ids.Take(Math.Min(bytes / sizeof(int), ids.Length)).Where(id => id > 0)];
+            }
+        }
+        if (!OperatingSystem.IsLinux())
+        {
+            return [];
+        }
+        List<int> found = [];
+        foreach (string folder in Directory.EnumerateDirectories("/proc"))
+        {
+            if (!int.TryParse(Path.GetFileName(folder), CultureInfo.InvariantCulture, out int id))
+            {
+                continue;
+            }
+            try
+            {
+                string stat = File.ReadAllText($"{folder}/stat");
+                // The 5th field is the process group.
+                if (stat[(stat.LastIndexOf(')') + 2)..].Split(' ') is { Length: > 2 } fields && fields[2] == group.ToString(CultureInfo.InvariantCulture))
+                {
+                    found.Add(id);
+                }
+            }
+            catch (Exception gone) when (gone is IOException or UnauthorizedAccessException)
+            {
+                // Gone as the folder was read.
+            }
+        }
+        return found;
+    }
+
     /// <summary>A variable of the environment a process started with, as the system keeps it (KERN_PROCARGS2 on macOS, /proc
     /// on Linux), which it gives for a process of the same user; null where the process has none, or it cannot be read (gone,
     /// another user's, a program of the system's own, Windows).</summary>
@@ -797,6 +864,9 @@ public static partial class DotnetProcesses
 
     [LibraryImport("libc", EntryPoint = "proc_pidinfo", SetLastError = true)]
     private static unsafe partial int ProcPidInfo(int pid, int flavor, ulong argument, byte* buffer, int size);
+
+    [LibraryImport("libc", EntryPoint = "proc_listpids")]
+    private static unsafe partial int ProcListPids(int type, uint argument, int* buffer, int size);
 
     [LibraryImport("libc", EntryPoint = "sysctl")]
     private static unsafe partial int SysCtl(int* name, uint length, byte* old, nuint* oldLength, byte* value, nuint valueLength);

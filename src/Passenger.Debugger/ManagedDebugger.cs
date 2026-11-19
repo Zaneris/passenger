@@ -93,6 +93,9 @@ public partial class ManagedDebugger
     /// <summary>The program the adapter launched, and how it ended once it has.</summary>
     private SuspendedLaunch? _launch;
     private Task<int?>? _launchExit;
+
+    /// <summary>The socket and pipes the launched program's runtime keeps in its temporary folder, which it leaves when ended.</summary>
+    private Core.RuntimeFiles? _launchFiles;
     private Task? _launchOutput;
 
     /// <summary>When the launched program's output was last read (a <see cref="Stopwatch"/> timestamp).</summary>
@@ -115,10 +118,14 @@ public partial class ManagedDebugger
         }
     }
 
-    /// <summary>A launched program's process has ended: its end told, then the end of its debugging.</summary>
-    private async Task EndedLaunchAsync(Task<int?> ended)
+    /// <summary>A launched program's process has ended: what its runtime <paramref name="left"/> in its temporary folder
+    /// removed, its end told, then the end of its debugging.</summary>
+    private async Task EndedLaunchAsync(Task<int?> ended, Core.RuntimeFiles? left)
     {
-        await ReportExitAsync(await ended.ConfigureAwait(false)).ConfigureAwait(false);
+        int? exitCode = await ended.ConfigureAwait(false);
+        // Its runtime takes its socket and pipes away only as it ends of itself, never as Stop ends it.
+        left?.Remove();
+        await ReportExitAsync(exitCode).ConfigureAwait(false);
         ReportTerminated();
     }
 

@@ -51,6 +51,33 @@ public sealed class TestRun : IAsyncDisposable
     /// <summary>The run's folder, named for the test process.</summary>
     public static string Root { get; } = Path.Combine(Path.GetTempPath(), Prefix + Environment.ProcessId.ToString(System.Globalization.CultureInfo.InvariantCulture) + Unindexed);
 
+    /// <summary>The temporary folder the run started with: the person's own.</summary>
+    public static string PersonsTemporary { get; } = Path.GetTempPath();
+
+    private const string TemporaryPrefix = "prun-";
+
+    /// <summary>The temporary folder (TMPDIR) the run's programs are given on macOS and Linux: each .NET program's runtime
+    /// makes its diagnostic socket and its debugger's pipes there, which one killed leaves, so the run's go with the run and
+    /// never stay in <see cref="PersonsTemporary"/>. Named short, as a socket's path holds 103 bytes; the person's own where
+    /// no folder is short enough, and on Windows, whose pipes go with their process.</summary>
+    public static string Temporary { get; } = RunTemporary();
+
+    /// <summary>In the person's temporary folder, else the system's (macOS's per-user one is too long), the first where the
+    /// longest socket name made there fits a socket's path: a stand-in diagnostics router's, for a 7-digit id and a 10-digit
+    /// start.</summary>
+    private static string RunTemporary()
+    {
+        const int Longest = 52;
+        string own = TemporaryPrefix + Environment.ProcessId.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        return OperatingSystem.IsWindows() ? PersonsTemporary
+            : TemporaryBases().Select(under => Path.Combine(under, own)).FirstOrDefault(folder => folder.Length + 1 + Longest <= 103) ?? PersonsTemporary;
+    }
+
+    /// <summary>Where a run's folders are made: the person's temporary folder, then, on macOS and Linux, the system's, as its
+    /// real path names it.</summary>
+    private static IEnumerable<string> TemporaryBases() =>
+        OperatingSystem.IsWindows() ? [PersonsTemporary] : [PersonsTemporary, OperatingSystem.IsMacOS() ? "/private/tmp" : "/tmp"];
+
     /// <summary>The IDE's state folder for the whole run.</summary>
     public static string Settings => Path.Combine(Root, "settings");
 
@@ -105,16 +132,32 @@ public sealed class TestRun : IAsyncDisposable
         Passenger.Core.InFlight.Watched = true;
         // Every folder a test opens is trusted, but one it holds to the person's answer (WorkspaceTrust.Ask).
         Passenger.Core.WorkspaceTrust.TrustEverything();
-        foreach (string left in Directory.EnumerateDirectories(Path.GetTempPath(), Prefix + "*"))
+        foreach (string left in TemporaryBases().Select(Path.TrimEndingDirectorySeparator).Distinct(StringComparer.Ordinal).SelectMany(under => Directory.EnumerateDirectories(under, "p*")))
         {
             // A run still going has its process; one killed has none, and only an id reused since keeps its folder.
-            if (int.TryParse(Path.GetFileName(left)[Prefix.Length..].Replace(Unindexed, string.Empty, StringComparison.Ordinal), out int id)
-                && (id == Environment.ProcessId || !Processes.IsRunning(id)))
+            string name = Path.GetFileName(left);
+            string? number = name.StartsWith(Prefix, StringComparison.Ordinal) ? name[Prefix.Length..].Replace(Unindexed, string.Empty, StringComparison.Ordinal)
+                : name.StartsWith(TemporaryPrefix, StringComparison.Ordinal) ? name[TemporaryPrefix.Length..]
+                : null;
+            if (int.TryParse(number, out int id) && (id == Environment.ProcessId || !Processes.IsRunning(id)))
             {
                 TestFolders.Delete(left);
             }
         }
         Directory.CreateDirectory(Settings);
+        if (Temporary != PersonsTemporary)
+        {
+            UserTemporary.Own(Temporary);
+            // This process's own socket and pipes, which its runtime made in the person's folder as it started, are reached from the run's.
+            foreach (string own in RuntimeFiles.Of(Environment.ProcessId)?.Paths ?? [])
+            {
+                if (File.Exists(own))
+                {
+                    File.CreateSymbolicLink(Path.Combine(Temporary, Path.GetFileName(own)), own);
+                }
+            }
+            Environment.SetEnvironmentVariable("TMPDIR", Temporary);
+        }
         // Nor the person's Godot user folders: every Godot a window starts keeps its settings, logs and user:// in the run's.
         PersonsGodot.Begin();
         Environment.SetEnvironmentVariable(Passenger.App.Godot.GodotUserFolders.HomeVariable, Path.Combine(Root, "godot"));
@@ -355,7 +398,7 @@ public sealed class TestRun : IAsyncDisposable
     private static void End(bool waiting)
     {
         // The windows' agent sockets and the language servers' temporary folders are in folders named for the run's state, outside it.
-        foreach (string folder in (string[])[Root, Passenger.App.Mcp.McpHost.SocketFolder, AspireCli.Home,
+        foreach (string folder in (string[])[Root, .. Temporary == PersonsTemporary ? (string[])[] : [Temporary], Passenger.App.Mcp.McpHost.SocketFolder, AspireCli.Home,
             .. UserTemporary.Of(Passenger.App.CSharp.CSharpService.ServerCache, Passenger.Lsp.RoslynServerFolder.TemporariesKind) is var servers && Directory.Exists(servers) ? [servers] : (string[])[]])
         {
             try

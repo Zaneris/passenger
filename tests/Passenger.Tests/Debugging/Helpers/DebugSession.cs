@@ -25,6 +25,7 @@ public sealed class DebugSession : IAsyncDisposable
     private readonly bool terminateDebuggee;
     private readonly Channel<(string Name, JsonElement Body)> events = Channel.CreateUnbounded<(string, JsonElement)>();
     private readonly TaskCompletionSource initialized = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private readonly TaskCompletionSource<int> launched = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     /// <summary>The adapter's latest events and standard error, which a wait that fails quotes.</summary>
     private readonly Queue<string> heard = new();
@@ -75,6 +76,10 @@ public sealed class DebugSession : IAsyncDisposable
             {
                 initialized.TrySetResult();
             }
+            else if (name == DapEvents.Process && body.ValueKind == JsonValueKind.Object && body.TryGetProperty("systemProcessId", out JsonElement id) && id.TryGetInt32(out int process))
+            {
+                launched.TrySetResult(process);
+            }
             else if (name is DapEvents.Stopped or DapEvents.Breakpoint or DapEvents.Output or DapEvents.Exited or DapEvents.Terminated)
             {
                 events.Writer.TryWrite((name, body.Clone()));
@@ -84,6 +89,9 @@ public sealed class DebugSession : IAsyncDisposable
     }
 
     public DapConnection Connection { get; }
+
+    /// <summary>The process the adapter started, as its process event names it.</summary>
+    public Task<int> LaunchedProcess => launched.Task;
 
     /// <summary>The adapter with DebuggableConsoleApp started for it to attach to; suspended, the
     /// program waits at startup until the attach lets it go, in configurationDone. The program has

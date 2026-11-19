@@ -128,7 +128,8 @@ public partial class ManagedDebugger
         Task<int?> launchExit = Core.BackgroundWork.UnheldThread(launch.WaitForExit);
         _launchExit = launchExit;
         // Told as the program goes, not when the runtime's word of it is handled, which mscordbi may lose tearing down.
-        Core.UnawaitedWork.Observe(EndedLaunchAsync(launchExit));
+        _launchFiles = Core.RuntimeFiles.Of(launch.ProcessId, launchInfo.Env?.GetValueOrDefault("TMPDIR"));
+        Core.UnawaitedWork.Observe(EndedLaunchAsync(launchExit, _launchFiles));
         int processId = launch.ProcessId;
 
         _logger?.Invoke($"Process created suspended with PID: {processId}");
@@ -1240,6 +1241,12 @@ public partial class ManagedDebugger
             else if (!_exited.Wait(TimeSpan.FromSeconds(5)))
             {
                 _logger?.Invoke("The process had not exited 5 s after Terminate");
+            }
+            // Before the adapter goes, which may be at once: its runtime left its socket, ended as it was.
+            if (_launchExit is { } ended && _launchFiles is { } left)
+            {
+                await ended.WaitAsync(TimeSpan.FromSeconds(5)).Ended().ConfigureAwait(false);
+                left.Remove();
             }
         }
         await EndAsync().ConfigureAwait(false);

@@ -46,6 +46,8 @@ HANG = "10m"
 # its own after it: what is left under it once the run ends is the run's (end_builds).
 SALT = "MSBUILDNODEHANDSHAKESALT"
 RUN_SALT = f"testrun{os.getpid()}-"
+# What names a run's own temporary folder, as the test processes name theirs (TestRun.Temporary).
+TEMPORARY_PREFIX = "prun-"
 # Classes that share something of the machine beyond the run's own folder, run in one process together in the first phase:
 # the container engine (its virtual machine's processors, image builds, Compose), by what a class's source calls.
 TOGETHER = {
@@ -361,6 +363,33 @@ def end_builds():
         print(f"test-run: ended {plural(len(left), 'build process')} the run left", flush=True)
 
 
+def run_temporary():
+    """The run's own temporary folder (TMPDIR) on macOS and Linux, which everything it starts inherits: each .NET program's
+    runtime makes its diagnostic socket and its debugger's pipes there, which one killed leaves, so the run's go with the
+    run and never stay in the person's. In the system's temporary folder, as its real path names it, short enough for a
+    socket's path; those of earlier runs whose process has gone are removed. None on Windows."""
+    if platform.system() == "Windows":
+        return None
+    base = "/private/tmp" if platform.system() == "Darwin" else "/tmp"
+    for name in os.listdir(base):
+        if name.startswith(TEMPORARY_PREFIX) and name[len(TEMPORARY_PREFIX):].isdigit() and not running(int(name[len(TEMPORARY_PREFIX):])):
+            shutil.rmtree(os.path.join(base, name), ignore_errors=True)
+    folder = os.path.join(base, f"{TEMPORARY_PREFIX}{os.getpid()}")
+    os.makedirs(folder, mode=0o700, exist_ok=True)
+    return folder
+
+
+def running(pid):
+    """Whether a process with this id runs (another user's too)."""
+    try:
+        os.kill(pid, 0)
+        return True
+    except PermissionError:
+        return True
+    except OSError:
+        return False
+
+
 def plural(count, word):
     return f"{count} {word}" if count == 1 else f"{count} {word}es" if word.endswith("s") else f"{count} {word}s"
 
@@ -559,8 +588,13 @@ def main():
 
 
 if __name__ == "__main__":
+    temporary = run_temporary()
+    if temporary:
+        os.environ["TMPDIR"] = temporary
     try:
         code = main()
     finally:
         end_builds()
+        if temporary:
+            shutil.rmtree(temporary, ignore_errors=True)
     sys.exit(code)

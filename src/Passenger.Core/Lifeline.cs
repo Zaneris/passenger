@@ -72,6 +72,13 @@ internal static partial class Lifeline
     private static bool unavailable;
     private static Timer? pruning;
 
+    /// <summary>The removals of killed programs' runtime files still under way, which Passenger's own end waits for, at
+    /// most <see cref="RemovalsLandFor"/>, as it may come right after its last kills (a window's project host as it closes).</summary>
+    private static readonly HashSet<Task> Removals = [];
+
+    private static readonly TimeSpan RemovalsLandFor = TimeSpan.FromSeconds(1);
+    private static bool endsGroupsAtExit;
+
     /// <summary>Sets a child up, before it starts, to end with Passenger.</summary>
     public static void Prepare(ProcessStartInfo start)
     {
@@ -103,6 +110,11 @@ internal static partial class Lifeline
             Groups.Add(group);
             Tell($"+{group}");
             pruning ??= new Timer(_ => Prune(), null, PruneEvery, PruneEvery);
+            if (!endsGroupsAtExit)
+            {
+                endsGroupsAtExit = true;
+                AppDomain.CurrentDomain.ProcessExit += (_, _) => EndGroupsAtExit();
+            }
         }
     }
 
@@ -197,9 +209,63 @@ internal static partial class Lifeline
             job?.Dispose();
             return;
         }
+        // Taken while they run: a killed program's runtime leaves its socket and pipes, named for its start.
+        RuntimeFiles[] left = Holds(group) ? [.. DotnetProcesses.InGroup(group).Select(id => RuntimeFiles.Of(id)).OfType<RuntimeFiles>()] : [];
         if (Signalled(group))
         {
             UnawaitedWork.Observe(BackgroundWork.Run(() => KillAgainAsync(group)));
+            if (left.Length > 0)
+            {
+                Removing(BackgroundWork.Run(() => RemoveOnceGoneAsync(left)));
+            }
+        }
+    }
+
+    private static void Removing(Task removal)
+    {
+        lock (Gate)
+        {
+            Removals.RemoveWhere(ended => ended.IsCompleted);
+            Removals.Add(removal);
+        }
+        UnawaitedWork.Observe(removal);
+    }
+
+    /// <summary>As Passenger's process ends of itself: every group still listed killed here, as the watchdog would kill it a
+    /// moment later, so what their programs' runtimes leave is taken, and those removals waited for. Synchronous, as the
+    /// process's end waits for no task.</summary>
+    private static void EndGroupsAtExit()
+    {
+        int[] listed;
+        lock (Gate)
+        {
+            listed = [.. Groups];
+        }
+        foreach (int group in listed)
+        {
+            KillGroup(group);
+        }
+        Task[] pending;
+        lock (Gate)
+        {
+            pending = [.. Removals.Where(removal => !removal.IsCompleted)];
+        }
+        Blocking.Until(Task.WhenAny(Task.WhenAll(pending), Task.Delay(RemovalsLandFor)));
+    }
+
+    /// <summary>Removes each killed program's runtime files as soon as it has gone, for <see cref="KillAgainFor"/> at most.</summary>
+    private static async Task RemoveOnceGoneAsync(RuntimeFiles[] left)
+    {
+        List<RuntimeFiles> waiting = [.. left];
+        Deadline until = Deadline.In(KillAgainFor);
+        while (true)
+        {
+            waiting.RemoveAll(files => files.Remove());
+            if (waiting.Count == 0 || until.Passed)
+            {
+                return;
+            }
+            await Task.Delay(KillAgainEvery).ConfigureAwait(false);
         }
     }
 
