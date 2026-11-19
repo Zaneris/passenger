@@ -66,7 +66,7 @@ internal static unsafe partial class DebugRegisters
                     log?.Invoke($"Data breakpoints: the runtime's context of thread {threadId} took no debug registers: 0x{set:X8}");
                 }
             }
-            nint thread = OpenThread(ThreadSuspendResume | ThreadGetContext | ThreadSetContext, false, (uint)threadId);
+            nint thread = Kernel32.OpenThread(ThreadSuspendResume | ThreadGetContext | ThreadSetContext, false, (uint)threadId);
             if (thread == 0)
             {
                 log?.Invoke($"Data breakpoints: thread {threadId} could not be opened: error {Marshal.GetLastPInvokeError()}");
@@ -136,9 +136,6 @@ internal static unsafe partial class DebugRegisters
         *(ulong*)(context + Dr7At) = dr7;
         *(ulong*)(context + Dr6At) = 0;
     }
-
-    [LibraryImport("kernel32", SetLastError = true)]
-    private static partial nint OpenThread(uint desiredAccess, [MarshalAs(UnmanagedType.Bool)] bool inheritHandle, uint threadId);
 
     [LibraryImport("kernel32", SetLastError = true)]
     private static partial uint SuspendThread(nint thread);

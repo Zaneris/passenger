@@ -73,6 +73,31 @@ public partial class ManagedDebugger
         Continue(clearVariables: false);
     }
 
+    /// <summary>Every thread but the evaluation's, held while it runs alone, but the runtime's tiering worker
+    /// (<see cref="RuntimeThreads"/>), which runs none of the program's code and is never told to the debugger as one that
+    /// does; one the debugger cannot tell, through a relay to a device, is held with the rest.</summary>
+    private void HoldOthersDuringEvaluation(ICorDebugThread evaluating)
+    {
+        ICorDebugProcess process = evaluating.Process;
+        process.SetAllThreadsDebugState(CorDebugThreadState.THREAD_SUSPEND, evaluating);
+        if (_throughRelay || process.TryGetID(out uint processId) is not Cor.S_OK)
+        {
+            return;
+        }
+        foreach (ICorDebugThread thread in process.EnumerateThreads())
+        {
+            int id = thread.Id;
+            if (!_threads.ContainsKey(id) && RuntimeThreads.IsTieringWorker((int)processId, id) && thread.TrySetDebugState(CorDebugThreadState.THREAD_RUN) is Cor.S_OK
+                && _leftRunning.Add(id))
+            {
+                _logger?.Invoke($"Left running during evaluations: thread {id}, the runtime's tiering worker");
+            }
+        }
+    }
+
+    /// <summary>The runtime's own threads left running during an evaluation, each said once in the engine's log.</summary>
+    private readonly HashSet<int> _leftRunning = [];
+
     /// <summary>A thread made while an evaluation runs its own thread alone, which the evaluation's hold of every other thread
     /// came too early for: held as they are until the evaluation ends, when every thread is let go again. Left running, it
     /// would pass a breakpoint whose event waits for the evaluation's end and run on, so the stop shown later is not where

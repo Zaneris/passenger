@@ -80,7 +80,8 @@ public partial class ManagedDebugger
             string debug = thread.TryGetDebugState(out CorDebugThreadState held) is Cor.S_OK ? held.ToString() : "debug state unread";
             IEnumerable<string> frames = thread.EnumerateChains()
                 .SelectMany(chain => chain.IsManaged ? chain.EnumerateFrames().Select(FrameTold) : ["[Native code]"]);
-            return $"  {id} ({thread.GetThreadNameOrNull() ?? "no name"}, {user}, {debug}): {string.Join(" < ", frames.Take(FramesTold))}";
+            string name = thread.GetThreadNameOrNull() ?? (_leftRunning.Contains(id) ? "the runtime's tiering worker" : "no name");
+            return $"  {id} ({name}, {user}, {debug}): {string.Join(" < ", frames.Take(FramesTold))}";
         }
         catch (Exception error) when (Failures.OfRuntime(error))
         {

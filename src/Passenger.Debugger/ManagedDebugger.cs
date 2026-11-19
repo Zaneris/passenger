@@ -51,6 +51,9 @@ public partial class ManagedDebugger
     private int? _pendingAttachProcessId;
     private (string Relay, string? Modules, string? Token)? _pendingRelay;
 
+    /// <summary>Whether the program is a device's, reached through Passenger's relay: its threads' ids are the device's.</summary>
+    private bool _throughRelay;
+
     /// <summary>The process attached to, by its id where the adapter runs, while held; 0 for none.</summary>
     private int _attachedId;
 
@@ -285,6 +288,7 @@ public partial class ManagedDebugger
             AbortWhenDue = (thread, eval, after) => Core.UnawaitedWork.Observe(AbortWhenDueAsync(thread, eval, after)),
             WhyNoAbortTakes = WhyNoAbortTakes,
             Running = EvaluationRunning,
+            HoldOthers = HoldOthersDuringEvaluation,
             Log = logger,
             TellThreads = logger is null ? null : thread => logger(WhereThreadsStand(thread)),
         };
@@ -628,6 +632,7 @@ public partial class ManagedDebugger
         });
         connection.Go();
         _isAttached = true;
+        _throughRelay = true;
         _attachedId = processId;
         ConfigureExceptionCallbacks();
         _logger?.Invoke($"Attached through the relay to process {processId}");
@@ -1561,6 +1566,7 @@ public partial class ManagedDebugger
         EvalStatus.DueAt.Clear();
         EvalStatus.ImplicitOff = null;
         _threads.Clear();
+        _leftRunning.Clear();
         _deferredEvents.Clear();
         _behindStep.Clear();
         _mainThreadId = null;
@@ -1616,6 +1622,7 @@ public partial class ManagedDebugger
         }
 
         _isAttached = false;
+        _throughRelay = false;
         _attachedId = 0;
         _process = null;
         _corDebug = null;
@@ -1703,6 +1710,10 @@ internal sealed class EvalStatus
     /// <summary>The method an evaluation on the thread runs, the program held, as the call stack names it; null where none
     /// of its own runs there (<see cref="ManagedDebugger.EvaluationRunning"/>).</summary>
     internal required Func<ICorDebugThread, string?> Running { get; init; }
+
+    /// <summary>Holds every thread but the one given while an evaluation runs on it alone, but the runtime's own that runs
+    /// none of the program's code (<see cref="ManagedDebugger.HoldOthersDuringEvaluation"/>).</summary>
+    internal required Action<ICorDebugThread> HoldOthers { get; init; }
 
     /// <summary>The engine's log, for what becomes of an evaluation past its time.</summary>
     internal Action<string>? Log { get; init; }

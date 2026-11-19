@@ -276,10 +276,10 @@ public static class Extensions
         (long Came, long Heard)? end = null;
         try
         {
-            // Only the evaluation's thread runs, unless the person let every thread go: the others' values hold still and none meets a breakpoint unseen.
+            // Only the evaluation's thread runs of the program's, unless the person let every thread go: the others' values hold still and none meets a breakpoint unseen.
             if (!evalStatus.LetThreadsRun)
             {
-                process.SetAllThreadsDebugState(CorDebugThreadState.THREAD_SUSPEND, thread);
+                evalStatus.HoldOthers(thread);
             }
             process.Continue(false);
             letGo = System.Diagnostics.Stopwatch.GetTimestamp();

@@ -122,6 +122,9 @@ public static partial class Kernel32
     [LibraryImport("ntdll.dll", EntryPoint = "NtQueryInformationProcess")]
     public static unsafe partial int NtQueryInformationProcess(SafeProcessHandle process, int kind, byte* information, uint length, uint* returned);
 
+    [LibraryImport("kernel32.dll", EntryPoint = "OpenThread", SetLastError = true)]
+    public static partial nint OpenThread(uint access, [MarshalAs(UnmanagedType.Bool)] bool inherit, uint id);
+
     [LibraryImport("kernel32.dll", EntryPoint = "ResumeThread", SetLastError = true)]
     public static partial uint ResumeThread(nint thread);
 

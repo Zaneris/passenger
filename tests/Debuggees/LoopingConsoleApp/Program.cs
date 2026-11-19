@@ -15,6 +15,10 @@
 // third, Let go, and waits. With "starts" it sleeps where a breakpoint's condition can start a thread that turns. With
 // "dispatch" code not the user's awaits a handler of theirs at a time and only then lets it go on, on the thread pool,
 // where the handler's end goes on with that code, which calls the next handler at once, above the ended one's frame.
+// With "tiers" it loads its optimized copy and stops with the runtime's tiering worker waiting for work, where an
+// evaluation of Tiers.Warm has the worker compile that copy's Tiers.Hot again, and says whether it did meanwhile. With
+// "finalizes" it stops before its finalizer has run any of its code, where an evaluation of Finalizing.Collect leaves
+// litter with finalizers and collects it; let go, it says once the litter is finalized.
 if (args is ["dispatch"])
 {
     Dispatcher.RunAsync(Handlers.TwiceAsync, 20).GetAwaiter().GetResult();
@@ -116,6 +120,24 @@ if (args is ["returns"])
         Thread.Sleep(20);
     }
 }
+if (args is ["tiers"])
+{
+    Tiers.Prepare();
+    while (true)
+    {
+        Thread.Sleep(500);
+    }
+}
+if (args is ["finalizes"])
+{
+    Console.WriteLine("finalizes"); // stop before the finalizer has run any of the program's code
+    while (Finalizing.Finalized == 0)
+    {
+        Thread.Sleep(10);
+    }
+    Console.WriteLine("finalized");
+    return;
+}
 if (args is ["asleep"])
 {
     System.Globalization.CultureInfo.CurrentCulture = System.Globalization.CultureInfo.GetCultureInfo("fr-FR");
@@ -164,6 +186,94 @@ internal sealed class Looping
         }) { IsBackground = true, Name = "Says it loops" }.Start();
         return looping;
     }
+}
+
+internal static class Tiers
+{
+    // The same methods in the optimized copy of this program, which the runtime compiles in tiers, where this copy's,
+    // built for debugging, it compiles once.
+    private static Func<bool, int> optimizedHot = null!;
+    private static Func<int> optimizedMakeRare = null!;
+
+    // Compiled again, optimized, by the tiering worker once called often enough: the compile inlines Make, whose IL the
+    // worker is the first to read, so it is the one to load Rare.
+    public static int Hot(bool rare) => rare ? Cold.Make() : 1;
+
+    public static int MakeRare() => new Rare().Value;
+
+    // Calls the optimized Hot past the count, then waits up to 2 s for another thread, the tiering worker, to compile it:
+    // whether one did.
+    public static bool Warm()
+    {
+        long others = CompiledElsewhere();
+        for (int call = 0; call < 100; call++)
+        {
+            optimizedHot(false);
+        }
+        System.Diagnostics.Stopwatch waited = System.Diagnostics.Stopwatch.StartNew();
+        while (CompiledElsewhere() == others && waited.Elapsed < TimeSpan.FromSeconds(2))
+        {
+            Thread.Sleep(10);
+        }
+        return CompiledElsewhere() != others;
+    }
+
+    private static long CompiledElsewhere() => System.Runtime.JitInfo.GetCompiledMethodCount() - System.Runtime.JitInfo.GetCompiledMethodCount(currentThread: true);
+
+    public static int MakeOptimizedRare() => optimizedMakeRare();
+
+    public static void Prepare()
+    {
+        string optimized = Path.Combine(AppContext.BaseDirectory, "..", "..", "LoopingConsoleAppOptimized", "debug", "LoopingConsoleAppOptimized.dll");
+        Type tiers = System.Reflection.Assembly.LoadFrom(optimized).GetType(nameof(Tiers), throwOnError: true)!;
+        optimizedHot = tiers.GetMethod(nameof(Hot))!.CreateDelegate<Func<bool, int>>();
+        optimizedMakeRare = tiers.GetMethod(nameof(MakeRare))!.CreateDelegate<Func<int>>();
+        optimizedHot(false);
+        Thread.Sleep(1000);
+        Console.WriteLine("tiers"); // stop with the tiering worker waiting for work
+    }
+}
+
+internal static class Finalizing
+{
+    private static int finalized;
+
+    public static int Finalized => Volatile.Read(ref finalized);
+
+    // Leaves litter whose finalizers the finalizer runs, collects it, and waits while the finalizer would take it up: how
+    // many it finalized meanwhile.
+    public static int Collect()
+    {
+        Leave();
+        GC.Collect();
+        Thread.Sleep(500);
+        return Finalized;
+    }
+
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+    private static void Leave()
+    {
+        for (int made = 0; made < 100; made++)
+        {
+            _ = new Litter();
+        }
+    }
+
+    private sealed class Litter
+    {
+        ~Litter() => Interlocked.Increment(ref finalized);
+    }
+}
+
+internal static class Cold
+{
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
+    public static int Make() => new Rare().Value;
+}
+
+internal sealed class Rare
+{
+    public int Value = 2;
 }
 
 internal static class Returning
