@@ -297,13 +297,14 @@ public sealed class DialogButtonsTests : IDisposable
     }
 
     /// <summary>Holds a default button and Cancel to the platform's order: the default rightmost on macOS, first
-    /// elsewhere.</summary>
+    /// elsewhere; in a footer too narrow for them side by side, which stands them one under another, last or first.</summary>
     private static void InPlatformOrder(Visual within, string title, Button chosen, Button cancel)
     {
-        double chosenAt = chosen.TranslatePoint(default, within)!.Value.X;
-        double cancelAt = cancel.TranslatePoint(default, within)!.Value.X;
-        Assert.True(OperatingSystem.IsMacOS() ? chosenAt > cancelAt : chosenAt < cancelAt,
-            $"In {title}, {Name(chosen)} stands {(chosenAt > cancelAt ? "right" : "left")} of {Name(cancel)}, where Rider puts the default "
+        Point chosenAt = chosen.TranslatePoint(default, within)!.Value;
+        Point cancelAt = cancel.TranslatePoint(default, within)!.Value;
+        bool after = Math.Abs(chosenAt.X - cancelAt.X) < 0.5 ? chosenAt.Y > cancelAt.Y : chosenAt.X > cancelAt.X;
+        Assert.True(OperatingSystem.IsMacOS() ? after : !after,
+            $"In {title}, {Name(chosen)} stands {(after ? "after" : "before")} {Name(cancel)}, where Rider puts the default "
             + (OperatingSystem.IsMacOS() ? "rightmost, after Cancel" : "first, before Cancel"));
     }
 

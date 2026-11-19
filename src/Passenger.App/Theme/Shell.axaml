@@ -176,6 +176,12 @@
     <Style Selector="StackPanel.footer > Button">
         <Setter Property="MinWidth" Value="80" />
     </Style>
+    <!-- A footer's button whose words are wider than the dialog, its answers one under another, ends them in an ellipsis
+         rather than standing past the dialog's edge, as tall as the others (DialogFooter's FittingRow); a question's title
+         says them whole. -->
+    <Style Selector="StackPanel.footer > Button /template/ ContentPresenter#PART_ContentPresenter">
+        <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+    </Style>
     <!-- The bar a dialog's footer stands in under its page: on the frame's ground, told from the page by shade, with no
          rule between them. -->
     <Style Selector="Border.footerBar">

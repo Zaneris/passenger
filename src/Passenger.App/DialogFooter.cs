@@ -155,8 +155,51 @@ public static class DialogFooter
 
     private static StackPanel Buttons(IEnumerable<Button> buttons)
     {
-        StackPanel footer = new() { Classes = { StyleClasses.Footer } };
+        StackPanel footer = new FittingRow { Classes = { StyleClasses.Footer } };
         footer.Children.AddRange(buttons);
         return footer;
+    }
+
+    /// <summary>A footer's buttons side by side where the bar has room for them, and one under another, each as wide as the
+    /// widest, where it has not (a question's long answer: Bring a package and EF Core into Step), a button's words ending
+    /// in an ellipsis (Shell.axaml) where even the bar's width is too narrow for them, so none stands past the dialog's edge.</summary>
+    private sealed class FittingRow : StackPanel
+    {
+        private bool stacked;
+
+        /// <summary>Styled as the row it is (Shell.axaml's <c>StackPanel.footer</c>).</summary>
+        protected override Type StyleKeyOverride => typeof(StackPanel);
+
+        protected override Size MeasureOverride(Size availableSize)
+        {
+            Control[] shown = [.. Children.Where(c => c.IsVisible)];
+            double gaps = Spacing * Math.Max(0, shown.Length - 1);
+            foreach (Control button in shown)
+            {
+                button.Measure(new Size(double.PositiveInfinity, availableSize.Height));
+            }
+            stacked = shown.Sum(b => b.DesiredSize.Width) + gaps > availableSize.Width;
+            if (!stacked)
+            {
+                return new Size(shown.Sum(b => b.DesiredSize.Width) + gaps, shown.Select(b => b.DesiredSize.Height).DefaultIfEmpty(0).Max());
+            }
+            foreach (Control button in shown)
+            {
+                button.Measure(new Size(availableSize.Width, double.PositiveInfinity));
+            }
+            return new Size(shown.Select(b => b.DesiredSize.Width).DefaultIfEmpty(0).Max(), shown.Sum(b => b.DesiredSize.Height) + gaps);
+        }
+
+        protected override Size ArrangeOverride(Size finalSize)
+        {
+            double at = 0;
+            foreach (Control button in Children.Where(c => c.IsVisible))
+            {
+                Rect place = stacked ? new Rect(0, at, finalSize.Width, button.DesiredSize.Height) : new Rect(at, 0, button.DesiredSize.Width, finalSize.Height);
+                button.Arrange(place);
+                at += (stacked ? place.Height : place.Width) + Spacing;
+            }
+            return finalSize;
+        }
     }
 }
