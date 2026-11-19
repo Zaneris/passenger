@@ -221,7 +221,7 @@ public sealed class ConsoleSink
                 {
                     Write(came, stream, codes, letGo);
                 }
-                else if (held.Whole(came) is { } whole)
+                else if (held.Whole(came) is { IsEmpty: false } whole)
                 {
                     Write(styled!.Read(whole, codes).Shown(shown!), stream, letGo);
                 }
@@ -246,7 +246,7 @@ public sealed class ConsoleSink
             }
             return;
         }
-        if (held?.Rest() is { } rest)
+        if (held is not null && held.Rest() is { IsEmpty: false } rest)
         {
             Write(styled!.Read(rest, codes).Shown(shown!), stream, letGo);
         }
@@ -255,35 +255,48 @@ public sealed class ConsoleSink
     }
 
     /// <summary>A masked stream's text after its last line break, until a read ends a line or it reaches
-    /// <see cref="LongestLine"/>; the lines a read ends are made one string with what waited, for the mask.</summary>
+    /// <see cref="LongestLine"/>; the lines a read ends are let out with what waited, read from where they wait, so the
+    /// mask's string is the one copy of them made.</summary>
     private sealed class Held
     {
         private char[] text = new char[256];
         private int length;
 
-        /// <summary>What waited and the whole lines a read ends (all it holds past <see cref="LongestLine"/>), or null
-        /// when it ends none; what follows the read's last break waits.</summary>
-        public string? Whole(ReadOnlySpan<char> came)
+        /// <summary>How much of <see cref="text"/> was let out at the last read, dropped at the next.</summary>
+        private int letOut;
+
+        /// <summary>What waited and the whole lines a read ends (all it holds past <see cref="LongestLine"/>), or nothing
+        /// when it ends none: what follows the read's last break waits. Read before the next read, which writes over it.</summary>
+        public ReadOnlySpan<char> Whole(ReadOnlySpan<char> came)
         {
+            Drop();
             int last = came.LastIndexOfAny('\n', '\r');
-            if (last < 0 && length + came.Length < LongestLine)
+            Keep(came);
+            if (last < 0 && length < LongestLine)
             {
-                Keep(came);
-                return null;
+                return [];
             }
-            ReadOnlySpan<char> taken = last < 0 ? came : came[..(last + 1)];
-            string whole = string.Concat(text.AsSpan(0, length), taken);
-            length = 0;
-            Keep(came[taken.Length..]);
-            return whole;
+            letOut = last < 0 ? length : length - (came.Length - (last + 1));
+            return text.AsSpan(0, letOut);
         }
 
-        /// <summary>What still waits at the stream's end, or null.</summary>
-        public string? Rest()
+        /// <summary>What still waits at the stream's end, or nothing.</summary>
+        public ReadOnlySpan<char> Rest()
         {
-            string? rest = length > 0 ? new string(text, 0, length) : null;
-            length = 0;
-            return rest;
+            Drop();
+            letOut = length;
+            return text.AsSpan(0, length);
+        }
+
+        private void Drop()
+        {
+            if (letOut == 0)
+            {
+                return;
+            }
+            text.AsSpan(letOut, length - letOut).CopyTo(text);
+            length -= letOut;
+            letOut = 0;
         }
 
         private void Keep(ReadOnlySpan<char> more)
