@@ -25,6 +25,11 @@ public static class AdapterEnvironment
     [IdentifierHome]
     public const string FailAtModuleVariable = "PASSENGER_ENGINE_FAIL_AT_MODULE";
 
+    /// <summary>The variable that, set to 1, has each thread of a decompile wait after its first file until the session
+    /// ends, so the decompile lasts as CoreLib's does on a slow machine, with every thread it runs on taken: a test's hold.</summary>
+    [IdentifierHome]
+    public const string HoldDecompileVariable = "PASSENGER_ENGINE_HOLD_DECOMPILE";
+
     /// <summary>How long an evaluation runs when nothing says otherwise.</summary>
     public static readonly TimeSpan DefaultEvaluationTimeout = TimeSpan.FromSeconds(5);
 
@@ -35,16 +40,23 @@ public static class AdapterEnvironment
 
     /// <summary>Whether <see cref="LateYieldVariable"/> holds the engine so; a value other than 1 is fatal, as a malformed
     /// flag is.</summary>
-    public static bool LateYield => Environment.GetEnvironmentVariable(LateYieldVariable) switch
-    {
-        null or "" => false,
-        "1" => true,
-        { } other => throw new FormatException($"{LateYieldVariable} is \"{other}\": it must be 1, or unset"),
-    };
+    public static bool LateYield => Flag(LateYieldVariable);
+
+    /// <summary>Whether <see cref="HoldDecompileVariable"/> holds decompiles so; a value other than 1 is fatal, as a
+    /// malformed flag is.</summary>
+    public static bool HoldDecompile => Flag(HoldDecompileVariable);
 
     /// <summary>The module's file name <see cref="FailAtModuleVariable"/> gives, or null for none.</summary>
     public static string? FailAtModule => Environment.GetEnvironmentVariable(FailAtModuleVariable) is { Length: > 0 } module ? module : null;
 
     /// <summary>The file <see cref="EngineLogVariable"/> names, or null when it names none.</summary>
     public static string? EngineLog => Environment.GetEnvironmentVariable(EngineLogVariable) is { Length: > 0 } file ? file : null;
+
+    /// <summary>A variable that is 1 or unset; any other value is fatal.</summary>
+    private static bool Flag(string variable) => Environment.GetEnvironmentVariable(variable) switch
+    {
+        null or "" => false,
+        "1" => true,
+        { } other => throw new FormatException($"{variable} is \"{other}\": it must be 1, or unset"),
+    };
 }

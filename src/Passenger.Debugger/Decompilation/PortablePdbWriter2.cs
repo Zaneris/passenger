@@ -18,13 +18,15 @@ using ICSharpCode.Decompiler.IL;
 using ICSharpCode.Decompiler.Metadata;
 using ICSharpCode.Decompiler.TypeSystem;
 using ICSharpCode.Decompiler.Util;
+using Passenger.Core;
 using SequencePoint = ICSharpCode.Decompiler.DebugInfo.SequencePoint;
 
 namespace Passenger.Debugger.Decompilation;
 
 // ILSpy's PortablePdbWriter (ICSharpCode.Decompiler/DebugInfo/PortablePdbWriter.cs), Copyright (c) 2018 Siegfried
-// Pammer, under the MIT licence THIRD_PARTY_NOTICES.md gives in full; changed to decompile its files in parallel and
-// return their text. A change that moves what it maps raises SymbolCache.Format, so no cached PDB of the old one is read.
+// Pammer, under the MIT licence THIRD_PARTY_NOTICES.md gives in full; changed to decompile its files in parallel, on
+// threads of its own, and return their text. A change that moves what it maps raises SymbolCache.Format, so no cached
+// PDB of the old one is read.
 public class PortablePdbWriter2
 {
     private const string decompilerVersion = DecompilerVersionInfo.Version;
@@ -135,12 +137,16 @@ public class PortablePdbWriter2
 
         ConcurrentBag<PerFileResult> perFileResults = new ConcurrentBag<PerFileResult>();
 
+        int parallelism = maxDegreeOfParallelism <= 0 ? Environment.ProcessorCount : maxDegreeOfParallelism;
+        // Threads of its own: on the pool's, the loop would take them all as it runs, the debugger's answers waiting.
+        using ApartScheduler decompilers = new("Passenger decompiler", parallelism);
         Parallel.ForEach(
             Partitioner.Create(sourceFiles, loadBalance: true),
             new ParallelOptions
             {
-                MaxDegreeOfParallelism = maxDegreeOfParallelism <= 0 ? Environment.ProcessorCount : maxDegreeOfParallelism,
-                CancellationToken = cancellationToken
+                MaxDegreeOfParallelism = parallelism,
+                CancellationToken = cancellationToken,
+                TaskScheduler = decompilers,
             },
             sourceFile =>
             {

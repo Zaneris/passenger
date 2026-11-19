@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Globalization;
 using Passenger.Dap;
 using Passenger.Tests.Debugging.Helpers;
 
@@ -91,6 +92,37 @@ public sealed class DecompiledSymbolsTests(ITestOutputHelper testOutputHelper) :
         Assert.False(resolving.IsCompletedSuccessfully, "CoreLib's frame was resolved before the disconnect was answered: the disconnect waited for the decompile");
         Assert.True(Pdbs(cache).Count == 0, $"The session ended mid-decompile left symbols in the cache, which the next would take for whole: {string.Join(", ", Pdbs(cache))}");
     }
+
+    /// <summary>A decompile taking every processor of an adapter whose thread pool cannot grow past them, as CoreLib's does on
+    /// a busy machine, and a request and a disconnect made while it runs: each thread of the decompile is held after its
+    /// first file until the session ends.</summary>
+    [Fact]
+    public async Task A_request_and_a_disconnect_are_answered_while_a_decompile_takes_every_processor_and_the_thread_pool_cannot_grow()
+    {
+        const int processors = 8;
+        string count = processors.ToString(CultureInfo.InvariantCulture);
+        string cache = TestFolders.Create("symbols");
+        await using DebugSession host = await StoppedInCoreLibCallback(cache, new Dictionary<string, string>
+        {
+            [AdapterEnvironment.HoldDecompileVariable] = "1",
+            ["DOTNET_PROCESSOR_COUNT"] = count,
+            // Read in hex, which a number below ten is written alike in.
+            ["DOTNET_ThreadPool_ForceMaxWorkerThreads"] = count,
+        });
+        DapStackFrame coreLib = await Frame(host, "System.Private.CoreLib.dll!System.Collections.Generic.List<int>.ForEach");
+        Task<ResolveStackFrameResponse> resolving = host.Send<ResolveStackFrameResponse>(DapCommands.ResolveStackFrame, new ResolveStackFrameArguments(coreLib.Id));
+        // Lines of this session's own, whatever else a kept log holds.
+        string held = $"a thread decompiling for {Path.Combine(cache, "System.Private.CoreLib")}";
+        int Held() => host.EngineLog().Split('\n').Count(line => line.Contains(held, StringComparison.Ordinal));
+        await Waiting.UntilAsync(() => Held() >= processors || resolving.IsCompleted, TimeSpan.FromSeconds(60), TestContext.Current.CancellationToken, TimeSpan.FromMilliseconds(20));
+        Assert.True(Held() == processors,
+            $"{Held()} of the decompile's {processors} threads came to its files: it waits for threads of the pool that answers the adapter's requests, so a request made while it runs waits for it to end");
+
+        Assert.NotEmpty((await host.RequestAsync<ThreadsResponse>(DapCommands.Threads)).Threads);
+        Assert.True(await host.DisconnectAsync(DebugSession.RequestLimit), "The disconnect went unanswered while CoreLib was decompiled, so an IDE would kill the adapter");
+        Assert.False(resolving.IsCompletedSuccessfully, "CoreLib's frame was resolved though its decompile was held until the session ended");
+        Assert.True(Pdbs(cache).Count == 0, $"The session ended mid-decompile left symbols in the cache, which the next would take for whole: {string.Join(", ", Pdbs(cache))}");
+    }
 }
 
 /// <summary>The programs the decompiled symbols' tests stop, each adapter given a cache folder of the test's own, and what
@@ -116,10 +148,11 @@ public abstract class DecompiledSymbolsSessions(ITestOutputHelper testOutputHelp
         return path;
     }
 
-    /// <summary>PassengerCases launched to its callback from List.ForEach, the frame below CoreLib's.</summary>
-    protected async Task<DebugSession> StoppedInCoreLibCallback(string cache)
+    /// <summary>PassengerCases launched to its callback from List.ForEach, the frame below CoreLib's, the adapter given
+    /// <paramref name="environment"/> over the run's.</summary>
+    protected async Task<DebugSession> StoppedInCoreLibCallback(string cache, IReadOnlyDictionary<string, string>? environment = null)
     {
-        DebugSession host = DebugSession.ForLaunch(testOutputHelper, cache);
+        DebugSession host = DebugSession.ForLaunch(testOutputHelper, cache, environment);
         await host
             .InitializeAsync()
             .LaunchAsync(Debuggees.Program("PassengerCases"), stopAtEntry: false, justMyCode: true, arguments: ["corelib"])

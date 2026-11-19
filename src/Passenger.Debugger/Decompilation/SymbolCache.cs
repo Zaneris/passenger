@@ -32,6 +32,10 @@ public sealed class SymbolCache
     /// <summary>What names each entry beside its assembly: another decompiler's lines, or another writer's, are not these.</summary>
     private static readonly string Stamp = $"{DecompilerVersionInfo.Version}-{Format}";
 
+    /// <summary>A test's hold: each thread of a decompile waits after its first file until the session ends, saying so in the
+    /// log, as a decompile of CoreLib lasts on a slow machine with every one of its threads taken.</summary>
+    public static bool Held { get; set; }
+
     private readonly UsedCache cache;
     private readonly Action<string>? log;
 
@@ -107,7 +111,8 @@ public sealed class SymbolCache
             using PEFile file = new(assemblyPath, PEStreamOptions.PrefetchEntireImage);
             DecompilerSettings settings = new();
             DecompilerTypeSystem types = new(file, new DebuggingAssemblyResolver([.. references]), settings);
-            cache.Write(pdb, stream => new PortablePdbWriter2 { NoLogo = true }.WritePdb(file, types, settings, stream, cancellationToken: cancel));
+            PortablePdbWriter2 writer = new() { NoLogo = true, Progress = Held ? new HeldThreads(pdb, cancel, log) : null };
+            cache.Write(pdb, stream => writer.WritePdb(file, types, settings, stream, cancellationToken: cancel));
             return true;
         }
         catch (OperationCanceledException) when (cancel.IsCancellationRequested)
@@ -119,5 +124,18 @@ public sealed class SymbolCache
             log?.Invoke($"Symbol cache: {name} ({assemblyPath}) could not be decompiled: {error}");
         }
         return false;
+    }
+
+    /// <summary><see cref="Held"/>'s report of a file decompiled, which waits until the decompile is given up.</summary>
+    private sealed class HeldThreads(string pdb, CancellationToken cancel, Action<string>? log) : IProgress<DecompilationProgress>
+    {
+        public void Report(DecompilationProgress value)
+        {
+            if (!cancel.IsCancellationRequested)
+            {
+                log?.Invoke($"Symbol cache: a thread decompiling for {pdb} is held until the session ends");
+                cancel.WaitHandle.WaitOne();
+            }
+        }
     }
 }
