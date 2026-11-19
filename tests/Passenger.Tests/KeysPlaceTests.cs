@@ -158,8 +158,9 @@ public sealed class KeysPlaceTests : IDisposable
         window.Close();
     }
 
-    /// <summary>The menu key (Shift+F10) opens a row's menu under the chosen row, in the Explorer and in a tool window's
-    /// list, wherever the pointer is, so a person at the keys finds it where they are.</summary>
+    /// <summary>The menu key (Shift+F10) opens a row's menu under the chosen row, its frame's corner at the row's bottom
+    /// left, in the Explorer and in a tool window's list, wherever the pointer is, so a person at the keys finds it where
+    /// they are.</summary>
     [AvaloniaFact]
     public void The_menu_key_opens_a_rows_menu_under_the_chosen_row_wherever_the_pointer_is()
     {
@@ -195,10 +196,11 @@ public sealed class KeysPlaceTests : IDisposable
 
         static bool Under(ContextMenu menu, Control row, out string off)
         {
-            PixelPoint menuAt = menu.PointToScreen(default);
+            PixelPoint menuAt = menu.GetVisualDescendants().OfType<Border>().First(b => b.BoxShadow.Count > 0).PointToScreen(default);
             PixelPoint rowAt = row.PointToScreen(new Point(0, row.Bounds.Height));
-            off = $"at {menuAt}, where the chosen row's bottom left is at {rowAt}";
-            return Math.Abs(menuAt.X - rowAt.X) <= 40 && Math.Abs(menuAt.Y - rowAt.Y) <= 40;
+            double pixel = TopLevel.GetTopLevel(row)!.RenderScaling;
+            off = $"with its frame at {menuAt}, where the chosen row's bottom left is at {rowAt}";
+            return Math.Abs(menuAt.X - rowAt.X) <= 2 * pixel && Math.Abs(menuAt.Y - rowAt.Y) <= 2 * pixel;
         }
     }
 

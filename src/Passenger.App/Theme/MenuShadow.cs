@@ -9,14 +9,30 @@ using Avalonia.VisualTree;
 
 namespace Passenger.App;
 
-/// <summary>Where a submenu's popup stands: beside its item (<see cref="Beside"/>). Every menu's popup is its frame and
-/// the room round it its shadow is drawn in (Shell.axaml's Passenger.MenuShadowRoom), the margin of what the popup holds,
-/// so the positioner places the frame, at the pointer, under a widget or beside an item, and the room comes with it on
-/// whichever side the menu opens.</summary>
+/// <summary>Where a menu's popup stands: a submenu's beside its item (<see cref="Beside"/>), one the keys open where its
+/// owner placed it (<see cref="AsPlaced"/>). Every menu's popup is its frame and the room round it its shadow is drawn in
+/// (Shell.axaml's Passenger.MenuShadowRoom), the margin of what the popup holds, so the positioner places the frame, at
+/// the pointer, under a widget or a chosen row or beside an item, and the room comes with it on whichever side the menu
+/// opens.</summary>
 internal static class MenuShadow
 {
-    public static void Install() =>
+    public static void Install()
+    {
         TemplatedControl.TemplateAppliedEvent.AddClassHandler<MenuItem>((item, e) => Beside(item, e.NameScope.Find<Popup>("PART_Popup")));
+        Popup.ChildProperty.Changed.AddClassHandler<Popup>((popup, _) => AsPlaced(popup));
+        Popup.PlacementProperty.Changed.AddClassHandler<Popup>((popup, _) => AsPlaced(popup));
+    }
+
+    /// <summary>A context menu asked for with no pointer (the menu key's ContextRequested) stands where its own placement
+    /// puts it, under the chosen row as ListMenus.PlaceForKeys places it, where Avalonia gives its popup Bottom, centred
+    /// under what asked, whatever the menu's own; one at the pointer, which has none to keep, keeps Bottom.</summary>
+    private static void AsPlaced(Popup popup)
+    {
+        if (popup.Child is ContextMenu menu && popup.Placement == PlacementMode.Bottom && menu.Placement is not (PlacementMode.Pointer or PlacementMode.Bottom))
+        {
+            popup.Placement = menu.Placement;
+        }
+    }
 
     /// <summary>A submenu's popup opens beside its item on whichever side it has room, and the room its shadow is drawn in
     /// is the submenu's own: a pointer resting there keeps it open, as one on the frame does, and the pointer coming in
