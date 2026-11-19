@@ -704,6 +704,24 @@ internal static class Reads
 		}
 	}
 
+	// As Late, its value made in a finally, where no abort is asked, so it ends of itself however busy the machine.
+	public static string LateFinally
+	{
+		get
+		{
+			string value = "";
+			try
+			{
+			}
+			finally
+			{
+				Thread.Sleep(3500);
+				value = "late";
+			}
+			return value;
+		}
+	}
+
 	public static void Run()
 	{
 		Thread worker = new(() =>

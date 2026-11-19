@@ -291,6 +291,7 @@ public static class Extensions
             bool asked = false;
             bool told = false;
             string? lastWhy = null;
+            string? running = null;
             if (lookedAt)
             {
                 // Asked only of a thread caught where the abort takes as it goes on, never left pending (ManagedDebugger_Aborts.cs).
@@ -311,6 +312,7 @@ public static class Extensions
                     {
                         told = true;
                         evalStatus.TellThreads?.Invoke(thread);
+                        running = evalStatus.Running(thread);
                     }
                     string? why = asked ? null : evalStatus.WhyNoAbortTakes(thread);
                     if (!asked && why is null)
@@ -357,16 +359,21 @@ public static class Extensions
                         : $"The evaluation on thread {thread.Id} is left to run on, unaborted");
                     evalStatus.TellThreads?.Invoke(thread);
                 }
-                evalStatus.ImplicitOff = $"Implicit evaluation is disabled: an evaluation took longer than {Durations.Said(EvaluationTimeout)}. It is enabled again once the program runs on";
+                string evaluation = running is null ? "an evaluation" : $"the evaluation of {running}";
                 if (!ended || aborted)
                 {
+                    // Only one stopped or held unfinished turns off what runs of itself: the getters after it would meet the same.
+                    evalStatus.ImplicitOff = $"Implicit evaluation is disabled: {evaluation} took longer than {Durations.Said(EvaluationTimeout)} and "
+                        + $"{(aborted ? "was stopped" : "is held unfinished")}. It is enabled again once the program runs on";
                     string took = $"The evaluation took longer than {Durations.Said(EvaluationTimeout)}{(evalStatus.LetThreadsRun ? " with every thread let go" : "")}";
                     string why = evalStatus.LetThreadsRun ? "" : $": {NeedsThreads}";
                     throw new ManagedDebugger.EvalException(aborted
                         ? $"{took} and was stopped{why}"
                         : $"{took} and could not be stopped, as {(asked ? "the abort asked of it has not taken" : lastWhy ?? "the program could not be held to look at it")}, so it is held unfinished until the program runs on{why}");
                 }
-                // It ended of itself as it was looked at: its value is read as any other's.
+                // It ended of itself as it was looked at: its value is read as any other's, and getters still run.
+                evalStatus.Log?.Invoke($"The evaluation on thread {thread.Id}{(running is null ? "" : $" of {running}")} ended of itself "
+                    + $"{Durations.Said(System.Diagnostics.Stopwatch.GetElapsedTime(began))} after it began, past its time: its value is read, and implicit evaluation stays on");
             }
             CorDebugManagedCallbackEventArgs evalEvent = await waiting;
             long heard = System.Diagnostics.Stopwatch.GetTimestamp();

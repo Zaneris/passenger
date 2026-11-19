@@ -54,6 +54,32 @@ public class StuckEvaluationTests(ITestOutputHelper testOutputHelper)
         Assert.True(late.Result == "\"late\"", $"A getter that had returned was answered \"{late.Result}\", its value lost with nothing left to run; the engine's log:\n{host.EngineLog()}");
     }
 
+    /// <summary>A getter run of itself (here a hover's) that ends of itself just past the evaluation's time, in a finally where
+    /// no abort is asked, gives its value and leaves the getters after it running, as one slow on a busy machine does; one the
+    /// debugger stops past its time turns them off until the program runs on, the words naming the getter it stopped.</summary>
+    [Fact]
+    public async Task Only_an_evaluation_stopped_past_its_time_turns_implicit_evaluation_off_naming_what_it_ran()
+    {
+        await using DebugSession host = await LaunchCase("leaves", "Console.WriteLine($\"turn {turn}\");");
+        StoppedEvent stop = await host.WaitForStoppedEvent();
+        int frame = (await host.TopFrameAsync(stop.ThreadId!.Value)).Id;
+
+        string late = await Hovered(host, frame, "Reads.LateFinally");
+        Assert.True(late == "\"late\"", $"A getter ending of itself just past its time was answered {late}; the engine's log:\n{host.EngineLog()}");
+        string counted = await Hovered(host, frame, "Leaves.Count");
+        Assert.True(counted == "1", $"The getter after one that ended of itself past its time was answered {counted}, so a slow getter turned the rest off");
+
+        string endless = await Hovered(host, frame, "Leaves.Endless");
+        Assert.True(endless.Contains("and was stopped", StringComparison.Ordinal), $"The spinning getter was answered {endless}, not stopped; the engine's log:\n{host.EngineLog()}");
+        string refused = await Hovered(host, frame, "Leaves.Count");
+        const string Off = "error: Implicit evaluation is disabled: the evaluation of PassengerCases.dll!Leaves.get_Endless() took longer than 3 s and was stopped. "
+            + "It is enabled again once the program runs on";
+        Assert.True(refused == Off, $"The getter after the one stopped was answered \"{refused}\", where implicit evaluation was off, naming the getter stopped");
+    }
+
+    private static async Task<string> Hovered(DebugSession host, int frame, string expression) =>
+        (await host.RequestAsync<EvaluateResponse>(DapCommands.Evaluate, new EvaluateArguments(expression, frame, EvaluateContexts.Hover))).Result;
+
     [Fact]
     public async Task An_exception_stop_is_still_described_once_an_evaluation_there_could_not_be_stopped()
     {

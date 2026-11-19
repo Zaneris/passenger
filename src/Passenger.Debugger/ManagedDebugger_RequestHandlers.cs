@@ -1312,7 +1312,7 @@ public partial class ManagedDebugger
         List<ThrownException> chain = StoredChain(currentException, thread);
         try
         {
-            // No code runs to read it once an evaluation has timed out, until the program runs on.
+            // No code runs to read it once an evaluation past its time was stopped or is held unfinished, until the program runs on.
             string? why = EvalStatus.ImplicitOff;
             // Every Message first, as what the person reads; the stack trace, the costliest to make, last.
             foreach (ThrownException each in chain)

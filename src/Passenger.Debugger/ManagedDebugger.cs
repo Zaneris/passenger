@@ -284,6 +284,7 @@ public partial class ManagedDebugger
         {
             AbortWhenDue = (thread, eval, after) => Core.UnawaitedWork.Observe(AbortWhenDueAsync(thread, eval, after)),
             WhyNoAbortTakes = WhyNoAbortTakes,
+            Running = EvaluationRunning,
             Log = logger,
             TellThreads = logger is null ? null : thread => logger(WhereThreadsStand(thread)),
         };
@@ -1699,6 +1700,10 @@ internal sealed class EvalStatus
     /// when it would (<see cref="ManagedDebugger.WhyNoAbortTakes"/>).</summary>
     internal required Func<ICorDebugThread, string?> WhyNoAbortTakes { get; init; }
 
+    /// <summary>The method an evaluation on the thread runs, the program held, as the call stack names it; null where none
+    /// of its own runs there (<see cref="ManagedDebugger.EvaluationRunning"/>).</summary>
+    internal required Func<ICorDebugThread, string?> Running { get; init; }
+
     /// <summary>The engine's log, for what becomes of an evaluation past its time.</summary>
     internal Action<string>? Log { get; init; }
 
@@ -1711,8 +1716,9 @@ internal sealed class EvalStatus
     /// one still running as it falls due says where the threads stand.</summary>
     internal ExpressionEvaluator.Cil.ExpressionTime? Expression { get; set; }
 
-    /// <summary>Why code the debugger would run of itself (a getter, a ToString, a proxy) is not run, once an
-    /// evaluation has timed out, until the program next runs on.</summary>
+    /// <summary>Why code the debugger would run of itself (a getter, a ToString, a proxy) is not run, once an evaluation
+    /// past its time was stopped or is held unfinished, until the program next runs on, naming that evaluation; one that
+    /// ended of itself as it was looked at turns nothing off.</summary>
     internal string? ImplicitOff { get; set; }
 
     /// <summary>Set while an evaluation asked for by name runs (the Evaluate window, a watch), which runs code regardless.</summary>

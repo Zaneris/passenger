@@ -88,6 +88,21 @@ public partial class ManagedDebugger
         }
     }
 
+    /// <summary>The method an evaluation on a thread runs, the program held: its frame where the evaluation began, named as
+    /// the call stack names it; null where no code of its own runs there (the runtime making an object) or the frames cannot
+    /// be read.</summary>
+    private string? EvaluationRunning(ICorDebugThread thread)
+    {
+        try
+        {
+            return EvaluationFrames(thread).LastOrDefault() is { } begun ? FrameTold(begun) : null;
+        }
+        catch (Exception error) when (Failures.OfRuntime(error))
+        {
+            return null;
+        }
+    }
+
     private string FrameTold(ICorDebugFrame frame) => frame switch
     {
         ICorDebugILFrame code when FindModule(code.Function.Module) is { } module => GetMethodFormattedName(module, code.Function.Token, code.TypeParameters),
