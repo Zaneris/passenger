@@ -322,7 +322,7 @@ public sealed partial record Expectation(string Kind, string Subject, string Op,
     {
         try
         {
-            _ = new Regex(pattern, RegexOptions.None, TimeSpan.FromSeconds(1));
+            _ = new Regex(pattern);
             return true;
         }
         catch (ArgumentException)

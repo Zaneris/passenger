@@ -16,7 +16,9 @@ public readonly record struct SearchQuery(string Text, bool MatchCase = false, b
 /// <summary>Finding every match of a query in a snapshot, and the replacement each one takes. A regex that does not
 /// parse finds nothing and says why instead of throwing, and one that runs past its time stops and says so. The text is
 /// searched with each "\r\n" read as "\n", as the editor's lines are, so `$` finds a CRLF line's end and `\s`
-/// never takes half of its break; `^` is every line's start but the empty end after the last break.</summary>
+/// never takes half of its break; `^` is every line's start but the empty end after the last break. Every regex time
+/// limit in Passenger's code is one of this class's, <see cref="AtOnce"/> or <see cref="Apart"/>, which a process whose
+/// answers may not hang on the wall clock lifts (<see cref="LiftTimeLimits"/>).</summary>
 public static class TextSearch
 {
     /// <summary>The most matches a search reports, so a one-letter query in a huge file stays quick;
@@ -24,8 +26,9 @@ public static class TextSearch
     public const int MaxMatches = 1000;
 
     /// <summary>How long a regex's search of a text may run on the UI thread, its matches together, so the window never
-    /// waits on one long: a search that stops there is run again off the UI thread under <see cref="Apart"/>.</summary>
-    public static readonly TimeSpan AtOnce = TimeSpan.FromMilliseconds(250);
+    /// waits on one long: a search that stops there is run again off the UI thread under <see cref="Apart"/>. 250 ms, none
+    /// once lifted.</summary>
+    public static TimeSpan AtOnce => limited ? TimeSpan.FromMilliseconds(250) : Regex.InfiniteMatchTimeout;
 
     /// <summary>The variable that gives <see cref="Apart"/> in milliseconds.</summary>
     [IdentifierHome]
@@ -34,8 +37,30 @@ public static class TextSearch
     /// <summary>How long a regex's search of a text may run off the UI thread, its matches together: far past the few
     /// hundred milliseconds a busy machine keeps a quick search waiting, so only a regex backtracking without end
     /// (`(a+)+b` over a long run of a's) stops. 5 s, or what <see cref="ApartVariable"/> gives; a value there that is no
-    /// whole number of milliseconds above 0 is fatal.</summary>
-    public static TimeSpan Apart => EnvironmentValues.Milliseconds(ApartVariable, TimeSpan.FromSeconds(5));
+    /// whole number of milliseconds above 0 is fatal. None once lifted.</summary>
+    public static TimeSpan Apart => limited ? EnvironmentValues.Milliseconds(ApartVariable, TimeSpan.FromSeconds(5)) : Regex.InfiniteMatchTimeout;
+
+    private static volatile bool limited = true;
+
+    /// <summary>Lifts <see cref="AtOnce"/> and <see cref="Apart"/> for the rest of the process, where a match must end as
+    /// its code ends it however long a busy machine keeps it waiting: the unit tests', which give the same answer every run.</summary>
+    public static void LiftTimeLimits() => limited = false;
+
+    /// <summary>A regex a person or a program wrote (a schema's pattern) made once to match many texts: on the linear
+    /// engine where its constructs allow, else held to <paramref name="within"/>, as <see cref="IsWrittenMatch"/> reads one.
+    /// A pattern that does not parse throws an <see cref="ArgumentException"/>.</summary>
+    public static Regex Written(string pattern, RegexOptions options, TimeSpan within)
+    {
+        try
+        {
+            return new Regex(pattern, options | RegexOptions.NonBacktracking, within);
+        }
+        catch (NotSupportedException)
+        {
+            // A backreference, a lookaround or an atomic group, which only backtracking reads.
+            return new Regex(pattern, options, within);
+        }
+    }
 
     /// <summary>Whether a text holds a match of a regex a person or a program wrote (an expectation, a schema's pattern): on
     /// the linear engine where its constructs allow, else held to <paramref name="within"/> (<see cref="AtOnce"/> on the
@@ -426,7 +451,7 @@ public sealed class SearchPattern
     {
         Regex = TextSearch.Build(query, within);
         Groups = query.Regex;
-        Within = query.Regex ? within : null;
+        Within = query.Regex && within != Regex.InfiniteMatchTimeout ? within : null;
         Literal = !query.Regex && query.Text.AsSpan().IndexOfAny('\r', '\n') < 0;
         Length = query.Text.Length;
         Walks = query.Regex && Regex.ToString().Contains(@"\G", StringComparison.Ordinal);
@@ -439,7 +464,8 @@ public sealed class SearchPattern
     /// <summary>Whether a match fills a replacement's groups: the query is a regex.</summary>
     internal bool Groups { get; }
 
-    /// <summary>How long a search of one text may run, its matches together; null for plain text, which has no limit.</summary>
+    /// <summary>How long a search of one text may run, its matches together; null for plain text, which has no limit, and
+    /// where limits are lifted.</summary>
     internal TimeSpan? Within { get; }
 
     /// <summary>Whether each match is the query's text in a line, as long as it (<see cref="Length"/>): plain text without

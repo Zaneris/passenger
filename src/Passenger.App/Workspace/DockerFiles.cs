@@ -357,7 +357,7 @@ public static class DockerFiles
         catch (ArgumentException)
         {
             // A class left open, which Docker refuses too: it matches nothing here.
-            return new Regex("(?!)", RegexOptions.None, TimeSpan.FromSeconds(1));
+            return new Regex("(?!)");
         }
     }
 

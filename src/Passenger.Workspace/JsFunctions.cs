@@ -1,5 +1,6 @@
 using System.Text.RegularExpressions;
 using Passenger.Core;
+using Passenger.Text;
 
 namespace Passenger.Workspace;
 
@@ -36,7 +37,7 @@ public static class JsFunctions
             + $@"|(?<![\w$])(?<n>{escaped})\s*=(?![=>])\s*{function}"
             + $@"|(?<![\w$.])(?<q>['""]?)(?<n>{escaped})\k<q>\s*:\s*{function}"
             + $@"|^[ \t]*(?:static\s+)?(?:async\s+)?\*?\s*(?<n>{escaped})\s*\([^()]*\)\s*\{{",
-            RegexOptions.Multiline | RegexOptions.CultureInvariant, TimeSpan.FromSeconds(1));
+            RegexOptions.Multiline | RegexOptions.CultureInvariant, TextSearch.Apart);
         List<(int, int)> found = [];
         foreach (Match match in declared.Matches(script))
         {

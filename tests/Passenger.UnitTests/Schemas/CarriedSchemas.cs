@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using Passenger.Text;
 
 namespace Passenger.UnitTests.Schemas;
 
@@ -362,8 +363,9 @@ internal static class CarriedSchemas
         };
     }
 
-    /// <summary>A schema's pattern, made once, a leading <c>(?i)</c> making it ignore case.</summary>
-    private static Regex Pattern(string pattern) => Patterns.GetOrAdd(pattern, p => new Regex(p, RegexOptions.CultureInvariant, TimeSpan.FromSeconds(1)));
+    /// <summary>A schema's pattern, made once as the IDE reads a pattern it was given, a leading <c>(?i)</c> making it ignore
+    /// case.</summary>
+    private static Regex Pattern(string pattern) => Patterns.GetOrAdd(pattern, p => TextSearch.Written(p, RegexOptions.CultureInvariant, TextSearch.Apart));
 
     private static string At(string at) => at.Length == 0 ? "the value" : at;
 

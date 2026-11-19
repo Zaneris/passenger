@@ -1,5 +1,4 @@
 using System.Reflection;
-using System.Reflection.Emit;
 using System.Runtime;
 using System.Runtime.Loader;
 
@@ -11,9 +10,6 @@ namespace Passenger.UnitTests;
 public class AllocationCountTests
 {
     private static byte[]? taken;
-
-    /// <summary>Each instruction by its first byte, and those beginning 0xFE by their second.</summary>
-    private static readonly (OpCode[] OneByte, OpCode[] TwoByte) Instructions = ReadInstructions();
 
     /// <summary>A background collection's mark would end while this thread holds the fresh allocation context it took as the
     /// collection began, and count the context's unused rest against it.</summary>
@@ -37,18 +33,13 @@ public class AllocationCountTests
     public void Every_class_unloading_a_load_context_runs_alone()
     {
         MethodInfo unload = typeof(AssemblyLoadContext).GetMethod(nameof(AssemblyLoadContext.Unload))!;
-        const BindingFlags Declared = BindingFlags.Instance | BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly;
         SortedSet<string> alone = new(StringComparer.Ordinal);
         SortedSet<string> beside = new(StringComparer.Ordinal);
         foreach (Type type in typeof(AllocationCountTests).Assembly.GetTypes())
         {
-            Type outermost = type;
-            while (outermost.DeclaringType is { } declaring)
-            {
-                outermost = declaring;
-            }
+            Type outermost = BuiltCalls.Outermost(type);
             bool runsAlone = outermost.GetCustomAttributes(inherit: true).OfType<Xunit.v3.ICollectionAttribute>().Any(collection => collection.Name == Alone.Name);
-            foreach (MethodBase method in type.GetMethods(Declared).Concat<MethodBase>(type.GetConstructors(Declared)).Where(method => Calls(method, unload)))
+            foreach (MethodBase method in BuiltCalls.Declared(type).Where(method => BuiltCalls.Of(method).Any(call => unload.Equals(call.Called))))
             {
                 (runsAlone ? alone : beside).Add($"{outermost.Name}, in {type.Name}.{method.Name}");
             }
@@ -57,47 +48,5 @@ public class AllocationCountTests
         Assert.True(beside.Count == 0, "A class unloading a load context runs beside the tests holding code to what their thread allocates: once collected, "
             + "each context empties the runtime's cast cache, and a test's thread casting next builds it again, up to 98 KB counted as the test's own. "
             + "Mark the class [Collection(Alone.Name)]:\n" + string.Join('\n', beside));
-    }
-
-    /// <summary>Whether a method's code calls <paramref name="target"/>.</summary>
-    private static bool Calls(MethodBase method, MethodBase target)
-    {
-        if (method.GetMethodBody()?.GetILAsByteArray() is not { } code)
-        {
-            return false;
-        }
-        Type[]? typeArguments = method.DeclaringType is { IsGenericType: true } generic ? generic.GetGenericArguments() : null;
-        Type[]? methodArguments = method.IsGenericMethod ? method.GetGenericArguments() : null;
-        for (int at = 0; at < code.Length;)
-        {
-            OpCode instruction = code[at] == 0xFE ? Instructions.TwoByte[code[at + 1]] : Instructions.OneByte[code[at]];
-            at += instruction.Size;
-            if (instruction.OperandType == OperandType.InlineMethod
-                && target.Equals(method.Module.ResolveMethod(BitConverter.ToInt32(code, at), typeArguments, methodArguments)))
-            {
-                return true;
-            }
-            at += instruction.OperandType switch
-            {
-                OperandType.InlineNone => 0,
-                OperandType.ShortInlineBrTarget or OperandType.ShortInlineI or OperandType.ShortInlineVar => 1,
-                OperandType.InlineVar => 2,
-                OperandType.InlineI8 or OperandType.InlineR => 8,
-                OperandType.InlineSwitch => 4 + (4 * BitConverter.ToInt32(code, at)),
-                _ => 4,
-            };
-        }
-        return false;
-    }
-
-    private static (OpCode[] OneByte, OpCode[] TwoByte) ReadInstructions()
-    {
-        (OpCode[] OneByte, OpCode[] TwoByte) read = (new OpCode[0x100], new OpCode[0x100]);
-        foreach (FieldInfo field in typeof(OpCodes).GetFields(BindingFlags.Public | BindingFlags.Static))
-        {
-            OpCode instruction = (OpCode)field.GetValue(null)!;
-            (instruction.Size == 1 ? read.OneByte : read.TwoByte)[(ushort)instruction.Value & 0xFF] = instruction;
-        }
-        return read;
     }
 }
