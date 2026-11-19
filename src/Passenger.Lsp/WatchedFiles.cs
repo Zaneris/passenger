@@ -279,7 +279,14 @@ public sealed class WatchedFiles
     /// <summary>Tells the server of the changes some watcher covers, by their canonical paths, in one notification, keeping
     /// the rest for a registration to come; how many it was told of. Each is matched against every watcher, so the caller
     /// tells a batch from off the UI thread.</summary>
-    public int Tell(IReadOnlyCollection<FileEvent> events)
+    public int Tell(IReadOnlyCollection<FileEvent> events) => Tell(events, why: null, heard: true);
+
+    /// <summary>Tells the server, as <see cref="Tell"/> does, of files found on disk otherwise than it holds them, which no
+    /// watcher told it of since they were written (a file written in place where the system's watcher is behind).</summary>
+    public int TellFound(IReadOnlyCollection<FileEvent> found) => Tell(found, "found held otherwise than the disk", heard: false);
+
+    /// <summary>The changes some watcher covers told, the rest kept; <paramref name="heard"/> when a watcher heard them.</summary>
+    private int Tell(IReadOnlyCollection<FileEvent> events, string? why, bool heard)
     {
         List<FileEvent> covered = [];
         lock (gate)
@@ -300,24 +307,27 @@ public sealed class WatchedFiles
                     server.Note($"Changes on disk no registration covered yet were let go past {KeptLimit}");
                 }
             }
-            covered = Send(covered, null);
+            covered = Send(covered, why, heard);
         }
         Said(covered);
         return covered.Count;
     }
 
-    /// <summary>The changes a test holds back from the server (<see cref="HoldTelling"/>): which files, until what, those
-    /// held back so far, and what is done once one is; under the gate.</summary>
-    private (Func<string, bool> Which, Task Until, List<FileEvent> Kept, TaskCompletionSource Reached)? held;
+    /// <summary>The changes a test holds back from the server (<see cref="HoldTelling"/>): which files, until what, whether
+    /// those found otherwise than the server holds them too, those held back so far, and what is done once one is; under
+    /// the gate.</summary>
+    private (Func<string, bool> Which, Task Until, bool Found, List<FileEvent> Kept, TaskCompletionSource Reached)? held;
 
-    /// <summary>Holds back from the server the changes to the files <paramref name="which"/> takes until <paramref name="until"/>
-    /// has ended, then tells it of them, as a watcher slow to hear them would, for a test: done once one is held back.</summary>
-    public Task HoldTelling(Func<string, bool> which, Task until)
+    /// <summary>Holds back from the server the changes a watcher heard to the files <paramref name="which"/> takes until
+    /// <paramref name="until"/> has ended, then tells it of them, as a watcher slow to hear them would, for a test; with
+    /// <paramref name="found"/>, those found otherwise than it holds them too (<see cref="TellFound"/>), as a server that
+    /// never reads them again. Done once one is held back.</summary>
+    public Task HoldTelling(Func<string, bool> which, Task until, bool found = false)
     {
         TaskCompletionSource reached = new(TaskCreationOptions.RunContinuationsAsynchronously);
         lock (gate)
         {
-            held = (which, until, [], reached);
+            held = (which, until, found, [], reached);
         }
         UnawaitedWork.Observe(TellHeldAsync(until));
         return reached.Task;
@@ -373,10 +383,11 @@ public sealed class WatchedFiles
     }
 
     /// <summary>The notification itself, under the gate, so what is told reaches the server in the order told; files gone
-    /// in one of their own to a server with Passenger's loader. What it told, all but those a test holds back.</summary>
-    private List<FileEvent> Send(List<FileEvent> changes, string? why)
+    /// in one of their own to a server with Passenger's loader. What it told, all but those a test holds back of what a
+    /// watcher <paramref name="heard"/>, or of what was found.</summary>
+    private List<FileEvent> Send(List<FileEvent> changes, string? why, bool heard = true)
     {
-        if (held is { } hold && changes.Any(c => hold.Which(c.Path)))
+        if (held is { } hold && (heard || hold.Found) && changes.Any(c => hold.Which(c.Path)))
         {
             hold.Kept.AddRange(changes.Where(c => hold.Which(c.Path)));
             hold.Reached.TrySetResult();

@@ -302,9 +302,15 @@ public sealed partial class CSharpService : IAsyncDisposable
         {
             return "the C# language server to load again the projects its restore brought packages to";
         }
-        return unreadInputs.Count > 0 ? $"the C# language server to read {Path.GetFileName(unreadInputs[0])}, which a design-time build wrote again"
-            : "the C# language server's source generators to run again after its load";
+        return unreadInputs.Count > 0 ? Reading(unreadInputs[0]) : "the C# language server's source generators to run again after its load";
     }
+
+    /// <summary>What a question waits for while the server holds a file its builds wrote otherwise than the disk, in words.</summary>
+    private static string Reading(string file) => $"the C# language server to read {Path.GetFileName(file)}, which a design-time build wrote again";
+
+    /// <summary>What the generators' wait last ran out still waiting for (<see cref="Reading"/>), and when, a timestamp of
+    /// Stopwatch's: an agent's question waiting for it then is refused, as the server's answer would be of the text before.</summary>
+    public (string What, long At)? RanOutReading { get; private set; }
 
     /// <summary>How long after a load the generators are waited for, with no extension to say when they have run.</summary>
     private static readonly TimeSpan GeneratorsRerun = TimeSpan.FromSeconds(5);
@@ -375,7 +381,8 @@ public sealed partial class CSharpService : IAsyncDisposable
     /// the server holds as the disk has them the files the load's builds wrote again (<see cref="GeneratorsReadAsync"/>).</summary>
     private void WaitForGenerators()
     {
-        Task? run = session is { Server.ExtensionProblem: null } asked ? GeneratorsReadAsync(asked) : null;
+        int wait = ++generatorsWaits;
+        Task? run = session is { Server.ExtensionProblem: null } asked ? GeneratorsReadAsync(asked, wait) : null;
         if (run is not null)
         {
             // A server gone, or refusing, has nothing left to run: the wait ends either way.
@@ -384,13 +391,18 @@ public sealed partial class CSharpService : IAsyncDisposable
         generatorsRun = (Stopwatch.GetTimestamp(), run);
     }
 
+    /// <summary>How many generators' waits began (<see cref="WaitForGenerators"/>): only the latest says what it waits for.</summary>
+    private int generatorsWaits;
+
     /// <summary>Done once the generators' runs the server has queued have run and it holds as the disk has them the files in
     /// its projects' intermediate output folders: a load keeps the text it read of a file its builds wrote again (the
-    /// settings MAUI's generator reads of a page) until the server hears it changed, a moment later, and a generator run
-    /// before then makes nothing of it. Asked again each moment while one is not, for <see cref="InputsUnheard"/> at most.</summary>
-    private async Task GeneratorsReadAsync(RoslynSession asked)
+    /// settings MAUI's generator reads of a page) until the server hears it changed, and a generator run before then makes
+    /// nothing of it. Each it holds otherwise is told it as changed, once for each time it was written (<see
+    /// cref="TellUnreadAsync"/>), and asked again each moment while one is not, for <see cref="InputsUnheard"/> at most.</summary>
+    private async Task GeneratorsReadAsync(RoslynSession asked, int wait)
     {
         long began = Stopwatch.GetTimestamp();
+        Dictionary<string, FileStamp> told = new(PathNames.Comparer);
         try
         {
             while (true)
@@ -409,28 +421,59 @@ public sealed partial class CSharpService : IAsyncDisposable
                     }
                     return;
                 }
-                unreadInputs = unread;
+                bool latest = wait == generatorsWaits;
+                if (latest)
+                {
+                    unreadInputs = unread;
+                }
                 if (unread.Count == 0)
                 {
                     return;
                 }
                 if (Stopwatch.GetElapsedTime(began) >= InputsUnheard)
                 {
-                    IdeErrors.Write($"C# language server (process {asked.Server.ProcessId}) still held {unread[0]} otherwise than the disk {Durations.Said(InputsUnheard)} after its load: "
-                        + "agents' questions no longer wait for it");
+                    // A later wait, still under way, says what it comes to itself.
+                    if (latest)
+                    {
+                        RanOutReading = (Reading(unread[0]), Stopwatch.GetTimestamp());
+                        IdeErrors.Write($"C# language server (process {asked.Server.ProcessId}) still held {unread[0]} otherwise than the disk {Durations.Said(InputsUnheard)} after its load: "
+                            + "agents' questions waiting for it are refused, and those after no longer wait for it");
+                    }
                     return;
                 }
+                await TellUnreadAsync(asked, unread, told);
                 await Task.Delay(TimeSpan.FromMilliseconds(100));
             }
         }
         finally
         {
-            if (session == asked)
+            if (session == asked && wait == generatorsWaits)
             {
                 unreadInputs = [];
             }
         }
     }
+
+    /// <summary>Tells the server that each file it holds otherwise than the disk changed, off the window's thread, unless it
+    /// was told of the file as it stands already (<paramref name="told"/>, kept by the one wait): its builds' outputs are
+    /// written in place, which a watcher behind the system's may never hear, and the server takes no file's text again
+    /// until told.</summary>
+    private static Task TellUnreadAsync(RoslynSession asked, IReadOnlyList<string> unread, Dictionary<string, FileStamp> told) => BackgroundWork.Run(() =>
+    {
+        List<FileEvent> changed = [];
+        foreach (string path in unread)
+        {
+            if (FileStamp.Of(path) is { } stamp && (!told.TryGetValue(path, out FileStamp was) || was != stamp))
+            {
+                told[path] = stamp;
+                changed.Add(new FileEvent(PathNames.Canonical(path), FileChangeType.Changed));
+            }
+        }
+        if (changed.Count > 0)
+        {
+            asked.Server.WatchedFiles.TellFound(changed);
+        }
+    });
 
     /// <summary>The server's answer once the generators' runs it queued have run; null, said in the log, where it refused
     /// to say (it is waited for no more, so agents' questions go on as of whatever its generators made).</summary>

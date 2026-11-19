@@ -810,6 +810,80 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
         }
     }
 
+    /// <summary>A MAUI page's folder whose first load restores MAUI: the build the load after the restore takes writes again,
+    /// in place, the settings MAUI's generator reads of the page and the global usings, which no watcher tells the server of
+    /// (held back throughout, as a loaded Mac's watcher, behind the system's, misses a file written in place). An agent's
+    /// definition of the InitializeComponent the generator declares goes to it, the wait telling the server of what it holds
+    /// otherwise than the disk, never answering nothing as of the global usings before the restore.</summary>
+    [AvaloniaFact]
+    public void An_agents_definition_of_what_a_restored_generator_declares_goes_to_it_though_no_watcher_tells_the_server_what_the_build_wrote_again()
+    {
+        string folder = McpNavigationTests.MauiPage("mcp-maui-untold-");
+        DeleteAtEnd(folder);
+        (CallToolResult answer, string said) = DefinitionWhileTheBuildsOutputsAreUntold(folder, found: false);
+        Assert.True(answer.IsError != true && said.Contains("MainPage.xaml.sg.cs", StringComparison.Ordinal)
+            && said.Contains("private partial void InitializeComponent();", StringComparison.Ordinal),
+            $"definition of a MAUI page's InitializeComponent, asked while no watcher told the server what the build after the restore wrote again, answered: {said}");
+    }
+
+    /// <summary>As above, the server never taking the disk's text of the files the build after the restore wrote again,
+    /// though told it changed (held back here throughout): the agent's definition is refused once the wait for them has
+    /// run out, saying it waited for the server to read them, never answering nothing as of the text before.</summary>
+    [AvaloniaFact]
+    public void An_agents_definition_of_what_a_restored_generator_declares_is_refused_naming_what_the_build_wrote_again_where_the_server_never_reads_it()
+    {
+        string folder = McpNavigationTests.MauiPage("mcp-maui-unheard-");
+        DeleteAtEnd(folder);
+        (CallToolResult answer, string said) = DefinitionWhileTheBuildsOutputsAreUntold(folder, found: true);
+        Assert.True(answer.IsError == true && said.Contains(": Passenger waited ", StringComparison.Ordinal)
+            && said.Contains(" for the C# language server to read MauiApp1.", StringComparison.Ordinal)
+            && said.Contains(", which a design-time build wrote again, which has not come, so the answer would be of the code before it", StringComparison.Ordinal),
+            $"definition of a MAUI page's InitializeComponent, asked while the server never read what the build after the restore wrote again, answered: {said}");
+    }
+
+    /// <summary>An agent's definition of a MAUI page's InitializeComponent, asked as its folder first loads, while the server
+    /// is told nothing a watcher hears of the files the build after the restore writes again in its intermediate output
+    /// folder, nor, with <paramref name="found"/>, what the generators' wait finds it holds otherwise than the disk.</summary>
+    private (CallToolResult Answer, string Said) DefinitionWhileTheBuildsOutputsAreUntold(string folder, bool found)
+    {
+        string project = Path.Combine(folder, "MauiApp1.csproj");
+        MainWindow window = new() { Width = 1200, Height = 800 };
+        window.Show();
+        TaskCompletionSource loading = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource telling = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        McpClient? client = null;
+        try
+        {
+            // Pumped, not settled throughout: the server's load held waits on the window.
+            Task opening = window.OpenFolder(folder);
+            Ui.PumpUntil(() => opening.IsCompleted && window.CSharpService is not null, "the folder to open with a language server", AgentLimit);
+            Task loadHeld = window.Session.DesignTimeBuilds.HoldNextAsked(project, loading.Task);
+            window.ApplySettings(window.Settings with { McpServer = true });
+            Assert.True(window.AgentSocket is not null, $"The window does not listen for agents: {window.Status}");
+            client = Ui.AwaitPumped(Waiting.Apart(() => Start(["--mcp-attach", ProcessId])), "the agent attaching", AgentLimit);
+            Heard heard = new();
+            Task<CallToolResult> asked = Waiting.Apart(() => Result(client, McpTools.Definition, new() { ["path"] = "MainPage.xaml.cs", ["line"] = 9, ["column"] = 9 }, heard: heard));
+            Ui.PumpUntil(() => loadHeld.IsCompleted && window.CSharpService!.Session is not null && (heard.Told.Count > 0 || asked.IsCompleted),
+                "the server's first load of MauiApp1 to be held while the agent's definition waits", AgentLimit);
+            string written = Path.Combine(folder, "obj", "Debug", "net11.0");
+            window.CSharpService!.Session!.Server.WatchedFiles.HoldTelling(path => PathNames.IsUnder(path, written)
+                && (path.EndsWith(".GeneratedMSBuildEditorConfig.editorconfig", StringComparison.Ordinal) || path.EndsWith(".GlobalUsings.g.cs", StringComparison.Ordinal)), telling.Task, found);
+            loading.SetResult();
+            CallToolResult answer = Ui.AwaitPumped(asked, "the agent's definition of InitializeComponent", AgentLimit);
+            return (answer, Text(answer));
+        }
+        finally
+        {
+            loading.TrySetResult();
+            telling.TrySetResult();
+            if (client is not null)
+            {
+                Gone(client);
+            }
+            window.Close();
+        }
+    }
+
     /// <summary>A MAUI page's folder whose first load restores MAUI, the server's report that it loaded the project again
     /// with what the restore brought heard before the end of the batch it loaded in (held back here, as a server that loads
     /// the project once more in that batch keeps its end): an agent's definition of the InitializeComponent MAUI's generator

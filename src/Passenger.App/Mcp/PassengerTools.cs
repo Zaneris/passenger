@@ -3637,12 +3637,15 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
 
     /// <summary>Waits until the C# language server answers for a file of the folder's as its projects stand, and <paramref name="held"/>
     /// holds: answers before the solution has loaded, or before what a restore as it loaded brought (the projects' load
-    /// after it, their generators' run), are of the code before, so the agent is told what it waits for. Refused once the
-    /// server has stopped, and when the time is up with the load or what the restore brought still to come.</summary>
+    /// after it, their generators' run, the files its builds wrote read again), are of the code before, so the agent is
+    /// told what it waits for. Refused once the server has stopped, when the time is up with the load or what the restore
+    /// brought still to come, and when the server's generators' wait ran out meanwhile with what it waited for unread.</summary>
     private async Task ServerSettledAsync(string path, Func<CSharpService, bool> held, CancellationToken cancel)
     {
         string? reloading = null;
+        bool waited = false;
         bool settled = false;
+        long began = System.Diagnostics.Stopwatch.GetTimestamp();
         // Looked at every 50 ms.
         await Until(() =>
         {
@@ -3653,6 +3656,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             if (csharp.IsReady && csharp.ReloadingWhat(path) is var what && what != reloading)
             {
                 reloading = what;
+                waited |= what is not null;
                 AgentCall.Say(what is null ? null : $"Waiting for {what}");
             }
             return settled = csharp.IsReady && reloading is null && !csharp.AwaitsRestore(path) && held(csharp);
@@ -3664,6 +3668,10 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         if (Session.CSharp is { IsStopped: true })
         {
             throw new InvalidOperationException(Refusals.CSharpStopped);
+        }
+        if (waited && Session.CSharp?.RanOutReading is { } ranOut && ranOut.At > began)
+        {
+            throw new TimeoutException(Refusals.StillComing(System.Diagnostics.Stopwatch.GetElapsedTime(began, ranOut.At), ranOut.What));
         }
         if (!settled && Session.CSharp is { IsReady: false } unready)
         {
