@@ -2745,10 +2745,11 @@ public static class TestGpgKeys
     public static async Task<string> MakeAsync(string passphrase, string? gpg = null, string user = "Passenger Tests <tests@passenger.invalid>")
     {
         gpg ??= Gpg!;
+        string log = AgentLogged(gpg);
         Passenger.Core.ChildResult made = await Passenger.Core.ChildProcesses.RunAsync(Of(gpg,
             ["--batch", "--pinentry-mode", "loopback", "--passphrase-fd", "0", "--quick-gen-key", user, "ed25519", "sign", "never"]),
             passphrase + "\n", Limit.Scaled());
-        Assert.True(made.Succeeded, $"gpg made no key to sign with, exiting {made.ExitCode}: {made.Error}");
+        Assert.True(made.Succeeded, $"gpg made no key to sign with, exiting {made.ExitCode}: {made.Error}{AgentSaid(log)}");
         Passenger.Core.ChildResult listed = await Passenger.Core.ChildProcesses.RunAsync(Of(gpg, ["--list-secret-keys", "--with-colons", $"={user}"]),
             limit: Limit.Scaled());
         string id = listed.Output.Split('\n').Select(l => l.Split(':')).First(f => f[0] == "sec")[4];
@@ -2768,6 +2769,30 @@ public static class TestGpgKeys
         if ((File.Exists(beside) ? beside : Passenger.Core.Programs.OnPath(OperatingSystem.IsWindows() ? "gpgconf.exe" : "gpgconf")) is { } gpgconf)
         {
             await Passenger.Core.ChildProcesses.RunAsync(Of(gpgconf, ["--kill", "gpg-agent"]), limit: Limit.Scaled());
+        }
+    }
+
+    /// <summary>The run's gpg-agent, as <paramref name="program"/> starts it next, logging what it does to a file in the run's
+    /// GnuPG home, named in the form the program reads a path; that file, which a failed key's making quotes.</summary>
+    internal static string AgentLogged(string program)
+    {
+        string home = Environment.GetEnvironmentVariable("GNUPGHOME")!;
+        string log = Path.Combine(home, "gpg-agent.log");
+        string named = Passenger.Vcs.MsysGpg.Is(program, File.Exists) ? Passenger.Vcs.MsysGpg.Posix(log) : log;
+        File.WriteAllText(Path.Combine(home, "gpg-agent.conf"), $"log-file {named}\nverbose\n");
+        return log;
+    }
+
+    /// <summary>What the run's gpg-agent logged, to follow a failure's words.</summary>
+    internal static string AgentSaid(string log)
+    {
+        try
+        {
+            return $"\nThe run's gpg-agent logged:\n{File.ReadAllText(log)}";
+        }
+        catch (Exception unread) when (unread is IOException or UnauthorizedAccessException)
+        {
+            return $"\nThe run's gpg-agent's log was not read: {unread.Message}";
         }
     }
 
@@ -2804,9 +2829,10 @@ public static class TestX509Keys
         string certificate = Path.Combine(folder, "x509.pem");
         await File.WriteAllTextAsync(parameters, "Key-Type: RSA\nKey-Length: 2048\nKey-Usage: sign\nSerial: random\nName-DN: CN=Passenger Tests,O=Passenger\n"
             + "Name-Email: tests@passenger.invalid\n");
+        string log = TestGpgKeys.AgentLogged(Gpgsm!);
         Passenger.Core.ChildResult made = await Passenger.Core.ChildProcesses.RunAsync(TestGpgKeys.Of(Gpgsm!,
             ["--batch", "--pinentry-mode", "loopback", "--passphrase-fd", "0", "--armor", "--output", certificate, "--gen-key", parameters]), passphrase + "\n", Limit.Scaled());
-        Assert.True(made.Succeeded, $"gpgsm made no certificate to sign with, exiting {made.ExitCode}: {made.Error}");
+        Assert.True(made.Succeeded, $"gpgsm made no certificate to sign with, exiting {made.ExitCode}: {made.Error}{TestGpgKeys.AgentSaid(log)}");
         Passenger.Core.ChildResult imported = await Passenger.Core.ChildProcesses.RunAsync(TestGpgKeys.Of(Gpgsm!, ["--batch", "--import", certificate]),
             limit: Limit.Scaled());
         Assert.True(imported.Succeeded, $"gpgsm did not import the test's certificate, exiting {imported.ExitCode}: {imported.Error}");
