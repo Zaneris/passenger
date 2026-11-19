@@ -318,6 +318,57 @@ public sealed class ErrorStripeTests
         Assert.True(editor.Selections.Primary.Caret == caret, $"A click on the track took the caret to line {editor.CaretPosition.Line + 1}, a mark's beside it");
     }
 
+    /// <summary>Each use's mark lies where the thumb's middle is when its line stands in the middle of the view, so a line on
+    /// screen has its mark on the thumb where the line is in the view: in a file a few screens long, in one of thousands of
+    /// lines (the thumb at its least length), and with lines wrapped and a fold shut above the uses.</summary>
+    [AvaloniaFact]
+    public void A_uses_mark_lies_where_the_thumbs_middle_is_with_its_line_in_the_middle_of_the_view_wrapped_and_folded_too()
+    {
+        foreach ((int lines, bool bent) in (ReadOnlySpan<(int, bool)>)[(60, false), (5000, false), (120, true)])
+        {
+            string words = string.Concat(Enumerable.Repeat("words ", 40));
+            EditorRig rig = new(string.Concat(Enumerable.Range(0, lines).Select(i => i % 9 == 4
+                ? $"        total += value{i};{(bent && i % 2 == 0 ? " // " + words : string.Empty)}\n"
+                : $"        int value{i} = {i};{(bent && i % 3 == 0 ? " // " + words : string.Empty)}\n")));
+            CodeEditor editor = rig.Editor;
+            TextSnapshot text = rig.Document.Snapshot;
+            if (bent)
+            {
+                editor.SoftWrap = true;
+                editor.SetFoldRegions([new FoldRegion(text.GetLine(1).End, text.GetLine(12).End, "...", Folded: true)]);
+            }
+            string all = text.ToString();
+            editor.SetUsageHighlights([.. Enumerable.Range(0, all.Length - 5).Where(at => string.CompareOrdinal(all, at, "total", 0, 5) == 0)
+                .Select(at => new UsageHighlight(new TextRange(at, 5), IsWrite: true))]);
+            Ui.Settle();
+            ScrollBar bar = editor.GetVisualDescendants().OfType<ScrollBar>().First(b => b.Orientation == Orientation.Vertical);
+            List<CodeEditor.StripeMark> marks = [.. editor.StripeMarks.Where(m => m.Kind == StripeMarkKind.WriteUsage)];
+            Assert.Equal(editor.UsageHighlights.Count, marks.Count);
+            int held = 0;
+            foreach (CodeEditor.StripeMark mark in marks.Where((_, i) => i % Math.Max(1, marks.Count / 12) == 0))
+            {
+                double middle = ((mark.Row + 0.5) * editor.LineHeight) - (bar.ViewportSize / 2);
+                if (middle < 0 || middle > bar.Maximum)
+                {
+                    continue;
+                }
+                editor.ScrollTo(new Vector(0, middle));
+                Ui.Settle();
+                int use = editor.UsageHighlights[mark.Item].Range.Start;
+                double line = editor.PointOf(use).Y + (editor.LineHeight / 2);
+                Assert.True(Math.Abs(line - (bar.ViewportSize / 2)) < 1,
+                    $"In {lines} lines{(bent ? ", wrapped and folded," : string.Empty)} the use on line {text.GetLineFromOffset(use) + 1} stood {line:0.#} px down the view with its mark's row in its middle, {bar.ViewportSize / 2:0.#}: the mark is of another row");
+                double thumb = Centre(ThumbOf(editor), editor).Y;
+                double drawn = editor.StripePoint(mark).Y;
+                Assert.True(Math.Abs(drawn - thumb) <= 2,
+                    $"In {lines} lines{(bent ? ", wrapped and folded," : string.Empty)} the use on line {text.GetLineFromOffset(use) + 1}, in the middle of the view, has its mark {drawn:0.#} px down the stripe, where the thumb's middle is {thumb:0.#}: the mark is off its line's place");
+                held++;
+            }
+            Assert.True(held >= 3, $"Only {held} of {lines} lines' uses could stand in the middle of the view");
+            rig.Window.Close();
+        }
+    }
+
     private static Thumb ThumbOf(CodeEditor editor) =>
         editor.GetVisualDescendants().OfType<ScrollBar>().First(b => b.Orientation == Orientation.Vertical).GetVisualDescendants().OfType<Thumb>().First();
 

@@ -14,9 +14,10 @@ namespace Passenger.Editor;
 
 /// <summary>The error stripe: the vertical scrollbar's track stays and carries a mark for each problem (errors over
 /// warnings over the rest), changed lines, search matches, the uses of the symbol at the caret, bookmarks and the
-/// caret, each where its line is in the file (a folded one at its fold). A mark says what it is on hover and takes the
-/// caret there on a click. Over the stripe's top, the file's counts of errors and warnings, or a green tick: a click
-/// goes to the next problem and asks the host for Problems.</summary>
+/// caret, each where its row is on the thumb's scale (<see cref="StripeScale"/>; a folded line at its fold, a wrapped
+/// one's at its own row). A mark says what it is on hover and takes the caret there on a click. Over the stripe's top,
+/// the file's counts of errors and warnings, or a green tick: a click goes to the next problem and asks the host for
+/// Problems.</summary>
 public sealed partial class CodeEditor
 {
     private readonly ErrorStripe stripe;
@@ -87,7 +88,7 @@ public sealed partial class CodeEditor
     public Point StripePoint(StripeMark mark)
     {
         Rect track = TrackRect();
-        return ErrorStripe.Drawn(mark, ErrorStripe.Span(mark, track, RowCount), track).Center;
+        return ErrorStripe.Drawn(mark, ErrorStripe.Span(mark, track, Scale()), track).Center;
     }
 
     /// <summary>Goes to the next error or warning after the caret, wrapping, as the counts' click does.</summary>
@@ -210,7 +211,7 @@ public sealed partial class CodeEditor
         MarkProblems(ref count, text, markers);
         StripeMarksBuilt++;
         stripeBuild = new StripeBuild(text, markers, matches, uses, rows, Bookmarks, ChangeMarks, highlights.Given, usages.Given,
-            stripeMarks, count, rows.Count, lineShape, StripeMarksBuilt, rowShape, matchesAt, usesAt);
+            stripeMarks, count, lineShape, StripeMarksBuilt, rowShape, matchesAt, usesAt);
         return stripeBuild;
     }
 
@@ -442,6 +443,27 @@ public sealed partial class CodeEditor
 
     private Track? BarTrack() => vertical.GetVisualDescendants().OfType<Track>().FirstOrDefault();
 
+    /// <summary>The scrollbar's own measures, which place its thumb: how far it scrolls, the height it shows, a row's height
+    /// and the thumb's length as laid out (none while it is hidden).</summary>
+    private StripeScale Scale() => new(vertical.Maximum, vertical.ViewportSize, metrics.LineHeight,
+        BarTrack()?.Thumb is { IsVisible: true, Bounds.Height: > 0 } thumb ? thumb.Bounds.Height : 0);
+
+    /// <summary>Where the thumb stands for a place in the text: a row's mark lies where the thumb's middle is when that row
+    /// stands in the middle of the view, so a row on screen has its mark on the thumb as far down it as the row is down the
+    /// view, the thumb's least length aside.</summary>
+    internal readonly record struct StripeScale(double Maximum, double Viewport, double RowHeight, double Thumb)
+    {
+        /// <summary>How far down a track of a height the thumb's place for a height into the text is, kept on the track.</summary>
+        public double At(double y, double track)
+        {
+            double extent = Maximum + Viewport;
+            double at = Maximum > 0 && Thumb > 0 && Thumb < track
+                ? (Thumb / 2) + ((y - (Viewport / 2)) * (track - Thumb) / Maximum)
+                : y * track / Math.Max(extent, RowHeight);
+            return Math.Clamp(at, 0, track);
+        }
+    }
+
     private StripeBuild? stripeBuild;
     /// <summary>What the stripe and the counts were last asked to draw: the marks' build, where the caret's mark stands on the
     /// track, and the counts; default once a new look or document has them drawn again whole.</summary>
@@ -460,7 +482,7 @@ public sealed partial class CodeEditor
             return;
         }
         StripeBuild built = BuiltMarks();
-        (int Built, double CaretTop, (int, int) Counts) now = (built.Number, stripe.CaretTop(CaretMark(), built.RowCount), ProblemCount);
+        (int Built, double CaretTop, (int, int) Counts) now = (built.Number, stripe.CaretTop(CaretMark()), ProblemCount);
         // A build kept through a key shares its marks: the stripe is drawn again only for other marks or its caret's moved.
         if (now == stripeDrawn)
         {
@@ -509,7 +531,7 @@ public sealed partial class CodeEditor
     /// marks the matches' and the uses' begin.</summary>
     private sealed record StripeBuild(TextSnapshot Text, MarkerList Markers, IReadOnlyList<TextRange> Highlights,
         IReadOnlyList<UsageHighlight> Usages, RowMap Rows, IReadOnlyList<int> Bookmarks, IReadOnlyList<ChangeMark> Changes, int Matched, int Used,
-        StripeMark[] Marks, int Count, int RowCount, int Shape, int Number, int RowShape, int MatchesAt, int UsesAt)
+        StripeMark[] Marks, int Count, int Shape, int Number, int RowShape, int MatchesAt, int UsesAt)
     {
         public bool Shows(TextSnapshot text, MarkerList markers, IReadOnlyList<TextRange> highlights, IReadOnlyList<UsageHighlight> usages,
             RowMap rows, IReadOnlyList<int> bookmarks, IReadOnlyList<ChangeMark> changes) =>
@@ -526,14 +548,14 @@ public sealed partial class CodeEditor
 
         /// <summary>The build the spans were placed for (its number), the track then, and where each mark is on it, in a
         /// list whose length only grows.</summary>
-        private (int Built, int RowCount, Rect Track) placed = (-1, 0, default);
+        private (int Built, StripeScale Scale, Rect Track) placed = (-1, default, default);
         private (double Top, double Height)[] spans = [];
 
         public bool HitTest(Point point) => At(point) is not null;
 
         /// <summary>Where the caret's mark is drawn on the track as last placed; before the stripe was first drawn, nowhere.</summary>
-        public double CaretTop(StripeMark caret, int rowCount) =>
-            placed.Built < 0 ? double.NegativeInfinity : Span(caret, placed.Track, rowCount).Top;
+        public double CaretTop(StripeMark caret) =>
+            placed.Built < 0 ? double.NegativeInfinity : Span(caret, placed.Track, placed.Scale).Top;
 
         /// <summary>The marks in order, those next to each other drawn alike and touching as one rectangle, so thousands of
         /// problems are as many rectangles as the track has room for: what the compositor draws again in every frame.</summary>
@@ -541,7 +563,7 @@ public sealed partial class CodeEditor
         {
             editor.StripesDrawn++;
             Palette palette = editor.palette;
-            (StripeBuild built, Rect track) = Placed();
+            (StripeBuild built, Rect track, StripeScale scale) = Placed();
             IBrush? brush = null;
             Rect run = default;
             int drawn = 0;
@@ -568,16 +590,17 @@ public sealed partial class CodeEditor
             }
             editor.StripeRectangles = drawn;
             StripeMark caret = editor.CaretMark();
-            context.FillRectangle(BrushOf(palette, caret), Drawn(caret, Span(caret, track, built.RowCount), track));
+            context.FillRectangle(BrushOf(palette, caret), Drawn(caret, Span(caret, track, scale), track));
         }
 
         /// <summary>The marks and where each is on the track, in this control's coordinates: both what is drawn and what a
         /// pointer hits, worked out again only for new marks or a moved track.</summary>
-        private (StripeBuild Marks, Rect Track) Placed()
+        private (StripeBuild Marks, Rect Track, StripeScale Scale) Placed()
         {
             StripeBuild built = editor.BuiltMarks();
             Rect track = editor.TrackRect().Translate(new Vector(-Bounds.X, -Bounds.Y));
-            if (placed != (built.Number, built.RowCount, track))
+            StripeScale scale = editor.Scale();
+            if (placed != (built.Number, scale, track))
             {
                 if (spans.Length < built.Count)
                 {
@@ -585,11 +608,11 @@ public sealed partial class CodeEditor
                 }
                 for (int i = 0; i < built.Count; i++)
                 {
-                    spans[i] = Span(built.Marks[i], track, built.RowCount);
+                    spans[i] = Span(built.Marks[i], track, scale);
                 }
-                placed = (built.Number, built.RowCount, track);
+                placed = (built.Number, scale, track);
             }
-            return (built, track);
+            return (built, track, scale);
         }
 
         private static IBrush BrushOf(Palette palette, StripeMark mark) =>
@@ -683,20 +706,24 @@ public sealed partial class CodeEditor
             editor.Focus();
         }
 
-        /// <summary>Where a mark is drawn on the track: its row's place in the file, a tick three pixels high (a suggestion's
-        /// two, the caret's a line), a change as tall as its lines.</summary>
-        public static (double Top, double Height) Span(StripeMark mark, Rect track, int rowCount)
+        /// <summary>Where a mark is drawn on the track, on the thumb's scale: a tick three pixels high (a suggestion's two,
+        /// the caret's a line) about its row's middle, a change from its first row's top to its last row's foot.</summary>
+        public static (double Top, double Height) Span(StripeMark mark, Rect track, StripeScale scale)
         {
-            double rows = Math.Max(1, rowCount);
-            double top = Math.Round(track.Top + (mark.Row / rows * track.Height));
+            double row = scale.RowHeight;
+            if (mark.Kind == StripeMarkKind.Change)
+            {
+                double first = scale.At(mark.Row * row, track.Height);
+                double foot = scale.At((mark.Row + mark.Rows) * row, track.Height);
+                return (Math.Round(track.Top + first), Math.Max(2, foot - first));
+            }
             double height = mark.Kind switch
             {
                 StripeMarkKind.Caret => 1,
-                StripeMarkKind.Change => Math.Max(2, mark.Rows / rows * track.Height),
                 StripeMarkKind.Info => 2,
                 _ => 3,
             };
-            return (top, height);
+            return (Math.Round(track.Top + scale.At((mark.Row + 0.5) * row, track.Height) - (height / 2)), height);
         }
 
         /// <summary>The mark drawn under a point, give or take <see cref="Reach"/>, the one drawn over the others first; the
@@ -708,7 +735,7 @@ public sealed partial class CodeEditor
             {
                 return null;
             }
-            (StripeBuild built, Rect track) = Placed();
+            (StripeBuild built, Rect track, _) = Placed();
             for (int i = built.Count - 1; i >= 0; i--)
             {
                 if (Drawn(built.Marks[i], spans[i], track).Inflate(Reach).Contains(point))
