@@ -30,6 +30,15 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 
 ## 2026-11-19
 
+- `CarriedSchemasTests`' `Every_default_a_carried_schema_offers_is_a_value_its_own_schema_takes` and `VimTests`'
+  `Star_and_hash_with_no_keyword_search_for_the_run_of_other_non_blanks(before: "x |\"y\" \"y\"", keys: "*", …)`, the
+  Mac's whole unit-test assembly at a load average near 150 (#1975's runs): `RegexMatchTimeoutException`, and the caret
+  left where it was. **A regex time limit in a unit test**: a match its code ends in microseconds waited past its limit
+  on the wall clock while the machine ran other work. The schema check held each schema pattern to a second of its own;
+  Vim's * searched under `TextSearch.AtOnce`'s 250 ms and refused, "The search took too long and stopped.", as the
+  Ubuntu VM showed beside 300 busy processes in 13 of 37,235 presses. Every regex time limit in Passenger's code is
+  now TextSearch's (`AtOnce`, `Apart`), lifted in the unit tests from their first moment (`TextSearch.LiftTimeLimits`);
+  `RegexLimitsTests`' rule names a regex given a limit of its own (98846acd4, #1979).
 - `McpNavigationTests`' `A_second_diagnostics_of_an_unchanged_file_answers_from_the_servers_last_pull_sending_none`,
   CI 44484077195 (macOS): 9 pulls on the second ask again, after #1642. **The test waited wrong**: a server started
   ahead of the window is taken up a moment after its projects load, and only then do its watchers start; their first
