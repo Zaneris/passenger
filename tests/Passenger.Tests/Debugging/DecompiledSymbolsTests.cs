@@ -68,11 +68,17 @@ public sealed class DecompiledSymbolsTests(ITestOutputHelper testOutputHelper) :
         string writing = Plant(cache, "Writing.Library.pdb.2c3d.tmp", TimeSpan.FromMinutes(1));
 
         await using DebugSession host = await DebugSession.ForLaunch(Output, cache).InitializeAsync();
-        Assert.True(await Waiting.UntilAsync(() => !File.Exists(stale) && !File.Exists(abandoned), TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken, TimeSpan.FromMilliseconds(50)),
-            $"The adapter had not pruned in {TimeSpan.FromSeconds(30).Scaled().TotalSeconds} s: {(File.Exists(stale) ? "symbols unused for 40 days" : "a temporary file 2 hours old")} still there");
+        // Read once the adapter says it pruned, never as the files go, before the folders they leave empty.
+        string Pruned() => host.EngineLog().Split('\n').FirstOrDefault(line => line.Contains("Symbol cache: ", StringComparison.Ordinal)
+            && line.Contains(" pruned", StringComparison.Ordinal) && line.Contains(cache, StringComparison.Ordinal))?.Trim() ?? "";
+        Assert.True(await Waiting.UntilAsync(() => Pruned().Length > 0, TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken, TimeSpan.FromMilliseconds(50)),
+            $"The adapter had not said it pruned in {TimeSpan.FromSeconds(30).Scaled().TotalSeconds} s{(File.Exists(stale) ? ", symbols unused for 40 days still there" : "")}");
+        Assert.False(File.Exists(stale), $"Symbols unused for 40 days were kept: {Pruned()}");
+        Assert.False(File.Exists(abandoned), $"A temporary file 2 hours old, a write that never finished, was kept: {Pruned()}");
         Assert.True(File.Exists(recent), "Symbols used 3 days ago were pruned");
         Assert.True(File.Exists(writing), "A temporary file a minute old, which another adapter may still be writing, was pruned");
         Assert.False(Directory.Exists(Path.GetDirectoryName(Path.GetDirectoryName(stale))), "The pruned entry's folders were left behind, empty");
+        Assert.False(Directory.Exists(Path.GetDirectoryName(Path.GetDirectoryName(abandoned))), "The folders of the write that never finished were left behind, empty");
     }
 
     /// <summary>A decompile runs off the engine's lock: a request and a disconnect made while CoreLib is decompiled, which
