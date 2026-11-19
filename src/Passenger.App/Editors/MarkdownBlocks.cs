@@ -388,6 +388,9 @@ public sealed class MarkdownBlocks : Panel
     {
         Markdown.Heading heading => heading.Level switch { 1 => 39, 2 => 33, 3 or 4 => 25, _ => 22 },
         Markdown.Paragraph paragraph => Wrapped(paragraph.Text.Length, width),
+        Markdown.Phrase phrase => Wrapped(Markdown.Plain(phrase.Parts).Length, width),
+        Markdown.Division division => Stacked(division.Blocks, width),
+        Markdown.Details details => 28 + (details.Open ? 8 + Stacked(details.Blocks, width) : 0),
         Markdown.Code code => 14 + (16 * (code.Text.AsSpan().Count('\n') + 1)),
         Markdown.Listing listing => Items(listing, width),
         Markdown.Quote quote => 4 + Stacked(quote.Blocks, width - 15),

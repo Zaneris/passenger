@@ -317,6 +317,13 @@
     <Compile Include="../../src/Passenger.Roslyn.Extension/Messages.cs" Link="App/RoslynMessages.cs" />
   </ItemGroup>
 
+  <!-- How a Markdown file reads into blocks and words, GFM's emphasis and the HTML a README holds, from its text alone,
+       compiled in since its project is the app's. -->
+  <ItemGroup>
+    <Compile Include="../../src/Passenger.App/Editors/Markdown.cs" Link="App/Markdown.cs" />
+    <Compile Include="../../src/Passenger.App/Editors/Markdown.Html.cs" Link="App/Markdown.Html.cs" />
+  </ItemGroup>
+
   <!-- What a hover's Markdown says, as the card shows it and an agent reads it, from its text alone, compiled in since its
        project is the app's. -->
   <ItemGroup>

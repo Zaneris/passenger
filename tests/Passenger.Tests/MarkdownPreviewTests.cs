@@ -6,6 +6,7 @@ using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.LogicalTree;
 using Avalonia.Media;
+using Avalonia.Styling;
 using Avalonia.VisualTree;
 using Passenger.App;
 using Passenger.App.Editors;
@@ -332,6 +333,99 @@ public sealed class MarkdownPreviewTests
         Ui.Click(said, said.PointOf(guide));
         Assert.True(PathNames.Same(window.EditorArea.Active?.Path ?? "", PathNames.Canonical(Path.Combine(folder, "docs", "guide.md"))),
             $"The link to /docs/guide.md opened {window.EditorArea.Active?.Path ?? "nothing"}, not the root's docs/guide.md");
+        window.Close();
+    }
+
+    /// <summary>Passenger's own README as GitHub draws it: its centred row of links, each opening (a web page, a heading,
+    /// another file), its pictures of the look shown, the light one's source in the light look and its img's in the dark,
+    /// and its MCP flags strong code with no asterisks left; a details fold opening on a click.</summary>
+    [AvaloniaFact]
+    public void A_READMEs_HTML_draws_its_centred_links_its_pictures_of_the_look_shown_and_its_flags_strong_code()
+    {
+        string folder = TestFolders.Create("markdown-html-");
+        Directory.CreateDirectory(Path.Combine(folder, "site", "images"));
+        Directory.CreateDirectory(Path.Combine(folder, "docs", "release-notes"));
+        File.WriteAllBytes(Path.Combine(folder, "site", "images", "debugger-light.webp"), Png(64, 32));
+        File.WriteAllBytes(Path.Combine(folder, "site", "images", "debugger-dark.webp"), Png(32, 64));
+        File.WriteAllText(Path.Combine(folder, "docs", "release-notes", "0.4.0.md"), "# 0.4.0\n");
+        StringBuilder readme = new("""
+            # Passenger
+
+            <p align="center">
+              <a href="https://passenger-ide.net">Website</a> •
+              <a href="docs/release-notes/0.4.0.md">What's new in 0.4.0</a> •
+              <a href="#what-it-does">What it does</a>
+            </p>
+
+            <picture>
+              <source media="(prefers-color-scheme: light)" srcset="site/images/debugger-light.webp">
+              <img src="site/images/debugger-dark.webp" alt="Passenger stopped at a breakpoint">
+            </picture>
+
+            <details>
+            <summary>Two ways in</summary>
+
+            - **`--mcp-attach`** joins the window you have open over the folder the agent works in (`--mcp-attach PID` chooses one
+              of Passenger's windows)
+            - **`--mcp FOLDER`** starts a Passenger of the agent's own with no window
+
+            </details>
+
+            """);
+        for (int section = 1; section <= 30; section++)
+        {
+            readme.Append(section == 15 ? "## What it does\n\nIt debugs.\n\n" : "");
+            readme.Append($"## Section {section}\n\nWhat section {section} says, at some length so that it fills a line or two of the preview.\n\n");
+        }
+        string path = Path.Combine(folder, "README.md");
+        File.WriteAllText(path, readme.ToString().ReplaceLineEndings("\n"));
+        MainWindow window = Ui.OpenFolder(folder, width: 1400, height: 900, languageServer: false);
+        Assert.Null(window.OpenFile(PathNames.Canonical(path)));
+        Ui.Settle();
+        MarkdownPreview preview = Shown(window.EditorArea.ActiveGroup);
+        Assert.DoesNotContain("<", preview.Text, StringComparison.Ordinal);
+
+        MarkdownText row = preview.GetLogicalDescendants().OfType<MarkdownText>().FirstOrDefault(t => t.Shown.StartsWith("Website", StringComparison.Ordinal))
+            ?? throw new Xunit.Sdk.XunitException($"The README's row of links is not drawn as its words:\n{preview.Text}");
+        Assert.True(row.Shown == "Website • What's new in 0.4.0 • What it does" && row.TextAlignment == TextAlignment.Center,
+            $"The row of links reads '{row.Shown}', standing {row.TextAlignment}, not its three links centred");
+        Assert.Equal(["Website", "What's new in 0.4.0", "What it does"], row.Links.Select(l => l.Words));
+        Uri website = new("https://passenger-ide.net");
+        Ui.Click(row, row.PointOf(website));
+        Assert.True(window.Browsed.LastOrDefault() == website, $"A click on Website opened [{string.Join(", ", window.Browsed)}]");
+        Ui.Click(row, row.PointOf(new Uri("#what-it-does", UriKind.Relative)));
+        Control heading = preview.Heading("what-it-does") ?? throw new Xunit.Sdk.XunitException("The heading What it does has no anchor 'what-it-does'");
+        Assert.True(Math.Abs(preview.Offset.Y - preview.TopOf(heading)) < 1, $"The link to #what-it-does left the preview at {preview.Offset.Y:0}, not its heading's {preview.TopOf(heading):0}");
+        preview.Offset = default;
+        Ui.Settle();
+
+        MarkdownPicture picture = Assert.Single(preview.GetLogicalDescendants().OfType<MarkdownPicture>());
+        foreach ((ThemeVariant look, string file, int width) in (ReadOnlySpan<(ThemeVariant, string, int)>)[(ThemeVariant.Dark, "debugger-dark.webp", 32), (ThemeVariant.Light, "debugger-light.webp", 64), (ThemeVariant.Dark, "debugger-dark.webp", 32)])
+        {
+            window.RequestedThemeVariant = look;
+            Ui.Settle();
+            Assert.True(PathNames.Same(picture.File, PathNames.Canonical(Path.Combine(folder, "site", "images", file))), $"In the {look} look the picture drawn is {picture.File}, not {file}");
+            Ui.WaitFor(() => picture.Shown?.PixelSize.Width == width, $"the {look} look's picture, {file}, read and drawn");
+        }
+
+        Button opener = preview.GetLogicalDescendants().OfType<Button>().FirstOrDefault(b => b.GetLogicalDescendants().OfType<TextBlock>().Any(t => t.Text == "Two ways in"))
+            ?? throw new Xunit.Sdk.XunitException($"The details' summary is not drawn as a fold's opener:\n{preview.Text}");
+        MarkdownText[] flags = [.. preview.GetLogicalDescendants().OfType<MarkdownText>().Where(t => t.Shown.StartsWith("--mcp", StringComparison.Ordinal))];
+        Assert.True(flags.Length == 2 && !flags.Any(f => f.IsEffectivelyVisible), $"The folded details show {flags.Count(f => f.IsEffectivelyVisible)} of their {flags.Length} flags before a click");
+        Ui.Click(opener);
+        Assert.True(flags.All(f => f.IsEffectivelyVisible), "A click on the details' summary did not open them");
+        foreach ((MarkdownText flag, string code) in flags.Zip((string[])["--mcp-attach", "--mcp FOLDER"]))
+        {
+            Run first = flag.Inlines!.OfType<Run>().First();
+            Assert.True(!flag.Shown.Contains('*', StringComparison.Ordinal) && first.Text == code && first.FontWeight == FontWeight.Bold && first.FontFamily == CodeEditor.CodeFont,
+                $"The flag {code} is not drawn strong code with no asterisks: '{flag.Shown}'");
+        }
+
+        // Drawn again as the page came back from its last heading.
+        row = preview.GetLogicalDescendants().OfType<MarkdownText>().First(t => t.Shown.StartsWith("Website", StringComparison.Ordinal));
+        Ui.Click(row, row.PointOf(new Uri("docs/release-notes/0.4.0.md", UriKind.Relative)));
+        Assert.True(PathNames.Same(window.EditorArea.Active?.Path ?? "", PathNames.Canonical(Path.Combine(folder, "docs", "release-notes", "0.4.0.md"))),
+            $"The link to the release notes opened {window.EditorArea.Active?.Path ?? "nothing"}");
         window.Close();
     }
 
