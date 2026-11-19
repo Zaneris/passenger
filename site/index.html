@@ -39,9 +39,9 @@
     "url": "https://passenger-ide.net/",
     "applicationCategory": "DeveloperApplication",
     "operatingSystem": "Windows, macOS, Linux",
-    "softwareVersion": "0.4.0",
+    "softwareVersion": "0.4.1",
     "downloadUrl": "https://github.com/Zaneris/passenger/releases",
-    "releaseNotes": "https://github.com/Zaneris/passenger/releases/tag/v0.4.0",
+    "releaseNotes": "https://github.com/Zaneris/passenger/releases/tag/v0.4.1",
     "offers": {
         "@type": "Offer",
         "price": "0",
@@ -895,7 +895,7 @@
                 </details>
                 <details>
                     <summary>Is it ready for daily work?</summary>
-                    <p>Passenger is young (0.4.0), and its own development runs through it every day: the coding agents
+                    <p>Passenger is young (0.4.1), and its own development runs through it every day: the coding agents
                         that write much of it work through its MCP server. Its tests drive the whole IDE, a window with real
                         keys and clicks, on macOS, Windows and Linux, and a release ships only once its core tests pass
                         on all three. Each release's notes say what it does and its known limits, so you can judge for
@@ -949,8 +949,9 @@
                         <li><a data-asset="Passenger-macos-x64.dmg" href="https://github.com/Zaneris/passenger/releases/latest/download/Passenger-macos-x64.dmg">Intel <span class="kind">.dmg</span></a></li>
                     </ul>
                     <p class="note">Apple Silicon for a Mac with an M chip, Intel for one with an Intel processor (About
-                        This Mac says which). Drag Passenger onto Applications. Each new release downloads in the
-                        background and installs as Passenger closes.</p>
+                        This Mac says which). Drag Passenger onto Applications, then choose Tools &rsaquo; Add the
+                        passenger-ide Command&hellip; for its <code>passenger-ide</code> command in a terminal. Each
+                        new release downloads in the background and installs as Passenger closes.</p>
                 </div>
                 <div class="platform">
                     <h3>Windows</h3>
@@ -960,7 +961,8 @@
                     </ul>
                     <p class="note">Arm64 for a PC with an Arm processor, such as a Snapdragon, x64 for one with Intel or
                         AMD (Settings &rsaquo; System &rsaquo; About says which). Installs for you alone, with no
-                        administrator. Each new release downloads in the background and installs as Passenger closes.</p>
+                        administrator, and puts the <code>passenger-ide</code> command on your Path. Each new release
+                        downloads in the background and installs as Passenger closes.</p>
                 </div>
                 <div class="platform">
                     <h3>Linux</h3>
@@ -968,8 +970,9 @@
                         <li><a data-asset="Passenger-linux-x64.tar.gz" href="https://github.com/Zaneris/passenger/releases/latest/download/Passenger-linux-x64.tar.gz">x64 <span class="kind">.tar.gz</span></a></li>
                         <li><a data-asset="Passenger-linux-arm64.tar.gz" href="https://github.com/Zaneris/passenger/releases/latest/download/Passenger-linux-arm64.tar.gz">Arm64 <span class="kind">.tar.gz</span></a></li>
                     </ul>
-                    <p class="note">Unpack it and run its <code>install.sh</code>, for you alone or for everyone. Installed
-                        so, it updates itself as on macOS and Windows.</p>
+                    <p class="note">Unpack it and run its <code>install.sh</code>, for you alone or for everyone, which
+                        links the <code>passenger-ide</code> command. Installed so, it updates itself as on macOS and
+                        Windows.</p>
                     <a class="more" href="/linux">How to install on Linux</a>
                 </div>
             </div>
