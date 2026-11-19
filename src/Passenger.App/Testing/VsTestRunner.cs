@@ -676,14 +676,14 @@ public sealed class VsTestRunner : ITestRunner
         public void HandleTestRunComplete(TestRunCompleteEventArgs testRunCompleteArgs, TestRunChangedEventArgs? lastChunkArgs, ICollection<AttachmentSet>? runContextAttachments, ICollection<string>? executorUris)
         {
             HandleTestRunStatsChange(lastChunkArgs);
-            if (testRunCompleteArgs.Error is { } error)
+            if (BrokenRuns.Told(testRunCompleteArgs.Error) is { } error)
             {
-                log?.Invoke(error.Message);
+                log?.Invoke(error);
             }
             RunSummary summary;
             lock (all)
             {
-                string? why = testRunCompleteArgs.Error?.Message ?? (testRunCompleteArgs.IsAborted && !testRunCompleteArgs.IsCanceled ? BrokenOff() : null);
+                string? why = testRunCompleteArgs.IsAborted && !testRunCompleteArgs.IsCanceled ? BrokenOff(testRunCompleteArgs.Error) : testRunCompleteArgs.Error?.Message;
                 summary = new RunSummary(testRunCompleteArgs.ElapsedTimeInRunningTests, testRunCompleteArgs.IsCanceled, testRunCompleteArgs.IsAborted, why)
                 {
                     Outcomes = [.. all],
@@ -734,9 +734,9 @@ public sealed class VsTestRunner : ITestRunner
 
         public void HandleRawMessage(string rawMessage) => Raw(rawMessage);
 
-        /// <summary>Why a run broke off with no error of its own (its test host crashed): the last error VSTest said, and the
-        /// test running then, as VSTest last named it, else the one test asked that told nothing; under the lock.</summary>
-        private string? BrokenOff()
+        /// <summary>Why a run broke off (<see cref="BrokenRuns.Said"/>): the error VSTest gave its end, else the last it said,
+        /// and the test running then, as VSTest last named it, else the one test asked that told nothing; under the lock.</summary>
+        private string? BrokenOff(Exception? error)
         {
             HashSet<TestItem> told = new(all.Select(outcome => outcome.Test), ReferenceEqualityComparer.Instance);
             List<TestItem> then = [.. active.Select(test => running.GetValueOrDefault((test.Id, test.Source))).OfType<TestItem>().Where(test => !told.Contains(test))];
@@ -744,8 +744,7 @@ public sealed class VsTestRunner : ITestRunner
             {
                 then = [only];
             }
-            string? named = then.Count == 0 ? null : $"while {string.Join(", ", then.Select(test => test.FullyQualifiedName))} ran";
-            return lastError is null ? named : named is null ? lastError : $"{lastError}, {named}";
+            return BrokenRuns.Said(error, lastError, [.. then.Select(test => test.FullyQualifiedName)]);
         }
     }
 
