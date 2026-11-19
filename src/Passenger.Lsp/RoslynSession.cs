@@ -984,6 +984,25 @@ public sealed class LspDocument : IDisposable
         await Server.RequestAsync<List<LspTextEdit>>(LspMethods.RangeFormatting,
             new DocumentRangeFormattingParams(Identifier, RangeOf(range), FormattingOptions.Of(indent, conventions, Text.Snapshot)), cancel) ?? [];
 
+    /// <summary>Whether the server formats around a character once it is typed (<see cref="LanguageServer.FormattingTriggers"/>).</summary>
+    public bool FormatsTyped(char typed)
+    {
+        foreach (string trigger in Server.FormattingTriggers)
+        {
+            if (trigger.Length == 1 && trigger[0] == typed)
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /// <summary>The server's formatting of what a character typed at an offset ends (the statement a ';' ends, the block a
+    /// '}' closes), the caret past it, by the options the whole document's formatting takes.</summary>
+    public async Task<IReadOnlyList<LspTextEdit>> FormatTypedAsync(int offset, string typed, IndentOptions indent, EditorConfig conventions, CancellationToken cancel = default) =>
+        await Server.RequestAsync<List<LspTextEdit>>(LspMethods.OnTypeFormatting,
+            new DocumentOnTypeFormattingParams(Identifier, PositionOf(offset), typed, FormattingOptions.Of(indent, conventions, Text.Snapshot)), cancel) ?? [];
+
     /// <summary>What the server writes on its own after a character typed at an offset, the caret past it (Razor's end
     /// tag after a start tag's '>'); null where it writes nothing.</summary>
     public async Task<AutoInserted?> AutoInsertAsync(int offset, string typed, IndentOptions indent, EditorConfig conventions, CancellationToken cancel = default) =>

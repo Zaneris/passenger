@@ -341,6 +341,33 @@ public sealed partial class Vim(VimRegisters registers)
     private void Begin(Command command, string how, SelectionSet carets, int length) =>
         inserting = (command.Keys, command.Count, how, carets.Items[0].Caret, length, carets.Count, carets.Items.Min(c => c.Caret));
 
+    /// <summary>Edits the host made in an insert session of one caret, all before it (its formatting of what was typed),
+    /// sorted and apart in the text before them: what they change before the session's start moves it, so . types again
+    /// what the session's keys did; one taking in that start makes what it writes typed from there.</summary>
+    public void FollowEdits(IReadOnlyList<TextEdit> edits)
+    {
+        if (inserting is not { Carets: 1 } session)
+        {
+            return;
+        }
+        int first = session.First;
+        int length = session.Length;
+        int moved = 0;
+        foreach (TextEdit edit in edits)
+        {
+            if (edit.End <= session.First)
+            {
+                moved += edit.Text.Length - edit.Length;
+            }
+            else if (edit.Start < session.First)
+            {
+                length -= session.First - edit.Start;
+                first = edit.Start;
+            }
+        }
+        inserting = (session.Keys, session.Count, session.How, first + moved, length + moved, session.Carets, first + moved);
+    }
+
     /// <summary>Escape in insert mode: the carets step back onto the text, a line the session indented and left blank loses
     /// its indent, a count repeats what it typed, and what it typed is kept for . to type again.</summary>
     private VimResult LeaveInsert(TextSnapshot text, SelectionSet selections, IVimView view)

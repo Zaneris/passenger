@@ -60,6 +60,66 @@ public sealed class LongFileAssistTests : IClassFixture<LongFileAssistTests.Proj
         window.Close();
     }
 
+    /// <summary>A statement's ';' typed in a file of 20,000 lines lays the statement out as it does in a short file whose
+    /// screen shows the same code, and costs the UI thread what it does there: the key, from its change, its syntax read
+    /// from the file's own parse off the UI thread, and each frame until its layout is made, a statement's few edits. The
+    /// least of three rounds, each taken back by one Undo; what the window allocates is the count, never a time.</summary>
+    [AvaloniaFact]
+    public void A_statements_semicolon_in_a_file_of_twenty_thousand_lines_is_laid_out_at_a_short_files_cost()
+    {
+        MainWindow window = project.Open("Brief.cs");
+        (long fewKey, long fewFrame) = LaidOut(window, "Brief.cs");
+        (long manyKey, long manyFrame) = LaidOut(window, "Dotted.cs");
+        TestContext.Current.TestOutputHelper?.WriteLine(
+            $"A ';' allocated {fewKey:N0} bytes on the UI thread in a short file and {manyKey:N0} in one of 20,000 lines, the most a frame did until its layout was made {fewFrame:N0} and {manyFrame:N0}");
+        // The file's text alone is over 2 MB: a key or a frame copying it, or parsing it again, allocates thirty times the margin.
+        Assert.True(manyKey <= fewKey + (64 * 1024),
+            $"A ';' allocated {manyKey:N0} bytes on the UI thread in a file of 20,000 lines, against {fewKey:N0} in a short one: it read the file there");
+        Assert.True(manyFrame <= fewFrame + (64 * 1024),
+            $"A frame until a ';''s layout was made allocated {manyFrame:N0} bytes on the UI thread in a file of 20,000 lines, against {fewFrame:N0} in a short one");
+        window.Close();
+    }
+
+    /// <summary>What a statement's ';' typed on a new line of its own in Last() allocates on the UI thread from its change,
+    /// and the most a frame does from then until it is laid out; the least of three rounds.</summary>
+    private (long Key, long Frame) LaidOut(MainWindow window, string file)
+    {
+        window.OpenFile(project.PathOf(file));
+        Ui.Settle();
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        string Line() => editor.Document.Snapshot.GetLineText(editor.CaretPosition.Line);
+        Ui.PlaceAfter(editor, "public static void Last()\n    {");
+        editor.Focus();
+        Ui.Press(window, "ENTER");
+        window.KeyTextInput("int n=1");
+        (long Key, long Frame) least = (long.MaxValue, long.MaxValue);
+        for (int round = 0; round < 3; round++)
+        {
+            Ui.Settle();
+            GC.Collect(1, GCCollectionMode.Forced, blocking: true);
+            GC.WaitForPendingFinalizers();
+            // From the key's change: the work come due before it runs as the key is sent.
+            long? changed = null;
+            void Changed(object? sender, DocumentChangedEventArgs e) => changed ??= GC.GetAllocatedBytesForCurrentThread();
+            editor.Document.ChangedFirst += Changed;
+            window.KeyTextInput(";");
+            editor.Document.ChangedFirst -= Changed;
+            long key = GC.GetAllocatedBytesForCurrentThread() - (changed ?? throw new InvalidOperationException($"The ';' typed in {file} changed nothing"));
+            long frame = 0;
+            Deadline limit = Deadline.In(TimeSpan.FromSeconds(60).Scaled());
+            while ((Line() != "        int n = 1;" || BackgroundWork.Pending > 0) && !limit.Passed)
+            {
+                long before = GC.GetAllocatedBytesForCurrentThread();
+                Ui.Hold(TimeSpan.FromMilliseconds(10), "one frame, whose allocations are measured");
+                frame = Math.Max(frame, GC.GetAllocatedBytesForCurrentThread() - before);
+            }
+            Assert.True(Line() == "        int n = 1;", $"The ';' in {file} did not lay out its statement: '{Line()}'");
+            least = (Math.Min(least.Key, key), Math.Min(least.Frame, frame));
+            Ui.Run(window, EditorActions.Undo);
+        }
+        return least;
+    }
+
     /// <summary>Squiggles in a file of 20,000 lines stay on their words as lines go in above them, and so do the
     /// diagnostics a fix asked for at the caret is given, a key reading a few characters rather than the whole file.
     /// The server's colours, hundreds of thousands of tokens, are decoded off the UI thread: no frame while they land
@@ -725,6 +785,10 @@ public sealed class LongFileAssistTests : IClassFixture<LongFileAssistTests.Proj
         /// <summary>Dotted.cs: two hundred methods of a hundred lines with no error, and a last one where a dot goes after Console.</summary>
         public static readonly string Dotted = TwentyThousandLines(errors: false, "Dotted", "    public static void Last()\n    {\n        Console\n    }\n}\n");
 
+        /// <summary>Brief.cs: Dotted.cs's last methods alone, two of a hundred lines and the last, so a screen of it shows what
+        /// one of Dotted.cs's does.</summary>
+        public static readonly string Brief = Methods(2, errors: false, "Brief", "    public static void Last()\n    {\n        Console\n    }\n}\n");
+
         public Project()
             : base("long-assist-")
         {
@@ -733,6 +797,7 @@ public sealed class LongFileAssistTests : IClassFixture<LongFileAssistTests.Proj
             File.WriteAllText(PathOf("Program.cs"), "class Program\n{\n    static void Main()\n    {\n    }\n}\n");
             File.WriteAllText(PathOf("Long.cs"), Long);
             File.WriteAllText(PathOf("Dotted.cs"), Dotted);
+            File.WriteAllText(PathOf("Brief.cs"), Brief);
             File.WriteAllText(PathOf("Calls.cs"), Calls);
             File.WriteAllText(PathOf("Few.cs"), Few);
             File.WriteAllText(PathOf("Warned.cs"), Warned);
@@ -781,8 +846,17 @@ public sealed class LongFileAssistTests : IClassFixture<LongFileAssistTests.Proj
         /// <summary>Two hundred methods of a hundred lines and more: 20,000 lines, as many as Roslyn parses fresh every time.</summary>
         private static string TwentyThousandLines(bool errors, string name, string end)
         {
+            string source = Methods(200, errors, name, end);
+            Assert.True(source.Count(c => c == '\n') > 20_000);
+            return source;
+        }
+
+        /// <summary>A class of <paramref name="count"/> methods of a hundred lines and more, every fiftieth with an error where
+        /// <paramref name="errors"/> asks, and <paramref name="end"/> after them.</summary>
+        private static string Methods(int count, bool errors, string name, string end)
+        {
             StringBuilder text = new($"using System;\n\nstatic class {name}\n{{\n");
-            for (int i = 0; i < 200; i++)
+            for (int i = 0; i < count; i++)
             {
                 text.Append(System.Globalization.CultureInfo.InvariantCulture, $"    public static int Method{i}(int seed)\n    {{\n        int value0 = seed + {i};\n");
                 if (errors && i % 50 == 25)
@@ -795,9 +869,7 @@ public sealed class LongFileAssistTests : IClassFixture<LongFileAssistTests.Proj
                 }
                 text.Append("        return value99;\n    }\n\n");
             }
-            string source = text.Append(end).ToString();
-            Assert.True(source.Count(c => c == '\n') > 20_000);
-            return source;
+            return text.Append(end).ToString();
         }
     }
 }

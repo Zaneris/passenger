@@ -17,6 +17,7 @@ public sealed partial class CodeEditor
     /// with nothing to do that a host may want instead (Escape with one plain caret).</summary>
     public bool TryExecute(string action, bool extend = false)
     {
+        formattedKey = null;
         TextSnapshot text = document.Snapshot;
         if (RunChoiceKey(action) || RunSnippetKey(action) || RunFolding(action))
         {

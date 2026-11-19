@@ -40,6 +40,7 @@ public sealed partial class CodeEditor
 
     protected override void OnKeyDown(KeyEventArgs e)
     {
+        formattedKey = null;
         base.OnKeyDown(e);
         if (e.Handled || ownKeys is null)
         {
@@ -68,6 +69,7 @@ public sealed partial class CodeEditor
 
     protected override void OnTextInput(TextInputEventArgs e)
     {
+        formattedKey = null;
         base.OnTextInput(e);
         if (e.Handled || string.IsNullOrEmpty(e.Text))
         {
@@ -111,6 +113,7 @@ public sealed partial class CodeEditor
             TypedOverEndTag?.Invoke(this, EventArgs.Empty);
             return;
         }
+        formattedKey = BeginFormattedKey(typed);
         Apply(TextEditing.Type(document.Snapshot, selections, typed));
         EditPlan? closing = ClosesTags ? TextEditing.CloseTag(document.Snapshot, selections, typed, Markup) : null;
         if (closing is not null)

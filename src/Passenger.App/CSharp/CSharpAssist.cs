@@ -14,7 +14,8 @@ internal sealed partial class CSharpAssist(AssistContext context, PopupPlacement
 {
     /// <summary>A member's dot, and in a Razor file a tag's '&lt;' (the elements and components) and '@' (Razor's directives
     /// and the C#), list what may follow; so do a name's first letter and a space after a member's override. A call's
-    /// bracket or comma shows its signature, and a Razor file's '>' and "&lt;/" close their tags.</summary>
+    /// bracket or comma shows its signature, a Razor file's '>' and "&lt;/" close their tags, and C#'s ';' and '}' format
+    /// what they end (<see cref="FormatTyped"/>).</summary>
     public override bool Typed(string text)
     {
         char last = text[^1];
@@ -37,6 +38,7 @@ internal sealed partial class CSharpAssist(AssistContext context, PopupPlacement
         }
         CloseRazorTag(text);
         parameters.AfterTyped(last);
+        FormatTyped(text);
         return true;
     }
 

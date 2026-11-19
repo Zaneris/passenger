@@ -194,6 +194,7 @@ public partial class MainWindow
         FollowVimMappings(next.VimMode);
         assist.Templates = CSharp.TemplateSet.Of(next);
         assist.CompletionParentheses = next.CompletionParentheses;
+        assist.FormatOnType = next.FormatOnType;
         assist.XamlFormat = next.XamlFormat;
         assist.GDScriptFormat = (next.GDScriptFormat, next.GDScriptFormatOnSave);
         assist.ReformatsOnSave = next.ReformatOnSave;

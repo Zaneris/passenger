@@ -116,6 +116,7 @@ public sealed class CodeAssist
             };
             editor.HoverEnded += (_, _) => quickInfo.PointerLeft();
             editor.ClickReach = (action, offset, cancel) => editor == Editor && action == AppActions.GoToDeclaration ? DeclaredFromAsync(offset, cancel) : NoReach;
+            editor.FormatsTyped = typed => editor == Editor && context.Languages.CSharp.FormatsTyped(typed);
             editor.Typed += (_, text) =>
             {
                 if (editor == Editor)
@@ -492,6 +493,13 @@ public sealed class CodeAssist
     {
         get => completion.CallsMethods;
         set => completion.CallsMethods = value;
+    }
+
+    /// <summary>Whether C# is formatted as it is typed, at a statement's ';' and a block's '}', as Settings leaves it.</summary>
+    public bool FormatOnType
+    {
+        get => context.Languages.CSharp.FormatsOnType;
+        set => context.Languages.CSharp.FormatsOnType = value;
     }
 
     /// <summary>The XAML code style as Settings leaves it, which a file's .editorconfig overrides.</summary>

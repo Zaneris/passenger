@@ -340,6 +340,9 @@ public sealed record AutoInserted(
 
 public sealed record DocumentRangeFormattingParams(TextDocumentIdentifier TextDocument, LspRange Range, FormattingOptions Options);
 
+/// <summary>A character typed at a place, the caret past it, around which the server formats what it ends.</summary>
+public sealed record DocumentOnTypeFormattingParams(TextDocumentIdentifier TextDocument, LspPosition Position, string Ch, FormattingOptions Options);
+
 // Symbols
 
 public sealed record WorkspaceSymbolParams(string Query);

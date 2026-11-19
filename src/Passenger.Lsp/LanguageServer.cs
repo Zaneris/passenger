@@ -758,6 +758,23 @@ public sealed class LanguageServer : IAsyncDisposable
     /// <summary>The characters after which the server offers completion unasked (<c>completionProvider.triggerCharacters</c>).</summary>
     public IReadOnlyList<string> CompletionTriggers => JsonMembers.Texts(JsonMembers.Object(Capabilities, "completionProvider"), "triggerCharacters");
 
+    /// <summary>The characters the server formats around once typed (<c>documentOnTypeFormattingProvider</c>'s first trigger
+    /// and the rest), read once from what it said it does.</summary>
+    public IReadOnlyList<string> FormattingTriggers => Capabilities.ValueKind == JsonValueKind.Undefined ? []
+        : formattingTriggers ??= TriggersOf(JsonMembers.Object(Capabilities, "documentOnTypeFormattingProvider"));
+
+    private IReadOnlyList<string>? formattingTriggers;
+
+    private static List<string> TriggersOf(JsonElement? provider)
+    {
+        List<string> triggers = [.. JsonMembers.Texts(provider, "moreTriggerCharacter")];
+        if (JsonMembers.Text(provider, "firstTriggerCharacter") is { } first)
+        {
+            triggers.Insert(0, first);
+        }
+        return triggers;
+    }
+
     /// <summary>The server's error stream heard into its log to its end, which closes the log.</summary>
     private static async Task HearErrorsAsync(Process process, ServerLog log)
     {

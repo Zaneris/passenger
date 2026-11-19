@@ -163,6 +163,43 @@ public sealed class CSharpHighlighter : IHighlighter, IBraceMatcher, IFoldFinder
     /// <summary>The newest parse when it is of the text as it stands, else null until one is (<see cref="Parsed"/>).</summary>
     public ParsedText? Newest => tree is not null && sinceTree.Count == 0 ? Current : null;
 
+    /// <summary>What waits for the parse of the text as it stands to land (<see cref="ParsedAsync"/>), with that text.</summary>
+    private List<(TextSnapshot Text, TaskCompletionSource<ParsedText?> Landed)>? waiting;
+
+    /// <summary>The syntax of <paramref name="of"/>, the text as it stands, once its own parse has landed, read off the UI
+    /// thread as every parse here is, so nothing is parsed on the UI thread for it: at once where it has; null where the
+    /// text changes again, its parse fails or the highlighter is let go first, or <paramref name="of"/> is no longer the
+    /// text. Asked and answered on the UI thread.</summary>
+    public Task<ParsedText?> ParsedAsync(TextSnapshot of)
+    {
+        if (Newest is { } now)
+        {
+            return Task.FromResult(ReferenceEquals(now.Text, of) ? now : null);
+        }
+        if (disposed || !ReferenceEquals(text.Snapshot, of))
+        {
+            return Task.FromResult<ParsedText?>(null);
+        }
+        TaskCompletionSource<ParsedText?> landed = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        (waiting ??= []).Add((of, landed));
+        return landed.Task;
+    }
+
+    /// <summary>Answers what waits for a parse (<see cref="ParsedAsync"/>): the syntax landed for those of its text, null
+    /// for every other.</summary>
+    private void AnswerWaiting(ParsedText? landed)
+    {
+        if (waiting is not { } waiters)
+        {
+            return;
+        }
+        waiting = null;
+        foreach ((TextSnapshot of, TaskCompletionSource<ParsedText?> answer) in waiters)
+        {
+            answer.TrySetResult(landed is not null && ReferenceEquals(landed.Text, of) ? landed : null);
+        }
+    }
+
     public IReadOnlyList<SyntaxSpan> GetSpans(TextSnapshot snapshot, int start, int length)
     {
         FollowBraceLevels();
@@ -444,12 +481,14 @@ public sealed class CSharpHighlighter : IHighlighter, IBraceMatcher, IFoldFinder
     {
         disposed = true;
         document.Changed -= OnChanged;
+        AnswerWaiting(null);
         // What a parse under way finds lands nowhere now, so nothing waits for it.
         parseHold?.Dispose();
     }
 
     private void OnChanged(object? sender, DocumentChangedEventArgs e)
     {
+        AnswerWaiting(null);
         text = text.With(e.After, e.Edits);
         CarryLines(e.Edits);
         version++;
@@ -531,8 +570,13 @@ public sealed class CSharpHighlighter : IHighlighter, IBraceMatcher, IFoldFinder
                     {
                         Folds = done.Result.Folds.All;
                         FoldsChanged?.Invoke(this, EventArgs.Empty);
+                        AnswerWaiting(Current);
                         Parsed?.Invoke(this, Current);
                     }
+                }
+                else if (parsedVersion == version)
+                {
+                    AnswerWaiting(null);
                 }
                 if (parsedVersion != version || !ReferenceEquals(parsedWith, options))
                 {

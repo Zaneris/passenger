@@ -99,6 +99,10 @@ public sealed record AppSettings : IStateDocument<AppSettings>
     /// after it and the caret between them where it takes arguments; off, its name alone.</summary>
     public bool CompletionParentheses { get; init; } = true;
 
+    /// <summary>In C#, the ';' that ends a statement formats the statement and the '}' that closes a block formats the block,
+    /// as Reformat Code lays them out, joined to the key's step of Undo; off, both stay as typed.</summary>
+    public bool FormatOnType { get; init; } = true;
+
     /// <summary>The XAML workspace: an Avalonia or WPF file opens beside its preview and, while its app runs, its Live Visual
     /// Tree, an element chosen in any of the three chosen in the others.</summary>
     public bool XamlWorkspace { get; init; }

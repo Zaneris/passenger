@@ -255,6 +255,7 @@
   <ItemGroup>
     <Compile Include="../../src/Passenger.Languages/CSharp/TemplateScope.cs" Link="Languages/TemplateScope.cs" />
     <Compile Include="../../src/Passenger.Languages/CSharp/CompletionTriggers.cs" Link="Languages/CompletionTriggers.cs" />
+    <Compile Include="../../src/Passenger.Languages/CSharp/TypedFormatting.cs" Link="Languages/TypedFormatting.cs" />
     <Compile Include="../../src/Passenger.Languages/CSharp/StringLines.cs" Link="Languages/StringLines.cs" />
   </ItemGroup>
 
