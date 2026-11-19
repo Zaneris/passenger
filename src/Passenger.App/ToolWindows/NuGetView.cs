@@ -88,6 +88,10 @@ public sealed partial class NuGetView : DockPanel
     private FolderPackages model;
     private bool choosing;
 
+    /// <summary>The version the person picked in the details of the package chosen, kept while that package stays chosen,
+    /// so its details made again as the list is (a refresh, the sources read again, an evaluation) keep it chosen.</summary>
+    private (string Id, string Version)? picked;
+
     /// <summary>What the list says of itself (what was found, why a feed did not answer) and its tip, shown in the status
     /// unless a change's words hold it.</summary>
     private (string Words, string? Tip) listed = (string.Empty, null);
@@ -191,8 +195,9 @@ public sealed partial class NuGetView : DockPanel
         model.ChangeBegun -= OnChangeBegun;
         model.Changed -= OnChanged;
         model = next;
-        // A project of the last folder's narrows nothing of this one's.
+        // A project of the last folder's narrows nothing of this one's, nor a version picked there.
         usedBy = null;
+        picked = null;
         filters.Narrowed = IsNarrowed;
         updateRows = [];
         asking?.Cancel();
@@ -371,6 +376,10 @@ public sealed partial class NuGetView : DockPanel
     public void ShowPackages()
     {
         bool wasUpdates = showsUpdates || body.Content == Sources;
+        if (showsUpdates)
+        {
+            picked = null;
+        }
         showsUpdates = false;
         updateAll.IsVisible = false;
         Show(packages);
@@ -779,6 +788,10 @@ public sealed partial class NuGetView : DockPanel
         {
             return;
         }
+        if (picked is { } before && !before.Id.Equals(row.Id, StringComparison.OrdinalIgnoreCase))
+        {
+            picked = null;
+        }
         IReadOnlyList<string> found;
         using IDisposable held = BackgroundWork.Scope();
         try
@@ -801,13 +814,14 @@ public sealed partial class NuGetView : DockPanel
         VulnerabilityData known = Known;
         string? vulnerable = row.AuditedVersions.Where(v => known.Of(row.Id, v).Count > 0).OrderByDescending(v => v, VersionOrder.Instance).FirstOrDefault();
         string? fix = vulnerable is null ? null : known.FixedVersion(row.Id, vulnerable, versions);
-        ChosenVersion = row.UpdateVersion ?? fix ?? versions.FirstOrDefault() ?? row.Version;
+        ChosenVersion = PickedOf(row) ?? row.UpdateVersion ?? fix ?? versions.FirstOrDefault() ?? row.Version;
         ComboBox picker = new() { Name = "Versions", ItemsSource = versions, SelectedItem = ChosenVersion, MinWidth = 140 };
         StackPanel vulnerabilities = new() { Spacing = Gaps.Normal };
         StackPanel deprecated = new() { Spacing = Gaps.Normal };
         picker.SelectionChanged += (_, _) =>
         {
             ChosenVersion = picker.SelectedItem as string;
+            picked = ChosenVersion is { } version ? (row.Id, version) : null;
             ShowVulnerable(row, vulnerabilities);
             ShowDeprecated(row, deprecated);
             ShowProjects(row);
@@ -851,6 +865,11 @@ public sealed partial class NuGetView : DockPanel
         ShowProjects(row);
         await chosen;
     }
+
+    /// <summary>The version the person picked of a package, as its versions now offer it; null where they picked none of it,
+    /// or its versions no longer offer what they picked.</summary>
+    private string? PickedOf(PackageRow row) => picked is { } chosen && chosen.Id.Equals(row.Id, StringComparison.OrdinalIgnoreCase)
+        ? versions.FirstOrDefault(v => v.Equals(chosen.Version, StringComparison.OrdinalIgnoreCase)) : null;
 
     /// <summary>Reads, while the window is shown, the advisories the audit's feeds know, and waits for an audit asked already
     /// either way: once it ends, the projects' actions it greyed act again, and the versions the details and the projects'

@@ -28,6 +28,10 @@ public sealed class StandInFeed : IDisposable, IAsyncDisposable
     /// they are answered at once.</summary>
     private Task? advisoriesHeld;
 
+    /// <summary>When the registrations' requests may be answered (<see cref="HoldRegistrations"/>); null while they are
+    /// answered at once.</summary>
+    private Task? registrationsHeld;
+
     public StandInFeed(string? user = null, string? password = null)
     {
         Password = password;
@@ -98,6 +102,10 @@ public sealed class StandInFeed : IDisposable, IAsyncDisposable
     /// slow feed keeps the audit waiting on it.</summary>
     public void HoldAdvisories(Task until) => Volatile.Write(ref advisoriesHeld, until);
 
+    /// <summary>Answers every request of its registrations only once <paramref name="until"/> has ended, as a slow feed keeps
+    /// what reads a package's versions or deprecations waiting on it.</summary>
+    public void HoldRegistrations(Task until) => Volatile.Write(ref registrationsHeld, until);
+
     /// <summary>Takes these credentials from now on, in place of the ones it was made with.</summary>
     public void Accept(string user, string password) => Volatile.Write(ref accepted, Basic(user, password));
 
@@ -159,6 +167,10 @@ public sealed class StandInFeed : IDisposable, IAsyncDisposable
         if (Volatile.Read(ref advisoriesHeld) is { } advising && exchange.Path.StartsWith("/vulnerabilities/", StringComparison.Ordinal))
         {
             await advising;
+        }
+        if (Volatile.Read(ref registrationsHeld) is { } registering && exchange.Path.StartsWith("/registrations/", StringComparison.Ordinal))
+        {
+            await registering;
         }
         (int status, string type, byte[] body) = authorized ? Route(exchange.Path) : (401, "text/plain", Encoding.UTF8.GetBytes("Who are you?"));
         await exchange.ReplyAsync(status, type, body, status == 401 ? "WWW-Authenticate: Basic realm=\"private\"\r\n" : string.Empty);

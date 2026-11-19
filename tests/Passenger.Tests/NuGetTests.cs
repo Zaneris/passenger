@@ -1088,12 +1088,56 @@ public sealed class NuGetTests : IDisposable
 
         Choose(nuget, "1.5.0");
         Ui.WaitFor(() => Said(nuget).Count == 1 && Said(nuget)[0].Contains("1.5.0", StringComparison.Ordinal),
-            () => $"1.5.0, deprecated as Lib's 1.0.0 is, to be said with it: [{string.Join(" | ", Said(nuget))}]");
+            () => $"1.5.0, deprecated as Lib's 1.0.0 is, to be said with it: [{string.Join(" | ", Said(nuget))}], {nuget.ChosenVersion} chosen of "
+                + $"{nuget.Versions.Count} versions, the window {(nuget.IsShown ? "shown" : "hidden")}");
         Assert.Equal(["1.0.0 and 1.5.0 are deprecated: critical bugs."], Said(nuget));
 
         Choose(nuget, "1.2.0");
         Ui.WaitFor(() => Said(nuget) is ["1.0.0 is deprecated: critical bugs."], () => $"1.2.0, not deprecated, said as [{string.Join(" | ", Said(nuget))}]");
         window.Close();
+
+        // The first line of each word the details say on deprecated versions.
+        static List<string> Said(NuGetView nuget) =>
+            [.. nuget.GetLogicalDescendants().OfType<Border>().Where(b => b.Name is "Deprecation" or "ChosenDeprecation")
+                .Select(b => b.GetLogicalDescendants().OfType<TextBlock>().First().Text ?? string.Empty)];
+    }
+
+    /// <summary>A version chosen in a package's details while the feed has not yet answered whether it is deprecated stays
+    /// chosen as the person refreshes the list meanwhile (the sources read again and the details made again), and its
+    /// deprecation is said once the feed answers, where the details went back to the newest version and never said it.</summary>
+    [AvaloniaFact]
+    public void A_version_chosen_as_its_deprecation_is_asked_stays_chosen_through_a_refresh_and_is_said_once_answered()
+    {
+        const string Legacy = "Passenger.Legacy";
+        const string Words = "Broken past repair.";
+        foreach (string version in new[] { "1.0.0", "1.2.0", "1.5.0", "2.0.0" })
+        {
+            feed.Add(Legacy, version);
+        }
+        feed.Deprecate(Legacy, "1.0.0", ["CriticalBugs"], Words);
+        feed.Deprecate(Legacy, "1.5.0", ["CriticalBugs"], Words);
+        feed.Deprecate(Legacy, "2.0.0", ["Legacy"], "Kept no more.");
+        Project("Lib", TestProjects.Framework, $"<ItemGroup><PackageReference Include=\"{Legacy}\" Version=\"1.0.0\" /></ItemGroup>");
+        MainWindow window = Open();
+        NuGetView nuget = window.NuGet;
+        ChoosePackage(nuget, Legacy);
+        Ui.WaitFor(() => nuget.Versions.Count == 4 && Said(nuget).Count == 2, () => $"{Legacy}'s details to say its two deprecations: [{string.Join(" | ", Said(nuget))}]");
+
+        TaskCompletionSource answered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        feed.HoldRegistrations(answered.Task);
+        int asked = feed.Requests.Count;
+        Picker(nuget).SelectedItem = "1.5.0";
+        Ui.PumpUntil(() => feed.Requests.Skip(asked).Any(r => r.Path.StartsWith("/registrations/", StringComparison.Ordinal)),
+            "the feed to be asked whether the chosen 1.5.0 is deprecated");
+        window.Perform(AppActions.NuGetRefresh);
+        Ui.PumpUntil(() => nuget.Versions.Count == 0, "the refresh to make the details again, waiting on the feed's versions");
+        answered.SetResult();
+        Ui.WaitFor(() => nuget.Versions.Count == 4 && Said(nuget) is ["1.0.0 and 1.5.0 are deprecated: critical bugs."],
+            () => $"1.5.0, chosen before the refresh, to be said deprecated as Lib's 1.0.0 is: [{string.Join(" | ", Said(nuget))}], {nuget.ChosenVersion} chosen");
+        Assert.Equal(("1.5.0", "1.5.0"), (nuget.ChosenVersion, Picker(nuget).SelectedItem as string));
+        window.Close();
+
+        static ComboBox Picker(NuGetView nuget) => nuget.GetLogicalDescendants().OfType<ComboBox>().Single(c => c.Name == "Versions");
 
         // The first line of each word the details say on deprecated versions.
         static List<string> Said(NuGetView nuget) =>

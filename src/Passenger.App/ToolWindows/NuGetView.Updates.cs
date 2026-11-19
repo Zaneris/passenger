@@ -23,6 +23,7 @@ public sealed partial class NuGetView
     public void ShowUpdates()
     {
         showsUpdates = true;
+        picked = null;
         updateAll.IsVisible = true;
         Show(packages);
         Hold(null);
