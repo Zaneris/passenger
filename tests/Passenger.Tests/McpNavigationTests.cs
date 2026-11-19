@@ -598,6 +598,27 @@ public sealed class McpNavigationTests : McpRig, IClassFixture<RestoredFolders>
             $"usages where no symbol is answered: {Text(nothing)}");
     }
 
+    /// <summary>find_symbol lists the name itself first though only a source generator declares it (the regex generator's
+    /// class Word_0), before the solution's own names that start with it, so no limit cuts it; the solution's own come before
+    /// the rest of what generators declare.</summary>
+    [Fact]
+    public async Task An_agents_find_symbol_lists_a_generated_symbol_it_names_first_before_the_solutions_own_names_like_it()
+    {
+        await TakeFolderAsync();
+        Write("Words.cs", Words);
+        Write("Counts.cs", "static class Word_0Count\n{\n    public static int Word_0Total;\n}\n");
+        await using McpClient client = await Start(["--mcp", Folder]);
+
+        JsonElement[] found = [.. (await Call(client, McpTools.FindSymbol, new() { ["query"] = "Word_0" })).EnumerateArray()];
+        // The generator's class and its constructor, both named Word_0.
+        JsonElement[] named = [.. found.TakeWhile(s => s.GetProperty("name").GetString() == "Word_0")];
+        Assert.True(named.Length > 0 && named.All(s => s.GetProperty("path").GetString()!.EndsWith("RegexGenerator.g.cs", StringComparison.Ordinal))
+            && found.Skip(named.Length).Take(2).Select(s => s.GetProperty("name").GetString()).SequenceEqual(["Word_0Count", "Word_0Total"]),
+            $"find_symbol Word_0 did not list the generator's Word_0 first, then the solution's own names starting with it: {string.Join(", ", found.Select(s => s.GetRawText()))}");
+        JsonElement first = Assert.Single((await Call(client, McpTools.FindSymbol, new() { ["query"] = "Word_0", ["limit"] = 1 })).EnumerateArray());
+        Assert.True(first.GetProperty("name").GetString() == "Word_0", $"find_symbol Word_0 with a limit of 1 cut the name itself for {first.GetRawText()}");
+    }
+
     /// <summary>usages says which files are generated code, as Roslyn tells it, and lists them after the person's: a source
     /// generator's, a .g.cs a tool wrote, and a file whose first comment says &lt;auto-generated&gt;; a file written by hand
     /// says nothing of it.</summary>

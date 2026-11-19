@@ -1290,11 +1290,12 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             ? [.. (await NamedAsync(session, "this[]", "property", limit, cancel, noneRefused: false)).Symbols.Select(Found)]
             : [];
         IReadOnlyList<SymbolInformation> found = await session.SymbolsAsync(query);
-        // Each target framework finds a symbol again; the server's order is not by match, so the name itself first, which no limit cuts.
+        // Each target framework finds a symbol again; the server's order is not by match, so the name itself first, a generator's too, which no limit cuts.
         List<SymbolInformation> matching = [.. WorkspaceSymbols.Kept(found)
             .Where(s => kind is null || SymbolKinds.Name(s.Kind).Equals(kind, StringComparison.OrdinalIgnoreCase))
             .DistinctBy(s => (s.Name, s.Kind, s.Location.Uri, s.Location.Range.Start.Line, s.Location.Range.Start.Character))
-            .OrderBy(WorkspaceSymbols.Generated)
+            .OrderBy(s => NameMatch(s.Name, query) > 0)
+            .ThenBy(WorkspaceSymbols.Generated)
             .ThenBy(s => NameMatch(s.Name, query))
             .ThenBy(s => SymbolKinds.Name(s.Kind) is "class" or "interface" or "struct" or "enum" ? 0 : 1)];
         List<SymbolInformation> kept = [.. matching.Take(Math.Max(0, limit - indexers.Count))];
