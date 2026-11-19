@@ -28,13 +28,24 @@ public partial class FindBar : UserControl
     /// <summary>The toggles a tight step in from the field's right edge.</summary>
     public static readonly Thickness OptionsMargin = new(0, 0, Gaps.Tight, 0);
 
-    /// <summary>The count and arrows a wide step after the query, the count a normal step before the arrows.</summary>
-    public static readonly Thickness CountRowMargin = new(Gaps.Wide, 0, 0, 0);
+    /// <summary>The query's and the replacement's width where the bar has room for it.</summary>
+    public const double FieldWidth = 380;
+
+    /// <summary>The room a field keeps to type in, a few words', however narrow the bar: what follows it takes a row below.</summary>
+    public const double TypingRoom = 120;
 
     public static readonly Thickness CountMargin = new(0, 0, Gaps.Normal, 0);
 
-    /// <summary>The replace row a small step under the query's.</summary>
-    public static readonly Thickness ReplaceRowMargin = new(0, Gaps.Small, 0, 0);
+    /// <summary>A row's parts laid out by the shared row that wraps (ToolFlow): its field first, <see cref="FieldWidth"/> wide
+    /// where there is room and down to its typing room where not, what follows it after it, or on a row below.</summary>
+    private static void Flowing(Panel row, Control field, double typing, params Control[] after)
+    {
+        row.Children.Clear();
+        ToolWindows.ToolFlow.SetFills(field, new ToolWindows.ToolLayout.Fills(typing, FieldWidth));
+        ToolWindows.ToolFlow flow = new() { Spacing = Gaps.Normal, Children = { field } };
+        flow.Children.AddRange(after);
+        row.Children.Add(flow);
+    }
 
     private const string Searching = "Searching…";
 
@@ -65,6 +76,9 @@ public partial class FindBar : UserControl
     public FindBar()
     {
         InitializeComponent();
+        // In a narrow pane (a console, a diff) each field keeps room to type in, what follows it taking a row below.
+        Flowing(QueryRow, QueryRoom, QueryPadding.Left + TypingRoom + QueryPadding.Right, CountRow, ToolWindows.ToolFlow.Spring(), CloseButton);
+        Flowing(ReplaceRow, ReplaceWith, SearchFields.Padding.Left + TypingRoom + SearchFields.Padding.Right, ReplaceButtons);
         IsVisible = false;
         RegexGlyph.InCodeFont();
         Query.TextChanged += (_, _) => Search(jump: true);

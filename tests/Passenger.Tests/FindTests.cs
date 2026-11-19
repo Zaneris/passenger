@@ -1,3 +1,4 @@
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Headless;
@@ -346,6 +347,56 @@ public sealed class FindTests : IDisposable
             text.Append(System.Globalization.CultureInfo.InvariantCulture, $"    var x{i} = {i} * {i};{end}");
         }
         return text.Append("// the needle").Append(end).ToString();
+    }
+
+    /// <summary>Find and Replace over an editor too narrow for a field and what follows it side by side (the window at its
+    /// least width, the Explorer beside the editor) keep room to type a few words in each field, the count, arrows and
+    /// Close, and Replace's buttons, taking a row below, nothing past the bar's edge (LayoutFaults); over a wide editor
+    /// each field stands at its width with what follows it beside it.</summary>
+    [AvaloniaFact]
+    public void A_narrow_editors_find_bar_keeps_room_to_type_in_and_puts_what_follows_each_field_on_a_row_below()
+    {
+        (MainWindow window, _) = Open("find the words here\nand the words here again\n");
+        try
+        {
+            Ui.Press(window, Ui.Shortcut(AppActions.Replace));
+            window.KeyTextInput("the words here");
+            Ui.Settle();
+            FindBar bar = window.EditorArea.FindBar;
+            (TextBox Field, Control After, string What)[] rows =
+            [
+                (bar.FindControl<TextBox>("Query")!, bar.FindControl<Control>("CountRow")!, "Find"),
+                (bar.FindControl<TextBox>("ReplaceWith")!, bar.FindControl<Control>("ReplaceButtons")!, "Replace"),
+            ];
+            foreach (double width in (double[])[1400, MainWindow.SmallestWidth])
+            {
+                window.Width = width;
+                Ui.Settle();
+                List<string> wrong = [];
+                foreach ((TextBox field, Control after, string what) in rows)
+                {
+                    double room = field.Bounds.Width - field.Padding.Left - field.Padding.Right;
+                    bool below = Placed(window, after).Top >= Placed(window, field).Bottom - 0.5;
+                    if (room < FindBar.TypingRoom - 0.5)
+                    {
+                        wrong.Add($"At {width} wide {what} leaves {room:0.#} px to type in, where it keeps {FindBar.TypingRoom}, what follows it taking a row below");
+                    }
+                    if (width == MainWindow.SmallestWidth ? !below : below || Math.Abs(field.Bounds.Width - FindBar.FieldWidth) > 0.5)
+                    {
+                        wrong.Add($"At {width} wide {what} is {field.Bounds.Width:0.#} px wide with what follows it {(below ? "below it" : "beside it")}, where a wide editor's "
+                            + $"stands {FindBar.FieldWidth} wide with it beside and a narrow one's keeps its typing room with it below");
+                    }
+                }
+                wrong.AddRange(LayoutFaults.Of(window, bar, $"The find bar over an editor at {width} wide"));
+                Assert.True(wrong.Count == 0, string.Join("\n", wrong));
+            }
+        }
+        finally
+        {
+            window.Close();
+        }
+
+        static Rect Placed(Visual window, Control control) => new(control.TranslatePoint(default, window)!.Value, control.Bounds.Size);
     }
 
     private (MainWindow Window, CodeEditor Editor) Open(string text) => Open(folder, text);

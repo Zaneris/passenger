@@ -14,11 +14,15 @@ namespace Passenger.Tests;
 /// <summary>What a person sees go wrong in a window, a dialog or a part of one, however narrow: words cut short with no
 /// ellipsis or wrap, by their own room or by a scroller that can't scroll to the rest, words laid out past the side of
 /// what holds them or of the room a row gave their part, a field or button laid out past the edge of what shows it with
-/// nothing to scroll it into view, and two things a person reads or presses drawn one over the other, each as far as
-/// what clips it shows it. A field's own options inside it and what one holds inside another are laid over each other on
-/// purpose. The code editor draws its own rows and a scroll bar its own thumb, so neither is read here.</summary>
+/// nothing to scroll it into view, a field left too little room to type in, and two things a person reads or presses
+/// drawn one over the other, each as far as what clips it shows it. A field's own options inside it and what one holds
+/// inside another are laid over each other on purpose. The code editor draws its own rows and a scroll bar its own
+/// thumb, so neither is read here.</summary>
 internal static class LayoutFaults
 {
+    /// <summary>The least room a field leaves to type in, a few letters' (a field squeezed by what stands beside it).</summary>
+    private const double TypingRoom = 40;
+
     /// <summary>The faults of <paramref name="part"/>, measured in <paramref name="window"/>, each saying what and where.</summary>
     public static List<string> Of(Visual window, Visual part, string what)
     {
@@ -39,6 +43,14 @@ internal static class LayoutFaults
             else if (Past(text) is { } past)
             {
                 found.Add($"{what} lays '{text.Text}' out {past:0.#} px past the side of what holds it, over the room beside it, where what holds words grows with them");
+            }
+        }
+        foreach (TextBox field in drawn.OfType<TextBox>().Where(t => t.FindAncestorOfType<NumericUpDown>() is null && t.FindAncestorOfType<ComboBox>() is null))
+        {
+            double room = field.Bounds.Width - field.Padding.Left - field.Padding.Right - field.BorderThickness.Left - field.BorderThickness.Right;
+            if (room < TypingRoom)
+            {
+                found.Add($"{what} leaves {Named(field)} {Math.Max(0, room):0.#} px to type in, where a field keeps room for a few words, what stands beside it taking a row of its own");
             }
         }
         foreach (Control field in drawn.Where(c => c is not TextBlock && c.Bounds.Width >= 1))

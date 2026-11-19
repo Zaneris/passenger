@@ -1399,8 +1399,8 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
     /// <summary>The layout faults' check finds what it is for, so its silence over the window means something: words wider
     /// than their room with no ellipsis, words laid out past the side of a row held narrower than they are, words their
     /// own holder holds laid out past the room a row of parts gave their part, a field of a fixed width past the edge of a
-    /// scroller that scrolls no way sideways, and two buttons laid in one cell, are each found; words that end in an
-    /// ellipsis, and a field's own options inside it, are not.</summary>
+    /// scroller that scrolls no way sideways, a field squeezed to too little room to type in, and two buttons laid in one
+    /// cell, are each found; words that end in an ellipsis, and a field's own options inside it, are not.</summary>
     [AvaloniaFact]
     public void The_layout_faults_check_finds_words_cut_and_controls_drawn_over_each_other()
     {
@@ -1424,8 +1424,9 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
             },
         };
         ScrollViewer narrow = new() { Width = 120, HorizontalAlignment = HorizontalAlignment.Left, Content = new ComboBox { Width = 200, HorizontalAlignment = HorizontalAlignment.Left } };
+        TextBox squeezed = new() { Width = 40, MinWidth = 0, HorizontalAlignment = HorizontalAlignment.Left };
         Grid laidOver = new() { Children = { new Button { Content = "First" }, new Button { Content = "Second" } } };
-        Window window = new() { Width = 400, Height = 300, Content = new StackPanel { Children = { cut, trimmed, held, parts, narrow, laidOver } } };
+        Window window = new() { Width = 400, Height = 300, Content = new StackPanel { Children = { cut, trimmed, held, parts, narrow, squeezed, laidOver } } };
         window.Show();
         try
         {
@@ -1433,7 +1434,7 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
             List<string> found = LayoutFaults.Of(window, window, "The test window");
             Assert.True(found.Count(f => f.Contains("cuts", StringComparison.Ordinal)) == 1 && found.Count(f => f.Contains("past the side", StringComparison.Ordinal)) == 2
                 && found.Any(f => f.Contains("their part", StringComparison.Ordinal)) && found.Count(f => f.Contains("past the edge", StringComparison.Ordinal)) == 1
-                && found.Any(f => f.Contains("one over the other", StringComparison.Ordinal)),
+                && found.Count(f => f.Contains("to type in", StringComparison.Ordinal)) == 1 && found.Any(f => f.Contains("one over the other", StringComparison.Ordinal)),
                 $"The check found {found.Count} faults where one cut word, words laid past their row, words laid past their part's room, a field past its scroller's edge and two buttons laid over each other stand:\n{string.Join("\n", found)}");
         }
         finally
