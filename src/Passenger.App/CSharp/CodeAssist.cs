@@ -653,29 +653,17 @@ public sealed class CodeAssist
 
     private static readonly Task<TextRange?> NoReach = Task.FromResult<TextRange?>(null);
 
-    /// <summary>What Go to Declaration would go from at an offset of the file shown, as its editor draws it: a link there, or
-    /// the name the file's language declares somewhere (<see cref="LanguageAssists.DeclaredAsync"/>); null where it goes
-    /// nowhere, or the pointer moved on before the language answered.</summary>
+    /// <summary>What Go to Declaration would go from at an offset of the file shown, as its editor draws it: the name or link
+    /// the file's language declares somewhere (<see cref="LanguageAssists.DeclaresAsync"/>), else a link there, which it
+    /// follows; null where it goes nowhere, or the pointer moved on before the language answered.</summary>
     private async Task<TextRange?> DeclaredFromAsync(int offset, CancellationToken cancel)
     {
-        if (Editor.LinkOn(offset) is { } link)
-        {
-            return link.Range;
-        }
         if (context.Editors.Active is not { } shown || !ReferenceEquals(shown.Text, Editor.Document))
         {
             return null;
         }
-        Declared? declared;
-        try
-        {
-            declared = await context.Languages.DeclaredAsync(shown, offset);
-        }
-        catch (LanguageServerFailed)
-        {
-            return null;
-        }
-        return !cancel.IsCancellationRequested && declared is { Places.Count: > 0 } or { Page: not null } ? Editor.TokenAt(offset) : null;
+        bool declares = await context.Languages.DeclaresAsync(shown, offset);
+        return !cancel.IsCancellationRequested && (declares || Editor.LinkOn(offset) is not null) ? Editor.TokenAt(offset) : null;
     }
 
     /// <summary>Order Script's Parts on the GDScript shown, as one command of Undo, said in the status bar.</summary>

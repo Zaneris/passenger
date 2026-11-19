@@ -5,26 +5,31 @@ using Passenger.Editor;
 namespace Passenger.App.CSharp;
 
 /// <summary>An address written in the shown file's comment or string, as its editor finds it (<see cref="CodeEditor.LinkOn"/>):
-/// Go to Declaration follows it, and the hover card says where it leads and how it is followed. First on the ladder, so a
-/// link in any language is a link.</summary>
+/// where the file's language declares nothing there, Go to Declaration follows it and the hover card says where it leads
+/// and how it is followed. First on the ladder, so a link in any language is a link, yet a language's own answer at it (an
+/// Aspire service's address, which goes to the AppHost adding it) comes first.</summary>
 internal sealed class LinkAssist(AssistContext context) : LanguageAssist
 {
-    public override Task<bool> DefinitionAsync(int offset)
+    public override async Task<bool> DefinitionAsync(int offset)
     {
-        if (LinkIn(context.Editors.Active, offset) is not { } link)
+        if (context.Editors.Active is not { } shown || LinkIn(shown, offset) is not { } link || await context.Languages.DeclaresAsync(shown, offset))
         {
-            return Passed;
+            return false;
         }
-        context.Follow(link.Target);
-        return Answered;
+        if (context.Editors.Active == shown)
+        {
+            context.Follow(link.Target);
+        }
+        return true;
     }
 
-    public override Task<bool> HoverAsync(IHoverCard card, OpenDocument document, int offset, CancellationToken cancel)
+    public override async Task<bool> HoverAsync(IHoverCard card, OpenDocument document, int offset, CancellationToken cancel)
     {
-        if (LinkIn(document, offset)?.Target is not LinkTarget target)
+        if (LinkIn(document, offset)?.Target is not LinkTarget target || await context.Languages.DeclaresAsync(document, offset))
         {
-            return Passed;
+            return false;
         }
+        cancel.ThrowIfCancellationRequested();
         card.AddText(target switch
         {
             WebLink web => web.Address.AbsoluteUri,
@@ -35,7 +40,7 @@ internal sealed class LinkAssist(AssistContext context) : LanguageAssist
         {
             card.AddText($"Go to Declaration ({keys}) opens it");
         }
-        return Answered;
+        return true;
     }
 
     /// <summary>The link at an offset of a file the editor shows; null for another file, or where there is none.</summary>

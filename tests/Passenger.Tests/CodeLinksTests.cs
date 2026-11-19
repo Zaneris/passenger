@@ -22,7 +22,8 @@ public sealed class CodeLinksTests : IDisposable
     public void Dispose() => TestFolders.Delete(folder);
 
     /// <summary>Lines from zero: a comment's address, a comment of words alone, a string's address, an address in code the
-    /// build leaves out, and file addresses, one on this machine and one on a share.</summary>
+    /// build leaves out, file addresses, one on this machine and one on a share, and an Aspire service's address, which
+    /// service discovery reads and no browser opens.</summary>
     private string Code => string.Join('\n',
         $"// See {Issue} for why.",                                     // 0
         "class Links",
@@ -33,6 +34,7 @@ public sealed class CodeLinksTests : IDisposable
         "    https://example.com/never",                                // 6
         "#endif",
         $"    // Kept in {new Uri(Path.Combine(folder, "Links.cs")).AbsoluteUri}, never file://server/share/Links.cs.", // 8
+        "    const string Api = \"https+http://apiservice\";",         // 9
         "}",
         "");
 
@@ -47,7 +49,7 @@ public sealed class CodeLinksTests : IDisposable
     }
 
     [AvaloniaFact]
-    public void An_address_in_a_comment_or_a_string_is_a_link_and_none_is_found_in_words_alone_or_code_left_out()
+    public void An_address_in_a_comment_or_a_string_is_a_link_and_none_is_found_in_words_alone_code_left_out_or_a_services_address()
     {
         MainWindow window = Open(out CodeEditor editor);
         try
@@ -55,7 +57,7 @@ public sealed class CodeLinksTests : IDisposable
             TextSnapshot text = editor.Document.Snapshot;
             Assert.Equal((new TextRange(Place(text, 0, Issue), Issue.Length), new Uri(Issue)), Linked(editor, Place(text, 0, Issue) + 3));
             Assert.Equal((new TextRange(Place(text, 4, Docs), Docs.Length), new Uri(Docs)), Linked(editor, Place(text, 4, Docs) + 10));
-            foreach (int line in (int[])[1, 3, 6])
+            foreach (int line in (int[])[1, 3, 6, 9])
             {
                 LineSpan span = text.GetLine(line);
                 for (int offset = span.Start; offset < span.End; offset++)

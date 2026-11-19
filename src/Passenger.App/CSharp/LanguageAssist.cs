@@ -188,6 +188,20 @@ internal sealed class LanguageAssists(LinkAssist links, HttpAssist http, MSBuild
         }
     }
 
+    /// <summary>Whether a language's Go to Declaration leads somewhere from an offset of a file, a place or a page, a link's
+    /// own leading aside; a server's failure leads nowhere.</summary>
+    public async Task<bool> DeclaresAsync(OpenDocument document, int offset)
+    {
+        try
+        {
+            return await DeclaredAsync(document, offset) is { Places.Count: > 0 } or { Page: not null };
+        }
+        catch (LanguageServerFailed)
+        {
+            return false;
+        }
+    }
+
     /// <summary>Where Go to Declaration goes from an offset of a file, for an agent; null where no language answers.</summary>
     public async Task<Declared?> DeclaredAsync(OpenDocument document, int offset)
     {
