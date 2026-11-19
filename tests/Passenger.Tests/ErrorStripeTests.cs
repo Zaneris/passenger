@@ -395,6 +395,27 @@ public sealed class ErrorStripeTests
         Assert.True(shown == Warning(ThemeVariant.Light), $"In the light theme the stripe's warning is {shown}, the dark theme's colour left on it");
     }
 
+    /// <summary>The caret on a warning's line draws its line along the warning's tick, leaving the tick's middle in the
+    /// warning's colour, so the problem shows what it is with the caret on its line.</summary>
+    [AvaloniaFact]
+    public void The_caret_on_a_problems_line_leaves_the_middle_of_the_problems_mark_in_its_colour()
+    {
+        EditorRig rig = new(string.Concat(Enumerable.Range(0, 40).Select(i => $"        int value{i} = {i};\n")));
+        CodeEditor editor = rig.Editor;
+        TextSnapshot text = rig.Document.Snapshot;
+        editor.SetMarkers([new Marker(new TextRange(text.GetLineStart(20) + 12, 5), MarkerKind.Warning, Unused)]);
+        rig.PlaceCaret(text.GetLineStart(20));
+        Ui.Settle();
+        CodeEditor.StripeMark warning = Assert.Single(editor.StripeMarks, m => m.Kind == StripeMarkKind.Warning);
+        CodeEditor.StripeMark caret = Assert.Single(editor.StripeMarks, m => m.Kind == StripeMarkKind.Caret);
+        Assert.Equal(warning.Row, caret.Row);
+        Color middle = Ui.Pixel(rig.Window, editor.TranslatePoint(editor.StripePoint(warning), rig.Window)!.Value);
+        Assert.True(middle == Warning(rig.Window.ActualThemeVariant),
+            $"With the caret on its line the warning's mark shows {middle} at its middle, not the warning colour: the caret's line hides what the problem is");
+        Color line = Ui.Pixel(rig.Window, editor.TranslatePoint(editor.StripePoint(caret), rig.Window)!.Value);
+        Assert.True(line == CaretMarkColour(rig.Window.ActualThemeVariant), $"The caret's line on the warning's row shows {line}, not the caret's mark");
+    }
+
     /// <summary>Down through a file of more lines than the stripe's track has pixels, the caret on screen near its end,
     /// draws the stripe again only for the keys that move the caret's mark on the track, which shows it where it went, and
     /// the counts over the stripe, whose problems stay as they were, never: asked together, the two were drawn again with

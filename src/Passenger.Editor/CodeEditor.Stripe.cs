@@ -706,8 +706,9 @@ public sealed partial class CodeEditor
             editor.Focus();
         }
 
-        /// <summary>Where a mark is drawn on the track, on the thumb's scale: a tick three pixels high (a suggestion's two,
-        /// the caret's a line) about its row's middle, a change from its first row's top to its last row's foot.</summary>
+        /// <summary>Where a mark is drawn on the track, on the thumb's scale: a tick three pixels high about its row's middle,
+        /// a suggestion's two and the caret's a line from the same top, so the caret's line on a problem's row leaves the
+        /// problem's middle and foot in its colour; a change from its first row's top to its last row's foot.</summary>
         public static (double Top, double Height) Span(StripeMark mark, Rect track, StripeScale scale)
         {
             double row = scale.RowHeight;
@@ -717,14 +718,17 @@ public sealed partial class CodeEditor
                 double foot = scale.At((mark.Row + mark.Rows) * row, track.Height);
                 return (Math.Round(track.Top + first), Math.Max(2, foot - first));
             }
-            double height = mark.Kind switch
+            double top = Math.Round(track.Top + scale.At((mark.Row + 0.5) * row, track.Height) - (Tick / 2));
+            return (top, mark.Kind switch
             {
                 StripeMarkKind.Caret => 1,
                 StripeMarkKind.Info => 2,
-                _ => 3,
-            };
-            return (Math.Round(track.Top + scale.At((mark.Row + 0.5) * row, track.Height) - (height / 2)), height);
+                _ => Tick,
+            });
         }
+
+        /// <summary>How high a problem's, a match's or a use's tick is.</summary>
+        private const double Tick = 3;
 
         /// <summary>The mark drawn under a point, give or take <see cref="Reach"/>, the one drawn over the others first; the
         /// caret's is not one to take. A custom hit test is asked beyond the control's bounds, so a point beside the stripe
