@@ -1,4 +1,5 @@
 using System.Buffers;
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -46,6 +47,47 @@ public static class TextSearch
     /// its code ends it however long a busy machine keeps it waiting: the unit tests', which give the same answer every run.</summary>
     public static void LiftTimeLimits() => limited = false;
 
+    /// <summary>What a regex stopped at its time limit is said as, wherever that cuts an answer short: a search's count, a
+    /// check that could not finish, matches found only in part, a place not gone to; after what it cut short, its first
+    /// letter as it stands ("4 matches in 3 files: The regex took too long and stopped in Runs.txt").</summary>
+    public const string RegexStopped = "The regex took too long and stopped";
+
+    /// <summary><see cref="RegexStopped"/> naming where it stopped: a file, or what it was matching.</summary>
+    public static string RegexStoppedIn(string where) => $"{RegexStopped} in {where}";
+
+    private static readonly ConcurrentDictionary<string, byte> heldPastLimit = new(StringComparer.Ordinal);
+
+    /// <summary>For a test, in place of a machine slow enough: every regex whose pattern holds <paramref name="marker"/>
+    /// stops at its first match as one past its time limit does, until the hold is disposed.</summary>
+    public static IDisposable HoldPastLimit(string marker)
+    {
+        heldPastLimit[marker] = 0;
+        return new PastLimit(marker);
+    }
+
+    /// <summary>Throws as a regex past its time limit does where a test holds its pattern there (<see cref="HoldPastLimit"/>).</summary>
+    internal static void StopIfHeld(string pattern, string input)
+    {
+        if (!heldPastLimit.IsEmpty && heldPastLimit.Keys.Any(marker => pattern.Contains(marker, StringComparison.Ordinal)))
+        {
+            throw new RegexMatchTimeoutException(input, pattern, TimeSpan.FromMilliseconds(250));
+        }
+    }
+
+    /// <summary>The matches of a regex given a time limit of <see cref="AtOnce"/> or <see cref="Apart"/>, read as they are
+    /// enumerated; past its limit (or held there, <see cref="HoldPastLimit"/>) it throws a
+    /// <see cref="RegexMatchTimeoutException"/>.</summary>
+    public static MatchCollection MatchesOf(Regex regex, string input)
+    {
+        StopIfHeld(regex.ToString(), input);
+        return regex.Matches(input);
+    }
+
+    private sealed class PastLimit(string marker) : IDisposable
+    {
+        public void Dispose() => heldPastLimit.TryRemove(marker, out _);
+    }
+
     /// <summary>A regex a person or a program wrote (a schema's pattern) made once to match many texts: on the linear
     /// engine where its constructs allow, else held to <paramref name="within"/>, as <see cref="IsWrittenMatch"/> reads one.
     /// A pattern that does not parse throws an <see cref="ArgumentException"/>.</summary>
@@ -68,6 +110,7 @@ public static class TextSearch
     /// that does not parse throws an <see cref="ArgumentException"/>.</summary>
     public static bool IsWrittenMatch(string text, string pattern, RegexOptions options, TimeSpan within)
     {
+        StopIfHeld(pattern, text);
         try
         {
             return System.Text.RegularExpressions.Regex.IsMatch(text, pattern, options | RegexOptions.NonBacktracking, within);
@@ -221,6 +264,7 @@ public static class TextSearch
         long started = Stopwatch.GetTimestamp();
         try
         {
+            StopIfHeld(pattern.Regex.ToString(), string.Empty);
             // An empty match counts (`^` is a line's start), and the next is looked for past it.
             foreach (ValueMatch match in pattern.Regex.EnumerateMatches(text))
             {
@@ -528,7 +572,11 @@ public sealed class SearchPattern
     }
 
     /// <summary>Whether a text holds a match; a regex running past its time throws a <see cref="RegexMatchTimeoutException"/>.</summary>
-    public bool IsMatch(string text) => Regex.IsMatch(text);
+    public bool IsMatch(string text)
+    {
+        TextSearch.StopIfHeld(Regex.ToString(), text);
+        return Regex.IsMatch(text);
+    }
 }
 
 /// <summary>The text a regex's matches were found in, for the groups a replacement fills in: read as lines into a string,
@@ -1215,14 +1263,11 @@ public sealed record SearchResult(IReadOnlyList<TextRange> Matches, bool Truncat
 {
     public static readonly SearchResult None = new([], false, null);
 
-    /// <summary>What a regex's search that ran past its time says, its matches those found before it stopped.</summary>
-    public const string TookTooLong = "The search took too long and stopped.";
-
     /// <summary>Whether a regex ran past its time and the search stopped, its matches only those found before.</summary>
     public bool Stopped { get; private init; }
 
     internal static SearchResult TimedOut(List<TextRange> matches, FoundText? found, bool crlf) =>
-        new(matches, true, TookTooLong) { Found = found, Crlf = crlf, Stopped = true };
+        new(matches, true, TextSearch.RegexStopped) { Found = found, Crlf = crlf, Stopped = true };
 
     /// <summary>Where a regex's matches were found, each found again there for its groups; null for plain text, which is
     /// replaced as typed.</summary>

@@ -204,7 +204,7 @@ public sealed class FindTests : IDisposable
         Assert.Equal(new Selection(0, 2), editor.Selections.Primary);
 
         Ui.WaitFor(() => bar.CountText != "Searching…", () => $"the search off the UI thread to end; the count says '{bar.CountText}'");
-        Assert.True(bar.CountText == SearchResult.TookTooLong, $"The count says '{bar.CountText}' of a regex that never ends");
+        Assert.True(bar.CountText == Refusals.RegexStopped, $"The count says '{bar.CountText}' of a regex that never ends");
         Assert.Equal(new TextRange(0, 2), Assert.Single(editor.Highlights));
 
         bar.FindControl<TextBox>("ReplaceWith")!.Text = "x";

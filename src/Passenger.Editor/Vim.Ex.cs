@@ -515,7 +515,7 @@ public sealed partial class Vim
         }
         catch (RegexMatchTimeoutException)
         {
-            return Said(SearchResult.TookTooLong);
+            return Said(TextSearch.RegexStopped);
         }
         int caretLine = text.GetLineFromOffset(selections.Primary.Caret);
         if (matched == 0)

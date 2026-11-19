@@ -4,6 +4,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using CucumberExpressions;
 using Passenger.Core;
+using Passenger.Text;
 
 namespace Passenger.Workspace.Gherkin;
 
@@ -39,8 +40,13 @@ public sealed record StepMatch(MatchStatus Status, IReadOnlyList<BoundStep> Bind
 
 /// <summary>An argument a definition is refused for: where it is written (a line and column of the file; of a text matched
 /// alone, line 0 and its place in the text), why, and whether a run binds the step and fails converting it (else no
-/// definition binds the step, one whose expression would but for this argument).</summary>
-public sealed record RefusedArgument(int Line, int Column, int Length, string Why, bool Fails);
+/// definition binds the step, one whose expression would but for this argument); or, <see cref="Unjudged"/>, one whose check
+/// could not finish, which neither takes nor refuses it.</summary>
+public sealed record RefusedArgument(int Line, int Column, int Length, string Why, bool Fails)
+{
+    /// <summary>Whether the argument's check stopped at a regex's time limit, so it is said unchecked, not refused.</summary>
+    public bool Unjudged { get; init; }
+}
 
 /// <summary>Steps matched to step definitions as Reqnroll's runtime matches them (its StepDefinitionMatchService): each
 /// definition of the step's kind whose regular expression matches the whole text, takes as many parameters as the text's
@@ -142,6 +148,8 @@ public sealed class StepMatcher
         List<string> refused = [];
         // Those whose expression and scope fit but not their parameters, and whether one fits all but its scope.
         List<(StepBinding Binding, Match Match, RefusedArgument[] Arguments)> unconverted = [];
+        // Arguments of definitions that fit whose check could not finish, said unchecked where the step binds to them.
+        List<(StepBinding Binding, RefusedArgument Argument)> unjudged = [];
         bool outOfScope = false;
         foreach ((StepBinding binding, Regex? regex, string? error) in compiled)
         {
@@ -166,6 +174,11 @@ public sealed class StepMatcher
             {
                 if (Refusal(binding, i, captured[i]) is not { } refusal)
                 {
+                    continue;
+                }
+                if (refusal.Unjudged)
+                {
+                    unjudged.Add((binding, refusal));
                     continue;
                 }
                 if (wrong.Count == 0)
@@ -210,16 +223,30 @@ public sealed class StepMatcher
         // One method under several attributes that match is one definition, as Reqnroll takes it.
         BoundStep[] bound = [.. fitting.Where(f => f.Fit == best).DistinctBy(f => (f.Binding.Type, f.Binding.Method))
             .Select(f => new BoundStep(f.Binding, ArgumentsOf(f.Match)))];
-        return new StepMatch(bound.Length == 1 ? MatchStatus.Defined : MatchStatus.Ambiguous, bound);
+        return new StepMatch(bound.Length == 1 ? MatchStatus.Defined : MatchStatus.Ambiguous, bound)
+        {
+            Refused = [.. unjudged.Where(u => bound.Any(b => ReferenceEquals(b.Binding, u.Binding))).Select(u => u.Argument)],
+        };
     }
 
-    /// <summary>An argument a definition's parameter cannot take, as Reqnroll converts it; null where it takes it.</summary>
+    /// <summary>An argument a definition's parameter cannot take, as Reqnroll converts it; null where it takes it; unjudged
+    /// where a transformation's expression stopped at its time limit.</summary>
     private RefusedArgument? Refusal(StepBinding binding, int index, Group argument)
     {
         StepParameter parameter = binding.Parameters[index];
-        return StepConversions.Refusal(argument.Value, parameter, Transformations, culture) is { } takes
-            ? new RefusedArgument(0, argument.Index, argument.Length, $"{binding.Shown} takes {parameter.Name} as {takes}, which \"{argument.Value}\" is not", true)
-            : null;
+        try
+        {
+            return StepConversions.Refusal(argument.Value, parameter, Transformations, culture) is { } takes
+                ? new RefusedArgument(0, argument.Index, argument.Length, $"{binding.Shown} takes {parameter.Name} as {takes}, which \"{argument.Value}\" is not", true)
+                : null;
+        }
+        catch (RegexMatchTimeoutException)
+        {
+            return new RefusedArgument(0, argument.Index, argument.Length, $"Whether {binding.Shown} takes \"{argument.Value}\" as {parameter.Name} was not checked: {TextSearch.RegexStopped}", false)
+            {
+                Unjudged = true,
+            };
+        }
     }
 
     /// <summary>The arguments of a step no definition binds that a Cucumber Expression's parameter types refuse, where its
@@ -237,10 +264,21 @@ public sealed class StepMatcher
             for (int i = 0; i < types.Length; i++)
             {
                 Group argument = match.Groups[i + 1];
-                if (StepExpressions.ParameterRefusal(types[i], argument.Value) is { } takes)
+                try
+                {
+                    if (StepExpressions.ParameterRefusal(types[i], argument.Value) is { } takes)
+                    {
+                        found.Add(new RefusedArgument(0, argument.Index, argument.Length,
+                            $"No step definition binds \"{text}\": {binding.Shown} would, but its {{{types[i].Name}}} takes {takes}, which \"{argument.Value}\" is not", false));
+                    }
+                }
+                catch (RegexMatchTimeoutException)
                 {
                     found.Add(new RefusedArgument(0, argument.Index, argument.Length,
-                        $"No step definition binds \"{text}\": {binding.Shown} would, but its {{{types[i].Name}}} takes {takes}, which \"{argument.Value}\" is not", false));
+                        $"No step definition binds \"{text}\": {binding.Shown} would, but whether its {{{types[i].Name}}} takes \"{argument.Value}\" was not checked: {TextSearch.RegexStopped}", false)
+                    {
+                        Unjudged = true,
+                    });
                 }
             }
         }
@@ -294,7 +332,7 @@ public sealed class StepMatcher
         }
         catch (RegexMatchTimeoutException)
         {
-            stopped[binding] = $"Its expression ran past {Durations.Said(regex.MatchTimeout)} matching \"{text}\"";
+            stopped[binding] = $"Its expression: {TextSearch.RegexStoppedIn($"matching \"{text}\"")}";
             return null;
         }
     }

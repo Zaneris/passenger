@@ -267,13 +267,14 @@ public sealed partial class CodeEditor
         {
             BackgroundWork.Track(PutFromClipboardAsync());
         }
-        if (result.Highlight is { } search)
-        {
-            ShowVimSearch(search);
-        }
+        string? partly = result.Highlight is { } search ? ShowVimSearch(search) : null;
         if (result.Message is { } said)
         {
-            VimSaid?.Invoke(this, new VimMessage(said, result.MessageIsError));
+            VimSaid?.Invoke(this, new VimMessage(partly is null ? said : $"{said}. {partly}", result.MessageIsError));
+        }
+        else if (partly is not null)
+        {
+            VimSaid?.Invoke(this, new VimMessage(partly, Error: false));
         }
         if (result.JumpedFrom is { } from)
         {
@@ -307,15 +308,17 @@ public sealed partial class CodeEditor
     }
 
     /// <summary>A Vim search's matches shown as the editor's own find shows them, the one at the caret the current one;
-    /// none for an empty query.</summary>
-    private void ShowVimSearch(SearchQuery search)
+    /// none for an empty query. Where its regex stopped at its time limit, those found before are shown and the words
+    /// saying so are given back; null where every match is shown.</summary>
+    private string? ShowVimSearch(SearchQuery search)
     {
         if (search.IsEmpty)
         {
             SetHighlights([], -1);
-            return;
+            return null;
         }
-        IReadOnlyList<TextRange> matches = TextSearch.FindAll(document.Snapshot, search, TextSearch.AtOnce).Matches;
+        SearchResult found = TextSearch.FindAll(document.Snapshot, search, TextSearch.AtOnce);
+        IReadOnlyList<TextRange> matches = found.Matches;
         int caret = selections.Primary.Caret;
         int current = -1;
         for (int i = 0; i < matches.Count; i++)
@@ -327,6 +330,7 @@ public sealed partial class CodeEditor
             }
         }
         SetHighlights(matches, current);
+        return found.Stopped ? $"Highlighted {Plural.Of(matches.Count, "match", "matches")}, those found before it stopped: {TextSearch.RegexStopped}" : null;
     }
 
     /// <summary>A macro's keys pressed in turn as typed, insert mode's typing done as the keymap's Enter, Backspace and

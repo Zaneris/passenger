@@ -21,6 +21,12 @@ public static class Refusals
     /// <summary>No file is shown in the editor.</summary>
     public const string NoFile = "No file is open";
 
+    /// <summary>A regex stopped at its time limit, wherever that cuts an answer short (<see cref="TextSearch.RegexStopped"/>).</summary>
+    public const string RegexStopped = TextSearch.RegexStopped;
+
+    /// <summary><see cref="RegexStopped"/> naming where it stopped: a file, or what it was matching.</summary>
+    public static string RegexStoppedIn(string where) => TextSearch.RegexStoppedIn(where);
+
     /// <summary>No tab is open and no tool window serves the folder, for the Switcher.</summary>
     public const string NothingToSwitchTo = "No tab or tool window is open to switch to";
 

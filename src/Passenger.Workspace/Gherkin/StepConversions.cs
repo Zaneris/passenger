@@ -61,7 +61,7 @@ public static class StepConversions
     }
 
     /// <summary>Whether a transformation takes a text: one with an expression where it matches the whole text, one with
-    /// none where it takes no table.</summary>
+    /// none where it takes no table. An expression past its time limit throws a <see cref="RegexMatchTimeoutException"/>.</summary>
     public static bool Takes(StepTransformation transformation, string text)
     {
         if (transformation.Regex is not { } regex)
@@ -70,13 +70,9 @@ public static class StepConversions
         }
         try
         {
-            return Regex.IsMatch(text, StepExpressions.WholeText(regex), RegexOptions.CultureInvariant, TextSearch.Apart);
+            return TextSearch.IsWrittenMatch(text, StepExpressions.WholeText(regex), RegexOptions.CultureInvariant, TextSearch.Apart);
         }
         catch (ArgumentException)
-        {
-            return true;
-        }
-        catch (RegexMatchTimeoutException)
         {
             return true;
         }

@@ -81,11 +81,42 @@ public sealed class RefusalsTests
             + $"unlike every other refusal of it: say the file's own ReadOnlyWhy:\n{string.Join("\n", found)}");
     }
 
+    /// <summary>A regex stopped at its time limit is said in one wording wherever it cuts an answer short, Passenger.Text's
+    /// (<see cref="Passenger.Text.TextSearch.RegexStopped"/>, which Refusals gives the App): no string of any project's code
+    /// words it again or another way.</summary>
+    [Fact]
+    public void A_regex_stopped_at_its_time_limit_is_said_in_one_wording_across_the_code()
+    {
+        Regex other = new(@"(?i)took too long and stopped|the pattern given up on|expression ran past");
+        List<string> found = [];
+        foreach ((string relative, SyntaxTree tree) in Sources("src").Where(s => s.Relative != "src/Passenger.Text/TextSearch.cs"))
+        {
+            foreach (SyntaxNode node in tree.GetRoot(TestContext.Current.CancellationToken).DescendantNodes())
+            {
+                string? written = node switch
+                {
+                    LiteralExpressionSyntax plain when plain.IsKind(SyntaxKind.StringLiteralExpression) => plain.Token.ValueText,
+                    InterpolatedStringExpressionSyntax interpolated => string.Concat(interpolated.Contents.Select(part => part is InterpolatedStringTextSyntax text ? text.TextToken.ValueText : "{}")),
+                    _ => null,
+                };
+                if (written is not null && other.IsMatch(written))
+                {
+                    found.Add($"{relative}:{node.GetLocation().GetLineSpan().StartLinePosition.Line + 1}: \"{written}\"");
+                }
+            }
+        }
+        Assert.True(found.Count == 0, $"{found.Count} strings word a regex stopped at its time limit apart from TextSearch.RegexStopped, so one stop reads "
+            + $"differently where a search, a check or a declaration says it: say it through TextSearch.RegexStopped (Refusals.RegexStopped in the App):\n{string.Join("\n", found)}");
+    }
+
     /// <summary>The App's source files, by their paths from the repository's root, each read as C#.</summary>
-    private static IEnumerable<(string Relative, SyntaxTree Tree)> Sources()
+    private static IEnumerable<(string Relative, SyntaxTree Tree)> Sources() => Sources(Path.Combine("src", "Passenger.App"));
+
+    /// <summary>The source files under a folder of the repository, by their paths from its root, each read as C#.</summary>
+    private static IEnumerable<(string Relative, SyntaxTree Tree)> Sources(string under)
     {
         string root = Debugging.Helpers.Debuggees.Root;
-        foreach (string file in Directory.EnumerateFiles(Path.Combine(root, "src", "Passenger.App"), "*.cs", SearchOption.AllDirectories).Order(StringComparer.Ordinal))
+        foreach (string file in Directory.EnumerateFiles(Path.Combine(root, under), "*.cs", SearchOption.AllDirectories).Order(StringComparer.Ordinal))
         {
             string relative = Path.GetRelativePath(root, file).Replace('\\', '/');
             if (!relative.Contains("/obj/", StringComparison.Ordinal) && !relative.Contains("/bin/", StringComparison.Ordinal))

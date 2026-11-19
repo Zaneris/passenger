@@ -456,6 +456,25 @@ public sealed class RazorTests : IClassFixture<BlazorShop>
         }
     }
 
+    /// <summary>Go to Declaration from a JS interop call whose search of a script stops at the regex's time limit (held
+    /// there in place of a slow machine) goes nowhere and says where it stopped, in the one wording.</summary>
+    [AvaloniaFact]
+    public void Go_to_declaration_from_a_js_interop_call_refuses_where_a_scripts_search_stops_at_its_time_limit()
+    {
+        MainWindow window = app.Open("Components/Pages/Bell.razor");
+        string bell = app.Named("Components/Pages/Bell.razor");
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        Ui.PlaceAfter(editor, "InvokeVoidAsync(\"gr");
+        using (TextSearch.HoldPastLimit("(?<n>greet)"))
+        {
+            Ui.Press(window, Ui.Shortcut(AppActions.GoToDeclaration));
+            Ui.WaitFor(() => window.Status?.Contains(Refusals.RegexStoppedIn("site.js"), StringComparison.Ordinal) == true,
+                () => $"Go to Declaration to say the search of site.js stopped; the status bar said: {window.Status}");
+        }
+        Assert.True(window.EditorArea.Active?.Path == bell, $"Go to Declaration went to {window.EditorArea.Active?.Path} though its search stopped");
+        window.Close();
+    }
+
     [AvaloniaFact]
     public void Call_hierarchy_of_a_method_a_components_code_block_calls_goes_to_the_call_in_its_razor_file()
     {

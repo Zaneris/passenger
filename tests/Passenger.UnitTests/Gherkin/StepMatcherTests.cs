@@ -145,6 +145,32 @@ public sealed class StepMatcherTests
         Assert.Equal(MatchStatus.Undefined, Match(matcher, StepKind.Given, "a price of twelve").Status);
     }
 
+    /// <summary>A transformation's or a parameter type's expression stopped at its time limit (held there in place of a slow
+    /// machine) neither takes nor refuses the argument: the step binds, or is said nearly bound, with the argument said
+    /// unchecked in the one wording.</summary>
+    [Fact]
+    public void An_argument_whose_check_stops_at_the_time_limit_is_said_unchecked_neither_taken_nor_refused()
+    {
+        StepBinding money = Binding(BindingKind.Given, "a price of {money}", "GivenPrice", P("price", "Shop.Money"));
+        StepMatcher matcher = new([money], [new StepTransformation("\\$(\\d+)|held1984money", "money", "Shop.Money") { Parameters = ["System.String"] }],
+            CultureInfo.InvariantCulture);
+        using (Passenger.Text.TextSearch.HoldPastLimit("held1984money"))
+        {
+            StepMatch bound = Match(matcher, StepKind.Given, "a price of $12");
+            StepMatch nearly = Match(matcher, StepKind.Given, "a price of twelve");
+
+            Assert.Equal(MatchStatus.Defined, bound.Status);
+            RefusedArgument unseen = Assert.Single(bound.Refused);
+            Assert.True(unseen is { Unjudged: true, Fails: false, Column: 11, Length: 3 } && unseen.Why.EndsWith($"\"$12\" as price was not checked: {Passenger.Text.TextSearch.RegexStopped}", StringComparison.Ordinal),
+                $"A transformation that stopped at its time limit came to {unseen}, not the argument said unchecked");
+            Assert.Equal(MatchStatus.Undefined, nearly.Status);
+            RefusedArgument said = Assert.Single(nearly.Refused);
+            Assert.True(said is { Unjudged: true, Fails: false } && said.Why.EndsWith($"whether its {{money}} takes \"twelve\" was not checked: {Passenger.Text.TextSearch.RegexStopped}", StringComparison.Ordinal),
+                $"A parameter type that stopped at its time limit came to {said}, not the argument said unchecked");
+        }
+        Assert.Empty(Match(matcher, StepKind.Given, "a price of $12").Refused);
+    }
+
     [Fact]
     public void A_method_named_for_its_step_matches_with_no_expression()
     {

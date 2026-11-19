@@ -61,7 +61,7 @@ public sealed class ResponseView : DockPanel
     public IReadOnlyList<SchemaBreak> Breaks { get; private set; } = [];
 
     /// <summary>Whether every criterion passed, and the body keeps to its schema.</summary>
-    public bool Passed => Response is not null && Results.All(r => r.Passed) && Breaks.Count == 0;
+    public bool Passed => Response is not null && Results.All(r => r.Passed) && Breaks.All(b => b.Unjudged);
 
     /// <summary>What the summary line says.</summary>
     public string Summary => summary.Text ?? string.Empty;
@@ -129,13 +129,14 @@ public sealed class ResponseView : DockPanel
         ShowPart(bodyTab.IsChecked == true);
     }
 
-    /// <summary>A place the body breaks its schema: the member in the code font, then what is wrong there.</summary>
+    /// <summary>A place the body breaks its schema, or one its check could not tell of: the member in the code font, then
+    /// what is wrong there or why it was not told.</summary>
     private static Control BreakRow(SchemaBreak broken)
     {
         PathIcon mark = new() { Width = 12, Height = 12, Margin = new Thickness(0, 0, Gaps.Small, 0) };
-        mark.Bind(PathIcon.DataProperty, mark.GetResourceObservable(IconKeys.TestFailed));
-        Paint(mark, TokenKeys.Test_Failed);
-        TextBlock lead = new() { Text = "Breaks its schema at ", FontSize = 12, VerticalAlignment = VerticalAlignment.Center };
+        mark.Bind(PathIcon.DataProperty, mark.GetResourceObservable(broken.Unjudged ? IconKeys.TestSkipped : IconKeys.TestFailed));
+        Paint(mark, broken.Unjudged ? TokenKeys.Test_Skipped : TokenKeys.Test_Failed);
+        TextBlock lead = new() { Text = broken.Unjudged ? "Not checked at " : "Breaks its schema at ", FontSize = 12, VerticalAlignment = VerticalAlignment.Center };
         TextBlock at = new TextBlock { Text = broken.At, FontSize = 12, VerticalAlignment = VerticalAlignment.Center }.InCodeFont();
         TextBlock said = new() { Text = $": {broken.Said}", FontSize = 12, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
         Paint(said, TokenKeys.TextMuted);

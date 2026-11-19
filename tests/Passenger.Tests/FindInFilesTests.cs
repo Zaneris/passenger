@@ -744,7 +744,7 @@ public sealed class FindInFilesTests : IDisposable
         FindInFilesPopup popup = window.ShowFindInFiles(replace: true)!;
         popup.Regex = true;
         Ui.Search(popup, "(a+)+b|count");
-        Assert.True(popup.Status == "4 matches in 3 files; the regex took too long and stopped in Runs.txt", $"The popup says '{popup.Status}' of a regex that never ends in Runs.txt");
+        Assert.True(popup.Status == $"4 matches in 3 files: {Refusals.RegexStoppedIn("Runs.txt")}", $"The popup says '{popup.Status}' of a regex that never ends in Runs.txt");
         Assert.Contains(popup.Matches, m => m is { Name: "Runs.txt", Line: 0, Column: 0, Length: 2 });
 
         Task<Passenger.App.Mcp.FindInFilesResult> asking = new Passenger.App.Mcp.PassengerTools(window).FindInFiles("(a+)+b|count", regex: true);
@@ -755,7 +755,7 @@ public sealed class FindInFilesTests : IDisposable
         popup.Replacement = "x";
         popup.RequestReplace();
         Ui.WaitFor(() => window.Status?.StartsWith("Replaced", StringComparison.Ordinal) == true, () => $"the replacement; the status says '{window.Status}'");
-        Assert.Equal("Replaced 3 matches in 2 files; not replaced: Runs.txt (the regex took too long there)", window.Status);
+        Assert.Equal($"Replaced 3 matches in 2 files; not replaced: Runs.txt ({Refusals.RegexStopped})", window.Status);
         Assert.True(File.ReadAllText(runs) == text, "Replace All replaced the match found in Runs.txt before its search stopped");
         Assert.Equal("class Alpha\n{\n    int x;\n}\n", File.ReadAllText(Path.Combine(folder, "Alpha.cs")));
         window.Close();

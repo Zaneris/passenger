@@ -10,9 +10,13 @@ using Passenger.Text;
 namespace Passenger.App.Endpoints;
 
 /// <summary>Where a JSON value breaks its schema: the member, as a JSON pointer (<c>/items/0/price</c>; <c>/</c> for the
-/// whole), and what is wrong there.</summary>
+/// whole), and what is wrong there; or, <see cref="Unjudged"/>, where the check could not tell whether it does.</summary>
 public sealed record SchemaBreak(string At, string Said)
 {
+    /// <summary>Whether the check of the member could not finish (its pattern stopped at its time limit), which neither
+    /// passes nor fails the value.</summary>
+    public bool Unjudged { get; init; }
+
     public override string ToString() => $"at {At}: {Said}";
 }
 
@@ -30,12 +34,13 @@ public static class OpenApiSchemas
     /// <summary>How many breaks a check says at most.</summary>
     private const int Most = 50;
 
-    /// <summary>The places a response's value breaks its schema, in the order met; none where it keeps to it.</summary>
+    /// <summary>The places a response's value breaks its schema, in the order met, then those it could not tell of
+    /// (<see cref="SchemaBreak.Unjudged"/>); none where it keeps to it.</summary>
     public static IReadOnlyList<SchemaBreak> Check(OpenApiDocument document, JsonElement schema, JsonElement value)
     {
         Checking checking = new(document, value);
         checking.Walk(schema, string.Empty, value, string.Empty, 0, schema);
-        return checking.Breaks;
+        return [.. checking.Breaks, .. checking.Unjudged];
     }
 
     /// <summary>One check of a value, each pair of a schema and a value beneath it judged once: a schema by where it lies (the
@@ -48,6 +53,9 @@ public static class OpenApiSchemas
         private readonly Dictionary<(string Schema, int Value), bool> fitting = [];
 
         public List<SchemaBreak> Breaks { get; } = [];
+
+        /// <summary>The members whose check could not finish, each said once, whether a break or a choice's fit asked.</summary>
+        public List<SchemaBreak> Unjudged { get; } = [];
 
         public void Walk(JsonElement written, string place, JsonElement value, string at, int depth, JsonElement whole)
         {
@@ -115,8 +123,23 @@ public static class OpenApiSchemas
             }
             switch (value.ValueKind)
             {
-                case JsonValueKind.String when JsonMembers.Text(schema, "pattern") is { } pattern && Matches(pattern, value.GetString()!) == false:
-                    return Broken(breaks, at, $"{Describe(value)} does not match its pattern {pattern}");
+                case JsonValueKind.String when JsonMembers.Text(schema, "pattern") is { } pattern:
+                    try
+                    {
+                        if (Matches(pattern, value.GetString()!) == false)
+                        {
+                            return Broken(breaks, at, $"{Describe(value)} does not match its pattern {pattern}");
+                        }
+                    }
+                    catch (RegexMatchTimeoutException)
+                    {
+                        SchemaBreak unjudged = new(at.Length == 0 ? "/" : at, $"{Describe(value)} was not checked against its pattern {pattern}: {TextSearch.RegexStopped}") { Unjudged = true };
+                        if (!Unjudged.Contains(unjudged))
+                        {
+                            Unjudged.Add(unjudged);
+                        }
+                    }
+                    break;
                 case JsonValueKind.Object:
                     return JudgeObject(schema, key, value, at, depth, breaks, whole) && kept;
                 case JsonValueKind.Array when JsonMembers.Object(schema, "items") is { } items:
@@ -309,14 +332,15 @@ public static class OpenApiSchemas
     private static string Shortened(string text) => text.Length > 40 ? text[..40] + "…" : text;
 
     /// <summary>Whether a string matches a schema's pattern, which ECMAScript writes and .NET's regex reads alike for the most
-    /// part; null where the pattern cannot be read or takes too long, which the check passes over.</summary>
+    /// part; null where the pattern cannot be read, which the check passes over. One past its time limit throws a
+    /// <see cref="RegexMatchTimeoutException"/>.</summary>
     private static bool? Matches(string pattern, string text)
     {
         try
         {
             return TextSearch.IsWrittenMatch(text, pattern, RegexOptions.CultureInvariant, TextSearch.AtOnce);
         }
-        catch (Exception unread) when (unread is ArgumentException or RegexMatchTimeoutException)
+        catch (ArgumentException)
         {
             return null;
         }

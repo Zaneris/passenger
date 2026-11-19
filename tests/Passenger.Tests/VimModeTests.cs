@@ -444,6 +444,32 @@ public sealed class VimModeTests : IDisposable
         }
     }
 
+    /// <summary>A search's highlight whose regex stops at its time limit (held there in place of a slow machine) shows the
+    /// matches found before it stopped and says so in the one wording; the search itself, already read, goes on as n.</summary>
+    [AvaloniaFact]
+    public void A_searchs_highlight_stopped_at_its_time_limit_says_it_shows_only_what_was_found_before()
+    {
+        (MainWindow window, CodeEditor editor) = Open("one held1984\nfoo held1984\nheld1984 three\n");
+        try
+        {
+            window.ApplySettings(window.Settings with { VimMode = true });
+            Ui.Settle();
+            Keys(window, "/held1984<CR>");
+            Assert.Equal((4, 3), (editor.Selections.Primary.Caret, editor.Highlights.Count));
+            using (TextSearch.HoldPastLimit("held1984"))
+            {
+                Keys(window, "n");
+            }
+            Assert.True(editor.Selections.Primary.Caret == 17 && editor.Highlights.Count == 0, $"n with its highlight held went to {editor.Selections.Primary.Caret} showing {editor.Highlights.Count} matches");
+            Assert.True(StatusWords(window) == $"Highlighted 0 matches, those found before it stopped: {TextSearch.RegexStopped}",
+                $"The status bar said \"{StatusWords(window)}\" of a highlight its regex stopped, not that it shows only what was found before");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     /// <summary>In the smallest window a command line longer than the status bar is cut at its start, so its end, where it
     /// is typed, stays in sight; once it closes, what the bar says is cut at its end again.</summary>
     [AvaloniaFact]

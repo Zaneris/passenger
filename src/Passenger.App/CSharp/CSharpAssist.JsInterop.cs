@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using Passenger.App.Editors;
 using Passenger.App.Workspace;
 using Passenger.Core;
@@ -31,7 +32,12 @@ internal sealed partial class CSharpAssist
         }
         OpenTexts texts = context.Editors.Texts();
         string path = document.Path;
-        IReadOnlyList<(string Path, int Start, string Name)> places = await BackgroundWork.Run(() => Places(call, path, found.Projects, texts));
+        List<string> stopped = [];
+        IReadOnlyList<(string Path, int Start, string Name)> places = await BackgroundWork.Run(() => Places(call, path, found.Projects, texts, stopped));
+        if (stopped.Count > 0)
+        {
+            return new Declared([], Refusals.RegexStoppedIn(Plural.Listed([.. stopped.Select(Path.GetFileName).OfType<string>()])));
+        }
         List<LspLocation> located = [];
         foreach ((string file, int start, _) in places)
         {
@@ -47,8 +53,10 @@ internal sealed partial class CSharpAssist
     }
 
     /// <summary>The places a call leads: an import's module files that are there, at their start; else the declarations of the
-    /// function it names in its module, or in the file's collocated script and then every script of its projects.</summary>
-    private static IReadOnlyList<(string Path, int Start, string Name)> Places(JsInteropCall call, string path, IReadOnlyList<string> projects, OpenTexts texts)
+    /// function it names in its module, or in the file's collocated script and then every script of its projects, those whose
+    /// search stopped at the regex's time limit put in <paramref name="stopped"/>.</summary>
+    private static IReadOnlyList<(string Path, int Start, string Name)> Places(JsInteropCall call, string path, IReadOnlyList<string> projects, OpenTexts texts,
+        List<string> stopped)
     {
         List<(string, int, string)> places = [];
         if (call.Module is { } module)
@@ -92,7 +100,17 @@ internal sealed partial class CSharpAssist
                 return;
             }
             string script = text.ToString();
-            foreach ((int start, _) in JsFunctions.Declared(script, call.Identifier))
+            IReadOnlyList<(int Start, int Length)> declared;
+            try
+            {
+                declared = JsFunctions.Declared(script, call.Identifier);
+            }
+            catch (RegexMatchTimeoutException)
+            {
+                stopped.Add(file);
+                return;
+            }
+            foreach ((int start, _) in declared)
             {
                 places.Add((file, start, $"{Path.GetFileName(file)}: {text.GetLineText(text.GetLineFromOffset(start)).Trim()}"));
             }

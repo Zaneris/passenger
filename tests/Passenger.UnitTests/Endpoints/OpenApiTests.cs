@@ -227,6 +227,31 @@ public sealed class OpenApiTests
         Assert.Empty(Checked("ListItems", 200, """[]"""));
     }
 
+    /// <summary>A member's pattern stopped at its time limit (held there in place of a slow machine) neither passes nor breaks
+    /// it: it is said not checked, in the one wording, beside the breaks the rest of the check finds.</summary>
+    [Fact]
+    public void A_pattern_stopped_at_its_time_limit_neither_passes_nor_breaks_the_member_and_says_it_was_not_checked()
+    {
+        const string Coded = "^[A-Z]{3}-[0-9]+$(?#held1984-code)";
+        OpenApiDocument given = OpenApiDocument.Parse($$"""
+            { "openapi": "3.1.1", "paths": { "/parts": { "get": { "operationId": "GetPart", "responses": { "200": { "description": "OK",
+              "content": { "application/json": { "schema": { "type": "object", "properties": {
+                "code": { "type": "string", "pattern": "{{Coded}}" }, "count": { "type": "integer" } } } } } } } } } } }
+            """)!;
+        using JsonDocument answer = JsonDocument.Parse("""{ "code": "abc", "count": "two" }""");
+        JsonElement schema = given.Operations.Single().ResponseSchema(200)!.Value;
+        Assert.Contains(new SchemaBreak("/code", "the string \"abc\" does not match its pattern ^[A-Z]{3}-[0-9]+$(?#held1984-code)"), OpenApiSchemas.Check(given, schema, answer.RootElement));
+        using (Passenger.Text.TextSearch.HoldPastLimit("held1984-code"))
+        {
+            Assert.Equal(
+                [
+                    new SchemaBreak("/count", "a whole number was expected, not the string \"two\""),
+                    new SchemaBreak("/code", $"the string \"abc\" was not checked against its pattern ^[A-Z]{{3}}-[0-9]+$(?#held1984-code): {Passenger.Text.TextSearch.RegexStopped}") { Unjudged = true },
+                ],
+                OpenApiSchemas.Check(given, schema, answer.RootElement));
+        }
+    }
+
     [Fact]
     public void Each_member_that_breaks_its_schema_is_said_where_it_is_and_what_was_expected()
     {

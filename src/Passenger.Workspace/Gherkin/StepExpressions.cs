@@ -90,19 +90,12 @@ public static partial class StepExpressions
     }
 
     /// <summary>What a Cucumber Expression's parameter type takes, in words, where it refuses a text as its argument; null
-    /// where it takes it.</summary>
+    /// where it takes it. A parameter type's regex past its time limit throws a <see cref="RegexMatchTimeoutException"/>.</summary>
     public static string? ParameterRefusal(IParameterType type, string value)
     {
         bool quoted = type.Name == ParameterTypeConstants.StringParameterName;
         string[] regexes = quoted ? ParameterTypeConstants.StringParameterRegexps : type.RegexStrings;
-        try
-        {
-            if (regexes.Any(r => Regex.IsMatch(value, $"^(?:{r})$", RegexOptions.None, TextSearch.Apart)))
-            {
-                return null;
-            }
-        }
-        catch (RegexMatchTimeoutException)
+        if (regexes.Any(r => TextSearch.IsWrittenMatch(value, $"^(?:{r})$", RegexOptions.None, TextSearch.Apart)))
         {
             return null;
         }

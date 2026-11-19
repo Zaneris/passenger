@@ -42,7 +42,7 @@ public sealed class TableColumnsTests
     [InlineData("P_ages", "Pages")]
     public void A_column_sets_the_member_reqnroll_sets_from_it(string column, string? member)
     {
-        Assert.Equal(member, Members.FirstOrDefault(m => TableColumns.Takes(m, column))?.Name);
+        Assert.Equal(member, Members.FirstOrDefault(m => TableColumns.Takes(m, column) == true)?.Name);
     }
 
     [Fact]
@@ -50,7 +50,7 @@ public sealed class TableColumnsTests
     {
         FeatureTable table = TableOf("Feature: F\nScenario: S\n  Given books\n    | Title | Titel | author name |\n    | A     | B     | C           |\n");
 
-        (FeatureRow row, FeatureCell cell) = Assert.Single(TableColumns.Unread(table, Set));
+        (FeatureRow row, FeatureCell cell, _) = Assert.Single(TableColumns.Unread(table, Set));
 
         Assert.Equal((3, 14, "Titel"), (row.Line, cell.Column, cell.Value));
         Assert.Equal("CreateSet<Book> sets no member from \"Titel\", so it is passed over: Book has Title, Author_Name, Pages and Price "
@@ -66,7 +66,7 @@ public sealed class TableColumnsTests
         FeatureTable named = TableOf("Feature: F\nScenario: S\n  Given a book\n    | Nothing | here |\n    | Pagez   | 1    |\n    | Title   | A    |\n");
 
         Assert.Equal("Pagez", Assert.Single(TableColumns.Unread(horizontal, instance)).Cell.Value);
-        Assert.Equal((5, "Pagez"), Assert.Single(TableColumns.Unread(vertical, instance)) is var (row, cell) ? (row.Line, cell.Value) : default);
+        Assert.Equal((5, "Pagez"), Assert.Single(TableColumns.Unread(vertical, instance)) is var (row, cell, _) ? (row.Line, cell.Value) : default);
         Assert.Equal("Pagez", Assert.Single(TableColumns.Unread(named, instance)).Cell.Value);
     }
 
@@ -77,5 +77,21 @@ public sealed class TableColumnsTests
 
         Assert.True(TableColumns.Takes(title, "Book Name"));
         Assert.False(TableColumns.Takes(title, "Name"));
+    }
+
+    /// <summary>An alias stopped at its time limit (held there in place of a slow machine) neither takes nor passes over the
+    /// column: it is said unchecked in the one wording, never passed over for want of a member.</summary>
+    [Fact]
+    public void A_column_whose_alias_stops_at_the_time_limit_is_said_unchecked_never_passed_over()
+    {
+        TableRead read = new(0, "CreateSet", "Shop.Book", [new("Title", true, ["^Book ?Name$(?#held1984-alias)"])]);
+        FeatureTable table = TableOf("Feature: Books\n  Scenario: Some\n    Given these books\n      | Book Name |\n      | Dune      |\n");
+        using (Passenger.Text.TextSearch.HoldPastLimit("held1984-alias"))
+        {
+            (FeatureRow _, FeatureCell cell, bool unjudged) = Assert.Single(TableColumns.Unread(table, read));
+            Assert.True(unjudged && cell.Value == "Book Name", $"A column whose alias stopped came to {cell.Value}, unjudged {unjudged}, not said unchecked");
+            Assert.Equal($"CreateSet<Book> may set a member from \"Book Name\" by an alias, not checked: {Passenger.Text.TextSearch.RegexStopped}", TableColumns.Unjudged(read, cell.Value));
+        }
+        Assert.Empty(TableColumns.Unread(table, read));
     }
 }

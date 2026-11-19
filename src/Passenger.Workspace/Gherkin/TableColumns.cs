@@ -14,8 +14,9 @@ namespace Passenger.Workspace.Gherkin;
 /// its first column, the header left out.</summary>
 public static partial class TableColumns
 {
-    /// <summary>The names of a table no member of the type a read makes takes, each with its row.</summary>
-    public static IEnumerable<(FeatureRow Row, FeatureCell Cell)> Unread(FeatureTable table, TableRead read)
+    /// <summary>The names of a table no member of the type a read makes takes, each with its row; unjudged where an alias
+    /// that might take it stopped at its time limit (<see cref="Unjudged(TableRead, string)"/>).</summary>
+    public static IEnumerable<(FeatureRow Row, FeatureCell Cell, bool Unjudged)> Unread(FeatureTable table, TableRead read)
     {
         if (table.Rows.Count == 0)
         {
@@ -25,7 +26,8 @@ public static partial class TableColumns
         IEnumerable<(FeatureRow Row, FeatureCell Cell)> names = read.Helper == "CreateInstance" && IsVertical(table, read)
             ? table.Rows.Skip(1).Where(r => r.Cells.Count > 0).Select(r => (r, r.Cells[0]))
             : header.Cells.Select(c => (header, c));
-        return names.Where(n => !read.Members.Any(m => Takes(m, n.Item2.Value)));
+        return names.Select(n => (n.Item1, n.Item2, Taken: read.Members.Select(m => Takes(m, n.Item2.Value)).ToList()))
+            .Where(n => !n.Taken.Contains(true)).Select(n => (n.Item1, n.Item2, n.Taken.Contains(null)));
     }
 
     /// <summary>Why a column is passed over, in words saying what the type's members are.</summary>
@@ -34,10 +36,35 @@ public static partial class TableColumns
         + (read.Members.Count == 0 ? $"{TypeNames.Short(read.Type)} has no public property or field" : $"{TypeNames.Short(read.Type)} has {Plural.Listed([.. read.Members.Select(m => m.Name)])}")
         + " (a column names one in any letter case, spaces and other characters left out)";
 
-    /// <summary>Whether a table's name sets a member, as Reqnroll matches a column's name to a member's.</summary>
-    public static bool Takes(TableMember member, string column) =>
-        string.Equals(Normalized(member.Name), Normalized(NotInNames().Replace(column, "")), StringComparison.OrdinalIgnoreCase)
-        || member.Aliases.Any(alias => Aliases(alias, column));
+    /// <summary>Why a column may or may not set a member, its alias not checked: the alias's regex stopped at its time limit.</summary>
+    public static string Unjudged(TableRead read, string column) =>
+        $"{read.Helper}<{TypeNames.Short(read.Type)}> may set a member from \"{column}\" by an alias, not checked: {TextSearch.RegexStopped}";
+
+    /// <summary>Whether a table's name sets a member, as Reqnroll matches a column's name to a member's: null where an alias
+    /// that might name it stopped at its time limit and none else does.</summary>
+    public static bool? Takes(TableMember member, string column)
+    {
+        if (string.Equals(Normalized(member.Name), Normalized(NotInNames().Replace(column, "")), StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+        bool stopped = false;
+        foreach (string alias in member.Aliases)
+        {
+            try
+            {
+                if (Aliases(alias, column))
+                {
+                    return true;
+                }
+            }
+            catch (RegexMatchTimeoutException)
+            {
+                stopped = true;
+            }
+        }
+        return stopped ? null : false;
+    }
 
     /// <summary>Whether CreateInstance reads a table as fields and values, one row each: a header of Field and Value, any
     /// number of rows but one, or two columns whose one row's first cell names a property.</summary>
@@ -49,20 +76,16 @@ public static partial class TableColumns
             return true;
         }
         return table.Rows.Count != 2
-            || (header.Count == 2 && table.Rows[1].Cells.FirstOrDefault()?.Value is { } first && read.Members.Any(m => m.Property && Takes(m, first)));
+            || (header.Count == 2 && table.Rows[1].Cells.FirstOrDefault()?.Value is { } first && read.Members.Any(m => m.Property && Takes(m, first) == true));
     }
 
     private static bool Aliases(string alias, string column)
     {
         try
         {
-            return Regex.IsMatch(column, alias, RegexOptions.None, TextSearch.Apart);
+            return TextSearch.IsWrittenMatch(column, alias, RegexOptions.None, TextSearch.Apart);
         }
         catch (ArgumentException)
-        {
-            return false;
-        }
-        catch (RegexMatchTimeoutException)
         {
             return false;
         }

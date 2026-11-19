@@ -114,7 +114,7 @@ public sealed class FeatureAnalysis
             foreach (RefusedArgument refused in match.Refused)
             {
                 marks.Add(Marker.Coded(RangeAt(refused.Line, refused.Column, refused.Length), refused.Fails ? MarkerKind.Error : MarkerKind.Warning,
-                    refused.Fails ? Argument : Undefined, refused.Why));
+                    refused.Fails || refused.Unjudged ? Argument : Undefined, refused.Why));
             }
             foreach ((FeatureRow row, FeatureCell cell, string why) in UnreadColumns(step, match))
             {
@@ -160,13 +160,13 @@ public sealed class FeatureAnalysis
         {
             return [];
         }
-        IEnumerable<(FeatureRow Row, FeatureCell Cell)> unread = TableColumns.Unread(table, reads[0]);
+        IEnumerable<(FeatureRow Row, FeatureCell Cell, bool Unjudged)> unread = TableColumns.Unread(table, reads[0]);
         foreach (TableRead other in reads.Skip(1))
         {
             HashSet<FeatureCell> alsoUnread = [.. TableColumns.Unread(table, other).Select(u => u.Cell)];
             unread = unread.Where(u => alsoUnread.Contains(u.Cell));
         }
-        return [.. unread.Select(u => (u.Row, u.Cell, TableColumns.Why(reads[0], u.Cell.Value)))];
+        return [.. unread.Select(u => (u.Row, u.Cell, u.Unjudged ? TableColumns.Unjudged(reads[0], u.Cell.Value) : TableColumns.Why(reads[0], u.Cell.Value)))];
     }
 
     private SyntaxSpan[] ColoursOf()

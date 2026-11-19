@@ -64,7 +64,7 @@ public sealed record FilesFound(IReadOnlyList<SearchMatch> Matches, IReadOnlyLis
 
     /// <summary>Where the search stopped, each file named as <paramref name="name"/> gives it; null when it stopped nowhere.</summary>
     public string? StoppedIn(Func<string, string> name) =>
-        Stopped.Count == 0 ? null : $"the regex took too long and stopped in {string.Join(", ", Stopped.Select(name))}";
+        Stopped.Count == 0 ? null : Refusals.RegexStoppedIn(string.Join(", ", Stopped.Select(name)));
 }
 
 /// <summary>What Replace in Files did beyond the matches: the files written as UTF-8 since their encoding could not hold
@@ -340,7 +340,7 @@ public static class FileSearch
     public const string ReadOnlyWhy = "read-only";
 
     /// <summary>Why a file a regex ran too long in is left as it was.</summary>
-    public const string StoppedWhy = "the regex took too long there";
+    public const string StoppedWhy = Refusals.RegexStopped;
 
     /// <summary>Why a file outside the folder searched, which a link inside it leads to, is left as it was.</summary>
     public const string OutsideWhy = "outside the folder, where a link in it leads";

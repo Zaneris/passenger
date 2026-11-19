@@ -493,7 +493,7 @@ public sealed class FindInFilesPopup : UserControl, IAnswers<SearchMatch?>
             IReadOnlyList<SearchMatch> each = searched.Matches;
             int files = each.Select(m => m.Path).Distinct().Count();
             string said = each.Count == 0 ? "Nothing found" : $"{Count(each.Count)} in {Plural.Of(files, "file")}";
-            Show(searched, searched.StoppedIn(System.IO.Path.GetFileName) is { } stopped ? $"{said}; {stopped}" : said, (asked, where));
+            Show(searched, searched.StoppedIn(System.IO.Path.GetFileName) is { } stopped ? $"{said}: {stopped}" : said, (asked, where));
         }
         catch (OperationCanceledException)
         {
