@@ -12,7 +12,14 @@
 // a method that returns a value each turn, which a debugger attaches to (LoopingConsoleAppOptimized is it built optimized).
 // With "asleep" it writes its numbers in a culture of its own and a value by its own ToString, then sleeps for good. With
 // "locked" a second thread, Holder, holds a lock a property is read under, letting it go only as it runs on, then starts a
-// third, Let go, and waits. With "starts" it sleeps where a breakpoint's condition can start a thread that turns.
+// third, Let go, and waits. With "starts" it sleeps where a breakpoint's condition can start a thread that turns. With
+// "dispatch" code not the user's awaits a handler of theirs at a time and only then lets it go on, on the thread pool,
+// where the handler's end goes on with that code, which calls the next handler at once, above the ended one's frame.
+if (args is ["dispatch"])
+{
+    Dispatcher.RunAsync(Handlers.TwiceAsync, 20).GetAwaiter().GetResult();
+    return;
+}
 if (args is ["starts"])
 {
     Console.WriteLine("starts"); // stop where a condition starts a thread
@@ -318,6 +325,51 @@ internal static class Passes
     }
 
     private static string Say(string text) => $"said {text}";
+}
+
+internal static class Handlers
+{
+    public static async Task<int> TwiceAsync(int n, Task go)
+    {
+        await go;
+        int twice = n * 2; // the dispatched handler goes on after its await
+        return twice; // the dispatched handler returns
+    }
+}
+
+// As a framework's code, which Just My Code passes over: a handler's end goes on with it on the handler's own thread.
+[System.Diagnostics.DebuggerNonUserCode]
+internal static class Dispatcher
+{
+    public static async Task RunAsync(Func<int, Task, Task<int>> handler, int count)
+    {
+        int sum = 0;
+        for (int n = 1; n <= count; n++)
+        {
+            TaskCompletionSource go = new();
+            sum += await new GoesOnOnceAwaited(handler(n, go.Task), go);
+        }
+        Console.WriteLine($"dispatched {count} handlers");
+    }
+
+    // A handler's task awaited, the handler let go on on the thread pool only once what awaits it is set to go on.
+    private readonly struct GoesOnOnceAwaited(Task<int> handled, TaskCompletionSource go) : System.Runtime.CompilerServices.ICriticalNotifyCompletion
+    {
+        public GoesOnOnceAwaited GetAwaiter() => this;
+
+        public bool IsCompleted => handled.IsCompleted;
+
+        public int GetResult() => handled.GetAwaiter().GetResult();
+
+        public void OnCompleted(Action continuation) => UnsafeOnCompleted(continuation);
+
+        public void UnsafeOnCompleted(Action continuation)
+        {
+            handled.GetAwaiter().UnsafeOnCompleted(continuation);
+            TaskCompletionSource going = go;
+            ThreadPool.QueueUserWorkItem(_ => going.SetResult());
+        }
+    }
 }
 
 internal static class Race

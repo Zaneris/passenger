@@ -876,8 +876,9 @@ public partial class ManagedDebugger
 
     /// <summary>Whether a frame, once it returns, goes back to the user's code on its thread: a frame of theirs below it
     /// before native code, or past native code that called the frame itself (a static constructor's, a native library's
-    /// callback's). Not where it returns to code that is not theirs with none of theirs below (a web request's, a window's
-    /// event loop, a timer's): what that thread runs next comes of something else, never of the step.</summary>
+    /// callback's), but one past its last line (<see cref="PastItsLastLine"/>). Not where it returns to code that is not
+    /// theirs with none of theirs below (a web request's, a window's event loop, a timer's): what that thread runs next
+    /// comes of something else, never of the step.</summary>
     private bool GoesBackToUsersCode(ICorDebugThread thread, ICorDebugFrame frame)
     {
         if (RangeOf(frame) is not { } stepping)
@@ -906,8 +907,12 @@ public partial class ManagedDebugger
                 }
                 if (IsUserCodeFrame(below))
                 {
-                    _logger?.Invoke($"  The user's {FrameTold(below)} is below it: the step goes on to their code as its frame returns");
-                    return true;
+                    if (!PastItsLastLine(below))
+                    {
+                        _logger?.Invoke($"  The user's {FrameTold(below)} is below it: the step goes on to their code as its frame returns");
+                        return true;
+                    }
+                    _logger?.Invoke($"  The user's {FrameTold(below)} below it is past its last line, completing its task: none of their code is left there");
                 }
                 returnsHere = true;
             }
@@ -917,6 +922,29 @@ public partial class ManagedDebugger
             }
         }
         return !found;
+    }
+
+    /// <summary>Whether a frame of an async method's state machine stands in the compiler's code past its last line, where
+    /// its builder completes the method's task: that may go on with what awaits it, on this thread above the frame, and
+    /// what is left of the frame once it returns runs none of the user's code.</summary>
+    private bool PastItsLastLine(ICorDebugFrame frame)
+    {
+        try
+        {
+            if (frame is not ICorDebugILFrame il || FindModule(il.Function.Module) is not { } module)
+            {
+                return false;
+            }
+            int token = il.Function.Token;
+            int? version = ModuleMetadataReader.VersionOf(il);
+            int at = il.IP.pnOffset;
+            return module.MetadataReader.GetAsyncMethodSteppingInfo(token, version) is { } method && at > method.LastUserCodeIlOffset
+                && module.MetadataReader.IsCurrentSequencePointHidden(token, at, version);
+        }
+        catch (Exception error) when (Failures.OfRuntime(error))
+        {
+            return false;
+        }
     }
 
     /// <summary>A step under way whose frame an exception will unwind, to a handler outside the user's code: the runtime's
