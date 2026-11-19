@@ -1185,7 +1185,7 @@ public sealed class ProfilerTests : IClassFixture<ProfilerTests.Waits>, IDisposa
     public void A_trace_of_allocations_and_collections_alone_lists_them()
     {
         string trace = Path.Combine(folder, "MemoryOnly.nettrace");
-        Ui.Await(Waiting.Apart(() => RecordMemory(trace)), "the allocations' and collections' trace");
+        MemoryRecorded recorded = Ui.Await(Waiting.Apart(() => RecordMemory(trace)), "the allocations' and collections' trace");
         MainWindow window = new() { Width = 1300, Height = 900 };
         window.Show();
         try
@@ -1193,9 +1193,10 @@ public sealed class ProfilerTests : IClassFixture<ProfilerTests.Waits>, IDisposa
             Snapshot snapshot = Ui.Await(window.OpenSnapshotAsync(trace), "the snapshot to open") ?? throw new InvalidOperationException($"The snapshot did not open: {window.Status}");
             Assert.Equal(0, snapshot.Samples);
             AllocatedType arrays = snapshot.Allocations.FirstOrDefault(a => a.Name == "System.Byte[]")
-                ?? throw new Xunit.Sdk.XunitException($"The byte arrays allocated are not listed, of [{string.Join(", ", snapshot.Allocations.Select(a => a.Name))}]");
-            Assert.True(arrays.Bytes >= 4_000_000, $"The byte arrays allocated are listed with {arrays.Bytes:N0} bytes, not the 8 MB allocated");
-            Assert.True(snapshot.Collections.Count(c => c.Generation == 2) >= 3, $"The three collections of generation 2 are not all listed: [{string.Join(", ", snapshot.Collections.Select(c => c.Generation))}]");
+                ?? throw new Xunit.Sdk.XunitException($"The byte arrays allocated are not listed, of [{string.Join(", ", snapshot.Allocations.Select(a => a.Name))}]: {TraceSaid(trace, recorded, snapshot)}");
+            Assert.True(arrays.Bytes >= 4_000_000, $"The byte arrays allocated are listed with {arrays.Bytes:N0} bytes, not the 8 MB allocated: {TraceSaid(trace, recorded, snapshot)}");
+            Assert.True(snapshot.Collections.Count(c => c.Generation == 2) >= 3,
+                $"The three collections of generation 2 are not all listed: [{string.Join(", ", snapshot.Collections.Select(c => c.Generation))}]: {TraceSaid(trace, recorded, snapshot)}");
             window.ProfilerView.ShowPage(Passenger.App.Profiling.ProfilerPage.Allocations);
             Ui.Settle();
             Assert.Contains(window.ProfilerView.Types, t => t.Name == "System.Byte[]");
@@ -1244,30 +1245,93 @@ public sealed class ProfilerTests : IClassFixture<ProfilerTests.Waits>, IDisposa
 
     /// <summary>This process's allocations of 8 MB of small byte arrays and three full collections, recorded by an EventPipe
     /// session of its own into a .nettrace with the runtime's GC events alone: no sampler, so no samples. Small, since on Linux
-    /// the runtime can leave most large objects' ticks out once its process has allocated large objects before.</summary>
-    private static async Task RecordMemory(string trace)
+    /// the runtime can leave most large objects' ticks out once its process has allocated large objects before. Begun once
+    /// the session is on, which the runtime's answer to its start may come before.</summary>
+    private static async Task<MemoryRecorded> RecordMemory(string trace)
     {
         Microsoft.Diagnostics.NETCore.Client.DiagnosticsClient client = new(Environment.ProcessId);
+        using SessionMark mark = new();
+        long asked = System.Diagnostics.Stopwatch.GetTimestamp();
         using Microsoft.Diagnostics.NETCore.Client.EventPipeSession session = client.StartEventPipeSession(
-            [new Microsoft.Diagnostics.NETCore.Client.EventPipeProvider(Snapshot.RuntimeProvider, System.Diagnostics.Tracing.EventLevel.Verbose, 0x1)], requestRundown: false);
+            [new Microsoft.Diagnostics.NETCore.Client.EventPipeProvider(Snapshot.RuntimeProvider, System.Diagnostics.Tracing.EventLevel.Verbose, 0x1),
+                new Microsoft.Diagnostics.NETCore.Client.EventPipeProvider(SessionMark.Provider, System.Diagnostics.Tracing.EventLevel.Informational)], requestRundown: false);
+        long answered = System.Diagnostics.Stopwatch.GetTimestamp();
+        bool onAtAnswer = mark.IsEnabled();
         Task copying = Waiting.Apart(() =>
         {
             using FileStream file = File.Create(trace);
             session.EventStream.CopyTo(file);
         });
+        // A session's providers come on in the order they were made, the runtime's own before the mark.
+        Assert.True(Waiting.Until(mark.IsEnabled, TimeSpan.FromSeconds(5)), "The EventPipe session never turned its providers on");
+        long allocating = System.Diagnostics.Stopwatch.GetTimestamp();
         List<byte[]> kept = new(80_000);
         for (int i = 0; i < 80_000; i++)
         {
             kept.Add(new byte[100]);
         }
+        long collecting = System.Diagnostics.Stopwatch.GetTimestamp();
         for (int i = 0; i < 3; i++)
         {
             GC.Collect(2, GCCollectionMode.Forced, blocking: true);
         }
+        long collected = System.Diagnostics.Stopwatch.GetTimestamp();
         GC.KeepAlive(kept);
         session.Stop();
         Assert.True(await Waiting.Within(copying, TimeSpan.FromSeconds(30), scaled: false), "The EventPipe session's trace never ended");
         await copying;
+        return new MemoryRecorded(System.Diagnostics.Stopwatch.GetElapsedTime(asked, answered), onAtAnswer, System.Diagnostics.Stopwatch.GetElapsedTime(answered, allocating),
+            System.Diagnostics.Stopwatch.GetElapsedTime(allocating, collecting), System.Diagnostics.Stopwatch.GetElapsedTime(collecting, collected));
+    }
+
+    /// <summary>A provider of the test's own in a memory trace's session, which writes nothing: its being on says the
+    /// session's other providers are.</summary>
+    [System.Diagnostics.Tracing.EventSource(Name = Provider)]
+    private sealed class SessionMark : System.Diagnostics.Tracing.EventSource
+    {
+        public const string Provider = "Passenger-Tests-SessionMark";
+    }
+
+    /// <summary>How long a memory trace's session took to answer its start, whether it was on at its answer, and how long
+    /// after the answer its allocations began, they took, and its collections took.</summary>
+    private readonly record struct MemoryRecorded(TimeSpan Answering, bool OnAtAnswer, TimeSpan Starting, TimeSpan Allocating, TimeSpan Collecting);
+
+    /// <summary>What a memory trace holds, read apart from the snapshot: how many events, of them allocation ticks and
+    /// collections begun, and when (from its session's start) its first and last came and each collection began, against
+    /// how long the session's start, the allocations and the collections took; and whether it, and the snapshot's read of
+    /// it, was whole.</summary>
+    private static string TraceSaid(string trace, MemoryRecorded recorded, Snapshot snapshot)
+    {
+        using FileStream file = new(trace, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+        using Microsoft.Diagnostics.Tracing.EventPipeEventSource source = new(file);
+        int events = 0;
+        int ticks = 0;
+        List<double> begun = [];
+        double first = double.NaN;
+        double last = double.NaN;
+        source.Clr.GCAllocationTick += _ => ticks++;
+        source.Clr.GCStart += data => begun.Add(data.TimeStampRelativeMSec);
+        source.AllEvents += data =>
+        {
+            events++;
+            first = double.IsNaN(first) ? data.TimeStampRelativeMSec : first;
+            last = data.TimeStampRelativeMSec;
+        };
+        string read;
+        try
+        {
+            source.Process();
+            read = "whole";
+        }
+        catch (Exception broken) when (TraceFailures.Broken(broken))
+        {
+            read = $"cut short: {broken.Message}";
+        }
+        return $"the session answered its start in {Durations.Said(recorded.Answering)}, {(recorded.OnAtAnswer ? "on" : "not yet on")} as it answered, and the allocations"
+            + $" began {Durations.Said(recorded.Starting)} after its answer, taking {Durations.Said(recorded.Allocating)}, the collections {Durations.Said(recorded.Collecting)}"
+            + $" after them; the trace ({read}) holds {events:N0} events from {first:F1} to {last:F1} ms of its session, {ticks:N0}"
+            + $" allocation ticks and {begun.Count} collections begun, at [{string.Join(", ", begun.Select(at => $"{at:F1}"))}] ms;"
+            + $" the snapshot {(snapshot.CutShort is { } cut ? $"was cut short ({cut})" : "was read whole")}, listing {snapshot.Collections.Count} collections";
     }
 
     /// <summary>Frames of these times on the UI thread, told by this process as the Live Visual Tree's inspector tells an
