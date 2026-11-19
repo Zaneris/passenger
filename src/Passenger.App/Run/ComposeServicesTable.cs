@@ -125,11 +125,12 @@ public sealed class ComposeServicesTable : EditableTable
 
     private void Add(string service, string runs, string? project, bool choosable, bool named, ServiceStart action, bool editable)
     {
-        StackPanel name = new() { Orientation = Orientation.Horizontal, Spacing = Gaps.Normal, Margin = new Thickness(Gaps.Normal, 0), VerticalAlignment = VerticalAlignment.Center };
+        // In a narrow table what it runs gives way first, then its name, each ending in an ellipsis.
+        ShrinkingRow name = new() { Spacing = Gaps.Normal, Margin = new Thickness(Gaps.Normal, 0), VerticalAlignment = VerticalAlignment.Center };
         name.Children.Add(new TextBlock { Text = service, VerticalAlignment = VerticalAlignment.Center });
         if (runs.Length > 0)
         {
-            name.Children.Add(new TextBlock { Text = runs, Classes = { StyleClasses.Muted }, FontSize = 11, VerticalAlignment = VerticalAlignment.Center, TextTrimming = Avalonia.Media.TextTrimming.CharacterEllipsis });
+            name.Children.Add(new TextBlock { Text = runs, Classes = { StyleClasses.Muted }, FontSize = 11, VerticalAlignment = VerticalAlignment.Center });
         }
         ComboBox projectBox = new()
         {
