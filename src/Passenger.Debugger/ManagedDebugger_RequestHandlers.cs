@@ -505,10 +505,8 @@ public partial class ManagedDebugger
         }
         ForgetReturnedValues();
         _stepBegan = null;
-        if (EvalStatus.Abandoned.ContainsKey(threadId))
+        if (StepsAfterEvaluation(threadId, type))
         {
-            // A stepper made now would be the given-up evaluation's, ended with it: the step waits for it to return.
-            _stepAfterEvaluation = (threadId, type);
             Continue(clearVariables: true);
             return;
         }
@@ -527,7 +525,8 @@ public partial class ManagedDebugger
         if (_asyncStepper is not null)
         {
             (bool handledByAsyncStepper, bool? useSimpleStepper) = await _asyncStepper.TrySetupAsyncStep(thread, type);
-            if (handledByAsyncStepper && useSimpleStepper is false)
+            // A step out whose ask of its builder is held unfinished goes on as a plain one once that evaluation returns.
+            if ((handledByAsyncStepper && useSimpleStepper is false) || StepsAfterEvaluation(threadId, type))
             {
                 Continue(clearVariables: true);
                 return;

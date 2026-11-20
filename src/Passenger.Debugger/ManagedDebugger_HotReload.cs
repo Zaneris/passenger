@@ -415,6 +415,7 @@ public partial class ManagedDebugger
     /// new code holds there; otherwise it runs on in the old code, which the runtime offers again at its next statement.</summary>
     private void HandleFunctionRemapOpportunity(FunctionRemapOpportunityCorDebugManagedCallbackEventArgs remap)
     {
+        bool restep = false;
         try
         {
             ICorDebugFunction old = remap.OldFunction;
@@ -441,17 +442,19 @@ public partial class ManagedDebugger
                 }
                 int remapped = frame.TryRemapFunction((uint)there.Offset);
                 _logger?.Invoke($"Remap of 0x{token:X8} v{from} IL_{remap.OldILOffset:X4} to v{to} IL_{there.Offset:X4}: 0x{remapped:X8}");
-                if (remapped != Cor.S_OK && _restepAfterRemap == remap.Thread.Id)
-                {
-                    // Refused, no FunctionRemapComplete comes: the frame runs on in the old code, where its step goes on.
-                    _restepAfterRemap = null;
-                    SetupStepper(remap.Thread, _lastStep);
-                }
+                // Refused, no FunctionRemapComplete comes: the frame runs on in the old code, where its step goes on.
+                restep = remapped != Cor.S_OK && _restepAfterRemap == remap.Thread.Id;
             }
         }
         catch (Exception error) when (Failures.OfRuntime(error))
         {
             _logger?.Invoke($"A remap opportunity could not be taken: {error.Message}");
+        }
+        if (restep)
+        {
+            // A stepper refused here is the step's own event's failure, which stops the step where its thread stands.
+            _restepAfterRemap = null;
+            SetupStepper(remap.Thread, _lastStep);
         }
         Continue(clearVariables: false);
     }
@@ -504,23 +507,24 @@ public partial class ManagedDebugger
     private StepType _lastStep;
 
     /// <summary>A frame runs the new code of its method: a step under way on its thread goes on from its statement there, as
-    /// the step asked, through the new code.</summary>
+    /// the step asked, through the new code. A stepper refused there is the step's own event's failure, which stops the
+    /// step where its thread stands, saying why.</summary>
     private void HandleFunctionRemapComplete(FunctionRemapCompleteCorDebugManagedCallbackEventArgs complete)
     {
         if (_restepAfterRemap is int thread && thread == complete.Thread.Id)
         {
             _restepAfterRemap = null;
+            _stepper?.TryDeactivate();
+            _stepper = null;
+            SetupStepper(complete.Thread, _lastStep);
             try
             {
-                _stepper?.TryDeactivate();
-                _stepper = null;
-                SetupStepper(complete.Thread, _lastStep);
                 ICorDebugILFrame? now = complete.Thread.ActiveFrame as ICorDebugILFrame;
                 _logger?.Invoke($"The {_lastStep} under way on thread {thread} goes on in the new code, v{(now is null ? null : ModuleMetadataReader.VersionOf(now))} IL_{now?.IP.pnOffset:X4}");
             }
             catch (Exception error) when (Failures.OfRuntime(error))
             {
-                _logger?.Invoke($"The step could not go on in the new code: {error.Message}");
+                _logger?.Invoke($"The {_lastStep} under way on thread {thread} goes on in the new code, where its frame could not be read: {error.Message}");
             }
         }
         Continue(clearVariables: false);

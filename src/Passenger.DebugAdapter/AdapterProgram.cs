@@ -73,6 +73,8 @@ public static class AdapterProgram
             Passenger.Debugger.ManagedDebugger.FailAtModule = AdapterEnvironment.FailAtModule;
             Passenger.Debugger.ManagedDebugger.HoldsNoneAtEvaluations = AdapterEnvironment.HoldNone;
             Passenger.Debugger.ManagedDebugger.HoldsBoxes = AdapterEnvironment.HoldBox;
+            Passenger.Debugger.ManagedDebugger.HoldsAsyncSteps = AdapterEnvironment.HoldAsyncStep;
+            Passenger.Debugger.ManagedDebugger.FailsHandling = AdapterEnvironment.FailHandling;
             Passenger.Debugger.Decompilation.SymbolCache.Held = AdapterEnvironment.HoldDecompile;
             _ = Passenger.Core.Waits.Scale;
         }

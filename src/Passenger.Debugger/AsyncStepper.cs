@@ -90,6 +90,10 @@ internal sealed partial class AsyncStepper
         ICorDebugHandleValue? task = null;
         try
         {
+            if (ManagedDebugger.HoldsAsyncSteps)
+            {
+                await _debugger.HoldForInput(thread, "the step out's ask of its builder");
+            }
             ICorDebugObjectValue objectValue = builder.UnwrapDebugValueToObject();
 
             ICorDebugEval eval = thread.CreateEval();
@@ -432,6 +436,17 @@ internal sealed partial class AsyncStepper
         if (step.Run is not { } run)
         {
             return true;
+        }
+        if (ManagedDebugger.HoldsAsyncSteps)
+        {
+            try
+            {
+                await _debugger.HoldForInput(thread, "the question of which run resumed");
+            }
+            catch (Exception error) when (error is ManagedDebugger.EvalException || Failures.OfRuntime(error))
+            {
+                _debugger.Log($"The hold before asking which run resumed on thread {thread.Id} ended: {error.Message}");
+            }
         }
         RunId? resumed = run.IsStateMachine ? StateMachineOf(frame) : await BuilderRunOf(frame);
         if (resumed is null)

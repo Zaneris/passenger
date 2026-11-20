@@ -494,7 +494,8 @@ public sealed record StoppedEvent
     public string Reason { get; init; } = StopReasons.Unknown;
     public string? Description { get; init; }
 
-    /// <summary>More on the stop: at a data breakpoint, the value it watches before and after the write.</summary>
+    /// <summary>More on the stop: at a data breakpoint, the value it watches before and after the write; at a stop made of
+    /// an event the debugger failed to handle, why.</summary>
     public string? Text { get; init; }
     public int? ThreadId { get; init; }
     public bool? AllThreadsStopped { get; init; }

@@ -275,6 +275,52 @@ public class PauseTests(ITestOutputHelper testOutputHelper)
             + $"unheld, it ran on from its first pass, the event tried where it then stood; the engine's log:\n{log}");
     }
 
+    /// <summary>A breakpoint whose handling fails still stops the program where its thread stands, saying why in the Debug
+    /// Console and the stop, never letting the program run on unseen; and one met, as an evaluation runs, by a thread its
+    /// hold missed stops it the same way once the evaluation is over and the program goes on, its thread held meanwhile
+    /// where the breakpoint came, so the stop shows that first pass (#2029).</summary>
+    [Fact]
+    public async Task A_breakpoint_whose_handling_fails_stops_where_its_thread_stands_saying_why_and_so_does_one_met_during_an_evaluation()
+    {
+        await using DebugSession host = DebugSession.ForLaunch(testOutputHelper, environment: new Dictionary<string, string>
+        {
+            [AdapterEnvironment.HoldNoneVariable] = "1",
+            [AdapterEnvironment.FailHandlingVariable] = "Breakpoint",
+        });
+        int starting = Debuggees.Line(Looping, "stop where a condition starts a thread");
+        int turning = Debuggees.Line(Looping, "the started thread's turn");
+        await Start(host, ["starts"], host => host.BreakpointsAsync(Debuggees.Source(Looping, "Program.cs"), [new DapSourceBreakpoint(starting), new DapSourceBreakpoint(turning)]));
+        const string failed = "the debugger could not handle a Breakpoint event";
+        StoppedEvent stopped = await host.WaitForStoppedEvent();
+        Assert.True((stopped.Reason, stopped.Line) == (StopReasons.Breakpoint, starting) && stopped.Text?.Contains(failed, StringComparison.Ordinal) == true,
+            $"The breakpoint whose handling failed stopped for {stopped.Reason} at line {stopped.Line} ({stopped.Text}), not at its line, {starting}, saying why");
+
+        EvaluateResponse began = await host.EvaluateAsync((await host.TopFrameAsync(stopped.ThreadId!.Value)).Id, "Starter.Begin()");
+        Assert.Equal("false", began.Result);
+        string log = host.EngineLog();
+        Assert.True(log.Contains("Put off: HandlingFailed", StringComparison.Ordinal),
+            $"The started thread's breakpoint, whose handling failed during the evaluation, was not put off to stop once it was over; the engine's log:\n{log}");
+        await host.ContinueAsync().WaitForEvent<OutputEvent>(output => output.Output.Contains($"The program stopped where its thread stands, as {failed}", StringComparison.Ordinal));
+        stopped = await host.WaitForStoppedEvent();
+        Assert.True((stopped.Reason, stopped.Line) == (StopReasons.Breakpoint, turning) && stopped.Text?.Contains(failed, StringComparison.Ordinal) == true,
+            $"Let go after the evaluation, the program stopped for {stopped.Reason} at line {stopped.Line} ({stopped.Text}), not at the started thread's breakpoint whose handling failed, line {turning}, saying why");
+        string turn = Assert.Single(await host.LocalsAsync(stopped), v => v.Name == "turn").Value;
+        Assert.True(turn == "0", $"The started thread's breakpoint, whose handling failed during the evaluation, showed it at turn {turn}, where it had run on unseen from its first pass");
+    }
+
+    /// <summary>An event that stops nothing of itself, a thread's start, whose handling fails lets the program go on, saying
+    /// why in the Debug Console, never holding it there nor letting it go unsaid (#2029).</summary>
+    [Fact]
+    public async Task An_event_that_stops_nothing_whose_handling_fails_lets_the_program_go_on_saying_why()
+    {
+        await using DebugSession host = DebugSession.ForLaunch(testOutputHelper, environment: new Dictionary<string, string> { [AdapterEnvironment.FailHandlingVariable] = "CreateThread" });
+        await host.InitializeAsync().LaunchAsync(Debuggees.Program("SteppingConsoleApp"), stopAtEntry: false, justMyCode: true).WaitForInitializedEvent();
+        await host.ConfigurationDoneAsync().WaitForEvent<OutputEvent>(output => output.Output.Contains("The program went on, as the debugger could not handle a CreateThread event", StringComparison.Ordinal));
+        (string output, int? exitCode) = await host.WaitForEnd();
+        Assert.True(output.Contains("count 42 0.75 Spot { X = 2, Y = 3 }", StringComparison.Ordinal) && exitCode == 0,
+            $"With a thread's start it failed to handle, the program did not run on to its end as it would have (exit code {exitCode}):\n{output}");
+    }
+
     [Gate]
     [Fact]
     public async Task An_exception_in_a_parallel_loop_whose_iterations_test_a_condition_stops_where_it_was_thrown()

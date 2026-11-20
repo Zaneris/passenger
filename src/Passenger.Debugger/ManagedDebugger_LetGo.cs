@@ -25,6 +25,7 @@ public partial class ManagedDebugger
         BreakpointCorDebugManagedCallbackEventArgs hit => hit.Thread.Id,
         StepCompleteCorDebugManagedCallbackEventArgs step => step.Thread.Id,
         DataBreakpointCorDebugManagedCallbackEventArgs write => write.Thread.Id,
+        HandlingFailed failed => DispatchThread(failed.Failed),
         _ => null,
     };
 

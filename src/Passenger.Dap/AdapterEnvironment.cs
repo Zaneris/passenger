@@ -35,6 +35,18 @@ public static class AdapterEnvironment
     [IdentifierHome]
     public const string HoldBoxVariable = "PASSENGER_ENGINE_HOLD_BOX";
 
+    /// <summary>The variable that, set to 1, has the async stepper wait for the program's input on a thread before it asks
+    /// there where a step goes (a step out's builder, to tell of its end; which run goes on after an await), so an
+    /// evaluation is held unfinished there as one that never ends is: a test's hold.</summary>
+    [IdentifierHome]
+    public const string HoldAsyncStepVariable = "PASSENGER_ENGINE_HOLD_ASYNC_STEP";
+
+    /// <summary>The variable naming a kind of the runtime's events, as its callback is named (Breakpoint,
+    /// FunctionRemapComplete, LoadModule), whose handling the engine fails as it begins, as an error inside its handler
+    /// would: a test's hold.</summary>
+    [IdentifierHome]
+    public const string FailHandlingVariable = "PASSENGER_ENGINE_FAIL_HANDLING";
+
     /// <summary>The variable that, set to 1, has each thread of a decompile wait after its first file until the session
     /// ends, so the decompile lasts as CoreLib's does on a slow machine, with every thread it runs on taken: a test's hold.</summary>
     [IdentifierHome]
@@ -59,6 +71,14 @@ public static class AdapterEnvironment
     /// <summary>Whether <see cref="HoldBoxVariable"/> holds the engine so; a value other than 1 is fatal, as a malformed
     /// flag is.</summary>
     public static bool HoldBox => Flag(HoldBoxVariable);
+
+    /// <summary>Whether <see cref="HoldAsyncStepVariable"/> holds the engine so; a value other than 1 is fatal, as a
+    /// malformed flag is.</summary>
+    public static bool HoldAsyncStep => Flag(HoldAsyncStepVariable);
+
+    /// <summary>The kind of event <see cref="FailHandlingVariable"/> names, or null for none; the engine refuses, as fatal,
+    /// a name that is no kind of its events.</summary>
+    public static string? FailHandling => Environment.GetEnvironmentVariable(FailHandlingVariable) is { Length: > 0 } kind ? kind : null;
 
     /// <summary>Whether <see cref="HoldDecompileVariable"/> holds decompiles so; a value other than 1 is fatal, as a
     /// malformed flag is.</summary>

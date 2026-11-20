@@ -86,7 +86,7 @@ public partial class ManagedDebugger
     /// calls the statement makes after the await are watched there, and the values its calls returned before are kept.</summary>
     private void FollowReturnWatch(ICorDebugThread thread)
     {
-        if (_returnWatch is { } watch && thread.ActiveFrame is { } frame && RangeOf(frame) is { } range)
+        if (_returnWatch is { } watch && StoppedFrame(thread) is { } frame && RangeOf(frame) is { } range)
         {
             _returnWatch = watch with { ThreadId = thread.Id, Frame = range };
         }
@@ -124,13 +124,7 @@ public partial class ManagedDebugger
         }
         finally
         {
-            if (EvalStatus.Abandoned.ContainsKey(thread.Id))
-            {
-                // A stepper made now would be the evaluation's, ended with it: the step goes on once it returns.
-                _logger?.Invoke($"The box's evaluation on thread {thread.Id} is left running: the step goes on once it returns");
-                _stepAfterEvaluation = (thread.Id, StepType.StepOver);
-            }
-            else
+            if (!StepsAfterEvaluation(thread.Id, StepType.StepOver))
             {
                 SetupStepper(thread, StepType.StepOver);
             }
@@ -370,7 +364,7 @@ public partial class ManagedDebugger
         (_, ICorDebugType type, byte[] bytes, string typeName, _) = value;
         if (HoldsBoxes)
         {
-            await HoldBox(thread);
+            await HoldForInput(thread, "the box");
         }
         ICorDebugClass boxClass = type.Type is CorElementType.VALUETYPE
             ? type.Class
@@ -383,16 +377,16 @@ public partial class ManagedDebugger
         return handle;
     }
 
-    /// <summary><see cref="HoldsBoxes"/>' wait, before a box is made: System.Console's Read run on the thread, which returns
-    /// only once the program is given input.</summary>
-    private async Task HoldBox(ICorDebugThread thread)
+    /// <summary>A test's hold's wait (<see cref="HoldsBoxes"/>, <see cref="HoldsAsyncSteps"/>), before <paramref name="what"/>
+    /// runs code in the program: System.Console's Read run on the thread, which returns only once the program is given input.</summary>
+    internal async Task HoldForInput(ICorDebugThread thread, string what)
     {
         ModuleInfo console = _modules.Values.FirstOrDefault(module => module.ModuleName == "System.Console.dll")
-            ?? throw new InvalidOperationException("The program has not loaded System.Console, whose Read a box's hold waits in");
+            ?? throw new InvalidOperationException($"The program has not loaded System.Console, whose Read {what} waits in for its hold");
         IMetaDataImport metadata = console.Module.GetMetaDataInterface<IMetaDataImport>();
         mdTypeDef type = metadata.FindTypeDefByNameOrNull("System.Console", mdToken.Nil) ?? throw new InvalidOperationException("System.Console has no Console type");
         ICorDebugFunction read = console.Module.GetFunctionFromToken(metadata.FindMethod(type, "Read", 0, 0));
-        _logger?.Invoke($"Held: the box on thread {thread.Id} waits for the program's input first");
+        _logger?.Invoke($"Held: {what} on thread {thread.Id} waits for the program's input first");
         ICorDebugValue? got = await thread.CreateEval().CallParameterizedFunctionAsync(ProcessRuntimeEventsUntilEvalEvent, EvalStatus, read, 0, null, 0, [], throwOnException: true);
         if (got is ICorDebugHandleValue handle)
         {

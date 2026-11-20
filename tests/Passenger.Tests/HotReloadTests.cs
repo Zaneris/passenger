@@ -145,6 +145,44 @@ public sealed class HotReloadTests : IClassFixture<HotReloadTests.Greetings>, IC
         }
     }
 
+    /// <summary>A step after an edit whose frame is remapped into the new code, the stepper it makes there failing to be
+    /// set: the step stops where its thread stands, at the remapped statement not yet run, saying why in the Debug window's
+    /// console, never letting the program run on unseen; a step from there goes on through the new code (#2029).</summary>
+    [AvaloniaFact]
+    public void A_step_whose_stepper_cannot_be_made_again_in_the_new_code_stops_where_its_thread_stands_saying_why()
+    {
+        string? was = Environment.GetEnvironmentVariable(global::Passenger.Dap.AdapterEnvironment.FailHandlingVariable);
+        Environment.SetEnvironmentVariable(global::Passenger.Dap.AdapterEnvironment.FailHandlingVariable, "FunctionRemapComplete");
+        MainWindow window = Open();
+        try
+        {
+            window.OpenFile(GreeterPath);
+            CodeEditor editor = window.EditorArea.CodeEditor;
+            editor.GoTo(new TextPosition(4, 8));
+            Ui.Run(window, AppActions.ToggleBreakpoint);
+            Ui.Run(window, AppActions.Debug);
+            Paused(window, "the program to stop in Greet");
+            Replace(window, "        Console.WriteLine($\"Hello {i}\");", "        Console.WriteLine($\"Hi {i}\");\n        Console.WriteLine(\"added\");");
+            Ui.Run(window, AppActions.StepOver);
+            const string why = "The step stopped where its thread stands, as the debugger could not handle the step's FunctionRemapComplete event";
+            Ui.WaitFor(() => window.Debugger.Session?.State == DebugState.Paused && window.Debugger.LastApplied is not null
+                && editor.LineMarks.Any(m => m.Kind == LineMarkKind.ExecutionPoint && m.Line == 4) && Output(window).Contains(why, StringComparison.Ordinal),
+                () => $"the step to stop at the remapped statement, saying why ({window.Debugger.LastApplied?.Said}; marks {string.Join(", ", editor.LineMarks)}; output: {Output(window)})");
+            Assert.Equal(HotReloadResult.Applied, window.Debugger.LastApplied!.Result);
+            Assert.DoesNotContain("Hi ", Output(window), StringComparison.Ordinal);
+
+            Ui.Run(window, AppActions.StepOver);
+            Ui.WaitFor(() => window.Debugger.Session?.State == DebugState.Paused && editor.LineMarks.Any(m => m.Kind == LineMarkKind.ExecutionPoint && m.Line == 5),
+                () => $"the next step to stop at the added statement (marks {string.Join(", ", editor.LineMarks)}; output: {Output(window)})");
+            Assert.Contains("Hi ", Output(window), StringComparison.Ordinal);
+        }
+        finally
+        {
+            End(window);
+            Environment.SetEnvironmentVariable(global::Passenger.Dap.AdapterEnvironment.FailHandlingVariable, was);
+        }
+    }
+
     /// <summary>An edit typed while the debugger starts the program, its runtime held at its start, is one Apply Hot Reload
     /// Changes applies once the program runs: the program then greets as the edited code does.</summary>
     [AvaloniaFact]
