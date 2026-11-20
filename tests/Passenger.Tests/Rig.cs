@@ -523,6 +523,8 @@ public sealed class TestsLeaveNothingBehindAttribute : BeforeAfterTestAttribute
 
     public override void After(MethodInfo methodUnderTest, IXunitTest test)
     {
+        // Read before the windows close, said once they have.
+        string? unlike = IsWindowTest(methodUnderTest) ? SameOnEverySystemAttribute.Unlike(methodUnderTest, OpenWindows.RanOnThisSystem) : null;
         try
         {
             if (IsWindowTest(methodUnderTest) && !OpenWindows.CloseAll())
@@ -533,6 +535,10 @@ public sealed class TestsLeaveNothingBehindAttribute : BeforeAfterTestAttribute
         finally
         {
             TestFolders.End(test.UniqueID);
+        }
+        if (unlike is not null)
+        {
+            throw new InvalidOperationException(unlike);
         }
         if (PersonsGodot.Written($"as {test.TestDisplayName} ran") is { } written)
         {
@@ -563,12 +569,28 @@ public static class OpenWindows
     /// what they started.</summary>
     private static readonly TimeSpan Landing = TimeSpan.FromSeconds(30);
 
+    /// <summary>What the IDE's windows opened since the test began ran that another system could do otherwise, each read as
+    /// it closed (<see cref="SameOnEverySystemAttribute.Ran"/>).</summary>
+    private static readonly List<string> RanByClosed = [];
+
+    /// <summary>What the IDE's windows opened since the test began ran that another system could do otherwise: those
+    /// closed as they closed, those open now.</summary>
+    public static IReadOnlyList<string> RanOnThisSystem =>
+        [.. RanByClosed, .. Open.OfType<Passenger.App.MainWindow>().SelectMany(SameOnEverySystemAttribute.Ran)];
+
     public static void Watch()
     {
         if (!watching)
         {
             watching = true;
-            Window.WindowOpenedEvent.AddClassHandler<Window>((window, _) => Open.Add(window));
+            Window.WindowOpenedEvent.AddClassHandler<Window>((window, _) =>
+            {
+                Open.Add(window);
+                if (window is Passenger.App.MainWindow ide)
+                {
+                    ide.Closing += (_, _) => RanByClosed.AddRange(SameOnEverySystemAttribute.Ran(ide));
+                }
+            });
             Window.WindowClosedEvent.AddClassHandler<Window>((window, _) =>
             {
                 Open.Remove(window);
@@ -580,6 +602,7 @@ public static class OpenWindows
         }
         Open.Clear();
         Ending.Clear();
+        RanByClosed.Clear();
     }
 
     /// <summary>Keeps what a closed window started ending, which its own Closed sets, if it has not yet.</summary>

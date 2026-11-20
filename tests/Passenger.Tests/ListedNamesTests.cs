@@ -11,6 +11,7 @@ namespace Passenger.Tests;
 /// Web and Worker") and <see cref="Plural.Either"/> offers a choice of them ("Api, Web or Worker"): no code of Passenger's
 /// joins them with " and " or " or " of its own, which says "Api and Web and Worker".</summary>
 [Collection(Beside.Name)]
+[SameOnEverySystem]
 public sealed class ListedNamesTests
 {
     [Fact]

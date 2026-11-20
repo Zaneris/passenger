@@ -8,6 +8,7 @@ namespace Passenger.Tests;
 /// <summary>A word agreeing with a count reads alike wherever it is said, as <see cref="Plural"/> chooses it ("1 file is",
 /// "0 files are"): no code of Passenger's picks a verb's, pronoun's or noun's form by comparing a count with one of its own.</summary>
 [Collection(Beside.Name)]
+[SameOnEverySystem]
 public sealed class AgreeingWordsTests
 {
     /// <summary>Words whose forms for one and for several differ by more than an s.</summary>

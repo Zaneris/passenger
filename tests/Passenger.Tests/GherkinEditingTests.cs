@@ -15,6 +15,7 @@ namespace Passenger.Tests;
 /// and commented with a <c>#</c>, laid out by Reformat Code and its tables aligned as a bar or Enter is typed, read in the
 /// language its <c># language:</c> line names as each key of it is typed, and marked where Reqnroll's code-behind generator
 /// would refuse it as it is typed, all with no project or language server.</summary>
+[SameOnEverySystem]
 public sealed class GherkinEditingTests : FileColoursFolder
 {
     private const string Feature =

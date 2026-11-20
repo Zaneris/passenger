@@ -9,6 +9,7 @@ namespace Passenger.Tests;
 /// gutter's other columns through <see cref="IGutterColumn"/> without knowing what they show, so a new kind of mark
 /// changes the IDE and never the editor; and it runs no action of the IDE's, which the IDE's keymap binds.</summary>
 [Collection(Beside.Name)]
+[SameOnEverySystem]
 public sealed partial class EditorRulesTests
 {
     /// <summary>Words of the debugger's, the tests' and version control's, as a name in the editor would carry them.</summary>

@@ -7,6 +7,7 @@ namespace Passenger.Tests;
 /// WatchedFile, a folder through WatchedTree, each reading again what its watcher lost as the watcher fails and as it is
 /// asked to look again.</summary>
 [Collection(Beside.Name)]
+[SameOnEverySystem]
 public sealed class WatcherRulesTests
 {
     /// <summary>The system's watcher is named in src's C# only in its homes (Workspace/WatchedFile.cs, WatchedTree.cs, and

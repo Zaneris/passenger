@@ -8,6 +8,7 @@ namespace Passenger.Tests;
 
 /// <summary>Which collection a test class runs in, held to what its tests do, read from the built tests.</summary>
 [Collection(Beside.Name)]
+[SameOnEverySystem]
 public sealed class CollectionRulesTests
 {
     /// <summary>A test that counts what every thread allocates (GC.GetTotalAllocatedBytes) runs in the Alone collection,

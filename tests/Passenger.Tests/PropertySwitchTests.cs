@@ -10,6 +10,7 @@ namespace Passenger.Tests;
 /// (a folder of "Smith, John", a path with a semicolon), since every one is written by <see cref="PropertySwitch"/>: no
 /// string of Passenger's code begins a <c>-p:</c>, <c>-property:</c> or <c>--property:</c> switch of its own.</summary>
 [Collection(Beside.Name)]
+[SameOnEverySystem]
 public sealed class PropertySwitchTests
 {
     /// <summary>The switches that give a property, as MSBuild and the .NET CLI read them, whatever their letters' case.</summary>

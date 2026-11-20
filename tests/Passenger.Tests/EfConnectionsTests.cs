@@ -8,6 +8,7 @@ namespace Passenger.Tests;
 /// context reads itself, else the one configured under the context's name; never the first configured, and none where
 /// nothing tells.</summary>
 [Collection(Beside.Name)]
+[SameOnEverySystem]
 public sealed class EfConnectionsTests
 {
     private static readonly string[] Configured = ["Reporting", "Shop"];

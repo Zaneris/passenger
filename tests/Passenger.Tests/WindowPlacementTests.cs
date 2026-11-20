@@ -12,6 +12,7 @@ namespace Passenger.Tests;
 /// sees neither opens at the place kept nor keeps its own. Each start's window keeps its state in the test's own folder,
 /// made as the app makes the person's window before it shows. The headless platform maximizes and minimizes no window, so
 /// a test moves and sizes one as a platform does.</summary>
+[SameOnEverySystem]
 public sealed class WindowPlacementTests : IDisposable
 {
     private readonly string state = TestFolders.Create("placement-state-");

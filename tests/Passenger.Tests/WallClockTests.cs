@@ -12,6 +12,7 @@ namespace Passenger.Tests;
 /// same file (a local, a field, a pattern's, an out or a lambda's variable, a list's item or a dictionary's value), the way
 /// the code's waits are written.</summary>
 [Collection(Beside.Name)]
+[SameOnEverySystem]
 public sealed class WallClockTests
 {
     /// <summary>The reads of the tick count that are another program's time, by file: the input events the WPF inspector

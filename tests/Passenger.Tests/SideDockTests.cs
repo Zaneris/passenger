@@ -10,6 +10,7 @@ namespace Passenger.Tests;
 
 /// <summary>A tool window made for the bottom, moved to a side dock: its top bar's parts wrap where they don't fit, none drawn
 /// over another or past the window's edge, and its two panes stand one over the other, each as wide as the window.</summary>
+[SameOnEverySystem]
 public sealed class SideDockTests
 {
     [AvaloniaTheory]

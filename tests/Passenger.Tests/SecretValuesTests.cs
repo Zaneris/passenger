@@ -7,6 +7,7 @@ namespace Passenger.Tests;
 /// says in its logs and failures, a variable's value, a URL and a database command's parameters, each secret in them
 /// masked whole.</summary>
 [Collection(Beside.Name)]
+[SameOnEverySystem]
 public sealed class SecretValuesTests
 {
     private const string Masked = ContainerSecrets.Masked;

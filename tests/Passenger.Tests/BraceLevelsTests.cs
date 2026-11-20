@@ -10,6 +10,7 @@ namespace Passenger.Tests;
 
 /// <summary>Rainbow braces in as many colours as the theme gives, three to six: a theme of five draws a bracket at the sixth
 /// depth in the first level's colour and one at the fifth in the fifth's, and Passenger's own theme keeps its three.</summary>
+[SameOnEverySystem]
 public sealed class BraceLevelsTests
 {
     private const string Source = "class C\n{\n    void M()\n    {\n        var x = F(G(H(I(1))));\n    }\n}\n";

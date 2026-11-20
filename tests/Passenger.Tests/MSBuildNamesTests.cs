@@ -13,6 +13,7 @@ namespace Passenger.Tests;
 /// them again, whole or in a command line's switch or a $(macro). The MSBuild file editor's words (the App's MSBuild/), which
 /// offer a person the names to write, are its own.</summary>
 [Collection(Beside.Name)]
+[SameOnEverySystem]
 public sealed partial class MSBuildNamesTests
 {
     /// <summary>The projects whose code talks to MSBuild.</summary>
