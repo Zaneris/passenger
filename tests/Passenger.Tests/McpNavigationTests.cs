@@ -417,6 +417,29 @@ public sealed class McpNavigationTests : McpRig, IClassFixture<RestoredFolders>
             && l.Contains($"\"method\":\"{Passenger.Lsp.LspMethods.DidChangeWatchedFiles}\"", StringComparison.Ordinal) && l.Contains("/ref/Lib.dll\"", StringComparison.Ordinal));
     }
 
+    /// <summary>A closed file another program writes in place, which the folder's watcher never hears, is what find_symbol
+    /// asked at once answers from, every time: the type written there found, the one written over gone, where the answer
+    /// was of the file as it stood until the watcher heard of the write.</summary>
+    [Fact]
+    public async Task Find_symbol_asked_right_after_another_program_wrote_a_closed_file_answers_from_it_as_written()
+    {
+        await TakeFolderAsync();
+        Write("Shapes.cs", "static class Shape0\n{\n}\n");
+        await using McpClient client = await Start(["--mcp", Folder], environment: new() { [WatchedTree.UnheardVariable] = "Shapes.cs" });
+        Assert.Single(await FoundAsync("Shape0"));
+        for (int i = 1; i <= 5; i++)
+        {
+            Write("Shapes.cs", $"static class Shape{i}\n{{\n}}\n");
+            JsonElement[] written = await FoundAsync($"Shape{i}");
+            JsonElement[] over = await FoundAsync($"Shape{i - 1}");
+            Assert.True(written.Length == 1 && over.Length == 0, $"find_symbol right after Shapes.cs's write {i} of 5 found Shape{i}, written there, {written.Length} "
+                + $"times and Shape{i - 1}, written over, {over.Length} times: an answer of the file as it stood before{Said()}");
+        }
+
+        async Task<JsonElement[]> FoundAsync(string name) =>
+            [.. (await Call(client, McpTools.FindSymbol, new() { ["query"] = name })).EnumerateArray().Where(s => s.GetProperty("name").GetString() == name)];
+    }
+
     /// <summary>Unload Project takes the project out of the language server: nothing is answered from the text the server
     /// read of it, so Go to Declaration from what references it finds the line where it is now, its symbols are found no
     /// more, and a file come under it is neither waited for nor brings it back; Reload Project has it loaded again.</summary>

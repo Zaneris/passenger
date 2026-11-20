@@ -3516,8 +3516,9 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         return [.. actions.Where(a => a.Disabled is null)];
     }
 
-    /// <summary>The language server, once it has loaded the workspace; refused, saying why, while the folder's projects
-    /// have no SDK to load with (<see cref="Unloadable"/>) or are still loading after the wait.</summary>
+    /// <summary>The language server, once it has loaded the workspace and taken in what was written on disk since it was
+    /// last asked (<see cref="WrittenTakenInAsync"/>); refused, saying why, while the folder's projects have no SDK to load
+    /// with (<see cref="Unloadable"/>) or are still loading after the wait.</summary>
     private async Task<RoslynSession> Server(CancellationToken cancel)
     {
         if (Unloadable() is { } unloadable)
@@ -3534,6 +3535,10 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             AgentCall.Say("Waiting for the C# language server to load the solution");
             await When(() => Session.CSharp is not { IsReady: false, IsStopped: false } || Unloadable() is not null, ServerLimit, cancel, ServerState(), SdkState());
             AgentCall.Say(null);
+        }
+        if (Unloadable() is null && Session.CSharp is { IsReady: true })
+        {
+            await WrittenTakenInAsync(cancel);
         }
         return Unloadable() is { } found ? throw new InvalidOperationException(found)
             : Session.CSharp is { IsReady: true, Session: { } server } ? server
@@ -3708,7 +3713,22 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         {
             throw new TimeoutException(Refusals.StillComing(ServerLimit, coming));
         }
+        await WrittenTakenInAsync(cancel);
     }
+
+    /// <summary>Waits for the C# language server to take in what another program wrote on disk that it may hold as it was,
+    /// the folder's watcher having yet to tell it (<see cref="CSharpService.TakeInWrittenAsync"/>): refused once the time is
+    /// up, as the answer would be of the code before it.</summary>
+    private async Task WrittenTakenInAsync(CancellationToken cancel)
+    {
+        if (Session.CSharp is { } csharp && await csharp.TakeInWrittenAsync(Patience.Limit, SayReading, cancel) is { } unread)
+        {
+            throw new TimeoutException(Refusals.StillComing(Patience.Limit, $"the C# language server to read {Relative(unread)} as it is on disk"));
+        }
+    }
+
+    /// <summary>The agent's progress while a file written on disk is waited for (null once it is not).</summary>
+    private void SayReading(string? file) => AgentCall.Say(file is null ? null : $"Waiting for the C# language server to read {Relative(file)} as it is on disk");
 
     /// <summary><see cref="Code"/>, or a source generator's code copied, as the document the server has now and only asked
     /// about (<see cref="GeneratedCode.AskableAsync"/>).</summary>

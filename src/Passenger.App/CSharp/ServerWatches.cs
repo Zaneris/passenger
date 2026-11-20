@@ -20,7 +20,7 @@ public sealed class ServerWatches : IDisposable
 {
     /// <summary>How far a file system's clock may round a file's time down: one written as the server, or a build, began
     /// reading counts.</summary>
-    private static readonly TimeSpan Rounding = TimeSpan.FromSeconds(2);
+    internal static readonly TimeSpan Rounding = TimeSpan.FromSeconds(2);
 
     private const string NotThere = "it is not there; it is watched if a registration names it once it is";
 
