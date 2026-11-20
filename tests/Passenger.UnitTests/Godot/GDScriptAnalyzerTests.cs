@@ -496,6 +496,46 @@ public class GDScriptAnalyzerTests
         Assert.Equal(type, TypeBeforeDot(analysis, dot).Name);
     }
 
+    /// <summary>A member the engine's API types as several classes reads as their nearest common class, and a class after a
+    /// minus is one its hint leaves out, never one it takes: Godot 4.8 beta 4 writes Shortcut's events as
+    /// <c>typedarray::24/17:InputEvent,-InputEventShortcut</c>, and every Godot 4 some textures as <c>Texture2D,-AnimatedTexture</c>.</summary>
+    [Theory]
+    [InlineData("shortcut.events[0].|", "InputEvent", "is_pressed", "get_width")]
+    [InlineData("light.texture.|", "Texture2D", "get_width", "is_pressed")]
+    [InlineData("shape.material_override.|", "Material", "render_priority", "get_width")]
+    public void A_member_typed_as_several_classes_reads_as_those_it_takes_never_one_its_hint_leaves_out(string written, string type, string listed, string left)
+    {
+        const string HintedApi = """
+            {
+              "builtin_classes": [{ "name": "Nil" }, { "name": "bool" }, { "name": "int" }, { "name": "Array", "indexing_return_type": "Variant" }],
+              "classes": [
+                { "name": "Object" }, { "name": "RefCounted", "inherits": "Object" }, { "name": "Resource", "inherits": "RefCounted" },
+                { "name": "Node", "inherits": "Object" }, { "name": "Node2D", "inherits": "Node" }, { "name": "Node3D", "inherits": "Node" },
+                { "name": "InputEvent", "inherits": "Resource", "methods": [{ "name": "is_pressed", "return_value": { "type": "bool" } }] },
+                { "name": "InputEventShortcut", "inherits": "InputEvent" },
+                { "name": "Shortcut", "inherits": "Resource", "properties": [{ "name": "events", "type": "typedarray::24/17:InputEvent,-InputEventShortcut" }] },
+                { "name": "Texture2D", "inherits": "Resource", "methods": [{ "name": "get_width", "return_value": { "type": "int" } }] },
+                { "name": "AnimatedTexture", "inherits": "Texture2D" }, { "name": "AtlasTexture", "inherits": "Texture2D" },
+                { "name": "PointLight2D", "inherits": "Node2D", "properties": [{ "name": "texture", "type": "Texture2D,-AnimatedTexture,-AtlasTexture" }] },
+                { "name": "Material", "inherits": "Resource", "properties": [{ "name": "render_priority", "type": "int" }] },
+                { "name": "BaseMaterial3D", "inherits": "Material" }, { "name": "ShaderMaterial", "inherits": "Material" },
+                { "name": "GeometryInstance3D", "inherits": "Node3D", "properties": [{ "name": "material_override", "type": "BaseMaterial3D,ShaderMaterial" }] }
+              ]
+            }
+            """;
+        const string Head = "extends Node\n\nvar shortcut: Shortcut\nvar light: PointLight2D\nvar shape: GeometryInstance3D\n\nfunc f():\n\t";
+        GodotEngineApi engine = GodotEngineApi.Read(Encoding.UTF8.GetBytes(HintedApi));
+        string text = Head + written.Replace("|", string.Empty, StringComparison.Ordinal) + "\n";
+        GDScriptTree tree = GDScriptTree.Parse(text);
+        GDScriptAnalyzer analyzer = new(new GDScriptProject(engine, path => path == "res://main.gd" ? tree : null, new Dictionary<string, string>(), new Dictionary<string, string>()));
+        GDScriptAnalysis analysis = analyzer.Analyze(tree, "res://main.gd");
+        GDScriptType owner = TypeBeforeDot(analysis, Head.Length + written.IndexOf('|', StringComparison.Ordinal) - 1);
+        Assert.True(owner.Name == type, $"{written} read as {owner}, not {type}: the list after its dot offers {owner}'s members in place of {type}'s");
+        HashSet<string> names = [.. analyzer.Members(owner).Select(m => m.Name)];
+        Assert.Superset(new HashSet<string>(listed.Split(' ')), names);
+        Assert.Empty(names.Intersect(left.Split(' ')));
+    }
+
     /// <summary><c>new</c> follows a class read by its name, by any path to it, wherever Godot 4.7.2 compiled that call, and
     /// nowhere it refused one: an abstract class, one built on an abstract engine class, a singleton, an enum, a built-in type.
     /// A value of a class makes nothing, though Godot leaves that to the running game.</summary>

@@ -681,7 +681,8 @@ public sealed partial class GDScriptAnalyzer
 
     /// <summary>A type as the engine's API writes one: <c>int</c>, <c>Node</c>, <c>enum::Node.ProcessMode</c>,
     /// <c>bitfield::…</c> (an int), <c>typedarray::Node</c>, <c>typeddictionary::String;int</c>, several classes (their nearest
-    /// common class), <c>void</c>, <c>Variant</c>.</summary>
+    /// common class, a class after a minus one the hint leaves out: <c>Texture2D,-AnimatedTexture</c> is a Texture2D),
+    /// <c>void</c>, <c>Variant</c>.</summary>
     public GDScriptType FromApi(string written)
     {
         if (written is "Variant" or "")
@@ -719,8 +720,8 @@ public sealed partial class GDScriptAnalyzer
         }
         if (written.Contains(',', StringComparison.Ordinal))
         {
-            string[] classes = written.Split(',');
-            string? common = Engine?.Chain(classes[0]).Select(c => c.Name).FirstOrDefault(c => classes.All(other => Engine.Extends(other, c)));
+            string[] classes = [.. written.Split(',').Where(c => !c.StartsWith('-'))];
+            string? common = classes is [var first, ..] ? Engine?.Chain(first).Select(c => c.Name).FirstOrDefault(c => classes.All(other => Engine.Extends(other, c))) : null;
             return GDScriptType.Native(common ?? "Object");
         }
         if (Engine?.Builtins.ContainsKey(written) == true || IsBuiltinName(written))
