@@ -10,13 +10,15 @@ namespace Passenger.Debugger;
 /// at the instruction after the call (ICorDebugCode3.GetReturnValueLiveOffset,
 /// ICorDebugILFrame3.GetReturnValueForILOffset), so a step over puts a breakpoint there for each call of its statement,
 /// and a step that returns to a caller reads the call it lands after; a step out of an async method reads what its task
-/// completed with, or a runtime-async method's local its closing brace returns. Each value is kept by a strong handle, a
-/// value type boxed first, as the registers it is read from are the program's again once it runs.</summary>
+/// completed with, or a runtime-async method's local its closing brace returns. Each value is kept past the stop, as the
+/// registers it is read from are the program's again once it runs: a primitive as its bytes, a reference by a strong
+/// handle, any other value type by one to a box of it the program makes.</summary>
 public partial class ManagedDebugger
 {
-    /// <summary>A value a call returned: the label of the method, a handle to the value (none for null, or for one that could
-    /// not be kept), its type's name for an expression's alias, and what to show for one not kept.</summary>
-    private sealed record ReturnedValue(string Method, ICorDebugHandleValue? Value, string TypeName, string AliasType, string? Lost);
+    /// <summary>A value a call returned: the label of the method, a handle to the value (none for null, for one not kept, or
+    /// for a primitive no expression has named), a primitive's bytes, which its row shows, its type's name for an
+    /// expression's alias, and why one was not kept.</summary>
+    private sealed record ReturnedValue(string Method, ICorDebugHandleValue? Value, string TypeName, string AliasType, string? Lost, Unboxed? Primitive = null);
 
     /// <summary>The values the last step's calls returned, in the order they returned, shown at that step's stop on the
     /// thread that stepped and forgotten when the program goes on.</summary>
@@ -97,10 +99,10 @@ public partial class ManagedDebugger
     /// <summary>The call a breakpoint is after, when it is one of the step's.</summary>
     private WatchedCall? WatchedCallOf(ICorDebugFunctionBreakpoint breakpoint) => _returnWatch?.Calls.FirstOrDefault(call => call.Breakpoint == breakpoint);
 
-    /// <summary>Reads what a watched call returned, when the thread is the stepping one, in the frame it steps in. A value
-    /// type's box is made by code the debugger runs in the program, after which the step's stepper never stops (it ran on
-    /// to the next exception handler): it is put aside first, and a stepper made anew steps on through the rest of the
-    /// statement.</summary>
+    /// <summary>Reads what a watched call returned, when the thread is the stepping one, in the frame it steps in. A struct's
+    /// box is made by code the debugger runs in the program, after which the step's stepper never stops (it ran on to the
+    /// next exception handler): it is put aside first, and a stepper made anew steps on through the rest of the statement,
+    /// once the box's evaluation has returned where it was left running.</summary>
     private async Task TakeWatchedReturn(ICorDebugThread thread, WatchedCall call)
     {
         if (_returnWatch is not { } watch || thread.Id != watch.ThreadId || TopFrame(thread) is not ICorDebugILFrame frame
@@ -109,7 +111,7 @@ public partial class ManagedDebugger
             _logger?.Invoke($"The breakpoint after the call at IL_{call.CallOffset:X4} on thread {thread.Id} is not the step's: another frame's, or no value is there");
             return;
         }
-        if (value is ICorDebugReferenceValue || _stepper is not { } stepper)
+        if (value is ICorDebugReferenceValue || IsPrimitive(value.ExactType) || _stepper is not { } stepper)
         {
             await Take(thread, value, call.Method);
             return;
@@ -122,12 +124,22 @@ public partial class ManagedDebugger
         }
         finally
         {
-            SetupStepper(thread, StepType.StepOver);
+            if (EvalStatus.Abandoned.ContainsKey(thread.Id))
+            {
+                // A stepper made now would be the evaluation's, ended with it: the step goes on once it returns.
+                _logger?.Invoke($"The box's evaluation on thread {thread.Id} is left running: the step goes on once it returns");
+                _stepAfterEvaluation = (thread.Id, StepType.StepOver);
+            }
+            else
+            {
+                SetupStepper(thread, StepType.StepOver);
+            }
         }
     }
 
     /// <summary>A step that returned to a caller (a step out, or a step past a method's end) stops right after the call that
-    /// returned: its value is read there, from the one call of the statement the runtime finds the frame right after.</summary>
+    /// returned: its value is read there, from the one call of the statement the runtime finds the frame right after. A
+    /// struct's box, which runs the program, may leave its evaluation running above the frame.</summary>
     private async Task TakeValueReturnedTo(ICorDebugThread thread, ICorDebugILFrame frame)
     {
         if (FindModule(frame.Function.Module) is not { } module)
@@ -195,7 +207,7 @@ public partial class ManagedDebugger
     }
 
     /// <summary>Keeps what a method a step leaves returned, read where its thread can run no code, or should not as its
-    /// step goes on: a value type is boxed at the step's stop (<see cref="BoxUnboxed"/>).</summary>
+    /// step goes on: a struct is boxed at the step's stop (<see cref="BoxUnboxed"/>).</summary>
     internal void TakeWithoutRunning(ICorDebugThread thread, ICorDebugValue value, string method)
     {
         TakeOn(thread);
@@ -210,7 +222,7 @@ public partial class ManagedDebugger
         }
     }
 
-    /// <summary>A value type a step read where no code could run to box it, boxed at the step's stop.</summary>
+    /// <summary>A struct a step read where no code could run to box it, boxed at the step's stop.</summary>
     private Unboxed? _unboxed;
 
     /// <summary>Boxes the value a step read where no code could run, now that the step has stopped where code runs, on the
@@ -295,20 +307,21 @@ public partial class ManagedDebugger
         }
     }
 
-    /// <summary>A value read from the registers, kept past the stop: a reference by a strong handle to its object, a value
-    /// type by one to a box of it made by the program (its bytes read first, as the box's making runs the program).</summary>
+    /// <summary>A value read from the registers, kept past the stop: a primitive as its bytes, a reference by a strong handle
+    /// to its object, a struct by one to a box of it made by the program (its bytes read first, as the box's making runs
+    /// the program).</summary>
     private async Task<ReturnedValue> Keep(ICorDebugValue value, ICorDebugThread thread, string method)
     {
         (ReturnedValue? kept, Unboxed? unboxed) = Taken(value, method);
         return unboxed is null ? kept! : await Box(unboxed, thread);
     }
 
-    /// <summary>A value type read but not yet boxed, which takes code run in the program, so a thread stopped where none can
-    /// run boxes it later: its method, its type and its bytes.</summary>
+    /// <summary>A value type read but not yet boxed, which takes code run in the program: a struct, which a thread stopped
+    /// where none can run boxes later, or a primitive, boxed only for an expression. Its method, its type and its bytes.</summary>
     private sealed record Unboxed(string Method, ICorDebugType Type, byte[] Bytes, string TypeName, string AliasType);
 
-    /// <summary>A value read without running the program: a reference kept by a strong handle, a value type as its bytes,
-    /// for <see cref="Box"/>; a value that cannot be read, kept as lost.</summary>
+    /// <summary>A value read without running the program: a reference kept by a strong handle, a primitive kept as its bytes,
+    /// a struct as its bytes for <see cref="Box"/>; a value that cannot be read, kept as lost, saying why.</summary>
     private (ReturnedValue? Kept, Unboxed? Unboxed) Taken(ICorDebugValue value, string method)
     {
         ICorDebugType type = value.ExactType;
@@ -323,35 +336,67 @@ public partial class ManagedDebugger
                     : new ReturnedValue(method, ((ICorDebugHeapValue2)reference.Dereference()).CreateHandle(CorDebugHandleType.HANDLE_STRONG), typeName, aliasType, null), null);
             }
             byte[] bytes = (value.UnwrapDebugValue() as ICorDebugGenericValue ?? throw new InvalidOperationException($"The {typeName} returned cannot be read whole")).GetValueAsBytes();
-            return (null, new Unboxed(method, type, bytes, typeName, aliasType));
+            Unboxed read = new(method, type, bytes, typeName, aliasType);
+            // A primitive's bytes hold no reference a collection could move, so they stay good however the program runs.
+            return IsPrimitive(type) ? (new ReturnedValue(method, null, typeName, aliasType, null, read), null) : (null, read);
         }
         catch (Exception error) when (Failures.OfRuntime(error))
         {
             _logger?.Invoke($"What {method} returned could not be kept: {error.Message}");
-            return (new ReturnedValue(method, null, typeName, aliasType, $"{{{typeName}}}"), null);
+            return (new ReturnedValue(method, null, typeName, aliasType, $"Not kept: {error.Message}"), null);
         }
     }
 
-    /// <summary>A value type's bytes in a box the program makes, kept by a strong handle.</summary>
+    /// <summary>Whether a type is one of the runtime's primitives (a number, a bool or a char), whose row is its bytes.</summary>
+    private static bool IsPrimitive(ICorDebugType type) => MetadataTypeNames.PrimitiveOf(type.Type) is { IsPrimitiveValue: true };
+
+    /// <summary>A struct kept in a box the program makes; one whose box could not be made, kept as lost, saying why.</summary>
     private async Task<ReturnedValue> Box(Unboxed value, ICorDebugThread thread)
     {
-        (string method, ICorDebugType type, byte[] bytes, string typeName, string aliasType) = value;
         try
         {
-            ICorDebugClass boxClass = type.Type is CorElementType.VALUETYPE
-                ? type.Class
-                : CorElementToValueClassMap.GetValueOrDefault(type.Type) ?? throw new InvalidOperationException($"No class to box a {typeName} in");
-            ICorDebugType[] typeArguments = type.TypeParameters;
-            ICorDebugValue boxed = await thread.CreateEval().NewParameterizedObjectNoConstructorAsync(ProcessRuntimeEventsUntilEvalEvent, EvalStatus, boxClass,
-                typeArguments.Length, typeArguments.Length == 0 ? null : typeArguments, throwOnException: true) ?? throw new InvalidOperationException($"No box was made for the {typeName} returned");
-            ICorDebugHandleValue handle = boxed as ICorDebugHandleValue ?? ((ICorDebugHeapValue2)boxed.UnwrapDebugValue()).CreateHandle(CorDebugHandleType.HANDLE_STRONG);
-            ((ICorDebugGenericValue)handle.UnwrapDebugValue()).SetValue(bytes);
-            return new ReturnedValue(method, handle, typeName, aliasType, null);
+            return new ReturnedValue(value.Method, await Boxed(value, thread), value.TypeName, value.AliasType, null);
         }
         catch (Exception error) when (error is EvalException || Failures.OfRuntime(error))
         {
-            _logger?.Invoke($"What {method} returned could not be kept: {error.Message}");
-            return new ReturnedValue(method, null, typeName, aliasType, $"{{{typeName}}}");
+            _logger?.Invoke($"What {value.Method} returned could not be kept: {error.Message}");
+            return new ReturnedValue(value.Method, null, value.TypeName, value.AliasType, $"Not kept: the program could not make the box it is kept in. {error.Message}");
+        }
+    }
+
+    /// <summary>A value type's bytes in a box the program makes, kept by a strong handle; throws why it could not be made.</summary>
+    private async Task<ICorDebugHandleValue> Boxed(Unboxed value, ICorDebugThread thread)
+    {
+        (_, ICorDebugType type, byte[] bytes, string typeName, _) = value;
+        if (HoldsBoxes)
+        {
+            await HoldBox(thread);
+        }
+        ICorDebugClass boxClass = type.Type is CorElementType.VALUETYPE
+            ? type.Class
+            : CorElementToValueClassMap.GetValueOrDefault(type.Type) ?? throw new InvalidOperationException($"No class to box a {typeName} in");
+        ICorDebugType[] typeArguments = type.TypeParameters;
+        ICorDebugValue boxed = await thread.CreateEval().NewParameterizedObjectNoConstructorAsync(ProcessRuntimeEventsUntilEvalEvent, EvalStatus, boxClass,
+            typeArguments.Length, typeArguments.Length == 0 ? null : typeArguments, throwOnException: true) ?? throw new InvalidOperationException($"No box was made for the {typeName} returned");
+        ICorDebugHandleValue handle = boxed as ICorDebugHandleValue ?? ((ICorDebugHeapValue2)boxed.UnwrapDebugValue()).CreateHandle(CorDebugHandleType.HANDLE_STRONG);
+        ((ICorDebugGenericValue)handle.UnwrapDebugValue()).SetValue(bytes);
+        return handle;
+    }
+
+    /// <summary><see cref="HoldsBoxes"/>' wait, before a box is made: System.Console's Read run on the thread, which returns
+    /// only once the program is given input.</summary>
+    private async Task HoldBox(ICorDebugThread thread)
+    {
+        ModuleInfo console = _modules.Values.FirstOrDefault(module => module.ModuleName == "System.Console.dll")
+            ?? throw new InvalidOperationException("The program has not loaded System.Console, whose Read a box's hold waits in");
+        IMetaDataImport metadata = console.Module.GetMetaDataInterface<IMetaDataImport>();
+        mdTypeDef type = metadata.FindTypeDefByNameOrNull("System.Console", mdToken.Nil) ?? throw new InvalidOperationException("System.Console has no Console type");
+        ICorDebugFunction read = console.Module.GetFunctionFromToken(metadata.FindMethod(type, "Read", 0, 0));
+        _logger?.Invoke($"Held: the box on thread {thread.Id} waits for the program's input first");
+        ICorDebugValue? got = await thread.CreateEval().CallParameterizedFunctionAsync(ProcessRuntimeEventsUntilEvalEvent, EvalStatus, read, 0, null, 0, [], throwOnException: true);
+        if (got is ICorDebugHandleValue handle)
+        {
+            handle.TryDispose();
         }
     }
 
@@ -397,9 +442,21 @@ public partial class ManagedDebugger
             ReturnedValue returned = _returned[i];
             string name = ReturnedRow(returned.Method);
             string evaluateName = ReturnValueName(i);
+            if (returned.Lost is { } lost)
+            {
+                // Never kept, so running anything again cannot bring it back: the row offers no run with every thread let go.
+                result.Add(new VariableInfo { Name = name, EvaluateName = evaluateName, Value = lost, Type = returned.TypeName, PresentationHint = FailedRead, VariablesReference = 0 });
+                continue;
+            }
+            if (returned.Primitive is { } primitive)
+            {
+                // Its bytes, written as a local of its type is: no code runs for it.
+                result.Add(new VariableInfo { Name = name, EvaluateName = evaluateName, Value = PrimitiveText(primitive.Type.Type, primitive.Bytes), Type = returned.TypeName, VariablesReference = 0 });
+                continue;
+            }
             if (returned.Value is not { } handle)
             {
-                result.Add(new VariableInfo { Name = name, EvaluateName = evaluateName, Value = returned.Lost ?? "null", Type = returned.TypeName, VariablesReference = 0 });
+                result.Add(new VariableInfo { Name = name, EvaluateName = evaluateName, Value = "null", Type = returned.TypeName, VariablesReference = 0 });
                 continue;
             }
             // Opening to the object itself, not the handle, which is the step's to let go, not the stop's.
@@ -419,16 +476,32 @@ public partial class ManagedDebugger
     private string ReturnValueName(int index) => index == _returned.Count - 1 ? DapRows.ReturnValue : $"{DapRows.ReturnValue}{index + 1}";
 
     /// <summary>The value an expression's $ReturnValue (0: the last) or $ReturnValueN (from one) names on a thread, and
-    /// whether there is one: a null value is there, with no handle.</summary>
-    internal bool TryGetReturnedValue(ThreadId threadId, int index, out ICorDebugHandleValue? value)
+    /// whether there is one: a null value is there, with no handle. A primitive is boxed the first time an expression names
+    /// it, as the expression takes it as an object; one not kept, or whose box cannot be made, throws why.</summary>
+    internal async Task<(bool Found, ICorDebugHandleValue? Value)> ReturnedValueAsync(ThreadId threadId, int index)
     {
-        value = null;
         if (_returnedThread != threadId.Value || _returned.Count == 0 || index < 0 || index > _returned.Count)
         {
-            return false;
+            return (false, null);
         }
-        value = _returned[index == 0 ? _returned.Count - 1 : index - 1].Value;
-        return true;
+        int at = index == 0 ? _returned.Count - 1 : index - 1;
+        ReturnedValue returned = _returned[at];
+        if (returned.Lost is { } why)
+        {
+            throw new EvalException(why);
+        }
+        if (returned is { Value: null, Primitive: { } primitive })
+        {
+            ICorDebugHandleValue boxed = await Boxed(primitive, _process!.GetThread(threadId.Value));
+            if (_returnedThread != threadId.Value || at >= _returned.Count || _returned[at] != returned)
+            {
+                // Let go of while it was boxed, as the program went on.
+                boxed.TryDispose();
+                return (false, null);
+            }
+            _returned[at] = returned = returned with { Value = boxed };
+        }
+        return (true, returned.Value);
     }
 
     /// <summary>The return values' names and types, for the expression compiler's aliases: $ReturnValue, then $ReturnValue1 on.</summary>

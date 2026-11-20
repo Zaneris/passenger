@@ -927,7 +927,8 @@ internal sealed class CilInterpreter(ManagedDebugger debugger, RuntimeAssemblyPr
             case "GetReturnValue":
             {
                 int index = stack.Pop().AsInt32();
-                if (!debugger.TryGetReturnedValue(run.Context.ThreadId, index, out ICorDebugHandleValue? returned))
+                (bool found, ICorDebugHandleValue? returned) = await debugger.ReturnedValueAsync(run.Context.ThreadId, index);
+                if (!found)
                 {
                     throw new InvalidOperationException("No call has returned a value since the last step");
                 }

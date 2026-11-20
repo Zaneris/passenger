@@ -444,7 +444,7 @@ public partial class ManagedDebugger
         try
         {
             // A step stops where it lands, hidden code too, where a data breakpoint shows the frame that wrote.
-            ICorDebugFrame? stopsIn = thread is null ? null : e is StepCompleteCorDebugManagedCallbackEventArgs ? thread.ActiveFrame : TopFrame(thread);
+            ICorDebugFrame? stopsIn = thread is null ? null : e is StepCompleteCorDebugManagedCallbackEventArgs ? StoppedFrame(thread) : TopFrame(thread);
             wanted = stopsIn is ICorDebugILFrame frame && FindModule(frame.Function.Module) is { } module ? WantedFor(module) : null;
         }
         catch (Exception error) when (Failures.OfRuntime(error))
@@ -464,6 +464,7 @@ public partial class ManagedDebugger
 
     private async Task OnAnyEvent(object? sender, CorDebugManagedCallbackEventArgs e)
     {
+        int? stepping = null;
         try
         {
             if (e is AfterDecompiling after)
@@ -485,6 +486,7 @@ public partial class ManagedDebugger
                 _logger?.Invoke($"Held: the load of {failing} taken as the runtime's failure");
                 e = new DebuggerErrorCorDebugManagedCallbackEventArgs(held, HeldFailure, 0);
             }
+            stepping = StepsOn(e);
             _logger?.Invoke($"Event: {e.GetType().Name}{(DispatchThread(e) is int thread ? $" on thread {thread}" : "")}"
                 + (e is DebuggerErrorCorDebugManagedCallbackEventArgs error ? $": 0x{error.ErrorHR:X8}, code {error.ErrorCode}" : ""));
             if (Failure is not null && e is not (ExitProcessCorDebugManagedCallbackEventArgs or DebuggerErrorCorDebugManagedCallbackEventArgs))
@@ -527,10 +529,30 @@ public partial class ManagedDebugger
             _logger?.Invoke($"Error handling event {e.GetType().Name}: {ex}");
             if (_process is not null && _process.TryIsRunning(out bool isRunning) is Cor.S_OK && isRunning is false)
             {
-                Continue(clearVariables: false);
+                if (stepping is int thread && !EvalStatus.IsRunning && !_stopShown)
+                {
+                    // Gone on, the program would run past the step's end unseen: the step stops where its thread stands.
+                    _logger?.Invoke($"The step on thread {thread} stops where its thread stands, its event having failed");
+                    EndStepForStop();
+                    ReportStop(thread, StopReasons.Step);
+                }
+                else
+                {
+                    Continue(clearVariables: false);
+                }
             }
         }
     }
+
+    /// <summary>The thread of a step under way that an event belongs to: the step's end, a breakpoint its thread met as the
+    /// step ran (one after a call it watches), or one an async step waits at, on whichever thread; null for any other.</summary>
+    private int? StepsOn(CorDebugManagedCallbackEventArgs e) => (e, Stepping) switch
+    {
+        (StepCompleteCorDebugManagedCallbackEventArgs ended, (int thread, _)) when ended.Thread.Id == thread => thread,
+        (BreakpointCorDebugManagedCallbackEventArgs met, (int thread, _)) when met.Thread.Id == thread => thread,
+        (BreakpointCorDebugManagedCallbackEventArgs met, _) when _asyncStepper?.Steps is true => met.Thread.Id,
+        _ => null,
+    };
 
     private void HandleLogMessage(object? sender, LogMessageCorDebugManagedCallbackEventArgs logMessageEvent)
     {
@@ -772,6 +794,10 @@ public partial class ManagedDebugger
     /// <summary>A test's hold: an evaluation holds no other thread, nor one made while it runs, as the runtime's hold once
     /// missed a thread that went on to meet breakpoints while the evaluation ran.</summary>
     public static bool HoldsNoneAtEvaluations { get; set; }
+
+    /// <summary>A test's hold: each box of a value a call returned first waits in the program for its input, so the
+    /// evaluation making it is held unfinished, as one that never ends is, until the program is given some.</summary>
+    public static bool HoldsBoxes { get; set; }
 
     /// <summary>The failure <see cref="FailAtModule"/> stands in for the runtime's with: E_FAIL.</summary>
     private const int HeldFailure = unchecked((int)0x80004005);
@@ -1373,6 +1399,11 @@ public partial class ManagedDebugger
 
     /// <summary>The frame a thread stands in as its stack shows it, where hidden code may run above it.</summary>
     internal ICorDebugFrame? TopFrame(ICorDebugThread thread) => EnumerateFramesForThread(thread).FirstOrDefault();
+
+    /// <summary>The frame an event stopped a thread in, hidden code too: its active frame, or, where an evaluation run since
+    /// was left running above it, the frame below that evaluation's.</summary>
+    private ICorDebugFrame? StoppedFrame(ICorDebugThread thread) =>
+        EvalStatus.Abandoned.ContainsKey(thread.Id) ? FramesOnStack(thread).FirstOrDefault() : thread.ActiveFrame;
 
     private bool IsHiddenFrame(ICorDebugFrame frame)
     {

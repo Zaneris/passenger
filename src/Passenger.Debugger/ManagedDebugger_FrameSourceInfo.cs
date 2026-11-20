@@ -20,7 +20,7 @@ public partial class ManagedDebugger
 {
     /// <summary>A frame's source and place, as its PDB counts them, from 1. With <paramref name="decompiled"/>, a
     /// module with no symbols of its own takes the decompiled ones the cache has.</summary>
-    private SourceInfo? GetSourceInfoAtFrame(ICorDebugFrame frame, bool decompiled)
+    private SourceInfo? GetSourceInfoAtFrame(ICorDebugFrame? frame, bool decompiled)
     {
         if (frame is not ICorDebugILFrame ilFrame)
         {

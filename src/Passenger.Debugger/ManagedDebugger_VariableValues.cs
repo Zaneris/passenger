@@ -1,3 +1,4 @@
+using System.Buffers.Binary;
 using System.Collections.Immutable;
 using System.Diagnostics;
 using System.Reflection.Metadata;
@@ -530,37 +531,13 @@ public partial class ManagedDebugger
 
     public static unsafe CorDebugValueValueResult GetCorDebugGenericValue_Value_AsString(ICorDebugGenericValue corDebugGenericValue)
     {
+        int size = corDebugGenericValue.Size;
         // Read by its type's width, never past the room, whatever size the value says: what it leaves unwritten reads as zero.
-        nint buffer = (nint)NativeMemory.AllocZeroed((nuint)Math.Max(corDebugGenericValue.Size, sizeof(long)));
+        nint buffer = (nint)NativeMemory.AllocZeroed((nuint)Math.Max(size, sizeof(long)));
         try
         {
             corDebugGenericValue.GetValue(buffer);
-            string value = corDebugGenericValue.Type switch
-            {
-                CorElementType.VOID => "void",
-                CorElementType.BOOLEAN => Marshal.ReadByte(buffer) != 0 ? "true" : "false",
-                CorElementType.CHAR => Marshal.ReadInt16(buffer) is var v ? $"{v} '{(char)v}'" : throw new UnreachableException(),
-                CorElementType.I1 => ((sbyte)Marshal.ReadByte(buffer)).ToString(),
-                CorElementType.I2 => Marshal.ReadInt16(buffer).ToString(),
-                CorElementType.I4 => Marshal.ReadInt32(buffer).ToString(),
-                CorElementType.I8 => Marshal.ReadInt64(buffer).ToString(),
-                CorElementType.U1 => Marshal.ReadByte(buffer).ToString(),
-                CorElementType.U2 => ((ushort)Marshal.ReadInt16(buffer)).ToString(),
-                CorElementType.U4 => ((uint)Marshal.ReadInt32(buffer)).ToString(),
-                CorElementType.U8 => ((ulong)Marshal.ReadInt64(buffer)).ToString(),
-                // Little-endian only.
-                CorElementType.R4 => BitConverter.ToSingle(BitConverter.GetBytes(Marshal.ReadInt32(buffer)), 0).ToString(),
-                CorElementType.R8 => BitConverter.ToDouble(BitConverter.GetBytes(Marshal.ReadInt64(buffer)), 0).ToString(),
-                // As wide as the program's native integers, which the value's own size says.
-                CorElementType.I => corDebugGenericValue.Size is 4 ? Marshal.ReadInt32(buffer).ToString() : Marshal.ReadInt64(buffer).ToString(),
-                CorElementType.U => corDebugGenericValue.Size is 4 ? ((uint)Marshal.ReadInt32(buffer)).ToString() : ((ulong)Marshal.ReadInt64(buffer)).ToString(),
-                CorElementType.STRING => throw new ArgumentOutOfRangeException(),
-                CorElementType.PTR => throw new ArgumentOutOfRangeException(),
-                CorElementType.BYREF => throw new ArgumentOutOfRangeException(),
-                CorElementType.VALUETYPE => throw new NotImplementedException(),
-                CorElementType.CLASS => throw new NotImplementedException(),
-                _ => throw new ArgumentOutOfRangeException()
-            };
+            string value = PrimitiveText(corDebugGenericValue.Type, new ReadOnlySpan<byte>((void*)buffer, size));
             string friendlyTypeName = GetFriendlyTypeName(corDebugGenericValue.Type) ?? throw new ArgumentOutOfRangeException();
             return new(friendlyTypeName, value, CorDebugValueFormatKind.None, null);
         }
@@ -568,6 +545,36 @@ public partial class ManagedDebugger
         {
             NativeMemory.Free((void*)buffer);
         }
+    }
+
+    /// <summary>A primitive's value as its row shows it, from its bytes as the runtime holds them (little-endian on every
+    /// processor it runs on): as wide as its type, what the bytes leave out read as zero, a native integer as wide as they are.</summary>
+    internal static string PrimitiveText(CorElementType type, ReadOnlySpan<byte> bytes)
+    {
+        Span<byte> room = stackalloc byte[sizeof(long)];
+        room.Clear();
+        bytes[..Math.Min(bytes.Length, room.Length)].CopyTo(room);
+        return type switch
+        {
+            CorElementType.VOID => "void",
+            CorElementType.BOOLEAN => room[0] != 0 ? "true" : "false",
+            CorElementType.CHAR => BinaryPrimitives.ReadInt16LittleEndian(room) is var v ? $"{v} '{(char)v}'" : throw new UnreachableException(),
+            CorElementType.I1 => ((sbyte)room[0]).ToString(),
+            CorElementType.I2 => BinaryPrimitives.ReadInt16LittleEndian(room).ToString(),
+            CorElementType.I4 => BinaryPrimitives.ReadInt32LittleEndian(room).ToString(),
+            CorElementType.I8 => BinaryPrimitives.ReadInt64LittleEndian(room).ToString(),
+            CorElementType.U1 => room[0].ToString(),
+            CorElementType.U2 => BinaryPrimitives.ReadUInt16LittleEndian(room).ToString(),
+            CorElementType.U4 => BinaryPrimitives.ReadUInt32LittleEndian(room).ToString(),
+            CorElementType.U8 => BinaryPrimitives.ReadUInt64LittleEndian(room).ToString(),
+            CorElementType.R4 => BinaryPrimitives.ReadSingleLittleEndian(room).ToString(),
+            CorElementType.R8 => BinaryPrimitives.ReadDoubleLittleEndian(room).ToString(),
+            CorElementType.I => bytes.Length is 4 ? BinaryPrimitives.ReadInt32LittleEndian(room).ToString() : BinaryPrimitives.ReadInt64LittleEndian(room).ToString(),
+            CorElementType.U => bytes.Length is 4 ? BinaryPrimitives.ReadUInt32LittleEndian(room).ToString() : BinaryPrimitives.ReadUInt64LittleEndian(room).ToString(),
+            CorElementType.STRING or CorElementType.PTR or CorElementType.BYREF => throw new ArgumentOutOfRangeException(nameof(type)),
+            CorElementType.VALUETYPE or CorElementType.CLASS => throw new NotImplementedException(),
+            _ => throw new ArgumentOutOfRangeException(nameof(type)),
+        };
     }
 
     private static object? GetLiteralValue(IntPtr ppValue, CorElementType elementType, int pcchValue)

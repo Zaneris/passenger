@@ -418,7 +418,7 @@ public partial class ManagedDebugger
             _entryBreakpoint = null;
             _stopAtEntry = false;
             EndStepForStop();
-            SourceInfo? sourceInfo = GetSourceInfoAtFrame(corThread.ActiveFrame, _justMyCode is false);
+            SourceInfo? sourceInfo = GetSourceInfoAtFrame(StoppedFrame(corThread), _justMyCode is false);
             if (sourceInfo is null)
             {
                 ReportStop(corThread.Id, StopReasons.Entry);
@@ -454,7 +454,7 @@ public partial class ManagedDebugger
                     _stepper = null;
                 }
 
-                SourceInfo? sourceInfo = GetSourceInfoAtFrame(corThread.ActiveFrame, _justMyCode is false);
+                SourceInfo? sourceInfo = GetSourceInfoAtFrame(StoppedFrame(corThread), _justMyCode is false);
                 if (sourceInfo is null)
                 {
                     // Into Task.NotifyDebuggerOfWaitCompletion, on toward the awaiting caller's next user code.
@@ -484,7 +484,7 @@ public partial class ManagedDebugger
         EndStepForStop();
         if (managedBreakpoint.IsFunctionBreakpoint)
         {
-            SourceInfo? sourceInfo = GetSourceInfoAtFrame(corThread.ActiveFrame, _justMyCode is false);
+            SourceInfo? sourceInfo = GetSourceInfoAtFrame(StoppedFrame(corThread), _justMyCode is false);
             // Told as a breakpoint's stop, not with the protocol's function breakpoint reason.
             if (sourceInfo is null)
             {
@@ -502,7 +502,7 @@ public partial class ManagedDebugger
         {
             throw new UnreachableException("Breakpoint was not resolved from PDB - this should never happen, as source breakpoints are only bound to resolved source locations");
         }
-        if (resolvedBreakpoint.Placed && corThread.ActiveFrame is { } shortOf && RangeOf(shortOf) is { } shortRange)
+        if (resolvedBreakpoint.Placed && StoppedFrame(corThread) is { } shortOf && RangeOf(shortOf) is { } shortRange)
         {
             _stoppedShort = (corThread.Id, shortRange, resolvedBreakpoint);
         }
@@ -593,7 +593,7 @@ public partial class ManagedDebugger
             Continue(clearVariables: true);
             return;
         }
-        ICorDebugILFrame ilFrame = (ICorDebugILFrame)corThread.ActiveFrame;
+        ICorDebugFrame? landed = StoppedFrame(corThread);
         // An async step's breakpoint at an await, which the step ran to, was not hit: the async step is over.
         _asyncStepper?.ClearActiveAsyncStep();
         ICorDebugStepper stepper = stepCompleteEventArgs.Stepper;
@@ -602,16 +602,32 @@ public partial class ManagedDebugger
         EndReturnWatch();
         // The statement is left without its Smart Step Into target entered (not called, or called on another thread).
         EndSmartStep();
+        if (landed is not ICorDebugILFrame ilFrame)
+        {
+            // Out of the thread's managed code (past its first method's end): nothing of it is left to stop in.
+            _logger?.Invoke($"The step on thread {corThread.Id} ended outside managed code: the program runs on");
+            Continue(clearVariables: true);
+            return;
+        }
         if (stepCompleteEventArgs.Reason is CorDebugStepReason.STEP_RETURN)
         {
-            // Back in a caller; reading a value type's return runs the program, so the frame is read again.
+            // Back in a caller; reading a struct's return runs the program, so the frame is read again.
             await TakeValueReturnedTo(corThread, ilFrame);
-            ilFrame = (ICorDebugILFrame)corThread.ActiveFrame;
+            ilFrame = StoppedFrame(corThread) as ICorDebugILFrame ?? ilFrame;
         }
         if (_unboxed is not null)
         {
             await BoxUnboxed(corThread);
-            ilFrame = (ICorDebugILFrame)corThread.ActiveFrame;
+            ilFrame = StoppedFrame(corThread) as ICorDebugILFrame ?? ilFrame;
+        }
+        if (EvalStatus.Abandoned.ContainsKey(corThread.Id))
+        {
+            // A box's evaluation left running holds the thread, so no stepper could go on from here: the step stops where it ended.
+            _logger?.Invoke($"The step on thread {corThread.Id} stops where it ended, the box's evaluation left running above it");
+            SourceInfo? held = FindModule(ilFrame.Function.Module) is null ? null : GetSourceInfoAtFrame(ilFrame, _justMyCode is false);
+            _steppedIntoHidden = IsHiddenFrame(ilFrame) ? corThread.Id : null;
+            ReportStop(corThread.Id, StopReasons.Step, held?.FilePath, held?.StartLine ?? 0, held?.StartColumn ?? 0, null);
+            return;
         }
         ModuleInfo? module = FindModule(ilFrame.Function.Module);
         if (module is not null && module.MetadataReader.IsCurrentSequencePointHidden(ilFrame.Function.Token, ilFrame.IP.pnOffset, ModuleMetadataReader.VersionOf(ilFrame)))

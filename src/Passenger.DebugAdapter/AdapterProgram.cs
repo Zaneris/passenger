@@ -72,6 +72,7 @@ public static class AdapterProgram
             Passenger.Debugger.ManagedDebugger.LateYield = AdapterEnvironment.LateYield;
             Passenger.Debugger.ManagedDebugger.FailAtModule = AdapterEnvironment.FailAtModule;
             Passenger.Debugger.ManagedDebugger.HoldsNoneAtEvaluations = AdapterEnvironment.HoldNone;
+            Passenger.Debugger.ManagedDebugger.HoldsBoxes = AdapterEnvironment.HoldBox;
             Passenger.Debugger.Decompilation.SymbolCache.Held = AdapterEnvironment.HoldDecompile;
             _ = Passenger.Core.Waits.Scale;
         }

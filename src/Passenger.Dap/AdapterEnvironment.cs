@@ -30,6 +30,11 @@ public static class AdapterEnvironment
     [IdentifierHome]
     public const string HoldNoneVariable = "PASSENGER_ENGINE_HOLD_NONE";
 
+    /// <summary>The variable that, set to 1, has the engine's box of each value a call returned wait first for the program's
+    /// input, so its evaluation is held unfinished as one that never ends is: a test's hold.</summary>
+    [IdentifierHome]
+    public const string HoldBoxVariable = "PASSENGER_ENGINE_HOLD_BOX";
+
     /// <summary>The variable that, set to 1, has each thread of a decompile wait after its first file until the session
     /// ends, so the decompile lasts as CoreLib's does on a slow machine, with every thread it runs on taken: a test's hold.</summary>
     [IdentifierHome]
@@ -50,6 +55,10 @@ public static class AdapterEnvironment
     /// <summary>Whether <see cref="HoldNoneVariable"/> holds the engine so; a value other than 1 is fatal, as a malformed
     /// flag is.</summary>
     public static bool HoldNone => Flag(HoldNoneVariable);
+
+    /// <summary>Whether <see cref="HoldBoxVariable"/> holds the engine so; a value other than 1 is fatal, as a malformed
+    /// flag is.</summary>
+    public static bool HoldBox => Flag(HoldBoxVariable);
 
     /// <summary>Whether <see cref="HoldDecompileVariable"/> holds decompiles so; a value other than 1 is fatal, as a
     /// malformed flag is.</summary>

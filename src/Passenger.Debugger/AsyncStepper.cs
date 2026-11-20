@@ -71,6 +71,9 @@ internal sealed partial class AsyncStepper
     private AsyncStep? _currentAsyncStep;
     private AsyncBreakpoint? _notifyDebuggerBreakpoint;
 
+    /// <summary>Whether an async step waits at its breakpoints for its run to go on, on whichever thread.</summary>
+    public bool Steps => _currentAsyncStep is not null || _runtimeStep is not null || _notifyDebuggerBreakpoint is not null;
+
     /// <summary>The label of the async method a step out leaves through its builder, while its task gives a value: listed as
     /// what it returned once its caller's await is told the task has completed.</summary>
     private string? _steppedOutOf;
