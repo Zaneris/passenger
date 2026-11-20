@@ -133,8 +133,18 @@ jobs:
           path: ~/.nuget/packages
           key: ${{ steps.nuget.outputs.cache-primary-key }}
 
+      # The build's check, every analyzer and code-style rule with warnings as errors, is the gate's first shard's on each
+      # system, which every run has; the others build the same code without running the analyzers (generators still
+      # run), which change nothing that is built and take about half the build's time.
       - name: Build
-        run: dotnet build --no-restore
+        env:
+          CHECKS: ${{ matrix.lane == 'gate' && matrix.shard == 1 }}
+        run: |
+          if [ "$CHECKS" = true ]; then
+            dotnet build --no-restore
+          else
+            dotnet build --no-restore -p:RunAnalyzers=false
+          fi
 
       # Only Linux's runner runs Linux containers. The images the container tests run on (ContainerImages.txt; Docker
       # Hub limits pulls) come from a cache, pulled only when it lacks them, so no test pulls one.
