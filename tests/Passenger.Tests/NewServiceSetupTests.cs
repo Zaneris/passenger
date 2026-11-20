@@ -90,6 +90,7 @@ public sealed class NewServiceSetupTests : IDisposable
             List<string> asked = Answer(window);
             Ui.ClickRow(window, Row(window, NodeKind.Solution, "Shop"));
             Ui.Run(window, EditorActions.Undo);
+            Ended(window, redo: false, "New Project Api");
             Assert.Equal(["Undo"], asked);
             Assert.False(Directory.Exists(api), $"Undo left the new project's folder: {window.Status}");
             Assert.True(before.AsSpan().SequenceEqual(File.ReadAllBytes(solution)), $"Undo left the solution file as {File.ReadAllText(solution)}");
@@ -97,6 +98,7 @@ public sealed class NewServiceSetupTests : IDisposable
 
             Ui.ClickRow(window, Row(window, NodeKind.Solution, "Shop"));
             Ui.Run(window, EditorActions.Redo);
+            Ended(window, redo: true, "New Project Api");
             Assert.True(File.Exists(Path.Combine(api, "Dockerfile")) && File.ReadAllText(Path.Combine(api, "Properties", "launchSettings.json")) == settingsFile,
                 $"Redo did not make the project and its set-up again: {window.Status}");
             Assert.Contains("Api/Api.csproj", File.ReadAllText(solution), StringComparison.Ordinal);
@@ -248,6 +250,7 @@ public sealed class NewServiceSetupTests : IDisposable
             Assert.Equal("Typed" + Had, window.EditorArea.CodeEditor.Document.Snapshot.ToString());
             Ui.Run(window, AppActions.FocusExplorer);
             Ui.Run(window, EditorActions.Undo);
+            Ended(window, redo: false, "New Project Api");
             (string title, string message) = Assert.Single(asked);
             Assert.Equal("Undo", title);
             Assert.DoesNotContain("Greeting.cs", message, StringComparison.Ordinal);
@@ -307,6 +310,7 @@ public sealed class NewServiceSetupTests : IDisposable
             };
             Ui.Run(window, AppActions.FocusExplorer);
             Ui.Run(window, EditorActions.Undo);
+            Ended(window, redo: false, "New Project Api");
             (string title, string message) = Assert.Single(asked);
             Assert.Equal("Undo", title);
             Assert.StartsWith("Undo New Project Api?", message, StringComparison.Ordinal);
@@ -356,10 +360,12 @@ public sealed class NewServiceSetupTests : IDisposable
             List<string> asked = Answer(window);
             Ui.Run(window, AppActions.FocusExplorer);
             Ui.Run(window, EditorActions.Undo);
+            Ended(window, redo: false, "New Project Site");
             Assert.Equal(["Undo"], asked);
             Assert.False(Directory.Exists(site), $"Undo left the new project's folder: {window.Status}");
             Ui.Run(window, AppActions.FocusExplorer);
             Ui.Run(window, EditorActions.Redo);
+            Ended(window, redo: true, "New Project Site");
             Assert.True(Directory.Exists(site), $"Redo did not put the new project's folder back: {window.Status}");
             Dictionary<string, byte[]> back = Made(site);
             Assert.True(back.Count == made.Count && made.All(f => back.TryGetValue(f.Key, out byte[]? now) && now.AsSpan().SequenceEqual(f.Value)),
@@ -416,6 +422,7 @@ public sealed class NewServiceSetupTests : IDisposable
             List<string> asked = Answer(window);
             Ui.Run(window, AppActions.FocusExplorer);
             Ui.Run(window, EditorActions.Undo);
+            Ended(window, redo: false, "New Project Checks");
             Assert.Equal(["Undo"], asked);
             Assert.False(Directory.Exists(checks), $"Undo left the new project's folder: {window.Status}");
             Assert.False(File.Exists(global), $"Undo of New Project left the global.json its template wrote: {window.Status}");
@@ -513,9 +520,10 @@ public sealed class NewServiceSetupTests : IDisposable
             List<string> asked = Answer(window);
             Ui.Run(window, AppActions.FocusExplorer);
             Ui.Run(window, EditorActions.Undo);
+            string refused = Ended(window, redo: false, "New Project Lib");
             Assert.Equal(["Undo"], asked);
-            Assert.True(window.Status?.StartsWith("Cannot undo New Project Lib: Lib could not be set aside: ", StringComparison.Ordinal) == true,
-                $"Undo of New Project whose folder could not be set aside said '{window.Status}'");
+            Assert.True(refused.StartsWith("Cannot undo New Project Lib: Lib could not be set aside: ", StringComparison.Ordinal),
+                $"Undo of New Project whose folder could not be set aside said '{refused}'");
             Dictionary<string, byte[]> left = Made(lib);
             Assert.True(left.Count == made.Count && made.All(f => left.TryGetValue(f.Key, out byte[]? now) && now.AsSpan().SequenceEqual(f.Value)),
                 $"Undo refused left the new project's folder with [{string.Join(", ", left.Keys)}] of [{string.Join(", ", made.Keys)}]");
@@ -526,7 +534,7 @@ public sealed class NewServiceSetupTests : IDisposable
             held = null;
             Ui.Run(window, AppActions.FocusExplorer);
             Ui.Run(window, EditorActions.Undo);
-            Assert.Equal("Undone: New Project Lib", window.Status);
+            Assert.Equal("Undone: New Project Lib", Ended(window, redo: false, "New Project Lib"));
             Assert.False(Directory.Exists(lib), $"Undo asked again left the new project's folder: {window.Status}");
             Assert.True(before.AsSpan().SequenceEqual(File.ReadAllBytes(solution)), $"Undo asked again left the solution file as {File.ReadAllText(solution)}");
         }
@@ -765,6 +773,17 @@ public sealed class NewServiceSetupTests : IDisposable
         Ui.WaitFor(() => dialog.TemplatesRead.IsCompleted, "dotnet new's templates to be read", TimeSpan.FromMinutes(3));
         Assert.True(dialog.Families.Count > 0, $"The dialog lists no templates: {dialog.Problem}");
         return dialog;
+    }
+
+    /// <summary>What the status says once an Undo or Redo of a command has ended, done or refused: letting go of a folder it
+    /// moves may wait on work under it that the window's settle does not wait for.</summary>
+    private static string Ended(MainWindow window, bool redo, string command)
+    {
+        string done = $"{(redo ? "Redone" : "Undone")}: {command}";
+        string refused = $"Cannot {(redo ? "redo" : "undo")} {command}: ";
+        Ui.WaitFor(() => window.Status == done || window.Status?.StartsWith(refused, StringComparison.Ordinal) == true,
+            () => $"{(redo ? "Redo" : "Undo")} of {command} to end; the status says '{window.Status}'");
+        return window.Status!;
     }
 
     /// <summary>Whether Undo in the Solution view has a command to take back.</summary>

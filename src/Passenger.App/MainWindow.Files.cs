@@ -646,13 +646,13 @@ public partial class MainWindow
         (IDisposable held, Task built) = session.DesignTimeBuilds.HoldOff(paths);
         (IDisposable unevaluated, Task evaluated) = session.Models.HoldOff(paths);
         (IDisposable? unwatched, Task unread) = session.CSharp is { } csharp ? csharp.LetGoOf(paths) : (null, Task.CompletedTask);
-        Task going = Task.WhenAll(built, evaluated, unread.Ended());
-        if (!going.IsCompleted)
+        // Only while one is under way, so a move with nothing to wait for goes on in this turn, saying nothing.
+        if (!built.IsCompleted || !evaluated.IsCompleted || !unread.IsCompleted)
         {
             status.Text = waiting;
             try
             {
-                await going.WaitAsync(until.Left);
+                await Task.WhenAll(built, evaluated, unread.Ended()).WaitAsync(until.Left);
             }
             catch (TimeoutException)
             {
