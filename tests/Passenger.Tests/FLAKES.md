@@ -30,6 +30,17 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 
 ## 2026-11-20
 
+- `WindowArrangementTests`' `Unit_Tests_dragged_onto_the_editors_…` and `Editor_tabs_set_down_a_side_…`, CI 44777681924
+  and 44792503264 (all three systems): a drag that changed nothing. **A race in the test**: each pressed to drag a tab
+  where it had just clicked it, and `Ui.Drag`'s left-button form never waited apart from that click. Once settles
+  stopped waiting out the binding values' (af6b85202), the screen reader's (051e04f5e) and the typing (66cab998e)
+  pauses, the press fell inside the 500 ms double-click time and the tab maximized the editors, as it does for a
+  person. Every drag now waits apart from a click at its spot (34026a657, #2044).
+- `EditorSplitTests`' `A_closed_split_is_let_go_by_the_file_it_showed_…`, CI 44792503264 (Windows, Linux): "The closed
+  split … is still alive". **A race in the test**: with the test run's typing pause at 100 ms (66cab998e) it collected
+  285 ms after the close click, while Avalonia's 300 ms hold-gesture timer still held the pressed button and so the
+  split. It checks through `Ui.Collected` now (b5e728023, #2044).
+
 - `XamlTests`' `A_window_wider_than_the_preview_is_drawn_by_the_previewer_at_the_scale_shown_pixel_for_pixel`, CI
   44604254929, 44625900224, 44649367892 and 44751057600 (macOS report shard 4): the previewer ended with SIGABRT, "No
   precompiled XAML found for Gallery.App". **A race in the test**: `SharedProject.Reset` put MainWindow.axaml and its
