@@ -371,8 +371,10 @@ public sealed class FormatOnTypeTests : IClassFixture<FormatOnTypeTests.Project>
             Assert.True(editor.Document.Snapshot.ToString() == typed, $"One Undo did not take Enter after '{header}' back with its layout:\n{editor.Document.Snapshot}");
             for (int undone = 0; undone < 20 && editor.Document.Snapshot.ToString() != Blocks; undone++)
             {
-                Ui.Run(window, EditorActions.Undo);
+                // The steps between are not what is checked: what they bring lands once, after the last.
+                Ui.Run(window, EditorActions.Undo, settle: false);
             }
+            Ui.Settle();
             Assert.True(editor.Document.Snapshot.ToString() == Blocks, $"Undo did not take '{header}' and its block back:\n{editor.Document.Snapshot}");
         }
         window.Close();
