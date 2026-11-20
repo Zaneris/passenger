@@ -4,6 +4,8 @@ using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Passenger.App.Workspace;
+using Passenger.Core;
 using Passenger.Editor;
 using Passenger.Languages.CSharp;
 using Passenger.Text;
@@ -27,19 +29,57 @@ public enum UsageSide
     Generated,
 }
 
-/// <summary>A row of the Find window's tree: a kind of usage, a project, a file, or a usage, at its depth.</summary>
+/// <summary>A row of the Find window's tree: a kind of usage, a project, a file, or a usage, at its depth. A usage's row
+/// follows its file's text while it is open (<see cref="Follow"/>): its place moves with the code around it, and its line
+/// number and code are the line's as it reads now.</summary>
 public sealed class FindRow(string label, string? detail, int depth, Usage? usage, IReadOnlyList<FindRow> children) : Observable, ITreeRow
 {
     private bool expanded = true;
+    private string label = label;
+    private string? detail = detail;
+    private Usage? usage = usage;
 
-    public string Label { get; } = label;
-    public string? Detail { get; } = detail;
+    public string Label
+    {
+        get => label;
+        private set => Set(ref label, value);
+    }
+
+    public string? Detail
+    {
+        get => detail;
+        private set => Set(ref detail, value);
+    }
+
     public int Depth { get; } = depth;
 
-    /// <summary>The usage, for a usage's row; null for a group's.</summary>
-    public Usage? Usage { get; } = usage;
+    /// <summary>The usage where it is now, its line's text as it reads now, for a usage's row; null for a group's.</summary>
+    public Usage? Usage => usage;
+
+    /// <summary>The usage's place, carried with its file's text while it is open; null for a group's row.</summary>
+    internal AnchoredLine? Place { get; } = usage is null ? null : new AnchoredLine(usage.Line, usage.Column);
 
     public IReadOnlyList<FindRow> Children { get; } = children;
+
+    /// <summary>Reads the usage's place from its anchor and its line from its file's text as it is now, after a change or
+    /// as the file is followed; a row shown hears only of what reads otherwise.</summary>
+    internal void Follow(TextSnapshot text)
+    {
+        if (usage is null || Place is null)
+        {
+            return;
+        }
+        bool moved = Place.Follow();
+        int line = Math.Min(Place.Line, text.LineCount - 1);
+        if (!moved && line == usage.Line && AnchoredLine.Reads(text, line, usage.LineText))
+        {
+            return;
+        }
+        string now = text.GetLineText(line);
+        usage = usage with { Line = line, Column = Math.Min(Place.Column ?? usage.Column, now.Length), LineText = now };
+        Label = now.Trim();
+        Detail = (line + 1).ToString(System.Globalization.CultureInfo.InvariantCulture);
+    }
 
     public bool Expands => Children.Count > 0;
 
@@ -54,11 +94,15 @@ public sealed class FindRow(string label, string? detail, int depth, Usage? usag
 /// import), then project, then file, those in generated code grouped so under a group of their own after them, with the
 /// chosen usage's code beside the tree. Each search is a tab to come back to; where it has usages in generated code, a
 /// filter for each side with its count shows one side alone. Enter, F4, a double-click or a usage's menu goes to a usage;
-/// Right and Left open and close a group.</summary>
+/// Right and Left open and close a group. What a search found in a file open in the editor follows its edits, and the code
+/// beside follows its file once typing pauses.</summary>
 public sealed class FindView : DockPanel
 {
     /// <summary>The most searches kept as tabs; the oldest goes when another comes.</summary>
     private const int TabLimit = 10;
+
+    /// <summary>How long the code beside waits for typing in its file to pause before it shows the file again.</summary>
+    private static readonly TimeSpan PreviewPause = TimeSpan.FromMilliseconds(300);
 
     /// <summary>The group the usages in generated code are under.</summary>
     public const string GeneratedGroup = "Generated code";
@@ -99,12 +143,32 @@ public sealed class FindView : DockPanel
     private Search? current;
     private UsageSide? alone;
 
+    /// <summary>The open file's text a path has, which its usages follow; null for a file not open.</summary>
+    private readonly Func<string, TextDocument?> openText;
+
+    /// <summary>The usages' rows of every search kept, by their file.</summary>
+    private readonly Dictionary<string, List<FindRow>> placed = new(PathNames.Comparer);
+
+    /// <summary>The code beside shown again a moment after its file last changed, while the window is shown.</summary>
+    private readonly Debounce previewFollows;
+
+    /// <summary>In the visual tree, as a tool window's content is only while it is open in its place or its own window.</summary>
+    private bool attached;
+
     /// <param name="textOf">A file's text as it is now: the open editor's, else the disk's.</param>
+    /// <param name="openText">A file's text while it is open in the editor, which the usages in it follow; null for a file
+    /// not open.</param>
     /// <param name="parseOptions">What a C# file's preview is parsed with: its project's symbols.</param>
-    public FindView(Func<string, string?> textOf, Func<string, CSharpParseOptions> parseOptions)
+    public FindView(Func<string, string?> textOf, Func<string, TextDocument?> openText, Func<string, CSharpParseOptions> parseOptions)
     {
         this.textOf = textOf;
+        this.openText = openText;
         this.parseOptions = parseOptions;
+        previewFollows = new Debounce(PreviewPause, () =>
+        {
+            ShowPreview();
+            return Task.CompletedTask;
+        });
         YourCode = ToolButtons.Counted(IconKeys.Edit, TokenKeys.Icon, "Show only usages in your code", out yoursCount);
         GeneratedCode = ToolButtons.Counted(IconKeys.Wand, TokenKeys.Icon, "Show only usages in generated code", out generatedCount);
         YourCode.Click += (_, _) => Choose(UsageSide.Yours);
@@ -157,6 +221,102 @@ public sealed class FindView : DockPanel
 
     /// <summary>A usage to go to.</summary>
     public event EventHandler<Usage>? GoToRequested;
+
+    /// <summary>A file opened in the editor: the usages kept in it follow its text from now on, read as it is now.</summary>
+    public void Attach(string path, TextDocument text)
+    {
+        if (placed.TryGetValue(path, out List<FindRow>? rows))
+        {
+            foreach (FindRow row in rows)
+            {
+                row.Place!.Attach(text);
+            }
+            Follow(path, text.Snapshot);
+        }
+    }
+
+    /// <summary>A file closed: its usages stay where they were last read.</summary>
+    public void Detach(string path)
+    {
+        if (placed.TryGetValue(path, out List<FindRow>? rows))
+        {
+            foreach (FindRow row in rows)
+            {
+                row.Place!.Detach();
+            }
+        }
+    }
+
+    /// <summary>An open file changed: its usages read their places and lines again, and the code beside, showing it, is
+    /// shown again once typing pauses.</summary>
+    public void Follow(string path, TextSnapshot text)
+    {
+        if (placed.TryGetValue(path, out List<FindRow>? rows))
+        {
+            foreach (FindRow row in rows)
+            {
+                row.Follow(text);
+            }
+        }
+        if (attached && preview.Tag is string previewed && PathNames.Same(previewed, path))
+        {
+            previewFollows.Restart();
+        }
+    }
+
+    /// <summary>Shown, or moved to another place: the code beside is its file's as it is now.</summary>
+    protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
+    {
+        base.OnAttachedToVisualTree(e);
+        attached = true;
+        ShowPreview();
+    }
+
+    protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
+    {
+        base.OnDetachedFromVisualTree(e);
+        attached = false;
+        previewFollows.Stop();
+    }
+
+    /// <summary>A search's usages' rows kept by their file, those of a file open following its text from now on.</summary>
+    private void Place(Search search)
+    {
+        foreach (FindRow row in Every(search.Roots).Where(r => r.Place is not null))
+        {
+            string path = row.Usage!.Path;
+            if (!placed.TryGetValue(path, out List<FindRow>? rows))
+            {
+                placed[path] = rows = [];
+            }
+            rows.Add(row);
+            if (openText(path) is { } text)
+            {
+                row.Place!.Attach(text);
+                row.Follow(text.Snapshot);
+            }
+        }
+    }
+
+    /// <summary>A search's usages let go of as it goes, each file's taken out of its list at once.</summary>
+    private void Unplace(Search search)
+    {
+        HashSet<FindRow> going = [];
+        foreach (FindRow row in Every(search.Roots).Where(r => r.Place is not null))
+        {
+            row.Place!.Detach();
+            going.Add(row);
+        }
+        foreach ((string path, List<FindRow> rows) in placed.ToList())
+        {
+            if (rows.RemoveAll(going.Contains) > 0 && rows.Count == 0)
+            {
+                placed.Remove(path);
+            }
+        }
+    }
+
+    private static IEnumerable<FindRow> Every(IEnumerable<FindRow> level) => level.SelectMany(row => Every(row.Children).Prepend(row));
 
     /// <summary>A side was chosen to show alone, or both again, by its filter (<see cref="Alone"/>).</summary>
     public event EventHandler? AloneChanged;
@@ -230,24 +390,25 @@ public sealed class FindView : DockPanel
         List<Usage> yours = [.. usages.Where(u => !u.Generated)];
         List<Usage> generated = [.. usages.Where(u => u.Generated)];
         FindRow? made = generated.Count == 0 ? null : new FindRow(GeneratedGroup, Core.Plural.Of(generated.Count, "usage"), 0, null, Kinds(generated, 1));
-        Search search = new(title, Kinds(yours, 0), yours.Count, made, generated.Count, without);
-        searches.Add(search);
-        if (searches.Count > TabLimit)
-        {
-            searches.RemoveAt(0);
-        }
-        ShowSearch(search);
+        Keep(new Search(title, Kinds(yours, 0), yours.Count, made, generated.Count, without));
     }
 
     /// <summary>A text search's matches in a tab of their own, grouped by project, then file, the first chosen.</summary>
-    public void ShowMatches(string title, IReadOnlyList<Usage> matches)
+    public void ShowMatches(string title, IReadOnlyList<Usage> matches) =>
+        Keep(new Search(title, Projects(matches, 0, "match", "matches"), matches.Count, null, 0, null));
+
+    /// <summary>A new search in a tab of its own, shown, its usages following their open files; the oldest goes past the
+    /// limit.</summary>
+    private void Keep(Search search)
     {
-        searches.Add(new Search(title, Projects(matches, 0, "match", "matches"), matches.Count, null, 0, null));
+        searches.Add(search);
+        Place(search);
         if (searches.Count > TabLimit)
         {
+            Unplace(searches[0]);
             searches.RemoveAt(0);
         }
-        ShowSearch(searches[^1]);
+        ShowSearch(search);
     }
 
     /// <summary>Usages grouped by what they do, then project, then file, the groups of what they do at a depth.</summary>
@@ -324,8 +485,6 @@ public sealed class FindView : DockPanel
         }
         rows.Show([.. TreeRows<FindRow>.Shown(ShownGroups(current), r => r.Children)]);
         list.SelectedItem = chosen is not null && rows.Contains(chosen) ? chosen : rows.FirstOrDefault();
-
-        static IEnumerable<FindRow> Every(IEnumerable<FindRow> level) => level.SelectMany(row => Every(row.Children).Prepend(row));
     }
 
     /// <summary>Opens a group, or closes it, as a click on its chevron does.</summary>
@@ -407,6 +566,7 @@ public sealed class FindView : DockPanel
     {
         int at = searches.IndexOf(search);
         searches.Remove(search);
+        Unplace(search);
         if (search != current)
         {
             DrawTabs();

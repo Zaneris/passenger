@@ -147,6 +147,65 @@ public sealed class FindInFilesTests : IDisposable
             preview.Highlights.Select(h => preview.Document.Snapshot.GetPosition(h.Start)).Select(p => (p.Line, p.Column));
     }
 
+    /// <summary>The matches kept in the Find window follow their file while it is open: a method commented out after the
+    /// search reads so in its row, at the line a line typed above moved it to, the code beside shows the file as it now reads,
+    /// and Go to lands on the match where it now is. A file opened after the search is followed from then on.</summary>
+    [AvaloniaFact]
+    public void Matches_kept_in_the_Find_window_follow_their_open_file_a_method_commented_out_reading_so()
+    {
+        string beta = PathNames.Canonical(Path.Combine(folder, "Beta.cs"));
+        string delta = PathNames.Canonical(Path.Combine(folder, "Delta.cs"));
+        File.WriteAllText(delta, "class Delta\n{\n    void Run() { }\n}\n");
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        try
+        {
+            window.OpenFile(beta);
+            CodeEditor editor = window.EditorArea.CodeEditor;
+            FindInFilesPopup popup = window.ShowFindInFiles(replace: false)!;
+            Ui.Search(popup, "() { }");
+            Assert.Equal("2 matches in 2 files", popup.Status);
+            Ui.Press(window, OperatingSystem.IsMacOS() ? "meta ENTER" : "control ENTER");
+            Assert.Equal("Occurrences of '() { }'", window.Find.Shown);
+            Passenger.App.ToolWindows.FindRow Kept(string path) => window.Find.Rows.Single(r => r.Usage?.Path == path);
+            Assert.Equal(beta, window.Find.Selected?.Usage?.Path);
+
+            editor.Focus();
+            Ui.PlaceAfter(editor, "    void");
+            Ui.Run(window, EditorActions.ToggleLineComment);
+            Ui.PlaceAfter(editor, "things");
+            Ui.Press(window, "ENTER");
+            Assert.Equal("// the count of things\n\nclass Beta\n{\n    // void Count() { }\n}\n", editor.Document.Snapshot.ToString());
+            Passenger.App.ToolWindows.FindRow commented = Kept(beta);
+            TreeList tree = window.Find.GetVisualDescendants().OfType<TreeList>().Single();
+            string drawn = string.Join(" ", Ui.Row(tree, commented).GetVisualDescendants().OfType<TextBlock>().Where(t => t.IsVisible).Select(t => t.Text));
+            Assert.True(commented is { Label: "// void Count() { }", Detail: "5", Usage: { Line: 4, Column: 17, LineText: "    // void Count() { }" } }
+                && drawn.Contains("5 ", StringComparison.Ordinal) && drawn.Contains("// void Count() { }", StringComparison.Ordinal),
+                $"Commented out and moved down a line, the method's match reads '{commented.Label}' at line {commented.Detail} (column {commented.Usage?.Column + 1}), "
+                + $"its row drawn as '{drawn}', where the line now reads '    // void Count() {{ }}' at line 5");
+            CodeEditor beside = window.Find.Preview;
+            TextPosition marked = beside.Highlights.Count == 1 ? beside.Document.Snapshot.GetPosition(beside.Highlights[0].Start) : default;
+            Assert.True(beside.Document.Snapshot.ToString() == editor.Document.Snapshot.ToString() && marked == new TextPosition(4, 17),
+                $"The code beside the Find window's rows reads '{beside.Document.Snapshot}' marked at {marked}, where the file now reads as typed with the match at 5:18");
+
+            window.Find.FocusRows();
+            Ui.Press(window, "ENTER");
+            Selection chosen = editor.Selections.Primary;
+            Assert.True(window.EditorArea.Active?.Path == beta && editor.Document.Snapshot.GetPosition(chosen.Start) == new TextPosition(4, 17),
+                $"Go to on the commented match went to {window.EditorArea.Active?.Name} at {editor.Document.Snapshot.GetPosition(chosen.Start)}, not to where it now is at 5:18");
+
+            window.OpenFile(delta);
+            Ui.Settle();
+            editor.Selections = SelectionSet.Single(0);
+            Ui.Press(window, "ENTER");
+            Assert.True(Kept(delta) is { Detail: "4", Usage.Line: 3, Label: "void Run() { }" },
+                $"A line typed at the top of a file opened after the search left its match at line {Kept(delta).Detail}, reading '{Kept(delta).Label}', where it is now line 4");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     [AvaloniaFact]
     public void Replace_all_with_a_character_a_closed_8_bit_file_cannot_hold_writes_it_as_UTF_8_not_a_question_mark()
     {

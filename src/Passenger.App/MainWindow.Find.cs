@@ -27,7 +27,8 @@ public partial class MainWindow
     {
         Dock.Add(new Docking.ToolWindow(ToolWindowIds.Find, "Find", IconKeys.Search, () =>
         {
-            find = new FindView(path => Editors.TextOf(path)?.ToString(), path => Editors.ParseOptions(path)) { Alone = findSettings.UsagesAlone };
+            find = new FindView(path => Editors.TextOf(path)?.ToString(), path => Editors.Find(path) is { HoldsText: true } open ? open.Text : null,
+                path => Editors.ParseOptions(path)) { Alone = findSettings.UsagesAlone };
             find.GoToRequested += (_, usage) => NavigateTo(usage.Path, new TextPosition(usage.Line, usage.Column));
             // Kept for every later search: one who sets generated code aside wants it aside each time.
             find.AloneChanged += (_, _) =>
@@ -44,6 +45,16 @@ public partial class MainWindow
             ExpandAll = () => Find.ExpandAll(),
             CollapseAll = () => Find.CollapseAll(),
         });
+        // What the searches kept found in a file follows it while it is open; an unbuilt window has kept none.
+        Editors.Opened += (_, document) =>
+        {
+            if (document.HoldsText)
+            {
+                find?.Attach(document.Path, document.Text);
+                document.Text.Changed += (_, change) => find?.Follow(document.Path, change.After);
+            }
+        };
+        Editors.Closed += (_, document) => find?.Detach(document.Path);
         assist.UsagesFound += (_, found) => IdeErrors.Observe(ShowUsagesAsync(found));
         actions!.Running += (_, running) =>
         {
