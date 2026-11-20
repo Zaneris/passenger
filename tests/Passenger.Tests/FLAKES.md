@@ -30,6 +30,20 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 
 ## 2026-11-20
 
+- `AgreeingWordsTests`' `A_word_agreeing_with_a_count_is_chosen_only_through_Plural`, CI 44751057600 (all three
+  systems): "2 choices pick a word agreeing with a count of their own". **A bug in the IDE**: d04bbb63d's engine log
+  chose "go"/"goes" itself; it goes through `Plural.Of` now (0f3b7961b, #2002, #2020).
+- `StoredTracesTests`' `Each_exceptions_stack_trace_read_from_what_it_stores_is_what_its_StackTrace_getter_writes`,
+  CI 44751057600 (Linux report shard 4): "a thread is stopped at a point where garbage collection is impossible". **A
+  bug in the IDE**: at the exception's stop a new pool worker and the finalizer stood at their first instruction, and
+  `ClearStartsAsync` let the program go to move them past it before the first evaluation; ICorDebug forgets a thread's
+  exception whenever the program is let go, so the runtime refused every evaluation at that stop. Such threads are now
+  let past once the evaluation itself is let go (226d54784, #2020).
+- `SyntheticVariablesTests`' `A_step_out_whose_box_of_the_returned_struct_is_held_unfinished_stops_in_the_caller_saying_why_it_was_not_kept`,
+  CI 44751057600 (Linux report shard 4): "System.Environment.Version.Major … runs outside managed code". **A bug in
+  the IDE**: on .NET 11 the engine held the runtime's tiering worker through evaluations, as .NET 11 names it ".NET
+  Tiered JIT" and only the earlier name was known; both are now (a15f372d7, #1999).
+
 - `ExplorerFilesTests`' `Typing_in_a_file_while_its_folders_delete_waits_for_a_design_time_build_goes_to_the_Trash_with_it`,
   CI 44625900224 (Windows report shard 4): "Lib could not be deleted: Access to the path … is denied". **A bug in the
   IDE**: the folder watcher's look at the file saved just before the move (`File.Exists`, its write time) raced the
