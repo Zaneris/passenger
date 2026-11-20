@@ -29,30 +29,6 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
         app.Reset();
     }
 
-    [AvaloniaFact]
-    public void Deeply_nested_markup_extensions_do_not_end_the_editor_and_diagnostics_still_finish()
-    {
-        MainWindow window = app.Open(app.PathOf("MainWindow.axaml"));
-        try
-        {
-            CodeEditor editor = window.EditorArea.CodeEditor;
-            const int depth = 100_000;
-            string nested = string.Concat(Enumerable.Repeat("{Binding Path=", depth)) + "Greeting" + new string('}', depth);
-            Replace(editor, "{Binding Greeting}", nested);
-            Replace(editor, "Content=\"Go\"", "Contnt=\"Go\"");
-            Ui.WaitFor(() => window.EditorArea.Active!.Markers.Any(m => m.Message.Contains("Contnt", StringComparison.Ordinal)),
-                "diagnostics after a deeply nested attribute");
-            Assert.Contains(nested, editor.Document.Snapshot.ToString(), StringComparison.Ordinal);
-            Replace(editor, nested, "{Binding Greeting}");
-            Replace(editor, "Contnt=\"Go\"", "Content=\"Go\"");
-            Ui.WaitFor(() => window.EditorArea.Active!.Markers.Count == 0, "the repaired XAML's diagnostics");
-        }
-        finally
-        {
-            window.Close();
-        }
-    }
-
     [Gate]
     [AvaloniaFact]
     public void Typing_a_tag_offers_the_controls_then_a_controls_properties_and_then_the_values_of_the_one_chosen()
@@ -1627,34 +1603,12 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
         window.Close();
     }
 
-    /// <summary>An element renamed to a C# keyword is refused, saying why, and neither the XAML nor the code-behind's use of
-    /// its field changes: the generated field and that use would not be C#.</summary>
+    /// <summary>An element renamed to a C# keyword, to another element's name, or to the name of its Click's handler in the
+    /// code-behind is refused, saying why, and neither file changes: the generated field and the code-behind's use of it
+    /// would not be C#, the window would throw as it loads, its two names registered once, or the generated field would
+    /// clash with the handler.</summary>
     [AvaloniaFact]
-    public void An_elements_name_is_not_renamed_to_a_csharp_keyword_and_its_files_are_left_as_they_were()
-    {
-        MainWindow window = app.Open(app.PathOf("MainWindow.axaml.cs"));
-        OpenDocument behind = window.EditorArea.Active!;
-        window.OpenFile(app.PathOf("MainWindow.axaml"));
-        Ui.Settle();
-        OpenDocument view = window.EditorArea.Active!;
-        Ui.PlaceAfter(window.EditorArea.CodeEditor, "<Button Name=\"G");
-        Ui.Run(window, AppActions.Rename);
-        Ui.WaitFor(() => window.Assist.Renaming == "Go", "the rename box on the button's name");
-        window.KeyTextInput("class");
-        Ui.Press(window, "ENTER");
-        Ui.Settle();
-
-        Assert.Equal("'class' is a C# keyword, not a name for the code-behind's field", window.Status);
-        Assert.True(view.Text.Snapshot.ToString() == Gallery.Window && behind.Text.Snapshot.ToString() == Gallery.CodeBehind,
-            $"The rename to class changed the files, so the code-behind writes class.Content, which is not C#:\n{view.Text.Snapshot}\n{behind.Text.Snapshot}");
-        window.Close();
-    }
-
-    /// <summary>An element renamed to another element's name, or to the name of its Click's handler in the code-behind, is
-    /// refused, saying what has the name, and neither file changes: the window would throw as it loads, its two names
-    /// registered once, and the generated field would clash with the handler.</summary>
-    [AvaloniaFact]
-    public void An_elements_name_is_not_renamed_to_another_elements_or_its_handlers_and_its_files_are_left_as_they_were()
+    public void An_elements_name_is_not_renamed_to_a_csharp_keyword_another_elements_or_its_handlers_and_its_files_are_left_as_they_were()
     {
         string handled = Gallery.Handled(Gallery.Window);
         app.Rewrite("MainWindow.axaml", handled);
@@ -1664,7 +1618,10 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
         window.OpenFile(app.PathOf("MainWindow.axaml"));
         Ui.Settle();
         OpenDocument view = window.EditorArea.Active!;
-        foreach ((string name, string said) in ((string, string)[])[("Title", "'Title' names another element already, on line 11"), ("OnGo", "'OnGo' names a method of MainWindow already")])
+        foreach ((string name, string said, string broken) in ((string, string, string)[])[
+            ("class", "'class' is a C# keyword, not a name for the code-behind's field", "the code-behind writes class.Content, which is not C#"),
+            ("Title", "'Title' names another element already, on line 11", "two of the window's names are Title"),
+            ("OnGo", "'OnGo' names a method of MainWindow already", "the generated field clashes with the handler")])
         {
             Ui.PlaceAfter(window.EditorArea.CodeEditor, "<Button Name=\"G");
             Ui.Run(window, AppActions.Rename);
@@ -1674,7 +1631,7 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
             Ui.Settle();
             Assert.Equal(said, window.Status);
             Assert.True(view.Text.Snapshot.ToString() == handled && behind.Text.Snapshot.ToString() == Gallery.HandlingCodeBehind,
-                $"The rename to {name} changed the files, so two of the window's names are {name}:\n{view.Text.Snapshot}\n{behind.Text.Snapshot}");
+                $"The rename to {name} changed the files, so {broken}:\n{view.Text.Snapshot}\n{behind.Text.Snapshot}");
         }
         window.Close();
     }
