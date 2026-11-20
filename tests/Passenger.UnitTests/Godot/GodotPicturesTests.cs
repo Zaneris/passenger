@@ -4,12 +4,27 @@ using Passenger.Core;
 namespace Passenger.UnitTests.Godot;
 
 /// <summary>The file a game's answer to a picture names, which Passenger reads and then deletes: a PNG directly in the
-/// temporary folder the game was given, and nothing else, whatever answers on the game's debug port.</summary>
+/// game's temporary folder, and nothing else, whatever answers on the game's debug port.</summary>
 public sealed class GodotPicturesTests : IDisposable
 {
     private readonly string temporary = PathNames.Canonical(Directory.CreateTempSubdirectory("passenger-unit-").FullName);
 
     public void Dispose() => Directory.Delete(temporary, recursive: true);
+
+    /// <summary>Godot writes a picture where it takes its temporary folder: on macOS the user's own whatever TMPDIR says,
+    /// on Linux /tmp, on Windows the TMP it was given, else Passenger's own.</summary>
+    [Fact]
+    public void The_folder_a_games_picture_is_read_from_is_godots_own_temporary_folder_whatever_tmpdir_says()
+    {
+        Dictionary<string, string> given = new(StringComparer.Ordinal) { ["TMPDIR"] = temporary, ["TMP"] = temporary, ["TEMP"] = temporary };
+        string expected = OperatingSystem.IsMacOS() ? UserTemporary.Folder() : OperatingSystem.IsWindows() ? temporary : "/tmp";
+        Assert.True(GodotPictures.TemporaryOf(given) == expected, $"A picture is looked for in {GodotPictures.TemporaryOf(given)}, where Godot writes it in {expected}: every one is refused");
+        if (OperatingSystem.IsWindows())
+        {
+            Assert.Equal(Path.GetTempPath(), GodotPictures.TemporaryOf(new Dictionary<string, string> { ["TMP"] = "relative" }));
+            Assert.Equal(Path.GetTempPath(), GodotPictures.TemporaryOf(new Dictionary<string, string>()));
+        }
+    }
 
     [Fact]
     public void A_png_godot_wrote_in_the_games_temporary_folder_is_read()
@@ -48,15 +63,6 @@ public sealed class GodotPicturesTests : IDisposable
             Assert.Skip($"Windows lets this user make no symlink: {refused.Message}");
         }
         Assert.Contains("a link", GodotPictures.WhyNot(link, temporary), StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void The_games_temporary_folder_is_the_one_its_environment_gives_else_passengers()
-    {
-        string variable = OperatingSystem.IsWindows() ? "TMP" : "TMPDIR";
-        Assert.Equal(temporary, GodotPictures.TemporaryOf(new Dictionary<string, string> { [variable] = temporary }));
-        Assert.Equal(Path.GetTempPath(), GodotPictures.TemporaryOf(new Dictionary<string, string> { [variable] = "relative" }));
-        Assert.Equal(Path.GetTempPath(), GodotPictures.TemporaryOf(new Dictionary<string, string>()));
     }
 
     private string Written(string name)

@@ -2,16 +2,24 @@ using Passenger.Core;
 
 namespace Passenger.App.Godot;
 
-/// <summary>Which file a game's answer to a picture names that Passenger reads and then deletes: the PNG Godot wrote in the
-/// temporary folder of the environment it was given (TMPDIR, on Windows TMP or TEMP, else Passenger's own). Whatever
-/// answers on the game's debug port may name any path; only a .png directly in that folder, and no link, is taken.</summary>
+/// <summary>Which file a game's answer to a picture names that Passenger reads and then deletes: the PNG Godot wrote in its
+/// temporary folder (macOS's per-user one whatever TMPDIR says, /tmp on Linux, on Windows the environment's TMP or TEMP it
+/// was given, else Passenger's own). Whatever answers on the game's debug port may name any path; only a .png directly in
+/// that folder, and no link, is taken.</summary>
 public static class GodotPictures
 {
     /// <summary>The temporary folder a game started with these variables over Passenger's own has, as Godot reads it.</summary>
     public static string TemporaryOf(IReadOnlyDictionary<string, string> environment)
     {
-        string[] names = OperatingSystem.IsWindows() ? ["TMP", "TEMP"] : ["TMPDIR"];
-        return names.Select(environment.GetValueOrDefault).FirstOrDefault(v => v is { Length: > 0 } && Path.IsPathFullyQualified(v)) ?? Path.GetTempPath();
+        if (OperatingSystem.IsMacOS())
+        {
+            return UserTemporary.Folder();
+        }
+        if (!OperatingSystem.IsWindows())
+        {
+            return "/tmp";
+        }
+        return ((string[])["TMP", "TEMP"]).Select(environment.GetValueOrDefault).FirstOrDefault(v => v is { Length: > 0 } && Path.IsPathFullyQualified(v)) ?? Path.GetTempPath();
     }
 
     /// <summary>Why the file a picture's answer names is not the game's to read and delete, or null where it is: a .png

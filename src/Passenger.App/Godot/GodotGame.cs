@@ -96,7 +96,7 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IGodotValues, 
     /// <summary>Ends at the game's next monitors.</summary>
     private TaskCompletionSource nextBeat = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-    /// <summary>The temporary folder the game was given, where Godot writes a picture asked of it (<see cref="GodotPictures"/>).</summary>
+    /// <summary>The game's temporary folder, where Godot writes a picture asked of it (<see cref="GodotPictures"/>).</summary>
     private string temporary = Path.GetTempPath();
 
     private GodotGame(string name, string folder, string? version, bool headless, bool unseen, bool scriptsAlone, TcpListener? listener, GodotScriptStart? scripts,
