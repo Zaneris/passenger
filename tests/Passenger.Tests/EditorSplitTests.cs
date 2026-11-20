@@ -119,10 +119,8 @@ public sealed class EditorSplitTests : IDisposable
         Assert.True(Tab(left, "Two.cs").GetVisualDescendants().OfType<Avalonia.Controls.Shapes.Ellipse>().Single(e => e.Classes.Contains(StyleClasses.Modified)).IsVisible,
             "The tab of the file typed in shows no mark that it changed");
 
-        GC.Collect();
-        GC.WaitForPendingFinalizers();
-        GC.Collect();
-        Assert.False(closed.TryGetTarget(out _), "The closed split (its editor, find bar and tabs) is still alive, held by the file it showed");
+        // Avalonia's hold gesture keeps the pressed close button, and so the split, until a frame fires its timer.
+        Ui.Collected(closed, "the closed split (its editor, find bar and tabs) to be let go: still alive, it is held by the file it showed or the window");
         window.Close();
     }
 
