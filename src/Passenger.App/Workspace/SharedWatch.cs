@@ -78,7 +78,8 @@ internal sealed unsafe partial class SharedWatch : IDisposable
         }
     }
 
-    /// <summary>Hands what was queued over in turn, one drain at a time, as background work.</summary>
+    /// <summary>Hands what was queued over in turn, one drain at a time, as background work; an event touching a folder the
+    /// IDE moves waits there, with those after it, until the folder has gone (<see cref="MovingFolders"/>).</summary>
     private void Drain()
     {
         if (Interlocked.Exchange(ref draining, 1) == 1)
@@ -90,8 +91,14 @@ internal sealed unsafe partial class SharedWatch : IDisposable
             List<FolderEvent> read = [];
             while (true)
             {
-                while (queued.TryDequeue(out (string Path, uint Flags) next))
+                while (queued.TryPeek(out (string Path, uint Flags) next))
                 {
+                    using IDisposable? reading = MovingFolders.Begin(next.Path, Drain);
+                    if (reading is null)
+                    {
+                        break;
+                    }
+                    queued.TryDequeue(out _);
                     read.Clear();
                     FolderEvents.Read(next.Path, next.Flags, Folder, recursive, From, There, read);
                     foreach (FolderEvent each in read)
@@ -104,7 +111,8 @@ internal sealed unsafe partial class SharedWatch : IDisposable
                     }
                 }
                 Volatile.Write(ref draining, 0);
-                if (queued.IsEmpty || Interlocked.Exchange(ref draining, 1) == 1)
+                // One waiting for a folder to go is drained again once it has; one let go of since is drained now.
+                if (!queued.TryPeek(out (string Path, uint Flags) first) || MovingFolders.Touched(first.Path) || Interlocked.Exchange(ref draining, 1) == 1)
                 {
                     return;
                 }

@@ -153,6 +153,69 @@ public sealed class ExplorerFilesTests : IDisposable
         }
     }
 
+    /// <summary>On Windows, which moves no folder while a file under it is open, even for a look at whether it is there, a
+    /// folder going to the Trash waits for the folder watcher's read under it under way as its design-time build ends, and
+    /// the watcher reads nothing more under it, the save of what was typed just before it goes among it, until it has gone.
+    /// The read is held open, as a busy machine holds it.</summary>
+    [AvaloniaFact]
+    public void A_folders_delete_waits_for_the_watchers_read_under_it_and_the_watcher_reads_nothing_more_there_until_it_has_gone()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "Only Windows keeps a folder from moving while a file under it is open");
+        string library = Directory.CreateDirectory(Path.Combine(folder, "Lib")).FullName;
+        string release = Path.Combine(folder, "release");
+        File.WriteAllText(Path.Combine(library, "Lib.csproj"), TestProjects.Library());
+        File.WriteAllText(Path.Combine(library, "Code.cs"), "class Code\n{\n}\n");
+        File.WriteAllText(Path.Combine(library, "Directory.Build.targets"), Holding(release));
+        Restore.Run(Path.Combine(library, "Lib.csproj"));
+        MainWindow window = new() { Width = 1200, Height = 800 };
+        window.Show();
+        window.OpenFolder(folder);
+        try
+        {
+            // Pumped, not settled: the language server's load waits for the design-time build.
+            Ui.PumpUntil(() => File.Exists(Path.Combine(library, "held")), "Lib's design-time build to be held", TimeSpan.FromMinutes(2));
+            string lib = PathNames.Canonical(library);
+            string code = Path.Combine(lib, "Code.cs");
+            string notes = Path.Combine(lib, "Notes.txt");
+            window.OpenFile(code);
+            window.Confirm = (_, _, _) => Task.FromResult(true);
+            Task<bool> deleting = window.DeleteAsync(lib);
+            Ui.PumpUntil(() => deleting.IsCompleted || window.Status?.StartsWith("Waiting for the design-time build of Lib", StringComparison.Ordinal) == true,
+                "the delete to wait for Lib's design-time build");
+            Assert.False(deleting.IsCompleted, $"The delete of Lib did not wait for its design-time build: {window.Status}");
+
+            TaskCompletionSource reading = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            TaskCompletionSource released = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            window.FolderWatcher!.WhileNextHeard(path => PathNames.Same(path, notes), () =>
+            {
+                using FileStream read = new(notes, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+                reading.TrySetResult();
+                Waiting.Until(() => released.Task.IsCompleted, TimeSpan.FromMinutes(2));
+                // Long enough for the build's round to end and the delete to come, had it not waited for this read.
+                Waiting.Until(() => deleting.IsCompleted, TimeSpan.FromSeconds(5));
+            });
+            File.WriteAllText(notes, "noted");
+            Ui.PumpUntil(() => reading.Task.IsCompleted, "the folder's watcher to read Notes.txt");
+            window.EditorArea.CodeEditor.Focus();
+            window.KeyTextInput("// typed while it waited ");
+            TaskCompletionSource<bool> saveRead = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            window.FolderWatcher.WhileNextHeard(path => PathNames.Same(path, code), () => saveRead.TrySetResult(Directory.Exists(lib)));
+            File.WriteAllText(release, "go");
+            released.TrySetResult();
+
+            Assert.True(Ui.AwaitPumped(deleting, "the delete of Lib", TimeSpan.FromMinutes(2)),
+                $"Lib was not deleted while the folder's watcher read Notes.txt in it: {window.Status}{Holders(window, library)}");
+            Assert.Equal("// typed while it waited class Code\n{\n}\n", File.ReadAllText(Path.Combine(trash, "Lib", "Code.cs")));
+            Assert.False(Ui.AwaitPumped(saveRead.Task, "the folder's watcher to read the save of Code.cs", TimeSpan.FromMinutes(1)),
+                "The folder's watcher read the save of Code.cs while Lib was still there to move, and a look at Code.cs then keeps Lib from moving");
+        }
+        finally
+        {
+            File.WriteAllText(release, "go");
+            window.Close();
+        }
+    }
+
     /// <summary>A loaded project's folder, whose build output is watched for the C# language server, goes to the Trash, takes a
     /// new name or moves into another folder: what watches inside it lets go first, as Windows moves and deletes no folder
     /// with one inside it watched, and nothing under it is watched once it is gone.</summary>

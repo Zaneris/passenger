@@ -428,6 +428,33 @@ public abstract class WatchedTree : IDisposable
         }
     }
 
+    /// <summary>What the next change heard at a path it takes runs first (<see cref="WhileNextHeard"/>).</summary>
+    private (Func<string, bool> Which, Action What)? onHeard;
+
+    /// <summary>Runs <paramref name="what"/> once, as the watcher takes in the next change heard at a path <paramref
+    /// name="which"/> takes, on the thread reading it and before it reads anything more: for a test of what is read meanwhile.</summary>
+    public void WhileNextHeard(Func<string, bool> which, Action what)
+    {
+        lock (gate)
+        {
+            onHeard = (which, what);
+        }
+    }
+
+    /// <summary>What a test asked to run as a change at a path is heard (<see cref="WhileNextHeard"/>), let go of once taken.</summary>
+    private Action? NextHeard(string path)
+    {
+        lock (gate)
+        {
+            if (onHeard is not { } asked || !asked.Which(path))
+            {
+                return null;
+            }
+            onHeard = null;
+            return asked.What;
+        }
+    }
+
     /// <summary>Runs <paramref name="what"/> in the next batch's hand-over, once, as it begins to look at the disk, after the
     /// batch was looked at for a burst at risk: for a test of what the system's watcher says then.</summary>
     public void WhileNextHandOver(Action what)
@@ -593,6 +620,10 @@ public abstract class WatchedTree : IDisposable
         {
             return;
         }
+        if (NextHeard(heard.Path) is { } what)
+        {
+            what();
+        }
         switch (heard.Kind)
         {
             case FolderEventKind.Changed:
@@ -719,8 +750,9 @@ public abstract class WatchedTree : IDisposable
 
     /// <summary>Changes which folders are watched off the thread that saw why, after those already asked for, held as
     /// background work until it is done, since a file made in a folder only watched from then on shows only then; behind
-    /// a walk apart, held only once it runs. A change that fails is reported as it fails, and those after it still run.
-    /// False, nothing queued, once the watcher is disposed.</summary>
+    /// a walk apart, held only once it runs; while the IDE moves a folder the tree touches, once it has (<see
+    /// cref="MovingFolders"/>). A change that fails is reported as it fails, and those after it still run. False, nothing
+    /// queued, once the watcher is disposed.</summary>
     private bool Follow(Action change)
     {
         lock (gate)
@@ -731,11 +763,12 @@ public abstract class WatchedTree : IDisposable
             }
             bool behind = walksApart > 0;
             IDisposable? held = behind ? null : BackgroundWork.Scope();
-            following = following.ContinueWith(_ =>
+            following = following.ContinueWith(async _ =>
             {
                 IDisposable? running = behind ? BackgroundWork.Scope() : null;
                 try
                 {
+                    using IDisposable reading = await MovingFolders.BeginAsync(Top);
                     change();
                 }
                 finally
@@ -743,7 +776,7 @@ public abstract class WatchedTree : IDisposable
                     held?.Dispose();
                     running?.Dispose();
                 }
-            }, TaskScheduler.Default);
+            }, TaskScheduler.Default).Unwrap();
             IdeErrors.Observe(following);
         }
         return true;
@@ -763,10 +796,11 @@ public abstract class WatchedTree : IDisposable
             IDisposable? held = apart ? null : BackgroundWork.Scope();
             walksApart += apart ? 1 : 0;
             Task before = after is null ? following : following.ContinueWith(_ => after.Ended(), TaskScheduler.Default).Unwrap();
-            following = before.ContinueWith(_ =>
+            following = before.ContinueWith(async _ =>
             {
                 try
                 {
+                    using IDisposable reading = await MovingFolders.BeginAsync(Top);
                     walk();
                 }
                 finally
@@ -780,7 +814,7 @@ public abstract class WatchedTree : IDisposable
                         }
                     }
                 }
-            }, TaskScheduler.Default);
+            }, TaskScheduler.Default).Unwrap();
             IdeErrors.Observe(following);
         }
     }
