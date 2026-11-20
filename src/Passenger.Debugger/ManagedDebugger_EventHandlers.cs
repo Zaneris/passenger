@@ -74,6 +74,11 @@ public partial class ManagedDebugger
             // Held by the evaluation's hold already when the runtime listed it before announcing it.
             corThread.TrySetDebugState(CorDebugThreadState.THREAD_RUN);
         }
+        else if (HoldsStartOf is { } held && corThread.GetThreadNameOrNull() == held)
+        {
+            Hold(corThread, "held where it was announced, a test's hold");
+            _logger?.Invoke($"Held: thread {corThread.Id}, {held}, where it was announced, at its first instruction, a test's hold");
+        }
         Continue(clearVariables: false);
         if (during is { } evaluation)
         {
@@ -83,8 +88,9 @@ public partial class ManagedDebugger
 
     /// <summary>Every thread but the evaluation's, held while it runs alone, but the runtime's tiering worker
     /// (<see cref="RuntimeThreads"/>), which runs none of the program's code and is never told to the debugger as one that
-    /// does; one the debugger cannot tell, through a relay to a device, is held with the rest. A thread whose event waits
-    /// to be handled is held again by itself (<see cref="HoldWaiting"/>).</summary>
+    /// does (one the debugger cannot tell, through a relay to a device, is held with the rest), and a thread at its first
+    /// instruction, held once past it (<see cref="LeaveStartsRunning"/>). A thread whose event waits to be handled is held
+    /// again by itself (<see cref="HoldWaiting"/>).</summary>
     private void HoldOthersDuringEvaluation(ICorDebugThread evaluating)
     {
         ICorDebugProcess process = evaluating.Process;
@@ -96,6 +102,7 @@ public partial class ManagedDebugger
         {
             process.SetAllThreadsDebugState(CorDebugThreadState.THREAD_SUSPEND, evaluating);
             LeaveTieringWorkerRunning(process);
+            LeaveStartsRunning(evaluating);
         }
         HoldWaiting(evaluating.Id);
     }

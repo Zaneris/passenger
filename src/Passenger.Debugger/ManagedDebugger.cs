@@ -885,6 +885,10 @@ public partial class ManagedDebugger
     /// missed a thread that went on to meet breakpoints while the evaluation ran.</summary>
     public static bool HoldsNoneAtEvaluations { get; set; }
 
+    /// <summary>A test's hold: the thread of this name is held where the runtime announces it, at its first instruction, as
+    /// a stop once caught a thread on its way out of its announcement, until an evaluation lets it past.</summary>
+    public static string? HoldsStartOf { get; set; }
+
     /// <summary>A test's hold: each box of a value a call returned first waits in the program for its input, so the
     /// evaluation making it is held unfinished, as one that never ends is, until the program is given some.</summary>
     public static bool HoldsBoxes { get; set; }
@@ -1872,11 +1876,12 @@ internal sealed class EvalStatus
     internal required Func<ICorDebugThread, string?> Running { get; init; }
 
     /// <summary>Holds every thread but the one given while an evaluation runs on it alone, but the runtime's own that runs
-    /// none of the program's code (<see cref="ManagedDebugger.HoldOthersDuringEvaluation"/>).</summary>
+    /// none of the program's code and one at its first instruction, left to <see cref="ClearStarts"/>
+    /// (<see cref="ManagedDebugger.HoldOthersDuringEvaluation"/>).</summary>
     internal required Action<ICorDebugThread> HoldOthers { get; init; }
 
-    /// <summary>Lets every other thread standing at its first instruction run past it before an evaluation on the thread
-    /// given is set up, so the evaluation's hold takes none where no collection can run (<see cref="ManagedDebugger.ClearStartsAsync"/>).</summary>
+    /// <summary>With the evaluation on the thread given let go, lets each thread its hold left at its first instruction run
+    /// past it, then holds it, so the hold keeps none where no collection can run (<see cref="ManagedDebugger.ClearStartsAsync"/>).</summary>
     internal required Func<ICorDebugThread, Task> ClearStarts { get; init; }
 
     /// <summary>The engine's log, for what becomes of an evaluation past its time.</summary>

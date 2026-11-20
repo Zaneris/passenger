@@ -6,8 +6,9 @@ namespace Passenger.Debugger;
 /// <summary>Threads standing at a method's first instruction, where the runtime stops a thread it has just started to
 /// announce it: while one is held there, the runtime counts it as standing where no collection can run, and a collection
 /// asked meanwhile waits for it. An evaluation holds every other thread, so one held there would keep the evaluation's
-/// collection (a GC.Collect, one an allocation brings) waiting for good: each is first let run on alone, the program held
-/// again at once, until it has left that place, and is held where the program's hold then finds it.</summary>
+/// collection (a GC.Collect, one an allocation brings) waiting for good: each is left running as the evaluation is let
+/// go, the program held again at once and after each short go until it has left that place, and is then held where it
+/// stands. The stop the evaluation is set up from is left as it is: no go of the program comes before the evaluation's.</summary>
 public partial class ManagedDebugger
 {
     /// <summary>How often a thread standing at its first instruction is let run on, the program held again after, before it
@@ -17,6 +18,10 @@ public partial class ManagedDebugger
     /// <summary>The value of <see cref="_continued"/> when the threads were last found clear of their first instruction:
     /// held while evaluations run at one stop, they stand where they stood until the program is let go.</summary>
     private int _startsClearAt = -1;
+
+    /// <summary>The threads the hold of the evaluation being let go left running at their first instruction, and how they
+    /// stood, for <see cref="ClearStartsAsync"/>.</summary>
+    private (List<ICorDebugThread> Threads, string Named)? _leftAtTheirStarts;
 
     /// <summary>Whether a thread's innermost frame stands at its method's first instruction, where a thread the runtime
     /// stopped is counted as standing where no collection can run.</summary>
@@ -33,48 +38,49 @@ public partial class ManagedDebugger
         }
     }
 
-    /// <summary>Before an evaluation on the thread given holds the others, each other thread standing at its first
-    /// instruction, but one whose event waits to be handled where it stands, is let run on alone past it
-    /// (<see cref="LetPastTheirStartsAsync"/>). The program is held as before, every thread let go for the evaluation's own
-    /// hold to take.</summary>
-    private async Task ClearStartsAsync(ICorDebugThread evaluating)
+    /// <summary>As an evaluation on the thread given holds the others, the program held, leaves running each other thread
+    /// standing at its first instruction, but one whose event waits to be handled where it stands, for
+    /// <see cref="ClearStartsAsync"/> to let past it once the evaluation is let go.</summary>
+    private void LeaveStartsRunning(ICorDebugThread evaluating)
     {
-        if (HoldsNoneAtEvaluations || _startsClearAt == _continued)
+        _leftAtTheirStarts = null;
+        if (_startsClearAt == _continued)
         {
             return;
         }
-        ICorDebugProcess process = evaluating.Process;
         HashSet<int> waiting = [.. _deferredEvents.Concat(_behindStep).Select(WaitingThread).OfType<ICorDebugThread>().Select(thread => thread.Id)];
         List<ICorDebugThread> starting;
         try
         {
-            starting = [.. process.EnumerateThreads().Where(thread => thread.Id != evaluating.Id && !waiting.Contains(thread.Id) && AtItsFirstInstruction(thread))];
+            starting = [.. evaluating.Process.EnumerateThreads().Where(thread => thread.Id != evaluating.Id && !waiting.Contains(thread.Id) && AtItsFirstInstruction(thread))];
         }
         catch (Exception error) when (Failures.OfRuntime(error))
         {
             _logger?.Invoke($"The threads could not be looked at for one at its first instruction: {error.Message}");
             return;
         }
-        if (starting.Count > 0)
-        {
-            process.SetAllThreadsDebugState(CorDebugThreadState.THREAD_SUSPEND, evaluating);
-            evaluating.TrySetDebugState(CorDebugThreadState.THREAD_SUSPEND);
-            LeaveTieringWorkerRunning(process);
-            foreach (ICorDebugThread thread in starting)
-            {
-                thread.TrySetDebugState(CorDebugThreadState.THREAD_RUN);
-            }
-            string named = StartsTold(starting);
-            bool held = process.TryContinue(false) is Cor.S_OK
-                && await LetPastTheirStartsAsync(process, starting, named, $"before an evaluation on thread {evaluating.Id}").ConfigureAwait(false);
-            process.TrySetAllThreadsDebugState(CorDebugThreadState.THREAD_RUN, evaluating);
-            evaluating.TrySetDebugState(CorDebugThreadState.THREAD_RUN);
-            if (!held)
-            {
-                throw new EvalException("Not evaluated: the program could not be held again after threads at their first instruction were let run past it");
-            }
-        }
         if (starting.Count == 0)
+        {
+            _startsClearAt = _continued;
+            return;
+        }
+        foreach (ICorDebugThread thread in starting)
+        {
+            thread.TrySetDebugState(CorDebugThreadState.THREAD_RUN);
+        }
+        _leftAtTheirStarts = (starting, StartsTold(starting));
+    }
+
+    /// <summary>With the evaluation on the thread given let go, lets each thread its hold left at its first instruction
+    /// (<see cref="LeaveStartsRunning"/>) run past it, then holds it where it stands until the evaluation ends.</summary>
+    private async Task ClearStartsAsync(ICorDebugThread evaluating)
+    {
+        if (_leftAtTheirStarts is not ({ } threads, string named) || _process is not { } process)
+        {
+            return;
+        }
+        _leftAtTheirStarts = null;
+        if (await LetPastThenHoldAsync(process, threads, named, $"as an evaluation on thread {evaluating.Id} was let go").ConfigureAwait(false))
         {
             _startsClearAt = _continued;
         }
@@ -86,18 +92,29 @@ public partial class ManagedDebugger
     /// later would not be where the thread is. Named as it stood when announced.</summary>
     private async Task HoldPastItsStartAsync(ICorDebugThread thread, int evaluating, string named)
     {
-        if (_process is not { } process)
+        if (_process is { } process)
         {
-            return;
+            await LetPastThenHoldAsync(process, [thread], named, $"made during an evaluation on thread {evaluating}").ConfigureAwait(false);
         }
-        List<ICorDebugThread> starting = [thread];
-        if (!await LetPastTheirStartsAsync(process, starting, named, $"made during an evaluation on thread {evaluating}").ConfigureAwait(false))
+    }
+
+    /// <summary>With the program running and an evaluation under way, lets the threads given run past their first
+    /// instruction (<see cref="LetPastTheirStartsAsync"/>), then holds each where it stands, as the threads the
+    /// evaluation's hold took are, and lets the evaluation go on. Whether every one of them left that place.</summary>
+    private async Task<bool> LetPastThenHoldAsync(ICorDebugProcess process, List<ICorDebugThread> threads, string named, string when)
+    {
+        List<ICorDebugThread> starting = [.. threads];
+        if (!await LetPastTheirStartsAsync(process, starting, named, when).ConfigureAwait(false))
         {
-            return;
+            return false;
         }
-        Hold(thread, $"made during an evaluation on thread {evaluating}");
-        _logger?.Invoke($"Held: thread {thread.Id}, made during an evaluation on thread {evaluating}, {(starting.Count == 0 ? "past" : "still at")} its first instruction");
+        foreach (ICorDebugThread thread in threads)
+        {
+            Hold(thread, when);
+            _logger?.Invoke($"Held: thread {thread.Id}, {when}, {(starting.Contains(thread) ? "still at" : "past")} its first instruction");
+        }
         process.TryContinue(false);
+        return starting.Count == 0;
     }
 
     /// <summary>With the program running, holds it again at once, and again after each go, until none of the threads given

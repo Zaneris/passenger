@@ -20,6 +20,7 @@
 // "finalizes" it stops before its finalizer has run any of its code, where an evaluation of Finalizing.Collect leaves
 // litter with finalizers and collects it; let go, it says once the litter is finalized. With "collects" it stops where
 // an evaluation of Starting.StartAndCollect starts a thread, gives it time to reach the program's code, and collects.
+// With "starts and throws" it starts a thread, Announced, waits for a line of input, then throws and catches.
 if (args is ["dispatch"])
 {
     Dispatcher.RunAsync(Handlers.TwiceAsync, 20).GetAwaiter().GetResult();
@@ -143,6 +144,20 @@ if (args is ["collects"])
 {
     Console.WriteLine("collects"); // stop where an evaluation starts a thread and collects
     Thread.Sleep(Timeout.Infinite);
+}
+if (args is ["starts and throws"])
+{
+    new Thread(() => Thread.Sleep(Timeout.Infinite)) { IsBackground = true, Name = "Announced" }.Start();
+    Console.ReadLine();
+    try
+    {
+        throw new InvalidOperationException("thrown while a thread starts");
+    }
+    catch (InvalidOperationException)
+    {
+        Console.WriteLine("caught");
+    }
+    return;
 }
 if (args is ["asleep"])
 {

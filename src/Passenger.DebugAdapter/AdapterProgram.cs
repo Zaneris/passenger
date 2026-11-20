@@ -75,6 +75,7 @@ public static class AdapterProgram
             Passenger.Debugger.ManagedDebugger.HoldsBoxes = AdapterEnvironment.HoldBox;
             Passenger.Debugger.ManagedDebugger.HoldsAsyncSteps = AdapterEnvironment.HoldAsyncStep;
             Passenger.Debugger.ManagedDebugger.FailsHandling = AdapterEnvironment.FailHandling;
+            Passenger.Debugger.ManagedDebugger.HoldsStartOf = AdapterEnvironment.HoldStart;
             Passenger.Debugger.Decompilation.SymbolCache.Held = AdapterEnvironment.HoldDecompile;
             _ = Passenger.Core.Waits.Scale;
         }

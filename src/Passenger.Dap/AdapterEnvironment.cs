@@ -47,6 +47,12 @@ public static class AdapterEnvironment
     [IdentifierHome]
     public const string FailHandlingVariable = "PASSENGER_ENGINE_FAIL_HANDLING";
 
+    /// <summary>The variable naming a thread, by the name the program gives it, that the engine holds where the runtime
+    /// announces it, at its first instruction, until an evaluation lets it past, as a stop once caught a thread on its way
+    /// out of its announcement: a test's hold.</summary>
+    [IdentifierHome]
+    public const string HoldStartVariable = "PASSENGER_ENGINE_HOLD_START";
+
     /// <summary>The variable that, set to 1, has each thread of a decompile wait after its first file until the session
     /// ends, so the decompile lasts as CoreLib's does on a slow machine, with every thread it runs on taken: a test's hold.</summary>
     [IdentifierHome]
@@ -83,6 +89,9 @@ public static class AdapterEnvironment
     /// <summary>Whether <see cref="HoldDecompileVariable"/> holds decompiles so; a value other than 1 is fatal, as a
     /// malformed flag is.</summary>
     public static bool HoldDecompile => Flag(HoldDecompileVariable);
+
+    /// <summary>The thread's name <see cref="HoldStartVariable"/> gives, or null for none.</summary>
+    public static string? HoldStart => Environment.GetEnvironmentVariable(HoldStartVariable) is { Length: > 0 } thread ? thread : null;
 
     /// <summary>The module's file name <see cref="FailAtModuleVariable"/> gives, or null for none.</summary>
     public static string? FailAtModule => Environment.GetEnvironmentVariable(FailAtModuleVariable) is { Length: > 0 } module ? module : null;

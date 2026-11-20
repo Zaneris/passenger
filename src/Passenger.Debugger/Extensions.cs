@@ -257,10 +257,6 @@ public static class Extensions
             throw new ManagedDebugger.EvalException($"An evaluation that could not be stopped is held unfinished on this thread, so no other can run on it until it returns: {NeedsThreads}");
         }
 
-        if (!evalStatus.LetThreadsRun)
-        {
-            await evalStatus.ClearStarts(thread).ConfigureAwait(false);
-        }
         try
         {
             startEval();
@@ -287,6 +283,10 @@ public static class Extensions
             }
             process.Continue(false);
             letGo = System.Diagnostics.Stopwatch.GetTimestamp();
+            if (!evalStatus.LetThreadsRun)
+            {
+                await evalStatus.ClearStarts(thread).ConfigureAwait(false);
+            }
             waiting = Read();
             long began = System.Diagnostics.Stopwatch.GetTimestamp();
             Task timeUp = Task.Delay(EvaluationTimeout, leaving);

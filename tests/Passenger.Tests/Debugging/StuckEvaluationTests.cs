@@ -356,6 +356,38 @@ public class StuckEvaluationTests(ITestOutputHelper testOutputHelper)
         Assert.True(again.Result == "42", $"The next collection, with the started thread held, was answered {again.Result}; the engine's log:\n{host.EngineLog()}");
     }
 
+    /// <summary>At an exception's stop with another thread standing at its first instruction, as one a stop caught on its
+    /// way out of its announcement does: the evaluations set up there run from the exception's stop, so its getter answers,
+    /// where the runtime refused to run code at a place the program had been let go from, and the thread is let past its
+    /// start as the evaluation runs, so a collection in the next ends.</summary>
+    [Fact]
+    public async Task At_an_exceptions_stop_with_a_thread_at_its_first_instruction_its_getter_answers_and_a_collection_ends()
+    {
+        const string looping = "LoopingConsoleApp";
+        const string announced = "Announced, where it was announced";
+        await using DebugSession host = DebugSession.ForLaunch(testOutputHelper, environment: new Dictionary<string, string> { [AdapterEnvironment.HoldStartVariable] = "Announced" });
+        await host
+            .InitializeAsync()
+            .LaunchAsync(Debuggees.Program(looping), stopAtEntry: false, justMyCode: true, arguments: ["starts and throws"])
+            .WaitForInitializedEvent();
+        await host.RequestAsync(DapCommands.SetExceptionBreakpoints, new SetExceptionBreakpointsArguments([DapExceptionFilters.All]));
+        await host.ConfigurationDoneAsync();
+        Assert.True(await Waiting.UntilAsync(() => host.EngineLog().Contains(announced, StringComparison.Ordinal), TimeSpan.FromSeconds(60),
+            TestContext.Current.CancellationToken, TimeSpan.FromMilliseconds(100)), $"The thread Announced was never held where it was announced:\n{host.EngineLog()}");
+        await host.RequestAsync(DapCommands.Input, new InputArguments("go\n"));
+        StoppedEvent stop = await host.WaitForStoppedEvent();
+        Assert.Equal(StopReasons.Exception, stop.Reason);
+        int frame = (await host.TopFrameAsync(stop.ThreadId!.Value)).Id;
+
+        EvaluateResponse message = await host.EvaluateAsync(frame, "$exception.Message");
+        Assert.True(message.Result == "\"thrown while a thread starts\"",
+            $"The exception's Message, with a thread at its first instruction, was answered {message.Result}; the engine's log:\n{host.EngineLog()}");
+        EvaluateResponse collected = await host.EvaluateAsync(frame, "Starting.Collect()");
+        Assert.True(collected.Result == "42", $"The collection at the exception's stop was answered {collected.Result}; the engine's log:\n{host.EngineLog()}");
+        Assert.True(host.EngineLog().Contains("Let past their first instruction", StringComparison.Ordinal),
+            $"No thread was let past its first instruction, so nothing here held the thread Announced there:\n{host.EngineLog()}");
+    }
+
     /// <summary>What has the debuggee's runtime promote a method straight to optimized code, and keeps its tiering worker for
     /// the test's length, where it would end after 4 s with no work.</summary>
     private static IReadOnlyDictionary<string, string> Tiering => new Dictionary<string, string>
