@@ -14,8 +14,8 @@ public sealed class TemplateVariablesDialog : IdeWindow
     private readonly List<TemplateVariable> variables;
     private readonly ListBox names = new() { Classes = { StyleClasses.Tree } };
     private readonly TextBlock macro = new() { TextWrapping = TextWrapping.Wrap };
-    private readonly TextBlock parameterName = new() { VerticalAlignment = VerticalAlignment.Center, Width = 120 };
-    private readonly DockPanel parameterRow;
+    private readonly TextBlock parameterName;
+    private readonly Grid parameterRow;
 
     /// <summary>Set while the fields show a variable, so what they hold then is no edit of it.</summary>
     private bool showing;
@@ -24,7 +24,7 @@ public sealed class TemplateVariablesDialog : IdeWindow
     {
         this.variables = [.. variables];
         Title = "Edit variables";
-        Width = 620;
+        Width = DialogWidths.Wide;
         Height = 360;
         MinWidth = 480;
         MinHeight = 260;
@@ -44,14 +44,14 @@ public sealed class TemplateVariablesDialog : IdeWindow
         DoneButton = DialogFooter.Default("Done");
         DoneButton.Click += (_, _) => Close(true);
 
-        parameterRow = new DockPanel { Children = { parameterName, ParameterBox } };
-        DockPanel.SetDock(parameterName, Dock.Left);
+        parameterRow = FormRows.Of("Parameter", ParameterBox, out parameterName);
         StackPanel chosen = new()
         {
             Spacing = Gaps.Wide,
             Margin = new Thickness(Gaps.Group, 0, 0, 0),
             Children = { macro, parameterRow, EditableBox, ChangeMacroButton },
         };
+        FormRows.Scope(chosen);
         StackPanel moves = new() { Orientation = Orientation.Horizontal, Spacing = Gaps.Hair, Children = { up, down } };
         DockPanel left = new() { Width = 180 };
         DockPanel.SetDock(moves, Dock.Bottom);
@@ -138,7 +138,7 @@ public sealed class TemplateVariablesDialog : IdeWindow
         {
             macro.Text = its?.Description ?? "No macro selected";
             parameterRow.IsVisible = its?.Parameter is not null;
-            parameterName.Text = its?.Parameter is { } named ? char.ToUpperInvariant(named[0]) + named[1..] + ":" : string.Empty;
+            parameterName.Text = its?.Parameter is { } named ? char.ToUpperInvariant(named[0]) + named[1..] : string.Empty;
             ParameterBox.Text = shown?.Parameter ?? string.Empty;
             EditableBox.IsChecked = shown?.Editable ?? true;
         }
@@ -161,7 +161,7 @@ public sealed class ChooseMacroDialog : IdeWindow
     public ChooseMacroDialog(string current)
     {
         Title = "Choose macro";
-        Width = 460;
+        Width = DialogWidths.Question;
         Height = 380;
         MinWidth = 360;
         MinHeight = 260;

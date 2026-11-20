@@ -100,7 +100,7 @@ public sealed class RunConfigurationsDialog : IdeWindow
             .Select(c => c.Project).Distinct(StringComparer.Ordinal)];
         this.apply = apply;
         Title = "Run/Debug Configurations";
-        Width = 980;
+        Width = DialogWidths.Workspace;
         Height = 660;
         MinWidth = 700;
         MinHeight = 440;

@@ -37,9 +37,9 @@ public sealed class NewItemDialog : IdeWindow
     private readonly Control nameRow;
     private readonly Control spaceRow;
     private readonly TemplateOptions options = new();
-    private readonly TextBlock command = new() { Classes = { StyleClasses.Muted, StyleClasses.Caption }, TextWrapping = TextWrapping.Wrap };
+    private readonly TextBlock command = FormRows.Note();
     private readonly Control details;
-    private readonly ProgressBar bar = new() { IsIndeterminate = true, Height = 4, MinHeight = 4, Width = 160, VerticalAlignment = VerticalAlignment.Center };
+    private readonly ProgressBar bar = new() { IsIndeterminate = true, Width = 160 };
     private readonly TextBlock progress = new() { Classes = { StyleClasses.Muted }, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center };
     private readonly StackPanel working;
     private readonly TextBlock problem = new() { TextWrapping = TextWrapping.Wrap, IsVisible = false, VerticalAlignment = VerticalAlignment.Center };
@@ -60,7 +60,7 @@ public sealed class NewItemDialog : IdeWindow
         this.target = target;
         FormRows.Scope(this);
         Title = "New Item";
-        Width = 860;
+        Width = DialogWidths.Workspace;
         Height = 600;
         MinWidth = 680;
         MinHeight = 440;
@@ -79,13 +79,13 @@ public sealed class NewItemDialog : IdeWindow
         Border left = new() { Width = 280, BorderThickness = Hairlines.After, Child = leftPanel };
         left.Bind(Border.BorderBrushProperty, left.GetResourceObservable(TokenKeys.Divider));
 
-        nameRow = TemplateOptions.Row("Name:", itemName);
-        spaceRow = TemplateOptions.Row("Namespace:", space);
+        nameRow = TemplateOptions.Row("Name", itemName);
+        spaceRow = TemplateOptions.Row("Namespace", space);
         itemName.TextChanged += (_, _) => ShowCommand();
         space.TextChanged += (_, _) => ShowCommand();
         space.Text = target.Namespace;
         options.Changed += ShowCommand;
-        TextBlock where = new() { Classes = { StyleClasses.Muted, StyleClasses.Caption }, TextWrapping = TextWrapping.Wrap, Text = $"It will be made in {target.Shown}" };
+        TextBlock where = FormRows.Note($"It will be made in {target.Shown}");
         details = new StackPanel { Spacing = FormRows.Between, Children = { nameRow, spaceRow, TemplateOptions.Row(null, where), options.Panel, options.Folded, TemplateOptions.Row(null, command) } };
         StackPanel right = new()
         {

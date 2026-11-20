@@ -114,9 +114,6 @@ public static class DialogFooter
         return content;
     }
 
-    /// <summary>How wide a question is (<see cref="Question"/>).</summary>
-    public const double QuestionWidth = 520;
-
     /// <summary>A question's whole window, laid out one way: its title in bold over its paragraphs (words from
     /// <see cref="Paragraph"/>, or what it is about, as a list), each wrapping, at one width and as tall as they are; its
     /// answers in the footer's bar, and what goes beside them (Don't ask again) at the bar's left. Its words are the
@@ -126,7 +123,7 @@ public static class DialogFooter
         Control[] said = [.. paragraphs];
         AutomationProperties.SetHelpText(dialog, string.Join(" ", said.OfType<TextBlock>().Select(words => words.Text)));
         dialog.Title = title;
-        dialog.Width = QuestionWidth;
+        dialog.Width = DialogWidths.Question;
         dialog.SizeToContent = SizeToContent.Height;
         dialog.CanResize = false;
         dialog.WindowStartupLocation = WindowStartupLocation.CenterOwner;

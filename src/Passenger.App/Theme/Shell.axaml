@@ -396,6 +396,13 @@
         <Setter Property="MaxWidth" Value="{DynamicResource Passenger.DropDownWidth}" />
         <Setter Property="HorizontalAlignment" Value="Left" />
     </Style>
+    <!-- Work under way in a dialog (a clone, a template's creation, a question's wait): a thin line, centred beside the words
+         saying what runs or as wide as the row under them. -->
+    <Style Selector="ProgressBar">
+        <Setter Property="Height" Value="4" />
+        <Setter Property="MinHeight" Value="4" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
     <!-- An editable drop-down's text centred in it as a chosen item's is, where Fluent's taller text box would put it at the
          top. -->
     <Style Selector="ComboBox /template/ TextBox#PART_EditableTextBox">

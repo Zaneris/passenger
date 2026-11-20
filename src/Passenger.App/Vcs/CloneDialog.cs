@@ -22,7 +22,7 @@ public sealed partial class CloneDialog : IdeWindow
     private readonly TextBlock progress;
     private readonly TextBlock problem;
     private readonly Button clone;
-    private readonly Button browse;
+    private readonly BrowseRow folderRow;
     private readonly StackPanel working;
     private CancellationTokenSource? cloning;
 
@@ -31,7 +31,7 @@ public sealed partial class CloneDialog : IdeWindow
     {
         FormRows.Scope(this);
         Title = "Clone Repository";
-        Width = 560;
+        Width = DialogWidths.Form;
         SizeToContent = SizeToContent.Height;
         CanResize = false;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
@@ -40,10 +40,9 @@ public sealed partial class CloneDialog : IdeWindow
         parent = new TextBox { Classes = { StyleClasses.Search }, Text = folder };
         url.TextChanged += (_, _) => ShowDestination();
         parent.TextChanged += (_, _) => ShowDestination();
-        browse = new Button { Content = "Browse…", Margin = new Thickness(Gaps.Normal, 0, 0, 0) };
-        browse.Click += (_, _) => IdeErrors.Observe(BrowseAsync());
-        into = new TextBlock { Classes = { StyleClasses.Muted, StyleClasses.Caption }, TextTrimming = TextTrimming.PathSegmentEllipsis, Margin = new Thickness(0, Gaps.Tight, 0, 0) };
-        bar = new ProgressBar { IsIndeterminate = true, Minimum = 0, Maximum = 100, Height = 4, MinHeight = 4 };
+        folderRow = BrowseRow.Of(parent, BrowseAsync);
+        into = FormRows.Note(path: true);
+        bar = new ProgressBar { IsIndeterminate = true, Minimum = 0, Maximum = 100 };
         progress = new TextBlock { Classes = { StyleClasses.Muted, StyleClasses.Caption }, TextTrimming = TextTrimming.CharacterEllipsis };
         working = new StackPanel { Spacing = Gaps.Small, IsVisible = false, Children = { bar, progress } };
         problem = new TextBlock { TextWrapping = TextWrapping.Wrap, IsVisible = false };
@@ -58,8 +57,8 @@ public sealed partial class CloneDialog : IdeWindow
             Spacing = FormRows.Between,
             Children =
             {
-                FormRows.Of("URL:", url),
-                new StackPanel { Children = { FormRows.Of("Directory:", BrowseRow.Of(parent, browse)), FormRows.Of(null, into) } },
+                FormRows.Of("URL", url),
+                FormRows.Of("Directory", folderRow, [into]),
             },
         };
 
@@ -281,7 +280,7 @@ public sealed partial class CloneDialog : IdeWindow
         bar.IsIndeterminate = true;
         url.IsEnabled = !busy;
         parent.IsEnabled = !busy;
-        browse.IsEnabled = !busy;
+        folderRow.Browse.IsEnabled = !busy;
         clone.IsEnabled = !busy;
     }
 

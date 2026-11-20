@@ -123,7 +123,7 @@ public sealed partial class SettingsDialog : IdeWindow
         Working = current;
         applied = current;
         Title = "Settings";
-        Width = 980;
+        Width = DialogWidths.Workspace;
         Height = 700;
         MinWidth = 640;
         MinHeight = 400;

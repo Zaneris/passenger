@@ -15,19 +15,19 @@ public sealed class ExtractResourceDialog : RefactoringDialog
 
     public ExtractResourceDialog(ExtractableValue value, IReadOnlyList<ResourcePlace> places, Func<string, string?> problem,
         Func<string, ResourcePlace, bool, Task<string?>> make)
-        : base("Extract XAML Resource", "Extract resource", $"Extract the {value.Property} value '{value.Value}' to a resource and use it through StaticResource", 520)
+        : base("Extract XAML Resource", "Extract resource", $"Extract the {value.Property} value '{value.Value}' to a resource and use it through StaticResource", DialogWidths.Form)
     {
         this.places = places;
         this.problem = problem;
         this.make = make;
         NameBox = Field(value.Suggested);
         NameBox.TextChanged += (_, _) => Changed();
-        PlaceBox = new ComboBox { ItemsSource = places.Select(p => p.Title).ToList(), SelectedIndex = 0, HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Stretch };
+        PlaceBox = new FormDropDown { ItemsSource = places.Select(p => p.Title).ToList(), SelectedIndex = 0 };
         EveryUse = new CheckBox { Content = $"Replace all {value.Uses.Count} occurrences in this file", IsChecked = true, IsVisible = value.Others > 0 };
         Options = new StackPanel
         {
             Spacing = FormRows.Between,
-            Children = { Row("Resource name:", NameBox), Row("Create in:", PlaceBox), EveryUse },
+            Children = { Row("Resource name", NameBox), Row("Create in", PlaceBox), Row(null, EveryUse) },
         };
         Changed();
         FocusOnOpen(NameBox);
@@ -61,15 +61,15 @@ public sealed class ExtractStyleDialog : RefactoringDialog
         Func<string, IReadOnlyList<string>, ResourcePlace, Task<string?>> make)
         : base("Extract XAML Style", "Extract style", source.ByClass
             ? $"Extract properties of '{source.ElementName}' to a style that selects it by a class it takes"
-            : $"Extract properties of '{source.ElementName}' to a style it names", 560)
+            : $"Extract properties of '{source.ElementName}' to a style it names", DialogWidths.Form)
     {
         this.places = places;
         this.problem = problem;
         this.make = make;
         NameBox = Field(source.Suggested);
         NameBox.TextChanged += (_, _) => Changed();
-        PlaceBox = new ComboBox { ItemsSource = places.Select(p => p.Title).ToList(), SelectedIndex = 0, HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Stretch };
-        StackPanel list = new() { Spacing = Gaps.Tight, Margin = new Thickness(0, Gaps.Hair, 0, 0) };
+        PlaceBox = new FormDropDown { ItemsSource = places.Select(p => p.Title).ToList(), SelectedIndex = 0 };
+        StackPanel list = new() { Spacing = Gaps.Tight };
         foreach (StyleProperty property in source.Properties)
         {
             CheckBox box = new() { Content = $"{property.Name} = {property.Written}", IsChecked = !property.IsBinding, Tag = property.Name };
@@ -82,10 +82,9 @@ public sealed class ExtractStyleDialog : RefactoringDialog
             Spacing = FormRows.Between,
             Children =
             {
-                Row(source.ByClass ? "Style class:" : "Style name:", NameBox),
-                Row("Create in:", PlaceBox),
-                new TextBlock { Text = "Properties to extract:" },
-                list,
+                Row(source.ByClass ? "Style class" : "Style name", NameBox),
+                Row("Create in", PlaceBox),
+                Row("Properties to extract", list, top: true),
             },
         };
         Changed();

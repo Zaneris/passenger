@@ -14,8 +14,8 @@ namespace Passenger.App.Settings;
 /// the page's edge before it.</summary>
 public sealed class OptionRow : Panel
 {
-    /// <summary>The labels' column beside the editors.</summary>
-    public const double LabelWidth = 220;
+    /// <summary>The labels' column beside the editors, as wide as a form's labels grow (<see cref="FormRows.LabelWidth"/>).</summary>
+    public const double LabelWidth = FormRows.LabelWidth;
 
     /// <summary>The widest an editor stands: a list's, a line of text's, a box of several lines'; a note wraps where it ends.</summary>
     public const double EditorWidth = 420;

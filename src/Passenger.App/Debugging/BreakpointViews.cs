@@ -36,9 +36,9 @@ public sealed class BreakpointProperties : UserControl
             Spacing = Gaps.Small,
             Children =
             {
-                FormRows.Of("Condition:", condition),
-                new StackPanel { Children = { FormRows.Of("Hit count:", hitCount), FormRows.Of(null, hitCountProblem) } },
-                new StackPanel { Children = { FormRows.Of("Log message:", log), FormRows.Of(null, logProblem) } },
+                FormRows.Of("Condition", condition),
+                new StackPanel { Children = { FormRows.Of("Hit count", hitCount), FormRows.Of(null, hitCountProblem) } },
+                new StackPanel { Children = { FormRows.Of("Log message", log), FormRows.Of(null, logProblem) } },
             },
         };
         hitCountProblem.Classes.Add(StyleClasses.Error);
@@ -53,8 +53,8 @@ public sealed class BreakpointProperties : UserControl
             Spacing = Gaps.Tight,
             Children =
             {
-                FormRows.Of("Exception thrown in:", Row(thrownInUserCode, thrownInExternalCode)),
-                FormRows.Of("Exception handler:", Row(handledInUserCode, handledInExternalCode, unhandled)),
+                FormRows.Of("Exception thrown in", Row(thrownInUserCode, thrownInExternalCode)),
+                FormRows.Of("Exception handler", Row(handledInUserCode, handledInExternalCode, unhandled)),
             },
         };
         // Two forms, so the rows shown only for an exception breakpoint never widen the labels of every breakpoint's.

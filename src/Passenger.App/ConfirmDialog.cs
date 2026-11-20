@@ -1,3 +1,4 @@
+using Avalonia.Automation;
 using Avalonia.Controls;
 
 namespace Passenger.App;
@@ -16,7 +17,13 @@ public sealed class ConfirmDialog : IdeWindow
         confirm = DialogFooter.Default(yes);
         confirm.Click += (_, _) => Answer(true);
         notAgain = offersNotAgain ? DialogFooter.DontAskAgain() : null;
-        DialogFooter.Question(this, title, [DialogFooter.Paragraph(text), .. detail is null ? [] : new[] { detail }],
+        TextBlock words = DialogFooter.Paragraph(text);
+        if (detail is TextBox box)
+        {
+            // A box the question asks a value in (a migration's name, an AppHost parameter's) is heard by the question.
+            AutomationProperties.SetLabeledBy(box, words);
+        }
+        DialogFooter.Question(this, title, [words, .. detail is null ? [] : new[] { detail }],
             DialogFooter.Of(confirm, DialogFooter.Cancel(() => Answer(false), no)), notAgain);
     }
 

@@ -1165,7 +1165,7 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
         Assert.False(window.Debugger.Breakpoints.Exceptions[0].Enabled);
         ExceptionBreakpoint operation = AddException(window, breakpoints, "InvalidOperationEx", "System.InvalidOperationException");
         // User-unhandled: handled outside the user's code, or not at all.
-        Ui.Click(Scenario(breakpoints, "Exception handler:", "User code"));
+        Ui.Click(Scenario(breakpoints, "Exception handler", "User code"));
         Ui.Click(Button(breakpoints, "Done"));
         Assert.Equal(ExceptionScenarios.Thrown | ExceptionScenarios.HandledInExternalCode | ExceptionScenarios.Unhandled, operation.Scenarios);
 
@@ -1178,9 +1178,9 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
 
         breakpoints = OpenBreakpoints(window);
         Ui.Click(Row(breakpoints, "System.InvalidOperationException"));
-        Ui.Click(Scenario(breakpoints, "Exception handler:", "User code"));
-        Ui.Click(Scenario(breakpoints, "Exception handler:", "External code"));
-        Ui.Click(Scenario(breakpoints, "Exception handler:", "Unhandled"));
+        Ui.Click(Scenario(breakpoints, "Exception handler", "User code"));
+        Ui.Click(Scenario(breakpoints, "Exception handler", "External code"));
+        Ui.Click(Scenario(breakpoints, "Exception handler", "Unhandled"));
         Ui.Click(Button(breakpoints, "Done"));
         Assert.Equal(ExceptionScenarios.Thrown | ExceptionScenarios.HandledInUserCode, operation.Scenarios);
         StartDebugging(window);
@@ -1251,7 +1251,7 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
             MainWindow first = Keeping(settings);
             BreakpointsWindow breakpoints = OpenBreakpoints(first);
             AddException(first, breakpoints, "InvalidOperationEx", "System.InvalidOperationException");
-            Ui.Click(Scenario(breakpoints, "Exception handler:", "User code"));
+            Ui.Click(Scenario(breakpoints, "Exception handler", "User code"));
             AddException(first, breakpoints, "ArgumentNull", "System.ArgumentNullException");
             Ui.Click(Row(breakpoints, ExceptionBreakpoint.AnyException).GetVisualDescendants().OfType<CheckBox>().First());
             Assert.Equal([ExceptionBreakpoint.AnyException, "System.InvalidOperationException", "System.ArgumentNullException", BindingErrorBreakpoint.AnyBindingError, ScriptErrorBreakpoint.AnyScriptError],

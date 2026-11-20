@@ -67,9 +67,9 @@ public sealed class CommitSigningDialog : IdeWindow
             Spacing = FormRows.Between,
             Children =
             {
-                FormRows.Of("Sign with:", new StackPanel { Orientation = Orientation.Horizontal, Spacing = Gaps.Group, Children = { ssh, gpg, x509 } }),
-                new StackPanel { Children = { FormRows.Of("Key:", key), FormRows.Of(null, found), FormRows.Of(null, foundNone) } },
-                FormRows.Of("Set in:", new StackPanel { Spacing = Gaps.Small, Children = { here, everywhere } }, top: true),
+                FormRows.Of("Sign with", new StackPanel { Orientation = Orientation.Horizontal, Spacing = Gaps.Group, Children = { ssh, gpg, x509 } }),
+                new StackPanel { Children = { FormRows.Of("Key", key), FormRows.Of(null, found), FormRows.Of(null, foundNone) } },
+                FormRows.Of("Set in", new StackPanel { Spacing = Gaps.Small, Children = { here, everywhere } }, top: true),
                 FormRows.Of(null, every),
             },
         };

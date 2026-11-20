@@ -85,28 +85,28 @@ public sealed class NewProjectDialog : IdeWindow
 
     /// <summary>Whether what the dialog says is a read of the templates that failed, which a later read takes back.</summary>
     private bool readFailed;
-    private readonly TextBlock formatNote = new() { Classes = { StyleClasses.Muted, StyleClasses.Caption }, TextWrapping = TextWrapping.Wrap, IsVisible = false };
+    private readonly TextBlock formatNote = FormRows.Note();
     private readonly Control projectRow;
     private readonly Control sameRow;
+    private readonly BrowseRow folderRow;
     private readonly Control? formatRow;
-    private readonly TextBlock where = new() { Classes = { StyleClasses.Muted, StyleClasses.Caption }, TextWrapping = TextWrapping.Wrap };
+    private readonly TextBlock where = FormRows.Note();
     private readonly ComboBox framework = new FormDropDown();
-    private readonly TextBlock frameworkNote = new() { Classes = { StyleClasses.Muted, StyleClasses.Caption }, TextWrapping = TextWrapping.Wrap };
-    private readonly Control frameworkNoteRow;
+    private readonly TextBlock frameworkNote = FormRows.Note();
 
     /// <summary>The framework the person picked for the template chosen, which a Godot game listed again keeps; null for none.</summary>
     private string? picked;
     private readonly ComboBox language = new FormDropDown();
     private readonly Control languageRow;
     private readonly TemplateOptions options = new();
-    private readonly TextBlock command = new() { Classes = { StyleClasses.Muted, StyleClasses.Caption }, TextWrapping = TextWrapping.Wrap };
+    private readonly TextBlock command = FormRows.Note();
     private readonly Control details;
     private readonly Control offer;
     private readonly TextBlock offerText = new() { TextWrapping = TextWrapping.Wrap };
     private readonly TextBlock offerCommand = new() { Classes = { StyleClasses.Muted, StyleClasses.Caption }, TextWrapping = TextWrapping.Wrap };
     private readonly Button install = new() { Content = "Install", Classes = { StyleClasses.Primary }, MinWidth = 80, HorizontalAlignment = HorizontalAlignment.Left };
     private readonly OutputView installOutput = new(toolbar: false) { Height = 220, IsVisible = false };
-    private readonly ProgressBar bar = new() { IsIndeterminate = true, Height = 4, MinHeight = 4, Width = 160, VerticalAlignment = VerticalAlignment.Center };
+    private readonly ProgressBar bar = new() { IsIndeterminate = true, Width = 160 };
     private readonly TextBlock progress = new() { Classes = { StyleClasses.Muted }, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center };
     private readonly StackPanel working;
     private readonly TextBlock problem = new() { TextWrapping = TextWrapping.Wrap, IsVisible = false, VerticalAlignment = VerticalAlignment.Center };
@@ -114,10 +114,9 @@ public sealed class NewProjectDialog : IdeWindow
     /// <summary>Copies the command the problem shown asks the person to run themselves, shown while there is one.</summary>
     private readonly CopyButton copyCommand = new("Copy Command") { IsVisible = false, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(Gaps.Normal, 0, 0, 0) };
     private readonly Button create = DialogFooter.Default("Create");
-    private readonly Button browse = new() { Content = "Browse…", Margin = new Thickness(Gaps.Normal, 0, 0, 0) };
     private readonly ComboBox setup = new FormDropDown();
     private readonly ComboBoxItem[] setups = [.. Enum.GetValues<ProjectSetup>().Select(s => new ComboBoxItem { Content = SetupName(s) })];
-    private readonly TextBlock setupNote = new() { Classes = { StyleClasses.Muted, StyleClasses.Caption }, TextWrapping = TextWrapping.Wrap };
+    private readonly TextBlock setupNote = FormRows.Note();
     private readonly Button installSetup = new() { Classes = { StyleClasses.Link, StyleClasses.Caption }, HorizontalAlignment = HorizontalAlignment.Left, IsVisible = false };
     private readonly Control setupRow;
 
@@ -193,7 +192,7 @@ public sealed class NewProjectDialog : IdeWindow
         FormRows.Scope(this);
         this.target = target;
         Title = target is null ? "New Solution" : "New Project";
-        Width = 920;
+        Width = DialogWidths.Workspace;
         Height = 640;
         MinWidth = 720;
         MinHeight = 480;
@@ -230,13 +229,12 @@ public sealed class NewProjectDialog : IdeWindow
                 ChooseType(chosen);
             }
         };
-        typeRow = Row("Type:", typeChooser);
+        typeRow = Row("Type", typeChooser);
 
         heading = new TextBlock { Classes = { StyleClasses.PageTitle } };
         description = new TextBlock { Classes = { StyleClasses.Muted }, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, Gaps.Tight, 0, 0) };
         directory.Text = folder;
-        browse.Click += (_, _) => IdeErrors.Observe(BrowseAsync());
-        Grid folderRow = BrowseRow.Of(directory, browse);
+        folderRow = BrowseRow.Of(directory, BrowseAsync);
         solutionName.TextChanged += (_, _) => NameChanged(solution: true);
         projectName.TextChanged += (_, _) => NameChanged(solution: false);
         directory.TextChanged += (_, _) =>
@@ -261,25 +259,25 @@ public sealed class NewProjectDialog : IdeWindow
         language.SelectionChanged += (_, _) => Retarget();
 
         StackPanel fields = new() { Spacing = FormRows.Between };
-        projectRow = Row("Project name:", projectName);
+        projectRow = Row("Project name", projectName);
         sameRow = Row(null, sameDirectory);
         if (target is null)
         {
             format.HorizontalAlignment = HorizontalAlignment.Left;
-            formatRow = Row("Solution format:", new StackPanel { Spacing = Gaps.Small, Children = { format, formatNote } });
-            fields.Children.Add(Row("Solution name:", solutionName));
+            formatNote.IsVisible = false;
+            formatRow = Row("Solution format", format, [formatNote]);
+            fields.Children.Add(Row("Solution name", solutionName));
             fields.Children.Add(projectRow);
-            fields.Children.Add(Row("Solution directory:", folderRow));
+            fields.Children.Add(Row("Solution directory", folderRow, [where]));
             fields.Children.Add(sameRow);
             fields.Children.Add(formatRow);
         }
         else
         {
             fields.Children.Add(projectRow);
-            fields.Children.Add(Row("Project directory:", folderRow));
+            fields.Children.Add(Row("Project directory", folderRow, [where]));
         }
-        fields.Children.Add(Row(null, where));
-        languageRow = Row("Language:", language);
+        languageRow = Row("Language", language);
         setup.ItemsSource = setups;
         setup.SelectionChanged += (_, _) =>
         {
@@ -289,13 +287,12 @@ public sealed class NewProjectDialog : IdeWindow
                 ShowSetup();
             }
         };
-        setupRow = Row("Set up:", setup);
-        frameworkNoteRow = Row(null, frameworkNote);
-        frameworkNoteRow.IsVisible = false;
+        setupRow = Row("Set up", setup);
+        frameworkNote.IsVisible = false;
         details = new StackPanel
         {
             Spacing = FormRows.Between,
-            Children = { Row("Target framework:", framework), frameworkNoteRow, languageRow, options.Panel, setupRow, Row(null, new StackPanel { Spacing = Gaps.Tight, Children = { setupNote, installSetup } }), options.Folded, Row(null, command) },
+            Children = { Row("Target framework", framework, [frameworkNote]), languageRow, options.Panel, setupRow, Row(null, new StackPanel { Spacing = Gaps.Tight, Children = { setupNote, installSetup } }), options.Folded, Row(null, command) },
         };
         options.Changed += ShowCommand;
         install.Click += (_, _) => IdeErrors.Observe(InstallAsync());
@@ -560,7 +557,7 @@ public sealed class NewProjectDialog : IdeWindow
 
     /// <summary>What the dialog says under the framework: a C# Godot game's newest .NET that its Godot builds and runs here,
     /// where older than Passenger's; null where it says nothing.</summary>
-    public string? FrameworkNote => frameworkNoteRow.IsVisible ? frameworkNote.Text : null;
+    public string? FrameworkNote => frameworkNote.IsVisible ? frameworkNote.Text : null;
 
     /// <summary>What Create made, once it closed the dialog; null until then, and when given up.</summary>
     public CreatedProjects? Created { get; private set; }
@@ -1432,7 +1429,7 @@ public sealed class NewProjectDialog : IdeWindow
             : GodotWhyNot() ?? (template.GodotGame && !ScriptGame ? GodotTargets?.WhyNot(Framework) : null);
         windowsNote.IsVisible = windowsNote.Text is not null;
         frameworkNote.Text = GodotDotnetSaid();
-        frameworkNoteRow.IsVisible = frameworkNote.Text is not null;
+        frameworkNote.IsVisible = frameworkNote.Text is not null;
         // A GDScript game is its folder alone: no project to name, nor a solution's format.
         projectRow.IsVisible = !template.IsSolution && !ScriptGame;
         sameRow.IsVisible = target is null && !template.IsSolution && !ScriptGame;
@@ -1655,7 +1652,7 @@ public sealed class NewProjectDialog : IdeWindow
         install.IsEnabled = !busy;
         installSetup.IsEnabled = !busy;
         list.IsEnabled = !busy;
-        foreach (Control field in (Control[])[search, typeChooser, solutionName, projectName, directory, browse, sameDirectory, format, framework, language, options.Panel, options.Folded, setup])
+        foreach (Control field in (Control[])[search, typeChooser, solutionName, projectName, directory, folderRow.Browse, sameDirectory, format, framework, language, options.Panel, options.Folded, setup])
         {
             field.IsEnabled = !busy;
         }
@@ -1715,7 +1712,7 @@ public sealed class NewProjectDialog : IdeWindow
         return rule;
     }
 
-    private static Control Row(string? label, Control editor) => TemplateOptions.Row(label, editor);
+    private static Control Row(string? label, Control editor, IReadOnlyList<TextBlock>? notes = null) => TemplateOptions.Row(label, editor, notes);
 
     private async Task BrowseAsync()
     {

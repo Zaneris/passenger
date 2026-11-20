@@ -41,29 +41,15 @@ public sealed class AddReferenceDialog : IdeWindow
     {
         Choices = choices;
         Title = "Add Reference";
-        Width = 520;
+        Width = DialogWidths.Form;
         Height = 420;
         MinWidth = 360;
         MinHeight = 240;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
 
-        list = new ListBox { Classes = { StyleClasses.Tree }, ItemsSource = choices };
-        ReusedRows.Use(list, CheckRows.Of);
+        // Enter takes the choices as the dialog's default button does.
+        list = CheckRows.List(choices, Accept);
         list.SelectedItem = choices.FirstOrDefault(c => c.CanChoose);
-        // Enter takes the choices as the dialog's default button does; Space flips the chosen row's box.
-        ListKeys.Act(list, new ListActs
-        {
-            Enter = Accept,
-            Keys = e =>
-            {
-                if (e.Key != Key.Space || e.KeyModifiers != KeyModifiers.None || list.SelectedItem is not ReferenceChoice { CanChoose: true } choice)
-                {
-                    return false;
-                }
-                choice.IsChosen = !choice.IsChosen;
-                return true;
-            },
-        });
         Border rows = new() { Classes = { StyleClasses.Framed }, Child = list };
 
         Button ok = DialogFooter.Default();

@@ -88,7 +88,7 @@ public sealed class AttachToProcessDialog : IdeWindow
         this.scope = scope ?? AttachScope.Anywhere;
         Purpose = purpose;
         Title = purpose == AttachPurpose.Profiler ? "Attach Profiler" : "Attach to Process";
-        Width = 900;
+        Width = DialogWidths.Workspace;
         Height = 520;
         MinWidth = 560;
         MinHeight = 300;

@@ -46,10 +46,10 @@ public sealed class PostfixTemplatesPane : ListPane
         Border framed = new() { Classes = { StyleClasses.Framed }, Child = tree };
         about = new StackPanel
         {
-            Spacing = Gaps.Small,
-            Children = { new TextBlock { Text = "Description:" }, description, new TextBlock { Text = "Before:", Margin = new Thickness(0, Gaps.Normal, 0, 0) }, before,
-                new TextBlock { Text = "After:", Margin = new Thickness(0, Gaps.Normal, 0, 0) }, after },
+            Spacing = FormRows.Between,
+            Children = { FormRows.Of("Description", description, top: true), FormRows.Of("Before", before), FormRows.Of("After", after) },
         };
+        FormRows.Scope(about);
         StackPanel options = new() { Spacing = Gaps.Small, Margin = new Thickness(0, 0, 0, Gaps.Wide), Children = { EnableBox, AutopopupBox } };
         SetDock(options, Dock.Top);
         Children.Add(options);

@@ -8,7 +8,7 @@ public sealed class AspireServiceDialog : IdeWindow
     public AspireServiceDialog(IReadOnlyList<AspireSelection> services)
     {
         Title = "Profile Aspire Service";
-        Width = 540;
+        Width = DialogWidths.Form;
         Height = 360;
         MinWidth = 400;
         MinHeight = 260;
@@ -23,16 +23,11 @@ public sealed class AspireServiceDialog : IdeWindow
         Profile.IsEnabled = false;
         Services.SelectionChanged += (_, _) => Profile.IsEnabled = Services.SelectedItem is AspireSelection;
         Profile.Click += (_, _) => Close(Services.SelectedItem as AspireSelection);
-        StackPanel heading = new()
-        {
-            Spacing = Gaps.Normal,
-            Margin = new Thickness(Gaps.Page, Gaps.Page, Gaps.Page, Gaps.Wide),
-            Children = { new TextBlock { Text = "Choose a running .NET service", Classes = { StyleClasses.Muted } } },
-        };
-        DockPanel page = new();
+        TextBlock heading = new() { Text = "Choose a running .NET service", Classes = { StyleClasses.Muted }, Margin = new Thickness(0, 0, 0, Gaps.Wide) };
+        DockPanel page = new() { [DialogFooter.InsetProperty] = true };
         DockPanel.SetDock(heading, Dock.Top);
         page.Children.Add(heading);
-        page.Children.Add(new Border { Classes = { StyleClasses.Framed }, Margin = new Thickness(Gaps.Page, 0, Gaps.Page, Gaps.Page), Child = Services });
+        page.Children.Add(new Border { Classes = { StyleClasses.Framed }, Child = Services });
         Content = DialogFooter.Page(page, DialogFooter.OkCancel(Profile, () => Close(null)));
         Services.SelectedIndex = services.Count > 0 ? 0 : -1;
     }

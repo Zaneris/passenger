@@ -188,6 +188,27 @@ public sealed class DialogButtonsTests : IDisposable
                 $"{title} lays a third of its page on the editor's ground, where its page is the chrome");
         }
 
+        // A label laid beside or over a field names it for a screen reader (FormRows), in its words alone, with no colon.
+        foreach (Panel panel in dialog.GetVisualDescendants().OfType<Panel>().Where(p => p.IsEffectivelyVisible))
+        {
+            Control[] shownChildren = [.. panel.Children.Where(c => c.IsVisible)];
+            for (int i = 0; i + 1 < shownChildren.Length; i++)
+            {
+                if (shownChildren[i] is not TextBlock { Text.Length: > 0 } label || Field(shownChildren[i + 1]) is not { } field
+                    || label.Classes.Any(c => c == StyleClasses.Muted || c == StyleClasses.PaneTitle || c == StyleClasses.DialogTitle || c == StyleClasses.PageTitle || c == StyleClasses.HeroTitle))
+                {
+                    continue;
+                }
+                Assert.True(ReferenceEquals(Avalonia.Automation.AutomationProperties.GetLabeledBy(field), label) || Avalonia.Automation.AutomationProperties.GetName(field) == label.Text,
+                    $"In {title}, the label '{label.Text}' stands beside or over a {field.GetType().Name} it does not name for a screen reader: make the row with FormRows.Of");
+            }
+        }
+        foreach (Control field in dialog.GetVisualDescendants().OfType<Control>().Where(c => c.IsEffectivelyVisible && c is TextBox or ComboBox or NumericUpDown))
+        {
+            Assert.False(Avalonia.Automation.AutomationProperties.GetLabeledBy(field) is TextBlock { Text: { } words } && words.TrimEnd().EndsWith(':'),
+                $"In {title}, a field's label '{(Avalonia.Automation.AutomationProperties.GetLabeledBy(field) as TextBlock)?.Text}' ends in a colon, where every form's label is its words alone");
+        }
+
         // The drop-downs of a column (starting at one place) are one width, their right edges in line.
         foreach (IGrouping<double, ComboBox> column in dialog.GetVisualDescendants().OfType<ComboBox>().Where(c => c.IsEffectivelyVisible && c.Bounds.Width > 0)
             .GroupBy(c => Math.Round(c.TranslatePoint(default, dialog)!.Value.X)))
@@ -221,6 +242,15 @@ public sealed class DialogButtonsTests : IDisposable
         }
         return dialog;
     }
+
+    /// <summary>The field a label beside or over it would name: a text box, a drop-down or a number box, a BrowseRow's own
+    /// field; null for anything else.</summary>
+    private static Control? Field(Control control) => control switch
+    {
+        BrowseRow row => row.Field,
+        TextBox or ComboBox or NumericUpDown => control,
+        _ => null,
+    };
 
     /// <summary>Settings' Cancel, a plain button, and OK, the default one, each drawn in its ground at rest, lit under a
     /// person's pointer and deeper while pressed, in Dark and Light: so a press shows, Apply's too, which leaves the dialog

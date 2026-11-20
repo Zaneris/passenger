@@ -129,14 +129,14 @@ public partial class MainWindow
             status.Text = $"{solution.Name} has no project that runs, for compose.yaml to run";
             return null;
         }
-        List<ComposeChoice> projects = [.. running.Select(p => new ComposeChoice(
+        List<CheckChoice> projects = [.. running.Select(p => new CheckChoice(
             Path.GetFileNameWithoutExtension(p.Path),
             DockerFiles.Describe(p, all).ExistingDockerfile is { } dockerfile ? DockerShown(dockerfile) : "no Dockerfile: Docker Support adds one",
             true, p.Path))];
-        List<ComposeChoice> services = [.. BackingService.Known
+        List<CheckChoice> services = [.. BackingService.Known
             .Select(k => (Service: k, Users: running.Where(p => BackingService.For(p.Packages.Select(q => q.Name)).Contains(k)).ToList()))
             .Where(k => k.Users.Count > 0)
-            .Select(k => new ComposeChoice(k.Service.Service, $"{k.Service.Image}, for {string.Join(", ", k.Users.Select(u => Path.GetFileNameWithoutExtension(u.Path)))}",
+            .Select(k => new CheckChoice(k.Service.Service, $"{k.Service.Image}, for {string.Join(", ", k.Users.Select(u => Path.GetFileNameWithoutExtension(u.Path)))}",
                 true, k.Service.Service))];
         DockerComposeDialog dialog = new(solution.Name, projects, services);
         if (services.Select(c => (Choice: c, Service: BackingService.Known.First(k => k.Service == (string)c.Value))).FirstOrDefault(c => c.Service.X64Only is not null)

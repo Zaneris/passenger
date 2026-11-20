@@ -6,15 +6,15 @@ using Avalonia.Media;
 
 namespace Passenger.App;
 
-/// <summary>A form's rows of a label and what it names (Run Configurations, Publish, a feed, Clone, a breakpoint), written
-/// one way: the labels in one column at the rows' left, as wide as the form's longest and wrapping past
-/// <see cref="LabelWidth"/>, and each field filling the rest, named by its label for a screen reader; a label beside a tall
-/// field (a list, several lines) stands at its top. The form is the control <see cref="Scope"/> marks, whose rows share the
-/// column. UiRulesTests fails label rows laid out by hand.</summary>
+/// <summary>A form's rows of a label and what it names (Run Configurations, Publish, a feed, Clone, a breakpoint, a
+/// refactoring), written one way: the labels in one column at the rows' left, as wide as the form's longest and wrapping
+/// past <see cref="LabelWidth"/>, each with no colon, and each field filling the rest, named by its label for a screen
+/// reader, its notes under it; a label beside a tall field (a list, a table, several lines) stands at its top. The form is
+/// the control <see cref="Scope"/> marks, whose rows share the column. UiRulesTests fails label rows laid out by hand.</summary>
 public static class FormRows
 {
-    /// <summary>The widest a label grows before it wraps.</summary>
-    public const double LabelWidth = 170;
+    /// <summary>The widest a label grows before it wraps, a form's and a Settings row's alike.</summary>
+    public const double LabelWidth = 220;
 
     /// <summary>The room between a form's rows, a fold's rows too.</summary>
     public const double Between = Gaps.Wide;
@@ -25,10 +25,15 @@ public static class FormRows
     /// <summary>Marks a control as a form, whose rows' labels share one column.</summary>
     public static void Scope(Control form) => Grid.SetIsSharedSizeScope(form, true);
 
-    public static Grid Of(string? label, Control field, bool top = false) => Of(label, field, out _, top);
+    public static Grid Of(string? label, Control field, bool top = false) => Of(label, field, [], out _, top);
+
+    /// <summary>A row with notes under its field (<see cref="Note"/>), each a little below what is above it.</summary>
+    public static Grid Of(string? label, Control field, IReadOnlyList<TextBlock> notes, bool top = false) => Of(label, field, notes, out _, top);
 
     /// <summary>A row, and its label (left out of a row with none), which a form may mark.</summary>
-    public static Grid Of(string? label, Control field, out TextBlock name, bool top = false)
+    public static Grid Of(string? label, Control field, out TextBlock name, bool top = false) => Of(label, field, [], out name, top);
+
+    private static Grid Of(string? label, Control field, IReadOnlyList<TextBlock> notes, out TextBlock name, bool top)
     {
         name = new TextBlock
         {
@@ -39,6 +44,8 @@ public static class FormRows
             VerticalAlignment = top ? VerticalAlignment.Top : VerticalAlignment.Center,
         };
         Grid row = new() { ColumnDefinitions = { new ColumnDefinition(GridLength.Auto) { SharedSizeGroup = Labels }, new ColumnDefinition(GridLength.Star) } };
+        // The field's row takes what height the row is given past its notes, so a list a page fills with fills it.
+        row.RowDefinitions.Add(new RowDefinition(GridLength.Star));
         if (!string.IsNullOrEmpty(label))
         {
             row.Children.Add(name);
@@ -46,6 +53,24 @@ public static class FormRows
         }
         Grid.SetColumn(field, 1);
         row.Children.Add(field);
+        foreach (TextBlock note in notes)
+        {
+            row.RowDefinitions.Add(new RowDefinition(GridLength.Auto));
+            note.Margin = new Thickness(0, Gaps.Tight, 0, 0);
+            Grid.SetColumn(note, 1);
+            Grid.SetRow(note, row.RowDefinitions.Count - 1);
+            row.Children.Add(note);
+        }
         return row;
     }
+
+    /// <summary>A field's note, under it in its row: muted, at the caption's size, wrapping, or for a path
+    /// (<paramref name="path"/>) on one line, cut short by its folders.</summary>
+    public static TextBlock Note(string? words = null, bool path = false) => new()
+    {
+        Classes = { StyleClasses.Muted, StyleClasses.Caption },
+        Text = words,
+        TextWrapping = path ? TextWrapping.NoWrap : TextWrapping.Wrap,
+        TextTrimming = path ? TextTrimming.PathSegmentEllipsis : TextTrimming.None,
+    };
 }

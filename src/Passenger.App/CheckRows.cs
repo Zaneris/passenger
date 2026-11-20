@@ -1,5 +1,6 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
 
@@ -18,11 +19,68 @@ public interface ICheckChoice
     bool IsChosen { get; set; }
 }
 
-/// <summary>A row a person checks or clears (Add Reference's projects, Add Docker Compose's services, a nuget.config's
-/// feeds), as tall as every list's row (<see cref="ListRow.Height"/>): its box at its start, centred in it, then what
-/// it names, and what it is in the rest of the row's width, cut short with an ellipsis where it has no more.</summary>
+/// <summary>A choice a list of check rows offers, with what it stands for (a project or a backing service Add > Docker
+/// Compose offers, a service project Add Aspire Orchestration does), checked while it is to be taken; one that cannot be
+/// (a service the engine cannot run) is greyed, unchecked.</summary>
+public sealed class CheckChoice(string name, string detail, bool chosen, object value) : Observable, ICheckChoice
+{
+    private bool isChosen = chosen;
+
+    private bool canChoose = true;
+
+    public string Name { get; } = name;
+
+    public string Detail { get; } = detail;
+
+    public bool CanChoose
+    {
+        get => canChoose;
+        set
+        {
+            if (Set(ref canChoose, value) && !value)
+            {
+                IsChosen = false;
+            }
+        }
+    }
+
+    public object Value { get; } = value;
+
+    public bool IsChosen
+    {
+        get => isChosen;
+        set => Set(ref isChosen, value);
+    }
+}
+
+/// <summary>A row a person checks or clears (Add Reference's projects, Add Docker Compose's services, Add Aspire
+/// Orchestration's, a nuget.config's feeds), as tall as every list's row (<see cref="ListRow.Height"/>): its box at its
+/// start, centred in it, then what it names, and what it is in the rest of the row's width, cut short with an ellipsis
+/// where it has no more.</summary>
 public static class CheckRows
 {
+    /// <summary>A list of check rows over its choices, one row a choice: Space checks or clears the chosen row, Enter does
+    /// what <paramref name="enter"/> does where given (the dialog's default button), a click on a box checks its own.</summary>
+    public static ListBox List(IEnumerable<ICheckChoice> choices, Action? enter = null)
+    {
+        ListBox list = new() { Classes = { StyleClasses.Tree }, ItemsSource = choices };
+        ReusedRows.Use(list, Of);
+        ListKeys.Act(list, new ListActs
+        {
+            Enter = enter,
+            Keys = e =>
+            {
+                if (e.Key != Key.Space || e.KeyModifiers != KeyModifiers.None || list.SelectedItem is not ICheckChoice { CanChoose: true } choice)
+                {
+                    return false;
+                }
+                choice.IsChosen = !choice.IsChosen;
+                return true;
+            },
+        });
+        return list;
+    }
+
     /// <summary>A row's box: centred in the row, as wide as its glyph.</summary>
     public static CheckBox Box() => new() { VerticalAlignment = VerticalAlignment.Center, MinWidth = 0 };
 

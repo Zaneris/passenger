@@ -21,7 +21,7 @@ public sealed class AboutDialog : IdeWindow
     public AboutDialog(Action<string> open)
     {
         Title = "About Passenger";
-        Width = 460;
+        Width = DialogWidths.Question;
         SizeToContent = SizeToContent.Height;
         CanResize = false;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;

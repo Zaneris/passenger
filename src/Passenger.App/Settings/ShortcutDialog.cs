@@ -16,7 +16,7 @@ public abstract class ShortcutDialog : IdeWindow
     protected ShortcutDialog(string title)
     {
         Title = title;
-        Width = 460;
+        Width = DialogWidths.Question;
         SizeToContent = SizeToContent.Height;
         CanResize = false;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;

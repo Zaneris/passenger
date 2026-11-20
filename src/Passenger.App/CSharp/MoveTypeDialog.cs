@@ -20,7 +20,7 @@ public sealed class MoveTypeDialog : RefactoringDialog
             toFile
                 ? $"Specify the name of a new file beside {type.FileName} to move {type.Kind} '{type.Name}' to"
                 : $"Specify the namespace to move {type.Kind} '{type.Name}' to{(type.Namespace.Length > 0 ? $" from '{type.Namespace}'" : string.Empty)}; the code that uses it follows",
-            480)
+            DialogWidths.Form)
     {
         this.type = type;
         this.toFile = toFile;
@@ -28,7 +28,7 @@ public sealed class MoveTypeDialog : RefactoringDialog
         this.make = make;
         TargetBox = Field(toFile ? type.TargetFileName : type.Namespace);
         TargetBox.TextChanged += (_, _) => Changed();
-        Options = Row(toFile ? "Target file name:" : "Target namespace:", TargetBox, 140);
+        Options = Row(toFile ? "Target file name" : "Target namespace", TargetBox);
         Changed();
         FocusOnOpen(TargetBox);
     }

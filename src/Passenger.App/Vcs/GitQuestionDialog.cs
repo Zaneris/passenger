@@ -32,15 +32,15 @@ public sealed class GitQuestionDialog : IdeWindow
         StackPanel fields = new() { Spacing = FormRows.Between };
         if (user is not null)
         {
-            fields.Children.Add(FormRows.Of("User:", user));
+            fields.Children.Add(FormRows.Of("User", user));
         }
         if (secret is not null)
         {
             fields.Children.Add(FormRows.Of(question.Kind switch
             {
-                GitQuestionKind.Passphrase => "Passphrase:",
-                GitQuestionKind.Other => "Answer:",
-                _ => "Password:",
+                GitQuestionKind.Passphrase => "Passphrase",
+                GitQuestionKind.Other => "Answer",
+                _ => "Password",
             }, secret));
         }
 

@@ -48,7 +48,7 @@ public sealed class ConflictsDialog : IdeWindow
         this.vcs = vcs;
         this.merge = merge;
         Title = "Conflicts";
-        Width = 760;
+        Width = DialogWidths.Wide;
         Height = 420;
         MinWidth = 520;
         MinHeight = 260;

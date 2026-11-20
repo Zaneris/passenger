@@ -3258,8 +3258,9 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
     }
 
     /// <summary>A form's drop-down is a FormDropDown, which narrows with its room up to the form's most, so none stands past
-    /// a form narrower than it: the form's class given to a drop-down by hand, which held it to a width of its own, fails
-    /// here, naming its line.</summary>
+    /// a form narrower than it and every form's end where the others' do: the form's class given to a drop-down by hand,
+    /// which held it to a width of its own, or a plain drop-down made in a dialog's file but a table's cell, fails here,
+    /// naming its line.</summary>
     [Fact]
     public void Every_forms_drop_down_is_a_FormDropDown_narrowing_with_its_room()
     {
@@ -3268,6 +3269,70 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
             .SelectMany(f => f.Text.Split('\n').Select((line, i) => (f.Path, Line: i + 1, Text: line)))
             .Where(l => byHand.IsMatch(l.Text)).Select(l => $"{l.Path}:{l.Line}")];
         Assert.True(found.Length == 0, $"{found.Length} drop-downs are given a form's class by hand, so they keep no form's width: make each a FormDropDown:\n{string.Join("\n", found)}");
+
+        // A request line's method stands as wide as its words before the address it begins, no form's field.
+        string[] apart = ["Endpoints/InteractiveTestDialog.cs:Method"];
+        Regex plain = new(@"\b(?:(\w+)\s*=\s*new\s+ComboBox\b|ComboBox\s+(\w+)\s*=\s*new\s*\(\s*\))\s*\{?");
+        List<string> plainOnes = [];
+        foreach ((string path, string text) in UiFiles().Where(f => f.Path.EndsWith("Dialog.cs", StringComparison.Ordinal) || f.Path.EndsWith("Dialogs.cs", StringComparison.Ordinal)))
+        {
+            foreach (Match match in plain.Matches(text))
+            {
+                string name = match.Groups[1].Success ? match.Groups[1].Value : match.Groups[2].Value;
+                string own = match.Value.EndsWith('{') ? Whole(text, match.Index + match.Length) : string.Empty;
+                if (!own.Contains("StyleClasses.Cell", StringComparison.Ordinal) && !apart.Any(a => path.EndsWith(a.Split(':')[0], StringComparison.Ordinal) && a.EndsWith(":" + name, StringComparison.Ordinal)))
+                {
+                    plainOnes.Add($"{path}:{LineOf(text, match.Index)}: {name}");
+                }
+            }
+        }
+        Assert.True(plainOnes.Count == 0, $"{plainOnes.Count} drop-downs of a dialog's form are plain ones, stretched to the dialog's edge or held to a width of their own, "
+            + $"where every form's drop-down ends where the others' do: make each a FormDropDown:\n{string.Join("\n", plainOnes)}");
+        Assert.Matches(plain, "        From = new ComboBox { Name = \"ScriptFrom\" };");
+        Assert.Matches(plain, "    private readonly ComboBox stepBox = new() { HorizontalAlignment = HorizontalAlignment.Stretch };");
+        Assert.DoesNotMatch(plain, "    private readonly ComboBox stepBox = new FormDropDown();");
+    }
+
+    /// <summary>A dialog opens at one of the widths <see cref="DialogWidths"/> gives a kind of dialog, so a form is one width
+    /// wherever it opens: a dialog's width written as a number of its own, or one handed to a refactoring's frame, fails
+    /// here, naming its line.</summary>
+    [Fact]
+    public void Every_dialog_opens_at_one_of_the_widths_of_its_kind()
+    {
+        Regex dialog = new(@"\bclass\s+\w+Dialog\b[^{]*:\s*(?:IdeWindow|RefactoringDialog)\b");
+        Regex own = new(@"^\s+Width\s*=\s*\d+(?:\.\d+)?\s*;|(?:^\s+|""\s*,\s*)\d{3,4}\)\s*$", RegexOptions.Multiline);
+        string[] found = [.. UiFiles().Where(f => f.Path.EndsWith(".cs", StringComparison.Ordinal) && dialog.IsMatch(f.Text))
+            .SelectMany(f => own.Matches(f.Text).Select(m => $"{f.Path}:{LineOf(f.Text, m.Index)}: {m.Value.Trim()}"))];
+        Assert.True(found.Length == 0, $"{found.Length} dialogs open at a width of their own, so like dialogs open at unlike widths: give each the width of its kind "
+            + $"from DialogWidths (Question, Form, Wide, Workspace):\n{string.Join("\n", found)}");
+        Assert.Matches(own, "        Width = 600;");
+        Assert.Matches(own, "            720)");
+        Assert.Matches(own, "            \"Specify a new name\", 720)");
+        Assert.DoesNotMatch(own, "        Width = DialogWidths.Form;");
+    }
+
+    /// <summary>Work under way in a dialog is drawn as one line (Shell.axaml's ProgressBar), so a progress bar given a
+    /// height of its own fails here, naming its line.</summary>
+    [Fact]
+    public void Every_progress_bar_is_the_one_line_of_the_theme()
+    {
+        Regex bar = new(@"\bnew\s+ProgressBar\b\s*\{|\bProgressBar\s+\w+\s*=\s*new\s*\(\s*\)\s*\{");
+        string[] found = [.. UiFiles().Where(f => f.Path.EndsWith(".cs", StringComparison.Ordinal))
+            .SelectMany(f => bar.Matches(f.Text).Where(m => Regex.IsMatch(Initializer(f.Text, m.Index + m.Length), @"\b(?:Min)?Height\s*="))
+                .Select(m => $"{f.Path}:{LineOf(f.Text, m.Index)}"))];
+        Assert.True(found.Length == 0, $"{found.Length} progress bars are given a height of their own, so work under way is drawn unlike in each dialog: "
+            + $"leave the height to Shell.axaml's ProgressBar:\n{string.Join("\n", found)}");
+    }
+
+    /// <summary>A folder's or file's field and its Browse… button are a BrowseRow, which makes the button, so every one
+    /// stands, reads and spaces one way: a Browse… button made anywhere else fails here, naming its line.</summary>
+    [Fact]
+    public void Every_Browse_button_is_a_BrowseRows_own()
+    {
+        Regex byHand = new(@"\bContent\s*=\s*""Browse(?:…|\.\.\.)""");
+        string[] found = [.. UiFiles().Where(f => !f.Path.EndsWith("/BrowseRow.cs", StringComparison.Ordinal))
+            .SelectMany(f => byHand.Matches(f.Text).Select(m => $"{f.Path}:{LineOf(f.Text, m.Index)}"))];
+        Assert.True(found.Length == 0, $"{found.Length} Browse… buttons are made by hand beside their fields: make each row with BrowseRow.Of(field, pick):\n{string.Join("\n", found)}");
     }
 
     /// <summary>A button that copies words for the person to paste elsewhere, then says Copied, is a CopyButton (Copy
@@ -3382,7 +3447,9 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
 
     /// <summary>A form's rows of a label and the field it names are FormRows, so a screen reader hears each field by its
     /// label and every form's labels stand, wrap and align one way: a grid of an Auto column and a star column given words
-    /// for its first column (a TextBlock added to it, or a helper handed the grid and the words) fails here, naming its line.</summary>
+    /// for its first column (a TextBlock added to it, or a helper handed the grid and the words), or a label of a width of
+    /// its own docked at its field's left, fails here, naming its line; DialogButtonsTests.Check fails a label a dialog
+    /// shows beside or over a field that does not name it.</summary>
     [Fact]
     public void Every_forms_rows_of_a_label_and_its_field_are_FormRows()
     {
@@ -3399,8 +3466,35 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
                 }
             }
         }
+        // A label of a width of its own docked beside its field (a refactoring's rows were), or one stacked over it.
+        Regex docked = new(@"\bTextBlock\s+(\w+)\s*=\s*new(?:\s+TextBlock)?\s*(?:\(\))?\s*\{[^;]*?\bText\s*=\s*\w+[^;]*?\bWidth\s*=\s*\w+");
+        foreach ((string path, string text) in UiFiles().Where(f => f.Path.EndsWith(".cs", StringComparison.Ordinal) && !f.Path.EndsWith("/FormRows.cs", StringComparison.Ordinal)))
+        {
+            foreach (Match match in docked.Matches(text))
+            {
+                if (Regex.IsMatch(text, $@"DockPanel\.SetDock\(\s*{Regex.Escape(match.Groups[1].Value)}\s*,\s*Dock\.Left\s*\)"))
+                {
+                    found.Add($"{path}:{LineOf(text, match.Index)}: a label of a width of its own docked beside its field");
+                }
+            }
+        }
         Assert.True(found.Count == 0, $"{found.Count} forms lay out their labels beside their fields by hand, so a screen reader hears none of those fields by its label "
             + $"and their labels drift from every other form's: make each row with FormRows.Of, its form marked by FormRows.Scope:\n{string.Join("\n", found)}");
+    }
+
+    /// <summary>A form's label is its words alone, with no colon after them, as every Settings row's and run configuration's
+    /// is: a label ending in a colon handed to a form's row (FormRows.Of, a dialog's Row) fails here, naming its line, as
+    /// DialogButtonsTests.Check fails one a dialog shows.</summary>
+    [Fact]
+    public void No_forms_label_ends_in_a_colon()
+    {
+        Regex colon = new(@"\b(?:FormRows\.Of|Row)\(\s*(?:[^""(),;\n]*\?\s*)?""[^""\n]*:""");
+        string[] found = [.. UiFiles().Where(f => f.Path.EndsWith(".cs", StringComparison.Ordinal))
+            .SelectMany(f => colon.Matches(f.Text).Select(m => $"{f.Path}:{LineOf(f.Text, m.Index)}: {m.Value}"))];
+        Assert.True(found.Length == 0, $"{found.Length} form labels end in a colon, where every form's labels are their words alone:\n{string.Join("\n", found)}");
+        Assert.Matches(colon, "                Row(\"Name:\", NameBox),");
+        Assert.Matches(colon, "        Options = Row(toFile ? \"Target file name:\" : \"Target namespace:\", TargetBox);");
+        Assert.DoesNotMatch(colon, "                Row(\"Name\", NameBox),");
     }
 
     /// <summary>A table's rows edited in place are ColumnTitles' ruled rows, so every such table's rows are one height over
@@ -3545,6 +3639,19 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
             }
         }
         return own.ToString();
+    }
+
+    /// <summary>An object initializer's whole text from just after its opening brace, what its own initializers set
+    /// inside it too (a class list's).</summary>
+    private static string Whole(string text, int from)
+    {
+        int depth = 1;
+        int at = from;
+        for (; at < text.Length && depth > 0; at++)
+        {
+            depth += text[at] switch { '{' => 1, '}' => -1, _ => 0 };
+        }
+        return text[from..Math.Max(from, at - 1)];
     }
 
     private static int LineOf(string text, int at) => text.AsSpan(0, at).Count('\n') + 1;

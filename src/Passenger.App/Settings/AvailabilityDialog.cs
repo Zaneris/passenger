@@ -15,7 +15,7 @@ public sealed class AvailabilityDialog : IdeWindow
     public AvailabilityDialog(TemplateAvailability where, TemplateUse use)
     {
         Title = "Availability configuration";
-        Width = 520;
+        Width = DialogWidths.Question;
         Height = 360;
         MinWidth = 420;
         MinHeight = 280;

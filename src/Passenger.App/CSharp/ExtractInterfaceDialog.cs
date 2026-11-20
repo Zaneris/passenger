@@ -61,11 +61,10 @@ public sealed class ExtractInterfaceDialog : RefactoringDialog
             Spacing = FormRows.Between,
             Children =
             {
-                Row("Interface name:", NameBox),
-                Row("File name:", FileBox),
-                new TextBlock { Text = "Members to form interface:" },
-                listFrame,
-                new StackPanel { Orientation = Orientation.Horizontal, Spacing = Gaps.Normal, Children = { SelectAllButton, SelectNoneButton } },
+                Row("Interface name", NameBox),
+                Row("File name", FileBox),
+                Row("Members to form interface", listFrame, top: true),
+                Row(null, new StackPanel { Orientation = Orientation.Horizontal, Spacing = Gaps.Normal, Children = { SelectAllButton, SelectNoneButton } }),
             },
         };
         Changed();

@@ -90,12 +90,12 @@ public sealed class LiveTemplatesPane : ListPane
             Spacing = Gaps.Normal,
             Children =
             {
-                Row("Shortcut:", ShortcutBox),
-                Row("Description:", DescriptionBox),
-                Row("Options:", ReformatBox),
-                Row("Availability:", new DockPanel { Children = { Docked(AvailabilityButton, Dock.Right), AvailabilityText } }),
-                Row("Use in:", new WrapPanel { ItemSpacing = Gaps.Group, LineSpacing = Gaps.Tight, Children = { GenerationButton, SurroundButton, BothButton } }),
-                Row("Mnemonic:", new StackPanel { Orientation = Orientation.Horizontal, Children = { MnemonicBox, mnemonicSaid } }),
+                Row("Shortcut", ShortcutBox),
+                Row("Description", DescriptionBox),
+                Row("Options", ReformatBox),
+                Row("Availability", new DockPanel { Children = { Docked(AvailabilityButton, Dock.Right), AvailabilityText } }),
+                Row("Use in", new WrapPanel { ItemSpacing = Gaps.Group, LineSpacing = Gaps.Tight, Children = { GenerationButton, SurroundButton, BothButton } }),
+                Row("Mnemonic", new StackPanel { Orientation = Orientation.Horizontal, Children = { MnemonicBox, mnemonicSaid } }),
                 Row(string.Empty, new DockPanel { Children = { Docked(EditVariablesButton, Dock.Left), variablesSaid } }),
             },
         };

@@ -20,11 +20,10 @@ public sealed class AppHostPublishDialog : IdeWindow
     private readonly string open;
     private readonly IReadOnlyList<string> configured;
     private readonly TextBox folderBox = new() { Classes = { StyleClasses.Search } };
-    private readonly Button browse = new() { Content = "Browse…", Margin = new Thickness(Gaps.Normal, 0, 0, 0) };
-    private readonly ComboBox stepBox = new() { HorizontalAlignment = HorizontalAlignment.Stretch };
-    private readonly TextBlock stepSaid = new() { Classes = { StyleClasses.Muted, StyleClasses.Caption }, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, Gaps.Tight, 0, 0) };
-    private readonly TextBlock destination = new() { Classes = { StyleClasses.Muted, StyleClasses.Caption }, TextTrimming = TextTrimming.PathSegmentEllipsis, Margin = new Thickness(0, Gaps.Tight, 0, 0) };
-    private readonly TextBlock command = new() { Classes = { StyleClasses.Muted, StyleClasses.Caption }, TextWrapping = TextWrapping.Wrap };
+    private readonly ComboBox stepBox = new FormDropDown();
+    private readonly TextBlock stepSaid = FormRows.Note();
+    private readonly TextBlock destination = FormRows.Note(path: true);
+    private readonly TextBlock command = FormRows.Note();
     private readonly TextBlock problem = new() { TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center };
     private readonly Button publish = DialogFooter.Default("Publish");
     private readonly CancellationTokenSource closing = new();
@@ -42,13 +41,12 @@ public sealed class AppHostPublishDialog : IdeWindow
         this.configured = configured ?? [];
         string name = Path.GetFileNameWithoutExtension(project);
         Title = $"Publish {name}";
-        Width = 600;
+        Width = DialogWidths.Form;
         SizeToContent = SizeToContent.Height;
         CanResize = false;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
         problem.Classes.Add(StyleClasses.Error);
         publish.Click += (_, _) => Publish();
-        browse.Click += (_, _) => IdeErrors.Observe(BrowseAsync());
         folderBox.TextChanged += (_, _) => Changed();
         stepBox.SelectionChanged += (_, _) => Changed();
         Closed += (_, _) => closing.Cancel();
@@ -58,8 +56,8 @@ public sealed class AppHostPublishDialog : IdeWindow
             Spacing = FormRows.Between,
             Children =
             {
-                new StackPanel { Children = { FormRows.Of("Run:", stepBox), FormRows.Of(null, stepSaid) } },
-                new StackPanel { Children = { FormRows.Of("Output folder:", BrowseRow.Of(folderBox, browse)), FormRows.Of(null, destination) } },
+                FormRows.Of("Run", stepBox, [stepSaid]),
+                FormRows.Of("Output folder", BrowseRow.Of(folderBox, BrowseAsync), [destination]),
             },
         };
         Content = DialogFooter.Headed($"Publish {name}", command, fields, DialogFooter.OkCancel(publish, () => Close(null), problem));

@@ -50,8 +50,8 @@ public sealed class TemplateOptions
                 ? kept : option.Default;
             values[option.Name] = value;
             // One of the rest says what it is under its field, where its switch or name alone may not.
-            TextBlock? said = !option.Picked && option.Description is { Length: > 0 } description ? MutedText.Wrapped(description) : null;
-            string label = option.NamedBySwitch ? option.Label : $"{option.Label}:";
+            TextBlock[] said = !option.Picked && option.Description is { Length: > 0 } description ? [FormRows.Note(description)] : [];
+            string label = option.Label;
             Control editor;
             Control row;
             switch (option.Kind)
@@ -60,7 +60,7 @@ public sealed class TemplateOptions
                     CheckBox box = new() { Content = option.Label, IsChecked = IsTrue(value) != option.Inverted };
                     box.IsCheckedChanged += (_, _) => Set(option, (box.IsChecked == true) != option.Inverted ? "true" : "false");
                     editor = box;
-                    row = Row(null, Described(box, said), top: said is not null);
+                    row = Row(null, box, said);
                     break;
                 case TemplateOptionKind.Choice:
                     FormDropDown choices = new() { ItemsSource = option.Choices.Select(c => c.Label).ToList() };
@@ -73,16 +73,16 @@ public sealed class TemplateOptions
                         }
                     };
                     editor = choices;
-                    row = Row(label, Described(choices, said), top: said is not null);
+                    row = Row(label, choices, said);
                     break;
                 default:
                     TextBox text = new() { Classes = { StyleClasses.Search }, Text = value, MaxWidth = 360, HorizontalAlignment = HorizontalAlignment.Left, MinWidth = 240 };
                     text.TextChanged += (_, _) => Set(option, text.Text ?? string.Empty);
                     editor = text;
-                    row = Row(label, Described(text, said), top: said is not null);
+                    row = Row(label, text, said);
                     break;
             }
-            if (said is null && option.Description is { Length: > 0 } tip)
+            if (said.Length == 0 && option.Description is { Length: > 0 } tip)
             {
                 ToolTip.SetTip(row, tip);
             }
@@ -98,17 +98,6 @@ public sealed class TemplateOptions
 
     /// <summary>The link that opens the options waiting under More options, while a template has some.</summary>
     public Button MoreOptions => more.Opener;
-
-    /// <summary>A field with what it is said under it, where it is said.</summary>
-    private static Control Described(Control editor, TextBlock? said)
-    {
-        if (said is null)
-        {
-            return editor;
-        }
-        editor.HorizontalAlignment = HorizontalAlignment.Left;
-        return new StackPanel { Spacing = Gaps.Tight, Children = { editor, said } };
-    }
 
     /// <summary>No options, as for a template that has none to show.</summary>
     public void Clear()
@@ -166,13 +155,13 @@ public sealed class TemplateOptions
 
     /// <summary>A row of a dialog's form: its label (none for a checkbox, which carries its own) and what sets it, the label
     /// at the top of a field with words under it.</summary>
-    public static Control Row(string? label, Control editor, bool top = false)
+    public static Control Row(string? label, Control editor, IReadOnlyList<TextBlock>? notes = null, bool top = false)
     {
         if (editor is ComboBox)
         {
             editor.HorizontalAlignment = HorizontalAlignment.Left;
         }
-        return FormRows.Of(label, editor, top);
+        return FormRows.Of(label, editor, notes ?? [], top);
     }
 
     /// <summary>What a project has of an option its template turns off, where that is not the option's value: VSTest for a

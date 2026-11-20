@@ -3,6 +3,7 @@ using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.Input;
+using Avalonia.VisualTree;
 using Passenger.App;
 using Passenger.App.Aspire;
 using Passenger.App.Explorer;
@@ -578,7 +579,7 @@ public sealed class AspireOrchestrationTests : IClassFixture<AspireOrchestration
         AspireOrchestrationDialog dialog = Show(window, services[0]);
         foreach (string service in services.Skip(1))
         {
-            Ui.Click(Assert.Single(dialog.ServiceProjects.ItemsSource!.Cast<CheckBox>(), c => Equals(c.Content, service)));
+            Ui.Click(Box(dialog, service));
         }
         Select(dialog, dialog.AppHost, host);
         Select(dialog, dialog.ServiceDefaults, defaults);
@@ -596,13 +597,21 @@ public sealed class AspireOrchestrationTests : IClassFixture<AspireOrchestration
         Ui.Press(window, "ENTER");
         AspireOrchestrationDialog dialog = DialogButtonsTests.Check(Assert.Single(window.OwnedWindows.OfType<AspireOrchestrationDialog>()));
         Ui.Settle();
-        List<CheckBox> choices = [.. dialog.ServiceProjects.ItemsSource!.Cast<CheckBox>()];
-        Assert.True(choices.Count(c => Equals(c.Content, service)) == 1,
-            $"Expected one {service} service checkbox; offered [{string.Join(", ", choices.Select(c => c.Content))}]. Projects when opening the dialog: {candidates}");
-        CheckBox check = Assert.Single(choices, c => Equals(c.Content, service));
-        Ui.Click(check);
-        Assert.True(dialog.Add.IsEnabled, "Selecting a service did not enable Add");
+        Assert.True(dialog.Services.Count(c => c.Name == service) == 1,
+            $"Expected one {service} service to check; offered [{string.Join(", ", dialog.Services.Select(c => c.Name))}]. Projects when opening the dialog: {candidates}");
+        Ui.Click(Box(dialog, service));
+        Assert.True(dialog.Add.IsEnabled, "Checking a service did not enable Add");
         return dialog;
+    }
+
+    /// <summary>The box of a service project's row, brought into sight.</summary>
+    private static CheckBox Box(AspireOrchestrationDialog dialog, string service)
+    {
+        CheckChoice choice = Assert.Single(dialog.Services, c => c.Name == service);
+        dialog.ServiceProjects.ScrollIntoView(choice);
+        Ui.Settle();
+        return dialog.ServiceProjects.ContainerFromItem(choice)?.GetVisualDescendants().OfType<CheckBox>().Single()
+            ?? throw new Xunit.Sdk.XunitException($"The service {service} has no row in sight");
     }
 
     private static string Add(MainWindow window, string service, bool existing)

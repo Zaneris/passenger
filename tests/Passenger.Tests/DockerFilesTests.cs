@@ -689,7 +689,7 @@ public sealed class DockerFilesTests : IClassFixture<DockerFilesTests.Shop>
             UiRulesTests.HoldsToRowHeight("Add Docker Compose", dialog);
             Assert.Equal([("Api", "no Dockerfile: Docker Support adds one"), ("Worker", "no Dockerfile: Docker Support adds one")],
                 dialog.Projects.Select(p => (p.Name, p.Detail)));
-            ComposeChoice postgres = Assert.Single(dialog.Services);
+            CheckChoice postgres = Assert.Single(dialog.Services);
             Assert.Equal(("postgres", "postgres:18, for Api"), (postgres.Name, postgres.Detail));
             dialog.Projects.Single(p => p.Name == "Worker").IsChosen = false;
             dialog.Close(true);
@@ -1007,7 +1007,7 @@ public sealed class DockerFilesTests : IClassFixture<DockerFilesTests.Shop>
             AwaitEvaluated(window, 1);
             Machine(rosetta: true, emulates: true);
             DockerComposeDialog dialog = Opened();
-            ComposeChoice sql = Assert.Single(dialog.Services);
+            CheckChoice sql = Assert.Single(dialog.Services);
             Assert.Equal(("sqlserver", "mcr.microsoft.com/mssql/server:2025-latest, for Orders", true, true), (sql.Name, sql.Detail, sql.CanChoose, sql.IsChosen));
             Assert.Equal("SQL Server's image is built for x86-64 alone: on Apple silicon it runs only where the container engine translates it with Rosetta "
                 + "(Docker Desktop's Use Rosetta for x86_64/amd64 emulation, on the Apple Virtualization framework)", dialog.Note);

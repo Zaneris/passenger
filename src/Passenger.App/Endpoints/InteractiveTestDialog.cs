@@ -1,4 +1,5 @@
 using Avalonia;
+using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Layout;
@@ -27,7 +28,7 @@ public sealed class InteractiveTestDialog : IdeWindow
         this.endpoints = endpoints;
         string? environment = endpoints.Environment;
         Title = $"Interactive Test: {request.Title}";
-        Width = 1040;
+        Width = DialogWidths.Workspace;
         Height = 640;
         MinWidth = 640;
         MinHeight = 420;
@@ -83,6 +84,8 @@ public sealed class InteractiveTestDialog : IdeWindow
         Add(fields, Caption(environment is null ? "No environment: {{variables}} take the file's values" : $"Variables from the {environment} environment and the file"), 1);
         Add(fields, tabRow, 2);
         Add(fields, pageArea, 3);
+        TextBlock timeoutLabel = new() { Text = "Timeout (s)", VerticalAlignment = VerticalAlignment.Center };
+        AutomationProperties.SetLabeledBy(Timeout, timeoutLabel);
         // Wrapped, so a narrow request pane puts the check boxes under the timeout rather than past the divider.
         WrapPanel options = new()
         {
@@ -92,7 +95,7 @@ public sealed class InteractiveTestDialog : IdeWindow
             Margin = new Thickness(0, Gaps.Tight, 0, 0),
             Children =
             {
-                new StackPanel { Orientation = Orientation.Horizontal, Spacing = Gaps.Normal, Children = { new TextBlock { Text = "Timeout (s)", VerticalAlignment = VerticalAlignment.Center }, Timeout } },
+                new StackPanel { Orientation = Orientation.Horizontal, Spacing = Gaps.Normal, Children = { timeoutLabel, Timeout } },
                 FollowRedirects,
                 AcceptAnyCertificate,
             },

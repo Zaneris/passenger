@@ -17,8 +17,9 @@ public abstract class RefactoringDialog : IdeWindow
     private readonly Decorator body = new();
     private bool running;
 
-    protected RefactoringDialog(string title, string page, string description, double width = 560)
+    protected RefactoringDialog(string title, string page, string description, double width = DialogWidths.Form)
     {
+        FormRows.Scope(this);
         Title = title;
         Width = width;
         SizeToContent = SizeToContent.Height;
@@ -108,16 +109,8 @@ public abstract class RefactoringDialog : IdeWindow
         Refuse(refused);
     }
 
-    /// <summary>A label and what it names, the label in a column of its own.</summary>
-    protected static Control Row(string label, Control editor, double labelWidth = 130)
-    {
-        TextBlock name = new() { Text = label, Width = labelWidth, VerticalAlignment = VerticalAlignment.Center };
-        DockPanel row = new();
-        DockPanel.SetDock(name, Dock.Left);
-        row.Children.Add(name);
-        row.Children.Add(editor);
-        return row;
-    }
+    /// <summary>A label and what it names, a form's row (<see cref="FormRows"/>), the label at the top of a tall field.</summary>
+    protected static Control Row(string? label, Control editor, bool top = false) => FormRows.Of(label, editor, top);
 
     protected static TextBox Field(string text) => new() { Classes = { StyleClasses.Search }, Text = text };
 }

@@ -29,7 +29,7 @@ public sealed class FeedDialog : IdeWindow
         this.file = file;
         this.feed = feed;
         Title = feed is null ? "New feed" : $"Editing: {feed.Name}";
-        Width = 520;
+        Width = DialogWidths.Form;
         SizeToContent = SizeToContent.Height;
         CanResize = false;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
@@ -48,10 +48,10 @@ public sealed class FeedDialog : IdeWindow
             Spacing = Gaps.Normal,
             Children =
             {
-                FormRows.Of("Name:", name),
-                FormRows.Of("URL:", url),
-                FormRows.Of("User:", user),
-                FormRows.Of("Password:", password),
+                FormRows.Of("Name", name),
+                FormRows.Of("URL", url),
+                FormRows.Of("User", user),
+                FormRows.Of("Password", password),
                 FormRows.Of(null, enabled),
                 FormRows.Of(null, insecure),
             },

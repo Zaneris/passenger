@@ -7,6 +7,7 @@ using Avalonia.Headless.XUnit;
 using Avalonia.Input;
 using Avalonia.VisualTree;
 using Passenger.App;
+using Passenger.App.CSharp;
 using Passenger.App.Debugging;
 using Passenger.App.Docking;
 using Passenger.App.Editors;
@@ -16,10 +17,13 @@ using Passenger.App.Packages;
 using Passenger.App.Settings;
 using Passenger.App.Vcs;
 using Passenger.App.Workspace;
+using Passenger.App.Xaml;
 using Passenger.Core;
 using Passenger.Editor;
 using Passenger.Packages;
+using Passenger.Roslyn.Extension;
 using Passenger.Vcs;
+using Passenger.Xaml.Features;
 
 namespace Passenger.Tests;
 
@@ -568,15 +572,36 @@ public sealed class AccessibilityTests : IDisposable
     public void Every_field_of_a_dialogs_form_is_named_by_the_label_beside_it()
     {
         ConfigFile config = new(Path.Combine(folder, "nuget.config"), ConfigPlace.Folder, [], [], false, null, null, null);
-        Named(new FeedDialog(config, null), "Name:", "URL:", "User:", "Password:", "Enabled", "Allow insecure connections");
-        Named(new MigrationScriptDialog([new MigrationRow("1", "Initial", true)], "ShopContext"), "From:", "To:");
-        Named(new GitQuestionDialog(new GitQuestion(GitQuestionKind.User, "Username for 'https://example.com': ", "https://example.com"), null), "User:", "Password:");
-        Named(new GitQuestionDialog(new GitQuestion(GitQuestionKind.Passphrase, "Enter passphrase for key '/keys/id': ", "/keys/id"), null), "Passphrase:");
-        Named(new CommitSigningDialog(new SigningSetup(false, SigningFormat.Ssh, null), null, Path.Combine(folder, "allowed_signers")), "Key:");
-        Named(new CloneDialog(folder), "URL:", "Directory:");
+        Named(new FeedDialog(config, null), "Name", "URL", "User", "Password", "Enabled", "Allow insecure connections");
+        Named(new MigrationScriptDialog([new MigrationRow("1", "Initial", true)], "ShopContext"), "From", "To");
+        Named(new GitQuestionDialog(new GitQuestion(GitQuestionKind.User, "Username for 'https://example.com': ", "https://example.com"), null), "User", "Password");
+        Named(new GitQuestionDialog(new GitQuestion(GitQuestionKind.Passphrase, "Enter passphrase for key '/keys/id': ", "/keys/id"), null), "Passphrase");
+        Named(new CommitSigningDialog(new SigningSetup(false, SigningFormat.Ssh, null), null, Path.Combine(folder, "allowed_signers")), "Key");
+        Named(new CloneDialog(folder), "URL", "Directory");
         BreakpointProperties breakpoint = new();
         breakpoint.Show(new ExceptionBreakpoint("System.InvalidOperationException"));
-        Named(new Window { Title = "Breakpoints", Width = 640, SizeToContent = SizeToContent.Height, Content = breakpoint }, "Condition:", "Hit count:", "Log message:");
+        Named(new Window { Title = "Breakpoints", Width = 640, SizeToContent = SizeToContent.Height, Content = breakpoint }, "Condition", "Hit count", "Log message");
+    }
+
+    /// <summary>The refactorings that ask their options in a dialog, as a screen reader meets each: every field named by the
+    /// label beside it, as every other form's is.</summary>
+    [AvaloniaFact]
+    public void Every_field_of_a_refactorings_dialog_is_named_by_the_label_beside_it()
+    {
+        Member name = new("P:Shop.Cart.Name", "Name: string", "property");
+        Member total = new("M:Shop.Cart.Total", "Total(): int", "method");
+        Named(new ExtractInterfaceDialog(new InterfaceSource(null, "Cart", "ICart", "ICart.cs", "Shop", [name, total]), (_, _, _) => Task.FromResult<string?>(null)),
+            "Interface name", "File name");
+        Named(MoveTypeDialog.ToFile(new TypeSource(null, "Cart", "class", "Shop", "Program.cs", "Cart.cs", 2), folder, _ => Task.FromResult<string?>(null)), "Target file name");
+        Named(MoveTypeDialog.ToNamespace(new TypeSource(null, "Cart", "class", "Shop", "Program.cs", "Cart.cs", 2), _ => Task.FromResult<string?>(null)), "Target namespace");
+        Named(MembersMoveDialog.PullUp(new Hierarchy(null, "Cart", [name, total], [new Member("T:Shop.Basket", "Basket", "class")], []), (_, _, _) => Task.FromResult<string?>(null)),
+            "Base type");
+        Named(new ChangeSignatureDialog(new Signature(null, "method", "Cart", "public", "Total", "int", [new Parameter(string.Empty, "int", "tax", string.Empty)], false),
+            (_, _, _) => Task.FromResult<string?>(null)), "Name", "Return type");
+        Named(new ExtractResourceDialog(new ExtractableValue("Background", "Red", new ResourceShape("https://github.com/avaloniaui", "SolidColorBrush", "Brush", true, '"'), "RedBrush", [(0, 3)]), [new ResourcePlace("App.axaml", "Application")],
+            _ => null, (_, _, _) => Task.FromResult<string?>(null)), "Resource name", "Create in");
+        Named(new ExtractStyleDialog(new StyleSource("Button", 0, [new StyleProperty("Margin", "12", false, 0, 1, "12")], "Spaced", true), [new ResourcePlace("App.axaml", "Application")],
+            _ => null, (_, _, _) => Task.FromResult<string?>(null)), "Style class", "Create in");
     }
 
     /// <summary>Shows a dialog and walks it as a screen reader does, holding it to each label naming a field and to no field

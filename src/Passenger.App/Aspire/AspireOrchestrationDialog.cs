@@ -8,69 +8,67 @@ namespace Passenger.App.Aspire;
 /// <summary>Chooses the projects for one undoable orchestration change.</summary>
 public sealed class AspireOrchestrationDialog : IdeWindow
 {
-    private readonly IReadOnlyList<(ProjectModel Project, CheckBox Check)> choices;
+    private readonly IReadOnlyList<CheckChoice> choices;
 
     public AspireOrchestrationDialog(string solutionName, IReadOnlyList<ProjectModel> projects)
     {
+        FormRows.Scope(this);
         Title = "Add Aspire Orchestration";
-        Width = 520;
+        Width = DialogWidths.Form;
         Height = 480;
         MinWidth = 380;
         MinHeight = 340;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
         choices = [.. projects.Where(p => p.Exists && p.IsRunnable && !p.IsAspireHost && Path.GetExtension(p.Path) == ".csproj")
             .OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase)
-            .Select(p => (p, new CheckBox { Content = p.Name }))];
-        ServiceProjects = new ListBox
-        {
-            ItemsSource = choices.Select(c => c.Check).ToList(),
-            MinHeight = 100,
-        };
+            .Select(p => new CheckChoice(p.Name, string.Empty, false, p))];
         List<ProjectModel?> hosts = [null, .. projects.Where(p => p.Exists && p.IsAspireHost)];
         List<ProjectModel?> defaults = [null, .. projects.Where(p => p.Exists && !p.IsAspireHost && !p.IsRunnable
             && !p.IsTestProject && Path.GetExtension(p.Path) == ".csproj")
             .OrderByDescending(p => p.Name.EndsWith("ServiceDefaults", StringComparison.OrdinalIgnoreCase)).ThenBy(p => p.Name)];
-        AppHost = new ComboBox
+        AppHost = new FormDropDown
         {
             ItemsSource = hosts.Select(p => p?.Name ?? $"New {solutionName}.AppHost").ToList(),
             SelectedIndex = 0,
-            HorizontalAlignment = HorizontalAlignment.Stretch
         };
-        ServiceDefaults = new ComboBox
+        ServiceDefaults = new FormDropDown
         {
             ItemsSource = defaults.Select(p => p?.Name ?? $"New {solutionName}.ServiceDefaults").ToList(),
             SelectedIndex = 0,
-            HorizontalAlignment = HorizontalAlignment.Stretch
         };
         Add = DialogFooter.Default("Add");
         Add.IsEnabled = false;
         InstallTemplates = new Button { Content = "Install Aspire templates…" };
         Problem = new TextBlock { TextWrapping = Avalonia.Media.TextWrapping.Wrap };
-        foreach ((ProjectModel _, CheckBox check) in choices)
+        foreach (CheckChoice choice in choices)
         {
-            check.IsCheckedChanged += (_, _) => Add.IsEnabled = choices.Any(c => c.Check.IsChecked == true);
+            choice.PropertyChanged += (_, _) => Add.IsEnabled = choices.Any(c => c.IsChosen);
         }
         Add.Click += (_, _) => Close(new AspireOrchestrationChoice(
-            [.. choices.Where(c => c.Check.IsChecked == true).Select(c => c.Project)],
+            [.. choices.Where(c => c.IsChosen).Select(c => (ProjectModel)c.Value)],
             hosts[AppHost.SelectedIndex], defaults[ServiceDefaults.SelectedIndex]));
+        ServiceProjects = CheckRows.List(choices);
         StackPanel options = new()
         {
-            Spacing = Gaps.Normal,
+            Spacing = FormRows.Between,
+            Margin = new Thickness(0, FormRows.Between, 0, 0),
             Children =
             {
-                new TextBlock { Text = "AppHost" }, AppHost,
-                new TextBlock { Text = "ServiceDefaults" }, ServiceDefaults,
-                InstallTemplates, Problem,
+                FormRows.Of("AppHost", AppHost),
+                FormRows.Of("ServiceDefaults", ServiceDefaults),
+                FormRows.Of(null, InstallTemplates),
             },
         };
+        if (choices.Count == 0)
+        {
+            options.Children.Add(FormRows.Of(null, Problem));
+        }
         DockPanel.SetDock(options, Dock.Bottom);
-        TextBlock heading = new() { Text = "Service projects", Margin = new Thickness(0, 0, 0, Gaps.Normal) };
-        DockPanel.SetDock(heading, Dock.Top);
-        Border rows = new() { Classes = { StyleClasses.Framed }, Child = ServiceProjects, Margin = new Thickness(0, 0, 0, Gaps.Wide) };
+        Border rows = new() { Classes = { StyleClasses.Framed }, Child = ServiceProjects, MinHeight = 100 };
         Content = DialogFooter.Page(new DockPanel
         {
             [DialogFooter.InsetProperty] = true,
-            Children = { heading, options, rows },
+            Children = { options, FormRows.Of("Service projects", rows, top: true) },
         }, DialogFooter.OkCancel(Add, () => Close(null)));
         if (choices.Count == 0)
         {
@@ -78,7 +76,11 @@ public sealed class AspireOrchestrationDialog : IdeWindow
         }
     }
 
+    /// <summary>The projects that run as services, each checked to be orchestrated.</summary>
     public ListBox ServiceProjects { get; }
+
+    /// <summary>What <see cref="ServiceProjects"/> offers, by each project's name.</summary>
+    public IReadOnlyList<CheckChoice> Services => choices;
     public ComboBox AppHost { get; }
     public ComboBox ServiceDefaults { get; }
     public Button Add { get; }

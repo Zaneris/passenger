@@ -1,4 +1,5 @@
 using Avalonia;
+using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Layout;
@@ -16,6 +17,9 @@ public sealed class ChangeSignatureDialog : RefactoringDialog
 {
     private const string Columns = "110,*,*,*";
 
+    /// <summary>The parameters' columns' titles, which name their cells for a screen reader too.</summary>
+    private static readonly string[] Titles = ["Modifier", "Type", "Name", "Default value"];
+
     /// <summary>The signature's kind for a GDScript function.</summary>
     public const string GDScriptKind = "gdscript";
 
@@ -32,7 +36,7 @@ public sealed class ChangeSignatureDialog : RefactoringDialog
 
     public ChangeSignatureDialog(Signature signature, Func<string, string, IReadOnlyList<ParameterChange>, Task<string?>> make)
         : base("Change Signature", "Define signature changes",
-            "Specify a new name, return type, and parameters, then ensure the signature preview shows the correct signature", 720)
+            "Specify a new name, return type, and parameters, then ensure the signature preview shows the correct signature", DialogWidths.Wide)
     {
         this.signature = signature;
         this.make = make;
@@ -59,7 +63,7 @@ public sealed class ChangeSignatureDialog : RefactoringDialog
             ClipToBounds = true,
             Child = new DockPanel
             {
-                Children = { ColumnTitles.Of(Columns, ["Modifier", "Type", "Name", "Default value"]), new ScrollViewer { Content = table, MaxHeight = 220, MinHeight = 120 } },
+                Children = { ColumnTitles.Of(Columns, Titles), new ScrollViewer { Content = table, MaxHeight = 220, MinHeight = 120 } },
             },
         };
 
@@ -76,19 +80,18 @@ public sealed class ChangeSignatureDialog : RefactoringDialog
             Spacing = FormRows.Between,
             Children =
             {
-                Row("Name:", NameBox),
-                Row("Return type:", ReturnTypeBox),
-                new DockPanel
+                Row("Name", NameBox),
+                Row("Return type", ReturnTypeBox),
+                Row("Parameters", new StackPanel
                 {
+                    Spacing = Gaps.Tight,
                     Children =
                     {
-                        Docked(new TextBlock { Text = "Parameters:", VerticalAlignment = VerticalAlignment.Center }, Dock.Left),
                         new StackPanel { Orientation = Orientation.Horizontal, Spacing = Gaps.Hair, HorizontalAlignment = HorizontalAlignment.Right, Children = { AddButton, RemoveButton, UpButton, DownButton } },
+                        tableFrame,
                     },
-                },
-                tableFrame,
-                new TextBlock { Text = "Signature preview:" },
-                previewFrame,
+                }, top: true),
+                Row("Signature preview", previewFrame, top: true),
             },
         };
         Lay();
@@ -279,6 +282,8 @@ public sealed class ChangeSignatureDialog : RefactoringDialog
         Control[] parts = [modifiers, typeBox, nameBox, defaultBox];
         for (int i = 0; i < parts.Length; i++)
         {
+            // A cell is heard by its column's title, the words a person sees over it.
+            AutomationProperties.SetName(parts[i], Titles[i]);
             Grid.SetColumn(parts[i], i);
             cells.Children.Add(parts[i]);
         }
@@ -302,12 +307,6 @@ public sealed class ChangeSignatureDialog : RefactoringDialog
     }
 
     private static TextBox Cell(string text) => new() { Classes = { StyleClasses.Cell }, Text = text };
-
-    private static T Docked<T>(T control, Dock dock) where T : Control
-    {
-        DockPanel.SetDock(control, dock);
-        return control;
-    }
 
     /// <summary>A parameter's row: the one it was in the old signature (-1 for a new one) and its cells.</summary>
     public sealed class ParameterRow(int from, ComboBox modifierBox, TextBox typeBox, TextBox nameBox, TextBox defaultBox, Border view)

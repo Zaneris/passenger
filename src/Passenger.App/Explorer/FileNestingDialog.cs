@@ -13,7 +13,7 @@ public sealed class FileNestingDialog : IdeWindow
     public FileNestingDialog(bool nest)
     {
         Title = "File Nesting";
-        Width = 720;
+        Width = DialogWidths.Wide;
         Height = 480;
         MinWidth = 420;
         MinHeight = 300;
