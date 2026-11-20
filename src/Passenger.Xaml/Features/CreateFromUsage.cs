@@ -106,7 +106,7 @@ public static class CreateFromUsage
     private static Planned Plan(XamlFile file, ClrType owner, string name, XmlAttribute attribute, bool last)
     {
         TypeSystem types = file.Types;
-        bool nullable = string.Equals(file.Project.Inputs.PropertyValue("Nullable"), "enable", StringComparison.OrdinalIgnoreCase);
+        bool nullable = string.Equals(file.Project.Inputs.PropertyValue(MSBuildNames.Nullable), "enable", StringComparison.OrdinalIgnoreCase);
         XamlProperty? target = last ? TargetOf(file, attribute) : null;
         bool command = target is { } set && (set.Name == "Command" || types.Resolve(file.Dialect.ValueTypeOf(set.ValueType))?.FullName == "System.Windows.Input.ICommand");
         // The toolkit in the project, and the class one of its: an ObservableObject, marked as one, or with members it generates from.
@@ -375,7 +375,7 @@ public static class CreateFromUsage
         {
             return there;
         }
-        string root = file.Project.Inputs.PropertyValue("RootNamespace") is { Length: > 0 } named ? named : file.Project.AssemblyName;
+        string root = file.Project.Inputs.PropertyValue(MSBuildNames.RootNamespace) is { Length: > 0 } named ? named : file.Project.AssemblyName;
         string relative = Path.GetRelativePath(file.Project.Folder, folder);
         return relative == "." ? root : root + "." + relative.Replace(Path.DirectorySeparatorChar, '.').Replace('/', '.');
     }
@@ -385,7 +385,7 @@ public static class CreateFromUsage
     /// writes it.</summary>
     private static string ConverterText(XamlFile file, string space, string name, bool avalonia)
     {
-        bool nullable = string.Equals(file.Project.Inputs.PropertyValue("Nullable"), "enable", StringComparison.OrdinalIgnoreCase);
+        bool nullable = string.Equals(file.Project.Inputs.PropertyValue(MSBuildNames.Nullable), "enable", StringComparison.OrdinalIgnoreCase);
         HashSet<string> used = Global(file);
         string q = nullable ? "?" : string.Empty;
         // Avalonia's and MAUI's converters are annotated for nullable values; WPF's are not.

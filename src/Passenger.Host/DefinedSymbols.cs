@@ -11,10 +11,6 @@ namespace Passenger.Host;
 /// the framework.</summary>
 internal static class DefinedSymbols
 {
-    private const string NetCoreApp = ".NETCoreApp";
-    private const string NetFramework = ".NETFramework";
-    private const string NetStandard = ".NETStandard";
-
     /// <summary>A framework's symbols, each once in the order the compiler is given them, and its C# version; null for a
     /// multi-targeted project's outer evaluation, which compiles nothing.</summary>
     public static FrameworkSymbols? Of(Project project)
@@ -24,7 +20,7 @@ internal static class DefinedSymbols
         {
             return null;
         }
-        List<string> symbols = [.. project.GetPropertyValue("DefineConstants").Split([';', ',', ' '], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)];
+        List<string> symbols = [.. project.GetPropertyValue(MSBuildNames.DefineConstants).Split([';', ',', ' '], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)];
         if (IsTrue(project, "DisableDiagnosticTracing"))
         {
             symbols.RemoveAll(s => s == "TRACE");
@@ -33,7 +29,7 @@ internal static class DefinedSymbols
         {
             symbols.AddRange(Implicit(project));
         }
-        string version = project.GetPropertyValue("LangVersion").Trim();
+        string version = project.GetPropertyValue(MSBuildNames.LangVersion).Trim();
         return new FrameworkSymbols(framework, [.. symbols.Distinct(StringComparer.Ordinal)], version.Length > 0 ? version : null);
     }
 
@@ -41,18 +37,18 @@ internal static class DefinedSymbols
     private static List<string> Implicit(Project project)
     {
         List<string> symbols = [];
-        string identifier = project.GetPropertyValue("TargetFrameworkIdentifier");
+        string identifier = project.GetPropertyValue(MSBuildNames.TargetFrameworkIdentifier);
         string written = project.GetPropertyValue(MSBuildNames.TargetFrameworkVersion).TrimStart('v', 'V');
         if (identifier.Length == 0 || identifier == ".NETPortable" || Version(written) is not { } version)
         {
             return symbols;
         }
-        bool modern = identifier == NetCoreApp && version >= new Version(5, 0);
+        bool modern = identifier == FrameworkNames.NetCoreApp && version >= new Version(5, 0);
         string versionless = modern ? "NET" : identifier.Replace(".", string.Empty, StringComparison.Ordinal).ToUpperInvariant();
-        string named = identifier == NetFramework ? "NET" : versionless;
+        string named = identifier == FrameworkNames.NetFramework ? "NET" : versionless;
         string numbered = written.Replace('.', '_');
         symbols.Add(versionless);
-        symbols.Add(named + (identifier == NetFramework ? numbered.Replace("_", string.Empty, StringComparison.Ordinal) : numbered));
+        symbols.Add(named + (identifier == FrameworkNames.NetFramework ? numbered.Replace("_", string.Empty, StringComparison.Ordinal) : numbered));
         if (modern)
         {
             symbols.Add("NETCOREAPP");
@@ -70,9 +66,9 @@ internal static class DefinedSymbols
         }
         string? listed = identifier switch
         {
-            NetCoreApp => "_NETCoreAppVersionsForDefines",
-            NetFramework => "SupportedNETFrameworkTargetFramework",
-            NetStandard => "SupportedNETStandardTargetFramework",
+            FrameworkNames.NetCoreApp => "_NETCoreAppVersionsForDefines",
+            FrameworkNames.NetFramework => "SupportedNETFrameworkTargetFramework",
+            FrameworkNames.NetStandard => "SupportedNETStandardTargetFramework",
             _ => null,
         };
         // .NET Core's before .NET 5 come after the rest, as the SDK lists them.
@@ -84,8 +80,8 @@ internal static class DefinedSymbols
             {
                 continue;
             }
-            string formatted = identifier == NetFramework ? text.Replace(".", string.Empty, StringComparison.Ordinal) : text;
-            bool older = identifier == NetCoreApp && compatible < new Version(5, 0);
+            string formatted = identifier == FrameworkNames.NetFramework ? text.Replace(".", string.Empty, StringComparison.Ordinal) : text;
+            bool older = identifier == FrameworkNames.NetCoreApp && compatible < new Version(5, 0);
             (older ? core : symbols).Add(((older ? "NETCOREAPP" : named) + formatted + "_OR_GREATER").Replace('.', '_'));
         }
         symbols.AddRange(core);

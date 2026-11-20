@@ -19,7 +19,7 @@ public static class ProjectItems
         !Conditioned(item) && item.Parent is { } group && IsItemGroup(group) && !Conditioned(group) && group.Parent?.Name.LocalName == "Project";
 
     /// <summary>An item's attribute or metadata element of a name, XML's entities read; null where it has neither.</summary>
-    public static string? Value(XElement item, string name) =>
+    public static string? Value(XElement item, [IdentifierOf(typeof(MSBuildNames))] string name) =>
         (string?)item.Attribute(name) ?? item.Elements().FirstOrDefault(e => e.Name.LocalName == name && !e.HasElements)?.Value;
 
     /// <summary>A value without the <see cref="ThisFolder"/> it may begin with, which names the file's own folder.</summary>

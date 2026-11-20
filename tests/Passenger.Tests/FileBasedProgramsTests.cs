@@ -339,7 +339,7 @@ public sealed class FileBasedProgramsTests : IDisposable
             ProjectModel program = Assert.Single(window.Projects);
             Assert.True(PathNames.Same(program.Path, App), $"The folder's one project is {program.Path}, not the program app.cs");
             Assert.True(program.Holds(Path.Combine(folder, "shared", "util.cs")) && program.Holds(Path.Combine(folder, "lib", "extra.cs")),
-                $"app.cs does not compile the files it includes: {string.Join(", ", program.Evaluated!.Items.Where(i => i.Type == "Compile").Select(i => i.Path))}");
+                $"app.cs does not compile the files it includes: {string.Join(", ", program.Evaluated!.Items.Where(i => i.Type == MSBuildNames.Compile).Select(i => i.Path))}");
             Assert.True(window.SelectConfiguration("app: greet"));
             Ui.Launched(window, window.RunAsync(), "app.cs to build and run", TimeSpan.FromMinutes(2));
             Ui.WaitFor(() => Output(window).Contains("Process finished", StringComparison.Ordinal), "the program to finish", TimeSpan.FromMinutes(2));

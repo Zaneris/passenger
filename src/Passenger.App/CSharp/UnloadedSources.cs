@@ -91,7 +91,7 @@ internal static partial class UnloadedSources
     /// <summary>The project's C# files: its evaluation's compile items, else those in its own folders.</summary>
     private static IEnumerable<string> FilesOf(ProjectModel project) =>
         project.Evaluated?.Items is { Count: > 0 } items
-            ? items.Where(i => i.Type == "Compile" && i.Path.EndsWith(".cs", StringComparison.OrdinalIgnoreCase)).Select(i => i.Path).Distinct(PathNames.Comparer)
+            ? items.Where(i => i.Type == MSBuildNames.Compile && i.Path.EndsWith(".cs", StringComparison.OrdinalIgnoreCase)).Select(i => i.Path).Distinct(PathNames.Comparer)
             : ProjectFolders.Under(project.Folder).SelectMany(f => Directory.EnumerateFiles(f, "*.cs"));
 
     private enum Kind

@@ -24,8 +24,11 @@ public static class FrameworkNames
     public const string Windows = "windows";
     public const string Tizen = "tizen";
 
-    /// <summary>.NET's identifier in a target framework's long name (<c>.NETCoreApp,Version=v10.0</c>).</summary>
-    private const string NetCoreApp = ".NETCoreApp";
+    // The identifiers of .NET's frameworks, as a project's TargetFrameworkIdentifier holds them and a target framework's
+    // long name begins (.NETCoreApp,Version=v10.0): .NET's, .NET Framework's and .NET Standard's.
+    public const string NetCoreApp = ".NETCoreApp";
+    public const string NetFramework = ".NETFramework";
+    public const string NetStandard = ".NETStandard";
 
     /// <summary>The platform a target framework names, in lower case as MSBuild compares it in any: android of
     /// net11.0-android36.0, windows of net11.0-windows10.0.19041.0 and of net11.0-windows; null where it names none.</summary>
@@ -89,9 +92,6 @@ public static class FrameworkNames
     public static bool IsNetFramework(string framework) =>
         framework.StartsWith(NetFramework, StringComparison.OrdinalIgnoreCase)
         || (framework.Length > Net.Length && framework.StartsWith(Net, StringComparison.OrdinalIgnoreCase) && framework[Net.Length..].All(char.IsAsciiDigit));
-
-    /// <summary>.NET Framework's identifier in a target framework's long name (<c>.NETFramework,Version=v4.8</c>).</summary>
-    private const string NetFramework = ".NETFramework";
 
     /// <summary>A short name's start: .NET's from net5.0, .NET Framework's below.</summary>
     private const string Net = "net";

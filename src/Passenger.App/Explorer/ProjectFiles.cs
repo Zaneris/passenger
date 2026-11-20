@@ -67,7 +67,7 @@ internal sealed class ProjectFiles
                 DependentUpon.TryAdd(item.Path, Path.GetFullPath(Path.Combine(Path.GetDirectoryName(item.Path)!, parent.Replace('\\', '/'))));
             }
             string logical = Logical(item);
-            if (item.Type == "Folder")
+            if (item.Type == MSBuildNames.Folder)
             {
                 AddFolder(logical);
                 continue;

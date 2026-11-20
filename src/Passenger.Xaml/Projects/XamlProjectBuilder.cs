@@ -76,7 +76,7 @@ public sealed class XamlProjectBuilder
     /// the project file says before a restore); null for any other (WinUI), whose XAML Passenger does not read.</summary>
     public static XamlDialect? DialectOf(ProjectInputs inputs)
     {
-        if (inputs.Uses("Microsoft.Maui.Controls") || string.Equals(inputs.PropertyValue("UseMaui"), "true", StringComparison.OrdinalIgnoreCase))
+        if (inputs.Uses("Microsoft.Maui.Controls") || string.Equals(inputs.PropertyValue(MSBuildNames.UseMaui), "true", StringComparison.OrdinalIgnoreCase))
         {
             return MauiDialect.Instance;
         }

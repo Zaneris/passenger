@@ -346,13 +346,13 @@ public sealed class MSBuildDocument : IDisposable
             {
                 continue;
             }
-            XmlAttribute? written = element.Attribute("VersionOverride") ?? element.Attribute("Version");
-            string? pinned = written?.Value.Trim() ?? MSBuildSyntax.ValueOf(element, "VersionOverride", tree.Text) ?? MSBuildSyntax.ValueOf(element, "Version", tree.Text);
+            XmlAttribute? written = element.Attribute(MSBuildNames.VersionOverride) ?? element.Attribute(MSBuildNames.Version);
+            string? pinned = written?.Value.Trim() ?? MSBuildSyntax.ValueOf(element, MSBuildNames.VersionOverride, tree.Text) ?? MSBuildSyntax.ValueOf(element, MSBuildNames.Version, tree.Text);
             if (pinned is { Length: > 0 } && !MSBuildSyntax.IsExpression(pinned))
             {
                 packages.Add((element, id, pinned, written?.ValueRange ?? include.ValueRange));
             }
-            else if (pinned is null && element.LocalName == "PackageReference" && central.TryGetValue(id, out (string Version, MSBuildPlace Place) given) && given.Version.Length > 0)
+            else if (pinned is null && element.LocalName == MSBuildNames.PackageReference && central.TryGetValue(id, out (string Version, MSBuildPlace Place) given) && given.Version.Length > 0)
             {
                 packages.Add((element, id, given.Version, include.ValueRange));
             }
@@ -413,8 +413,8 @@ public sealed class MSBuildDocument : IDisposable
     /// the file has none (another file's reference brings it in).</summary>
     private static TextRange? BringerOf(XmlTree tree, string name) =>
         tree.Elements.FirstOrDefault(e => MSBuildSyntax.RoleOf(e) == MSBuildRole.Item && e.Attribute("Include") is { HasValue: true } include
-            && ((e.LocalName == "PackageReference" && include.Value.Trim().Equals(name, StringComparison.OrdinalIgnoreCase))
-                || (e.LocalName == "ProjectReference" && Path.GetFileNameWithoutExtension(include.Value.Trim().Replace('\\', '/')).Equals(name, StringComparison.OrdinalIgnoreCase))))
+            && ((e.LocalName == MSBuildNames.PackageReference && include.Value.Trim().Equals(name, StringComparison.OrdinalIgnoreCase))
+                || (e.LocalName == MSBuildNames.ProjectReference && Path.GetFileNameWithoutExtension(include.Value.Trim().Replace('\\', '/')).Equals(name, StringComparison.OrdinalIgnoreCase))))
             ?.Attribute("Include")?.ValueRange;
 
     /// <summary>The vulnerable versions the project gets only through others whose mark holds an offset of the file as it

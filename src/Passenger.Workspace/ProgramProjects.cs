@@ -88,13 +88,13 @@ public static class ProgramProjects
         try
         {
             XDocument project = XDocument.Parse(content);
-            List<string> included = [.. project.Descendants("Compile")
+            List<string> included = [.. project.Descendants(MSBuildNames.Compile)
                 .Select(c => (string?)c.Attribute("Include"))
                 .OfType<string>()
                 .Where(i => i.IndexOfAny(['*', '?', '$', ';']) < 0)
                 .Select(ItemPaths.Unescaped)
                 .Where(i => Path.IsPathFullyQualified(i) && ProgramFiles.IsProgram(i))];
-            List<string> referenced = [.. project.Descendants("ProjectReference")
+            List<string> referenced = [.. project.Descendants(MSBuildNames.ProjectReference)
                 .Select(r => (string?)r.Attribute(ProgramFiles.RefMetadata))
                 .OfType<string>()
                 .Where(r => Path.IsPathFullyQualified(r) && ProgramFiles.IsProgram(r))];

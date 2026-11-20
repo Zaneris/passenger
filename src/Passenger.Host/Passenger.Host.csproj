@@ -36,6 +36,8 @@
     <Compile Include="../Passenger.Core/JsonLines.cs" Link="JsonLines.cs" />
     <Compile Include="../Passenger.Core/PooledBytes.cs" Link="PooledBytes.cs" />
     <Compile Include="../Passenger.Core/MSBuildNames.cs" Link="MSBuildNames.cs" />
+    <!-- .NET's frameworks' names, by which the host reads an evaluation's framework. -->
+    <Compile Include="../Passenger.Core/FrameworkNames.cs" Link="FrameworkNames.cs" />
     <!-- A C# name's characters, as a program's first member is read by them (ProgramFiles). -->
     <Compile Include="../Passenger.Core/CSharpNames.cs" Link="CSharpNames.cs" />
     <!-- Where a .NET keeps its workloads, the user's own folder too, whose imports are no project's own. -->

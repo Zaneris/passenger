@@ -227,7 +227,7 @@ public static partial class MobileHeads
                 MSBuildNames.ValidateSceneManifest, MSBuildNames.CanOutputAppBundle, MSBuildNames.IsAppExtension, MSBuildNames.XamarinSdkRootDirectory,
                 MSBuildNames.UseMaui, MSBuildNames.RootNamespace, MSBuildNames.PlatformsProjectFolder, platform == FrameworkNames.MacCatalyst ? MSBuildNames.MacCatalystProjectFolder
                     : MSBuildNames.IosProjectFolder, .. platform == FrameworkNames.MacCatalyst ? [MSBuildNames.LinkMode] : Array.Empty<string>()],
-            Items = [MSBuildNames.PartialAppManifest, "PackageReference", "PackageVersion"],
+            Items = [MSBuildNames.PartialAppManifest, MSBuildNames.PackageReference, MSBuildNames.PackageVersion],
             Given = platform == FrameworkNames.MacCatalyst ? new Dictionary<string, string> { [MSBuildNames.Configuration] = "Debug" } : new Dictionary<string, string>(),
         };
 
@@ -256,12 +256,12 @@ public static partial class MobileHeads
         {
             SdkVersion = Text(MSBuildNames.SdkVersion),
             Manifest = Full(Text(MSBuildNames.AppBundleManifest)) ?? (answer.Maui ? Full(Path.Combine(MauiFolder(), "Info.plist")) : null),
-            Laid = [.. said.Items(MSBuildNames.PartialAppManifest).Select(i => Full(JsonMembers.Text(i, "FullPath") ?? JsonMembers.Text(i, "Identity"))).OfType<string>()],
+            Laid = [.. said.Items(MSBuildNames.PartialAppManifest).Select(i => Full(JsonMembers.Text(i, MSBuildNames.FullPath) ?? JsonMembers.Text(i, "Identity"))).OfType<string>()],
             ChecksScenes = !string.Equals(Text(MSBuildNames.ValidateSceneManifest), "false", StringComparison.OrdinalIgnoreCase),
             MakesApp = True(MSBuildNames.CanOutputAppBundle) && !True(MSBuildNames.IsAppExtension),
             SdkRoot = Text(MSBuildNames.XamarinSdkRootDirectory),
             LinkMode = platform == FrameworkNames.MacCatalyst ? Text(MSBuildNames.LinkMode) : null,
-            Avalonia = Version(said.Items("PackageReference")) ?? Version(said.Items("PackageVersion")),
+            Avalonia = Version(said.Items(MSBuildNames.PackageReference)) ?? Version(said.Items(MSBuildNames.PackageVersion)),
         };
 
         // A MAUI head's folder as its package names it, which an unrestored project's evaluation lacks: Platforms/iOS by default.
@@ -271,7 +271,7 @@ public static partial class MobileHeads
         // Avalonia's iOS package's version as an item of it gives it, its own or its central version's.
         static string? Version(IReadOnlyList<JsonElement> items) => items
             .Where(i => string.Equals(JsonMembers.Text(i, "Identity"), AvaloniaIos, StringComparison.OrdinalIgnoreCase))
-            .Select(i => JsonMembers.Text(i, "VersionOverride") is { Length: > 0 } over ? over : JsonMembers.Text(i, "Version"))
+            .Select(i => JsonMembers.Text(i, MSBuildNames.VersionOverride) is { Length: > 0 } over ? over : JsonMembers.Text(i, MSBuildNames.Version))
             .FirstOrDefault(v => v is { Length: > 0 });
     }
 

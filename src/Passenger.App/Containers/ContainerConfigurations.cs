@@ -222,7 +222,7 @@ public static class ContainerConfigurations
             if (!items.Any(i => PathNames.Same(i.Path, file)))
             {
                 bool over = overriding is not null && PathNames.Same(file, overriding);
-                items.Add(new EvaluatedItem("None", PathNames.Canonical(file), DependentUpon: over ? Path.GetFileName(files[0]) : null));
+                items.Add(new EvaluatedItem(MSBuildNames.None, PathNames.Canonical(file), DependentUpon: over ? Path.GetFileName(files[0]) : null));
             }
         }
         return items;

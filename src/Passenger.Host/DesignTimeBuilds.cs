@@ -231,7 +231,7 @@ internal static class DesignTimeBuilds
                 }
                 infos.Add(info);
             }
-            IReadOnlyList<Stamp> heads = [.. Evaluation.IncludedHeads(path, infos.SelectMany(i => i.Documents).Select(d => new EvaluatedItem("Compile", d.FilePath)))];
+            IReadOnlyList<Stamp> heads = [.. Evaluation.IncludedHeads(path, infos.SelectMany(i => i.Documents).Select(d => new EvaluatedItem(MSBuildNames.Compile, d.FilePath)))];
             IReadOnlyList<Stamp> inputs = Evaluation.Inputs(file, loaded, Evaluation.OutsideRoots(outer), [.. restored, .. looked, .. heads]);
             IReadOnlyList<Stamp> walked = Evaluation.Folders(path, folders, infos.SelectMany(i => i.Documents.Concat(i.AdditionalDocuments)).Select(d => d.FilePath));
             return new BuiltProject(path, new RawJson(JsonSerializer.SerializeToUtf8Bytes(infos, Written)), [.. inputs, .. walked], null, said);
@@ -255,11 +255,11 @@ internal static class DesignTimeBuilds
     private static async Task<(ProjectInstance Built, IReadOnlyList<BuildDiagnostic> Logged)> BuildAsync(string path, Project project, DiagnosticLogger diagnostics, CancellationToken cancel)
     {
         ProjectInstance instance = project.CreateProjectInstance();
-        if (!instance.Targets.ContainsKey("Compile") || !instance.Targets.ContainsKey("CoreCompile"))
+        if (!instance.Targets.ContainsKey(MSBuildNames.Compile) || !instance.Targets.ContainsKey(MSBuildNames.CoreCompile))
         {
             return (instance, []);
         }
-        List<string> targets = ["Compile", "CoreCompile"];
+        List<string> targets = [MSBuildNames.Compile, MSBuildNames.CoreCompile];
         bool markup = instance.Targets.ContainsKey("DesignTimeMarkupCompilation");
         if (markup)
         {
@@ -309,20 +309,20 @@ internal static class DesignTimeBuilds
             IntermediateOutputFilePath = Absolute(instance.GetItems("IntermediateAssembly").FirstOrDefault()?.EvaluatedInclude),
             DefaultNamespace = Property(CarriedProperties.RootNamespace) ?? string.Empty,
             TargetFramework = Property(MSBuildNames.TargetFramework),
-            TargetFrameworkIdentifier = Property("TargetFrameworkIdentifier"),
+            TargetFrameworkIdentifier = Property(MSBuildNames.TargetFrameworkIdentifier),
             TargetFrameworkVersion = Property(MSBuildNames.TargetFrameworkVersion),
             ProjectAssetsFilePath = Property(CarriedProperties.ProjectAssetsFile),
             CommandLineArgs = arguments,
-            Documents = [.. instance.GetItems("Compile").Where(i => !Path.GetFileName(i.EvaluatedInclude).StartsWith("TemporaryGeneratedFile_", StringComparison.Ordinal)).Select(i => Document(i, directory))],
-            AdditionalDocuments = [.. instance.GetItems("AdditionalFiles").Select(i => Document(i, directory))],
-            AnalyzerConfigDocuments = [.. instance.GetItems("EditorConfigFiles").Select(i => Document(i, directory))],
+            Documents = [.. instance.GetItems(MSBuildNames.Compile).Where(i => !Path.GetFileName(i.EvaluatedInclude).StartsWith("TemporaryGeneratedFile_", StringComparison.Ordinal)).Select(i => Document(i, directory))],
+            AdditionalDocuments = [.. instance.GetItems(MSBuildNames.AdditionalFiles).Select(i => Document(i, directory))],
+            AnalyzerConfigDocuments = [.. instance.GetItems(MSBuildNames.EditorConfigFiles).Select(i => Document(i, directory))],
             // A program's #:ref is to the other program's project, which the server knows by its C# file.
-            ProjectReferences = [.. instance.GetItems("ProjectReference").Select(r => new ProjectFileReference(
+            ProjectReferences = [.. instance.GetItems(MSBuildNames.ProjectReference).Select(r => new ProjectFileReference(
                 r.GetMetadataValue(ProgramFiles.RefMetadata) is { Length: > 0 } program ? program : r.EvaluatedInclude,
-                Aliases(r), !r.GetMetadataValue("ReferenceOutputAssembly").Equals("false", StringComparison.OrdinalIgnoreCase)))],
-            PackageReferences = [.. instance.GetItems("PackageReference").Select(p => new PackageReferenceItem(p.EvaluatedInclude, p.GetMetadataValue("Version"))).Distinct()],
+                Aliases(r), !r.GetMetadataValue(MSBuildNames.ReferenceOutputAssembly).Equals("false", StringComparison.OrdinalIgnoreCase)))],
+            PackageReferences = [.. instance.GetItems(MSBuildNames.PackageReference).Select(p => new PackageReferenceItem(p.EvaluatedInclude, p.GetMetadataValue(MSBuildNames.Version))).Distinct()],
             ProjectCapabilities = [.. instance.GetItems("ProjectCapability").Select(c => c.EvaluatedInclude)],
-            ContentFilePaths = [.. instance.GetItems("Content").Select(c => c.GetMetadataValue("FullPath"))],
+            ContentFilePaths = [.. instance.GetItems(MSBuildNames.Content).Select(c => c.GetMetadataValue(MSBuildNames.FullPath))],
             CodePage = int.TryParse(Property("CodePage"), out int page) && page > 0 ? page : 0,
             ChecksumAlgorithm = Property("ChecksumAlgorithm") ?? Property("PdbChecksumAlgorithm"),
             FileGlobs = globs,
@@ -338,7 +338,7 @@ internal static class DesignTimeBuilds
     {
         string spec = item.EvaluatedInclude;
         string full = Path.GetFullPath(Path.Combine(directory, spec));
-        string link = item.GetMetadataValue("Link");
+        string link = item.GetMetadataValue(MSBuildNames.Link);
         string logical = link.Length > 0 ? link
             : !Path.IsPathRooted(spec) ? spec
             : PathNames.IsUnder(full, directory) ? PathNames.Below(full, directory).ToString()

@@ -1,3 +1,4 @@
+using Passenger.Core;
 using Passenger.Text;
 using Passenger.Xaml.Syntax;
 
@@ -26,7 +27,7 @@ public readonly record struct MSBuildReference(char Sigil, string Name, TextRang
 public static class MSBuildSyntax
 {
     /// <summary>Items whose Include names a package, whose Version or VersionOverride is one of its versions.</summary>
-    public static readonly HashSet<string> PackageItems = new(StringComparer.OrdinalIgnoreCase) { "PackageReference", "PackageVersion", "GlobalPackageReference", "PackageDownload" };
+    public static readonly HashSet<string> PackageItems = new(StringComparer.OrdinalIgnoreCase) { MSBuildNames.PackageReference, MSBuildNames.PackageVersion, MSBuildNames.GlobalPackageReference, MSBuildNames.PackageDownload };
 
     public static MSBuildRole RoleOf(XmlElement element)
     {
@@ -169,7 +170,7 @@ public static class MSBuildSyntax
 
     /// <summary>An attribute's value as written, or a metadata element's text, of an element: <c>Version="1.0"</c> or
     /// <c>&lt;Version&gt;1.0&lt;/Version&gt;</c>.</summary>
-    public static string? ValueOf(XmlElement element, string name, string text)
+    public static string? ValueOf(XmlElement element, [IdentifierOf(typeof(MSBuildNames))] string name, string text)
     {
         if (element.Attributes.FirstOrDefault(a => a.Name.Equals(name, StringComparison.OrdinalIgnoreCase)) is { HasValue: true } attribute)
         {

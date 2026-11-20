@@ -200,7 +200,7 @@ internal static class Inspection
                     .Select(i => (Identifier: i.EvaluatedInclude.Split(',')[0], Version: Version.TryParse(i.EvaluatedInclude.Split("Version=v").Last(), out Version? v) ? v : new Version(0, 0),
                         Framework: new InsightFramework(i.GetMetadataValue("Alias"), i.GetMetadataValue("DisplayName"))))
                     .Where(f => f.Framework.Alias.Length > 0)
-                    .OrderBy(f => f.Identifier switch { ".NETCoreApp" => 0, ".NETStandard" => 1, _ => 2 })
+                    .OrderBy(f => f.Identifier switch { FrameworkNames.NetCoreApp => 0, FrameworkNames.NetStandard => 1, _ => 2 })
                     .ThenByDescending(f => f.Version)
                     .Select(f => f.Framework)
                     .DistinctBy(f => f.Alias, StringComparer.OrdinalIgnoreCase));

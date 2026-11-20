@@ -339,7 +339,7 @@ public sealed record PackageDependency(string Name, string? Version, bool Implic
 /// (<see cref="SharedItemsExtension"/>) that names it, for a file a shared project brings in, and whether a NuGet
 /// package's own build file names it from a package folder (AndroidX's ProGuard rules): every project's copy of the
 /// package, where the SDK gives it a Link as it gives any file from elsewhere.</summary>
-public sealed record EvaluatedItem(string Type, string Path, string? Link = null, string? DependentUpon = null, string? Shared = null, bool Packaged = false)
+public sealed record EvaluatedItem([IdentifierOf(typeof(MSBuildNames))] [property: IdentifierOf(typeof(MSBuildNames))] string Type, string Path, string? Link = null, string? DependentUpon = null, string? Shared = null, bool Packaged = false)
 {
     /// <summary>A shared project's items file (.projitems), which each project sharing its files imports.</summary>
     public const string SharedItemsExtension = ".projitems";
@@ -583,7 +583,7 @@ public sealed record InsightProperty(string Name, string Value, PropertyOrigin O
 public sealed record InsightItemType(string Name, int Count, IReadOnlyList<string> Includes, IReadOnlyList<string> Metadata, IReadOnlyList<InsightPlace> Defined);
 
 /// <summary>What one item element made: its items' includes (the first of them) and how many, and the first's metadata.</summary>
-public sealed record InsightItem(string Type, InsightPlace Element, int Count, IReadOnlyList<string> Includes, IReadOnlyDictionary<string, string> Metadata);
+public sealed record InsightItem([IdentifierOf(typeof(MSBuildNames))] [property: IdentifierOf(typeof(MSBuildNames))] string Type, InsightPlace Element, int Count, IReadOnlyList<string> Includes, IReadOnlyDictionary<string, string> Metadata);
 
 /// <summary>A target and every place it is defined, the one in force first.</summary>
 public sealed record InsightTarget(string Name, IReadOnlyList<InsightPlace> Defined);

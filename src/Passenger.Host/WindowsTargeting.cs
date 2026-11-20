@@ -37,13 +37,13 @@ internal static class WindowsTargeting
     /// <summary>Whether a framework it references is one the SDK's KnownFrameworkReference marks IsWindowsOnly.</summary>
     private static bool WindowsOnly(Project project)
     {
-        ICollection<ProjectItem> referenced = project.GetItems("FrameworkReference");
+        ICollection<ProjectItem> referenced = project.GetItems(MSBuildNames.FrameworkReference);
         if (referenced.Count == 0)
         {
             return false;
         }
-        HashSet<string> windowsOnly = new(project.GetItems("KnownFrameworkReference")
-            .Where(k => k.GetMetadataValue("IsWindowsOnly").Equals("true", StringComparison.OrdinalIgnoreCase))
+        HashSet<string> windowsOnly = new(project.GetItems(MSBuildNames.KnownFrameworkReference)
+            .Where(k => k.GetMetadataValue(MSBuildNames.IsWindowsOnly).Equals("true", StringComparison.OrdinalIgnoreCase))
             .Select(k => k.EvaluatedInclude), StringComparer.OrdinalIgnoreCase);
         return referenced.Any(r => windowsOnly.Contains(r.EvaluatedInclude));
     }

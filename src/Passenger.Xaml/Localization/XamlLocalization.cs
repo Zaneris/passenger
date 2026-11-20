@@ -1,3 +1,4 @@
+using Passenger.Core;
 using Passenger.Text;
 using Passenger.Xaml.Features;
 using Passenger.Xaml.Metadata;
@@ -146,7 +147,7 @@ public static class XamlLocalization
         XamlProject project = file.Project;
         bool own = type.Origin.AssemblyName == project.AssemblyName;
         string folder = own ? project.Folder : project.Referenced.FirstOrDefault(r => r.AssemblyName == type.Origin.AssemblyName).Folder ?? project.Folder;
-        string root = own ? project.Inputs.PropertyValue("RootNamespace") ?? project.AssemblyName : type.Origin.AssemblyName;
+        string root = own ? project.Inputs.PropertyValue(MSBuildNames.RootNamespace) ?? project.AssemblyName : type.Origin.AssemblyName;
         return new LocalizedClass(beside, manager.Constant as string ?? type.FullName, folder, root);
     }
 

@@ -605,7 +605,7 @@ public sealed record ProjectModel(
     /// <summary>Whether a program compiles a file: its own C# file, or one its directives include as its evaluation found
     /// them; for a project, whether its folder holds it.</summary>
     public bool Holds(string path) => !IsProgram ? PathNames.Within(path, Folder)
-        : PathNames.Same(path, Path) || (Evaluated?.Items.Any(i => i.Type == "Compile" && PathNames.Same(i.Path, path)) ?? false);
+        : PathNames.Same(path, Path) || (Evaluated?.Items.Any(i => i.Type == MSBuildNames.Compile && PathNames.Same(i.Path, path)) ?? false);
 
     /// <summary>The lock file its restore writes when it restores with one (<see cref="LockFileOf"/>).</summary>
     public string LockFile => LockFileOf(Path, Property(Host.CarriedProperties.NuGetLockFilePath), File.Exists);

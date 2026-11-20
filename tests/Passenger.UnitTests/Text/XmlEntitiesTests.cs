@@ -1,4 +1,5 @@
 using Passenger.App.MSBuild;
+using Passenger.Core;
 using Passenger.Text;
 using Passenger.UnitTests.Xaml;
 using Passenger.Xaml;
@@ -40,7 +41,7 @@ public sealed class XmlEntitiesTests
     {
         const string Text = "<Project><ItemGroup><PackageReference Include=\"Shop\"><Version> <![CDATA[1.0.0]]> </Version></PackageReference></ItemGroup></Project>";
         XmlElement package = XmlTree.Parse(Text).Root!.Children[0].Children[0];
-        string? version = MSBuildSyntax.ValueOf(package, "Version", Text);
+        string? version = MSBuildSyntax.ValueOf(package, MSBuildNames.Version, Text);
         Assert.True(version == "1.0.0", $"A package's version written in a CDATA section read as \"{version}\", so its version checks and links take the markup for the version");
     }
 

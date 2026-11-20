@@ -374,7 +374,7 @@ public sealed class TestFinder
 
     /// <summary>The C# files a project compiles from outside its folder (a shared project's, a linked file), as evaluated.</summary>
     public static IEnumerable<string> Elsewhere(ProjectModel project) => (project.Evaluated?.Items ?? [])
-        .Where(i => i.Type == "Compile" && i.Path.EndsWith(".cs", StringComparison.OrdinalIgnoreCase) && !PathNames.Within(i.Path, project.Folder))
+        .Where(i => i.Type == MSBuildNames.Compile && i.Path.EndsWith(".cs", StringComparison.OrdinalIgnoreCase) && !PathNames.Within(i.Path, project.Folder))
         .Select(i => i.Path);
 
     /// <summary>Whether a method the tree shows is one of these projects' (<see cref="ProjectsOf"/> a file), or they are

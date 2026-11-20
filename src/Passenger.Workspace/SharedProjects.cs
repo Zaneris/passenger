@@ -16,10 +16,7 @@ public static class SharedProjects
     public const string Extension = ".shproj";
 
     /// <summary>The item types that are files, beside which an item naming a file that is there is one too.</summary>
-    private static readonly HashSet<string> FileTypes = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "Compile", "None", "Content", "EmbeddedResource", "AdditionalFiles", "Page", "Resource", "ApplicationDefinition", "Folder",
-    };
+    private static readonly HashSet<string> FileTypes = new(MSBuildNames.FileItemTypes, StringComparer.OrdinalIgnoreCase);
 
     public static bool Is(string path) => Path.GetExtension(path).Equals(Extension, StringComparison.OrdinalIgnoreCase);
 
@@ -75,13 +72,13 @@ public static class SharedProjects
             {
                 items.RemoveAll(i => i.Type == type && removed.Any(r => r(i.Path)));
             }
-            if (ProjectItems.Value(item, "Include") is not { } include || "false".Equals(ProjectItems.Value(item, "Visible")?.Trim(), StringComparison.OrdinalIgnoreCase))
+            if (ProjectItems.Value(item, "Include") is not { } include || "false".Equals(ProjectItems.Value(item, MSBuildNames.Visible)?.Trim(), StringComparison.OrdinalIgnoreCase))
             {
                 continue;
             }
             List<Func<string, bool>> excluded = Patterns(folder, ProjectItems.Value(item, "Exclude"), once: true);
-            string? link = ProjectItems.Value(item, "Link") is { Length: > 0 } linked ? linked : null;
-            string? dependent = ProjectItems.Value(item, "DependentUpon") is { Length: > 0 } upon ? upon : null;
+            string? link = ProjectItems.Value(item, MSBuildNames.Link) is { Length: > 0 } linked ? linked : null;
+            string? dependent = ProjectItems.Value(item, MSBuildNames.DependentUpon) is { Length: > 0 } upon ? upon : null;
             foreach (string part in ItemPaths.Parts(include))
             {
                 if (ProjectItems.PathOf(folder, part) is not { } named)
@@ -282,11 +279,11 @@ public static class SharedProjects
 
     /// <summary>The item type a file goes into an items file as: C# and Visual Basic code compiled, a .resx embedded, a
     /// Razor component or page as content, anything else none.</summary>
-    public static string TypeOf(string file) => RazorFiles.Is(file) ? "Content" : System.IO.Path.GetExtension(file).ToLowerInvariant() switch
+    public static string TypeOf(string file) => RazorFiles.Is(file) ? MSBuildNames.Content : System.IO.Path.GetExtension(file).ToLowerInvariant() switch
     {
-        ".cs" or ".vb" => "Compile",
-        ".resx" => "EmbeddedResource",
-        _ => "None",
+        ".cs" or ".vb" => MSBuildNames.Compile,
+        ".resx" => MSBuildNames.EmbeddedResource,
+        _ => MSBuildNames.None,
     };
 
     /// <summary>A shared project's or items file's text as a save reads it; null for one that is not there or is no text.</summary>

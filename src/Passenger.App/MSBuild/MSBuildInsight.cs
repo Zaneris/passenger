@@ -74,7 +74,7 @@ public sealed class MSBuildInsight
     public IReadOnlyDictionary<string, (string Version, MSBuildPlace Place)> CentralVersions()
     {
         Dictionary<string, (string, MSBuildPlace)> versions = new(StringComparer.OrdinalIgnoreCase);
-        foreach (InsightItem item in Raw.Items.Where(i => i.Type.Equals("PackageVersion", StringComparison.OrdinalIgnoreCase)))
+        foreach (InsightItem item in Raw.Items.Where(i => i.Type.Equals(MSBuildNames.PackageVersion, StringComparison.OrdinalIgnoreCase)))
         {
             foreach (string include in item.Includes)
             {

@@ -33,7 +33,7 @@ public sealed record ComposeProjectFile
     public IReadOnlyList<ComposeItem> Items { get; init; } = [];
 
     /// <summary>The item types whose items are files a project holds, a folder of it too.</summary>
-    private static readonly HashSet<string> FileItems = new(StringComparer.Ordinal) { "None", "Content", "Compile", "EmbeddedResource", "Folder" };
+    private static readonly HashSet<string> FileItems = new(StringComparer.Ordinal) { MSBuildNames.None, MSBuildNames.Content, MSBuildNames.Compile, MSBuildNames.EmbeddedResource, MSBuildNames.Folder };
 
     /// <summary>A .dcproj's text read; null where it is not XML.</summary>
     public static ComposeProjectFile? Read(string text)
@@ -78,12 +78,12 @@ public sealed record ComposeProjectFile
         }
         string? Metadata(string name) =>
             (element.Attribute(name)?.Value ?? element.Elements().FirstOrDefault(e => e.Name.LocalName == name)?.Value)?.Trim() is { Length: > 0 } value ? value : null;
-        if (string.Equals(Metadata("Visible"), "false", StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(Metadata(MSBuildNames.Visible), "false", StringComparison.OrdinalIgnoreCase))
         {
             return [];
         }
-        string? link = Metadata("Link") is { } named ? ItemPaths.Unescaped(named) : null;
-        string? dependentUpon = Metadata("DependentUpon") is { } parent ? ItemPaths.Unescaped(parent) : null;
+        string? link = Metadata(MSBuildNames.Link) is { } named ? ItemPaths.Unescaped(named) : null;
+        string? dependentUpon = Metadata(MSBuildNames.DependentUpon) is { } parent ? ItemPaths.Unescaped(parent) : null;
         return include.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .Where(written => written.IndexOfAny(['*', '?']) < 0 && !written.Contains("$(", StringComparison.Ordinal) && !written.Contains("@(", StringComparison.Ordinal)
                 && !written.Contains("%(", StringComparison.Ordinal))

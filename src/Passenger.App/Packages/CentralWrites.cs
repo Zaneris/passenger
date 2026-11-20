@@ -59,7 +59,7 @@ internal sealed record CentralWrites(IReadOnlyDictionary<string, (FileText Had, 
             // A property moves every package whose central version names it, whichever project references each.
             foreach ((string id, (string _, MSBuildPlace place)) in central)
             {
-                if (place.Path.Length > 0 && ProjectEdits.VersionWritten(writer.Text(place.Path), "PackageVersion", id, place.Line) is { } written
+                if (place.Path.Length > 0 && ProjectEdits.VersionWritten(writer.Text(place.Path), MSBuildNames.PackageVersion, id, place.Line) is { } written
                     && ProjectEdits.PropertyNamed(written) is { } property && writer.Sets(property))
                 {
                     writer.Moved.Add(id);
@@ -81,7 +81,7 @@ internal sealed record CentralWrites(IReadOnlyDictionary<string, (FileText Had, 
                 return null;
             }
             string file = held.Place.Path;
-            string? written = ProjectEdits.VersionWritten(writer.Text(file), "PackageVersion", id, held.Place.Line);
+            string? written = ProjectEdits.VersionWritten(writer.Text(file), MSBuildNames.PackageVersion, id, held.Place.Line);
             if (written is null)
             {
                 return $"{id}'s version in {Path.GetFileName(file)} could not be read";
@@ -110,10 +110,10 @@ internal sealed record CentralWrites(IReadOnlyDictionary<string, (FileText Had, 
         {
             foreach ((string id, string version) in packages)
             {
-                InsightItem? reference = insight.Raw.Items.LastOrDefault(i => i.Type.Equals("PackageReference", StringComparison.OrdinalIgnoreCase)
+                InsightItem? reference = insight.Raw.Items.LastOrDefault(i => i.Type.Equals(MSBuildNames.PackageReference, StringComparison.OrdinalIgnoreCase)
                     && i.Includes.Contains(id, StringComparer.OrdinalIgnoreCase));
                 MSBuildPlace place = reference is null ? default : insight.Place(reference.Element);
-                if (place.Path is not { Length: > 0 } || ProjectEdits.VersionWritten(writer.Text(place.Path), "PackageReference", id, place.Line) is not { } written
+                if (place.Path is not { Length: > 0 } || ProjectEdits.VersionWritten(writer.Text(place.Path), MSBuildNames.PackageReference, id, place.Line) is not { } written
                     || ProjectEdits.PropertyNamed(written) is not { } property)
                 {
                     left.Add((id, version));

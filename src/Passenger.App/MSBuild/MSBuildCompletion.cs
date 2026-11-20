@@ -273,8 +273,8 @@ public static class MSBuildCompletion
                 break;
             case MSBuildRole.Item:
                 SchemaElement? item = schema.Items.GetValueOrDefault(element.LocalName);
-                IEnumerable<SchemaAttribute> own = item?.Attributes ?? schema.Items["Compile"].Attributes.Where(a => ItemAttributes.Contains(a.Name));
-                offered.AddRange(own.Select(a => (a.Name, a.Documentation, a.Values.Count > 0 || a.Name is "Include" or "Update" or "Version" or "VersionOverride")));
+                IEnumerable<SchemaAttribute> own = item?.Attributes ?? schema.Items[MSBuildNames.Compile].Attributes.Where(a => ItemAttributes.Contains(a.Name));
+                offered.AddRange(own.Select(a => (a.Name, a.Documentation, a.Values.Count > 0 || a.Name is "Include" or "Update" or MSBuildNames.Version or MSBuildNames.VersionOverride)));
                 offered.AddRange(Metadata(context, element.LocalName).Select(m => (m.Name, m.Documentation, m.Values.Count > 0)));
                 break;
             case MSBuildRole.Task:
@@ -331,14 +331,14 @@ public static class MSBuildCompletion
             {
                 return new MSBuildCompletionList(attribute.ValueStart, [], ".-_", new PackageAsk(null, typed, element), Incomplete: true);
             }
-            if (name is "Version" or "VersionOverride" && PackageOf(element, text) is { } id)
+            if (name is MSBuildNames.Version or MSBuildNames.VersionOverride && PackageOf(element, text) is { } id)
             {
                 return new MSBuildCompletionList(attribute.ValueStart, [], ".-+", new PackageAsk(id, typed, element));
             }
         }
         if (role == MSBuildRole.Item && name is "Include" or "Exclude" or "Remove" or "Update")
         {
-            return Paths(context, attribute.ValueStart, offset, element.LocalName == "ProjectReference" ? WorkspaceModel.IsProjectFile : _ => true);
+            return Paths(context, attribute.ValueStart, offset, element.LocalName == MSBuildNames.ProjectReference ? WorkspaceModel.IsProjectFile : _ => true);
         }
         if (MSBuildSyntax.NamesTargets(element, attribute) && name != "Name")
         {
@@ -387,7 +387,7 @@ public static class MSBuildCompletion
                 }
                 return new MSBuildCompletionList(start, [.. values.Select((v, i) => new MSBuildItem(v.Value, MSBuildItemKind.Value, v.Value, v.Detail) { SortText = $"{i:D4}" })], ".-");
             case MSBuildRole.Metadata when element.Parent is { } item:
-                if (MSBuildSyntax.PackageItems.Contains(item.LocalName) && element.LocalName is "Version" or "VersionOverride" && PackageOf(item, text) is { } id)
+                if (MSBuildSyntax.PackageItems.Contains(item.LocalName) && element.LocalName is MSBuildNames.Version or MSBuildNames.VersionOverride && PackageOf(item, text) is { } id)
                 {
                     return new MSBuildCompletionList(start, [], ".-+", new PackageAsk(id, text[start..offset], item));
                 }

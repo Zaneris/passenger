@@ -77,6 +77,67 @@ public static class MSBuildNames
     /// <summary>The version of the framework a project builds for, after a "v" ("v10.0").</summary>
     public const string TargetFrameworkVersion = "TargetFrameworkVersion";
 
+    /// <summary>The kind of framework a project builds for, one of FrameworkNames' identifiers (.NETCoreApp).</summary>
+    public const string TargetFrameworkIdentifier = "TargetFrameworkIdentifier";
+
+    // The compiler's own: the preprocessor symbols a project defines, and its C# version.
+    public const string DefineConstants = "DefineConstants";
+    public const string LangVersion = "LangVersion";
+
+    // The items a project lists its files by. Compile is also the target that compiles them, after CoreCompile.
+    public const string Compile = "Compile";
+    public const string CoreCompile = "CoreCompile";
+    public const string None = "None";
+    public const string Content = "Content";
+    public const string EmbeddedResource = "EmbeddedResource";
+    public const string AdditionalFiles = "AdditionalFiles";
+    public const string Page = "Page";
+    public const string Resource = "Resource";
+    public const string ApplicationDefinition = "ApplicationDefinition";
+    public const string Folder = "Folder";
+
+    /// <summary>The item types that are files: those a project's folder views list.</summary>
+    public static IReadOnlyList<string> FileItemTypes { get; } =
+        [Compile, None, Content, EmbeddedResource, AdditionalFiles, Page, Resource, ApplicationDefinition, Folder];
+
+    // What a file item may say of itself: the file it is shown under, where it is shown, and its path made whole.
+    public const string DependentUpon = "DependentUpon";
+    public const string Link = "Link";
+    public const string Visible = "Visible";
+    public const string FullPath = "FullPath";
+
+    // What a project references: packages (every project's, or downloaded alone; their versions, under central package
+    // management in PackageVersion items), projects and shared frameworks, and the frameworks the SDK knows with their
+    // targeting packs.
+    public const string PackageReference = "PackageReference";
+    public const string GlobalPackageReference = "GlobalPackageReference";
+    public const string PackageDownload = "PackageDownload";
+    public const string PackageVersion = "PackageVersion";
+    public const string Version = "Version";
+    public const string VersionOverride = "VersionOverride";
+    public const string IsImplicitlyDefined = "IsImplicitlyDefined";
+    public const string ProjectReference = "ProjectReference";
+    public const string FrameworkReference = "FrameworkReference";
+    public const string KnownFrameworkReference = "KnownFrameworkReference";
+    public const string TargetingPackName = "TargetingPackName";
+    public const string TargetingPackVersion = "TargetingPackVersion";
+    public const string IsWindowsOnly = "IsWindowsOnly";
+
+    /// <summary>The item types a project's SDK declares beside the built-in ones, which its folder views list too.</summary>
+    public const string AvailableItemName = "AvailableItemName";
+
+    // An assembly referenced by its file, where it lies; whether a project reference's assembly is referenced or the
+    // project only built first.
+    public const string Reference = "Reference";
+    public const string HintPath = "HintPath";
+    public const string ReferenceOutputAssembly = "ReferenceOutputAssembly";
+
+    /// <summary>The .editorconfig files a project's compiler reads, which a design-time build lists.</summary>
+    public const string EditorConfigFiles = "EditorConfigFiles";
+
+    /// <summary>"true" for a project of tests, as the test SDKs set it.</summary>
+    public const string IsTestProject = "IsTestProject";
+
     // Where a project is and what its build makes.
     public const string ProjectDir = "ProjectDir";
     public const string AssemblyName = "AssemblyName";

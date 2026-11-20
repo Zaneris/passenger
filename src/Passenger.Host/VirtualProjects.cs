@@ -38,7 +38,7 @@ internal static class VirtualProjects
         Queue<ProjectRootElement> next = new([root]);
         while (next.TryDequeue(out ProjectRootElement? referencing))
         {
-            foreach (ProjectItemElement reference in referencing.Items.Where(i => i.ItemType == "ProjectReference"))
+            foreach (ProjectItemElement reference in referencing.Items.Where(i => i.ItemType == MSBuildNames.ProjectReference))
             {
                 if (reference.Metadata.FirstOrDefault(m => m.Name == ProgramFiles.RefMetadata)?.Value is { Length: > 0 } program
                     && placed.Add(program) && Given.ContainsKey(program))

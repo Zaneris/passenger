@@ -72,7 +72,7 @@ public sealed record ProjectInputs(
 
     /// <summary>A property as the project sets it: its own file's, else the nearest Directory.Build.props' above it in the
     /// person's folders (<see cref="FoldersUp"/>); null when neither sets it plainly (without other properties in it).</summary>
-    public string? PropertyValue(string name)
+    public string? PropertyValue([IdentifierOf(typeof(MSBuildNames))] string name)
     {
         if (Property(Load(ProjectPath), name) is { } own)
         {
@@ -96,7 +96,7 @@ public sealed record ProjectInputs(
     {
         string folder = Path.GetDirectoryName(projectPath)!;
         XDocument? project = Load(projectPath);
-        string assemblyName = Property(project, "AssemblyName") ?? Path.GetFileNameWithoutExtension(projectPath);
+        string assemblyName = Property(project, MSBuildNames.AssemblyName) ?? Path.GetFileNameWithoutExtension(projectPath);
         string? assets = evaluation?.AssetsFile is { Length: > 0 } evaluated && File.Exists(evaluated) ? evaluated : FindAssets(projectPath);
         List<string> references = [];
         List<string> projectReferences = [];
@@ -118,7 +118,7 @@ public sealed record ProjectInputs(
             }
         }
         // The project file's own references, should the project not be restored yet.
-        foreach (XElement reference in Elements(project, "ProjectReference"))
+        foreach (XElement reference in Elements(project, MSBuildNames.ProjectReference))
         {
             if (reference.Attribute("Include")?.Value is { Length: > 0 } include && ProjectItems.PathOf(folder, include) is { Glob: false } named
                 && PathNames.Canonical(named.Path) is var full && !projectReferences.Contains(full, PathNames.Comparer))
@@ -127,7 +127,7 @@ public sealed record ProjectInputs(
             }
         }
         Dictionary<string, string> versions = read is null ? new(StringComparer.OrdinalIgnoreCase) : new(read.Versions, StringComparer.OrdinalIgnoreCase);
-        foreach (XElement package in Elements(project, "PackageReference"))
+        foreach (XElement package in Elements(project, MSBuildNames.PackageReference))
         {
             if (package.Attribute("Include")?.Value is not { Length: > 0 } id)
             {
@@ -137,7 +137,7 @@ public sealed record ProjectInputs(
             {
                 packages.Add(id);
             }
-            if (ProjectItems.Value(package, "Version") is { Length: > 0 } version)
+            if (ProjectItems.Value(package, MSBuildNames.Version) is { Length: > 0 } version)
             {
                 versions.TryAdd(id, version.Trim());
             }

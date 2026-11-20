@@ -16,13 +16,15 @@ namespace Passenger.Tests;
 public sealed partial class MSBuildNamesTests
 {
     /// <summary>The projects whose code talks to MSBuild.</summary>
-    private static readonly string[] Projects = ["Passenger.App", "Passenger.Workspace", "Passenger.Lsp", "Passenger.Core", "Passenger.Packages", "Passenger.Host"];
+    private static readonly string[] Projects = ["Passenger.App", "Passenger.Workspace", "Passenger.Lsp", "Passenger.Core", "Passenger.Packages", "Passenger.Host", "Passenger.Xaml"];
 
     /// <summary>Strings that are such a name for something other than MSBuild, by file.</summary>
     private static readonly (string File, string Text)[] Others =
     [
         // A launch profile's key for its container's docker run words, named as the project's property is.
         ("src/Passenger.App/Run/LaunchProfile.cs", MSBuildNames.DockerfileRunArguments),
+        // XmlnsDefinitionAttribute's named argument for the assembly a XAML namespace maps to.
+        ("src/Passenger.Xaml/Metadata/TypeSystem.cs", MSBuildNames.AssemblyName),
     ];
 
     [Fact]
