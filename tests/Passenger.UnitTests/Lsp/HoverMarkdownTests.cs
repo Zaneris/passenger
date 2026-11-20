@@ -96,14 +96,15 @@ public sealed class HoverMarkdownTests
         Assert.False(HoverMarkdown.IsPlain(marked.RootElement));
         foreach (bool words in (bool[])[true, false])
         {
-            (IReadOnlyList<string> lines, bool code) = Assert.Single(HoverMarkdown.ByKind(Value(plain), HoverMarkdown.IsPlain(plain.RootElement), words));
+            (IReadOnlyList<string> lines, bool code, _) = Assert.Single(HoverMarkdown.ByKind(Value(plain), HoverMarkdown.IsPlain(plain.RootElement), words));
             Assert.False(code);
             Assert.True(lines.SequenceEqual([@"C:\temp *x*", "&lt;T&gt; "]),
                 $"A plain text hover read as Markdown {(words ? "in the card" : "by an agent")}: {string.Join(" | ", lines)}");
         }
         string shown = string.Join(" | ", HoverMarkdown.ByKind(Value(markdown), HoverMarkdown.IsPlain(markdown.RootElement), words: true)
-            .Select(b => $"{(b.Code ? "code" : "prose")}: {string.Join(" ", b.Lines)}"));
-        Assert.True(shown == "prose: Sum(a, b) | code: int *p; | prose: ", $"A Markdown hover's card, a signature's too, showed its marks: {shown}");
+            .Select(b => $"{(b.Code ? $"code {b.Info}" : "prose")}: {string.Join(" ", b.Lines)}"));
+        Assert.True(shown == "prose: Sum(a, b) | code csharp: int *p; | prose: ",
+            $"A Markdown hover's card, a signature's too, showed its marks, or lost the language its fence names: {shown}");
 
         static string Value(JsonDocument hover) => JsonMembers.Text(hover.RootElement, "value")!;
     }

@@ -1176,9 +1176,9 @@ public sealed class McpNavigationTests : McpRig, IClassFixture<RestoredFolders>
     /// cross: a hover card asked of Helper.cs now, its request found there after them.</summary>
     private async Task TracedAsync(McpClient client, string trace)
     {
-        int hovers = Sent(trace, Passenger.Lsp.LspMethods.Hover);
+        int hovers = Sent(trace, Passenger.Roslyn.Extension.ExtensionMethods.Hover);
         await Call(client, McpTools.SymbolInfo, new() { ["path"] = "Helper.cs", ["line"] = 3, ["column"] = 23 });
-        Assert.True(await Waiting.UntilAsync(() => Sent(trace, Passenger.Lsp.LspMethods.Hover) > hovers, TimeSpan.FromSeconds(10).Scaled(), Cancel),
+        Assert.True(await Waiting.UntilAsync(() => Sent(trace, Passenger.Roslyn.Extension.ExtensionMethods.Hover) > hovers, TimeSpan.FromSeconds(10).Scaled(), Cancel),
             "A hover card asked of Helper.cs never reached lsp.log's trace of what the language server was sent");
     }
 

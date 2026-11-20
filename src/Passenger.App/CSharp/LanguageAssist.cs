@@ -254,8 +254,8 @@ internal sealed class LanguageAssists(LinkAssist links, HttpAssist http, MSBuild
 /// <summary>What a hover card is given, part by part: the window's card shows each, an agent reads them as text.</summary>
 internal interface IHoverCard
 {
-    /// <summary>Code, as written.</summary>
-    void AddCode(string code);
+    /// <summary>Code, as written, coloured as its language is in the editor; plain for none.</summary>
+    void AddCode(string code, Languages.Language? language = null);
 
     /// <summary>Words.</summary>
     void AddText(string text);

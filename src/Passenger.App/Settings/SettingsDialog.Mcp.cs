@@ -125,7 +125,7 @@ public sealed partial class SettingsDialog
         {
             Spacing = Gaps.Small,
             Margin = new Thickness(0, Gaps.Normal, 0, 0),
-            Children = { head, MutedText.Wrapped(note), CodeBlock.Of(text) },
+            Children = { head, MutedText.Wrapped(note), ColouredCode.Plain(text) },
         });
     }
 

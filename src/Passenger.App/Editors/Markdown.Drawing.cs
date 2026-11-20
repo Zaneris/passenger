@@ -40,7 +40,7 @@ internal static partial class Markdown
         Division division => DivisionOf(division, page, depth),
         Details details => DetailsOf(details, page, depth),
         Listing listing => List(listing, page, depth),
-        Code code => MarkdownCode.Of(code),
+        Code code => ColouredCode.Of(code.Text, ColouredCode.LanguageOf(code.Info)),
         Quote quote => QuoteOf(quote, page, depth),
         Table table => TableOf(table, page),
         _ => new Border { Classes = { StyleClasses.MdRule } },

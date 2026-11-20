@@ -281,14 +281,15 @@ public sealed class ProblemsTests : IClassFixture<ProblemsTests.Project>
             Assert.Contains($"(process {slow.Server.ProcessId}): {pull.Asked}: ", Ui.IdeLog(), StringComparison.Ordinal);
 
             Ui.PlaceAfter(window.EditorArea.CodeEditor, "Twi");
-            Task hovered = slow.Server.HoldNextAnswer(Passenger.Lsp.LspMethods.Hover, _ => true, slow.Released);
+            string hovering = window.CSharpService!.For(window.EditorArea.Active!)!.Lsp!.HoverMethod;
+            Task hovered = slow.Server.HoldNextAnswer(hovering, _ => true, slow.Released);
             // Pumped, not settled: the held pull stands for the server's work in flight until it is let go.
             Ui.Run(window, AppActions.QuickDocumentation, settle: false);
             Ui.PumpUntil(() => hovered.IsCompleted, "the hover's answer to be held");
-            Passenger.Lsp.LongWait hover = slow.SaidOf(Passenger.Lsp.LspMethods.Hover);
+            Passenger.Lsp.LongWait hover = slow.SaidOf(hovering);
             Assert.True(hover.Told, $"A hover past the server's patience, which someone waits on, was to be told: {hover.Asked}: {hover.Conversation}");
             slow.HeardByTheWindow();
-            Assert.True(slow.Noticed.Any(n => n.Contains($"{Passenger.Lsp.LspMethods.Hover} has waited ", StringComparison.Ordinal)),
+            Assert.True(slow.Noticed.Any(n => n.Contains($"{hovering} has waited ", StringComparison.Ordinal)),
                 $"The window did not say the server was slow to answer the hover it held; it said: {string.Join(" | ", slow.Noticed)}");
         }
         finally

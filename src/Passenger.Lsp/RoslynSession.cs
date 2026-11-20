@@ -764,14 +764,32 @@ public sealed class LspDocument : IDisposable
     /// well each item fits where it is asked for; else as the protocol asks it.</summary>
     public string CompletionMethod => Server.ExtensionProblem is null && !IsRazor ? ExtensionMethods.Completion : LspMethods.Completion;
 
+    /// <summary>An item's details (<see cref="ResolveMethod"/>).</summary>
     public Task<CompletionItem?> ResolveAsync(CompletionItem item, CancellationToken cancel = default) =>
-        Server.RequestAsync<CompletionItem>(LspMethods.CompletionResolve, item, cancel);
+        Server.RequestAsync<CompletionItem>(ResolveMethod, item, cancel);
 
+    /// <summary>What the server says of a place (<see cref="HoverMethod"/>).</summary>
     public async Task<Hover?> HoverAsync(int offset, CancellationToken cancel = default) =>
-        await Server.RequestAsync<Hover>(LspMethods.Hover, new TextDocumentPositionParams(Identifier, PositionOf(offset)), cancel);
+        await Server.RequestAsync<Hover>(HoverMethod, new TextDocumentPositionParams(Identifier, PositionOf(offset)), cancel);
 
+    /// <summary>The signatures of the call at a place (<see cref="SignatureHelpMethod"/>).</summary>
     public async Task<SignatureHelp?> SignatureHelpAsync(int offset, CancellationToken cancel = default) =>
-        await Server.RequestAsync<SignatureHelp>(LspMethods.SignatureHelp, new TextDocumentPositionParams(Identifier, PositionOf(offset)), cancel);
+        await Server.RequestAsync<SignatureHelp>(SignatureHelpMethod, new TextDocumentPositionParams(Identifier, PositionOf(offset)), cancel);
+
+    /// <summary>How a completion item is resolved: of a C# file, through Passenger's extension once it is up, its
+    /// documentation's code in parts (<see cref="CompletionItem.Code"/>); else as the protocol asks it.</summary>
+    public string ResolveMethod => CodedCards ? ExtensionMethods.CompletionResolve : LspMethods.CompletionResolve;
+
+    /// <summary>How a hover is asked for: of a C# file, through Passenger's extension once it is up, its code in parts
+    /// (<see cref="Hover.Code"/>); else as the protocol asks it.</summary>
+    public string HoverMethod => CodedCards ? ExtensionMethods.Hover : LspMethods.Hover;
+
+    /// <summary>How signatures are asked for: of a C# file, through Passenger's extension once it is up, each label in parts
+    /// (<see cref="SignatureInformation.Code"/>); else as the protocol asks it.</summary>
+    public string SignatureHelpMethod => CodedCards ? ExtensionMethods.SignatureHelp : LspMethods.SignatureHelp;
+
+    /// <summary>Whether the cards' answers come through Passenger's extension, with their code in parts: a C# file's, once it is up.</summary>
+    private bool CodedCards => Server.ExtensionProblem is null && !IsRazor;
 
     /// <summary>Where the symbol at an offset is declared. Like every answer that grows with the solution or the file, read
     /// on the thread pool before the caller resumes (<see cref="Read"/>).</summary>

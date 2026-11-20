@@ -95,7 +95,34 @@ public static class ExtensionMethods
     /// <summary>textDocument/prepareCallHierarchy, its item made where the symbol is declared, so a use of it in another
     /// document has one, and at a record's positional parameter the property it declares.</summary>
     public const string CallHierarchy = "passenger/prepareCallHierarchy";
+
+    /// <summary>textDocument/hover, answered as the server answers it, with its code's parts (<see cref="CodeParts"/>).</summary>
+    public const string Hover = "passenger/hover";
+
+    /// <summary>completionItem/resolve, answered as the server answers it, with its documentation's code's parts
+    /// (<see cref="CodeParts"/>).</summary>
+    public const string CompletionResolve = "passenger/completionResolve";
+
+    /// <summary>textDocument/signatureHelp, answered as the server answers it, with each signature's label in parts
+    /// (<see cref="CodeParts"/>).</summary>
+    public const string SignatureHelp = "passenger/signatureHelp";
 }
+
+/// <summary>The code a C# card shows (a symbol's description, a signature) in the parts Roslyn tags it in, each with the
+/// semantic token type the server's legend gives its classification (none for a name it could not bind, a space or
+/// punctuation), so the client colours it as the editor colours a file's code: an answer's member beside the words it
+/// shows, its texts together the code as shown.</summary>
+public static class CodeParts
+{
+    /// <summary>The answer's member holding the parts: a hover's and a completion item's each block of code, a signature's
+    /// its label.</summary>
+    public const string Member = "passengerCode";
+}
+
+/// <summary>A stretch of code and its semantic token type, null for none.</summary>
+public sealed record CodePart(
+    [property: JsonPropertyName("text")] string Text,
+    [property: JsonPropertyName("type")][property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Type);
 
 /// <summary>A C# completion list asked in two parts: what is in scope first, then the types and extension members of
 /// namespaces not imported, which the server lists after every other item and is slowest to find, worked out at once but

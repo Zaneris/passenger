@@ -33,7 +33,7 @@ internal sealed partial class GDScriptAssist
             Describe(card, csharp.Member);
             return true;
         }
-        card.AddCode(SaidOf(typed, named));
+        card.AddCode(SaidOf(typed, named), Languages.Language.GDScript);
         if (WordsOf(typed, named, reference) is not { } words)
         {
             return false;
@@ -42,7 +42,7 @@ internal sealed partial class GDScriptAssist
         {
             if (part.Code)
             {
-                card.AddCode(part.Text);
+                card.AddCode(part.Text, Languages.Language.GDScript);
             }
             else
             {
@@ -212,7 +212,7 @@ internal sealed partial class GDScriptAssist
             {
                 return false;
             }
-            card.AddCode(type.IsVariant ? name.Name : $"{name.Name}: {type}");
+            card.AddCode(type.IsVariant ? name.Name : $"{name.Name}: {type}", Languages.Language.GDScript);
             return true;
         }
         // The engine's words are Godot's server's to give until its class reference has been read.

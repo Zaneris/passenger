@@ -65,6 +65,9 @@ internal sealed partial class CodeCompletion
     /// <summary>What the card beside the completion list says about the chosen item while it shows, null otherwise.</summary>
     public string? ItemDocumentation => itemCard.IsVisible ? itemCard.Text : null;
 
+    /// <summary>The card beside the completion list while it shows.</summary>
+    public Border? ItemCard => itemCard.IsVisible ? itemCard : null;
+
     /// <summary>Where the completion list and the card beside it lie in their window, as last laid out, while the card shows.</summary>
     public (Rect List, Rect Card)? ItemCardPlace =>
         itemCard.IsVisible && completion.IsVisible && TopLevel.GetTopLevel(itemCard) is { } window
@@ -1058,11 +1061,11 @@ internal sealed partial class CodeCompletion
             itemCard.Clear();
             if (item.Detail is { Length: > 0 } detail)
             {
-                itemCard.AddCode(detail);
+                itemCard.AddServed(detail, null, context.Editors.Active is { } active && active.Text == Editor.Document ? active.Language : null);
             }
             if (Shapes.Text(item.Documentation) is { Length: > 0 } documentation)
             {
-                itemCard.AddMarkdown(documentation);
+                itemCard.AddMarkdown(documentation, item.Code);
             }
             if (!itemCard.IsEmpty)
             {

@@ -4,6 +4,9 @@ using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.Input.Platform;
+using Avalonia.LogicalTree;
+using Avalonia.Media;
+using Avalonia.Styling;
 using Avalonia.VisualTree;
 using Passenger.App;
 using Passenger.App.Navigation;
@@ -617,6 +620,60 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
             $"What was typed after choosing Max, its using added above, did not follow it: '{line}'\n{text}");
         Assert.Equal(line.Length, editor.CaretPosition.Column);
         window.Close();
+    }
+
+    /// <summary>The C# cards draw their code as the editor draws it, in the server's classifications: the hover card's,
+    /// Parameter Info's and the completion item's documentation's signature each name a keyword, a class, a method and a
+    /// parameter in the theme's colour for each, and in the light theme's once the theme changes.</summary>
+    [AvaloniaFact]
+    public void The_hover_parameter_info_and_completion_cards_draw_their_code_in_the_themes_syntax_colours_and_follow_a_theme_change()
+    {
+        MainWindow window = project.Open("Program.cs");
+        window.RequestedThemeVariant = ThemeVariant.Dark;
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        (string Word, string Key)[] signature = [("int", TokenKeys.Syntax_Keyword), ("Helper", TokenKeys.Syntax_Class), ("Twice", TokenKeys.Syntax_Method),
+            ("value", TokenKeys.Syntax_Parameter)];
+        int at = editor.Document.Snapshot.ToString().IndexOf("Twice", StringComparison.Ordinal) + 2;
+        window.MouseMove(editor.TranslatePoint(editor.PointOf(at) + new Point(1, editor.LineHeight / 2), window)!.Value, Avalonia.Input.RawInputModifiers.None);
+        CodeColoured(window, () => window.Assist.HoverCard, "The hover card", signature);
+        window.MouseMove(new Point(1, 1), Avalonia.Input.RawInputModifiers.None);
+        Ui.Settle();
+
+        Ui.PlaceAfter(editor, "Helper.Twice(");
+        editor.Focus();
+        Ui.Run(window, AppActions.ParameterInfo);
+        CodeColoured(window, () => window.Assist.SignatureCard, "Parameter Info", signature);
+        window.RequestedThemeVariant = ThemeVariant.Light;
+        CodeColoured(window, () => window.Assist.SignatureCard, "Parameter Info", signature);
+        Ui.Press(window, "ESCAPE");
+
+        Ui.PlaceAfter(editor, "int result = Helper.Twice(2);");
+        Ui.Press(window, "ENTER");
+        window.KeyTextInput("int doubled = Helper");
+        window.KeyTextInput(".");
+        Ui.WaitFor(() => window.Assist.CompletionLabels.Contains("Twice"), "Helper's members");
+        // The card follows the choice as it moves: off Twice, the type the place takes listing it first, and back.
+        Ui.Press(window, "DOWN");
+        for (int moves = 0; moves < window.Assist.CompletionLabels.Count && window.Assist.CompletionChosen != "Twice"; moves++)
+        {
+            Ui.Press(window, "UP");
+        }
+        Assert.Equal("Twice", window.Assist.CompletionChosen);
+        CodeColoured(window, () => window.Assist.ItemCard, "The completion item's documentation", signature);
+        window.RequestedThemeVariant = ThemeVariant.Dark;
+        CodeColoured(window, () => window.Assist.ItemCard, "The completion item's documentation", signature);
+        window.Close();
+    }
+
+    /// <summary>Waits for a card's code to draw each word in the brush the theme in force gives its kind.</summary>
+    private static void CodeColoured(MainWindow window, Func<Border?> card, string what, (string Word, string Key)[] words)
+    {
+        IBrush Brush(string key) =>
+            window.TryFindResource(key, window.ActualThemeVariant, out object? found) && found is IBrush brush ? brush : throw new Xunit.Sdk.XunitException($"No {key} brush");
+        Avalonia.Controls.Documents.Run[] Runs() => [.. card()?.GetLogicalDescendants().OfType<ColouredCode>().SelectMany(c => c.Runs) ?? []];
+        Ui.WaitFor(() => words.All(w => Runs().Any(r => r.Text == w.Word && ReferenceEquals(r.Foreground, Brush(w.Key)))),
+            () => $"{what} to draw its code's {string.Join(", ", words.Select(w => w.Word))} in the {window.ActualThemeVariant} theme's colours for them, "
+                + $"where its runs are [{string.Join(", ", Runs().Select(r => $"'{r.Text}' {(r.Foreground as ISolidColorBrush)?.Color}"))}]: its code would read as one colour");
     }
 
     /// <summary>A method chosen by Enter is written with its call's brackets: the caret between them where an overload
@@ -2334,14 +2391,14 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         Ui.Run(window, AppActions.QuickDocumentation);
         Ui.WaitFor(() => window.Assist.HoverText?.Contains("Joins the values", StringComparison.Ordinal) == true, "the card over Join with its documentation");
         TextBlock signature = Untrimmed(WholeInEditor(window, window.Assist.HoverCard!, "The hover card"), "The hover card");
-        Assert.True(signature.TextLayout.TextLines.Count > 1, $"Join's signature, wider than the editor, was to wrap in the card; it is one line, '{signature.Text}'");
+        Assert.True(signature.TextLayout.TextLines.Count > 1, $"Join's signature, wider than the editor, was to wrap in the card; it is one line, '{Said(signature)}'");
         Ui.Press(window, "ESCAPE");
 
         Ui.PlaceAfter(editor, "=> Join(");
         Ui.Run(window, AppActions.ParameterInfo);
         Ui.WaitFor(() => window.Assist.SignatureText?.Contains("is put between", StringComparison.Ordinal) == true, "Join's parameter info with its separator's documentation");
         signature = Untrimmed(WholeInEditor(window, window.Assist.SignatureCard!, "Parameter Info"), "Parameter Info");
-        Assert.True(signature.TextLayout.TextLines.Count > 1, $"Join's signature, wider than the editor, was to wrap in Parameter Info; it is one line, '{signature.Text}'");
+        Assert.True(signature.TextLayout.TextLines.Count > 1, $"Join's signature, wider than the editor, was to wrap in Parameter Info; it is one line, '{Said(signature)}'");
         Ui.Press(window, "ESCAPE");
         window.Close();
     }
@@ -2352,7 +2409,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         Assert.True(words.Count > 0, $"{what} shows no words");
         foreach (TextBlock said in words)
         {
-            Assert.True(said.TextLayout.TextLines.All(l => !l.HasCollapsed), $"{what} trims '{said.Text}' where its words were to wrap whole");
+            Assert.True(said.TextLayout.TextLines.All(l => !l.HasCollapsed), $"{what} trims '{Said(said)}' where its words were to wrap whole");
         }
         return words[0];
     }
@@ -2371,15 +2428,19 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         Rect layer = Layer(window);
         Rect at = new(card.TranslatePoint(default, window) ?? default, card.Bounds.Size);
         Assert.True(layer.Inflate(0.5).Contains(at), $"{what} runs past the editor's edge, cut there: it lies at {at} in the editor at {layer}");
-        List<TextBlock> words = [.. card.GetVisualDescendants().OfType<TextBlock>().Where(t => t.IsEffectivelyVisible && !string.IsNullOrEmpty(t.Text))];
+        List<TextBlock> words = [.. card.GetVisualDescendants().OfType<TextBlock>().Where(t => t.IsEffectivelyVisible && Said(t).Length > 0)];
         foreach (TextBlock said in words)
         {
             Rect lies = new(said.TranslatePoint(default, window) ?? default, said.Bounds.Size);
             Assert.True(lies.X >= at.X - 0.5 && lies.Right <= at.Right + 0.5 && said.TextLayout.Width <= said.Bounds.Width + 0.5,
-                $"'{said.Text}' runs past {what} at {at}: it lies at {lies}, {said.TextLayout.Width:0.#} wide");
+                $"'{Said(said)}' runs past {what} at {at}: it lies at {lies}, {said.TextLayout.Width:0.#} wide");
         }
         return words;
     }
+
+    /// <summary>A block's words: its text, or its runs' where it is drawn in runs (a card's code).</summary>
+    private static string Said(TextBlock block) =>
+        block.Text is { Length: > 0 } text ? text : string.Concat(block.Inlines?.OfType<Avalonia.Controls.Documents.Run>().Select(r => r.Text) ?? []);
 
     [Gate]
     [AvaloniaFact]

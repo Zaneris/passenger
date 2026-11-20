@@ -13,10 +13,10 @@ using Passenger.Editor;
 
 namespace Passenger.App.CSharp;
 
-/// <summary>A card over the editor: hover information, a diagnostic's message, a signature. Code is
-/// set in the editor's font, prose in the interface's, a problem in its severity's colour. A paused program's value with
-/// members is its row of the stop's values (<see cref="AddValues"/>), which the card then takes the pointer and the keys for.
-/// A screen reader meets it as a tooltip called by what it is for (Parameter Info).</summary>
+/// <summary>A card over the editor: hover information, a diagnostic's message, a signature. Code is drawn as the editor
+/// draws it (<see cref="ColouredCode"/>), prose in the interface's font, a problem in its severity's colour. A paused
+/// program's value with members is its row of the stop's values (<see cref="AddValues"/>), which the card then takes the
+/// pointer and the keys for. A screen reader meets it as a tooltip called by what it is for (Parameter Info).</summary>
 internal sealed class InfoCard : Border, IHoverCard, IHeldToEditor, IHeardPopup
 {
     /// <summary>The most a card of words is wide; one of a value's rows takes a width of the popups' (<see cref="PopupFrame"/>).</summary>
@@ -69,6 +69,7 @@ internal sealed class InfoCard : Border, IHoverCard, IHeldToEditor, IHeardPopup
     public string Text => string.Join('\n', parts.Children.Select(part => part switch
     {
         TextBlock words => words.Text,
+        ColouredCode code => code.Code,
         Panel row => string.Join(' ', row.Children.OfType<TextBlock>().Select(t => t.Text)),
         Debugging.VariablesList values => string.Join('\n', values.Tree.Rows.Select(r => $"{new string(' ', r.Depth * 2)}{r.Name} = {r.TypeLabel}{r.Shown}")),
         _ => null,
@@ -126,14 +127,21 @@ internal sealed class InfoCard : Border, IHoverCard, IHeldToEditor, IHeardPopup
         return new Size(width, base.MeasureOverride(new Size(width, availableSize.Height)).Height);
     }
 
-    public void AddCode(string code) => parts.Children.Add(new TextBlock
+    /// <summary>Code in a language, coloured as its highlighter colours it (<see cref="ColouredCode"/>); plain for none.</summary>
+    public void AddCode(string code, Languages.Language? language = null) => parts.Children.Add(ColouredCode.Of(code, language));
+
+    /// <summary>Code a language server shows of a file in <paramref name="language"/>: in the colours of the parts it gives
+    /// where they spell it (C#'s, through Passenger's extension), else as the language's highlighter colours it, but plain
+    /// for C# and Razor, whose server shows display text rather than code to parse.</summary>
+    public void AddServed(string code, IReadOnlyList<Roslyn.Extension.CodePart>? given, Languages.Language? language)
     {
-        Text = code,
-        FontFeatures = Fonts.NoLigatures,
-        FontSize = 12.5,
-        TextWrapping = TextWrapping.Wrap,
-        Foreground = Brush(TokenKeys.Text),
-    }.InCodeFont());
+        if (given is not null && Languages.CSharp.ServerCode.Of(given) is var (shown, spans) && Languages.CSharp.ServerCode.SameCode(shown, code))
+        {
+            parts.Children.Add(ColouredCode.Of(shown, spans));
+            return;
+        }
+        AddCode(code, language == Languages.Language.CSharp || language == Languages.Language.Razor ? null : language);
+    }
 
     public void AddText(string text, IBrush? colour = null) => parts.Children.Add(new TextBlock
     {
@@ -200,14 +208,18 @@ internal sealed class InfoCard : Border, IHoverCard, IHeldToEditor, IHeardPopup
 
     /// <summary>A language server's hover, read by its kind: plain text as written, Markdown as <see cref="AddMarkdown"/>
     /// shows it.</summary>
-    public void AddHover(Lsp.Hover hover) => AddBlocks(HoverMarkdown.ByKind(Lsp.Shapes.Text(hover.Contents), HoverMarkdown.IsPlain(hover.Contents), words: true));
+    public void AddHover(Lsp.Hover hover) =>
+        AddBlocks(HoverMarkdown.ByKind(Lsp.Shapes.Text(hover.Contents), HoverMarkdown.IsPlain(hover.Contents), words: true), hover.Code);
 
-    /// <summary>A hover's Markdown: its fenced code as code, the prose between as its words (<see cref="HoverMarkdown"/>).</summary>
-    public void AddMarkdown(string markdown) => AddBlocks(HoverMarkdown.ByKind(markdown, plain: false, words: true));
+    /// <summary>A hover's Markdown: its fenced code as code (<see cref="AddServed"/>, by the parts given for it, else as the
+    /// language its fence names), the prose between as its words (<see cref="HoverMarkdown"/>).</summary>
+    public void AddMarkdown(string markdown, IReadOnlyList<IReadOnlyList<Roslyn.Extension.CodePart>>? code = null) =>
+        AddBlocks(HoverMarkdown.ByKind(markdown, plain: false, words: true), code);
 
-    private void AddBlocks(IEnumerable<(IReadOnlyList<string> Lines, bool Code)> blocks)
+    private void AddBlocks(IEnumerable<(IReadOnlyList<string> Lines, bool Code, string Info)> blocks, IReadOnlyList<IReadOnlyList<Roslyn.Extension.CodePart>>? given)
     {
-        foreach ((IReadOnlyList<string> lines, bool code) in blocks)
+        List<IReadOnlyList<Roslyn.Extension.CodePart>> unused = [.. given ?? []];
+        foreach ((IReadOnlyList<string> lines, bool code, string info) in blocks)
         {
             string text = string.Join('\n', lines).Trim('\n', ' ');
             if (text.Length == 0)
@@ -216,7 +228,12 @@ internal sealed class InfoCard : Border, IHoverCard, IHeldToEditor, IHeardPopup
             }
             if (code)
             {
-                AddCode(text);
+                int at = unused.FindIndex(p => Languages.CSharp.ServerCode.SameCode(Languages.CSharp.ServerCode.Of(p).Text, text));
+                AddServed(text, at < 0 ? null : unused[at], ColouredCode.LanguageOf(info));
+                if (at >= 0)
+                {
+                    unused.RemoveAt(at);
+                }
             }
             else
             {

@@ -209,6 +209,12 @@ public sealed class CompletionItem
     public LspCommand? Command { get; init; }
     public JsonElement? Data { get => data; init => data = value; }
 
+    /// <summary>A resolved C# item's documentation's blocks of code in parts, through Passenger's extension; null otherwise.
+    /// Never sent back.</summary>
+    [JsonPropertyName(Roslyn.Extension.CodeParts.Member)]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyList<IReadOnlyList<Roslyn.Extension.CodePart>>? Code { get; init; }
+
     /// <summary>How well the item fits where its list was asked for, as the server's matching says: higher fits better,
     /// 0 where it says nothing (<see cref="CompletionList.WithPriorities"/>). Never sent back.</summary>
     [JsonIgnore]
@@ -250,6 +256,10 @@ public sealed class Hover
 {
     public JsonElement Contents { get; init; }
     public LspRange? Range { get; init; }
+
+    /// <summary>A C# hover's blocks of code in parts, through Passenger's extension; null otherwise.</summary>
+    [JsonPropertyName(Roslyn.Extension.CodeParts.Member)]
+    public IReadOnlyList<IReadOnlyList<Roslyn.Extension.CodePart>>? Code { get; init; }
 }
 
 public sealed class SignatureHelp
@@ -265,6 +275,10 @@ public sealed class SignatureInformation
     public JsonElement? Documentation { get; init; }
     public List<ParameterInformation>? Parameters { get; init; }
     public int? ActiveParameter { get; init; }
+
+    /// <summary>A C# signature's label in parts, through Passenger's extension; null otherwise.</summary>
+    [JsonPropertyName(Roslyn.Extension.CodeParts.Member)]
+    public IReadOnlyList<Roslyn.Extension.CodePart>? Code { get; init; }
 }
 
 public sealed class ParameterInformation

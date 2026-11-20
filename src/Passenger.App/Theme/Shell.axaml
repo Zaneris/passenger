@@ -349,7 +349,7 @@
         <Setter Property="CornerRadius" Value="{DynamicResource Passenger.ControlRadius}" />
         <Setter Property="Background" Value="{DynamicResource Passenger.List}" />
     </Style>
-    <!-- Code to read and copy (CodeBlock): framed as a field is, on the editor's ground. -->
+    <!-- Code to read and copy (ColouredCode): framed as a field is, on the editor's ground. -->
     <Style Selector="Border.code">
         <Setter Property="BorderBrush" Value="{DynamicResource Passenger.FieldBorder}" />
         <Setter Property="BorderThickness" Value="1" />

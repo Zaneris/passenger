@@ -275,26 +275,26 @@ internal sealed class GodotShaderAssist(AssistContext context, CodeCompletion co
         {
             case GodotShaderNameKind.BuiltIn when name.BuiltIn is { } builtIn:
                 string[] said = Said(builtIn, name.Scope ?? string.Empty, shader.Type ?? "these").Split('\n');
-                card.AddCode(said[0]);
+                card.AddCode(said[0], Languages.Language.GodotShader);
                 card.AddText(said[1]);
                 break;
             case GodotShaderNameKind.StageFunction or GodotShaderNameKind.Function:
-                card.AddCode(string.Join('\n', name.Calls.Select(c => c.Signature).Distinct().Take(8)));
+                card.AddCode(string.Join('\n', name.Calls.Select(c => c.Signature).Distinct().Take(8)), Languages.Language.GodotShader);
                 card.AddText(name.Kind == GodotShaderNameKind.StageFunction ? $"A function {shader.Type} shaders' {name.Scope}() may call" : "A built-in function of Godot's shading language");
                 break;
             case GodotShaderNameKind.RenderMode:
-                card.AddCode($"render_mode {name.Name};");
+                card.AddCode($"render_mode {name.Name};", Languages.Language.GodotShader);
                 card.AddText($"A render mode of {shader.Type} shaders");
                 break;
             case GodotShaderNameKind.StencilMode:
-                card.AddCode($"stencil_mode {name.Name};");
+                card.AddCode($"stencil_mode {name.Name};", Languages.Language.GodotShader);
                 card.AddText($"A stencil mode of {shader.Type} shaders");
                 break;
             case GodotShaderNameKind.Hint:
                 card.AddText($"A uniform hint of Godot's shading language");
                 break;
             case GodotShaderNameKind.Declared when name.Declaration is { } declaration:
-                card.AddCode(declaration.Written);
+                card.AddCode(declaration.Written, Languages.Language.GodotShader);
                 string where = name.Include ?? shader.Res ?? Path.GetFileName(shader.Path);
                 if (declaration.Kind == GodotShaderDeclared.Uniform)
                 {

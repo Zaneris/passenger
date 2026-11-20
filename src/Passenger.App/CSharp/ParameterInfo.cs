@@ -167,7 +167,7 @@ internal sealed class ParameterInfo
             int overload = Math.Clamp(help.ActiveSignature ?? 0, 0, help.Signatures.Count - 1);
             SignatureInformation signature = help.Signatures[overload];
             card.Clear();
-            card.AddCode(signature.Label);
+            card.AddServed(signature.Label, signature.Code, context.Editors.Active is { } file && file.Text == document ? file.Language : null);
             int active = signature.ActiveParameter ?? help.ActiveParameter ?? -1;
             List<string> names = [.. ParameterNames(signature)];
             if (signature.Parameters is { } parameters && active >= 0 && active < parameters.Count
@@ -233,7 +233,7 @@ internal sealed class ParameterInfo
 
         public int Count => parts.Count;
 
-        public void AddCode(string code) => parts.Add(card => card.AddCode(code));
+        public void AddCode(string code, Languages.Language? language = null) => parts.Add(card => card.AddCode(code, language));
 
         public void AddText(string text) => parts.Add(card => card.AddText(text));
 

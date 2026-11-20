@@ -74,7 +74,7 @@ internal sealed class CssClassAssist(AssistContext context, CodeCompletion compl
         {
             List<DefinedClass> rules = [.. sheet];
             card.AddText(rules.Count == 1 ? $"{rules[0].Sheet}" : $"{rules[0].Sheet}: {Plural.Of(rules.Count, "rule")}");
-            card.AddCode(string.Join("\n\n", rules.Take(MostShown).Select(d => d.Text.Describe(d.Rule))));
+            card.AddCode(string.Join("\n\n", rules.Take(MostShown).Select(d => d.Text.Describe(d.Rule))), Languages.Language.Css);
             if (rules.Count > MostShown)
             {
                 card.AddText($"and {Plural.Of(rules.Count - MostShown, "more rule")}");

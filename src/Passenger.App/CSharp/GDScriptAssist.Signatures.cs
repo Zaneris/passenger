@@ -31,7 +31,7 @@ internal sealed partial class GDScriptAssist : IOwnSignatures
         {
             return Served(document) ? null : false;
         }
-        card.AddCode(signature.ToString());
+        card.AddCode(signature.ToString(), Languages.Language.GDScript);
         IReadOnlyList<string> shown = signature.Shown;
         if (shown.Count > 0)
         {

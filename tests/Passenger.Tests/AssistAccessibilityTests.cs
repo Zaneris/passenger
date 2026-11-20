@@ -178,7 +178,7 @@ public sealed class AssistAccessibilityTests : IClassFixture<AssistAccessibility
             Ui.PumpUntil(() => window.Assist.CompletionNarrowedBy == "T" && window.Assist.CompletionLabels.Count > 1 && window.Assist.ItemDocumentation is not null,
                 "the rows narrowed by T, the first one's documentation beside them");
             chosen = window.Assist.CompletionLabels[1];
-            Task describing = server.HoldNextAnswer(Passenger.Lsp.LspMethods.CompletionResolve,
+            Task describing = server.HoldNextAnswer(window.CSharpService!.For(window.EditorArea.Active!)!.Lsp!.ResolveMethod,
                 asked => asked is Passenger.Lsp.CompletionItem { Label: var label } && label == chosen, resolved.Task);
             Ui.Press(window, "DOWN", settle: false);
             heard.Clear();

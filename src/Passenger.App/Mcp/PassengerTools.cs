@@ -1424,7 +1424,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
 
         public string Text => string.Concat(parts.Select((p, i) => (i == 0 ? string.Empty : p.Served || parts[i - 1].Served ? "\n\n" : "\n") + p.Text));
 
-        public void AddCode(string code) => Add(code, false);
+        public void AddCode(string code, Languages.Language? language = null) => Add(code, false);
 
         public void AddText(string text) => Add(text, false);
 

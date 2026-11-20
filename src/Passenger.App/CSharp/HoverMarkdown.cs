@@ -25,38 +25,40 @@ internal static partial class HoverMarkdown
     /// <summary>A hover's text as its blocks, by its kind (<see cref="IsPlain"/>): plain text one block of its lines as
     /// written, Markdown its fenced code and the prose between (<see cref="Blocks"/>), each line of prose as the card shows
     /// it (<paramref name="words"/>, <see cref="Words"/>) or as an agent reads it (<see cref="Text"/>); no data URI's bytes.</summary>
-    public static IEnumerable<(IReadOnlyList<string> Lines, bool Code)> ByKind(string text, bool plain, bool words)
+    public static IEnumerable<(IReadOnlyList<string> Lines, bool Code, string Info)> ByKind(string text, bool plain, bool words)
     {
         if (plain)
         {
-            yield return (Dataless(text).Replace("\r\n", "\n", StringComparison.Ordinal).Split('\n'), false);
+            yield return (Dataless(text).Replace("\r\n", "\n", StringComparison.Ordinal).Split('\n'), false, string.Empty);
             yield break;
         }
         Func<string, string> read = words ? Words : Text;
-        foreach ((IReadOnlyList<string> lines, bool code) in Blocks(text))
+        foreach ((IReadOnlyList<string> lines, bool code, string info) in Blocks(text))
         {
-            yield return (code ? lines : [.. lines.Select(read)], code);
+            yield return (code ? lines : [.. lines.Select(read)], code, info);
         }
     }
 
     /// <summary>The Markdown's fenced blocks of code and the prose between them, in order, each as its lines, the fences'
-    /// own lines left out.</summary>
-    public static IEnumerable<(IReadOnlyList<string> Lines, bool Code)> Blocks(string markdown)
+    /// own lines left out, a block of code with the word its fence names its language by (empty for none).</summary>
+    public static IEnumerable<(IReadOnlyList<string> Lines, bool Code, string Info)> Blocks(string markdown)
     {
         bool code = false;
+        string info = string.Empty;
         List<string> block = [];
         foreach (string line in markdown.Replace("\r\n", "\n", StringComparison.Ordinal).Split('\n'))
         {
-            if (line.TrimStart().StartsWith("```", StringComparison.Ordinal))
+            if (line.TrimStart() is var fence && fence.StartsWith("```", StringComparison.Ordinal))
             {
-                yield return (block, code);
+                yield return (block, code, info);
                 block = [];
                 code = !code;
+                info = code ? fence.TrimStart('`').Trim() : string.Empty;
                 continue;
             }
             block.Add(line);
         }
-        yield return (block, code);
+        yield return (block, code, info);
     }
 
     /// <summary>A line of prose as the card shows it: a link as its words, emphasis and a code span's backticks taken out.</summary>

@@ -154,7 +154,7 @@ public sealed class MarkdownPreviewTests
             && b.GetLogicalDescendants().OfType<MarkdownText>().Any(t => t.Shown == "Shops sell things.")), "The block quote is not drawn as one");
         Assert.Contains(preview.GetLogicalDescendants().OfType<Border>(), b => b.Classes.Contains(StyleClasses.MdRule));
 
-        MarkdownCode[] code = [.. preview.GetLogicalDescendants().OfType<MarkdownCode>()];
+        ColouredCode[] code = [.. preview.GetLogicalDescendants().OfType<ColouredCode>()];
         Assert.True(code.Select(c => c.Language).SequenceEqual(["C#", "JSON", "Python"]), $"The fences are coloured as [{string.Join(", ", code.Select(c => c.Language))}], not C#, JSON and Python");
         IBrush keyword = Brush(window, TokenKeys.Syntax_Keyword);
         IBrush text = Brush(window, TokenKeys.Syntax_String);

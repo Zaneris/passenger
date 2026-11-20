@@ -1,14 +1,10 @@
 using Avalonia;
 using Avalonia.Automation;
 using Avalonia.Controls;
-using Avalonia.Controls.Documents;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.Styling;
-using Passenger.Editor;
-using Passenger.Text;
-using TextRun = Avalonia.Controls.Documents.Run;
 
 namespace Passenger.App.Editors;
 
@@ -183,136 +179,5 @@ public sealed class MarkdownPicture : Panel
             image.IsVisible = true;
             alt.IsVisible = false;
         }
-    }
-}
-
-/// <summary>Fenced code on the editor's ground in its font, coloured as the editor colours its language
-/// (<see cref="Languages.Highlighters"/>) once it is shown: a highlighter while it is on screen, let go as it
-/// leaves.</summary>
-public sealed class MarkdownCode : Border
-{
-    private readonly SelectableTextBlock text;
-    private readonly string code;
-    private readonly Languages.Language? language;
-    private TextDocument? document;
-    private IHighlighter? highlighter;
-
-    protected override Type StyleKeyOverride => typeof(Border);
-
-    private MarkdownCode(string code, Languages.Language? language)
-    {
-        this.code = code;
-        this.language = language;
-        Classes.Add(StyleClasses.Code);
-        // "=>" as written rather than the font's arrow.
-        text = new SelectableTextBlock
-        {
-            FontSize = 12,
-            TextWrapping = TextWrapping.Wrap,
-            FontFeatures = [new FontFeature { Tag = "calt", Value = 0 }, new FontFeature { Tag = "liga", Value = 0 }],
-            Inlines = [new TextRun(code)],
-        }.InCodeFont();
-        Child = text;
-    }
-
-    internal static MarkdownCode Of(Markdown.Code code) => new(code.Text, LanguageOf(code.Info));
-
-    /// <summary>The language the editor colours it as, by the name the IDE gives it; null for none.</summary>
-    public string? Language => language?.Name;
-
-    /// <summary>The code as drawn, a run a coloured stretch.</summary>
-    public IEnumerable<TextRun> Runs => text.Inlines!.OfType<TextRun>();
-
-    /// <summary>The language a fence's word names, by the file a person would keep it in: <c>csharp</c> as a .cs file is.</summary>
-    private static Languages.Language? LanguageOf(string info)
-    {
-        string word = info.Trim('{', '}', '.').ToLowerInvariant();
-        string? file = word switch
-        {
-            "" => null,
-            "c#" or "cs" or "csharp" => "code.cs",
-            "javascript" or "js" or "jsx" => "code.js",
-            "typescript" or "ts" => "code.ts",
-            "bash" or "sh" or "shell" or "zsh" => "code.sh",
-            "docker" or "dockerfile" => "Dockerfile",
-            "markdown" or "md" => "code.md",
-            "python" or "py" => "code.py",
-            _ when word.All(c => char.IsLetterOrDigit(c) || c is '-' or '_') => $"code.{word}",
-            _ => null,
-        };
-        return file is not null && Languages.Language.ForPath(file) is var language && language != Languages.Language.PlainText ? language : null;
-    }
-
-    protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
-    {
-        base.OnAttachedToVisualTree(e);
-        if (language is null || highlighter is not null)
-        {
-            return;
-        }
-        document = new TextDocument(code);
-        // A block no project compiles, coloured alone: a file in no project's symbols and C# are the best guess.
-        highlighter = Languages.Highlighters.For(language, document);
-        if (highlighter is not null)
-        {
-            highlighter.Changed += OnColoured;
-            Colour();
-        }
-    }
-
-    protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
-    {
-        base.OnDetachedFromVisualTree(e);
-        if (highlighter is not null)
-        {
-            highlighter.Changed -= OnColoured;
-            (highlighter as IDisposable)?.Dispose();
-            highlighter = null;
-        }
-    }
-
-    private void OnColoured(object? sender, EventArgs e) => Colour();
-
-    /// <summary>The code's runs again from the highlighter's spans, each in its kind's syntax brush.</summary>
-    private void Colour()
-    {
-        if (highlighter is null || document is null)
-        {
-            return;
-        }
-        TextSnapshot snapshot = document.Snapshot;
-        IReadOnlyList<SyntaxSpan> spans = highlighter.GetSpans(snapshot, 0, snapshot.Length);
-        if (spans.Count == 0)
-        {
-            return;
-        }
-        List<Inline> runs = [];
-        int at = 0;
-        foreach (SyntaxSpan span in spans)
-        {
-            if (span.Start < at || span.End > code.Length)
-            {
-                continue;
-            }
-            if (span.Start > at)
-            {
-                runs.Add(new TextRun(code[at..span.Start]));
-            }
-            TextRun coloured = new(code[span.Start..span.End]);
-            // A kind with no brush is drawn in the code's own colour; every theme has the same tokens.
-            string brush = $"Passenger.Syntax.{span.Kind}";
-            if (span.Kind != TokenKind.Text && this.TryFindResource(brush, ActualThemeVariant, out _))
-            {
-                coloured.Bind(TextElement.ForegroundProperty, this.GetResourceObservable(brush));
-            }
-            runs.Add(coloured);
-            at = span.End;
-        }
-        if (at < code.Length)
-        {
-            runs.Add(new TextRun(code[at..]));
-        }
-        text.Inlines!.Clear();
-        text.Inlines.AddRange(runs);
     }
 }
