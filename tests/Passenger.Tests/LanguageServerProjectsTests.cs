@@ -18,7 +18,7 @@ namespace Passenger.Tests;
 /// <summary>The language server's projects. It loads them from what Passenger's project host built of them at design
 /// time, as its own build host would have built them, so it answers across a project reference; a folder opened again
 /// has them loaded from those builds as kept, none built again while nothing they read changed. A file of a
-/// multi-targeted project is answered for in the target framework chosen in the editor's switcher.</summary>
+/// multi-targeted project is answered for in the target framework chosen in the status bar's context widget.</summary>
 public sealed partial class LanguageServerProjectsTests : IClassFixture<RestoredFolders>, IDisposable
 {
     private readonly string folder;
@@ -480,24 +480,23 @@ public sealed partial class LanguageServerProjectsTests : IClassFixture<Restored
 
     [Gate]
     [AvaloniaFact]
-    public void A_file_of_a_multi_targeted_project_is_answered_for_in_the_target_framework_chosen_in_the_editor()
+    public void A_file_of_a_multi_targeted_project_is_answered_for_in_the_target_framework_chosen_for_it()
     {
         string greeter = Path.Combine(folder, "Lib", "Greeter.cs");
         MainWindow window = Keeping();
         window.OpenFile(greeter);
         OpenDocument document = window.EditorArea.Active!;
-        CodeEditor editor = window.EditorArea.CodeEditor;
         Ui.WaitFor(() => window.CSharpService?.IsReady == true && document.ProjectContexts.Count == 2,
             "the server to say Greeter.cs is compiled for both of Lib's target frameworks", TimeSpan.FromMinutes(2));
         Assert.Equal([$"Lib ({TestProjects.Framework})", "Lib (net11.0)"], document.ProjectContexts.Order(StringComparer.Ordinal));
-        Assert.Equal(document.ProjectContext![5..^1], editor.ContextLabel);
+        Assert.Equal(document.ProjectContext![5..^1], window.TargetFrameworkShown);
 
         // Only net11.0 compiles the member that names what does not exist.
-        Choose(window, editor, "Lib (net11.0)");
-        Assert.Equal("net11.0", editor.ContextLabel);
+        Choose(window, "Lib (net11.0)");
+        Assert.Equal("net11.0", window.TargetFrameworkShown);
         Ui.WaitFor(() => Missing(window, document), "the error on Missing, which only net11.0 compiles");
-        Choose(window, editor, $"Lib ({TestProjects.Framework})");
-        Assert.Equal(TestProjects.Framework, editor.ContextLabel);
+        Choose(window, $"Lib ({TestProjects.Framework})");
+        Assert.Equal(TestProjects.Framework, window.TargetFrameworkShown);
         Ui.WaitFor(() => !Missing(window, document) && window.CSharpService!.For(document)!.Diagnostics.Count == 0,
             $"the error on Missing to go, {TestProjects.Framework} compiling none of it");
         window.Close();
@@ -524,22 +523,21 @@ public sealed partial class LanguageServerProjectsTests : IClassFixture<Restored
     }
 
     /// <summary>The file's own parse (its brackets' pairs, its folds, what Safe Delete reads) takes the symbols of the
-    /// framework chosen in the editor: the member only net11.0 compiles is disabled text to it in the other framework and
+    /// framework chosen for it: the member only net11.0 compiles is disabled text to it in the other framework and
     /// code in net11.0.</summary>
     [AvaloniaFact]
-    public void A_multi_targeted_files_own_parse_takes_the_symbols_of_the_target_framework_chosen_in_the_editor()
+    public void A_multi_targeted_files_own_parse_takes_the_symbols_of_the_target_framework_chosen_for_it()
     {
         string greeter = Path.Combine(folder, "Lib", "Greeter.cs");
         MainWindow window = Keeping();
         window.OpenFile(greeter);
         OpenDocument document = window.EditorArea.Active!;
-        CodeEditor editor = window.EditorArea.CodeEditor;
         Ui.WaitFor(() => window.CSharpService?.IsReady == true && document.ProjectContexts.Count == 2,
             "the server to say Greeter.cs is compiled for both of Lib's target frameworks", TimeSpan.FromMinutes(2));
 
-        Choose(window, editor, "Lib (net11.0)");
+        Choose(window, "Lib (net11.0)");
         Ui.WaitFor(() => !ParsedDisabled(document, "Missing;"), "Newer, which only net11.0 compiles, parsed as code with net11.0 chosen");
-        Choose(window, editor, $"Lib ({TestProjects.Framework})");
+        Choose(window, $"Lib ({TestProjects.Framework})");
         Ui.WaitFor(() => ParsedDisabled(document, "Missing;"), $"Newer, which {TestProjects.Framework} never compiles, parsed as disabled text with {TestProjects.Framework} chosen");
         window.Close();
     }
@@ -557,14 +555,13 @@ public sealed partial class LanguageServerProjectsTests : IClassFixture<Restored
         Assert.True(window.Settings.SolutionWideAnalysis);
         window.OpenFile(Path.Combine(folder, "Lib", "Greeter.cs"));
         OpenDocument greeter = window.EditorArea.Active!;
-        CodeEditor editor = window.EditorArea.CodeEditor;
         Ui.WaitFor(() => window.CSharpService?.IsReady == true && greeter.ProjectContexts.Count == 2,
             "the server to say Greeter.cs is compiled for both of Lib's target frameworks", TimeSpan.FromMinutes(2));
 
         ListsOnly(window, sides, "NotInTen", "NotInEleven", $"{TestProjects.Framework}, chosen first");
-        Choose(window, editor, "Lib (net11.0)");
+        Choose(window, "Lib (net11.0)");
         ListsOnly(window, sides, "NotInEleven", "NotInTen", "net11.0, chosen in Greeter.cs's switcher");
-        Choose(window, editor, $"Lib ({TestProjects.Framework})");
+        Choose(window, $"Lib ({TestProjects.Framework})");
         ListsOnly(window, sides, "NotInTen", "NotInEleven", $"{TestProjects.Framework}, chosen again");
         window.Close();
     }
@@ -623,12 +620,12 @@ public sealed partial class LanguageServerProjectsTests : IClassFixture<Restored
         return document.Syntax!.GetSpans(text, line.Start, line.EndIncludingBreak - line.Start).Any(s => s.Kind == TokenKind.Excluded && s.Start <= at && s.End > at);
     }
 
-    /// <summary>Clicks the editor's switcher and the framework in the menu it opens.</summary>
-    private static void Choose(MainWindow window, CodeEditor editor, string context)
+    /// <summary>Clicks the status bar's context widget and the framework in the menu it opens.</summary>
+    private static void Choose(MainWindow window, string context)
     {
-        Rect bounds = editor.ContextSwitcherBounds;
-        Assert.True(bounds.Width > 0, "The editor shows no target framework switcher for a file compiled for two");
-        Ui.Click(editor, bounds.Center);
+        Button widget = Avalonia.Controls.ControlExtensions.FindControl<Button>(window, "TargetFrameworkButton")!;
+        Assert.True(widget.IsEffectivelyVisible, "The status bar shows no target framework for a file compiled for two");
+        Ui.Click(widget);
         Ui.Choose(Assert.IsType<ContextMenu>(window.OpenContextMenu), context);
     }
 

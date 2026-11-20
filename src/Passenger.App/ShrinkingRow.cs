@@ -67,7 +67,13 @@ public sealed class ShrinkingRow : Panel
         }
         double gaps = Spacing * Math.Max(0, shown - 1);
         least += gaps;
+        double leastBefore = LeastWidth;
         LeastWidth = staysLeast + Spacing * Math.Max(0, staying - 1);
+        if (LeastWidth != leastBefore && Parent is ToolbarRow holder)
+        {
+            // Measured again alone, as a widget's words grew, the row keeps the room given before until its holder hears its least.
+            holder.InvalidateMeasure();
+        }
         // Those that go whole go, last first, before another is cut below its least (one giving way last, its width).
         for (int i = Math.Min(Children.Count, 64) - 1; i >= 0 && least > availableSize.Width; i--)
         {

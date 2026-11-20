@@ -82,18 +82,15 @@ public sealed partial class CodeEditor : Control
         ClipToBounds = true;
         Cursor = IbeamCursor;
         stripe = new ErrorStripe(this);
-        counts = new ProblemCounts(this);
         overlay = new Painted(DrawOverlay);
         prepareFrame = _ => PrepareFrame();
         AddLayers();
         VisualChildren.Add(vertical);
         VisualChildren.Add(horizontal);
         VisualChildren.Add(stripe);
-        VisualChildren.Add(counts);
         LogicalChildren.Add(vertical);
         LogicalChildren.Add(horizontal);
         LogicalChildren.Add(stripe);
-        LogicalChildren.Add(counts);
         vertical.PropertyChanged += OnScrollBarChanged;
         horizontal.PropertyChanged += OnScrollBarChanged;
         // Started only while focused: a timer running holds the editor, and all it shows, from the dispatcher.
@@ -235,22 +232,14 @@ public sealed partial class CodeEditor : Control
         ownsDecorations = owned;
         wrappedHints = decorations.InlayHints;
         stripeBuild = null;
-        counts.InvalidateMeasure();
     }
 
-    /// <summary>Draws what the decorations were set to: other counts of problems measured again, lines with hints drawn
-    /// otherwise wrapped again, the rows of other folds.</summary>
+    /// <summary>Draws what the decorations were set to: lines with hints drawn otherwise wrapped again, the rows of other
+    /// folds.</summary>
     private void OnDecorationsChanged(object? sender, DecorationKind kind)
     {
         switch (kind)
         {
-            case DecorationKind.Markers:
-                if (counts.Stale)
-                {
-                    counts.InvalidateMeasure();
-                    InvalidateArrange();
-                }
-                break;
             case DecorationKind.InlayHints:
                 HintList before = wrappedHints;
                 wrappedHints = decorations.InlayHints;
@@ -706,7 +695,7 @@ public sealed partial class CodeEditor : Control
         double barHeight = horizontal.DesiredSize.Height;
         Rect bar = new(finalSize.Width - barWidth, 0, barWidth, Math.Max(0, finalSize.Height - barHeight));
         vertical.Arrange(bar);
-        ArrangeStripe(bar);
+        stripe.Arrange(bar);
         horizontal.Arrange(new Rect(GutterWidth, finalSize.Height - barHeight, Math.Max(0, finalSize.Width - GutterWidth - barWidth), barHeight));
         UpdateScrollBars();
         if (pendingEnd && finalSize.Height > 0)
@@ -1045,7 +1034,7 @@ public sealed partial class CodeEditor : Control
         annotationRuns = (ItalicRunWith(palette.Annotation), ItalicRunWith(palette.Error));
         ForgetGutterLook();
         ForgetLines();
-        // The stripe and the counts paint with the palette too, so they are drawn again with the next frame.
+        // The stripe paints with the palette too, so it is drawn again with the next frame.
         stripeDrawn = default;
         InvalidateArrange();
         Redraw();

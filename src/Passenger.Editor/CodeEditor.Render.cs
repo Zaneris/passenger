@@ -612,8 +612,8 @@ public sealed partial class CodeEditor
 
     /// <summary>Every brush the editor paints with, from the look in force's <c>Passenger.Editor.*</c>,
     /// <c>Passenger.Syntax.*</c> and other tokens, never a colour of its own, so the look always draws the editor (a
-    /// token the theme left out draws nothing), each taken as an immutable brush; and the problem counts' icons, the
-    /// theme's <c>Icon.*</c> geometries, or none. Read again as the editor joins a window.</summary>
+    /// token the theme left out draws nothing), each taken as an immutable brush. Read again as the editor joins a
+    /// window.</summary>
     private sealed class Palette
     {
         private static readonly IBrush None = Brushes.Transparent;
@@ -646,7 +646,6 @@ public sealed partial class CodeEditor
         public IBrush Faded { get; private init; } = None;
         public IBrush SearchCurrent { get; private init; } = None;
         public IBrush Annotation { get; private init; } = None;
-        public IBrush Passed { get; private init; } = None;
         public IBrush Bookmark { get; private init; } = None;
         public IBrush DiffAdded { get; private init; } = None;
         public IBrush DiffModified { get; private init; } = None;
@@ -681,9 +680,6 @@ public sealed partial class CodeEditor
         public IBrush SmartStepTarget { get; private init; } = None;
         public IBrush SmartStepChosen { get; private init; } = None;
         public IBrush SmartStepBorder { get; private init; } = None;
-        public Geometry? ErrorIcon { get; private init; }
-        public Geometry? WarningIcon { get; private init; }
-        public Geometry? PassedIcon { get; private init; }
 
         public IBrush Syntax(TokenKind kind) => syntax.TryGetValue(kind, out IBrush? brush) ? brush : Text;
 
@@ -740,7 +736,6 @@ public sealed partial class CodeEditor
                 Faded = Fade(F(TokenKeys.Editor_Background), 0.5) ?? defaults.Faded,
                 SearchCurrent = F(TokenKeys.Editor_SearchCurrent) ?? defaults.SearchCurrent,
                 Annotation = F(TokenKeys.Editor_InlineValue) ?? defaults.Annotation,
-                Passed = F(TokenKeys.Test_Passed) ?? defaults.Passed,
                 Bookmark = F(TokenKeys.Editor_Bookmark) ?? defaults.Bookmark,
                 DiffAdded = F(TokenKeys.Diff_Added) ?? defaults.DiffAdded,
                 DiffModified = F(TokenKeys.Diff_Modified) ?? defaults.DiffModified,
@@ -773,9 +768,6 @@ public sealed partial class CodeEditor
                 SmartStepTarget = F(TokenKeys.Editor_SmartStepTarget) ?? defaults.SmartStepTarget,
                 SmartStepChosen = F(TokenKeys.Editor_SmartStepChosen) ?? defaults.SmartStepChosen,
                 SmartStepBorder = F(TokenKeys.Editor_SmartStepBorder) ?? defaults.SmartStepBorder,
-                ErrorIcon = Icon(control, IconKeys.Error),
-                WarningIcon = Icon(control, IconKeys.Problems),
-                PassedIcon = Icon(control, IconKeys.Check),
             };
             foreach (TokenKind kind in Enum.GetValues<TokenKind>())
             {
@@ -801,8 +793,5 @@ public sealed partial class CodeEditor
 
         private static IBrush? Fade(IBrush? brush, double opacity) =>
             brush is ISolidColorBrush solid ? new SolidColorBrush(solid.Color, opacity).ToImmutable() : null;
-
-        private static Geometry? Icon(Control control, string key) =>
-            control.TryFindResource(key, control.ActualThemeVariant, out object? value) ? value as Geometry : null;
     }
 }

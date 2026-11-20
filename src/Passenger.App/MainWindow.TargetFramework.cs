@@ -8,7 +8,7 @@ using A = Passenger.App.AppActions;
 namespace Passenger.App;
 
 /// <summary>Target Framework: for a file of a multi-targeted project, or one the language server compiles in several
-/// projects, the editor's context switcher beside its problem counts, and the action it runs, which offers the others.
+/// projects, the status bar's context widget beside its language, and the action it runs, which offers the others.
 /// A C# file's are the server's contexts (Roslyn's <c>_vs_projectContext</c>), a XAML file's its project's frameworks
 /// Passenger runs. A framework chosen in either is its project's (<see cref="TargetFrameworkChoices"/>): its XAML preview
 /// draws that framework's build, its XAML is read against that framework's restore, and the server answers for its C#
@@ -17,17 +17,22 @@ public partial class MainWindow
 {
     private void AddTargetFramework()
     {
-        actions!.Add(new IdeAction(A.TargetFramework, "Target Framework", "Code", context => ShowTargetFrameworks(context.File!, context.Editor))
+        actions!.Add(new IdeAction(A.TargetFramework, "Target Framework", "Code", context => ShowTargetFrameworks(context.File!))
         {
             WhyNot = context => context.File is not { } file ? Refusals.NoFile
                 : file.ProjectContexts.Count < 2 ? $"{file.Name} is compiled for one target framework only"
                 : null,
         });
-        Editors.ForEachEditor(editor => editor.ContextSwitchRequested += (_, _) => Request(A.TargetFramework));
         Editors.Opened += (_, document) => FollowXamlFrameworks(document);
     }
 
-    /// <summary>The session's choices of framework shown in its XAML files' switchers, and followed by their previews.</summary>
+    /// <summary>The status bar's context widget was clicked: Target Framework offers the file's others.</summary>
+    private void OnTargetFrameworkClicked(object? sender, Avalonia.Interactivity.RoutedEventArgs e) => Request(A.TargetFramework);
+
+    /// <summary>What the status bar's context widget says of the file shown (its target framework); null while it shows none.</summary>
+    public string? TargetFrameworkShown => status.Context;
+
+    /// <summary>The session's choices of framework shown in its XAML files' context widgets, and followed by their previews.</summary>
     private void BindTargetFrameworks(ProjectSession next)
     {
         next.FrameworkChosen += (_, project) =>
@@ -55,7 +60,7 @@ public partial class MainWindow
         FollowXamlFrameworks();
     }
 
-    /// <summary>Every open XAML file's switcher showing its project's frameworks and the one chosen.</summary>
+    /// <summary>Every open XAML file's context widget showing its project's frameworks and the one chosen.</summary>
     private void FollowXamlFrameworks()
     {
         foreach (OpenDocument document in Editors.Documents)
@@ -64,7 +69,7 @@ public partial class MainWindow
         }
     }
 
-    /// <summary>A XAML file's switcher: its project's frameworks Passenger runs, each named as the language server names a
+    /// <summary>A XAML file's contexts: its project's frameworks Passenger runs, each named as the language server names a
     /// framework of a project ("App (net10.0)"), and the one chosen; none for a project of one.</summary>
     private void FollowXamlFrameworks(OpenDocument document)
     {
@@ -91,7 +96,7 @@ public partial class MainWindow
 
     /// <summary>Target Framework for an agent, which no menu reaches: <paramref name="input"/> names the framework, after its
     /// project's name and a colon where more than one project targets several (<c>Shop:net9.0</c>), else the active file's
-    /// project's or the one project's; chosen as the switcher chooses it, and what follows it said. Why not, thrown.</summary>
+    /// project's or the one project's; chosen as the context widget chooses it, and what follows it said. Why not, thrown.</summary>
     internal string ChooseFrameworkForAgent(string input)
     {
         UiThread.Check();
@@ -118,9 +123,9 @@ public partial class MainWindow
         return $"{project.Name}'s framework is {chosen}: its XAML preview draws that framework's build, its XAML is read against it, and the language server answers for its C# in it";
     }
 
-    /// <summary>The file's contexts under the editor's switcher, the one the server answers in checked; a XAML file's
-    /// project's frameworks, the one chosen checked.</summary>
-    private void ShowTargetFrameworks(OpenDocument document, Passenger.Editor.CodeEditor editor)
+    /// <summary>The file's contexts over the status bar's context widget, the one the server answers in checked; a XAML
+    /// file's project's frameworks, the one chosen checked.</summary>
+    private void ShowTargetFrameworks(OpenDocument document)
     {
         List<Control> items = [];
         if (CSharpService?.For(document) is { } features)
@@ -144,13 +149,7 @@ public partial class MainWindow
         {
             return;
         }
-        ContextMenu menu = new()
-        {
-            ItemsSource = items,
-            Placement = PlacementMode.BottomEdgeAlignedRight,
-            PlacementRect = editor.ContextSwitcherBounds,
-        };
-        Open(menu, editor);
+        Open(new ContextMenu { ItemsSource = items }, TargetFrameworkButton);
 
         MenuItem Item(string label, Action choose)
         {

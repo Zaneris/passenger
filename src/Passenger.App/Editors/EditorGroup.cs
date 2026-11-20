@@ -574,7 +574,6 @@ public sealed class EditorGroup : DockPanel
         Editor.Highlighter = document.Highlighter;
         AutomationProperties.SetName(Editor, document.Title);
         Gutter.Show(document);
-        Editor.ContextLabel = ContextShown(document);
         FollowReadOnly(document);
         ShowBanner(document);
         Editor.IsVisible = true;
@@ -835,10 +834,6 @@ public sealed class EditorGroup : DockPanel
             case nameof(OpenDocument.Notice) or nameof(OpenDocument.NoticeAction) or nameof(OpenDocument.EncodingWarning) or nameof(OpenDocument.InConflict):
                 ShowBanner(document);
                 break;
-            case nameof(OpenDocument.ProjectContexts):
-            case nameof(OpenDocument.ProjectContext):
-                Editor.ContextLabel = ContextShown(document);
-                break;
             case nameof(OpenDocument.IsReadOnly):
                 FollowReadOnly(document);
                 ShowBanner(document);
@@ -1045,18 +1040,5 @@ public sealed class EditorGroup : DockPanel
             part.Margin = new Thickness(apart, 0, 0, 0);
             return part;
         }
-    }
-
-    /// <summary>What the editor's context switcher shows for a file in several of the server's projects: the target
-    /// framework alone (Roslyn names a multi-targeted project's "Lib (net10.0)") when they are one project's, else the
-    /// project's name too; nothing for a file in one.</summary>
-    private static string? ContextShown(OpenDocument document)
-    {
-        if (document.ProjectContexts.Count < 2 || document.ProjectContext is not { } chosen)
-        {
-            return null;
-        }
-        return document.ProjectContexts.Select(ProjectContext.ProjectOf).Distinct(StringComparer.Ordinal).Count() == 1
-            && ProjectContext.FrameworkOf(chosen) is { } framework ? framework : chosen;
     }
 }

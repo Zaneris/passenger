@@ -164,9 +164,9 @@
         <Border Name="StatusBarFrame" Classes="statusBar" Grid.Row="2">
             <Panel>
             <!-- The line keeps a sentence's room before the widgets are laid (StatusLine.LeastWidth), so the branch's name
-                 gives way to it, then goes whole, its menu still the toolbar's Git widget's; then the indent's and the caret's
-                 words (a choice's count after it) give way, ending in an ellipsis, so no widget stands past the window's
-                 edge; the others keep their width. -->
+                 gives way to it, then goes whole, its menu still the toolbar's Git widget's; then a long context's, the
+                 indent's and the caret's words (a choice's count after it) give way, ending in an ellipsis, then the line
+                 itself, so no widget stands past the window's edge; the others keep their width. -->
             <app:ToolbarRow Classes="statusRow">
                 <app:ShrinkingRow Classes="statusWidgets" DockPanel.Dock="Right" Spacing="{x:Static app:Gaps.Group}" VerticalAlignment="Center">
                     <!-- Git, in a working tree: the branch checked out, a click opening the branches as the toolbar's Git
@@ -206,13 +206,32 @@
                             <TextBlock Name="UpdateText" Classes="status" Foreground="{DynamicResource Passenger.Link}" />
                         </StackPanel>
                     </Button>
-                    <Button Name="AnalysisButton" Classes="statusItem" Click="OnAnalysisClicked">
-                        <StackPanel Orientation="Horizontal" Spacing="{x:Static app:Gaps.Tight}">
-                            <PathIcon Name="AnalysisIcon" Width="14" Height="14" />
-                            <app:WorkingRing Name="AnalysisWorking" Width="14" Height="14" IsVisible="False" VerticalAlignment="Center" />
-                            <TextBlock Name="AnalysisText" Classes="status" />
-                        </StackPanel>
-                    </Button>
+                    <!-- Problems, one widget of two parts: the errors and warnings of the file shown (a tick with none), a
+                         click going to the next and showing Problems; and solution-wide analysis, the solution's glyph (muted
+                         while off, a turning ring while its first round is under way, then green, or red with the solution's
+                         errors), a click turning it on or off; shown while either part is. -->
+                    <StackPanel Name="ProblemsWidget" Orientation="Horizontal">
+                        <Button Name="FileProblemsButton" Classes="statusItem" IsVisible="False" Click="OnFileProblemsClicked">
+                            <StackPanel Orientation="Horizontal" Spacing="{x:Static app:Gaps.Normal}">
+                                <PathIcon Name="FileCleanIcon" Data="{DynamicResource Icon.Check}" Foreground="{DynamicResource Passenger.Test.Passed}" Width="14" Height="14" />
+                                <StackPanel Name="FileErrors" Orientation="Horizontal" Spacing="{x:Static app:Gaps.Tight}">
+                                    <PathIcon Data="{DynamicResource Icon.Error}" Foreground="{DynamicResource Passenger.Error}" Width="14" Height="14" />
+                                    <TextBlock Name="FileErrorsText" Classes="status" />
+                                </StackPanel>
+                                <StackPanel Name="FileWarnings" Orientation="Horizontal" Spacing="{x:Static app:Gaps.Tight}">
+                                    <PathIcon Data="{DynamicResource Icon.Problems}" Foreground="{DynamicResource Passenger.Warning}" Width="14" Height="14" />
+                                    <TextBlock Name="FileWarningsText" Classes="status" />
+                                </StackPanel>
+                            </StackPanel>
+                        </Button>
+                        <Button Name="AnalysisButton" Classes="statusItem" Click="OnAnalysisClicked">
+                            <StackPanel Orientation="Horizontal" Spacing="{x:Static app:Gaps.Tight}">
+                                <PathIcon Name="AnalysisIcon" Data="{DynamicResource Icon.Solution}" Width="14" Height="14" />
+                                <app:WorkingRing Name="AnalysisWorking" Width="14" Height="14" IsVisible="False" VerticalAlignment="Center" />
+                                <TextBlock Name="AnalysisText" Classes="status" />
+                            </StackPanel>
+                        </Button>
+                    </StackPanel>
                     <Button Name="ErrorsButton" Classes="statusItem" IsVisible="False" Click="OnErrorsClicked"
                             ToolTip.Tip="IDE Internal Errors: Passenger caught these and kept running">
                         <StackPanel Orientation="Horizontal" Spacing="{x:Static app:Gaps.Tight}">
@@ -246,6 +265,12 @@
                     <Button Name="IndentButton" Classes="statusItem reaching" Focusable="False" IsVisible="False" Click="OnIndentClicked"
                             app:ShrinkingRow.KeepsWidth="False" app:ShrinkingRow.Least="64">
                         <TextBlock Name="IndentText" Classes="status" TextTrimming="CharacterEllipsis" />
+                    </Button>
+                    <!-- The context a file of several is analysed in (a multi-targeted project's framework), beside its
+                         language: a click offers the others. -->
+                    <Button Name="TargetFrameworkButton" Classes="statusItem reaching" Focusable="False" IsVisible="False" Click="OnTargetFrameworkClicked"
+                            app:ShrinkingRow.KeepsWidth="False" app:ShrinkingRow.Least="64">
+                        <TextBlock Name="TargetFrameworkText" Classes="status" TextTrimming="CharacterEllipsis" />
                     </Button>
                     <TextBlock Name="LanguageText" Classes="status" />
                 </app:ShrinkingRow>

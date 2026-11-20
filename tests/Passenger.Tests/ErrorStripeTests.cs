@@ -417,11 +417,9 @@ public sealed class ErrorStripeTests
     }
 
     /// <summary>Down through a file of more lines than the stripe's track has pixels, the caret on screen near its end,
-    /// draws the stripe again only for the keys that move the caret's mark on the track, which shows it where it went, and
-    /// the counts over the stripe, whose problems stay as they were, never: asked together, the two were drawn again with
-    /// every row between them.</summary>
+    /// draws the stripe again only for the keys that move the caret's mark on the track, which shows it where it went.</summary>
     [AvaloniaFact]
-    public void Down_in_a_file_longer_than_the_track_draws_the_stripe_only_where_the_caret_mark_moves_and_never_the_counts()
+    public void Down_in_a_file_longer_than_the_track_draws_the_stripe_only_where_the_caret_mark_moves()
     {
         const int Lines = 5000;
         EditorRig rig = new(string.Concat(Enumerable.Range(0, Lines).Select(i => $"        int value{i} = {i};\n")));
@@ -430,7 +428,6 @@ public sealed class ErrorStripeTests
         editor.Focus();
         Ui.Settle();
         long stripes = editor.StripesDrawn;
-        long counts = editor.CountsDrawn;
         const int Keys = 20;
         int moved = 0;
         Point at = CaretMark(editor);
@@ -444,7 +441,6 @@ public sealed class ErrorStripeTests
         Assert.True(moved is > 0 and < Keys / 2, $"The caret's mark moved on the track for {moved} of {Keys} keys down {Keys} lines of {Lines:N0}");
         Assert.True(editor.StripesDrawn - stripes == moved,
             $"{Keys} keys down drew the stripe {editor.StripesDrawn - stripes} times, where its caret's mark moved {moved} times");
-        Assert.True(editor.CountsDrawn == counts, $"{Keys} keys down, which changed no problem, drew the counts {editor.CountsDrawn - counts} times");
         Color shown = Ui.Pixel(rig.Window, editor.TranslatePoint(at, rig.Window)!.Value);
         Assert.True(shown == CaretMarkColour(rig.Window.ActualThemeVariant), $"Where the caret's mark now stands the stripe shows {shown}, not the caret's mark");
     }

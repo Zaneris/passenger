@@ -45,7 +45,7 @@ public static class AppActions
     public const string ConvertIndentationToTabs = "app.convertIndentation.tabs";
     public const string ConvertIndentationToSpaces = "app.convertIndentation.spaces";
 
-    // Rider's ChangeTargetFramework (Target Framework), the editor's context switcher, which its keymaps give no keys.
+    // Rider's ChangeTargetFramework (Target Framework), the status bar's context widget, which its keymaps give no keys.
     public const string TargetFramework = "app.code.targetFramework";
     public const string Save = "app.save";
     public const string SaveAll = "app.saveAll";

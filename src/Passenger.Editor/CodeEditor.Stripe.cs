@@ -15,19 +15,13 @@ namespace Passenger.Editor;
 /// <summary>The error stripe: the vertical scrollbar's track stays and carries a mark for each problem (errors over
 /// warnings over the rest), changed lines, search matches, the uses of the symbol at the caret, bookmarks and the
 /// caret, each where its row is on the thumb's scale (<see cref="StripeScale"/>; a folded line at its fold, a wrapped
-/// one's at its own row). A mark says what it is on hover and takes the caret there on a click. Over the stripe's top,
-/// the file's counts of errors and warnings, or a green tick: a click goes to the next problem and asks the host for
-/// Problems.</summary>
+/// one's at its own row). A mark says what it is on hover and takes the caret there on a click.</summary>
 public sealed partial class CodeEditor
 {
     private readonly ErrorStripe stripe;
-    private readonly ProblemCounts counts;
     private bool showErrorStripe = true;
 
-    /// <summary>The counts above the stripe were clicked: the host shows Problems.</summary>
-    public event EventHandler? ProblemsRequested;
-
-    /// <summary>Whether the scrollbar carries the error stripe and the counts (a console's and a preview's go without).</summary>
+    /// <summary>Whether the scrollbar carries the error stripe (a console's and a preview's go without).</summary>
     public bool ShowErrorStripe
     {
         get => showErrorStripe;
@@ -36,11 +30,7 @@ public sealed partial class CodeEditor
             showErrorStripe = value;
             vertical.AllowAutoHide = !value;
             vertical.Classes.Set(StyleClasses.Stripe, value);
-            stripe.IsVisible = counts.IsVisible = value;
-            if (switcher is not null)
-            {
-                switcher.IsVisible = value && contextLabel is not null;
-            }
+            stripe.IsVisible = value;
             InvalidateArrange();
             Redraw();
         }
@@ -78,10 +68,7 @@ public sealed partial class CodeEditor
     /// <summary>How many times the stripe has been drawn.</summary>
     public long StripesDrawn { get; private set; }
 
-    /// <summary>How many times the counts over the stripe have been drawn.</summary>
-    public long CountsDrawn { get; private set; }
-
-    /// <summary>The counts' errors and warnings, as their widget shows them, counted when the markers are set.</summary>
+    /// <summary>The file's errors and warnings, counted when the markers are set.</summary>
     public (int Errors, int Warnings) ProblemCount => decorations.Problems;
 
     /// <summary>The middle of where a stripe mark is drawn, in this control's coordinates: what a click on it hits.</summary>
@@ -91,7 +78,7 @@ public sealed partial class CodeEditor
         return ErrorStripe.Drawn(mark, ErrorStripe.Span(mark, track, Scale()), track).Center;
     }
 
-    /// <summary>Goes to the next error or warning after the caret, wrapping, as the counts' click does.</summary>
+    /// <summary>Goes to the next error or warning after the caret, wrapping.</summary>
     public void GoToNextProblem()
     {
         List<Marker> problems = [.. Markers.Where(m => m.Kind is MarkerKind.Error or MarkerKind.Warning)];
@@ -465,16 +452,14 @@ public sealed partial class CodeEditor
     }
 
     private StripeBuild? stripeBuild;
-    /// <summary>What the stripe and the counts were last asked to draw: the marks' build, where the caret's mark stands on the
-    /// track, and the counts; default once a new look or document has them drawn again whole.</summary>
-    private (int Built, double CaretTop, (int, int) Counts) stripeDrawn;
+    /// <summary>What the stripe was last asked to draw: the marks' build and where the caret's mark stands on the track;
+    /// default once a new look or document has it drawn again whole.</summary>
+    private (int Built, double CaretTop) stripeDrawn;
     private bool stripeRefreshPosted;
 
-    /// <summary>The stripe and the counts are drawn apart from the text: when what they show moved, they are asked again
-    /// once the frame is done (invalidating a visual while the editor renders leaves the window's hit testing stale). Each
-    /// is asked only for what it shows, as the compositor draws again all that lies between two visuals asked together:
-    /// the stripe for other marks or its caret's mark moved, which a file of more rows than the track has pixels leaves
-    /// where it was for a row or two, and the counts for other counts.</summary>
+    /// <summary>The stripe is drawn apart from the text: when what it shows moved, it is asked again once the frame is done
+    /// (invalidating a visual while the editor renders leaves the window's hit testing stale), only for other marks or its
+    /// caret's mark moved, which a file of more rows than the track has pixels leaves where it was for a row or two.</summary>
     private void RefreshStripe()
     {
         if (!showErrorStripe || stripeRefreshPosted)
@@ -482,40 +467,19 @@ public sealed partial class CodeEditor
             return;
         }
         StripeBuild built = BuiltMarks();
-        (int Built, double CaretTop, (int, int) Counts) now = (built.Number, stripe.CaretTop(CaretMark()), ProblemCount);
+        (int Built, double CaretTop) now = (built.Number, stripe.CaretTop(CaretMark()));
         // A build kept through a key shares its marks: the stripe is drawn again only for other marks or its caret's moved.
         if (now == stripeDrawn)
         {
             return;
         }
-        bool recount = now.Counts != stripeDrawn.Counts;
-        bool redrawCounts = recount || stripeDrawn == default;
         stripeDrawn = now;
         stripeRefreshPosted = true;
         Dispatcher.UIThread.Post(() =>
         {
             stripeRefreshPosted = false;
-            if (recount)
-            {
-                counts.InvalidateMeasure();
-                InvalidateArrange();
-            }
             stripe.InvalidateVisual();
-            if (redrawCounts)
-            {
-                counts.InvalidateVisual();
-            }
         });
-    }
-
-    private void ArrangeStripe(Rect bar)
-    {
-        stripe.Arrange(bar);
-        counts.Measure(Size.Infinity);
-        Size size = counts.DesiredSize;
-        Rect counted = new(bar.X - size.Width - 6, 4, size.Width, size.Height);
-        counts.Arrange(counted);
-        ArrangeContext(counted);
     }
 
     /// <summary>A mark on the stripe: what it is, the rows it covers, the offset it stood for as it was worked out, what it
@@ -753,117 +717,6 @@ public sealed partial class CodeEditor
         private bool OnThumb(Point point) =>
             editor.BarTrack()?.Thumb is { IsEffectivelyVisible: true } thumb && thumb.TranslatePoint(default, this) is { } origin
             && new Rect(origin, thumb.Bounds.Size).Contains(point);
-    }
-
-    /// <summary>The file's error and warning counts, or a green tick with none, over the stripe's top.</summary>
-    private sealed class ProblemCounts : Control
-    {
-        private readonly CodeEditor editor;
-
-        static ProblemCounts()
-        {
-            AffectsMeasure<ProblemCounts>(TextElement.FontFamilyProperty);
-            AffectsRender<ProblemCounts>(TextElement.FontFamilyProperty);
-        }
-
-        public ProblemCounts(CodeEditor editor)
-        {
-            this.editor = editor;
-            Cursor = HandCursor;
-        }
-
-        protected override Size MeasureOverride(Size availableSize)
-        {
-            (int errors, int warnings) = measured = editor.ProblemCount;
-            double width = 4;
-            for (int which = 0; which < 2; which++)
-            {
-                int count = which == 0 ? errors : warnings;
-                if (count > 0)
-                {
-                    width += 14 + 3 + Label(which, count, editor.palette.Text).Width + 6;
-                }
-            }
-            return new Size(errors + warnings == 0 ? 20 : width, 18);
-        }
-
-        public override void Render(DrawingContext context)
-        {
-            editor.CountsDrawn++;
-            (int errors, int warnings) = editor.ProblemCount;
-            Palette palette = editor.palette;
-            context.FillRectangle(palette.Background, new Rect(Bounds.Size), 4);
-            if (errors + warnings == 0)
-            {
-                Icon(context, palette.PassedIcon, palette.Passed, new Point(3, 2));
-                return;
-            }
-            double x = 4;
-            for (int which = 0; which < 2; which++)
-            {
-                int count = which == 0 ? errors : warnings;
-                if (count == 0)
-                {
-                    continue;
-                }
-                Icon(context, which == 0 ? palette.ErrorIcon : palette.WarningIcon, which == 0 ? palette.Error : palette.Warning, new Point(x, 2));
-                x += 17;
-                FormattedText label = Label(which, count, palette.Text);
-                context.DrawText(label, new Point(x, (Bounds.Height - label.Height) / 2));
-                x += label.Width + 6;
-            }
-        }
-
-        protected override void OnPointerPressed(PointerPressedEventArgs e)
-        {
-            base.OnPointerPressed(e);
-            editor.GoToNextProblem();
-            editor.Focus();
-            editor.ProblemsRequested?.Invoke(editor, EventArgs.Empty);
-            e.Handled = true;
-        }
-
-        /// <summary>An icon 14 pixels square; a theme without it gets a dot in its colour.</summary>
-        private static void Icon(DrawingContext context, Geometry? icon, IBrush brush, Point at)
-        {
-            if (icon is null)
-            {
-                context.DrawEllipse(brush, null, at + new Vector(7, 7), 5, 5);
-                return;
-            }
-            Rect bounds = icon.Bounds;
-            double scale = 14 / Math.Max(bounds.Width, bounds.Height);
-            using (context.PushTransform(Matrix.CreateTranslation(-bounds.X, -bounds.Y) * Matrix.CreateScale(scale, scale) * Matrix.CreateTranslation(at.X, at.Y)))
-            {
-                context.DrawGeometry(brush, null, icon);
-            }
-        }
-
-        /// <summary>The errors' and the warnings' counts as last laid out, each made again only for another count, colour or
-        /// font.</summary>
-        private readonly (int Count, IBrush? Brush, FontFamily? Font, FormattedText? Text)[] labels = new (int, IBrush?, FontFamily?, FormattedText?)[2];
-
-        /// <summary>The counts last measured.</summary>
-        private (int Errors, int Warnings) measured;
-
-        /// <summary>Whether the counts differ from those last measured, which are measured again only then.</summary>
-        public bool Stale => editor.ProblemCount != measured;
-
-        /// <summary>A count (<paramref name="which"/> 0 the errors', 1 the warnings') in the window's own font, which the
-        /// editor's code font is not.</summary>
-        private FormattedText Label(int which, int count, IBrush brush)
-        {
-            FontFamily font = TextElement.GetFontFamily(this);
-            (int Count, IBrush? Brush, FontFamily? Font, FormattedText? Text) label = labels[which];
-            if (label.Text is { } made && label.Count == count && ReferenceEquals(label.Brush, brush) && Equals(label.Font, font))
-            {
-                return made;
-            }
-            FormattedText text = new(count.ToString(System.Globalization.CultureInfo.CurrentCulture), System.Globalization.CultureInfo.CurrentCulture,
-                FlowDirection.LeftToRight, new Typeface(font), 11.5, brush);
-            labels[which] = (count, brush, font, text);
-            return text;
-        }
     }
 }
 

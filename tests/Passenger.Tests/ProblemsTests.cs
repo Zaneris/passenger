@@ -753,6 +753,68 @@ public sealed class ProblemsTests : IClassFixture<ProblemsTests.Project>
         window.Close();
     }
 
+    /// <summary>The status bar counts the errors and warnings of the file shown, beside solution-wide analysis's glyph as one
+    /// widget, and the editor draws nothing over its code: the end of a long first line, where the counts stood, is the
+    /// editor's to click. A click on the counts goes to the next problem and opens Problems; a clean file shows a tick; with
+    /// two splits the counts follow the one with the keys; a tool window's tab shows none (#2037).</summary>
+    [AvaloniaFact]
+    public void The_status_bar_counts_the_shown_files_problems_beside_solution_wide_analysis_and_nothing_covers_the_code()
+    {
+        string first = "// " + string.Join(' ', Enumerable.Repeat("a first line long enough to reach past the right edge of the editor", 8)) + "\n";
+        Write("Mixed.cs", first + "public class Mixed\n{\n    public int First = \"one\";\n    public int Second = missing;\n    public void A() { int unused; }\n    public void B() { int missingToo; }\n}\n");
+        Write("Clean.cs", first + "public class Clean\n{\n}\n");
+        MainWindow window = project.Open("Mixed.cs");
+        Passenger.Editor.CodeEditor editor = window.EditorArea.CodeEditor;
+        Ui.WaitFor(() => window.FileProblemsShown == (2, 2), () => $"the status bar to count Mixed.cs's two errors and two warnings (it counts {window.FileProblemsShown?.ToString() ?? "nothing"})");
+        Avalonia.Controls.Button counts = Named<Avalonia.Controls.Button>(window, "FileProblemsButton");
+        Avalonia.Controls.Button analysis = Named<Avalonia.Controls.Button>(window, "AnalysisButton");
+        Rect countsAt = Placed(window, counts);
+        Rect analysisAt = Placed(window, analysis);
+        Assert.True(analysis.IsEffectivelyVisible && Math.Abs(countsAt.Right - analysisAt.Left) < 0.5 && Math.Abs(countsAt.Top - analysisAt.Top) < 0.5,
+            $"The file's counts at {countsAt} and solution-wide analysis's glyph at {analysisAt} do not stand together as one widget");
+        Assert.Equal("2 errors and 2 warnings in Mixed.cs: click to go to the next and open Problems", Avalonia.Controls.ToolTip.GetTip(counts));
+        Assert.Equal("2 errors and 2 warnings in Mixed.cs: click to go to the next and open Problems", Avalonia.Automation.AutomationProperties.GetName(counts));
+
+        double edge = Avalonia.VisualTree.VisualExtensions.GetVisualChildren(editor).OfType<Avalonia.Controls.Primitives.ScrollBar>()
+            .Single(b => b.Orientation == Avalonia.Layout.Orientation.Vertical).Bounds.Left;
+        foreach (double x in (ReadOnlySpan<double>)[edge - 8, edge - 40, edge - 90])
+        {
+            Point end = editor.TranslatePoint(new Point(x, editor.LineHeight / 2), window)!.Value;
+            object? hit = Avalonia.Input.InputExtensions.InputHitTest(window, end);
+            Assert.True(ReferenceEquals(hit, editor), $"At the end of the long first line ({end}) a press lands on {hit?.GetType().Name ?? "nothing"}, not on the editor's text");
+        }
+
+        Ui.Click(counts);
+        Assert.True(editor.CaretPosition == new TextPosition(3, 23) && window.DockHost.IsShown(ToolWindowIds.Problems),
+            $"A click on the counts left the caret at {editor.CaretPosition} with Problems {(window.DockHost.IsShown(ToolWindowIds.Problems) ? "shown" : "hidden")}, "
+            + "not at the first error's place with Problems shown");
+        Ui.Click(counts);
+        Assert.Equal(new TextPosition(4, 24), editor.CaretPosition);
+
+        Assert.True(window.Perform(AppActions.SplitRight));
+        window.OpenFile(project.PathOf("Clean.cs"));
+        Ui.WaitFor(() => window.FileProblemsShown == (0, 0) && Named<Avalonia.Controls.PathIcon>(window, "FileCleanIcon").IsEffectivelyVisible,
+            () => $"a tick for Clean.cs, which has no problems, in the split with the keys (it counts {window.FileProblemsShown?.ToString() ?? "nothing"})");
+        Ui.Click(window.EditorArea.Groups[0].Editor);
+        Assert.True(window.FileProblemsShown == (2, 2), $"With the keys back in Mixed.cs's split the status bar counts {window.FileProblemsShown?.ToString() ?? "nothing"}");
+
+        Passenger.App.Docking.DockHost dock = window.DockHost;
+        dock.SetMode(dock[ToolWindowIds.Problems], Passenger.App.Docking.ToolMode.Editor);
+        dock.Show(ToolWindowIds.Problems);
+        Ui.Settle();
+        Assert.True(window.EditorArea.Active?.Tool is not null && window.FileProblemsShown is null && analysis.IsEffectivelyVisible,
+            $"With Problems' tab shown among the editors the status bar counts {window.FileProblemsShown?.ToString() ?? "nothing"} (the tab shows {window.EditorArea.Active?.Name}), "
+            + "where a tool window's tab has no problems of its own and solution-wide analysis's glyph stays");
+        window.Close();
+    }
+
+    private static T Named<T>(MainWindow window, string name)
+        where T : Avalonia.Controls.Control =>
+        Avalonia.Controls.ControlExtensions.FindControl<T>(window, name) ?? throw new InvalidOperationException($"The window has no {name}");
+
+    private static Rect Placed(MainWindow window, Avalonia.Visual visual) =>
+        new(visual.TranslatePoint(default, window)!.Value, visual.Bounds.Size);
+
     /// <summary>A file with thousands of problems types as one with few does: every key moves the file's markers, and the
     /// File tab lists where they went once typing pauses, rather than placing and listing every one again for each
     /// key. Sixteen keys come one straight after another, so however slow the machine some come within the pause.</summary>

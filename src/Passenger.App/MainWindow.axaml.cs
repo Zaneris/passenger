@@ -72,7 +72,7 @@ public partial class MainWindow : IdeWindow
         session = ProjectSession.None(Setup());
         announcer = new Announcer(this, Root);
         status = new StatusBar(StatusMessage, StatusText, StatusIcon, StatusWorking, VimModeText, CaretButton, CaretText, IndentButton, IndentText, LanguageText, LineSeparatorButton,
-            LineEndingText, EncodingButton, EncodingText, announcer);
+            LineEndingText, EncodingButton, EncodingText, TargetFrameworkButton, TargetFrameworkText, announcer);
         popups = new PopupHost(Overlay, OverlayHost, Editors, () => session.Debug.Breakpoints);
         // A search popup (Go to File, Find Action) stands just under the toolbar and the editor tabs, as tall as the theme draws them.
         OverlayHost.Bind(MarginProperty, OverlayHost.GetResourceObservable(TokenKeys.TabStripHeight,
@@ -183,13 +183,17 @@ public partial class MainWindow : IdeWindow
         Editors.ActiveChanged += (_, _) => UpdateStatus();
         Editors.ActiveChanged += (_, _) => session.CSharp?.FollowIndent(Editors.Active);
         Editors.ActiveChanged += (_, _) => session.CSharp?.Shown(Editors.Active);
-        // The indent widget and the line break follow a file's .editorconfig changed, or its save.
+        // The indent widget and the line break follow a file's .editorconfig changed, or its save; the context widget, its contexts.
         Editors.Opened += (_, document) => document.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName is nameof(OpenDocument.Indentation) or nameof(OpenDocument.LineEnding) && Editors.Active == document)
             {
                 UpdateStatus();
                 session.CSharp?.FollowIndent(document);
+            }
+            else if (e.PropertyName is nameof(OpenDocument.ProjectContexts) or nameof(OpenDocument.ProjectContext) && Editors.Active == document)
+            {
+                UpdateStatus();
             }
         };
         Editors.CaretMoved += (_, _) => UpdateCaret();
@@ -204,7 +208,6 @@ public partial class MainWindow : IdeWindow
         Editors.Opened += (_, document) => document.EnsuresFinalLineBreak = () => settings.EnsureFinalLineBreak;
         Editors.Opened += (_, document) => document.Decorations.SetAddresses(WrittenLink);
         Editors.Closed += (_, document) => session.Detach(document);
-        Editors.ForEachEditor(editor => editor.ProblemsRequested += (_, _) => ShowToolWindow(ToolWindowIds.Problems));
         // A gesture's action at its press in a file's editor (Cmd+click's Go to Declaration), the keymap's as a key's is.
         Editors.ForEachEditor(editor => editor.ActionRequested += (_, action) =>
         {

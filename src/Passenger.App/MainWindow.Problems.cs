@@ -1,3 +1,4 @@
+using System.Globalization;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Passenger.App.CSharp;
@@ -11,9 +12,10 @@ using Passenger.Core;
 
 namespace Passenger.App;
 
-/// <summary>Problems: the current file's as they are typed, the solution's with solution-wide analysis on (the status
-/// bar's icon turns it on and off and counts its errors), the projects' load problems under Toolset, Environment, and
-/// the last build's apart. A link in a problem (an advisory) opens in the browser.</summary>
+/// <summary>Problems: the current file's as they are typed (the status bar counts its errors and warnings), the
+/// solution's with solution-wide analysis on (the status bar's glyph beside those counts turns it on and off and counts
+/// its errors), the projects' load problems under Toolset, Environment, and the last build's apart. A link in a problem
+/// (an advisory) opens in the browser.</summary>
 public partial class MainWindow
 {
     private OpenDocument? problemsFile;
@@ -96,6 +98,7 @@ public partial class MainWindow
         }
         problemsMoved?.Stop();
         ShowFileProblems();
+        ShowFileProblemCounts();
     }
 
     private void OnProblemsFileChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
@@ -104,6 +107,7 @@ public partial class MainWindow
         {
             return;
         }
+        ShowFileProblemCounts();
         if (file.Text.Version == problemsShownAt)
         {
             // The server's problems for the text the tab already shows: listed at once.
@@ -234,22 +238,74 @@ public partial class MainWindow
         problem.At,
         project);
 
-    /// <summary>The status bar's analysis icon: grey and off, a turning ring while its first round is under way, with the
-    /// errors found so far, then a green tick or the solution's error count in red.</summary>
+    /// <summary>The file shown's errors and warnings as the status bar counts them; null while it shows no file of text
+    /// (a diff, a tool window's tab).</summary>
+    public (int Errors, int Warnings)? FileProblemsShown => FileProblemsButton.IsVisible ? fileCountsShown : null;
+
+    /// <summary>The counts the status bar shows and the file it shows them of, by its name then: markers moved by a key,
+    /// which change no count, word nothing again.</summary>
+    private (int Errors, int Warnings) fileCountsShown;
+    private OpenDocument? fileCountsOf;
+    private string? fileCountsName;
+
+    /// <summary>The status bar's counts of the file shown: its errors and warnings, each with its icon while there are
+    /// some, or a green tick with none; nothing with no file of text shown.</summary>
+    private void ShowFileProblemCounts()
+    {
+        if (problemsFile is not { HoldsText: true } file)
+        {
+            FileProblemsButton.IsVisible = false;
+            ProblemsWidget.IsVisible = AnalysisButton.IsVisible;
+            fileCountsOf = null;
+            return;
+        }
+        (int errors, int warnings) = file.Decorations.Problems;
+        if (fileCountsOf == file && fileCountsName == file.Name && fileCountsShown == (errors, warnings) && FileProblemsButton.IsVisible)
+        {
+            return;
+        }
+        fileCountsOf = file;
+        fileCountsName = file.Name;
+        fileCountsShown = (errors, warnings);
+        FileCleanIcon.IsVisible = errors + warnings == 0;
+        FileErrors.IsVisible = errors > 0;
+        FileErrorsText.Text = errors.ToString(CultureInfo.CurrentCulture);
+        FileWarnings.IsVisible = warnings > 0;
+        FileWarningsText.Text = warnings.ToString(CultureInfo.CurrentCulture);
+        string counted = errors + warnings == 0 ? "No errors or warnings"
+            : errors == 0 ? Plural.Of(warnings, "warning")
+            : warnings == 0 ? Plural.Of(errors, "error")
+            : $"{Plural.Of(errors, "error")} and {Plural.Of(warnings, "warning")}";
+        ToolButtons.Tip(FileProblemsButton, $"{counted} in {file.Name}: click to {(errors + warnings == 0 ? "open Problems" : "go to the next and open Problems")}");
+        FileProblemsButton.IsVisible = ProblemsWidget.IsVisible = true;
+    }
+
+    /// <summary>The status bar's counts were clicked: the editor with the keys goes to its file's next error or warning, and
+    /// Problems shows.</summary>
+    private void OnFileProblemsClicked(object? sender, RoutedEventArgs e)
+    {
+        CodeEditor editor = Editors.CodeEditor;
+        editor.GoToNextProblem();
+        editor.Focus();
+        ShowToolWindow(ToolWindowIds.Problems);
+    }
+
+    /// <summary>The status bar's analysis glyph, the solution's, beside the file's counts: muted while off, a turning ring
+    /// while its first round is under way, with the errors found so far, then green, or red with the solution's error
+    /// count.</summary>
     private void ShowAnalysis()
     {
         int errors = Bottom.Problems.ListsSolution ? Bottom.Problems.SolutionErrors : 0;
         bool analysing = settings.SolutionWideAnalysis && session.CSharp is { IsAnalysing: true };
-        (string icon, string brush, string text, string tip) = !settings.SolutionWideAnalysis
-            ? (IconKeys.Problems, TokenKeys.TextMuted, string.Empty, "Solution-wide analysis is off: click to analyse every file of the solution")
+        (string brush, string text, string tip) = !settings.SolutionWideAnalysis
+            ? (TokenKeys.TextMuted, string.Empty, "Solution-wide analysis is off: click to analyse every file of the solution")
             : analysing
-                ? (IconKeys.Check, TokenKeys.Test_Passed, errors > 0 ? errors.ToString() : string.Empty, errors > 0
+                ? (TokenKeys.Test_Passed, errors > 0 ? errors.ToString() : string.Empty, errors > 0
                     ? $"Solution-wide analysis is under way, {Plural.Of(errors, "error")} so far: Problems lists them as it finds them. Click to turn it off"
                     : "Solution-wide analysis is under way: Problems lists what it finds as it goes. Click to turn it off")
             : errors == 0
-                ? (IconKeys.Check, TokenKeys.Test_Passed, string.Empty, "Solution-wide analysis: no errors. Click to turn it off")
-                : (IconKeys.Error, TokenKeys.Error, errors.ToString(), $"Solution-wide analysis: {Plural.Of(errors, "error")}; Problems lists them. Click to turn it off");
-        AnalysisIcon.Bind(PathIcon.DataProperty, AnalysisIcon.GetResourceObservable(icon));
+                ? (TokenKeys.Test_Passed, string.Empty, "Solution-wide analysis: no errors. Click to turn it off")
+                : (TokenKeys.Error, errors.ToString(), $"Solution-wide analysis: {Plural.Of(errors, "error")}; Problems lists them. Click to turn it off");
         AnalysisIcon.Bind(PathIcon.ForegroundProperty, AnalysisIcon.GetResourceObservable(brush));
         AnalysisIcon.IsVisible = !analysing;
         AnalysisWorking.IsVisible = analysing;
@@ -257,6 +313,7 @@ public partial class MainWindow
         AnalysisText.IsVisible = text.Length > 0;
         ToolButtons.Tip(AnalysisButton, tip);
         AnalysisButton.IsVisible = session.CSharp is not null;
+        ProblemsWidget.IsVisible = AnalysisButton.IsVisible || FileProblemsButton.IsVisible;
     }
 
     private void OnAnalysisClicked(object? sender, RoutedEventArgs e) => ToggleSolutionAnalysis();
