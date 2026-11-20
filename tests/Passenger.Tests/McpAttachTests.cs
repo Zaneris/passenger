@@ -1227,6 +1227,7 @@ public sealed class McpAttachTimingTests : McpRig, IClassFixture<RestoredFolders
         MainWindow window = AgentsWindow(Folder);
         McpClient? client = null;
         OwnProcess suspended = default;
+        Task<CallToolResult>? diagnostic = null;
         using CancellationTokenSource giveUp = CancellationTokenSource.CreateLinkedTokenSource(Cancel);
         try
         {
@@ -1237,18 +1238,17 @@ public sealed class McpAttachTimingTests : McpRig, IClassFixture<RestoredFolders
             client = Await(Waiting.Apart(() => Start(["--mcp-attach", taken])), "the agent attaching");
             Await(Waiting.Apart(() => Call(client, McpTools.Diagnostics, new() { ["path"] = "Helper.cs" })), "the language server loading the sample");
             Ui.Settle();
-            Assert.DoesNotContain(InFlight.Now(), piece => piece.What.Contains(Passenger.Lsp.LspMethods.DocumentDiagnostic, StringComparison.Ordinal));
+            Assert.DoesNotContain(InFlight.Now(), AsksTheServer);
             Passenger.Lsp.LanguageServer server = window.CSharpService!.Session!.Server;
             (server.SlowRequest, server.ResponseLimit) = (TimeSpan.FromMinutes(10), TimeSpan.FromMinutes(10));
             suspended = OwnProcess.Of(server.ProcessId);
             suspended.Suspend("The test's language server");
 
             // A file the server has not been asked of, so the call waits on it (Helper.cs's last pull would answer it).
-            Task<CallToolResult> diagnostic = Waiting.Apart(() => revokeConnection
+            diagnostic = Waiting.Apart(() => revokeConnection
                 ? Result(client, McpTools.Diagnostics, new() { ["path"] = "Program.cs" })
                 : CallGivingUp(client, McpTools.Diagnostics, new() { ["path"] = "Program.cs" }, giveUp.Token));
-            Ui.PumpUntil(() => InFlight.Now().Any(piece => piece.What.Contains(Passenger.Lsp.LspMethods.DocumentDiagnostic, StringComparison.Ordinal)),
-                "the attached agent's diagnostic to wait on the suspended server", TimeSpan.FromSeconds(10));
+            Ui.PumpUntil(() => InFlight.Now().Any(AsksTheServer), "the attached agent's diagnostic to wait on the suspended server", TimeSpan.FromSeconds(10));
             if (revokeConnection)
             {
                 window.ApplySettings(window.Settings with { McpServer = false });
@@ -1264,12 +1264,16 @@ public sealed class McpAttachTimingTests : McpRig, IClassFixture<RestoredFolders
                 Ui.PumpUntil(() => diagnostic.IsCompleted, "the agent's diagnostic giving up", TimeSpan.FromSeconds(10));
                 Assert.ThrowsAny<OperationCanceledException>(() => Ui.AwaitPumped(diagnostic, "the agent's diagnostic giving up"));
             }
-            Ui.PumpUntil(() => !InFlight.Now().Any(piece => piece.What.Contains(Passenger.Lsp.LspMethods.DocumentDiagnostic, StringComparison.Ordinal)),
-                "the diagnostic request to clear while its server is still suspended", TimeSpan.FromSeconds(10));
+            Ui.PumpUntil(() => !InFlight.Now().Any(AsksTheServer), "the diagnostic's request to clear while its server is still suspended", TimeSpan.FromSeconds(10));
             Assert.True(Processes.IsRunning(suspended.Id), "The request cleared only because its language server ended");
         }
         finally
         {
+            if (diagnostic is not null)
+            {
+                // Left unawaited by a failure above, its end as the agent goes is no later test's fault.
+                UnawaitedWork.Dismiss(diagnostic);
+            }
             giveUp.Cancel();
             suspended.Kill();
             try
@@ -1285,6 +1289,12 @@ public sealed class McpAttachTimingTests : McpRig, IClassFixture<RestoredFolders
             }
         }
     }
+
+    /// <summary>A request an agent's C# question waits on the language server for: the take-in of what was written on disk,
+    /// which comes first, or the file's diagnostics.</summary>
+    private static bool AsksTheServer((string What, long Since) piece) =>
+        piece.What.Contains(Passenger.Lsp.LspMethods.DispatchExtensionMessage, StringComparison.Ordinal)
+        || piece.What.Contains(Passenger.Lsp.LspMethods.DocumentDiagnostic, StringComparison.Ordinal);
 
     /// <summary>A live socket for this process and folder, ranked before the real window, which never answers initialize.</summary>
     private sealed class WithheldWindow : IDisposable

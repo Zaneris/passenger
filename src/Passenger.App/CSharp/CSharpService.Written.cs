@@ -19,8 +19,8 @@ public sealed partial class CSharpService
     /// <summary>Takes in what was written on disk that the server may hold as it was: each document it reads from disk
     /// written since the last look (or its start), and each file heard changed, that it holds otherwise than the disk, those
     /// no watcher heard told it as found, all waited for until it holds them as the disk has them, up to <paramref
-    /// name="within"/> (<paramref name="waiting"/> told the first meanwhile). Null once it does, or where it cannot say (not
-    /// loaded, no Passenger extension); else the first it does not.</summary>
+    /// name="within"/> from its start (<paramref name="waiting"/> told the first meanwhile). Null once it does, or where it
+    /// cannot say (not loaded, no Passenger extension); else the first it does not.</summary>
     public async Task<string?> TakeInWrittenAsync(TimeSpan within, Action<string?>? waiting, CancellationToken cancel)
     {
         UiThread.Check();
@@ -28,6 +28,7 @@ public sealed partial class CSharpService
         {
             return null;
         }
+        Deadline until = Deadline.In(within);
         DateTime began = DateTime.UtcNow;
         DateTime since = (writtenLook is { } last && last.Session == asked ? last.Began : asked.Server.WatchedFiles.Since) - ServerWatches.Rounding;
         HashSet<string> open = new([.. documents.Where(d => d.Value.Lsp is not null).Select(d => d.Key.Path)], PathNames.Comparer);
@@ -54,7 +55,6 @@ public sealed partial class CSharpService
             // Matched against every watcher, so off the window's thread.
             await BackgroundWork.Run(() => asked.Server.WatchedFiles.TellFound(untold), cancel);
         }
-        Deadline until = Deadline.In(within);
         bool waited = unread.Count > 0;
         if (waited)
         {
