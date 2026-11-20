@@ -32,6 +32,10 @@ public sealed class DebugSession : IAsyncDisposable
     private readonly string engineLog;
     private readonly bool ownLog;
 
+    /// <summary>Where this session's part of the engine's log begins: a log kept for every session has the earlier ones'
+    /// above it, which a test reading what its own session did must not take for its own.</summary>
+    private readonly long engineLogStart;
+
     private DebugSession(ITestOutputHelper output, Process? debuggee, bool terminateDebuggee, string? symbolCache = null, IReadOnlyDictionary<string, string>? environment = null)
     {
         this.debuggee = debuggee;
@@ -45,6 +49,7 @@ public sealed class DebugSession : IAsyncDisposable
         string? kept = Environment.GetEnvironmentVariable(Passenger.Dap.AdapterEnvironment.EngineLogVariable) is { Length: > 0 } named ? named : null;
         ownLog = kept is null;
         engineLog = kept ?? Path.Combine(TestRun.Root, $"engine-{Guid.NewGuid():N}.log");
+        engineLogStart = kept is not null && File.Exists(kept) ? new FileInfo(kept).Length : 0;
         // The symbols it decompiles go where the run's IDE keeps them (its state folder's), unless a test names a folder.
         string symbols = symbolCache ?? Passenger.App.Debugging.DebugSession.SymbolCache;
         List<string> arguments = [AdapterFlags.Interpreter, AdapterFlags.EngineLogging + engineLog, AdapterFlags.SymbolCache + symbols];
@@ -199,12 +204,13 @@ public sealed class DebugSession : IAsyncDisposable
     /// <summary>Whether the adapter has ended within the time given (scaled), its input still open.</summary>
     public bool Ended(TimeSpan within) => adapter.WaitForExit(within.Scaled());
 
-    /// <summary>The engine's own log as written so far.</summary>
+    /// <summary>The engine's own log of this session as written so far.</summary>
     public string EngineLog()
     {
         try
         {
             using FileStream file = new(engineLog, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+            file.Seek(Math.Min(engineLogStart, file.Length), SeekOrigin.Begin);
             using StreamReader reader = new(file);
             return reader.ReadToEnd();
         }
