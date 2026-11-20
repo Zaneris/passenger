@@ -2,6 +2,7 @@ using System.Reflection;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Passenger.Core;
 using Passenger.Dap;
 using Passenger.Tests.Debugging.Helpers;
 
@@ -9,7 +10,7 @@ namespace Passenger.Tests.Debugging;
 
 /// <summary>The debugger's code says each of its own rows by one name and takes each failure of the runtime's interfaces
 /// one way: no string outside <see cref="DapRows"/> is one of its rows' names, and no catch lists the runtime's failures
-/// by hand rather than through Failures.OfRuntime.</summary>
+/// by hand rather than through Failures.OfRuntime. Its tests say where their processes stood only once they failed.</summary>
 [Collection(Beside.Name)]
 public sealed class DebuggerRulesTests
 {
@@ -42,6 +43,31 @@ public sealed class DebuggerRulesTests
         Assert.True(found.Count == 0, $"{found.Count} catches list the runtime's failures by hand, so the ones they leave out (an E_INVALIDARG's "
             + $"ArgumentException, an E_NOTIMPL's NotImplementedException) escape the read they guard and fail the request around it: take them "
             + $"through Failures.OfRuntime:\n{string.Join("\n", found)}");
+    }
+
+    /// <summary>A failed debugging test says where the adapter and the program stood: on macOS it samples each for a second
+    /// (NativeStacks), or attaches to it (ManagedStacks), so a test makes those words only once it has failed, never as
+    /// the message of an Assert that may hold, which is made whether it holds or not.</summary>
+    [Fact]
+    public void A_debugging_tests_account_of_where_its_processes_stood_is_made_only_once_it_has_failed()
+    {
+        string[] describing = ["Heard", "Stacks", "ProgramStacks"];
+        List<string> found = [
+            .. Written(["tests", "Passenger.Tests"], "tests/Passenger.Tests/Rig.cs", node => node is InvocationExpressionSyntax
+                {
+                    Expression: MemberAccessExpressionSyntax { Expression: IdentifierNameSyntax { Identifier.ValueText: "NativeStacks" or "ManagedStacks" }, Name.Identifier.ValueText: "Describe" },
+                } call && !OnceFailed(call, describing) ? call.ToString() : null),
+            .. Written(["tests", "Passenger.Tests", "Debugging"], "", node => node is InvocationExpressionSyntax { Expression: IdentifierNameSyntax name, ArgumentList.Arguments.Count: 0 } call
+                && describing.Contains(name.Identifier.ValueText) && !OnceFailed(call, describing) ? call.ToString() : null),
+        ];
+        Assert.True(found.Count == 0, $"{Plural.Of(found.Count, "call")} {Plural.Agreeing(found.Count, "describes", "describe")} where a debugging test's processes stood whether it failed or "
+            + $"not, which on macOS samples each for a second at every pass, the test waiting meanwhile: make them only in a throw or an Assert.Fail:\n"
+            + string.Join("\n", found));
+
+        // Inside a throw, an Assert.Fail, or a member making those words itself.
+        static bool OnceFailed(InvocationExpressionSyntax call, string[] describing) => call.Ancestors().Any(around => around is ThrowStatementSyntax or ThrowExpressionSyntax
+            || around is InvocationExpressionSyntax { Expression: MemberAccessExpressionSyntax { Expression: IdentifierNameSyntax { Identifier.ValueText: "Assert" }, Name.Identifier.ValueText: "Fail" } }
+            || around is MethodDeclarationSyntax method && describing.Contains(method.Identifier.ValueText));
     }
 
     /// <summary>Each C# node under the folder (from the repository's root) that <paramref name="written"/> names, by file

@@ -276,8 +276,10 @@ public sealed class DebugSession : IAsyncDisposable
         {
             DapStackFrame top = await TopFrameAsync(stop.ThreadId!.Value);
             ScopesResponse scopes = await ScopesAsync(top.Id);
-            Assert.True(scopes.Scopes.Count == 1,
-                $"The stopped thread's top frame, {top.Name} at line {top.Line}, has {scopes.Scopes.Count} scopes, so Variables shows it nothing. {Heard()}");
+            if (scopes.Scopes.Count != 1)
+            {
+                Assert.Fail($"The stopped thread's top frame, {top.Name} at line {top.Line}, has {scopes.Scopes.Count} scopes, so Variables shows it nothing. {Heard()}");
+            }
             return await VariablesAsync(scopes.Scopes[0].VariablesReference);
         }
         catch (DapException failed)
@@ -633,7 +635,8 @@ public sealed class DebugSession : IAsyncDisposable
         }
     }
 
-    /// <summary>What the adapter said last and how the engine's log ends: the cause of a wait that failed.</summary>
+    /// <summary>What the adapter said last and how the engine's log ends: the cause of a wait that failed. On macOS it samples
+    /// the adapter and the program for a second each (<see cref="Stacks"/>), so only a test that has failed asks for it.</summary>
     private string Heard()
     {
         string said;
