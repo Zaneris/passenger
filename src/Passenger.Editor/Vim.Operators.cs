@@ -62,9 +62,7 @@ public sealed partial class Vim
         {
             return Refused(why, SelectionSet.Create([.. stretches.Select(t => Selection.At(Settled(text, t.Landing, breakEnds)))], Math.Min(selections.PrimaryIndex, stretches.Count - 1)));
         }
-        VimRegister taken = block && lines is { } over && stretches.All(t => t.First == t.Last)
-            ? BlockTaken(text, stretches, over, view.Indent.TabWidth)
-            : new([.. Merged(stretches, pieces: true).Select(m => Taken(text, m))], stretches[0].Lines) { Blockwise = block };
+        VimRegister taken = TakenBy(text, stretches, block, lines, view.Indent.TabWidth);
         VimResult result = op switch
         {
             "d" => Delete(text, selections, stretches),
@@ -75,9 +73,10 @@ public sealed partial class Vim
             "gq" or "gw" => Wrap(op == "gw", text, selections, stretches, view),
             _ => Case(command, op, text, selections, stretches, view),
         };
-        // Nothing taken (anything from a text of one empty line) leaves them, but a change of an empty line's place empties one.
-        bool empty = (VimMotions.LastLine(text, breakEnds) == 0 && text.GetLine(0).Length == 0)
-            || stretches.All(t => !t.Lines && t.End == t.Start && !(op == "c" && t.Inclusive && VimMotions.LineOf(text, t.Start).Length == 0));
+        // Nothing taken leaves them, but a change of an empty line's place empties one and a block of lines takes a piece each.
+        bool empty = !(block && lines is { } over && over.Bottom > over.Top)
+            && ((VimMotions.LastLine(text, breakEnds) == 0 && text.GetLine(0).Length == 0)
+                || stretches.All(t => !t.Lines && t.End == t.Start && !(op == "c" && t.Inclusive && VimMotions.LineOf(text, t.Start).Length == 0)));
         if (op is "d" or "c" && !empty)
         {
             Registers.Delete(command.Register, taken, Jumps.Contains(command.Name));
@@ -138,6 +137,13 @@ public sealed partial class Vim
         }
         return merged;
     }
+
+    /// <summary>What an operator over the sorted stretches takes, as a register keeps it: a block's (<paramref name="block"/>)
+    /// as one as wide as its columns (<paramref name="over"/>), else the stretches' text.</summary>
+    private static VimRegister TakenBy(TextSnapshot text, List<Stretch> sorted, bool block, (int Top, int Bottom, int Left, int Right)? over, int tab) =>
+        block && over is { } columns && sorted.All(t => t.First == t.Last)
+            ? BlockTaken(text, sorted, columns, tab)
+            : new([.. Merged(sorted, pieces: true).Select(m => Taken(text, m))], sorted[0].Lines) { Blockwise = block };
 
     /// <summary>The text a stretch takes, as a register keeps it: line breaks "\n", whole lines each ending with one.</summary>
     /// <summary>A block's text as a register keeps it: a piece for each of its lines, a line ending where the block
