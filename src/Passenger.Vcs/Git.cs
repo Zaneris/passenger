@@ -2172,11 +2172,29 @@ public sealed partial class Git
             $"refs/heads/{branch.Name}:refs/heads/{branch.Name}"], cancel: cancel, asker: asker);
 
     /// <summary>The files that differ between a revision and the working tree (Show Diff with Working Tree), renames
-    /// found, each by its path now.</summary>
+    /// found, each by its path now, in their paths' order: those git does not track too, ignored ones left out, each added,
+    /// or modified where the revision has it, which git's diff, reading only what git tracks, calls deleted.</summary>
     public async Task<IReadOnlyList<FileChange>> ChangesSinceAsync(string revision)
     {
         GitResult files = await RunAsync(Root, ["diff", "--name-status", "-z", "-M", "--end-of-options", revision, "--"]);
-        return files.Succeeded ? NameStatus(files.Output) : [];
+        if (!files.Succeeded)
+        {
+            return [];
+        }
+        List<FileChange> changes = NameStatus(files.Output);
+        GitResult untracked = await RunAsync(Root, ["ls-files", "-z", "--others", "--exclude-standard"]);
+        if (!untracked.Succeeded || untracked.Output.Length == 0)
+        {
+            return changes;
+        }
+        DiskNames names = new(Root);
+        // Where the revision has a path no tracked file of the working tree now holds: a deletion, or a rename's source.
+        HashSet<string> gone = new(changes.Select(c => c.Kind switch { ChangeKind.Deleted => c.Path, ChangeKind.Renamed => c.From, _ => null }).OfType<string>(), PathNames.Comparer);
+        HashSet<string> untrackedFiles = new(untracked.Output.Split('\0', StringSplitOptions.RemoveEmptyEntries).Select(names.Full), PathNames.Comparer);
+        changes.RemoveAll(c => c.Kind == ChangeKind.Deleted && untrackedFiles.Contains(c.Path));
+        changes.AddRange(untrackedFiles.Select(path => new FileChange(path, gone.Contains(path) ? ChangeKind.Modified : ChangeKind.Added)));
+        changes.Sort((a, b) => PathNames.Comparer.Compare(a.Path, b.Path));
+        return changes;
     }
 
     /// <summary>The stashes, the newest first.</summary>

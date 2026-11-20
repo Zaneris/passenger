@@ -424,7 +424,8 @@ public sealed class BranchesTests : IDisposable
     /// <summary>Show Diff with Working Tree lists a branch's files that differ from the working tree in a tab of the Git
     /// window, said above them, the first chosen with the keys; a file's diff opens beside the editors' files as a tab with
     /// diffs set to open as tabs, and over them in a window of its own with diffs set to open in windows, the list staying in
-    /// the Git window either way. The list follows the working tree, and a branch nothing differs from says so.</summary>
+    /// the Git window either way. The list follows the working tree, and a branch nothing differs from says so; a file git
+    /// does not track is listed as added, or as modified where the branch has it.</summary>
     [AvaloniaFact]
     public void Show_diff_with_working_tree_lists_the_files_in_the_Git_window_and_opens_their_diffs_in_a_tab_or_a_window()
     {
@@ -479,6 +480,19 @@ public sealed class BranchesTests : IDisposable
         Assert.Equal(["Log", "Compare feature and Working Tree", "Compare main and Working Tree"], window.GitWindow.Titles);
         Assert.True(same.Files.Count == 0 && same.Placeholder == "No differences",
             $"main, which the working tree matches, lists [{string.Join(", ", same.Files.Select(f => f.Name))}] and says \"{same.Placeholder}\"");
+
+        // Files git does not track differ too: from main, which has neither, as added; from feature, which has Feature.cs, it as modified.
+        File.WriteAllText(Path.Combine(folder, "Added.cs"), "class Added { }\n");
+        File.WriteAllText(Path.Combine(folder, "Feature.cs"), "class Feature { int count; }\n");
+        Ui.WaitFor(() => window.Vcs.Changes.Count == 2, "Added.cs and Feature.cs written, Git listing them untracked");
+        Ui.Landed(() => same.Files.Count == 2, $"main's files following the working tree's untracked files, where it lists [{string.Join(", ", same.Files.Select(f => f.Name))}]");
+        Assert.Equal(["Added.cs Added", "Feature.cs Added"], same.Files.Select(f => $"{f.Name} {f.Kind}"));
+        window.GitWindow.ShowLog();
+        Ui.Settle();
+        Choose(panel, rows, "feature", "Show Diff with Working Tree");
+        Assert.Same(changes, window.GitWindow.Shown);
+        Ui.Landed(() => changes.Files.Count == 3, $"feature's files read again with the untracked files, where it lists [{string.Join(", ", changes.Files.Select(f => f.Name))}]");
+        Assert.Equal(["Added.cs Added", "Feature.cs Modified", "Notes.txt Added"], changes.Files.Select(f => $"{f.Name} {f.Kind}"));
         window.Close();
     }
 

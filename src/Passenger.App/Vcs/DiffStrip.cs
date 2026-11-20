@@ -71,10 +71,13 @@ public sealed class DiffStrip : Control
         }
     }
 
+    /// <summary>Each band in view, tinted and edged in its change's colour: closed at the panes' edges only while its arrow
+    /// is drawn in it, as a band one line high each side is otherwise an empty box.</summary>
     public override void Render(DrawingContext context)
     {
         context.FillRectangle(Tokens.Brush(this, TokenKeys.Editor_Background), new Rect(Bounds.Size));
         double width = Bounds.Width;
+        bool boxed = takes();
         foreach (DiffBand band in bands())
         {
             if (Math.Max(band.LeftBottom, band.RightBottom) < -IconSize || Math.Min(band.LeftTop, band.RightTop) > Bounds.Height + IconSize)
@@ -82,6 +85,7 @@ public sealed class DiffStrip : Control
                 continue;
             }
             (string tint, string edge) = Colours(band.Kind);
+            Pen pen = new(Tokens.Brush(this, edge), 1);
             StreamGeometry shape = new();
             using (StreamGeometryContext path = shape.Open())
             {
@@ -91,7 +95,22 @@ public sealed class DiffStrip : Control
                 path.CubicBezierTo(new Point(width / 2, band.RightBottom), new Point(width / 2, band.LeftBottom), new Point(0, band.LeftBottom));
                 path.EndFigure(true);
             }
-            context.DrawGeometry(Tokens.Brush(this, tint), new Pen(Tokens.Brush(this, edge), 1), shape);
+            context.DrawGeometry(Tokens.Brush(this, tint), boxed ? pen : null, shape);
+            if (boxed)
+            {
+                continue;
+            }
+            StreamGeometry edges = new();
+            using (StreamGeometryContext path = edges.Open())
+            {
+                path.BeginFigure(new Point(0, band.LeftTop), false);
+                path.CubicBezierTo(new Point(width / 2, band.LeftTop), new Point(width / 2, band.RightTop), new Point(width, band.RightTop));
+                path.EndFigure(false);
+                path.BeginFigure(new Point(0, band.LeftBottom), false);
+                path.CubicBezierTo(new Point(width / 2, band.LeftBottom), new Point(width / 2, band.RightBottom), new Point(width, band.RightBottom));
+                path.EndFigure(false);
+            }
+            context.DrawGeometry(null, pen, edges);
         }
     }
 
