@@ -3027,6 +3027,37 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
         window.Close();
     }
 
+    /// <summary>A preview holds screenshots and tests until the frame of the text it last sent, never one of the window that
+    /// text's load replaces, which a previewer may draw as the load comes: a stand-in meeting an edit's load with a frame of
+    /// its last window, then answering it a moment later, has its new window's frame shown once the window settles.</summary>
+    [AvaloniaFact]
+    public void An_edits_preview_settles_on_its_own_frame_never_one_of_the_window_its_load_replaces()
+    {
+        MainWindow window = app.Open(app.PathOf("MainWindow.axaml"), languageServer: false);
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        OpenDocument document = window.EditorArea.Active!;
+        Ui.Run(window, AppActions.Build);
+        Ui.Settle();
+        using (StandInPreviewer standIn = StandInPreviewer.InPlaceOf(window, document))
+        {
+            Passenger.App.Xaml.XamlPreview preview = window.PreviewOf(document)!;
+            standIn.Begin();
+            Ui.WaitFor(() => preview.Frame is not null && Math.Abs(preview.FrameSize.Width - StandInPreviewer.WidthOf(1)) < 0.5,
+                () => $"the stand-in's first window drawn, where the preview says '{preview.Status}'");
+            Ui.Settle();
+
+            Ui.PlaceAfter(editor, "<StackPanel");
+            window.KeyTextInput(" ");
+            Ui.Settle();
+            Assert.True(standIn.Loads == 2, $"The edit was sent as load {standIn.Loads}, not the second");
+            Assert.True(Math.Abs(preview.FrameSize.Width - StandInPreviewer.WidthOf(2)) < 0.5 && preview.Status == "Live",
+                $"The window settled on a frame {preview.FrameSize.Width} wide ('{preview.Status}'), the replaced window's, not the {StandInPreviewer.WidthOf(2)} of the edit's own: "
+                + "a screenshot or a test taken then shows the text before the edit");
+        }
+        Assert.True(window.Perform(AppActions.XamlPreview) && window.PreviewOf(document) is null, "XAML Preview stayed on");
+        window.Close();
+    }
+
     /// <summary>A previewer of the test's own on the preview's port, the real one stopped as it starts: what Passenger sends
     /// it is kept, and it answers each load as Avalonia's previewer does, with a frame of a new window as wide as the load's
     /// number says (<see cref="WidthOf"/>), drawn at the scale last asked; a load after the first it meets first with a frame

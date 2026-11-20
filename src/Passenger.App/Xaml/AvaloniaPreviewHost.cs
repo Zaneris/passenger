@@ -276,8 +276,8 @@ internal sealed class AvaloniaPreviewHost : IPreviewHost
                 }
                 preview.Status = "Live";
                 preview.Tell();
-                // One drawn before the host took a rescale is followed by the frame at the scale asked, which the hold waits for.
-                if (rescaled is not { } asked || Math.Abs(frame.DpiX - asked) <= 0.5)
+                // The hold waits for a rescale's frame, and for a load's own frame over one of the window that load replaces.
+                if (unanswered.Count == 0 && (rescaled is not { } asked || Math.Abs(frame.DpiX - asked) <= 0.5))
                 {
                     rescaled = null;
                     preview.Let();
