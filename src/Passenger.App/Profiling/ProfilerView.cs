@@ -98,7 +98,7 @@ public sealed class ProfilerView : DockPanel
     private readonly EmptyState placeholder;
     private readonly Button stop;
     private readonly Button kill;
-    private readonly ToggleButton[] pages;
+    private readonly ToolTabs.Strip<ProfilerPage> pages = new() { Margin = new Thickness(Gaps.Small, 0) };
     private readonly DispatcherTimer ticking;
     private readonly Timeline timeline;
     private readonly Border timelineBand;
@@ -184,19 +184,13 @@ public sealed class ProfilerView : DockPanel
         stop.Click += (_, _) => StopRequested?.Invoke(this, EventArgs.Empty);
         kill = new Button { Content = "Kill", IsVisible = false };
         kill.Click += (_, _) => KillRequested?.Invoke(this, EventArgs.Empty);
-        pages = [PageButton("Call Tree"), PageButton("Hot Spots"), PageButton("Flame Graph"), PageButton("Frames"), PageButton("Allocations"), PageButton("GC"),
-            PageButton("Memory"), PageButton("Snapshots")];
-        // Named for a screenshot's --click-name: ProfilerHotSpots, ProfilerMemory and the rest.
+        string[] titles = ["Call Tree", "Hot Spots", "Flame Graph", "Frames", "Allocations", "GC", "Memory", "Snapshots"];
         foreach (ProfilerPage page in Enum.GetValues<ProfilerPage>())
         {
-            pages[(int)page].Name = $"Profiler{page}";
+            // Named for a screenshot's --click-name: ProfilerHotSpots, ProfilerMemory and the rest.
+            pages.Add(page, titles[(int)page], name: $"Profiler{page}");
         }
-        // The pages and the run's summary wrap to another line where the pane has no room for them on one, as at 640 wide.
-        WrapPanel left = new() { ItemSpacing = Gaps.Hair, Margin = new Thickness(Gaps.Small, 0), VerticalAlignment = VerticalAlignment.Center };
-        foreach (ToggleButton page in pages)
-        {
-            left.Children.Add(page);
-        }
+        pages.Chosen += (_, page) => ShowPage(page);
         Button open = ToolButtons.Of(IconKeys.FolderOpen, "Open Snapshot", () => OpenSnapshotRequested?.Invoke(this, EventArgs.Empty));
         open.Name = "ProfilerOpenSnapshot";
         heap = new Button { Name = "ProfilerGetMemorySnapshot", Content = "Get Memory Snapshot", IsVisible = false };
@@ -205,9 +199,10 @@ public sealed class ProfilerView : DockPanel
         StackPanel right = new() { Orientation = Orientation.Horizontal, Spacing = Gaps.Small, Margin = new Thickness(Gaps.Small, 0), VerticalAlignment = VerticalAlignment.Center, Children = { heap, stop, kill, open } };
         DockPanel bar = new();
         DockPanel.SetDock(right, Dock.Right);
-        left.Children.Add(status);
+        // The run's summary follows the pages, wrapping with them where the pane has no room for both on one line, as at 640 wide.
+        pages.Children.Add(status);
         bar.Children.Add(right);
-        bar.Children.Add(left);
+        bar.Children.Add(pages);
         Border top = ToolBars.Top(bar);
         Children.Add(top);
         offerLink = offer.Link(null, () => offering?.TakeOffer());
@@ -221,7 +216,7 @@ public sealed class ProfilerView : DockPanel
         ticking = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(200) };
         ticking.Tick += (_, _) => status.Text = $"Profiling {running}: {Durations.Said(elapsed?.Invoke() ?? TimeSpan.Zero)}";
         ShowPage(ProfilerPage.CallTree);
-        foreach (ToggleButton page in pages)
+        foreach (ToggleButton page in pages.Toggles)
         {
             page.IsEnabled = false;
         }
@@ -258,7 +253,7 @@ public sealed class ProfilerView : DockPanel
     {
         Memory = snapshot;
         memory.Add(snapshot);
-        pages[(int)ProfilerPage.Memory].IsEnabled = true;
+        pages[ProfilerPage.Memory].IsEnabled = true;
         ShowPage(ProfilerPage.Memory);
     }
 
@@ -267,7 +262,7 @@ public sealed class ProfilerView : DockPanel
     {
         Memory = null;
         memory.Clear();
-        if (pages[(int)ProfilerPage.Memory].IsChecked == true)
+        if (pages.Choice == ProfilerPage.Memory)
         {
             ShowPage(ProfilerPage.Memory);
         }
@@ -294,9 +289,8 @@ public sealed class ProfilerView : DockPanel
         keptSummary.Text = files.Count == 0
             ? $"No snapshots yet. Each run's is kept in {folder}, the newest {Snapshots.Kept}."
             : $"{Plural.Of(files.Count, "snapshot")}, the newest first, kept in {folder}. Past {Snapshots.Kept}, the oldest go.";
-        pages[(int)ProfilerPage.Snapshots].IsEnabled = true;
-        int current = Array.FindIndex(pages, p => p.IsChecked == true);
-        ShowPage(Snapshot is null && Memory is null && !ticking.IsEnabled && files.Count > 0 ? ProfilerPage.Snapshots : (ProfilerPage)Math.Max(0, current));
+        pages[ProfilerPage.Snapshots].IsEnabled = true;
+        ShowPage(Snapshot is null && Memory is null && !ticking.IsEnabled && files.Count > 0 ? ProfilerPage.Snapshots : pages.Choice);
     }
 
     private void OpenSpot()
@@ -449,10 +443,9 @@ public sealed class ProfilerView : DockPanel
         timeline.Snapshot = snapshot;
         timelineBand.IsVisible = true;
         // A snapshot opened from the list is shown, not the list again.
-        if (pages[(int)ProfilerPage.Snapshots].IsChecked == true)
+        if (pages.Choice == ProfilerPage.Snapshots)
         {
-            pages[(int)ProfilerPage.Snapshots].IsChecked = false;
-            pages[(int)ProfilerPage.CallTree].IsChecked = true;
+            pages.Choice = ProfilerPage.CallTree;
         }
         Fill(snapshot);
     }
@@ -489,7 +482,7 @@ public sealed class ProfilerView : DockPanel
     /// <summary>Shows a snapshot, the whole run's or a stretch of it, in every view but the timeline.</summary>
     private void Fill(Snapshot snapshot)
     {
-        ProfilerPage current = (ProfilerPage)Math.Max(0, Array.FindIndex(pages, p => p.IsChecked == true));
+        ProfilerPage current = pages.Choice;
         Snapshot = snapshot;
         Snapshot whole = snapshot.Whole;
         status.Text = snapshot.FramesAlone
@@ -497,7 +490,7 @@ public sealed class ProfilerView : DockPanel
             : ReferenceEquals(whole, snapshot)
             ? $"{snapshotName}: {Durations.Said(snapshot.Duration)}, {Plural.Of(snapshot.Threads.Count, "thread")}, {snapshot.Samples:N0} samples{(snapshot.CutShort is null ? string.Empty : ", its trace cut short")}"
             : $"{snapshotName}: {snapshot.StartMs - whole.StartMs:N0} to {snapshot.EndMs - whole.StartMs:N0} ms of {whole.Duration.TotalMilliseconds:N0}, {snapshot.Samples:N0} samples";
-        foreach (ToggleButton page in pages)
+        foreach (ToggleButton page in pages.Toggles)
         {
             page.IsEnabled = true;
         }
@@ -736,17 +729,11 @@ public sealed class ProfilerView : DockPanel
         return true;
     }
 
-    private ToggleButton PageButton(string label)
-    {
-        ToggleButton button = new() { Content = label, Classes = { StyleClasses.PanelTab } };
-        button.Click += (_, _) => ShowPage((ProfilerPage)Array.IndexOf(pages, button));
-        return button;
-    }
-
     /// <summary>Shows a page; the placeholder's words when it has nothing to show.</summary>
     public void ShowPage(ProfilerPage page)
     {
         Page = page;
+        pages.Choice = page;
         Control[] views = [tree, spots, flameScroll, framesPage, allocations, garbage, memory, keptPage];
         bool shown = false;
         for (int i = 0; i < views.Length; i++)
@@ -759,7 +746,6 @@ public sealed class ProfilerView : DockPanel
             });
             views[i].IsVisible = showing;
             shown |= showing;
-            pages[i].IsChecked = i == (int)page;
         }
         placeholder.IsVisible = !shown;
         // The run's timeline goes with its views, not with the list of runs; the Frames page has its frames' own.

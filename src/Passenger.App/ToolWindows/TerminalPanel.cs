@@ -360,7 +360,7 @@ public sealed class TerminalPanel : DockPanel
     {
         TextBlock name = new() { VerticalAlignment = VerticalAlignment.Center };
         ToggleButton button = null!;
-        button = ToolTabs.Tab(name, false, () =>
+        button = ToolTabs.Tab(name, () =>
         {
             if (button.DataContext is not TerminalTab tab)
             {
@@ -369,13 +369,11 @@ public sealed class TerminalPanel : DockPanel
             tab.Run?.Stop();
             Close(tab);
         }, "Close Session");
-        // A press on the open tab leaves it open, where the toggle would let it go.
         button.Click += (_, _) =>
         {
             if (button.DataContext is TerminalTab tab)
             {
                 Show(tab);
-                button.IsChecked = tab.IsActive;
             }
         };
         return button.Showing<TerminalTab>(tab =>

@@ -14,28 +14,23 @@ public static class RunWindowFrame
 {
     /// <summary>Builds the frame into <paramref name="window"/>: <paramref name="toolbar"/> along its top, <paramref name="rows"/>
     /// beside the tabs over <paramref name="page"/>, each tab named <c>{named}{Tab}Tab</c> and asking for its action
-    /// (<paramref name="actionOf"/>) through <paramref name="request"/>. The tabs, by their names.</summary>
-    public static IReadOnlyDictionary<string, ToggleButton> Build(DockPanel window, Control toolbar, Control rows, Control page, IEnumerable<string> tabs,
+    /// (<paramref name="actionOf"/>) through <paramref name="request"/>. The tabs, keyed by their names.</summary>
+    public static ToolTabs.Strip<string> Build(DockPanel window, Control toolbar, Control rows, Control page, IEnumerable<string> tabs,
         Func<string, string> actionOf, string named, Action<string> request)
     {
         window.Children.Add(ToolBars.Top(toolbar));
-        StackPanel strip = new() { Orientation = Orientation.Horizontal, Spacing = Gaps.Hair, Margin = new Thickness(Gaps.Normal, 0), VerticalAlignment = VerticalAlignment.Center };
-        Dictionary<string, ToggleButton> made = new(StringComparer.Ordinal);
+        ToolTabs.Strip<string> strip = new() { Margin = new Thickness(Gaps.Normal, 0) };
         HashSet<string> has = [.. tabs];
         foreach (string name in RunWindows.Tabs.Where(has.Contains))
         {
-            ToggleButton tab = ToolTabs.Tab(name, false);
-            tab.Name = $"{named}{name.Replace(" ", string.Empty, StringComparison.Ordinal)}Tab";
-            string id = actionOf(name);
-            ActionButtons.Mark(tab, id);
-            tab.Click += (_, _) => request(id);
-            made[name] = tab;
-            strip.Children.Add(tab);
+            ToggleButton tab = strip.Add(name, name, name: $"{named}{name.Replace(" ", string.Empty, StringComparison.Ordinal)}Tab");
+            ActionButtons.Mark(tab, actionOf(name));
         }
+        strip.Chosen += (_, name) => request(actionOf(name));
         Border tabBar = ToolBars.Top(new ScrollViewer { Content = strip, HorizontalScrollBarVisibility = ScrollBarVisibility.Auto, VerticalScrollBarVisibility = ScrollBarVisibility.Disabled });
         DockPanel right = new() { Children = { tabBar, page } };
         window.Children.Add(new PaneSplit(rows, right, "2*,1,3*"));
-        return made;
+        return strip;
     }
 
     /// <summary>The toolbar's row of buttons, each running one of the window's actions (<see cref="ToolButtons"/>), with what

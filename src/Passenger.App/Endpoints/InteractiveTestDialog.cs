@@ -17,7 +17,7 @@ public sealed class InteractiveTestDialog : IdeWindow
     private readonly EndpointsView endpoints;
     private readonly TextBlock problem = new() { TextWrapping = TextWrapping.Wrap, MaxWidth = 520 };
     private static readonly string[] TabNames = ["Params", "Headers", "Body", "Expected"];
-    private readonly ToggleButton[] tabs;
+    private readonly ToolWindows.ToolTabs.Strip<int> tabs = new();
     private readonly Control[] pages;
 
     /// <summary>The request opened, sent through the Endpoints window in the variables of the environment chosen
@@ -68,21 +68,18 @@ public sealed class InteractiveTestDialog : IdeWindow
             Page(Body, null),
             Page(Criteria, "One criterion a line; with none, an answer below 400 passes"),
         ];
-        tabs = [.. TabNames.Select((name, i) => ToolWindows.ToolTabs.Tab(name, i == 0))];
-        for (int i = 0; i < tabs.Length; i++)
+        for (int i = 0; i < TabNames.Length; i++)
         {
-            int page = i;
-            tabs[i].Click += (_, _) => ShowPage(page);
+            tabs.Add(i, TabNames[i]);
         }
-        StackPanel tabRow = new() { Orientation = Orientation.Horizontal, Spacing = Gaps.Tight };
-        tabRow.Children.AddRange(tabs);
+        tabs.Chosen += (_, page) => ShowPage(page);
         Panel pageArea = new();
         pageArea.Children.AddRange(pages);
 
         Grid fields = new() { RowDefinitions = new RowDefinitions("Auto,Auto,Auto,*,Auto"), RowSpacing = Gaps.Small };
         Add(fields, urlRow, 0);
         Add(fields, Caption(environment is null ? "No environment: {{variables}} take the file's values" : $"Variables from the {environment} environment and the file"), 1);
-        Add(fields, tabRow, 2);
+        Add(fields, tabs, 2);
         Add(fields, pageArea, 3);
         TextBlock timeoutLabel = new() { Text = "Timeout (s)", VerticalAlignment = VerticalAlignment.Center };
         AutomationProperties.SetLabeledBy(Timeout, timeoutLabel);
@@ -201,9 +198,9 @@ public sealed class InteractiveTestDialog : IdeWindow
     /// <summary>Shows a tab's page: 0 Params, 1 Headers, 2 Body, 3 Expected.</summary>
     public void ShowPage(int page)
     {
-        for (int i = 0; i < tabs.Length; i++)
+        tabs.Choice = page;
+        for (int i = 0; i < pages.Length; i++)
         {
-            tabs[i].IsChecked = i == page;
             pages[i].IsVisible = i == page;
         }
     }
@@ -212,17 +209,14 @@ public sealed class InteractiveTestDialog : IdeWindow
     public int PageShown => Array.FindIndex(pages, p => p.IsVisible);
 
     /// <summary>The tabs' names as shown, each with how many rows or criteria it holds: Params (2).</summary>
-    public IReadOnlyList<string> TabTitles => [.. tabs.Select(t => (t.Content as TextBlock)?.Text ?? string.Empty)];
+    public IReadOnlyList<string> TabTitles => [.. tabs.Toggles.Select(t => t.Content as string ?? string.Empty)];
 
     private void Count()
     {
         int[] counts = [Params.Enabled.Count, Headers.Enabled.Count, 0, Lines(Criteria.Text).Count()];
-        for (int i = 0; i < tabs.Length; i++)
+        for (int i = 0; i < TabNames.Length; i++)
         {
-            if (tabs[i].Content is TextBlock title)
-            {
-                title.Text = counts[i] > 0 ? $"{TabNames[i]} ({counts[i]})" : TabNames[i];
-            }
+            tabs[i].Content = counts[i] > 0 ? $"{TabNames[i]} ({counts[i]})" : TabNames[i];
         }
     }
 

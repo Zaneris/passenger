@@ -42,6 +42,34 @@ public sealed class FindTests : IDisposable
         window.Close();
     }
 
+    /// <summary>The find bar's options are Find in Files' own, keys and all: Match case, Words and Regex each turn over by its
+    /// key while the bar has the keys, typing nothing into the query and searching again, and each one's tip names its key
+    /// as this system shows keys.</summary>
+    [AvaloniaFact]
+    public void The_find_bars_options_turn_over_by_Find_in_Files_keys_which_their_tips_name()
+    {
+        (MainWindow window, CodeEditor _) = Open("Beta beta BETA betas");
+        Ui.Press(window, Ui.Shortcut(AppActions.Find));
+        window.KeyTextInput("beta");
+        Ui.Settle();
+        FindBar bar = window.EditorArea.FindBar;
+        Assert.EndsWith("/4", bar.CountText, StringComparison.Ordinal);
+        // Each key with the character a Mac's layout types for it, which the field never takes.
+        foreach ((string name, OptionToggles.Option option, string typed, string found) in (ReadOnlySpan<(string, OptionToggles.Option, string, string)>)[
+            ("MatchCase", OptionToggles.MatchCase, "ç", "/2"), ("WholeWords", OptionToggles.Words, "ø", "/3"), ("UseRegex", OptionToggles.Regex, "≈", "/4")])
+        {
+            ToggleButton toggle = bar.FindControl<ToggleButton>(name)!;
+            Assert.Equal($"{option.Name} ({option.Key.Display()})", ToolTip.GetTip(toggle) as string);
+            Ui.Type(window, option.Key.Notation(), typed);
+            Assert.True(toggle.IsChecked == true && bar.CountText.EndsWith(found, StringComparison.Ordinal),
+                $"{option.Key.Display()} left {option.Name} {(toggle.IsChecked == true ? "on" : "off")} and the count at {bar.CountText}, where it turns it on and {found[1..]} match");
+            Assert.True(bar.FindControl<TextBox>("Query")!.Text == "beta", $"{option.Key.Display()} typed into the query, leaving '{bar.FindControl<TextBox>("Query")!.Text}'");
+            Ui.Type(window, option.Key.Notation(), typed);
+            Assert.True(toggle.IsChecked != true, $"{option.Key.Display()} pressed again left {option.Name} on");
+        }
+        window.Close();
+    }
+
     [Gate]
     [AvaloniaFact]
     public void Replace_all_changes_every_match_in_one_undoable_step()

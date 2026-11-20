@@ -140,15 +140,13 @@ public sealed class TelemetryView : IDisposable
         {
             if (both is null)
             {
-                ToggleButton logs = ToolTabs.Tab("Structured logs", Shown == TelemetryPage.Logs);
-                ToggleButton spans = ToolTabs.Tab("Traces", Shown == TelemetryPage.Traces);
-                logs.Name = "telemetryLogs";
-                spans.Name = "telemetryTraces";
+                ToolTabs.Strip<TelemetryPage> strip = new() { Margin = new Thickness(Gaps.Normal, 0) };
+                strip.Add(TelemetryPage.Logs, "Structured logs", name: "telemetryLogs");
+                strip.Add(TelemetryPage.Traces, "Traces", name: "telemetryTraces");
+                strip.Choice = Shown;
                 ContentControl page = new() { Content = Shown == TelemetryPage.Logs ? LogsPage : TracesPage };
-                logs.Click += (_, _) => Choose(TelemetryPage.Logs);
-                spans.Click += (_, _) => Choose(TelemetryPage.Traces);
+                strip.Chosen += (_, chosen) => Choose(chosen);
                 PageWanted += (_, wanted) => Choose(wanted);
-                StackPanel strip = new() { Orientation = Orientation.Horizontal, Spacing = Gaps.Hair, Margin = new Thickness(Gaps.Normal, 0), VerticalAlignment = VerticalAlignment.Center, Children = { logs, spans } };
                 Border tabBar = ToolBars.Top(strip);
                 both = WithHeader(tabBar, page);
                 choose = Choose;
@@ -156,8 +154,7 @@ public sealed class TelemetryView : IDisposable
                 void Choose(TelemetryPage chosen)
                 {
                     Shown = chosen;
-                    logs.IsChecked = chosen == TelemetryPage.Logs;
-                    spans.IsChecked = chosen == TelemetryPage.Traces;
+                    strip.Choice = chosen;
                     page.Content = chosen == TelemetryPage.Logs ? LogsPage : TracesPage;
                     ShownChanged?.Invoke(this, chosen);
                 }

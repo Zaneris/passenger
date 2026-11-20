@@ -16,8 +16,8 @@ public sealed class ResponseView : DockPanel
 {
     private readonly TextBlock summary = new() { Classes = { StyleClasses.Strong }, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
     private readonly StackPanel criteria = new() { Margin = new Thickness(Gaps.Normal, 0, Gaps.Normal, Gaps.Tight) };
-    private readonly ToggleButton bodyTab = new() { Classes = { StyleClasses.Segment, StyleClasses.Caption }, Content = "Body", IsChecked = true };
-    private readonly ToggleButton headersTab = new() { Classes = { StyleClasses.Segment, StyleClasses.Caption }, Content = "Headers" };
+    /// <summary>The body or the headers, the body's key true.</summary>
+    private readonly Segments<bool> parts = new();
     private readonly TextBox text = new TextBox
     {
         IsReadOnly = true,
@@ -33,12 +33,13 @@ public sealed class ResponseView : DockPanel
     {
         ScrollViewer.SetHorizontalScrollBarVisibility(text, ScrollBarVisibility.Auto);
         ScrollViewer.SetVerticalScrollBarVisibility(text, ScrollBarVisibility.Auto);
-        bodyTab.Click += (_, _) => ShowPart(body: true);
-        headersTab.Click += (_, _) => ShowPart(body: false);
-        StackPanel tabs = new() { Orientation = Orientation.Horizontal, Spacing = Gaps.Tight, Children = { bodyTab, headersTab } };
+        parts.Add(true, "Body");
+        parts.Add(false, "Headers");
+        parts.Choice = true;
+        parts.Chosen += (_, body) => ShowPart(body);
         DockPanel head = new() { Margin = new Thickness(Gaps.Normal, Gaps.Small), LastChildFill = true };
-        DockPanel.SetDock(tabs, Dock.Right);
-        head.Children.Add(tabs);
+        DockPanel.SetDock(parts, Dock.Right);
+        head.Children.Add(parts);
         head.Children.Add(summary);
         DockPanel content = new();
         DockPanel.SetDock(head, Dock.Top);
@@ -127,7 +128,7 @@ public sealed class ResponseView : DockPanel
         {
             criteria.Children.Add(BreakRow(broken));
         }
-        ShowPart(bodyTab.IsChecked == true);
+        ShowPart(parts.Choice);
     }
 
     /// <summary>A place the body breaks its schema, or one its check could not tell of: the member in the code font, then
@@ -159,8 +160,7 @@ public sealed class ResponseView : DockPanel
 
     private void ShowPart(bool body)
     {
-        bodyTab.IsChecked = body;
-        headersTab.IsChecked = !body;
+        parts.Choice = body;
         if (Response is not { } response)
         {
             return;

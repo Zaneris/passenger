@@ -13,15 +13,10 @@
                 <Panel Name="QueryRoom">
                     <TextBox Name="Query" Classes="search" PlaceholderText="Find" Padding="{x:Static editors:FindBar.QueryPadding}" />
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="{x:Static editors:FindBar.OptionsMargin}" Spacing="{x:Static app:Gaps.Hair}">
-                        <ToggleButton Name="MatchCase" Classes="option" ToolTip.Tip="Match case" AutomationProperties.Name="Match case">
-                            <PathIcon Data="{StaticResource Icon.MatchCase}" />
-                        </ToggleButton>
-                        <ToggleButton Name="WholeWords" Classes="option" ToolTip.Tip="Words" AutomationProperties.Name="Words">
-                            <PathIcon Data="{StaticResource Icon.WholeWord}" />
-                        </ToggleButton>
-                        <ToggleButton Name="UseRegex" Classes="option" ToolTip.Tip="Regex" AutomationProperties.Name="Regex">
-                            <TextBlock Name="RegexGlyph" Classes="badgeText" Text=".*" />
-                        </ToggleButton>
+                        <!-- Each made an option, its look, mark, tip and key, by OptionToggles. -->
+                        <ToggleButton Name="MatchCase" />
+                        <ToggleButton Name="WholeWords" />
+                        <ToggleButton Name="UseRegex" />
                     </StackPanel>
                 </Panel>
                 <StackPanel Name="CountRow" Orientation="Horizontal" Spacing="{x:Static app:Gaps.Hair}" VerticalAlignment="Center">

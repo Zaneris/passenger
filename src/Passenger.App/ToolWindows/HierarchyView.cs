@@ -67,8 +67,8 @@ public sealed class HierarchyView : DockPanel
     private readonly TreeRows<HierarchyRow> rows = [];
     private readonly TreeList list;
     private readonly TextBlock title;
-    private readonly ToggleButton first;
-    private readonly ToggleButton second;
+    /// <summary>The two directions, the first's key true.</summary>
+    private readonly Segments<bool> ways = new() { Margin = new Thickness(Gaps.Normal, 0) };
     private readonly EmptyState placeholder;
 
     /// <summary>The symbol's name and the toggles, shown only once there is a hierarchy: an empty bar says nothing.</summary>
@@ -80,14 +80,12 @@ public sealed class HierarchyView : DockPanel
     public HierarchyView()
     {
         title = new TextBlock { Classes = { StyleClasses.PaneTitle }, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(Gaps.Normal, 0), TextTrimming = TextTrimming.CharacterEllipsis };
-        first = Toggle();
-        second = Toggle();
-        first.Click += (_, _) => IdeErrors.Observe(ChooseAsync(first: true));
-        second.Click += (_, _) => IdeErrors.Observe(ChooseAsync(first: false));
+        ways.Add(true, string.Empty);
+        ways.Add(false, string.Empty);
+        ways.Chosen += (_, first) => IdeErrors.Observe(ChooseAsync(first));
         DockPanel top = new();
-        StackPanel toggles = new() { Orientation = Orientation.Horizontal, Spacing = Gaps.Hair, Margin = new Thickness(Gaps.Normal, 0), VerticalAlignment = VerticalAlignment.Center, Children = { first, second } };
-        DockPanel.SetDock(toggles, Dock.Right);
-        top.Children.Add(toggles);
+        DockPanel.SetDock(ways, Dock.Right);
+        top.Children.Add(ways);
         top.Children.Add(title);
         bar = ToolBars.Top(top);
         bar.IsVisible = false;
@@ -126,7 +124,7 @@ public sealed class HierarchyView : DockPanel
     public string Title => title.Text ?? string.Empty;
 
     /// <summary>Which direction the tree goes: the first toggle's or the second's.</summary>
-    public bool IsFirst => first.IsChecked == true;
+    public bool IsFirst => ways.Choice;
 
     /// <summary>Shows a symbol's hierarchy, the first direction open from the top.</summary>
     public Task ShowAsync(string heading, HierarchyNode top, HierarchyDirection one, HierarchyDirection other)
@@ -136,8 +134,8 @@ public sealed class HierarchyView : DockPanel
         ToolTip.SetTip(title, heading);
         root = top;
         directions = (one, other);
-        first.Content = one.Label;
-        second.Content = other.Label;
+        ways[true].Content = one.Label;
+        ways[false].Content = other.Label;
         bar.IsVisible = true;
         placeholder.IsVisible = false;
         return ChooseAsync(first: true);
@@ -146,8 +144,7 @@ public sealed class HierarchyView : DockPanel
     /// <summary>Switches the tree's direction, opening it again from the top.</summary>
     public async Task ChooseAsync(bool first)
     {
-        this.first.IsChecked = first;
-        second.IsChecked = !first;
+        ways.Choice = first;
         if (root is null)
         {
             return;
@@ -292,7 +289,4 @@ public sealed class HierarchyView : DockPanel
             detail.Text = $"{row.Node.Item.Detail}  {System.IO.Path.GetFileName(row.Node.Path)}:{row.Node.Where.Line + 1}";
         });
     }
-
-    // As wide as its words: an option toggle is otherwise an icon's square.
-    private static ToggleButton Toggle() => new() { Classes = { StyleClasses.Option, StyleClasses.Caption }, Width = double.NaN, Padding = new Thickness(Gaps.Normal, Gaps.Hair) };
 }

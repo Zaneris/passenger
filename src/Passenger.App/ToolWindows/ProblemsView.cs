@@ -25,7 +25,7 @@ public sealed class ProblemsView : DockPanel
     private readonly TreeList list;
     private readonly EmptyState empty;
     private readonly TextBox search;
-    private readonly Dictionary<ProblemsTab, ToggleButton> tabs = [];
+    private readonly ToolTabs.Strip<ProblemsTab> tabs = new();
     private readonly Dictionary<ProblemSeverity, (ToggleButton Button, TextBlock Count)> severities = [];
     private bool following;
 
@@ -35,11 +35,10 @@ public sealed class ProblemsView : DockPanel
         ToolFlow bar = new() { Margin = new Thickness(Gaps.Normal, Gaps.Hair) };
         foreach (ProblemsTab tab in Enum.GetValues<ProblemsTab>())
         {
-            ToggleButton button = new() { Classes = { StyleClasses.PanelTab } };
-            button.Click += (_, _) => model.Shown = tab;
-            tabs[tab] = button;
-            bar.Children.Add(button);
+            tabs.Add(tab, string.Empty);
         }
+        tabs.Chosen += (_, tab) => model.Shown = tab;
+        bar.Children.Add(tabs);
         search = FilterBox.Of();
         ToolFlow.SetFills(search, new ToolLayout.Fills(160, 200));
         search.Text = model.Filter.Text;
@@ -116,12 +115,12 @@ public sealed class ProblemsView : DockPanel
     /// <summary>Each tab's title with its count, the one shown pressed, and the empty list's words.</summary>
     private void Titles()
     {
-        foreach ((ProblemsTab tab, ToggleButton button) in tabs)
+        foreach (ProblemsTab tab in tabs.Keys)
         {
-            button.Content = model.TitleWithCount(tab);
-            button.IsVisible = model.HasTab(tab);
-            button.IsChecked = tab == model.Shown;
+            tabs[tab].Content = model.TitleWithCount(tab);
+            tabs[tab].IsVisible = model.HasTab(tab);
         }
+        tabs.Choice = model.Shown;
         empty.Text = model.EmptyText;
         empty.IsVisible = model.Rows.Count == 0;
         // The filter taken away for a problem revealed.

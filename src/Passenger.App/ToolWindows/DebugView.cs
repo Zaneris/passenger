@@ -26,9 +26,8 @@ public sealed class DebugView : DockPanel, IOwnKeys
     private readonly VariablesList variables;
     private readonly TextBox evaluate;
     private readonly DockPanel debugger;
-    private readonly ToggleButton debuggerTab;
-    private readonly ToggleButton consoleTab;
-    private readonly ToggleButton telemetryTab;
+    /// <summary>The Debugger, Console and Telemetry tabs, by their words.</summary>
+    private readonly ToolTabs.Strip<string> tabs = new();
     private readonly TelemetryPane telemetry = new() { IsVisible = false };
     private readonly Dictionary<string, Button> tools = [];
     private readonly ToggleButton mute;
@@ -134,20 +133,27 @@ public sealed class DebugView : DockPanel, IOwnKeys
         offerLink = offer.Link(null, () => model.Console.TakeOffer());
         debugger = new DockPanel { Children = { offer, new Panel { Children = { split, placeholder } } } };
 
-        debuggerTab = new ToggleButton { Content = "Debugger", Classes = { StyleClasses.PanelTab }, IsChecked = true };
-        consoleTab = new ToggleButton { Content = "Console", Classes = { StyleClasses.PanelTab } };
-        telemetryTab = new ToggleButton { Content = RunWindows.TelemetryTab, Classes = { StyleClasses.PanelTab }, Name = "debugTelemetryTab", IsVisible = false };
-        debuggerTab.Click += (_, _) => model.ShowTab(console: false);
-        consoleTab.Click += (_, _) => model.ShowTab(console: true);
-        telemetryTab.Click += (_, _) => model.ShowTelemetry();
+        tabs.Add(DebuggerTab, DebuggerTab);
+        tabs.Add(ConsoleTab, ConsoleTab);
+        tabs.Add(RunWindows.TelemetryTab, RunWindows.TelemetryTab, name: "debugTelemetryTab").IsVisible = false;
+        tabs.Choice = DebuggerTab;
+        tabs.Chosen += (_, tab) =>
+        {
+            if (tab == RunWindows.TelemetryTab)
+            {
+                model.ShowTelemetry();
+            }
+            else
+            {
+                model.ShowTab(console: tab == ConsoleTab);
+            }
+        };
         ToolFlow top = new()
         {
             Margin = new Thickness(Gaps.Small, Gaps.Hair),
             Children =
             {
-                debuggerTab,
-                consoleTab,
-                telemetryTab,
+                tabs,
                 new Border { Width = 12 },
                 Tool(AppActions.StepOver, IconKeys.StepOver, "Step Over"),
                 Tool(AppActions.StepInto, IconKeys.StepInto, "Step Into"),
@@ -203,6 +209,10 @@ public sealed class DebugView : DockPanel, IOwnKeys
     /// <summary>The link over Variables that reads the frame's values anew once every thread ran in an evaluation.</summary>
     public const string ReadAgain = "Read Again";
 
+    private const string DebuggerTab = "Debugger";
+
+    private const string ConsoleTab = "Console";
+
     /// <summary>The window header's own tools: the sessions' tabs.</summary>
     public Control HeaderTools { get; }
 
@@ -218,20 +228,18 @@ public sealed class DebugView : DockPanel, IOwnKeys
     {
         TextBlock name = new() { VerticalAlignment = VerticalAlignment.Center };
         ToggleButton button = null!;
-        button = ToolTabs.Tab(name, false, () =>
+        button = ToolTabs.Tab(name, () =>
         {
             if (button.DataContext is DebugTab shown)
             {
                 model.Close(shown);
             }
         }, "Close Session");
-        // A press on the chosen tab leaves it chosen, where the toggle would let it go.
         button.Click += (_, _) =>
         {
             if (button.DataContext is DebugTab shown)
             {
                 model.Choose(shown);
-                button.IsChecked = shown.IsChosen;
             }
         };
         return button.Showing<DebugTab>(tab =>
@@ -286,12 +294,10 @@ public sealed class DebugView : DockPanel, IOwnKeys
         }
         // The Telemetry tab is there while the chosen program's run has records; without them its place is the console's.
         telemetry.Source = model.ChosenDashboard?.Telemetry;
-        telemetryTab.IsVisible = telemetry.Source is not null;
+        tabs[RunWindows.TelemetryTab].IsVisible = telemetry.Source is not null;
         bool records = model.IsTelemetryShown && telemetry.Source is not null;
         bool console = model.IsConsoleShown || model.IsTelemetryShown && !records;
-        debuggerTab.IsChecked = !console && !records;
-        consoleTab.IsChecked = console;
-        telemetryTab.IsChecked = records;
+        tabs.Choice = records ? RunWindows.TelemetryTab : console ? ConsoleTab : DebuggerTab;
         debugger.IsVisible = !console && !records;
         consolePane.IsVisible = console;
         telemetry.IsVisible = records;

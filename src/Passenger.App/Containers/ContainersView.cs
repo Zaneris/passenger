@@ -49,7 +49,7 @@ public sealed class ContainersView : DockPanel
     private readonly System.Collections.ObjectModel.ObservableCollection<RunItem<ContainerRow>> items = [];
     private readonly EmptyState empty;
     private readonly EmptyState nothingChosen;
-    private readonly IReadOnlyDictionary<string, ToggleButton> tabs;
+    private readonly ToolTabs.Strip<string> tabs;
     private readonly ContentControl detail = new();
     private readonly HashSet<string> collapsed = ["group:Images", "group:Volumes", "group:Networks"];
     private readonly Debounce refreshing;
@@ -670,9 +670,9 @@ public sealed class ContainersView : DockPanel
         {
             shownTab = LogTab;
         }
-        foreach ((string name, ToggleButton tab) in tabs)
+        tabs.Choice = shownTab;
+        foreach (ToggleButton tab in tabs.Toggles)
         {
-            tab.IsChecked = name == shownTab;
             tab.IsEnabled = streams;
         }
         nothingChosen.IsVisible = !streams;

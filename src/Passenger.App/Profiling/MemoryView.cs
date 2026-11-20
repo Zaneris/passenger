@@ -75,7 +75,8 @@ public sealed class MemoryView : DockPanel
     private readonly TreeRows<RetentionRow> pathRows = [];
     private readonly TreeList paths;
     private readonly ListBox keyPaths;
-    private readonly ToggleButton[] setTabs;
+    /// <summary>A set's pages: its objects, its shortest paths to roots, its key retention paths.</summary>
+    private readonly ToolTabs.Strip<int> setTabs = new() { Margin = new Thickness(Gaps.Normal, 0, Gaps.Normal, Gaps.Tight), [DockProperty] = Dock.Top };
     private readonly DockPanel typePage;
     private readonly DockPanel deltaPage;
     private readonly DockPanel setPage;
@@ -200,13 +201,11 @@ public sealed class MemoryView : DockPanel
         });
         keyPathsPage = Framed(keyTable, keyPaths);
 
-        setTabs = [Tab("Objects", 0), Tab("Shortest Paths to Roots", 1), Tab("Key Retention Paths", 2)];
-        StackPanel tabs = new() { Orientation = Orientation.Horizontal, Spacing = Gaps.Hair, Margin = new Thickness(Gaps.Normal, 0, Gaps.Normal, Gaps.Tight), [DockProperty] = Dock.Top };
-        foreach (ToggleButton tab in setTabs)
-        {
-            tabs.Children.Add(tab);
-        }
-        setPage = new DockPanel { Children = { tabs, new Panel { Children = { objectsPage, pathsPage, keyPathsPage } } } };
+        setTabs.Add(0, "Objects");
+        setTabs.Add(1, "Shortest Paths to Roots");
+        setTabs.Add(2, "Key Retention Paths");
+        setTabs.Chosen += (_, tab) => ShowTab(tab);
+        setPage = new DockPanel { Children = { setTabs, new Panel { Children = { objectsPage, pathsPage, keyPathsPage } } } };
 
         waiting = new EmptyState();
         Children.Add(top);
@@ -263,7 +262,7 @@ public sealed class MemoryView : DockPanel
     public ListBox ObjectList => objects;
 
     /// <summary>Which of the object set's views is shown: its objects (0), Shortest Paths to Roots (1), Key Retention Paths (2).</summary>
-    public int SetTab => Array.FindIndex(setTabs, t => t.IsChecked == true);
+    public int SetTab => setTabs.HasChoice ? setTabs.Choice : -1;
 
     /// <summary>A snapshot taken: listed and shown, the rows of those it had the run let go of saying so. The first of a run
     /// puts the earlier run's away, which it cannot be compared with.</summary>
@@ -513,10 +512,7 @@ public sealed class MemoryView : DockPanel
 
     private void ShowTab(int tab)
     {
-        for (int i = 0; i < setTabs.Length; i++)
-        {
-            setTabs[i].IsChecked = i == tab;
-        }
+        setTabs.Choice = tab;
         objectsPage.IsVisible = tab == 0;
         pathsPage.IsVisible = tab == 1;
         keyPathsPage.IsVisible = tab == 2;
@@ -606,13 +602,6 @@ public sealed class MemoryView : DockPanel
         };
         IEnumerable<TypeDelta> sorted = column == 0 ? comparison.Types.OrderBy(t => t.Name, StringComparer.Ordinal) : comparison.Types.OrderByDescending(key);
         deltas.ItemsSource = deltaSort < 0 ? [.. sorted.Reverse()] : sorted.ToList();
-    }
-
-    private ToggleButton Tab(string label, int index)
-    {
-        ToggleButton tab = new() { Content = label, Classes = { StyleClasses.PanelTab } };
-        tab.Click += (_, _) => ShowTab(index);
-        return tab;
     }
 
     private Button Action(string label, Action run)

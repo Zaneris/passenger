@@ -362,7 +362,7 @@ public sealed class AspireTests : IClassFixture<AspireApp>, IDisposable
             window.Height = 650;
             Ui.Settle();
             Avalonia.Controls.Primitives.ToggleButton lastTab = window.AspireWindow.GetVisualDescendants()
-                .OfType<Avalonia.Controls.Primitives.ToggleButton>().Single(button => button.Content is TextBlock { Text: "AppHost Log" });
+                .OfType<Avalonia.Controls.Primitives.ToggleButton>().Single(button => Equals(button.Content, "AppHost Log"));
             Point? tabBottom = lastTab.TranslatePoint(new Point(0, lastTab.Bounds.Height), window.AspireWindow);
             Assert.True(lastTab.Bounds.Height > 0 && tabBottom is { } bottom && bottom.Y <= window.AspireWindow.Bounds.Height,
                 "The window's tabs must remain reachable in a narrow, short tool window");

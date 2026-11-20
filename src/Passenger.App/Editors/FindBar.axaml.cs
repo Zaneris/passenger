@@ -13,7 +13,8 @@ namespace Passenger.App.Editors;
 /// <summary>Find and replace in the open file. Matches are found as the query is typed and drawn in
 /// the editor; the one nearest after the caret is selected, and the count says which of how many. A regex too slow for
 /// the UI thread's moment is searched again off it, the count saying so meanwhile. While a table lies over the editor,
-/// its cells are searched instead (read-only: replacing is the Text view's); a read-only file's replace row is greyed.</summary>
+/// its cells are searched instead (read-only: replacing is the Text view's); a read-only file's replace row is greyed.
+/// Its options are Find in Files' (<see cref="OptionToggles"/>), their keys heard while it has the keys.</summary>
 public partial class FindBar : UserControl
 {
     /// <summary>The bar's room round its rows.</summary>
@@ -80,7 +81,12 @@ public partial class FindBar : UserControl
         Flowing(QueryRow, QueryRoom, QueryPadding.Left + TypingRoom + QueryPadding.Right, CountRow, ToolWindows.ToolFlow.Spring(), CloseButton);
         Flowing(ReplaceRow, ReplaceWith, SearchFields.Padding.Left + TypingRoom + SearchFields.Padding.Right, ReplaceButtons);
         IsVisible = false;
-        RegexGlyph.InCodeFont();
+        OptionToggles.Give(MatchCase, OptionToggles.MatchCase);
+        OptionToggles.Give(WholeWords, OptionToggles.Words);
+        OptionToggles.Give(UseRegex, OptionToggles.Regex);
+        // On the way down, so an option's key never types into the field it is pressed in.
+        AddHandler(KeyDownEvent, (_, e) => OptionToggles.Hear(e, (OptionToggles.MatchCase, MatchCase), (OptionToggles.Words, WholeWords), (OptionToggles.Regex, UseRegex)),
+            RoutingStrategies.Tunnel);
         Query.TextChanged += (_, _) => Search(jump: true);
         MatchCase.IsCheckedChanged += (_, _) => Search(jump: true);
         WholeWords.IsCheckedChanged += (_, _) => Search(jump: true);

@@ -70,7 +70,7 @@ public sealed partial class NuGetView : DockPanel
 {
     private static readonly TimeSpan Pause = TimeSpan.FromMilliseconds(300);
 
-    private readonly StackPanel tabs = new() { Orientation = Orientation.Horizontal, Spacing = Gaps.Hair, VerticalAlignment = VerticalAlignment.Center };
+    private readonly ToolTabs.Strip<string> tabs = new();
     private readonly ContentControl body = new();
     private readonly DockPanel packages = new();
     private readonly TextBox search;
@@ -106,6 +106,24 @@ public sealed partial class NuGetView : DockPanel
     /// <param name="folder">The folder's packages, which the window lists and changes.</param>
     public NuGetView(FolderPackages folder)
     {
+        tabs.Add(PackagesTab, PackagesTab);
+        tabs.Add(UpdatesTab, UpdatesTab);
+        tabs.Add(SourcesTab, SourcesTab);
+        tabs.Chosen += (_, tab) =>
+        {
+            switch (tab)
+            {
+                case SourcesTab:
+                    ShowSources();
+                    break;
+                case UpdatesTab:
+                    ShowUpdates();
+                    break;
+                default:
+                    ShowPackages();
+                    break;
+            }
+        };
         model = folder;
         search = new TextBox { Classes = { StyleClasses.Search }, PlaceholderText = "Search packages", VerticalAlignment = VerticalAlignment.Center };
         chooser = new ComboBox { Classes = { StyleClasses.Compact }, MinWidth = 130, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(Gaps.Small, 0, Gaps.Normal, 0) };
@@ -318,7 +336,13 @@ public sealed partial class NuGetView : DockPanel
     /// <summary>An advisory's link clicked, for the browser.</summary>
     public event EventHandler<Uri>? LinkClicked;
 
-    /// <summary>The Packages and Sources tabs, for the tool window's header.</summary>
+    private const string PackagesTab = "Packages";
+
+    private const string UpdatesTab = "Updates";
+
+    private const string SourcesTab = "Sources";
+
+    /// <summary>The Packages, Updates and Sources tabs, for the tool window's header.</summary>
     public Control Tabs => tabs;
 
     /// <summary>The Sources tab: the nuget.config files in effect and their feeds.</summary>
@@ -748,31 +772,7 @@ public sealed partial class NuGetView : DockPanel
     private void Show(Control content)
     {
         body.Content = content;
-        tabs.Children.Clear();
-        ToggleButton packagesTab = Tab("Packages", packages);
-        packagesTab.IsChecked = body.Content == packages && !showsUpdates;
-        tabs.Children.Add(packagesTab);
-        ToggleButton updatesTab = new() { Classes = { StyleClasses.PanelTab }, IsChecked = showsUpdates, Content = "Updates" };
-        updatesTab.Click += (_, _) => ShowUpdates();
-        tabs.Children.Add(updatesTab);
-        tabs.Children.Add(Tab("Sources", Sources));
-    }
-
-    private ToggleButton Tab(string title, Control content)
-    {
-        ToggleButton tab = new() { Classes = { StyleClasses.PanelTab }, IsChecked = body.Content == content, Content = title };
-        tab.Click += (_, _) =>
-        {
-            if (content == Sources)
-            {
-                ShowSources();
-            }
-            else
-            {
-                ShowPackages();
-            }
-        };
-        return tab;
+        tabs.Choice = content == Sources ? SourcesTab : showsUpdates ? UpdatesTab : PackagesTab;
     }
 
     private int IndexOf(PackageRow row)

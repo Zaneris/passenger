@@ -2585,7 +2585,7 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
 
     /// <summary>A tab of the Aspire window's pages.</summary>
     internal static Avalonia.Controls.Primitives.ToggleButton Tab(MainWindow window, string page) => window.AspireWindow.GetVisualDescendants()
-        .OfType<Avalonia.Controls.Primitives.ToggleButton>().Single(tab => tab.Classes.Contains(StyleClasses.PanelTab) && tab.Content is TextBlock { Text: var words } && words == page);
+        .OfType<Avalonia.Controls.Primitives.ToggleButton>().Single(tab => tab.Classes.Contains(StyleClasses.PanelTab) && Equals(tab.Content, page));
 
     [AvaloniaFact]
     public void A_confirmation_cancelled_and_a_form_the_AppHost_updates_send_what_the_dialog_shows()

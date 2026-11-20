@@ -43,7 +43,7 @@ public sealed class AspireView : DockPanel, IDisposable
     private readonly ContentControl page = new();
     private readonly ContentControl appHostConsole = new();
     private readonly TextBlock readiness = new() { Classes = { StyleClasses.Muted }, Margin = new Thickness(Gaps.Normal, Gaps.Small), TextWrapping = TextWrapping.Wrap };
-    private readonly IReadOnlyDictionary<string, ToggleButton> tabs;
+    private readonly ToolTabs.Strip<string> tabs;
     private readonly Dictionary<string, Control> pages;
     private readonly TextBlock consoleStatus = Said();
     private AspireModel model;
@@ -346,10 +346,7 @@ public sealed class AspireView : DockPanel, IDisposable
 
     private void ShowPage(bool another)
     {
-        foreach ((string name, ToggleButton tab) in tabs)
-        {
-            tab.IsChecked = name == model.ShownPage;
-        }
+        tabs.Choice = model.ShownPage;
         page.Content = pages[model.ShownPage];
         if (another)
         {

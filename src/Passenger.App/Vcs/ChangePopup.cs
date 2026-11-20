@@ -23,9 +23,10 @@ public sealed class ChangePopup : UserControl
     {
         Before = before;
         this.highlightWords = highlightWords;
-        ToggleButton highlight = new() { Classes = { StyleClasses.Option }, IsChecked = highlightWords, Content = new PathIcon(), Focusable = false, Margin = new Thickness(Gaps.Tight, 0, 0, 0) };
-        ((PathIcon)highlight.Content).Bind(PathIcon.DataProperty, highlight.GetResourceObservable(IconKeys.Highlight));
-        ToolButtons.Tip(highlight, "Highlight Words");
+        // A toolbar's toggle among its buttons, a step apart from those that act.
+        ToggleButton highlight = ToolButtons.Toggle(IconKeys.Highlight, "Highlight Words");
+        highlight.IsChecked = highlightWords;
+        highlight.Margin = new Thickness(Gaps.Tight, 0, 0, 0);
         highlight.IsCheckedChanged += (_, _) =>
         {
             this.highlightWords = highlight.IsChecked == true;

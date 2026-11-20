@@ -12,7 +12,7 @@ namespace Passenger.App.ToolWindows;
 public sealed class MergedLog : DockPanel
 {
     // In a narrow log the last toggles give way first, their words ending in an ellipsis, never under Find and the log's own.
-    private readonly ShrinkingRow sources = new() { VerticalAlignment = VerticalAlignment.Center, ClipToBounds = true };
+    private readonly ShrinkingRow sources = new() { Spacing = Gaps.Hair, VerticalAlignment = VerticalAlignment.Center, ClipToBounds = true };
     private readonly HashSet<string> hidden = new(StringComparer.Ordinal);
 
     /// <param name="findName">The Find button's name.</param>
@@ -67,11 +67,8 @@ public sealed class MergedLog : DockPanel
         sources.Children.Clear();
         foreach ((string key, string words) in offered)
         {
-            ToggleButton toggle = new()
-            {
-                Classes = { StyleClasses.Segment }, Content = words, IsChecked = !hidden.Contains(key), VerticalAlignment = VerticalAlignment.Center,
-                Margin = new Thickness(0, 0, Gaps.Hair, 0),
-            };
+            ToggleButton toggle = Segments.Toggle(words);
+            toggle.IsChecked = !hidden.Contains(key);
             toggle.IsCheckedChanged += (_, _) =>
             {
                 if (toggle.IsChecked == true)

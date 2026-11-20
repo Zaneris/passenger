@@ -13,7 +13,7 @@ namespace Passenger.App.Tables;
 /// cells written through its file. Each file's chosen cells and scroll are kept for when its tab is shown again.</summary>
 public sealed class TableViewer
 {
-    private readonly StackPanel choices = new() { Orientation = Orientation.Horizontal, Spacing = Gaps.Hair, VerticalAlignment = VerticalAlignment.Center };
+    private readonly Segments<int> choices = new();
     private readonly CheckBox header = new() { Classes = { StyleClasses.Caption }, Content = "First row is header", Margin = new Thickness(Gaps.Wide, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
     private readonly TextBlock size = new() { Classes = { StyleClasses.Muted, StyleClasses.Caption }, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
     private readonly EmptyState message = new() { IsVisible = false };
@@ -41,6 +41,7 @@ public sealed class TableViewer
             },
         });
         Bar.IsVisible = false;
+        choices.Chosen += (_, index) => Choose(index);
         header.IsCheckedChanged += (_, _) =>
         {
             if (!painting && file is not null)
@@ -93,7 +94,7 @@ public sealed class TableViewer
         Hide();
         file = shown;
         file.Changed += OnChanged;
-        choices.Children.Clear();
+        choices.Clear();
         Paint();
         if (kept.TryGetValue(shown, out ((int, int) Anchor, (int, int) Caret, Vector Scroll) view))
         {
@@ -186,21 +187,15 @@ public sealed class TableViewer
         TableFile shown = file!;
         string[] names = shown.IsWorkbook ? [.. shown.Sheets] : ["Table", "Text"];
         int chosen = shown.IsWorkbook ? shown.Sheet : shown.ShowsTable ? 0 : 1;
-        if (choices.Children.Count != names.Length || names.Where((name, i) => (string?)((ToggleButton)choices.Children[i]).Content != name).Any())
+        if (choices.Toggles.Count != names.Length || names.Where((name, i) => (string?)choices.Toggles[i].Content != name).Any())
         {
-            choices.Children.Clear();
+            choices.Clear();
             for (int i = 0; i < names.Length; i++)
             {
-                int index = i;
-                ToggleButton choice = new() { Classes = { StyleClasses.Segment, StyleClasses.Caption }, Content = names[i], Name = shown.IsWorkbook ? null : $"Show{names[i]}" };
-                choice.Click += (_, _) => Choose(index);
-                choices.Children.Add(choice);
+                choices.Add(i, names[i], shown.IsWorkbook ? null : $"Show{names[i]}");
             }
         }
-        for (int i = 0; i < choices.Children.Count; i++)
-        {
-            ((ToggleButton)choices.Children[i]).IsChecked = i == chosen;
-        }
+        choices.Choice = chosen;
         // A sheet alone needs no choosing.
         choices.IsVisible = names.Length > 1;
     }

@@ -1094,6 +1094,7 @@
     <Style Selector="ComboBox.cell:pointerover /template/ Border#Background">
         <Setter Property="Background" Value="{DynamicResource Passenger.Hover}" />
     </Style>
+    <!-- A search's option in or beside its field (OptionToggles): an icon's square, on the accent's ground while on. -->
     <Style Selector="ToggleButton.option">
         <Setter Property="Width" Value="24" />
         <Setter Property="Height" Value="22" />
@@ -1189,7 +1190,8 @@
     <Style Selector="ToggleButton.panelTab:checked:pointerover /template/ ContentPresenter#PART_ContentPresenter">
         <Setter Property="Background" Value="{DynamicResource Passenger.Hover}" />
     </Style>
-    <!-- One of a few choices side by side (Find in Files' scopes): the chosen on a raised band, the chosen mark under it. -->
+    <!-- One of a few choices side by side, or one thing turned on or off by its words (Segments): the chosen, or the one
+         on, on a raised band, the chosen mark under it. -->
     <Style Selector="ToggleButton.segment">
         <Setter Property="Height" Value="24" />
         <Setter Property="TextBlock.TextTrimming" Value="CharacterEllipsis" />

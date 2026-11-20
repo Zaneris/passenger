@@ -47,7 +47,7 @@ public sealed class FindInFilesPopup : UserControl, IAnswers<SearchMatch?>
     private readonly ToggleButton matchCase;
     private readonly ToggleButton words;
     private readonly ToggleButton regex;
-    private readonly Dictionary<SearchScopeKind, ToggleButton> tabs = [];
+    private readonly Segments<SearchScopeKind> kinds = new() { Margin = new Thickness(0, 0, Gaps.Normal, 0) };
     private readonly Dictionary<SearchScopeKind, Control> details = [];
     private readonly IReadOnlyList<ProjectModel> projects;
     private readonly ComboBox projectBox;
@@ -81,9 +81,9 @@ public sealed class FindInFilesPopup : UserControl, IAnswers<SearchMatch?>
         projects = choices.Projects;
         Width = PopupFrame.Widest;
         query = new TextBox { Classes = { StyleClasses.Search }, PlaceholderText = "Text to find", Text = initial ?? string.Empty };
-        matchCase = Option(OptionGlyph(IconKeys.MatchCase), "Match case", "Alt+C");
-        words = Option(OptionGlyph(IconKeys.WholeWord), "Words", "Alt+O");
-        regex = Option(new TextBlock { Classes = { StyleClasses.BadgeText }, Text = ".*" }.InCodeFont(), "Regex", "Alt+X");
+        matchCase = OptionToggles.Of(OptionToggles.MatchCase);
+        words = OptionToggles.Of(OptionToggles.Words);
+        regex = OptionToggles.Of(OptionToggles.Regex);
         DockPanel find = new() { Margin = new Thickness(Gaps.Wide, 0, Gaps.Wide, Gaps.Small) };
         StackPanel toggles = new() { Orientation = Orientation.Horizontal, Spacing = Gaps.Hair, Margin = new Thickness(Gaps.Small, 0, 0, 0), Children = { matchCase, words, regex } };
         DockPanel.SetDock(toggles, Dock.Right);
@@ -124,7 +124,7 @@ public sealed class FindInFilesPopup : UserControl, IAnswers<SearchMatch?>
         projectBox.SelectedItem = choices.Projects.FirstOrDefault(p => p.Path == choices.Start.Project) ?? choices.Projects.FirstOrDefault();
         directoryBox = Field(choices.Directories, editable: true);
         directoryBox.Text = choices.Start.Directory ?? string.Empty;
-        recursive = Option(Glyph(IconKeys.Structure), "Recursively", "Alt+Y");
+        recursive = OptionToggles.Of(OptionToggles.Recursively);
         recursive.IsChecked = choices.Start.Recursive;
         Button browse = ToolButtons.Of(IconKeys.FolderOpen, "Choose a directory", () => IdeErrors.Observe(BrowseAsync()));
         browse.Margin = new Thickness(Gaps.Tight, 0, Gaps.Hair, 0);
@@ -137,15 +137,11 @@ public sealed class FindInFilesPopup : UserControl, IAnswers<SearchMatch?>
         details[SearchScopeKind.Project] = projectBox;
         details[SearchScopeKind.Directory] = directory;
         details[SearchScopeKind.Scope] = scopeBox;
-        StackPanel kinds = new() { Orientation = Orientation.Horizontal, Spacing = Gaps.Hair, Margin = new Thickness(0, 0, Gaps.Normal, 0) };
         foreach ((SearchScopeKind each, string name, Key key) in Kinds)
         {
-            ToggleButton tab = new() { Classes = { StyleClasses.Segment, StyleClasses.Caption }, Content = name };
-            ToolTip.SetTip(tab, $"{name} (Alt+{key})");
-            tab.Click += (_, _) => ScopeKind = each;
-            tabs[each] = tab;
-            kinds.Children.Add(tab);
+            ToolTip.SetTip(kinds.Add(each, name), ActionTips.Named(name, new Keystroke(key, KeyModifiers.Alt).Display()));
         }
+        kinds.Chosen += (_, each) => ScopeKind = each;
         Panel shown = new();
         foreach (Control detail in details.Values)
         {
@@ -439,10 +435,7 @@ public sealed class FindInFilesPopup : UserControl, IAnswers<SearchMatch?>
     private void Show(SearchScopeKind shown)
     {
         kind = shown;
-        foreach ((SearchScopeKind each, ToggleButton tab) in tabs)
-        {
-            tab.IsChecked = each == shown;
-        }
+        kinds.Choice = shown;
         foreach ((SearchScopeKind each, Control detail) in details)
         {
             detail.IsVisible = each == shown;
@@ -541,11 +534,8 @@ public sealed class FindInFilesPopup : UserControl, IAnswers<SearchMatch?>
 
     private void OnKey(object? sender, KeyEventArgs e)
     {
-        if (e.KeyModifiers == KeyModifiers.Alt && e.Key is Key.C or Key.O or Key.X)
+        if (OptionToggles.Hear(e, (OptionToggles.MatchCase, matchCase), (OptionToggles.Words, words), (OptionToggles.Regex, regex), (OptionToggles.Recursively, recursive)))
         {
-            ToggleButton option = e.Key == Key.C ? matchCase : e.Key == Key.O ? words : regex;
-            option.IsChecked = option.IsChecked != true;
-            e.Handled = true;
             return;
         }
         if (e.KeyModifiers == KeyModifiers.Alt && Kinds.FirstOrDefault(k => k.Key == e.Key) is { Name: not null } chosen)
@@ -554,11 +544,10 @@ public sealed class FindInFilesPopup : UserControl, IAnswers<SearchMatch?>
             e.Handled = true;
             return;
         }
-        if (e.KeyModifiers == KeyModifiers.Alt && e.Key is Key.K or Key.Y)
+        if (e.KeyModifiers == KeyModifiers.Alt && e.Key == Key.K)
         {
-            ToggleButton toggled = e.Key == Key.K ? maskOn : recursive;
-            toggled.IsChecked = toggled.IsChecked != true;
-            if (toggled == maskOn && maskOn.IsChecked == true)
+            maskOn.IsChecked = maskOn.IsChecked != true;
+            if (maskOn.IsChecked == true)
             {
                 maskBox.Focus();
             }
@@ -596,28 +585,6 @@ public sealed class FindInFilesPopup : UserControl, IAnswers<SearchMatch?>
         IsEditable = editable,
         HorizontalAlignment = HorizontalAlignment.Stretch,
     };
-
-    private static PathIcon Glyph(string icon)
-    {
-        PathIcon glyph = new() { Classes = { StyleClasses.Small } };
-        glyph.Bind(PathIcon.DataProperty, glyph.GetResourceObservable(icon));
-        return glyph;
-    }
-
-    private static PathIcon OptionGlyph(string icon)
-    {
-        PathIcon glyph = new();
-        glyph.Bind(PathIcon.DataProperty, glyph.GetResourceObservable(icon));
-        return glyph;
-    }
-
-    private static ToggleButton Option(Control label, string name, string keys)
-    {
-        ToggleButton button = new() { Classes = { StyleClasses.Option }, Content = label };
-        ToolTip.SetTip(button, ActionTips.Named(name, keys));
-        AutomationProperties.SetName(button, name);
-        return button;
-    }
 
     /// <summary>A line's row for whichever line the list hands its container: its text, every match on it in bold, and
     /// where it is. Its runs are its own, kept from one line to the next and added to for a line with more matches.</summary>

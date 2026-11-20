@@ -22,8 +22,8 @@ public sealed class GodotPageViewer
     /// <summary>The words of the segment that shows the text.</summary>
     public const string TextChoice = "Text";
 
-    private readonly ToggleButton page = new() { Classes = { StyleClasses.Segment, StyleClasses.Caption }, Content = PageChoice, Name = "ShowGodotPage" };
-    private readonly ToggleButton text = new() { Classes = { StyleClasses.Segment, StyleClasses.Caption }, Content = TextChoice, Name = "ShowGodotText" };
+    /// <summary>The page or the text, the page's key true.</summary>
+    private readonly Segments<bool> shows = new();
     private readonly TextBlock said = new() { Classes = { StyleClasses.Muted, StyleClasses.Caption }, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
     private readonly StackPanel content = new() { Classes = { StyleClasses.NotesPage } };
     private GodotPageFile? file;
@@ -31,18 +31,19 @@ public sealed class GodotPageViewer
 
     public GodotPageViewer()
     {
+        shows.Add(true, PageChoice, "ShowGodotPage");
+        shows.Add(false, TextChoice, "ShowGodotText");
         Bar = ToolWindows.ToolBars.OverEditor(new DockPanel
         {
             Margin = new Thickness(Gaps.Normal, 0),
             Children =
             {
                 new Border { [DockPanel.DockProperty] = Dock.Right, Child = said, Margin = new Thickness(Gaps.Wide, 0, 0, 0) },
-                new StackPanel { Orientation = Orientation.Horizontal, Spacing = Gaps.Hair, VerticalAlignment = VerticalAlignment.Center, Children = { page, text } },
+                shows,
             },
         });
         Bar.IsVisible = false;
-        page.Click += (_, _) => Choose(true);
-        text.Click += (_, _) => Choose(false);
+        shows.Chosen += (_, page) => Choose(page);
         Body = new ScrollViewer
         {
             Classes = { StyleClasses.Notes },
@@ -120,8 +121,7 @@ public sealed class GodotPageViewer
         }
         Bar.IsVisible = true;
         Body.IsVisible = file.ShowsPage;
-        page.IsChecked = file.ShowsPage;
-        text.IsChecked = !file.ShowsPage;
+        shows.Choice = file.ShowsPage;
         said.Text = file.IsReading ? "Reading…" : string.Empty;
         if (file.Facts is { } facts && !ReferenceEquals(facts, painted))
         {

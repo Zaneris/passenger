@@ -58,7 +58,7 @@ public sealed class LiveTreeView : DockPanel
     private readonly Border banner;
     private readonly TextBlock bannerText;
     private readonly StackPanel heading;
-    private readonly Dictionary<LiveTreePage, ToggleButton> tabs = [];
+    private readonly ToolTabs.Strip<LiveTreePage> tabs = new() { [DockPanel.DockProperty] = Dock.Top, Margin = new Thickness(Gaps.Small, Gaps.Hair, Gaps.Small, Gaps.Tight) };
     private readonly ListBox properties;
     private readonly TextBox filter;
     private readonly ToggleButton defaults;
@@ -161,18 +161,14 @@ public sealed class LiveTreeView : DockPanel
         placeholder = new EmptyState();
 
         heading = new StackPanel { [DockProperty] = Dock.Top, Margin = new Thickness(ListRow.TextStart, Gaps.Normal, ListRow.TextStart, Gaps.Tight), Spacing = Gaps.Hair };
-        StackPanel tabRow = new() { [DockProperty] = Dock.Top, Orientation = Orientation.Horizontal, Spacing = Gaps.Hair, Margin = new Thickness(Gaps.Small, Gaps.Hair, Gaps.Small, Gaps.Tight) };
         foreach (LiveTreePage page in Enum.GetValues<LiveTreePage>())
         {
-            ToggleButton tab = new() { Classes = { StyleClasses.PanelTab }, Content = page.ToString() };
-            tab.Click += (_, _) => ShowPage(page);
-            tabs[page] = tab;
-            tabRow.Children.Add(tab);
+            tabs.Add(page, page.ToString());
         }
+        tabs.Chosen += (_, page) => ShowPage(page);
         filter = new TextBox { Classes = { StyleClasses.Search }, PlaceholderText = "Filter properties", Margin = new Thickness(0, 0, Gaps.Small, 0) };
         filter.TextChanged += (_, _) => ShowProperties();
-        // An option toggle with words, as wide as they are, where the style's are an icon's square.
-        defaults = new ToggleButton { Classes = { StyleClasses.Option, StyleClasses.Caption }, Content = "Defaults", Width = double.NaN, Padding = new Thickness(Gaps.Normal, Gaps.Hair), VerticalAlignment = VerticalAlignment.Center };
+        defaults = Segments.Toggle("Defaults");
         ToolTip.SetTip(defaults, "Show the properties at their default values too");
         defaults.Click += (_, _) => ShowProperties();
         DockPanel filterRow = new() { [DockProperty] = Dock.Top, Margin = new Thickness(Gaps.Normal, Gaps.Hair, Gaps.Normal, Gaps.Small) };
@@ -219,7 +215,7 @@ public sealed class LiveTreeView : DockPanel
                 new ScrollViewer { Tag = LiveTreePage.Layout, Content = layout },
             },
         };
-        DockPanel details = new() { Children = { heading, tabRow, pages } };
+        DockPanel details = new() { Children = { heading, tabs, pages } };
 
         split = new Grid { RowDefinitions = new RowDefinitions("*,1,*") };
         treePane = new Panel { Children = { tree, placeholder } };
@@ -395,9 +391,9 @@ public sealed class LiveTreeView : DockPanel
             field = value;
             // Every property of a game's node is its own: none is at a default for the toggle to hide.
             defaults.IsVisible = !value;
-            foreach ((LiveTreePage page, ToggleButton tab) in tabs)
+            foreach (LiveTreePage page in tabs.Keys)
             {
-                tab.IsVisible = Details is not null && (!value || page == LiveTreePage.Properties);
+                tabs[page].IsVisible = Details is not null && (!value || page == LiveTreePage.Properties);
             }
             if (value)
             {
@@ -714,7 +710,7 @@ public sealed class LiveTreeView : DockPanel
             heading.Children.Add(new TextBlock { Text = problem ?? "Choose a control in the tree, or with Select Element in the app.", Classes = { StyleClasses.Muted }, TextWrapping = TextWrapping.Wrap });
             PropertyRows.Clear();
             pages.IsVisible = false;
-            foreach (ToggleButton tab in tabs.Values)
+            foreach (ToggleButton tab in tabs.Toggles)
             {
                 tab.IsVisible = false;
             }
@@ -722,9 +718,9 @@ public sealed class LiveTreeView : DockPanel
         }
         pages.IsVisible = true;
         editing = null;
-        foreach ((LiveTreePage page, ToggleButton tab) in tabs)
+        foreach (LiveTreePage page in tabs.Keys)
         {
-            tab.IsVisible = !PropertiesAlone || page == LiveTreePage.Properties;
+            tabs[page].IsVisible = !PropertiesAlone || page == LiveTreePage.Properties;
         }
         StackPanel title = new() { Orientation = Orientation.Horizontal, Spacing = Gaps.Small };
         title.Children.Add(new TextBlock { Classes = { StyleClasses.PaneTitle }, Text = details.Type });
@@ -812,10 +808,7 @@ public sealed class LiveTreeView : DockPanel
     public void ShowPage(LiveTreePage page)
     {
         Page = page;
-        foreach ((LiveTreePage key, ToggleButton tab) in tabs)
-        {
-            tab.IsChecked = key == page;
-        }
+        tabs.Choice = page;
         foreach (Control content in pages.Children)
         {
             content.IsVisible = Equals(content.Tag, page);

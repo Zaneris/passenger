@@ -119,7 +119,7 @@ public sealed class FindView : DockPanel
 
     private readonly List<Search> searches = [];
     private readonly TreeRows<FindRow> rows = [];
-    private readonly StackPanel tabs = new() { Orientation = Orientation.Horizontal, Spacing = Gaps.Hair, VerticalAlignment = VerticalAlignment.Center };
+    private readonly ToolTabs.Strip<Search> tabs = new();
     private readonly TreeList list;
     private readonly CodeEditor preview;
     private readonly EmptyState placeholder;
@@ -176,6 +176,7 @@ public sealed class FindView : DockPanel
         sides = new StackPanel { Orientation = Orientation.Horizontal, Spacing = Gaps.Hair, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(Gaps.Normal, 0, 0, 0), IsVisible = false };
         sides.Children.AddRange([YourCode, GeneratedCode]);
         DockPanel.SetDock(sides, Dock.Right);
+        tabs.Chosen += (_, search) => ShowSearch(search);
         tabBar = ToolBars.Top(new DockPanel
         {
             Margin = new Thickness(Gaps.Normal, 0),
@@ -552,12 +553,14 @@ public sealed class FindView : DockPanel
 
     private void DrawTabs()
     {
-        tabs.Children.Clear();
+        tabs.Clear();
         foreach (Search search in searches)
         {
-            ToggleButton tab = ToolTabs.Tab(search.Title, search == current, () => Close(search));
-            tab.Click += (_, _) => ShowSearch(search);
-            tabs.Children.Add(tab);
+            tabs.Add(search, search.Title, () => Close(search));
+        }
+        if (current is not null)
+        {
+            tabs.Choice = current;
         }
         tabBar.IsVisible = searches.Count > 0;
     }
@@ -580,7 +583,7 @@ public sealed class FindView : DockPanel
         current = null;
         rows.Clear();
         DrawSides();
-        tabs.Children.Clear();
+        tabs.Clear();
         tabBar.IsVisible = false;
         Body.IsVisible = false;
         placeholder.IsVisible = true;

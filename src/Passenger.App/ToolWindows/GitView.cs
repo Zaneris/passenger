@@ -17,7 +17,7 @@ public sealed class GitView : DockPanel
     /// <summary>The tabs after the Log: each one's view (a <see cref="GitLogView"/>, or a <see cref="WorkingTreeDiffView"/>)
     /// and what it shows, the view with what is laid out around it.</summary>
     private readonly List<(HistoryScope? Scope, string Title, Control View, Control Body)> histories = [];
-    private readonly StackPanel tabs = new() { Orientation = Orientation.Horizontal, Spacing = Gaps.Hair, VerticalAlignment = VerticalAlignment.Center };
+    private readonly ToolTabs.Strip<Control> tabs = new();
     private readonly ContentControl body = new();
 
     public GitView(VcsController git)
@@ -26,6 +26,7 @@ public sealed class GitView : DockPanel
         Log = Take(new GitLogView(vcs));
         Shown = Log;
         Children.Add(body);
+        tabs.Chosen += (_, view) => Show(view);
         Show(Log);
     }
 
@@ -211,22 +212,16 @@ public sealed class GitView : DockPanel
 
     private void DrawTabs()
     {
-        tabs.Children.Clear();
-        tabs.Children.Add(Tab("Log", null, Log));
+        tabs.Clear();
+        tabs.Add(Log, "Log");
         foreach ((HistoryScope? scope, string title, Control view, Control _) in histories)
         {
-            tabs.Children.Add(Tab(title, scope is null ? null : vcs.Repository?.Relative(scope.Path), view));
+            ToggleButton tab = tabs.Add(view, title, () => Close(view));
+            if (scope is not null)
+            {
+                ToolTip.SetTip(tab, vcs.Repository?.Relative(scope.Path));
+            }
         }
-    }
-
-    private ToggleButton Tab(string title, string? tip, Control view)
-    {
-        ToggleButton tab = ToolTabs.Tab(title, view == Shown, view == Log ? null : () => Close(view));
-        if (tip is not null)
-        {
-            ToolTip.SetTip(tab, tip);
-        }
-        tab.Click += (_, _) => Show(view);
-        return tab;
+        tabs.Choice = Shown;
     }
 }

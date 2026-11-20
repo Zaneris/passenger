@@ -368,6 +368,94 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
         Assert.True(seen >= 5, $"Only {seen} tool window tabs were found in Problems, Git, Debug, the Terminal and Aspire");
     }
 
+    /// <summary>A press on the open tab or the chosen segment leaves it chosen, as a press on another chooses that one
+    /// alone: the Debug window's Debugger and Console tabs, and Find in Files' scopes.</summary>
+    [AvaloniaFact]
+    public void A_press_on_the_open_tab_or_the_chosen_segment_leaves_it_chosen_and_one_on_another_chooses_it_alone()
+    {
+        MainWindow window = Open(1200, 800);
+        try
+        {
+            window.OpenFile(project.PathOf("Program.cs"));
+            Ui.Settle();
+            Assert.True(window.Perform(AppActions.ShowDebug), $"{AppActions.ShowDebug} did not run");
+            Ui.Settle();
+            Chooses([.. ToolWindowParts(window).OfType<ToggleButton>().Where(t => t.Classes.Contains(StyleClasses.PanelTab) && TabName(t) is "Debugger" or "Console")],
+                "the Debug window's tabs");
+            Passenger.App.Navigation.FindInFilesPopup popup = window.ShowFindInFiles(replace: false)!;
+            Ui.Settle();
+            Chooses([.. popup.GetVisualDescendants().OfType<ToggleButton>().Where(t => t.Classes.Contains(StyleClasses.Segment) && t.IsEffectivelyVisible)], "Find in Files' scopes");
+        }
+        finally
+        {
+            window.Close();
+        }
+
+        static void Chooses(ToggleButton[] row, string what)
+        {
+            Assert.True(row.Length >= 2 && row.Count(t => t.IsChecked == true) == 1, $"{what} are [{string.Join(", ", row.Select(TabName))}], {row.Count(t => t.IsChecked == true)} of them chosen");
+            ToggleButton chosen = row.Single(t => t.IsChecked == true);
+            Ui.Click(chosen);
+            Assert.True(chosen.IsChecked == true && row.Count(t => t.IsChecked == true) == 1,
+                $"A press on {what}' chosen '{TabName(chosen)}' let it go, leaving {row.Count(t => t.IsChecked == true)} chosen, where it stays chosen");
+            ToggleButton other = row.First(t => t != chosen);
+            Ui.Click(other);
+            Assert.True(other.IsChecked == true && row.Count(t => t.IsChecked == true) == 1,
+                $"A press on {what}' '{TabName(other)}' left {string.Join(", ", row.Where(t => t.IsChecked == true).Select(TabName))} chosen, where it alone is");
+        }
+    }
+
+    /// <summary>A tool window's tab is ToolTabs' own, and a window's tabs are a ToolTabs.Strip, which keeps one open and
+    /// says each press: the tabs' class given anywhere else fails here, naming its line, as does a tab ToolTabs.Tab makes
+    /// for anything but a list's row (a session's tab, which its list makes and its model keeps one open).</summary>
+    [Fact]
+    public void Every_tool_windows_tab_is_ToolTabs_own_and_a_windows_tabs_are_a_strip()
+    {
+        Regex byHand = new(@"\bStyleClasses\.PanelTab\b|Classes=""[^""]*\bpanelTab\b");
+        Regex lone = new(@"\bToolTabs\.Tab\(");
+        string[] found = [.. UiFiles().Where(f => !f.Path.EndsWith("/ToolTabs.cs", StringComparison.Ordinal))
+            .SelectMany(f => byHand.Matches(f.Text).Concat(lone.Matches(f.Text).Where(m => !MemberAfter(f.Text, m.Index).Contains(".Showing<", StringComparison.Ordinal)))
+                .Select(m => $"{f.Path}:{LineOf(f.Text, m.Index)}: {f.Text.Split('\n')[LineOf(f.Text, m.Index) - 1].Trim()}"))];
+        Assert.True(found.Length == 0, $"{found.Length} tool window tabs are made by hand, so each keeps one open its own way or lets the open one go: "
+            + $"make a window's tabs a ToolTabs.Strip:\n{string.Join("\n", found)}");
+        Assert.Matches(byHand, "            ToggleButton button = new() { Classes = { StyleClasses.PanelTab } };");
+        Assert.Matches(lone, "        consoleTab = ToolTabs.Tab(\"Console\", true);");
+    }
+
+    /// <summary>A few choices side by side, or one thing turned on or off by its words, are Segments, so each looks, keeps
+    /// one chosen and says each press one way: the segments' class given anywhere else fails here, naming its line.</summary>
+    [Fact]
+    public void Every_choice_side_by_side_is_a_Segments()
+    {
+        Regex byHand = new(@"\bStyleClasses\.Segment\b|Classes=""[^""]*\bsegment\b");
+        string[] found = [.. UiFiles().Where(f => !f.Path.EndsWith("/Segments.cs", StringComparison.Ordinal))
+            .SelectMany(f => byHand.Matches(f.Text).Select(m => $"{f.Path}:{LineOf(f.Text, m.Index)}"))];
+        Assert.True(found.Length == 0, $"{found.Length} segments are made by hand, so each looks and keeps its choice its own way: make each row a "
+            + $"Segments, a lone one Segments.Toggle:\n{string.Join("\n", found)}");
+        Assert.Matches(byHand, "            ToggleButton tab = new() { Classes = { StyleClasses.Segment, StyleClasses.Caption }, Content = name };");
+    }
+
+    /// <summary>A search's option (Match case, Words, Regex, Recursively) is OptionToggles', so the find bar and Find in
+    /// Files share its look, its tip and its key: the options' class given anywhere else fails here, naming its line.</summary>
+    [Fact]
+    public void Every_search_option_is_OptionToggles_own_with_its_key()
+    {
+        Regex byHand = new(@"\bStyleClasses\.Option\b|Classes=""[^""]*\boption\b");
+        string[] found = [.. UiFiles().Where(f => !f.Path.EndsWith("/OptionToggles.cs", StringComparison.Ordinal))
+            .SelectMany(f => byHand.Matches(f.Text).Select(m => $"{f.Path}:{LineOf(f.Text, m.Index)}"))];
+        Assert.True(found.Length == 0, $"{found.Length} search options are made by hand, so their looks, tips and keys drift from the find bar's and "
+            + $"Find in Files': make each through OptionToggles:\n{string.Join("\n", found)}");
+        Assert.Matches(byHand, "<ToggleButton Name=\"MatchCase\" Classes=\"option\" ToolTip.Tip=\"Match case\">");
+        Assert.DoesNotMatch(byHand, "        OptionRow row = new(StyleClasses.OptionRow);");
+    }
+
+    /// <summary>The rest of the member a place in a C# file stands in, to its closing brace at a member's indent.</summary>
+    private static string MemberAfter(string text, int at)
+    {
+        int end = text.IndexOf("\n    }\n", at, StringComparison.Ordinal);
+        return end < 0 ? text[at..] : text[at..end];
+    }
+
     /// <summary>Every choice the window shows (a list's or a tree's chosen row, the open editor tab, a tool window's open
     /// tab, a stripe's open window's button, a toolbar's toggle that is on: Problems' severities, Mute Breakpoints) is shown by
     /// the one chosen mark beside its ground, in the chosen mark's colour on the side its kind takes, and nothing unchosen

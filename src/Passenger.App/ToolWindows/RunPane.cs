@@ -11,28 +11,18 @@ namespace Passenger.App.ToolWindows;
 public sealed class RunPane : DockPanel
 {
     private readonly Border tabBar;
-    private readonly ToggleButton consoleTab;
-    private readonly ToggleButton telemetryTab;
+    /// <summary>The Console and Telemetry tabs, the latter's key true.</summary>
+    private readonly ToolTabs.Strip<bool> tabs = new() { Margin = new Thickness(Gaps.Normal, 0) };
     private RunDashboard? dashboard;
 
     public RunPane(OutputView console)
     {
         Console = console;
-        consoleTab = ToolTabs.Tab("Console", true);
-        telemetryTab = ToolTabs.Tab(RunWindows.TelemetryTab, false);
-        consoleTab.Name = "runConsoleTab";
-        telemetryTab.Name = "runTelemetryTab";
-        consoleTab.Click += (_, _) => Show(telemetry: false);
-        telemetryTab.Click += (_, _) => Show(telemetry: true);
-        StackPanel strip = new()
-        {
-            Orientation = Orientation.Horizontal,
-            Spacing = Gaps.Hair,
-            Margin = new Thickness(Gaps.Normal, 0),
-            VerticalAlignment = VerticalAlignment.Center,
-            Children = { consoleTab, telemetryTab },
-        };
-        tabBar = ToolBars.Top(strip);
+        tabs.Add(false, "Console", name: "runConsoleTab");
+        tabs.Add(true, RunWindows.TelemetryTab, name: "runTelemetryTab");
+        tabs.Choice = false;
+        tabs.Chosen += (_, telemetry) => Show(telemetry);
+        tabBar = ToolBars.Top(tabs);
         tabBar[DockProperty] = Dock.Top;
         tabBar.IsVisible = false;
         Telemetry.IsVisible = false;
@@ -76,8 +66,7 @@ public sealed class RunPane : DockPanel
     public void Show(bool telemetry)
     {
         bool shown = telemetry && Telemetry.Source is not null;
-        consoleTab.IsChecked = !shown;
-        telemetryTab.IsChecked = shown;
+        tabs.Choice = shown;
         Console.IsVisible = !shown;
         Telemetry.IsVisible = shown;
     }
