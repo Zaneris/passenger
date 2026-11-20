@@ -413,7 +413,11 @@ public sealed class BuildRunTests : IClassFixture<RestoredFolders>, IDisposable
         }
         MainWindow window = Open();
         window.ApplySettings(window.Settings with { HotReload = true });
+        // dotnet watch's words as the runner hears them, each stream's lines whole, where the program's line may split one in the Run window.
+        List<string> lines = [];
+        void OnLine(object? sender, string line) => lines.Add(line);
         FileText.Placing += Slow;
+        window.Runner.Line += OnLine;
         try
         {
             window.OpenFile(Path.Combine(Folder, "src", "Hello", "Program.cs"));
@@ -421,7 +425,8 @@ public sealed class BuildRunTests : IClassFixture<RestoredFolders>, IDisposable
             window.Perform(AppActions.RunProgram);
             WaitWatched(window, () => Output(window).Contains("said 0", StringComparison.Ordinal) && Output(window).Contains("Waiting for changes", StringComparison.Ordinal),
                 "the program to run under dotnet watch", TimeSpan.FromMinutes(2));
-            int watching = Output(window).IndexOf("Waiting for changes", StringComparison.Ordinal);
+            int watching = lines.FindIndex(line => line.StartsWith("dotnet watch", StringComparison.Ordinal) && line.Contains("Waiting for changes", StringComparison.Ordinal));
+            Assert.True(watching >= 0, $"dotnet watch's word that it waits for changes was never heard whole: [{string.Join(" | ", lines)}]");
             Passenger.App.Workspace.OpenDocument program = window.EditorArea.Active!;
 
             for (int edit = 1; edit <= 4; edit++)
@@ -445,7 +450,7 @@ public sealed class BuildRunTests : IClassFixture<RestoredFolders>, IDisposable
             }
 
             Assert.True(held.Count >= 4, $"{held.Count} saves held their temporary file, of the 4 made");
-            string[] heard = [.. Output(window)[watching..].Split('\n').Where(line => line.StartsWith("dotnet watch", StringComparison.Ordinal))];
+            string[] heard = [.. lines.Skip(watching).Where(line => line.StartsWith("dotnet watch", StringComparison.Ordinal))];
             string[] more = [.. heard.Where(line => held.Any(name => line.Contains(name, StringComparison.Ordinal))
                 || line.Contains(" added: ", StringComparison.Ordinal) || line.Contains(" deleted: ", StringComparison.Ordinal)
                 || line.Contains("Loading projects", StringComparison.Ordinal) || line.Contains("No managed code changes", StringComparison.Ordinal))];
@@ -457,6 +462,7 @@ public sealed class BuildRunTests : IClassFixture<RestoredFolders>, IDisposable
         finally
         {
             FileText.Placing -= Slow;
+            window.Runner.Line -= OnLine;
             window.Perform(AppActions.Stop);
             Ui.WaitFor(() => !window.Runner.IsRunning, "the program to stop");
             window.Close();
