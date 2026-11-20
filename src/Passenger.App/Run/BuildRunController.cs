@@ -1913,7 +1913,7 @@ public sealed partial class BuildRunController
     {
         if (start is null)
         {
-            return Said("No .NET command line found: install the .NET SDK, or set DOTNET_ROOT to where it is.");
+            return Said(Dotnet.NotFound);
         }
         ChildProcesses.WithVariables(start, variables);
         TerminalRun run;

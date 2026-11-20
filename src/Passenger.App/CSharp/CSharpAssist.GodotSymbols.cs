@@ -562,7 +562,7 @@ internal sealed partial class CSharpAssist
             }
             if (dropped.Count > 0)
             {
-                return $"{string.Join(", ", dropped)} could not follow the files moved: it was edited meanwhile";
+                return $"{Plural.Listed(dropped)} could not follow the files moved: {Refusals.EditedMeanwhile(dropped.Count)}";
             }
         }
         return await GodotRewriteAsync(followed.Binary, followed.Projects, recording);

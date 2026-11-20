@@ -205,7 +205,7 @@ public sealed partial class PassengerTools
         }
         if (asked.Map(WebAssist.JsonRenameEdits(at.Path, at.Key, lines, newName, WebAssist.IsPackageJson(document))) is not { } placed)
         {
-            throw new InvalidOperationException("Rename was not applied: the property was edited meanwhile");
+            throw new InvalidOperationException(Refusals.PropertyEditedMeanwhile);
         }
         WorkspaceEdits.ApplyTo(Editors, document, placed);
         document.Save();
@@ -246,7 +246,7 @@ public sealed partial class PassengerTools
         }
         if (made.Left.Count > 0)
         {
-            throw new InvalidOperationException($"'{fix.Title}' was not applied: {string.Join(", ", made.Left)} was edited meanwhile");
+            throw new InvalidOperationException(Refusals.NotAppliedEditedMeanwhile($"'{fix.Title}'", made.Left));
         }
         if (web.Document.Text.Version == version)
         {

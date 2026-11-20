@@ -79,7 +79,7 @@ internal sealed partial class WebAssist
         RefactorOutcome made = await ServerCommands.RunAsync(context.Editors, fix.Title, fix.Title, null, run => lint.RunAsync(fix, run), null, null, context.Say);
         if (made.Left.Count > 0)
         {
-            context.Say($"{fix.Title} was not applied to {string.Join(", ", made.Left)}: it was edited meanwhile");
+            context.Say(Refusals.NotAppliedEditedMeanwhile(fix.Title, made.Left));
         }
         else if ((made.Problem ?? made.Said) is { Length: > 0 } said)
         {

@@ -345,7 +345,7 @@ internal sealed partial class WebAssist(AssistContext context, PopupPlacement po
         if (JsonPropertyAt(outline, lines, offset) is not { } at || at.Path[^1].Name != old
             || asked.Map(JsonRenameEdits(at.Path, at.Key, lines, name, IsPackageJson(document))) is not { } placed)
         {
-            return RefactorOutcome.Refused("Rename was not applied: the property was edited meanwhile");
+            return RefactorOutcome.Refused(Refusals.PropertyEditedMeanwhile);
         }
         TextSnapshot was = document.Text.Snapshot;
         WorkspaceEdits.ApplyTo(context.Editors, document, placed);

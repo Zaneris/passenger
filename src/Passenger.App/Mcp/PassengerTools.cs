@@ -967,8 +967,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         List<string> changed = [.. renaming.Files.Where(f => f.Change == RefactoredChange.Changed).Select(f => Relative(f.Path))];
         List<string> moved = [.. renaming.Files.Where(f => f.Change == RefactoredChange.Moved).Select(f => $"{Relative(f.Path)} to {Relative(f.To!)}")];
         string renamed = moved.Count > 0 ? $"; renamed {string.Join(", ", moved)}" : string.Empty;
-        string unrenamed = renaming.Left.Count > 0 ? $"; not in {string.Join(", ", renaming.Left)}, edited meanwhile" : string.Empty;
-        return $"Renamed in {Plural.Of(changed.Count, "file")}: {string.Join(", ", changed)}{renamed}{unrenamed}{(renaming.Unmoved is { } unmoved ? $"; but {unmoved}" : string.Empty)}";
+        return $"{Refusals.EditedMeanwhile($"Renamed in {Plural.Of(changed.Count, "file")}: {string.Join(", ", changed)}{renamed}", renaming.Left)}{(renaming.Unmoved is { } unmoved ? $"; but {unmoved}" : string.Empty)}";
     }
 
     [McpServerTool(Name = McpTools.CodeActions, Title = "Fixes and refactorings", ReadOnly = true), Description(
@@ -1163,8 +1162,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         List<string> moved = [.. made.Files.Where(f => f.Change == RefactoredChange.Moved).Select(f => $"{Relative(f.Path)} to {Relative(f.To!)}")];
         string to = changed > 0 || moved.Count == 0 ? $" to {Plural.Of(changed, "file")}" : string.Empty;
         string renaming = moved.Count > 0 ? $", renaming {string.Join(", ", moved)}" : string.Empty;
-        string left = made.Left.Count > 0 ? $", but not to {string.Join(", ", made.Left)}, edited meanwhile" : string.Empty;
-        return $"Applied {what}{to}{renaming}{unrun}{left}{(made.Unmoved is { } unmoved ? $"; but {unmoved}" : string.Empty)}";
+        return $"{Refusals.EditedMeanwhile($"Applied {what}{to}{renaming}{unrun}", made.Left)}{(made.Unmoved is { } unmoved ? $"; but {unmoved}" : string.Empty)}";
     }
 
     /// <summary>A code action whose change its server makes by its own command, made as the window makes it
@@ -1188,7 +1186,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         string changed = AgentAnswers.Named([.. made.Files.Where(f => f.Change != RefactoredChange.Created).Select(f => Relative(f.Path))], "file", FilesOfTheChange);
         string created = AgentAnswers.Named([.. made.Files.Where(f => f.Change == RefactoredChange.Created).Select(f => Relative(f.Path))], "file", FilesOfTheChange);
         string where = (changed.Length > 0 ? $" to {changed}" : string.Empty) + (created.Length > 0 ? $"{(changed.Length > 0 ? "," : string.Empty)} making {created}" : string.Empty);
-        return $"Applied {what}{where}{named}{(made.Left.Count > 0 ? $", but not to {string.Join(", ", made.Left)}, edited meanwhile" : string.Empty)}";
+        return Refusals.EditedMeanwhile($"Applied {what}{where}{named}", made.Left);
     }
 
     /// <summary>A code action as code_actions lists it: its title, its kind, and the choices it offers, a Suppress or
@@ -3408,7 +3406,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         ToolWindows.DebugTab? tab = TabFor(session);
         if (tab?.Session is not { State: not DebugState.Ended } debugged || !tab.IsLive)
         {
-            throw new InvalidOperationException(session is null || tab is null ? "Nothing is being debugged; debug_start starts it" : $"{tab.Name} is no longer debugged; debug_state lists those that are");
+            throw new InvalidOperationException(session is null || tab is null ? $"{Refusals.NothingDebugged}; debug_start starts it" : $"{tab.Name} is no longer debugged; debug_state lists those that are");
         }
         if (choose)
         {

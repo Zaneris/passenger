@@ -27,7 +27,7 @@ public partial class ManagedDebugger
     /// <summary>The most bytes one debug register watches.</summary>
     private const int MostWatched = 8;
 
-    private const string NotAMember = "A data breakpoint watches a field or property of an object, or an element of an array, and this is neither";
+    private const string NotAMember = DebuggerWords.NotAMember;
 
     /// <summary>Why no data breakpoint can be set where the debugger runs, or null where one can: Windows on x64, the
     /// one system whose .NET runtime watches memory for a debugger.</summary>
@@ -99,7 +99,7 @@ public partial class ManagedDebugger
         }
         if (_process is null)
         {
-            return new DataBreakpointAnswer(null, "Nothing is being debugged");
+            return new DataBreakpointAnswer(null, DebuggerWords.NothingDebugged);
         }
         if (_process.TryIsRunning(out bool running) == Cor.S_OK && running)
         {

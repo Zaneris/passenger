@@ -986,7 +986,7 @@ public sealed class RunConfigurationsDialog : IdeWindow
         {
             if (row.Configuration.Name.Length == 0)
             {
-                return (row, "A configuration needs a name");
+                return (row, Refusals.ConfigurationUnnamed);
             }
             if (!names.Add(row.Configuration.Name))
             {
@@ -998,7 +998,7 @@ public sealed class RunConfigurationsDialog : IdeWindow
             RunConfiguration configuration = row.Configuration;
             if (configuration.Name.Length == 0)
             {
-                return (row, "A configuration needs a name");
+                return (row, Refusals.ConfigurationUnnamed);
             }
             if (!names.Add(configuration.Name))
             {

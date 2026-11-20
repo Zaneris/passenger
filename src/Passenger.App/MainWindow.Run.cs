@@ -244,7 +244,7 @@ public partial class MainWindow
         string profile = LaunchSettingsEdits.ProfileName(project, shared);
         if (profile.Length == 0)
         {
-            return "A configuration needs a name";
+            return Refusals.ConfigurationUnnamed;
         }
         if (LaunchProfile.Read(project).FirstOrDefault(p => string.Equals(p.Name, profile, StringComparison.OrdinalIgnoreCase)) is { } taken)
         {

@@ -350,12 +350,11 @@ public partial class MainWindow
             string? ungodot = applied is { Moved.Count: > 0 } done ? await FollowGodotAsync([.. done.Moved.Select(m => (m.From, PathNames.Canonical(m.To)))], recording, left) : null;
             Explorer.Reveal(PathNames.Canonical(applied?.Moved.Any(m => PathNames.Same(m.From, path)) == true ? target : path));
             await WorkspaceEdits.LandedAsync(recording, waiting => status.Text = waiting);
-            string unchanged = dropped.Count > 0 ? $", but not in {string.Join(", ", dropped)}: it was edited meanwhile" : string.Empty;
             string unfollowed = ungodot is not null || left.Count > 0 ? $"; {ungodot ?? string.Join("; ", left)}" : string.Empty;
             // The code renamed with a file left unmoved is said as made: the box closes, and Undo takes it back whole.
             status.Text = applied?.Unmoved is { } unmoved
-                ? $"Renamed {type.Name} to {renamed} in {Plural.Of(files, "file")}{unchanged}{(unchanged.Length > 0 ? "; and" : ", but")} {unmoved}{unfollowed}"
-                : $"Renamed {Path.GetFileName(path)} to {name}, and {type.Name} to {renamed} in {Plural.Of(files, "file")}{unchanged}{unfollowed}";
+                ? $"{Refusals.EditedMeanwhile($"Renamed {type.Name} to {renamed} in {Plural.Of(files, "file")}", dropped)}{(dropped.Count > 0 ? "; and" : ", but")} {unmoved}{unfollowed}"
+                : $"{Refusals.EditedMeanwhile($"Renamed {Path.GetFileName(path)} to {name}, and {type.Name} to {renamed} in {Plural.Of(files, "file")}", dropped)}{unfollowed}";
             return null;
         }
         catch (Lsp.LanguageServerFailed failed)

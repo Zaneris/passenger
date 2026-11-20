@@ -155,7 +155,7 @@ public sealed partial class LinuxUpdater : InPlaceUpdater
             }
             ChildResult owner = await ToolAsync(ChildProcesses.Command(found, arguments), AskLimit, cancel).ConfigureAwait(false);
             // dpkg-query says "package: path", rpm and pacman the package alone.
-            if (owner.Succeeded && owner.Output.Split('\n')[0].Trim() is { Length: > 0 } line)
+            if (owner.Succeeded && owner.FirstLine is { Length: > 0 } line)
             {
                 string name = tool == "dpkg-query" ? line.Split(':')[0].Trim() : line;
                 return $"{manager}'s package {name}";

@@ -28,6 +28,7 @@ public sealed class RefusalsTests
         new(@"(?:^|: )\{\} was not renamed: "),
         new(@"(?:^|: )\{\} changed as it was read$"),
         new(@"(?i:a) (?:file|folder) of the package \{\}, as NuGet restored it"),
+        new(@"(?:\b(?:it was|they were)|\{\} was|,) edited meanwhile(?:$|,)"),
     ];
 
     [Fact]

@@ -203,7 +203,7 @@ public static class AndroidDevices
         {
             string[] parts = line.Split('\t', StringSplitOptions.TrimEntries);
             if (parts is [{ } serial, "device"] && serial.StartsWith("emulator-", StringComparison.Ordinal)
-                && (await AdbAsync(tools.Adb, ["-s", serial, "emu", "avd", "name"], cancel)).Output.Split('\n')[0].Trim() == avd)
+                && (await AdbAsync(tools.Adb, ["-s", serial, "emu", "avd", "name"], cancel)).FirstLine == avd)
             {
                 return serial;
             }

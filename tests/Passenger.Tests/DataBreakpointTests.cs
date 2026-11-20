@@ -277,7 +277,7 @@ public sealed class DataBreakpointTests : IClassFixture<RestoredFolders>, IDispo
         {
             Assert.True(field.IsEnabled, $"Set Data Breakpoint was greyed on a field: {fieldWhy}");
             Assert.False(local.IsEnabled, "Set Data Breakpoint was offered on a local variable");
-            Assert.Equal(DebugController.NotAMember, localWhy);
+            Assert.Equal(Refusals.DataBreakpointNotAMember, localWhy);
             Assert.False(property.IsEnabled, "Set Data Breakpoint was offered on a property whose getter is the program's own");
             Assert.Equal("The breakpoint cannot be set. The property doesn't have a backing field.", propertyWhy);
         }

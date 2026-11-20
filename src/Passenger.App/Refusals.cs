@@ -2,6 +2,7 @@ using System.Globalization;
 using Passenger.App.Mobile;
 using Passenger.App.Settings;
 using Passenger.Core;
+using Passenger.Dap;
 using Passenger.Text;
 using Passenger.Workspace;
 
@@ -496,6 +497,33 @@ public static class Refusals
 
     /// <summary>Neither a selection nor a name is at the caret for the debugger to evaluate.</summary>
     public const string NoExpression = "No expression is at the caret";
+
+    /// <summary>A debugger's action asked for with no program debugged, as the debugger's own answer says it.</summary>
+    public const string NothingDebugged = DebuggerWords.NothingDebugged;
+
+    /// <summary>Set Data Breakpoint asked of a row of Variables that is no member of a value, as the debugger's own answer
+    /// says it.</summary>
+    public const string DataBreakpointNotAMember = DebuggerWords.NotAMember;
+
+    /// <summary>A run configuration given no name, which names it in the list and on the toolbar.</summary>
+    public const string ConfigurationUnnamed = "A configuration needs a name";
+
+    /// <summary>Why an edit left files as they were: each was edited after the edit was worked out, so its places no longer
+    /// stand where it was made for.</summary>
+    public static string EditedMeanwhile(int files) => $"{Plural.Agreeing(files, "it was", "they were")} edited meanwhile";
+
+    /// <summary>What an edit did, and the files it left as they were for being edited meanwhile: "Renamed in 3 files, but not
+    /// in A.cs and B.cs: they were edited meanwhile"; what it did alone where it left none.</summary>
+    public static string EditedMeanwhile(string done, IReadOnlyList<string> files) =>
+        files.Count == 0 ? done : $"{done}, but not in {Plural.Listed(files)}: {EditedMeanwhile(files.Count)}";
+
+    /// <summary>An edit said not applied to the files it left as they were for being edited meanwhile: "Extract Method was not
+    /// applied to A.cs: it was edited meanwhile".</summary>
+    public static string NotAppliedEditedMeanwhile(string what, IReadOnlyList<string> files) =>
+        $"{what} was not applied to {Plural.Listed(files)}: {EditedMeanwhile(files.Count)}";
+
+    /// <summary>A JSON property's rename whose property was edited before the rename could be placed.</summary>
+    public const string PropertyEditedMeanwhile = "Rename was not applied: the property was edited meanwhile";
 
     /// <summary>Go to Declaration found nothing to go to where it was asked.</summary>
     public const string NoDeclaration = "Cannot find a declaration to go to";

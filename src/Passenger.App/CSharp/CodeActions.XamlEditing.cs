@@ -145,7 +145,7 @@ internal sealed partial class CodeActions
         {
             return failed.Message;
         }
-        return dropped.Count > 0 ? $"{name} was not applied to {string.Join(", ", dropped)}: it was edited meanwhile" : null;
+        return dropped.Count > 0 ? Refusals.NotAppliedEditedMeanwhile(name, dropped) : null;
     }
 
     /// <summary><see cref="ChangeFilesAsync"/> as one command, answered once the files not open it wrote have landed, the

@@ -1333,7 +1333,7 @@ public sealed class RunConfigurationsTests : IClassFixture<RestoredFolders>, IDi
             Assert.Equal(["Hello"], Names(window));
             Type(dialog.NameBox, string.Empty);
             Ui.Click(dialog.OkButton);
-            Assert.Equal("A configuration needs a name", dialog.Problem);
+            Assert.Equal(Refusals.ConfigurationUnnamed, dialog.Problem);
             dialog.Close();
             Ui.Settle();
             Assert.Equal(["Hello"], Names(window));

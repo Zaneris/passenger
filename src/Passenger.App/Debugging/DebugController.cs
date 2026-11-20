@@ -514,7 +514,7 @@ public sealed class DebugController : IDisposable
         using IDisposable held = BackgroundWork.Scope();
         if (targets.Count == 0)
         {
-            HotReloadOutcome refused = new(HotReloadResult.Failed, WhyNotApply() ?? NothingDebugged);
+            HotReloadOutcome refused = new(HotReloadResult.Failed, WhyNotApply() ?? Refusals.NothingDebugged);
             Message?.Invoke(this, refused.Said);
             return new Applying(refused, null, null, null);
         }
@@ -1805,7 +1805,7 @@ public sealed class DebugController : IDisposable
 
     /// <summary>Why one session's program cannot be let go now: it has ended, the debugger started it, it still starts, or
     /// Hot Reload changed it (<see cref="LetsNoDebuggerGo"/>).</summary>
-    private string? WhyNotDetach(DebugSession? session) => session is not { State: not DebugState.Ended } ? NothingDebugged
+    private string? WhyNotDetach(DebugSession? session) => session is not { State: not DebugState.Ended } ? Refusals.NothingDebugged
         : !session.Attached ? "The debugger started this program: Stop ends it, and Detach lets go only of a program attached to"
         : TabOf(session) is { FollowedStarts: true } ? "Passenger started this program through the one that starts it, which ends with it: Stop ends both, and Detach lets go only of a program attached to as it ran"
         : session.State == DebugState.Starting ? StillStarting
@@ -1910,8 +1910,6 @@ public sealed class DebugController : IDisposable
             actions.Add(new IdeAction(id, title, "Debug", c => run(current(), c)) { WhyNot = c => whyNot(current(), c), Menus = menu is null ? [] : [menu] });
     }
 
-    private const string NothingDebugged = "Nothing is being debugged";
-
     /// <summary>The Avalonia XAML attribute the caret is on, whose own breakpoint Toggle Breakpoint sets, with where its name
     /// begins; null elsewhere.</summary>
     public static (string Name, TextPosition At)? AttributeAtCaret(ActionContext context) =>
@@ -1969,7 +1967,7 @@ public sealed class DebugController : IDisposable
     private string? NotSteppable() => NotPaused() ?? Session!.NoSteps;
 
     /// <summary>Why the chosen session takes no action now: nothing is being debugged, or the tab chosen is one that ended.</summary>
-    private string? NotLive() => !IsDebugging ? NothingDebugged
+    private string? NotLive() => !IsDebugging ? Refusals.NothingDebugged
         : Session is not { State: not DebugState.Ended } ? $"Debugging {name} has ended: choose a program that is debugged in the Debug window"
         : null;
 
@@ -3173,9 +3171,6 @@ public sealed class DebugController : IDisposable
         }
     }
 
-    /// <summary>Why no data breakpoint can watch a row of Variables that is no member of a value: a local, a watch, a result.</summary>
-    public const string NotAMember = "A data breakpoint watches a field or property of an object, or an element of an array, and this is neither";
-
     /// <summary>What Set Data Breakpoint offers on a row of Variables, the debugger asked: to set one, to remove the one set
     /// on it (Remove Data Breakpoint), or neither and why (the system, the kind of member, the program running).</summary>
     public async Task<DataWatchOffer> DataWatchAsync(VariableNode node)
@@ -3224,7 +3219,7 @@ public sealed class DebugController : IDisposable
         // The value the row is a member of, by the reference its members were listed by; a frame's own rows have none.
         if (node.Parent is not { Reference: > 0, Role: not VariableRole.Scope } owner)
         {
-            return (null, NotAMember);
+            return (null, Refusals.DataBreakpointNotAMember);
         }
         try
         {

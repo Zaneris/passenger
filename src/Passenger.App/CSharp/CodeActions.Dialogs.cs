@@ -292,7 +292,7 @@ internal sealed partial class CodeActions
             () => WorkspaceEdits.ApplyAsCommand(context.Editors, edit, recording, asked, dropped));
         await WorkspaceEdits.LandedAsync(recording, context.Say);
         // Counted by file: a file made is its creation and its text, which the edit counts apart.
-        string said = done(made.Changes.Count - dropped.Count) + (dropped.Count > 0 ? $", but not in {string.Join(", ", dropped)}: it was edited meanwhile" : string.Empty)
+        string said = Refusals.EditedMeanwhile(done(made.Changes.Count - dropped.Count), dropped)
             + (unchanged.Count > 0 ? $", but left {Plural.Of(unchanged.Count, "use")} as {Plural.Agreeing(unchanged.Count, "it was", "they were")}: "
                 + string.Join("; ", unchanged.Select(use => $"{Path.GetFileName(use.Path)}:{use.Line}, {use.Why}")) : string.Empty);
         return new RefactorOutcome(said, null, files, dropped) { Unchanged = unchanged };
