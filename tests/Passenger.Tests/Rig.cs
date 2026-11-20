@@ -1599,6 +1599,10 @@ public static class Ui
     private static void Click(Control control, Point? at, MouseButton button, RawInputModifiers modifiers, bool settle)
     {
         (TopLevel top, Point point) = Aim(control, at);
+        if (at is null && control is Button)
+        {
+            point = Beside(top, control, point);
+        }
         Apart(top, point);
         int count = 0;
         EventHandler<PointerPressedEventArgs> pressed = (_, e) => count = e.ClickCount;
@@ -1656,6 +1660,37 @@ public static class Ui
         {
             Hold(between - since, "a second click at the same place to be a click of its own, not a double click");
         }
+    }
+
+    /// <summary>Where on a button a click goes that the platform counts as a click of its own: its centre, or, where the
+    /// window's last click went there a moment ago, a point of the button just beyond the double-click size from it, which
+    /// the pointer finds the button at; a button does the same wherever it is clicked, so <see cref="Apart"/> need not wait
+    /// out the double-click time. A button too small for such a point is clicked at its centre, once that time has passed.</summary>
+    private static Point Beside(TopLevel top, Control button, Point centre)
+    {
+        if (!LastClicks.TryGetValue(top, out StrongBox<(Point Point, DateTime At)>? last))
+        {
+            return centre;
+        }
+        Size near = Application.Current?.PlatformSettings?.GetDoubleTapSize(PointerType.Mouse) ?? new Size(4, 4);
+        bool Near(Point point) => Math.Abs(last.Value.Point.X - point.X) <= near.Width / 2 && Math.Abs(last.Value.Point.Y - point.Y) <= near.Height / 2;
+        if (!Near(centre))
+        {
+            return centre;
+        }
+        Rect bounds = new(button.TranslatePoint(default, top) ?? centre, button.Bounds.Size);
+        double across = Math.Floor(near.Width / 2) + 1;
+        double down = Math.Floor(near.Height / 2) + 1;
+        foreach (Vector step in (Vector[])[new(across, 0), new(-across, 0), new(0, down), new(0, -down)])
+        {
+            Point point = last.Value.Point + step;
+            if (bounds.Deflate(1).Contains(point) && !Near(point)
+                && top.InputHitTest(point, v => v.GetType().Name != "LightDismissOverlayLayer") is Visual found && (found == button || button.IsVisualAncestorOf(found)))
+            {
+                return point;
+            }
+        }
+        return centre;
     }
 
     /// <summary>Where a click on a control lands, in the window or popup showing it, scrolled into view, the tooltips the pointer
