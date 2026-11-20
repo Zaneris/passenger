@@ -1,3 +1,4 @@
+using Passenger.Core;
 using Passenger.Debugger.Interop;
 
 namespace Passenger.Debugger;
@@ -135,8 +136,8 @@ public partial class ManagedDebugger
         }
         string now = string.Join(", ", given.Select(thread => $"{thread.Id} in {StandTold(thread)}"));
         _logger?.Invoke(starting.Count == 0
-            ? $"Let past their first instruction, {when}, in {goes} {(goes == 1 ? "go" : "goes")}: threads {named}, now {now}"
-            : $"Still at their first instruction, {when}, {(came ? "an event come" : "the tries spent")} after {goes} {(goes == 1 ? "go" : "goes")}: threads {string.Join(", ", starting.Select(thread => thread.Id))} of {named}");
+            ? $"Let past their first instruction, {when}, in {Plural.Of(goes, "go", "goes")}: threads {named}, now {now}"
+            : $"Still at their first instruction, {when}, {(came ? "an event come" : "the tries spent")} after {Plural.Of(goes, "go", "goes")}: threads {string.Join(", ", starting.Select(thread => thread.Id))} of {named}");
         return true;
     }
 
