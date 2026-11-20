@@ -1576,11 +1576,11 @@ public static class Ui
     }
 
     /// <summary>A drag with the left button from one point of a window to another (its units), through ten moves between,
-    /// as a person's hand goes.</summary>
-    public static void Drag(TopLevel window, Point from, Point to) => Dragged(window, from, to, MouseButton.Left, RawInputModifiers.None);
+    /// as a person's hand goes, apart from a click there before it, as a click is (so never the second press of a double
+    /// click).</summary>
+    public static void Drag(TopLevel window, Point from, Point to) => Drag(window, from, to, MouseButton.Left, RawInputModifiers.None);
 
-    /// <summary>A drag as <see cref="Drag(TopLevel, Point, Point)"/> makes one, with another button or modifiers held, and
-    /// apart from a click there before it, as a click is (so never the second press of a double click).</summary>
+    /// <summary>A drag as <see cref="Drag(TopLevel, Point, Point)"/> makes one, with another button or modifiers held.</summary>
     public static void Drag(TopLevel window, Point from, Point to, MouseButton button, RawInputModifiers modifiers)
     {
         Apart(window, from);
@@ -1605,7 +1605,7 @@ public static class Ui
             MouseButton.Right => RawInputModifiers.RightMouseButton,
             _ => throw new ArgumentOutOfRangeException(nameof(button), button, "a drag is made with the left, middle or right button"),
         };
-        window.MouseDown(from, button, modifiers);
+        string? doubled = Pressed(window, from, button, modifiers) is > 1 and int count ? Doubled(window, from, count, "A drag's press") : null;
         for (int step = 1; step <= 10; step++)
         {
             if (drawn)
@@ -1620,6 +1620,10 @@ public static class Ui
         }
         window.MouseUp(to, button, modifiers);
         Clicked(window, from);
+        if (doubled is not null)
+        {
+            throw new InvalidOperationException(doubled);
+        }
         Settle();
     }
 
@@ -1631,18 +1635,7 @@ public static class Ui
             point = Beside(top, control, point);
         }
         Apart(top, point);
-        int count = 0;
-        EventHandler<PointerPressedEventArgs> pressed = (_, e) => count = e.ClickCount;
-        top.AddHandler(InputElement.PointerPressedEvent, pressed, Avalonia.Interactivity.RoutingStrategies.Tunnel, handledEventsToo: true);
-        try
-        {
-            top.MouseDown(point, button, modifiers);
-        }
-        finally
-        {
-            top.RemoveHandler(InputElement.PointerPressedEvent, pressed);
-        }
-        string? doubled = count > 1 ? Doubled(top, point, count) : null;
+        string? doubled = Pressed(top, point, button, modifiers) is > 1 and int count ? Doubled(top, point, count, "A click") : null;
         top.MouseUp(point, button, modifiers);
         Clicked(top, point);
         if (doubled is not null)
@@ -1655,15 +1648,33 @@ public static class Ui
         }
     }
 
-    /// <summary>What a click the platform took as the second of a double click (or later) says: where it and the window's
-    /// click before it went, how far apart in time, and the double-tap time and size the test waited by.</summary>
-    private static string Doubled(TopLevel top, Point point, int count)
+    /// <summary>Presses a mouse button at a point of a window, saying which click of a run the platform counted the press.</summary>
+    private static int Pressed(TopLevel top, Point point, MouseButton button, RawInputModifiers modifiers)
+    {
+        int count = 0;
+        EventHandler<PointerPressedEventArgs> pressed = (_, e) => count = e.ClickCount;
+        top.AddHandler(InputElement.PointerPressedEvent, pressed, Avalonia.Interactivity.RoutingStrategies.Tunnel, handledEventsToo: true);
+        try
+        {
+            top.MouseDown(point, button, modifiers);
+        }
+        finally
+        {
+            top.RemoveHandler(InputElement.PointerPressedEvent, pressed);
+        }
+        return count;
+    }
+
+    /// <summary>What a press (<paramref name="what"/>: a click, a drag's) the platform took as the second of a double click
+    /// (or later) says: where it and the window's click before it went, how far apart in time, and the double-tap time and
+    /// size the test waited by.</summary>
+    private static string Doubled(TopLevel top, Point point, int count, string what)
     {
         Avalonia.Platform.IPlatformSettings? platform = Application.Current?.PlatformSettings;
         string before = LastClicks.TryGetValue(top, out StrongBox<(Point Point, DateTime At)>? last)
             ? $"at {last.Value.Point}, {(DateTime.UtcNow - last.Value.At).TotalMilliseconds:0} ms before"
             : "none Ui made";
-        return $"A click at {point} in {top.GetType().Name} was taken as click {count} of a run, not a click of its own; the window's click before it was {before}. "
+        return $"{what} at {point} in {top.GetType().Name} was taken as click {count} of a run, not a click of its own; the window's click before it was {before}. "
             + $"The double-tap time and size waited by: {platform?.GetDoubleTapTime(PointerType.Mouse).TotalMilliseconds.ToString() ?? "none (500)"} ms, {platform?.GetDoubleTapSize(PointerType.Mouse).ToString() ?? "none (4, 4)"}";
     }
 
