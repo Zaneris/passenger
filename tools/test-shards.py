@@ -3,15 +3,18 @@
 
 A lane is a part of the suite: the gate's [Gate] tests and the unit tests, the report lane's every other test, or all.
 `list` writes a lane as `dotnet test --list-tests` prints it, listing again while a project names no test or says
-discovery failed. `split` deals its classes by their seconds on that system in TestTimes.json (else a guess), the
-longest first, each to the shard with the fewest so far, so every shard of a commit deals the same. `check` fails unless
-every test is in exactly one shard's settings; `cover`, after the shards, unless each succeeded and every test has
-exactly one result. `failures` tables a lane's failed tests. `update` (`just test-times RUN`) rewrites TestTimes.json.
+discovery failed. `split` deals its classes by their seconds on that system in TestTimes.json (else the others'), the
+longest first, each to the shard ending soonest by its kinds of class, so every shard of a commit deals the same. `check`
+fails unless every test is in exactly one shard's settings. `test` runs a shard's hand, keeping its console as it comes;
+`unreached` then names the classes it did not run whole. `cover`, after the shards, fails unless each succeeded and every
+test has one result. `failures` tables a lane's failed tests and unreached classes. `update` rewrites TestTimes.json.
 """
 import argparse
+import glob
 import importlib.util
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -36,6 +39,30 @@ GATE = "Gate"
 DISCOVERY_FAILED = "Exception discovering tests"
 # How much sooner the slowest shard must end, dealt from a run's own times, before the summary asks for a new deal.
 WORTH_DEALING_AGAIN = 120
+# A hung test is stopped and named after this, rather than holding its run or its shard's job to the job's own limit.
+HANG = "10m"
+# What a shard's dotnet test of a project wrote to its console, kept beside its results as it came (`test`), so a shard
+# stopped partway leaves what it ran.
+CONSOLE_LOG = "console-{}.log"
+# The classes a shard did not run whole, one a line: the class, its tests that ran and its tests listed (`unreached`).
+UNREACHED = "unreached.txt"
+# A test's result as the console logger writes it, with how long it took: "  Passed NAME [1 m 3 s]".
+RESULT_LINE = re.compile(r"^  (?P<outcome>Passed|Failed|Skipped) (?P<name>Passenger\.(?:Unit)?Tests\.\S.*?)"
+                         r"(?: \[(?P<took>[^\]]*)\])?\s*$")
+
+# Classes that share something of the machine beyond the run's own folder, which `just test` runs in one process together
+# beside the Alone classes' phase: the container engine (its virtual machine's processors, image builds, Compose), by what
+# a class's source calls.
+TOGETHER = {
+    "the container engine": re.compile(r"\bDocker\.(?:WhyNot|Run|Ask|Said|ComposeUp|Container|State|VolumeExists|Stopped"
+                                       r"|TakenDown|NoneLeft|Images?)\b|\bContainerPrograms\b|\bStandInEngine\b"
+                                       r"|\bContainerEngine\.Shared\b"),
+}
+# The collections that run beside the window tests' own in a process (Collections.cs).
+BESIDE = ("Collection(DebugSession.Collection)", "Collection(Beside.Name)")
+DECLARATION = re.compile(r"^(?P<attributes>(?:\[[^\n]*\][ \t]*\r?\n)*)(?:(?:public|internal|sealed|static|partial|abstract"
+                         r"|file)\s+)*class\s+(?P<name>\w+)(?P<rest>[^\n{]*)", re.M)
+NAMESPACE = re.compile(r"^namespace\s+(?P<name>[\w.]+)\s*;", re.M)
 
 # test-times.py's .trx reading, loaded by its file since -I keeps this folder off the path, leaving no __pycache__.
 sys.dont_write_bytecode = True
@@ -203,6 +230,74 @@ def owner(name):
     return whole[len(PREFIX):] if whole.startswith(PREFIX) else whole
 
 
+def bases_of(listed):
+    """The simple names of the types a class's base list names, never a generic argument's (a class fixture's type)."""
+    while (plain := re.sub(r"<[^<>]*>", "", listed)) != listed:
+        listed = plain
+    return [part.strip().rsplit(".", 1)[-1] for part in listed.split(",") if re.match(r"\s*[A-Z]", part)]
+
+
+def sources():
+    """Each top-level class the test projects declare, by its name as a listing's tests give it (owner): whether its
+    declaration says it is Alone or runs beside the window tests (a unit test always does), its project, its bases'
+    simple names, and the TOGETHER groups its source names."""
+    declared = {}
+    unit = os.path.join(UNIT_PROJECT, "")
+    for path in glob.glob(os.path.join(PROJECT, "**", "*.cs"), recursive=True) + \
+            glob.glob(os.path.join(UNIT_PROJECT, "**", "*.cs"), recursive=True):
+        if os.sep + "obj" + os.sep in path or os.sep + "bin" + os.sep in path:
+            continue
+        with open(path, encoding="utf-8-sig") as file:
+            text = file.read()
+        namespace = NAMESPACE.search(text)
+        within = namespace["name"] + "." if namespace else ""
+        found = list(DECLARATION.finditer(text))
+        for index, declaration in enumerate(found):
+            body = text[declaration.start():found[index + 1].start() if index + 1 < len(found) else len(text)]
+            whole = within + declaration["name"]
+            name = whole[len(PREFIX):] if whole.startswith(PREFIX) else whole
+            rest = declaration["rest"]
+            bases = bases_of(rest.split(":", 1)[1]) if ":" in rest else []
+            declared[name] = {
+                "alone": "Collection(Alone.Name)" in declaration["attributes"],
+                "beside": path.startswith(unit) or any(collection in declaration["attributes"] for collection in BESIDE),
+                "project": UNIT_PROJECT if path.startswith(unit) else PROJECT,
+                "bases": [base for base in bases if base != declaration["name"]],
+                "together": [group for group, pattern in TOGETHER.items() if pattern.search(body)],
+            }
+    return declared
+
+
+def declares(name, declared, key, unknown):
+    """Whether a class's declaration, or a base class's in its own project, says what key names; unknown for one the
+    sources do not show."""
+    entry = declared.get(name)
+    if entry is None:
+        return unknown
+    by_simple = {full.rsplit(".", 1)[-1]: value for full, value in declared.items() if value["project"] == entry["project"]}
+    seen = set()
+    while entry is not None:
+        if entry[key]:
+            return True
+        base = next((b for b in entry["bases"] if b in by_simple and b not in seen), None)
+        if base is None:
+            return False
+        seen.add(base)
+        entry = by_simple[base]
+    return False
+
+
+def alone(name, declared):
+    """Whether a class runs in the Alone collection: its own declaration says so, or a base class's does. One the sources
+    do not show (a test class nested in another) runs alone, which is never wrong, only slower."""
+    return declares(name, declared, "alone", True)
+
+
+def beside(name, declared):
+    """Whether a class runs beside the window tests in its process (DebugSession.Collection, Beside)."""
+    return declares(name, declared, "beside", False)
+
+
 def load(path, default):
     if not os.path.exists(path):
         return default
@@ -220,11 +315,32 @@ def shares(chosen, whole):
     return {name: min(1.0, count / whole[name]) if whole.get(name) else 1.0 for name, count in chosen.items()}
 
 
+def pace(times, system, other):
+    """How long a class takes on this system for each of its seconds on the other: the median of the two systems' ratios
+    over the classes both have, of a second or more on each."""
+    mine, theirs = times.get(system, {}), times.get(other, {})
+    ratios = sorted(mine[c] / theirs[c] for c in mine.keys() & theirs.keys() if mine[c] >= 1 and theirs[c] >= 1)
+    return ratios[len(ratios) // 2] if ratios else 1.0
+
+
 def weights(classes, system, times, share):
-    """Each class's seconds on this system (else a guess) times its share of its tests, and the classes guessed."""
+    """Each class's seconds on this system times its share of its tests, and the classes borrowed and guessed: one
+    TestTimes.json lacks here (it only ever ran in shards that ran out of time) by its seconds on the other systems, each
+    at this system's pace, else by a guess."""
     known = times.get(system, {})
-    guessed = sorted(c for c in classes if c not in known)
-    return {c: (known[c] if c in known else guess(c)) * share.get(c, 1.0) for c in classes}, guessed
+    paces = {other: pace(times, system, other) for other in SYSTEMS if other != system}
+    seconds, borrowed, guessed = {}, [], []
+    for name in classes:
+        elsewhere = [paces[other] * times[other][name] for other in paces if name in times.get(other, {})]
+        if name in known:
+            seconds[name] = known[name]
+        elif elsewhere:
+            seconds[name] = sum(elsewhere) / len(elsewhere)
+            borrowed.append(name)
+        else:
+            seconds[name] = guess(name)
+            guessed.append(name)
+    return {name: spent * share.get(name, 1.0) for name, spent in seconds.items()}, borrowed, guessed
 
 
 def deal(weighed, count):
@@ -236,6 +352,53 @@ def deal(weighed, count):
         hands[lightest].append(name)
         totals[lightest] += weighed[name]
     return hands, totals
+
+
+# How a class runs in a shard's dotnet test (Collections.cs): one after another with the other window classes, at once
+# with them (DebugSession.Collection, Beside), alone once they have all ended, or in the unit tests' own dotnet test after.
+KINDS = ("window", "beside", "alone", "unit")
+
+
+def kinds(classes):
+    """Each class's kind, by its declaration in the checkout."""
+    declared = sources()
+    return {name: "unit" if name.startswith(UNIT_PREFIX) else "alone" if alone(name, declared)
+            else "beside" if beside(name, declared) else "window" for name in classes}
+
+
+def hand_time(parts):
+    """A shard's seconds from its kinds' seconds: its window classes', or its Beside ones' run at once with them where
+    longer, then its Alone classes', then its unit tests'."""
+    return max(parts["window"], parts["beside"]) + parts["alone"] + parts["unit"]
+
+
+def deal_shards(weighed, kind, count):
+    """The classes in count hands so the slowest ends soonest (hand_time), and each hand's seconds by kind: those that
+    run one after another the heaviest first, each to the hand that ends soonest so far (the first of equals); then the
+    Beside classes, the heaviest first, each where it lengthens a hand least, of those the one with the fewest Beside
+    seconds, so no hand's window tests share their machine with all of them."""
+    hands = [[] for _ in range(count)]
+    parts = [dict.fromkeys(KINDS, 0.0) for _ in range(count)]
+    ordered = sorted(weighed, key=lambda c: (-weighed[c], c))
+    for name in (c for c in ordered if kind[c] != "beside"):
+        soonest = min(range(count), key=lambda i: (hand_time(parts[i]), i))
+        hands[soonest].append(name)
+        parts[soonest][kind[name]] += weighed[name]
+    for name in (c for c in ordered if kind[c] == "beside"):
+        def after(i):
+            return hand_time({**parts[i], "beside": parts[i]["beside"] + weighed[name]})
+        least = min(range(count), key=lambda i: (after(i) - hand_time(parts[i]), parts[i]["beside"], i))
+        hands[least].append(name)
+        parts[least]["beside"] += weighed[name]
+    return hands, parts
+
+
+def parts_of(seconds, kind):
+    """A hand's seconds by kind, from its classes' seconds."""
+    parts = dict.fromkeys(KINDS, 0.0)
+    for name, spent in seconds.items():
+        parts[kind[name]] += spent
+    return parts
 
 
 def run_settings(classes, *filters):
@@ -259,22 +422,27 @@ def split(arguments):
         sys.exit(f"test-shards: {len(classes)} classes cannot be dealt to {arguments.of} shards")
     counts = Counter(owner(test) for test in tests)
     whole = Counter(owner(test) for test in listing(arguments.whole)) if arguments.whole else counts
-    seconds, guessed = weights(classes, arguments.system, load(arguments.times, {}), shares(counts, whole))
-    hands, totals = deal(seconds, arguments.of)
+    seconds, borrowed, guessed = weights(classes, arguments.system, load(arguments.times, {}), shares(counts, whole))
+    kind = kinds(classes)
+    hands, parts = deal_shards(seconds, kind, arguments.of)
     lane = "" if arguments.lane == "all" else f" of the {arguments.lane} lane"
     shared = "" if arguments.lane == "all" else "; a class with tests outside the lane by its share of them"
     print(f"{len(tests)} tests in {len(classes)} classes{lane}, dealt to {arguments.of} shards by their seconds on "
-          f"{arguments.system} (TestTimes.json; a class it lacks by a guess{shared})")
-    for number, (hand, total) in enumerate(zip(hands, totals), 1):
-        print(f"\nShard {number}: {len(hand)} classes, {sum(counts[c] for c in hand)} tests, "
-              f"about {total / 60:.1f} minutes")
+          f"{arguments.system} (TestTimes.json; a class it lacks by the other systems', else a guess{shared}), a shard "
+          "taking its window classes' time or its Beside classes' beside them, then its Alone classes'")
+    for number, (hand, part) in enumerate(zip(hands, parts), 1):
+        print(f"\nShard {number}: {len(hand)} classes, {sum(counts[c] for c in hand)} tests, about "
+              f"{hand_time(part) / 60:.1f} minutes (" + ", ".join(f"{part[k] / 60:.1f} {k}" for k in KINDS if part[k])
+              + ")")
         for name in hand:
-            print(f"  {name:<44} {seconds[name]:>7.1f}"
+            print(f"  {name:<44} {seconds[name]:>7.1f}" + (f"  ({kind[name]})" if kind[name] in ("beside", "alone") else "")
                   + (f"  ({counts[name]} of its {whole[name]} tests)" if counts[name] < whole[name] else "")
+                  + ("  (the other systems' time: TestTimes.json has none here)" if name in borrowed else "")
                   + ("  (a guess: TestTimes.json has none)" if name in guessed else ""))
-    if guessed:
-        say("notice", "Test times", f"TestTimes.json has no {arguments.system} seconds for {', '.join(guessed)}, so "
-            "each is dealt by a guess: just test-times RUN brings them in from a run")
+    if borrowed or guessed:
+        say("notice", "Test times", f"TestTimes.json has no {arguments.system} seconds for "
+            f"{', '.join(sorted(borrowed + guessed))}, so each is dealt by the other systems' or a guess: just test-times "
+            "RUN brings them in from a run")
     if arguments.out:
         os.makedirs(arguments.out, exist_ok=True)
         for number, hand in enumerate(hands, 1):
@@ -283,6 +451,9 @@ def split(arguments):
             with open(os.path.join(arguments.out, f"shard-{number}.projects"), "w", encoding="utf-8",
                       newline="\n") as file:
                 file.write("".join(shown(project) + "\n" for project in hand_projects(hand)))
+            with open(os.path.join(arguments.out, f"shard-{number}.classes"), "w", encoding="utf-8",
+                      newline="\n") as file:
+                file.write("".join(name + "\n" for name in sorted(hand)))
     return 0
 
 
@@ -305,6 +476,105 @@ def check(arguments):
         print(f"Each of the suite's {sum(suite.values())} tests is in exactly one of the {len(listed)} shards' filters "
               f"({', '.join(str(sum(hand.values())) for hand in listed)})")
     return 1 if problems else 0
+
+
+def run_shard(arguments):
+    """A shard's tests: a dotnet test of each project its hand holds, one after another, with its settings; what each
+    writes to its console goes to the log and, line by line as it comes, to CONSOLE_LOG beside the results, which a
+    shard stopped before its .trx is written leaves. The last failing exit code, else 0."""
+    results = os.path.abspath(arguments.results)
+    base = os.path.join(results, "shards", f"shard-{arguments.shard}")
+    code = 0
+    for project in (line.strip() for line in read(base + ".projects").splitlines() if line.strip()):
+        leaf = os.path.basename(project)
+        command = ["dotnet", "test", project, "--no-build", "--settings", base + ".runsettings", "--results-directory",
+                   results, "--logger", f"trx;LogFileName={leaf}.trx", "--logger", "console;verbosity=normal",
+                   "--blame-hang-timeout", HANG, "--blame-hang-dump-type", "none"]
+        sys.stdout.flush()
+        with open(os.path.join(results, CONSOLE_LOG.format(leaf)), "wb") as log:
+            process = subprocess.Popen(command, cwd=ROOT, stdout=subprocess.PIPE)
+            for printed in iter(process.stdout.readline, b""):
+                sys.stdout.buffer.write(printed)
+                sys.stdout.buffer.flush()
+                log.write(printed)
+                log.flush()
+            if process.wait() != 0:
+                code = process.returncode
+    return code
+
+
+def took(text):
+    """Seconds from the console logger's time for a test: "1 m 3 s", "250 ms", "< 1 ms"."""
+    units = {"h": 3600, "m": 60, "s": 1, "ms": 0.001}
+    return sum(int(number) * units[unit] for number, unit in re.findall(r"(\d+) (ms|h|m|s)\b", text or ""))
+
+
+def console_results(path):
+    """The results a dotnet test's console log holds, as trx.results gives a .trx's: (class, display name, seconds,
+    outcome), a skipped test's NotExecuted."""
+    found = []
+    for line in read(path).splitlines():
+        if result := RESULT_LINE.match(line):
+            found.append((owner(result["name"]), result["name"], took(result["took"]),
+                          "NotExecuted" if result["outcome"] == "Skipped" else result["outcome"]))
+    return found
+
+
+def shard_results(folder, projects):
+    """A shard's results: each project's .trx where its dotnet test ended, else what its console log holds."""
+    found = []
+    for project in (line.strip() for line in read(projects).splitlines() if line.strip()):
+        leaf = os.path.basename(project)
+        if os.path.exists(os.path.join(folder, leaf + ".trx")):
+            found += trx.results(os.path.join(folder, leaf + ".trx"))[1]
+        elif os.path.exists(os.path.join(folder, CONSOLE_LOG.format(leaf))):
+            found += console_results(os.path.join(folder, CONSOLE_LOG.format(leaf)))
+    return found
+
+
+def not_reached(folder):
+    """The classes a shard's results folder says it did not run whole: (class, tests that ran, tests listed)."""
+    path = os.path.join(folder, UNREACHED)
+    if not os.path.exists(path):
+        return []
+    return [(name, int(ran), int(listed)) for name, ran, listed in
+            (line.split("\t") for line in read(path).splitlines() if line.strip())]
+
+
+def said_short(entry):
+    name, ran, listed = entry
+    return name if ran == 0 else f"{name} ({ran} of its {listed} tests)"
+
+
+def unreached(arguments):
+    """After a shard's tests, however they ended: each class of its hand with fewer results than the lane's listing has
+    tests, a line each in the log ("  Unreached CLASS"), in the job's summary and an annotation, and in UNREACHED for the
+    summary job; none when every class ran whole."""
+    results = arguments.results
+    base = os.path.join(results, "shards", f"shard-{arguments.shard}")
+    suite = os.path.join(results, "suite.txt")
+    if not os.path.exists(base + ".classes") or not os.path.exists(suite) or unlisted(read(suite)) is not None:
+        print("test-shards: the shard left no deal or no listing of the lane, so nothing says which classes it should "
+              "have run")
+        return 0
+    hand = [line.strip() for line in read(base + ".classes").splitlines() if line.strip()]
+    listed = Counter(owner(test) for test in tests_in(read(suite)))
+    ran = Counter(name for name, _, _, _ in shard_results(results, base + ".projects"))
+    missed = [(name, ran[name], listed[name]) for name in hand if ran[name] < listed[name]]
+    with open(os.path.join(results, UNREACHED), "w", encoding="utf-8", newline="\n") as file:
+        file.write("".join(f"{name}\t{count}\t{whole}\n" for name, count, whole in missed))
+    if not missed:
+        print(f"Each of the shard's {len(hand)} classes ran each of its tests")
+        return 0
+    heading = (f"{arguments.label or f'Shard {arguments.shard}'} did not reach {len(missed)} of its {len(hand)} classes, "
+               "so they ran in part or not at all")
+    print(heading)
+    for name, count, whole in missed:
+        print(f"  Unreached {full_name(name)} ({count} of its {whole} tests ran)")
+    say("warning" if arguments.lane == "report" else "error", "Classes not reached",
+        f"{heading}: {', '.join(said_short(entry) for entry in missed)}")
+    summarize([f"### {heading}", ""] + [f"- `{name}`: {count} of its {whole} tests ran" for name, count, whole in missed])
+    return 0
 
 
 def shards(results, system, lane):
@@ -341,6 +611,10 @@ def cover(arguments):
                             "uploading them")
         elif states[number].get("status") != "success":
             problems.append(f"Shard {number} on {where} ended in {states[number].get('status')}: its job's log says why")
+    for number, folder in sorted(folders.items()):
+        if missed := not_reached(folder):
+            problems.append(f"Shard {number} on {where} did not reach {len(missed)} of its classes, so they ran in part or "
+                            f"not at all: {', '.join(said_short(entry) for entry in missed)}")
 
     suite = None
     for number, folder in sorted(folders.items()):
@@ -358,10 +632,12 @@ def cover(arguments):
     hands = {}
     for number, folder in folders.items():
         hand = hands.setdefault(number, {})
-        for file in trx.trx_files([folder]):
-            for test_class, name, spent, _ in trx.results(file)[1]:
-                ran[key(name)] += 1
-                hand[test_class] = hand.get(test_class, 0.0) + spent
+        projects = os.path.join(folder, "shards", f"shard-{number}.projects")
+        found = (shard_results(folder, projects) if os.path.exists(projects)
+                 else [result for file in trx.trx_files([folder]) for result in trx.results(file)[1]])
+        for test_class, name, spent, _ in found:
+            ran[key(name)] += 1
+            hand[test_class] = hand.get(test_class, 0.0) + spent
     if suite is None:
         problems.append(f"No shard on {where} left its listing of the suite, so nothing says which tests should have "
                         "run")
@@ -383,11 +659,13 @@ def cover(arguments):
         lines.append(f"Each of the suite's {sum(suite.values())} tests ran in exactly one of {len(folders)} shards.")
         print(lines[-1])
         seconds = {name: spent for hand in hands.values() for name, spent in hand.items()}
-        slowest = max(sum(hand.values()) for hand in hands.values())
-        _, totals = deal(seconds, len(hands))
-        if slowest - max(totals) >= WORTH_DEALING_AGAIN:
+        kind = kinds(seconds)
+        slowest = max(hand_time(parts_of(hand, kind)) for hand in hands.values())
+        _, parts = deal_shards(seconds, kind, len(hands))
+        dealt = max(hand_time(part) for part in parts)
+        if slowest - dealt >= WORTH_DEALING_AGAIN:
             message = (f"Dealt from this run's own times, the slowest shard on {where} would take "
-                       f"{max(totals) / 60:.1f} minutes of tests rather than {slowest / 60:.1f}: `just test-times "
+                       f"{dealt / 60:.1f} minutes of tests rather than {slowest / 60:.1f}: `just test-times "
                        f"{os.environ.get('GITHUB_RUN_ID', 'RUN')}` writes them to TestTimes.json, to commit")
             say("warning", "Test shards out of balance", message)
             lines += ["", message]
@@ -419,6 +697,20 @@ def failures(arguments):
         lines += ["| Test | System | Message |", "|---|---|---|"]
         lines += [f"| {markdown(name)} | {system}{'' if outcome == 'Failed' else f' ({outcome})'} | {markdown(first)} |"
                   for name, system, outcome, first in rows]
+    missed = []
+    for folder, _, files in sorted(os.walk(arguments.results)) if os.path.isdir(arguments.results) else []:
+        if "shard.json" in files:
+            state = load(os.path.join(folder, "shard.json"), {})
+            missed += [(name, state.get("system", "?"), state.get("shard"), count, whole)
+                       for name, count, whole in not_reached(folder)]
+    if missed:
+        said = f"Classes the shards did not reach, so their tests ran in part or not at all: {len(missed)}"
+        print(said)
+        for name, system, shard, count, whole in sorted(missed):
+            print(f"  Unreached {full_name(name)} on {system}, shard {shard} ({count} of its {whole} tests ran)")
+        lines += ["", f"### {said}", "", "| Class | System | Tests that ran |", "|---|---|---:|"]
+        lines += [f"| {markdown(name)} | {system}, shard {shard} | {count} of {whole} |"
+                  for name, system, shard, count, whole in sorted(missed)]
     summarize(lines)
     return 0
 
@@ -459,6 +751,35 @@ def held_whole(entry):
     return {name for name, count in ran.items() if count >= whole[name] > 0}
 
 
+def logged_results(folder):
+    """The results of each shard under a folder whose dotnet test of a project left its console log and no .trx (it was
+    stopped partway), as (its log, results), only those of the classes that ran every test the shard's listing has."""
+    found = []
+    for path, _, files in sorted(os.walk(folder)):
+        if "shard.json" not in files or "suite.txt" not in files or unlisted(read(os.path.join(path, "suite.txt"))):
+            continue
+        listed = Counter(owner(test) for test in tests_in(read(os.path.join(path, "suite.txt"))))
+        before, after = CONSOLE_LOG.split("{}")
+        for name in sorted(files):
+            if not (name.startswith(before) and name.endswith(after)) or name[len(before):-len(after)] + ".trx" in files:
+                continue
+            results = console_results(os.path.join(path, name))
+            ran = Counter(test_class for test_class, _, _, _ in results)
+            found.append((os.path.join(path, name), [result for result in results if ran[result[0]] >= listed[result[0]]]))
+    return found
+
+
+def ran_whole(name, ran, entry):
+    """Whether a run's results on a system hold a class whole: a result for each of its tests in the listing of every
+    lane, so a class whose report shard ran out of time is no measure by its gate tests alone; by its lanes where the
+    run left no such listing."""
+    every = entry["listed"].get("all") if entry else None
+    if every:
+        return ran[name] >= every.get(name, 0)
+    whole = held_whole(entry)
+    return whole is None or name in whole
+
+
 def update(arguments):
     """TestTimes.json from runs' results: each class's seconds on each system, the mean of the runs that ran it whole."""
     old = load(arguments.times, {})
@@ -470,22 +791,24 @@ def update(arguments):
         if folder is None:
             sys.exit(f"test-shards: {source} is neither a folder of results nor a run's number")
         listed = listings(folder)
-        files = trx.trx_files([folder])
-        if not files:
-            sys.exit(f"test-shards: {folder} holds no .trx results")
+        found = [(file, trx.results(file)[1]) for file in trx.trx_files([folder])] + logged_results(folder)
+        if not found:
+            sys.exit(f"test-shards: {folder} holds no .trx results and no shard's console log")
         this = {}
-        for file in files:
+        ran = {}
+        for file, results in found:
             system, _ = trx.shard_of(file)
             if system not in SYSTEMS:
                 sys.exit(f"test-shards: nothing says which system {file} ran on: no shard.json beside it, and no "
                          "test-results-SYSTEM folder over it")
-            whole = held_whole(listed.get(system))
-            for test_class, _, seconds, _ in trx.results(file)[1]:
-                if whole is not None and test_class not in whole:
-                    partly.setdefault(system, set()).add(test_class)
-                    continue
+            for test_class, _, seconds, _ in results:
                 this.setdefault(system, {}).setdefault(test_class, 0.0)
                 this[system][test_class] += seconds
+                ran.setdefault(system, Counter())[test_class] += 1
+        for system, classes in this.items():
+            for test_class in [name for name in classes if not ran_whole(name, ran[system], listed.get(system))]:
+                partly.setdefault(system, set()).add(test_class)
+                del classes[test_class]
         for system, entry in listed.items():
             suites.setdefault(system, set()).update(name for counts in entry["listed"].values() for name in counts)
         for system, classes in this.items():
@@ -538,6 +861,19 @@ def main():
     command.add_argument("suite", help="what dotnet test --list-tests printed for the lane")
     command.add_argument("listed", nargs="+", help="what it printed with each shard's settings")
     command.set_defaults(run=check)
+
+    command = commands.add_parser("test", help="run a shard's tests, keeping what each dotnet test writes beside them")
+    command.add_argument("results", help="the shard's results folder, with the deal's shards/ in it")
+    command.add_argument("--shard", type=int, required=True)
+    command.set_defaults(run=run_shard)
+
+    command = commands.add_parser("unreached", help="name the classes of a shard's hand it did not run whole")
+    command.add_argument("results", help="the shard's results folder, with the deal's shards/ and the lane's suite.txt")
+    command.add_argument("--shard", type=int, required=True)
+    command.add_argument("--lane", choices=LANES, default="all", help="the lane, whose shards' misses are warnings in "
+                         "the report lane and errors otherwise")
+    command.add_argument("--label", help="which shard, for the summary: Report, macOS (arm64), shard 3 of 4")
+    command.set_defaults(run=unreached)
 
     command = commands.add_parser("cover", help="fail unless every shard succeeded and every test has exactly one result")
     command.add_argument("results", help="the downloaded artifacts of the system's shards, each with its shard.json")

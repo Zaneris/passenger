@@ -214,9 +214,10 @@ jobs:
           done
           "$python" -I tools/test-shards.py check "$results/suite.txt" "$results"/shards/listed-*.txt
 
-      # Each project the hand holds tests of, one after another. A test hung for 10 minutes is stopped and named, rather
-      # than holding the job to its timeout, which only ends a shard stuck past that. Each class's time goes in the job's
-      # summary, held to no limit. The failed tests are listed last, as annotations and in the job's summary.
+      # Each project the hand holds tests of, one after another, what each prints kept beside the results as it comes, so
+      # a shard stopped partway leaves what it ran. A test hung for 10 minutes is stopped and named, rather than holding
+      # the job to its timeout, which only ends a shard stuck past that. Each class's time goes in the job's summary, held
+      # to no limit. The failed tests are listed last, as annotations and in the job's summary.
       - name: Test
         shell: pwsh
         timeout-minutes: 60
@@ -227,14 +228,9 @@ jobs:
           PASSENGER_TEST_TIME_SCALE: ${{ matrix.time_scale }}
         run: |
           $results = 'artifacts/test-results'
-          $code = 0
-          foreach ($project in Get-Content "$results/shards/shard-$env:SHARD.projects") {
-            dotnet test $project --no-build --settings "$results/shards/shard-$env:SHARD.runsettings" `
-              --results-directory $results --logger "trx;LogFileName=$(Split-Path -Leaf $project).trx" `
-              --logger "console;verbosity=normal" --blame-hang-timeout 10m --blame-hang-dump-type none
-            if ($LASTEXITCODE -ne 0) { $code = $LASTEXITCODE }
-          }
           $python = if ($IsWindows) { 'python' } else { 'python3' }
+          & $python -I tools/test-shards.py test $results --shard $env:SHARD
+          $code = $LASTEXITCODE
           & $python -I tools/test-times.py $results --shard $env:SHARD --label $env:LABEL
           $timed = $LASTEXITCODE
           if ($code -eq 0) { exit $timed }
@@ -263,6 +259,18 @@ jobs:
           }
           $summary | Add-Content -Path $env:GITHUB_STEP_SUMMARY -Encoding utf8
           exit $code
+
+      # The classes of the hand the shard did not run whole (its Test step ran out of time, or a test host ended), each a
+      # line "  Unreached CLASS" in the log, in the job's summary and in unreached.txt for the summary jobs.
+      - name: Name the classes the shard did not reach
+        if: ${{ !cancelled() }}
+        env:
+          SHARD: ${{ matrix.shard }}
+          LABEL: ${{ matrix.lane == 'gate' && 'Gate' || 'Report' }}, ${{ matrix.name }}, shard ${{ matrix.shard }} of ${{ matrix.lane == 'gate' && matrix.gate_shards || matrix.report_shards }}
+        run: |
+          python=python3
+          [ "$RUNNER_OS" != Windows ] || python=python
+          "$python" -I tools/test-shards.py unreached artifacts/test-results --shard "$SHARD" --lane "$LANE" --label "$LABEL"
 
       # Which shard this was and how its job ended, beside its results: the summary job's to read.
       - name: Say how the shard ended

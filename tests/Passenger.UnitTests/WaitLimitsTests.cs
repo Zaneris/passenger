@@ -4,7 +4,7 @@ namespace Passenger.UnitTests;
 
 /// <summary>A unit test waits for what it checks with no limit of its own: a wait held to a time fails on a machine busy
 /// enough, where the code was right, and one that waits for good is named by the run's own limit on a test
-/// (<c>--blame-hang-timeout</c> on CI, test-run.py's HANG).</summary>
+/// (<c>--blame-hang-timeout</c>, test-shards.py's HANG, on CI and in <c>just test</c>).</summary>
 public sealed class WaitLimitsTests
 {
     /// <summary>The waits a time may be given to, by their names: a task's, an event's, a thread's, a queue's, a process's, a
