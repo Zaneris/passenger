@@ -97,7 +97,7 @@ public sealed partial class BuildRunController
         {
             start.Started();
         }
-        parts.Say(refused is null ? running : $"Running {name} without Hot Reload: {refused}");
+        Running(work, refused is null ? running : $"Running {name} without Hot Reload: {refused}");
     }
 
     /// <summary>Debugs an app installed on a device: Passenger's relay put in it, the app started there by its shell (whose

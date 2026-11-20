@@ -2145,6 +2145,43 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
         }
     }
 
+    /// <summary>A configuration started again ends what runs of it first, whichever of Run and Debug started it: Run of the
+    /// one debugged ends the debugged program and its session, Debug of the one Run runs ends that run, one copy running
+    /// after each.</summary>
+    [AvaloniaFact]
+    public void Run_of_a_debugged_configuration_and_Debug_of_a_run_one_each_end_it_first_leaving_one_copy()
+    {
+        string started = Path.Combine(TestFolders.Create("debuggee-"), "program.pid");
+        MainWindow window = OpenSleeper(started, languageServer: false);
+        List<OwnProcess> programs = [];
+        try
+        {
+            StartDebugging(window);
+            int debugged = Running(window, started);
+            programs.Add(OwnProcess.Of(debugged));
+            File.Delete(started);
+
+            Ui.Launched(window, window.RunAsync(), "Run of the configuration debugged");
+            int run = Processes.WrittenId(started, "Run's program to start");
+            programs.Add(OwnProcess.Of(run));
+            Assert.True(Processes.Gone(debugged), $"Run of the configuration debugged left the debugged program running beside its own: {Processes.Describe(debugged)}");
+            Assert.False(window.Debugger.IsDebugging, "Run of the configuration debugged left its session going");
+            File.Delete(started);
+
+            StartDebugging(window);
+            int again = Running(window, started);
+            programs.Add(OwnProcess.Of(again));
+            Assert.True(Processes.Gone(run), $"Debug of the configuration Run runs left Run's program running beside the debugged one: {Processes.Describe(run)}");
+            Assert.False(window.Runner.IsRunning, "Debug of the configuration Run runs left Run's program holding the Run console");
+        }
+        finally
+        {
+            Ui.Run(window, AppActions.Stop);
+            programs.ForEach(program => program.Kill());
+            window.Close();
+        }
+    }
+
     [AvaloniaFact]
     public void Closing_the_window_while_debugging_leaves_no_program_debugger_or_language_server_running()
     {

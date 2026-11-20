@@ -58,7 +58,7 @@ public sealed partial class BuildRunController
         Dictionary<string, string> variables = new(chosen.Environment);
         if (chosen.Console == ConsoleKind.Terminal)
         {
-            return await RunInTerminalAsync(chosen.Name, start, variables, running);
+            return await RunInTerminalAsync(chosen.Name, start, variables, running, work);
         }
         parts.Views.Run.Clear();
         ShowInRun(null);
@@ -69,7 +69,7 @@ public sealed partial class BuildRunController
         {
             parts.Views.Run.Append($"{note}\n");
         }
-        parts.Say(running);
+        Running(work, running);
         return Started(await session.Runner.StartAsync(start, variables));
     }
 }

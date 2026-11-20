@@ -256,8 +256,8 @@ public sealed class ProfilerCommands
         folder.Profiled is { Run.HasExited: false } program ? $"{program.Name} goes on after its snapshot: Kill it first, or Attach Profiler to profile it again" : null;
 
     /// <summary>Why Profile cannot start a program now: the Run console it writes to is another configuration's program's,
-    /// running or about to, whose output it would clear and whose typing it would take. The program Run started for the
-    /// configuration profiled is ended first (<see cref="BuildRunController.EndOwnRunAsync"/>).</summary>
+    /// running or about to, whose output it would clear and whose typing it would take. What runs of the configuration
+    /// profiled is ended first (<see cref="BuildRunController.EndRunningAsync"/>).</summary>
     private string? RunConsoleTaken(ProjectSession folder, RunConfiguration? chosen) =>
         parts.Actions.Work.Of(AppActions.RunProgram) is { } running ? ActionWork.Busy(running)
         : folder.Runner.IsRunning && (chosen is null || !parts.Builds().RunsOwnProgram(chosen.Name)) ? "Run's program uses the Run console: stop it first, or Attach Profiler to profile it"
@@ -286,7 +286,7 @@ public sealed class ProfilerCommands
         {
             return await LaunchInContainersAsync(profiled, chosen, work);
         }
-        if (await builds.EndOwnRunAsync(chosen, work, "profile") is { } left)
+        if (await builds.EndRunningAsync(chosen, work, "profile") is { } left)
         {
             return left;
         }

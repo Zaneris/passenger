@@ -3,6 +3,7 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
+using Passenger.App;
 using Passenger.App.Mcp;
 using Passenger.Core;
 using Passenger.Lsp;
@@ -304,6 +305,46 @@ public sealed class McpDebuggingTests : McpRig, IClassFixture<RestoredFolders>
         {
             program.Kill();
         }
+    }
+
+    /// <summary>An agent's Run and Debug, through ide_action, of a configuration that runs, by Run or under the debugger, each
+    /// end the program running first and start it again, one copy left running each time, and each answers with what it came
+    /// to, the new start, never the end of the program it took the place of.</summary>
+    [Fact]
+    public async Task An_agents_run_and_debug_of_a_configuration_that_runs_end_it_first_and_answer_with_the_new_start()
+    {
+        await TakeFolderAsync();
+        string runs = Path.Combine(Folder, "program.pids");
+        Write("Program.cs", $"File.AppendAllText(@\"{runs}\", Environment.ProcessId + \"\\n\");\nThread.Sleep(Timeout.Infinite);\n");
+        await using McpClient client = await Start(["--mcp", Folder], languageServer: false);
+        List<OwnProcess> started = [];
+        try
+        {
+            string[] actions = [AppActions.RunProgram, AppActions.RunProgram, AppActions.Debug, AppActions.Debug, AppActions.RunProgram, AppActions.Debug];
+            for (int i = 0; i < actions.Length; i++)
+            {
+                string answer = (await Call(client, McpTools.IdeAction, new() { ["action"] = actions[i] })).GetString()!;
+                string asked = i == 0 ? actions[i] : $"{actions[i]} after {actions[i - 1]}";
+                Assert.True(answer == (actions[i] == AppActions.Debug ? "Debugging Sum" : "Running Sum"), $"The agent's {asked} answered: {answer}{Said()}");
+                int[] ids = [];
+                Assert.True(await Waiting.UntilAsync(() => (ids = Ids(runs)).Length == i + 1, TimeSpan.FromMinutes(1), Cancel, TimeSpan.FromMilliseconds(100)),
+                    $"After the agent's {asked}, {Plural.Of(ids.Length, "program")} had started, not {i + 1}{Said()}");
+                started.Add(OwnProcess.Of(ids[^1]));
+                foreach (int ended in ids[..^1])
+                {
+                    Assert.True(Processes.Gone(ended), $"The agent's {asked} left an earlier copy running beside the new one: {Processes.Describe(ended)}");
+                }
+            }
+        }
+        finally
+        {
+            await Call(client, McpTools.Stop);
+            started.ForEach(program => program.Kill());
+        }
+
+        static int[] Ids(string file) => File.Exists(file)
+            ? [.. Ui.Shared(file).Split('\n', StringSplitOptions.RemoveEmptyEntries).Select(int.Parse)]
+            : [];
     }
 
     /// <summary>An agent's breakpoint given a column in a lambda written on its statement's line is the lambda's, at its body:

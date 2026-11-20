@@ -1194,12 +1194,10 @@ public sealed partial class BuildRunController
             return await inEditor(chosen, false, cancellation) is { } refused ? Said(refused) : null;
         }
         // The Run console's program is one at a time; an AppHost of another configuration runs beside it.
-        if (await TakeConsoleAsync(chosen) is { } taken)
+        if (WhyNotConsole(chosen) is { } taken)
         {
             return Said(taken);
         }
-        // Copies of it run beside in the Terminal window end too, as its launch again ends the last.
-        await EndCopyRunsAsync(chosen.Name);
         aspireEnd = null;
         // The Run console is one program's: Profile's writes there too, from its start to its end.
         if (parts.Work.Of(AppActions.Profile) is { } profiling)
@@ -1210,26 +1208,33 @@ public sealed partial class BuildRunController
         {
             return Said($"{profiled.Name}, which Profile started, uses the Run console: Kill it first");
         }
+        // Begun before what runs of it ends, so an agent's Run hears this start through to its hand-over.
         if (parts.Work.Begin(AppActions.RunProgram, $"Working out how to run {chosen.Name}…") is not { } work)
         {
             return Said(ActionWork.Busy(parts.Work.Of(AppActions.RunProgram)!));
+        }
+        using (work)
+        {
+            return await RunAsync(chosen, arguments, hotReload, sceneOwn, work);
+        }
+    }
+
+    private async Task<string?> RunAsync(RunConfiguration chosen, string? arguments, bool? hotReload, bool sceneOwn, Working work)
+    {
+        if (await EndRunningAsync(chosen, work, "run") is { } left)
+        {
+            return Said(left);
         }
         // What the Run window's last program said it needs is its own: this start is heard afresh where it uses the console.
         HearNeeds(null, chosen.Name, debugged: false);
         if (chosen.IsScript)
         {
-            using (work)
-            {
-                return await RunScriptAsync(chosen, arguments, work);
-            }
+            return await RunScriptAsync(chosen, arguments, work);
         }
         if (chosen.IsContainer)
         {
-            using (work)
-            {
-                // With Hot Reload through the debugger in each service: dotnet watch would need the SDK in its image.
-                return await RunContainersAsync(chosen, work, hotReload ?? parts.Settings().HotReload ? RunStart.HotReload : RunStart.Run);
-            }
+            // With Hot Reload through the debugger in each service: dotnet watch would need the SDK in its image.
+            return await RunContainersAsync(chosen, work, hotReload ?? parts.Settings().HotReload ? RunStart.HotReload : RunStart.Run);
         }
         using IDisposable held = BackgroundWork.Scope();
         // The edits made since its build saved the files, followed for a Godot game's or a XAML app's Hot Reload.
@@ -1372,7 +1377,7 @@ public sealed partial class BuildRunController
                 string program = GodotConsole.Program(plan, plan.Program);
                 // What the run says of itself goes with its status, the terminal's tab being the program's own.
                 string? refused = await RunInTerminalAsync(chosen.Name, watched ? DotnetStart(Watch(plan), plan.WorkingDirectory) : ChildProcesses.Command(program, plan.Arguments, plan.WorkingDirectory), variables,
-                    string.Join("; ", [running, .. plan.Notes]));
+                    string.Join("; ", [running, .. plan.Notes]), work);
                 if (refused is null && session.InTerminal is { } inTerminal)
                 {
                     parts.OpenBrowser(plan, inTerminal.Ended);
@@ -1422,7 +1427,7 @@ public sealed partial class BuildRunController
                 parts.Trimmed?.Invoke(trimmed, chosen.Name);
             }
             ShowInRun(dashboard);
-            parts.Say(running);
+            Running(work, running);
             WatchBindings(inspected, parts.Views.Run);
             HearNeeds(parts.Views.Run, chosen.Name, debugged: false);
             if (watched)
@@ -1465,7 +1470,6 @@ public sealed partial class BuildRunController
             edits?.Dispose();
             handlers?.Dispose();
             dashboard?.Dispose();
-            work.Dispose();
         }
     }
 
@@ -1764,43 +1768,34 @@ public sealed partial class BuildRunController
         }, cancellation: work.Stopping, edits: edits, handlers: handlers, app: app, builds: builds);
         if (refused is null)
         {
-            parts.Say(running);
+            Running(work, running);
             return;
         }
         // Held at its start, it would wait for good for a debugger that is not coming.
         await HeldStart.LetGoAsync(processId);
-        parts.Say($"Running {name} without Hot Reload: {refused}");
+        Running(work, $"Running {name} without Hot Reload: {refused}");
     }
 
-    /// <summary>The Run console (or the terminal's tab) for a start of a configuration: free; the same configuration's program
-    /// there ended first and its end waited for, as a start of a configuration that runs ends it and starts again; or a
-    /// container run there, which a container start ends itself (one container run at a time). Null once it is the start's,
-    /// else why not: another configuration's program has it, named.</summary>
-    private async Task<string?> TakeConsoleAsync(RunConfiguration chosen)
-    {
-        if (!RunsInConsole || chosen.IsContainer && session.ContainerRun is { IsStopped: false })
-        {
-            return null;
-        }
-        if (session.ContainerRun is { IsStopped: false } || ran != chosen.Name)
-        {
-            return AlreadyRunning();
-        }
-        await EndInConsoleAsync();
-        return session.IsEnded ? Refusals.SolutionClosed : null;
-    }
+    /// <summary>Why a start of a configuration cannot have the Run console (or the terminal's tab): another configuration's
+    /// program has it, named. Null where it is free, where the configuration's own program has it (which <see
+    /// cref="EndRunningAsync"/> ends), or where a container run has it that a container start ends itself (one container run
+    /// at a time).</summary>
+    private string? WhyNotConsole(RunConfiguration chosen) =>
+        !RunsInConsole || chosen.IsContainer && session.ContainerRun is { IsStopped: false } || RunsOwnProgram(chosen.Name) ? null : AlreadyRunning();
 
     /// <summary>Why a start that needs the Run console cannot have it: what has it, by its configuration's name.</summary>
     private string AlreadyRunning() => $"Already running: {(ran.Length > 0 ? ran : "a program")} has the Run console; stop it first";
 
     /// <summary>Whether the program Run started for this configuration has the Run console (or the terminal's tab), which a
-    /// start of it under the debugger or the profiler ends first.</summary>
+    /// start of it ends first (<see cref="EndRunningAsync"/>).</summary>
     public bool RunsOwnProgram(string name) => RunsInConsole && ran == name && session.ContainerRun is not { IsStopped: false };
 
-    /// <summary>Ends the program Run started for a configuration that Debug or Profile (<paramref name="doing"/>) is to start
-    /// in its place, and the copies of it Run runs: done once their ends have landed. Null to go on, else why not (the
-    /// folder left meanwhile).</summary>
-    public async Task<string?> EndOwnRunAsync(RunConfiguration chosen, Working work, string doing)
+    /// <summary>The one rule for a start of a configuration that runs, by Run, Debug or Profile (<paramref name="doing"/>),
+    /// whichever of them started it: what runs of it ends first, before its build, which on Windows cannot write over a
+    /// program running: the copies of it Run runs, Run's program of it (a Run start under way other than <paramref
+    /// name="work"/> stopped too) and the programs Debug launched of it, done once their ends have landed. Null to go on,
+    /// else why not (the folder left meanwhile, or a debugged program the debugger cannot let go).</summary>
+    public async Task<string?> EndRunningAsync(RunConfiguration chosen, Working work, string doing)
     {
         if (copyRuns.Any(c => c.Configuration == chosen.Name))
         {
@@ -1811,13 +1806,35 @@ public sealed partial class BuildRunController
                 return Refusals.SolutionClosed;
             }
         }
-        if (!RunsOwnProgram(chosen.Name))
+        if (RunsOwnProgram(chosen.Name))
         {
-            return null;
+            work.Say($"Ending {chosen.Name}'s run to {doing} it…");
+            if (parts.Work.Of(AppActions.RunProgram) is { } starting && starting != work)
+            {
+                starting.Cancel();
+            }
+            Task<int> ended = session.RunProgram.Ended;
+            session.RunProgram.Stop();
+            await ended;
+            if (session.IsEnded)
+            {
+                return Refusals.SolutionClosed;
+            }
         }
-        work.Say($"Ending {chosen.Name}'s run to {doing} it…");
-        await EndInConsoleAsync();
-        return session.IsEnded ? Refusals.SolutionClosed : null;
+        List<DebugTab> debugging = [.. session.Debug.CopiesOf(chosen.Name).Select(c => c.Tab).Where(t => debugged.ContainsKey(t.Name))];
+        if (debugging.Count > 0)
+        {
+            work.Say($"Ending the debugging of {chosen.Name} to {doing} it…");
+            if (await session.Debug.EndAsync(debugging) is { } kept)
+            {
+                return kept;
+            }
+            if (session.IsEnded)
+            {
+                return Refusals.SolutionClosed;
+            }
+        }
+        return null;
     }
 
     /// <summary>Ends what the Run console (or the terminal's tab) has, done once its end has landed.</summary>
@@ -1858,7 +1875,7 @@ public sealed partial class BuildRunController
 
     /// <summary>Runs a plan's program in a tab of the Terminal window named for its configuration, the keys going to it; Stop
     /// ends it, and its end shows in the status bar. Null once it runs, else why it could not.</summary>
-    private async Task<string?> RunInTerminalAsync(string name, ProcessStartInfo? start, IReadOnlyDictionary<string, string> variables, string running)
+    private async Task<string?> RunInTerminalAsync(string name, ProcessStartInfo? start, IReadOnlyDictionary<string, string> variables, string running, Working work)
     {
         if (start is null)
         {
@@ -1877,7 +1894,7 @@ public sealed partial class BuildRunController
         run.StartedBy = Mcp.AgentCall.Current?.Connection;
         session.InTerminal = run;
         RunningChanged?.Invoke(this, EventArgs.Empty);
-        parts.Say(running);
+        Running(work, running);
         IdeErrors.Observe(Ended());
         return null;
 
@@ -2090,6 +2107,14 @@ public sealed partial class BuildRunController
             parts.Say(problem);
         }
         return problem;
+    }
+
+    /// <summary>Says what a start of Run's came to as its program runs, with or without Hot Reload and why, and tells it as
+    /// its work's end (<see cref="Working.Tell"/>), which an agent's Run answers.</summary>
+    private void Running(Working work, string said)
+    {
+        parts.Say(said);
+        work.Tell(true, said);
     }
 
     public async Task<string?> RunAspireAsync(RunConfiguration chosen, string? arguments, RunStart mode, CancellationToken cancellation = default)
@@ -2418,7 +2443,10 @@ public sealed partial class BuildRunController
         }
         using (work)
         {
-            return await DebugAsync(chosen, arguments, work);
+            string? refused = await DebugAsync(chosen, arguments, work);
+            // What it came to, which an agent's Debug answers: the window says it itself.
+            ActionWork.Tell(refused is null, refused ?? $"Debugging {chosen.Name}");
+            return refused;
         }
     }
 
@@ -2433,7 +2461,7 @@ public sealed partial class BuildRunController
         profileTabs.Remove(chosen.Name);
         HearNeeds(null, chosen.Name, debugged: true);
         using IDisposable held = BackgroundWork.Scope();
-        if (await EndOwnRunAsync(chosen, work, "debug") is { } left)
+        if (await EndRunningAsync(chosen, work, "debug") is { } left)
         {
             return left;
         }
@@ -2453,8 +2481,6 @@ public sealed partial class BuildRunController
             }
             dashboard = plan.Dashboard;
             int count = GameCopies.Count(chosen, plan);
-            // An earlier launch's copies past this one's count end with it, as the rest end in their tabs' turn.
-            await Task.WhenAll([.. session.Debug.CopiesOf(chosen.Name).Where(c => c.Copy > count).Select(c => session.Debug.StopAsync(c.Tab))]);
             string? refused = count == 1 ? await LaunchDebuggedAsync(chosen, plan, work, edits) : await LaunchCopiesAsync(chosen, plan, Enumerable.Range(1, count), arguments, work, edits);
             if (refused is null && session.Debug.Tabs.FirstOrDefault(t => t.Name == plan.Name && t.Plan?.Dashboard == dashboard) is { } tab)
             {

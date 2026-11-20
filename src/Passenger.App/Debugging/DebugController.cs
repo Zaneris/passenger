@@ -1073,10 +1073,10 @@ public sealed class DebugController : IDisposable
         // A program debugged again takes its last session's place, which is let go first.
         if (tab is null && view.Sessions.FirstOrDefault(t => t.Name == name && t.IsLive) is { } again)
         {
-            if (again.Session is { Attached: true } held && HotReloadChanged(held))
+            if (WhyNotEnded(again) is { } kept)
             {
                 edits?.Dispose();
-                return Unopened(LetsNoDebuggerGo(name));
+                return Unopened(kept);
             }
             await EndAsync(again);
             if (disposed)
@@ -1741,6 +1741,23 @@ public sealed class DebugController : IDisposable
         }
         await session.StopAsync();
     }
+
+    /// <summary>Ends the programs of these tabs as a start in their place does (<see cref="EndAsync(DebugTab)"/>), done once
+    /// each has ended: null, else why one cannot be (<see cref="WhyNotEnded"/>), none ended then.</summary>
+    public async Task<string?> EndAsync(IReadOnlyList<DebugTab> tabs)
+    {
+        UiThread.Check();
+        if (tabs.Select(WhyNotEnded).OfType<string>().FirstOrDefault() is { } kept)
+        {
+            return kept;
+        }
+        await Task.WhenAll([.. tabs.Where(t => t.IsLive).Select(EndAsync)]);
+        return null;
+    }
+
+    /// <summary>Why a tab's program is not ended for a start in its place: the debugger attached to it and Hot Reload changed
+    /// it, so it can neither be let go (<see cref="LetsNoDebuggerGo"/>) nor be ended unasked.</summary>
+    private string? WhyNotEnded(DebugTab tab) => tab.IsLive && tab.Session is { Attached: true } held && HotReloadChanged(held) ? LetsNoDebuggerGo(tab.Name) : null;
 
     /// <summary>Ends a tab's program as another session takes its place, or its tab closes, or the folder is left: one the
     /// debugger attached to is let go, running on, as Detach does, unless Hot Reload changed it, whose runtime would then
