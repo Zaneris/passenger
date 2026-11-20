@@ -30,6 +30,13 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 
 ## 2026-11-20
 
+- `BuildRunTests`' `With_hot_reload_edits_saved_one_after_another_each_reach_the_program_…`, CI 44763221323 (Windows
+  report shard 2): "dotnet watch should have applied each of the 4 edits once", its lines holding "dotnet watch : said
+  1". **The test read wrong**: dotnet watch writes "dotnet watch : " and its words to stderr in two writes, and the
+  program's stdout line came between them in the Run window's text; each save was heard once and applied, and the
+  runner's lines, which the status bar reads, held them whole (2 of 6 loaded rounds on the Windows VM). The test reads
+  the runner's lines now (552d81075, #2039).
+
 - `WindowArrangementTests`' `Unit_Tests_dragged_onto_the_editors_…` and `Editor_tabs_set_down_a_side_…`, CI 44777681924
   and 44792503264 (all three systems): a drag that changed nothing. **A race in the test**: each pressed to drag a tab
   where it had just clicked it, and `Ui.Drag`'s left-button form never waited apart from that click. Once settles
