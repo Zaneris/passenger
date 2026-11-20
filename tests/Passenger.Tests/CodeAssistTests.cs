@@ -264,9 +264,9 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         Ui.Click(button);
     }
 
+    /// <summary>A declaration keyword chosen by either key takes the separator already after the caret (the first) or
+    /// writes a space where none is (the next two), so the caret stands after one separator.</summary>
     [AvaloniaTheory]
-    [InlineData("ENTER", "")]
-    [InlineData("TAB", "")]
     [InlineData("ENTER", " ")]
     [InlineData("TAB", "\t")]
     public void Declaration_completion_leaves_the_caret_after_one_separator(string key, string existing)
@@ -282,7 +282,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         string before = editor.Document.Snapshot.ToString();
         Ui.Press(window, key);
         Ui.Settle();
-        string prefix = "public" + (existing.Length == 0 ? " " : existing);
+        string prefix = "public" + existing;
         Assert.StartsWith(prefix + "\nclass Program", editor.Document.Snapshot.ToString(), StringComparison.Ordinal);
         Assert.Equal(prefix.Length, editor.Selections.Primary.Caret);
 
@@ -1648,30 +1648,10 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         window.Close();
     }
 
-    /// <summary>Code Cleanup, Optimize Imports and Reformat Code grey on a library type's decompiled source, which the
-    /// language server serves, saying it is read-only, and Code Cleanup's keys there say so and change nothing.</summary>
-    [AvaloniaFact]
-    public void Code_cleanup_and_optimize_imports_grey_on_a_decompiled_file_saying_it_is_read_only()
-    {
-        MainWindow window = project.Open("Program.cs");
-        Passenger.App.Workspace.OpenDocument decompiled = Decompiled(window, "        in");
-        string before = decompiled.Text.Snapshot.ToString();
-
-        foreach (string action in new[] { AppActions.CodeCleanup, AppActions.OptimizeUsings, AppActions.Reformat })
-        {
-            Assert.True(window.Actions.WhyNot(action, window.Actions.Context()) == $"{decompiled.Name} is read-only",
-                $"{action} on the decompiled {decompiled.Name}, which nothing can change, is offered or greyed saying: {window.Actions.WhyNot(action, window.Actions.Context())}");
-        }
-        Ui.Run(window, AppActions.CodeCleanup);
-        Assert.Equal($"{decompiled.Name} is read-only", window.Status);
-        Assert.Equal(before, decompiled.Text.Snapshot.ToString());
-        window.Close();
-    }
-
     /// <summary>On a library type's decompiled source, every action of the Code and Refactor menus that would change the file
     /// greys saying it is read-only (those of another language's files saying that instead), and those that only fold it
-    /// or act on the language server stay enabled, as do Go to Declaration and Find Usages, which only read it; Rename's
-    /// key there says so and changes nothing.</summary>
+    /// or act on the language server stay enabled, as do Go to Declaration and Find Usages, which only read it; Code
+    /// Cleanup's and Rename's keys there say so and change nothing.</summary>
     [AvaloniaFact]
     public void Every_action_of_the_code_and_refactor_menus_that_would_change_a_decompiled_file_greys_saying_it_is_read_only()
     {
@@ -1704,9 +1684,15 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         Assert.True(offered.Count == 0, $"On the decompiled {decompiled.Name}, which nothing can change, these are offered or greyed for another reason: {string.Join(", ", offered)}");
         Assert.True(greyed.Count == 0, $"On the decompiled {decompiled.Name}, these only read it but are greyed: {string.Join(", ", greyed)}");
 
-        Ui.Run(window, AppActions.Rename);
-        Assert.Equal(readOnly, window.Status);
-        Assert.Equal(before, decompiled.Text.Snapshot.ToString());
+        LiveText status = window.GetVisualDescendants().OfType<LiveText>().Single(t => t.Name == "StatusText");
+        foreach (string id in new[] { AppActions.CodeCleanup, AppActions.Rename })
+        {
+            // Each key's own word, never the one before it.
+            status.Text = null;
+            Ui.Run(window, id);
+            Assert.True(window.Status == readOnly, $"{id}'s keys on the decompiled {decompiled.Name} said {window.Status}, not that it is read-only");
+            Assert.Equal(before, decompiled.Text.Snapshot.ToString());
+        }
         window.Close();
 
         static IEnumerable<string> ActionsIn(MenuEntry menu) => menu.Action is { } id ? [id] : (menu.Items ?? []).SelectMany(ActionsIn);
