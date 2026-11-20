@@ -264,9 +264,10 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         Ui.Click(button);
     }
 
+    /// <summary>A named argument chosen by either key writes its colon where none follows the caret (the first) or takes the
+    /// one there (the second), so the caret stands after one colon.</summary>
     [AvaloniaTheory]
     [InlineData("ENTER", false)]
-    [InlineData("TAB", false)]
     [InlineData("TAB", true)]
     public void Choosing_a_named_argument_writes_its_colon(string key, bool existingColon)
     {

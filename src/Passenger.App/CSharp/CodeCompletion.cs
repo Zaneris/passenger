@@ -857,11 +857,12 @@ internal sealed partial class CodeCompletion
             caret += tail.Length;
         }
         string insert = item.TextEdit?.NewText ?? item.TextEditText ?? item.InsertText ?? item.Label;
-        // Roslyn labels a named argument with its colon but can send only the name as its edit.
+        // Roslyn shows a named argument with its colon but can send only the name as its edit.
+        string shown = row.Label;
         if (end is null && lsp?.LanguageId == LanguageIds.CSharp && item.Kind == CompletionItemKind.Variable
-            && item.Label.EndsWith(':') && item.Label.AsSpan(0, item.Label.Length - 1).SequenceEqual(insert))
+            && shown.EndsWith(':') && shown.AsSpan(0, shown.Length - 1).SequenceEqual(insert))
         {
-            insert = item.Label;
+            insert = shown;
             if (caret < document.Snapshot.Length && document.Snapshot[caret] == ':')
             {
                 caret++;
