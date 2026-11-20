@@ -60,9 +60,13 @@ public sealed class XamlPreviewPane : DockPanel
     private double fit = 1;
     private Rect? outlined;
 
-    public XamlPreviewPane(XamlPreview preview)
+    /// <summary>The title of an action the pane's words offer (<see cref="XamlPreview.Offers"/>), by its id.</summary>
+    private readonly Func<string, string> titleOf;
+
+    public XamlPreviewPane(XamlPreview preview, Func<string, string> titleOf)
     {
         this.preview = preview;
+        this.titleOf = titleOf;
         status = new TextBlock { Classes = { StyleClasses.Muted }, FontSize = 11, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
         sizes = new ComboBox
         {
@@ -177,7 +181,7 @@ public sealed class XamlPreviewPane : DockPanel
     /// <summary>A MAUI page's screen, platform or theme was chosen; raised on the UI thread with what the preview now draws.</summary>
     public event EventHandler<MauiLook>? LookChosen;
 
-    /// <summary>The action the pane's words offer was asked for (Build for XAML Preview), by its id.</summary>
+    /// <summary>The action the pane's words offer was asked for (Build for XAML Preview, Rebuild Solution), by its id.</summary>
     public event EventHandler<string>? ActionRequested;
 
     /// <summary>An element of the file was clicked in the frame; raised on the UI thread.</summary>
@@ -368,7 +372,7 @@ public sealed class XamlPreviewPane : DockPanel
         marks.Height = preview.FrameSize.Height;
         edge.IsVisible = preview.Frame is not null;
         waiting.Text = preview.Status;
-        waiting.Offer(preview.WantsBuild ? AppActions.BuildForPreview : null, preview.WantsBuild ? BuildForPreviewTitle : null);
+        waiting.Offer(preview.Offers, preview.Offers is { } offered ? titleOf(offered) : null);
         waiting.IsVisible = preview.Frame is null;
         error.Text = preview.Error;
         errorBar.IsVisible = preview.Error is not null;

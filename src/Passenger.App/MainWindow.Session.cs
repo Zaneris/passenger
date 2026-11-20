@@ -108,6 +108,7 @@ public partial class MainWindow
         ShowFolder = ShowInFileManager,
         Trimmed = OfferWhole,
         NeedsTerminal = OfferTerminal,
+        OfferRebuild = OfferRebuild,
         LandFiles = LandFilesAsync,
         InGodotEditor = PlayInGodotEditorAsync,
         StopInGodotEditor = StopInGodotEditorAsync,

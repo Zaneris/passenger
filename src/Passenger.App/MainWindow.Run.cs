@@ -513,6 +513,14 @@ public partial class MainWindow
         }
     }
 
+    /// <summary>A build that needs rebuilding (its XAML never compiled): the Build window offers, over its output, Rebuild
+    /// Solution, saying why.</summary>
+    private void OfferRebuild(string said)
+    {
+        UiThread.Check();
+        BottomPanel.Build.ShowOffer(said, actions![AppActions.RebuildSolution]!.Title, () => Request(AppActions.RebuildSolution));
+    }
+
     /// <summary>Run, Debug or Profile in the Terminal: the configuration whose program said it needs a terminal set to run in
     /// one, kept with the folder as Edit Configurations keeps its Use external console, chosen, and started again through
     /// <paramref name="start"/>, Run's, Debug's or Profile's action, which stops the run it ends first.</summary>

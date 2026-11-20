@@ -4,6 +4,7 @@ using Passenger.Core;
 using Passenger.Text;
 using Passenger.Xaml;
 using Passenger.Xaml.Dialects;
+using Passenger.Xaml.Metadata;
 using Passenger.Xaml.Projects;
 using Passenger.Xaml.Syntax;
 
@@ -34,8 +35,8 @@ public sealed class XamlPreview : IDisposable
     /// <summary>Whether the last previewer ended by itself, so the next edit starts another.</summary>
     private bool lapsed;
 
-    /// <summary>A previewer that ended before its start handed it over, and what the pane says of its end.</summary>
-    private (IPreviewHost Host, string Words)? endedEarly;
+    /// <summary>A previewer that ended before its start handed it over, what the pane says of its end and the action it offers.</summary>
+    private (IPreviewHost Host, string Words, string? Offers)? endedEarly;
 
     /// <summary>Whether the previewer rests, ended while the preview is not shown, to start as it is shown again.</summary>
     private bool resting;
@@ -194,17 +195,17 @@ public sealed class XamlPreview : IDisposable
     private void Adopt(IPreviewHost? started)
     {
         host = started;
-        (IPreviewHost Host, string Words)? early = endedEarly;
+        (IPreviewHost Host, string Words, string? Offers)? early = endedEarly;
         endedEarly = null;
         if (started is not null && early is { } end && end.Host == started)
         {
-            Lapsed(started, end.Words);
+            Lapsed(started, end.Words, end.Offers);
         }
     }
 
-    /// <summary>A previewer ended by itself: let go of, the pane saying how, so the next edit or change of the project
-    /// starts another.</summary>
-    internal void Lapsed(IPreviewHost ended, string words)
+    /// <summary>A previewer ended by itself: let go of, the pane saying how and offering the action given, so the next edit
+    /// or change of the project starts another.</summary>
+    internal void Lapsed(IPreviewHost ended, string words, string? offers = null)
     {
         if (disposed)
         {
@@ -212,12 +213,12 @@ public sealed class XamlPreview : IDisposable
         }
         if (host != ended)
         {
-            endedEarly = (ended, words);
+            endedEarly = (ended, words, offers);
             return;
         }
         Stop();
         lapsed = true;
-        Say(words);
+        Say(words, offers);
     }
 
     /// <summary>The scale the previewer is asked to draw at: the pane's window's, times the share of its design's size the
@@ -445,11 +446,12 @@ public sealed class XamlPreview : IDisposable
         }
     }
 
-    /// <summary>Says what the preview is doing, or why it shows nothing.</summary>
-    internal void Say(string status)
+    /// <summary>Says what the preview is doing, or why it shows nothing, and the action that would give it a build to draw,
+    /// which the pane offers (<see cref="Offers"/>).</summary>
+    internal void Say(string status, string? offers = null)
     {
         Status = status;
-        WantsBuild = false;
+        Offers = offers;
         Tell();
     }
 
@@ -468,17 +470,18 @@ public sealed class XamlPreview : IDisposable
 
     /// <summary>Says the project has no build to draw (<see cref="Unbuilt(ProjectInputs)"/>), which Build for XAML Preview makes;
     /// of a library, that the program running it has none (<paramref name="programs"/>, the first of which that builds).</summary>
-    internal void SayUnbuilt(ProjectInputs inputs, IReadOnlyList<string>? programs = null)
-    {
+    internal void SayUnbuilt(ProjectInputs inputs, IReadOnlyList<string>? programs = null) =>
         Say(programs is [{ } program, ..]
             ? $"Build {Path.GetFileNameWithoutExtension(program)}, which runs {Path.GetFileNameWithoutExtension(inputs.ProjectPath)}, to preview its XAML: the previewer draws it in that program's last build"
-            : Unbuilt(inputs));
-        WantsBuild = true;
-        Tell();
-    }
+            : Unbuilt(inputs), AppActions.BuildForPreview);
+
+    /// <summary>The action, by its id, that would give the preview a build to draw, which the pane offers under what it says:
+    /// Build for XAML Preview where the project has none, Rebuild Solution where its build's XAML was never compiled; null
+    /// for none.</summary>
+    public string? Offers { get; private set; }
 
     /// <summary>Whether what it says is that the project has no build to draw, which Build for XAML Preview makes.</summary>
-    public bool WantsBuild { get; private set; }
+    public bool WantsBuild => Offers == AppActions.BuildForPreview;
 
     internal void Tell() => Changed?.Invoke(this, EventArgs.Empty);
 
@@ -636,14 +639,39 @@ public sealed class XamlPreview : IDisposable
         {
             string last;
             string all;
+            string? thrown;
             lock (said)
             {
                 last = said.Last ?? "it said nothing";
                 all = said.Kept.Count == 0 ? last : string.Join(" | ", said.Kept);
+                thrown = said.Thrown;
             }
             string how = ExitCodes.Said(exitCode);
             IdeErrors.Write($"The {previewer} previewer of {Path.GetFileName(preview.Document.Document.Path)} ended with {how}: {all}");
-            preview.Lapsed(host, $"The previewer ended with {how}: {last}");
+            string words = $"The previewer ended with {how}: {last}";
+            if (thrown?.Contains(UncompiledXaml.RuntimeRefusal, StringComparison.Ordinal) == true)
+            {
+                IdeErrors.Observe(UncompiledAsync(host, words));
+                return;
+            }
+            preview.Lapsed(host, words);
+        }
+
+        /// <summary>A previewer Avalonia's runtime ended for want of a class's compiled XAML: where the build it ran holds
+        /// assemblies whose XAML was never compiled, looked for off the window's thread, the pane says so, offering Rebuild
+        /// Solution, which compiles it; else how the previewer ended.</summary>
+        private async Task UncompiledAsync(IPreviewHost host, string words)
+        {
+            string folder = Path.GetDirectoryName(host.Build.Assembly)!;
+            IReadOnlyList<string> uncompiled = await BackgroundWork.Run(() => UncompiledXaml.AssembliesIn(folder));
+            if (uncompiled.Count > 0)
+            {
+                preview.Lapsed(host, Refusals.XamlUncompiled(uncompiled), AppActions.RebuildSolution);
+            }
+            else
+            {
+                preview.Lapsed(host, words);
+            }
         }
     }
 }

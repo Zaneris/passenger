@@ -337,6 +337,11 @@ public sealed record ProjectModel(
     /// its <see cref="OutputType"/> is then Library, turned from the Exe the project gives.</summary>
     public bool IsAndroidApp => string.Equals(Property(CarriedProperties.AndroidApplication), "true", StringComparison.OrdinalIgnoreCase);
 
+    /// <summary>Whether Avalonia's XAML compiler compiles its XAML into its assembly, as its evaluation says
+    /// (<see cref="CarriedProperties.EnableAvaloniaXamlCompilation"/>): an Avalonia project that does not turn it off.</summary>
+    public bool CompilesAvaloniaXaml =>
+        Property(CarriedProperties.EnableAvaloniaXamlCompilation) is { Length: > 0 } compiles && !compiles.Equals("false", StringComparison.OrdinalIgnoreCase);
+
     /// <summary>Whether it is an Azure Functions app (.NET isolated worker), as its evaluation says
     /// (<see cref="CarriedProperties.AzureFunctionsVersion"/>): a program Azure Functions Core Tools' func runs, never alone.</summary>
     public bool IsFunctionsApp => IsRunnable && Property(CarriedProperties.AzureFunctionsVersion) is { Length: > 0 };

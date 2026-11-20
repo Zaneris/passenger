@@ -143,20 +143,12 @@ public sealed class AssemblyTypes
     /// and the entry naming them, never the rest (a font library's fonts are among them).</summary>
     private IReadOnlyList<string> ReadClassXamlFiles(Stream file)
     {
-        if (!reader.IsAssembly || pe.PEHeaders.CorHeader is not { } cor || !pe.PEHeaders.TryGetDirectoryOffset(cor.ResourcesDirectory, out int resources))
+        if (AvaloniaResourceIndex.At(pe, reader) is not { } resources)
         {
             return [];
         }
-        foreach (ManifestResourceHandle handle in reader.ManifestResources)
-        {
-            ManifestResource resource = reader.GetManifestResource(handle);
-            if (resource.Implementation.IsNil && reader.StringComparer.Equals(resource.Name, "!AvaloniaResources"))
-            {
-                file.Position = resources + resource.Offset;
-                return XamlClassFiles(file);
-            }
-        }
-        return [];
+        file.Position = resources;
+        return XamlClassFiles(file);
     }
 
     /// <summary>The paths of the XAML compiled into classes, from Avalonia's resources (the length the assembly gives
@@ -166,35 +158,18 @@ public sealed class AssemblyTypes
     {
         try
         {
-            using BinaryReader read = new(resources, System.Text.Encoding.UTF8, leaveOpen: true);
-            long length = read.ReadUInt32();
-            long start = resources.Position;
-            int indexSize = read.ReadInt32();
-            if (indexSize < 8 || indexSize > length - 4 || read.ReadInt32() != 2)
+            if (AvaloniaResourceIndex.Read(resources) is not { } index
+                || index.Entries.FirstOrDefault(e => e.Path == "/!AvaloniaResourceXamlInfo") is not { } entry || index.DataOf(entry, 16 << 20) is not { } data)
             {
                 return [];
             }
-            int count = read.ReadInt32();
-            for (int i = 0; i < count && resources.Position < start + 4 + indexSize; i++)
-            {
-                string path = read.ReadString();
-                int offset = read.ReadInt32();
-                int size = read.ReadInt32();
-                if (path != "/!AvaloniaResourceXamlInfo")
-                {
-                    continue;
-                }
-                if (offset < 0 || size is < 0 or > 16 << 20 || 4L + indexSize + offset + size > length)
-                {
-                    return [];
-                }
-                resources.Position = start + 4 + indexSize + offset;
-                using MemoryStream info = new(read.ReadBytes(size));
-                using System.Xml.XmlReader xml = System.Xml.XmlReader.Create(info, new System.Xml.XmlReaderSettings { DtdProcessing = System.Xml.DtdProcessing.Prohibit, XmlResolver = null });
-                return [.. System.Xml.Linq.XDocument.Load(xml).Descendants().Where(e => e.Name.LocalName == "Value" && e.Parent?.Name.LocalName == "KeyValueOfstringstring")
-                    .Select(e => e.Value).Where(v => v.StartsWith('/'))];
-            }
-            return [];
+            resources.Position = data;
+            byte[] bytes = new byte[entry.Size];
+            resources.ReadExactly(bytes);
+            using MemoryStream info = new(bytes);
+            using System.Xml.XmlReader xml = System.Xml.XmlReader.Create(info, new System.Xml.XmlReaderSettings { DtdProcessing = System.Xml.DtdProcessing.Prohibit, XmlResolver = null });
+            return [.. System.Xml.Linq.XDocument.Load(xml).Descendants().Where(e => e.Name.LocalName == "Value" && e.Parent?.Name.LocalName == "KeyValueOfstringstring")
+                .Select(e => e.Value).Where(v => v.StartsWith('/'))];
         }
         catch (Exception error) when (error is IOException or System.Xml.XmlException)
         {

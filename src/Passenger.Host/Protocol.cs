@@ -290,13 +290,17 @@ public static class CarriedProperties
     /// runnable project with one is a .NET isolated worker, which Azure Functions Core Tools' func runs.</summary>
     public const string AzureFunctionsVersion = "AzureFunctionsVersion";
 
+    /// <summary>Whether Avalonia's XAML compiler compiles the project's XAML into its assembly, which Avalonia's own build
+    /// files set true unless the project says false; none for a project without Avalonia.</summary>
+    public const string EnableAvaloniaXamlCompilation = "EnableAvaloniaXamlCompilation";
+
     public static readonly IReadOnlyList<string> Names =
     [
         EnableSdkContainerSupport, ContainerRepository, ContainerImageName, ContainerBaseImage, DockerfileFile, DockerfileContext,
         DockerfileFastModeStage, ContainerDevelopmentMode, DockerDefaultTargetOS, UserSecretsId, IsPublishable, ProjectAssetsFile,
         NuGetPackageRoot, NuGetPackageFolders, TargetPath, NuGetLockFilePath, RootNamespace, PublishProfileRootFolder, ManagePackageVersionsCentrally,
         DirectoryPackagesPropsPath, GodotProjectDir, GodotProjectDirBase64, UsingGodotNETSdk, StaticWebAssetBasePath, PackageId, AspireHostingSDKVersion,
-        AndroidApplication, Configurations, Platforms, AzureFunctionsVersion,
+        AndroidApplication, Configurations, Platforms, AzureFunctionsVersion, EnableAvaloniaXamlCompilation,
     ];
 }
 

@@ -3015,6 +3015,49 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
         window.Close();
     }
 
+    /// <summary>A build after one Avalonia's XAML compiler failed, nothing changed since, says the app's build has no compiled
+    /// XAML and offers Rebuild Solution over the Build window's output, where it said it succeeded (#2043): it took the
+    /// assembly the C# compiler wrote before that failure as up to date and copied it out. The preview of that build says so
+    /// in the same words, offering the rebuild, where it said its previewer ended with exit code 134; the XAML put right,
+    /// the rebuild it offers compiles it and the preview draws.</summary>
+    [AvaloniaFact]
+    public void A_build_after_a_failed_xaml_compile_says_its_xaml_was_never_compiled_and_the_preview_offers_the_rebuild()
+    {
+        string xaml = app.Write("MainWindow.axaml", Gallery.Window.Replace("<TextBlock Name=\"Title\"", "<TextBlock Name=\"Title\" Width=\"wide\"", StringComparison.Ordinal));
+        MainWindow window = app.Open(xaml, languageServer: false);
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        OpenDocument document = window.EditorArea.Active!;
+        Ui.Run(window, AppActions.Build);
+        Ui.Settle();
+        Assert.True(window.BottomPanel.Problems.Problems.Any(p => p.Code == "AVLN1000"),
+            $"The first build did not fail in Avalonia's XAML compiler: {window.Status}; {string.Join("; ", window.BottomPanel.Problems.Problems.Select(p => $"{p.Code}: {p.Message}"))}");
+
+        Ui.Run(window, AppActions.Build);
+        Ui.Settle();
+        string uncompiled = Refusals.XamlUncompiled(["Gallery"]);
+        Assert.True(window.Status == uncompiled, $"The build after it, nothing changed, said '{window.Status}', not that the app's XAML was never compiled");
+        Passenger.App.ToolWindows.OutputView console = window.BottomPanel.Build;
+        Assert.True(console.Offered == uncompiled && console.OfferLink == "Rebuild Solution",
+            $"The Build window offers {console.OfferLink ?? "nothing"} ('{console.Offered}'), not Rebuild Solution for the XAML never compiled");
+
+        Assert.True(window.Perform(AppActions.XamlPreview), $"XAML Preview could not run: {window.Status}");
+        Passenger.App.Xaml.XamlPreview preview = window.PreviewOf(document) ?? throw new InvalidOperationException("XAML Preview showed no preview beside the file");
+        Ui.WaitFor(() => preview.Status == uncompiled, () => $"the preview saying its build's XAML was never compiled, not '{preview.Status}'", TimeSpan.FromSeconds(60));
+        Avalonia.Controls.Button rebuild = window.PreviewPaneOf(document)!.GetVisualDescendants().OfType<Avalonia.Controls.Button>()
+            .SingleOrDefault(b => b.IsEffectivelyVisible && b.Content as string == "Rebuild Solution")
+            ?? throw new InvalidOperationException($"The preview offers no Rebuild Solution under '{preview.Status}' (it offers {preview.Offers ?? "nothing"})");
+
+        Replace(editor, " Width=\"wide\"", string.Empty);
+        Ui.Click(rebuild);
+        Ui.WaitFor(() => preview.Frame is not null && preview.Error is null, () => $"the preview drawing the rebuilt app, not '{preview.Status}' {preview.Error} (the status bar: {window.Status})",
+            TimeSpan.FromMinutes(2));
+        Assert.True(window.Status?.StartsWith("Rebuild succeeded", StringComparison.Ordinal) == true, $"The rebuild the preview offered said '{window.Status}'");
+        Assert.Null(console.Offered);
+        // XAML Preview is kept on for the next window, which the class's other tests open with it off.
+        Assert.True(window.Perform(AppActions.XamlPreview) && window.PreviewOf(document) is null, "XAML Preview stayed on");
+        window.Close();
+    }
+
     /// <summary>A previewer is sent nothing until it says its session started, after setting itself up: what it is told
     /// while it sets up it holds until it listens, then hands over in a race that may lose a message or give it out of order.
     /// A stand-in on the preview's port hears nothing as it connects, then the formats, the scale and the file once it says

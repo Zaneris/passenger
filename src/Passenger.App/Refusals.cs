@@ -452,6 +452,14 @@ public static class Refusals
     /// <summary>A build or publish asked for while another of the window's runs: one builds at a time.</summary>
     public const string Building = "Another build is running";
 
+    /// <summary>What a build whose projects' assemblies hold Avalonia XAML never compiled says (<see cref="Passenger.Xaml.Metadata.UncompiledXaml"/>),
+    /// and a preview whose previewer Avalonia's runtime ended for it: the build that last compiled their C# stopped before
+    /// Avalonia's XAML compiler finished, and each build since took that as up to date. A rebuild runs both compilers again.</summary>
+    public static string XamlUncompiled(IReadOnlyList<string> projects) =>
+        $"{(projects.Count == 1 ? $"{projects[0]}'s build has" : $"The builds of {Plural.Listed(projects)} have")} no compiled XAML: Avalonia's XAML compiler "
+        + $"did not finish in the build that last compiled {Plural.Agreeing(projects.Count, "its", "their")} C#, and the builds since took that as up to date. "
+        + "Rebuild to compile it";
+
     /// <summary>An AppHost the folder's session no longer runs, asked of by an agent's call or an Aspire tool: it stopped,
     /// or the folder was left.</summary>
     public const string AppHostNotOwned = "The AppHost is no longer owned by the workspace";

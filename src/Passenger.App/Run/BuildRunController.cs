@@ -62,6 +62,9 @@ public sealed record BuildRunParts(
     /// that console to start it in one.</summary>
     public Action<TerminalNeed, OutputView>? NeedsTerminal { get; init; }
 
+    /// <summary>A build that needs rebuilding, saying why: the window offers a rebuild over the Build window's output.</summary>
+    public Action<string>? OfferRebuild { get; init; }
+
     /// <summary>Lands the files a folder holds in another, as the window writes files (one command of Undo named by the
     /// title, for those in the open folder): the files written, or why not.</summary>
     public Func<string, string, string, Task<(IReadOnlyList<string> Written, string? Problem)>>? LandFiles { get; init; }
@@ -188,7 +191,7 @@ public sealed partial class BuildRunController
                 ReadProblem();
             }
             reading = next;
-            if (checking is not null && BuildOutput.Made(line) is { } assembly)
+            if (BuildOutput.Made(line) is { } assembly)
             {
                 made.Add(assembly);
             }
@@ -699,12 +702,43 @@ public sealed partial class BuildRunController
             : problems.FirstOrDefault(Run.SdkChosen.IsPlaced) is { } chose ? new BuildOutcome(BuildStatus.Failed, $"{noun} failed: {chose.Message.Split('\n')[0]}")
             : new BuildOutcome(BuildStatus.Failed, $"{noun} failed{FailedIn(problems)}: {Plural.Of(errors, "error")}, {Plural.Of(warnings, "warning")}; "
                 + (errors > 0 ? "Problems lists them" : $"dotnet ended with {ExitCodes.Said(code)}, the Build window says why"));
+        if (ended.Succeeded && buildKind != BuildKind.Clean && CompilingXaml() is { Count: > 0 } xaml)
+        {
+            IdeErrors.Observe(CheckXamlAsync(xaml, ended));
+            return;
+        }
+        Keep(ended);
+    }
+
+    /// <summary>Ends the build, a person's that succeeded once what it checked is kept (<see cref="KeepAsync"/>).</summary>
+    private void Keep(BuildOutcome ended)
+    {
         if (ended.Succeeded && checking is { Count: > 0 } checks)
         {
             IdeErrors.Observe(KeepAsync(checks, ended));
             return;
         }
         FinishBuild(ended);
+    }
+
+    /// <summary>The assemblies the build said it made of projects whose Avalonia XAML their builds compile, by project.</summary>
+    private List<(string Project, string Path)> CompilingXaml() =>
+        [.. made.Where(each => session.Projects.Any(p => p.CompilesAvaloniaXaml && Path.GetFileNameWithoutExtension(p.Path).Equals(each.Project, StringComparison.OrdinalIgnoreCase)))];
+
+    /// <summary>A build that succeeded, its assemblies of Avalonia projects looked at off the window's thread: one holding XAML
+    /// never compiled (<see cref="Passenger.Xaml.Metadata.UncompiledXaml"/>), as an earlier build's C# compiler wrote it before
+    /// Avalonia's XAML compiler failed, which this build copied out as it was, compiling nothing, ends it failed, a rebuild
+    /// offered.</summary>
+    private async Task CheckXamlAsync(List<(string Project, string Path)> assemblies, BuildOutcome ended)
+    {
+        List<string> uncompiled = await BackgroundWork.Run(() => assemblies.Where(each => Passenger.Xaml.Metadata.UncompiledXaml.In(each.Path)).Select(each => each.Project)
+            .Distinct(StringComparer.OrdinalIgnoreCase).Order(StringComparer.Ordinal).ToList());
+        if (uncompiled.Count > 0 && !session.IsEnded)
+        {
+            ended = new BuildOutcome(BuildStatus.Failed, Refusals.XamlUncompiled(uncompiled));
+            parts.OfferRebuild?.Invoke(ended.Message);
+        }
+        Keep(ended);
     }
 
     /// <summary>Where a build of projects side by side failed: " in" and the projects its errors name, so each service whose

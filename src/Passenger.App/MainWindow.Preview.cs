@@ -179,7 +179,7 @@ public partial class MainWindow
             return kept.Pane;
         }
         XamlPreview preview = new(document) { ProgramsRunning = ProgramsRunning, Look = mauiLook };
-        XamlPreviewPane pane = new(preview);
+        XamlPreviewPane pane = new(preview, action => actions![action]!.Title);
         pane.LookChosen += (_, look) => mauiLook = look;
         pane.ElementChosen += (_, element) => ChooseInEditor(pane, element);
         pane.ActionRequested += (_, action) => Request(action);
