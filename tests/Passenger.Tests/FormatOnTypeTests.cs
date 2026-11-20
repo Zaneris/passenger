@@ -86,8 +86,9 @@ public sealed class FormatOnTypeTests : IClassFixture<FormatOnTypeTests.Project>
     }
 
     /// <summary>Types the issue's loop at the left margin of Run()'s empty line as a person types it: the header in runs
-    /// with each ';' alone, Enter, '{' (which writes its '}'), Enter (which pushes it down), the statement and its ';'.
-    /// Returns the text before that ';' and once it laid its statement out.</summary>
+    /// with each ';' alone, Enter, '{' (which writes its '}'), Enter (which pushes it down, the braces indented where the
+    /// block's layout has them), the statement and its ';'. Returns the text before that ';' and once it laid its
+    /// statement out.</summary>
     private static (string BeforeSemicolon, string Statement) TypeTheLoop(MainWindow window, CodeEditor editor)
     {
         string Line() => editor.Document.Snapshot.GetLineText(editor.CaretPosition.Line);
@@ -104,7 +105,7 @@ public sealed class FormatOnTypeTests : IClassFixture<FormatOnTypeTests.Project>
         window.KeyTextInput("{");
         Ui.Settle();
         Ui.Press(window, "ENTER");
-        Assert.True(editor.Document.Snapshot.GetLineText(editor.CaretPosition.Line + 1) == "}", $"'{{' and Enter did not write the block's '}}' below:\n{editor.Document.Snapshot}");
+        Assert.True(editor.Document.Snapshot.GetLineText(editor.CaretPosition.Line + 1) == "        }", $"'{{' and Enter did not write the block's '}}' below, laid out:\n{editor.Document.Snapshot}");
         window.KeyTextInput("var x=i+1");
         Ui.Settle();
         string beforeSemicolon = editor.Document.Snapshot.ToString();
@@ -264,7 +265,7 @@ public sealed class FormatOnTypeTests : IClassFixture<FormatOnTypeTests.Project>
         string typed = editor.Document.Snapshot.ToString();
 
         Ui.Type(window, "J", "j");
-        Assert.Equal("}", Line());
+        Assert.Equal("        }", Line());
         Ui.Type(window, "O", "o");
         window.KeyTextInput("int y=2");
         Ui.Settle();
@@ -285,6 +286,155 @@ public sealed class FormatOnTypeTests : IClassFixture<FormatOnTypeTests.Project>
         window.Close();
     }
 
+    /// <summary>A class with an indented empty line in its body and one in a method's, where the block tests type.</summary>
+    private const string Blocks = "using System;\n\nclass Blocks\n{\n    \n    public static void Run(string[] args)\n    {\n        \n    }\n}\n";
+
+    /// <summary><see cref="Blocks"/> under an .editorconfig that keeps a block's '{' on the line before it.</summary>
+    private const string KeptBlocks = "using System;\n\nclass KeptBlocks\n{\n    \n    public static void Run(string[] args)\n    {\n        \n    }\n}\n";
+
+    /// <summary>The issue's initializer typed key by key in a method as a person types it: '{' writes its '}', and Enter
+    /// between them lays the '{' out on a line of its own at the statement's indentation, as the file's formatting (C#'s
+    /// default, no .editorconfig saying otherwise) puts it, the caret on the empty line between at the block's
+    /// indentation. One Undo takes Enter and its layout back together, to the braces as typed.</summary>
+    [AvaloniaFact]
+    public void The_issues_initializer_has_its_brace_laid_out_on_a_line_of_its_own_at_enter_and_one_undo_takes_both_back()
+    {
+        MainWindow window = project.Open("Blocks.cs");
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        Ui.PlaceAfter(editor, "    {\n        ");
+        editor.Focus();
+        string typed = TypeBlock(window, editor, "var item = new", "(", ")", " ");
+        Assert.True(typed == Blocks.Replace("    {\n        \n", "    {\n        var item = new() {}\n", StringComparison.Ordinal),
+            $"The keys did not type the initializer's braces as a pair:\n{typed}");
+
+        Ui.Press(window, "ENTER");
+        AssertOpened(editor, Blocks.Replace("    {\n        \n", "    {\n        var item = new()\n        {\n            \n        }\n", StringComparison.Ordinal),
+            "the initializer's");
+
+        Ui.Run(window, EditorActions.Undo);
+        Assert.True(editor.Document.Snapshot.ToString() == typed && editor.Document.Snapshot[editor.Selections.Primary.Caret - 1] == '{',
+            $"One Undo did not take Enter and its layout back together, to the braces as typed, the caret between:\n{editor.Document.Snapshot}");
+        window.Close();
+    }
+
+    /// <summary>Under an .editorconfig that keeps a block's '{' on its line, Enter between the initializer's braces leaves
+    /// the '{' where it was typed, the caret on the empty line between at the block's indentation.</summary>
+    [AvaloniaFact]
+    public void Under_an_editorconfig_keeping_braces_on_their_line_enter_leaves_the_initializers_brace_where_it_was_typed()
+    {
+        MainWindow window = project.Open("Kept/Blocks.cs");
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        Ui.PlaceAfter(editor, "    {\n        ");
+        editor.Focus();
+        TypeBlock(window, editor, "var item = new", "(", ")", " ");
+        Ui.Press(window, "ENTER");
+        AssertOpened(editor, KeptBlocks.Replace("    {\n        \n", "    {\n        var item = new() {\n            \n        }\n", StringComparison.Ordinal),
+            "the initializer's, kept on its line,");
+        window.Close();
+    }
+
+    /// <summary>Each of C#'s blocks typed as a person types it, in a method's body or a class's, its '{' writing its '}' and
+    /// Enter laying the '{' out on a line of its own at its statement's or member's indentation, as the file's formatting
+    /// puts each kind's (initializers, control blocks, a switch, a lambda, a local function, a method, a property, a type),
+    /// the caret on the empty line between; one Undo takes each Enter back with its layout.</summary>
+    [AvaloniaFact]
+    public void Each_kind_of_block_has_its_brace_laid_out_as_the_file_puts_it_at_enter()
+    {
+        MainWindow window = project.Open("Blocks.cs");
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        (string Place, string Header)[] blocks =
+        [
+            ("    {\n        ", "var list = new System.Collections.Generic.List<int>"),
+            ("    {\n        ", "int[] numbers ="),
+            ("    {\n        ", "if (args.Length > 0)"),
+            ("    {\n        ", "for (var i = 0; i < 3; i++)"),
+            ("    {\n        ", "foreach (string arg in args)"),
+            ("    {\n        ", "while (args.Length > 3)"),
+            ("    {\n        ", "switch (args.Length)"),
+            ("    {\n        ", "try"),
+            ("    {\n        ", "Action run = () =>"),
+            ("    {\n        ", "void Local()"),
+            ("Blocks\n{\n    ", "void Other()"),
+            ("Blocks\n{\n    ", "int Count"),
+            ("Blocks\n{\n    ", "class Inner"),
+        ];
+        foreach ((string place, string header) in blocks)
+        {
+            Ui.PlaceAfter(editor, place);
+            editor.Focus();
+            string indent = place[(place.LastIndexOf('\n') + 1)..];
+            string typed = TypeBlock(window, editor, header + " ");
+            Ui.Press(window, "ENTER");
+            AssertOpened(editor, Blocks.Replace(place + "\n", $"{place}{header}\n{indent}{{\n{indent}    \n{indent}}}\n", StringComparison.Ordinal),
+                $"'{header}''s");
+            Ui.Run(window, EditorActions.Undo);
+            Assert.True(editor.Document.Snapshot.ToString() == typed, $"One Undo did not take Enter after '{header}' back with its layout:\n{editor.Document.Snapshot}");
+            for (int undone = 0; undone < 20 && editor.Document.Snapshot.ToString() != Blocks; undone++)
+            {
+                Ui.Run(window, EditorActions.Undo);
+            }
+            Assert.True(editor.Document.Snapshot.ToString() == Blocks, $"Undo did not take '{header}' and its block back:\n{editor.Document.Snapshot}");
+        }
+        window.Close();
+    }
+
+    /// <summary>In Vim mode the initializer's layout at Enter joins the insert session's one step, which u takes back whole
+    /// and Ctrl+R brings back, and . on another line types again what the session typed, laid out as it was.</summary>
+    [AvaloniaFact]
+    public void In_vim_mode_enters_layout_joins_the_insert_sessions_one_step_and_dot_types_it_again_laid_out()
+    {
+        MainWindow window = project.Open("Blocks.cs");
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        string Line(int below = 0) => editor.Document.Snapshot.GetLineText(editor.CaretPosition.Line + below);
+        window.ApplySettings(window.Settings with { VimMode = true });
+        Ui.Settle();
+        Ui.PlaceAfter(editor, "    {\n    ");
+        editor.Focus();
+        Ui.Type(window, "shift A", "A");
+        TypeBlock(window, editor, "var item = new", "(", ")", " ");
+        Ui.Press(window, "ENTER");
+        Assert.True(Line(-1) == "        {" && Line(-2) == "        var item = new()",
+            $"Enter in the insert session did not lay the initializer's '{{' out on a line of its own:\n{editor.Document.Snapshot}");
+        Ui.Press(window, "ESCAPE");
+        string laid = editor.Document.Snapshot.ToString();
+
+        Ui.Type(window, "U", "u");
+        Assert.True(editor.Document.Snapshot.ToString() == Blocks, $"u did not take the insert session back whole, the layout with it:\n{editor.Document.Snapshot}");
+        Ui.Press(window, "control R");
+        Assert.True(editor.Document.Snapshot.ToString() == laid, $"Ctrl+R did not bring the session back laid out:\n{editor.Document.Snapshot}");
+
+        Ui.PlaceAfter(editor, "Blocks\n{\n");
+        Ui.Type(window, "PERIOD", ".");
+        Ui.Settle();
+        Assert.True(editor.Document.Snapshot.ToString().StartsWith("using System;\n\nclass Blocks\n{\n    var item = new()\n        {\n", StringComparison.Ordinal),
+            $". did not type again what the session typed, laid out as it was:\n{editor.Document.Snapshot}");
+        window.Close();
+    }
+
+    /// <summary>Types each of <paramref name="keys"/> alone, as a person types them, then '{', which writes its '}'; returns
+    /// the text then.</summary>
+    private static string TypeBlock(MainWindow window, CodeEditor editor, params string[] keys)
+    {
+        foreach (string key in (string[])[.. keys, "{"])
+        {
+            window.KeyTextInput(key);
+            Ui.Settle();
+        }
+        Assert.True(editor.Document.Snapshot[editor.Selections.Primary.Caret] == '}', $"'{{' did not write its '}}' after the caret:\n{editor.Document.Snapshot}");
+        return editor.Document.Snapshot.ToString();
+    }
+
+    /// <summary>Holds the text to <paramref name="laid"/>, Enter's block laid out, the caret at the end of the empty line
+    /// inside it.</summary>
+    private static void AssertOpened(CodeEditor editor, string laid, string what)
+    {
+        string line = editor.Document.Snapshot.GetLineText(editor.CaretPosition.Line);
+        string below = editor.Document.Snapshot.GetLineText(editor.CaretPosition.Line + 1);
+        Assert.True(editor.Document.Snapshot.ToString() == laid, $"Enter did not lay out {what} block as the file's formatting does:\n{editor.Document.Snapshot}");
+        Assert.True(line.Trim().Length == 0 && line.Length == below.Length - below.TrimStart().Length + 4 && editor.CaretPosition.Column == line.Length && below.Trim() == "}",
+            $"The caret did not stand on the empty line inside {what} block at its indentation: '{line}', the caret at {editor.CaretPosition.Column}");
+    }
+
     /// <summary>A console project with methods to type in, restored once for every test.</summary>
     public sealed class Project : SharedProject
     {
@@ -294,6 +444,10 @@ public sealed class FormatOnTypeTests : IClassFixture<FormatOnTypeTests.Project>
             File.WriteAllText(PathOf("Typed.csproj"), TestProjects.Console());
             File.WriteAllText(PathOf("Loop.cs"), Empty);
             File.WriteAllText(PathOf("Twice.cs"), "static class Twice\n{\n    public static void Run()\n    {\n\n        int kept = 0;\n\n    }\n}\n");
+            File.WriteAllText(PathOf("Blocks.cs"), Blocks);
+            Directory.CreateDirectory(PathOf("Kept"));
+            File.WriteAllText(PathOf("Kept/.editorconfig"), "[*.cs]\ncsharp_new_line_before_open_brace = none\n");
+            File.WriteAllText(PathOf("Kept/Blocks.cs"), KeptBlocks);
         }
     }
 }

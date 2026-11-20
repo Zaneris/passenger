@@ -155,9 +155,9 @@ public static class Declared
 
     public static readonly ToggleSetting FormatOnType = new(s => s.FormatOnType, (s, v) => s with { FormatOnType = v },
         new(D.EditorPage, "Format a statement on ';' and a block on '}'", "format on type as you type typing semicolon brace statement block reformat layout auto c#",
-            "In C#, the ';' that ends a statement lays the statement out, and the '}' that closes a block lays out the block, as "
-            + "Reformat Code does; one Undo takes the key and its layout back together. A ';' in a for loop's header, a string or "
-            + "a comment stays as typed."));
+            "In C#, the ';' that ends a statement lays the statement out, the '}' that closes a block lays out the block, and Enter "
+            + "between a '{' and its '}' puts the '{' where the block's layout has it, as Reformat Code does; one Undo takes the key "
+            + "and its layout back together. A ';' in a for loop's header, a string or a comment stays as typed."));
 
     public static readonly ToggleSetting XamlWorkspace = new(s => s.XamlWorkspace, (s, v) => s with { XamlWorkspace = v },
         new(D.EditorPage, "Open XAML files in the XAML workspace",

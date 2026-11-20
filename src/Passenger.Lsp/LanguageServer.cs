@@ -771,6 +771,9 @@ public sealed class LanguageServer : IAsyncDisposable
 
     private IReadOnlyList<string>? formattingTriggers;
 
+    /// <summary>The characters after which the server may write more on its own (<c>_vs_onAutoInsertProvider</c>'s triggers).</summary>
+    public IReadOnlyList<string> AutoInsertTriggers => JsonMembers.Texts(JsonMembers.Object(Capabilities, "_vs_onAutoInsertProvider"), "_vs_triggerCharacters");
+
     private static List<string> TriggersOf(JsonElement? provider)
     {
         List<string> triggers = [.. JsonMembers.Texts(provider, "moreTriggerCharacter")];

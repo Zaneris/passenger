@@ -124,6 +124,13 @@ public sealed class CodeAssist
                     context.Languages.CSharp.FormatLeft(closer);
                 }
             };
+            editor.OpenedBlock += (_, _) =>
+            {
+                if (editor == Editor)
+                {
+                    context.Languages.CSharp.FormatOpened();
+                }
+            };
             editor.Typed += (_, text) =>
             {
                 if (editor == Editor)
@@ -502,7 +509,8 @@ public sealed class CodeAssist
         set => completion.CallsMethods = value;
     }
 
-    /// <summary>Whether C# is formatted as it is typed, at a statement's ';' and a block's '}', as Settings leaves it.</summary>
+    /// <summary>Whether C# is formatted as it is typed, at a statement's ';', a block's '}' and Enter between a '{' and its
+    /// '}', as Settings leaves it.</summary>
     public bool FormatOnType
     {
         get => context.Languages.CSharp.FormatsOnType;

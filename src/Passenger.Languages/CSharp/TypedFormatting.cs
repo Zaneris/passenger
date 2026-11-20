@@ -28,4 +28,31 @@ public static class TypedFormatting
             ? token.IsKind(SyntaxKind.SemicolonToken) && token.Parent is not ForStatementSyntax
             : token.IsKind(SyntaxKind.CloseBraceToken) && token.Parent is not InterpolationSyntax;
     }
+
+    /// <summary>Whether <paramref name="caret"/> stands on a line of its own between a '{' and the '}' that closes it, the
+    /// code's own pair (a block's, a type's, an initializer's, never an interpolation's) with nothing but white space
+    /// between them: a block a line break just opened, to lay out.</summary>
+    public static bool OpensBlock(ParsedText syntax, int caret)
+    {
+        if (caret <= 0 || caret >= syntax.Root.FullSpan.End)
+        {
+            return false;
+        }
+        SyntaxToken closer = syntax.Root.FindToken(caret);
+        SyntaxToken opener = closer.GetPreviousToken();
+        if (!closer.IsKind(SyntaxKind.CloseBraceToken) || !opener.IsKind(SyntaxKind.OpenBraceToken) || closer.IsMissing || opener.IsMissing
+            || opener.Parent is InterpolationSyntax || opener.Parent != closer.Parent || caret <= opener.Span.End || caret > closer.SpanStart)
+        {
+            return false;
+        }
+        for (int at = opener.Span.End; at < closer.SpanStart; at++)
+        {
+            if (!char.IsWhiteSpace(syntax.Text[at]))
+            {
+                return false;
+            }
+        }
+        return syntax.Text.GetLineFromOffset(opener.SpanStart) < syntax.Text.GetLineFromOffset(caret)
+            && syntax.Text.GetLineFromOffset(caret) < syntax.Text.GetLineFromOffset(closer.SpanStart);
+    }
 }

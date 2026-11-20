@@ -1003,8 +1003,11 @@ public sealed class LspDocument : IDisposable
         await Server.RequestAsync<List<LspTextEdit>>(LspMethods.OnTypeFormatting,
             new DocumentOnTypeFormattingParams(Identifier, PositionOf(offset), typed, FormattingOptions.Of(indent, conventions, Text.Snapshot)), cancel) ?? [];
 
+    /// <summary>Whether the server may write more on its own once a character is typed (<see cref="LanguageServer.AutoInsertTriggers"/>).</summary>
+    public bool AutoInserts(char typed) => Server.AutoInsertTriggers.Any(t => t.Length == 1 && t[0] == typed);
+
     /// <summary>What the server writes on its own after a character typed at an offset, the caret past it (Razor's end
-    /// tag after a start tag's '>'); null where it writes nothing.</summary>
+    /// tag after a start tag's '>', C#'s block laid out after the line break that opened it); null where it writes nothing.</summary>
     public async Task<AutoInserted?> AutoInsertAsync(int offset, string typed, IndentOptions indent, EditorConfig conventions, CancellationToken cancel = default) =>
         await Server.RequestAsync<AutoInserted>(LspMethods.OnAutoInsert,
             new AutoInsertParams(Identifier, PositionOf(offset), typed, FormattingOptions.Of(indent, conventions, Text.Snapshot)), cancel) is { TextEdit: not null } answer

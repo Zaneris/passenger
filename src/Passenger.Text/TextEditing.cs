@@ -391,6 +391,63 @@ public static class TextEditing
         };
     }
 
+    /// <summary>A layout's one edit around <paramref name="caret"/>, which it puts <paramref name="into"/> its text, as the
+    /// edits it makes to each run of white space, the caret ending a run: what stands at the code and at the caret is
+    /// carried past them, the code's characters never rewritten. Null where the edit changes more than white space, or
+    /// puts the caret among other code than it stood in.</summary>
+    public static List<TextEdit>? Respaced(TextSnapshot text, TextEdit edit, int caret, int into)
+    {
+        if (edit.End > text.Length || caret < edit.Start || caret > edit.End || into < 0 || into > edit.Text.Length)
+        {
+            return null;
+        }
+        string was = text.GetText(edit.Start, edit.Length);
+        string now = edit.Text;
+        int caretWas = caret - edit.Start;
+        bool passed = false;
+        List<TextEdit> edits = [];
+        int i = 0;
+        int j = 0;
+        while (true)
+        {
+            int runWas = i;
+            int runNow = j;
+            while (i < was.Length && (passed || i != caretWas) && char.IsWhiteSpace(was[i]))
+            {
+                i++;
+            }
+            while (j < now.Length && (passed || j != into) && char.IsWhiteSpace(now[j]))
+            {
+                j++;
+            }
+            if (!was.AsSpan(runWas, i - runWas).SequenceEqual(now.AsSpan(runNow, j - runNow)))
+            {
+                TextEdit run = TextEdit.Between(was[runWas..i], now[runNow..j]);
+                edits.Add(run with { Start = edit.Start + runWas + run.Start });
+            }
+            bool atCaret = !passed && i == caretWas;
+            if (atCaret != (!passed && j == into))
+            {
+                return null;
+            }
+            if (atCaret)
+            {
+                passed = true;
+                continue;
+            }
+            if (i == was.Length || j == now.Length)
+            {
+                return i == was.Length && j == now.Length ? edits : null;
+            }
+            if (was[i] != now[j])
+            {
+                return null;
+            }
+            i++;
+            j++;
+        }
+    }
+
     /// <summary>Shift+Enter (<paramref name="above"/> false) or Ctrl+Enter: a new indented line below
     /// or above the caret's line, wherever on it the caret is; below one in <paramref name="markup"/>, indented as Enter
     /// at the line's end indents it.</summary>

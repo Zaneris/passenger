@@ -90,7 +90,7 @@ internal sealed partial class CSharpAssist
         for (int i = 0; i < asked.Count; i++)
         {
             int caret = asked.Items[i].Caret;
-            if (answers[i] is not { TextEdit: { } made } answer || Placed(text, lines, made, answer.TextEditFormat, shown.LineEnding, indent, caret) is not ({ } edit, int into)
+            if (answers[i] is not { TextEdit: { } made } answer || Placed(text, lines, made, answer.TextEditFormat, shown.LineEnding, indent) is not ({ } edit, int into)
                 || edit.Start < (edits.Count > 0 ? edits[^1].End : 0) || edit.End > caret)
             {
                 carets.Add(Selection.At(caret + shift));
@@ -155,7 +155,7 @@ internal sealed partial class CSharpAssist
     private static (string EndTag, int Into)? FitsLate(TextSnapshot before, string written, ServerLines lines, TextSnapshot text, AutoInserted answer, string eol,
         IndentOptions indent, int asked, int at, int caret)
     {
-        if (answer is not { TextEdit: { } made } || Placed(before, lines, made, answer.TextEditFormat, eol, indent, asked) is not ({ } edit, int into)
+        if (answer is not { TextEdit: { } made } || Placed(before, lines, made, answer.TextEditFormat, eol, indent) is not ({ } edit, int into)
             || edit.Length != 0 || edit.Start != asked || asked < 2 || before[asked - 1] != '>')
         {
             return null;
@@ -174,16 +174,17 @@ internal sealed partial class CSharpAssist
         return (edit.Text, answer.TextEditFormat == InsertTextFormat.Snippet ? into : 0);
     }
 
-    /// <summary>A Razor answer's edit in the editor's offsets of the text it answered (its server's lines,
-    /// <paramref name="lines"/>), its line breaks and indentation the file's, and where in its text the caret goes: a
-    /// snippet's end, else its end; null where it comes to nothing.</summary>
-    private static (TextEdit? Edit, int Into) Placed(TextSnapshot text, ServerLines lines, LspTextEdit made, InsertTextFormat format, string eol, IndentOptions indent, int caret)
+    /// <summary>An answer's edit of what the server writes on its own (<see cref="LspDocument.AutoInsertAsync"/>) in the
+    /// editor's offsets of the text it answered (its server's lines, <paramref name="lines"/>), its line breaks and
+    /// indentation the file's, and where in its text the caret goes: a snippet's end, else its end; null where it comes to
+    /// nothing.</summary>
+    private static (TextEdit? Edit, int Into) Placed(TextSnapshot text, ServerLines lines, LspTextEdit made, InsertTextFormat format, string eol, IndentOptions indent)
     {
         int start = lines.OffsetOf(made.Range.Start);
         int end = lines.OffsetOf(made.Range.End);
         Snippet? snippet = format == InsertTextFormat.Snippet ? Snippet.FromProtocol(made.NewText) : null;
         string written = snippet?.Text ?? made.NewText;
-        if (end < start || end > caret || LineEndings.Fit(text, [new TextEdit(start, end - start, written)], eol) is not [TextEdit broken])
+        if (end < start || LineEndings.Fit(text, [new TextEdit(start, end - start, written)], eol) is not [TextEdit broken])
         {
             return (null, 0);
         }

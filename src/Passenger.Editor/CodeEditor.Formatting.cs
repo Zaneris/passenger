@@ -2,10 +2,11 @@ using Passenger.Text;
 
 namespace Passenger.Editor;
 
-/// <summary>What the host formats once a key has typed it (<see cref="FormatsTyped"/>): the key begins a step of Undo of its
-/// own, or goes on in Vim's insert session, and the formatting joins that step, so one Undo takes the key and its
-/// formatting back together. Held only until the next key. And a block a line break opened between a pair of brackets,
-/// which the host formats once the caret leaves it (<see cref="LeftBlock"/>), as a step of its own.</summary>
+/// <summary>What the host formats once a key has typed it (<see cref="FormatsTyped"/>), Enter that opens a block between a
+/// '{' and its '}' among them (<see cref="OpenedBlock"/>): the key begins a step of Undo of its own, or goes on in Vim's
+/// insert session, and the formatting joins that step, so one Undo takes the key and its formatting back together. Held
+/// only until the next key. And a block a line break opened between a pair of brackets, which the host formats once the
+/// caret leaves it (<see cref="LeftBlock"/>), as a step of its own.</summary>
 public sealed partial class CodeEditor
 {
     /// <summary>The most blocks followed at once (<see cref="splitBlocks"/>), one inside another.</summary>
@@ -26,6 +27,22 @@ public sealed partial class CodeEditor
     /// move or an edit that was no key the host formats itself: the offset of the block's closer, the text otherwise as it
     /// stood, for the host to format what it closes.</summary>
     public event EventHandler<int>? LeftBlock;
+
+    /// <summary>Enter opened a block between a '{' and its '}' at the one caret, where the host formats a line break typed
+    /// (<see cref="FormatsTyped"/>): the host lays the block out, the caret on the line between (<see cref="FormatOpenedBlock"/>).</summary>
+    public event EventHandler? OpenedBlock;
+
+    /// <summary>Enter, as <see cref="TextEditing.NewLine"/> plans it: one opening a block between a '{' and its '}' at the
+    /// one caret, where the host formats it, begins the step of Undo its layout joins and has the host lay it out.</summary>
+    private void NewLine(EditPlan plan)
+    {
+        formattedKey = plan.Split is [SplitPair pair] && plan.Selections.Count == 1 && document.Snapshot[pair.Opener] == '{' ? BeginFormattedKey("\n") : null;
+        Apply(plan);
+        if (formattedKey is not null)
+        {
+            OpenedBlock?.Invoke(this, EventArgs.Empty);
+        }
+    }
 
     /// <summary>Follows the blocks an edit split a pair of brackets for, at one caret.</summary>
     private void KeepSplitBlocks(EditPlan plan)
@@ -126,13 +143,33 @@ public sealed partial class CodeEditor
     /// was typed.</summary>
     public void FormatTyped(TextSnapshot asked, IReadOnlyList<TextEdit> edits)
     {
-        if (formattedKey is not { } place || !ReferenceEquals(document.Snapshot, asked) || IsReadOnly || edits.Count == 0
-            || edits[^1].End > selections.Items.Min(s => s.Start))
+        if (edits.Count > 0 && edits[^1].End <= selections.Items.Min(s => s.Start))
+        {
+            JoinFormatting(asked, edits, TextEditing.MapThrough(selections, edits));
+        }
+    }
+
+    /// <summary>The host's layout of the block Enter opened (<see cref="OpenedBlock"/>): <paramref name="edits"/>, sorted and
+    /// apart, in <paramref name="asked"/>, the text the host worked from, made while the text still stands so and no key has
+    /// been pressed since, joined to Enter's step of Undo, the caret at <paramref name="caret"/> in the text they make.</summary>
+    public void FormatOpenedBlock(TextSnapshot asked, IReadOnlyList<TextEdit> edits, int caret)
+    {
+        if (edits.Count > 0 && !selections.HasMultiple && caret >= 0 && caret <= asked.Length + edits.Sum(e => e.Text.Length - e.Length))
+        {
+            JoinFormatting(asked, edits, SelectionSet.Single(caret));
+        }
+    }
+
+    /// <summary>The host's formatting of what the last key typed, joined to its step of Undo or Vim's insert session, the
+    /// carets <paramref name="after"/>; made only while the text stands as <paramref name="asked"/> and no key has been
+    /// pressed since.</summary>
+    private void JoinFormatting(TextSnapshot asked, IReadOnlyList<TextEdit> edits, SelectionSet after)
+    {
+        if (formattedKey is not { } place || !ReferenceEquals(document.Snapshot, asked) || IsReadOnly)
         {
             return;
         }
         formattedKey = null;
-        SelectionSet after = TextEditing.MapThrough(selections, edits);
         if (vim is { Mode: VimMode.Insert })
         {
             vim.FollowEdits(edits, selections.Primary.Caret);
