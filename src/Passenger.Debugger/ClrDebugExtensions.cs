@@ -73,7 +73,7 @@ public static class ClrDebugExtensions
                 }
             }
             pipe?.StopWatching();
-            log?.Invoke($"Registered for the runtime's start in process {pid}" + (pipe is null ? "" : pipe.Held ? ", its startup pipe held" : ", its startup pipe not found"));
+            log?.Invoke($"Registered for the runtime's start in process {pid}" + (pipe is null ? "" : pipe.Held ? ", its startup pipes held" : ", its startup pipes not found"));
 
             if (resume is not null)
             {
