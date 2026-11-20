@@ -300,6 +300,40 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         window.Close();
     }
 
+    /// <summary>An attribute's named argument chosen by either key keeps its " =": written after the name where none follows
+    /// the caret, the caret after it (the first); where one follows, the list offers the name alone, which goes in before
+    /// it (the second), so one " =" stands after the name either way.</summary>
+    [AvaloniaTheory]
+    [InlineData("ENTER", false)]
+    [InlineData("TAB", true)]
+    public void Choosing_an_attributes_named_argument_keeps_its_equals_sign(string key, bool existingEquals)
+    {
+        MainWindow window = project.Open("Program.cs");
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        Ui.PlaceAfter(editor, "class Program\n{");
+        editor.Focus();
+        Ui.Press(window, "ENTER");
+        window.KeyTextInput(existingEquals ? "[System.Obsolete( = \"Old\")]" : "[System.Obsolete()]");
+        Ui.PlaceAfter(editor, "Obsolete(");
+        editor.Focus();
+        Ui.Run(window, AppActions.Complete);
+        window.KeyTextInput("Diag");
+        string named = existingEquals ? "DiagnosticId" : "DiagnosticId =";
+        Ui.WaitFor(() => window.Assist.CompletionNarrowedBy == "Diag" && window.Assist.CompletionLabels.Contains(named),
+            () => $"the {named} named argument in the narrowed list: {string.Join(", ", window.Assist.CompletionLabels.Take(8))}");
+        foreach (string _ in window.Assist.CompletionLabels.TakeWhile(label => label != named))
+        {
+            Ui.Press(window, "DOWN");
+        }
+        Assert.Equal(named, window.Assist.CompletionChosen);
+        Ui.Press(window, key);
+        Ui.Settle();
+        string line = editor.Document.Snapshot.GetLineText(editor.CaretPosition.Line);
+        Assert.Equal(existingEquals ? "    [System.Obsolete(DiagnosticId = \"Old\")]" : "    [System.Obsolete(DiagnosticId =)]", line);
+        Assert.Equal(line.IndexOf("DiagnosticId", StringComparison.Ordinal) + named.Length, editor.CaretPosition.Column);
+        window.Close();
+    }
+
     /// <summary>A declaration keyword chosen by either key takes the separator already after the caret (the first) or
     /// writes a space where none is (the next two), so the caret stands after one separator.</summary>
     [AvaloniaTheory]

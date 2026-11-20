@@ -29,8 +29,9 @@ public sealed class ConfigurationTests : IClassFixture<ConfigurationTests.Projec
 
     /// <summary>Completion in appsettings.json lists a section's keys from the options class bound to it (its
     /// properties, a renamed one by its configuration name, a nested class's) and from the code's reads, leaving out
-    /// those the object has; a bool's key goes in with its value, and an enum's value offers its names. A key's card
-    /// says what the code reads it as, a comment begun above it (a lone '/' so far) leaving it read as ever.</summary>
+    /// those the object has, the first key's card beside the list as it opens; a bool's key goes in with its value, and an
+    /// enum's value offers its names. A key's card says what the code reads it as, a comment begun above it (a lone '/' so
+    /// far) leaving it read as ever.</summary>
     [AvaloniaFact]
     public void Appsettings_completes_a_section_s_keys_from_its_options_class_and_an_enum_s_names()
     {
@@ -46,6 +47,9 @@ public sealed class ConfigurationTests : IClassFixture<ConfigurationTests.Projec
             Ui.PlaceAfter(editor, "\"Payments\": {");
             Ui.Run(window, AppActions.Complete);
             Ui.WaitFor(() => window.Assist.CompletionLabels.Contains("Enabled"), "the options class's keys to be offered in its section");
+            (string first, string described) = Ui.FirstItemsCard(window);
+            string read = window.Assist.CompletionDetails[0].Detail;
+            Assert.True(described.Contains(read, StringComparison.Ordinal), $"{first}'s card as the list opened was to say what the code reads it as, {read}; it says {described}");
             IReadOnlyList<string> offered = window.Assist.CompletionLabels;
             foreach (string wanted in new[] { "Enabled", "Retry", "api_url", "ApiKey" })
             {

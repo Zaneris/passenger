@@ -162,6 +162,7 @@ public sealed class GherkinEditingTests : FileColoursFolder
         Ui.WaitFor(() => window.Assist.IsCompletionOpen && window.Assist.CompletionLabels.Contains("Wenn"),
             () => $"German's keywords offered: {string.Join(", ", window.Assist.CompletionLabels)}");
         Assert.DoesNotContain("When", window.Assist.CompletionLabels);
+        Assert.Equal(("Wenn", "A step"), Ui.FirstItemsCard(window));
         window.Close();
     }
 

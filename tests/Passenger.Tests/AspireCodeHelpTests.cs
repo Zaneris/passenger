@@ -360,6 +360,7 @@ public sealed class AspireCodeHelpTests : IClassFixture<AspireCodeHelpTests.Proj
         Ui.WaitFor(() => window.Assist.CompletionLabels.Contains("connected"), "the connected database name to be offered");
         Assert.DoesNotContain("db", window.Assist.CompletionLabels);
         Assert.DoesNotContain("worker", window.Assist.CompletionLabels);
+        Assert.Equal("Aspire resource", Ui.FirstItemsCard(window).Card);
         Ui.Press(window, "ESCAPE");
 
         Ui.PlaceAfter(window.EditorArea.CodeEditor, "GetConnectionString(\"d");

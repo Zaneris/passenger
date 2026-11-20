@@ -1785,6 +1785,16 @@ public static class Ui
         editor.Selections = SelectionSet.Single(at + text.Length);
     }
 
+    /// <summary>The completion list just opened and the card beside it, waited for while its first item is the one chosen,
+    /// no key having moved the choice: the first item's label and what its card says.</summary>
+    public static (string First, string Card) FirstItemsCard(Passenger.App.MainWindow window)
+    {
+        WaitFor(() => window.Assist.CompletionLabels is [{ } first, ..] && window.Assist.CompletionChosen == first && window.Assist.ItemDocumentation is { Length: > 0 },
+            () => $"the card of the list's first item as the list opened, that item still chosen: the list shows {string.Join(", ", window.Assist.CompletionLabels.Take(5))}, "
+                + $"{window.Assist.CompletionChosen ?? "none"} chosen, the card says {window.Assist.ItemDocumentation ?? "nothing"}");
+        return (window.Assist.CompletionChosen!, window.Assist.ItemDocumentation!);
+    }
+
     /// <summary>A line typed into a console (Run's, Debug's) as a person types it there, a click in it first taking the keys:
     /// the console sends it to its program's input.</summary>
     public static void TypeLine(Passenger.App.ToolWindows.OutputView console, string line)

@@ -179,6 +179,8 @@ public sealed class GodotShaderTests
         window.KeyTextInput("V");
         Ui.WaitFor(() => window.Assist.CompletionLabels.Contains("VERTEX"), () => $"VERTEX among vertex()'s completions: {string.Join(", ", window.Assist.CompletionLabels.Take(12))}");
         Assert.Contains("VIEW_MATRIX", window.Assist.CompletionLabels);
+        (string first, string described) = Ui.FirstItemsCard(window);
+        Assert.True(described.Contains(first, StringComparison.Ordinal), $"{first}'s card as the list opened was to give its declaration; it says {described}");
         Ui.Press(window, "ESCAPE");
         Ui.Press(window, "BACK_SPACE");
 

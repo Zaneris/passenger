@@ -176,7 +176,6 @@ internal sealed class MSBuildAssist : LanguageAssist
                 WordCharacters = list.WordCharacters,
                 // An MSBuild list keeps its own order among names that match alike (the common properties first), not the shortest.
                 Alike = 1000,
-                DescribedAsItOpens = true,
             });
         }
         catch (OperationCanceledException)

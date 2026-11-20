@@ -183,8 +183,7 @@ internal sealed partial class GDScriptAssist
             return true;
         }
         listedFrom = typed;
-        // A list typed past before it opens comes narrowed, its first item chosen before it shows: its card shows as it opens.
-        completion.Open(new CodeCompletion.Completion(listed.Items, listed.Start, [], false) { Own = this, WordCharacters = listed.WordCharacters, DescribedAsItOpens = true });
+        completion.Open(new CodeCompletion.Completion(listed.Items, listed.Start, [], false) { Own = this, WordCharacters = listed.WordCharacters });
         return true;
     }
 

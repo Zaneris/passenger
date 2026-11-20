@@ -238,9 +238,9 @@ public sealed class ProjectFileHelpTests : IClassFixture<ProjectFileHelpTests.Sh
     }
 
     /// <summary>In a window at its smallest with the default layout, the Explorer open leaving the editor narrower than the
-    /// completion list's least width, a project file's list of properties opens whole in the editor, narrowed to it: every
-    /// row's name and detail inside the list, a name shown whole before its detail, a longer one ending in an ellipsis,
-    /// never cut at the editor's edge.</summary>
+    /// completion list's least width, a project file's list of properties opens whole in the editor, its first item's card
+    /// beside it, narrowed to it: every row's name and detail inside the list, a name shown whole before its detail, a
+    /// longer one ending in an ellipsis, never cut at the editor's edge.</summary>
     [AvaloniaFact]
     public void A_completion_list_in_an_editor_narrower_than_its_least_width_shows_whole_each_name_before_its_detail()
     {
@@ -250,6 +250,9 @@ public sealed class ProjectFileHelpTests : IClassFixture<ProjectFileHelpTests.Sh
         Ui.Press(window, "ENTER");
         window.KeyTextInput("<");
         Ui.WaitFor(() => window.Assist.CompletionLabels.Contains("TargetFramework"), "the properties a PropertyGroup takes after a tag's '<'");
+        (string first, string described) = Ui.FirstItemsCard(window);
+        Assert.True(first == "TargetFramework" && described.StartsWith("Framework that this project targets", StringComparison.Ordinal),
+            $"TargetFramework's card was to show as the list opened; {first} is first and its card says {described}");
 
         Avalonia.Controls.Canvas assist = window.EditorArea.AssistLayer;
         Rect layer = new(assist.TranslatePoint(default, window) ?? default, assist.Bounds.Size);

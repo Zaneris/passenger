@@ -567,7 +567,6 @@ internal sealed partial class CodeCompletion
         {
             Tail = listTail,
             WordCharacters = named?.WordCharacters ?? string.Empty,
-            DescribedAsItOpens = true,
             Lead = lead,
             Coming = before is null && list?.Later is not null,
         };
@@ -734,10 +733,7 @@ internal sealed partial class CodeCompletion
         if (opening)
         {
             TellChosen(opening: true);
-        }
-        if (opening && narrowing.List.DescribedAsItOpens)
-        {
-            // The first item's documentation beside the list as it opens, which its selection came too early to show.
+            // Its first item's card, which the choice made before the list showed came too early to show.
             IdeErrors.Observe(DescribeSelected());
         }
     }
@@ -1051,10 +1047,12 @@ internal sealed partial class CodeCompletion
             Described(chosen.Item);
             return;
         }
-        if (!completion.IsVisible || completion.Selected is not { } row || context.Current?.Lsp is not { } lsp)
+        if (!completion.IsVisible || completion.Selected is not { } row)
         {
             return;
         }
+        // None for a file no server reads (a settings file with no JSON server running): its items describe themselves.
+        LspDocument? lsp = context.Current?.Lsp;
         CancellationTokenSource cancel = new();
         describing = cancel;
         using IDisposable held = BackgroundWork.Scope();
@@ -1062,7 +1060,7 @@ internal sealed partial class CodeCompletion
         {
             await Task.Delay(TimeSpan.FromMilliseconds(120), cancel.Token);
             CompletionItem item = row.Item;
-            if (item.Data is not null && item.Documentation is null)
+            if (item.Data is not null && item.Documentation is null && lsp is not null)
             {
                 item = await lsp.ResolveAsync(item, cancel.Token) ?? item;
             }
@@ -1174,9 +1172,6 @@ internal sealed partial class CodeCompletion
         /// <summary>How alike two scores must be to keep the list's own order among them (an MSBuild list's common
         /// properties first), not the shortest name's.</summary>
         public int Alike { get; init; } = 1;
-
-        /// <summary>Whether the first item's documentation shows beside the list as it opens.</summary>
-        public bool DescribedAsItOpens { get; init; }
 
         /// <summary>Whether items are still to be added to the list as they come (C#'s types of namespaces not imported
         /// added to what is in scope): showing no row meanwhile, it stays open for them.</summary>
