@@ -5,9 +5,9 @@
              Width="{x:Static app:PopupFrame.Narrow}">
     <Border Classes="popup" Padding="{x:Static app:PopupFrame.Inset}">
         <StackPanel Spacing="{x:Static app:Gaps.Normal}">
-            <TextBlock Classes="popupTitle" Text="Go to Line:Column" />
+            <TextBlock Classes="paneTitle" Text="Go to Line:Column" />
             <TextBox Name="Query" Classes="search" />
-            <TextBlock Name="Problem" Classes="muted" FontSize="12" IsVisible="False" />
+            <TextBlock Name="Problem" Classes="muted caption" IsVisible="False" />
         </StackPanel>
     </Border>
 </UserControl>

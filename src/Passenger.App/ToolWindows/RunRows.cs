@@ -228,7 +228,7 @@ public sealed class RunRowView : DockPanel
         right.Children.Add(links);
         right.Children.Add(trailing);
         detail.Margin = new Thickness(Gaps.Normal, 0, 0, 0);
-        detail.FontSize = 12;
+        detail.Classes.Add(StyleClasses.Caption);
         Children.Add(chevron);
         Children.Add(dot);
         Children.Add(right);
@@ -280,7 +280,7 @@ public sealed class RunRowView : DockPanel
         trailing.Text = row.Trailing ?? string.Empty;
         trailing.IsVisible = row.Trailing is not null;
         name.Text = row.Label;
-        name.FontWeight = row.Heading ? FontWeight.SemiBold : FontWeight.Normal;
+        name.Classes.Set(StyleClasses.Strong, row.Heading);
         name.MaxWidth = row.Heading ? double.PositiveInfinity : 260;
         detail.Text = row.Detail ?? string.Empty;
         detail.IsVisible = !row.Heading && row.Detail is { Length: > 0 };

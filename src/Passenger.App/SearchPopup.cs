@@ -36,7 +36,7 @@ public abstract class SearchPopup<T> : UserControl, IAnswers<T?>
         double listHeight = ListHeight)
     {
         Width = width;
-        this.title = new TextBlock { Classes = { StyleClasses.PopupTitle }, Text = title, VerticalAlignment = VerticalAlignment.Center };
+        this.title = new TextBlock { Classes = { StyleClasses.PaneTitle }, Text = title, VerticalAlignment = VerticalAlignment.Center };
         query = new TextBox { Classes = { StyleClasses.Search }, PlaceholderText = placeholder, Text = initialQuery ?? string.Empty };
         results = new ListBox
         {
@@ -53,7 +53,7 @@ public abstract class SearchPopup<T> : UserControl, IAnswers<T?>
         if (option is { } shown)
         {
             // Not focusable: the keys stay with the query.
-            this.option = new CheckBox { Content = shown.Label, IsChecked = shown.Checked, Focusable = false, FontSize = 12, VerticalAlignment = VerticalAlignment.Center };
+            this.option = new CheckBox { Classes = { StyleClasses.Caption }, Content = shown.Label, IsChecked = shown.Checked, Focusable = false, VerticalAlignment = VerticalAlignment.Center };
             this.option.IsCheckedChanged += (_, _) => OptionTurned();
             DockPanel.SetDock(this.option, Dock.Right);
             heading.Children.Add(this.option);

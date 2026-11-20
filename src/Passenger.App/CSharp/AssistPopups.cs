@@ -147,7 +147,7 @@ internal sealed class InfoCard : Border, IHoverCard, IHeldToEditor, IHeardPopup
     {
         Text = text,
         TextWrapping = TextWrapping.Wrap,
-        FontSize = 12.5,
+        Classes = { StyleClasses.Caption },
         Foreground = colour ?? Brush(TokenKeys.TextMuted),
     });
 
@@ -173,7 +173,7 @@ internal sealed class InfoCard : Border, IHoverCard, IHeldToEditor, IHeardPopup
                 {
                     Orientation = Orientation.Horizontal,
                     Spacing = Gaps.Small,
-                    Children = { play, new TextBlock { Text = preview.Named, FontSize = 12.5, VerticalAlignment = VerticalAlignment.Center, Foreground = Brush(TokenKeys.TextMuted) } },
+                    Children = { play, new TextBlock { Classes = { StyleClasses.Caption }, Text = preview.Named, VerticalAlignment = VerticalAlignment.Center, Foreground = Brush(TokenKeys.TextMuted) } },
                 });
                 Usable = true;
                 IsHitTestVisible = true;
@@ -566,8 +566,7 @@ internal sealed class CompletionRowView : DockPanel
         Height = ListRow.Height;
         letter = new TextBlock
         {
-            FontSize = 10,
-            FontWeight = FontWeight.Bold,
+            Classes = { StyleClasses.BadgeText },
             Foreground = InfoCard.Brush(TokenKeys.BadgeText),
             HorizontalAlignment = HorizontalAlignment.Center,
             VerticalAlignment = VerticalAlignment.Center,
@@ -586,14 +585,14 @@ internal sealed class CompletionRowView : DockPanel
         {
             [DockPanel.DockProperty] = Dock.Left,
             FontFeatures = Fonts.NoLigatures,
-            FontSize = 12.5,
+            Classes = { StyleClasses.Code },
             TextTrimming = TextTrimming.CharacterEllipsis,
             VerticalAlignment = VerticalAlignment.Center,
-        }.InCodeFont();
+        };
         detail = new TextBlock
         {
             Foreground = InfoCard.Brush(TokenKeys.TextMuted),
-            FontSize = 12,
+            Classes = { StyleClasses.Caption },
             Margin = ListRow.Detail,
             TextTrimming = TextTrimming.CharacterEllipsis,
             MaxWidth = 200,
@@ -663,7 +662,7 @@ internal sealed class ChoicePopup : Border, IHeardPopup
             Spacing = Gaps.Tight,
             Children =
             {
-                new TextBlock { Text = title, Classes = { StyleClasses.PopupTitle }, Margin = new Thickness(Gaps.Wide, Gaps.Hair) },
+                new TextBlock { Text = title, Classes = { StyleClasses.PaneTitle }, Margin = new Thickness(Gaps.Wide, Gaps.Hair) },
                 list,
             },
         };
@@ -708,7 +707,7 @@ internal sealed class ChoicePopup : Border, IHeardPopup
     {
         TextBlock digit = new TextBlock { Width = 10, IsVisible = numbered, VerticalAlignment = VerticalAlignment.Center }.InCodeFont();
         TextBlock text = new() { VerticalAlignment = VerticalAlignment.Center };
-        TextBlock detail = new() { FontSize = 12, TextTrimming = TextTrimming.CharacterEllipsis, MaxWidth = 460, VerticalAlignment = VerticalAlignment.Center };
+        TextBlock detail = new() { Classes = { StyleClasses.Caption }, TextTrimming = TextTrimming.CharacterEllipsis, MaxWidth = 460, VerticalAlignment = VerticalAlignment.Center };
         StackPanel row = new() { Orientation = Orientation.Horizontal, Spacing = Gaps.Normal, Height = ListRow.Height, Children = { digit, text, detail } };
         AutomationProperties.SetLabeledBy(row, text);
         string? detailFont = null;
@@ -759,7 +758,7 @@ internal sealed class RenameBox : Border, IHeardPopup
         Classes.Add(StyleClasses.Popup);
         Padding = new Thickness(Gaps.Normal, Gaps.Small);
         name = new TextBox { Text = current, Classes = { StyleClasses.Search }, MinWidth = 220 }.InCodeFont();
-        TextBlock captioned = new() { Text = caption, Classes = { StyleClasses.Muted }, FontSize = 11 };
+        TextBlock captioned = new() { Text = caption, Classes = { StyleClasses.PaneTitle } };
         AutomationProperties.SetLabeledBy(name, captioned);
         body = new StackPanel
         {
@@ -803,14 +802,13 @@ internal sealed class RenameBox : Border, IHeardPopup
     public void OfferFiles(IReadOnlyList<string> files, bool on)
     {
         Files = files;
-        renameFiles = new CheckBox { Content = "Also rename files to reflect this change", IsChecked = on, Focusable = false, FontSize = 12, MinHeight = 0 };
+        renameFiles = new CheckBox { Classes = { StyleClasses.Caption }, Content = "Also rename files to reflect this change", IsChecked = on, Focusable = false, MinHeight = 0 };
         renameFiles.IsCheckedChanged += (_, _) => RenamesFilesChanged?.Invoke(this, RenamesFiles);
         body.Children.Add(renameFiles);
         body.Children.Add(new TextBlock
         {
             Text = $"Corresponding files to be renamed: {string.Join(", ", files.Select(Path.GetFileName))}",
-            Classes = { StyleClasses.Muted },
-            FontSize = 11,
+            Classes = { StyleClasses.Muted, StyleClasses.Caption },
             TextWrapping = TextWrapping.Wrap,
             MaxWidth = 360,
         });

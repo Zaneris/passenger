@@ -25,7 +25,6 @@ public sealed class CellGrid : Control, IOwnKeys
 {
     private const double RowHeight = ListRow.Height;
     private const double Pad = Gaps.Normal;
-    private const double FontSize = 12;
 
     /// <summary>The narrowest and widest a column is made to fit its cells, in characters.</summary>
     private const int FewestCharacters = 4;
@@ -103,7 +102,7 @@ public sealed class CellGrid : Control, IOwnKeys
             ShowMenu(e.TryGetPosition(this, out Point at) ? at : null);
             e.Handled = true;
         };
-        charWidth = CodeEditor.MeasureFont(plain, FontSize).CharWidth;
+        charWidth = CodeEditor.MeasureFont(plain, TypeRamp.Code).CharWidth;
     }
 
     /// <summary>The cells' menu while it is open.</summary>
@@ -138,11 +137,9 @@ public sealed class CellGrid : Control, IOwnKeys
         string text = typed ?? table.Cell(caret.Row, caret.Column);
         TextBox writing = new()
         {
-            Classes = { StyleClasses.Cell },
+            Classes = { StyleClasses.Cell, StyleClasses.Code },
             Text = text,
             AcceptsReturn = true,
-            FontFamily = plain.FontFamily,
-            FontSize = FontSize,
             MinHeight = RowHeight - 1,
             Padding = new Thickness(Pad - Hairlines.Width, Gaps.Hair),
             Name = "CellBox",
@@ -842,7 +839,7 @@ public sealed class CellGrid : Control, IOwnKeys
         }
         plain = new Typeface(font);
         bold = new Typeface(font, FontStyle.Normal, FontWeight.SemiBold);
-        charWidth = CodeEditor.MeasureFont(plain, FontSize).CharWidth;
+        charWidth = CodeEditor.MeasureFont(plain, TypeRamp.Code).CharWidth;
         Fit();
         scroll = ClampScroll(scroll);
         InvalidateArrange();
@@ -1009,7 +1006,7 @@ public sealed class CellGrid : Control, IOwnKeys
             texts[key] = null;
             return null;
         }
-        FormattedText text = new(shown, CultureInfo.CurrentCulture, FlowDirection.LeftToRight, typeface, FontSize, brush);
+        FormattedText text = new(shown, CultureInfo.CurrentCulture, FlowDirection.LeftToRight, typeface, TypeRamp.Code, brush);
         text.MaxTextWidth = Math.Max(1, width - 2 * Pad);
         text.MaxLineCount = 1;
         text.Trimming = TextTrimming.CharacterEllipsis;

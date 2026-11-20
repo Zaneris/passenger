@@ -244,10 +244,10 @@ public sealed class RequestsView : DockPanel
         private readonly Border repeated = Marked(string.Empty, TokenKeys.Warning);
         private readonly TextBlock text = new TextBlock
         {
-            FontSize = 12,
+            Classes = { StyleClasses.Code },
             VerticalAlignment = VerticalAlignment.Center,
             TextTrimming = TextTrimming.CharacterEllipsis,
-        }.InCodeFont();
+        };
 
         public CommandLine()
         {
@@ -274,14 +274,14 @@ public sealed class RequestsView : DockPanel
 
     private static TextBlock Muted(string words)
     {
-        TextBlock text = new() { Text = words, VerticalAlignment = VerticalAlignment.Center, FontSize = 12, Margin = new Thickness(Gaps.Normal, 0, 0, 0) };
+        TextBlock text = new() { Classes = { StyleClasses.Caption }, Text = words, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(Gaps.Normal, 0, 0, 0) };
         text.Classes.Add(StyleClasses.Muted);
         return text;
     }
 
     private static Border Marked(string words, string colour)
     {
-        TextBlock text = new() { Text = words, FontSize = 11, FontWeight = FontWeight.Bold, VerticalAlignment = VerticalAlignment.Center };
+        TextBlock text = new() { Classes = { StyleClasses.BadgeText }, Text = words, VerticalAlignment = VerticalAlignment.Center };
         text.Bind(TextBlock.ForegroundProperty, text.GetResourceObservable(colour));
         return new Border { Classes = { StyleClasses.Tag },  Margin = new Thickness(Gaps.Small, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center, Child = text };
     }

@@ -525,7 +525,7 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
         Popup("Stash Changes", () => window.Perform(AppActions.Stash));
         Popup("IDE Internal Errors", () => window.ShowErrors());
 
-        TextBlock[] titles = [.. seen.SelectMany(s => s.Frame.GetVisualDescendants().OfType<TextBlock>().Where(t => t.Classes.Contains(StyleClasses.PopupTitle)))];
+        TextBlock[] titles = [.. seen.SelectMany(s => s.Frame.GetVisualDescendants().OfType<TextBlock>().Where(t => t.Classes.Contains(StyleClasses.PaneTitle)))];
         Assert.True(titles.Length >= seen.Count - 2, $"Only {titles.Length} of {seen.Count} popups have a title of the popups' look");
         Assert.True(titles.All(t => t.FontSize == titles[0].FontSize && t.FontWeight == titles[0].FontWeight),
             "Popups' titles differ in size or weight: " + string.Join(", ", titles.Select(t => $"'{t.Text}' {t.FontSize} {t.FontWeight}")));
@@ -2606,6 +2606,126 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
         Assert.True(found.Count == 0, $"{found.Count} margins, paddings, spacings or borders are given numbers of their own, so they stand otherwise than their "
             + $"like elsewhere: give each a step of Gaps (Gaps.Normal, new Thickness(Gaps.Wide, 0)) or a line of Hairlines, through the shared piece it "
             + $"belongs to where there is one:\n{string.Join("\n", found)}");
+    }
+
+    /// <summary>No word is given a size of its own outside the theme files: each takes a step of the one type ramp
+    /// (TypeRamp) through the class that says its role (caption, code, badgeText, a heading's), or the body's, so like words
+    /// stand alike in every window; Theme/'s styles write only the ramp's sizes, and the body's resource is its Body.</summary>
+    [Fact]
+    public void No_font_size_is_a_number_of_its_own_but_a_step_of_the_type_ramp()
+    {
+        Regex number = new(@"(?<![\w.])\d+(?:\.\d+)?(?![\w.])");
+        Regex assigned = new(@"(?<!\w)FontSize\s*=(?!=)");
+        Regex attribute = new(@"(?<![\w.])FontSize=""([^""{][^""]*)""");
+        Regex setter = new(@"Property=""(?:TextElement\.)?FontSize""\s+Value=""([^""{][^""]*)""");
+        Regex selector = new(@"<Style Selector=""([^""]*)""");
+        Regex body = new(@"<x:Double x:Key=""Passenger\.BodySize"">([^<]*)</x:Double>");
+        double[] steps = [.. typeof(TypeRamp).GetFields().Where(f => f.IsLiteral).Select(f => (double)f.GetRawConstantValue()!).Distinct().Order()];
+        bool HasNumber(string written) => number.IsMatch(written);
+        List<string> found = [];
+        bool bodyGiven = false;
+        foreach ((string path, string text) in UiFiles(theme: true))
+        {
+            string[] lines = text.Split('\n');
+            if (path.Contains("/Theme/", StringComparison.Ordinal))
+            {
+                if (!path.EndsWith(".axaml", StringComparison.Ordinal))
+                {
+                    continue;
+                }
+                string styled = string.Empty;
+                for (int i = 0; i < lines.Length; i++)
+                {
+                    if (selector.Match(lines[i]) is { Success: true } style)
+                    {
+                        styled = style.Groups[1].Value;
+                    }
+                    if (body.Match(lines[i]) is { Success: true } bodySize)
+                    {
+                        bodyGiven = true;
+                        if (double.Parse(bodySize.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture) != TypeRamp.Body)
+                        {
+                            found.Add($"{path}:{i + 1}: {bodySize.Value} (the body is TypeRamp.Body, {TypeRamp.Body})");
+                        }
+                    }
+                    // A rendered Markdown document's own type, as its page draws it.
+                    if (styled.Contains(".md", StringComparison.Ordinal) || styled.Contains("MarkdownBlocks", StringComparison.Ordinal))
+                    {
+                        continue;
+                    }
+                    foreach (Match match in setter.Matches(lines[i]))
+                    {
+                        if (!double.TryParse(match.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture, out double size) || !steps.Contains(size))
+                        {
+                            found.Add($"{path}:{i + 1}: {match.Value} (each size one of TypeRamp's steps: {string.Join(", ", steps)})");
+                        }
+                    }
+                }
+                continue;
+            }
+            List<(int At, string What)> own = [];
+            if (path.EndsWith(".axaml", StringComparison.Ordinal))
+            {
+                foreach (Match match in attribute.Matches(text).Concat(setter.Matches(text)))
+                {
+                    if (HasNumber(match.Groups[1].Value))
+                    {
+                        own.Add((match.Index, match.Value));
+                    }
+                }
+            }
+            else
+            {
+                string code = string.Join('\n', lines.Select(l => l.TrimStart().StartsWith("//", StringComparison.Ordinal) ? string.Empty : l));
+                foreach (Match match in assigned.Matches(code))
+                {
+                    string written = Expression(code, match.Index + match.Length);
+                    if (HasNumber(written))
+                    {
+                        own.Add((match.Index, match.Value + written));
+                    }
+                }
+            }
+            foreach ((int at, string what) in own.OrderBy(o => o.At))
+            {
+                found.Add($"{path}:{LineOf(text, at)}: {what.Trim()}");
+            }
+        }
+        Assert.True(bodyGiven, "Shell.axaml names no Passenger.BodySize, so the window's words take Fluent's size, which no step of the ramp says");
+        Assert.True(found.Count == 0, $"{found.Count} words are given a size of their own, so they stand otherwise than their like elsewhere: give each the "
+            + $"class of its role on the type ramp (StyleClasses.Caption, Code, BadgeText, PaneTitle, PageTitle, HeroTitle; MutedText.Caption), or TypeRamp's "
+            + $"step where a control draws its own text, and in Theme/ one of TypeRamp's sizes:\n{string.Join("\n", found)}");
+    }
+
+    /// <summary>No word is made bold or semibold outside the theme files but a run inside running text (a match, a
+    /// Markdown span): a heading takes its class (paneTitle, pageTitle, heroTitle, toolTitle, DialogFooter's title) and a
+    /// name standing out in its row <c>strong</c>, so every heading and every row's emphasis is one weight.</summary>
+    [Fact]
+    public void No_font_weight_is_given_outside_the_theme_but_to_a_run_inside_running_text()
+    {
+        Regex assigned = new(@"(?<!\w)FontWeight\s*=(?!=)");
+        Regex attribute = new(@"<(\w+)\b[^<>]*?\bFontWeight=""[^""]*""");
+        Regex run = new(@"\bRun\s*(?:\(|\{|\w+\s*=)|(?<!\w)run\.FontWeight");
+        List<string> found = [];
+        foreach ((string path, string text) in UiFiles())
+        {
+            if (path.EndsWith(".axaml", StringComparison.Ordinal))
+            {
+                found.AddRange(attribute.Matches(text).Where(m => m.Groups[1].Value != "Run").Select(m => $"{path}:{LineOf(text, m.Index)}: {m.Value}"));
+                continue;
+            }
+            string[] lines = text.Split('\n');
+            for (int i = 0; i < lines.Length; i++)
+            {
+                if (!lines[i].TrimStart().StartsWith("//", StringComparison.Ordinal) && assigned.IsMatch(lines[i]) && !run.IsMatch(lines[i]))
+                {
+                    found.Add($"{path}:{i + 1}: {lines[i].Trim()}");
+                }
+            }
+        }
+        Assert.True(found.Count == 0, $"{found.Count} words are given a weight of their own, so one heading or row stands bolder or lighter than its like: "
+            + $"give a heading its class (StyleClasses.PaneTitle, PageTitle, HeroTitle; a dialog's through DialogFooter.Headed or Question) and a "
+            + $"name standing out in its row StyleClasses.Strong (Classes.Set where a row is shown again):\n{string.Join("\n", found)}");
     }
 
     /// <summary>The text between the bracket at <paramref name="open"/> and the one closing it.</summary>

@@ -9,6 +9,9 @@
     <Styles.Resources>
         <!-- A button, a field and a drop-down are one height, so a row of them shares its edges. -->
         <x:Double x:Key="Passenger.ControlHeight">28</x:Double>
+        <!-- The window's words, every word no step of the type ramp sizes (TypeRamp): a window's, and Fluent's controls'. -->
+        <x:Double x:Key="Passenger.BodySize">14</x:Double>
+        <StaticResource x:Key="ControlContentThemeFontSize" ResourceKey="Passenger.BodySize" />
         <!-- A check box's row as tall as a field's (Fluent's is 32), so a page's rows are evenly spaced. -->
         <StaticResource x:Key="CheckBoxMinHeight" ResourceKey="Passenger.ControlHeight" />
         <!-- A form's drop-down (ComboBox.form, FormDropDown): one width for every drop-down in a column where there is room,
@@ -243,7 +246,7 @@
         <Setter Property="Margin" Value="0,0,6,0" />
     </Style>
     <Style Selector="TextBlock.projectBadgeText">
-        <Setter Property="FontSize" Value="10" />
+        <Setter Property="FontSize" Value="11" />
         <Setter Property="FontWeight" Value="Bold" />
         <Setter Property="Foreground" Value="{DynamicResource Passenger.TitleBar.BadgeText}" />
     </Style>
@@ -262,7 +265,7 @@
         <Setter Property="Background" Value="{DynamicResource Passenger.Panel}" />
     </Style>
     <!-- Clear rather than empty, so the header takes the press that drags its window; taller than a toolbar's row and its
-         title larger than the window's words, so a tool window reads as a place of its own. -->
+         title a heading, so a tool window reads as a place of its own. -->
     <Style Selector="Border.toolHeader">
         <Setter Property="Height" Value="{DynamicResource Passenger.ToolHeaderHeight}" />
         <Setter Property="Background" Value="Transparent" />
@@ -487,17 +490,6 @@
     <!-- Words in a row that gives way when narrow (a list's row, the toolbar) end in an ellipsis, never cut mid-letter. -->
     <Style Selector="app|ShrinkingRow > TextBlock">
         <Setter Property="TextTrimming" Value="CharacterEllipsis" />
-    </Style>
-    <Style Selector="TextBlock.paneTitle">
-        <Setter Property="FontSize" Value="13" />
-        <Setter Property="FontWeight" Value="SemiBold" />
-        <Setter Property="Foreground" Value="{DynamicResource Passenger.Text}" />
-    </Style>
-    <!-- Every popup's title (PopupFrame), one size and weight. -->
-    <Style Selector="TextBlock.popupTitle">
-        <Setter Property="FontSize" Value="13" />
-        <Setter Property="FontWeight" Value="SemiBold" />
-        <Setter Property="Foreground" Value="{DynamicResource Passenger.Text}" />
     </Style>
     <!-- What the person changed from what it comes as: an action's shortcuts on Settings' Keymap page, a generated run
          configuration (and each field's label) changed from its launch profile. -->
@@ -1296,8 +1288,8 @@
     </Style>
     <Style Selector="TextBlock.welcomeTitle">
         <Setter Property="TextWrapping" Value="WrapWithOverflow" />
-        <Setter Property="FontSize" Value="30" />
-        <Setter Property="FontWeight" Value="Bold" />
+        <Setter Property="FontSize" Value="28" />
+        <Setter Property="FontWeight" Value="SemiBold" />
         <Setter Property="Margin" Value="0,0,0,4" />
     </Style>
     <Style Selector="TextBlock.welcomeSubtitle">
@@ -1348,7 +1340,7 @@
         <Setter Property="Margin" Value="0,0,0,12" />
     </Style>
     <Style Selector="TextBlock.welcomeSection">
-        <Setter Property="FontSize" Value="15" />
+        <Setter Property="FontSize" Value="16" />
         <Setter Property="FontWeight" Value="SemiBold" />
     </Style>
     <Style Selector="TextBox.welcomeSearch">
@@ -1398,7 +1390,7 @@
         <Setter Property="Background" Value="{DynamicResource Passenger.Hover}" />
     </Style>
     <Style Selector="TextBlock.welcomeKindText">
-        <Setter Property="FontSize" Value="11" />
+        <Setter Property="FontSize" Value="12" />
         <Setter Property="Foreground" Value="{DynamicResource Passenger.Text}" />
     </Style>
     <Style Selector="TextBlock.welcomeEmpty">
@@ -1457,7 +1449,7 @@
         <Setter Property="Foreground" Value="{DynamicResource Passenger.Accent}" />
     </Style>
     <Style Selector="TextBlock.firstStartName">
-        <Setter Property="FontSize" Value="15" />
+        <Setter Property="FontSize" Value="16" />
         <Setter Property="FontWeight" Value="SemiBold" />
     </Style>
     <Style Selector="TextBlock.firstStartWords">
@@ -1469,7 +1461,6 @@
     <Style Selector="Button.firstStartSystem">
         <Setter Property="Margin" Value="0,20,0,0" />
         <Setter Property="Padding" Value="12,0" />
-        <Setter Property="FontSize" Value="13" />
         <Setter Property="HorizontalAlignment" Value="Center" />
         <Setter Property="Background" Value="Transparent" />
         <Setter Property="BorderBrush" Value="{DynamicResource Passenger.Welcome.TileBorder}" />
@@ -1487,7 +1478,6 @@
     </Style>
     <!-- Back and Keep the Defaults: links in the page's muted words, which the pointer brings up. -->
     <Style Selector="Button.firstStartQuiet">
-        <Setter Property="FontSize" Value="13" />
         <Setter Property="Foreground" Value="{DynamicResource Passenger.TextMuted}" />
     </Style>
     <Style Selector="Button.firstStartQuiet:pointerover /template/ ContentPresenter#PART_ContentPresenter">
@@ -1515,8 +1505,8 @@
         <Setter Property="VerticalAlignment" Value="Center" />
     </Style>
     <Style Selector="TextBlock.notesTitle">
-        <Setter Property="FontSize" Value="24" />
-        <Setter Property="FontWeight" Value="Bold" />
+        <Setter Property="FontSize" Value="28" />
+        <Setter Property="FontWeight" Value="SemiBold" />
         <Setter Property="Margin" Value="0,0,0,2" />
     </Style>
     <Style Selector="TextBlock.notesSubtitle">
@@ -1644,5 +1634,42 @@
     <Style Selector="ToggleButton.tabStripTool">
         <Setter Property="Margin" Value="0,0,6,0" />
         <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+
+    <!-- The type ramp (TypeRamp), last so a step given to a control says its size over the control's own class: words
+         given none are the body's (Passenger.BodySize). Each heading is semibold, a badge's letters bold. -->
+    <Style Selector=":is(Control).caption">
+        <Setter Property="TextElement.FontSize" Value="12" />
+    </Style>
+    <Style Selector="TextBlock.badgeText">
+        <Setter Property="FontSize" Value="11" />
+        <Setter Property="FontWeight" Value="Bold" />
+    </Style>
+    <!-- Code in a pane, at the pane's step whatever size the editor's code is; a framed Border.code's words too. -->
+    <Style Selector=":is(Control).code">
+        <Setter Property="TextElement.FontFamily" Value="{DynamicResource Passenger.CodeFont}" />
+        <Setter Property="TextElement.FontSize" Value="12" />
+    </Style>
+    <!-- A name that stands out in its row: a group's, or what the row is about. -->
+    <Style Selector="TextBlock.strong">
+        <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+    <!-- A section's heading in a pane, a popup's title. -->
+    <Style Selector="TextBlock.paneTitle">
+        <Setter Property="FontSize" Value="13" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Foreground" Value="{DynamicResource Passenger.Text}" />
+    </Style>
+    <!-- A dialog's title over its page (DialogFooter.Headed, Question). -->
+    <Style Selector="TextBlock.dialogTitle">
+        <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+    <Style Selector="TextBlock.pageTitle">
+        <Setter Property="FontSize" Value="16" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+    <Style Selector="TextBlock.heroTitle">
+        <Setter Property="FontSize" Value="28" />
+        <Setter Property="FontWeight" Value="SemiBold" />
     </Style>
 </Styles>

@@ -67,7 +67,7 @@ public sealed class XamlPreviewPane : DockPanel
     {
         this.preview = preview;
         this.titleOf = titleOf;
-        status = new TextBlock { Classes = { StyleClasses.Muted }, FontSize = 11, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
+        status = new TextBlock { Classes = { StyleClasses.Muted, StyleClasses.Caption }, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
         sizes = new ComboBox
         {
             [DockProperty] = Dock.Right,
@@ -91,7 +91,7 @@ public sealed class XamlPreviewPane : DockPanel
             Margin = new Thickness(ListRow.TextStart, 0),
             Children =
             {
-                new TextBlock { Text = "Preview", FontWeight = FontWeight.SemiBold, FontSize = 12, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, Gaps.Normal, 0) },
+                new TextBlock { Classes = { StyleClasses.PaneTitle }, Text = "Preview", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, Gaps.Normal, 0) },
                 sizes,
                 status,
             },
@@ -99,7 +99,7 @@ public sealed class XamlPreviewPane : DockPanel
         // A bar of their own under the header, so in a narrow pane they wrap to rows rather than crowd the header out.
         looks = ToolWindows.ToolBars.OverEditor(new ToolWindows.ToolFlow { Margin = new Thickness(ListRow.TextStart, Gaps.Hair), Spacing = Gaps.Small, Children = { screens, platforms, themes } });
         looks.IsVisible = false;
-        error = new TextBlock { FontSize = 12, TextWrapping = TextWrapping.Wrap };
+        error = new TextBlock { Classes = { StyleClasses.Caption }, TextWrapping = TextWrapping.Wrap };
         error.Classes.Add(StyleClasses.Error);
         errorBar = new Border { [DockProperty] = Dock.Top, Padding = new Thickness(Gaps.Wide, Gaps.Small), IsVisible = false, Child = error };
         errorBar.Bind(Border.BackgroundProperty, errorBar.GetResourceObservable(TokenKeys.Banner));
@@ -123,13 +123,12 @@ public sealed class XamlPreviewPane : DockPanel
             preview.Scaling = windowScale * fit;
             return Task.CompletedTask;
         });
-        propertiesTitle = new TextBlock { FontWeight = FontWeight.SemiBold, FontSize = 12 };
+        propertiesTitle = new TextBlock { Classes = { StyleClasses.PaneTitle } };
         propertyRows = new StackPanel();
         TextBlock unknown = new()
         {
             Text = "What a style, theme or template gives it, what it inherits and its defaults show in the Live Visual Tree once its app runs.",
-            Classes = { StyleClasses.Muted },
-            FontSize = 11,
+            Classes = { StyleClasses.Muted, StyleClasses.Caption },
             TextWrapping = TextWrapping.Wrap,
         };
         properties = new Border
@@ -243,15 +242,15 @@ public sealed class XamlPreviewPane : DockPanel
                 Height = ListRow.Height,
                 Children =
                 {
-                    new TextBlock { [DockProperty] = Dock.Right, Text = from, Classes = { StyleClasses.Muted }, FontSize = 11, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(Gaps.Normal, 0, 0, 0) },
-                    new TextBlock { [DockProperty] = Dock.Left, Text = property, Width = 130, FontSize = 12, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis },
-                    new TextBlock { Text = value, FontSize = 12, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis }.InCodeFont(),
+                    new TextBlock { [DockProperty] = Dock.Right, Text = from, Classes = { StyleClasses.Muted, StyleClasses.Caption }, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(Gaps.Normal, 0, 0, 0) },
+                    new TextBlock { Classes = { StyleClasses.Caption }, [DockProperty] = Dock.Left, Text = property, Width = 130, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis },
+                    new TextBlock { Classes = { StyleClasses.Code }, Text = value, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis },
                 },
             });
         }
         if (values.Count == 0)
         {
-            propertyRows.Children.Add(new TextBlock { Text = "Its XAML sets nothing itself.", Classes = { StyleClasses.Muted }, FontSize = 12 });
+            propertyRows.Children.Add(new TextBlock { Text = "Its XAML sets nothing itself.", Classes = { StyleClasses.Muted, StyleClasses.Caption } });
         }
     }
 

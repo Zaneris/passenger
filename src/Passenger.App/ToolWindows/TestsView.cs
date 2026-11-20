@@ -194,7 +194,7 @@ public sealed class TestsView : DockPanel
             LineCommentPrefix = null,
             ShowLineNumbers = false,
             ShowErrorStripe = false,
-            FontSize = 12,
+            FontSize = TypeRamp.Code,
             Highlighter = Links,
             Links = Links.On,
             Margin = new Thickness(Gaps.Small, Gaps.Tight, 0, 0),
@@ -492,9 +492,9 @@ public sealed class TestsView : DockPanel
             };
             state = new RowIcon { VerticalAlignment = VerticalAlignment.Center };
             label = new TextBlock { VerticalAlignment = VerticalAlignment.Center };
-            duration = new TextBlock { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(Gaps.Wide, 0, 0, 0), FontSize = 12 };
+            duration = new TextBlock { Classes = { StyleClasses.Caption }, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(Gaps.Wide, 0, 0, 0) };
             duration.Classes.Add(StyleClasses.Muted);
-            earlier = new TextBlock { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(Gaps.Wide, 0, 0, 0), FontSize = 12 };
+            earlier = new TextBlock { Classes = { StyleClasses.Caption }, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(Gaps.Wide, 0, 0, 0) };
             earlier.Classes.Add(StyleClasses.Muted);
             Children.Add(toggle);
             Children.Add(state);

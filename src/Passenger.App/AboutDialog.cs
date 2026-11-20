@@ -34,7 +34,7 @@ public sealed class AboutDialog : IdeWindow
             Spacing = Gaps.Tight,
             Children =
             {
-                new TextBlock { Text = $"Passenger {Product.Version}", FontSize = 20, FontWeight = FontWeight.SemiBold, Margin = new Thickness(0, 0, 0, Gaps.Small) },
+                new TextBlock { Classes = { StyleClasses.HeroTitle }, Text = $"Passenger {Product.Version}", Margin = new Thickness(0, 0, 0, Gaps.Small) },
                 new TextBlock { Text = commit },
                 new TextBlock { Text = $"Runtime version: {Product.Runtime}" },
                 Sentence("Powered by ", Link(NoticesLink, Product.Notices), new Thickness(0, Gaps.Wide, 0, 0)),

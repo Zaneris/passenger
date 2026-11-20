@@ -309,7 +309,7 @@ public sealed class GameFramesView : DockPanel
             chevron.IsVisible = shown.Children.Count > 0;
             chevron.Turned = shown.IsExpanded;
             name.Text = shown.Name;
-            name.FontWeight = shown.Depth == 0 ? FontWeight.SemiBold : FontWeight.Normal;
+            name.Classes.Set(StyleClasses.Strong, shown.Depth == 0);
             place.Text = shown.Place ?? string.Empty;
             named.Margin = new Thickness(shown.Depth * Gaps.Indent, 0, 0, 0);
             FramesTable.Put(numbers[0], shown.Own is { } own ? $"{own:N1} ms" : string.Empty);

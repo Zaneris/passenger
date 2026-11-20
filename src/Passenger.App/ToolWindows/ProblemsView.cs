@@ -190,7 +190,7 @@ public sealed class ProblemsView : DockPanel
         TextBlock text = new() { VerticalAlignment = VerticalAlignment.Center };
         Button open = new() { Classes = { StyleClasses.Link }, VerticalAlignment = VerticalAlignment.Center };
         TextBlock after = new() { VerticalAlignment = VerticalAlignment.Center };
-        TextBlock detail = new() { FontSize = 12, Margin = new Thickness(Gaps.Wide, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
+        TextBlock detail = new() { Classes = { StyleClasses.Caption }, Margin = new Thickness(Gaps.Wide, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
         detail.Classes.Add(StyleClasses.Muted);
         ShrinkingRow panel = new() { Height = ListRow.Height, Children = { icon, text, open, after, detail } };
         open.Click += (_, e) =>
@@ -221,7 +221,7 @@ public sealed class ProblemsView : DockPanel
             icon.DataKey = kind < 0 ? null : Severities[kind].Icon;
             icon.ForegroundKey = kind < 0 ? null : Severities[kind].Brush;
             ToolTip.SetTip(panel, problem is null ? null : row.Label);
-            text.FontWeight = problem is null && row.Depth == 0 ? FontWeight.SemiBold : FontWeight.Normal;
+            text.Classes.Set(StyleClasses.Strong, problem is null && row.Depth == 0);
             text.TextTrimming = problem is null ? TextTrimming.None : TextTrimming.CharacterEllipsis;
             open.IsVisible = after.IsVisible = false;
             if (problem is null)

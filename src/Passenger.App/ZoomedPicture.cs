@@ -25,7 +25,7 @@ public sealed class ZoomedPicture : ScrollViewer
     public const double Gap = Gaps.Wide;
 
     private readonly Image image = new() { Stretch = Stretch.Fill };
-    private readonly TextBlock zoomText = new() { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(Gaps.Normal, 0), FontSize = 12 };
+    private readonly TextBlock zoomText = new() { Classes = { StyleClasses.Caption }, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(Gaps.Normal, 0) };
 
     /// <summary>How the zoom follows the room: not at all once zoomed, fitted but never enlarged (a preview's start), or
     /// fitted whole (Fit Zoom to Window).</summary>

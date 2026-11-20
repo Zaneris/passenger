@@ -14,9 +14,6 @@ public sealed class ColumnTitles : Border
     /// <summary>Where a tree list's rows start inside it, so titles over a list stand over its columns.</summary>
     public const double OverList = ListRow.TextStart;
 
-    /// <summary>The titles' size, a caption's beside the rows' words.</summary>
-    private const double TitleSize = 12;
-
     private readonly string columns;
     private readonly Grid grid;
     private readonly TextBlock[] titles;
@@ -29,8 +26,7 @@ public sealed class ColumnTitles : Border
         for (int i = 0; i < named.Count; i++)
         {
             bool number = numbers && i > 0;
-            TextBlock title = MutedText.Of(named[i]);
-            title.FontSize = TitleSize;
+            TextBlock title = MutedText.Caption(named[i]);
             title.Margin = number ? new Thickness(0, 0, cell, 0) : new Thickness(cell, 0);
             title.HorizontalAlignment = number ? HorizontalAlignment.Right : HorizontalAlignment.Stretch;
             title.TextAlignment = number ? TextAlignment.Right : TextAlignment.Left;

@@ -104,7 +104,7 @@ public sealed class GodotItemsEditor : Border
             Spacing = Gaps.Small,
             Children =
             {
-                new TextBlock { Classes = { StyleClasses.PopupTitle }, Text = $"{name}: {of}", TextTrimming = TextTrimming.CharacterEllipsis },
+                new TextBlock { Classes = { StyleClasses.PaneTitle }, Text = $"{name}: {of}", TextTrimming = TextTrimming.CharacterEllipsis },
                 new ScrollViewer { MaxHeight = ListRow.Height * 12, Content = new Panel { Children = { rows, empty } } },
                 add,
                 slot,
@@ -181,7 +181,7 @@ public sealed class GodotItemsEditor : Border
     {
         Grid row = new() { ColumnDefinitions = new ColumnDefinitions("32,*,Auto") };
         object asked = rowsNow[index];
-        TextBlock at = new TextBlock { Classes = { StyleClasses.Muted }, FontSize = 12, Text = index.ToString(System.Globalization.CultureInfo.InvariantCulture), VerticalAlignment = VerticalAlignment.Center }.InCodeFont();
+        TextBlock at = new TextBlock { Classes = { StyleClasses.Muted, StyleClasses.Code }, Text = index.ToString(System.Globalization.CultureInfo.InvariantCulture), VerticalAlignment = VerticalAlignment.Center };
         Control field = Opens(Listed[index], $"{name}[{index}]", asked, Replaced) is { } opens ? opens
             : Field(Listed[index], asked, text => InTurn(asked, now => SetItemAsync(now, text)));
         Grid.SetColumn(field, 1);
@@ -222,7 +222,7 @@ public sealed class GodotItemsEditor : Border
         {
             return null;
         }
-        TextBlock words = new TextBlock { FontSize = 12, Text = GodotVariant.Shown(item), TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center }.InCodeFont();
+        TextBlock words = new TextBlock { Classes = { StyleClasses.Code }, Text = GodotVariant.Shown(item), TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center };
         Button button = new()
         {
             Classes = { StyleClasses.Compact },
@@ -307,7 +307,7 @@ public sealed class GodotItemsEditor : Border
     private TextBox Field(object? value, object row, Action<string> taken)
     {
         string was = GodotVariant.Shown(value, quoted: value is string or GodotName or GodotNodePath);
-        TextBox field = new TextBox { FontSize = 12, Text = was, VerticalAlignment = VerticalAlignment.Center }.InCodeFont();
+        TextBox field = new TextBox { Classes = { StyleClasses.Code }, Text = was, VerticalAlignment = VerticalAlignment.Center };
         field.KeyDown += (_, e) =>
         {
             if (e.Key == Key.Enter)
@@ -496,7 +496,7 @@ public sealed class GodotResourceEditor : Border, IGodotTuner
         Classes.Add(StyleClasses.Popup);
         Width = PopupFrame.Medium;
         Padding = new Thickness(Gaps.Normal);
-        title = new TextBlock { Classes = { StyleClasses.PopupTitle }, Text = property, TextTrimming = TextTrimming.CharacterEllipsis };
+        title = new TextBlock { Classes = { StyleClasses.PaneTitle }, Text = property, TextTrimming = TextTrimming.CharacterEllipsis };
         words.Text = $"Reading {property}'s properties…";
         Child = new StackPanel
         {
@@ -580,8 +580,8 @@ public sealed class GodotResourceEditor : Border, IGodotTuner
         TextBlock label = new() { Text = name, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, Gaps.Normal, 0) };
         ToolTip.SetTip(label, name);
         GodotValueCell cell = new(game, this);
-        TextBox typed = new TextBox { FontSize = 12, VerticalAlignment = VerticalAlignment.Center }.InCodeFont();
-        TextBlock shown = new TextBlock { FontSize = 12, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center }.InCodeFont();
+        TextBox typed = new TextBox { Classes = { StyleClasses.Code }, VerticalAlignment = VerticalAlignment.Center };
+        TextBlock shown = new TextBlock { Classes = { StyleClasses.Code }, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center };
         typed.KeyDown += (_, e) =>
         {
             if (e.Key == Key.Enter && id is { } resource)

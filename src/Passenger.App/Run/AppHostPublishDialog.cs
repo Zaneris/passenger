@@ -22,9 +22,9 @@ public sealed class AppHostPublishDialog : IdeWindow
     private readonly TextBox folderBox = new() { Classes = { StyleClasses.Search } };
     private readonly Button browse = new() { Content = "Browse…", Margin = new Thickness(Gaps.Normal, 0, 0, 0) };
     private readonly ComboBox stepBox = new() { HorizontalAlignment = HorizontalAlignment.Stretch };
-    private readonly TextBlock stepSaid = new() { Classes = { StyleClasses.Muted }, FontSize = 12, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, Gaps.Tight, 0, 0) };
-    private readonly TextBlock destination = new() { Classes = { StyleClasses.Muted }, FontSize = 12, TextTrimming = TextTrimming.PathSegmentEllipsis, Margin = new Thickness(0, Gaps.Tight, 0, 0) };
-    private readonly TextBlock command = new() { Classes = { StyleClasses.Muted }, TextWrapping = TextWrapping.Wrap, FontSize = 12 };
+    private readonly TextBlock stepSaid = new() { Classes = { StyleClasses.Muted, StyleClasses.Caption }, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, Gaps.Tight, 0, 0) };
+    private readonly TextBlock destination = new() { Classes = { StyleClasses.Muted, StyleClasses.Caption }, TextTrimming = TextTrimming.PathSegmentEllipsis, Margin = new Thickness(0, Gaps.Tight, 0, 0) };
+    private readonly TextBlock command = new() { Classes = { StyleClasses.Muted, StyleClasses.Caption }, TextWrapping = TextWrapping.Wrap };
     private readonly TextBlock problem = new() { TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center };
     private readonly Button publish = DialogFooter.Default("Publish");
     private readonly CancellationTokenSource closing = new();

@@ -12,7 +12,7 @@ namespace Passenger.App.Settings;
 public sealed class MouseShortcutDialog : ShortcutDialog
 {
     private readonly Func<MouseShortcut, IReadOnlyList<(string Title, string Where)>> conflictsOf;
-    private readonly TextBlock shown = new() { HorizontalAlignment = HorizontalAlignment.Center, FontWeight = FontWeight.SemiBold };
+    private readonly TextBlock shown = new() { Classes = { StyleClasses.Strong }, HorizontalAlignment = HorizontalAlignment.Center };
 
     public MouseShortcutDialog(string action, string where, Func<MouseShortcut, IReadOnlyList<(string Title, string Where)>> conflictsOf)
         : base("Mouse Shortcut")

@@ -80,7 +80,7 @@ public class DetailsTables : DockPanel
     public void Section(string title, IReadOnlyList<(string Name, Control Value)> rows)
     {
         words?.Append(title).Append('\u0001');
-        TextBlock heading = new() { Text = title, FontWeight = FontWeight.SemiBold, Margin = new Thickness(0, Gaps.Wide, 0, Gaps.Tight) };
+        TextBlock heading = new() { Classes = { StyleClasses.PaneTitle }, Text = title, Margin = new Thickness(0, Gaps.Wide, 0, Gaps.Tight) };
         Grid table = new()
         {
             ColumnDefinitions = { new ColumnDefinition(GridLength.Auto) { SharedSizeGroup = "DetailsNames" }, new ColumnDefinition(GridLength.Star) },
@@ -148,8 +148,7 @@ public class DetailsTables : DockPanel
         };
         if (code)
         {
-            words.InCodeFont();
-            words.FontSize = 12;
+            words.Classes.Add(StyleClasses.Code);
         }
         if (brush is not null)
         {

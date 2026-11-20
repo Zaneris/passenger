@@ -215,7 +215,7 @@ public sealed class StepLibraryView : DockPanel
     /// <summary>A row for whichever heading, definition or hook the list hands its container.</summary>
     private Control Row()
     {
-        TextBlock title = new() { FontWeight = FontWeight.SemiBold, VerticalAlignment = VerticalAlignment.Center };
+        TextBlock title = new() { Classes = { StyleClasses.Strong }, VerticalAlignment = VerticalAlignment.Center };
         TextBlock count = MutedText.Of(string.Empty);
         count.Margin = new Thickness(Gaps.Small, 0, 0, 0);
         StackPanel heading = new() { Orientation = Orientation.Horizontal, Height = ListRow.Height, Margin = new Thickness(Gaps.Normal, 0), Children = { title, count } };
@@ -260,7 +260,7 @@ public sealed class StepLibraryView : DockPanel
         insert.Name = "stepInsert";
         insert.VerticalAlignment = VerticalAlignment.Center;
         DockPanel.SetDock(insert, Dock.Right);
-        Button uses = new() { Classes = { StyleClasses.Link }, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(Gaps.Small, 0, Gaps.Hair, 0), FontSize = 12 };
+        Button uses = new() { Classes = { StyleClasses.Link, StyleClasses.Caption }, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(Gaps.Small, 0, Gaps.Hair, 0) };
         uses.Click += (_, _) =>
         {
             if (row.DataContext is LibraryStep step)
@@ -268,10 +268,10 @@ public sealed class StepLibraryView : DockPanel
                 UsagesRequested?.Invoke(this, step);
             }
         };
-        TextBlock unused = new() { Text = "Unused", FontSize = 12, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(Gaps.Small, 0, Gaps.Tight, 0) };
+        TextBlock unused = new() { Classes = { StyleClasses.Caption }, Text = "Unused", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(Gaps.Small, 0, Gaps.Tight, 0) };
         unused.Bind(TextBlock.ForegroundProperty, unused.GetResourceObservable(TokenKeys.Warning));
         Panel use = new() { [DockPanel.DockProperty] = Dock.Right, Children = { uses, unused } };
-        TextBlock tagWords = new() { FontSize = 11, VerticalAlignment = VerticalAlignment.Center };
+        TextBlock tagWords = new() { Classes = { StyleClasses.Caption }, VerticalAlignment = VerticalAlignment.Center };
         tagWords.Classes.Add(StyleClasses.Muted);
         Border tags = new() { [DockPanel.DockProperty] = Dock.Right, Classes = { StyleClasses.Tag },  Margin = new Thickness(Gaps.Small, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center, MaxWidth = 140, Child = tagWords };
         tagWords.TextTrimming = TextTrimming.CharacterEllipsis;
@@ -297,10 +297,9 @@ public sealed class StepLibraryView : DockPanel
     private static (DockPanel Line, Action<StepHook> Show) HookRow()
     {
         TextBlock when = new() { VerticalAlignment = VerticalAlignment.Center, [DockPanel.DockProperty] = Dock.Left };
-        TextBlock method = MutedText.Of(string.Empty);
-        method.FontSize = 12;
+        TextBlock method = MutedText.Caption(string.Empty);
         method.Margin = new Thickness(Gaps.Normal, 0, 0, 0);
-        TextBlock tagWords = new() { FontSize = 11, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
+        TextBlock tagWords = new() { Classes = { StyleClasses.Caption }, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
         tagWords.Classes.Add(StyleClasses.Muted);
         Border tags = new() { [DockPanel.DockProperty] = Dock.Right, Classes = { StyleClasses.Tag },  Margin = new Thickness(Gaps.Small, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center, MaxWidth = 140, Child = tagWords };
         DockPanel line = new() { Height = ListRow.Height, Margin = new Thickness(Gaps.Page, 0, Gaps.Normal, 0), Children = { tags, when, method } };

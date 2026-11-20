@@ -68,7 +68,7 @@ public sealed class BreakpointProperties : UserControl
         {
             Spacing = Gaps.Small,
             IsVisible = false,
-            Children = { new TextBlock { Text = "Suspend If", FontWeight = FontWeight.SemiBold }, scenarios, inactive },
+            Children = { new TextBlock { Classes = { StyleClasses.PaneTitle }, Text = "Suspend If" }, scenarios, inactive },
         };
         Content = new StackPanel
         {
@@ -230,7 +230,7 @@ public sealed class BreakpointPopup : UserControl
                 Spacing = Gaps.Wide,
                 Children =
                 {
-                    new TextBlock { Text = breakpoint.Location, Classes = { StyleClasses.PopupTitle } },
+                    new TextBlock { Text = breakpoint.Location, Classes = { StyleClasses.PaneTitle } },
                     Properties,
                     new DockPanel
                     {
@@ -277,7 +277,7 @@ public sealed class BreakpointsWindow : UserControl
     private readonly Func<Task<IReadOnlyList<string>>> exceptionTypes;
     private readonly ListBox list = new() { Classes = { StyleClasses.Tree } };
     private readonly BreakpointProperties properties = new();
-    private readonly TextBlock title = new() { Classes = { StyleClasses.PopupTitle } };
+    private readonly TextBlock title = new() { Classes = { StyleClasses.PaneTitle } };
     private readonly Button remove = new() { Content = "Remove" };
     private readonly Button goTo = new() { Content = "Go to Source" };
     private readonly Button removeTool = ToolButtons.Of(IconKeys.Minimize, "Remove");
@@ -352,7 +352,7 @@ public sealed class BreakpointsWindow : UserControl
             IsVisible = false,
             Children =
             {
-                new TextBlock { Text = "Add CLR Exception Breakpoints", FontWeight = FontWeight.SemiBold },
+                new TextBlock { Classes = { StyleClasses.PaneTitle }, Text = "Add CLR Exception Breakpoints" },
                 typed,
                 Framed(found),
                 answers,
@@ -383,7 +383,7 @@ public sealed class BreakpointsWindow : UserControl
                 Spacing = Gaps.Wide,
                 Children =
                 {
-                    new TextBlock { Text = "Breakpoints", Classes = { StyleClasses.PopupTitle } },
+                    new TextBlock { Text = "Breakpoints", Classes = { StyleClasses.PaneTitle } },
                     body,
                     new DockPanel
                     {
@@ -590,7 +590,7 @@ public sealed class BreakpointsWindow : UserControl
     /// <summary>A group's heading, one for each kind of breakpoint; it is never chosen.</summary>
     private static ListBoxItem Group(string name)
     {
-        TextBlock text = new() { Text = name, FontWeight = FontWeight.SemiBold, Margin = new Thickness(0, Gaps.Tight, 0, 0) };
+        TextBlock text = new() { Classes = { StyleClasses.Strong }, Text = name, Margin = new Thickness(0, Gaps.Tight, 0, 0) };
         // Disabled, so neither a click nor the arrow keys choose it, but in the list's own colour rather than greyed.
         text.Bind(TextBlock.ForegroundProperty, text.GetResourceObservable(TokenKeys.Text));
         return new ListBoxItem { IsEnabled = false, Content = text };

@@ -83,8 +83,8 @@ public sealed class BookmarksView : DockPanel
     /// <summary>A bookmark's row: its file and line, then the line's code, muted.</summary>
     private Control Row()
     {
-        TextBlock where = new() { Width = 200, VerticalAlignment = VerticalAlignment.Center, FontWeight = FontWeight.SemiBold };
-        TextBlock text = new TextBlock { VerticalAlignment = VerticalAlignment.Center, FontSize = 12, TextTrimming = TextTrimming.CharacterEllipsis }.InCodeFont();
+        TextBlock where = new() { Classes = { StyleClasses.Strong }, Width = 200, VerticalAlignment = VerticalAlignment.Center };
+        TextBlock text = new TextBlock { Classes = { StyleClasses.Code }, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
         text.Classes.Add(StyleClasses.Muted);
         // The line takes what the row leaves, so a narrow window ends it in an ellipsis rather than cutting it off.
         DockPanel.SetDock(where, Dock.Left);

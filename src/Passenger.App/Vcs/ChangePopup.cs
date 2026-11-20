@@ -49,7 +49,7 @@ public sealed class ChangePopup : UserControl
         StackPanel content = new() { Spacing = Gaps.Small, Children = { tools } };
         if (before is { Length: > 0 })
         {
-            old = new TextBlock { FontSize = 12, Padding = new Thickness(Gaps.Normal, Gaps.Small) }.InCodeFont();
+            old = new TextBlock { Classes = { StyleClasses.Code }, Padding = new Thickness(Gaps.Normal, Gaps.Small) };
             ShowText();
             Border text = new() { Classes = { StyleClasses.Box }, Child = new ScrollViewer { MaxHeight = 260, MaxWidth = 640, HorizontalScrollBarVisibility = ScrollBarVisibility.Auto, Content = old } };
             text.Bind(Border.BackgroundProperty, text.GetResourceObservable(TokenKeys.Diff_Modified));

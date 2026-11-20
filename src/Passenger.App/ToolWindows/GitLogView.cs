@@ -120,7 +120,7 @@ public sealed class GitLogView : DockPanel, IOwnKeys
             BorderThickness = new Thickness(0),
             Background = Brushes.Transparent,
             Padding = new Thickness(ListRow.TextStart, Gaps.Normal),
-            FontSize = 12,
+            Classes = { StyleClasses.Caption },
         };
         placeholder = new EmptyState();
         placeholder.ActionRequested += (_, action) => ActionRequested?.Invoke(this, action);
@@ -518,7 +518,7 @@ public sealed class GitLogView : DockPanel, IOwnKeys
             while (tags.Count < refs.Count)
             {
                 // A long branch's name ends in an ellipsis and leaves the subject room.
-                TextBlock text = new() { FontSize = 11, TextTrimming = TextTrimming.CharacterEllipsis };
+                TextBlock text = new() { Classes = { StyleClasses.Caption }, TextTrimming = TextTrimming.CharacterEllipsis };
                 text.Bind(TextBlock.ForegroundProperty, text.GetResourceObservable(TokenKeys.Vcs_RefText));
                 Border tag = new() { [DockProperty] = Dock.Left, Classes = { StyleClasses.Tag },  Margin = new Thickness(0, 0, Gaps.Small, 0), Child = text, VerticalAlignment = VerticalAlignment.Center, MaxWidth = 160 };
                 tag.Bind(Border.BackgroundProperty, tag.GetResourceObservable(TokenKeys.Vcs_Ref));

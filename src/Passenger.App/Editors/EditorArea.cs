@@ -43,9 +43,8 @@ public sealed partial class EditorArea : UserControl
         // In a narrow editor the title ends in an ellipsis and the hint, just under it, wraps as empty places' words do.
         emptyTitle = new TextBlock
         {
+            Classes = { StyleClasses.HeroTitle },
             Text = "Passenger",
-            FontSize = 28,
-            FontWeight = FontWeight.SemiBold,
             HorizontalAlignment = HorizontalAlignment.Center,
             TextTrimming = TextTrimming.CharacterEllipsis,
             Margin = new Thickness(Gaps.Group, 0),

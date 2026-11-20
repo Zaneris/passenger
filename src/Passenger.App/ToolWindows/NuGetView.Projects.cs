@@ -80,7 +80,7 @@ public sealed partial class NuGetView
         StackPanel header = new()
         {
             Orientation = Orientation.Horizontal,
-            Children = { new TextBlock { Text = "Projects", FontWeight = FontWeight.SemiBold, VerticalAlignment = VerticalAlignment.Center }, projectCount, typed },
+            Children = { new TextBlock { Classes = { StyleClasses.PaneTitle }, Text = "Projects", VerticalAlignment = VerticalAlignment.Center }, projectCount, typed },
         };
         return (typed, menu, header);
     }

@@ -154,7 +154,7 @@ public sealed class NuGetSourcesView : Panel
         toggle.Margin = new Thickness(0, 0, Gaps.Tight, 0);
         ToolTip.SetTip(toggle, "Enabled");
         toggle.IsCheckedChanged += (_, _) => IdeErrors.Observe(SetEnabledAsync(file, feed.Name, toggle.IsChecked == true));
-        TextBlock name = new() { Text = feed.Name, FontWeight = FontWeight.SemiBold, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
+        TextBlock name = new() { Classes = { StyleClasses.Strong }, Text = feed.Name, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
         TextBlock url = new() { Classes = { StyleClasses.Muted }, Text = feed.Value, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis, Margin = new Thickness(Gaps.Normal, 0) };
         ToolTip.SetTip(url, feed.Value);
         Grid row = new() { ColumnDefinitions = new ColumnDefinitions("Auto,150,*,Auto,Auto,Auto"), Height = ListRow.Height, Tag = feed.Name };
@@ -284,10 +284,10 @@ public sealed class NuGetSourcesView : Panel
     {
         RowIcon icon = new() { Width = 14, Height = 14, Margin = new Thickness(Gaps.Small, 0, Gaps.Small, 0) };
         icon.DataKey = IconKeys.DocumentText;
-        TextBlock place = new() { Classes = { StyleClasses.Muted }, FontSize = 12, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(Gaps.Normal, 0, Gaps.Normal, 0) };
+        TextBlock place = new() { Classes = { StyleClasses.Muted, StyleClasses.Caption }, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(Gaps.Normal, 0, Gaps.Normal, 0) };
         // Its name, then its folder, which gives way first in a narrow pane so the name stays whole.
         TextBlock name = new() { VerticalAlignment = VerticalAlignment.Center };
-        TextBlock folder = new() { Classes = { StyleClasses.Muted }, FontSize = 12, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(Gaps.Small, 0, 0, 0) };
+        TextBlock folder = new() { Classes = { StyleClasses.Muted, StyleClasses.Caption }, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(Gaps.Small, 0, 0, 0) };
         ShrinkingRow path = new() { Children = { name, folder } };
         Grid line = new() { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto"), Height = ListRow.Height };
         Add(line, icon, 0);

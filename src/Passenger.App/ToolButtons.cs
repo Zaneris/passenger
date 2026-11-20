@@ -101,4 +101,20 @@ public static class MutedText
         note.TextWrapping = TextWrapping.Wrap;
         return note;
     }
+
+    /// <summary>A muted note at the caption's step: a field's note, a row's detail.</summary>
+    public static TextBlock Caption(string text)
+    {
+        TextBlock note = Of(text);
+        note.Classes.Add(StyleClasses.Caption);
+        return note;
+    }
+
+    /// <summary>A muted note at the caption's step that wraps to its column, as a field's note under it does.</summary>
+    public static TextBlock CaptionWrapped(string text)
+    {
+        TextBlock note = Wrapped(text);
+        note.Classes.Add(StyleClasses.Caption);
+        return note;
+    }
 }

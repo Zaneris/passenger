@@ -196,7 +196,7 @@ public sealed class ConflictsDialog : IdeWindow
         RowIcon icon = new() { Width = 14, Height = 14, Margin = new Thickness(0, 0, Gaps.Small, 0), [DockPanel.DockProperty] = Dock.Left };
         TextBlock name = new() { VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis, [DockPanel.DockProperty] = Dock.Left };
         name.Bind(TextBlock.ForegroundProperty, name.GetResourceObservable(TokenKeys.Vcs_File_Conflicted));
-        TextBlock folder = new() { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(Gaps.Normal, 0, 0, 0), FontSize = 12, TextTrimming = TextTrimming.CharacterEllipsis };
+        TextBlock folder = new() { Classes = { StyleClasses.Caption }, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(Gaps.Normal, 0, 0, 0), TextTrimming = TextTrimming.CharacterEllipsis };
         folder.Classes.Add(StyleClasses.Muted);
         // The file narrows to its column, its folder ending in an ellipsis first, rather than running into what the sides did.
         DockPanel file = new() { Margin = new Thickness(CellInset, 0, 0, 0), Children = { icon, name, folder } };

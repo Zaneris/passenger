@@ -129,7 +129,7 @@ public sealed class GitView : DockPanel
     /// <summary>What a tab's list holds, muted above it.</summary>
     private static TextBlock Explanation(string text, int row)
     {
-        TextBlock said = new() { Text = text, Margin = new Thickness(ListRow.TextStart, Gaps.Small), FontSize = 12 };
+        TextBlock said = new() { Classes = { StyleClasses.Caption }, Text = text, Margin = new Thickness(ListRow.TextStart, Gaps.Small) };
         said.Classes.Add(StyleClasses.Muted);
         Grid.SetRow(said, row);
         return said;

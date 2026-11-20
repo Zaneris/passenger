@@ -45,7 +45,7 @@ public sealed class GodotResourcePicker : Border
             Spacing = Gaps.Small,
             Children =
             {
-                new TextBlock { Classes = { StyleClasses.PopupTitle }, Text = "Choose a Resource" },
+                new TextBlock { Classes = { StyleClasses.PaneTitle }, Text = "Choose a Resource" },
                 filter,
                 new Panel { Children = { list, empty } },
             },
@@ -116,7 +116,7 @@ public sealed class GodotResourcePicker : Border
     {
         Image thumbnail = new() { Width = 18, Height = 18, Stretch = Stretch.Uniform, Margin = new Thickness(0, 0, Gaps.Small, 0) };
         TextBlock name = new() { VerticalAlignment = VerticalAlignment.Center };
-        TextBlock where = new() { Classes = { StyleClasses.Muted }, FontSize = 11, Margin = new Thickness(Gaps.Small, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
+        TextBlock where = new() { Classes = { StyleClasses.Muted, StyleClasses.Caption }, Margin = new Thickness(Gaps.Small, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
         StackPanel line = new() { Orientation = Orientation.Horizontal, Height = ListRow.Height, Margin = ListRow.Inset, Children = { thumbnail, name, where } };
         return line.Showing<string>(path =>
         {
@@ -149,11 +149,11 @@ public sealed class GodotKeepPreview : Border
         Width = PopupFrame.Medium;
         Padding = PopupFrame.Inset;
         StackPanel page = new() { Spacing = Gaps.Normal };
-        page.Children.Add(new TextBlock { Classes = { StyleClasses.PopupTitle }, Text = title });
+        page.Children.Add(new TextBlock { Classes = { StyleClasses.PaneTitle }, Text = title });
         foreach (GodotKept one in kept)
         {
             StackPanel block = new() { Spacing = Gaps.Hair };
-            block.Children.Add(new TextBlock { Classes = { StyleClasses.Muted }, FontSize = 11, Text = $"{Path.GetFileName(one.File)}:{one.Line + 1}{(one.Before is null ? ", a line added" : string.Empty)}" });
+            block.Children.Add(new TextBlock { Classes = { StyleClasses.Muted, StyleClasses.Caption }, Text = $"{Path.GetFileName(one.File)}:{one.Line + 1}{(one.Before is null ? ", a line added" : string.Empty)}" });
             if (one.Before is { } before)
             {
                 block.Children.Add(Line("− ", before, struck: true));
@@ -163,7 +163,7 @@ public sealed class GodotKeepPreview : Border
         }
         foreach (string why in refused)
         {
-            page.Children.Add(new TextBlock { Classes = { StyleClasses.Muted }, FontSize = 12, TextWrapping = TextWrapping.Wrap, Text = why });
+            page.Children.Add(new TextBlock { Classes = { StyleClasses.Muted, StyleClasses.Caption }, TextWrapping = TextWrapping.Wrap, Text = why });
         }
         KeepButton = new Button { Content = "Keep", Classes = { StyleClasses.Primary }, IsEnabled = kept.Count > 0 };
         KeepButton.Click += (_, _) => Done?.Invoke(this, true);
@@ -197,7 +197,7 @@ public sealed class GodotKeepPreview : Border
 
     private static TextBlock Line(string sign, string text, bool struck)
     {
-        TextBlock line = new TextBlock { Text = sign + text.Trim(), FontSize = 12, TextTrimming = TextTrimming.CharacterEllipsis }.InCodeFont();
+        TextBlock line = new TextBlock { Classes = { StyleClasses.Code }, Text = sign + text.Trim(), TextTrimming = TextTrimming.CharacterEllipsis };
         if (struck)
         {
             line.TextDecorations = TextDecorations.Strikethrough;
@@ -216,7 +216,7 @@ public sealed class GodotUnkeptPanel : DockPanel
 
     public GodotUnkeptPanel(string game, GodotTuning of, Action<GodotTuned, Control> keep, Action<Control> keepAll, Action discard)
     {
-        said = new TextBlock { TextWrapping = TextWrapping.Wrap, FontSize = 12, Margin = new Thickness(Gaps.Wide, Gaps.Normal, Gaps.Wide, Gaps.Tight) };
+        said = new TextBlock { Classes = { StyleClasses.Caption }, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(Gaps.Wide, Gaps.Normal, Gaps.Wide, Gaps.Tight) };
         SetDock(said, Dock.Top);
         list = new ListBox { Classes = { StyleClasses.Tree } };
         ReusedRows.Use(list, () => Row(keep));
@@ -260,8 +260,8 @@ public sealed class GodotUnkeptPanel : DockPanel
     private static Control Row(Action<GodotTuned, Control> keep)
     {
         TextBlock name = new() { VerticalAlignment = VerticalAlignment.Center };
-        TextBlock values = new TextBlock { Classes = { StyleClasses.Muted }, FontSize = 11, Margin = new Thickness(Gaps.Normal, 0), VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis }.InCodeFont();
-        Button link = new() { Classes = { StyleClasses.Link }, Content = "Keep…", FontSize = 12, VerticalAlignment = VerticalAlignment.Center };
+        TextBlock values = new TextBlock { Classes = { StyleClasses.Muted, StyleClasses.Code }, Margin = new Thickness(Gaps.Normal, 0), VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
+        Button link = new() { Classes = { StyleClasses.Link, StyleClasses.Caption }, Content = "Keep…", VerticalAlignment = VerticalAlignment.Center };
         DockPanel.SetDock(link, Dock.Right);
         DockPanel.SetDock(name, Dock.Left);
         DockPanel line = new() { Height = ListRow.Height, Margin = ListRow.Inset, Children = { link, name, values } };

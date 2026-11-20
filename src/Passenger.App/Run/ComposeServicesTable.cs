@@ -130,7 +130,7 @@ public sealed class ComposeServicesTable : EditableTable
         name.Children.Add(new TextBlock { Text = service, VerticalAlignment = VerticalAlignment.Center });
         if (runs.Length > 0)
         {
-            name.Children.Add(new TextBlock { Text = runs, Classes = { StyleClasses.Muted }, FontSize = 11, VerticalAlignment = VerticalAlignment.Center });
+            name.Children.Add(new TextBlock { Text = runs, Classes = { StyleClasses.Muted, StyleClasses.Caption }, VerticalAlignment = VerticalAlignment.Center });
         }
         ComboBox projectBox = new()
         {

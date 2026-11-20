@@ -46,7 +46,7 @@ public sealed class DockerSupportDialog : IdeWindow
             choice.Margin = new Thickness(0, 0, 0, Gaps.Normal);
             choice.HorizontalAlignment = HorizontalAlignment.Stretch;
         }
-        TextBlock heading = new() { Text = $"How {project}'s image is built", FontWeight = FontWeight.SemiBold, Margin = new Thickness(0, 0, 0, Gaps.Wide) };
+        TextBlock heading = new() { Classes = { StyleClasses.PaneTitle }, Text = $"How {project}'s image is built", Margin = new Thickness(0, 0, 0, Gaps.Wide) };
         Button ok = DialogFooter.Default();
         ok.Click += (_, _) => Accept();
         StackPanel page = new() { [DialogFooter.InsetProperty] = true, Children = { heading, dockerfile, sdk } };
@@ -153,7 +153,7 @@ public sealed class DockerComposeDialog : IdeWindow
 
     private static TextBlock Heading(string text, int row)
     {
-        TextBlock heading = new() { Text = text, FontWeight = FontWeight.SemiBold, Margin = new Thickness(0, row == 0 ? 0 : Gaps.Wide, 0, Gaps.Normal) };
+        TextBlock heading = new() { Classes = { StyleClasses.PaneTitle }, Text = text, Margin = new Thickness(0, row == 0 ? 0 : Gaps.Wide, 0, Gaps.Normal) };
         Grid.SetRow(heading, row);
         return heading;
     }

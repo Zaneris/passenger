@@ -30,14 +30,14 @@ public sealed class NewItemDialog : IdeWindow
     private readonly TextBox search = new() { Classes = { StyleClasses.Search }, PlaceholderText = "Search", Margin = new Thickness(Gaps.Normal, Gaps.Normal, Gaps.Normal, Gaps.Small) };
     private readonly ListBox list;
     private readonly TextBlock loading = new() { Classes = { StyleClasses.Muted }, Text = "Loading templates…", TextWrapping = TextWrapping.Wrap, Margin = new Thickness(Gaps.Wide) };
-    private readonly TextBlock heading = new() { FontSize = 16, FontWeight = FontWeight.SemiBold };
+    private readonly TextBlock heading = new() { Classes = { StyleClasses.PageTitle } };
     private readonly TextBlock description = new() { Classes = { StyleClasses.Muted }, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, Gaps.Tight, 0, 0) };
     private readonly TextBox itemName = new() { Classes = { StyleClasses.Search } };
     private readonly TextBox space = new() { Classes = { StyleClasses.Search } };
     private readonly Control nameRow;
     private readonly Control spaceRow;
     private readonly TemplateOptions options = new();
-    private readonly TextBlock command = new() { Classes = { StyleClasses.Muted }, FontSize = 12, TextWrapping = TextWrapping.Wrap };
+    private readonly TextBlock command = new() { Classes = { StyleClasses.Muted, StyleClasses.Caption }, TextWrapping = TextWrapping.Wrap };
     private readonly Control details;
     private readonly ProgressBar bar = new() { IsIndeterminate = true, Height = 4, MinHeight = 4, Width = 160, VerticalAlignment = VerticalAlignment.Center };
     private readonly TextBlock progress = new() { Classes = { StyleClasses.Muted }, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center };
@@ -85,7 +85,7 @@ public sealed class NewItemDialog : IdeWindow
         space.TextChanged += (_, _) => ShowCommand();
         space.Text = target.Namespace;
         options.Changed += ShowCommand;
-        TextBlock where = new() { Classes = { StyleClasses.Muted }, FontSize = 12, TextWrapping = TextWrapping.Wrap, Text = $"It will be made in {target.Shown}" };
+        TextBlock where = new() { Classes = { StyleClasses.Muted, StyleClasses.Caption }, TextWrapping = TextWrapping.Wrap, Text = $"It will be made in {target.Shown}" };
         details = new StackPanel { Spacing = FormRows.Between, Children = { nameRow, spaceRow, TemplateOptions.Row(null, where), options.Panel, options.Folded, TemplateOptions.Row(null, command) } };
         StackPanel right = new()
         {

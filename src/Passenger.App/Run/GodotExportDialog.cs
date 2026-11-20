@@ -40,12 +40,12 @@ public sealed class GodotExportDialog : IdeWindow
     private readonly ComboBox presetBox = new() { HorizontalAlignment = HorizontalAlignment.Stretch };
     private readonly ComboBox kindBox = new() { HorizontalAlignment = HorizontalAlignment.Stretch, ItemsSource = new[] { Release, Debug }, SelectedIndex = 0 };
     private readonly TextBox pathBox = new() { Classes = { StyleClasses.Search } };
-    private readonly TextBlock destination = new() { Classes = { StyleClasses.Muted }, FontSize = 12, TextTrimming = TextTrimming.PathSegmentEllipsis, Margin = new Thickness(0, Gaps.Tight, 0, 0) };
+    private readonly TextBlock destination = new() { Classes = { StyleClasses.Muted, StyleClasses.Caption }, TextTrimming = TextTrimming.PathSegmentEllipsis, Margin = new Thickness(0, Gaps.Tight, 0, 0) };
     private readonly TextBlock platform = new() { VerticalAlignment = VerticalAlignment.Center };
     private readonly TextBlock templates = new() { TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center };
     private readonly Button installButton = new() { Content = InstallWords };
     private readonly Button download = new() { Classes = { StyleClasses.Link }, Content = "Godot's download of them", Margin = new Thickness(Gaps.Wide, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
-    private readonly TextBlock command = new() { Classes = { StyleClasses.Muted }, TextWrapping = TextWrapping.Wrap, FontSize = 12 };
+    private readonly TextBlock command = new() { Classes = { StyleClasses.Muted, StyleClasses.Caption }, TextWrapping = TextWrapping.Wrap };
     private readonly TextBlock problem = new() { TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center };
     private readonly Button export = DialogFooter.Default("Export");
     private GodotExportGodot? godot;

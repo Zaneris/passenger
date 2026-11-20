@@ -23,7 +23,7 @@ public sealed class MigrationScriptDialog : IdeWindow
     public MigrationScriptDialog(IReadOnlyList<MigrationRow> migrations, string context)
     {
         FormRows.Scope(this);
-        Title = "Script Migrations";
+        Title = $"Script {context}'s Migrations";
         Width = 460;
         SizeToContent = SizeToContent.Height;
         CanResize = false;
@@ -46,7 +46,6 @@ public sealed class MigrationScriptDialog : IdeWindow
             Spacing = Gaps.Group,
             Children =
             {
-                new TextBlock { Text = $"Script {context}'s migrations", FontWeight = FontWeight.SemiBold },
                 choices,
                 Idempotent,
             },

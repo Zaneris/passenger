@@ -13,18 +13,18 @@ namespace Passenger.App.Endpoints;
 /// place its body breaks the schema its app's OpenAPI document gives it, and the body (JSON indented) or the headers.</summary>
 public sealed class ResponseView : DockPanel
 {
-    private readonly TextBlock summary = new() { VerticalAlignment = VerticalAlignment.Center, FontWeight = FontWeight.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis };
+    private readonly TextBlock summary = new() { Classes = { StyleClasses.Strong }, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
     private readonly StackPanel criteria = new() { Margin = new Thickness(Gaps.Normal, 0, Gaps.Normal, Gaps.Tight) };
-    private readonly ToggleButton bodyTab = new() { Classes = { StyleClasses.Segment }, Content = "Body", IsChecked = true, FontSize = 12 };
-    private readonly ToggleButton headersTab = new() { Classes = { StyleClasses.Segment }, Content = "Headers", FontSize = 12 };
+    private readonly ToggleButton bodyTab = new() { Classes = { StyleClasses.Segment, StyleClasses.Caption }, Content = "Body", IsChecked = true };
+    private readonly ToggleButton headersTab = new() { Classes = { StyleClasses.Segment, StyleClasses.Caption }, Content = "Headers" };
     private readonly TextBox text = new TextBox
     {
         IsReadOnly = true,
         AcceptsReturn = true,
         TextWrapping = TextWrapping.NoWrap,
-        FontSize = 12,
+        Classes = { StyleClasses.Code },
         Margin = new Thickness(Gaps.Normal, Gaps.Tight, Gaps.Normal, Gaps.Normal),
-    }.InCodeFont();
+    };
     private readonly TextBlock empty;
     private readonly Panel shown;
 
@@ -105,7 +105,7 @@ public sealed class ResponseView : DockPanel
         criteria.Children.Clear();
         foreach (string note in response.Notes)
         {
-            TextBlock said = new() { Text = note, FontSize = 12, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, Gaps.Tight) };
+            TextBlock said = new() { Classes = { StyleClasses.Caption }, Text = note, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, Gaps.Tight) };
             Paint(said, TokenKeys.TextMuted);
             criteria.Children.Add(said);
         }
@@ -114,8 +114,8 @@ public sealed class ResponseView : DockPanel
             PathIcon mark = new() { Width = 12, Height = 12, Margin = new Thickness(0, 0, Gaps.Small, 0) };
             mark.Bind(PathIcon.DataProperty, mark.GetResourceObservable(result.Passed ? IconKeys.TestPassed : IconKeys.TestFailed));
             Paint(mark, result.Passed ? TokenKeys.Test_Passed : TokenKeys.Test_Failed);
-            TextBlock what = new TextBlock { Text = result.Expectation.ToString(), FontSize = 12, VerticalAlignment = VerticalAlignment.Center }.InCodeFont();
-            TextBlock had = new() { Text = $"  got {result.Actual}", FontSize = 12, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
+            TextBlock what = new TextBlock { Classes = { StyleClasses.Code }, Text = result.Expectation.ToString(), VerticalAlignment = VerticalAlignment.Center };
+            TextBlock had = new() { Classes = { StyleClasses.Caption }, Text = $"  got {result.Actual}", VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
             Paint(had, TokenKeys.TextMuted);
             // What the answer had takes what the row leaves, so a narrow pane ends it in an ellipsis rather than cutting it.
             DockPanel.SetDock(mark, Dock.Left);
@@ -136,9 +136,9 @@ public sealed class ResponseView : DockPanel
         PathIcon mark = new() { Width = 12, Height = 12, Margin = new Thickness(0, 0, Gaps.Small, 0) };
         mark.Bind(PathIcon.DataProperty, mark.GetResourceObservable(broken.Unjudged ? IconKeys.TestSkipped : IconKeys.TestFailed));
         Paint(mark, broken.Unjudged ? TokenKeys.Test_Skipped : TokenKeys.Test_Failed);
-        TextBlock lead = new() { Text = broken.Unjudged ? "Not checked at " : "Breaks its schema at ", FontSize = 12, VerticalAlignment = VerticalAlignment.Center };
-        TextBlock at = new TextBlock { Text = broken.At, FontSize = 12, VerticalAlignment = VerticalAlignment.Center }.InCodeFont();
-        TextBlock said = new() { Text = $": {broken.Said}", FontSize = 12, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
+        TextBlock lead = new() { Classes = { StyleClasses.Caption }, Text = broken.Unjudged ? "Not checked at " : "Breaks its schema at ", VerticalAlignment = VerticalAlignment.Center };
+        TextBlock at = new TextBlock { Classes = { StyleClasses.Code }, Text = broken.At, VerticalAlignment = VerticalAlignment.Center };
+        TextBlock said = new() { Classes = { StyleClasses.Caption }, Text = $": {broken.Said}", VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
         Paint(said, TokenKeys.TextMuted);
         ToolTip.SetTip(said, broken.Said);
         DockPanel.SetDock(mark, Dock.Left);

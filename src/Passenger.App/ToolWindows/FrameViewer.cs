@@ -17,7 +17,7 @@ public sealed class FrameViewer : IdeWindow, IOwnKeys
     private readonly string test;
     private readonly IReadOnlyList<ShownFrame> frames;
     private readonly ZoomedPicture picture = new();
-    private readonly TextBlock sizeText = new() { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(Gaps.Normal, 0), FontSize = 12 };
+    private readonly TextBlock sizeText = new() { Classes = { StyleClasses.Caption }, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(Gaps.Normal, 0) };
 
     public FrameViewer(string test, IReadOnlyList<ShownFrame> frames, int index)
     {

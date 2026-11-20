@@ -32,11 +32,11 @@ public sealed class NamePopup : UserControl, IAnswers<bool>
         this.attempt = attempt;
         Width = PopupFrame.Narrow;
         name = new TextBox { Classes = { StyleClasses.Search }, Text = initial };
-        problem = new TextBlock { Classes = { StyleClasses.Muted }, FontSize = 12, IsVisible = false, TextWrapping = TextWrapping.Wrap };
-        StackPanel body = new() { Spacing = Gaps.Normal, Children = { new TextBlock { Classes = { StyleClasses.PopupTitle }, Text = title }, name } };
+        problem = new TextBlock { Classes = { StyleClasses.Muted, StyleClasses.Caption }, IsVisible = false, TextWrapping = TextWrapping.Wrap };
+        StackPanel body = new() { Spacing = Gaps.Normal, Children = { new TextBlock { Classes = { StyleClasses.PaneTitle }, Text = title }, name } };
         if (option is { } asked)
         {
-            this.option = new CheckBox { Content = asked.Text, IsChecked = asked.On, Focusable = false, FontSize = 12, MinHeight = 0 };
+            this.option = new CheckBox { Classes = { StyleClasses.Caption }, Content = asked.Text, IsChecked = asked.On, Focusable = false, MinHeight = 0 };
             this.option.IsCheckedChanged += (_, _) => OptionChanged?.Invoke(this, this.option.IsChecked == true);
             body.Children.Add(this.option);
         }

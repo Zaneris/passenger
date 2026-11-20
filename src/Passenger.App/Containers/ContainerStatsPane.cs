@@ -304,7 +304,7 @@ public sealed class ContainerStatsPane : DockPanel
             TextBlock cell = new() { VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis, [Grid.ColumnProperty] = i, Margin = new Thickness(0, 0, Gaps.Normal, 0) };
             if (heading)
             {
-                cell.FontWeight = FontWeight.SemiBold;
+                cell.Classes.Add(StyleClasses.Strong);
             }
             cells[i] = cell;
             line.Children.Add(cell);
@@ -314,7 +314,7 @@ public sealed class ContainerStatsPane : DockPanel
 
     private static Control Chart(string title, Sparkline line, int column)
     {
-        TextBlock name = new() { Text = title, FontSize = 11, [DockProperty] = Dock.Top };
+        TextBlock name = new() { Classes = { StyleClasses.Caption }, Text = title, [DockProperty] = Dock.Top };
         name.Classes.Add(StyleClasses.Muted);
         Border frame = new() { Classes = { StyleClasses.Framed }, Child = line };
         return new DockPanel { [Grid.ColumnProperty] = column, Margin = new Thickness(column == 0 ? 0 : Gaps.Tight, 0, column == 0 ? Gaps.Tight : 0, 0), Children = { name, frame } };

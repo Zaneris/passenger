@@ -32,8 +32,8 @@ public sealed class ErrorsPopup : UserControl
             TextWrapping = TextWrapping.NoWrap,
             AcceptsReturn = true,
             Height = 220,
-            FontSize = 11.5,
-        }.InCodeFont();
+            Classes = { StyleClasses.Code },
+        };
         list.SelectionChanged += (_, _) =>
         {
             IdeError? chosen = list.SelectedItem as IdeError;
@@ -61,7 +61,7 @@ public sealed class ErrorsPopup : UserControl
                 Spacing = Gaps.Wide,
                 Children =
                 {
-                    new TextBlock { Classes = { StyleClasses.PopupTitle }, Text = "IDE Internal Errors" },
+                    new TextBlock { Classes = { StyleClasses.PaneTitle }, Text = "IDE Internal Errors" },
                     new TextBlock
                     {
                         Classes = { StyleClasses.Muted },

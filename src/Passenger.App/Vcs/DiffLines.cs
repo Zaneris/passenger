@@ -64,7 +64,7 @@ public static class DiffLines
         start.Children.AddRange(tools);
         start.Children.Add(ToolButtons.Of(IconKeys.ArrowUp, $"Previous Difference ({Keys("Shift+F7")})", () => step(-1)));
         start.Children.Add(ToolButtons.Of(IconKeys.ArrowDown, $"Next Difference ({Keys("F7")})", () => step(1)));
-        start.Children.Add(new TextBlock { Text = name, FontWeight = FontWeight.SemiBold, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(Gaps.Normal, 0, 0, 0) });
+        start.Children.Add(new TextBlock { Classes = { StyleClasses.Strong }, Text = name, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(Gaps.Normal, 0, 0, 0) });
         status.VerticalAlignment = VerticalAlignment.Center;
         status.Margin = new Thickness(Gaps.Wide, 0);
         status.TextTrimming = TextTrimming.CharacterEllipsis;
@@ -87,7 +87,7 @@ public static class DiffLines
     /// <summary>What a pane shows, over it in its column, ending in an ellipsis where it has no room.</summary>
     public static Control Title(string text, int column)
     {
-        TextBlock label = new() { Text = text, FontSize = 12, Margin = new Thickness(Gaps.Wide, Gaps.Tight), TextTrimming = TextTrimming.CharacterEllipsis };
+        TextBlock label = new() { Classes = { StyleClasses.Caption }, Text = text, Margin = new Thickness(Gaps.Wide, Gaps.Tight), TextTrimming = TextTrimming.CharacterEllipsis };
         label.Classes.Add(StyleClasses.Muted);
         Grid.SetColumn(label, column);
         return label;

@@ -59,8 +59,7 @@ public sealed class FeedDialog : IdeWindow
 
         TextBlock saved = new()
         {
-            Classes = { StyleClasses.Muted },
-            FontSize = 12,
+            Classes = { StyleClasses.Muted, StyleClasses.Caption },
             TextWrapping = TextWrapping.Wrap,
             Text = $"Credentials will be saved to {RecentRow.Home(file.Path)}"
                 + (OperatingSystem.IsWindows() ? string.Empty : ", the password in clear text: NuGet encrypts passwords only on Windows"),
@@ -74,7 +73,6 @@ public sealed class FeedDialog : IdeWindow
             Spacing = FormRows.Between,
             Children =
             {
-                new TextBlock { Text = Title, FontWeight = FontWeight.SemiBold },
                 fields,
                 saved,
                 problem,

@@ -50,9 +50,8 @@ public sealed class AssetPreviewControl : DockPanel, IDisposable, IOwnKeys
         }
         if (asset.Bitmap is { } bitmap)
         {
-            TextBlock dimensions = MutedText.Of($"{bitmap.PixelSize.Width} × {bitmap.PixelSize.Height} pixels"
+            TextBlock dimensions = MutedText.Caption($"{bitmap.PixelSize.Width} × {bitmap.PixelSize.Height} pixels"
                 + (asset.Frames > 1 ? $" · the first of its {asset.Frames} frames" : ""));
-            dimensions.FontSize = 12;
             dimensions.Margin = new Thickness(Gaps.Normal, 0);
             dimensions.HorizontalAlignment = HorizontalAlignment.Right;
             picture = new ZoomedPicture { Picture = bitmap };

@@ -268,11 +268,11 @@ internal sealed partial class CodeActions
             TextBlock code = new TextBlock
             {
                 Text = used,
-                FontSize = 12,
+                Classes = { StyleClasses.Code },
                 Foreground = InfoCard.Brush(TokenKeys.TextMuted),
                 TextTrimming = TextTrimming.CharacterEllipsis,
                 VerticalAlignment = VerticalAlignment.Center,
-            }.InCodeFont();
+            };
             Grid.SetRow(where, row);
             Grid.SetRow(code, row);
             Grid.SetColumn(code, 1);

@@ -121,7 +121,7 @@ public sealed class SymbolPopup : SearchPopup<SymbolRow>
         TextBlock where = new()
         {
             [DockPanel.DockProperty] = Dock.Right,
-            FontSize = 12,
+            Classes = { StyleClasses.Caption },
             Margin = ListRow.Detail,
             TextTrimming = TextTrimming.CharacterEllipsis,
             MaxWidth = 260,
@@ -131,7 +131,7 @@ public sealed class SymbolPopup : SearchPopup<SymbolRow>
         // A member's type follows its name close, as "Sum(int): decimal"; a container stands apart.
         TextBlock detail = new()
         {
-            FontSize = 12,
+            Classes = { StyleClasses.Caption },
             VerticalAlignment = VerticalAlignment.Center,
             TextTrimming = TextTrimming.CharacterEllipsis,
             MaxWidth = 300,
@@ -180,8 +180,7 @@ public sealed class SymbolPopup : SearchPopup<SymbolRow>
 
     private static TextBlock BadgeLetter() => new()
     {
-        FontSize = 10,
-        FontWeight = FontWeight.Bold,
+        Classes = { StyleClasses.BadgeText },
         HorizontalAlignment = HorizontalAlignment.Center,
         VerticalAlignment = VerticalAlignment.Center,
     };

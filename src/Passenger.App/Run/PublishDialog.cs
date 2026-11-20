@@ -41,7 +41,7 @@ public sealed class PublishDialog : IdeWindow
     private readonly TextBox tagBox = new() { Classes = { StyleClasses.Search }, PlaceholderText = "latest (several between semicolons)" };
     private readonly TextBox runtimesBox = new() { Classes = { StyleClasses.Search }, PlaceholderText = "The SDK's own (several between semicolons: linux-x64;linux-arm64)" };
     private readonly TextBox registryBox = new() { Classes = { StyleClasses.Search }, PlaceholderText = "None: the engine on this machine" };
-    private readonly TextBlock imageSaid = new() { Classes = { StyleClasses.Muted }, FontSize = 12, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, Gaps.Tight, 0, 0) };
+    private readonly TextBlock imageSaid = new() { Classes = { StyleClasses.Muted, StyleClasses.Caption }, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, Gaps.Tight, 0, 0) };
     private readonly Control folderRows;
     private readonly Control imageRows;
     private readonly TextBox nameBox = new() { Classes = { StyleClasses.Search } };
@@ -52,12 +52,12 @@ public sealed class PublishDialog : IdeWindow
     private readonly ComboBox runtimeBox = new() { HorizontalAlignment = HorizontalAlignment.Stretch };
     private readonly TextBox folderBox = new() { Classes = { StyleClasses.Search } };
     private readonly Button browse = new() { Content = "Browse…", Margin = new Thickness(Gaps.Normal, 0, 0, 0) };
-    private readonly TextBlock destination = new() { Classes = { StyleClasses.Muted }, FontSize = 12, TextTrimming = TextTrimming.PathSegmentEllipsis, Margin = new Thickness(0, Gaps.Tight, 0, 0) };
-    private readonly TextBlock copied = new() { Classes = { StyleClasses.Muted }, FontSize = 12, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, Gaps.Hair, 0, 0), IsVisible = false };
+    private readonly TextBlock destination = new() { Classes = { StyleClasses.Muted, StyleClasses.Caption }, TextTrimming = TextTrimming.PathSegmentEllipsis, Margin = new Thickness(0, Gaps.Tight, 0, 0) };
+    private readonly TextBlock copied = new() { Classes = { StyleClasses.Muted, StyleClasses.Caption }, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, Gaps.Hair, 0, 0), IsVisible = false };
     private readonly CheckBox singleFileBox = new() { Content = "Produce a single file" };
     private readonly CheckBox readyToRunBox = new() { Content = "Compile ReadyToRun" };
     private readonly CheckBox trimBox = new() { Content = "Trim unused code" };
-    private readonly TextBlock command = new() { Classes = { StyleClasses.Muted }, TextWrapping = TextWrapping.Wrap, FontSize = 12 };
+    private readonly TextBlock command = new() { Classes = { StyleClasses.Muted, StyleClasses.Caption }, TextWrapping = TextWrapping.Wrap };
     private readonly TextBlock problem = new() { TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center };
     private readonly Button publish = DialogFooter.Default("Publish");
     private readonly Button saveButton = new() { Content = "Save" };

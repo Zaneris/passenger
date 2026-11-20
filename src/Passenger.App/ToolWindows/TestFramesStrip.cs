@@ -116,7 +116,7 @@ public sealed class TestFramesStrip : Border
                 Children =
                 {
                     new Border { Height = ThumbnailHeight, Child = picture },
-                    new TextBlock { Text = frame.Name, FontSize = 12, MaxWidth = ThumbnailWidth, TextTrimming = TextTrimming.CharacterEllipsis },
+                    new TextBlock { Classes = { StyleClasses.Caption }, Text = frame.Name, MaxWidth = ThumbnailWidth, TextTrimming = TextTrimming.CharacterEllipsis },
                     Muted(size),
                 },
             },
@@ -157,9 +157,7 @@ public sealed class TestFramesStrip : Border
     private static TextBlock Muted(string text)
     {
         // A caption under a picture, smaller than the page's words.
-        TextBlock muted = MutedText.Of(text);
-        muted.FontSize = 11;
-        return muted;
+        return MutedText.Caption(text);
     }
 }
 

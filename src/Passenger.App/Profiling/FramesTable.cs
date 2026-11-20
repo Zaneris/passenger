@@ -83,7 +83,7 @@ internal static class FramesTable
 
     /// <summary>A number's cell, right-aligned in the code font.</summary>
     public static TextBlock Number() =>
-        new TextBlock { FontSize = 12, TextAlignment = TextAlignment.Right, VerticalAlignment = VerticalAlignment.Center }.InCodeFont();
+        new TextBlock { Classes = { StyleClasses.Code }, TextAlignment = TextAlignment.Right, VerticalAlignment = VerticalAlignment.Center };
 
     /// <summary>A number in its cell, muted where it is nothing.</summary>
     public static void Put(TextBlock cell, string text)
@@ -95,8 +95,6 @@ internal static class FramesTable
     /// <summary>The pages' small muted words.</summary>
     public static TextBlock Muted(string text)
     {
-        TextBlock block = MutedText.Of(text);
-        block.FontSize = 12;
-        return block;
+        return MutedText.Caption(text);
     }
 }

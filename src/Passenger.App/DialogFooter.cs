@@ -103,7 +103,7 @@ public static class DialogFooter
         StackPanel header = new()
         {
             Spacing = Gaps.Tight,
-            Children = { new TextBlock { Text = title, FontWeight = FontWeight.SemiBold }, about },
+            Children = { new TextBlock { Classes = { StyleClasses.DialogTitle }, Text = title }, about },
         };
         BySides(header, Layoutable.MarginProperty, null, Gaps.Wide);
         Border top = new() { BorderThickness = Hairlines.Below, Child = header };
@@ -131,7 +131,7 @@ public static class DialogFooter
         dialog.CanResize = false;
         dialog.WindowStartupLocation = WindowStartupLocation.CenterOwner;
         StackPanel page = new() { [InsetProperty] = true, Spacing = Gaps.Wide };
-        page.Children.Add(new TextBlock { Text = title, FontWeight = FontWeight.SemiBold, TextWrapping = TextWrapping.Wrap });
+        page.Children.Add(new TextBlock { Classes = { StyleClasses.DialogTitle }, Text = title, TextWrapping = TextWrapping.Wrap });
         page.Children.AddRange(said);
         // On a screen too short for its words, they scroll above the answers, which stay in reach.
         dialog.Content = Page(new ScrollViewer { Content = page }, Bar(answers, left));

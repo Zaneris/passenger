@@ -429,7 +429,7 @@ public sealed class MetricsPane : DockPanel
         {
             if (!headings.TryGetValue(meter.Key, out TextBlock? heading))
             {
-                headings[meter.Key] = heading = new TextBlock { Text = meter.Key, FontWeight = FontWeight.SemiBold, Margin = new Thickness(0, Gaps.Normal, 0, Gaps.Hair) };
+                headings[meter.Key] = heading = new TextBlock { Classes = { StyleClasses.PaneTitle }, Text = meter.Key, Margin = new Thickness(0, Gaps.Normal, 0, Gaps.Hair) };
             }
             rows.Children.Add(heading);
             foreach (KeyValuePair<(string Meter, string Instrument), Chart> chart in meter)
@@ -471,8 +471,7 @@ public sealed class MetricsPane : DockPanel
                 : new Sparkline(Kept, fromZero: true, fromRight: false, TokenKeys.Link) { Least = 0 };
             TextBlock title = new() { Text = first.Instrument, TextTrimming = TextTrimming.CharacterEllipsis };
             ToolTip.SetTip(title, first.Unit.Length > 0 ? $"{first.Meter}: {first.Instrument} ({first.Unit})" : $"{first.Meter}: {first.Instrument}");
-            Value = MutedText.Of(string.Empty);
-            Value.FontSize = 11;
+            Value = MutedText.Caption(string.Empty);
             StackPanel words = new() { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, Gaps.Normal, 0), Children = { title, Value } };
             Border frame = new() { Classes = { StyleClasses.Framed }, Child = Line, [Grid.ColumnProperty] = 1 };
             // The words a third of a narrow pane's width (a tool window's), at most 280 of a wide one's, the line the rest.

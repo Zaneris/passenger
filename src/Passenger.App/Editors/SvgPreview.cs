@@ -39,7 +39,7 @@ public sealed class SvgPreview : DockPanel, IOwnKeys
         Focusable = true;
         LastChildFill = true;
         Bind(BackgroundProperty, this.GetResourceObservable(TokenKeys.Editor_Background));
-        size.FontSize = 12;
+        size.Classes.Add(StyleClasses.Caption);
         size.Margin = new Thickness(Gaps.Normal, 0);
         size.HorizontalAlignment = HorizontalAlignment.Right;
         problem.Margin = new Thickness(Gaps.Group, Gaps.Normal);

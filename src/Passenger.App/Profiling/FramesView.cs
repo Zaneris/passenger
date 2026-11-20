@@ -197,7 +197,7 @@ public sealed class FramesView : DockPanel
             chevron.IsVisible = shown.Cost.Controls.Count > 0;
             chevron.Turned = shown.IsExpanded;
             name.Text = shown.Cost.Name;
-            name.FontWeight = shown.Depth == 0 ? FontWeight.SemiBold : FontWeight.Normal;
+            name.Classes.Set(StyleClasses.Strong, shown.Depth == 0);
             ToolTip.SetTip(name, shown.Cost.Control is { } control
                 ? $"{control.FullType}{(control.File is { } file ? $"\n{Path.GetFileName(file)}:{LineOf?.Invoke(control) ?? control.Line}" : string.Empty)}"
                 : Plural.Of(shown.Cost.Controls.Count, "control"));

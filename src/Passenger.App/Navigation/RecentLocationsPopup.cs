@@ -97,10 +97,10 @@ public sealed class RecentLocationsPopup : SearchPopup<RecentLocation>
             Margin = new Thickness(0, 0, Gaps.Small, 0),
             VerticalAlignment = VerticalAlignment.Center,
         };
-        TextBlock name = new() { FontWeight = FontWeight.SemiBold, VerticalAlignment = VerticalAlignment.Center };
+        TextBlock name = new() { Classes = { StyleClasses.Strong }, VerticalAlignment = VerticalAlignment.Center };
         TextBlock member = new()
         {
-            FontSize = 12,
+            Classes = { StyleClasses.Caption },
             Margin = new Thickness(Gaps.Wide, 0, 0, 0),
             VerticalAlignment = VerticalAlignment.Center,
             TextTrimming = TextTrimming.CharacterEllipsis,

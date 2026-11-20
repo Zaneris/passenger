@@ -67,8 +67,8 @@ internal sealed class GodotValueCell : LiveValueCell
     private readonly IGodotTuner tuner;
     private readonly Panel editor = new() { VerticalAlignment = VerticalAlignment.Center };
     private readonly StackPanel note = new() { Orientation = Orientation.Horizontal, Spacing = Gaps.Small };
-    private readonly TextBlock changed = new() { Classes = { StyleClasses.Muted }, FontSize = 11, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center };
-    private readonly Button keep = new() { Classes = { StyleClasses.Link }, Content = "Keep", FontSize = 11 };
+    private readonly TextBlock changed = new() { Classes = { StyleClasses.Muted, StyleClasses.Caption }, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center };
+    private readonly Button keep = new() { Classes = { StyleClasses.Link, StyleClasses.Caption }, Content = "Keep" };
 
     private CheckBox? check;
     private (DockPanel Panel, ValueSlider Track, ScrubField Number)? range;
@@ -300,7 +300,7 @@ internal sealed class GodotValueCell : LiveValueCell
         {
             Border swatch = new() { Classes = { StyleClasses.Box }, Width = 22, Height = 16, BorderThickness = Hairlines.Round };
             swatch.Bind(Border.BorderBrushProperty, swatch.GetResourceObservable(TokenKeys.FieldBorder));
-            TextBlock hex = new TextBlock { FontSize = 12, VerticalAlignment = VerticalAlignment.Center }.InCodeFont();
+            TextBlock hex = new TextBlock { Classes = { StyleClasses.Code }, VerticalAlignment = VerticalAlignment.Center };
             Button button = Add(new Button
             {
                 Classes = { StyleClasses.Compact },
@@ -423,7 +423,7 @@ internal sealed class GodotValueCell : LiveValueCell
         if (resource is null)
         {
             Image thumbnail = new() { Width = 18, Height = 18, Stretch = Stretch.Uniform };
-            TextBlock name = new() { FontSize = 12, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
+            TextBlock name = new() { Classes = { StyleClasses.Caption }, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
             Button button = new()
             {
                 Classes = { StyleClasses.Compact },
@@ -433,7 +433,7 @@ internal sealed class GodotValueCell : LiveValueCell
                 Content = new StackPanel { Orientation = Orientation.Horizontal, Spacing = Gaps.Small, Children = { thumbnail, name } },
             };
             button.Click += (_, _) => PickResource(button);
-            Button properties = new() { Classes = { StyleClasses.Link }, Content = "Properties", FontSize = 11, Margin = new Thickness(Gaps.Small, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
+            Button properties = new() { Classes = { StyleClasses.Link, StyleClasses.Caption }, Content = "Properties", Margin = new Thickness(Gaps.Small, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
             properties.Click += (_, _) => EditResource(properties);
             DockPanel.SetDock(properties, Dock.Right);
             DockPanel panel = Add(new DockPanel { Children = { properties, button } });
@@ -463,7 +463,7 @@ internal sealed class GodotValueCell : LiveValueCell
     {
         if (items is null)
         {
-            TextBlock words = new TextBlock { FontSize = 12, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center }.InCodeFont();
+            TextBlock words = new TextBlock { Classes = { StyleClasses.Code }, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center };
             Button button = Add(new Button
             {
                 Classes = { StyleClasses.Compact },

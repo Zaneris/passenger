@@ -152,7 +152,7 @@ public sealed partial class NuGetView : DockPanel
         {
             IsReadOnly = true,
             AcceptsReturn = true,
-            FontSize = 11,
+            Classes = { StyleClasses.Caption },
             Height = 90,
             BorderThickness = Hairlines.Above,
             Background = Brushes.Transparent,
@@ -835,7 +835,7 @@ public sealed partial class NuGetView : DockPanel
             LineSpacing = Gaps.Normal,
             Children =
             {
-                new TextBlock { Text = row.Id, FontSize = 16, FontWeight = FontWeight.SemiBold, VerticalAlignment = VerticalAlignment.Center, TextWrapping = TextWrapping.Wrap },
+                new TextBlock { Classes = { StyleClasses.PageTitle }, Text = row.Id, VerticalAlignment = VerticalAlignment.Center, TextWrapping = TextWrapping.Wrap },
                 picker,
             },
         });
@@ -845,13 +845,13 @@ public sealed partial class NuGetView : DockPanel
         }
         if (row.Authors.Length > 0 || row.Downloads > 0)
         {
-            TextBlock by = new() { Text = row.Downloads > 0 ? $"{row.Authors}, {row.Downloads:N0} downloads" : row.Authors, FontSize = 12 };
+            TextBlock by = new() { Classes = { StyleClasses.Caption }, Text = row.Downloads > 0 ? $"{row.Authors}, {row.Downloads:N0} downloads" : row.Authors };
             by.Classes.Add(StyleClasses.Muted);
             details.Children.Add(by);
         }
         if (row.Feeds.Count > 0)
         {
-            TextBlock from = new() { Text = $"In {string.Join(", ", row.Feeds)}", FontSize = 12 };
+            TextBlock from = new() { Classes = { StyleClasses.Caption }, Text = $"In {string.Join(", ", row.Feeds)}" };
             from.Classes.Add(StyleClasses.Muted);
             details.Children.Add(from);
         }
@@ -1019,7 +1019,7 @@ public sealed partial class NuGetView : DockPanel
                 },
             });
         }
-        said.Children.Add(new TextBlock { Text = fix is null ? "No version without a known vulnerability is offered" : $"Fixed in {fix}", FontWeight = FontWeight.SemiBold });
+        said.Children.Add(new TextBlock { Classes = { StyleClasses.Strong }, Text = fix is null ? "No version without a known vulnerability is offered" : $"Fixed in {fix}" });
         Border block = new()
         {
             Name = first ? "Vulnerability" : "ChosenVulnerability",
@@ -1053,7 +1053,7 @@ public sealed partial class NuGetView : DockPanel
             {
                 Orientation = Orientation.Horizontal,
                 Spacing = Gaps.Tight,
-                Children = { new TextBlock { Text = "Use instead:", FontWeight = FontWeight.SemiBold, VerticalAlignment = VerticalAlignment.Center }, search },
+                Children = { new TextBlock { Classes = { StyleClasses.Strong }, Text = "Use instead:", VerticalAlignment = VerticalAlignment.Center }, search },
             };
             if (deprecation.AlternativeVersions is { } range)
             {
@@ -1199,7 +1199,7 @@ public sealed partial class NuGetView : DockPanel
     /// list the id is cut, its version and marks kept whole after it.</summary>
     private Control Row()
     {
-        TextBlock version = new() { FontSize = 12, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(Gaps.Normal, 0, 0, 0) };
+        TextBlock version = new() { Classes = { StyleClasses.Caption }, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(Gaps.Normal, 0, 0, 0) };
         version.Classes.Add(StyleClasses.Muted);
         RowIcon icon = new() { Width = 14, Height = 14, Margin = new Thickness(Gaps.Small, 0, Gaps.Small, 0) };
         icon.DataKey = IconKeys.Package;
@@ -1216,7 +1216,7 @@ public sealed partial class NuGetView : DockPanel
         return line.Showing<PackageRow>(row =>
         {
             id.Text = row.Id;
-            id.FontWeight = row.IsInstalled ? FontWeight.SemiBold : FontWeight.Normal;
+            id.Classes.Set(StyleClasses.Strong, row.IsInstalled);
             version.Text = row.MovesTo is { } latest ? $"{row.Version} → {latest}" : row.Version;
             transitive.IsVisible = row.IsTransitive;
             deprecated.IsVisible = row.IsDeprecated;
@@ -1231,7 +1231,7 @@ public sealed partial class NuGetView : DockPanel
     /// <summary>A small tag after a row's words ("transitive").</summary>
     private static Border Tagged(string words)
     {
-        TextBlock text = new() { Text = words, FontSize = 11, VerticalAlignment = VerticalAlignment.Center };
+        TextBlock text = new() { Classes = { StyleClasses.Caption }, Text = words, VerticalAlignment = VerticalAlignment.Center };
         text.Classes.Add(StyleClasses.Muted);
         return new Border { Classes = { StyleClasses.Tag }, Margin = new Thickness(Gaps.Small, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center, Child = text };
     }

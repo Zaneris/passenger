@@ -79,7 +79,7 @@ public sealed class HierarchyView : DockPanel
 
     public HierarchyView()
     {
-        title = new TextBlock { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(Gaps.Normal, 0), FontWeight = FontWeight.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis };
+        title = new TextBlock { Classes = { StyleClasses.PaneTitle }, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(Gaps.Normal, 0), TextTrimming = TextTrimming.CharacterEllipsis };
         first = Toggle();
         second = Toggle();
         first.Click += (_, _) => IdeErrors.Observe(ChooseAsync(first: true));
@@ -277,7 +277,7 @@ public sealed class HierarchyView : DockPanel
         {
             VerticalAlignment = VerticalAlignment.Center,
             Margin = new Thickness(Gaps.Wide, 0, 0, 0),
-            FontSize = 12,
+            Classes = { StyleClasses.Caption },
             TextTrimming = TextTrimming.CharacterEllipsis,
         };
         detail.Classes.Add(StyleClasses.Muted);
@@ -296,11 +296,11 @@ public sealed class HierarchyView : DockPanel
             chevron.IsVisible = row.Expands;
             chevron.DataKey = row.IsExpanded ? IconKeys.ChevronDown : IconKeys.ChevronRight;
             name.Text = row.Node.Item.Name;
-            name.FontWeight = row.Depth == 0 ? FontWeight.SemiBold : FontWeight.Normal;
+            name.Classes.Set(StyleClasses.Strong, row.Depth == 0);
             detail.Text = $"{row.Node.Item.Detail}  {System.IO.Path.GetFileName(row.Node.Path)}:{row.Node.Where.Line + 1}";
         });
     }
 
     // As wide as its words: an option toggle is otherwise an icon's square.
-    private static ToggleButton Toggle() => new() { Classes = { StyleClasses.Option }, FontSize = 12, Width = double.NaN, Padding = new Thickness(Gaps.Normal, Gaps.Hair) };
+    private static ToggleButton Toggle() => new() { Classes = { StyleClasses.Option, StyleClasses.Caption }, Width = double.NaN, Padding = new Thickness(Gaps.Normal, Gaps.Hair) };
 }

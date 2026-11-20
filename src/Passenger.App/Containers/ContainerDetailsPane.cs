@@ -309,7 +309,7 @@ public sealed class ContainerDetailsPane : DetailsTables
     /// <summary>A health check's state as a tag in its colour.</summary>
     internal static Border HealthTag(string health)
     {
-        TextBlock said = new() { Text = health, FontSize = 11, VerticalAlignment = VerticalAlignment.Center };
+        TextBlock said = new() { Classes = { StyleClasses.Caption }, Text = health, VerticalAlignment = VerticalAlignment.Center };
         said.Bind(TextBlock.ForegroundProperty, said.GetResourceObservable(health == "healthy" ? TokenKeys.Test_Passed : health == "unhealthy" ? TokenKeys.Error : TokenKeys.Warning));
         return new Border { Classes = { StyleClasses.Tag },  VerticalAlignment = VerticalAlignment.Center, Child = said };
     }

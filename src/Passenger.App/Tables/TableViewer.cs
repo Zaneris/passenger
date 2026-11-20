@@ -13,8 +13,8 @@ namespace Passenger.App.Tables;
 public sealed class TableViewer
 {
     private readonly StackPanel choices = new() { Orientation = Orientation.Horizontal, Spacing = Gaps.Hair, VerticalAlignment = VerticalAlignment.Center };
-    private readonly CheckBox header = new() { Content = "First row is header", FontSize = 12, Margin = new Thickness(Gaps.Wide, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
-    private readonly TextBlock size = new() { Classes = { StyleClasses.Muted }, FontSize = 11, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
+    private readonly CheckBox header = new() { Classes = { StyleClasses.Caption }, Content = "First row is header", Margin = new Thickness(Gaps.Wide, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
+    private readonly TextBlock size = new() { Classes = { StyleClasses.Muted, StyleClasses.Caption }, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
     private readonly TextBlock message = new() { Classes = { StyleClasses.EmptyText }, IsVisible = false };
     private readonly Dictionary<TableFile, ((int, int) Anchor, (int, int) Caret, Vector Scroll)> kept = [];
     private TableFile? file;
@@ -191,7 +191,7 @@ public sealed class TableViewer
             for (int i = 0; i < names.Length; i++)
             {
                 int index = i;
-                ToggleButton choice = new() { Classes = { StyleClasses.Segment }, Content = names[i], FontSize = 12, Name = shown.IsWorkbook ? null : $"Show{names[i]}" };
+                ToggleButton choice = new() { Classes = { StyleClasses.Segment, StyleClasses.Caption }, Content = names[i], Name = shown.IsWorkbook ? null : $"Show{names[i]}" };
                 choice.Click += (_, _) => Choose(index);
                 choices.Children.Add(choice);
             }

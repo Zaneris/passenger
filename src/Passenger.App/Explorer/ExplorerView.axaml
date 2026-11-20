@@ -11,7 +11,7 @@
                     ToolTip.Tip="Switch between the solution and the files on disk">
                 <DockPanel>
                     <PathIcon DockPanel.Dock="Right" Classes="chevron" Data="{StaticResource Icon.ChevronDown}" />
-                    <TextBlock Name="ViewName" Text="Solution" FontSize="12" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                    <TextBlock Name="ViewName" Classes="caption" Text="Solution" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
                 </DockPanel>
             </Button>
             <TextBlock Classes="paneTitle" Text="Explorer" VerticalAlignment="Center" />

@@ -11,7 +11,7 @@ public sealed class DropOverlay : Canvas
 {
     // Ringed as broad as the focus ring, which marks where the keys go as this marks where the drop would.
     private readonly Border zone = new() { BorderThickness = new Thickness(FocusRing.RingWidth), Classes = { StyleClasses.Box } };
-    private readonly TextBlock label = new() { FontWeight = FontWeight.SemiBold, Margin = new Thickness(Gaps.Wide, Gaps.Normal) };
+    private readonly TextBlock label = new() { Classes = { StyleClasses.Strong }, Margin = new Thickness(Gaps.Wide, Gaps.Normal) };
 
     public DropOverlay()
     {

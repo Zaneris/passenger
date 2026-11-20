@@ -444,7 +444,7 @@ public sealed class EndpointsView : DockPanel
     private Control Row()
     {
         RowIcon headingIcon = new() { Width = 14, Height = 14, Margin = new Thickness(0, 0, Gaps.Small, 0) };
-        TextBlock headingName = new() { FontWeight = FontWeight.SemiBold, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
+        TextBlock headingName = new() { Classes = { StyleClasses.Strong }, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
         StackPanel heading = new() { Orientation = Orientation.Horizontal, Height = ListRow.Height, Margin = new Thickness(Gaps.Normal, 0), Children = { headingIcon, headingName } };
         Panel row = new();
         (DockPanel request, Action<EndpointRequest> showRequest) = RequestRow(row);
@@ -507,7 +507,7 @@ public sealed class EndpointsView : DockPanel
         DockPanel.SetDock(method, Dock.Left);
         TextBlock title = new() { VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
         // A named request shows its URL after the name, muted, ending in an ellipsis first.
-        TextBlock url = new() { VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis, FontSize = 12, Margin = new Thickness(Gaps.Normal, 0, 0, 0) };
+        TextBlock url = new() { Classes = { StyleClasses.Caption }, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis, Margin = new Thickness(Gaps.Normal, 0, 0, 0) };
         url.Classes.Add(StyleClasses.Muted);
         // The title takes what the row leaves, so a narrow window ends it in an ellipsis and keeps the buttons.
         DockPanel line = new() { Height = ListRow.Height, Margin = new Thickness(Gaps.Indent + Gaps.Small, 0, Gaps.Tight, 0), Children = { buttons, outcome, method, title, url } };
@@ -546,7 +546,7 @@ public sealed class EndpointsView : DockPanel
         // The template first: what declares it takes the room it leaves, and goes before the template ends in an ellipsis.
         TextBlock template = new() { VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
         DockPanel.SetDock(template, Dock.Left);
-        TextBlock kind = new() { VerticalAlignment = VerticalAlignment.Center, FontSize = 12, Margin = new Thickness(Gaps.Normal, 0, Gaps.Tight, 0), TextAlignment = TextAlignment.Right, TextTrimming = TextTrimming.CharacterEllipsis };
+        TextBlock kind = new() { Classes = { StyleClasses.Caption }, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(Gaps.Normal, 0, Gaps.Tight, 0), TextAlignment = TextAlignment.Right, TextTrimming = TextTrimming.CharacterEllipsis };
         kind.Classes.Add(StyleClasses.Muted);
         DockPanel line = new() { Height = ListRow.Height, Margin = new Thickness(Gaps.Indent + Gaps.Small, 0, Gaps.Tight, 0), Children = { send, method, template, kind } };
         string? methodColour = MethodColour(string.Empty);
@@ -571,7 +571,7 @@ public sealed class EndpointsView : DockPanel
     /// <summary>A method's tag, in its method's colour.</summary>
     internal static Border MethodTag(string method)
     {
-        TextBlock text = new TextBlock { Text = method, FontSize = 11, FontWeight = FontWeight.Bold, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center }.InCodeFont();
+        TextBlock text = new TextBlock { Classes = { StyleClasses.BadgeText }, Text = method, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center }.InCodeFont();
         text.Bind(TextBlock.ForegroundProperty, text.GetResourceObservable(MethodColour(method)));
         return new Border { Classes = { StyleClasses.Tag }, MinWidth = 52,  Margin = new Thickness(0, 0, Gaps.Normal, 0), VerticalAlignment = VerticalAlignment.Center, Child = text };
     }

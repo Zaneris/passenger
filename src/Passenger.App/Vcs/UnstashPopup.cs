@@ -50,7 +50,7 @@ public sealed class UnstashPopup : UserControl
             {
                 Children =
                 {
-                    new TextBlock { Classes = { StyleClasses.PopupTitle }, Text = "Unstash Changes", Margin = new Thickness(Gaps.Wide, Gaps.Wide, Gaps.Wide, Gaps.Small) },
+                    new TextBlock { Classes = { StyleClasses.PaneTitle }, Text = "Unstash Changes", Margin = new Thickness(Gaps.Wide, Gaps.Wide, Gaps.Wide, Gaps.Small) },
                     stashes.Count == 0
                         ? new TextBlock { Classes = { StyleClasses.Muted }, Text = "Nothing is stashed", Margin = new Thickness(Gaps.Wide, 0, Gaps.Wide, Gaps.Wide) }
                         : list,
@@ -176,7 +176,7 @@ public sealed class UnstashPopup : UserControl
     /// <summary>A stash's row: its message, and when it was made at the right, muted.</summary>
     private static Control Row()
     {
-        TextBlock when = new() { VerticalAlignment = VerticalAlignment.Center, FontSize = 12, Margin = ListRow.Detail };
+        TextBlock when = new() { Classes = { StyleClasses.Caption }, VerticalAlignment = VerticalAlignment.Center, Margin = ListRow.Detail };
         when.Classes.Add(StyleClasses.Muted);
         TextBlock message = new() { VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
         DockPanel row = new() { Height = ListRow.Height, Margin = ListRow.Inset };

@@ -79,11 +79,10 @@ public sealed class LiveTemplatesPane : ListPane
             AcceptsReturn = true,
             AcceptsTab = true,
             TextWrapping = TextWrapping.NoWrap,
-            FontSize = 12.5,
             VerticalContentAlignment = VerticalAlignment.Top,
-            Classes = { StyleClasses.Search },
+            Classes = { StyleClasses.Search, StyleClasses.Code },
             Margin = new Thickness(0, Gaps.Wide, 0, 0),
-        }.InCodeFont();
+        };
         TextBox.TextChanged += (_, _) => Edit(t => WithText(t, (TextBox.Text ?? string.Empty).Replace("\r\n", "\n", StringComparison.Ordinal)));
 
         StackPanel rows = new()

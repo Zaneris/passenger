@@ -17,7 +17,7 @@ internal static class TemplateList
     public static (DockPanel Named, TextBlock Name, TextBlock Mark) Named()
     {
         TextBlock name = new() { TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center };
-        TextBlock mark = new() { Classes = { StyleClasses.Muted }, FontSize = 11, Margin = new Thickness(Gaps.Normal, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
+        TextBlock mark = new() { Classes = { StyleClasses.Muted, StyleClasses.Caption }, Margin = new Thickness(Gaps.Normal, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
         DockPanel both = new();
         DockPanel.SetDock(mark, Dock.Right);
         both.Children.Add(mark);

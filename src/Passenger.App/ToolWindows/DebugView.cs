@@ -376,7 +376,7 @@ public sealed class DebugView : DockPanel, IOwnKeys
         TextBlock method = new() { VerticalAlignment = VerticalAlignment.Center };
         TextBlock where = new()
         {
-            FontSize = 12,
+            Classes = { StyleClasses.Caption },
             Margin = new Thickness(Gaps.Normal, 0, 0, 0),
             VerticalAlignment = VerticalAlignment.Center,
         };

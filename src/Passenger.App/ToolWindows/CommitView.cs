@@ -889,12 +889,12 @@ public sealed class CommitView : DockPanel, IOwnKeys
     private Control Row()
     {
         CheckBox groupBox = new() { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(Gaps.Tight, 0, Gaps.Hair, 0) };
-        TextBlock groupName = new() { FontWeight = FontWeight.SemiBold, VerticalAlignment = VerticalAlignment.Center };
+        TextBlock groupName = new() { Classes = { StyleClasses.Strong }, VerticalAlignment = VerticalAlignment.Center };
         TextBlock count = new()
         {
             VerticalAlignment = VerticalAlignment.Center,
             Margin = new Thickness(Gaps.Normal, 0, 0, 0),
-            FontSize = 12,
+            Classes = { StyleClasses.Caption },
         };
         count.Classes.Add(StyleClasses.Muted);
         Button resolve = new() { Classes = { StyleClasses.Link }, Content = "Resolve", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(Gaps.Normal, 0, 0, 0) };

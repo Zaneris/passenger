@@ -319,7 +319,7 @@ public sealed class ProfilerView : DockPanel
     {
         TextBlock when = Mono(Muted(string.Empty, 160));
         TextBlock size = Mono(Muted(string.Empty, 100));
-        TextBlock program = new() { VerticalAlignment = VerticalAlignment.Center, FontWeight = FontWeight.SemiBold };
+        TextBlock program = new() { Classes = { StyleClasses.Strong }, VerticalAlignment = VerticalAlignment.Center };
         ShrinkingRow row = new() { Height = ListRow.Height, Margin = new Thickness(Gaps.Small, 0), Children = { when, size, program } };
         return row.Showing<SnapshotFile>(file =>
         {
@@ -592,7 +592,7 @@ public sealed class ProfilerView : DockPanel
     private Control Allocated()
     {
         TextBlock size = Mono(Muted(string.Empty, 170));
-        TextBlock name = new() { VerticalAlignment = VerticalAlignment.Center, FontWeight = FontWeight.SemiBold };
+        TextBlock name = new() { Classes = { StyleClasses.Strong }, VerticalAlignment = VerticalAlignment.Center };
         ShrinkingRow row = new() { Height = ListRow.Height, Margin = new Thickness(Gaps.Small, 0), Children = { size, name } };
         return row.Showing<AllocatedType>(type =>
         {
@@ -797,7 +797,7 @@ public sealed class ProfilerView : DockPanel
     {
         TextBlock own = Mono(Muted(string.Empty, 170));
         TextBlock total = Muted(string.Empty, 110);
-        total.FontSize = 12;
+        total.Classes.Add(StyleClasses.Caption);
         MethodName method = new();
         ShrinkingRow row = new() { Height = ListRow.Height, Margin = new Thickness(Gaps.Small, 0), Children = { own, total, method.Row } };
         return row.Showing<HotSpot>(spot =>
@@ -825,7 +825,7 @@ public sealed class ProfilerView : DockPanel
             {
                 before.IsVisible = false;
                 own.Text = name;
-                own.FontWeight = thread ? FontWeight.SemiBold : FontWeight.Normal;
+                own.Classes.Set(StyleClasses.Strong, thread);
                 return;
             }
             string bare = name.Split('(')[0];
@@ -834,15 +834,14 @@ public sealed class ProfilerView : DockPanel
             before.IsVisible = true;
             before.Text = owner;
             own.Text = name[owner.Length..];
-            own.FontWeight = FontWeight.SemiBold;
+            own.Classes.Set(StyleClasses.Strong, true);
         }
     }
 
     /// <summary>Words in the code font, at the size of a row's numbers.</summary>
     private static TextBlock Mono(TextBlock block)
     {
-        block.InCodeFont();
-        block.FontSize = 12;
+        block.Classes.Add(StyleClasses.Code);
         return block;
     }
 

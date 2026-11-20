@@ -176,8 +176,7 @@ public sealed class ScrubField : DockPanel
         label = new TextBlock
         {
             Text = axis.Length > 0 ? axis : "⇔",
-            Classes = { StyleClasses.Muted },
-            FontSize = 11,
+            Classes = { StyleClasses.Muted, StyleClasses.Caption },
             Padding = new Thickness(0, 0, Gaps.Hair, 0),
             VerticalAlignment = VerticalAlignment.Center,
             Background = Brushes.Transparent,
@@ -185,7 +184,7 @@ public sealed class ScrubField : DockPanel
         };
         ToolTip.SetTip(label, "Drag left or right to change it: Shift for faster, Alt for finer");
         SetDock(label, Dock.Left);
-        box = new TextBox { FontSize = 11.5, MinWidth = 0, Padding = new Thickness(Gaps.Tight, 0), VerticalAlignment = VerticalAlignment.Center, VerticalContentAlignment = VerticalAlignment.Center }.InCodeFont();
+        box = new TextBox { Classes = { StyleClasses.Code }, MinWidth = 0, Padding = new Thickness(Gaps.Tight, 0), VerticalAlignment = VerticalAlignment.Center, VerticalContentAlignment = VerticalAlignment.Center };
         Children.Add(label);
         Children.Add(box);
         label.PointerPressed += (_, e) =>

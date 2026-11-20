@@ -421,8 +421,7 @@ public sealed class GodotLiveValues
         {
             Border swatch = new() { Width = 9, Height = 9, Margin = new Thickness(0, 0, Gaps.Small, 0), VerticalAlignment = VerticalAlignment.Center, [DockPanel.DockProperty] = Dock.Left };
             swatch.Bind(Border.BackgroundProperty, swatch.GetResourceObservable(brushes[i]));
-            TextBlock words = MutedText.Wrapped($"{(i < names.Count ? names[i] : $"{i}")} {Range(i)}");
-            words.FontSize = 12;
+            TextBlock words = MutedText.CaptionWrapped($"{(i < names.Count ? names[i] : $"{i}")} {Range(i)}");
             legend.Children.Add(new DockPanel { Children = { swatch, words } });
         }
         card.AddChart(legend);

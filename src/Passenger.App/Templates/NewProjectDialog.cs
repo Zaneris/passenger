@@ -85,13 +85,13 @@ public sealed class NewProjectDialog : IdeWindow
 
     /// <summary>Whether what the dialog says is a read of the templates that failed, which a later read takes back.</summary>
     private bool readFailed;
-    private readonly TextBlock formatNote = new() { Classes = { StyleClasses.Muted }, FontSize = 12, TextWrapping = TextWrapping.Wrap, IsVisible = false };
+    private readonly TextBlock formatNote = new() { Classes = { StyleClasses.Muted, StyleClasses.Caption }, TextWrapping = TextWrapping.Wrap, IsVisible = false };
     private readonly Control projectRow;
     private readonly Control sameRow;
     private readonly Control? formatRow;
-    private readonly TextBlock where = new() { Classes = { StyleClasses.Muted }, FontSize = 12, TextWrapping = TextWrapping.Wrap };
+    private readonly TextBlock where = new() { Classes = { StyleClasses.Muted, StyleClasses.Caption }, TextWrapping = TextWrapping.Wrap };
     private readonly ComboBox framework = new FormDropDown();
-    private readonly TextBlock frameworkNote = new() { Classes = { StyleClasses.Muted }, FontSize = 12, TextWrapping = TextWrapping.Wrap };
+    private readonly TextBlock frameworkNote = new() { Classes = { StyleClasses.Muted, StyleClasses.Caption }, TextWrapping = TextWrapping.Wrap };
     private readonly Control frameworkNoteRow;
 
     /// <summary>The framework the person picked for the template chosen, which a Godot game listed again keeps; null for none.</summary>
@@ -99,11 +99,11 @@ public sealed class NewProjectDialog : IdeWindow
     private readonly ComboBox language = new FormDropDown();
     private readonly Control languageRow;
     private readonly TemplateOptions options = new();
-    private readonly TextBlock command = new() { Classes = { StyleClasses.Muted }, FontSize = 12, TextWrapping = TextWrapping.Wrap };
+    private readonly TextBlock command = new() { Classes = { StyleClasses.Muted, StyleClasses.Caption }, TextWrapping = TextWrapping.Wrap };
     private readonly Control details;
     private readonly Control offer;
     private readonly TextBlock offerText = new() { TextWrapping = TextWrapping.Wrap };
-    private readonly TextBlock offerCommand = new() { Classes = { StyleClasses.Muted }, FontSize = 12, TextWrapping = TextWrapping.Wrap };
+    private readonly TextBlock offerCommand = new() { Classes = { StyleClasses.Muted, StyleClasses.Caption }, TextWrapping = TextWrapping.Wrap };
     private readonly Button install = new() { Content = "Install", Classes = { StyleClasses.Primary }, MinWidth = 80, HorizontalAlignment = HorizontalAlignment.Left };
     private readonly OutputView installOutput = new(toolbar: false) { Height = 220, IsVisible = false };
     private readonly ProgressBar bar = new() { IsIndeterminate = true, Height = 4, MinHeight = 4, Width = 160, VerticalAlignment = VerticalAlignment.Center };
@@ -117,8 +117,8 @@ public sealed class NewProjectDialog : IdeWindow
     private readonly Button browse = new() { Content = "Browse…", Margin = new Thickness(Gaps.Normal, 0, 0, 0) };
     private readonly ComboBox setup = new FormDropDown();
     private readonly ComboBoxItem[] setups = [.. Enum.GetValues<ProjectSetup>().Select(s => new ComboBoxItem { Content = SetupName(s) })];
-    private readonly TextBlock setupNote = new() { Classes = { StyleClasses.Muted }, FontSize = 12, TextWrapping = TextWrapping.Wrap };
-    private readonly Button installSetup = new() { Classes = { StyleClasses.Link }, FontSize = 12, HorizontalAlignment = HorizontalAlignment.Left, IsVisible = false };
+    private readonly TextBlock setupNote = new() { Classes = { StyleClasses.Muted, StyleClasses.Caption }, TextWrapping = TextWrapping.Wrap };
+    private readonly Button installSetup = new() { Classes = { StyleClasses.Link, StyleClasses.Caption }, HorizontalAlignment = HorizontalAlignment.Left, IsVisible = false };
     private readonly Control setupRow;
 
     /// <summary>The set-up chosen last, in any dialog, which the next service made offers.</summary>
@@ -232,7 +232,7 @@ public sealed class NewProjectDialog : IdeWindow
         };
         typeRow = Row("Type:", typeChooser);
 
-        heading = new TextBlock { FontSize = 16, FontWeight = FontWeight.SemiBold };
+        heading = new TextBlock { Classes = { StyleClasses.PageTitle } };
         description = new TextBlock { Classes = { StyleClasses.Muted }, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, Gaps.Tight, 0, 0) };
         directory.Text = folder;
         browse.Click += (_, _) => IdeErrors.Observe(BrowseAsync());

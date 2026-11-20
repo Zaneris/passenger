@@ -29,7 +29,7 @@ public sealed partial class SettingsDialog
     private readonly TextBlock keymapNote = new() { TextWrapping = TextWrapping.Wrap, IsVisible = false, Classes = { StyleClasses.Muted } };
     private readonly ShortcutPanel filterKeys = new("Second stroke");
     private readonly Popup findPopup = new() { Placement = PlacementMode.BottomEdgeAlignedRight, IsLightDismissEnabled = true };
-    private readonly TextBlock filterText = new() { VerticalAlignment = VerticalAlignment.Center, FontSize = 12 };
+    private readonly TextBlock filterText = new() { Classes = { StyleClasses.Caption }, VerticalAlignment = VerticalAlignment.Center };
     private readonly Border filterChip = new() { IsVisible = false, Classes = { StyleClasses.Tag }, Padding = new Thickness(Gaps.Normal, Gaps.Hair, Gaps.Tight, Gaps.Hair), VerticalAlignment = VerticalAlignment.Center };
     private readonly Dictionary<KeymapPreset, Keymap> defaults = [];
     private Shortcut? shortcutFilter;
@@ -230,7 +230,7 @@ public sealed partial class SettingsDialog
         filterChip.Child = new StackPanel { Orientation = Orientation.Horizontal, Children = { filterText, ClearFiltering } };
         filterChip.Bind(Border.BackgroundProperty, filterChip.GetResourceObservable(TokenKeys.Selected));
 
-        TextBlock title = new() { Text = "Find Shortcut", FontWeight = FontWeight.SemiBold };
+        TextBlock title = new() { Classes = { StyleClasses.PaneTitle }, Text = "Find Shortcut" };
         Border popup = new()
         {
             Width = 320,
@@ -390,7 +390,7 @@ public sealed partial class SettingsDialog
                 row.Keys.Children.Clear();
                 foreach (string keys in shown)
                 {
-                    Border box = new() { Classes = { StyleClasses.Box }, Padding = new Thickness(Gaps.Small, 0), Margin = new Thickness(0, Gaps.Hair, Gaps.Tight, Gaps.Hair), Child = new TextBlock { Text = keys, FontSize = 12, VerticalAlignment = VerticalAlignment.Center } };
+                    Border box = new() { Classes = { StyleClasses.Box }, Padding = new Thickness(Gaps.Small, 0), Margin = new Thickness(0, Gaps.Hair, Gaps.Tight, Gaps.Hair), Child = new TextBlock { Classes = { StyleClasses.Caption }, Text = keys, VerticalAlignment = VerticalAlignment.Center } };
                     box.Bind(Border.BackgroundProperty, box.GetResourceObservable(TokenKeys.Selected));
                     row.Keys.Children.Add(box);
                 }

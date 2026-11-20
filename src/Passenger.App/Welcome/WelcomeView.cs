@@ -277,7 +277,7 @@ public sealed class WelcomeView : UserControl
         DockPanel line = new() { Classes = { StyleClasses.WelcomeRow } };
         DockPanel.SetDock(badge, Dock.Left);
         line.Children.Add(badge);
-        TextBlock gone = new() { Text = "Missing", FontSize = 12, VerticalAlignment = VerticalAlignment.Center, Margin = ListRow.Detail };
+        TextBlock gone = new() { Classes = { StyleClasses.Caption }, Text = "Missing", VerticalAlignment = VerticalAlignment.Center, Margin = ListRow.Detail };
         gone.Bind(TextBlock.ForegroundProperty, gone.GetResourceObservable(TokenKeys.Warning));
         DockPanel.SetDock(gone, Dock.Right);
         line.Children.Add(gone);

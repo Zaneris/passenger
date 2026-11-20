@@ -205,7 +205,7 @@ public sealed class FindView : DockPanel
             ListMenus.Item("Copy Line", null, () => IdeErrors.Observe(ListMenus.CopyAsync(this, chosen.LineText.Trim()))),
             ListMenus.Item("Copy Path", null, () => IdeErrors.Observe(ListMenus.CopyAsync(this, chosen.Path))),
         ]);
-        preview = new CodeEditor { IsReadOnly = true, ReadOnlyWhy = Refusals.PreviewReadOnly, ShowErrorStripe = false, LineCommentPrefix = null, FontSize = 12.5, Document = new TextDocument() };
+        preview = new CodeEditor { FontSize = TypeRamp.Code, IsReadOnly = true, ReadOnlyWhy = Refusals.PreviewReadOnly, ShowErrorStripe = false, LineCommentPrefix = null, Document = new TextDocument() };
         noneShown = new TextBlock { Classes = { StyleClasses.EmptyText }, Text = "No usages in your code", IsVisible = false };
         PaneSplit body = new(new Panel { Children = { list, noneShown } }, preview, "*,1,*");
         placeholder = new TextBlock { Classes = { StyleClasses.EmptyText } };
@@ -613,15 +613,14 @@ public sealed class FindView : DockPanel
     /// name and count; a usage's line number and code.</summary>
     private Control Row()
     {
-        TextBlock number = new TextBlock { MinWidth = 36, FontSize = 12, VerticalAlignment = VerticalAlignment.Center }.InCodeFont();
+        TextBlock number = new TextBlock { Classes = { StyleClasses.Code }, MinWidth = 36, VerticalAlignment = VerticalAlignment.Center };
         number.Classes.Add(StyleClasses.Muted);
         RowIcon chevron = new() { Width = 10, Height = 10, Margin = new Thickness(0, 0, Gaps.Small, 0) };
         RowIcon icon = new() { Margin = new Thickness(0, 0, Gaps.Small, 0) };
         TextBlock label = new() { VerticalAlignment = VerticalAlignment.Center };
-        TextBlock count = new() { FontSize = 12, Margin = new Thickness(Gaps.Wide, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
+        TextBlock count = new() { Classes = { StyleClasses.Caption }, Margin = new Thickness(Gaps.Wide, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
         count.Classes.Add(StyleClasses.Muted);
         StackPanel panel = new() { Orientation = Orientation.Horizontal, Height = ListRow.Height, Children = { number, chevron, icon, label, count } };
-        string? labelFont = null;
         chevron.PointerPressed += (_, e) =>
         {
             if (panel.DataContext is FindRow row)
@@ -643,16 +642,8 @@ public sealed class FindView : DockPanel
             icon.Data = file is { Usage: { } first } ? Explorer.FileIcons.ForFile(first.Path) : null;
             icon.Foreground = file is { Usage: { } at } ? Explorer.FileIcons.BrushForFile(at.Path) : null;
             label.Text = row.Label;
-            label.FontWeight = !usage && row.Depth == 0 ? FontWeight.SemiBold : FontWeight.Normal;
-            label.Resource(TextBlock.FontFamilyProperty, ref labelFont, usage ? CodeFonts.Key : null);
-            if (usage)
-            {
-                label.FontSize = 12;
-            }
-            else
-            {
-                label.ClearValue(TextBlock.FontSizeProperty);
-            }
+            label.Classes.Set(StyleClasses.Strong, !usage && row.Depth == 0);
+            label.Classes.Set(StyleClasses.Code, usage);
             count.IsVisible = !usage;
             count.Text = usage ? null : row.Detail;
         });

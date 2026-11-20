@@ -28,7 +28,7 @@ public sealed class ChangedFileRow
     {
         foreach (TextBlock muted in (TextBlock[])[came, folder])
         {
-            muted.FontSize = 12;
+            muted.Classes.Add(StyleClasses.Caption);
             muted.Margin = new Thickness(Gaps.Normal, 0, 0, 0);
         }
         came.IsVisible = false;

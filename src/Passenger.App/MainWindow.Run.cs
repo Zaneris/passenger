@@ -650,7 +650,7 @@ public partial class MainWindow
             Children =
             {
                 new TextBlock { Text = name, Classes = { StyleClasses.Muted } },
-                new TextBlock { Text = why, Classes = { StyleClasses.Muted }, FontSize = 11, VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center },
+                new TextBlock { Text = why, Classes = { StyleClasses.Muted, StyleClasses.Caption }, VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center },
             },
         };
     }

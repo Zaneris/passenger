@@ -127,10 +127,10 @@ public sealed class PostfixTemplatesPane : ListPane
         {
             Orientation = Orientation.Horizontal,
             Spacing = Gaps.Small,
-            Children = { all, new TextBlock { Text = Language, FontWeight = FontWeight.SemiBold, VerticalAlignment = VerticalAlignment.Center } },
+            Children = { all, new TextBlock { Classes = { StyleClasses.PaneTitle }, Text = Language, VerticalAlignment = VerticalAlignment.Center } },
         };
         CheckBox on = new() { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, Gaps.Small, 0) };
-        TextBlock name = new TextBlock { FontSize = 12.5, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, Gaps.Small, 0) }.InCodeFont();
+        TextBlock name = new TextBlock { Classes = { StyleClasses.Code }, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, Gaps.Small, 0) };
         TextBlock example = new() { Classes = { StyleClasses.Muted }, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
         SetDock(on, Dock.Left);
         SetDock(name, Dock.Left);
@@ -171,5 +171,5 @@ public sealed class PostfixTemplatesPane : ListPane
         });
     }
 
-    private static TextBox Code() => new TextBox { IsReadOnly = true, FontSize = 12.5, Classes = { StyleClasses.Search }, Focusable = false }.InCodeFont();
+    private static TextBox Code() => new TextBox { IsReadOnly = true, Classes = { StyleClasses.Search, StyleClasses.Code }, Focusable = false };
 }

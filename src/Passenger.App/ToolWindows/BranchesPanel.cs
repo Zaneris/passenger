@@ -613,7 +613,7 @@ public sealed class BranchesPanel : DockPanel
         RowIcon mark = new() { Width = 13, Height = 13, Margin = new Thickness(0, 0, Gaps.Small, 0) };
         TextBlock name = new() { VerticalAlignment = VerticalAlignment.Center };
         // Where it pushes and pulls, muted after its name.
-        TextBlock tracked = new() { FontSize = 12, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(Gaps.Normal, 0, 0, 0) };
+        TextBlock tracked = new() { Classes = { StyleClasses.Caption }, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(Gaps.Normal, 0, 0, 0) };
         tracked.Classes.Add(StyleClasses.Muted);
         ShrinkingRow row = new() { Height = ListRow.Height, Children = { hit, gap, mark, name, tracked } };
         hit.PointerPressed += (_, e) =>
@@ -634,7 +634,7 @@ public sealed class BranchesPanel : DockPanel
             mark.DataKey = node.Branch?.Kind == RefKind.Tag ? IconKeys.Label : node.IsFavorite ? IconKeys.StarFilled : IconKeys.Branch;
             mark.ForegroundKey = node.IsFavorite ? TokenKeys.Vcs_Favorite : node.Branch?.IsCurrent == true || node.Kind == BranchNodeKind.Head ? TokenKeys.Accent : null;
             name.Text = node.Title;
-            name.FontWeight = node.Kind is BranchNodeKind.Group ? FontWeight.SemiBold : FontWeight.Normal;
+            name.Classes.Set(StyleClasses.Strong, node.Kind is BranchNodeKind.Group);
             tracked.IsVisible = node.Branch is { Kind: RefKind.Local, Upstream: not null };
             tracked.Text = node.Branch?.Upstream;
         });

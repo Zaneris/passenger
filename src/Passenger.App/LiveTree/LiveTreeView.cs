@@ -81,7 +81,7 @@ public sealed class LiveTreeView : DockPanel
         SelectElement = ToolButtons.Toggle(IconKeys.SelectElement, "Select Element: point at a control in the app, or a node in the game, and click it");
         SelectElement.Click += (_, _) => PickRequested?.Invoke(this, SelectElement.IsChecked == true);
         Button refresh = ToolButtons.Of(AppActions.LiveTreeRefresh, IconKeys.Rerun, "Refresh", _ => RefreshRequested?.Invoke(this, EventArgs.Empty));
-        status = new TextBlock { Classes = { StyleClasses.Muted }, FontSize = 12, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(Gaps.Normal, 0), TextTrimming = TextTrimming.CharacterEllipsis };
+        status = new TextBlock { Classes = { StyleClasses.Muted, StyleClasses.Caption }, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(Gaps.Normal, 0), TextTrimming = TextTrimming.CharacterEllipsis };
         sources = new ComboBox { Classes = { StyleClasses.Compact }, MinWidth = 130, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(Gaps.Small, 0, 0, 0), IsVisible = false };
         ToolTip.SetTip(sources, "The running game whose nodes are shown");
         sources.SelectionChanged += (_, _) =>
@@ -119,8 +119,8 @@ public sealed class LiveTreeView : DockPanel
         top.Children.Add(status);
         Children.Add(ToolBars.Top(top));
 
-        monitors = new TextBlock { Classes = { StyleClasses.Muted }, FontSize = 12, TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center };
-        ChartsLink = new Button { Classes = { StyleClasses.Link }, Content = ShowChartsWords, FontSize = 12, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(Gaps.Normal, 0, 0, 0) };
+        monitors = new TextBlock { Classes = { StyleClasses.Muted, StyleClasses.Caption }, TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center };
+        ChartsLink = new Button { Classes = { StyleClasses.Link, StyleClasses.Caption }, Content = ShowChartsWords, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(Gaps.Normal, 0, 0, 0) };
         ToolTip.SetTip(ChartsLink, "The game's frame time, frames a second and its own monitors over the last minutes, read while they show");
         ChartsLink.Click += (_, _) => ChartsRequested?.Invoke(this, EventArgs.Empty);
         DockPanel.SetDock(ChartsLink, Dock.Right);
@@ -129,7 +129,7 @@ public sealed class LiveTreeView : DockPanel
         // The charts take the rows they have, up to a bound, the tree keeping the rest.
         charts = new ContentControl { [DockProperty] = Dock.Top, MaxHeight = 240, IsVisible = false };
         Children.Add(charts);
-        bannerText = new TextBlock { TextWrapping = TextWrapping.Wrap, FontSize = 12 };
+        bannerText = new TextBlock { Classes = { StyleClasses.Caption }, TextWrapping = TextWrapping.Wrap };
         banner = new Border { [DockProperty] = Dock.Top, Padding = new Thickness(Gaps.Wide, Gaps.Small), IsVisible = false, Child = bannerText };
         banner.Bind(Border.BackgroundProperty, banner.GetResourceObservable(TokenKeys.Banner));
         Children.Add(banner);
@@ -172,7 +172,7 @@ public sealed class LiveTreeView : DockPanel
         filter = new TextBox { Classes = { StyleClasses.Search }, PlaceholderText = "Filter properties", Margin = new Thickness(0, 0, Gaps.Small, 0) };
         filter.TextChanged += (_, _) => ShowProperties();
         // An option toggle with words, as wide as they are, where the style's are an icon's square.
-        defaults = new ToggleButton { Classes = { StyleClasses.Option }, Content = "Defaults", FontSize = 12, Width = double.NaN, Padding = new Thickness(Gaps.Normal, Gaps.Hair), VerticalAlignment = VerticalAlignment.Center };
+        defaults = new ToggleButton { Classes = { StyleClasses.Option, StyleClasses.Caption }, Content = "Defaults", Width = double.NaN, Padding = new Thickness(Gaps.Normal, Gaps.Hair), VerticalAlignment = VerticalAlignment.Center };
         ToolTip.SetTip(defaults, "Show the properties at their default values too");
         defaults.Click += (_, _) => ShowProperties();
         DockPanel filterRow = new() { [DockProperty] = Dock.Top, Margin = new Thickness(Gaps.Normal, Gaps.Hair, Gaps.Normal, Gaps.Small) };
@@ -335,7 +335,7 @@ public sealed class LiveTreeView : DockPanel
         }
         if (headingLink is null)
         {
-            headingLink = new Button { Classes = { StyleClasses.Link }, HorizontalAlignment = HorizontalAlignment.Left, FontSize = 12 };
+            headingLink = new Button { Classes = { StyleClasses.Link, StyleClasses.Caption }, HorizontalAlignment = HorizontalAlignment.Left };
             headingLink.Click += (_, _) => headingRun?.Invoke();
         }
         if (headingLink.Parent is null && Details is not null)
@@ -718,20 +718,20 @@ public sealed class LiveTreeView : DockPanel
             tab.IsVisible = !PropertiesAlone || page == LiveTreePage.Properties;
         }
         StackPanel title = new() { Orientation = Orientation.Horizontal, Spacing = Gaps.Small };
-        title.Children.Add(new TextBlock { Text = details.Type, FontWeight = FontWeight.SemiBold, FontSize = 14 });
+        title.Children.Add(new TextBlock { Classes = { StyleClasses.PaneTitle }, Text = details.Type });
         if (details.Name is { Length: > 0 } name)
         {
-            title.Children.Add(Colored(new TextBlock { Text = $"#{name}", FontSize = 14 }, TokenKeys.Syntax_Field));
+            title.Children.Add(Colored(new TextBlock { Classes = { StyleClasses.PaneTitle }, Text = $"#{name}" }, TokenKeys.Syntax_Field));
         }
         heading.Children.Add(title);
         string classes = string.Join(" ", details.Classes.Select(c => "." + c).Concat(details.PseudoClasses));
         if (classes.Length > 0)
         {
-            heading.Children.Add(new TextBlock { Text = classes, Classes = { StyleClasses.Muted }, FontSize = 12, TextWrapping = TextWrapping.Wrap });
+            heading.Children.Add(new TextBlock { Text = classes, Classes = { StyleClasses.Muted, StyleClasses.Caption }, TextWrapping = TextWrapping.Wrap });
         }
         if (details.TemplatedParent is { } parent)
         {
-            heading.Children.Add(new TextBlock { Text = $"A part of {parent}'s template", Classes = { StyleClasses.Muted }, FontSize = 12 });
+            heading.Children.Add(new TextBlock { Text = $"A part of {parent}'s template", Classes = { StyleClasses.Muted, StyleClasses.Caption } });
         }
         if (details.Source is { } source)
         {
@@ -741,7 +741,7 @@ public sealed class LiveTreeView : DockPanel
         else
         {
             GoToSource = null;
-            heading.Children.Add(new TextBlock { Text = details.NoSource, Classes = { StyleClasses.Muted }, FontSize = 12, TextWrapping = TextWrapping.Wrap });
+            heading.Children.Add(new TextBlock { Text = details.NoSource, Classes = { StyleClasses.Muted, StyleClasses.Caption }, TextWrapping = TextWrapping.Wrap });
         }
         if (headingLink is { } link)
         {
@@ -777,12 +777,12 @@ public sealed class LiveTreeView : DockPanel
         failures.Children.Clear();
         foreach (string message in failed)
         {
-            failures.Children.Add(Colored(new TextBlock { Text = message, FontSize = 12, TextWrapping = TextWrapping.Wrap }, TokenKeys.Error));
+            failures.Children.Add(Colored(new TextBlock { Classes = { StyleClasses.Caption }, Text = message, TextWrapping = TextWrapping.Wrap }, TokenKeys.Error));
         }
     }
 
     /// <summary>What reading the chosen node ran of the game's code, under its heading.</summary>
-    private readonly TextBlock read = new() { Classes = { StyleClasses.Muted }, FontSize = 12, TextWrapping = TextWrapping.Wrap, IsVisible = false };
+    private readonly TextBlock read = new() { Classes = { StyleClasses.Muted, StyleClasses.Caption }, TextWrapping = TextWrapping.Wrap, IsVisible = false };
 
     /// <summary>What reading the chosen node ran of the game's code as shown; null for none.</summary>
     public string? ReadShown => read.IsVisible ? read.Text : null;
@@ -887,8 +887,8 @@ public sealed class LiveTreeView : DockPanel
         RowIcon chevron = new() { Width = 10, Height = 10, Margin = new Thickness(0, 0, Gaps.Tight, 0) };
         TextBlock type = new() { VerticalAlignment = VerticalAlignment.Center };
         TextBlock name = Colored(new TextBlock { Margin = new Thickness(Gaps.Small, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center }, TokenKeys.Syntax_Field);
-        TextBlock classes = new() { Classes = { StyleClasses.Muted }, Margin = new Thickness(Gaps.Small, 0, 0, 0), FontSize = 12, VerticalAlignment = VerticalAlignment.Center };
-        TextBlock deeper = new() { Classes = { StyleClasses.Muted }, Margin = new Thickness(Gaps.Small, 0, 0, 0), FontSize = 12, VerticalAlignment = VerticalAlignment.Center, Text = "… more inside, not read" };
+        TextBlock classes = new() { Classes = { StyleClasses.Muted, StyleClasses.Caption }, Margin = new Thickness(Gaps.Small, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
+        TextBlock deeper = new() { Classes = { StyleClasses.Muted, StyleClasses.Caption }, Margin = new Thickness(Gaps.Small, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center, Text = "… more inside, not read" };
         ToolTip.SetTip(deeper, $"The tree is read {Element.DeepestNesting} levels deep");
         StackPanel line = new() { Orientation = Orientation.Horizontal, Height = ListRow.Height, Children = { chevron, type, name, classes, deeper } };
         chevron.PointerPressed += (_, e) =>
@@ -926,11 +926,11 @@ public sealed class LiveTreeView : DockPanel
         dot.Bind(Avalonia.Controls.Shapes.Shape.FillProperty, dot.GetResourceObservable(TokenKeys.Editor_Breakpoint));
         DockPanel.SetDock(dot, Dock.Left);
         DockPanel name = new() { Margin = new Thickness(0, 0, Gaps.Normal, 0), Children = { dot, label } };
-        TextBlock shown = new TextBlock { FontSize = 12, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center }.InCodeFont();
+        TextBlock shown = new TextBlock { Classes = { StyleClasses.Code }, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center };
         Grid.SetColumn(shown, 1);
-        TextBox editor = new TextBox { FontSize = 12, IsVisible = false, VerticalAlignment = VerticalAlignment.Center }.InCodeFont();
+        TextBox editor = new TextBox { Classes = { StyleClasses.Code }, IsVisible = false, VerticalAlignment = VerticalAlignment.Center };
         Grid.SetColumn(editor, 1);
-        TextBlock linked = new() { FontSize = 11, TextTrimming = TextTrimming.CharacterEllipsis };
+        TextBlock linked = new() { Classes = { StyleClasses.Caption }, TextTrimming = TextTrimming.CharacterEllipsis };
         Button link = new() { Classes = { StyleClasses.Link }, Content = linked, HorizontalAlignment = HorizontalAlignment.Left };
         link.Click += (_, _) =>
         {
@@ -939,7 +939,7 @@ public sealed class LiveTreeView : DockPanel
                 GoToRequested?.Invoke(this, place);
             }
         };
-        TextBlock source = new() { Classes = { StyleClasses.Muted }, FontSize = 11, TextTrimming = TextTrimming.CharacterEllipsis };
+        TextBlock source = new() { Classes = { StyleClasses.Muted, StyleClasses.Caption }, TextTrimming = TextTrimming.CharacterEllipsis };
         foreach (Control from in new Control[] { link, source })
         {
             Grid.SetRow(from, 1);
@@ -1057,15 +1057,15 @@ public sealed class LiveTreeView : DockPanel
         DockPanel top = new();
         if (style.Place is { } place)
         {
-            Button link = Link(Placed(place), place, small: true);
+            Button link = Link(Placed(place), place);
             DockPanel.SetDock(link, Dock.Right);
             top.Children.Add(link);
         }
-        TextBlock selector = new TextBlock { Text = style.Selector, FontSize = 12.5, FontWeight = FontWeight.SemiBold, TextWrapping = TextWrapping.Wrap }.InCodeFont();
+        TextBlock selector = new TextBlock { Classes = { StyleClasses.Code, StyleClasses.Strong }, Text = style.Selector, TextWrapping = TextWrapping.Wrap };
         top.Children.Add(selector);
         block.Children.Add(top);
-        block.Children.Add(new TextBlock { Text = $"{style.Kind} · {style.Origin}", Classes = { StyleClasses.Muted }, FontSize = 11, TextWrapping = TextWrapping.Wrap });
-        TextBlock state = new() { Text = style.Applies ? "Applies" : $"Does not apply: {style.WhyNot}", FontSize = 12, TextWrapping = TextWrapping.Wrap };
+        block.Children.Add(new TextBlock { Text = $"{style.Kind} · {style.Origin}", Classes = { StyleClasses.Muted, StyleClasses.Caption }, TextWrapping = TextWrapping.Wrap });
+        TextBlock state = new() { Classes = { StyleClasses.Caption }, Text = style.Applies ? "Applies" : $"Does not apply: {style.WhyNot}", TextWrapping = TextWrapping.Wrap };
         Colored(state, style.Applies ? TokenKeys.Test_Passed : TokenKeys.TextMuted);
         block.Children.Add(state);
         foreach (SetterReport setter in style.Setters)
@@ -1082,7 +1082,7 @@ public sealed class LiveTreeView : DockPanel
     private Control Setter(SetterReport setter)
     {
         StackPanel line = new() { Margin = new Thickness(Gaps.Indent, 0, 0, 0) };
-        TextBlock text = new TextBlock { Text = $"{setter.Property}: {setter.Value}", FontSize = 12, TextWrapping = TextWrapping.Wrap }.InCodeFont();
+        TextBlock text = new TextBlock { Classes = { StyleClasses.Code }, Text = $"{setter.Property}: {setter.Value}", TextWrapping = TextWrapping.Wrap };
         switch (setter.State)
         {
             case SetterStates.Overridden:
@@ -1096,7 +1096,7 @@ public sealed class LiveTreeView : DockPanel
         line.Children.Add(setter.Place is { } place ? Link(text, place) : text);
         if (AppPlaces.OverriddenBy(setter) is { } by)
         {
-            line.Children.Add(new TextBlock { Text = $"overridden by {by}", Classes = { StyleClasses.Muted }, FontSize = 11, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(Gaps.Wide, 0, 0, Gaps.Hair) });
+            line.Children.Add(new TextBlock { Text = $"overridden by {by}", Classes = { StyleClasses.Muted, StyleClasses.Caption }, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(Gaps.Wide, 0, 0, Gaps.Hair) });
         }
         return line;
     }
@@ -1124,7 +1124,7 @@ public sealed class LiveTreeView : DockPanel
     private static Control Boxed(string label, Edges edges, Control inner)
     {
         Grid grid = new() { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto"), RowDefinitions = new RowDefinitions("Auto,*,Auto") };
-        TextBlock name = new() { Text = label, Classes = { StyleClasses.Muted }, FontSize = 10, Margin = new Thickness(Gaps.Tight, Gaps.Hair) };
+        TextBlock name = new() { Text = label, Classes = { StyleClasses.Muted, StyleClasses.Caption }, Margin = new Thickness(Gaps.Tight, Gaps.Hair) };
         grid.Children.Add(name);
         grid.Children.Add(Side(edges.Top, 0, 1));
         grid.Children.Add(Side(edges.Left, 1, 0));
@@ -1140,7 +1140,7 @@ public sealed class LiveTreeView : DockPanel
 
     private static TextBlock Side(double size, int row, int column)
     {
-        TextBlock side = new() { Text = Number(size), FontSize = 11, Margin = new Thickness(Gaps.Small, Gaps.Hair), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
+        TextBlock side = new() { Classes = { StyleClasses.Caption }, Text = Number(size), Margin = new Thickness(Gaps.Small, Gaps.Hair), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
         Grid.SetRow(side, row);
         Grid.SetColumn(side, column);
         return side;
@@ -1151,7 +1151,7 @@ public sealed class LiveTreeView : DockPanel
         Border content = new()
         {
             Padding = new Thickness(Gaps.Wide, Gaps.Small),
-            Child = new TextBlock { Text = text, FontSize = 12, HorizontalAlignment = HorizontalAlignment.Center }.InCodeFont(),
+            Child = new TextBlock { Classes = { StyleClasses.Code }, Text = text, HorizontalAlignment = HorizontalAlignment.Center },
         };
         content.Bind(Border.BackgroundProperty, content.GetResourceObservable(TokenKeys.Selected));
         return content;
@@ -1161,7 +1161,7 @@ public sealed class LiveTreeView : DockPanel
     {
         Grid grid = new() { ColumnDefinitions = new ColumnDefinitions("140,*") };
         TextBlock label = new() { Text = name, Classes = { StyleClasses.Muted } };
-        TextBlock shown = new TextBlock { Text = value, FontSize = 12, VerticalAlignment = VerticalAlignment.Center }.InCodeFont();
+        TextBlock shown = new TextBlock { Classes = { StyleClasses.Code }, Text = value, VerticalAlignment = VerticalAlignment.Center };
         Grid.SetColumn(shown, 1);
         grid.Children.Add(label);
         grid.Children.Add(shown);
@@ -1184,8 +1184,8 @@ public sealed class LiveTreeView : DockPanel
     public static string Placed(SourcePlace place) =>
         place.Line > 0 ? $"{System.IO.Path.GetFileName(place.File)}:{place.Line}" : System.IO.Path.GetFileName(place.File);
 
-    private Button Link(string text, SourcePlace place, bool small = false) =>
-        Link(new TextBlock { Text = text, FontSize = small ? 11 : 12, TextTrimming = TextTrimming.CharacterEllipsis }, place);
+    private Button Link(string text, SourcePlace place) =>
+        Link(new TextBlock { Classes = { StyleClasses.Caption }, Text = text, TextTrimming = TextTrimming.CharacterEllipsis }, place);
 
     private Button Link(Control content, SourcePlace place)
     {

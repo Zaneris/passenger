@@ -291,7 +291,7 @@ public sealed class InteractiveTestDialog : IdeWindow
 
     private static TextBox Mono(string text, bool multiline)
     {
-        TextBox box = new TextBox { Text = text, FontSize = 12, AcceptsReturn = multiline, TextWrapping = TextWrapping.NoWrap }.InCodeFont();
+        TextBox box = new TextBox { Classes = { StyleClasses.Code }, Text = text, AcceptsReturn = multiline, TextWrapping = TextWrapping.NoWrap };
         if (multiline)
         {
             box.VerticalContentAlignment = VerticalAlignment.Top;
@@ -303,7 +303,7 @@ public sealed class InteractiveTestDialog : IdeWindow
 
     private static TextBlock Caption(string text)
     {
-        TextBlock caption = new() { Text = text, FontSize = 12, TextTrimming = TextTrimming.CharacterEllipsis };
+        TextBlock caption = new() { Classes = { StyleClasses.Caption }, Text = text, TextTrimming = TextTrimming.CharacterEllipsis };
         Paint(caption, TokenKeys.TextMuted);
         return caption;
     }

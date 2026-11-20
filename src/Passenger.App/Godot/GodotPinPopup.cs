@@ -25,12 +25,11 @@ public sealed class GodotPinPopup : UserControl
         this.local = local;
         Pin = pin;
         Width = PopupFrame.Medium;
-        TextBlock title = new() { Classes = { StyleClasses.PopupTitle }, Text = pin.Last.Said, TextWrapping = TextWrapping.Wrap };
+        TextBlock title = new() { Classes = { StyleClasses.PaneTitle }, Text = pin.Last.Said, TextWrapping = TextWrapping.Wrap };
         string earlier = pin.Earlier > 0 ? $", the {Plural.Of(pin.Earlier, "earlier one")} counted alone" : string.Empty;
         TextBlock counted = new()
         {
-            Classes = { StyleClasses.Muted },
-            FontSize = 12,
+            Classes = { StyleClasses.Muted, StyleClasses.Caption },
             TextWrapping = TextWrapping.Wrap,
             Text = $"{(pin.Warnings ? "Warned" : "Raised")} {Plural.Of(pin.Count, "time")} at {Path.GetFileName(pin.Path)}:{pin.Line + 1} in the last run{earlier}",
         };
@@ -104,7 +103,7 @@ public sealed class GodotPinPopup : UserControl
         }
         if (occurrence.Frames.Count == 0)
         {
-            stack.Children.Add(new TextBlock { Classes = { StyleClasses.Muted }, FontSize = 12, Text = "Godot sent no stack with it" });
+            stack.Children.Add(new TextBlock { Classes = { StyleClasses.Muted, StyleClasses.Caption }, Text = "Godot sent no stack with it" });
             return;
         }
         for (int i = 0; i < occurrence.Frames.Count; i++)
@@ -115,7 +114,7 @@ public sealed class GodotPinPopup : UserControl
             {
                 Classes = { StyleClasses.Link },
                 HorizontalAlignment = HorizontalAlignment.Left,
-                Content = new TextBlock { FontSize = 12, TextTrimming = TextTrimming.CharacterEllipsis, Text = $"#{i} {frame.Function}  {Path.GetFileName(frame.File)}:{frame.Line}" }.InCodeFont(),
+                Content = new TextBlock { Classes = { StyleClasses.Code }, TextTrimming = TextTrimming.CharacterEllipsis, Text = $"#{i} {frame.Function}  {Path.GetFileName(frame.File)}:{frame.Line}" },
             };
             ToolTip.SetTip(link, $"Go to {path}:{frame.Line}");
             link.Click += (_, _) => FrameChosen?.Invoke(this, (path, frame.Line));
@@ -125,7 +124,7 @@ public sealed class GodotPinPopup : UserControl
 
     private static Control Row()
     {
-        TextBlock when = new TextBlock { Classes = { StyleClasses.Muted }, FontSize = 11.5, Width = 80, VerticalAlignment = VerticalAlignment.Center }.InCodeFont();
+        TextBlock when = new TextBlock { Classes = { StyleClasses.Muted, StyleClasses.Code }, Width = 80, VerticalAlignment = VerticalAlignment.Center };
         TextBlock said = new() { VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
         DockPanel.SetDock(when, Dock.Left);
         DockPanel line = new() { Height = ListRow.Height, Margin = ListRow.Inset, Children = { when, said } };

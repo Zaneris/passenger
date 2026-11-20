@@ -83,14 +83,14 @@ public sealed class FindInFilesPopup : UserControl, IAnswers<SearchMatch?>
         query = new TextBox { Classes = { StyleClasses.Search }, PlaceholderText = "Text to find", Text = initial ?? string.Empty };
         matchCase = Option(OptionGlyph(IconKeys.MatchCase), "Match case", "Alt+C");
         words = Option(OptionGlyph(IconKeys.WholeWord), "Words", "Alt+O");
-        regex = Option(new TextBlock { Text = ".*", FontWeight = FontWeight.Bold, FontSize = 12 }.InCodeFont(), "Regex", "Alt+X");
+        regex = Option(new TextBlock { Classes = { StyleClasses.BadgeText }, Text = ".*" }.InCodeFont(), "Regex", "Alt+X");
         DockPanel find = new() { Margin = new Thickness(Gaps.Wide, 0, Gaps.Wide, Gaps.Small) };
         StackPanel toggles = new() { Orientation = Orientation.Horizontal, Spacing = Gaps.Hair, Margin = new Thickness(Gaps.Small, 0, 0, 0), Children = { matchCase, words, regex } };
         DockPanel.SetDock(toggles, Dock.Right);
         find.Children.Add(toggles);
         find.Children.Add(query);
 
-        maskOn = new CheckBox { Content = "File mask:", IsChecked = choices.Start.Mask is not null, FontSize = 12, MinHeight = 0, VerticalAlignment = VerticalAlignment.Center };
+        maskOn = new CheckBox { Classes = { StyleClasses.Caption }, Content = "File mask:", IsChecked = choices.Start.Mask is not null, MinHeight = 0, VerticalAlignment = VerticalAlignment.Center };
         ToolTip.SetTip(maskOn, "File mask (Alt+K)");
         maskBox = Field(choices.Masks.Count > 0 ? choices.Masks : ["*.cs"], editable: true);
         maskBox.Width = 150;
@@ -100,7 +100,7 @@ public sealed class FindInFilesPopup : UserControl, IAnswers<SearchMatch?>
         DockPanel header = new() { Margin = new Thickness(Gaps.Wide, Gaps.Normal, Gaps.Wide, Gaps.Small) };
         DockPanel.SetDock(mask, Dock.Right);
         header.Children.Add(mask);
-        header.Children.Add(new TextBlock { Classes = { StyleClasses.PopupTitle }, Text = replace ? "Replace in Files" : "Find in Files", VerticalAlignment = VerticalAlignment.Center });
+        header.Children.Add(new TextBlock { Classes = { StyleClasses.PaneTitle }, Text = replace ? "Replace in Files" : "Find in Files", VerticalAlignment = VerticalAlignment.Center });
         StackPanel top = new() { Children = { header, find } };
         if (replace)
         {
@@ -140,7 +140,7 @@ public sealed class FindInFilesPopup : UserControl, IAnswers<SearchMatch?>
         StackPanel kinds = new() { Orientation = Orientation.Horizontal, Spacing = Gaps.Hair, Margin = new Thickness(0, 0, Gaps.Normal, 0) };
         foreach ((SearchScopeKind each, string name, Key key) in Kinds)
         {
-            ToggleButton tab = new() { Classes = { StyleClasses.Segment }, Content = name, FontSize = 12 };
+            ToggleButton tab = new() { Classes = { StyleClasses.Segment, StyleClasses.Caption }, Content = name };
             ToolTip.SetTip(tab, $"{name} (Alt+{key})");
             tab.Click += (_, _) => ScopeKind = each;
             tabs[each] = tab;
@@ -156,8 +156,8 @@ public sealed class FindInFilesPopup : UserControl, IAnswers<SearchMatch?>
         top.Children.Add(scope);
         Show(choices.Start.Kind);
 
-        status = new TextBlock { Classes = { StyleClasses.Muted }, FontSize = 12, VerticalAlignment = VerticalAlignment.Center };
-        FindWindow = new Button { Classes = { StyleClasses.Link }, Content = "Open in Find Window", Focusable = false, IsEnabled = false, FontSize = 12, [DockPanel.DockProperty] = Dock.Right };
+        status = new TextBlock { Classes = { StyleClasses.Muted, StyleClasses.Caption }, VerticalAlignment = VerticalAlignment.Center };
+        FindWindow = new Button { Classes = { StyleClasses.Link, StyleClasses.Caption }, Content = "Open in Find Window", Focusable = false, IsEnabled = false, [DockPanel.DockProperty] = Dock.Right };
         ToolTip.SetTip(FindWindow, $"Open in Find Window ({(OperatingSystem.IsMacOS() ? "⌘↩" : "Ctrl+Enter")})");
         ToolTip.SetShowOnDisabled(FindWindow, true);
         FindWindow.Click += (_, _) => KeepInFindWindow();
@@ -628,11 +628,11 @@ public sealed class FindInFilesPopup : UserControl, IAnswers<SearchMatch?>
         {
             VerticalAlignment = VerticalAlignment.Center,
             TextTrimming = TextTrimming.CharacterEllipsis,
-            FontSize = 12,
+            Classes = { StyleClasses.Code },
             FontFeatures = CSharp.Fonts.Features(ligatures),
             Inlines = [],
-        }.InCodeFont();
-        TextBlock where = new() { VerticalAlignment = VerticalAlignment.Center, Margin = ListRow.Detail, FontSize = 12 };
+        };
+        TextBlock where = new() { Classes = { StyleClasses.Caption }, VerticalAlignment = VerticalAlignment.Center, Margin = ListRow.Detail };
         where.Classes.Add(StyleClasses.Muted);
         DockPanel row = new() { Height = ListRow.Height, Margin = ListRow.Inset };
         DockPanel.SetDock(where, Dock.Right);

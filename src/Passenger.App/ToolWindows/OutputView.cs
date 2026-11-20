@@ -114,7 +114,7 @@ public sealed class OutputView : DockPanel, IOwnKeys
             LineCommentPrefix = null,
             ShowLineNumbers = false,
             ShowErrorStripe = false,
-            FontSize = 12.5,
+            FontSize = TypeRamp.Code,
             Highlighter = colours,
         };
         editor = made;
@@ -568,7 +568,7 @@ public sealed class OutputView : DockPanel, IOwnKeys
                 LineCommentPrefix = null,
                 ShowLineNumbers = false,
                 ShowErrorStripe = false,
-                FontSize = 12.5,
+                FontSize = TypeRamp.Code,
                 Highlighter = new FoldColours(this),
             };
             filtered.Links = Links.On;

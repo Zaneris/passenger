@@ -1503,7 +1503,7 @@ public sealed class RunConfigurationsDialog : IdeWindow
     private Control RowView()
     {
         TextBlock name = new() { VerticalAlignment = VerticalAlignment.Center };
-        TextBlock from = new() { Classes = { StyleClasses.Muted }, FontSize = 11, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(Gaps.Normal, 0, 0, 0) };
+        TextBlock from = new() { Classes = { StyleClasses.Muted, StyleClasses.Caption }, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(Gaps.Normal, 0, 0, 0) };
         ShrinkingRow line = new() { Children = { name, from } };
         return line.Showing<Entry>(entry =>
         {

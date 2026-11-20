@@ -34,7 +34,7 @@ public static class CheckRows
         CheckBox check = Box();
         check.Focusable = false;
         TextBlock name = new() { VerticalAlignment = VerticalAlignment.Center };
-        TextBlock detail = new() { Classes = { StyleClasses.Muted }, FontSize = 12, Margin = new Thickness(Gaps.Wide, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
+        TextBlock detail = new() { Classes = { StyleClasses.Muted, StyleClasses.Caption }, Margin = new Thickness(Gaps.Wide, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
         DockPanel.SetDock(check, Dock.Left);
         DockPanel.SetDock(name, Dock.Left);
         DockPanel row = new() { Height = ListRow.Height, Margin = new Thickness(Gaps.Small, 0), Children = { check, name, detail } };

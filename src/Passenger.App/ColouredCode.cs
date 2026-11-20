@@ -29,11 +29,10 @@ public sealed class ColouredCode : Border
         Classes.Add(StyleClasses.Code);
         text = new SelectableTextBlock
         {
-            FontSize = 12,
             TextWrapping = TextWrapping.Wrap,
             FontFeatures = CSharp.Fonts.NoLigatures,
             Text = code,
-        }.InCodeFont();
+        };
         text.Bind(TextElement.ForegroundProperty, text.GetResourceObservable(TokenKeys.Editor_Text));
         Child = text;
         if (spans is not null)

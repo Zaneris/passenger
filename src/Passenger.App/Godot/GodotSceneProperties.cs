@@ -16,7 +16,7 @@ namespace Passenger.App.Godot;
 /// and written into the scene once it settles (<see cref="GodotSceneValues"/>); one they cannot edit shows its text.</summary>
 public sealed class GodotSceneProperties : DockPanel, IGodotTuner
 {
-    private readonly TextBlock heading = new() { FontWeight = FontWeight.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis, Margin = new Thickness(Gaps.Normal, Gaps.Small, Gaps.Normal, Gaps.Tight) };
+    private readonly TextBlock heading = new() { Classes = { StyleClasses.PaneTitle }, TextTrimming = TextTrimming.CharacterEllipsis, Margin = new Thickness(Gaps.Normal, Gaps.Small, Gaps.Normal, Gaps.Tight) };
     private readonly ListBox list = new() { Classes = { StyleClasses.Tree } };
     private readonly Action<Control, Control> showPopup;
     private readonly Action closePopup;
@@ -177,12 +177,12 @@ public sealed class GodotSceneProperties : DockPanel, IGodotTuner
     {
         Grid grid = new() { ColumnDefinitions = new ColumnDefinitions("8*,12*"), RowDefinitions = new RowDefinitions("Auto,Auto"), Margin = new Thickness(Gaps.Normal, Gaps.Hair) };
         TextBlock label = new() { TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, Gaps.Normal, 0) };
-        TextBlock text = new TextBlock { FontSize = 12, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center }.InCodeFont();
+        TextBlock text = new TextBlock { Classes = { StyleClasses.Code }, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center };
         Grid.SetColumn(text, 1);
-        TextBlock source = new() { Classes = { StyleClasses.Muted }, FontSize = 11, TextTrimming = TextTrimming.CharacterEllipsis };
+        TextBlock source = new() { Classes = { StyleClasses.Muted, StyleClasses.Caption }, TextTrimming = TextTrimming.CharacterEllipsis };
         Grid.SetRow(source, 1);
         Grid.SetColumnSpan(source, 2);
-        TextBox box = new TextBox { FontSize = 12, IsVisible = false, VerticalAlignment = VerticalAlignment.Center, Tag = TypingBox }.InCodeFont();
+        TextBox box = new TextBox { Classes = { StyleClasses.Code }, IsVisible = false, VerticalAlignment = VerticalAlignment.Center, Tag = TypingBox };
         Grid.SetColumn(box, 1);
         box.KeyDown += (_, e) =>
         {
@@ -223,7 +223,7 @@ public sealed class GodotSceneProperties : DockPanel, IGodotTuner
             text.Text = row.Text;
             ToolTip.SetTip(text, row.Text);
             source.Text = row.Source;
-            label.FontWeight = row.Set ? FontWeight.SemiBold : FontWeight.Normal;
+            label.Classes.Set(StyleClasses.Strong, row.Set);
             bool edits = false;
             if (cells is { } given && Shown is not null)
             {

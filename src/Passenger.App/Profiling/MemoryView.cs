@@ -161,7 +161,7 @@ public sealed class MemoryView : DockPanel
         objects = List(() =>
         {
             Avalonia.Controls.Documents.Run type = new();
-            Avalonia.Controls.Documents.Run address = new Avalonia.Controls.Documents.Run { FontSize = 12 }.InCodeFont();
+            Avalonia.Controls.Documents.Run address = new Avalonia.Controls.Documents.Run { FontSize = TypeRamp.Code }.InCodeFont();
             TextBlock name = Cell();
             address.Bind(Avalonia.Controls.Documents.TextElement.ForegroundProperty, name.GetResourceObservable(TokenKeys.TextMuted));
             // An object: its type, then its address in the code font, muted.
@@ -379,7 +379,7 @@ public sealed class MemoryView : DockPanel
             }
             if (i == trail.Count - 1)
             {
-                crumbs.Children.Add(new TextBlock { Text = trail[i].Crumb, FontWeight = FontWeight.SemiBold, VerticalAlignment = VerticalAlignment.Center });
+                crumbs.Children.Add(new TextBlock { Classes = { StyleClasses.Strong }, Text = trail[i].Crumb, VerticalAlignment = VerticalAlignment.Center });
                 continue;
             }
             int back = i + 1;
@@ -672,7 +672,7 @@ public sealed class MemoryView : DockPanel
             text.IsVisible = row.Node.Root is null;
             root.IsVisible = row.Node.Root is not null;
             Named(row.Node.Root is null ? text : root, row.Node.Text);
-            text.FontWeight = row.Depth == 0 ? FontWeight.SemiBold : FontWeight.Normal;
+            text.Classes.Set(StyleClasses.Strong, row.Depth == 0);
             kind.Text = row.Node.Root?.KindName;
             named.Text = row.Node.Root is { Name.Length: > 0 } rooted ? $": {rooted.Name}" : null;
         });
@@ -682,7 +682,7 @@ public sealed class MemoryView : DockPanel
     /// when it was taken and what it holds.</summary>
     private static Control Row()
     {
-        TextBlock name = new() { FontWeight = FontWeight.SemiBold };
+        TextBlock name = new() { Classes = { StyleClasses.Strong } };
         TextBlock letGo = Muted("objects let go");
         letGo.VerticalAlignment = VerticalAlignment.Center;
         TextBlock said = Muted(string.Empty);
@@ -716,7 +716,7 @@ public sealed class MemoryView : DockPanel
         TextBlock[] cells = new TextBlock[count];
         for (int i = 0; i < count; i++)
         {
-            cells[i] = new TextBlock { FontSize = 12, TextAlignment = TextAlignment.Right, VerticalAlignment = VerticalAlignment.Center }.InCodeFont();
+            cells[i] = new TextBlock { Classes = { StyleClasses.Code }, TextAlignment = TextAlignment.Right, VerticalAlignment = VerticalAlignment.Center };
         }
         return cells;
     }
@@ -733,9 +733,7 @@ public sealed class MemoryView : DockPanel
 
     private static TextBlock Muted(string text)
     {
-        TextBlock block = MutedText.Of(text);
-        block.FontSize = 12;
-        return block;
+        return MutedText.Caption(text);
     }
 
     private static string Signed(long value, Func<long, string> format) => value switch

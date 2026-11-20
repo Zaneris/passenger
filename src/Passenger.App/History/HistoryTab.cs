@@ -398,7 +398,7 @@ public sealed class HistoryTab : DockPanel
             tag.DataKey = row.IsLabel ? IconKeys.Label : null;
             tag.ForegroundKey = !row.IsLabel ? null : row.System ? TokenKeys.TextMuted : TokenKeys.Accent;
             title.Text = row.Title;
-            title.FontWeight = row.IsLabel ? FontWeight.SemiBold : FontWeight.Normal;
+            title.Classes.Set(StyleClasses.Strong, row.IsLabel);
         });
     }
 

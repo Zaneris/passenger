@@ -21,9 +21,9 @@ public sealed class GodotPageViewer
     /// <summary>The words of the segment that shows the text.</summary>
     public const string TextChoice = "Text";
 
-    private readonly ToggleButton page = new() { Classes = { StyleClasses.Segment }, Content = PageChoice, FontSize = 12, Name = "ShowGodotPage" };
-    private readonly ToggleButton text = new() { Classes = { StyleClasses.Segment }, Content = TextChoice, FontSize = 12, Name = "ShowGodotText" };
-    private readonly TextBlock said = new() { Classes = { StyleClasses.Muted }, FontSize = 11, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
+    private readonly ToggleButton page = new() { Classes = { StyleClasses.Segment, StyleClasses.Caption }, Content = PageChoice, Name = "ShowGodotPage" };
+    private readonly ToggleButton text = new() { Classes = { StyleClasses.Segment, StyleClasses.Caption }, Content = TextChoice, Name = "ShowGodotText" };
+    private readonly TextBlock said = new() { Classes = { StyleClasses.Muted, StyleClasses.Caption }, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
     private readonly StackPanel content = new() { Classes = { StyleClasses.NotesPage } };
     private GodotPageFile? file;
     private GodotPageFacts? painted;
