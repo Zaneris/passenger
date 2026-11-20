@@ -4,11 +4,11 @@ using Passenger.Core;
 namespace Passenger.Editor;
 
 /// <summary>Work run once what keeps putting it off (typing) pauses for long enough. The wait is background work, so a
-/// screenshot or a test settles on what the pause brings, which a DispatcherTimer's wait would not hold them for; but
-/// <paramref name="unseen"/> work, which changes nothing drawn (what a screen reader is told), holds neither, and what
-/// reads it waits for it. <paramref name="hold"/>, when given, is held as long as the wait is. A UI-thread object; where
-/// background work is named, its wait is named by the place that made it.</summary>
-public sealed class Debounce(TimeSpan delay, Func<Task> work, Func<IDisposable>? hold = null, bool unseen = false,
+/// screenshot or a test settles on what the pause brings, which a DispatcherTimer's wait would not hold them for; one given
+/// <paramref name="unheld"/>, why it must hold nothing, holds neither (<see cref="BackgroundWork.UnheldScope"/>).
+/// <paramref name="hold"/>, when given, is held as long as the wait is. A UI-thread object; where background work is
+/// named, its wait is named by the place that made it.</summary>
+public sealed class Debounce(TimeSpan delay, Func<Task> work, Func<IDisposable>? hold = null, string? unheld = null,
     [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
 {
     private CancellationTokenSource? waiting;
@@ -72,7 +72,7 @@ public sealed class Debounce(TimeSpan delay, Func<Task> work, Func<IDisposable>?
 
     private async Task WaitAsync(CancellationTokenSource cancel)
     {
-        using (unseen ? null : BackgroundWork.Scope(file, line))
+        using (unheld is null ? BackgroundWork.Scope(file, line) : BackgroundWork.UnheldScope(unheld))
         using (hold?.Invoke())
         {
             // Put off again, the wait ends quietly: an exception thrown at every key costs its thread more than the wait.

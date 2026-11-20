@@ -77,7 +77,7 @@ public sealed class Announcer
         {
             Hear();
             return Task.CompletedTask;
-        }, unseen: true);
+        }, unheld: "what a screen reader is told draws nothing");
     }
 
     /// <summary>The announcer of a window or of the window that owns it, through its owners; null where none has one.</summary>

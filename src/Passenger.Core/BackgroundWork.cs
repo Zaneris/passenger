@@ -122,6 +122,15 @@ public static class BackgroundWork
         return held;
     }
 
+    /// <summary>A wait that holds nothing, in <see cref="Scope"/>'s place, for what no screenshot or test may wait on: work
+    /// whose end draws nothing (what a screen reader is told), which what reads it waits for itself. <paramref name="why"/>
+    /// says which, as each caller of <see cref="Unheld(Action, CancellationToken)"/> says why.</summary>
+    public static IDisposable UnheldScope(string why)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(why);
+        return InFlight.None;
+    }
+
     /// <summary>Work held until a task ends, however it ends; released after what the UI thread was given to do on it.</summary>
     public static void Track(Task task, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
     {
