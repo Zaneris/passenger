@@ -218,6 +218,8 @@ public sealed class ProjectSession : IAsyncDisposable
             Commands = setup.Editors.Commands,
             History = () => LocalHistory,
         };
+        EfProjects = new Migrations.EfProjects(Packages.RestoredSince);
+        EfProjects.Landed += (_, _) => FollowHolds(projects: true);
         MSBuild = new MSBuild.MSBuildService(() => Folder, () => Workspace)
         {
             Feed = () => Packages.FeedAsync(null),
@@ -803,6 +805,10 @@ public sealed class ProjectSession : IAsyncDisposable
     /// <summary>What the folder's .editorconfig files set over Settings' rows.</summary>
     public Settings.FolderEditorConfigs EditorConfigs { get; }
 
+    /// <summary>What the folder's projects declare for dotnet ef, as the Migrations window asks: its projects, and whether the
+    /// folder holds one it serves where no evaluation says so.</summary>
+    public Migrations.EfProjects EfProjects { get; }
+
     /// <summary>What the folder holds of the kinds of project tool windows serve (<see cref="FolderHolding"/>), as its run
     /// configurations were last made from its projects, the files its index lists and the apps inspected say.</summary>
     public FolderHolds Holds { get; private set; }
@@ -829,7 +835,8 @@ public sealed class ProjectSession : IAsyncDisposable
         }
         if (projects)
         {
-            projectsHold = FolderHolding.Of(Projects, Workspace?.GodotGames ?? [], Configurations.SingleFileAppHosts.Count > 0, holdsRequests);
+            projectsHold = FolderHolding.Of(Projects, Workspace?.GodotGames ?? [], Configurations.SingleFileAppHosts.Count > 0, holdsRequests,
+                EfProjects.ReachedByRestore);
         }
         FolderHolds now = projectsHold | (LiveSource is not null || Inspecting.Count > 0 ? FolderHolds.InspectedApp : FolderHolds.None);
         if (now != Holds)

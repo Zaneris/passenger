@@ -285,8 +285,8 @@ public sealed partial class FolderPackages
     /// folder or an artifacts folder above it; none before it is restored, or while its file does not read.</summary>
     internal static RestoredVersions Restored(ProjectModel project) => AssetsOf(project) is { } assets ? Read(assets, null) : RestoredVersions.None;
 
-    /// <summary>What a project's restore resolved (<see cref="Restored"/>), read again only once a restore wrote its file.</summary>
-    private RestoredVersions RestoredSince(ProjectModel project) => AssetsOf(project) is { } assets ? Read(assets, assetsRead) : RestoredVersions.None;
+    /// <summary>What a project's restore resolved (<see cref="Restored"/>), read again only once a restore wrote its file; on any thread.</summary>
+    internal RestoredVersions RestoredSince(ProjectModel project) => AssetsOf(project) is { } assets ? Read(assets, assetsRead) : RestoredVersions.None;
 
     private static string? AssetsOf(ProjectModel project) =>
         project.Property(Passenger.Host.CarriedProperties.ProjectAssetsFile) ?? Passenger.Xaml.Projects.ProjectInputs.FindAssets(project.Path);

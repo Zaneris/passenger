@@ -97,6 +97,13 @@
     <Compile Include="../../src/Passenger.App/Packages/PackageFolders.cs" Link="App/PackageFolders.cs" />
   </ItemGroup>
 
+  <!-- Which projects the Migrations window offers dotnet ef, from the projects and their C# files' text alone, and the names
+       of EF Core's packages it reads, compiled in since their project is the app's. -->
+  <ItemGroup>
+    <Compile Include="../../src/Passenger.App/Migrations/EfTargets.cs" Link="App/EfTargets.cs" />
+    <Compile Include="../../src/Passenger.App/Migrations/EfRestore.cs" Link="App/EfRestore.cs" />
+  </ItemGroup>
+
   <!-- What a theme file says, read from its JSON alone against a table of tokens, a theme source as its words name it, a
        VS Code colour theme read and made a Passenger theme, and Open VSX's answers, compiled in since their project is the
        app's. -->

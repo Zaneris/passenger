@@ -22,11 +22,14 @@ public sealed record EfRestore(string? Runtime, string? Design, IReadOnlyList<Ef
     /// <summary>The package <c>dotnet ef</c> loads from the startup project.</summary>
     public const string DesignPackage = "Microsoft.EntityFrameworkCore.Design";
 
+    /// <summary>The package of the Package Manager Console's commands, which brings the Design package with it.</summary>
+    public const string ToolsPackage = "Microsoft.EntityFrameworkCore.Tools";
+
     /// <summary>EF Core's own packages, which move together and are never a provider.</summary>
     private static readonly HashSet<string> CoreSet = new(StringComparer.OrdinalIgnoreCase)
     {
         Core, "Microsoft.EntityFrameworkCore.Relational", "Microsoft.EntityFrameworkCore.Abstractions", "Microsoft.EntityFrameworkCore.Analyzers",
-        DesignPackage, "Microsoft.EntityFrameworkCore.Tools", "Microsoft.EntityFrameworkCore.Proxies",
+        DesignPackage, ToolsPackage, "Microsoft.EntityFrameworkCore.Proxies",
     };
 
     /// <summary>The first provider whose range leaves the project's EF Core out, or null.</summary>

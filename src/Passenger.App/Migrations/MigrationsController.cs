@@ -40,9 +40,6 @@ public sealed record MigrationsParts(
 /// database has it (null until dotnet ef could ask the database).</summary>
 public sealed record MigrationRow(string Id, string Name, bool? Applied);
 
-/// <summary>A context whose model has changes no migration covers, at its class's declaration where it was found.</summary>
-public sealed record EfPending(string Context, string? File, Passenger.Text.TextPosition Position);
-
 /// <summary>A context the project holds, as <c>dotnet ef dbcontext list</c> names it.</summary>
 public sealed record EfContext(string Name, string FullName);
 
@@ -80,14 +77,16 @@ public sealed partial class MigrationsController(MigrationsParts parts)
     /// <summary>The window's lists or choices changed.</summary>
     public event EventHandler? Changed;
 
-    /// <summary>The folder's projects that reference EF Core, in the solution's order.</summary>
+    /// <summary>The folder's projects dotnet ef makes migrations in: those declaring a context or holding its migrations, as
+    /// the folder's whole read of them found (<see cref="EfTargets.Projects"/>), made while the window is shown or a command
+    /// asks; before it, or where none declares one yet, those referencing EF Core.</summary>
     public IReadOnlyList<ProjectModel> Projects { get; private set; } = [];
 
     /// <summary>The project chosen, whose contexts and migrations are listed; null with none.</summary>
     public ProjectModel? Project { get; private set; }
 
-    /// <summary>The projects dotnet ef can make the chosen project's contexts from: those that run it (that reference it, or
-    /// it itself), the ones a run configuration runs first.</summary>
+    /// <summary>The projects dotnet ef can make the chosen project's contexts from (<see cref="EfTargets.Startups"/>): those
+    /// that load it (that reference it, or it itself) and run on .NET, the programs first.</summary>
     public IReadOnlyList<ProjectModel> Startups { get; private set; } = [];
 
     public ProjectModel? Startup { get; private set; }
@@ -123,8 +122,8 @@ public sealed partial class MigrationsController(MigrationsParts parts)
     /// command that changes the migrations).</summary>
     public IReadOnlyList<EfPending> Pending { get; private set; } = [];
 
-    /// <summary>Where the chosen project's contexts are declared, read from its C# files as the projects are read: where a
-    /// gap's fixes are offered, beside the startup project's file.</summary>
+    /// <summary>Where the chosen project's contexts are declared, as the last read of its C# files found them: where a gap's
+    /// fixes are offered, beside the startup project's file.</summary>
     public IReadOnlyList<EfPending> Declared { get; private set; } = [];
 
     /// <summary>The code Problems lists a context's pending model changes under.</summary>
@@ -177,17 +176,19 @@ public sealed partial class MigrationsController(MigrationsParts parts)
 
     private bool startupChosen;
 
-    /// <summary>The folder's projects read again (an evaluation landed, a package changed), the choices kept where they still
-    /// stand, else those the tool's defaults name, and the gaps found again.</summary>
+    /// <summary>The folder's projects read again (an evaluation landed, a package changed, a build ended, the read of what they
+    /// declare landed), the choices kept where they still stand, else those the tool's defaults name, and the gaps found again.</summary>
     public void Follow()
     {
         UiThread.Check();
         IReadOnlyList<ProjectModel> all = bound?.Projects ?? [];
         ProjectModel? wasProject = Project;
         ProjectModel? wasStartup = Startup;
-        Projects = [.. all.Where(UsesEf)];
+        Projects = EfTargets.Projects(all, bound?.EfProjects.Whole);
         Project = Chosen(Projects, wasProject, projectChosen, defaults?.Project);
-        Startups = Project is null ? [] : StartupsOf(Project, all);
+        Declared = Project is { } chosen ? bound?.EfProjects.Of(chosen)?.Contexts ?? [] : [];
+        bound?.EfProjects.Know(all, Looked, Project);
+        Startups = Project is null ? [] : EfTargets.Startups(Project, all);
         Startup = Chosen(Startups, wasStartup, startupChosen, defaults?.StartupProject);
         if (!PathNames.Same(Startup?.Path ?? string.Empty, wasStartup?.Path ?? string.Empty))
         {
@@ -207,13 +208,22 @@ public sealed partial class MigrationsController(MigrationsParts parts)
             BackgroundWork.Track(ReadDefaultsAsync(bound, folder));
         }
         FindGaps();
-        if (Project is { } project)
-        {
-            BackgroundWork.Track(FindDeclaredAsync(project));
-        }
         ReadEnvironments();
         Offer();
         Changed?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>Whether the window is shown, so what every project EF Core reaches declares is read, not the chosen one's alone.</summary>
+    private bool Looked => parts.Dock.IsShown(ToolWindowIds.Migrations);
+
+    /// <summary>What the projects declare read again, their files as they now stand: a build may come with a context written
+    /// since.</summary>
+    public void ReadAgain()
+    {
+        if (bound is { } session)
+        {
+            session.EfProjects.Follow(session.Projects, Looked, Project);
+        }
     }
 
     /// <summary>The environments the startup project's files name read again off the UI thread, offered once they land while
@@ -287,12 +297,11 @@ public sealed partial class MigrationsController(MigrationsParts parts)
     }
 
     /// <summary>Of projects, the one chosen before while it is still there if the person chose it, else the one the tool's
-    /// defaults name, else the one before, else the first.</summary>
-    private static ProjectModel? Chosen(IReadOnlyList<ProjectModel> projects, ProjectModel? before, bool chosen, string? named)
-    {
-        ProjectModel? kept = before is null ? null : projects.FirstOrDefault(p => PathNames.Same(p.Path, before.Path));
-        return (chosen ? kept : null) ?? projects.FirstOrDefault(p => EfDefaults.Names(named, p)) ?? kept ?? projects.FirstOrDefault();
-    }
+    /// defaults name, else the first: a choice of the window's own follows the lists as the projects' evaluations and the
+    /// read of what they declare land, one by one.</summary>
+    private static ProjectModel? Chosen(IReadOnlyList<ProjectModel> projects, ProjectModel? before, bool chosen, string? named) =>
+        (chosen && before is not null ? projects.FirstOrDefault(p => PathNames.Same(p.Path, before.Path)) : null)
+        ?? projects.FirstOrDefault(p => EfDefaults.Names(named, p)) ?? projects.FirstOrDefault();
 
     /// <summary>The tool's defaults in the folder read off the UI thread (the tool found, the file looked for up from the
     /// folder), and the choices made again from them when they changed while the session is still the one bound.</summary>
@@ -305,46 +314,6 @@ public sealed partial class MigrationsController(MigrationsParts parts)
             Follow();
         }
     }
-
-    /// <summary>The project's contexts' declarations read off the UI thread, kept while it is still the one chosen.</summary>
-    private async Task FindDeclaredAsync(ProjectModel project)
-    {
-        IReadOnlyList<EfPending> found = await BackgroundWork.Run(() => DeclaredIn(project));
-        if (Project == project)
-        {
-            Declared = found;
-        }
-    }
-
-    /// <summary>The classes a project's own C# files declare deriving from a DbContext, each at its name.</summary>
-    private static IReadOnlyList<EfPending> DeclaredIn(ProjectModel project)
-    {
-        List<EfPending> found = [];
-        foreach (string file in FolderWalk.ProjectFiles(project, ".cs"))
-        {
-            string[] lines;
-            try
-            {
-                lines = File.ReadAllLines(file);
-            }
-            catch (Exception error) when (error is IOException or UnauthorizedAccessException)
-            {
-                continue;
-            }
-            for (int line = 0; line < lines.Length; line++)
-            {
-                if (ContextClass().Match(lines[line]) is { Success: true } declared)
-                {
-                    found.Add(new EfPending(declared.Groups[1].Value, file, new Passenger.Text.TextPosition(line, declared.Groups[1].Index)));
-                }
-            }
-        }
-        return found;
-    }
-
-    /// <summary>A class declared on one line deriving from a DbContext (IdentityDbContext&lt;User&gt; too), its name captured.</summary>
-    [System.Text.RegularExpressions.GeneratedRegex(@"\bclass\s+(\w+)\b[^{;]*:\s*[^{;]*?\b\w*DbContext\b(?!\w)")]
-    private static partial System.Text.RegularExpressions.Regex ContextClass();
 
     /// <summary>Chooses the project whose contexts are listed, by path; its startup project chosen afresh.</summary>
     public void ChooseProject(string path)
@@ -393,8 +362,9 @@ public sealed partial class MigrationsController(MigrationsParts parts)
     public event EventHandler<EfFixKind>? ChoiceAsked;
 
     /// <summary>Whether the window, shown, lists the migrations by itself now: once for each choice, while nothing it shows
-    /// stops dotnet ef and nothing else runs.</summary>
-    public bool WantsListing => !Listed && !tried && running is null && Startup is not null && gapsLanded == gapsAsked && Gaps.All(g => !g.Blocks);
+    /// stops dotnet ef, nothing else runs, and the choices are made from the read of the projects as they stand.</summary>
+    public bool WantsListing => !Listed && !tried && running is null && Startup is not null && gapsLanded == gapsAsked && Gaps.All(g => !g.Blocks)
+        && bound is { } session && session.EfProjects.IsWholeOf(session.Projects);
 
     /// <summary>Whether the window listed by itself for the choices as they are, however it ended.</summary>
     private bool tried;
@@ -431,34 +401,6 @@ public sealed partial class MigrationsController(MigrationsParts parts)
 
     /// <summary>Each context's model check, with what it read: its answer stands while that does.</summary>
     private readonly Dictionary<string, (string Read, bool Changed)> checks = [];
-
-    /// <summary>Whether a project references EF Core, or a provider of it, itself.</summary>
-    public static bool UsesEf(ProjectModel project) =>
-        project.Packages.Any(p => p.Name.Contains("EntityFrameworkCore", StringComparison.OrdinalIgnoreCase));
-
-    /// <summary>The projects that can start a project's contexts: those that reference it, through others too, the runnable
-    /// ones first; then the project itself.</summary>
-    private static IReadOnlyList<ProjectModel> StartupsOf(ProjectModel project, IReadOnlyList<ProjectModel> all)
-    {
-        List<ProjectModel> referencing = [.. all.Where(p => p != project && References(p, project, all, []))];
-        return [.. referencing.Where(p => p.IsRunnable), project, .. referencing.Where(p => !p.IsRunnable)];
-    }
-
-    private static bool References(ProjectModel from, ProjectModel to, IReadOnlyList<ProjectModel> all, HashSet<string> seen)
-    {
-        foreach (string reference in from.ProjectReferences)
-        {
-            if (PathNames.Same(reference, to.Path))
-            {
-                return true;
-            }
-            if (seen.Add(reference) && all.FirstOrDefault(p => PathNames.Same(p.Path, reference)) is { } next && References(next, to, all, seen))
-            {
-                return true;
-            }
-        }
-        return false;
-    }
 
     /// <summary>The gaps as the restore and the tool stand, found again without running anything: read off the UI thread (a
     /// project.assets.json runs to megabytes, and every build and evaluation asks again), told once they land while no
@@ -748,6 +690,16 @@ public sealed partial class MigrationsController(MigrationsParts parts)
         using CancellationTokenRegistration stopping = cancel.Register(work.Cancel);
         try
         {
+            // The lists made from what every project declares, read now where the window is hidden (an agent's command).
+            if (!session.EfProjects.IsWholeOf(session.Projects))
+            {
+                work.Say("Reading the projects' contexts…");
+                await session.EfProjects.WholeAsync(() => session.Projects);
+                if (session == bound)
+                {
+                    Follow();
+                }
+            }
             (EfSetting? setting, string? why) = await PrepareAsync(session, work, asks, build);
             if (setting is null)
             {
@@ -920,7 +872,7 @@ public sealed partial class MigrationsController(MigrationsParts parts)
                     return (null, null);
                 }
                 evaluated[each] = answer.Values;
-                if (each == startup || !References(startup, project, all, []))
+                if (each == startup || !EfTargets.References(startup, project, all))
                 {
                     folders.Add(Path.GetDirectoryName(PathNames.Canonical(target))!);
                 }
@@ -1281,7 +1233,7 @@ public sealed partial class MigrationsController(MigrationsParts parts)
         settled = false;
         work.Say($"Building {startup.Name}…");
         BuildRunController builds = parts.Builds();
-        bool covers = project == startup || startup.ProjectReferences.Count > 0 && References(startup, project, parts.Session().Projects, []);
+        bool covers = project == startup || startup.ProjectReferences.Count > 0 && EfTargets.References(startup, project, parts.Session().Projects);
         if (!covers)
         {
             BuildOutcome first = await builds.BuildForAsync(new BuildStep(project.Path, null), work);

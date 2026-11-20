@@ -57,11 +57,12 @@ public partial class MainWindow
             Chosen = () => migrationsView?.Chosen,
         };
         Dock.Add(shown);
-        // Shown however it is (its action, its stripe button, a layout), it lists what it can at once.
+        // Shown however it is (its action, its stripe button, a layout), it reads every project and lists what it can at once.
         shown.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName == nameof(Docking.ToolWindow.IsShown) && shown.IsShown)
             {
+                FollowMigrations(session);
                 UiThread.Post(ListMigrationsIfShown);
             }
         };
@@ -143,14 +144,20 @@ public partial class MainWindow
         EfFix? FirstFix() => controller.Gaps.Concat(controller.Failure is { } failed ? [failed] : []).SelectMany(g => g.Fixes).FirstOrDefault();
     }
 
-    /// <summary>The session's projects as the Migrations window follows them, from the session's first moment.</summary>
+    /// <summary>The session's projects as the Migrations window follows them, from the session's first moment: what they
+    /// declare read again after a build, which may have come with a context written since.</summary>
     private void BindMigrations(ProjectSession next)
     {
         migrations?.Bind(next);
         next.WorkspaceChanged += (_, _) => FollowMigrations(next);
         next.ProjectsEvaluated += (_, _) => FollowMigrations(next);
+        next.EfProjects.Landed += (_, _) => FollowMigrations(next);
         buildRun.BuildFinished += (_, built) =>
         {
+            if (session == next && !next.IsEnded)
+            {
+                migrations?.ReadAgain();
+            }
             FollowMigrations(next);
             if (session == next)
             {

@@ -243,6 +243,41 @@ public sealed class MigrationsTests
         }
     }
 
+    /// <summary>An API beside the library holding its context, as a solution is often laid out (#2011): Project offers the
+    /// library alone, chosen, never the web app that has only the Design package; Startup offers the web app that runs it
+    /// first, then the library itself and the services library referencing it, never the domain library it references.
+    /// Every project's C# files are read only once the window is shown.</summary>
+    [AvaloniaFact]
+    public void The_library_declaring_the_context_is_the_project_and_the_web_app_running_it_the_first_startup()
+    {
+        string folder = ShopApp.MakeLayered();
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        try
+        {
+            Ui.WaitFor(() => window.Session.Projects is { Count: 4 } all && all.All(p => p.IsEvaluated),
+                () => $"the four projects evaluated ({string.Join(", ", window.Session.Projects.Select(p => $"{p.Name}: {(p.IsEvaluated ? "evaluated" : p.Problem ?? "not yet")}"))})");
+            Ui.Settle();
+            Assert.True(window.Session.EfProjects.Whole is null,
+                "Every project's C# files were read with the Migrations window never shown: each folder EF Core reaches would pay for a window nobody opened");
+            window.ShowToolWindow(ToolWindowIds.Migrations);
+            Ui.WaitFor(() => window.Session.EfProjects.IsWholeOf(window.Session.Projects), () => "what every project declares read once the window was shown");
+            Ui.Settle();
+            MigrationsController migrations = window.Migrations;
+            Assert.True(Names(migrations.Projects) == "MyApp.Data" && migrations.Project?.Name == "MyApp.Data",
+                $"Project offered [{Names(migrations.Projects)}], {migrations.Project?.Name ?? "none"} chosen: the library holding the context would not be where migrations are made");
+            Assert.True(Names(migrations.Startups) == "MyApp.Api, MyApp.Data, MyApp.Services" && migrations.Startup?.Name == "MyApp.Api",
+                $"Startup offered [{Names(migrations.Startups)}], {migrations.Startup?.Name ?? "none"} chosen: dotnet ef would not start the web app that runs the context");
+            Assert.True(migrations.Declared is [{ Context: "AppDbContext" } declared] && Path.GetFileName(declared.File) == "AppDbContext.cs",
+                $"The context was found declared as [{string.Join(", ", migrations.Declared)}]: Show Context Actions there would offer none of the window's fixes");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    private static string Names(IEnumerable<Passenger.Workspace.ProjectModel> projects) => string.Join(", ", projects.Select(p => p.Name));
+
     /// <summary>The manifest, stored with CRLF and a UTF-8 BOM, keeps them through dotnet tool's write of it.</summary>
     [AvaloniaFact]
     public void A_tool_of_another_version_is_said_with_both_versions_and_pinned_to_the_runtimes_before_the_command()
@@ -1213,6 +1248,44 @@ internal static class ShopApp
             """);
         // By its real path: NuGet reaches Data by that too, and two spellings of one project restored at once collide.
         Restore.Run(Passenger.Core.PathNames.Canonical(Path.Combine(folder, "Shop.slnx")));
+        return folder;
+    }
+
+    /// <summary>An API and the library holding its context, as #2011 lays them out: MyApp.Api, a web app with only the Design
+    /// package, referencing MyApp.Data, a library declaring AppDbContext with SQLite's provider, and MyApp.Services, a library
+    /// referencing it; MyApp.Domain, which the data library references, beside. No local tool, so nothing lists by itself.
+    /// Restored from the run's local feed and the package cache (tests/EfGraphs), from the UI thread.</summary>
+    public static string MakeLayered()
+    {
+        string folder = TestFolders.Create("layered");
+        Feed();
+        AvaloniaApp.UseFeed(folder);
+        string Ef(string package, bool design = false) =>
+            $"    <PackageReference Include=\"Microsoft.EntityFrameworkCore.{package}\" Version=\"{Version}\"{(design ? " PrivateAssets=\"all\"" : string.Empty)} />\n";
+        string Referencing(params string[] projects) => string.Concat(projects.Select(p => $"    <ProjectReference Include=\"../{p}/{p}.csproj\" />\n"));
+        string[] names = ["MyApp.Api", "MyApp.Data", "MyApp.Domain", "MyApp.Services"];
+        TestFolders.Write(folder, "MyApp.slnx", $"<Solution>\n{string.Concat(names.Select(n => $"  <Project Path=\"{n}/{n}.csproj\" />\n"))}</Solution>\n");
+        TestFolders.Write(folder, "MyApp.Api/MyApp.Api.csproj", TestProjects.Web().With($"  <ItemGroup>\n{Referencing("MyApp.Data", "MyApp.Services")}{Ef("Design", design: true)}  </ItemGroup>\n"));
+        TestFolders.Write(folder, "MyApp.Api/Program.cs", "Microsoft.AspNetCore.Builder.WebApplication.Create(args).Run();\n");
+        TestFolders.Write(folder, "MyApp.Data/MyApp.Data.csproj", TestProjects.Library().With($"  <ItemGroup>\n{Referencing("MyApp.Domain")}{Ef("Sqlite")}  </ItemGroup>\n"));
+        TestFolders.Write(folder, "MyApp.Data/AppDbContext.cs", """
+            using Microsoft.EntityFrameworkCore;
+            using MyApp.Domain;
+
+            namespace MyApp.Data;
+
+            public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(options)
+            {
+                public DbSet<Product> Products => Set<Product>();
+            }
+
+            """);
+        TestFolders.Write(folder, "MyApp.Domain/MyApp.Domain.csproj", TestProjects.Library());
+        TestFolders.Write(folder, "MyApp.Domain/Product.cs", "namespace MyApp.Domain;\n\npublic sealed class Product\n{\n    public int Id { get; set; }\n}\n");
+        TestFolders.Write(folder, "MyApp.Services/MyApp.Services.csproj", TestProjects.Library().With($"  <ItemGroup>\n{Referencing("MyApp.Data")}  </ItemGroup>\n"));
+        TestFolders.Write(folder, "MyApp.Services/Catalog.cs", "namespace MyApp.Services;\n\npublic sealed class Catalog(MyApp.Data.AppDbContext context)\n{\n}\n");
+        // By its real path: NuGet reaches the libraries by that too, and two spellings of one project restored at once collide.
+        Restore.Run(Passenger.Core.PathNames.Canonical(Path.Combine(folder, "MyApp.slnx")));
         return folder;
     }
 
