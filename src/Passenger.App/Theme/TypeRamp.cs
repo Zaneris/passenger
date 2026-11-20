@@ -21,9 +21,11 @@ public static class TypeRamp
     /// controls: its tabs, its search field, a table's cell.</summary>
     public const double Dense = 13;
 
-    /// <summary>The window's words, a dialog's title (<c>dialogTitle</c>, semibold) and a tool window's
-    /// (<c>toolTitle</c>, semibold).</summary>
-    public const double Body = 14;
+    /// <summary>The window's words and a dialog's title (<c>dialogTitle</c>, semibold).</summary>
+    public const double Body = 13;
+
+    /// <summary>A tool window's title (<c>toolTitle</c>, semibold), a step above its tabs and its panes' headings.</summary>
+    public const double Title = 14;
 
     /// <summary>A page's heading (<c>pageTitle</c>, semibold): a Settings page's, a template's, a package's.</summary>
     public const double Page = 16;

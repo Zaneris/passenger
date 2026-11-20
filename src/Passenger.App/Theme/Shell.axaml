@@ -11,7 +11,7 @@
         <!-- A button, a field and a drop-down are one height, so a row of them shares its edges. -->
         <x:Double x:Key="Passenger.ControlHeight">28</x:Double>
         <!-- The window's words, every word no step of the type ramp sizes (TypeRamp): a window's, and Fluent's controls'. -->
-        <x:Double x:Key="Passenger.BodySize">14</x:Double>
+        <x:Double x:Key="Passenger.BodySize">13</x:Double>
         <StaticResource x:Key="ControlContentThemeFontSize" ResourceKey="Passenger.BodySize" />
         <!-- A check box's row as tall as a field's (Fluent's is 32), so a page's rows are evenly spaced. -->
         <StaticResource x:Key="CheckBoxMinHeight" ResourceKey="Passenger.ControlHeight" />
