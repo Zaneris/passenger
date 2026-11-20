@@ -264,6 +264,41 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         Ui.Click(button);
     }
 
+    [AvaloniaTheory]
+    [InlineData("ENTER", false)]
+    [InlineData("TAB", false)]
+    [InlineData("TAB", true)]
+    public void Choosing_a_named_argument_writes_its_colon(string key, bool existingColon)
+    {
+        MainWindow window = project.Open("Program.cs");
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        Ui.PlaceAfter(editor, "Helper.Twice(");
+        editor.Focus();
+        if (existingColon)
+        {
+            window.KeyTextInput(":");
+            Ui.Press(window, "LEFT");
+        }
+        else
+        {
+            Ui.Press(window, "DELETE");
+        }
+        Ui.Run(window, AppActions.Complete);
+        window.KeyTextInput("val");
+        Ui.WaitFor(() => window.Assist.CompletionNarrowedBy == "val" && window.Assist.CompletionLabels.Contains("value:"), "the value: named argument in the narrowed list");
+        foreach (string _ in window.Assist.CompletionLabels.TakeWhile(label => label != "value:"))
+        {
+            Ui.Press(window, "DOWN");
+        }
+        Assert.Equal("value:", window.Assist.CompletionChosen);
+        Ui.Press(window, key);
+        Ui.Settle();
+        string line = editor.Document.Snapshot.GetLineText(editor.CaretPosition.Line);
+        Assert.Equal(existingColon ? "        int result = Helper.Twice(value:2);" : "        int result = Helper.Twice(value:);", line);
+        Assert.Equal(line.IndexOf(':', StringComparison.Ordinal) + 1, editor.CaretPosition.Column);
+        window.Close();
+    }
+
     /// <summary>A declaration keyword chosen by either key takes the separator already after the caret (the first) or
     /// writes a space where none is (the next two), so the caret stands after one separator.</summary>
     [AvaloniaTheory]

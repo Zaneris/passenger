@@ -857,6 +857,16 @@ internal sealed partial class CodeCompletion
             caret += tail.Length;
         }
         string insert = item.TextEdit?.NewText ?? item.TextEditText ?? item.InsertText ?? item.Label;
+        // Roslyn labels a named argument with its colon but can send only the name as its edit.
+        if (end is null && lsp?.LanguageId == LanguageIds.CSharp && item.Kind == CompletionItemKind.Variable
+            && item.Label.EndsWith(':') && item.Label.AsSpan(0, item.Label.Length - 1).SequenceEqual(insert))
+        {
+            insert = item.Label;
+            if (caret < document.Snapshot.Length && document.Snapshot[caret] == ':')
+            {
+                caret++;
+            }
+        }
         // Reuse a separator already at the caret so accepting a declaration keyword does not double the space.
         if (end is null && lsp?.LanguageId == LanguageIds.CSharp && item.Kind == CompletionItemKind.Keyword
             && item.InsertTextFormat != InsertTextFormat.Snippet && DeclarationKeyword(insert))
