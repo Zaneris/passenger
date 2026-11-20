@@ -30,6 +30,13 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 
 ## 2026-11-20
 
+- `ExplorerFilesTests`' `Typing_in_a_file_while_its_folders_delete_waits_for_a_design_time_build_goes_to_the_Trash_with_it`,
+  CI 44625900224 (Windows report shard 4): "Lib could not be deleted: Access to the path … is denied". **A bug in the
+  IDE**: the folder watcher's look at the file saved just before the move (`File.Exists`, its write time) raced the
+  folder's move, and Windows refuses to move a folder while any file under it is open, even for that look (626 of 20,000
+  moves in a probe). The watchers now read nothing under a folder being moved until it has gone (`MovingFolders`;
+  d478d23ec, #2015).
+
 - `SyntheticVariablesTests`' `A_step_out_lists_what_the_method_stepped_out_of_returned`, CI 44649367892 (Linux report
   shard 3): "The session ended while a stopped event was awaited". **A bug in the IDE**: the evaluation boxing
   `Count()`'s returned int was held up by a collection waiting on a thread the evaluation held at the runtime's
