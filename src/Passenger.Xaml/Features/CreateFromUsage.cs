@@ -240,8 +240,8 @@ public static class CreateFromUsage
             return [];
         }
         string unit = (Indentation.Detect(text, 4) ?? new IndentOptions()).Unit;
-        string typeIndent = XamlRefactorings.LineIndent(text, type.SpanStart);
-        string inside = type.Members.Count > 0 ? XamlRefactorings.LineIndent(text, type.Members[0].SpanStart) : typeIndent + unit;
+        string typeIndent = TextNavigation.IndentBefore(text, type.SpanStart);
+        string inside = type.Members.Count > 0 ? TextNavigation.IndentBefore(text, type.Members[0].SpanStart) : typeIndent + unit;
         string code = Indent(member.Code.Replace(Unit, unit, StringComparison.Ordinal), inside);
         List<TextEdit> edits = [];
         MemberDeclarationSyntax? after = member.Place switch

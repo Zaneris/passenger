@@ -94,7 +94,7 @@ public static partial class GDScriptRefactorings
         }
         // Taken out of its script with its doc comments, and put last in the other.
         TextRange lines = MemberLines(own.Text, target);
-        string moved = own.Text[lines.Start..NextLine(own.Text, target.Offset + function.End)].TrimEnd('\n');
+        string moved = own.Text[lines.Start..TextNavigation.NextLineStart(own.Text, target.Offset + function.End)].TrimEnd('\n');
         string from = Unit(own.Tree);
         string into = Unit(to.Tree);
         if (from != into)

@@ -499,11 +499,11 @@ public static partial class XamlRefactorings
                 return [];
             }
             string property = $"{root.Name}.{(kind == Container.Styles ? "Styles" : "Resources")}";
-            string inner = root.Children.Count > 0 ? LineIndent(text, root.Children[0].Start) : LineIndent(text, root.Start) + unit;
+            string inner = root.Children.Count > 0 ? TextNavigation.IndentBefore(text, root.Children[0].Start) : TextNavigation.IndentBefore(text, root.Start) + unit;
             edits.Add(new TextEdit(root.StartTagEnd, 0, $"{eol}{inner}<{property}>{eol}{inner}{unit}{Indented(entry, inner + unit, eol)}{eol}{inner}</{property}>"));
             return edits;
         }
-        string at = LineIndent(text, container.Start);
+        string at = TextNavigation.IndentBefore(text, container.Start);
         if (container.IsSelfClosing)
         {
             int last = container.Attributes.Count > 0 ? container.Attributes[^1].End : container.NameEnd;
@@ -512,7 +512,7 @@ public static partial class XamlRefactorings
         else if (container.Children.Count > 0)
         {
             XmlElement after = container.Children[^1];
-            string lined = LineIndent(text, after.Start);
+            string lined = TextNavigation.IndentBefore(text, after.Start);
             edits.Add(new TextEdit(after.End, 0, $"{eol}{lined}{Indented(entry, lined, eol)}"));
         }
         else if (container.EndTagStart is { } close)
@@ -600,18 +600,11 @@ public static partial class XamlRefactorings
         int index = element.Attributes.ToList().IndexOf(after);
         int before = index > 0 ? element.Attributes[index - 1].End : element.NameEnd;
         return text.AsSpan(before, after.NameStart - before).Contains('\n')
-            ? (text.Contains("\r\n", StringComparison.Ordinal) ? "\r\n" : "\n") + LineIndent(text, after.NameStart)
+            ? (text.Contains("\r\n", StringComparison.Ordinal) ? "\r\n" : "\n") + TextNavigation.IndentBefore(text, after.NameStart)
             : " ";
     }
 
     private static string Qualified(string prefix, string name) => prefix.Length > 0 ? $"{prefix}:{name}" : name;
-
-    /// <summary>The whitespace a line starts with, up to the offset (the indentation of what starts there).</summary>
-    internal static string LineIndent(string text, int offset)
-    {
-        int start = TextNavigation.LineStart(text, offset);
-        return text[start..Math.Min(offset, TextNavigation.IndentEnd(text, start))];
-    }
 
     /// <summary>A block's lines after its first indented by <paramref name="indent"/>, its breaks the file's.</summary>
     internal static string Indented(string block, string indent, string eol) =>

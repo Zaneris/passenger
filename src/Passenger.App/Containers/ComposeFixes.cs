@@ -128,7 +128,7 @@ public static partial class ComposeFixes
             else if (entries.Count == 0)
             {
                 string entry = $"{inner}{mapped}";
-                fix = new EditorFix(title, detail, new TextRange(AfterLine(text, environment.KeyEnd), 0), entry + br) { Caret = entry.Length - mapped.Length + mappedCaret };
+                fix = new EditorFix(title, detail, new TextRange(TextNavigation.NextLineStart(text, environment.KeyEnd), 0), entry + br) { Caret = entry.Length - mapped.Length + mappedCaret };
             }
             else
             {
@@ -179,14 +179,14 @@ public static partial class ComposeFixes
     /// <summary>What a key's line holds after it, its comment aside: a flow collection or scalar written there; null for none.</summary>
     private static string? FlowValue(string text, ComposeEntry key)
     {
-        int end = text.IndexOf('\n', key.KeyEnd) is int next and >= 0 ? next : text.Length;
-        string after = text[Math.Min(key.KeyEnd + 1, end)..end].TrimEnd('\r');
+        int end = TextNavigation.LineEnd(text, key.KeyEnd);
+        string after = text[Math.Min(key.KeyEnd + 1, end)..end];
         int comment = after.IndexOf(" #", StringComparison.Ordinal);
         string value = (comment >= 0 ? after[..comment] : after).Trim();
         return value.Length == 0 ? null : value;
     }
 
-    private static int Column(string text, int offset) => offset - LineStart(text, offset);
+    private static int Column(string text, int offset) => offset - TextNavigation.LineStart(text, offset);
 
     /// <summary>Every place the fault's service names its name, in the order written.</summary>
     internal static IReadOnlyList<ComposeReference> References(ComposeText read, string text, ComposeFault fault)
@@ -281,7 +281,7 @@ public static partial class ComposeFixes
     /// mapping, a scalar) or one Passenger cannot be sure of (nested, unclosed).</summary>
     internal static IReadOnlyList<FlowItem>? FlowItems(string text, ComposeEntry key)
     {
-        int end = text.IndexOf('\n', key.KeyEnd) is int next and >= 0 ? next : text.Length;
+        int end = TextNavigation.LineEnd(text, key.KeyEnd);
         int open = key.KeyEnd + 1;
         while (open < end && text[open] == ' ')
         {
@@ -382,13 +382,8 @@ public static partial class ComposeFixes
     {
         int last = read.Entries.Where(e => e.Path.Count >= entry.Path.Count && e.Path.Take(entry.Path.Count).SequenceEqual(entry.Path, StringComparer.Ordinal))
             .Max(e => Math.Max(e.KeyEnd, e.ValueEnd));
-        return TextRange.FromBounds(LineStart(text, entry.KeyStart), AfterLine(text, last));
+        return TextRange.FromBounds(TextNavigation.LineStart(text, entry.KeyStart), TextNavigation.NextLineStart(text, last));
     }
-
-    private static int LineStart(string text, int offset) => offset == 0 ? 0 : text.LastIndexOf('\n', offset - 1) + 1;
-
-    /// <summary>Where the line holding an offset ends, past its line break; the text's end on its last line.</summary>
-    private static int AfterLine(string text, int offset) => text.IndexOf('\n', Math.Min(offset, text.Length)) is int at and >= 0 ? at + 1 : text.Length;
 
     /// <summary>Declare at the top level: the name under its top-level key (after its last entry, or the key made at the
     /// file's end), as the file indents; a secret or config read from a file of its name beside it. Null where the key's
@@ -407,8 +402,8 @@ public static partial class ComposeFixes
             string made = $"{lead}{fault.Key}:{br}{unit}{fault.Name}:{body}{br}";
             return new EditorFix(title, detail, new TextRange(text.Length, 0), made) { Caret = made.Length - br.Length };
         }
-        int lineEnd = text.IndexOf('\n', top.KeyEnd) is int next and >= 0 ? next : text.Length;
-        string after = text[(top.KeyEnd + 1)..lineEnd].TrimEnd('\r');
+        int lineEnd = TextNavigation.LineEnd(text, top.KeyEnd);
+        string after = text[(top.KeyEnd + 1)..lineEnd];
         int comment = after.IndexOf(" #", StringComparison.Ordinal);
         string value = (comment >= 0 ? after[..comment] : after).Trim();
         if (value == "{}")
@@ -423,8 +418,8 @@ public static partial class ComposeFixes
             return null;
         }
         IReadOnlyList<ComposeEntry> declared = [.. Children(read, [fault.Key])];
-        string indent = declared.Count > 0 ? new string(' ', declared[0].KeyStart - LineStart(text, declared[0].KeyStart)) : unit;
-        int at = declared.Count > 0 ? Lines(read, text, top).End : AfterLine(text, top.KeyEnd);
+        string indent = declared.Count > 0 ? new string(' ', declared[0].KeyStart - TextNavigation.LineStart(text, declared[0].KeyStart)) : unit;
+        int at = declared.Count > 0 ? Lines(read, text, top).End : TextNavigation.NextLineStart(text, top.KeyEnd);
         string before = at == text.Length && text.Length > 0 && !text.EndsWith('\n') ? br : string.Empty;
         string entry = $"{before}{indent}{fault.Name}:{body}";
         return new EditorFix(title, detail, new TextRange(at, 0), entry + br) { Caret = entry.Length };
@@ -432,7 +427,7 @@ public static partial class ComposeFixes
 
     /// <summary>The file's indentation step: how far its first nested key stands in, two spaces when it has none.</summary>
     private static int Indent(ComposeText read, string text) =>
-        read.Entries.FirstOrDefault(e => e.Path.Count == 2) is { } nested && nested.KeyStart - LineStart(text, nested.KeyStart) is int column and > 0 ? column : 2;
+        read.Entries.FirstOrDefault(e => e.Path.Count == 2) is { } nested && nested.KeyStart - TextNavigation.LineStart(text, nested.KeyStart) is int column and > 0 ? column : 2;
 
     /// <summary>The names the file declares of the fault's kind that are near its name, letter case aside (an edit or two
     /// away, one for a short name), nearest first, three at most: never the service itself.</summary>

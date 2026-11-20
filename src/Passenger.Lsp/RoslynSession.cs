@@ -884,21 +884,8 @@ public sealed class LspDocument : IDisposable
         return Shapes.CodeActions(result);
     }
 
-    /// <summary>A range without the spaces, tabs and line breaks at its ends; one of nothing else is left as it is.</summary>
-    private static TextRange Trimmed(TextSnapshot text, TextRange range)
-    {
-        int start = range.Start;
-        int end = range.End;
-        while (end > start && char.IsWhiteSpace(text[end - 1]))
-        {
-            end--;
-        }
-        while (start < end && char.IsWhiteSpace(text[start]))
-        {
-            start++;
-        }
-        return start == end ? range : TextRange.FromBounds(start, end);
-    }
+    /// <summary>A range without the white space at its ends; one of nothing else is left as it is.</summary>
+    private static TextRange Trimmed(TextSnapshot text, TextRange range) => TextRange.Trimmed(text, range) is { Length: > 0 } trimmed ? trimmed : range;
 
     /// <summary>The actions of one kind the server has for the whole document (ESLint's <c>source.fixAll.eslint</c>).</summary>
     public async Task<IReadOnlyList<CodeAction>> SourceActionsAsync(string kind, CancellationToken cancel = default)

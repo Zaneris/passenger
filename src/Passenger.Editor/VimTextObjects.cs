@@ -407,11 +407,8 @@ public static class VimTextObjects
             return line.EndIncludingBreak;
         }
         int next = SentenceAfter(text, start);
-        int end = next;
-        while (end > start && char.IsWhiteSpace(text[end - 1]))
-        {
-            end--;
-        }
+        TextRange body = TextRange.Trimmed(text, TextRange.FromBounds(start, next));
+        int end = body.Length > 0 ? body.End : start;
         LineSpan last = VimMotions.LineOf(text, end);
         return end == last.End && last.BreakLength > 0 && last.EndIncludingBreak <= next && last.EndIncludingBreak < text.Length ? last.EndIncludingBreak : end;
     }

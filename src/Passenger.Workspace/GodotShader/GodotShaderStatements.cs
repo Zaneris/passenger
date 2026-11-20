@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.RegularExpressions;
+using Passenger.Text;
 
 namespace Passenger.Workspace.GodotShader;
 
@@ -220,11 +221,8 @@ internal static partial class GodotShaderStatements
     /// for any other bracket.</summary>
     private static string? ConditionWord(string code, int start, int open)
     {
-        int end = open;
-        while (end > start && char.IsWhiteSpace(code[end - 1]))
-        {
-            end--;
-        }
+        TextRange before = TextRange.Trimmed(code, TextRange.FromBounds(start, open));
+        int end = before.Length > 0 ? before.End : start;
         int begin = end;
         while (begin > start && IsWordChar(code[begin - 1]))
         {

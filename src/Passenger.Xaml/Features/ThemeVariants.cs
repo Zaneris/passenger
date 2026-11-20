@@ -72,11 +72,11 @@ public static class ThemeVariants
                 return [];
             }
             string copy = text[source.Start..source.End];
-            string indent = XamlRefactorings.LineIndent(text, source.Start);
+            string indent = TextNavigation.IndentBefore(text, source.Start);
             if (target.Children.Count > 0)
             {
                 XmlElement last = target.Children[^1];
-                return [new TextEdit(last.End, 0, $"\n{XamlRefactorings.LineIndent(text, last.Start)}{copy}")];
+                return [new TextEdit(last.End, 0, $"\n{TextNavigation.IndentBefore(text, last.Start)}{copy}")];
             }
             return [new TextEdit(TextNavigation.LineStart(text, end), 0, $"{indent}{copy}\n")];
         }

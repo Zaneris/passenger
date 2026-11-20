@@ -319,11 +319,11 @@ public static partial class GDScriptRefactorings
             }
             start = above;
         }
-        int end = NextLine(text, target.Offset + target.Node.End);
+        int end = TextNavigation.NextLineStart(text, target.Offset + target.Node.End);
         int next = end;
-        while (next < text.Length && text[next..NextLine(text, next)].Trim().Length == 0)
+        while (next < text.Length && text[next..TextNavigation.NextLineStart(text, next)].Trim().Length == 0)
         {
-            next = NextLine(text, next);
+            next = TextNavigation.NextLineStart(text, next);
         }
         if (next < text.Length)
         {

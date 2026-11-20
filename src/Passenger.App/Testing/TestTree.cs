@@ -1,6 +1,7 @@
 using System.Buffers;
 using Avalonia;
 using Passenger.Core;
+using Passenger.Text;
 
 namespace Passenger.App.Testing;
 
@@ -277,8 +278,8 @@ public sealed class TestNode : Observable, ITreeRow
         int start = output.Length;
         for (int kept = 0; kept < lines && start > 0; kept++)
         {
-            int before = start == output.Length ? start - 1 : start - 2;
-            int from = before < 0 ? 0 : output.LastIndexOf('\n', before) + 1;
+            // Where the line before the one kept last starts, the output's last line first.
+            int from = TextNavigation.LineStart(output, start == output.Length ? start : start - 1);
             if (output.Length - from > most)
             {
                 break;

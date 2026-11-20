@@ -345,7 +345,7 @@ public static class AspireOrchestration
         if (!Calls(root, variable, "AddServiceDefaults").Any())
         {
             StatementSyntax statement = builder.Ancestors().OfType<StatementSyntax>().First();
-            insertions.Add((statement.Span.End, NewLine(text) + Indent(text, statement.SpanStart) + variable + ".AddServiceDefaults();"));
+            insertions.Add((statement.Span.End, NewLine(text) + TextNavigation.IndentBefore(text, statement.SpanStart) + variable + ".AddServiceDefaults();"));
         }
         if (create.Expression is MemberAccessExpressionSyntax { Expression: IdentifierNameSyntax { Identifier.ValueText: "WebApplication" } })
         {
@@ -354,7 +354,7 @@ public static class AspireOrchestration
             if (!Calls(root, app.Identifier.Text, "MapDefaultEndpoints").Any())
             {
                 StatementSyntax statement = app.Ancestors().OfType<StatementSyntax>().First();
-                insertions.Add((statement.Span.End, NewLine(text) + Indent(text, statement.SpanStart) + app.Identifier.Text + ".MapDefaultEndpoints();"));
+                insertions.Add((statement.Span.End, NewLine(text) + TextNavigation.IndentBefore(text, statement.SpanStart) + app.Identifier.Text + ".MapDefaultEndpoints();"));
             }
         }
         return Insert(text, insertions);
@@ -414,11 +414,11 @@ public static class AspireOrchestration
         }
         List<(int At, string Text)> insertions = [.. referenced];
         string eol = NewLine(text);
-        string indent = Indent(text, statement.SpanStart);
+        string indent = TextNavigation.IndentBefore(text, statement.SpanStart);
         if (backing.Declarations.Count > 0)
         {
             StatementSyntax declared = builder.Ancestors().OfType<StatementSyntax>().First();
-            insertions.Add((declared.Span.End, eol + eol + string.Join(eol, backing.Declarations.Select(d => Indent(text, declared.SpanStart) + d))));
+            insertions.Add((declared.Span.End, eol + eol + string.Join(eol, backing.Declarations.Select(d => TextNavigation.IndentBefore(text, declared.SpanStart) + d))));
         }
         if (additions.Count > 0)
         {
@@ -580,12 +580,6 @@ public static class AspireOrchestration
         { Expression: IdentifierNameSyntax identifier } member && identifier.Identifier.Text == receiver && member.Name.Identifier.ValueText == method);
 
     private static string NewLine(string text) => text.Contains("\r\n", StringComparison.Ordinal) ? "\r\n" : "\n";
-
-    private static string Indent(string text, int at)
-    {
-        int start = text.LastIndexOf('\n', Math.Max(0, at - 1)) + 1;
-        return new string(text[start..at].TakeWhile(c => c is ' ' or '\t').ToArray());
-    }
 
     private static string Insert(string text, IEnumerable<(int At, string Text)> insertions)
     {

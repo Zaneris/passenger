@@ -259,6 +259,14 @@ public static class TextNavigation
         return text[start..IndentEnd(text, start)];
     }
 
+    /// <summary>The spaces and tabs the line of a string holding an offset begins with, those before the offset alone (the
+    /// indentation of what starts there).</summary>
+    public static string IndentBefore(string text, int offset)
+    {
+        int start = LineStart(text, offset);
+        return text[start..Math.Min(offset, IndentEnd(text, start))];
+    }
+
     /// <summary>Where the line of a string holding an offset starts, lines broken at each '\n'; an offset past the text's
     /// end is on its last line.</summary>
     public static int LineStart(string text, int offset) => offset <= 0 ? 0 : text.LastIndexOf('\n', Math.Min(offset, text.Length) - 1) + 1;

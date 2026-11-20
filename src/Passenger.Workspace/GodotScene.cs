@@ -275,7 +275,7 @@ public sealed class GodotFile
         List<GodotEntry> entries = [];
         foreach ((int start, int end) in Parts(dictionary))
         {
-            if (TopColon(start, end) is not { } colon || ValueAt(Text, start, Trimmed(start, colon)) is not { } named || (named.Text ?? named.Word) is not { } key)
+            if (TopColon(start, end) is not { } colon || ValueAt(Text, start, TextRange.Trimmed(Text, TextRange.FromBounds(start, colon)).End) is not { } named || (named.Text ?? named.Word) is not { } key)
             {
                 continue;
             }
@@ -303,10 +303,10 @@ public sealed class GodotFile
             }
             else if ((c is ')' or ']' or '}' && depth-- == 0) || (c == ',' && depth == 0))
             {
-                int start = SkipBlank(Text, from);
-                if (Trimmed(start, at) > start)
+                TextRange part = TextRange.Trimmed(Text, TextRange.FromBounds(from, at));
+                if (part.Length > 0)
                 {
-                    parts.Add((start, Trimmed(start, at)));
+                    parts.Add((part.Start, part.End));
                 }
                 if (c != ',')
                 {
@@ -343,16 +343,6 @@ public sealed class GodotFile
             }
         }
         return null;
-    }
-
-    /// <summary>Where text from a start ends once the blanks before an end are left out.</summary>
-    private int Trimmed(int start, int end)
-    {
-        while (end > start && char.IsWhiteSpace(Text[end - 1]))
-        {
-            end--;
-        }
-        return end;
     }
 
     /// <summary>A tag from its '[': its name, its attributes, and where the text goes on after its ']'.</summary>

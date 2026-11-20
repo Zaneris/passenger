@@ -135,13 +135,6 @@ public static partial class GDScriptRefactorings
         return found;
     }
 
-    /// <summary>Where the line after an offset's starts (the text's end for the last line).</summary>
-    private static int NextLine(string text, int offset)
-    {
-        int newline = text.IndexOf('\n', offset);
-        return newline < 0 ? text.Length : newline + 1;
-    }
-
     private static string IndentOf(string text, int lineStart) => text[lineStart..TextNavigation.IndentEnd(text, lineStart)];
 
     /// <summary>The script's indentation unit, as its first indented line of code shows it: a tab unless spaces.</summary>
@@ -457,7 +450,7 @@ public static partial class GDScriptRefactorings
         string inlined = text[(located.Offset + value.Start)..(located.Offset + value.End)];
         List<TextEdit> edits = [.. uses.Select(u => new TextEdit(located.Offset + u.Start, u.End - u.Start, Placed(inlined, u, Compound(value), parents)))];
         int start = TextNavigation.LineStart(text, located.Offset + variable.Start);
-        edits.Add(new TextEdit(start, NextLine(text, located.Offset + variable.End) - start, string.Empty));
+        edits.Add(new TextEdit(start, TextNavigation.NextLineStart(text, located.Offset + variable.End) - start, string.Empty));
         return GDScriptRefactored.Of(analysis.Path, edits);
     }
 
@@ -676,7 +669,7 @@ public static partial class GDScriptRefactorings
         bool awaits = chosen.SelectMany(GDScriptNodes.Below).Any(n => n is GDScriptAwait);
         string unit = Unit(tree);
         int lineFrom = TextNavigation.LineStart(text, firstStart);
-        int lineTo = NextLine(text, lastEnd);
+        int lineTo = TextNavigation.NextLineStart(text, lastEnd);
         string indent = IndentOf(text, lineFrom);
         string functionIndent = IndentOf(text, TextNavigation.LineStart(text, offset + function.Start));
         StringBuilder made = new();
@@ -698,7 +691,7 @@ public static partial class GDScriptRefactorings
         string header = $"{functionIndent}{(function.IsStatic ? "static " : string.Empty)}func {name}({parameters}){returns}:\n";
         string call = $"{(awaits ? "await " : string.Empty)}{name}({string.Join(", ", inputs.Select(i => i.Name))})";
         string callLine = output is null ? call : inside.Contains(output.Start) ? $"var {output.Name} = {call}" : $"{output.Name} = {call}";
-        int functionEnd = NextLine(text, offset + function.End);
+        int functionEnd = TextNavigation.NextLineStart(text, offset + function.End);
         string gap = functionIndent.Length > 0 ? "\n" : "\n\n";
         string after = functionEnd < text.Length || text.EndsWith('\n') ? string.Empty : "\n";
         return GDScriptRefactored.Of(analysis.Path,

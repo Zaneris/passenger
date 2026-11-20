@@ -270,7 +270,7 @@ internal sealed partial class ComposeCheck(EngineChecks owner, OpenDocument docu
         {
             yield return key;
         }
-        int lineStart = text.LastIndexOf('\n', Math.Max(0, offset - 1)) + 1;
+        int lineStart = TextNavigation.LineStart(text, offset);
         int item = offset;
         while (item > lineStart && text[item - 1] is not ('[' or ','))
         {
@@ -289,9 +289,7 @@ internal sealed partial class ComposeCheck(EngineChecks owner, OpenDocument docu
     /// <summary>Whether an expression stands where a URL's password does (<c>postgres://user:${PGPASS}@db</c>).</summary>
     private static bool InPassword(string text, int start, int end)
     {
-        int lineStart = text.LastIndexOf('\n', Math.Max(0, start - 1)) + 1;
-        int lineEnd = text.IndexOf('\n', end) is int next and >= 0 ? next : text.Length;
-        return ContainerSecrets.AtUrlPassword(text[lineStart..start], text[end..lineEnd]);
+        return ContainerSecrets.AtUrlPassword(text[TextNavigation.LineStart(text, start)..start], text[end..TextNavigation.LineEnd(text, end)]);
     }
 
     /// <summary>A value as a hint shows it, by Passenger's one rule for secrets (<see cref="ContainerSecrets"/>): a

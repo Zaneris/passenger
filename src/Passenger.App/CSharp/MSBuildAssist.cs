@@ -298,15 +298,14 @@ internal sealed class MSBuildAssist : LanguageAssist
             return null;
         }
         return Indent(text, end) is not null
-            ? new TextEdit(text.LastIndexOf('\n', Math.Max(0, end - 1)) + 1, 0, $"  <ItemGroup>{eol}    {line}{eol}  </ItemGroup>{eol}")
+            ? new TextEdit(TextNavigation.LineStart(text, end), 0, $"  <ItemGroup>{eol}    {line}{eol}  </ItemGroup>{eol}")
             : new TextEdit(end, 0, $"<ItemGroup>{line}</ItemGroup>");
     }
 
     /// <summary>The whitespace before an offset on its line where nothing else is before it there; null where something is.</summary>
     private static string? Indent(string text, int offset)
     {
-        int lineStart = text.LastIndexOf('\n', Math.Max(0, offset - 1)) + 1;
-        string before = text[lineStart..offset];
+        string before = text[TextNavigation.LineStart(text, offset)..offset];
         return before.All(c => c is ' ' or '\t') ? before : null;
     }
 

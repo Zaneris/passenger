@@ -54,11 +54,11 @@ internal sealed class XmlText
 
     /// <summary>The indent a parent's children have: its last child's, else a step in from the parent's line.</summary>
     public string IndentIn(XElement parent) =>
-        parent.Elements().LastOrDefault() is { } last && Indent(last) is { Length: > 0 } own ? own : LineIndent(Span(parent).Start) + Unit;
+        parent.Elements().LastOrDefault() is { } last && Indent(last) is { Length: > 0 } own ? own : TextNavigation.IndentBefore(Text, Span(parent).Start) + Unit;
 
     /// <summary>The step a parent's children are indented by beyond it: theirs less its own, else <see cref="Unit"/>.</summary>
     public string StepIn(XElement parent) =>
-        IndentIn(parent) is { } inside && LineIndent(Span(parent).Start) is { } outside && inside.Length > outside.Length && inside.StartsWith(outside, StringComparison.Ordinal)
+        IndentIn(parent) is { } inside && TextNavigation.IndentBefore(Text, Span(parent).Start) is { } outside && inside.Length > outside.Length && inside.StartsWith(outside, StringComparison.Ordinal)
             ? inside[outside.Length..] : Unit;
 
     /// <summary>Puts an element after another: on the same line when more follows it there, else on a line of its own
@@ -72,7 +72,7 @@ internal sealed class XmlText
             Splice(end, 0, with);
             return;
         }
-        string indent = StartsLine(start) ? Indent(element) : LineIndent(start) + Unit;
+        string indent = StartsLine(start) ? Indent(element) : TextNavigation.IndentBefore(Text, start) + Unit;
         Splice(end, 0, NewLine + indent + with);
     }
 
@@ -95,7 +95,7 @@ internal sealed class XmlText
         if (Text[open - 2] == '/')
         {
             string head = Text[start..(open - 2)].TrimEnd();
-            Splice(start, end - start, $"{head}>{NewLine}{LineIndent(start)}{Unit}{element}{NewLine}{LineIndent(start)}</{TagName(start)}>");
+            Splice(start, end - start, $"{head}>{NewLine}{TextNavigation.IndentBefore(Text, start)}{Unit}{element}{NewLine}{TextNavigation.IndentBefore(Text, start)}</{TagName(start)}>");
             return;
         }
         string indent = IndentIn(parent);
@@ -373,11 +373,6 @@ internal sealed class XmlText
     }
 
     /// <summary>The whitespace the line holding a place begins with, never what stands on it before the place.</summary>
-    private string LineIndent(int at)
-    {
-        int from = TextNavigation.LineStart(Text, at);
-        return Text[from..Math.Min(at, TextNavigation.IndentEnd(Text, from))];
-    }
 
     /// <summary>The whitespace before an element on its line; empty when other text comes before it there.</summary>
     private string Indent(XElement element)
