@@ -1636,6 +1636,35 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
         window.Close();
     }
 
+    /// <summary>The app put back for the next test builds from its files as written, though a design-time build made
+    /// Avalonia's resources from the XAML a test wrote (#2006): the build after compiles the window's XAML as put back, not
+    /// the test's, whose handler the code-behind put back lacks. Built from the test's, it failed after the C# compiler had
+    /// written the assembly, and the next build, taking that as up to date, copied it out with its XAML never compiled, on
+    /// which a preview's previewer ended.</summary>
+    [AvaloniaFact]
+    public void The_app_put_back_after_a_design_time_build_read_a_tests_xaml_builds_the_xaml_as_put_back()
+    {
+        app.Rewrite("MainWindow.axaml", Gallery.Handled(Gallery.Window));
+        app.Rewrite("MainWindow.axaml.cs", Gallery.HandlingCodeBehind);
+        // A server of the window's own loads the project, its design-time build reading the files as the test wrote them.
+        app.Drop();
+        MainWindow window = app.Open(app.PathOf("MainWindow.axaml"));
+        Ui.WaitFor(() => Directory.EnumerateFiles(app.PathOf("obj"), "resources", SearchOption.AllDirectories)
+                .Any(made => File.ReadAllText(made).Contains("OnGo", StringComparison.Ordinal)),
+            "a design-time build making Avalonia's resources from the XAML the test wrote");
+        window.Close();
+        Ui.Settle();
+
+        app.Reset();
+        window = app.Open(app.PathOf("MainWindow.axaml"), languageServer: false);
+        Ui.Run(window, AppActions.Build);
+        Ui.Settle();
+        Assert.True(window.Status?.StartsWith("Build succeeded", StringComparison.Ordinal) == true,
+            $"The app put back did not build, its XAML compiled as the test wrote it: {window.Status}; "
+            + string.Join("; ", window.BottomPanel.Problems.Problems.Select(p => $"{p.Code} {Path.GetFileName(p.Path)}: {p.Message}")));
+        window.Close();
+    }
+
     /// <summary>Rename on a named element's field in the code-behind renames the element: its name in the XAML, which is not
     /// open, the XAML's use of it and the code-behind's, as one command undone whole.</summary>
     [AvaloniaFact]

@@ -275,7 +275,7 @@ public abstract class SharedProject : IAsyncLifetime
                 }
             }
         }
-        // Its old time, so no edit takes it as just written, but after any build since, which then compiles it again.
+        // Its old time, so no edit takes it as just written, but after all builds made since, which then make it again.
         DateTime built = LastBuilt();
         foreach (string file in written.Keys.Where(file => File.GetLastWriteTimeUtc(file) != stamps[file]))
         {
@@ -321,10 +321,11 @@ public abstract class SharedProject : IAsyncLifetime
     /// UI thread with the window's loop running, within the time a window's end gives what it started.</summary>
     public void Drop() => Ui.AwaitPumped(Waiting.Apart(Server.Drop), "the shared language server to end", MainWindow.EndLimit + TestFolders.Spare);
 
-    /// <summary>When a build last compiled one of the project's assemblies (a .dll under bin or obj, which neither a restore
-    /// nor a design-time build writes), or never.</summary>
-    private DateTime LastBuilt() => Directory.EnumerateFiles(Folder, "*.dll", SearchOption.AllDirectories)
-        .Where(file => !Own(file)).Select(File.GetLastWriteTimeUtc).DefaultIfEmpty(DateTime.MinValue).Max();
+    /// <summary>When a build, a design-time one or a restore last wrote under bin or obj, or never: a design-time build makes
+    /// what MSBuild takes as built from the files as a test wrote them (Avalonia's resources from its XAML), which a file put
+    /// back older would leave standing, the next build compiling the test's XAML against the code put back.</summary>
+    private DateTime LastBuilt() => Directory.EnumerateFiles(Folder, "*", SearchOption.AllDirectories)
+        .Where(Made).Select(File.GetLastWriteTimeUtc).DefaultIfEmpty(DateTime.MinValue).Max();
 
     private static DateTime Min(DateTime one, DateTime other) => one < other ? one : other;
 
@@ -345,6 +346,10 @@ public abstract class SharedProject : IAsyncLifetime
     /// <summary>Whether a path is the project's own, not under what a restore or a build writes, nor a repository's .git,
     /// which git writes as a window only reads it (status refreshing the index): a class whose tests change the repository
     /// puts it back itself.</summary>
-    private bool Own(string path) =>
-        !Path.GetRelativePath(Folder, path).Split(Path.DirectorySeparatorChar).Any(part => part is "bin" or "obj" or ".git");
+    private bool Own(string path) => !Made(path) && !Parts(path).Contains(".git", StringComparer.Ordinal);
+
+    /// <summary>Whether a path is under what restores and builds write, bin or obj.</summary>
+    private bool Made(string path) => Parts(path).Any(part => part is "bin" or "obj");
+
+    private string[] Parts(string path) => Path.GetRelativePath(Folder, path).Split(Path.DirectorySeparatorChar);
 }
