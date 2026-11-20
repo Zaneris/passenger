@@ -5,6 +5,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Passenger.App.ToolWindows;
 using Passenger.Core;
 
 namespace Passenger.App.Containers;
@@ -47,7 +48,7 @@ public sealed class ContainerStatsPane : DockPanel
     private readonly StackPanel table = new() { Margin = new Thickness(Gaps.Normal, Gaps.Small) };
     private readonly Sparkline cpu = new(Kept, fromZero: true, fromRight: false, TokenKeys.Link);
     private readonly Sparkline memory = new(Kept, fromZero: true, fromRight: false, TokenKeys.Test_Passed);
-    private readonly TextBlock waiting = new() { Classes = { StyleClasses.EmptyText }, Text = "Waiting for the engine's first reading…" };
+    private readonly EmptyState waiting = new("Waiting for the engine's first reading…");
     private readonly Dictionary<string, ContainerStatsSample> latest = new(StringComparer.Ordinal);
     private Process? streaming;
 

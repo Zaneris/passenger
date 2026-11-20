@@ -589,16 +589,10 @@ internal sealed class CompletionRowView : DockPanel
             TextTrimming = TextTrimming.CharacterEllipsis,
             VerticalAlignment = VerticalAlignment.Center,
         };
-        detail = new TextBlock
-        {
-            Foreground = InfoCard.Brush(TokenKeys.TextMuted),
-            Classes = { StyleClasses.Caption },
-            Margin = ListRow.Detail,
-            TextTrimming = TextTrimming.CharacterEllipsis,
-            MaxWidth = 200,
-            HorizontalAlignment = HorizontalAlignment.Right,
-            VerticalAlignment = VerticalAlignment.Center,
-        };
+        detail = ListRow.DetailText();
+        detail.Foreground = InfoCard.Brush(TokenKeys.TextMuted);
+        detail.MaxWidth = 200;
+        detail.HorizontalAlignment = HorizontalAlignment.Right;
         Children.Add(badge);
         Children.Add(label);
         Children.Add(detail);
@@ -702,13 +696,15 @@ internal sealed class ChoicePopup : Border, IHeardPopup
         return true;
     }
 
-    /// <summary>A choice's row: its digit when the list has them, its words, and its detail muted, in code's font for code.</summary>
+    /// <summary>A choice's row: its digit when the list has them, its words, and its detail muted at the row's end, in code's
+    /// font for code.</summary>
     private static Control ChoiceRow(bool numbered)
     {
-        TextBlock digit = new TextBlock { Width = 10, IsVisible = numbered, VerticalAlignment = VerticalAlignment.Center }.InCodeFont();
-        TextBlock text = new() { VerticalAlignment = VerticalAlignment.Center };
-        TextBlock detail = new() { Classes = { StyleClasses.Caption }, TextTrimming = TextTrimming.CharacterEllipsis, MaxWidth = 460, VerticalAlignment = VerticalAlignment.Center };
-        StackPanel row = new() { Orientation = Orientation.Horizontal, Spacing = Gaps.Normal, Height = ListRow.Height, Children = { digit, text, detail } };
+        TextBlock digit = new TextBlock { Width = 10, IsVisible = numbered, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, Gaps.Normal, 0), [DockPanel.DockProperty] = Dock.Left }.InCodeFont();
+        TextBlock text = new() { VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
+        TextBlock detail = ListRow.DetailText();
+        detail.MaxWidth = 460;
+        DockPanel row = new() { Height = ListRow.Height, Children = { digit, detail, text } };
         AutomationProperties.SetLabeledBy(row, text);
         string? detailFont = null;
         return row.Showing<Choice>(choice =>

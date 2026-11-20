@@ -92,8 +92,6 @@ public sealed class RecentLocationsPopup : SearchPopup<RecentLocation>
     {
         RowIcon icon = new()
         {
-            Width = 14,
-            Height = 14,
             Margin = new Thickness(0, 0, Gaps.Small, 0),
             VerticalAlignment = VerticalAlignment.Center,
         };

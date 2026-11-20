@@ -5,6 +5,7 @@ using Avalonia.Layout;
 using Avalonia.Media;
 using Microsoft.CodeAnalysis.CSharp;
 using Passenger.App.Docking;
+using Passenger.App.ToolWindows;
 using Passenger.App.Workspace;
 using Passenger.Core;
 using Passenger.Editor;
@@ -24,7 +25,7 @@ public sealed partial class EditorArea : UserControl
     private readonly ContentControl emptyState = new() { HorizontalContentAlignment = HorizontalAlignment.Stretch, VerticalContentAlignment = VerticalAlignment.Stretch };
     private readonly StackPanel folderHint;
     private readonly TextBlock emptyTitle;
-    private readonly TextBlock emptyHint;
+    private readonly EmptyState emptyHint;
     private readonly List<Action<CodeEditor>> editorHooks = [];
     private readonly Dictionary<OpenDocument, int> held = [];
     // Open files the person let a write go over what another program holds of them, each until its next save.
@@ -50,7 +51,7 @@ public sealed partial class EditorArea : UserControl
             Margin = new Thickness(Gaps.Group, 0),
         };
         emptyTitle.Bind(TextBlock.ForegroundProperty, emptyTitle.GetResourceObservable(TokenKeys.Text));
-        emptyHint = new TextBlock { Classes = { StyleClasses.EmptyText }, Text = "Open a solution, project or folder to start.", Margin = new Thickness(Gaps.Group, 0) };
+        emptyHint = new EmptyState("Open a solution, project or folder to start.");
         folderHint = new StackPanel { Spacing = Gaps.Normal, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, Children = { emptyTitle, emptyHint } };
         emptyState.Content = folderHint;
         main = NewFrame(new EditorFrame.Leaf(activeGroup), activeGroup, emptyState);
@@ -322,7 +323,7 @@ public sealed partial class EditorArea : UserControl
     {
         folderName = Path.GetFileName(folder);
         emptyTitle.Text = folderName;
-        ActionTips.SetWords(emptyHint, AppActions.GoToFile, keys => $"Open a file from the Explorer or with {ActionTips.Named("Go to File", keys)}.");
+        emptyHint.SayWithKeys(AppActions.GoToFile, keys => $"Open a file from the Explorer or with {ActionTips.Named("Go to File", keys)}.");
         emptyState.Content = folderHint;
         TitleWindows();
     }

@@ -34,8 +34,8 @@ public sealed class AssetPreviewControl : DockPanel, IDisposable, IOwnKeys
         Bind(BackgroundProperty, this.GetResourceObservable(TokenKeys.Editor_Background));
         if (asset.IsPending)
         {
-            TextBlock loading = new() { Text = asset.Kind == AssetKind.Font ? "Loading the font…" : "Loading the image…", Margin = default };
-            loading.Classes.Add(StyleClasses.EmptyText);
+            TextBlock loading = MutedText.Of(asset.Kind == AssetKind.Font ? "Loading the font…" : "Loading the image…");
+            loading.VerticalAlignment = VerticalAlignment.Center;
             StackPanel waiting = new()
             {
                 Orientation = Orientation.Horizontal,

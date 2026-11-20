@@ -1,5 +1,6 @@
 using Avalonia;
 using Avalonia.Controls;
+using Passenger.App.ToolWindows;
 using Passenger.Core;
 
 namespace Passenger.App.Godot;
@@ -26,7 +27,7 @@ public sealed partial class GamePane : Border, IOwnKeys
     /// <summary>How long a game's window found is watched closely as its game starts, Godot's own sizing moving it.</summary>
     private static readonly TimeSpan Settling = TimeSpan.FromSeconds(10);
 
-    private readonly TextBlock words;
+    private readonly EmptyState words;
     private readonly Panel content = new();
     private GameWindows? windows;
     private GodotGame? game;
@@ -40,7 +41,7 @@ public sealed partial class GamePane : Border, IOwnKeys
         Focusable = true;
         // A control draws nothing without one, so the pointer over the game would pass through to what lies under the pane.
         Background = Avalonia.Media.Brushes.Transparent;
-        words = new TextBlock { Classes = { StyleClasses.EmptyText }, Text = empty };
+        words = new EmptyState { Text = empty };
         content.Children.Add(words);
         Child = content;
         Empty = empty;

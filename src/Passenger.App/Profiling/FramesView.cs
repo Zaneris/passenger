@@ -2,8 +2,9 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
-using Passenger.Profiler;
+using Passenger.App.ToolWindows;
 using Passenger.Core;
+using Passenger.Profiler;
 
 namespace Passenger.App.Profiling;
 
@@ -41,7 +42,7 @@ public sealed class FramesView : DockPanel
     private readonly TextBlock summary;
     private readonly TreeRows<LayoutRow> rows = [];
     private readonly TreeList table;
-    private readonly TextBlock placeholder;
+    private readonly EmptyState placeholder;
     private readonly BandOverTable shown;
     private IReadOnlyList<UiFrame> frames = [];
     private double origin;
@@ -120,7 +121,7 @@ public sealed class FramesView : DockPanel
         new(frame.MeasureMs, TokenKeys.Graph_0),
         new(frame.ArrangeMs, TokenKeys.Graph_1),
         new(frame.RecordMs, TokenKeys.Graph_2),
-        new(Math.Max(0, frame.DurationMs - frame.LayoutMs - frame.RecordMs), TokenKeys.TextMuted, 0.35),
+        FramePart.Rest(Math.Max(0, frame.DurationMs - frame.LayoutMs - frame.RecordMs)),
         new(frame.CompositeMs, TokenKeys.Graph_3),
     ];
 
@@ -189,13 +190,13 @@ public sealed class FramesView : DockPanel
     /// time and counts in their columns.</summary>
     private Control RowOf(ColumnTitles titles)
     {
-        (StackPanel named, RowIcon chevron, TextBlock name) = FramesTable.Named<LayoutRow>(Toggle);
+        (StackPanel named, RowExpander chevron, TextBlock name) = FramesTable.Named<LayoutRow>(Toggle);
         TextBlock[] numbers = [FramesTable.Number(), FramesTable.Number(), FramesTable.Number(), FramesTable.Number(), FramesTable.Number()];
         Grid row = titles.Row([named, .. numbers]);
         return row.Showing<LayoutRow>(shown =>
         {
-            chevron.IsVisible = shown.Cost.Controls.Count > 0;
-            chevron.Turned = shown.IsExpanded;
+            chevron.Expands = shown.Cost.Controls.Count > 0;
+            chevron.IsOpen = shown.IsExpanded;
             name.Text = shown.Cost.Name;
             name.Classes.Set(StyleClasses.Strong, shown.Depth == 0);
             ToolTip.SetTip(name, shown.Cost.Control is { } control

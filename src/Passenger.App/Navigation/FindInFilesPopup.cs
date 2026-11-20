@@ -632,10 +632,8 @@ public sealed class FindInFilesPopup : UserControl, IAnswers<SearchMatch?>
             FontFeatures = CSharp.Fonts.Features(ligatures),
             Inlines = [],
         };
-        TextBlock where = new() { Classes = { StyleClasses.Caption }, VerticalAlignment = VerticalAlignment.Center, Margin = ListRow.Detail };
-        where.Classes.Add(StyleClasses.Muted);
+        TextBlock where = ListRow.DetailText();
         DockPanel row = new() { Height = ListRow.Height, Margin = ListRow.Inset };
-        DockPanel.SetDock(where, Dock.Right);
         row.Children.Add(where);
         row.Children.Add(text);
         return row.Showing<SearchLine>(line =>

@@ -15,7 +15,7 @@ public sealed class BookmarksView : DockPanel
     private BookmarkStore store;
     private readonly Func<string, int, string> lineText;
     private readonly ListBox list;
-    private readonly TextBlock placeholder;
+    private readonly EmptyState placeholder;
 
     public BookmarksView(BookmarkStore bookmarks, Func<string, int, string> lineText)
     {
@@ -38,8 +38,8 @@ public sealed class BookmarksView : DockPanel
                 }
             },
         });
-        placeholder = new TextBlock { Classes = { StyleClasses.EmptyText } };
-        ActionTips.SetWords(placeholder, AppActions.ToggleBookmark, keys => $"{ActionTips.Named("Toggle Bookmark", keys)} marks the caret's line");
+        placeholder = new EmptyState();
+        placeholder.SayWithKeys(AppActions.ToggleBookmark, keys => $"{ActionTips.Named("Toggle Bookmark", keys)} marks the caret's line");
         Children.Add(new Panel { Children = { list, placeholder } });
         store.Changed += OnChanged;
         ListMenus.Attach(list, () => list.SelectedItem is not Bookmark chosen ? [] :

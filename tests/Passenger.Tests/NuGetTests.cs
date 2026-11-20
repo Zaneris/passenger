@@ -128,6 +128,26 @@ public sealed class NuGetTests : IDisposable
     /// Passenger.Vulnerable. Transitive packages are listed only when asked, tagged, with what brings each in for each
     /// project, audited as referenced ones are; a project's alone, the vulnerable alone and the order narrow what the
     /// list holds without asking the feed again, and are kept as another package is chosen.</summary>
+    /// <summary>The package list says why it has no rows in its own place, never two blank panes: none installed, then none
+    /// on the feeds for a search, and nothing once a search finds a package.</summary>
+    [AvaloniaFact]
+    public void The_package_list_says_why_it_is_empty_where_its_rows_would_be()
+    {
+        MainWindow window = Open();
+        NuGetView nuget = window.NuGet;
+        Ui.WaitFor(() => nuget.ListSays is not null, () => $"the empty list's words: {nuget.Status}");
+        Assert.Equal("No packages installed: search the feeds to add one", nuget.ListSays);
+
+        nuget.Query = "nothing-is-called-this";
+        Task searched = nuget.RefreshAsync();
+        Ui.Landed(() => searched.IsCompleted, $"the search for nothing: {nuget.Status}");
+        Assert.Equal("No package on the feeds matches the search", nuget.ListSays);
+
+        Search(nuget);
+        Assert.Null(nuget.ListSays);
+        window.Close();
+    }
+
     [AvaloniaFact]
     public void The_package_list_sorts_and_filters_and_lists_transitive_packages_with_what_brings_them_in()
     {

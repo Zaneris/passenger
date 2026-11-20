@@ -5,6 +5,7 @@ using Avalonia.Media;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Passenger.App.CSharp;
+using Passenger.App.ToolWindows;
 using Passenger.Editor;
 using Passenger.Languages.CSharp;
 
@@ -33,7 +34,7 @@ public sealed class LiveTemplatesPane : ListPane
     private readonly List<LiveTemplate> templates;
     private readonly ListBox list = new() { Classes = { StyleClasses.Tree } };
     private readonly Control form;
-    private readonly TextBlock nothing = new() { Classes = { StyleClasses.Muted }, Text = "No template is chosen", Margin = new Thickness(0, Gaps.Wide) };
+    private readonly EmptyState nothing = new("No template is chosen");
     private readonly TextBlock mnemonicSaid = new() { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(Gaps.Normal, 0, 0, 0) };
     private readonly TextBlock variablesSaid = new() { Classes = { StyleClasses.Muted }, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
 

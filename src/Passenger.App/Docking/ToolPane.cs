@@ -371,7 +371,7 @@ internal sealed class ToolPane : DockPanel
         {
             return made;
         }
-        RowIcon icon = new() { Width = 14, Height = 14, DataKey = window.Icon };
+        RowIcon icon = new() { DataKey = window.Icon };
         TextBlock name = new() { Classes = { StyleClasses.TabName }, Text = window.Title, VerticalAlignment = VerticalAlignment.Center };
         Border tab = new() { Classes = { StyleClasses.Tab }, Tag = window.Id, Focusable = true };
         ChosenMark.Hold(tab, new StackPanel { Orientation = Orientation.Horizontal, Spacing = Gaps.Small, VerticalAlignment = VerticalAlignment.Center, Children = { icon, name } });

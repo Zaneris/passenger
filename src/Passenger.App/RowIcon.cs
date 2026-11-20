@@ -10,8 +10,9 @@ namespace Passenger.App;
 /// <summary>A row's icon as one control, drawn pixel for pixel as a PathIcon of its size draws it: a list styles a row
 /// it brings back into view again whole, and a PathIcon is five styled controls. Its geometry is stretched to the size
 /// it measures at, rounded up, then fitted into the box, centred and clipped to the fit, as the PathIcon's Viewbox does.
-/// Its size is a PathIcon's (16, or 10 for <see cref="Chevron"/>), its brush the theme's icon colour unless given, by
-/// <see cref="Foreground"/> or a theme key (<see cref="ForegroundKey"/>), and its geometry <see cref="Data"/> or a key's.</summary>
+/// Its size is one of two, never one of its own: <see cref="Size"/>, an icon beside words (a row's, a tab's), or
+/// <see cref="GlyphSize"/>, a glyph (<see cref="Glyph"/>: a chevron, a tab's close). Its brush is the theme's icon colour
+/// unless given, by <see cref="Foreground"/> or a theme key (<see cref="ForegroundKey"/>), its geometry <see cref="Data"/> or a key's.</summary>
 public sealed class RowIcon : Control
 {
     public static readonly StyledProperty<Geometry?> DataProperty = AvaloniaProperty.Register<RowIcon, Geometry?>(nameof(Data));
@@ -23,10 +24,16 @@ public sealed class RowIcon : Control
     /// <summary>Each geometry as a PathIcon's path holds it stretched, made once for every icon drawing it so.</summary>
     private static readonly ConditionalWeakTable<Geometry, Dictionary<Matrix, Geometry>> Stretched = [];
 
+    /// <summary>An icon's size beside words: a row's in every list and tree, a tab's, as tall as the words' line is.</summary>
+    public const double Size = 14;
+
+    /// <summary>A glyph's size: a tree row's chevron, a tab's close and pin.</summary>
+    public const double GlyphSize = 10;
+
     static RowIcon()
     {
-        WidthProperty.OverrideDefaultValue<RowIcon>(16);
-        HeightProperty.OverrideDefaultValue<RowIcon>(16);
+        WidthProperty.OverrideDefaultValue<RowIcon>(Size);
+        HeightProperty.OverrideDefaultValue<RowIcon>(Size);
         AffectsRender<RowIcon>(DataProperty, DataKeyProperty, ForegroundProperty, ForegroundKeyProperty, TurnedProperty);
     }
 
@@ -36,9 +43,12 @@ public sealed class RowIcon : Control
         ResourcesChanged += (_, _) => InvalidateVisual();
     }
 
-    /// <summary>A tree row's chevron, 10 square as Shell.axaml's PathIcon.chevron, <see cref="Turned"/> down while its row
-    /// is open.</summary>
-    public static RowIcon Chevron() => new() { Width = 10, Height = 10, DataKey = IconKeys.ChevronRight };
+    /// <summary>A glyph of a theme key's geometry, <see cref="GlyphSize"/> square: a tab's close or pin.</summary>
+    public static RowIcon Glyph(string key) => new() { Width = GlyphSize, Height = GlyphSize, DataKey = key };
+
+    /// <summary>A tree row's chevron, a glyph as Shell.axaml's PathIcon.chevron is, <see cref="Turned"/> down while its row
+    /// is open; a tree's row holds it in its column (<see cref="RowExpander"/>).</summary>
+    public static RowIcon Chevron() => Glyph(IconKeys.ChevronRight);
 
     public Geometry? Data
     {

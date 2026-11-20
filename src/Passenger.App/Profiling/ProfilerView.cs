@@ -95,7 +95,7 @@ public sealed class ProfilerView : DockPanel
     private readonly DockPanel keptPage;
     private string? keptFolder;
     private readonly TextBlock status;
-    private readonly TextBlock placeholder;
+    private readonly EmptyState placeholder;
     private readonly Button stop;
     private readonly Button kill;
     private readonly ToggleButton[] pages;
@@ -173,11 +173,9 @@ public sealed class ProfilerView : DockPanel
         keptPage = new DockPanel();
         keptPage.Children.Add(keptHead);
         keptPage.Children.Add(kept);
-        placeholder = new TextBlock
-        {
-            Text = "Profile runs the chosen configuration under the profiler; Get Snapshot shows where its time went",
-            Classes = { StyleClasses.EmptyText },
-        };
+        placeholder = new EmptyState("The chosen configuration runs under the profiler; Get Snapshot shows where its time went");
+        placeholder.Offer(AppActions.Profile, "Profile");
+        placeholder.ActionRequested += (_, action) => ActionRequested?.Invoke(this, action);
 
         // Cut where it is longer than its line, its whole text on hover.
         status = new TextBlock { Name = "ProfilerSummary", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(Gaps.Wide, 0), TextTrimming = TextTrimming.CharacterEllipsis };
@@ -234,6 +232,9 @@ public sealed class ProfilerView : DockPanel
 
     /// <summary>The Frames page of a Godot game's run: its frames as Godot measured them, joined with the C# samples.</summary>
     public GameFramesView GamePage => game;
+
+    /// <summary>The action the empty window offers (Profile), asked for by its link.</summary>
+    public event EventHandler<string>? ActionRequested;
 
     /// <summary>Get Snapshot pressed: end the run and show what it found.</summary>
     public event EventHandler? StopRequested;
@@ -400,6 +401,7 @@ public sealed class ProfilerView : DockPanel
         kill.IsVisible = killable;
         heap.IsVisible = true;
         placeholder.Text = $"Profiling {name}. Get Snapshot when it has done what is to be measured.";
+        placeholder.Offer(null, null);
         ticking.Start();
         if (Snapshot is null)
         {
@@ -415,6 +417,7 @@ public sealed class ProfilerView : DockPanel
         stop.IsVisible = false;
         kill.IsVisible = false;
         heap.IsVisible = false;
+        placeholder.Offer(AppActions.Profile, "Profile");
         if (why is not null)
         {
             status.Text = why;
@@ -768,24 +771,15 @@ public sealed class ProfilerView : DockPanel
     /// <summary>A row for whichever call the list hands its container: its chevron, its share and weight, and its method.</summary>
     private Control Row()
     {
-        RowIcon chevron = RowIcon.Chevron();
-        Border toggle = new() { Width = 18, Height = ListRow.Height, Background = Brushes.Transparent, Child = chevron };
+        RowExpander chevron = RowExpander.Of<CallRow>(Toggle);
         TextBlock share = Mono(Muted(string.Empty, 170));
         MethodName method = new();
-        ShrinkingRow line = new() { Height = ListRow.Height, Children = { toggle, share, method.Row } };
-        toggle.PointerPressed += (_, e) =>
-        {
-            if (line.DataContext is CallRow row)
-            {
-                Toggle(row);
-                e.Handled = true;
-            }
-        };
+        ShrinkingRow line = new() { Height = ListRow.Height, Children = { chevron, share, method.Row } };
         return line.Showing<CallRow>(row =>
         {
             line.Margin = new Thickness(row.Depth * Gaps.Indent, 0, 0, 0);
-            chevron.IsVisible = row.Node.Children.Count > 0;
-            chevron.Turned = row.IsExpanded;
+            chevron.Expands = row.Node.Children.Count > 0;
+            chevron.IsOpen = row.IsExpanded;
             string percent = row.Whole > 0 ? $"{100.0 * row.Node.Total / row.Whole,5:0.0}%" : string.Empty;
             share.Text = $"{percent}  {row.Node.Total * row.Scale,7:N0} {row.Unit}";
             method.Show(row.Node.Name, row.Depth == 0);

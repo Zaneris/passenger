@@ -23,7 +23,7 @@ public sealed class ProblemsView : DockPanel
 
     private readonly ProblemsModel model;
     private readonly TreeList list;
-    private readonly TextBlock empty;
+    private readonly EmptyState empty;
     private readonly TextBox search;
     private readonly Dictionary<ProblemsTab, ToggleButton> tabs = [];
     private readonly Dictionary<ProblemSeverity, (ToggleButton Button, TextBlock Count)> severities = [];
@@ -61,7 +61,7 @@ public sealed class ProblemsView : DockPanel
             ItemsSource = model.ShownRows,
         };
         ReusedRows.Use(list, Row);
-        empty = new TextBlock { Classes = { StyleClasses.EmptyText } };
+        empty = new EmptyState();
         // The list comes first among the parts, so the window's action gives it the keys and Find's give them the filter.
         Grid.SetRow(topBar, 0);
         Children.Add(new Grid { RowDefinitions = new RowDefinitions("Auto,*"), Children = { new Panel { [Grid.RowProperty] = 1, Children = { empty, list } }, topBar } });

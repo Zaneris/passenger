@@ -1459,7 +1459,7 @@ public sealed class NewProjectDialog : IdeWindow
         setup.SelectedIndex = (int)offered;
         setting = was;
         setup.IsEnabled = why is null && creating is null && installing is null;
-        setupRow.Opacity = why is null ? 1 : 0.55;
+        ListRow.Dim(setupRow, why is not null);
         setupNote.Text = why ?? Said(offered) ?? string.Join("; ", ((string?[])[noContainers, noAspire]).OfType<string>());
         setupNote.IsVisible = setupNote.Text.Length > 0;
         installSetup.Content = aspire is null ? null : $"Install {aspire.Id}";

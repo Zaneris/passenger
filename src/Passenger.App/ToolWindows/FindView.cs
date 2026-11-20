@@ -122,7 +122,7 @@ public sealed class FindView : DockPanel
     private readonly StackPanel tabs = new() { Orientation = Orientation.Horizontal, Spacing = Gaps.Hair, VerticalAlignment = VerticalAlignment.Center };
     private readonly TreeList list;
     private readonly CodeEditor preview;
-    private readonly TextBlock placeholder;
+    private readonly EmptyState placeholder;
 
     /// <summary>What the search shown went without, above its usages, while it went without anything.</summary>
     private readonly TextBlock note;
@@ -138,7 +138,7 @@ public sealed class FindView : DockPanel
     private readonly TextBlock generatedCount;
 
     /// <summary>What the list says while the side shown alone has no usages.</summary>
-    private readonly TextBlock noneShown;
+    private readonly EmptyState noneShown;
 
     private Search? current;
     private UsageSide? alone;
@@ -206,10 +206,10 @@ public sealed class FindView : DockPanel
             ListMenus.Item("Copy Path", null, () => IdeErrors.Observe(ListMenus.CopyAsync(this, chosen.Path))),
         ]);
         preview = new CodeEditor { FontSize = TypeRamp.Code, IsReadOnly = true, ReadOnlyWhy = Refusals.PreviewReadOnly, ShowErrorStripe = false, LineCommentPrefix = null, Document = new TextDocument() };
-        noneShown = new TextBlock { Classes = { StyleClasses.EmptyText }, Text = "No usages in your code", IsVisible = false };
+        noneShown = new EmptyState { Text = "No usages in your code", IsVisible = false };
         PaneSplit body = new(new Panel { Children = { list, noneShown } }, preview, "*,1,*");
-        placeholder = new TextBlock { Classes = { StyleClasses.EmptyText } };
-        ActionTips.SetWords(placeholder, AppActions.FindUsages, keys => $"{ActionTips.Named("Find Usages", keys)} lists a symbol's usages here");
+        placeholder = new EmptyState();
+        placeholder.SayWithKeys(AppActions.FindUsages, keys => $"{ActionTips.Named("Find Usages", keys)} lists a symbol's usages here");
         note = MutedText.Wrapped(string.Empty);
         note.Margin = new Thickness(Gaps.Normal, Gaps.Tight);
         note.IsVisible = false;
@@ -615,20 +615,12 @@ public sealed class FindView : DockPanel
     {
         TextBlock number = new TextBlock { Classes = { StyleClasses.Code }, MinWidth = 36, VerticalAlignment = VerticalAlignment.Center };
         number.Classes.Add(StyleClasses.Muted);
-        RowIcon chevron = new() { Width = 10, Height = 10, Margin = new Thickness(0, 0, Gaps.Small, 0) };
+        RowExpander chevron = RowExpander.Of<FindRow>(Toggle);
         RowIcon icon = new() { Margin = new Thickness(0, 0, Gaps.Small, 0) };
         TextBlock label = new() { VerticalAlignment = VerticalAlignment.Center };
         TextBlock count = new() { Classes = { StyleClasses.Caption }, Margin = new Thickness(Gaps.Wide, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
         count.Classes.Add(StyleClasses.Muted);
         StackPanel panel = new() { Orientation = Orientation.Horizontal, Height = ListRow.Height, Children = { number, chevron, icon, label, count } };
-        chevron.PointerPressed += (_, e) =>
-        {
-            if (panel.DataContext is FindRow row)
-            {
-                Toggle(row);
-                e.Handled = true;
-            }
-        };
         return panel.Showing<FindRow>(row =>
         {
             panel.Margin = new Thickness(Gaps.Normal + (row.Depth * Gaps.Indent), 0, Gaps.Normal, 0);
@@ -636,7 +628,7 @@ public sealed class FindView : DockPanel
             number.IsVisible = usage;
             number.Text = usage ? row.Detail : null;
             chevron.IsVisible = !usage;
-            chevron.DataKey = row.IsExpanded ? IconKeys.ChevronDown : IconKeys.ChevronRight;
+            chevron.IsOpen = row.IsExpanded;
             FindRow? file = !usage && row.Children.FirstOrDefault()?.Usage is not null ? row.Children[0] : null;
             icon.IsVisible = file is not null;
             icon.Data = file is { Usage: { } first } ? Explorer.FileIcons.ForFile(first.Path) : null;

@@ -1094,9 +1094,9 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
     }
 
     /// <summary>Every button that runs one of the window's actions, the toolbar's and every tool window's, names in its tip
-    /// the keys the keymap in force gives that action (<see cref="ActionTips"/>), and every tool window's Hide names Hide Tool
-    /// Window's keys or none: under every keymap Settings offers, each chosen in turn, so no tip names a key that does not
-    /// run what it says.</summary>
+    /// (a link offering one, in its words) the keys the keymap in force gives that action (<see cref="ActionTips"/>), and
+    /// every tool window's Hide names Hide Tool Window's keys or none: under every keymap Settings offers, each chosen in
+    /// turn, so no tip names a key that does not run what it says.</summary>
     [AvaloniaFact]
     public void Every_action_buttons_tip_names_the_keys_the_keymap_in_force_gives_its_action()
     {
@@ -1128,8 +1128,10 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
                         }
                         else if ((ActionButtons.GetAction(button) ?? ActionTips.ActionOf(button)) is { } action && KeysOf(action) is { } keys)
                         {
-                            Assert.True(tip.Contains($"({keys})", StringComparison.Ordinal),
-                                $"Under {preset}'s keymap, {tool.Title}'s button for {action} says \"{tip}\", never the {keys} that runs it");
+                            // A link offering an action names its keys in its own words (an empty state's).
+                            string said = button.Classes.Contains(StyleClasses.Link) ? button.Content as string ?? tip : tip;
+                            Assert.True(said.Contains($"({keys})", StringComparison.Ordinal),
+                                $"Under {preset}'s keymap, {tool.Title}'s button for {action} says \"{said}\", never the {keys} that runs it");
                         }
                     }
                 }
@@ -3201,6 +3203,136 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
             }
             return text.Length;
         }
+    }
+
+    /// <summary>What a list or a pane says while it has nothing to show is an EmptyState, so its words stand, wrap and link
+    /// to what would fill it one way everywhere: the empty words' class given anywhere else fails here, naming its line.</summary>
+    [Fact]
+    public void Every_empty_state_is_an_EmptyState()
+    {
+        Regex byHand = new(@"\bStyleClasses\.EmptyText\b|Classes=""[^""]*\bemptyText\b");
+        string[] found = [.. UiFiles().Where(f => !f.Path.EndsWith("/EmptyState.cs", StringComparison.Ordinal))
+            .SelectMany(f => f.Text.Split('\n').Select((line, i) => (f.Path, Line: i + 1, Text: line)))
+            .Where(l => byHand.IsMatch(l.Text)).Select(l => $"{l.Path}:{l.Line}")];
+        Assert.True(found.Length == 0, $"{found.Length} empty states are made by hand, so their words, room and offer drift from every other's: "
+            + $"make each an EmptyState:\n{string.Join("\n", found)}");
+        Assert.Matches(byHand, "        placeholder = new TextBlock { Classes = { StyleClasses.EmptyText } };");
+        Assert.Matches(byHand, "                <TextBlock Name=\"Hint\" Classes=\"emptyText\" Text=\"Nothing open\" />");
+    }
+
+    /// <summary>A tree row's chevron is a RowExpander, one column wide in every tree, turned while its row is open and kept
+    /// for a row with nothing under it: a chevron of a row's own (RowIcon.Chevron or a chevron's key given to a RowIcon,
+    /// swapped Right for Down) fails here, naming its line. A fold of a form's (FormFold) is no tree's row.</summary>
+    [Fact]
+    public void Every_tree_rows_chevron_is_a_RowExpander()
+    {
+        Regex byHand = new(@"\bRowIcon\.Chevron\(\)|\bDataKey\s*=[^;]*\bIconKeys\.Chevron(?:Down|Right)\b");
+        string[] owners = ["/RowIcon.cs", "/RowExpander.cs", "/RowGlyphs.cs", "/FormFold.cs"];
+        string[] found = [.. UiFiles().Where(f => f.Path.EndsWith(".cs", StringComparison.Ordinal) && !owners.Any(o => f.Path.EndsWith(o, StringComparison.Ordinal)))
+            .SelectMany(f => f.Text.Split('\n').Select((line, i) => (f.Path, Line: i + 1, Text: line)))
+            .Where(l => byHand.IsMatch(l.Text)).Select(l => $"{l.Path}:{l.Line}: {l.Text.Trim()}")];
+        Assert.True(found.Length == 0, $"{found.Length} tree rows draw a chevron of their own, so it stands, turns and takes a press otherwise than "
+            + $"every other tree's: give each row a RowExpander:\n{string.Join("\n", found)}");
+        Assert.Matches(byHand, "            chevron.DataKey = row.IsExpanded ? IconKeys.ChevronDown : IconKeys.ChevronRight;");
+        Assert.Matches(byHand, "        RowIcon chevron = RowIcon.Chevron();");
+    }
+
+    /// <summary>A RowIcon is one of two sizes, never one of its own: a row's or a tab's icon beside words (RowIcon.Size, its
+    /// own) or a glyph (RowIcon.Glyph: a chevron, a tab's close), so like icons stand alike in every list. A RowIcon given a
+    /// width or height outside RowIcon.cs fails here, naming its line.</summary>
+    [Fact]
+    public void A_rows_icon_is_a_RowIcons_size_never_one_of_its_own()
+    {
+        Regex made = new(@"(?:\bRowIcon\s+(\w+)\s*=\s*new\(\)|\b(\w+)\s*=\s*new RowIcon\b)\s*\{");
+        Regex named = new(@"\bRowIcon\s+(\w+)\s*[=;]");
+        Regex sized = new(@"(?<![\w.])(?:Width|Height)\s*=(?!=)");
+        List<string> found = [];
+        int icons = 0;
+        foreach ((string path, string text) in UiFiles().Where(f => f.Path.EndsWith(".cs", StringComparison.Ordinal) && !f.Path.EndsWith("/RowIcon.cs", StringComparison.Ordinal)))
+        {
+            foreach (Match match in made.Matches(text))
+            {
+                icons++;
+                int open = match.Index + match.Length - 1;
+                if (sized.IsMatch(Braced(text, open)))
+                {
+                    found.Add($"{path}:{LineOf(text, match.Index)}");
+                }
+            }
+            foreach (string name in named.Matches(text).Select(m => m.Groups[1].Value).Distinct())
+            {
+                foreach (Match set in Regex.Matches(text, $@"\b{name}\.(?:Width|Height)\s*=(?!=)"))
+                {
+                    // A test's state mark, each sized to its glyph's weight in the column of the marks.
+                    if (!(path.EndsWith("ToolWindows/TestsView.cs", StringComparison.Ordinal) && name == "state"))
+                    {
+                        found.Add($"{path}:{LineOf(text, set.Index)}");
+                    }
+                }
+            }
+        }
+        Assert.True(icons > 20, $"Only {icons} RowIcons were found made: the search no longer reads them");
+        Assert.True(found.Count == 0, $"{found.Count} RowIcons are given a size of their own, so like icons stand larger or smaller from list to list: "
+            + $"leave each its own size (RowIcon.Size), or make a glyph with RowIcon.Glyph:\n{string.Join("\n", found.Distinct())}");
+
+        static string Braced(string text, int open)
+        {
+            int depth = 0;
+            for (int i = open; i < text.Length; i++)
+            {
+                depth += text[i] switch { '{' => 1, '}' => -1, _ => 0 };
+                if (depth == 0)
+                {
+                    return text[open..i];
+                }
+            }
+            return text[open..];
+        }
+    }
+
+    /// <summary>A row, or a part of one, that is there but off (can't be chosen, a feed not used, a file cut, a style that
+    /// does not apply) is drawn faint one way, ListRow.Dim: an opacity of a number of its own outside the theme (but none or
+    /// whole, a part hidden or shown) fails here, naming its line.</summary>
+    [Fact]
+    public void A_faint_row_is_dimmed_by_ListRow_never_an_opacity_of_its_own()
+    {
+        Regex assigned = new(@"(?<!\w)Opacity\s*=(?![=>])");
+        Regex attribute = new(@"(?<![\w.])Opacity=""([^""{][^""]*)""");
+        Regex number = new(@"(?<![\w.])\d+(?:\.\d+)?(?![\w.])");
+        bool OwnNumber(string written) => number.Matches(written).Any(m => m.Value is not ("0" or "1"));
+        List<string> found = [];
+        foreach ((string path, string text) in UiFiles().Where(f => !f.Path.EndsWith("/ListRow.cs", StringComparison.Ordinal)))
+        {
+            if (path.EndsWith(".axaml", StringComparison.Ordinal))
+            {
+                found.AddRange(attribute.Matches(text).Where(m => OwnNumber(m.Groups[1].Value)).Select(m => $"{path}:{LineOf(text, m.Index)}: {m.Value}"));
+                continue;
+            }
+            string code = string.Join('\n', text.Split('\n').Select(l => l.TrimStart().StartsWith("//", StringComparison.Ordinal) ? string.Empty : l));
+            foreach (Match match in assigned.Matches(code))
+            {
+                string written = Expression(code, match.Index + match.Length);
+                if (OwnNumber(written))
+                {
+                    found.Add($"{path}:{LineOf(text, match.Index)}: {match.Value}{written.Trim()}");
+                }
+            }
+        }
+        Assert.True(found.Count == 0, $"{found.Count} controls are made faint by an opacity of their own, so an off row stands fainter or bolder "
+            + $"from list to list: dim each with ListRow.Dim (or name the faintness once where it is no row's):\n{string.Join("\n", found)}");
+    }
+
+    /// <summary>A row's detail at its end (a path, a kind, keys, when) is ListRow.DetailText, muted at the caption's size
+    /// and cut where the row has no room: the detail's margin given to words made by hand fails here, naming its line.</summary>
+    [Fact]
+    public void Every_rows_detail_at_its_end_is_ListRows_detail()
+    {
+        Regex byHand = new(@"\bListRow\.Detail\b(?!Text)");
+        string[] found = [.. UiFiles().Where(f => !f.Path.EndsWith("/ListRow.cs", StringComparison.Ordinal))
+            .SelectMany(f => f.Text.Split('\n').Select((line, i) => (f.Path, Line: i + 1, Text: line)))
+            .Where(l => byHand.IsMatch(l.Text)).Select(l => $"{l.Path}:{l.Line}")];
+        Assert.True(found.Length == 0, $"{found.Length} rows make their detail by hand, so its size, colour and cut drift from every other row's: "
+            + $"make each with ListRow.DetailText:\n{string.Join("\n", found)}");
     }
 
     /// <summary>No font family is written by name outside the theme files (WindowFonts), but the code font Passenger carries

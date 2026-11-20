@@ -51,21 +51,14 @@ public sealed partial class GoToFilePopup : SearchPopup<FileHit>
         Show([.. paths.Select(p => new FileHit(Path.Combine(root, p), p))], query.Trim().Length == 0 ? "No recent files" : "Nothing matches");
     }
 
-    /// <summary>A file's row: its icon, its name and its folder, muted.</summary>
-    protected override Control Row()
+    /// <summary>A file's row: its icon, its name and its folder at the row's end, as every popup row's detail.</summary>
+    protected override Control Row() => Editors.HiddenTabsPopup.TabRow<FileHit>((hit, icon, name, folder) =>
     {
-        RowIcon icon = new() { VerticalAlignment = VerticalAlignment.Center };
-        TextBlock name = new() { VerticalAlignment = VerticalAlignment.Center };
-        TextBlock folder = MutedText.Of(string.Empty);
-        StackPanel row = new() { Orientation = Orientation.Horizontal, Spacing = Gaps.Normal, Height = ListRow.Height, Children = { icon, name, folder } };
-        return row.Showing<FileHit>(hit =>
-        {
-            icon.Data = hit.Icon;
-            icon.Foreground = hit.IconBrush;
-            name.Text = hit.Name;
-            folder.Text = hit.Folder;
-        });
-    }
+        icon.Data = hit.Icon;
+        icon.Foreground = hit.IconBrush;
+        name.Text = hit.Name;
+        folder.Text = hit.Folder;
+    });
 }
 
 /// <summary>One result: the file's name, the folder it is in, and its icon.</summary>

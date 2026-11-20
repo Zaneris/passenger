@@ -78,6 +78,9 @@ public sealed partial class NuGetView : DockPanel
     private readonly CheckBox prerelease;
     private readonly ListBox list;
     private readonly StackPanel details;
+
+    /// <summary>What the list says while it has no rows: none installed, none found, none left by the filters.</summary>
+    private readonly EmptyState listEmpty = new() { IsVisible = false };
     private readonly TextBox log;
     private readonly TextBlock status;
     private readonly Debounce typing;
@@ -164,7 +167,7 @@ public sealed partial class NuGetView : DockPanel
         right.Children.Add(log);
         right.Children.Add(new ScrollViewer { Content = details });
         packages.Children.Add(top);
-        packages.Children.Add(new PaneSplit(list, right, "2*,1,3*"));
+        packages.Children.Add(new PaneSplit(new Panel { Children = { list, listEmpty } }, right, "2*,1,3*"));
 
         Sources = new NuGetSourcesView(this);
         Children.Add(body);
@@ -351,6 +354,9 @@ public sealed partial class NuGetView : DockPanel
     /// <summary>The list the packages are chosen in.</summary>
     public ListBox PackageList => list;
 
+    /// <summary>What the list says while it has no rows, or null while it has some.</summary>
+    public string? ListSays => listEmpty.IsVisible ? listEmpty.Text : null;
+
     public PackageRow? Selected => list.SelectedItem as PackageRow;
 
     /// <summary>The versions offered for the chosen package, newest first.</summary>
@@ -513,6 +519,11 @@ public sealed partial class NuGetView : DockPanel
         all = listed;
         rows = Filtered(listed);
         list.ItemsSource = rows;
+        listEmpty.Text = listed.Count > 0 ? "No packages match the filters"
+            : showsUpdates ? (checkingUpdates ? "Checking for updates…" : updateRows.Count > 0 ? "No update matches the search" : "Every package is up to date")
+            : Query.Trim().Length > 0 ? "No package on the feeds matches the search"
+            : "No packages installed: search the feeds to add one";
+        listEmpty.IsVisible = rows.Count == 0;
         if (chosen is not null && rows.FirstOrDefault(r => r.Id.Equals(chosen, StringComparison.OrdinalIgnoreCase)) is { } again)
         {
             list.SelectedIndex = IndexOf(again);
@@ -1201,7 +1212,7 @@ public sealed partial class NuGetView : DockPanel
     {
         TextBlock version = new() { Classes = { StyleClasses.Caption }, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(Gaps.Normal, 0, 0, 0) };
         version.Classes.Add(StyleClasses.Muted);
-        RowIcon icon = new() { Width = 14, Height = 14, Margin = new Thickness(Gaps.Small, 0, Gaps.Small, 0) };
+        RowIcon icon = new() { Margin = new Thickness(Gaps.Small, 0, Gaps.Small, 0) };
         icon.DataKey = IconKeys.Package;
         TextBlock id = new() { VerticalAlignment = VerticalAlignment.Center };
         Border transitive = Tagged("transitive");
@@ -1248,7 +1259,7 @@ public sealed partial class NuGetView : DockPanel
     /// <summary>The warning a vulnerable version is marked with, saying what it is.</summary>
     private static RowIcon Warning(string tip)
     {
-        RowIcon warning = new() { Width = 12, Height = 12, VerticalAlignment = VerticalAlignment.Center };
+        RowIcon warning = new() { VerticalAlignment = VerticalAlignment.Center };
         warning.DataKey = IconKeys.Problems;
         warning.ForegroundKey = TokenKeys.Warning;
         ToolTip.SetTip(warning, tip);

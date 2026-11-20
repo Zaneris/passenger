@@ -4,6 +4,7 @@ using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Threading;
+using Passenger.App.ToolWindows;
 using Passenger.Editor;
 
 namespace Passenger.App.Settings;
@@ -92,7 +93,7 @@ public sealed partial class SettingsDialog : IdeWindow
     private readonly ListBox pages;
     private readonly TextBlock heading;
     private readonly StackPanel body;
-    private readonly TextBlock nothing;
+    private readonly EmptyState nothing;
 
     /// <summary>The page's room at its right: its gutter, where its scroll bar shows over the page, clear of what it shows.</summary>
     private const double Gutter = Gaps.Page;
@@ -137,7 +138,7 @@ public sealed partial class SettingsDialog : IdeWindow
         heading = new TextBlock { Classes = { StyleClasses.PageTitle }, Margin = new Thickness(0, 0, Gutter, Gaps.Wide) };
         // The scroll bar shows over the scrolled page's right, so the gutter is inside it: the bar stands there, beside the rows.
         body = new StackPanel { Spacing = Gaps.Wide, Margin = new Thickness(0, 0, Gutter, 0) };
-        nothing = new TextBlock { Classes = { StyleClasses.Muted }, Text = "Nothing matches", IsVisible = false, Margin = new Thickness(PagesInset.Left + SearchFields.TextStart, Gaps.Tight) };
+        nothing = new EmptyState("Nothing matches") { IsVisible = false };
 
         ok.Click += (_, _) => Ok();
         applyButton.Click += (_, _) => Apply();

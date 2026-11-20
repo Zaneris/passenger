@@ -47,7 +47,7 @@ public sealed class TestsView : DockPanel
     /// <summary>The details' editor, made as the window is first shown or they are asked for (<see cref="Details"/>).</summary>
     private CodeEditor? details;
     private readonly TextBlock status;
-    private readonly TextBlock placeholder;
+    private readonly EmptyState placeholder;
     private readonly TextBox search;
     private readonly Button groupBy;
     private readonly Button stop;
@@ -112,7 +112,7 @@ public sealed class TestsView : DockPanel
         model.ViewChanged += (_, _) => ShowFilters();
         status = new TextBlock { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(Gaps.Normal, 0), TextTrimming = TextTrimming.CharacterEllipsis };
         status.Classes.Add(StyleClasses.Muted);
-        placeholder = new TextBlock { Text = model.EmptyText, Classes = { StyleClasses.EmptyText } };
+        placeholder = new EmptyState { Text = model.EmptyText };
         model.Rows.CollectionChanged += (_, _) => ShowPlaceholder();
         model.EmptyTextChanged += (_, _) => ShowPlaceholder();
 
@@ -468,7 +468,7 @@ public sealed class TestsView : DockPanel
     /// another node.</summary>
     private sealed class TestRow : StackPanel
     {
-        private readonly RowIcon chevron;
+        private readonly RowExpander chevron;
         private readonly RowIcon state;
         private readonly TextBlock label;
         private readonly TextBlock duration;
@@ -480,23 +480,14 @@ public sealed class TestsView : DockPanel
         {
             Orientation = Orientation.Horizontal;
             Height = ListRow.Height;
-            chevron = RowIcon.Chevron();
-            Border toggle = new() { Width = 18, Height = ListRow.Height, Background = Brushes.Transparent, Child = chevron };
-            toggle.PointerPressed += (_, e) =>
-            {
-                if (DataContext is TestNode node)
-                {
-                    model.Toggle(node);
-                    e.Handled = true;
-                }
-            };
+            chevron = RowExpander.Of<TestNode>(model.Toggle);
             state = new RowIcon { VerticalAlignment = VerticalAlignment.Center };
             label = new TextBlock { VerticalAlignment = VerticalAlignment.Center };
             duration = new TextBlock { Classes = { StyleClasses.Caption }, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(Gaps.Wide, 0, 0, 0) };
             duration.Classes.Add(StyleClasses.Muted);
             earlier = new TextBlock { Classes = { StyleClasses.Caption }, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(Gaps.Wide, 0, 0, 0) };
             earlier.Classes.Add(StyleClasses.Muted);
-            Children.Add(toggle);
+            Children.Add(chevron);
             Children.Add(state);
             Children.Add(label);
             Children.Add(duration);
@@ -545,7 +536,7 @@ public sealed class TestsView : DockPanel
             }
             Margin = node.Indent;
             label.Text = node.Name;
-            chevron.IsVisible = node.HasChildren;
+            chevron.Expands = node.HasChildren;
             ShowExpanded(node);
             ShowState(node);
         }
@@ -565,7 +556,7 @@ public sealed class TestsView : DockPanel
                     ShowExpanded(node);
                     break;
                 case nameof(TestNode.HasChildren):
-                    chevron.IsVisible = node.HasChildren;
+                    chevron.Expands = node.HasChildren;
                     break;
                 case nameof(TestNode.Depth):
                     Margin = node.Indent;
@@ -573,7 +564,7 @@ public sealed class TestsView : DockPanel
             }
         }
 
-        private void ShowExpanded(TestNode node) => chevron.Turned = node.IsExpanded;
+        private void ShowExpanded(TestNode node) => chevron.IsOpen = node.IsExpanded;
 
         /// <summary>A test's mark, a grey ring not run, a blue dot running, a green tick passed, a red cross failed, a grey
         /// dash skipped, how long it took once it ran, and when, where that was an earlier session's run, and whether its

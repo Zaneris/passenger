@@ -2,6 +2,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:app="using:Passenger.App"
              xmlns:explorer="using:Passenger.App.Explorer"
+             xmlns:toolWindows="using:Passenger.App.ToolWindows"
              x:Class="Passenger.App.Explorer.ExplorerView">
     <DockPanel Background="{DynamicResource Passenger.Panel}">
         <DockPanel Name="OwnHeader" DockPanel.Dock="Top" Margin="{x:Static explorer:ExplorerView.HeaderMargin}">
@@ -20,8 +21,7 @@
              tree's row the keys and only Find's keys give them to the filter; the last row says what it left out. -->
         <Grid Name="Body" RowDefinitions="Auto,*,Auto">
             <Panel Name="Surface" Grid.Row="1">
-                <TextBlock Name="Hint" Classes="muted" Text="Nothing open"
-                           HorizontalAlignment="Center" VerticalAlignment="Center" />
+                <toolWindows:EmptyState Name="Hint" Text="Nothing open" />
                 <app:TreeList Name="Rows" Classes="tree" IsVisible="False" SelectionMode="Multiple" />
             </Panel>
         </Grid>

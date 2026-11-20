@@ -32,7 +32,7 @@ public sealed class DebugView : DockPanel, IOwnKeys
     private readonly TelemetryPane telemetry = new() { IsVisible = false };
     private readonly Dictionary<string, Button> tools = [];
     private readonly ToggleButton mute;
-    private readonly TextBlock placeholder;
+    private readonly EmptyState placeholder;
     private readonly Banner offer = new();
     private readonly Button offerLink;
     private readonly DockPanel consolePane;
@@ -116,8 +116,9 @@ public sealed class DebugView : DockPanel, IOwnKeys
 
         // The frames a third of the window and the variables the rest, so a narrow window narrows both.
         PaneSplit split = new(framesPane, variablesPane, "*,1,2*");
-        placeholder = new TextBlock { Classes = { StyleClasses.EmptyText } };
-        ActionTips.SetWords(placeholder, AppActions.Debug, keys => keys is null ? "Not debugging." : $"Not debugging. Debug starts with {keys}.");
+        placeholder = new EmptyState("Not debugging");
+        placeholder.Offer(AppActions.Debug, "Debug");
+        placeholder.ActionRequested += (_, action) => model.Request(action);
         // Over the frames and values, what the chosen program's console offers: a terminal, for one stopped needing it.
         offerLink = offer.Link(null, () => model.Console.TakeOffer());
         debugger = new DockPanel { Children = { offer, new Panel { Children = { split, placeholder } } } };
@@ -396,7 +397,7 @@ public sealed class DebugView : DockPanel, IOwnKeys
             method.Text = name;
             where.Tag = frame;
             where.Text = frame.Source?.Name is { } file ? $"{file}:{model.LineOf(frame)}" : module;
-            row.Opacity = frame.PresentationHint == "subtle" ? 0.55 : 1;
+            ListRow.Dim(row, frame.PresentationHint == "subtle");
         });
     }
 }

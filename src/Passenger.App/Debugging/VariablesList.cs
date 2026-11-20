@@ -246,8 +246,7 @@ public sealed class VariablesList : TreeList
     /// field its value is typed over in (Set Value).</summary>
     private Control Row()
     {
-        RowIcon chevron = RowIcon.Chevron();
-        Border toggle = new() { Width = 18, Height = ListRow.Height, Background = Brushes.Transparent, Child = chevron };
+        RowExpander chevron = RowExpander.Of<VariableNode>(node => IdeErrors.Observe(Toggle(node)));
         RowIcon icon = new() { Margin = new Thickness(0, 0, Gaps.Small, 0) };
         // In the icon's place, a colour's own.
         Border swatch = new() { Classes = { StyleClasses.Swatch }, Width = 12, Height = 12, Margin = new Thickness(Gaps.Hair, 0, Gaps.Normal, 0), VerticalAlignment = VerticalAlignment.Center };
@@ -263,21 +262,13 @@ public sealed class VariablesList : TreeList
         ShrinkingRow row = new()
         {
             Height = ListRow.Height,
-            Children = { toggle, icon, swatch, name, new TextBlock { Text = " = ", VerticalAlignment = VerticalAlignment.Center }, type, again, value, editor },
+            Children = { chevron, icon, swatch, name, new TextBlock { Text = " = ", VerticalAlignment = VerticalAlignment.Center }, type, again, value, editor },
         };
         again.Click += (_, e) =>
         {
             if (row.DataContext is VariableNode { NeedsThreads: true, Expression: not null } node)
             {
                 RunWithThreadsRequested?.Invoke(this, node);
-                e.Handled = true;
-            }
-        };
-        toggle.PointerPressed += (_, e) =>
-        {
-            if (row.DataContext is VariableNode { HasChildren: true } node)
-            {
-                IdeErrors.Observe(Toggle(node));
                 e.Handled = true;
             }
         };
@@ -319,7 +310,7 @@ public sealed class VariablesList : TreeList
                 editing = false;
                 Draw(node);
             }
-            chevron.Turned = node.IsExpanded;
+            chevron.IsOpen = node.IsExpanded;
             if (node.IsEditing != editing)
             {
                 editing = node.IsEditing;
@@ -342,7 +333,7 @@ public sealed class VariablesList : TreeList
         void Draw(VariableNode node)
         {
             row.Margin = node.Indent;
-            chevron.IsVisible = node.HasChildren;
+            chevron.Expands = node.HasChildren;
             // Marks for what the debugger adds to a frame's values: a call's value, the exception stopped at, a query's SQL.
             icon.DataKey = node switch
             {

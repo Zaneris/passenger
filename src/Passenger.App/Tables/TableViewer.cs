@@ -4,6 +4,7 @@ using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Passenger.App.ToolWindows;
 
 namespace Passenger.App.Tables;
 
@@ -15,7 +16,7 @@ public sealed class TableViewer
     private readonly StackPanel choices = new() { Orientation = Orientation.Horizontal, Spacing = Gaps.Hair, VerticalAlignment = VerticalAlignment.Center };
     private readonly CheckBox header = new() { Classes = { StyleClasses.Caption }, Content = "First row is header", Margin = new Thickness(Gaps.Wide, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
     private readonly TextBlock size = new() { Classes = { StyleClasses.Muted, StyleClasses.Caption }, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
-    private readonly TextBlock message = new() { Classes = { StyleClasses.EmptyText }, IsVisible = false };
+    private readonly EmptyState message = new() { IsVisible = false };
     private readonly Dictionary<TableFile, ((int, int) Anchor, (int, int) Caret, Vector Scroll)> kept = [];
     private TableFile? file;
     private bool painting;

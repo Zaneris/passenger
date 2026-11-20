@@ -5,6 +5,7 @@ using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Threading;
+using Passenger.App.ToolWindows;
 using Passenger.Core;
 using Passenger.Editor;
 
@@ -16,7 +17,7 @@ public sealed class GodotResourcePicker : Border
 {
     private readonly ListBox list;
     private readonly TextBox filter;
-    private readonly TextBlock empty;
+    private readonly EmptyState empty;
     private readonly string folder;
     private IReadOnlyList<string> all = [];
 
@@ -29,7 +30,7 @@ public sealed class GodotResourcePicker : Border
         filter = new TextBox { Classes = { StyleClasses.Search }, PlaceholderText = classes.Count > 0 ? $"Filter {string.Join(", ", classes)}" : "Filter resources" };
         list = new ListBox { Classes = { StyleClasses.Tree }, Height = ListRow.Height * 12 };
         ReusedRows.Use(list, Row);
-        empty = new TextBlock { Classes = { StyleClasses.EmptyText }, Text = "Looking for the project's resources…" };
+        empty = new EmptyState { Text = "Looking for the project's resources…" };
         filter.TextChanged += (_, _) => Show();
         filter.KeyDown += (_, e) =>
         {

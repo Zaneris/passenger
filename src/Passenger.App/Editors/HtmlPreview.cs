@@ -1,6 +1,7 @@
 using System.Runtime.InteropServices;
 using Avalonia.Controls;
 using Avalonia.Platform;
+using Passenger.App.ToolWindows;
 using Passenger.App.Workspace;
 using Passenger.Core;
 using Passenger.Editor;
@@ -28,7 +29,7 @@ public sealed class HtmlPreview : DockPanel
 
     private readonly EditorArea area;
     private readonly Debounce typing;
-    private readonly TextBlock said = new() { Classes = { StyleClasses.EmptyText }, TextWrapping = Avalonia.Media.TextWrapping.Wrap };
+    private readonly EmptyState said = new();
     private readonly Banner banner = new();
     private readonly Button open;
 

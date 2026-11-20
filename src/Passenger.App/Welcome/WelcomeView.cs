@@ -22,7 +22,7 @@ public sealed class WelcomeView : UserControl
 {
     private readonly TextBox search;
     private readonly ListBox list;
-    private readonly TextBlock empty;
+    private readonly EmptyState empty;
     private readonly TextBlock notice;
     private IReadOnlyList<RecentRow> all = [];
 
@@ -97,7 +97,7 @@ public sealed class WelcomeView : UserControl
             new Separator(),
             ListMenus.Item("Remove from Recent Solutions", OperatingSystem.IsMacOS() ? "Back" : "Delete", () => RemoveRequested?.Invoke(this, chosen)),
         ]);
-        empty = new TextBlock { Classes = { StyleClasses.EmptyText, StyleClasses.WelcomeEmpty } };
+        empty = new EmptyState();
 
         Page page = new() { Classes = { StyleClasses.WelcomePage } };
         foreach (Control top in (Control[])[hero, actions, bar, notice])
@@ -277,9 +277,9 @@ public sealed class WelcomeView : UserControl
         DockPanel line = new() { Classes = { StyleClasses.WelcomeRow } };
         DockPanel.SetDock(badge, Dock.Left);
         line.Children.Add(badge);
-        TextBlock gone = new() { Classes = { StyleClasses.Caption }, Text = "Missing", VerticalAlignment = VerticalAlignment.Center, Margin = ListRow.Detail };
+        TextBlock gone = ListRow.DetailText();
+        gone.Text = "Missing";
         gone.Bind(TextBlock.ForegroundProperty, gone.GetResourceObservable(TokenKeys.Warning));
-        DockPanel.SetDock(gone, Dock.Right);
         line.Children.Add(gone);
         TextBlock kindText = new() { Classes = { StyleClasses.WelcomeKindText } };
         Border kind = new() { Classes = { StyleClasses.WelcomeKind }, Child = kindText, VerticalAlignment = VerticalAlignment.Center };

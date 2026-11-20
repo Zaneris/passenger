@@ -6,6 +6,7 @@ using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.VisualTree;
 using Passenger.App.Docking;
+using Passenger.App.ToolWindows;
 using Passenger.Core;
 using Passenger.Editor;
 using Passenger.Workspace;
@@ -43,7 +44,7 @@ public partial class ExplorerView : UserControl
     private readonly Debounce filtering;
 
     /// <summary>Under the rows, how many more files a filter matched than the tree shows.</summary>
-    private readonly TextBlock more = new() { Classes = { StyleClasses.EmptyText }, IsVisible = false };
+    private readonly EmptyState more = new() { IsVisible = false };
 
     /// <summary>Filters asked for, numbering each: only the newest one's answer lands.</summary>
     private int asked;

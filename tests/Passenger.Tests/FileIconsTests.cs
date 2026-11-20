@@ -202,7 +202,7 @@ public sealed class FileIconsTests : IDisposable
                 {
                     Orientation = Avalonia.Layout.Orientation.Horizontal,
                     Height = 24,
-                    Children = { new Border { Width = 18, Height = 24, Background = Brushes.Transparent, Child = chevron }, new PathIcon { Data = icon, Margin = new Thickness(0, 0, 6, 0) } },
+                    Children = { new Border { Width = RowExpander.Column, Height = 24, Background = Brushes.Transparent, Child = chevron }, new PathIcon { Data = icon, Width = RowIcon.Size, Height = RowIcon.Size, Margin = new Thickness(0, 0, 6, 0) } },
                 };
             }
             PathIcon drawn = way is 2 or 3 ? new() { Classes = { StyleClasses.Chevron } } : new();
@@ -226,7 +226,7 @@ public sealed class FileIconsTests : IDisposable
             {
                 return new RowGlyphs { HasChevron = true, Turned = icon.Bounds.Width > 15, Icon = icon };
             }
-            RowIcon drawn = way is 2 or 3 ? RowIcon.Chevron() : new();
+            RowIcon drawn = way is 2 or 3 ? RowIcon.Chevron() : new() { Width = 16, Height = 16 };
             drawn.Data = icon;
             if (way == 1)
             {

@@ -3,6 +3,7 @@ using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Passenger.App.ToolWindows;
 using Passenger.Core;
 using Passenger.Workspace;
 
@@ -256,7 +257,7 @@ public sealed class GodotPageViewer
         return muted;
     }
 
-    private static Control Empty(string words) => new TextBlock { Classes = { StyleClasses.EmptyText }, Text = words, Margin = new Thickness(Gaps.Normal, Gaps.Tight), HorizontalAlignment = HorizontalAlignment.Left };
+    private static Control Empty(string words) => new EmptyState(words);
 
     /// <summary>What an autoload is (a global the scripts name, or a node), and a link that asks to make it the other.</summary>
     private Control Autoload(string folder, GodotPageAutoload autoload)

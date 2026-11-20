@@ -193,7 +193,7 @@ public sealed class ConflictsDialog : IdeWindow
     /// colour, its folder, and what yours and theirs did to it.</summary>
     private static Control Row()
     {
-        RowIcon icon = new() { Width = 14, Height = 14, Margin = new Thickness(0, 0, Gaps.Small, 0), [DockPanel.DockProperty] = Dock.Left };
+        RowIcon icon = new() { Margin = new Thickness(0, 0, Gaps.Small, 0), [DockPanel.DockProperty] = Dock.Left };
         TextBlock name = new() { VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis, [DockPanel.DockProperty] = Dock.Left };
         name.Bind(TextBlock.ForegroundProperty, name.GetResourceObservable(TokenKeys.Vcs_File_Conflicted));
         TextBlock folder = new() { Classes = { StyleClasses.Caption }, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(Gaps.Normal, 0, 0, 0), TextTrimming = TextTrimming.CharacterEllipsis };

@@ -28,8 +28,8 @@ public static class ActionTips
         Show(control);
     }
 
-    /// <summary>Gives a block, or a box's placeholder, words naming an action's keys, made from the keys' display, null
-    /// while nothing runs it.</summary>
+    /// <summary>Gives a block, a box's placeholder or a link's words naming an action's keys, made from the keys' display,
+    /// null while nothing runs it.</summary>
     public static void SetWords(Control control, string action, Func<string?, string> words) => Say(control, action, keys => words(keys(action)));
 
     /// <summary>Gives a block words naming several actions' keys (a tool window's empty text naming each way to fill it),
@@ -79,6 +79,10 @@ public static class ActionTips
             else if (control is TextBlock block)
             {
                 block.Text = words(KeysOf);
+            }
+            else if (control is ContentControl content)
+            {
+                content.Content = words(KeysOf);
             }
         }
         else if (!ActionButtons.IsWorking(control))

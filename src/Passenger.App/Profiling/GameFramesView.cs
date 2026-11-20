@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Passenger.App.ToolWindows;
 using Passenger.Core;
 using Passenger.Profiler;
 
@@ -65,7 +66,7 @@ public sealed class GameFramesView : DockPanel
     private readonly TextBlock summary;
     private readonly TreeRows<GameRow> rows = [];
     private readonly TreeList table;
-    private readonly TextBlock placeholder;
+    private readonly EmptyState placeholder;
     private readonly BandOverTable shown;
     private IReadOnlyList<GameFrame> frames = [];
     private GameProfile? profile;
@@ -171,7 +172,7 @@ public sealed class GameFramesView : DockPanel
             new(physics, TokenKeys.Graph_1),
             new(script, TokenKeys.Graph_0),
             new(csharp, TokenKeys.Graph_2),
-            new(Math.Max(0, frame.FrameMs - physics - script - csharp), TokenKeys.TextMuted, 0.35),
+            FramePart.Rest(Math.Max(0, frame.FrameMs - physics - script - csharp)),
         ];
     }
 
@@ -301,13 +302,13 @@ public sealed class GameFramesView : DockPanel
         place.VerticalAlignment = VerticalAlignment.Center;
         place.Margin = new Thickness(Gaps.Normal, 0, 0, 0);
         place.TextTrimming = TextTrimming.CharacterEllipsis;
-        (StackPanel named, RowIcon chevron, TextBlock name) = FramesTable.Named<GameRow>(Toggle, place);
+        (StackPanel named, RowExpander chevron, TextBlock name) = FramesTable.Named<GameRow>(Toggle, place);
         TextBlock[] numbers = [FramesTable.Number(), FramesTable.Number(), FramesTable.Number(), FramesTable.Number()];
         Grid row = titles.Row([named, .. numbers]);
         return row.Showing<GameRow>(shown =>
         {
-            chevron.IsVisible = shown.Children.Count > 0;
-            chevron.Turned = shown.IsExpanded;
+            chevron.Expands = shown.Children.Count > 0;
+            chevron.IsOpen = shown.IsExpanded;
             name.Text = shown.Name;
             name.Classes.Set(StyleClasses.Strong, shown.Depth == 0);
             place.Text = shown.Place ?? string.Empty;

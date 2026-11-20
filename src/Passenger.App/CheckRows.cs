@@ -112,7 +112,7 @@ public static class CheckRows
             setting = false;
             name.Text = choice.Name;
             detail.Text = choice.Detail;
-            row.Opacity = choice.CanChoose ? 1 : 0.55;
+            ListRow.Dim(row, !choice.CanChoose);
         });
     }
 }

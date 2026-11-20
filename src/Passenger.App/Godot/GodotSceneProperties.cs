@@ -175,15 +175,12 @@ public sealed class GodotSceneProperties : DockPanel, IGodotTuner
     /// <summary>A property's row: its name, its value's editor where one fits it (else its text), and where it comes from.</summary>
     private Control Row()
     {
-        Grid grid = new() { ColumnDefinitions = new ColumnDefinitions("8*,12*"), RowDefinitions = new RowDefinitions("Auto,Auto"), Margin = new Thickness(Gaps.Normal, Gaps.Hair) };
-        TextBlock label = new() { TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, Gaps.Normal, 0) };
-        TextBlock text = new TextBlock { Classes = { StyleClasses.Code }, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center };
-        Grid.SetColumn(text, 1);
-        TextBlock source = new() { Classes = { StyleClasses.Muted, StyleClasses.Caption }, TextTrimming = TextTrimming.CharacterEllipsis };
-        Grid.SetRow(source, 1);
-        Grid.SetColumnSpan(source, 2);
-        TextBox box = new TextBox { Classes = { StyleClasses.Code }, IsVisible = false, VerticalAlignment = VerticalAlignment.Center, Tag = TypingBox };
-        Grid.SetColumn(box, 1);
+        PropertyRow grid = new();
+        TextBlock label = grid.Label;
+        TextBlock text = grid.Value;
+        TextBlock source = grid.Source;
+        TextBox box = grid.Box;
+        box.Tag = TypingBox;
         box.KeyDown += (_, e) =>
         {
             if (grid.DataContext is not GodotSceneProperty shown || e.Key is not (Avalonia.Input.Key.Enter or Avalonia.Input.Key.Escape))
@@ -202,10 +199,6 @@ public sealed class GodotSceneProperties : DockPanel, IGodotTuner
             }
             list.Focus();
         };
-        grid.Children.Add(label);
-        grid.Children.Add(text);
-        grid.Children.Add(source);
-        grid.Children.Add(box);
         (GodotValueCells From, LiveValueCell Cell)? made = null;
         Refreshed += () =>
         {
@@ -234,13 +227,13 @@ public sealed class GodotSceneProperties : DockPanel, IGodotTuner
                         grid.Children.Remove(old.Cell.Editor);
                     }
                     LiveValueCell cell = given.Make();
-                    Grid.SetColumn(cell.Editor, 1);
-                    grid.Children.Add(cell.Editor);
+                    grid.InValue(cell.Editor);
                     grid.Tag = cell;
                     made = (given, cell);
                 }
                 (edits, _) = made.Value.Cell.Show(0, new PropertyValue(row.Property.Name, row.Property.Category, false, GodotVariant.TypeName(row.Property.Type), row.Text, row.Source, null, null));
             }
+            grid.SplitFor(editor: made is not null);
             bool typed = typing == row.Property.Name;
             if (typed && !box.IsVisible)
             {

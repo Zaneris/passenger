@@ -6,6 +6,7 @@ using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
+using Passenger.App.ToolWindows;
 using Passenger.Core;
 
 namespace Passenger.App.Debugging;
@@ -74,7 +75,7 @@ public sealed class AttachToProcessDialog : IdeWindow
     private readonly Func<Task<IReadOnlyList<DotnetProcess>>> list;
     private readonly Func<DotnetProcess, bool> recent;
     private readonly ListBox rows;
-    private readonly TextBlock empty;
+    private readonly EmptyState empty;
     private readonly Button attach;
     private IReadOnlyList<DotnetProcess>? listed;
     private AttachScope scope;
@@ -114,7 +115,7 @@ public sealed class AttachToProcessDialog : IdeWindow
         rows.ContainerPrepared += (_, e) => e.Container.IsEnabled = e.Container.DataContext is not AttachRow { Process: null };
         ListKeys.Act(rows, new ListActs { Open = Attach, Keys = e => ListKeys.Move(rows, e, i => Rows[i].Process is not null) });
         rows.SelectionChanged += (_, _) => attach!.IsEnabled = Chosen is { WhyNot: null };
-        empty = new TextBlock { Classes = { StyleClasses.EmptyText }, Text = "Looking for .NET processes…" };
+        empty = new EmptyState { Text = "Looking for .NET processes…" };
         Border table = new()
         {
             Classes = { StyleClasses.Framed },

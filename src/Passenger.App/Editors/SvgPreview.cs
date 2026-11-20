@@ -4,6 +4,7 @@ using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Layout;
+using Passenger.App.ToolWindows;
 using Passenger.App.Workspace;
 using Passenger.Core;
 using Passenger.Editor;
@@ -23,7 +24,7 @@ public sealed class SvgPreview : DockPanel, IOwnKeys
 
     private readonly ZoomedPicture picture = new();
     private readonly TextBlock size = MutedText.Of(string.Empty);
-    private readonly TextBlock problem = new() { Classes = { StyleClasses.EmptyText }, IsVisible = false, TextWrapping = Avalonia.Media.TextWrapping.Wrap };
+    private readonly EmptyState problem = new() { IsVisible = false };
     private readonly Banner leftOut = new();
     private readonly Debounce typing;
     private readonly FollowedDocument followed;

@@ -184,7 +184,7 @@ public sealed class TemplateOptions
         foreach ((TemplateOption option, Control row, Control editor) in shown)
         {
             editor.IsEnabled = TemplateConditions.IsEnabled(option.EnabledWhen, values);
-            row.Opacity = editor.IsEnabled ? 1 : 0.55;
+            ListRow.Dim(row, !editor.IsEnabled);
             if (editor is ComboBox choices)
             {
                 string value = (editor.IsEnabled ? null : WhenOff(option)) ?? values.GetValueOrDefault(option.Name, option.Default);

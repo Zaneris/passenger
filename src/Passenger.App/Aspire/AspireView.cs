@@ -37,7 +37,7 @@ public sealed class AspireView : DockPanel, IDisposable
     private const string StatsTab = AspireModel.StatsTab;
 
     private readonly TextBlock status = new() { Classes = { StyleClasses.Muted }, Margin = new Thickness(Gaps.Normal, 0), VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
-    private readonly TextBlock empty = new() { Classes = { StyleClasses.EmptyText } };
+    private readonly EmptyState empty = new();
     private readonly List<(Button Button, string Action)> tools = [];
     private readonly Button commands;
     private readonly ContentControl page = new();

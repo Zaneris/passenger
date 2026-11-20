@@ -3,6 +3,7 @@ using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Threading;
+using Passenger.App.ToolWindows;
 using Passenger.Roslyn.Extension;
 using Passenger.Workspace;
 
@@ -62,7 +63,7 @@ public sealed class RunConfigurationsDialog : IdeWindow
     private readonly TextBlock note = new() { TextWrapping = TextWrapping.Wrap, Classes = { StyleClasses.Muted } };
     private readonly TextBlock problem = new() { TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center };
     private readonly Control form;
-    private readonly TextBlock nothing = new() { Text = "No configuration is chosen", Classes = { StyleClasses.Muted }, Margin = new Thickness(0, Gaps.Normal) };
+    private readonly EmptyState nothing = new("No configuration is chosen");
 
     /// <summary>Each row's label (or a box's own words) with the fields it shows, by the store's names, marked when the
     /// generated configuration chosen has one changed from its source.</summary>

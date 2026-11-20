@@ -5,6 +5,7 @@ using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Passenger.App.Profiling;
+using Passenger.App.ToolWindows;
 using Passenger.Core;
 using Passenger.Editor;
 using Passenger.Profiler;
@@ -27,7 +28,7 @@ public sealed class MetricsPane : DockPanel
     private static readonly Dictionary<string, int> ShippedOrder = LiveMetrics.Shipped.Select((meter, at) => (meter, at)).ToDictionary(m => m.meter, m => m.at, StringComparer.Ordinal);
 
     private readonly StackPanel rows = new() { Margin = new Thickness(Gaps.Normal, Gaps.Tight, Gaps.Normal, Gaps.Normal) };
-    private readonly TextBlock waiting = new() { Classes = { StyleClasses.EmptyText } };
+    private readonly EmptyState waiting = new();
     private readonly TextBlock status = new() { Classes = { StyleClasses.Muted }, Margin = new Thickness(Gaps.Normal, Gaps.Small, Gaps.Normal, 0), TextTrimming = TextTrimming.CharacterEllipsis, [DockProperty] = Dock.Top };
     private readonly Dictionary<(string Meter, string Instrument), Chart> charts = [];
     private readonly Dictionary<string, TextBlock> headings = new(StringComparer.Ordinal);

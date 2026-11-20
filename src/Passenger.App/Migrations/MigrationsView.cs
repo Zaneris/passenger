@@ -22,7 +22,7 @@ public sealed class MigrationsView : DockPanel
     private readonly ComboBox contexts;
     private readonly StackPanel gaps;
     private readonly ListBox list;
-    private readonly TextBlock placeholder;
+    private readonly EmptyState placeholder;
 
     /// <summary>Where the last command reached the database, when a compose run or an AppHost gave it.</summary>
     private readonly TextBlock against;
@@ -116,7 +116,7 @@ public sealed class MigrationsView : DockPanel
             ListMenus.Item("Update Database", null, () => ActionRequested?.Invoke(this, AppActions.UpdateDatabase)),
             ListMenus.Item("Copy Id", null, () => IdeErrors.Observe(ListMenus.CopyAsync(list, chosen.Id))),
         ]);
-        placeholder = new TextBlock { Classes = { StyleClasses.EmptyText } };
+        placeholder = new EmptyState();
         Children.Add(leftBar);
         Children.Add(topBar);
         Children.Add(gaps);

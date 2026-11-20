@@ -39,10 +39,8 @@ public sealed class ActionPopup : SearchPopup<IdeAction>
         TextBlock title = new() { VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
         TextBlock group = new() { Classes = { StyleClasses.Caption }, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(Gaps.Wide, 0, 0, 0) };
         group.Classes.Add(StyleClasses.Muted);
-        TextBlock keys = new() { Classes = { StyleClasses.Caption }, VerticalAlignment = VerticalAlignment.Center, Margin = ListRow.Detail };
-        keys.Classes.Add(StyleClasses.Muted);
+        TextBlock keys = ListRow.DetailText();
         DockPanel row = new() { Height = ListRow.Height, Margin = ListRow.Inset };
-        DockPanel.SetDock(keys, Dock.Right);
         row.Children.Add(keys);
         row.Children.Add(new StackPanel
         {

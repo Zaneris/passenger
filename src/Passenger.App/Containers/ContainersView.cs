@@ -47,8 +47,8 @@ public sealed class ContainersView : DockPanel
     private readonly ContainersParts parts;
     private readonly TreeList list;
     private readonly System.Collections.ObjectModel.ObservableCollection<RunItem<ContainerRow>> items = [];
-    private readonly TextBlock empty;
-    private readonly TextBlock nothingChosen;
+    private readonly EmptyState empty;
+    private readonly EmptyState nothingChosen;
     private readonly IReadOnlyDictionary<string, ToggleButton> tabs;
     private readonly ContentControl detail = new();
     private readonly HashSet<string> collapsed = ["group:Images", "group:Volumes", "group:Networks"];
@@ -138,8 +138,8 @@ public sealed class ContainersView : DockPanel
             new Separator(),
             Item(AppActions.ContainerRemove),
         ]);
-        empty = new TextBlock { Classes = { StyleClasses.EmptyText }, Text = "Reading what the engine holds…" };
-        nothingChosen = new TextBlock { Classes = { StyleClasses.EmptyText }, Text = NothingChosen };
+        empty = new EmptyState { Text = "Reading what the engine holds…" };
+        nothingChosen = new EmptyState { Text = NothingChosen };
 
         tabs = RunWindowFrame.Build(this, tools, new Panel { Children = { list, empty } }, new Panel { Children = { detail, nothingChosen } }, Pages, PageAction,
             "containers", Request);

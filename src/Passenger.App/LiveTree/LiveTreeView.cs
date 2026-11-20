@@ -52,7 +52,7 @@ public sealed class LiveTreeView : DockPanel
 {
     private readonly TreeRows<LiveTreeRow> rows = [];
     private readonly TreeList tree;
-    private readonly TextBlock placeholder;
+    private readonly EmptyState placeholder;
     private readonly TextBlock status;
     private readonly TextBlock monitors;
     private readonly Border banner;
@@ -158,7 +158,7 @@ public sealed class LiveTreeView : DockPanel
             GoToRequested?.Invoke(this, source);
             return true;
         });
-        placeholder = new TextBlock { Classes = { StyleClasses.EmptyText } };
+        placeholder = new EmptyState();
 
         heading = new StackPanel { [DockProperty] = Dock.Top, Margin = new Thickness(ListRow.TextStart, Gaps.Normal, ListRow.TextStart, Gaps.Tight), Spacing = Gaps.Hair };
         StackPanel tabRow = new() { [DockProperty] = Dock.Top, Orientation = Orientation.Horizontal, Spacing = Gaps.Hair, Margin = new Thickness(Gaps.Small, Gaps.Hair, Gaps.Small, Gaps.Tight) };
@@ -884,30 +884,22 @@ public sealed class LiveTreeView : DockPanel
     /// the element is hidden, and where it holds more than the tree read, so.</summary>
     private Control Row()
     {
-        RowIcon chevron = new() { Width = 10, Height = 10, Margin = new Thickness(0, 0, Gaps.Tight, 0) };
+        RowExpander chevron = RowExpander.Of<LiveTreeRow>(Toggle);
         TextBlock type = new() { VerticalAlignment = VerticalAlignment.Center };
         TextBlock name = Colored(new TextBlock { Margin = new Thickness(Gaps.Small, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center }, TokenKeys.Syntax_Field);
         TextBlock classes = new() { Classes = { StyleClasses.Muted, StyleClasses.Caption }, Margin = new Thickness(Gaps.Small, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
         TextBlock deeper = new() { Classes = { StyleClasses.Muted, StyleClasses.Caption }, Margin = new Thickness(Gaps.Small, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center, Text = "… more inside, not read" };
         ToolTip.SetTip(deeper, $"The tree is read {Element.DeepestNesting} levels deep");
         StackPanel line = new() { Orientation = Orientation.Horizontal, Height = ListRow.Height, Children = { chevron, type, name, classes, deeper } };
-        chevron.PointerPressed += (_, e) =>
-        {
-            if (line.DataContext is LiveTreeRow row)
-            {
-                Toggle(row);
-                e.Handled = true;
-            }
-        };
         return line.Showing<LiveTreeRow>(row =>
         {
             Element element = row.Element;
-            chevron.Opacity = row.Expands ? 1 : 0;
-            chevron.DataKey = row.IsExpanded ? IconKeys.ChevronDown : IconKeys.ChevronRight;
+            chevron.Expands = row.Expands;
+            chevron.IsOpen = row.IsExpanded;
             type.Text = element.Type;
             type.Classes.Set(StyleClasses.Muted, element.FromTemplate);
             line.Margin = new Thickness(Gaps.Small + (row.Depth * Gaps.Indent), 0, Gaps.Normal, 0);
-            line.Opacity = element.Visible ? 1 : 0.5;
+            ListRow.Dim(line, !element.Visible);
             name.IsVisible = element.Name is { Length: > 0 };
             name.Text = name.IsVisible ? $"#{element.Name}" : null;
             classes.IsVisible = element.Classes.Count > 0;
@@ -920,16 +912,14 @@ public sealed class LiveTreeView : DockPanel
     /// stops the app), its value, and where the value comes from, a link to its place where it has one.</summary>
     private Control PropertyRow()
     {
-        Grid grid = new() { ColumnDefinitions = new ColumnDefinitions("11*,9*"), RowDefinitions = new RowDefinitions("Auto,Auto"), Margin = new Thickness(Gaps.Normal, Gaps.Hair) };
-        TextBlock label = new() { TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center };
+        PropertyRow grid = new();
+        TextBlock label = grid.Label;
         Avalonia.Controls.Shapes.Ellipse dot = new() { Width = 8, Height = 8, Margin = new Thickness(0, 0, Gaps.Small, 0), VerticalAlignment = VerticalAlignment.Center };
         dot.Bind(Avalonia.Controls.Shapes.Shape.FillProperty, dot.GetResourceObservable(TokenKeys.Editor_Breakpoint));
         DockPanel.SetDock(dot, Dock.Left);
-        DockPanel name = new() { Margin = new Thickness(0, 0, Gaps.Normal, 0), Children = { dot, label } };
-        TextBlock shown = new TextBlock { Classes = { StyleClasses.Code }, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center };
-        Grid.SetColumn(shown, 1);
-        TextBox editor = new TextBox { Classes = { StyleClasses.Code }, IsVisible = false, VerticalAlignment = VerticalAlignment.Center };
-        Grid.SetColumn(editor, 1);
+        grid.Named.Children.Insert(0, dot);
+        TextBlock shown = grid.Value;
+        TextBox editor = grid.Box;
         TextBlock linked = new() { Classes = { StyleClasses.Caption }, TextTrimming = TextTrimming.CharacterEllipsis };
         Button link = new() { Classes = { StyleClasses.Link }, Content = linked, HorizontalAlignment = HorizontalAlignment.Left };
         link.Click += (_, _) =>
@@ -939,17 +929,8 @@ public sealed class LiveTreeView : DockPanel
                 GoToRequested?.Invoke(this, place);
             }
         };
-        TextBlock source = new() { Classes = { StyleClasses.Muted, StyleClasses.Caption }, TextTrimming = TextTrimming.CharacterEllipsis };
-        foreach (Control from in new Control[] { link, source })
-        {
-            Grid.SetRow(from, 1);
-            Grid.SetColumnSpan(from, 2);
-        }
-        grid.Children.Add(name);
-        grid.Children.Add(shown);
-        grid.Children.Add(editor);
-        grid.Children.Add(link);
-        grid.Children.Add(source);
+        TextBlock source = grid.Source;
+        grid.Under(link);
         (ILiveValueCells From, LiveValueCell Cell)? made = null;
         editor.KeyDown += (_, e) =>
         {
@@ -1016,11 +997,8 @@ public sealed class LiveTreeView : DockPanel
                         grid.Children.Remove(old.Cell.Note);
                     }
                     LiveValueCell cell = cells.Make();
-                    Grid.SetColumn(cell.Editor, 1);
-                    Grid.SetRow(cell.Note, 1);
-                    Grid.SetColumnSpan(cell.Note, 2);
-                    grid.Children.Add(cell.Editor);
-                    grid.Children.Add(cell.Note);
+                    grid.InValue(cell.Editor);
+                    grid.Under(cell.Note);
                     made = (cells, cell);
                 }
                 (edits, notes) = made.Value.Cell.Show(chosen.Id, value);
@@ -1031,9 +1009,7 @@ public sealed class LiveTreeView : DockPanel
                 shownCell.Cell.Editor.IsVisible = edits;
                 shownCell.Cell.Note.IsVisible = notes;
             }
-            // An editor of a game's value takes more of the row than a value's words.
-            grid.ColumnDefinitions[0].Width = new GridLength(made is null ? 11 : 8, GridUnitType.Star);
-            grid.ColumnDefinitions[1].Width = new GridLength(made is null ? 9 : 12, GridUnitType.Star);
+            grid.SplitFor(editor: made is not null);
             editor.IsVisible = typing;
             shown.IsVisible = !typing && !edits;
             string from = value.Detail is { Length: > 0 } detail ? $"{value.Source} · {detail}" : value.Source;
@@ -1072,10 +1048,7 @@ public sealed class LiveTreeView : DockPanel
         {
             block.Children.Add(Setter(setter));
         }
-        if (!style.Applies)
-        {
-            selector.Opacity = 0.7;
-        }
+        ListRow.Dim(selector, !style.Applies);
         return block;
     }
 

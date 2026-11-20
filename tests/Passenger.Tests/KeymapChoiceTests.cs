@@ -221,8 +221,8 @@ public sealed class KeymapChoiceTests : IDisposable
         }
     }
 
-    /// <summary>The Debug window's empty text names the key that starts Debug in the keymap in force: Visual Studio's, none in
-    /// VS Code's (which binds it to no key), and one the person sets there, as each is chosen.</summary>
+    /// <summary>The Debug window's empty state offers Debug, named with the key that starts it in the keymap in force: Visual
+    /// Studio's, none in VS Code's (which binds it to no key), and one the person sets there, as each is chosen.</summary>
     [AvaloniaFact]
     public void The_Debug_windows_empty_text_names_the_key_that_starts_Debug_in_the_keymap_in_force()
     {
@@ -231,17 +231,17 @@ public sealed class KeymapChoiceTests : IDisposable
         {
             window.Perform(AppActions.ShowDebug);
             Ui.Settle();
-            string Said() => window.DebugWindow.GetVisualDescendants().OfType<TextBlock>()
-                .Single(t => t.Classes.Contains(StyleClasses.EmptyText) && t.Text?.StartsWith("Not debugging", StringComparison.Ordinal) == true).Text!;
-            Assert.Equal($"Not debugging. Debug starts with {Shortcut.Parse("alt F5").Display()}.", Said());
+            Passenger.App.ToolWindows.EmptyState empty = window.DebugWindow.GetVisualDescendants().OfType<Passenger.App.ToolWindows.EmptyState>()
+                .Single(t => t.Text == "Not debugging");
+            Assert.Equal($"Debug ({Shortcut.Parse("alt F5").Display()})", empty.Offered);
 
             window.ApplySettings(window.Settings with { Keymap = KeymapPreset.VSCode });
             Ui.Settle();
-            Assert.Equal("Not debugging.", Said());
+            Assert.Equal("Debug", empty.Offered);
 
             window.ApplySettings(window.Settings with { VSCodeShortcuts = new() { [AppActions.Debug] = ["shift F9"] } });
             Ui.Settle();
-            Assert.Equal($"Not debugging. Debug starts with {Shortcut.Parse("shift F9").Display()}.", Said());
+            Assert.Equal($"Debug ({Shortcut.Parse("shift F9").Display()})", empty.Offered);
         }
         finally
         {
@@ -251,8 +251,8 @@ public sealed class KeymapChoiceTests : IDisposable
     }
 
     /// <summary>The toolbar's Run names the keys that run, a tool window's Hide the keys that hide it in the keymap chosen
-    /// (VS Code's, never Visual Studio's left behind), and the Run window, empty before anything has run, says what fills it
-    /// and with which keys, until it has text and again once it is cleared.</summary>
+    /// (VS Code's, never Visual Studio's left behind), and the Run window, empty before anything has run, says what shows in
+    /// it and offers Run with its keys, until it has text and again once it is cleared.</summary>
     [AvaloniaFact]
     public void The_toolbars_Run_and_Hide_name_their_keys_and_the_empty_Run_window_says_how_to_run()
     {
@@ -267,8 +267,9 @@ public sealed class KeymapChoiceTests : IDisposable
             Button hide = window.BottomPanel.Run.GetVisualAncestors().OfType<DockPanel>().First(p => p.Classes.Contains(StyleClasses.ToolPane))
                 .GetVisualDescendants().OfType<Button>().Single(b => b.Name == AppActions.HideToolWindow);
             Assert.Equal($"Hide ({Shortcut.Parse("shift ESCAPE").Display()})", ToolTip.GetTip(hide));
-            string? Said() => window.BottomPanel.Run.GetVisualDescendants().OfType<TextBlock>().SingleOrDefault(t => t.Classes.Contains(StyleClasses.EmptyText) && t.IsEffectivelyVisible)?.Text;
-            Assert.Equal($"Run ({run}) shows a program's output here", Said());
+            string? Said() => window.BottomPanel.Run.GetVisualDescendants().OfType<Passenger.App.ToolWindows.EmptyState>().SingleOrDefault(t => t.IsEffectivelyVisible) is { } empty
+                ? $"{empty.Text}: {empty.Offered}" : null;
+            Assert.Equal($"A program's output shows here: Run ({run})", Said());
 
             window.ApplySettings(window.Settings with { Keymap = KeymapPreset.VSCode });
             Ui.Settle();
@@ -278,14 +279,14 @@ public sealed class KeymapChoiceTests : IDisposable
             Ui.Settle();
             string own = Shortcut.Parse("shift F9").Display();
             Assert.Equal($"Run ({own})", ToolTip.GetTip(runButton));
-            Assert.Equal($"Run ({own}) shows a program's output here", Said());
+            Assert.Equal($"A program's output shows here: Run ({own})", Said());
 
             window.BottomPanel.Run.Append("Hello\n");
             Ui.Settle();
             Assert.True(Said() is null, $"The Run window still says \"{Said()}\" over a program's output");
             window.BottomPanel.Run.Clear();
             Ui.Settle();
-            Assert.Equal($"Run ({own}) shows a program's output here", Said());
+            Assert.Equal($"A program's output shows here: Run ({own})", Said());
         }
         finally
         {

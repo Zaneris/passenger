@@ -29,7 +29,7 @@ public sealed class RequestsView : DockPanel
     }
 
     private readonly ListBox list;
-    private readonly TextBlock placeholder;
+    private readonly EmptyState placeholder;
     private readonly TextBlock following;
     private readonly RequestLog log;
     private readonly ObservableCollection<Row> rows = [];
@@ -47,7 +47,7 @@ public sealed class RequestsView : DockPanel
         };
         ReusedRows.Use(list, View);
         ListKeys.Act(list, new ListActs { Open = Open, Source = Open });
-        placeholder = new TextBlock { Text = "No requests yet: run or debug a web app and send it one", Classes = { StyleClasses.EmptyText } };
+        placeholder = new EmptyState { Text = "No requests yet: run or debug a web app and send it one" };
         following = new TextBlock { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(Gaps.Tight, 0), TextTrimming = TextTrimming.CharacterEllipsis };
         following.Classes.Add(StyleClasses.Muted);
         Button clear = ToolButtons.Of(IconKeys.Clear, "Clear the requests", log.Clear);

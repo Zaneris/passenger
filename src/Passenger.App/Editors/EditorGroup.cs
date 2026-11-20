@@ -881,10 +881,10 @@ public sealed class EditorGroup : DockPanel
         RowIcon icon = new();
         TextBlock name = new() { Classes = { StyleClasses.TabName }, VerticalAlignment = VerticalAlignment.Center };
         Ellipse modified = new() { Classes = { StyleClasses.Modified }, Width = 7, Height = 7 };
-        RowIcon closeGlyph = new() { Width = 10, Height = 10, DataKey = IconKeys.Close };
+        RowIcon closeGlyph = RowIcon.Glyph(IconKeys.Close);
         Button close = new() { Classes = { StyleClasses.TabClose }, Content = closeGlyph };
         ToolButtons.Tip(close, "Close");
-        RowIcon pinGlyph = new() { Width = 10, Height = 10, DataKey = IconKeys.Pin };
+        RowIcon pinGlyph = RowIcon.Glyph(IconKeys.Pin);
         Button pin = new() { Classes = { StyleClasses.TabPin }, Content = pinGlyph };
         ToolButtons.Tip(pin, "Unpin Tab");
         Panel ends = new() { Width = 16, Height = 16, Children = { modified, close } };

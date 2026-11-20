@@ -33,8 +33,8 @@ public sealed class OutputView : DockPanel, IOwnKeys
     /// <summary>The editor, under what the console says while it is empty.</summary>
     private readonly Panel body = new();
 
-    /// <summary>What the console says while it is empty and nothing runs in it, once given words (<see cref="SayWhenEmpty"/>).</summary>
-    private readonly TextBlock empty = new() { Classes = { StyleClasses.EmptyText }, IsVisible = false };
+    /// <summary>What the console says while it is empty and nothing runs in it, once given words (<see cref="OfferWhenEmpty"/>).</summary>
+    private readonly EmptyState empty = new() { IsVisible = false };
 
     private int limit = DefaultLimitKb * 1024;
     private ConsoleInput? input;
@@ -71,6 +71,7 @@ public sealed class OutputView : DockPanel, IOwnKeys
         stop.Click += (_, _) => StopClicked?.Invoke(this, EventArgs.Empty);
         hotReload.Click += (_, _) => HotReloadClicked?.Invoke(this, EventArgs.Empty);
         clear.Click += (_, _) => Clear();
+        empty.ActionRequested += (_, action) => ActionRequested?.Invoke(this, action);
         Border tools = ToolBars.Side(rerun, stop, hotReload, clear, foldFilter, ToolBars.Gap(), Overlays);
         if (toolbar)
         {
@@ -156,14 +157,18 @@ public sealed class OutputView : DockPanel, IOwnKeys
         ActionTips.Set(hotReload, hotReloadAction, "Apply Hot Reload Changes");
     }
 
-    /// <summary>Has the console say, while it is empty and nothing runs in it, what fills it: words naming an action's keys
-    /// as the keymap in force has them (<see cref="ActionTips.SetWords(Control, string, Func{string?, string})"/>).</summary>
-    public void SayWhenEmpty(string action, Func<string?, string> words)
+    /// <summary>Has the console say, while it is empty and nothing runs in it, what shows in it and offer the action that
+    /// fills it, named with its keys in the keymap in force; a press asks for it (<see cref="ActionRequested"/>).</summary>
+    public void OfferWhenEmpty(string words, string action, string title)
     {
-        ActionTips.SetWords(empty, action, words);
+        empty.Text = words;
+        empty.Offer(action, title);
         saysEmpty = true;
         ShowEmpty();
     }
+
+    /// <summary>The action the empty console offers, asked for by its link.</summary>
+    public event EventHandler<string>? ActionRequested;
 
     private void ShowEmpty() => empty.IsVisible = saysEmpty && !running && Document.Snapshot.Length == 0;
 

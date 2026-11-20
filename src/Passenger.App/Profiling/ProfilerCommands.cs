@@ -115,6 +115,13 @@ public sealed class ProfilerCommands
     {
         ProfilerView made = view = new ProfilerView();
         made.StopRequested += (_, _) => IdeErrors.Observe(SnapshotAsync());
+        made.ActionRequested += (_, action) =>
+        {
+            if (parts.Actions.Run(action) is { } why)
+            {
+                parts.Say(why);
+            }
+        };
         made.KillRequested += (_, _) =>
         {
             if (starting is { } start)

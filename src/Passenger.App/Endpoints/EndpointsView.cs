@@ -47,7 +47,7 @@ public sealed class EndpointsView : DockPanel
     public sealed record ProjectRow(string Path, string Name);
 
     private readonly ListBox list;
-    private readonly TextBlock placeholder;
+    private readonly EmptyState placeholder;
     private readonly ComboBox environments;
     private readonly EndpointsParts parts;
     private readonly Dictionary<(string File, string Request), bool> outcomes = [];
@@ -87,7 +87,7 @@ public sealed class EndpointsView : DockPanel
             ListMenus.Item("Interactive Test…", null, () => InteractiveRequested?.Invoke(this, chosen)),
             ListMenus.Item("Go to Request", "F4", GoToChosen),
         ]);
-        placeholder = new TextBlock { Text = "No requests: add an .http file (GET https://…)", Classes = { StyleClasses.EmptyText } };
+        placeholder = new EmptyState { Text = "No requests: add an .http file (GET https://…)" };
 
         environments = new ComboBox { MinWidth = 140, VerticalAlignment = VerticalAlignment.Center };
         environments.SelectionChanged += (_, _) => EnvironmentChanged?.Invoke(this, EventArgs.Empty);
@@ -443,7 +443,7 @@ public sealed class EndpointsView : DockPanel
     /// muted); a route's method, template, what declares it (muted) and Send where a request can reach it.</summary>
     private Control Row()
     {
-        RowIcon headingIcon = new() { Width = 14, Height = 14, Margin = new Thickness(0, 0, Gaps.Small, 0) };
+        RowIcon headingIcon = new() { Margin = new Thickness(0, 0, Gaps.Small, 0) };
         TextBlock headingName = new() { Classes = { StyleClasses.Strong }, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
         StackPanel heading = new() { Orientation = Orientation.Horizontal, Height = ListRow.Height, Margin = new Thickness(Gaps.Normal, 0), Children = { headingIcon, headingName } };
         Panel row = new();
@@ -501,7 +501,7 @@ public sealed class EndpointsView : DockPanel
         interactive.Name = "endpointInteractive";
         StackPanel buttons = new() { Orientation = Orientation.Horizontal, Spacing = Gaps.Hair, VerticalAlignment = VerticalAlignment.Center, Children = { test, interactive } };
         DockPanel.SetDock(buttons, Dock.Right);
-        RowIcon outcome = new() { Width = 12, Height = 12, Margin = new Thickness(0, 0, Gaps.Small, 0), VerticalAlignment = VerticalAlignment.Center };
+        RowIcon outcome = new() { Margin = new Thickness(0, 0, Gaps.Small, 0), VerticalAlignment = VerticalAlignment.Center };
         DockPanel.SetDock(outcome, Dock.Left);
         Border method = MethodTag(string.Empty);
         DockPanel.SetDock(method, Dock.Left);

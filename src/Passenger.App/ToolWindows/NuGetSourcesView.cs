@@ -175,7 +175,7 @@ public sealed class NuGetSourcesView : Panel
         Add(row, delete, 5);
         if (effective is null)
         {
-            row.Opacity = 0.55;
+            ListRow.Dim(row, true);
             ToolTip.SetTip(row, "Not used: a nuget.config before this one clears packageSources, or names a feed of this name itself");
         }
         return row;
@@ -184,7 +184,8 @@ public sealed class NuGetSourcesView : Panel
     private Control SummaryRow(FeedSource feed)
     {
         string from = feed.DefinedIn is { } file ? RecentRow.Home(file) : "the environment";
-        Grid line = new() { ColumnDefinitions = new ColumnDefinitions("170,*,Auto"), Opacity = feed.Enabled ? 1 : 0.55 };
+        Grid line = new() { ColumnDefinitions = new ColumnDefinitions("170,*,Auto") };
+        ListRow.Dim(line, !feed.Enabled);
         Add(line, new TextBlock { Text = feed.Name, TextTrimming = TextTrimming.CharacterEllipsis }, 0);
         Add(line, new TextBlock { Classes = { StyleClasses.Muted }, Text = feed.Source, TextTrimming = TextTrimming.PathSegmentEllipsis }, 1);
         Add(line, new TextBlock { Classes = { StyleClasses.Muted }, Text = feed.Enabled ? string.Empty : "disabled", Margin = new Thickness(Gaps.Wide, 0, 0, 0) }, 2);
@@ -282,7 +283,7 @@ public sealed class NuGetSourcesView : Panel
     /// applies (the solution, the folder, the user or the machine), its path in its tip.</summary>
     private static Control FileRow()
     {
-        RowIcon icon = new() { Width = 14, Height = 14, Margin = new Thickness(Gaps.Small, 0, Gaps.Small, 0) };
+        RowIcon icon = new() { Margin = new Thickness(Gaps.Small, 0, Gaps.Small, 0) };
         icon.DataKey = IconKeys.DocumentText;
         TextBlock place = new() { Classes = { StyleClasses.Muted, StyleClasses.Caption }, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(Gaps.Normal, 0, Gaps.Normal, 0) };
         // Its name, then its folder, which gives way first in a narrow pane so the name stays whole.

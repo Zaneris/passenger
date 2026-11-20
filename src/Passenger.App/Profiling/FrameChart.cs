@@ -10,7 +10,14 @@ using Passenger.Profiler;
 namespace Passenger.App.Profiling;
 
 /// <summary>A part of a frame's bar: its time, the colour token it is drawn in, and how strongly.</summary>
-public readonly record struct FramePart(double Ms, string Brush, double Opacity = 1);
+public readonly record struct FramePart(double Ms, string Brush, double Opacity = 1)
+{
+    /// <summary>How faint the rest of a frame stands, what its named parts leave, in the chart and in its legend.</summary>
+    public const double Faint = 0.35;
+
+    /// <summary>The rest of a frame, muted and faint.</summary>
+    public static FramePart Rest(double ms) => new(ms, TokenKeys.TextMuted, Faint);
+}
 
 /// <summary>Frames as bars, one a frame in order, each as tall as its time and stacked from its parts, the first at the
 /// bottom (an Avalonia app's measuring, arranging, recording what to render, the rest of its UI work and the compositor; a

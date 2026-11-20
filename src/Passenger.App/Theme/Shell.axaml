@@ -1400,10 +1400,6 @@
         <Setter Property="FontSize" Value="12" />
         <Setter Property="Foreground" Value="{DynamicResource Passenger.Text}" />
     </Style>
-    <Style Selector="TextBlock.welcomeEmpty">
-        <Setter Property="VerticalAlignment" Value="Top" />
-        <Setter Property="Margin" Value="16,32" />
-    </Style>
 
     <!-- The first start's question (Welcome/FirstStartView.cs), over the window: the Welcome screen's hero, then large
          tiles of pictures, each a card a click or Enter chooses, the one in force ringed in the accent and ticked. -->

@@ -176,11 +176,9 @@ public sealed class UnstashPopup : UserControl
     /// <summary>A stash's row: its message, and when it was made at the right, muted.</summary>
     private static Control Row()
     {
-        TextBlock when = new() { Classes = { StyleClasses.Caption }, VerticalAlignment = VerticalAlignment.Center, Margin = ListRow.Detail };
-        when.Classes.Add(StyleClasses.Muted);
+        TextBlock when = ListRow.DetailText();
         TextBlock message = new() { VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
         DockPanel row = new() { Height = ListRow.Height, Margin = ListRow.Inset };
-        DockPanel.SetDock(when, Dock.Right);
         row.Children.Add(when);
         row.Children.Add(message);
         return row.Showing<StashInfo>(stash =>

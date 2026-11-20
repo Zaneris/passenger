@@ -14,7 +14,7 @@ namespace Passenger.App.ToolWindows;
 public class DetailsTables : DockPanel
 {
     private readonly StackPanel sections = new() { Margin = new Thickness(Gaps.Normal, 0, Gaps.Normal, Gaps.Normal) };
-    private readonly TextBlock said = new() { Classes = { StyleClasses.EmptyText } };
+    private readonly EmptyState said = new();
 
     /// <summary>The tables a <see cref="Show"/> is making, and what they show in words; null outside one.</summary>
     private List<Control>? making;

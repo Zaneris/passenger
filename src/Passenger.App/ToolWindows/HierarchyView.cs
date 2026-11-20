@@ -69,7 +69,7 @@ public sealed class HierarchyView : DockPanel
     private readonly TextBlock title;
     private readonly ToggleButton first;
     private readonly ToggleButton second;
-    private readonly TextBlock placeholder;
+    private readonly EmptyState placeholder;
 
     /// <summary>The symbol's name and the toggles, shown only once there is a hierarchy: an empty bar says nothing.</summary>
     private readonly Border bar;
@@ -109,8 +109,8 @@ public sealed class HierarchyView : DockPanel
             ListMenus.Item("Copy Name", null, () => IdeErrors.Observe(ListMenus.CopyAsync(this, chosen.Node.Item.Name))),
             ListMenus.Item("Copy Path", null, () => IdeErrors.Observe(ListMenus.CopyAsync(this, chosen.Node.Path))),
         ]);
-        placeholder = new TextBlock { Classes = { StyleClasses.EmptyText } };
-        ActionTips.SetWords(placeholder, keys =>
+        placeholder = new EmptyState();
+        placeholder.SayWithKeys(keys =>
             $"{ActionTips.Named("Call Hierarchy", keys(AppActions.CallHierarchy))} and {ActionTips.Named("Type Hierarchy", keys(AppActions.TypeHierarchy))} show the symbol at the caret here");
         Children.Add(new Panel { Children = { list, placeholder } });
     }
@@ -271,7 +271,7 @@ public sealed class HierarchyView : DockPanel
     /// <summary>A row for whichever symbol the list hands its container: its chevron, name, and what and where it is.</summary>
     private Control Row()
     {
-        RowIcon chevron = new() { Width = 10, Height = 10, Margin = new Thickness(0, 0, Gaps.Tight, 0) };
+        RowExpander chevron = RowExpander.Of<HierarchyRow>(Toggle);
         TextBlock name = new() { VerticalAlignment = VerticalAlignment.Center };
         TextBlock detail = new()
         {
@@ -282,19 +282,11 @@ public sealed class HierarchyView : DockPanel
         };
         detail.Classes.Add(StyleClasses.Muted);
         StackPanel line = new() { Orientation = Orientation.Horizontal, Height = ListRow.Height, Children = { chevron, name, detail } };
-        chevron.PointerPressed += (_, e) =>
-        {
-            if (line.DataContext is HierarchyRow row)
-            {
-                Toggle(row);
-                e.Handled = true;
-            }
-        };
         return line.Showing<HierarchyRow>(row =>
         {
             line.Margin = new Thickness(Gaps.Normal + (row.Depth * Gaps.Indent), 0, Gaps.Normal, 0);
-            chevron.IsVisible = row.Expands;
-            chevron.DataKey = row.IsExpanded ? IconKeys.ChevronDown : IconKeys.ChevronRight;
+            chevron.Expands = row.Expands;
+            chevron.IsOpen = row.IsExpanded;
             name.Text = row.Node.Item.Name;
             name.Classes.Set(StyleClasses.Strong, row.Depth == 0);
             detail.Text = $"{row.Node.Item.Detail}  {System.IO.Path.GetFileName(row.Node.Path)}:{row.Node.Where.Line + 1}";

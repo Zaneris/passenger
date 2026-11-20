@@ -31,10 +31,10 @@ public sealed class HistoryTab : DockPanel
     private readonly LocalHistory store;
     private readonly HistoryHost host;
     private readonly ListBox list;
-    private readonly TextBlock placeholder;
+    private readonly EmptyState placeholder;
     private readonly TextBox filter;
     private readonly ContentControl diffHost = new();
-    private readonly TextBlock diffPlaceholder;
+    private readonly EmptyState diffPlaceholder;
     private readonly ListBox? fileList;
     private readonly ConcurrentDictionary<string, string> texts = new(StringComparer.Ordinal);
     private readonly EventHandler onStoreChanged;
@@ -67,13 +67,8 @@ public sealed class HistoryTab : DockPanel
         [
             ListMenus.Item("Revert Selected and Later Changes", null, () => IdeErrors.Observe(RevertAsync())),
         ]);
-        placeholder = MutedText.Of(string.Empty);
-        placeholder.HorizontalAlignment = HorizontalAlignment.Center;
-        placeholder.VerticalAlignment = VerticalAlignment.Center;
-        placeholder.TextWrapping = TextWrapping.Wrap;
-        diffPlaceholder = MutedText.Of("Select activity to view changes");
-        diffPlaceholder.HorizontalAlignment = HorizontalAlignment.Center;
-        diffPlaceholder.VerticalAlignment = VerticalAlignment.Center;
+        placeholder = new EmptyState();
+        diffPlaceholder = new EmptyState("Select activity to view changes");
         diffHost.Content = diffPlaceholder;
 
         filter = new TextBox { Classes = { StyleClasses.Search }, PlaceholderText = isFolder ? "Search by file name" : "Search by content", Width = 240, Margin = new Thickness(Gaps.Normal, 0) };
@@ -386,7 +381,7 @@ public sealed class HistoryTab : DockPanel
         TextBlock time = MutedText.Of(string.Empty);
         time[DockProperty] = Dock.Right;
         time.Margin = new Thickness(Gaps.Normal, 0, Gaps.Tight, 0);
-        RowIcon tag = new() { Width = 12, Height = 12, Margin = new Thickness(0, 0, Gaps.Small, 0), [DockProperty] = Dock.Left };
+        RowIcon tag = new() { Margin = new Thickness(0, 0, Gaps.Small, 0), [DockProperty] = Dock.Left };
         TextBlock title = new() { VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
         line.Children.Add(time);
         line.Children.Add(tag);

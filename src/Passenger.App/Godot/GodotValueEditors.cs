@@ -5,6 +5,7 @@ using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Threading;
 using Passenger.App.LiveTree;
+using Passenger.App.ToolWindows;
 using Passenger.Core;
 using Passenger.Editor;
 using Passenger.Inspector;
@@ -36,7 +37,7 @@ public sealed class GodotItemsEditor : Border
 
     // Clear of the scroll bar, which shows over the rows' right.
     private readonly StackPanel rows = new() { Spacing = Gaps.Hair, Margin = new Thickness(0, 0, Gaps.Group, 0) };
-    private readonly TextBlock empty;
+    private readonly EmptyState empty;
     private readonly List<TextBox> fields = [];
     private readonly Border slot = new() { IsVisible = false };
 
@@ -93,7 +94,7 @@ public sealed class GodotItemsEditor : Border
         Classes.Add(StyleClasses.Popup);
         Width = PopupFrame.Narrow;
         Padding = new Thickness(Gaps.Normal);
-        empty = new TextBlock { Classes = { StyleClasses.EmptyText }, Text = Entries ? "No entries" : "No items" };
+        empty = new EmptyState { Text = Entries ? "No entries" : "No items" };
         Button add = new() { Classes = { StyleClasses.Compact }, Content = Entries ? "Add Entry" : "Add Item", HorizontalAlignment = HorizontalAlignment.Left };
         add.Click += (_, _) => IdeErrors.Observe(InTurnAsync(AddAsync));
         Add = add;
@@ -476,7 +477,7 @@ public sealed class GodotResourceEditor : Border, IGodotTuner
     private readonly IGodotTuner tuner;
     // Clear of the scroll bar, which shows over the rows' right.
     private readonly StackPanel rows = new() { Spacing = Gaps.Hair, Margin = new Thickness(0, 0, Gaps.Group, 0) };
-    private readonly TextBlock words = new() { Classes = { StyleClasses.EmptyText } };
+    private readonly EmptyState words = new();
     private readonly TextBlock title;
     private readonly Border slot = new() { IsVisible = false };
     private readonly Dictionary<string, (Control Row, GodotValueCell Cell, TextBox Typed, TextBlock Shown)> made = new(StringComparer.Ordinal);

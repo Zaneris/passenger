@@ -68,7 +68,7 @@ public sealed class MemoryView : DockPanel
     private readonly StackPanel crumbs;
     private readonly StackPanel actions;
     private readonly TextBlock summary;
-    private readonly TextBlock waiting;
+    private readonly EmptyState waiting;
     private readonly ListBox types;
     private readonly ListBox deltas;
     private readonly ListBox objects;
@@ -208,9 +208,7 @@ public sealed class MemoryView : DockPanel
         }
         setPage = new DockPanel { Children = { tabs, new Panel { Children = { objectsPage, pathsPage, keyPathsPage } } } };
 
-        waiting = Muted(string.Empty);
-        waiting.HorizontalAlignment = HorizontalAlignment.Center;
-        waiting.VerticalAlignment = VerticalAlignment.Center;
+        waiting = new EmptyState();
         Children.Add(top);
         Children.Add(new Panel { Children = { typePage, deltaPage, setPage, waiting } });
         Show(null);
@@ -648,27 +646,18 @@ public sealed class MemoryView : DockPanel
     /// kind strong before its name).</summary>
     private Control PathStep()
     {
-        RowIcon chevron = RowIcon.Chevron();
-        Border toggle = new() { Width = 18, Height = ListRow.Height, Background = Brushes.Transparent, Child = chevron };
+        RowExpander chevron = RowExpander.Of<RetentionRow>(Toggle);
         TextBlock text = Cell();
         Avalonia.Controls.Documents.Run kind = new() { FontWeight = FontWeight.SemiBold };
         Avalonia.Controls.Documents.Run named = new();
         TextBlock root = Cell();
         root.Inlines = [kind, named];
-        StackPanel step = new() { Orientation = Orientation.Horizontal, Children = { toggle, text, root } };
-        toggle.PointerPressed += (_, e) =>
-        {
-            if (step.DataContext is RetentionRow row)
-            {
-                Toggle(row);
-                e.Handled = true;
-            }
-        };
+        StackPanel step = new() { Orientation = Orientation.Horizontal, Children = { chevron, text, root } };
         return step.Showing<RetentionRow>(row =>
         {
             step.Margin = new Thickness(row.Depth * Gaps.Indent, 0, 0, 0);
-            chevron.IsVisible = row.Node.Children.Count > 0;
-            chevron.Turned = row.IsExpanded;
+            chevron.Expands = row.Node.Children.Count > 0;
+            chevron.IsOpen = row.IsExpanded;
             text.IsVisible = row.Node.Root is null;
             root.IsVisible = row.Node.Root is not null;
             Named(row.Node.Root is null ? text : root, row.Node.Text);

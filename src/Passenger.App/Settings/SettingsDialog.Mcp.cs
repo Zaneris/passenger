@@ -3,6 +3,7 @@ using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Passenger.App.Mcp;
+using Passenger.App.ToolWindows;
 
 namespace Passenger.App.Settings;
 
@@ -32,7 +33,7 @@ public sealed partial class SettingsDialog
     {
         Add(Declared.McpServer);
 
-        TextBlock none = new() { Classes = { StyleClasses.EmptyText }, Text = "None: a window asks before it lets an agent in" };
+        EmptyState none = new("None: a window asks before it lets an agent in");
         void List()
         {
             AgentFolderList.ItemsSource = Working.AgentFolders.ToArray();

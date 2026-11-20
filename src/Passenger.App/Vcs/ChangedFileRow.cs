@@ -18,7 +18,7 @@ public sealed class ChangedFileRow
     /// <summary>How far the icon sits from its list's edge where nothing comes before it.</summary>
     public const double Inset = Gaps.Normal;
 
-    private readonly RowIcon icon = new() { Width = 14, Height = 14, Margin = new Thickness(0, 0, Gaps.Small, 0) };
+    private readonly RowIcon icon = new() { Margin = new Thickness(0, 0, Gaps.Small, 0) };
     private readonly TextBlock name = new() { VerticalAlignment = VerticalAlignment.Center };
     private readonly TextBlock came = MutedText.Of(string.Empty);
     private readonly TextBlock folder = MutedText.Of(string.Empty);

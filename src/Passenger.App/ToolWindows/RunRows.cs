@@ -190,7 +190,7 @@ public sealed class RunRowView : DockPanel
 {
     private readonly Action<Uri> browse;
     private readonly string linkName;
-    private readonly RowIcon chevron;
+    private readonly RowExpander chevron;
     private readonly Ellipse dot = new() { Width = 8, Height = 8, Margin = new Thickness(0, 0, Gaps.Normal, 0), VerticalAlignment = VerticalAlignment.Center };
     // Where the row is narrower than its parts at its right, they give way from the last, their words ending in an ellipsis.
     private readonly ShrinkingRow right = new() { Spacing = Gaps.Small, VerticalAlignment = VerticalAlignment.Center, [TextBlock.TextTrimmingProperty] = TextTrimming.CharacterEllipsis };
@@ -207,21 +207,8 @@ public sealed class RunRowView : DockPanel
         this.browse = browse;
         this.linkName = linkName;
         Height = ListRow.Height;
-        // Its whole box takes a press, not only the glyph's thin strokes.
-        chevron = new RowIcon
-        {
-            Width = 12, Height = 12, Margin = new Thickness(0, 0, Gaps.Tight, 0), VerticalAlignment = VerticalAlignment.Center,
-            ForegroundKey = TokenKeys.TextMuted, Name = "rowChevron",
-        };
-        chevron.PointerPressed += (_, e) =>
-        {
-            // The press's capture let go first, or rows moved under the pointer would take the next press from the chevron.
-            e.Pointer.Capture(null);
-            toggle();
-            e.Handled = true;
-        };
-        // A second press soon after is the chevron's again, never the list's double click, which would toggle it back.
-        chevron.DoubleTapped += (_, e) => e.Handled = true;
+        chevron = new RowExpander(toggle);
+        chevron.Chevron.Name = "rowChevron";
         SetDock(chevron, Dock.Left);
         SetDock(dot, Dock.Left);
         SetDock(right, Dock.Right);
@@ -245,8 +232,8 @@ public sealed class RunRowView : DockPanel
         RunRow? was = shown;
         shown = row;
         Margin = new Thickness(Gaps.Small + (row.Depth * Gaps.Indent), 0, Gaps.Small, 0);
-        chevron.IsVisible = row.Expands;
-        chevron.DataKey = row.Expanded ? IconKeys.ChevronDown : IconKeys.ChevronRight;
+        chevron.Expands = row.Expands;
+        chevron.IsOpen = row.Expanded;
         dot.IsVisible = !row.Heading && row.State != RunState.None;
         if (was is null || was.State != row.State)
         {

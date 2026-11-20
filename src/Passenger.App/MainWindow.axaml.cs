@@ -318,8 +318,10 @@ public partial class MainWindow : IdeWindow
         Bottom.Run.StopClicked += (_, _) => session.Runner.Stop();
         Bottom.Run.HotReloadClicked += (_, _) => Request(AppActions.ApplyHotReloadChanges);
         Bottom.Run.NameKeys(AppActions.Rerun, AppActions.Stop, AppActions.ApplyHotReloadChanges);
-        Bottom.Run.SayWhenEmpty(AppActions.RunProgram, keys => $"{ActionTips.Named("Run", keys)} shows a program's output here");
-        Bottom.Build.SayWhenEmpty(AppActions.Build, keys => $"{ActionTips.Named("Build Solution", keys)} shows the build's output here");
+        Bottom.Run.OfferWhenEmpty("A program's output shows here", AppActions.RunProgram, "Run");
+        Bottom.Build.OfferWhenEmpty("The build's output shows here", AppActions.Build, "Build Solution");
+        Bottom.Run.ActionRequested += (_, action) => Request(action);
+        Bottom.Build.ActionRequested += (_, action) => Request(action);
         AddUnitTests();
         AddLinks();
         AddLocalHistory();

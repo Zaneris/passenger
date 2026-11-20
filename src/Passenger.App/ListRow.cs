@@ -1,4 +1,7 @@
 using Avalonia;
+using Avalonia.Controls;
+using Avalonia.Layout;
+using Avalonia.Media;
 
 namespace Passenger.App;
 
@@ -20,6 +23,24 @@ public static class ListRow
     /// row's end.</summary>
     public static readonly Thickness Detail = new(Gaps.Wide, 0, Gaps.Tight, 0);
 
+    /// <summary>A row's detail as every row shows it: muted at the caption's size, docked at the row's end
+    /// (<see cref="Detail"/>), cut with an ellipsis where the row has no room for it.</summary>
+    public static TextBlock DetailText() => new()
+    {
+        Classes = { StyleClasses.Muted, StyleClasses.Caption },
+        VerticalAlignment = VerticalAlignment.Center,
+        Margin = Detail,
+        TextTrimming = TextTrimming.CharacterEllipsis,
+        [DockPanel.DockProperty] = Dock.Right,
+    };
+
     /// <summary>The room above and below a list's rows inside a popup of its own.</summary>
     public static readonly Thickness PopupList = new(0, Gaps.Tight);
+
+    /// <summary>How faint a row stands that is there but off: one that can't be chosen, a feed not used, a file cut to move,
+    /// a frame of no interest, an element hidden, a style that does not apply.</summary>
+    public const double Dimmed = 0.55;
+
+    /// <summary>Draws a row, or a part of one, faint while it is off (<see cref="Dimmed"/>), whole while it is not.</summary>
+    public static void Dim(Visual row, bool off) => row.Opacity = off ? Dimmed : 1;
 }

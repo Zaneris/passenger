@@ -486,7 +486,7 @@ public sealed class GitLogView : DockPanel, IOwnKeys
         then[DockProperty] = Dock.Right;
         then.MaxWidth = 280;
         TextBlock words = new() { VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
-        RowIcon mark = new() { [DockProperty] = Dock.Right, Width = 14, Height = 14, IsVisible = false, Margin = new Thickness(Gaps.Small, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
+        RowIcon mark = new() { [DockProperty] = Dock.Right, IsVisible = false, Margin = new Thickness(Gaps.Small, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
         string? marked = null;
         subject.Children.Add(mark);
         subject.Children.Add(then);

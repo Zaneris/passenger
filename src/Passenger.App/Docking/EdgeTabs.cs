@@ -103,7 +103,7 @@ internal sealed class EdgeTabs : Border
         {
             return made;
         }
-        RowIcon icon = new() { Width = 14, Height = 14, DataKey = window.Icon };
+        RowIcon icon = new() { DataKey = window.Icon };
         TextBlock name = new() { Classes = { StyleClasses.TabName }, Text = window.Title, VerticalAlignment = VerticalAlignment.Center };
         Control content = down
             ? new StackPanel { Spacing = Gaps.Small, HorizontalAlignment = HorizontalAlignment.Center, Children = { icon, new LayoutTransformControl { LayoutTransform = new RotateTransform(90), Child = name } } }

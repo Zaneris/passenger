@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Passenger.App.ToolWindows;
 using Passenger.Core;
 
 namespace Passenger.App.Explorer;
@@ -92,7 +93,7 @@ public sealed class DockerComposeDialog : IdeWindow
         page.Children.Add(List(projects, 1));
         page.Children.Add(Heading("Beside them, from their packages", 2));
         Control backing = services.Count == 0
-            ? new TextBlock { Classes = { StyleClasses.EmptyText }, Text = "No database, cache or broker among their packages", Margin = new Thickness(0, 0, 0, Gaps.Tight) }
+            ? new EmptyState("No database, cache or broker among their packages")
             : List(services, 3);
         Grid.SetRow(backing, 3);
         page.Children.Add(backing);

@@ -4,6 +4,7 @@ using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Passenger.App.ToolWindows;
 using Passenger.Core;
 using Passenger.Editor;
 
@@ -25,7 +26,7 @@ public sealed class ResponseView : DockPanel
         Classes = { StyleClasses.Code },
         Margin = new Thickness(Gaps.Normal, Gaps.Tight, Gaps.Normal, Gaps.Normal),
     };
-    private readonly TextBlock empty;
+    private readonly EmptyState empty;
     private readonly Panel shown;
 
     public ResponseView(string emptyText)
@@ -45,7 +46,7 @@ public sealed class ResponseView : DockPanel
         content.Children.Add(head);
         content.Children.Add(criteria);
         content.Children.Add(text);
-        empty = new TextBlock { Text = emptyText, Classes = { StyleClasses.EmptyText } };
+        empty = new EmptyState { Text = emptyText };
         shown = content;
         shown.IsVisible = false;
         Children.Add(new Panel { Children = { shown, empty } });

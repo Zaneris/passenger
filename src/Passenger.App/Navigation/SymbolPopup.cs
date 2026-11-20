@@ -118,15 +118,8 @@ public sealed class SymbolPopup : SearchPopup<SymbolRow>
         TextBlock letter = BadgeLetter();
         Border badge = BadgeOf(letter);
         badge.Margin = new Thickness(0, 0, Gaps.Small, 0);
-        TextBlock where = new()
-        {
-            [DockPanel.DockProperty] = Dock.Right,
-            Classes = { StyleClasses.Caption },
-            Margin = ListRow.Detail,
-            TextTrimming = TextTrimming.CharacterEllipsis,
-            MaxWidth = 260,
-            VerticalAlignment = VerticalAlignment.Center,
-        };
+        TextBlock where = ListRow.DetailText();
+        where.MaxWidth = 260;
         TextBlock name = new() { [DockPanel.DockProperty] = Dock.Left, VerticalAlignment = VerticalAlignment.Center };
         // A member's type follows its name close, as "Sum(int): decimal"; a container stands apart.
         TextBlock detail = new()

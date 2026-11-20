@@ -33,11 +33,9 @@ public sealed class ChoicePopup : SearchPopup<Choice>
     /// <summary>A choice's row: its label, and what it says beside that at the right, muted.</summary>
     protected override Control Row()
     {
-        TextBlock detail = new() { Classes = { StyleClasses.Caption }, VerticalAlignment = VerticalAlignment.Center, Margin = ListRow.Detail };
-        detail.Classes.Add(StyleClasses.Muted);
+        TextBlock detail = ListRow.DetailText();
         TextBlock label = new() { VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
         DockPanel row = new() { Height = ListRow.Height, Margin = ListRow.Inset };
-        DockPanel.SetDock(detail, Dock.Right);
         row.Children.Add(detail);
         row.Children.Add(label);
         return row.Showing<Choice>(choice =>

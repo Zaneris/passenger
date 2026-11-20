@@ -607,29 +607,18 @@ public sealed class BranchesPanel : DockPanel
     /// tag's mark (a favourite's star, the current branch's in the accent), its name, and where a local branch pushes.</summary>
     private Control Row()
     {
-        RowIcon chevron = new() { Width = 10, Height = 10, Margin = new Thickness(Gaps.Tight, 0, Gaps.Tight, 0) };
-        Border hit = new() { Background = Brushes.Transparent, Child = chevron, VerticalAlignment = VerticalAlignment.Center };
-        Border gap = new() { Width = 18 };
-        RowIcon mark = new() { Width = 13, Height = 13, Margin = new Thickness(0, 0, Gaps.Small, 0) };
+        RowExpander chevron = RowExpander.Of<BranchNode>(Toggle);
+        RowIcon mark = new() { Margin = new Thickness(0, 0, Gaps.Small, 0) };
         TextBlock name = new() { VerticalAlignment = VerticalAlignment.Center };
         // Where it pushes and pulls, muted after its name.
         TextBlock tracked = new() { Classes = { StyleClasses.Caption }, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(Gaps.Normal, 0, 0, 0) };
         tracked.Classes.Add(StyleClasses.Muted);
-        ShrinkingRow row = new() { Height = ListRow.Height, Children = { hit, gap, mark, name, tracked } };
-        hit.PointerPressed += (_, e) =>
-        {
-            if (row.DataContext is BranchNode node)
-            {
-                Toggle(node);
-                e.Handled = true;
-            }
-        };
+        ShrinkingRow row = new() { Height = ListRow.Height, Children = { chevron, mark, name, tracked } };
         return row.Showing<BranchNode>(node =>
         {
             row.Margin = new Thickness(node.Depth * Gaps.Indent, 0, 0, 0);
-            hit.IsVisible = node.IsGroup;
-            gap.IsVisible = !node.IsGroup;
-            chevron.DataKey = node.IsExpanded ? IconKeys.ChevronDown : IconKeys.ChevronRight;
+            chevron.Expands = node.IsGroup;
+            chevron.IsOpen = node.IsExpanded;
             mark.IsVisible = node.Kind is BranchNodeKind.Ref or BranchNodeKind.Head;
             mark.DataKey = node.Branch?.Kind == RefKind.Tag ? IconKeys.Label : node.IsFavorite ? IconKeys.StarFilled : IconKeys.Branch;
             mark.ForegroundKey = node.IsFavorite ? TokenKeys.Vcs_Favorite : node.Branch?.IsCurrent == true || node.Kind == BranchNodeKind.Head ? TokenKeys.Accent : null;

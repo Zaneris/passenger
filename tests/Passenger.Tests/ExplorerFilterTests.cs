@@ -88,7 +88,7 @@ public sealed class ExplorerFilterTests : IDisposable
 
         window.KeyTextInput("zzz");
         Ui.Settle();
-        TextBlock hint = explorer.GetVisualDescendants().OfType<TextBlock>().Single(t => t.Name == "Hint");
+        Passenger.App.ToolWindows.EmptyState hint = explorer.GetVisualDescendants().OfType<Passenger.App.ToolWindows.EmptyState>().Single(t => t.Name == "Hint");
         Assert.True(hint.IsEffectivelyVisible && hint.Text == "No file matches", $"A filter naming no file shows the hint {(hint.IsEffectivelyVisible ? hint.Text : "hidden")}");
         Ui.Press(window, "ESCAPE");
         Assert.False(hint.IsEffectivelyVisible, "The hint that no file matches stayed once the filter was emptied");
