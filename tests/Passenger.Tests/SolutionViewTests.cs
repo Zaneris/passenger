@@ -1157,7 +1157,7 @@ public sealed class SolutionViewTests : IDisposable
         string comment = "  <!-- Café \u0096 \u0093Core\u0094 -->\n";
         byte[] original = System.Text.Encoding.Latin1.GetBytes("<?xml version=\"1.0\" encoding=\"windows-1252\"?>\n" + Library.Replace("  <PropertyGroup>", comment + "  <PropertyGroup>", StringComparison.Ordinal));
         File.WriteAllBytes(core, original);
-        MainWindow window = Open();
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
         Heard(window, core, () => Assert.Null(Ui.Await(window.SetReferencesAsync(core, [app]), "the references set")));
 
         string written = System.Text.Encoding.Latin1.GetString(File.ReadAllBytes(core));

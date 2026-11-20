@@ -224,7 +224,7 @@ public sealed class SolutionFoldersTests : IDisposable
         byte[] original = File.ReadAllBytes(solution);
         string referencing = File.ReadAllText(web);
         string projects = Path.Combine(folder, "src", "Shop.Core");
-        MainWindow window = Open();
+        MainWindow window = Open(languageServer: true);
         List<string> asked = Answer(window);
         int heard = 0;
         window.FolderWatcher!.Changed += (_, changes) => heard += changes.Paths.Contains(PathNames.Canonical(solution)) ? 1 : 0;
@@ -384,7 +384,9 @@ public sealed class SolutionFoldersTests : IDisposable
         return solution;
     }
 
-    private MainWindow Open() => Ui.OpenFolder(folder);
+    /// <summary>The window on the folder, without the C# language server, which the solution's edits ask nothing of, unless
+    /// <paramref name="languageServer"/>: a test holding what its restore of a renamed project does meanwhile.</summary>
+    private MainWindow Open(bool languageServer = false) => Ui.OpenFolder(folder, languageServer: languageServer);
 
     /// <summary>dotnet build of the solution as it is on disk now, which fails the test naming what was done to it.</summary>
     private static void Builds(string solution, string after)

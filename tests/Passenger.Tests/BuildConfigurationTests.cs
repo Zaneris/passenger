@@ -318,10 +318,11 @@ public sealed class BuildConfigurationTests
         }
     }
 
-    /// <summary>A window that keeps its state in a folder of its own, on the folder given.</summary>
+    /// <summary>A window that keeps its state in a folder of its own, on the folder given, without the C# language server,
+    /// which a configuration kept asks nothing of.</summary>
     private static MainWindow Keeping(string settings, string folder)
     {
-        MainWindow window = new() { Width = 1000, Height = 800, StateFolder = settings };
+        MainWindow window = new() { Width = 1000, Height = 800, StateFolder = settings, StartsLanguageServer = false };
         window.Show();
         window.KeepLayout();
         window.OpenFolder(folder);

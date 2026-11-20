@@ -48,7 +48,7 @@ public sealed class FileIconsTests : IDisposable
     [AvaloniaFact]
     public void Each_kind_of_file_is_drawn_in_a_shape_and_colour_of_its_own_in_the_Explorer_the_tabs_and_the_Commit_window()
     {
-        MainWindow window = Ui.OpenFolder(folder);
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
         try
         {
             window.OpenFile(Path.Combine(folder, "Program.cs"));
