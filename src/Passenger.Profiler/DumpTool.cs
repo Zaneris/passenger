@@ -53,7 +53,7 @@ internal static class DumpTool
     /// the user's (a link, or one another user made first in Linux's shared /tmp).</summary>
     internal static string FolderIn(string temp)
     {
-        string hash = Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(Environment.UserName)))[..10];
+        string hash = FileNames.Hash(Environment.UserName, 10);
         string own = Path.Combine(temp, $"passenger-heaps-{hash}");
         try
         {

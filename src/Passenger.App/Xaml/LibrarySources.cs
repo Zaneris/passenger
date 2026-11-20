@@ -143,8 +143,7 @@ public static partial class LibrarySources
     public static string Stamp(string assembly)
     {
         FileInfo file = new(assembly);
-        byte[] said = System.Text.Encoding.UTF8.GetBytes($"{assembly}\n{file.LastWriteTimeUtc.Ticks}\n{file.Length}");
-        return Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(said).AsSpan(0, 8));
+        return FileNames.Hash($"{assembly}\n{file.LastWriteTimeUtc.Ticks}\n{file.Length}", 16);
     }
 
     /// <summary>Where a name is declared in decompiled code: the first line declaring it with an access modifier (an enum's

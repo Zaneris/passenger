@@ -1,4 +1,3 @@
-using System.Security.Cryptography;
 using System.Text;
 
 namespace Passenger.Core;
@@ -57,7 +56,7 @@ public static partial class Dotnet
     /// where the folder cannot be the user's own.</summary>
     public static string HostAlone(string root, string state)
     {
-        string hash = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(root)))[..10];
+        string hash = FileNames.Hash(root, 10);
         string folder = UserTemporary.Own(UserTemporary.Of(state, $"dotnet-{hash}"));
         string host = Path.Combine(root, HostName);
         if (OperatingSystem.IsWindows())

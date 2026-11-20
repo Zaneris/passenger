@@ -67,7 +67,7 @@ internal sealed unsafe partial class WebView2Pages : IWebResourceRequestedHandle
         int done = Marshal.QueryInterface(web, in Second, out nint second);
         if (done >= 0)
         {
-            done = ((delegate* unmanaged[Stdcall]<nint, nint*, int>)Slot(second, GetEnvironment))(second, &environment);
+            done = ((delegate* unmanaged[Stdcall]<nint, nint*, int>)ComCalls.Slot(second, GetEnvironment))(second, &environment);
             Marshal.Release(second);
         }
         if (done < 0 || environment == 0)
@@ -102,10 +102,10 @@ internal sealed unsafe partial class WebView2Pages : IWebResourceRequestedHandle
         nint response = 0;
         try
         {
-            int done = ((delegate* unmanaged[Stdcall]<nint, nint*, int>)Slot(args, GetRequest))(args, &request);
+            int done = ((delegate* unmanaged[Stdcall]<nint, nint*, int>)ComCalls.Slot(args, GetRequest))(args, &request);
             if (done >= 0)
             {
-                done = ((delegate* unmanaged[Stdcall]<nint, char**, int>)Slot(request, GetUri))(request, &address);
+                done = ((delegate* unmanaged[Stdcall]<nint, char**, int>)ComCalls.Slot(request, GetUri))(request, &address);
             }
             if (done < 0)
             {
@@ -119,10 +119,10 @@ internal sealed unsafe partial class WebView2Pages : IWebResourceRequestedHandle
             fixed (char* reason = answer.Reason)
             fixed (char* headers = answer.Headers)
             {
-                done = ((delegate* unmanaged[Stdcall]<nint, nint, int, char*, char*, nint*, int>)Slot(environment, CreateResponse))(
+                done = ((delegate* unmanaged[Stdcall]<nint, nint, int, char*, char*, nint*, int>)ComCalls.Slot(environment, CreateResponse))(
                     environment, content, answer.Status, reason, headers, &response);
             }
-            return done < 0 ? done : ((delegate* unmanaged[Stdcall]<nint, nint, int>)Slot(args, PutResponse))(args, response);
+            return done < 0 ? done : ((delegate* unmanaged[Stdcall]<nint, nint, int>)ComCalls.Slot(args, PutResponse))(args, response);
         }
         catch (Exception error)
         {
@@ -133,9 +133,9 @@ internal sealed unsafe partial class WebView2Pages : IWebResourceRequestedHandle
         finally
         {
             Marshal.FreeCoTaskMem((nint)address);
-            Release(content);
-            Release(response);
-            Release(request);
+            ComCalls.Release(content);
+            ComCalls.Release(response);
+            ComCalls.Release(request);
         }
     }
 
@@ -151,12 +151,12 @@ internal sealed unsafe partial class WebView2Pages : IWebResourceRequestedHandle
         {
             fixed (char* filter = Filter)
             {
-                ((delegate* unmanaged[Stdcall]<nint, char*, int, int>)Slot(web, RemoveFilter))(web, filter, EveryResource);
+                ((delegate* unmanaged[Stdcall]<nint, char*, int, int>)ComCalls.Slot(web, RemoveFilter))(web, filter, EveryResource);
             }
-            ((delegate* unmanaged[Stdcall]<nint, long, int>)Slot(web, Unlisten))(web, token);
+            ((delegate* unmanaged[Stdcall]<nint, long, int>)ComCalls.Slot(web, Unlisten))(web, token);
         }
-        Release(environment);
-        Release(web);
+        ComCalls.Release(environment);
+        ComCalls.Release(web);
     }
 
     /// <summary>This one made the web view's handler of requests on the host; an HRESULT, negative where it refused.</summary>
@@ -164,7 +164,7 @@ internal sealed unsafe partial class WebView2Pages : IWebResourceRequestedHandle
     {
         nint handler = (nint)ComInterfaceMarshaller<IWebResourceRequestedHandler>.ConvertToUnmanaged(this);
         long registered;
-        int done = ((delegate* unmanaged[Stdcall]<nint, nint, long*, int>)Slot(web, Listen))(web, handler, &registered);
+        int done = ((delegate* unmanaged[Stdcall]<nint, nint, long*, int>)ComCalls.Slot(web, Listen))(web, handler, &registered);
         ComInterfaceMarshaller<IWebResourceRequestedHandler>.Free((void*)handler);
         if (done < 0)
         {
@@ -174,7 +174,7 @@ internal sealed unsafe partial class WebView2Pages : IWebResourceRequestedHandle
         listening = true;
         fixed (char* filter = Filter)
         {
-            return ((delegate* unmanaged[Stdcall]<nint, char*, int, int>)Slot(web, AddFilter))(web, filter, EveryResource);
+            return ((delegate* unmanaged[Stdcall]<nint, char*, int, int>)ComCalls.Slot(web, AddFilter))(web, filter, EveryResource);
         }
     }
 
@@ -192,15 +192,6 @@ internal sealed unsafe partial class WebView2Pages : IWebResourceRequestedHandle
         }
     }
 
-    private static void* Slot(nint self, int index) => (*(void***)self)[index];
-
-    private static void Release(nint reference)
-    {
-        if (reference != 0)
-        {
-            Marshal.Release(reference);
-        }
-    }
 }
 
 /// <summary>ICoreWebView2WebResourceRequestedEventHandler, its sender and arguments the web view's own pointers.</summary>

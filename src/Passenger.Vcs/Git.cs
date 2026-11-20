@@ -937,14 +937,8 @@ public sealed partial class Git
         await UnfilteredAsync([Relative(path)]) ?? await RunAsync(Root, ["add", "--", Literal(Relative(path))]);
 
     /// <summary>Abort Merge, Abort Rebase and the like: the tree back as it was before the operation began.</summary>
-    public Task<GitResult> AbortAsync(MergeOperation operation) => RunAsync(Root, [operation switch
-    {
-        MergeOperation.Merge => "merge",
-        MergeOperation.Rebase => "rebase",
-        MergeOperation.CherryPick => "cherry-pick",
-        MergeOperation.Revert => "revert",
-        _ => throw new ArgumentException("Nothing is under way to abort", nameof(operation)),
-    }, "--abort"]);
+    public Task<GitResult> AbortAsync(MergeOperation operation) =>
+        RunAsync(Root, [operation.Command() ?? throw new ArgumentException("Nothing is under way to abort", nameof(operation)), "--abort"]);
 
     /// <summary>Continue Rebase: the resolved commit made with the message it had, and the rest replayed.</summary>
     public Task<GitResult> ContinueRebaseAsync(Signer? signer = null) =>

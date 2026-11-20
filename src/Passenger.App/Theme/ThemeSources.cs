@@ -1,4 +1,3 @@
-using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
@@ -224,7 +223,7 @@ public sealed partial record ThemeSource(ThemeSourceKind Kind, string Name)
         return kept.ToString().Trim('.');
     }
 
-    private static string Hash(string text) => Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(text)))[..12];
+    private static string Hash(string text) => FileNames.Hash(text, 12);
 
     // GitHub's rules: an owner of letters, digits and single hyphens, a repository of letters, digits, '.', '-' and '_'.
     [GeneratedRegex(@"^([A-Za-z0-9](?:[A-Za-z0-9]|-(?=[A-Za-z0-9])){0,38})/([A-Za-z0-9._-]{1,100})$")]

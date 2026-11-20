@@ -24,9 +24,9 @@ public static class GodotUserFolders
             : new()
             {
                 ["HOME"] = full,
-                ["XDG_CONFIG_HOME"] = Path.Combine(full, ".config"),
-                ["XDG_DATA_HOME"] = Path.Combine(full, ".local", "share"),
-                ["XDG_CACHE_HOME"] = Path.Combine(full, ".cache"),
+                [XdgFolders.ConfigVariable] = Path.Combine(full, XdgFolders.ConfigUnderHome),
+                [XdgFolders.DataVariable] = Path.Combine(full, XdgFolders.DataUnderHome),
+                [XdgFolders.CacheVariable] = Path.Combine(full, XdgFolders.CacheUnderHome),
             };
     }
 

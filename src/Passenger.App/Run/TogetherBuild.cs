@@ -1,4 +1,3 @@
-using System.Security.Cryptography;
 using System.Text;
 using Passenger.Core;
 using Passenger.Text;
@@ -31,7 +30,7 @@ public sealed record TogetherBuild(string Project, IReadOnlyList<string> Project
             }
         }
         string text = Text(projects, properties);
-        string name = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(text)))[..12] + ".proj";
+        string name = FileNames.Hash(text, 12) + ".proj";
         string path = Path.Combine(State.ProjectState.FolderOf(stateFolder, folder), "builds", name);
         try
         {

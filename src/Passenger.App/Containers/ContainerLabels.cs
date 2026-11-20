@@ -1,7 +1,6 @@
 using System.Diagnostics;
 using System.Globalization;
 using System.Runtime.InteropServices;
-using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -339,7 +338,7 @@ public static partial class ContainerLabels
     [LibraryImport("libc", EntryPoint = "gethostuuid")]
     private static partial int HostUuid(Span<byte> uuid, ref TimeSpec wait);
 
-    private static string Hash(string text) => Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(text)))[..16];
+    private static string Hash(string text) => FileNames.Hash(text, 16);
 
     private static long StartOf(System.Diagnostics.Process process)
     {

@@ -1,4 +1,3 @@
-using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using Passenger.Core;
@@ -117,7 +116,7 @@ public sealed class GodotShaderTable
                 Discards = JsonMembers.Bool(f, "discards") == true,
             })],
             Modes(type, "modes"), Modes(type, "stencilModes")))];
-        string fingerprint = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(json)))[..12];
+        string fingerprint = FileNames.Hash(json, 12);
         return new GodotShaderTable(JsonMembers.Text(root, "source") ?? string.Empty, fingerprint, types,
             types.ToDictionary(t => t.Name, _ => hints, StringComparer.Ordinal), [.. JsonMembers.Items(root, "functions").Select(CallOf)],
             [.. JsonMembers.Items(root, "builtins").Select(BuiltinOf)]);

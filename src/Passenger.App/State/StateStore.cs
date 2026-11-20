@@ -1,5 +1,3 @@
-using System.Security.Cryptography;
-using System.Text;
 using System.Text.Json.Nodes;
 using Passenger.App.CSharp;
 using Passenger.App.Debugging;
@@ -10,6 +8,7 @@ using Passenger.App.Settings;
 using Passenger.App.Updates;
 using Passenger.App.Welcome;
 using Passenger.App.Workspace;
+using Passenger.Core;
 
 namespace Passenger.App.State;
 
@@ -245,7 +244,7 @@ public sealed class ProjectState
     /// documents, and the profiler's snapshots of its programs, which a window keeps whether or not it keeps state.</summary>
     public static string FolderOf(string root, string folder)
     {
-        string hash = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(folder)))[..12];
+        string hash = FileNames.Hash(folder, 12);
         return Path.Combine(root, "workspaces", $"{Path.GetFileName(folder)}-{hash}");
     }
 

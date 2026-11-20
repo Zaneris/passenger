@@ -118,6 +118,14 @@ public static class GodotVariant
     private const int ObjectAsId = 1 << 16;
     private const int Deepest = 512;
 
+    /// <summary>A number as read (a float read as a double, an int as a long); null for any other value.</summary>
+    public static double? Number(object? value) => value switch
+    {
+        double real => real,
+        long whole => whole,
+        _ => null,
+    };
+
     /// <summary>The value the bytes hold, all of them.</summary>
     public static object? Read(ReadOnlySpan<byte> bytes)
     {

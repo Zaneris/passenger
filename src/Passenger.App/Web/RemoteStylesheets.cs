@@ -1,5 +1,4 @@
 using System.Collections.Concurrent;
-using System.Security.Cryptography;
 using System.Text;
 using Passenger.App.Settings;
 using Passenger.Core;
@@ -123,7 +122,7 @@ public sealed class RemoteStylesheets(Func<bool> download)
     /// of the name the address ends in.</summary>
     private static string CopyOf(Uri address, string? integrity)
     {
-        string hash = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes($"{address.AbsoluteUri} {integrity}")))[..16];
+        string hash = FileNames.Hash($"{address.AbsoluteUri} {integrity}", 16);
         string name = Path.GetFileName(address.AbsolutePath);
         if (name.Length == 0 || name.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0)
         {

@@ -1338,11 +1338,10 @@ public sealed class VcsController : IDisposable
     }
 
     /// <summary>The allowed signers file Commit Signing… lists the person's key in where it sets signing up for all their
-    /// repositories: git's own folder in the person's config folder (XDG_CONFIG_HOME, else ~/.config).</summary>
-    public static string GlobalAllowedSigners => Path.Combine(
-        Environment.GetEnvironmentVariable("XDG_CONFIG_HOME") is { Length: > 0 } config && Path.IsPathRooted(config) ? config
-            : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".config"),
-        "git", "allowed_signers");
+    /// repositories: git's own folder in the person's config folder (XDG_CONFIG_HOME, else ~/.config); null where the person
+    /// has no home to find it in.</summary>
+    public static string? GlobalAllowedSigners =>
+        XdgFolders.Config(XdgFolders.Own) is { } config ? Path.Combine(config, "git", "allowed_signers") : null;
 
     /// <summary>Who answers git through <paramref name="ask"/>: this build's own executable, run by git as its helper, asking
     /// over a socket in the state's socket folder; null where that folder cannot be had, when git asks nobody.</summary>
@@ -1835,15 +1834,10 @@ public sealed class VcsController : IDisposable
     public async Task<VcsOutcome> AbortAsync()
     {
         MergeOperation operation = Merge.Operation;
-        if (operation is MergeOperation.None)
+        if (operation.Command() is not { } name)
         {
             return Report(false, "Nothing is under way to abort");
         }
-        string name = operation switch
-        {
-            MergeOperation.CherryPick => "cherry-pick",
-            _ => operation.ToString().ToLowerInvariant(),
-        };
         string id = operation switch
         {
             MergeOperation.Rebase => AppActions.AbortRebase,

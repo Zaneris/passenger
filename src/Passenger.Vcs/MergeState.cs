@@ -10,6 +10,21 @@ public enum MergeOperation
     Revert,
 }
 
+/// <summary>Git's own words for what it is in the middle of.</summary>
+public static class MergeOperations
+{
+    /// <summary>The command git runs the operation by, which its <c>--abort</c> and <c>--continue</c> take ("cherry-pick");
+    /// null with nothing under way.</summary>
+    public static string? Command(this MergeOperation operation) => operation switch
+    {
+        MergeOperation.Merge => "merge",
+        MergeOperation.Rebase => "rebase",
+        MergeOperation.CherryPick => "cherry-pick",
+        MergeOperation.Revert => "revert",
+        _ => null,
+    };
+}
+
 /// <summary>What the working tree is in the middle of and the names git's two sides go by: <see cref="Ours"/> is HEAD's
 /// side (the branch checked out; during a rebase the branch rebased onto), <see cref="Theirs"/> the side brought in
 /// (the merged branch; the rebased one), <see cref="Commit"/> the commit a rebase, a cherry-pick or a revert stopped at,

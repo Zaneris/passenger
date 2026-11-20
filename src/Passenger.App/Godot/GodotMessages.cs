@@ -367,13 +367,7 @@ public sealed record GodotMonitors(double Fps, double Process, double Physics, d
     /// the custom ones last, one a name the game last said (<see cref="Names"/>); null for data too short.</summary>
     public static GodotMonitors? Read(IReadOnlyList<object?> data, IReadOnlyList<string> custom)
     {
-        double? Number(object? value) => value switch
-        {
-            double real => real,
-            long whole => whole,
-            _ => null,
-        };
-        double At(int i) => Number(data[i]) ?? 0;
+        double At(int i) => GodotVariant.Number(data[i]) ?? 0;
         if (data.Count < 11)
         {
             return null;
@@ -381,7 +375,7 @@ public sealed record GodotMonitors(double Fps, double Process, double Physics, d
         int first = data.Count - custom.Count;
         return new GodotMonitors(At(0), At(1), At(2), At(4), At(7), At(8), At(9), At(10))
         {
-            Custom = first < 11 ? [] : [.. custom.Select((id, i) => (id, Number(data[first + i])))],
+            Custom = first < 11 ? [] : [.. custom.Select((id, i) => (id, GodotVariant.Number(data[first + i])))],
         };
     }
 
@@ -481,7 +475,7 @@ public static class GodotProfile
         List<RenderArea> areas = [];
         for (int v = 2; v + 2 < 2 + values; v += 3)
         {
-            areas.Add(new RenderArea(Text(data[v]) ?? string.Empty, Number(data[v + 1]), Number(data[v + 2])));
+            areas.Add(new RenderArea(Text(data[v]) ?? string.Empty, GodotVariant.Number(data[v + 1]) ?? 0, GodotVariant.Number(data[v + 2]) ?? 0));
         }
         return areas;
     }
@@ -496,14 +490,6 @@ public static class GodotProfile
         _ => null,
     };
 
-    private static double Number(object? value) => value switch
-    {
-        double real => real,
-        float single => single,
-        long whole => whole,
-        _ => 0,
-    };
-
     /// <summary>Seconds as Godot sends them, in milliseconds.</summary>
-    private static double Ms(object? value) => Number(value) * 1000;
+    private static double Ms(object? value) => (GodotVariant.Number(value) ?? 0) * 1000;
 }

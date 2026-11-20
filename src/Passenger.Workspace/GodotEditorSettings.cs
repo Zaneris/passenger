@@ -57,11 +57,7 @@ public static class GodotEditorSettings
         {
             return variable("HOME") is { Length: > 0 } home ? Path.Combine(home, "Library", "Application Support", "Godot") : null;
         }
-        if (variable("XDG_CONFIG_HOME") is { Length: > 0 } config && Path.IsPathRooted(config))
-        {
-            return Path.Combine(config, "godot");
-        }
-        return variable("HOME") is { Length: > 0 } user ? Path.Combine(user, ".config", "godot") : null;
+        return XdgFolders.Config(variable) is { } config ? Path.Combine(config, "godot") : null;
     }
 
     /// <summary>The folder a Godot keeps its data in (its export templates among them): its settings' folder on Windows,
@@ -73,11 +69,7 @@ public static class GodotEditorSettings
         {
             return Folder(executable, windows, macOS, variable, exists);
         }
-        if (variable("XDG_DATA_HOME") is { Length: > 0 } data && Path.IsPathRooted(data))
-        {
-            return Path.Combine(data, "godot");
-        }
-        return variable("HOME") is { Length: > 0 } user ? Path.Combine(user, ".local", "share", "godot") : null;
+        return XdgFolders.Data(variable) is { } data ? Path.Combine(data, "godot") : null;
     }
 
     /// <summary>The <c>editor_data</c> folder of a self-contained Godot (a <c>._sc_</c> or <c>_sc_</c> file beside its

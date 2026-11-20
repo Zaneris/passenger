@@ -24,10 +24,10 @@ public sealed class CommitSigningDialog : IdeWindow
     private readonly RadioButton everywhere;
     private readonly CheckBox every;
     private readonly TextBlock listed;
-    private readonly string globalSigners;
+    private readonly string? globalSigners;
     private int finding;
 
-    public CommitSigningDialog(SigningSetup setup, Git? repository, string globalSigners)
+    public CommitSigningDialog(SigningSetup setup, Git? repository, string? globalSigners)
     {
         FormRows.Scope(this);
         this.repository = repository;
@@ -41,8 +41,10 @@ public sealed class CommitSigningDialog : IdeWindow
         foundNone = MutedText.Of(string.Empty);
         foundNone.TextWrapping = TextWrapping.Wrap;
         foundNone.Margin = new Thickness(0, Gaps.Small, 0, 0);
-        here = Radio("scope", "This repository", setup.KeyScope is not "global");
-        everywhere = Radio("scope", "All your repositories (your global git config)", setup.KeyScope is "global");
+        // With no home to find git's own folder in, there is no global allowed signers file to list the key in.
+        here = Radio("scope", "This repository", setup.KeyScope is not "global" || globalSigners is null);
+        everywhere = Radio("scope", "All your repositories (your global git config)", setup.KeyScope is "global" && globalSigners is not null);
+        everywhere.IsEnabled = globalSigners is not null;
         every = new CheckBox { Content = $"Sign every commit ({GitConfigKeys.CommitGpgSign})", IsChecked = setup.Signs || !configured };
         listed = MutedText.Of(string.Empty);
         listed.TextWrapping = TextWrapping.Wrap;

@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using System.Security.Cryptography;
 using System.Text;
 using Passenger.Core;
 
@@ -190,7 +189,7 @@ public static class RoslynServerFolder
             FileInfo each = new(Path.Combine(carried, file));
             listed.Append(file).Append('\0').Append(each.Length).Append('\0').Append(each.LastWriteTimeUtc.Ticks).Append('\n');
         }
-        string hash = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(listed.ToString())))[..12];
+        string hash = FileNames.Hash(listed.ToString(), 12);
         return $"{new string([.. version.Select(c => char.IsAsciiLetterOrDigit(c) || c is '.' or '-' ? c : '-')])}-{hash}";
     }
 

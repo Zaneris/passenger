@@ -418,7 +418,7 @@ public partial class MainWindow
     /// <summary>An EF Core query's SQL the debugger read (#420) in a read-only tab, as a command's opens: one copy for each
     /// text, so the same SQL opened again shows the tab it has.</summary>
     private void OpenQuerySql(string sql) =>
-        OpenSql($"query-{Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(sql)))[..16]}", sql, "The query's SQL");
+        OpenSql($"query-{FileNames.Hash(sql, 16)}", sql, "The query's SQL");
 
     /// <summary>SQL opened whole in a read-only tab, from a copy under the state's cache (<see cref="RequestLog.IsCommandCopy"/>).</summary>
     private void OpenSql(string name, string text, string what)

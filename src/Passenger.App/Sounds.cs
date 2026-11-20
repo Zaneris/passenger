@@ -1,7 +1,5 @@
 using System.Buffers.Binary;
 using System.Diagnostics;
-using System.Security.Cryptography;
-using System.Text;
 using Passenger.Core;
 
 namespace Passenger.App;
@@ -36,7 +34,7 @@ public static class Sounds
         {
             FileInfo source = new(file);
             string key = $"{PathNames.Canonical(file)}\n{source.Length}\n{source.LastWriteTimeUtc.Ticks}";
-            string wav = Path.Combine(cache, $"{Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(key)))[..24]}.wav");
+            string wav = Path.Combine(cache, $"{FileNames.Hash(key, 24)}.wav");
             if (!File.Exists(wav))
             {
                 Directory.CreateDirectory(cache);

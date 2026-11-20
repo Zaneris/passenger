@@ -211,7 +211,7 @@ public static class GodotKeep
     private static (TextEdit Edit, string Id) External(GodotFile file, string text, string resource, GodotProperty declared, string lineEnding)
     {
         int highest = file.Externals.Select(e => int.TryParse(e.Id.Split('_')[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out int n) ? n : 0).DefaultIfEmpty(0).Max();
-        string suffix = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(resource)))[..5].ToLowerInvariant();
+        string suffix = FileNames.Hash(resource, 5);
         string id = $"{highest + 1}_{suffix}";
         string type = declared.HintString.Split(',')[0].Trim() is { Length: > 0 } hinted ? hinted : "Resource";
         GodotSection? after = file.Sections.LastOrDefault(s => s.Tag == "ext_resource") ?? file.Header;

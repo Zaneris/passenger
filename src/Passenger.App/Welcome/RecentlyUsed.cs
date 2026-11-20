@@ -111,9 +111,7 @@ public static class RecentlyUsed
 
     /// <summary>The list's file: XDG_DATA_HOME's, else ~/.local/share's; null with neither (no home).</summary>
     public static string? FileIn(Func<string, string?> variable) =>
-        variable("XDG_DATA_HOME") is { Length: > 0 } data && Path.IsPathRooted(data) ? Path.Combine(data, "recently-used.xbel")
-        : variable("HOME") is { Length: > 0 } home && Path.IsPathRooted(home) ? Path.Combine(home, ".local", "share", "recently-used.xbel")
-        : null;
+        XdgFolders.Data(variable) is { } data ? Path.Combine(data, "recently-used.xbel") : null;
 
     /// <summary>What changed between two recent lists (each path with when it was last opened): those opened since, the
     /// oldest first, and those let go of.</summary>
