@@ -494,6 +494,29 @@ public class VimTests
     public void Visual_text_objects_carry_a_stretch_as_vims_do(string before, string keys, string after) =>
         Assert.Equal(after, Run(before, keys));
 
+    /// <summary>is and as over a longer stretch go as Vim's do: back, a sentence or the white before it at a time, from
+    /// the one before where the cursor begins its own, a line break alone being no white; as takes a white with the
+    /// sentence before it, and a sentence with the white before it where the cursor stood inside that sentence. On, onto
+    /// an empty line a sentence follows, but not onto the empty lines ending the text.</summary>
+    [Theory]
+    [InlineData("x ab! Th|ree", "vh2isd", "x ab!|ee")]
+    [InlineData("  x. T|hree! ", "vh2asd", "|ree! ")]
+    [InlineData("four! x.\" two.  |four ", "vh2asd", "four! |our ")]
+    [InlineData("  one. two o|ne? one\n", "vhasd", "  one.|e? one\n")]
+    [InlineData("x? x\nx two!| four\n", "vhasd", "x?|four\n")]
+    [InlineData("Three x.  Three.| ", "v(2isd", "|")]
+    [InlineData("  one! x\ntwo\none|.) ab\n", "vb2isd", "  one!|) ab\n")]
+    [InlineData("a. bb\ncc. d|d", "vhasd", "a.| ")]
+    [InlineData("a. bb\n\ncc. d|d", "vhasasd", "a. bb\n|")]
+    [InlineData("a. bb\n\ncc. d|d", "vhasasasd", "a.| ")]
+    [InlineData("  two\n\nab. x. x.\ntw|o\n\n", "vb3asd", "  two\n\n|\n\n")]
+    [InlineData("  two? |x\n\nx.)", "vlisd", "  two? |x.)")]
+    [InlineData("four\n\nx.  Thr|ee\n\nx?", "vasisd", "four\n\nx.|x?")]
+    [InlineData("one.  x.  o|ne? x\n\none x.)", "v3isasd", "one.  x.  |one x.)")]
+    [InlineData("Thr|ee\ntwo\n\n", "visisd", "|\n\n")]
+    public void Sentences_carry_a_visual_stretch_as_vims_do(string before, string keys, string after) =>
+        Assert.Equal(after, Run(before, keys));
+
     /// <summary>A text whose file keeps no final line break: where a change leaves its last line empty, that line is a
     /// line, as Vim's buffer holds it, which the caret stands on and j, G and dd reach.</summary>
     [Theory]
