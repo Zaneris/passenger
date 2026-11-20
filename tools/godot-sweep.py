@@ -115,9 +115,12 @@ def run(command, cwd=None, env=None, limit=None, log_to=None):
     return code, out, round(time.monotonic() - began, 1)
 
 
-# The clones' git, which runs no hook of theirs: a hook a tool wrote there once (Git LFS's post-checkout) fails every
-# checkout where that tool is gone.
-GIT = ["git", "-c", "core.hooksPath=/dev/null"]
+# Whether Git LFS is here to fetch the clones' LFS files.
+LFS = subprocess.run(["git", "lfs", "version"], capture_output=True).returncode == 0
+# The clones' git, which runs no hook of theirs, nor, where Git LFS is gone, the LFS filter a configuration still names: a
+# hook a tool wrote there once (Git LFS's post-checkout) and a filter it required fail every checkout where that tool is gone.
+GIT = ["git", "-c", "core.hooksPath=/dev/null"] + ([] if LFS else
+                                                  ["-c", "filter.lfs.required=false", "-c", "filter.lfs.process=", "-c", "filter.lfs.smudge=", "-c", "filter.lfs.clean="])
 
 
 def clone(entry, clones):
@@ -136,7 +139,7 @@ def clone(entry, clones):
     lfs = "missing"
     attributes = os.path.join(folder, ".gitattributes")
     if os.path.exists(attributes) and "filter=lfs" in open(attributes, errors="replace").read():
-        if subprocess.run(["git", "lfs", "version"], capture_output=True).returncode == 0:
+        if LFS:
             subprocess.run([*GIT, "-C", folder, "lfs", "pull", "origin"], check=False, capture_output=True)
             lfs = "fetched"
     else:
@@ -469,7 +472,8 @@ def main():
         sys.exit(f"godot-sweep: no set named {', '.join(unknown)} in {SETS}")
     chosen = [s for s in sets if not given.names or s["name"] in given.names]
     godot = godot_executable(given.godot)
-    version = subprocess.run([godot, "--version"], capture_output=True, text=True).stdout.strip().splitlines()[-1]
+    version = subprocess.run([godot, "--version"], capture_output=True, text=True,
+                             env={**os.environ, **homes(os.path.join(os.path.abspath(given.folder), "version-home"))}).stdout.strip().splitlines()[-1]
     run_folder = os.path.join(os.path.abspath(given.folder), "runs", f"{time.strftime('%Y%m%d-%H%M%S')}-{re.sub(r'[^A-Za-z0-9.]', '_', version)}")
     os.makedirs(os.path.join(run_folder, "logs"), exist_ok=True)
     with open(os.path.join(run_folder, "check_res.gd"), "w") as written:
