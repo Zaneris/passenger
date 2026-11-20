@@ -112,9 +112,9 @@ public sealed class MigrationsView : DockPanel
         ReusedRows.Use(list, Row);
         ListMenus.Attach(list, () => list.SelectedItem is not MigrationRow chosen ? [] :
         [
-            ListMenus.Item($"Update Database to {chosen.Name}", null, () => ActionRequested?.Invoke(this, AppActions.UpdateDatabaseTo)),
-            ListMenus.Item("Update Database", null, () => ActionRequested?.Invoke(this, AppActions.UpdateDatabase)),
-            ListMenus.Item("Copy Id", null, () => IdeErrors.Observe(ListMenus.CopyAsync(list, chosen.Id))),
+            ListMenus.Item($"Update Database to {chosen.Name}", () => ActionRequested?.Invoke(this, AppActions.UpdateDatabaseTo)),
+            ListMenus.Item("Update Database", () => ActionRequested?.Invoke(this, AppActions.UpdateDatabase)),
+            ListMenus.Item("Copy Id", () => IdeErrors.Observe(ListMenus.CopyAsync(list, chosen.Id))),
         ]);
         placeholder = new EmptyState();
         Children.Add(leftBar);

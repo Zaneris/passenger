@@ -462,12 +462,10 @@ public sealed class DiffView : DockPanel, IOwnKeys
     /// <summary>The diff's settings: Highlighting Differences, the way in use ticked.</summary>
     private ContextMenu SettingsMenu()
     {
-        List<Control> items = [new MenuItem { Header = "Highlighting Differences", IsEnabled = false }];
+        List<Control> items = [ToolWindows.ListMenus.Heading("Highlighting Differences")];
         foreach ((DiffHighlighting way, string title) in HighlightingWays)
         {
-            MenuItem item = new() { Header = title, ToggleType = MenuItemToggleType.Radio, IsChecked = way == highlighting };
-            item.Click += (_, _) => Highlighting = way;
-            items.Add(item);
+            items.Add(MenuChoice.Of(title, way == highlighting, () => Highlighting = way));
         }
         return new ContextMenu { ItemsSource = items, Placement = PlacementMode.BottomEdgeAlignedRight };
     }

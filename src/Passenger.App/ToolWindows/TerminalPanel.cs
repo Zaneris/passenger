@@ -48,7 +48,7 @@ public sealed class TerminalTab(TerminalSession session, string name, Run.Termin
 public sealed class TerminalPanel : DockPanel
 {
     private readonly ObservableCollection<TerminalTab> tabs = [];
-    private readonly TerminalView view = new();
+    private readonly TerminalView view = new() { NothingSelected = Refusals.NothingSelected };
     private readonly Func<string> folder;
     private int opened;
     private bool firstComing;

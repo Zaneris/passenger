@@ -86,6 +86,17 @@ public sealed class DebugView : DockPanel, IOwnKeys
                 model.ChooseFrame(frame);
             }
         };
+        // F4 goes to the chosen frame's line, as its menu's Go to Source does.
+        ListKeys.Act(frames, new ListActs
+        {
+            Source = () =>
+            {
+                if (frames.SelectedItem is DapStackFrame { Source: not null } frame)
+                {
+                    model.GoToFrame(frame);
+                }
+            },
+        });
         DockPanel framesPane = new() { Children = { threads, frames } };
 
         evaluate = new TextBox
@@ -336,13 +347,13 @@ public sealed class DebugView : DockPanel, IOwnKeys
         DapStackFrame? chosen = frames.SelectedItem as DapStackFrame;
         return
         [
-            ListMenus.Item("Copy Stack", null, () => IdeErrors.Observe(ListMenus.CopyAsync(this, string.Join('\n', model.Frames.Select(f => f.Source?.Path is { } path ? $"{f.Name} in {path}:{model.LineOf(f)}" : f.Name))))),
-            ListMenus.Item("Go to Source", "F4", () => model.GoToFrame(chosen!), chosen?.Source is not null),
+            ListMenus.Item("Copy Stack", () => IdeErrors.Observe(ListMenus.CopyAsync(this, string.Join('\n', model.Frames.Select(f => f.Source?.Path is { } path ? $"{f.Name} in {path}:{model.LineOf(f)}" : f.Name))))),
+            ListMenus.Source(() => model.GoToFrame(chosen!), chosen is null ? Refusals.NoFrameChosen : chosen.Source is null ? Refusals.FrameUnplaced : null),
         ];
     }
 
     private IReadOnlyList<Control> ThreadsMenu() =>
-        threads.SelectedItem is DapThread thread ? [ListMenus.Item("Copy Name", null, () => IdeErrors.Observe(ListMenus.CopyAsync(this, ThreadLabel(thread))))] : [];
+        threads.SelectedItem is DapThread thread ? [ListMenus.Item("Copy Name", () => IdeErrors.Observe(ListMenus.CopyAsync(this, ThreadLabel(thread))))] : [];
 
     /// <summary>Apply Hot Reload Changes, a flame: shown while the session has Hot Reload.</summary>
     private Button HotReloadTool()

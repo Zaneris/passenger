@@ -92,11 +92,11 @@ public sealed class TestsView : DockPanel
         });
         ListMenus.Attach(tree, () => tree.SelectedItem is not TestNode chosen ? [] :
         [
-            ListMenus.Item("Run", Keys(AppActions.RunTests), () => RunRequested?.Invoke(this, false)),
-            ListMenus.Item("Debug", Keys(AppActions.DebugTests), () => RunRequested?.Invoke(this, true)),
-            ListMenus.Item("Run Until Failure", Keys(AppActions.RunTestsUntilFailure), () => UntilFailureRequested?.Invoke(this, EventArgs.Empty)),
+            ListMenus.Keyed("Run", AppActions.RunTests, () => RunRequested?.Invoke(this, false)),
+            ListMenus.Keyed("Debug", AppActions.DebugTests, () => RunRequested?.Invoke(this, true)),
+            ListMenus.Keyed("Run Until Failure", AppActions.RunTestsUntilFailure, () => UntilFailureRequested?.Invoke(this, EventArgs.Empty)),
             new Separator(),
-            ListMenus.Item("Go to Source", "F4", () => GoToRequested?.Invoke(this, chosen), chosen.Path is not null),
+            ListMenus.Source(() => GoToRequested?.Invoke(this, chosen), chosen.Path is null ? Refusals.TestUnplaced : null),
         ]);
         // Results come by the thousand: the details and the filters' counts are written again once they have, not once each.
         model.ResultApplied += (_, _) =>
@@ -234,9 +234,6 @@ public sealed class TestsView : DockPanel
 
     /// <summary>A test's source to show.</summary>
     public event EventHandler<TestNode>? GoToRequested;
-
-    private static string? Keys(string action) =>
-        AppActions.Keymap().ShortcutsFor(action).FirstOrDefault(s => s.Second is null) is { } shortcut ? new Avalonia.Input.KeyGesture(shortcut.First.Key, shortcut.First.Modifiers).ToString() : null;
 
     /// <summary>The rows chosen, for Run Selected and Debug Selected.</summary>
     public IReadOnlyList<TestNode> Selected => [.. tree.SelectedItems?.OfType<TestNode>() ?? []];
@@ -422,17 +419,13 @@ public sealed class TestsView : DockPanel
         List<Control> items = [];
         foreach ((string name, IReadOnlyList<TestGroupLevel> levels) in TestGroupings.Predefined)
         {
-            MenuItem item = new() { Header = name, ToggleType = MenuItemToggleType.Radio, IsChecked = levels.SequenceEqual(Model.Grouping) };
-            item.Click += (_, _) => Model.Group(levels);
-            items.Add(item);
+            items.Add(MenuChoice.Of(name, levels.SequenceEqual(Model.Grouping), () => Model.Group(levels)));
         }
         items.Add(new Separator());
         foreach (TestGroupLevel level in Enum.GetValues<TestGroupLevel>())
         {
             bool on = Model.Grouping.Contains(level);
-            MenuItem item = new() { Header = TestGroupings.Title(level), ToggleType = MenuItemToggleType.CheckBox, IsChecked = on };
-            item.Click += (_, _) => Model.Group(on ? Model.Grouping.Where(l => l != level) : [.. Model.Grouping, level]);
-            items.Add(item);
+            items.Add(ListMenus.Toggle(TestGroupings.Title(level), on, _ => Model.Group(on ? Model.Grouping.Where(l => l != level) : [.. Model.Grouping, level])));
         }
         ContextMenu menu = new() { ItemsSource = items, Placement = PlacementMode.BottomEdgeAlignedLeft };
         OpenMenu?.Close();

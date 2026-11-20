@@ -232,16 +232,10 @@ public partial class MainWindow
     private async Task ShowBranchesAsync(Button widget)
     {
         ContextMenu menu = new();
-        MenuItem Item(string header, Action run)
-        {
-            MenuItem item = new() { Header = header };
-            item.Click += (_, _) => run();
-            return item;
-        }
         ActionContext context = actions!.Context();
         MenuItem Action(string id)
         {
-            MenuItem item = Item(actions[id]!.Title, () => Request(id, context));
+            MenuItem item = ToolWindows.ListMenus.Item(actions[id]!.Title, () => Request(id, context));
             // In the menu's column of keys, as every menu's are, not run on after the title.
             actions.ShowKeys(item, id);
             return item;
@@ -252,7 +246,7 @@ public partial class MainWindow
             {
                 // Git's reason names what lets it in, or installs it; a new repository in the folder would not.
                 status.Text = refused;
-                menu.Items.Add(new MenuItem { Header = session.Vcs.GitMissing ? "Git is not installed" : "Git refuses this folder's repository", IsEnabled = false });
+                menu.Items.Add(ToolWindows.ListMenus.Notice(session.Vcs.GitMissing ? "Git is not installed" : "Git refuses this folder's repository"));
             }
             else if (Folder is not null)
             {
@@ -260,20 +254,20 @@ public partial class MainWindow
             }
             else
             {
-                menu.Items.Add(new MenuItem { Header = Refusals.NoFolder, IsEnabled = false });
+                menu.Items.Add(ToolWindows.ListMenus.Notice(Refusals.NoFolder));
             }
             Open(menu, widget);
             return;
         }
         menu.Items.Add(Action(AppActions.UpdateProject));
         menu.Items.Add(Action(AppActions.Fetch));
-        menu.Items.Add(Item("New Branch…", ShowNewBranch));
+        menu.Items.Add(ToolWindows.ListMenus.Item("New Branch…", ShowNewBranch));
         menu.Items.Add(Action(AppActions.Commit));
         menu.Items.Add(Action(AppActions.Push));
         menu.Items.Add(Action(AppActions.Stash));
         menu.Items.Add(Action(AppActions.Unstash));
         menu.Items.Add(new Separator());
-        menu.Items.Add(new MenuItem { Header = "Local", IsEnabled = false });
+        menu.Items.Add(ToolWindows.ListMenus.Heading("Local"));
         IReadOnlyList<BranchInfo> local = await session.Vcs.LocalBranchesAsync();
         // Each branch opens its own menu (Checkout, Merge into Current and the rest), so only Checkout checks one out.
         foreach (BranchInfo branch in Listed(local, gitView?.Log.Branches?.Favorites ?? branchFavorites))
@@ -282,7 +276,7 @@ public partial class MainWindow
         }
         if (local.Count > BranchesListed)
         {
-            menu.Items.Add(Item("More Branches…", ShowAllBranches));
+            menu.Items.Add(ToolWindows.ListMenus.Item("More Branches…", ShowAllBranches));
         }
         Open(menu, widget);
     }
@@ -775,9 +769,8 @@ public partial class MainWindow
         {
             menu.Items.Add(new Separator());
         }
-        MenuItem annotate = new() { Header = session.Vcs.IsAnnotated(document) ? "Close Annotations" : "Annotate with Git Blame", IsEnabled = session.Vcs.Repository is not null };
-        annotate.Click += (_, _) => IdeErrors.Observe(ToggleAnnotationsAsync(document));
-        menu.Items.Add(annotate);
+        menu.Items.Add(ToolWindows.ListMenus.Item(session.Vcs.IsAnnotated(document) ? "Close Annotations" : "Annotate with Git Blame",
+            () => IdeErrors.Observe(ToggleAnnotationsAsync(document)), session.Vcs.Repository is null ? Refusals.NoRepository : null));
         Open(menu, editor);
     }
 

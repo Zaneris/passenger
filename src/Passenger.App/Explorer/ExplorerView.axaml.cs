@@ -408,9 +408,7 @@ public partial class ExplorerView : UserControl
         {
             return [];
         }
-        MenuItem nesting = new() { Header = "File Nesting…" };
-        nesting.Click += (_, _) => NestingAsked?.Invoke(this, EventArgs.Empty);
-        return [new MenuItem { Header = "Appearance", Items = { nesting } }];
+        return [ToolWindows.ListMenus.Sub("Appearance", ToolWindows.ListMenus.Item("File Nesting…", () => NestingAsked?.Invoke(this, EventArgs.Empty)))];
     }
 
     /// <summary>Gives the tree the keys on its chosen row (the first when none is): the view itself cannot take the

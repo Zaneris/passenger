@@ -385,9 +385,7 @@ public sealed class AspireView : DockPanel, IDisposable
         ContextMenu menu = new();
         foreach (Uri target in AspireModel.Links(resource))
         {
-            MenuItem item = new() { Header = target.AbsoluteUri };
-            item.Click += (_, _) => model.AskLink(target, () => requestAction?.Invoke(AppActions.AspireOpenLink));
-            menu.Items.Add(item);
+            menu.Items.Add(ListMenus.Item(target.AbsoluteUri, () => model.AskLink(target, () => requestAction?.Invoke(AppActions.AspireOpenLink))));
         }
         menu.Open(tools.Single(t => t.Action == AppActions.AspireOpenLink).Button);
     }
@@ -416,11 +414,15 @@ public sealed class AspireView : DockPanel, IDisposable
     [
         .. selected.Resource.Commands.Where(command => !command.Hidden).OrderBy(Order).Select(command =>
         {
-            MenuItem item = ListMenus.Item(command.DisplayName, null, () => model.AskCommand(selected, command.Name, () => requestAction?.Invoke(AppActions.AspireCommand)),
-                enabled: !model.Executing && command.Enabled && (!command.HasArguments || model.ArgumentCommand is not null));
-            ToolTip.SetTip(item, command.HasArguments && model.ArgumentCommand is null
-                ? "This command needs an argument form. Use the Aspire CLI; Passenger will not send incomplete arguments."
-                : command.Description ?? command.Name);
+            string? whyNot = model.Executing ? Refusals.CommandRunning
+                : !command.Enabled ? Refusals.CommandDisabled
+                : command.HasArguments && model.ArgumentCommand is null ? "This command needs an argument form. Use the Aspire CLI; Passenger will not send incomplete arguments."
+                : null;
+            MenuItem item = ListMenus.Item(command.DisplayName, () => model.AskCommand(selected, command.Name, () => requestAction?.Invoke(AppActions.AspireCommand)), whyNot);
+            if (whyNot is null)
+            {
+                ToolTip.SetTip(item, command.Description ?? command.Name);
+            }
             return (Control)item;
         }),
     ];

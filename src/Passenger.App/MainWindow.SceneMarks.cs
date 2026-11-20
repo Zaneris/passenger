@@ -24,9 +24,7 @@ public partial class MainWindow
         MenuFlyout menu = new();
         foreach (SceneLead lead in mark.Leads)
         {
-            MenuItem item = new() { Header = lead.Words };
-            item.Click += (_, _) => NavigateTo(lead.File, new TextPosition(lead.Line, 0));
-            menu.Items.Add(item);
+            menu.Items.Add(ToolWindows.ListMenus.Item(lead.Words, () => NavigateTo(lead.File, new TextPosition(lead.Line, 0))));
         }
         SceneMarkMenu = menu;
         menu.Placement = Avalonia.Controls.PlacementMode.Pointer;

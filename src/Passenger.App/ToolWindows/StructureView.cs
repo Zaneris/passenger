@@ -60,9 +60,9 @@ public sealed class StructureView : DockPanel
         settle = new Debounce(Pause, Refresh);
         ListMenus.Attach(list, () => list.SelectedItem is not SymbolRow chosen ? [] :
         [
-            ListMenus.Item("Go to", "F4", () => GoToRequested?.Invoke(this, chosen)),
-            ListMenus.Item("Find Usages", null, () => UsagesRequested?.Invoke(this, chosen)),
-            ListMenus.Item("Copy Name", null, () => IdeErrors.Observe(ListMenus.CopyAsync(this, chosen.Name))),
+            ListMenus.Source(() => GoToRequested?.Invoke(this, chosen)),
+            ListMenus.Item("Find Usages", () => UsagesRequested?.Invoke(this, chosen)),
+            ListMenus.Item("Copy Name", () => IdeErrors.Observe(ListMenus.CopyAsync(this, chosen.Name))),
         ]);
         HairlineDivider split = new(GridResizeDirection.Rows) { [Grid.RowProperty] = 1, IsVisible = false };
         details = new ContentControl { IsVisible = false, [Grid.RowProperty] = 2 };

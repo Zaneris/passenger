@@ -198,6 +198,13 @@ public sealed class LiveTreeView : DockPanel
                     EditChosen();
                 }
             },
+            Source = () =>
+            {
+                if (properties.SelectedItem is PropertyValue { Place: { } place })
+                {
+                    GoToRequested?.Invoke(this, place);
+                }
+            },
             Edit = EditChosen,
         });
         ToolWindows.ListMenus.Attach(properties, PropertyMenu);
@@ -474,14 +481,16 @@ public sealed class LiveTreeView : DockPanel
         {
             return [];
         }
-        MenuItem watch = ToolWindows.ListMenus.Item(BreakWhenValueChanges, null, () => BreakRequested?.Invoke(this, value), enabled: WhyNotBreak?.Invoke() is null);
-        watch.ToggleType = MenuItemToggleType.CheckBox;
-        watch.IsChecked = Watched?.Invoke(value) == true;
-        ToolTip.SetTip(watch, WhyNotBreak?.Invoke() ?? "Stop the app wherever this property of this control is changed: a style, a binding, code or an animation");
+        string? whyNot = WhyNotBreak?.Invoke();
+        MenuItem watch = ToolWindows.ListMenus.Toggle(BreakWhenValueChanges, Watched?.Invoke(value) == true, _ => BreakRequested?.Invoke(this, value), whyNot);
+        if (whyNot is null)
+        {
+            ToolTip.SetTip(watch, "Stop the app wherever this property of this control is changed: a style, a binding, code or an animation");
+        }
         List<Control> items = [watch];
         if (value.Place is { } place)
         {
-            items.Add(ToolWindows.ListMenus.Item("Go to Source", null, () => GoToRequested?.Invoke(this, place)));
+            items.Add(ToolWindows.ListMenus.Source(() => GoToRequested?.Invoke(this, place)));
         }
         return items;
     }

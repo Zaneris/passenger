@@ -75,17 +75,17 @@ public sealed class EndpointsView : DockPanel
         ListKeys.Act(list, new ListActs { Open = GoToChosen, Source = GoToChosen, Enter = SendChosen });
         ListMenus.Attach(list, () => list.SelectedItem is WebRoute route ?
         [
-            .. RouteRequests.Sendable(route) ? (IEnumerable<MenuItem>)[ListMenus.Item("Send Request", "Enter", () => RouteSendRequested?.Invoke(this, route))] : [],
-            ListMenus.Item("Go to Route", "F4", () => RouteGoToRequested?.Invoke(this, route)),
+            .. RouteRequests.Sendable(route) ? (IEnumerable<MenuItem>)[ListMenus.Open("Send Request", () => RouteSendRequested?.Invoke(this, route))] : [],
+            ListMenus.Source(() => RouteGoToRequested?.Invoke(this, route)),
             new Separator(),
             parts.Item(AppActions.GenerateOpenApiRequests),
             parts.Item(AppActions.NameOpenApiDocument),
         ] : list.SelectedItem is ProjectRow ? [parts.Item(AppActions.GenerateOpenApiRequests), parts.Item(AppActions.NameOpenApiDocument)]
         : list.SelectedItem is not EndpointRequest chosen ? [] :
         [
-            ListMenus.Item("Test", "Enter", () => IdeErrors.Observe(TestAsync(chosen))),
-            ListMenus.Item("Interactive Test…", null, () => InteractiveRequested?.Invoke(this, chosen)),
-            ListMenus.Item("Go to Request", "F4", GoToChosen),
+            ListMenus.Open("Test", () => IdeErrors.Observe(TestAsync(chosen))),
+            ListMenus.Item("Interactive Test…", () => InteractiveRequested?.Invoke(this, chosen)),
+            ListMenus.Source(GoToChosen),
         ]);
         placeholder = new EmptyState { Text = "No requests: add an .http file (GET https://…)" };
 

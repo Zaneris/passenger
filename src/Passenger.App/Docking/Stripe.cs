@@ -276,7 +276,7 @@ internal sealed class Stripe : Border
         List<ToolAnchor> emptied = [.. groups.Keys.Where(a => a != anchor && host.Served.Any(w => w.Anchor == a) && host.Served.Where(w => w.Anchor == a).All(w => w.IsClosed))];
         if (emptied.Count > 0)
         {
-            menu.ItemsSource = (Control[])[.. Checklist(anchor), new Separator(), .. emptied.Select(a => new MenuItem { Header = ToolWindow.Name(a), ItemsSource = Checklist(a) })];
+            menu.ItemsSource = (Control[])[.. Checklist(anchor), new Separator(), .. emptied.Select(a => ToolWindows.ListMenus.Sub(ToolWindow.Name(a), Checklist(a)))];
         }
         if (!atPointer)
         {
@@ -292,13 +292,8 @@ internal sealed class Stripe : Border
     private List<Control> Checklist(ToolAnchor anchor) =>
         [.. host.Served.Where(w => w.Anchor == anchor).OrderBy(w => w.Order).Select(window =>
         {
-            PathIcon glyph = new();
-            glyph.Bind(PathIcon.DataProperty, glyph.GetResourceObservable(window.Icon));
-            bool on = !window.IsClosed;
-            MenuItem item = new() { Header = window.Title, Icon = glyph, ToggleType = MenuItemToggleType.CheckBox, IsChecked = on };
             string id = window.Id;
-            item.Click += (_, _) => host.SetOnStripe(id, !on);
-            return item;
+            return (Control)ToolWindows.ListMenus.Toggle(window.Title, !window.IsClosed, on => host.SetOnStripe(id, on), icon: window.Icon);
         })];
 
     /// <summary>More's menu: the windows the stripe has no room for, each shown or hidden by a click as its button would.</summary>
@@ -315,12 +310,8 @@ internal sealed class Stripe : Border
         };
         foreach (ToolWindow window in Overflowing)
         {
-            PathIcon glyph = new();
-            glyph.Bind(PathIcon.DataProperty, glyph.GetResourceObservable(window.Icon));
-            MenuItem item = new() { Header = window.Title, Icon = glyph, ToggleType = MenuItemToggleType.CheckBox, IsChecked = window.IsShown };
             string id = window.Id;
-            item.Click += (_, _) => host.Toggle(id);
-            menu.Items.Add(item);
+            menu.Items.Add(ToolWindows.ListMenus.Toggle(window.Title, window.IsShown, _ => host.Toggle(id), icon: window.Icon));
         }
         menu.Open(more);
     }

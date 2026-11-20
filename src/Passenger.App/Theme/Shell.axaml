@@ -152,6 +152,18 @@
     <Style Selector="MenuItem Separator">
         <Setter Property="Background" Value="{DynamicResource Passenger.PopupBorder}" />
     </Style>
+    <!-- A menu's words that are no command (ListMenus.Heading over a group of items, ListMenus.Notice in place of items):
+         muted as words beside what a row says, never greyed as an item that cannot run now. Each names :disabled, the
+         state the keys and the pointer pass them over in, under which Fluent greys an item's words, or Fluent's would
+         rank above it. A notice wraps in the menu's width. -->
+    <Style Selector="MenuItem.menuHeading:disabled /template/ ContentPresenter#PART_HeaderPresenter">
+        <Setter Property="Foreground" Value="{DynamicResource Passenger.TextMuted}" />
+    </Style>
+    <Style Selector="MenuItem.menuNotice:disabled /template/ ContentPresenter#PART_HeaderPresenter">
+        <Setter Property="Foreground" Value="{DynamicResource Passenger.TextMuted}" />
+        <Setter Property="TextWrapping" Value="Wrap" />
+        <Setter Property="TextTrimming" Value="None" />
+    </Style>
     <!-- A drop-down's list as a menu's: each choice on a rounded band inset from the list's rounded frame, as tall as
          every other row. Its colours are Fluent's drop-down keys, which FluentKeys.axaml gives as tokens: the popup's
          ground, the chosen one a list's chosen row. -->

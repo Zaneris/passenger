@@ -319,14 +319,13 @@ public sealed class ProblemsModel
         _ => true,
     };
 
-    /// <summary>Whether a problem of the tab shown has fixes to offer: none in Toolset, and a failed binding's are the nearest
-    /// members of its source's type, when it has any.</summary>
-    internal bool HasFixes(Problem problem) => problem.Path is not null && Shown switch
-    {
-        ProblemsTab.Toolset => false,
-        ProblemsTab.Bindings => bindings.Any(b => b.Problem == problem && b.Failure.Nearest.Count > 0),
-        _ => true,
-    };
+    /// <summary>Why a problem of the tab shown has no fixes to offer, null where it has: none in Toolset, and a failed
+    /// binding's are the nearest members of its source's type, when it has any.</summary>
+    internal string? WhyNotFix(Problem problem) =>
+        problem.Path is null ? Refusals.ProblemNamesNoFile
+        : Shown == ProblemsTab.Toolset ? Refusals.ToolsetUnfixed
+        : Shown == ProblemsTab.Bindings && !bindings.Any(b => b.Problem == problem && b.Failure.Nearest.Count > 0) ? Refusals.BindingUnfixed
+        : null;
 
     /// <summary>A problem gone to, as a double-click, Enter or Go to does.</summary>
     internal void GoTo(Problem problem) => Chosen?.Invoke(this, problem);

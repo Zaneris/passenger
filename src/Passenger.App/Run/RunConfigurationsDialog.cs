@@ -1028,20 +1028,12 @@ public sealed class RunConfigurationsDialog : IdeWindow
         foreach ((RunKind kind, string title) in (ReadOnlySpan<(RunKind, string)>)[(RunKind.Project, ".NET Project"), (RunKind.Projects, MultipleProjects),
             (RunKind.Compose, "Docker Compose"), (RunKind.Dockerfile, "Dockerfile"), (RunKind.SdkContainer, "SDK Container")])
         {
-            MenuItem item = new() { Header = title };
-            if (kind == RunKind.Projects && solution is null)
-            {
-                // Its projects' launch profile is kept beside a solution, where Visual Studio reads it too.
-                item.IsEnabled = false;
-                ToolTip.SetTip(item, Refusals.NoSolutionForProfiles);
-                ToolTip.SetShowOnDisabled(item, true);
-            }
-            item.Click += (_, _) =>
+            // A projects' launch profile is kept beside a solution, where Visual Studio reads it too.
+            menu.Items.Add(ToolWindows.ListMenus.Item(title, () =>
             {
                 menu.Close();
                 Add(kind);
-            };
-            menu.Items.Add(item);
+            }, kind == RunKind.Projects && solution is null ? Refusals.NoSolutionForProfiles : null));
         }
         menu.Closed += (_, _) =>
         {

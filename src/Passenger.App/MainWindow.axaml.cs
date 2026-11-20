@@ -1183,18 +1183,11 @@ public partial class MainWindow : IdeWindow
         }
         foreach ((string name, Debugging.LineBreakpoint breakpoint) in set)
         {
-            MenuItem edit = new() { Header = set.Count == 1 ? "Edit Breakpoint…" : $"Edit {name}…" };
-            edit.Click += (_, _) => ShowBreakpointPopup(breakpoint);
-            items.Add(edit);
+            items.Add(ToolWindows.ListMenus.Item(set.Count == 1 ? "Edit Breakpoint…" : $"Edit {name}…", () => ShowBreakpointPopup(breakpoint)));
         }
         return items;
 
-        static MenuItem Choice(string name, bool on, Action toggle)
-        {
-            MenuItem item = new() { Header = name, ToggleType = MenuItemToggleType.CheckBox, IsChecked = on };
-            item.Click += (_, _) => toggle();
-            return item;
-        }
+        static MenuItem Choice(string name, bool on, Action toggle) => ToolWindows.ListMenus.Toggle(name, on, _ => toggle());
     }
 
     /// <summary>A press on an icon of the gutter's marks: a test's menu, a route's or an .http request's, a run

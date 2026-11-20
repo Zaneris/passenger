@@ -186,29 +186,30 @@ public sealed class VariablesList : TreeList
         {
             return [];
         }
-        List<Control> items = node.IsQueryText ? [ListMenus.Item(OpenInEditor, "Enter", () => TextOpened?.Invoke(this, node)), new Separator()] : [];
+        List<Control> items = node.IsQueryText ? [ListMenus.Open(OpenInEditor, () => TextOpened?.Invoke(this, node)), new Separator()] : [];
         items.AddRange(
         [
-            Saying(ListMenus.Item("Set Value…", "F2", () => EditSelectedValue(), node.Settable is not null), node.NoSetting),
-            ListMenus.Item("Copy Value", null, () => IdeErrors.Observe(ListMenus.CopyAsync(this, node.Value))),
-            ListMenus.Item("Copy Name", null, () => IdeErrors.Observe(ListMenus.CopyAsync(this, node.Name))),
+            ListMenus.Edit("Set Value…", () => EditSelectedValue(), node.NoSetting),
+            ListMenus.Item("Copy Value", () => IdeErrors.Observe(ListMenus.CopyAsync(this, node.Value))),
+            ListMenus.Item("Copy Name", () => IdeErrors.Observe(ListMenus.CopyAsync(this, node.Name))),
             new Separator(),
-            Saying(ListMenus.Item("Add to Watches", null, () => EvaluateRequested?.Invoke(this, (node.Expression!, true)), node.Expression is not null && node.Role != VariableRole.Watch), node.NoExpression),
-            Saying(ListMenus.Item("Inspect", null, () => EvaluateRequested?.Invoke(this, (node.Expression!, false)), node.Expression is not null), node.NoExpression),
+            ListMenus.Item("Add to Watches", () => EvaluateRequested?.Invoke(this, (node.Expression!, true)), node.Role == VariableRole.Watch ? Refusals.WatchedAlready : node.NoExpression),
+            ListMenus.Item("Inspect", () => EvaluateRequested?.Invoke(this, (node.Expression!, false)), node.NoExpression),
         ]);
         if (node.NeedsThreads)
         {
             items.Add(new Separator());
-            items.Add(Saying(ListMenus.Item(RunWithThreadsItem, null, () => RunWithThreadsRequested?.Invoke(this, node), node.Expression is not null), node.NoExpression));
+            items.Add(ListMenus.Item(RunWithThreadsItem, () => RunWithThreadsRequested?.Invoke(this, node), node.NoExpression));
         }
         if (node.Role == VariableRole.Watch)
         {
             items.Add(new Separator());
-            items.Add(ListMenus.Item("Remove Watch", "Delete", () => WatchRemoved?.Invoke(this, node.Name)));
+            items.Add(ListMenus.Remove("Remove Watch", () => WatchRemoved?.Invoke(this, node.Name)));
         }
         if (DataWatch is { } offer)
         {
-            MenuItem watch = ListMenus.Item(DataWatchOffer.Set, null, () => DataBreakpointRequested?.Invoke(this, node), enabled: false);
+            // Greyed until the debugger answers what can be done with the row.
+            MenuItem watch = ListMenus.Item(DataWatchOffer.Set, () => DataBreakpointRequested?.Invoke(this, node), Refusals.AskingDebugger);
             items.Add(new Separator());
             items.Add(watch);
             IdeErrors.Observe(Offer(watch, offer(node)));
@@ -221,16 +222,6 @@ public sealed class VariablesList : TreeList
     /// <summary>The menu's item for <see cref="RunWithThreads"/>.</summary>
     public const string RunWithThreadsItem = "Run Again with Every Thread";
 
-    /// <summary>An item greyed where the row's value cannot take it, saying why (<paramref name="why"/>).</summary>
-    private static MenuItem Saying(MenuItem item, string? why)
-    {
-        if (why is not null)
-        {
-            ToolTip.SetTip(item, why);
-        }
-        return item;
-    }
-
     /// <summary>Shows on the menu's item what the debugger said can be done with the row: held until then, so a picture
     /// taken as the menu opens shows its answer.</summary>
     private static async Task Offer(MenuItem item, Task<DataWatchOffer> asked)
@@ -238,8 +229,7 @@ public sealed class VariablesList : TreeList
         using IDisposable held = BackgroundWork.Scope();
         DataWatchOffer offered = await asked;
         item.Header = offered.Title;
-        item.IsEnabled = offered.WhyNot is null;
-        ToolTip.SetTip(item, offered.WhyNot);
+        ListMenus.Grey(item, offered.WhyNot);
     }
 
     /// <summary>A row for whichever value the list hands its container: its chevron, its mark, name, type and value, and the

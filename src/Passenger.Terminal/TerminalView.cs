@@ -130,9 +130,16 @@ public sealed partial class TerminalView : Control
         MenuItem clear = new() { Header = "Clear Buffer", InputGesture = mac ? new KeyGesture(Key.K, KeyModifiers.Meta) : null };
         clear.Click += (_, _) => ClearBuffer();
         ContextMenu menu = new() { Items = { copy, paste, new Separator(), clear } };
-        menu.Opening += (_, _) => copy.IsEnabled = SelectedText.Length > 0;
+        menu.Opening += (_, _) =>
+        {
+            copy.IsEnabled = SelectedText.Length > 0;
+            ToolTip.SetTip(copy, copy.IsEnabled ? null : NothingSelected);
+        };
         return menu;
     }
+
+    /// <summary>Why Copy in the terminal's menu is greyed while nothing is selected, in the host's words, which its tip says.</summary>
+    public string? NothingSelected { get; set; }
 
     /// <summary>Finds the links in a line's text (the rows a wrapped line takes, joined): where each starts in it, how
     /// long it is, what it opens (which only the host reads), and whether it is hidden until Cmd or Ctrl is held. Null for

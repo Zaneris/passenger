@@ -2083,6 +2083,7 @@ public static class Ui
         string where = "The menu";
         for (int i = 0; i < path.Length; i++)
         {
+            GreyedSayWhy(items, where);
             string step = path[i];
             MenuItem item = items.FirstOrDefault(m => m.Header as string == step)
                 ?? throw new InvalidOperationException($"{where} has no {step}: [{string.Join(", ", items.Select(m => $"{m.Header}{(m.IsEnabled ? "" : " (disabled)")}"))}]");
@@ -2103,6 +2104,16 @@ public static class Ui
             items = item.Items.OfType<MenuItem>();
             where = step;
         }
+    }
+
+    /// <summary>Holds a menu's items to its one rule (ListMenus): each greyed says why in its tip, but a heading over a
+    /// group of items or a notice in place of them, which are words, never a command.</summary>
+    public static void GreyedSayWhy(IEnumerable<MenuItem> items, string where)
+    {
+        string[] unsaid = [.. items.Where(m => !m.IsEnabled && ToolTip.GetTip(m) is null
+            && !m.Classes.Contains(Passenger.StyleClasses.MenuHeading) && !m.Classes.Contains(Passenger.StyleClasses.MenuNotice)).Select(m => $"{m.Header}")];
+        Assert.True(unsaid.Length == 0, $"{where} greys [{string.Join(", ", unsaid)}] saying nothing of why, so a person reads a command that cannot run "
+            + "with no way to learn what it waits for: grey each through ListMenus (its whyNot, or ListMenus.Grey), or make words that are no command a Heading or Notice");
     }
 
     /// <summary>The words a text block draws, as it laid them out (an access key's mark taken out, where it took one).</summary>

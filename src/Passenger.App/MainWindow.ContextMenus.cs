@@ -66,9 +66,9 @@ public partial class MainWindow
         {
             string name = test.Method ?? TypeNames.Short(test.Type);
             items.Add(new Separator());
-            items.Add(Command($"Run '{name}'", () => RunTestsAt(test, active.Path, debug: false)));
-            items.Add(Command($"Debug '{name}'", () => RunTestsAt(test, active.Path, debug: true)));
-            items.Add(Command($"Run '{name}' Until Failure", () => RunTestsAt(test, active.Path, debug: false, untilFailure: true)));
+            items.Add(ToolWindows.ListMenus.Item($"Run '{name}'", () => RunTestsAt(test, active.Path, debug: false)));
+            items.Add(ToolWindows.ListMenus.Item($"Debug '{name}'", () => RunTestsAt(test, active.Path, debug: true)));
+            items.Add(ToolWindows.ListMenus.Item($"Run '{name}' Until Failure", () => RunTestsAt(test, active.Path, debug: false, untilFailure: true)));
         }
         Add(separator);
         if (session.Debug.Session is { State: DebugState.Paused })
@@ -170,11 +170,4 @@ public partial class MainWindow
         return () => window.Activated -= Back;
     }
 
-    /// <summary>A menu item that runs something other than one of the window's actions (a test by name).</summary>
-    private static MenuItem Command(string header, Action run)
-    {
-        MenuItem item = new() { Header = header };
-        item.Click += (_, _) => run();
-        return item;
-    }
 }

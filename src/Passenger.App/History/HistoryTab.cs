@@ -65,7 +65,7 @@ public sealed class HistoryTab : DockPanel
         list.SelectionChanged += (_, _) => IdeErrors.Observe(ShowAsync());
         ListMenus.Attach(list, () => Selected is null ? [] :
         [
-            ListMenus.Item("Revert Selected and Later Changes", null, () => IdeErrors.Observe(RevertAsync())),
+            ListMenus.Item("Revert Selected and Later Changes", () => IdeErrors.Observe(RevertAsync())),
         ]);
         placeholder = new EmptyState();
         diffPlaceholder = new EmptyState("Select activity to view changes");
@@ -86,7 +86,7 @@ public sealed class HistoryTab : DockPanel
             };
             ReusedRows.Use(fileList, FileRow);
             fileList.SelectionChanged += (_, _) => IdeErrors.Observe(ShowFileAsync());
-            ListMenus.Attach(fileList, () => fileList.SelectedItems?.Count > 0 ? [ListMenus.Item("Revert Selection", null, () => IdeErrors.Observe(RevertSelectionAsync()))] : []);
+            ListMenus.Attach(fileList, () => fileList.SelectedItems?.Count > 0 ? [ListMenus.Item("Revert Selection", () => IdeErrors.Observe(RevertSelectionAsync()))] : []);
             Border fileBar = ToolBars.Top(new StackPanel
             {
                 Orientation = Orientation.Horizontal,

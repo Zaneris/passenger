@@ -929,4 +929,81 @@ public static class Refusals
     /// <summary>A NuGet package's Install, Update or Downgrade while the audit's feeds are still asked which versions have
     /// known vulnerabilities, so the version put in might be one they name.</summary>
     public const string VulnerabilitiesUnread = "The feeds have not yet said which versions have known vulnerabilities";
+
+    /// <summary>A changed file's Go to Source or Delete where the change deleted it.</summary>
+    public const string FileDeleted = "The file is deleted";
+
+    /// <summary>Add to .gitignore on a file Git tracks, where only an unversioned one is ignored.</summary>
+    public const string Tracked = "Git tracks this file: only an unversioned file is added to .gitignore";
+
+    /// <summary>Compare with Local on a file the commit deleted.</summary>
+    public const string DeletedByCommit = "The commit deleted this file, so it holds none to compare";
+
+    /// <summary>A problem's Go to Source or Show Context Actions where it is said of no file (a build's, the toolset's).</summary>
+    public const string ProblemNamesNoFile = "The problem names no file";
+
+    /// <summary>A problem's Open Link where it gives none.</summary>
+    public const string ProblemHasNoLink = "The problem gives no link";
+
+    /// <summary>Show Context Actions on a problem of the toolset or the environment, which no code action fixes.</summary>
+    public const string ToolsetUnfixed = "No context action fixes a problem of the toolset or the environment";
+
+    /// <summary>Show Context Actions on a failed binding whose source's type has no member near its path.</summary>
+    public const string BindingUnfixed = "No member of the binding's source is near enough its path to offer";
+
+    /// <summary>A test's Go to Source where its runner gave no file for it.</summary>
+    public const string TestUnplaced = "The test's runner gives no file for it";
+
+    /// <summary>A stack frame's Go to Source where its code has no source the debugger knows (no symbols, or code the
+    /// runtime made).</summary>
+    public const string FrameUnplaced = "The frame has no source file the debugger knows";
+
+    /// <summary>A stack frame's Go to Source with no frame chosen.</summary>
+    public const string NoFrameChosen = "No frame is chosen";
+
+    /// <summary>A menu's list (the recent solutions) while it lists nothing.</summary>
+    public const string NothingListed = "Nothing is listed here yet";
+
+    /// <summary>Copy where no text is selected.</summary>
+    public const string NothingSelected = "No text is selected";
+
+    /// <summary>Copy or Select All in a table with no cells.</summary>
+    public const string NoCells = "The table has no cells";
+
+    /// <summary>Add to Watches on a row that is a watch.</summary>
+    public const string WatchedAlready = "It is a watch already";
+
+    /// <summary>A data breakpoint's item while the debugger has not yet said whether one can be set on the row.</summary>
+    public const string AskingDebugger = "The debugger has not yet said whether one can be set here";
+
+    /// <summary>Go to Source on a breakpoint that stands on no line (an exception's, a binding error's, a script error's).</summary>
+    public const string BreakpointOnNoLine = "The breakpoint stands on no line";
+
+    /// <summary>Remove on a breakpoint the debugger always keeps (every exception, binding errors, script errors), which
+    /// is turned off rather than removed.</summary>
+    public const string BreakpointKept = "The debugger always keeps this breakpoint: turn it off instead";
+
+    /// <summary>Show in the file manager of a recent solution gone from disk.</summary>
+    public const string RecentGone = "It is gone from disk";
+
+    /// <summary>Go to Source on a step definition or hook whose method is not found where its project was read.</summary>
+    public const string MethodUnplaced = "Its method is not found in the project's source";
+
+    /// <summary>Find Usages of a step definition no feature step binds, or whose steps are not counted yet.</summary>
+    public static string StepUses(int? uses) => uses is null ? "Its feature steps are not counted yet" : "No feature step binds it";
+
+    /// <summary>A rebase on a branch while HEAD is detached, with no branch of its own.</summary>
+    public const string Detached = "HEAD is detached: no branch is checked out";
+
+    /// <summary>Clear Filters while the list is shown whole as at first.</summary>
+    public const string NotNarrowed = "The list is neither narrowed nor ordered otherwise";
+
+    /// <summary>Maximize of a tool window that floats or is shown over the editors for a moment.</summary>
+    public const string Unmaximized = "Only a docked tool window is maximized";
+
+    /// <summary>An Aspire resource's command while another runs.</summary>
+    public const string CommandRunning = "A command of the resource is running";
+
+    /// <summary>An Aspire resource's command the resource says cannot run now.</summary>
+    public const string CommandDisabled = "The resource says it cannot run now";
 }

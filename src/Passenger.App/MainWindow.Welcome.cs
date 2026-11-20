@@ -203,7 +203,7 @@ public partial class MainWindow
         if (windows.Count > 1)
         {
             items.Add(new Separator());
-            items.Add(Heading("Open Solutions"));
+            items.Add(ToolWindows.ListMenus.Heading("Open Solutions"));
             items.AddRange(windows.Select(FlyoutListed));
         }
         IReadOnlyList<(string Title, Action Open)> recent = RecentMenu();
@@ -212,15 +212,13 @@ public partial class MainWindow
             items.Add(new Separator());
             if (windows.Count > 1)
             {
-                items.Add(Heading(MainMenu.RecentSolutions));
+                items.Add(ToolWindows.ListMenus.Heading(MainMenu.RecentSolutions));
             }
-            items.AddRange(recent.Select(r => Command(r.Title, r.Open)));
+            items.AddRange(recent.Select(r => ToolWindows.ListMenus.Item(r.Title, r.Open)));
         }
         ContextMenu menu = new() { ItemsSource = items };
         Open(menu, ProjectButton);
         return menu;
-
-        static MenuItem Heading(string text) => new() { Header = text, IsEnabled = false };
     }
 
     /// <summary>The recent folders, solutions and projects, the newest first, each marked when it is gone from disk; none in

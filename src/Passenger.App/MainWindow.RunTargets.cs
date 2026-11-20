@@ -162,20 +162,14 @@ public partial class MainWindow
         if (targetsUnlisted is { } unlisted)
         {
             // What a platform lacks (a device, a package its build needs) is said above the targets, which are listed all the same.
-            menu.Items.Insert(0, new MenuItem
-            {
-                Header = new TextBlock { Text = unlisted, TextWrapping = Avalonia.Media.TextWrapping.Wrap, MaxWidth = 420, Classes = { StyleClasses.Muted } },
-                IsEnabled = false,
-            });
+            menu.Items.Insert(0, ToolWindows.ListMenus.Notice(unlisted));
         }
         else if (menu.Items.Count == 0)
         {
-            menu.Items.Add(new MenuItem { Header = Refusals.NoTargets, IsEnabled = false });
+            menu.Items.Add(ToolWindows.ListMenus.Notice(Refusals.NoTargets));
         }
         menu.Items.Add(new Separator());
-        MenuItem refresh = new() { Header = "Look Again" };
-        refresh.Click += (_, _) => IdeErrors.Observe(LookAgainAsync());
-        menu.Items.Add(refresh);
+        menu.Items.Add(ToolWindows.ListMenus.Item("Look Again", () => IdeErrors.Observe(LookAgainAsync())));
         // Gone from a narrow toolbar, the widget leaves its menu to the run configuration's beside it.
         Open(menu, ShrinkingRow.HasGone(RunTargetButton) ? RunConfigButton : RunTargetButton);
 

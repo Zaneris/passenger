@@ -151,16 +151,6 @@ public partial class MainWindow
         }
         Open(new ContextMenu { ItemsSource = items }, TargetFrameworkButton);
 
-        MenuItem Item(string label, Action choose)
-        {
-            MenuItem item = new()
-            {
-                Header = label,
-                ToggleType = MenuItemToggleType.Radio,
-                IsChecked = label == document.ProjectContext,
-            };
-            item.Click += (_, _) => choose();
-            return item;
-        }
+        MenuItem Item(string label, Action choose) => MenuChoice.Of(label, label == document.ProjectContext, choose);
     }
 }

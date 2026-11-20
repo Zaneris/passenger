@@ -249,9 +249,7 @@ public partial class MainWindow
         MenuFlyout menu = new();
         foreach ((WebRoute route, _, _) in RoutesIn(document).Where(r => r.At.Line == line && RouteRequests.Sendable(r.Route)))
         {
-            MenuItem send = new() { Header = $"Send {RouteRequests.Title(route)}" };
-            send.Click += (_, _) => IdeErrors.Observe(SendRouteAsync(route));
-            menu.Items.Add(send);
+            menu.Items.Add(ToolWindows.ListMenus.Item($"Send {RouteRequests.Title(route)}", () => IdeErrors.Observe(SendRouteAsync(route))));
         }
         if (menu.Items.Count == 0)
         {

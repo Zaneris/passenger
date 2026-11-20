@@ -241,7 +241,7 @@ public sealed class ProjectLoadTests : IDisposable
         Ui.Settle();
         ListBox list = Descendants<ListBox>(window.ProblemsWindow).First();
         list.SelectedItem = problems.Rows.Single(r => r.Problem is not null);
-        Ui.ChooseFromMenu(list, "Go to");
+        Ui.ChooseFromMenu(list, "Go to Source");
         Ui.Settle();
         Assert.True(window.EditorArea.Active?.Path is { } opened && PathNames.Same(opened, PathNames.Canonical(bad)),
             $"Going to the load error opened {window.EditorArea.Active?.Path}, not Bad.csproj");

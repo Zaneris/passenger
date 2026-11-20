@@ -3077,7 +3077,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         window.OpenFile(project.PathOf("Program.cs"));
         Ui.Settle();
         Avalonia.Controls.ListBox usages = find.GetVisualDescendants().OfType<Avalonia.Controls.ListBox>().Single();
-        Ui.ChooseFromMenu(usages, "Go to");
+        Ui.ChooseFromMenu(usages, "Go to Source");
         Assert.Equal("Loop.cs", window.EditorArea.Active?.Name);
         Assert.Equal(new TextPosition(9, 15), window.EditorArea.CodeEditor.CaretPosition);
         Ui.ChooseFromMenu(usages, "Copy Path");
@@ -3089,8 +3089,8 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         HierarchyRow caller = window.Hierarchy.Rows[1];
         Avalonia.Controls.ListBox callers = window.Hierarchy.GetVisualDescendants().OfType<Avalonia.Controls.ListBox>().Single();
         callers.SelectedItem = caller;
-        Ui.ChooseFromMenu(callers, "Go to");
-        Assert.True(window.EditorArea.Active?.Path == caller.Node.Path, "Go to in a caller's menu in the Hierarchy window did not go to its call");
+        Ui.ChooseFromMenu(callers, "Go to Source");
+        Assert.True(window.EditorArea.Active?.Path == caller.Node.Path, "Go to Source in a caller's menu in the Hierarchy window did not go to its call");
         Assert.Equal(caller.Node.Where.Line, window.EditorArea.CodeEditor.CaretPosition.Line);
         window.Close();
     }

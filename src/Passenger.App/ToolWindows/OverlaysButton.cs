@@ -44,9 +44,7 @@ public sealed class OverlaysButton : Button
         ContextMenu menu = new() { PlacementTarget = this, Placement = MenuPlacement };
         foreach ((string name, string title) in All)
         {
-            MenuItem item = new() { Header = title, ToggleType = MenuItemToggleType.CheckBox, IsChecked = shown.Contains(name) };
-            item.Click += (_, _) => Toggled?.Invoke(this, name);
-            menu.Items.Add(item);
+            menu.Items.Add(ListMenus.Toggle(title, shown.Contains(name), _ => Toggled?.Invoke(this, name)));
         }
         Menu = menu;
         menu.Closed += (_, _) => Menu = null;

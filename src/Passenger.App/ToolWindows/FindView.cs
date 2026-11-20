@@ -201,9 +201,9 @@ public sealed class FindView : DockPanel
         });
         ListMenus.Attach(list, () => Selected is not { Usage: { } chosen } ? [] :
         [
-            ListMenus.Item("Go to", "F4", () => GoToRequested?.Invoke(this, chosen)),
-            ListMenus.Item("Copy Line", null, () => IdeErrors.Observe(ListMenus.CopyAsync(this, chosen.LineText.Trim()))),
-            ListMenus.Item("Copy Path", null, () => IdeErrors.Observe(ListMenus.CopyAsync(this, chosen.Path))),
+            ListMenus.Source(() => GoToRequested?.Invoke(this, chosen)),
+            ListMenus.Item("Copy Line", () => IdeErrors.Observe(ListMenus.CopyAsync(this, chosen.LineText.Trim()))),
+            ListMenus.Item("Copy Path", () => IdeErrors.Observe(ListMenus.CopyAsync(this, chosen.Path))),
         ]);
         preview = new CodeEditor { FontSize = TypeRamp.Code, IsReadOnly = true, ReadOnlyWhy = Refusals.PreviewReadOnly, ShowErrorStripe = false, LineCommentPrefix = null, Document = new TextDocument() };
         noneShown = new EmptyState { Text = "No usages in your code", IsVisible = false };

@@ -204,7 +204,8 @@ public sealed class BranchesPanel : DockPanel
         string it = Quoted(branch.Name);
         bool isCurrent = branch.IsCurrent;
         List<Control> items = [];
-        void Add(string header, Action run, bool enabled = true) => items.Add(ListMenus.Item(header, null, run, enabled));
+        void Add(string header, Action run, string? whyNot = null) => items.Add(ListMenus.Item(header, run, whyNot));
+        string? detached = current is null ? Refusals.Detached : null;
         void Separate()
         {
             if (items.Count > 0 && items[^1] is not Separator)
@@ -220,7 +221,7 @@ public sealed class BranchesPanel : DockPanel
         Add($"New Branch from {it}…", () => NewBranchRequested?.Invoke(this, branch));
         if (branch.Kind == RefKind.Local && !isCurrent)
         {
-            Add(current is null ? "Checkout and Rebase onto Current" : $"Checkout and Rebase onto {here}", () => IdeErrors.Observe(vcs.CheckoutAndRebaseAsync(branch)), current is not null);
+            Add(current is null ? "Checkout and Rebase onto Current" : $"Checkout and Rebase onto {here}", () => IdeErrors.Observe(vcs.CheckoutAndRebaseAsync(branch)), detached);
         }
         Separate();
         if (!isCurrent)
@@ -231,7 +232,7 @@ public sealed class BranchesPanel : DockPanel
         Separate();
         if (!isCurrent && branch.Kind != RefKind.Tag)
         {
-            Add(current is null ? "Rebase Current onto Selected" : $"Rebase {here} onto {it}", () => IdeErrors.Observe(vcs.RebaseOntoAsync(branch)), current is not null);
+            Add(current is null ? "Rebase Current onto Selected" : $"Rebase {here} onto {it}", () => IdeErrors.Observe(vcs.RebaseOntoAsync(branch)), detached);
         }
         if (!isCurrent)
         {
@@ -241,11 +242,8 @@ public sealed class BranchesPanel : DockPanel
         if (branch.Kind == RefKind.Local)
         {
             string? notUpdated = WhyNotUpdate(branch);
-            Add("Update", () => IdeErrors.Observe(vcs.UpdateBranchAsync(branch)), notUpdated is null);
-            ToolTip.SetTip(items[^1], notUpdated);
-            string? notPushed = vcs.WhyNotRemote;
-            Add("Push…", () => IdeErrors.Observe(vcs.PushBranchAsync(branch)), notPushed is null);
-            ToolTip.SetTip(items[^1], notPushed);
+            Add("Update", () => IdeErrors.Observe(vcs.UpdateBranchAsync(branch)), notUpdated);
+            Add("Push…", () => IdeErrors.Observe(vcs.PushBranchAsync(branch)), vcs.WhyNotRemote);
             Separate();
             Add("Rename…", () => RenameRequested?.Invoke(this, branch));
         }
@@ -266,8 +264,7 @@ public sealed class BranchesPanel : DockPanel
     {
         if (await refused is { } why)
         {
-            item.IsEnabled = false;
-            ToolTip.SetTip(item, why);
+            ListMenus.Grey(item, why);
         }
     }
 

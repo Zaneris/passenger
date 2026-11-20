@@ -12,7 +12,7 @@ public sealed class FilterMenu
     private readonly Func<IReadOnlyList<Control>> items;
 
     /// <param name="tip">What the button's tip and accessible name say.</param>
-    /// <param name="items">The menu's items as the list now stands: <see cref="MenuChoice"/>s and <see cref="Toggle"/>s.</param>
+    /// <param name="items">The menu's items as the list now stands: <see cref="MenuChoice"/>s and <see cref="ListMenus.Toggle"/>s.</param>
     public FilterMenu(string tip, Func<IReadOnlyList<Control>> items)
     {
         this.items = items;
@@ -55,13 +55,5 @@ public sealed class FilterMenu
         OpenMenu = menu;
         menu.Closed += (_, _) => OpenMenu = OpenMenu == menu ? null : OpenMenu;
         menu.Open(Button);
-    }
-
-    /// <summary>An item turning a filter on or off, ticked while it is on.</summary>
-    public static MenuItem Toggle(string header, bool on, Action<bool> turn)
-    {
-        MenuItem item = new() { Header = header, ToggleType = MenuItemToggleType.CheckBox, IsChecked = on };
-        item.Click += (_, _) => turn(!on);
-        return item;
     }
 }

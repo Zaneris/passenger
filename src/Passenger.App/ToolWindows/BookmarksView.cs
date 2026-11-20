@@ -44,8 +44,8 @@ public sealed class BookmarksView : DockPanel
         store.Changed += OnChanged;
         ListMenus.Attach(list, () => list.SelectedItem is not Bookmark chosen ? [] :
         [
-            ListMenus.Item("Go to", "F4", Go),
-            ListMenus.Item("Remove Bookmark", "Delete", () => store.Remove(chosen)),
+            ListMenus.Source(Go),
+            ListMenus.Remove("Remove Bookmark", () => store.Remove(chosen)),
         ]);
         Refresh();
     }

@@ -68,12 +68,12 @@ public sealed class StepLibraryView : DockPanel
             LibraryStep chosen =>
             [
                 item(AppActions.InsertStep),
-                ListMenus.Item("Go to Definition", "F4", GoToChosen, chosen.Binding.MethodPlace is not null),
-                ListMenus.Item("Find Usages", null, () => UsagesRequested?.Invoke(this, chosen), chosen.Uses is > 0),
+                ListMenus.Source(GoToChosen, chosen.Binding.MethodPlace is null ? Refusals.MethodUnplaced : null),
+                ListMenus.Item("Find Usages", () => UsagesRequested?.Invoke(this, chosen), chosen.Uses is > 0 ? null : Refusals.StepUses(chosen.Uses)),
                 new Separator(),
-                ListMenus.Item("Copy Phrase", null, () => IdeErrors.Observe(ListMenus.CopyAsync(this, chosen.Sample.Text))),
+                ListMenus.Item("Copy Phrase", () => IdeErrors.Observe(ListMenus.CopyAsync(this, chosen.Sample.Text))),
             ],
-            StepHook hook => [ListMenus.Item("Go to Hook", "F4", GoToChosen, hook.MethodPlace is not null)],
+            StepHook hook => [ListMenus.Source(GoToChosen, hook.MethodPlace is null ? Refusals.MethodUnplaced : null)],
             _ => [],
         });
         empty = new EmptyState();
@@ -181,7 +181,7 @@ public sealed class StepLibraryView : DockPanel
     /// filter or takes it out.</summary>
     private IReadOnlyList<Control> FilterItems()
     {
-        List<Control> items = [FilterMenu.Toggle("Unused Only", unusedOnly, on => UnusedOnly = on)];
+        List<Control> items = [ListMenus.Toggle("Unused Only", unusedOnly, on => UnusedOnly = on)];
         string[] tags = [.. steps.SelectMany(s => s.Tags).Concat(hooks.SelectMany(h => StepLibrary.TagsOf(h.Scopes))).Distinct(StringComparer.Ordinal).Order(StringComparer.OrdinalIgnoreCase)];
         if (tags.Length > 0)
         {
@@ -190,7 +190,7 @@ public sealed class StepLibraryView : DockPanel
             foreach (string tag in tags)
             {
                 bool on = terms.Contains(tag, StringComparer.OrdinalIgnoreCase);
-                items.Add(FilterMenu.Toggle(tag, on, turn => Filter = string.Join(' ', turn ? [.. terms, tag] : terms.Where(t => !string.Equals(t, tag, StringComparison.OrdinalIgnoreCase)))));
+                items.Add(ListMenus.Toggle(tag, on, turn => Filter = string.Join(' ', turn ? [.. terms, tag] : terms.Where(t => !string.Equals(t, tag, StringComparison.OrdinalIgnoreCase)))));
             }
         }
         return items;

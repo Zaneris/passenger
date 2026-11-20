@@ -278,32 +278,25 @@ public sealed partial class SettingsDialog
             .. current.MouseShortcutsFor(action).Select(g => (g.Display(), g.Notation()))];
         List<Control> items =
         [
-            Item("Add Keyboard Shortcut", () => IdeErrors.Observe(AddKeyboardShortcut(action))),
-            Item("Add Mouse Shortcut", () => IdeErrors.Observe(AddMouseShortcut(action))),
+            ToolWindows.ListMenus.Item("Add Keyboard Shortcut", () => IdeErrors.Observe(AddKeyboardShortcut(action))),
+            ToolWindows.ListMenus.Item("Add Mouse Shortcut", () => IdeErrors.Observe(AddMouseShortcut(action))),
         ];
         if (own.Count > 0)
         {
             items.Add(new Separator());
-            items.AddRange(own.Select(shortcut => Item($"Remove {shortcut.Shown}", () => Rebind(action, [.. own.Where(o => o != shortcut).Select(o => o.Notation)]))));
+            items.AddRange(own.Select(shortcut => ToolWindows.ListMenus.Item($"Remove {shortcut.Shown}", () => Rebind(action, [.. own.Where(o => o != shortcut).Select(o => o.Notation)]))));
         }
         if (own.Count > 2)
         {
             items.Add(new Separator());
-            items.Add(Item("Remove All Shortcuts", () => Rebind(action)));
+            items.Add(ToolWindows.ListMenus.Item("Remove All Shortcuts", () => Rebind(action)));
         }
         if (IsChanged(action, current))
         {
             items.Add(new Separator());
-            items.Add(Item("Reset Shortcuts", () => ResetShortcuts(action)));
+            items.Add(ToolWindows.ListMenus.Item("Reset Shortcuts", () => ResetShortcuts(action)));
         }
         menu.ItemsSource = items;
-
-        static MenuItem Item(string header, Action run)
-        {
-            MenuItem item = new() { Header = header };
-            item.Click += (_, _) => run();
-            return item;
-        }
     }
 
     /// <summary>The row's Edit Shortcuts menu, under what was clicked (the row, or its ⋮): a menu opens only on the

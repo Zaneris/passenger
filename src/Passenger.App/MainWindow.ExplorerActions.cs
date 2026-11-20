@@ -182,10 +182,8 @@ public partial class MainWindow
     /// one click, then its view's.</summary>
     private IReadOnlyList<Control> ExplorerOptions()
     {
-        MenuItem follow = new() { Header = "Always Select Opened File", ToggleType = MenuItemToggleType.CheckBox, IsChecked = settings.AlwaysSelectOpenedFile };
-        follow.Click += (_, _) => ApplySettings(settings with { AlwaysSelectOpenedFile = !settings.AlwaysSelectOpenedFile });
-        MenuItem click = new() { Header = "Open Files with Single Click", ToggleType = MenuItemToggleType.CheckBox, IsChecked = settings.OpenFilesWithSingleClick };
-        click.Click += (_, _) => ApplySettings(settings with { OpenFilesWithSingleClick = !settings.OpenFilesWithSingleClick });
+        MenuItem follow = ToolWindows.ListMenus.Toggle("Always Select Opened File", settings.AlwaysSelectOpenedFile, on => ApplySettings(settings with { AlwaysSelectOpenedFile = on }));
+        MenuItem click = ToolWindows.ListMenus.Toggle("Open Files with Single Click", settings.OpenFilesWithSingleClick, on => ApplySettings(settings with { OpenFilesWithSingleClick = on }));
         IReadOnlyList<Control> own = Explorer.Options();
         return own.Count == 0 ? [follow, click] : [follow, click, new Separator(), .. own];
     }

@@ -116,6 +116,61 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
         }
     }
 
+    /// <summary>A menu's words that are no command (the heading over the branch menu's branches) stand at the caption's step
+    /// in the muted colour under each look, greyed for the keys and the pointer but never drawn as a greyed command; a value
+    /// among several (a tool window's view mode and place) is ticked and still offered, never greyed; and every greyed item
+    /// of these menus says why (ListMenus).</summary>
+    [AvaloniaFact]
+    public void A_menus_heading_is_muted_words_its_values_are_ticked_and_every_greyed_item_says_why()
+    {
+        MainWindow window = Open(1200, 800);
+        try
+        {
+            window.OpenFile(project.PathOf("Notes.txt"));
+            Ui.Settle();
+            UnderEachLook(window, () =>
+            {
+                Ui.Click(Named<Button>(window, "BranchButton"));
+                Ui.WaitFor(() => window.OpenContextMenu is not null, "the branch menu");
+                ContextMenu branches = window.OpenContextMenu!;
+                MenuItem[] items = [.. branches.Items.OfType<MenuItem>()];
+                Ui.GreyedSayWhy(items, "The branch menu");
+                MenuItem local = items.Single(i => Header(i) == "Local");
+                ContentPresenter words = local.GetVisualDescendants().OfType<ContentPresenter>().Single(p => p.Name == "PART_HeaderPresenter");
+                Color? drawn = (words.Foreground as ISolidColorBrush)?.Color;
+                Assert.True(!local.IsEffectivelyEnabled && local.InputGesture is null && words.FontSize == TypeRamp.Caption && drawn == Brush(window, TokenKeys.TextMuted),
+                    $"The branch menu's Local heading is {(local.IsEffectivelyEnabled ? "a command the keys stop on" : "passed over")}, at {words.FontSize} in {drawn}, "
+                    + $"where a heading is words the keys pass over, at the caption's {TypeRamp.Caption} in the muted {Brush(window, TokenKeys.TextMuted)}, never a greyed command");
+                branches.Close();
+                Ui.Settle();
+
+                Control pane = window.ExplorerView.GetVisualAncestors().OfType<Control>().First(a => a.GetType().Name == "ToolPane");
+                Ui.Click(pane.GetVisualDescendants().OfType<Button>().First(b => ToolTip.GetTip(b) as string == "Options"));
+                MenuFlyout options = window.DockHost.OpenOptions ?? throw new Xunit.Sdk.XunitException("The Explorer's Options opened no menu");
+                MenuItem[] made = [.. options.Items.OfType<MenuItem>()];
+                Ui.GreyedSayWhy(made, "The Explorer's Options");
+                string place = Passenger.App.Docking.ToolWindow.Name(window.DockHost.Windows.Single(w => w.Id == ToolWindowIds.Explorer).Anchor);
+                foreach ((string sub, string current) in (ReadOnlySpan<(string, string)>)[("View Mode", "Dock"), ("Move to", place)])
+                {
+                    MenuItem parent = made.Single(i => Header(i) == sub);
+                    Ui.Click(parent);
+                    MenuItem[] values = [.. parent.Items.OfType<MenuItem>()];
+                    Ui.GreyedSayWhy(values, sub);
+                    MenuItem[] ticked = [.. values.Where(v => v.IsChecked)];
+                    Assert.True(ticked is [{ IsEnabled: true }] && Header(ticked[0]) == current && values.All(v => v.IsEnabled && v.ToggleType == MenuItemToggleType.Radio),
+                        $"{sub} offers [{string.Join(", ", values.Select(v => $"{Header(v)}{(v.IsChecked ? " ticked" : "")}{(v.IsEnabled ? "" : " greyed")}"))}], "
+                        + $"where {current}, the one in force, is ticked and still offered as every menu's value is (MenuChoice)");
+                }
+                options.Hide();
+                Ui.Settle();
+            });
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     /// <summary>A right-click menu opens with its frame's corner at the pointer, however it is made, under each look: the
     /// editor's, the Explorer's, an editor tab's and the console's, each opened for the first time, and the editor's by the
     /// window's far corner, where it opens up and to the left with its far corner there, its shadow round it either way.</summary>
@@ -1001,11 +1056,12 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
             Fits();
             Assert.NotEmpty(tools.Overflowing);
             Assert.True(Drawn(tools.More), "The Debug window's toolbar has buttons with no room and no More to reach them");
-            string[] cut = [.. tools.Overflowing.Select(b => (string)ToolTip.GetTip(b)!)];
+            // Each by its name, the keys its tip names in the menu's column of keys.
+            (string Name, bool Keyed)[] cut = [.. tools.Overflowing.Select(b => (AutomationProperties.GetName(b)!, ToolTip.GetTip(b) is string tip && tip.EndsWith(')')))];
             Ui.Click(tools.More);
             ContextMenu menu = window.GetVisualDescendants().OfType<ContextMenu>().FirstOrDefault(m => m.IsOpen)
                 ?? throw new Xunit.Sdk.XunitException("More opened no menu of the buttons it holds");
-            Assert.Equal(cut, menu.Items.OfType<MenuItem>().Select(i => (string)i.Header!));
+            Assert.Equal(cut, menu.Items.OfType<MenuItem>().Select(i => ((string)i.Header!, i.InputGesture is not null)));
             menu.Close();
         }
         finally
@@ -3100,6 +3156,31 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
             $"The rule found {anywhere.Count} lists declared and few taking ListKeys, so it no longer reads how lists are written");
         Assert.True(found.Count == 0, $"{found.Count} lists hear their keys or double click by a handler of their own, which the rows' own Enter and Space go "
             + $"ahead of, or which does other than Enter does: give each its acts through ListKeys.Act (TreeKeys.Attach for a tree):\n{string.Join("\n", found)}");
+    }
+
+    /// <summary>A menu's item is made by the shared pieces (ListMenus, MenuChoice, and the window's action menus in
+    /// MainWindow.Menu), so every item shows only keys the keymap gives its action or its list's row does it by, and greys
+    /// saying why: a MenuItem made anywhere else, or keys set beside an item by hand, fails here, naming its line. The
+    /// terminal's menu stays its own: its keys are the terminal's, which no keymap gives, in a project without the App's.</summary>
+    [Fact]
+    public void Every_menu_item_is_made_by_the_shared_menu_pieces_and_shows_no_keys_written_by_hand()
+    {
+        string[] pieces = ["/ToolWindows/ListMenus.cs", "/MenuChoice.cs", "/MainWindow.Menu.cs"];
+        string[] apart = ["src/Passenger.Terminal/TerminalView.cs"];
+        Regex made = new(@"\bnew\s+MenuItem\b|\bMenuItem\s+\w+\s*=\s*new\s*\(|\bMenuItem\s+\w+\([^)]*\)\s*=>\s*new\s*\(");
+        // The keymap's keys for an action are shown by ActionRegistry.ShowKeys, a list act's by ListMenus.
+        Regex keys = new(@"\bInputGesture\s*=");
+        string[] found = [.. UiFiles().Where(f => f.Path.EndsWith(".cs", StringComparison.Ordinal) && !pieces.Any(p => f.Path.EndsWith(p, StringComparison.Ordinal)) && !apart.Contains(f.Path))
+            .SelectMany(f => f.Text.Split('\n').Select((line, i) => (f.Path, Line: i + 1, Text: line.TrimStart())))
+            .Where(l => !l.Text.StartsWith("//", StringComparison.Ordinal) && (made.IsMatch(l.Text) || (keys.IsMatch(l.Text) && !l.Path.EndsWith("/ActionRegistry.cs", StringComparison.Ordinal))))
+            .Select(l => $"{l.Path}:{l.Line}: {l.Text}")];
+        Assert.True(found.Length == 0, $"{found.Length} menu items are made, or given keys, by hand, so their keys are written beside them rather than taken from "
+            + $"the keymap or the list's acts, and one greyed may say nothing of why: make each through ListMenus (Item, Keyed, Open, Source, Edit, Remove, "
+            + $"Toggle, Sub, Heading, Notice) or MenuChoice:\n{string.Join("\n", found)}");
+        Assert.Matches(made, "            MenuItem item = new() { Header = name };");
+        Assert.Matches(made, "        static MenuItem Heading(string text) => new() { Header = text, IsEnabled = false };");
+        Assert.Matches(made, "menu.Items.Add(new MenuItem { Header = \"Local\", IsEnabled = false });");
+        Assert.DoesNotMatch(made, "        MenuItem item = ListMenus.Item(header, run);");
     }
 
     /// <summary>A peer of Passenger's tells a screen reader of a change only through PeerChanges.Tell, which tells a pattern's

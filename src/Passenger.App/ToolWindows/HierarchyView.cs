@@ -105,9 +105,9 @@ public sealed class HierarchyView : DockPanel
         });
         ListMenus.Attach(list, () => list.SelectedItem is not HierarchyRow chosen ? [] :
         [
-            ListMenus.Item("Go to", "F4", () => GoToRequested?.Invoke(this, chosen.Node)),
-            ListMenus.Item("Copy Name", null, () => IdeErrors.Observe(ListMenus.CopyAsync(this, chosen.Node.Item.Name))),
-            ListMenus.Item("Copy Path", null, () => IdeErrors.Observe(ListMenus.CopyAsync(this, chosen.Node.Path))),
+            ListMenus.Source(() => GoToRequested?.Invoke(this, chosen.Node)),
+            ListMenus.Item("Copy Name", () => IdeErrors.Observe(ListMenus.CopyAsync(this, chosen.Node.Item.Name))),
+            ListMenus.Item("Copy Path", () => IdeErrors.Observe(ListMenus.CopyAsync(this, chosen.Node.Path))),
         ]);
         placeholder = new EmptyState();
         placeholder.SayWithKeys(keys =>

@@ -91,11 +91,11 @@ public sealed class WelcomeView : UserControl
         ListKeys.Search(search, list, OpenChosen);
         ListMenus.Attach(list, () => list.SelectedItem is not RecentRow chosen ? [] :
         [
-            ListMenus.Item("Open", "Enter", () => Chosen?.Invoke(this, chosen)),
-            ListMenus.Item(FileManager.Showing, null, () => RevealRequested?.Invoke(this, chosen), !chosen.Missing),
-            ListMenus.Item("Copy Path", null, () => IdeErrors.Observe(ListMenus.CopyAsync(this, chosen.Path))),
+            ListMenus.Open("Open", () => Chosen?.Invoke(this, chosen)),
+            ListMenus.Item(FileManager.Showing, () => RevealRequested?.Invoke(this, chosen), chosen.Missing ? Refusals.RecentGone : null),
+            ListMenus.Item("Copy Path", () => IdeErrors.Observe(ListMenus.CopyAsync(this, chosen.Path))),
             new Separator(),
-            ListMenus.Item("Remove from Recent Solutions", OperatingSystem.IsMacOS() ? "Back" : "Delete", () => RemoveRequested?.Invoke(this, chosen)),
+            ListMenus.Remove("Remove from Recent Solutions", () => RemoveRequested?.Invoke(this, chosen)),
         ]);
         empty = new EmptyState();
 

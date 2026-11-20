@@ -75,11 +75,11 @@ public sealed class ProblemsView : DockPanel
         };
         ListMenus.Attach(list, () => list.SelectedItem is not ProblemRow { Problem: { } problem } ? [] :
         [
-            ListMenus.Item("Go to", "F4", Choose, problem.Path is not null),
-            ListMenus.Item("Copy Message", null, () => IdeErrors.Observe(ListMenus.CopyAsync(this, problem.Message))),
-            ListMenus.Item("Open Link", null, () => model.Open(problem.Link!), problem.Link is not null),
+            ListMenus.Source(Choose, problem.Path is null ? Refusals.ProblemNamesNoFile : null),
+            ListMenus.Item("Copy Message", () => IdeErrors.Observe(ListMenus.CopyAsync(this, problem.Message))),
+            ListMenus.Item("Open Link", () => model.Open(problem.Link!), problem.Link is null ? Refusals.ProblemHasNoLink : null),
             new Separator(),
-            ListMenus.Item("Show Context Actions", null, () => model.Fix(problem), model.HasFixes(problem)),
+            ListMenus.Item("Show Context Actions", () => model.Fix(problem), model.WhyNotFix(problem)),
         ]);
         model.TabsChanged += (_, _) => Titles();
         model.ChosenRowChanged += (_, reveal) => Follow(reveal);

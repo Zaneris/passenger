@@ -83,26 +83,26 @@ public sealed class GitLogView : DockPanel, IOwnKeys
         [
             .. FileChangeOf(commit) is { } change ? new Control[]
             {
-                ListMenus.Item("Show Diff", null, () => DiffRequested?.Invoke(this, (commit, change))),
-                ListMenus.Item("Compare with Local", null, () => CompareRequested?.Invoke(this, (Scope!.Path, commit, change))),
+                ListMenus.Open("Show Diff", () => DiffRequested?.Invoke(this, (commit, change))),
+                ListMenus.Item("Compare with Local", () => CompareRequested?.Invoke(this, (Scope!.Path, commit, change))),
                 new Separator(),
             } : [],
-            ListMenus.Item("Copy Revision Number", null, () => IdeErrors.Observe(ListMenus.CopyAsync(this, commit.Hash))),
+            ListMenus.Item("Copy Revision Number", () => IdeErrors.Observe(ListMenus.CopyAsync(this, commit.Hash))),
             new Separator(),
-            ListMenus.Item("Checkout Revision", null, () => IdeErrors.Observe(vcs.CheckoutRevisionAsync(commit.Hash))),
-            ListMenus.Item("New Branch…", null, () => NewBranchRequested?.Invoke(this, commit)),
+            ListMenus.Item("Checkout Revision", () => IdeErrors.Observe(vcs.CheckoutRevisionAsync(commit.Hash))),
+            ListMenus.Item("New Branch…", () => NewBranchRequested?.Invoke(this, commit)),
             new Separator(),
-            ListMenus.Item("Cherry-Pick", null, () => IdeErrors.Observe(vcs.CherryPickAsync(commit.Hash))),
-            ListMenus.Item("Revert Commit", null, () => IdeErrors.Observe(vcs.RevertAsync(commit.Hash))),
+            ListMenus.Item("Cherry-Pick", () => IdeErrors.Observe(vcs.CherryPickAsync(commit.Hash))),
+            ListMenus.Item("Revert Commit", () => IdeErrors.Observe(vcs.RevertAsync(commit.Hash))),
             ListMenus.Sub("Reset Current Branch to Here",
-                ListMenus.Item("Soft: the changes since kept staged", null, () => ResetRequested?.Invoke(this, (commit, ResetMode.Soft))),
-                ListMenus.Item("Mixed: the changes since kept in the files", null, () => ResetRequested?.Invoke(this, (commit, ResetMode.Mixed))),
-                ListMenus.Item("Hard: the changes since dropped…", null, () => ResetRequested?.Invoke(this, (commit, ResetMode.Hard)))),
+                ListMenus.Item("Soft: the changes since kept staged", () => ResetRequested?.Invoke(this, (commit, ResetMode.Soft))),
+                ListMenus.Item("Mixed: the changes since kept in the files", () => ResetRequested?.Invoke(this, (commit, ResetMode.Mixed))),
+                ListMenus.Item("Hard: the changes since dropped…", () => ResetRequested?.Invoke(this, (commit, ResetMode.Hard)))),
         ]);
         // A commit's file offers what the Commit window's changed files do.
         files = new ChangedFileList(() => vcs.Repository, change => Selected is not { } commit ? [] :
         [
-            ListMenus.Item("Compare with Local", null, () => CompareRequested?.Invoke(this, (change.Path, commit, change)), change.Kind is not ChangeKind.Deleted),
+            ListMenus.Item("Compare with Local", () => CompareRequested?.Invoke(this, (change.Path, commit, change)), change.Kind is ChangeKind.Deleted ? Refusals.DeletedByCommit : null),
         ]);
         files.DiffRequested += (_, change) =>
         {

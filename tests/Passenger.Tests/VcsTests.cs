@@ -1982,7 +1982,7 @@ public sealed partial class VcsTests : IDisposable
         Ui.Settle();
         Ui.ChooseFromMenu(files, "Copy Path");
         Ui.WaitFor(() => Ui.Clipboard(window) == PathNames.Canonical(shop), "the file's path on the clipboard");
-        Ui.ChooseFromMenu(files, "Jump to Source");
+        Ui.ChooseFromMenu(files, "Go to Source");
         Assert.Equal(PathNames.Canonical(shop), window.EditorArea.Active?.Path);
         window.Close();
     }

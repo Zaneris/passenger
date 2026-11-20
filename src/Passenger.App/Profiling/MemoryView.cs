@@ -114,7 +114,7 @@ public sealed class MemoryView : DockPanel
         });
         ListMenus.Attach(snapshotList, () => snapshotList.SelectedItem is not SnapshotRow { Snapshot: var chosen } ? [] :
         [
-            ListMenus.Item("Remove Snapshot", "Delete", () => Remove(chosen)),
+            ListMenus.Remove("Remove Snapshot", () => Remove(chosen)),
         ]);
         Border left = new() { [DockProperty] = Dock.Left, Width = 230, Child = snapshotList, BorderThickness = Hairlines.After };
         left.Bind(Border.BorderBrushProperty, left.GetResourceObservable(TokenKeys.Divider));
@@ -438,9 +438,7 @@ public sealed class MemoryView : DockPanel
         MenuFlyout menu = new();
         foreach (MemorySnapshot other in snapshots.Select(r => r.Snapshot).Where(s => s != snapshot))
         {
-            MenuItem item = new() { Header = $"{other.Name} ({other.Taken:HH:mm:ss})" };
-            item.Click += (_, _) => IdeErrors.Observe(CompareWithAsync(other));
-            menu.Items.Add(item);
+            menu.Items.Add(ListMenus.Item($"{other.Name} ({other.Taken:HH:mm:ss})", () => IdeErrors.Observe(CompareWithAsync(other))));
         }
         CompareMenu = menu;
         menu.Placement = PlacementMode.BottomEdgeAlignedLeft;

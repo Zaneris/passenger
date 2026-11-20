@@ -352,12 +352,8 @@ internal sealed class ToolPane : DockPanel
         ContextMenu menu = new() { Placement = PlacementMode.TopEdgeAlignedRight };
         foreach (ToolWindow window in HiddenTabs)
         {
-            PathIcon glyph = new();
-            glyph.Bind(PathIcon.DataProperty, glyph.GetResourceObservable(window.Icon));
-            MenuItem item = new() { Header = window.Title, Icon = glyph };
             string id = window.Id;
-            item.Click += (_, _) => host.Show(id);
-            menu.Items.Add(item);
+            menu.Items.Add(ToolWindows.ListMenus.Item(window.Title, () => host.Show(id), icon: window.Icon));
         }
         host.HiddenTabsMenu = menu;
         menu.Closed += (_, _) => host.HiddenTabsMenu = host.HiddenTabsMenu == menu ? null : host.HiddenTabsMenu;
@@ -432,42 +428,30 @@ internal sealed class ToolPane : DockPanel
     private MenuFlyout OptionsMenu()
     {
         MenuFlyout menu = new();
-        MenuItem move = new() { Header = "Move to" };
-        foreach (ToolAnchor anchor in Enum.GetValues<ToolAnchor>())
+        // Where the window stands and how it is shown are each one value among several, the one in force ticked.
+        MenuItem move = ToolWindows.ListMenus.Sub("Move to", Enum.GetValues<ToolAnchor>().Select(anchor => MenuChoice.Of(ToolWindow.Name(anchor), Window?.Anchor == anchor, () =>
         {
-            MenuItem item = new() { Header = ToolWindow.Name(anchor), IsEnabled = Window?.Anchor != anchor };
-            item.Click += (_, _) =>
+            if (Window is { } window)
+            {
+                host.Move(window, anchor);
+            }
+        })));
+        MenuItem mode = ToolWindows.ListMenus.Sub("View Mode", new[] { (ToolMode.Docked, "Dock"), (ToolMode.Floating, "Float"), (ToolMode.Windowed, "Window"), (ToolMode.Editor, "Editor Tab") }
+            .Select(each => MenuChoice.Of(each.Item2, Window?.Mode == each.Item1, () =>
             {
                 if (Window is { } window)
                 {
-                    host.Move(window, anchor);
+                    host.SetMode(window, each.Item1);
                 }
-            };
-            move.Items.Add(item);
-        }
-        MenuItem mode = new() { Header = "View Mode" };
-        foreach ((ToolMode each, string name) in new[] { (ToolMode.Docked, "Dock"), (ToolMode.Floating, "Float"), (ToolMode.Windowed, "Window"), (ToolMode.Editor, "Editor Tab") })
-        {
-            MenuItem item = new() { Header = name, IsEnabled = Window?.Mode != each };
-            item.Click += (_, _) =>
-            {
-                if (Window is { } window)
-                {
-                    host.SetMode(window, each);
-                }
-            };
-            mode.Items.Add(item);
-        }
-        MenuItem maximize = new() { Header = host.IsMaximized ? "Restore Size" : "Maximize", IsEnabled = Floating is null && !Peeking };
-        maximize.Click += (_, _) => host.ToggleMaximize(Window);
-        MenuItem hide = new() { Header = "Hide" };
-        hide.Click += (_, _) =>
+            })));
+        MenuItem maximize = ToolWindows.ListMenus.Item(host.IsMaximized ? "Restore Size" : "Maximize", () => host.ToggleMaximize(Window), Floating is null && !Peeking ? null : Refusals.Unmaximized);
+        MenuItem hide = ToolWindows.ListMenus.Item("Hide", () =>
         {
             if (Window is { } window)
             {
                 host.Hide(window.Id);
             }
-        };
+        });
         if (Window?.Options?.Invoke() is { Count: > 0 } own)
         {
             foreach (Control item in own)
@@ -482,28 +466,24 @@ internal sealed class ToolPane : DockPanel
         menu.Items.Add(new Separator());
         if (Peeking)
         {
-            MenuItem docking = new() { Header = "Dock" };
-            docking.Click += (_, _) =>
+            menu.Items.Add(ToolWindows.ListMenus.Item("Dock", () =>
             {
                 if (Window is { } window)
                 {
                     host.Show(window.Id);
                 }
-            };
-            menu.Items.Add(docking);
+            }));
         }
         menu.Items.Add(hide);
         if (Closes)
         {
-            MenuItem closing = new() { Header = "Close" };
-            closing.Click += (_, _) =>
+            menu.Items.Add(ToolWindows.ListMenus.Item("Close", () =>
             {
                 if (Window is { } window)
                 {
                     host.Close(window.Id);
                 }
-            };
-            menu.Items.Add(closing);
+            }));
         }
         return menu;
     }

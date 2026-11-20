@@ -178,21 +178,21 @@ public sealed class CommitView : DockPanel, IOwnKeys
         ReusedRows.Use(list, Row);
         ListMenus.Attach(list, () => list.SelectedItem is not CommitRow chosen ? [] : chosen.Change.Kind is ChangeKind.Conflicted ?
         [
-            ListMenus.Item("Merge…", "Enter", () => MergeRequested?.Invoke(this, chosen.Change.Path)),
-            ListMenus.Item("Resolve Conflicts…", null, () => ResolveRequested?.Invoke(this, EventArgs.Empty)),
-            ListMenus.Item("Jump to Source", "F4", () => OpenRequested?.Invoke(this, chosen.Change.Path)),
+            ListMenus.Open("Merge…", () => MergeRequested?.Invoke(this, chosen.Change.Path)),
+            ListMenus.Item("Resolve Conflicts…", () => ResolveRequested?.Invoke(this, EventArgs.Empty)),
+            ListMenus.Source(() => OpenRequested?.Invoke(this, chosen.Change.Path)),
             new Separator(),
-            ListMenus.Item("Copy Path", null, () => IdeErrors.Observe(ListMenus.CopyAsync(this, chosen.Change.Path))),
+            ListMenus.Item("Copy Path", () => IdeErrors.Observe(ListMenus.CopyAsync(this, chosen.Change.Path))),
         ] :
         [
-            ListMenus.Item("Show Diff", "Enter", () => DiffRequested?.Invoke(this, chosen.Change.Path)),
-            ListMenus.Item("Jump to Source", "F4", () => OpenRequested?.Invoke(this, chosen.Change.Path), chosen.Change.Kind is not ChangeKind.Deleted),
+            ListMenus.Open("Show Diff", () => DiffRequested?.Invoke(this, chosen.Change.Path)),
+            ListMenus.Source(() => OpenRequested?.Invoke(this, chosen.Change.Path), Deleted(chosen.Change)),
             new Separator(),
-            Greyed(ListMenus.Item("Rollback…", null, () => RollbackRequested?.Invoke(this, [.. ChosenChanges(chosen)])), vcs.WhyNotRollback([.. ChosenChanges(chosen)])),
-            ListMenus.Item("Delete…", null, () => DeleteRequested?.Invoke(this, chosen.Change.Path), chosen.Change.Kind is not ChangeKind.Deleted),
-            ListMenus.Item("Add to .gitignore", null, () => IgnoreRequested?.Invoke(this, chosen.Change.Path), chosen.Change.Kind is ChangeKind.Unversioned),
+            ListMenus.Item("Rollback…", () => RollbackRequested?.Invoke(this, [.. ChosenChanges(chosen)]), vcs.WhyNotRollback([.. ChosenChanges(chosen)])),
+            ListMenus.Item("Delete…", () => DeleteRequested?.Invoke(this, chosen.Change.Path), Deleted(chosen.Change)),
+            ListMenus.Item("Add to .gitignore", () => IgnoreRequested?.Invoke(this, chosen.Change.Path), chosen.Change.Kind is ChangeKind.Unversioned ? null : Refusals.Tracked),
             new Separator(),
-            ListMenus.Item("Copy Path", null, () => IdeErrors.Observe(ListMenus.CopyAsync(this, chosen.Change.Path))),
+            ListMenus.Item("Copy Path", () => IdeErrors.Observe(ListMenus.CopyAsync(this, chosen.Change.Path))),
         ]);
         list.SelectionChanged += (_, _) =>
         {
@@ -706,13 +706,8 @@ public sealed class CommitView : DockPanel, IOwnKeys
     /// <summary>Rollback greyed where it would put back a file git cannot write out here, its tip saying why.</summary>
     private void UpdateRollback() => ToolButtons.Grey(rollback, vcs.WhyNotRollback(RollbackTargets()));
 
-    /// <summary>A menu item greyed for <paramref name="why"/>, which its tip says.</summary>
-    private static MenuItem Greyed(MenuItem item, string? why)
-    {
-        item.IsEnabled = item.IsEnabled && why is null;
-        ToolTip.SetTip(item, why);
-        return item;
-    }
+    /// <summary>Why a file's own item (Go to Source, Delete…) cannot act on a change that deleted it; null where it can.</summary>
+    private static string? Deleted(FileChange change) => change.Kind is ChangeKind.Deleted ? Refusals.FileDeleted : null;
 
     /// <summary>Lists the status again in place: a file still changed as it was keeps its row, its box and whether it is
     /// selected, so a refresh with nothing new (the window coming to the front, a save) leaves the list as it was, and

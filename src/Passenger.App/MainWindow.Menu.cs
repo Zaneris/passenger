@@ -481,7 +481,7 @@ public partial class MainWindow
             {
                 listed.Items.Add(FlyoutListed(item));
             }
-            listed.IsEnabled = listed.Items.Count > 0;
+            ToolWindows.ListMenus.Grey(listed, listed.Items.Count > 0 ? null : Refusals.NothingListed);
             return listed;
         }
         if (entry.Items is { } items)
@@ -507,12 +507,9 @@ public partial class MainWindow
             return menu;
         }
         IdeAction action = actions![entry.Action!]!;
-        MenuItem actionItem = new() { Header = action.TitleWhere(context), IsEnabled = action.CanRun(context) };
-        if (action.WhyNot(context) is { } why)
-        {
-            // Greyed, it says why on hover, as running it would (a library's Publish..., a project's tests).
-            ToolTip.SetTip(actionItem, why);
-        }
+        MenuItem actionItem = new() { Header = action.TitleWhere(context) };
+        // Greyed, it says why on hover, as running it would (a library's Publish..., a project's tests).
+        ToolWindows.ListMenus.Grey(actionItem, action.WhyNot(context));
         actions.ShowKeys(actionItem, action.Id);
         if (action.IsChecked is { } isChecked)
         {
@@ -535,9 +532,7 @@ public partial class MainWindow
         {
             ActionContext context = actions.Context();
             item.Header = action.TitleWhere(context);
-            string? why = actions.WhyNot(action.Id, context);
-            item.IsEnabled = why is null;
-            ToolTip.SetTip(item, why);
+            ToolWindows.ListMenus.Grey(item, actions.WhyNot(action.Id, context));
         };
         item.Click += (_, _) => Request(action.Id);
         return item;
@@ -550,9 +545,8 @@ public partial class MainWindow
             Header = listed.Title,
             ToggleType = listed.Checked is null ? MenuItemToggleType.None : MenuItemToggleType.Radio,
             IsChecked = listed.Checked == true,
-            IsEnabled = listed.WhyNot is null,
         };
-        ToolTip.SetTip(item, listed.WhyNot);
+        ToolWindows.ListMenus.Grey(item, listed.WhyNot);
         item.Click += (_, _) => listed.Run();
         return item;
     }

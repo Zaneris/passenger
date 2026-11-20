@@ -236,8 +236,8 @@ public sealed class CellGrid : Control, IOwnKeys
             PlacementTarget = this,
             Items =
             {
-                ListMenus.Keyed("Copy", EditorActions.Copy, () => Execute(EditorActions.Copy), cells),
-                ListMenus.Keyed("Select All", EditorActions.SelectAll, () => Execute(EditorActions.SelectAll), cells),
+                ListMenus.Keyed("Copy", EditorActions.Copy, () => Execute(EditorActions.Copy), cells ? null : Refusals.NoCells),
+                ListMenus.Keyed("Select All", EditorActions.SelectAll, () => Execute(EditorActions.SelectAll), cells ? null : Refusals.NoCells),
             },
         };
         if (cells && (at is not { } place || place.X >= gutter))
@@ -257,7 +257,7 @@ public sealed class CellGrid : Control, IOwnKeys
         {
             Table from = table;
             menu.Items.Add(new Separator());
-            menu.Items.Add(ListMenus.Item(deleting, null, () => RowsDeleted?.Invoke(this, new CellWrite(from, rows, 0, string.Empty))));
+            menu.Items.Add(ListMenus.Item(deleting, () => RowsDeleted?.Invoke(this, new CellWrite(from, rows, 0, string.Empty))));
         }
         if (at is null)
         {

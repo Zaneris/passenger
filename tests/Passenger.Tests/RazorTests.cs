@@ -496,8 +496,8 @@ public sealed class RazorTests : IClassFixture<BlazorShop>
             $"The caller in Greeting.razor is placed at {caller.Node.Path}, line {caller.Node.Where.Line + 1}, not at its call on line {line + 1} of the .razor, so going to it opens no file");
         Avalonia.Controls.ListBox callers = window.Hierarchy.GetVisualDescendants().OfType<Avalonia.Controls.ListBox>().Single();
         callers.SelectedItem = caller;
-        Ui.ChooseFromMenu(callers, "Go to");
-        Assert.True(window.EditorArea.Active?.Path == razor, $"Go to on the caller opened {window.EditorArea.Active?.Path}; the status bar said: {window.Status}");
+        Ui.ChooseFromMenu(callers, "Go to Source");
+        Assert.True(window.EditorArea.Active?.Path == razor, $"Go to Source on the caller opened {window.EditorArea.Active?.Path}; the status bar said: {window.Status}");
         Assert.Equal(line, window.EditorArea.CodeEditor.CaretPosition.Line);
         window.Close();
     }

@@ -326,10 +326,10 @@ public sealed class OutputView : DockPanel, IOwnKeys
             PlacementTarget = Editor,
             Items =
             {
-                ListMenus.Keyed("Copy", EditorActions.Copy, () => Editor.TryExecute(EditorActions.Copy), enabled: !Editor.Selections.Primary.IsEmpty),
+                ListMenus.Keyed("Copy", EditorActions.Copy, () => Editor.TryExecute(EditorActions.Copy), Editor.Selections.Primary.IsEmpty ? Refusals.NothingSelected : null),
                 ListMenus.Keyed("Select All", EditorActions.SelectAll, () => Editor.TryExecute(EditorActions.SelectAll)),
                 new Separator(),
-                ListMenus.Item("Clear All", null, Clear),
+                ListMenus.Item("Clear All", Clear),
             },
         };
         if (at is null)

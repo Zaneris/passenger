@@ -176,13 +176,11 @@ public sealed class StrokeField : TextBox
         List<MenuItem> items = [];
         foreach (Keystroke key in keys)
         {
-            MenuItem item = new() { Header = $"Set {key.Display()}" };
-            item.Click += (_, _) =>
+            items.Add(ToolWindows.ListMenus.Item($"Set {key.Display()}", () =>
             {
                 Stroke = key;
                 Focus();
-            };
-            items.Add(item);
+            }));
         }
         ContextMenu menu = new() { ItemsSource = items };
         set.Click += (_, _) => menu.Open(set);

@@ -317,13 +317,13 @@ public sealed class BreakpointsWindow : UserControl
         });
         ToolWindows.ListMenus.Attach(list, () => Chosen is not { } breakpoint ? [] :
         [
-            ToolWindows.ListMenus.Item("Go to Source", "F4", GoTo, enabled: breakpoint is LineBreakpoint),
-            ToolWindows.ListMenus.Item(breakpoint.Enabled ? "Disable" : "Enable", null, () =>
+            ToolWindows.ListMenus.Source(GoTo, breakpoint is LineBreakpoint ? null : Refusals.BreakpointOnNoLine),
+            ToolWindows.ListMenus.Item(breakpoint.Enabled ? "Disable" : "Enable", () =>
             {
                 store.Update(breakpoint, !breakpoint.Enabled, breakpoint.Suspend, breakpoint.Condition, breakpoint.HitCondition, breakpoint.LogMessage);
                 Fill(breakpoint);
             }),
-            ToolWindows.ListMenus.Item("Remove", "Delete", RemoveChosen, enabled: Removable(breakpoint)),
+            ToolWindows.ListMenus.Remove("Remove Breakpoint", RemoveChosen, Removable(breakpoint) ? null : Refusals.BreakpointKept),
         ]);
         // Escape closes it wherever the focus is in it, as a dialog's does.
         AddHandler(KeyDownEvent, (_, e) =>

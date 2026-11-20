@@ -548,15 +548,9 @@ public partial class MainWindow
                 continue;
             }
             string from = here.Length > 1 && target.Service is not null ? $" ({target.Configuration.Name})" : string.Empty;
-            MenuItem run = new() { Header = $"Run '{what}'{from}" };
-            run.Click += (_, _) => IdeErrors.Observe(RunTarget(target));
-            MenuItem debug = new() { Header = $"Debug '{what}'{from}" };
-            debug.Click += (_, _) => IdeErrors.Observe(RunTarget(target, RunStart.Debug));
-            MenuItem profile = new() { Header = $"Profile '{what}'{from}" };
-            profile.Click += (_, _) => IdeErrors.Observe(RunTarget(target, RunStart.Profile));
-            menu.Items.Add(run);
-            menu.Items.Add(debug);
-            menu.Items.Add(profile);
+            menu.Items.Add(ToolWindows.ListMenus.Item($"Run '{what}'{from}", () => IdeErrors.Observe(RunTarget(target))));
+            menu.Items.Add(ToolWindows.ListMenus.Item($"Debug '{what}'{from}", () => IdeErrors.Observe(RunTarget(target, RunStart.Debug))));
+            menu.Items.Add(ToolWindows.ListMenus.Item($"Profile '{what}'{from}", () => IdeErrors.Observe(RunTarget(target, RunStart.Profile))));
         }
         RunMarkMenu = menu;
         menu.Placement = PlacementMode.Pointer;

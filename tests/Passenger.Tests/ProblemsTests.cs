@@ -1252,7 +1252,7 @@ public sealed class ProblemsTests : IClassFixture<ProblemsTests.Project>
     {
         Avalonia.Controls.ListBox rows = Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(window.ProblemsWindow).OfType<Avalonia.Controls.ListBox>().First();
         rows.SelectedItem = problems.Rows.First(r => r.Problem?.Path == path);
-        Ui.ChooseFromMenu(rows, "Go to");
+        Ui.ChooseFromMenu(rows, "Go to Source");
     }
 
     /// <summary>The class's server, kept with no window, hears its project file change (its time alone, as a checkout

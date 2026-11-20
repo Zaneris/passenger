@@ -144,12 +144,7 @@ public partial class MainWindow
         string current = document.EncodingName;
         MenuItem Item(FileEncoding encoding) => MenuChoice.Of(encoding.Name, encoding.Name == current,
             () => IdeErrors.Observe(ChooseEncodingAsync(document, encoding)));
-        MenuItem more = new() { Header = "More" };
-        foreach (FileEncoding encoding in FileEncoding.More)
-        {
-            more.Items.Add(Item(encoding));
-        }
-        List<Control> items = [.. FileEncoding.First.Select(Item), new Separator(), more];
+        List<Control> items = [.. FileEncoding.First.Select(Item), new Separator(), ToolWindows.ListMenus.Sub("More", FileEncoding.More.Select(Item))];
         Open(new ContextMenu { ItemsSource = items }, EncodingButton);
     }
 

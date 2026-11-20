@@ -178,28 +178,29 @@ public sealed partial class NuGetView
             MenuItem item = MenuChoice.Of(header, kinds == kind, () => Kinds = kind);
             if (showsUpdates)
             {
-                item.IsEnabled = false;
-                ToolTip.SetTip(item, "Updates are of the packages the projects reference");
+                ListMenus.Grey(item, "Updates are of the packages the projects reference");
             }
             items.Add(item);
         }
         items.Add(new Separator());
-        items.Add(FilterMenu.Toggle("Vulnerable Only", vulnerableOnly, on => VulnerableOnly = on));
-        items.Add(FilterMenu.Toggle("Deprecated Only", deprecatedOnly, on => DeprecatedOnly = on));
+        items.Add(ListMenus.Toggle("Vulnerable Only", vulnerableOnly, on => VulnerableOnly = on));
+        items.Add(ListMenus.Toggle("Deprecated Only", deprecatedOnly, on => DeprecatedOnly = on));
         List<Control> projects = [MenuChoice.Of("All Projects", usedBy is null, () => UsedBy = null), new Separator()];
         foreach (ProjectModel project in model.Projects.Where(p => p.Exists).OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase))
         {
             projects.Add(MenuChoice.Of(project.Name, usedBy is { } chosen && Passenger.Core.PathNames.Same(chosen, project.Path), () => UsedBy = project.Path));
         }
-        items.Add(new MenuItem { Header = "Used By", ItemsSource = projects });
+        items.Add(ListMenus.Sub("Used By", projects));
         items.Add(new Separator());
-        MenuItem clear = new() { Header = "Clear Filters", IsEnabled = filters.Narrowed };
-        clear.Click += (_, _) => Narrow(() => (order, vulnerableOnly, deprecatedOnly, usedBy) = (PackageOrder.BestMatch, false, false, null));
-        items.Add(clear);
-        if (kinds != PackageKinds.Referenced)
+        bool referencedOnly = kinds == PackageKinds.Referenced;
+        items.Add(ListMenus.Item("Clear Filters", () =>
         {
-            clear.Click += (_, _) => Kinds = PackageKinds.Referenced;
-        }
+            Narrow(() => (order, vulnerableOnly, deprecatedOnly, usedBy) = (PackageOrder.BestMatch, false, false, null));
+            if (!referencedOnly)
+            {
+                Kinds = PackageKinds.Referenced;
+            }
+        }, filters.Narrowed ? null : Refusals.NotNarrowed));
         return items;
     }
 }

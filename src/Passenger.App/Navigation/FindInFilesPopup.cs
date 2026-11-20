@@ -172,9 +172,9 @@ public sealed class FindInFilesPopup : UserControl, IAnswers<SearchMatch?>
         ListKeys.Act(results, new ListActs { Open = Choose });
         ToolWindows.ListMenus.Attach(results, () => results.SelectedItem is not SearchLine chosen ? [] :
         [
-            ToolWindows.ListMenus.Item("Go to", "Enter", Choose),
-            ToolWindows.ListMenus.Item("Copy Path", null, () => IdeErrors.Observe(ToolWindows.ListMenus.CopyAsync(this, chosen.Path))),
-            ToolWindows.ListMenus.Item("Copy Line", null, () => IdeErrors.Observe(ToolWindows.ListMenus.CopyAsync(this, chosen.LineText.Trim()))),
+            ToolWindows.ListMenus.Open("Go to", Choose),
+            ToolWindows.ListMenus.Item("Copy Path", () => IdeErrors.Observe(ToolWindows.ListMenus.CopyAsync(this, chosen.Path))),
+            ToolWindows.ListMenus.Item("Copy Line", () => IdeErrors.Observe(ToolWindows.ListMenus.CopyAsync(this, chosen.LineText.Trim()))),
         ]);
         preview = new CodeEditor { IsReadOnly = true, ReadOnlyWhy = Refusals.PreviewReadOnly, ShowErrorStripe = false, Height = PreviewHeight, Focusable = false, Ligatures = ligatures };
         // Clear of the frame's rounded foot, which the editor's square corners would cover.

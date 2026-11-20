@@ -617,18 +617,14 @@ public partial class MainWindow
             }
             NodePackage? read = session.NodeFiles.Packages.FirstOrDefault(p => PathNames.Same(p.Manifest, package.Key));
             string header = read is null ? PathNames.Shown(Path.GetDirectoryName(package.Key)!, session.Folder) : $"{read.Name} ({NodeProjects.ProgramOf(read.Manager)})";
-            MenuItem holding = new() { Header = header, ToggleType = MenuItemToggleType.Radio, IsChecked = package.Any(c => c.Name == session.Configurations.Chosen?.Name) };
-            holding.ItemsSource = (Control[])[.. package.Select(Choice)];
-            menu.Items.Add(holding);
+            menu.Items.Add(MenuChoice.Holding(header, package.Any(c => c.Name == session.Configurations.Chosen?.Name), () => [.. package.Select(Choice)]));
         }
         if (menu.Items.Count == 0)
         {
-            menu.Items.Add(new MenuItem { Header = "No executable projects", IsEnabled = false });
+            menu.Items.Add(ToolWindows.ListMenus.Notice("No executable projects"));
         }
         menu.Items.Add(new Separator());
-        MenuItem edit = new() { Header = "Edit Configurations…" };
-        edit.Click += (_, _) => Request(AppActions.EditConfigurations);
-        menu.Items.Add(edit);
+        menu.Items.Add(RowMenuItem(AppActions.EditConfigurations));
         Open(menu, RunConfigButton);
 
         MenuItem Choice(RunConfiguration each)
