@@ -2404,6 +2404,36 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
         window.Close();
     }
 
+    /// <summary>The XAML workspace turned off while the caret's element waits to be shown under the preview leaves nothing of
+    /// the workspace there: the element waiting is never shown, and the properties shown before stay gone.</summary>
+    [AvaloniaFact]
+    public void The_xaml_workspace_turned_off_while_the_carets_element_waits_to_be_shown_shows_none_of_it()
+    {
+        MainWindow window = app.Open(app.PathOf("MainWindow.axaml"));
+        try
+        {
+            CodeEditor editor = window.EditorArea.CodeEditor;
+            OpenDocument document = window.EditorArea.Active!;
+            Ui.PlaceAfter(editor, "<Button Name=\"G");
+            window.ApplySettings(window.Settings with { XamlWorkspace = true });
+            Ui.WaitFor(() => window.PreviewPaneOf(document) is { PropertiesShown.Element: "Button #Go" },
+                () => $"the button's own values under the preview, where it shows {window.PreviewPaneOf(document)?.PropertiesShown.Element}");
+            Passenger.App.Xaml.XamlPreviewPane pane = window.PreviewPaneOf(document)!;
+
+            // The caret moved on, its element waits for the caret to rest as the workspace turns off.
+            Ui.PlaceAfter(editor, "<TextBlock Name=\"T");
+            window.ApplySettings(window.Settings with { XamlWorkspace = false });
+            Ui.Settle();
+            Assert.True(pane.PropertiesShown.Element is null,
+                $"With the XAML workspace off, the preview shows what {pane.PropertiesShown.Element} sets itself, the caret's element that waited as it turned off");
+        }
+        finally
+        {
+            window.ApplySettings(window.Settings with { XamlWorkspace = false });
+            window.Close();
+        }
+    }
+
     /// <summary>In the XAML workspace, an attribute the caret's element cannot have is said under the preview in the check's
     /// words for it, never as a value the element sets.</summary>
     [AvaloniaFact]

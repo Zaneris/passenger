@@ -60,7 +60,8 @@ public partial class MainWindow
         OpenWorkspace();
     }
 
-    /// <summary>The workspace turned on or off in Settings: on, the file shown opens it; off, no preview shows its values.</summary>
+    /// <summary>The workspace turned on or off in Settings: on, the file shown opens it; off, no preview shows its values,
+    /// the caret's element waiting to be shown let go.</summary>
     private void FollowXamlWorkspace(AppSettings before)
     {
         if (settings.XamlWorkspace && !before.XamlWorkspace)
@@ -70,6 +71,7 @@ public partial class MainWindow
         }
         else if (!settings.XamlWorkspace && before.XamlWorkspace)
         {
+            caretRested?.Stop();
             foreach (ShownPreview shown in previews.Values)
             {
                 shown.Pane.ShowProperties(null, []);
@@ -120,10 +122,10 @@ public partial class MainWindow
     }
 
     /// <summary>The element at the caret that rested: chosen in the Live Visual Tree where the app made it while an app runs,
-    /// else what it sets itself shown under the preview.</summary>
+    /// else what it sets itself shown under the preview; nothing once the workspace is off.</summary>
     private async Task CaretRestedAsync()
     {
-        if (caretMoved is not { } editor || Editors.Groups.FirstOrDefault(g => g.Editor == editor)?.Active is not { } document || session.Xaml.For(document) is null)
+        if (!settings.XamlWorkspace || caretMoved is not { } editor || Editors.Groups.FirstOrDefault(g => g.Editor == editor)?.Active is not { } document || session.Xaml.For(document) is null)
         {
             return;
         }
