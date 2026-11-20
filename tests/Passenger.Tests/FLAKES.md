@@ -30,6 +30,14 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 
 ## 2026-11-20
 
+- `XamlTests`' `A_window_wider_than_the_preview_is_drawn_by_the_previewer_at_the_scale_shown_pixel_for_pixel`, CI
+  44604254929, 44625900224, 44649367892 and 44751057600 (macOS report shard 4): the previewer ended with SIGABRT, "No
+  precompiled XAML found for Gallery.App". **A race in the test**: `SharedProject.Reset` put MainWindow.axaml and its
+  code-behind back timed after the last .dll but before the Avalonia resources the C# server's design-time build had
+  made from the rename test's XAML, so the next build compiled that XAML against the restored code-behind and failed
+  after csc wrote obj/Gallery.dll, and the build after it copied that never-XAML-compiled assembly to bin. Reset now
+  times what it puts back after everything under bin and obj (0f44ae8f8, #2006).
+
 - `AgreeingWordsTests`' `A_word_agreeing_with_a_count_is_chosen_only_through_Plural`, CI 44751057600 (all three
   systems): "2 choices pick a word agreeing with a count of their own". **A bug in the IDE**: d04bbb63d's engine log
   chose "go"/"goes" itself; it goes through `Plural.Of` now (0f3b7961b, #2002, #2020).
