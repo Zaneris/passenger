@@ -62,6 +62,7 @@ internal static class Program
             _ = Run.Devices.DeviceLaunches.EndHold;
             _ = Dap.AdapterEnvironment.EvaluationTimeout;
             _ = Text.TextSearch.Apart;
+            _ = Passenger.Profiler.SessionStarts.Limit;
             _ = Languages.TextMate.TextMateHighlighter.LineTime;
             _ = Waits.Scale;
         }

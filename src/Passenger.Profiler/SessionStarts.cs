@@ -16,8 +16,14 @@ public static class SessionStarts
     /// <summary>A provider no program registers, so a session of it starts without the program's code running.</summary>
     internal const string NoProvider = "Passenger-No-Provider";
 
-    /// <summary>How long a program's runtime is given to take a session at its diagnostic port.</summary>
-    public static TimeSpan Limit => Waits.Of(TimeSpan.FromSeconds(10));
+    /// <summary>The variable that gives <see cref="Limit"/> in milliseconds, before the machine's scale.</summary>
+    [IdentifierHome]
+    public const string LimitVariable = "PASSENGER_SESSION_START_MS";
+
+    /// <summary>How long a program's runtime is given to take a session at its diagnostic port: 10 s, or what
+    /// <see cref="LimitVariable"/> gives, as much longer as <see cref="Waits"/> says; a value there that is no whole number of
+    /// milliseconds above 0 is fatal.</summary>
+    public static TimeSpan Limit => Waits.Of(EnvironmentValues.Milliseconds(LimitVariable, TimeSpan.FromSeconds(10)));
 
     /// <summary>A session of <paramref name="providers"/> at process <paramref name="processId"/>'s port, its failure said
     /// after <paramref name="unread"/> ("Its metrics could not be read"); <paramref name="waiting"/> told how long it waits
