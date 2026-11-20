@@ -1024,6 +1024,16 @@ public static class Ui
         ? promote.CreateDelegate<Action<Dispatcher>>()
         : throw new MissingMethodException("Avalonia's Dispatcher no longer has PromoteTimers, by which a settle fires the timers come due");
 
+    /// <summary>The announcers a test hears (<see cref="Hears"/>), each with its window, whose gathering of words told a
+    /// settle waits out while the window shows, as it draws nothing and so holds no background work.</summary>
+    private static readonly ConditionalWeakTable<Passenger.App.Announcer, TopLevel> Heard = [];
+
+    /// <summary>Has every settle from now on wait until the window's announcer has said what it gathered, for a test of what
+    /// a screen reader hears.</summary>
+    public static void Hears(TopLevel window, Passenger.App.Announcer announcer) => Heard.AddOrUpdate(announcer, window);
+
+    private static bool Hearing() => Heard.Any(heard => heard.Value.IsVisible && heard.Key.IsGathering);
+
     /// <summary>Runs queued UI work and waits until the IDE is quiet: its background work landed (<see cref="BackgroundWork"/>),
     /// nothing in flight that no frame waits for (<see cref="Passenger.Core.InFlight"/>: a language server's request
     /// unanswered), every dispatcher timer that has come due fired, and the frame its last work laid out drawn
@@ -1086,7 +1096,7 @@ public static class Ui
             return false;
         }
         Draw();
-        return BackgroundWork.Pending == 0 && Passenger.Core.InFlight.Count == 0 && (also is null || also());
+        return BackgroundWork.Pending == 0 && Passenger.Core.InFlight.Count == 0 && !Hearing() && (also is null || also());
     }, limit.Left, every: TimeSpan.FromMilliseconds(2), scaled: false);
 
     /// <summary>Runs what the window has queued (its layout among it) and draws until what that laid out is drawn

@@ -123,10 +123,12 @@ public sealed class AccessibilityTests : IDisposable
         }
     }
 
-    /// <summary>What a screen reader hears through a window's announcing region from now on, each as it was told.</summary>
+    /// <summary>What a screen reader hears through a window's announcing region from now on, each as it was told, every
+    /// settle waiting for what it gathered to be heard.</summary>
     internal static List<(string Words, AutomationLiveSetting Live)> Listen(TopLevel window)
     {
         Announcer announcer = Announcer.Of(window) ?? throw new Xunit.Sdk.XunitException("The window has no announcer");
+        Ui.Hears(window, announcer);
         AutomationPeer region = ControlAutomationPeer.CreatePeerForElement(announcer.Region);
         List<(string Words, AutomationLiveSetting Live)> heard = [];
         region.PropertyChanged += (_, e) =>

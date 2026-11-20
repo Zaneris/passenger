@@ -77,7 +77,7 @@ public sealed class Announcer
         {
             Hear();
             return Task.CompletedTask;
-        });
+        }, unseen: true);
     }
 
     /// <summary>The announcer of a window or of the window that owns it, through its owners; null where none has one.</summary>
@@ -99,6 +99,10 @@ public sealed class Announcer
 
     /// <summary>The window's announcing region, as a screen reader meets it: its name the words heard last.</summary>
     public Control Region => region;
+
+    /// <summary>Whether words told are being gathered, not yet heard: the gathering draws nothing, so it holds no
+    /// screenshot or test, and what hears the region waits for it.</summary>
+    public bool IsGathering => later.IsWaiting;
 
     /// <summary>Tells the person <paramref name="words"/>, heard within a moment unless said already then. Words
     /// <paramref name="about"/> one thing that changes (a list's choice) stand in place of those told of it and not yet
