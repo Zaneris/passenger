@@ -609,40 +609,37 @@ public sealed class XamlPreview : IDisposable
         tags.Clear();
     }
 
-    /// <summary>What a previewer's process last said, its last five lines, heard on any thread: once it ends, they go to
-    /// passenger.log with its end, and the pane says the last of them.</summary>
+    /// <summary>What a previewer's process last said, its last five lines, heard on any thread, with the exception it ended
+    /// on (<see cref="LastLines"/>): once it ends, they go to passenger.log with its end, and the pane says that exception, else
+    /// its last line.</summary>
     /// <param name="previewer">Whose previewer it is, as the log names it: Avalonia, WPF or MAUI.</param>
     internal sealed class PreviewerLog(XamlPreview preview, string previewer)
     {
-        private readonly Queue<string> said = new();
+        private readonly LastLines said = new(5);
 
         /// <summary>A line the previewer wrote, kept for when it ends.</summary>
         public void Heard(string? line)
         {
-            if (string.IsNullOrWhiteSpace(line))
+            if (line is null)
             {
                 return;
             }
             lock (said)
             {
-                said.Enqueue(line);
-                while (said.Count > 5)
-                {
-                    said.Dequeue();
-                }
+                said.Heard(line);
             }
         }
 
         /// <summary>The previewer ended by itself: its exit code and last lines written to passenger.log, the preview let go
-        /// of it, and its exit code and last line said in the pane.</summary>
+        /// of it, and its exit code and the exception it ended on, else its last line, said in the pane.</summary>
         public void Ended(IPreviewHost host, int exitCode)
         {
             string last;
             string all;
             lock (said)
             {
-                last = said.LastOrDefault() ?? "it said nothing";
-                all = said.Count == 0 ? last : string.Join(" | ", said);
+                last = said.Last ?? "it said nothing";
+                all = said.Kept.Count == 0 ? last : string.Join(" | ", said.Kept);
             }
             string how = ExitCodes.Said(exitCode);
             IdeErrors.Write($"The {previewer} previewer of {Path.GetFileName(preview.Document.Document.Path)} ended with {how}: {all}");

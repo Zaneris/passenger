@@ -2925,6 +2925,80 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
         window.Close();
     }
 
+    /// <summary>A previewer an unhandled exception ends is said to have ended with that exception, its inner one with it,
+    /// however many frames .NET writes below them: the pane names them, and passenger.log keeps them above the last lines the
+    /// previewer wrote, where the pane said the last of its frames.</summary>
+    [AvaloniaFact]
+    public void A_previewer_an_exception_ends_is_said_to_have_ended_with_that_exception_above_its_frames()
+    {
+        app.Write("Throwing.axaml", """
+            <UserControl xmlns="https://github.com/avaloniaui"
+                         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                         x:Class="Gallery.Throwing" Width="200" Height="100">
+                <TextBlock Text="Throwing" />
+            </UserControl>
+
+            """);
+        app.Write("Throwing.axaml.cs", """
+            using System;
+            using System.Threading;
+            using Avalonia.Controls;
+
+            namespace Gallery;
+
+            public partial class Throwing : UserControl
+            {
+                public Throwing()
+                {
+                    InitializeComponent();
+                    if (Design.IsDesignMode)
+                    {
+                        Thread thrower = new(() => Deep(12));
+                        thrower.Start();
+                        thrower.Join();
+                    }
+                }
+
+                private static void Deep(int depth)
+                {
+                    if (depth > 0)
+                    {
+                        Deep(depth - 1);
+                        return;
+                    }
+                    try
+                    {
+                        throw new InvalidOperationException("the inner cause");
+                    }
+                    catch (InvalidOperationException inner)
+                    {
+                        throw new ApplicationException("the design view could not be made", inner);
+                    }
+                }
+            }
+
+            """);
+        MainWindow window = app.Open(app.PathOf("Throwing.axaml"), languageServer: false);
+        OpenDocument document = window.EditorArea.Active!;
+        Ui.Run(window, AppActions.Build);
+        Ui.Settle();
+        Assert.True(window.Perform(AppActions.XamlPreview), $"XAML Preview could not run: {window.Status}");
+        Passenger.App.Xaml.XamlPreview preview = window.PreviewOf(document) ?? throw new InvalidOperationException("XAML Preview showed no preview beside the file");
+        Ui.WaitFor(() => preview.Status.StartsWith("The previewer ended ", StringComparison.Ordinal),
+            () => $"the previewer the exception ends, the pane saying so, not '{preview.Status}'", TimeSpan.FromSeconds(60));
+        const string thrown = "Unhandled exception. System.ApplicationException: the design view could not be made ---> System.InvalidOperationException: the inner cause";
+        Assert.True(preview.Status.EndsWith(": " + thrown, StringComparison.Ordinal),
+            $"The pane said '{preview.Status}', not the exception that ended the previewer ('{thrown}'), so a person learns nothing of why");
+        IdeErrors.Flush();
+        string? line = Ui.Shared(IdeErrors.LogPath).Split('\n').LastOrDefault(l => l.Contains("The Avalonia previewer of Throwing.axaml ended with ", StringComparison.Ordinal));
+        Assert.True(line is not null && line.Contains(": Unhandled exception. System.ApplicationException: the design view could not be made | ", StringComparison.Ordinal)
+            && line.Contains("System.InvalidOperationException: the inner cause |    at ", StringComparison.Ordinal),
+            $"passenger.log has {(line is null ? "nothing of the previewer's end" : $"its end as '{line}'")}, not the exception above the last frames it wrote");
+        // XAML Preview is kept on for the next window, which the class's other tests open with it off.
+        Assert.True(window.Perform(AppActions.XamlPreview) && window.PreviewOf(document) is null, "XAML Preview stayed on");
+        window.Close();
+    }
+
     /// <summary>With XAML Preview on, previewers run only for the preview shown and the one hidden last: three views shown in
     /// turn leave two previewers, the first's ended; the one hidden last, shown again, draws with the previewer it kept; a
     /// build that changes nothing starts none again (on Windows, where a previewer holds the build it loaded, it ends both
