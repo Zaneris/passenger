@@ -41,10 +41,10 @@ public sealed class BindingValuesController
         this.tree = tree;
         soon = new Debounce(TimeSpan.FromMilliseconds(100), RefreshAsync, Hold);
         tree.ChosenChanged += (_, _) => Invalidate();
-        editors.ActiveChanged += (_, _) => soon.Restart();
+        editors.ActiveChanged += (_, _) => ShownChanged();
         editors.Opened += (_, document) => Follow(document);
         editors.Closed += (_, document) => readings.Remove(document);
-        editors.ForEachEditor(editor => editor.ScrollChanged += (_, _) => soon.Restart());
+        editors.ForEachEditor(editor => editor.ScrollChanged += (_, _) => ShownChanged());
     }
 
     /// <summary>The waits and reads under way, from a change to the values it brings landing.</summary>
@@ -166,7 +166,17 @@ public sealed class BindingValuesController
         {
             return;
         }
-        document.Text.Changed += (_, _) => soon.Restart();
+        document.Text.Changed += (_, _) => ShownChanged();
+    }
+
+    /// <summary>Reads again for what the editors now show, where values are read at all: with none, a scroll or a key has
+    /// nothing to read, and what was shown went at the change that ended the reading (<see cref="Invalidate"/>).</summary>
+    private void ShownChanged()
+    {
+        if (ModeNow() is not null)
+        {
+            soon.Restart();
+        }
     }
 
     private Mode? ModeNow() => session?.Debug is { Session: { } debugged } debug && app is { State: LiveAppState.Connected or LiveAppState.Waiting } live
