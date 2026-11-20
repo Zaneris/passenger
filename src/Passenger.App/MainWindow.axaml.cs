@@ -842,7 +842,7 @@ public partial class MainWindow : IdeWindow
         {
             find.Alone = findSettings.UsagesAlone;
         }
-        Editors.ShowsMarkdownPreview = store.Previews.Value.Markdown;
+        Editors.MarkdownLayout = store.Previews.Value.MarkdownLayout;
         Editors.ShowsSvgPreview = store.Previews.Value.Svg;
         Editors.ShowsHtmlPreview = store.Previews.Value.Html;
         ShowPreviews(store.Previews.Value.Xaml);
