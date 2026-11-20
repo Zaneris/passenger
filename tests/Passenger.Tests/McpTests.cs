@@ -247,9 +247,12 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
     ];
 
     /// <summary>An agent holds modifiers by the keymap's words and the aliases agents write (command, opt, win, super), in
-    /// any case, and primary; a word of none is refused naming those there are, before any key is pressed.</summary>
+    /// any case, and primary; a word of none is refused naming those there are, before any key is pressed. Its primary is
+    /// the command key Passenger's keymap takes on the system it runs on, Cmd on a Mac and Ctrl elsewhere, in a Passenger
+    /// drawn on no screen as on one: primary+shift+A opens Find Action, and a text box there takes the system's hotkeys as
+    /// one on the screen does, primary+A selecting what it typed for the next key to replace.</summary>
     [Fact]
-    public async Task An_agents_modifiers_are_the_keymaps_words_and_their_aliases_and_a_word_of_none_is_refused_naming_them()
+    public async Task An_agents_modifiers_are_the_keymaps_words_and_aliases_and_its_primary_the_systems_command_key_in_a_passenger_drawn_on_no_screen()
     {
         string folder = PathNames.Canonical(TestFolders.Create("mcp-keys-"));
         DeleteAtEnd(folder);
@@ -264,43 +267,16 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         CallToolResult refused = await Result(client, McpTools.AppKey, new() { ["app"] = "ide", ["keys"] = "hyper+F24" });
         Assert.True(refused.IsError == true && Text(refused).Contains("No modifier 'hyper': there are ctrl, shift, alt, cmd (meta) and primary", StringComparison.Ordinal),
             $"app_key with a modifier of no name answered: {Text(refused)}");
-    }
 
-    /// <summary>An agent's primary is the command key Passenger's keymap takes on the system it runs on, Cmd on a Mac and
-    /// Ctrl elsewhere, in a Passenger drawn on no screen as on one: primary+shift+A opens Find Action.</summary>
-    [Fact]
-    public async Task An_agents_primary_is_the_command_key_of_passengers_keymap_on_its_system_so_primary_shift_A_opens_find_action()
-    {
-        string folder = PathNames.Canonical(TestFolders.Create("mcp-primary-"));
-        DeleteAtEnd(folder);
-        File.WriteAllText(Path.Combine(folder, "Notes.txt"), "one\n");
-        await using McpClient client = await Start(["--mcp", folder], languageServer: false);
         Dictionary<string, object?> findAction = new() { ["app"] = "ide", ["filter"] = "ActionPopup" };
         string before = Text(await Call(client, McpTools.AppTree, findAction));
         Assert.StartsWith("Nothing in Passenger matches ActionPopup", before, StringComparison.Ordinal);
-
-        string pressed = Text(await Call(client, McpTools.AppKey, new() { ["app"] = "ide", ["keys"] = "primary+shift+A" }));
+        string opened = Text(await Call(client, McpTools.AppKey, new() { ["app"] = "ide", ["keys"] = "primary+shift+A" }));
         string found = before;
         Assert.True(await Waiting.UntilAsync(async () => !(found = Text(await Call(client, McpTools.AppTree, findAction))).StartsWith("Nothing in", StringComparison.Ordinal),
             TimeSpan.FromMinutes(1), Cancel, TimeSpan.FromMilliseconds(100)),
-            $"primary+shift+A, the keymap's Find Action with {(OperatingSystem.IsMacOS() ? "Cmd" : "Ctrl")} as primary, did not open it ({pressed}): {found}");
+            $"primary+shift+A, the keymap's Find Action with {(OperatingSystem.IsMacOS() ? "Cmd" : "Ctrl")} as primary, did not open it ({opened}): {found}");
         Assert.Contains("ActionPopup", found, StringComparison.Ordinal);
-    }
-
-    /// <summary>A text box of a Passenger drawn on no screen takes the hotkeys of the system it runs on, as one on the screen
-    /// does: an agent's primary+A in Find Action's search selects what it typed there for the next key to replace.</summary>
-    [Fact]
-    public async Task An_agents_primary_A_in_a_text_box_of_a_passenger_drawn_on_no_screen_selects_its_text_for_the_next_key_to_replace()
-    {
-        string folder = PathNames.Canonical(TestFolders.Create("mcp-select-all-"));
-        DeleteAtEnd(folder);
-        File.WriteAllText(Path.Combine(folder, "Notes.txt"), "one\n");
-        await using McpClient client = await Start(["--mcp", folder], languageServer: false);
-        Dictionary<string, object?> findAction = new() { ["app"] = "ide", ["filter"] = "ActionPopup" };
-        await Call(client, McpTools.AppKey, new() { ["app"] = "ide", ["keys"] = "primary+shift+A" });
-        string found = string.Empty;
-        Assert.True(await Waiting.UntilAsync(async () => !(found = Text(await Call(client, McpTools.AppTree, findAction))).StartsWith("Nothing in", StringComparison.Ordinal),
-            TimeSpan.FromMinutes(1), Cancel, TimeSpan.FromMilliseconds(100)), $"primary+shift+A did not open Find Action: {found}");
 
         string typed = Text(await Call(client, McpTools.AppType, new() { ["app"] = "ide", ["text"] = "Settings" }));
         Assert.True(typed.Contains("it shows \"Settings\"", StringComparison.Ordinal), $"Typing into Find Action's search did not reach it: {typed}");
@@ -1390,22 +1366,26 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         Assert.True(open.Count == 0, $"The state is not the person's alone: {string.Join("; ", open)}");
     }
 
-    /// <summary>settings names the fonts an agent may give the editor briefly, the carried one, and the window's, the carried
-    /// Inter and the system's own, each saying how many installed families it left out and that settings_set takes any by
-    /// its name; settings_set takes one and refuses a family that is not installed, as Settings does, nothing changed.</summary>
+    /// <summary>settings names what an agent may give a choosing setting, and settings_set takes one and refuses as Settings
+    /// does, nothing changed: the editor's and the window's fonts (saying how many installed families it left out), the
+    /// Ctrl keys Vim mode may give the keymap (saying what each does on either side), and a theme by its source and name,
+    /// one its source does not list refused naming those it lists, a code colour scheme kept before settings_set answers,
+    /// the carried Cubicle taken and one of the themes repository's fetched and kept.</summary>
     [Fact]
-    public async Task Settings_lists_the_fonts_an_agent_may_choose_and_settings_set_refuses_one_not_installed()
+    public async Task Settings_names_each_choice_an_agent_may_give_and_settings_set_takes_one_refusing_what_settings_refuses()
     {
-        string folder = TestFolders.Create("mcp-fonts-");
+        string folder = TestFolders.Create("mcp-settings-");
         DeleteAtEnd(folder);
         await using McpClient client = await Start(["--mcp", folder], languageServer: false);
-        JsonElement listed = (await Call(client, McpTools.Settings)).GetProperty("settings").EnumerateArray().Single(s => s.GetProperty("name").GetString() == "editorFontFamily");
+        async Task<JsonElement> ListedAsync(string name) =>
+            (await Call(client, McpTools.Settings)).GetProperty("settings").EnumerateArray().Single(s => s.GetProperty("name").GetString() == name);
+
+        JsonElement listed = await ListedAsync("editorFontFamily");
         string[] fonts = [.. listed.GetProperty("choices").EnumerateArray().Select(c => c.GetString()!)];
         Assert.True(fonts.Length == 1 && fonts[0] == CodeFonts.Carried, $"settings listed the editor's fonts as: {listed.GetRawText()}");
         Assert.True(!listed.TryGetProperty("note", out JsonElement codeNote) || codeNote.ValueKind == JsonValueKind.Null
             || codeNote.GetString()!.Contains("installed famil", StringComparison.Ordinal) && codeNote.GetString()!.Contains("settings_set takes any by its name", StringComparison.Ordinal),
             $"settings said of the installed code fonts it left out: {listed.GetRawText()}");
-
         CallToolResult refused = await Result(client, McpTools.SettingsSet, new() { ["changes"] = new Dictionary<string, object> { ["editorFontFamily"] = "Passenger Missing Font" } });
         Assert.True(refused.IsError == true && Text(refused).Contains("Font family Passenger Missing Font (Settings | Editor) is not a font installed on this computer", StringComparison.Ordinal),
             $"settings_set of a font family not installed answered: {Text(refused)}");
@@ -1413,7 +1393,7 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         JsonElement changed = Assert.Single((await Call(client, McpTools.SettingsSet, new() { ["changes"] = new Dictionary<string, object> { ["editorFontFamily"] = font } })).EnumerateArray());
         Assert.Equal(font, changed.GetProperty("after").GetString());
 
-        JsonElement window = (await Call(client, McpTools.Settings)).GetProperty("settings").EnumerateArray().Single(s => s.GetProperty("name").GetString() == "windowFontFamily");
+        JsonElement window = await ListedAsync("windowFontFamily");
         string[] faces = [.. window.GetProperty("choices").EnumerateArray().Select(c => c.GetString()!)];
         Assert.True(faces is [WindowFontNames.Carried, WindowFontNames.SystemUi], $"settings listed the window's fonts as: {window.GetRawText()}");
         Assert.True(!window.TryGetProperty("note", out JsonElement windowNote) || windowNote.ValueKind == JsonValueKind.Null
@@ -1424,83 +1404,52 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
             $"settings_set of a window font not installed answered: {Text(missing)}");
         JsonElement system = Assert.Single((await Call(client, McpTools.SettingsSet, new() { ["changes"] = new Dictionary<string, object> { ["windowFontFamily"] = WindowFontNames.SystemUi } })).EnumerateArray());
         Assert.Equal(WindowFontNames.SystemUi, system.GetProperty("after").GetString());
-    }
 
-    /// <summary>settings lists the Ctrl keys Vim mode may give the keymap, saying what each does on either side; settings_set
-    /// gives one to the keymap as Settings does and refuses a key Vim mode has no say over, nothing changed.</summary>
-    [Fact]
-    public async Task Settings_lists_the_ctrl_keys_vim_mode_may_give_the_keymap_and_settings_set_gives_one_as_settings_does()
-    {
-        string folder = TestFolders.Create("mcp-vimkeys-");
-        DeleteAtEnd(folder);
-        await using McpClient client = await Start(["--mcp", folder], languageServer: false);
-        JsonElement listed = (await Call(client, McpTools.Settings)).GetProperty("settings").EnumerateArray().Single(s => s.GetProperty("name").GetString() == "vimKeysToKeymap");
-        Assert.True(listed.GetProperty("choices").EnumerateArray().Select(c => c.GetString()).SequenceEqual([VimKeys.CtrlR, VimKeys.CtrlV, VimKeys.CtrlO, VimKeys.CtrlI]),
-            $"settings listed Vim mode's Ctrl keys as: {listed.GetRawText()}");
-        Assert.True(listed.GetProperty("note").GetString()!.Contains("<C-v> (Vim mode: Visual block mode; keymap: ", StringComparison.Ordinal),
-            $"settings said nothing of what each Ctrl key does on either side: {listed.GetRawText()}");
+        JsonElement vimKeys = await ListedAsync("vimKeysToKeymap");
+        Assert.True(vimKeys.GetProperty("choices").EnumerateArray().Select(c => c.GetString()).SequenceEqual([VimKeys.CtrlR, VimKeys.CtrlV, VimKeys.CtrlO, VimKeys.CtrlI]),
+            $"settings listed Vim mode's Ctrl keys as: {vimKeys.GetRawText()}");
+        Assert.True(vimKeys.GetProperty("note").GetString()!.Contains("<C-v> (Vim mode: Visual block mode; keymap: ", StringComparison.Ordinal),
+            $"settings said nothing of what each Ctrl key does on either side: {vimKeys.GetRawText()}");
+        CallToolResult noKey = await Result(client, McpTools.SettingsSet, new() { ["changes"] = new Dictionary<string, object> { ["vimKeysToKeymap"] = "<C-v> <C-x>" } });
+        Assert.True(noKey.IsError == true && Text(noKey).Contains("Vim mode's Ctrl keys (Settings | Editor) has no key <C-x>", StringComparison.Ordinal),
+            $"settings_set of a Ctrl key Vim mode does not give answered: {Text(noKey)}");
+        JsonElement given = Assert.Single((await Call(client, McpTools.SettingsSet, new() { ["changes"] = new Dictionary<string, object> { ["vimKeysToKeymap"] = "<C-o> <C-v>" } })).EnumerateArray());
+        Assert.True((given.GetProperty("before").GetString(), given.GetProperty("after").GetString()) == ("", "<C-o> <C-v>")
+            && (!given.TryGetProperty("note", out JsonElement note) || note.ValueKind == JsonValueKind.Null),
+            $"settings_set giving the keymap Ctrl+O and Ctrl+V answered: {given.GetRawText()}");
+        Assert.Equal("<C-o> <C-v>", (await ListedAsync("vimKeysToKeymap")).GetProperty("value").GetString());
 
-        CallToolResult refused = await Result(client, McpTools.SettingsSet, new() { ["changes"] = new Dictionary<string, object> { ["vimKeysToKeymap"] = "<C-v> <C-x>" } });
-        Assert.True(refused.IsError == true && Text(refused).Contains("Vim mode's Ctrl keys (Settings | Editor) has no key <C-x>", StringComparison.Ordinal),
-            $"settings_set of a Ctrl key Vim mode does not give answered: {Text(refused)}");
-        JsonElement changed = Assert.Single((await Call(client, McpTools.SettingsSet, new() { ["changes"] = new Dictionary<string, object> { ["vimKeysToKeymap"] = "<C-o> <C-v>" } })).EnumerateArray());
-        Assert.True((changed.GetProperty("before").GetString(), changed.GetProperty("after").GetString()) == ("", "<C-o> <C-v>")
-            && (!changed.TryGetProperty("note", out JsonElement note) || note.ValueKind == JsonValueKind.Null),
-            $"settings_set giving the keymap Ctrl+O and Ctrl+V answered: {changed.GetRawText()}");
-        JsonElement read = (await Call(client, McpTools.Settings)).GetProperty("settings").EnumerateArray().Single(s => s.GetProperty("name").GetString() == "vimKeysToKeymap");
-        Assert.Equal("<C-o> <C-v>", read.GetProperty("value").GetString());
-    }
-
-    /// <summary>settings says how an agent names a theme, by its source and name, and some of Passenger's themes
-    /// repository's; settings_set takes one of them, which the windowless Passenger fetches and keeps.</summary>
-    [Fact]
-    public async Task Settings_names_a_theme_by_its_source_and_name_and_settings_set_takes_one_of_the_themes_repository()
-    {
-        string folder = TestFolders.Create("mcp-themes-");
-        DeleteAtEnd(folder);
-        await using McpClient client = await Start(["--mcp", folder], languageServer: false);
-        JsonElement look = (await Call(client, McpTools.Settings)).GetProperty("settings").EnumerateArray().Single(s => s.GetProperty("name").GetString() == "look");
-        Assert.True(look.GetProperty("value").ValueKind == JsonValueKind.Null && look.GetProperty("kind").GetString() == "object"
+        foreach (string name in (string[])["Slat", "Cubicle"])
+        {
+            Dictionary<string, object> unlisted = new() { ["source"] = ThemeSource.RepositoryName, ["name"] = name };
+            CallToolResult notListed = await Result(client, McpTools.SettingsSet, new() { ["changes"] = new Dictionary<string, object> { ["look"] = unlisted } });
+            Assert.True(notListed.IsError == true && Text(notListed).Contains($"{ThemeSource.RepositoryName} lists no theme named {name}; it lists Bonbon, Harbour, ", StringComparison.Ordinal)
+                && Text(notListed).Contains(", Slate and Sorbet; nothing changed", StringComparison.Ordinal), $"settings_set of {name}, a theme the themes repository does not list, answered: {Text(notListed)}");
+        }
+        JsonElement look = await ListedAsync("look");
+        Assert.True(look.GetProperty("value").ValueKind == JsonValueKind.Null, $"A theme refused was set all the same: {look.GetRawText()}");
+        Assert.True(look.GetProperty("kind").GetString() == "object"
             && look.GetProperty("note").GetString()!.Contains($"{ThemeSource.RepositoryName} holds Harbour", StringComparison.Ordinal)
             && look.GetProperty("note").GetString()!.Contains($"{ThemeSource.BuiltIn.Name} holds Cubicle", StringComparison.Ordinal),
             $"settings said of the theme: {look.GetRawText()}");
+
+        Dictionary<string, object> reef = new() { ["source"] = ThemeSource.RepositoryName, ["name"] = ThemeSource.FormerScheme };
+        JsonElement schemed = Assert.Single((await Call(client, McpTools.SettingsSet, new() { ["changes"] = new Dictionary<string, object> { ["colourScheme"] = reef } })).EnumerateArray());
+        Assert.Equal(ThemeSource.FormerScheme, schemed.GetProperty("after").GetProperty("name").GetString());
+        string scheme = Path.Combine(OwnState, Path.GetRelativePath(Passenger.App.State.StateStore.DefaultRoot, KeptThemes.PathOf(ThemeSource.Repository, true, ThemeSource.FormerScheme)));
+        Assert.True(File.Exists(scheme), $"settings_set answered before {ThemeSource.FormerScheme} was fetched from the themes repository and kept as {scheme}");
+
         // The theme Passenger carries, by the source the note names.
         Dictionary<string, object> cubicle = new() { ["source"] = ThemeSource.BuiltIn.Name, ["name"] = "Cubicle" };
         JsonElement carried = Assert.Single((await Call(client, McpTools.SettingsSet, new() { ["changes"] = new Dictionary<string, object> { ["look"] = cubicle } })).EnumerateArray());
         Assert.Equal((ThemeSource.BuiltIn.Name, "Cubicle"), (carried.GetProperty("after").GetProperty("source").GetString(), carried.GetProperty("after").GetProperty("name").GetString()));
         Dictionary<string, object> orbit = new() { ["source"] = ThemeSource.RepositoryName, ["name"] = "Orbit" };
-        JsonElement changed = Assert.Single((await Call(client, McpTools.SettingsSet, new() { ["changes"] = new Dictionary<string, object> { ["look"] = orbit } })).EnumerateArray());
-        Assert.Equal("Orbit", changed.GetProperty("after").GetProperty("name").GetString());
+        JsonElement orbited = Assert.Single((await Call(client, McpTools.SettingsSet, new() { ["changes"] = new Dictionary<string, object> { ["look"] = orbit } })).EnumerateArray());
+        Assert.Equal("Orbit", orbited.GetProperty("after").GetProperty("name").GetString());
         // Kept in the agent's Passenger's own state, as KeptThemes keeps one in the run's.
         string kept = Path.Combine(OwnState, Path.GetRelativePath(Passenger.App.State.StateStore.DefaultRoot, KeptThemes.PathOf(ThemeSource.Repository, false, "Orbit")));
         Assert.True(await Waiting.UntilAsync(() => File.Exists(kept), TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken),
             $"Orbit set by an agent was not fetched from the themes repository and kept as {kept}");
-    }
-
-    /// <summary>settings_set of a theme its source does not list, a name mistyped or Cubicle named from the themes repository,
-    /// is refused naming those the source lists, nothing changed; a code colour scheme the source lists is kept from it
-    /// before settings_set answers, as choosing it in Settings keeps it.</summary>
-    [Fact]
-    public async Task Settings_set_refuses_a_theme_its_source_does_not_list_naming_those_it_does()
-    {
-        string folder = TestFolders.Create("mcp-unlisted-theme-");
-        DeleteAtEnd(folder);
-        await using McpClient client = await Start(["--mcp", folder], languageServer: false);
-        foreach (string name in (string[])["Slat", "Cubicle"])
-        {
-            Dictionary<string, object> look = new() { ["source"] = ThemeSource.RepositoryName, ["name"] = name };
-            CallToolResult refused = await Result(client, McpTools.SettingsSet, new() { ["changes"] = new Dictionary<string, object> { ["look"] = look } });
-            Assert.True(refused.IsError == true && Text(refused).Contains($"{ThemeSource.RepositoryName} lists no theme named {name}; it lists Bonbon, Harbour, ", StringComparison.Ordinal)
-                && Text(refused).Contains(", Slate and Sorbet; nothing changed", StringComparison.Ordinal), $"settings_set of {name}, a theme the themes repository does not list, answered: {Text(refused)}");
-        }
-        JsonElement kept = (await Call(client, McpTools.Settings)).GetProperty("settings").EnumerateArray().Single(s => s.GetProperty("name").GetString() == "look");
-        Assert.True(kept.GetProperty("value").ValueKind == JsonValueKind.Null, $"A theme refused was set all the same: {kept.GetRawText()}");
-
-        Dictionary<string, object> reef = new() { ["source"] = ThemeSource.RepositoryName, ["name"] = ThemeSource.FormerScheme };
-        JsonElement changed = Assert.Single((await Call(client, McpTools.SettingsSet, new() { ["changes"] = new Dictionary<string, object> { ["colourScheme"] = reef } })).EnumerateArray());
-        Assert.Equal(ThemeSource.FormerScheme, changed.GetProperty("after").GetProperty("name").GetString());
-        string scheme = Path.Combine(OwnState, Path.GetRelativePath(Passenger.App.State.StateStore.DefaultRoot, KeptThemes.PathOf(ThemeSource.Repository, true, ThemeSource.FormerScheme)));
-        Assert.True(File.Exists(scheme), $"settings_set answered before {ThemeSource.FormerScheme} was fetched from the themes repository and kept as {scheme}");
     }
 
     /// <summary>vcs_log gives each signed commit's signature as the Git log's details say it: a good one by its signer
@@ -1784,28 +1733,44 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         }
     }
 
-    /// <summary>An agent's stash with a message but no action, which lists (the default) and so puts nothing away, is
-    /// refused saying to give push; an action vcs_stash does not have is refused as one, though no stash is there to act
-    /// on; and the change stays where it was.</summary>
+    /// <summary>An agent's vcs tools refuse what the repository has not, naming what there is, and change nothing: a checkout
+    /// of a branch not there names create and the branches there are, never git's "fatal: invalid reference"; a log of no
+    /// commits is refused; a stash with a message but no action, which lists and so puts nothing away, says to give push, and
+    /// an action vcs_stash has not is refused as one; and the history of lines past a file's end names how many it has, never
+    /// as lines not committed yet.</summary>
     [Fact]
-    public async Task An_agents_stash_with_a_message_and_no_action_or_an_unknown_action_is_refused_saying_what_to_give()
+    public async Task An_agents_vcs_tools_refuse_a_branch_a_stash_action_and_lines_the_repository_has_not_naming_what_there_is()
     {
-        string repository = TestFolders.Create("mcp-stash-");
+        string repository = TestFolders.Create("mcp-vcs-refused-");
         DeleteAtEnd(repository);
         string notes = Path.Combine(repository, "Notes.txt");
-        File.WriteAllText(notes, "one\ntwo\n");
+        File.WriteAllText(notes, "one\ntwo\nthree");
         await TestGit.InitAsync(repository);
-        File.WriteAllText(notes, "one\n2\n");
-
+        File.WriteAllText(notes, "one\n2\nthree");
         await using McpClient client = await Start(["--mcp", repository], languageServer: false);
+
+        CallToolResult refused = await Result(client, McpTools.VcsCheckout, new() { ["branch"] = "nowhere" });
+        Assert.True(refused.IsError == true && Text(refused).Contains("No branch nowhere is here: create true makes it from the head; the local branches are main", StringComparison.Ordinal),
+            $"A checkout of a branch there is not answered: {Text(refused)}");
+        Assert.Equal("main", (await TestGit.RunAsync(repository, "branch", "--show-current")).Trim());
+        CallToolResult none = await Result(client, McpTools.VcsLog, new() { ["count"] = 0 });
+        Assert.True(none.IsError == true && Text(none).Contains("count is 0: vcs_log lists 1 or more", StringComparison.Ordinal),
+            $"vcs_log of no commits answered: {Text(none)}");
+
         CallToolResult unasked = await Result(client, McpTools.VcsStash, new() { ["message"] = "work in progress" });
         Assert.True(unasked.IsError == true && Text(unasked).Contains("give action push", StringComparison.Ordinal),
             $"A stash with a message and no action, which puts nothing away, answered: {Text(unasked)}");
         CallToolResult unknown = await Result(client, McpTools.VcsStash, new() { ["action"] = "save" });
         Assert.True(unknown.IsError == true && Text(unknown).Contains("No stash action 'save'", StringComparison.Ordinal),
             $"A stash action vcs_stash does not have answered: {Text(unknown)}");
-        Assert.Equal("one\n2\n", File.ReadAllText(notes));
+        Assert.Equal("one\n2\nthree", File.ReadAllText(notes));
         Assert.Empty((await Call(client, McpTools.VcsStash)).EnumerateArray());
+
+        CallToolResult past = await Result(client, McpTools.VcsLog, new() { ["path"] = "Notes.txt", ["startLine"] = 20, ["endLine"] = 30 });
+        Assert.True(past.IsError == true && Text(past).Contains("Notes.txt has 3 lines", StringComparison.Ordinal),
+            $"The history of lines past Notes.txt's end answered: {Text(past)}");
+        JsonElement last = Assert.Single((await Call(client, McpTools.VcsLog, new() { ["path"] = "Notes.txt", ["startLine"] = 3, ["endLine"] = 3 })).EnumerateArray());
+        Assert.Equal("First", last.GetProperty("subject").GetString());
     }
 
     /// <summary>An agent's edit of a Latin-1 file with a character Latin-1 cannot hold is saved as UTF-8, as the person's
@@ -1825,37 +1790,99 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         Assert.Equal("caf\u00e9 cr\u00e8me \u2603\n", System.Text.Encoding.UTF8.GetString(File.ReadAllBytes(menu)));
     }
 
-    /// <summary>An agent's history of lines past a file's end is refused naming how many lines the file has, never as lines
-    /// not committed yet; the file's last line still has its history.</summary>
+    /// <summary>In a folder with no project, no repository and nothing running, an agent's tools say why they have nothing to
+    /// act on, never an empty answer it reads as nothing found or a clean file: output, stop, hot_reload and telemetry what
+    /// starts a program, vcs_stash that the folder is in no repository, build that there is nothing to build (never MSB1003),
+    /// diagnostics that no check reads Markdown, editor_text, edit and diagnostics of a file not there how a new one is made
+    /// (of a folder, that it is one), and find_symbol of a kind or limit it has not which it takes.</summary>
     [Fact]
-    public async Task An_agents_history_of_lines_past_a_files_end_says_how_many_lines_it_has()
+    public async Task An_agents_tools_with_nothing_to_act_on_say_why_and_what_would_give_them_something()
     {
-        string repository = TestFolders.Create("mcp-lines-");
-        DeleteAtEnd(repository);
-        File.WriteAllText(Path.Combine(repository, "Notes.txt"), "one\ntwo\nthree");
-        await TestGit.InitAsync(repository);
-
-        await using McpClient client = await Start(["--mcp", repository], languageServer: false);
-        CallToolResult past = await Result(client, McpTools.VcsLog, new() { ["path"] = "Notes.txt", ["startLine"] = 20, ["endLine"] = 30 });
-        Assert.True(past.IsError == true && Text(past).Contains("Notes.txt has 3 lines", StringComparison.Ordinal),
-            $"The history of lines past Notes.txt's end answered: {Text(past)}");
-        JsonElement last = Assert.Single((await Call(client, McpTools.VcsLog, new() { ["path"] = "Notes.txt", ["startLine"] = 3, ["endLine"] = 3 })).EnumerateArray());
-        Assert.Equal("First", last.GetProperty("subject").GetString());
-    }
-
-    /// <summary>An agent's output of a console nothing has written to yet, Run's or the Debug window's, says so and what
-    /// starts one, never an empty answer an agent reads as a program that printed nothing; its stop says nothing was
-    /// running, never "Stopped".</summary>
-    [Fact]
-    public async Task An_agents_output_of_a_console_nothing_ran_in_says_so_and_what_starts_one_and_its_stop_that_nothing_ran()
-    {
-        string folder = TestFolders.Create("mcp-quiet-");
+        string folder = TestFolders.Create("mcp-nothing-");
         DeleteAtEnd(folder);
+        Directory.CreateDirectory(Path.Combine(folder, "docs"));
+        File.WriteAllText(Path.Combine(folder, "Notes.md"), "# Notes\n\nPlain words.\n");
+        File.WriteAllText(Path.Combine(folder, ".editorconfig"), "root = true\n\n[*.cs]\nindent_size = 4\n");
         await using McpClient client = await Start(["--mcp", folder], languageServer: false);
+
         Assert.StartsWith("Run has started nothing yet", (await Call(client, McpTools.Output, new() { ["of"] = "run" })).GetString(), StringComparison.Ordinal);
         Assert.StartsWith("Nothing has been debugged yet", (await Call(client, McpTools.Output, new() { ["of"] = "debug" })).GetString(), StringComparison.Ordinal);
         string stopped = (await Call(client, McpTools.Stop)).GetString()!;
         Assert.True(stopped.StartsWith("Nothing is running, so nothing was stopped", StringComparison.Ordinal), $"stop with nothing running answered: {stopped}");
+
+        CallToolResult reloaded = await Result(client, McpTools.HotReload);
+        Assert.True(reloaded.IsError == true && Text(reloaded).Contains($"({McpTools.Run} with hotReload true, or {McpTools.DebugStart}, starts one it applies to)", StringComparison.Ordinal),
+            $"hot_reload with nothing running answered: {Text(reloaded)}");
+        CallToolResult telemetry = await Result(client, McpTools.Telemetry);
+        Assert.True(telemetry.IsError == true && Text(telemetry).Contains($"Nothing runs whose logs and traces a dashboard collects: {McpTools.Run} with telemetry true", StringComparison.Ordinal),
+            $"telemetry with nothing running answered: {Text(telemetry)}");
+
+        CallToolResult stashes = await Result(client, McpTools.VcsStash);
+        Assert.True(stashes.IsError == true && Text(stashes).Contains("not in a Git repository", StringComparison.Ordinal),
+            $"vcs_stash outside a repository answered: {Text(stashes)}");
+
+        JsonElement built = await Call(client, McpTools.Build);
+        Assert.True(built.GetProperty("outcome").GetString() == Refusals.NothingToBuild && built.GetProperty("errors").GetInt32() == 0,
+            $"A build of a folder with no solution or project answered: {built}");
+
+        CallToolResult unread = await Result(client, McpTools.Diagnostics, new() { ["path"] = "Notes.md" });
+        Assert.True(unread.IsError == true && Text(unread).Contains("No check of Passenger's reads Markdown files such as Notes.md: diagnostics answers C#", StringComparison.Ordinal),
+            $"diagnostics of a file no check reads answered: {Text(unread)}");
+        Assert.Empty((await Call(client, McpTools.Diagnostics, new() { ["path"] = ".editorconfig" })).EnumerateArray());
+
+        foreach ((string tool, Dictionary<string, object?> arguments) in new (string, Dictionary<string, object?>)[]
+        {
+            (McpTools.EditorText, new() { ["path"] = "Missing.cs" }),
+            (McpTools.Edit, new() { ["path"] = "Missing.cs", ["oldText"] = "a", ["newText"] = "b" }),
+            (McpTools.Diagnostics, new() { ["path"] = "Missing.cs" }),
+        })
+        {
+            CallToolResult refused = await Result(client, tool, arguments);
+            Assert.True(refused.IsError == true && Text(refused).Contains("No file is at Missing.cs: a new file is written on disk, then edited", StringComparison.Ordinal),
+                $"{tool} of a file not there answered: {Text(refused)}");
+        }
+        CallToolResult folderAsked = await Result(client, McpTools.EditorText, new() { ["path"] = "docs" });
+        Assert.True(folderAsked.IsError == true && Text(folderAsked).Contains("docs is a folder, not a file", StringComparison.Ordinal),
+            $"editor_text of a folder answered: {Text(folderAsked)}");
+
+        CallToolResult kind = await Result(client, McpTools.FindSymbol, new() { ["query"] = "Order", ["kind"] = "klass" });
+        Assert.True(kind.IsError == true && Text(kind).Contains("No kind 'klass'; Go to Symbol's kinds are", StringComparison.Ordinal) && Text(kind).Contains("class", StringComparison.Ordinal),
+            $"find_symbol of the kind klass answered: {Text(kind)}");
+        CallToolResult none = await Result(client, McpTools.FindSymbol, new() { ["query"] = "Order", ["limit"] = 0 });
+        Assert.True(none.IsError == true && Text(none).Contains("limit is 0: find_symbol lists 1 or more", StringComparison.Ordinal),
+            $"find_symbol with limit 0 answered: {Text(none)}");
+    }
+
+    /// <summary>An agent's ide_actions with a query lists only the actions whose id, name or group holds it, where the whole
+    /// list runs to hundreds of lines and tens of kilobytes; its ide_action of an action Passenger has not is refused naming
+    /// ide_actions; and its own Passenger, which nobody is at, refuses its ide_action of an install, a change of the person's
+    /// shell PATH or passenger-ide command, or Restart to Update in the words a person's window refuses an agent's, never
+    /// taking them as the window's own.</summary>
+    [Fact]
+    public async Task An_agents_ide_actions_narrow_by_its_query_and_ide_action_refuses_one_there_is_not_and_the_persons_own()
+    {
+        string folder = TestFolders.Create("mcp-actions-");
+        DeleteAtEnd(folder);
+        await using McpClient client = await Start(["--mcp", folder], languageServer: false);
+        string[] all = [.. (await Call(client, McpTools.IdeActions)).EnumerateArray().Select(a => a.GetString()!)];
+        string[] rebasing = [.. (await Call(client, McpTools.IdeActions, new() { ["query"] = "rebase" })).EnumerateArray().Select(a => a.GetString()!)];
+        Assert.True(rebasing.Length < all.Length && rebasing.Any(a => a.StartsWith($"{AppActions.ContinueRebase}:", StringComparison.Ordinal))
+            && rebasing.All(a => a.Contains("rebase", StringComparison.OrdinalIgnoreCase)),
+            $"ide_actions with the query rebase listed {rebasing.Length} of {all.Length}: {string.Join("; ", rebasing.Take(5))}");
+
+        CallToolResult unknown = await Result(client, McpTools.IdeAction, new() { ["action"] = "app.no.such" });
+        Assert.True(unknown.IsError == true && Text(unknown).Contains("No action is called app.no.such: ide_actions lists them", StringComparison.Ordinal),
+            $"ide_action of an action there is not answered: {Text(unknown)}");
+
+        foreach ((string action, string why) in ((string, string)[])[(AppActions.InstallDotnetSdk, Refusals.AgentInstalls),
+            (AppActions.AddDotnetToPath, Refusals.AgentChangesPath), (AppActions.InstallWorkloads, Refusals.AgentInstallsMobile),
+            (AppActions.InstallAndroidDependencies, Refusals.AgentInstallsMobile), (AppActions.RestartToUpdate, Refusals.RestartIsThePersons),
+            (AppActions.AddCommand, Refusals.CommandIsThePersons), (AppActions.RemoveCommand, Refusals.CommandIsThePersons)])
+        {
+            CallToolResult refused = await Result(client, McpTools.IdeAction, new() { ["action"] = action });
+            Assert.True(refused.IsError == true && Text(refused).Contains(why, StringComparison.Ordinal),
+                $"An agent's own Passenger's ide_action of {action} answered: {Text(refused)}");
+        }
     }
 
     /// <summary>An agent's local_history of a path where no file or folder is, nor any change of one in the history, says
@@ -1896,184 +1923,6 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         Assert.Equal("Breakpoint: no code runs on this line, so it moves to line 3, the next that may, as the program is debugged", await Said(2));
         Assert.Null(await Said(5));
         Assert.Equal("Breakpoint: no code runs on this line or after it, so it will not stop the program", await Said(6));
-    }
-
-    /// <summary>An agent's diagnostics of a file no check of Passenger's reads says so and names those it answers, never an
-    /// empty list an agent reads as a file found clean; a file a check reads (an .editorconfig) still answers its marks.</summary>
-    [Fact]
-    public async Task An_agents_diagnostics_of_a_file_no_check_reads_says_so_and_a_checked_files_answers_its_marks()
-    {
-        string folder = TestFolders.Create("mcp-unchecked-");
-        DeleteAtEnd(folder);
-        File.WriteAllText(Path.Combine(folder, "Notes.md"), "# Notes\n\nPlain words.\n");
-        File.WriteAllText(Path.Combine(folder, ".editorconfig"), "root = true\n\n[*.cs]\nindent_size = 4\n");
-        await using McpClient client = await Start(["--mcp", folder], languageServer: false);
-        CallToolResult unread = await Result(client, McpTools.Diagnostics, new() { ["path"] = "Notes.md" });
-        Assert.True(unread.IsError == true && Text(unread).Contains("No check of Passenger's reads Markdown files such as Notes.md: diagnostics answers C#", StringComparison.Ordinal),
-            $"diagnostics of a file no check reads answered: {Text(unread)}");
-        Assert.Empty((await Call(client, McpTools.Diagnostics, new() { ["path"] = ".editorconfig" })).EnumerateArray());
-    }
-
-    /// <summary>An agent's build of a folder with no solution or project says so, never MSBuild's MSB1003 as a failed build's
-    /// error to be fixed.</summary>
-    [Fact]
-    public async Task An_agents_build_of_a_folder_with_nothing_to_build_says_so_rather_than_failing_in_msbuilds_words()
-    {
-        string folder = TestFolders.Create("mcp-nothing-");
-        DeleteAtEnd(folder);
-        File.WriteAllText(Path.Combine(folder, "README.md"), "# Notes\n");
-        await using McpClient client = await Start(["--mcp", folder], languageServer: false);
-        JsonElement built = await Call(client, McpTools.Build);
-        Assert.True(built.GetProperty("outcome").GetString() == Refusals.NothingToBuild && built.GetProperty("errors").GetInt32() == 0,
-            $"A build of a folder with no solution or project answered: {built}");
-    }
-
-    /// <summary>An agent's ide_actions with a query lists only the actions whose id, name or group holds it, where the whole
-    /// list runs to hundreds of lines and tens of kilobytes.</summary>
-    [Fact]
-    public async Task An_agents_ide_actions_with_a_query_lists_only_the_actions_it_names()
-    {
-        string folder = TestFolders.Create("mcp-actions-");
-        DeleteAtEnd(folder);
-        await using McpClient client = await Start(["--mcp", folder], languageServer: false);
-        string[] all = [.. (await Call(client, McpTools.IdeActions)).EnumerateArray().Select(a => a.GetString()!)];
-        string[] rebasing = [.. (await Call(client, McpTools.IdeActions, new() { ["query"] = "rebase" })).EnumerateArray().Select(a => a.GetString()!)];
-        Assert.True(rebasing.Length < all.Length && rebasing.Any(a => a.StartsWith($"{AppActions.ContinueRebase}:", StringComparison.Ordinal))
-            && rebasing.All(a => a.Contains("rebase", StringComparison.OrdinalIgnoreCase)),
-            $"ide_actions with the query rebase listed {rebasing.Length} of {all.Length}: {string.Join("; ", rebasing.Take(5))}");
-    }
-
-    /// <summary>An agent's ide_action of an action Passenger has not is refused naming ide_actions, which lists those it has.</summary>
-    [Fact]
-    public async Task An_agents_ide_action_of_an_action_there_is_not_names_ide_actions()
-    {
-        string folder = TestFolders.Create("mcp-noaction-");
-        DeleteAtEnd(folder);
-        await using McpClient client = await Start(["--mcp", folder], languageServer: false);
-        CallToolResult refused = await Result(client, McpTools.IdeAction, new() { ["action"] = "app.no.such" });
-        Assert.True(refused.IsError == true && Text(refused).Contains("No action is called app.no.such: ide_actions lists them", StringComparison.Ordinal),
-            $"ide_action of an action there is not answered: {Text(refused)}");
-    }
-
-    /// <summary>An agent's own Passenger, which nobody is at, refuses its ide_action of an install, a change of the person's
-    /// shell PATH or passenger-ide command, or Restart to Update in the words a person's window refuses an agent's, never
-    /// taking them as the window's own.</summary>
-    [Fact]
-    public async Task An_agents_own_passenger_refuses_its_ide_action_to_install_change_the_shells_path_or_restart_to_update()
-    {
-        string folder = TestFolders.Create("mcp-own-installs-");
-        DeleteAtEnd(folder);
-        await using McpClient client = await Start(["--mcp", folder], languageServer: false);
-        foreach ((string action, string why) in ((string, string)[])[(AppActions.InstallDotnetSdk, Refusals.AgentInstalls),
-            (AppActions.AddDotnetToPath, Refusals.AgentChangesPath), (AppActions.InstallWorkloads, Refusals.AgentInstallsMobile),
-            (AppActions.InstallAndroidDependencies, Refusals.AgentInstallsMobile), (AppActions.RestartToUpdate, Refusals.RestartIsThePersons),
-            (AppActions.AddCommand, Refusals.CommandIsThePersons), (AppActions.RemoveCommand, Refusals.CommandIsThePersons)])
-        {
-            CallToolResult refused = await Result(client, McpTools.IdeAction, new() { ["action"] = action });
-            Assert.True(refused.IsError == true && Text(refused).Contains(why, StringComparison.Ordinal),
-                $"An agent's own Passenger's ide_action of {action} answered: {Text(refused)}");
-        }
-    }
-
-    /// <summary>An agent's checkout of a branch the repository has not is refused naming create, which makes it, and the
-    /// branches there are, never git's "fatal: invalid reference"; the head stays where it was. A log of no commits is
-    /// refused, never answered with one.</summary>
-    [Fact]
-    public async Task An_agents_checkout_of_a_branch_there_is_not_names_create_and_the_branches_there_are_and_a_log_of_none_is_refused()
-    {
-        string repository = TestFolders.Create("mcp-nobranch-");
-        DeleteAtEnd(repository);
-        File.WriteAllText(Path.Combine(repository, "Notes.txt"), "one\n");
-        await TestGit.InitAsync(repository);
-        await using McpClient client = await Start(["--mcp", repository], languageServer: false);
-        CallToolResult refused = await Result(client, McpTools.VcsCheckout, new() { ["branch"] = "nowhere" });
-        Assert.True(refused.IsError == true && Text(refused).Contains("No branch nowhere is here: create true makes it from the head; the local branches are main", StringComparison.Ordinal),
-            $"A checkout of a branch there is not answered: {Text(refused)}");
-        Assert.Equal("main", (await TestGit.RunAsync(repository, "branch", "--show-current")).Trim());
-        CallToolResult none = await Result(client, McpTools.VcsLog, new() { ["count"] = 0 });
-        Assert.True(none.IsError == true && Text(none).Contains("count is 0: vcs_log lists 1 or more", StringComparison.Ordinal),
-            $"vcs_log of no commits answered: {Text(none)}");
-    }
-
-    /// <summary>An agent's vcs_stash in a folder that is in no Git repository says so, as the other vcs tools do, never an
-    /// empty list of stashes an agent reads as a repository with none.</summary>
-    [Fact]
-    public async Task An_agents_stash_outside_a_git_repository_says_the_folder_is_in_none()
-    {
-        string folder = TestFolders.Create("mcp-norepo-");
-        DeleteAtEnd(folder);
-        await using McpClient client = await Start(["--mcp", folder], languageServer: false);
-        CallToolResult listed = await Result(client, McpTools.VcsStash);
-        Assert.True(listed.IsError == true && Text(listed).Contains("not in a Git repository", StringComparison.Ordinal),
-            $"vcs_stash outside a repository answered: {Text(listed)}");
-    }
-
-    /// <summary>An agent's editor_text, edit and diagnostics of a file not there say no file is at that path, by the folder's
-    /// own path, and how a new file is made, never .NET's "Could not find file" with the whole path twice; of a folder, that
-    /// it is one.</summary>
-    [Fact]
-    public async Task An_agents_tools_on_a_file_not_there_say_no_file_is_at_its_path_and_how_a_new_one_is_made()
-    {
-        string folder = TestFolders.Create("mcp-nofile-");
-        DeleteAtEnd(folder);
-        Directory.CreateDirectory(Path.Combine(folder, "docs"));
-        await using McpClient client = await Start(["--mcp", folder], languageServer: false);
-        foreach ((string tool, Dictionary<string, object?> arguments) in new (string, Dictionary<string, object?>)[]
-        {
-            (McpTools.EditorText, new() { ["path"] = "Missing.cs" }),
-            (McpTools.Edit, new() { ["path"] = "Missing.cs", ["oldText"] = "a", ["newText"] = "b" }),
-            (McpTools.Diagnostics, new() { ["path"] = "Missing.cs" }),
-        })
-        {
-            CallToolResult refused = await Result(client, tool, arguments);
-            Assert.True(refused.IsError == true && Text(refused).Contains("No file is at Missing.cs: a new file is written on disk, then edited", StringComparison.Ordinal),
-                $"{tool} of a file not there answered: {Text(refused)}");
-        }
-        CallToolResult folderAsked = await Result(client, McpTools.EditorText, new() { ["path"] = "docs" });
-        Assert.True(folderAsked.IsError == true && Text(folderAsked).Contains("docs is a folder, not a file", StringComparison.Ordinal),
-            $"editor_text of a folder answered: {Text(folderAsked)}");
-    }
-
-    /// <summary>An agent's find_symbol of a kind Go to Symbol has not, or with a limit below one, is refused naming the kinds
-    /// or the limit, never an empty list an agent reads as no symbol of that name.</summary>
-    [Fact]
-    public async Task An_agents_find_symbol_of_a_kind_there_is_not_or_no_limit_is_refused_saying_so()
-    {
-        string folder = TestFolders.Create("mcp-kinds-");
-        DeleteAtEnd(folder);
-        await using McpClient client = await Start(["--mcp", folder], languageServer: false);
-        CallToolResult kind = await Result(client, McpTools.FindSymbol, new() { ["query"] = "Order", ["kind"] = "klass" });
-        Assert.True(kind.IsError == true && Text(kind).Contains("No kind 'klass'; Go to Symbol's kinds are", StringComparison.Ordinal) && Text(kind).Contains("class", StringComparison.Ordinal),
-            $"find_symbol of the kind klass answered: {Text(kind)}");
-        CallToolResult none = await Result(client, McpTools.FindSymbol, new() { ["query"] = "Order", ["limit"] = 0 });
-        Assert.True(none.IsError == true && Text(none).Contains("limit is 0: find_symbol lists 1 or more", StringComparison.Ordinal),
-            $"find_symbol with limit 0 answered: {Text(none)}");
-    }
-
-    /// <summary>An agent's hot_reload with nothing running names run with hotReload and debug_start, which start a program it
-    /// applies to, beside the window's words naming its Settings page.</summary>
-    [Fact]
-    public async Task An_agents_hot_reload_with_nothing_running_names_the_tools_that_start_a_program_it_applies_to()
-    {
-        string folder = TestFolders.Create("mcp-noreload-");
-        DeleteAtEnd(folder);
-        await using McpClient client = await Start(["--mcp", folder], languageServer: false);
-        CallToolResult refused = await Result(client, McpTools.HotReload);
-        Assert.True(refused.IsError == true && Text(refused).Contains($"({McpTools.Run} with hotReload true, or {McpTools.DebugStart}, starts one it applies to)", StringComparison.Ordinal),
-            $"hot_reload with nothing running answered: {Text(refused)}");
-    }
-
-    /// <summary>An agent's telemetry with nothing running says so and how a run collects logs and traces, never to name an
-    /// AppHost the folder has none of.</summary>
-    [Fact]
-    public async Task An_agents_telemetry_with_nothing_running_says_how_a_run_collects_rather_than_asking_for_an_apphost()
-    {
-        string folder = TestFolders.Create("mcp-notelemetry-");
-        DeleteAtEnd(folder);
-        await using McpClient client = await Start(["--mcp", folder], languageServer: false);
-        CallToolResult refused = await Result(client, McpTools.Telemetry);
-        Assert.True(refused.IsError == true && Text(refused).Contains($"Nothing runs whose logs and traces a dashboard collects: {McpTools.Run} with telemetry true", StringComparison.Ordinal),
-            $"telemetry with nothing running answered: {Text(refused)}");
     }
 
     /// <summary>vcs_commit commits the changes of a file its lines touch, through the Commit window's partial commit: one of
