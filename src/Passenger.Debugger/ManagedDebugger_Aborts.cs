@@ -81,7 +81,8 @@ public partial class ManagedDebugger
             IEnumerable<string> frames = thread.EnumerateChains()
                 .SelectMany(chain => chain.IsManaged ? chain.EnumerateFrames().Select(FrameTold) : ["[Native code]"]);
             string name = thread.GetThreadNameOrNull() ?? (_leftRunning.Contains(id) ? "the runtime's tiering worker" : "no name");
-            return $"  {id} ({name}, {user}, {debug}): {string.Join(" < ", frames.Take(FramesTold))}";
+            string start = AtItsFirstInstruction(thread) ? ", at its first instruction" : "";
+            return $"  {id} ({name}, {user}, {debug}{start}): {string.Join(" < ", frames.Take(FramesTold))}";
         }
         catch (Exception error) when (Failures.OfRuntime(error))
         {

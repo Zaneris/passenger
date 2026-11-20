@@ -289,6 +289,7 @@ public partial class ManagedDebugger
             WhyNoAbortTakes = WhyNoAbortTakes,
             Running = EvaluationRunning,
             HoldOthers = HoldOthersDuringEvaluation,
+            ClearStarts = ClearStartsAsync,
             Log = logger,
             TellThreads = logger is null ? null : thread => logger(WhereThreadsStand(thread)),
         };
@@ -499,7 +500,7 @@ public partial class ManagedDebugger
                 case LogMessageCorDebugManagedCallbackEventArgs a: HandleLogMessage(sender, a); break;
                 case CreateProcessCorDebugManagedCallbackEventArgs a: HandleProcessCreated(sender, a); break;
                 case ExitProcessCorDebugManagedCallbackEventArgs a: await HandleProcessExited(a).ConfigureAwait(false); break;
-                case CreateThreadCorDebugManagedCallbackEventArgs a: HandleThreadCreated(sender, a); break;
+                case CreateThreadCorDebugManagedCallbackEventArgs a: await HandleThreadCreated(a).ConfigureAwait(false); break;
                 case ExitThreadCorDebugManagedCallbackEventArgs a: HandleThreadExited(sender, a); break;
                 case LoadModuleCorDebugManagedCallbackEventArgs a: HandleModuleLoaded(sender, a); break;
                 case LoadClassCorDebugManagedCallbackEventArgs a: HandleClassLoaded(a); break;
@@ -1749,6 +1750,10 @@ internal sealed class EvalStatus
     /// <summary>Holds every thread but the one given while an evaluation runs on it alone, but the runtime's own that runs
     /// none of the program's code (<see cref="ManagedDebugger.HoldOthersDuringEvaluation"/>).</summary>
     internal required Action<ICorDebugThread> HoldOthers { get; init; }
+
+    /// <summary>Lets every other thread standing at its first instruction run past it before an evaluation on the thread
+    /// given is set up, so the evaluation's hold takes none where no collection can run (<see cref="ManagedDebugger.ClearStartsAsync"/>).</summary>
+    internal required Func<ICorDebugThread, Task> ClearStarts { get; init; }
 
     /// <summary>The engine's log, for what becomes of an evaluation past its time.</summary>
     internal Action<string>? Log { get; init; }

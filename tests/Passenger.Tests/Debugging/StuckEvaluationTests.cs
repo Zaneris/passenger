@@ -333,6 +333,29 @@ public class StuckEvaluationTests(ITestOutputHelper testOutputHelper)
         await host.WaitForEvent<OutputEvent>(o => o.Output.Contains("finalized", StringComparison.Ordinal));
     }
 
+    /// <summary>A thread the program starts while an evaluation runs is announced from its first instruction, where, held,
+    /// the runtime would count it as standing where no collection can run: it is let past that place before it is held, so
+    /// an evaluation that starts one and then collects gives its answer, and so does the next, collecting again with it
+    /// held, where both would wait past their time for the thread to be let go.</summary>
+    [Fact]
+    public async Task An_evaluation_that_starts_a_thread_and_collects_gives_its_answer_and_so_does_the_next_collection()
+    {
+        const string looping = "LoopingConsoleApp";
+        await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
+        await host
+            .InitializeAsync()
+            .LaunchAsync(Debuggees.Program(looping), stopAtEntry: false, justMyCode: true, arguments: ["collects"])
+            .WaitForInitializedEvent();
+        await host.BreakpointsAsync(Debuggees.Line(looping, "Console.WriteLine(\"collects\");"), Debuggees.Source(looping, "Program.cs")).ConfigurationDoneAsync();
+        StoppedEvent stop = await host.WaitForStoppedEvent();
+        int frame = (await host.TopFrameAsync(stop.ThreadId!.Value)).Id;
+
+        EvaluateResponse started = await host.EvaluateAsync(frame, "Starting.StartAndCollect()");
+        Assert.True(started.Result == "42", $"The evaluation that started a thread and collected was answered {started.Result}, its collection kept waiting by the thread held as it started; the engine's log:\n{host.EngineLog()}");
+        EvaluateResponse again = await host.EvaluateAsync(frame, "Starting.Collect()");
+        Assert.True(again.Result == "42", $"The next collection, with the started thread held, was answered {again.Result}; the engine's log:\n{host.EngineLog()}");
+    }
+
     /// <summary>What has the debuggee's runtime promote a method straight to optimized code, and keeps its tiering worker for
     /// the test's length, where it would end after 4 s with no work.</summary>
     private static IReadOnlyDictionary<string, string> Tiering => new Dictionary<string, string>

@@ -55,22 +55,30 @@ public partial class ManagedDebugger
         ReportTerminated();
     }
 
-    private void HandleThreadCreated(object? sender, CreateThreadCorDebugManagedCallbackEventArgs createThreadCorDebugManagedCallbackEventArgs)
+    private async Task HandleThreadCreated(CreateThreadCorDebugManagedCallbackEventArgs createThreadCorDebugManagedCallbackEventArgs)
     {
         ICorDebugThread corThread = createThreadCorDebugManagedCallbackEventArgs.Thread;
         NoteMainThread(corThread);
         _threads[corThread.Id] = new ThreadInfo(corThread);
-        if (EvalStatus.ThreadId is int evaluating && !EvalStatus.LetThreadsRun)
-        {
-            HoldDuringEvaluation(corThread, evaluating);
-        }
         if (_dataSlots.Any(slot => slot is not null))
         {
             // A thread made since a data breakpoint was set watches what the others do.
             ApplyDataRegisters(corThread.Id);
         }
         OnThreadStarted?.Invoke(corThread.Id);
+        (int Evaluating, string Named)? during = EvalStatus.ThreadId is int evaluating && !EvalStatus.LetThreadsRun && !HoldsNoneAtEvaluations
+            ? (evaluating, StartsTold([corThread]))
+            : null;
+        if (during is not null)
+        {
+            // Held by the evaluation's hold already when the runtime listed it before announcing it.
+            corThread.TrySetDebugState(CorDebugThreadState.THREAD_RUN);
+        }
         Continue(clearVariables: false);
+        if (during is { } evaluation)
+        {
+            await HoldPastItsStartAsync(corThread, evaluation.Evaluating, evaluation.Named).ConfigureAwait(false);
+        }
     }
 
     /// <summary>Every thread but the evaluation's, held while it runs alone, but the runtime's tiering worker
@@ -146,22 +154,6 @@ public partial class ManagedDebugger
 
     /// <summary>The runtime's own threads left running during an evaluation, each said once in the engine's log.</summary>
     private readonly HashSet<int> _leftRunning = [];
-
-    /// <summary>A thread made while an evaluation runs its own thread alone, which the evaluation's hold of every other thread
-    /// came too early for: held as they are until the evaluation ends, when every thread is let go again. Left running, it
-    /// would pass a breakpoint whose event waits for the evaluation's end and run on, so the stop shown later is not where
-    /// the thread is.</summary>
-    private void HoldDuringEvaluation(ICorDebugThread thread, int evaluating)
-    {
-        if (HoldsNoneAtEvaluations)
-        {
-            return;
-        }
-        int held = thread.TrySetDebugState(CorDebugThreadState.THREAD_SUSPEND);
-        _logger?.Invoke(held is Cor.S_OK
-            ? $"Held: thread {thread.Id}, made during an evaluation on thread {evaluating}"
-            : $"Thread {thread.Id}, made during an evaluation on thread {evaluating}, could not be held: 0x{held:X8}");
-    }
 
     /// <summary>Notes the thread running Main. The runtime announces it first, but to a debugger that takes hold once
     /// the program is under way it lists the threads in the order they were made, and Windows makes the finalizer's
