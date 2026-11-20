@@ -481,16 +481,24 @@ public sealed record ProjectInputs(
     }
 
     /// <summary>The usings the SDK writes into the project's <c>GlobalUsings.g.cs</c> beside its assets file, read as the
-    /// project's own C# is: the one in a folder of the framework read (<paramref name="framework"/>) first.</summary>
+    /// project's own C# is: the one in a folder of the framework read (<paramref name="framework"/>) first; none while it
+    /// cannot be read (a build writing it again, a clean taking it away), the project's next read taking them.</summary>
     private static IReadOnlyList<string> ImplicitUsingsOf(string? assets, string? framework, string assemblyName)
     {
         if (assets is null || Path.GetDirectoryName(assets) is not { } obj || !Directory.Exists(obj))
         {
             return [];
         }
-        string[] written = [.. Directory.EnumerateFiles(obj, "*.GlobalUsings.g.cs", SearchOption.AllDirectories)];
-        string? generated = written.FirstOrDefault(f => framework is not null && InFolderOf(f, framework, obj)) ?? written.FirstOrDefault();
-        return generated is null ? [] : SourceTypes.Read(generated, File.ReadAllText(generated), assemblyName, CSharpParseOptions.Default).GlobalUsings;
+        try
+        {
+            string[] written = [.. Directory.EnumerateFiles(obj, "*.GlobalUsings.g.cs", SearchOption.AllDirectories)];
+            string? generated = written.FirstOrDefault(f => framework is not null && InFolderOf(f, framework, obj)) ?? written.FirstOrDefault();
+            return generated is null ? [] : SourceTypes.Read(generated, File.ReadAllText(generated), assemblyName, CSharpParseOptions.Default).GlobalUsings;
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            return [];
+        }
     }
 
     /// <summary>Whether a build's file lies in a folder of a target framework's under <paramref name="within"/>: <c>net10.0/</c>,

@@ -60,6 +60,34 @@ public sealed class ProjectInputsTests : IDisposable
             $"The implicit usings read are [{string.Join(", ", read.ImplicitUsings)}], so a type the project's C# names through नमस्ते.गिनती is found by none of its XAML");
     }
 
+    /// <summary>A GlobalUsings.g.cs listed but not read (taken away by a clean between the two, here a link to no file; on
+    /// Windows held by a build writing it) leaves the project read without its implicit usings.</summary>
+    [Fact]
+    public void A_global_usings_file_that_cannot_be_read_leaves_the_project_read_without_its_implicit_usings()
+    {
+        string project = Write("App/App.csproj", "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+        string assets = Assets("net10.0", "net11.0");
+        string usings = Path.Combine(root, "App/obj/Debug/net10.0/App.GlobalUsings.g.cs");
+        Directory.CreateDirectory(Path.GetDirectoryName(usings)!);
+        FileStream? held = null;
+        if (OperatingSystem.IsWindows())
+        {
+            File.WriteAllText(usings, "global using global::Ten;\n");
+            held = new FileStream(usings, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+        }
+        else
+        {
+            File.CreateSymbolicLink(usings, Path.Combine(root, "gone.cs"));
+        }
+        using (held)
+        {
+            ProjectInputs? read = null;
+            Exception? thrown = Record.Exception(() => read = ProjectInputs.Read(project, null, new ProjectEvaluation(assets, null, new Dictionary<string, string>())));
+            Assert.True(thrown is null, $"Reading the project threw {thrown?.GetType().Name} ({thrown?.Message}), so its XAML is never read and its preview never starts");
+            Assert.True(read is { TargetFramework: "net10.0", ImplicitUsings.Count: 0 }, $"The project read as {read?.TargetFramework} with usings [{string.Join(", ", read?.ImplicitUsings ?? [])}]");
+        }
+    }
+
     /// <summary>The SDK's packs of a framework, a release candidate's beside its release: the release's reference
     /// assemblies are read, whatever order the folder lists them in, as the SDK builds against the release.</summary>
     [Fact]
