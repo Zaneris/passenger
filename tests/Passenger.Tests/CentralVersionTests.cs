@@ -8,6 +8,7 @@ namespace Passenger.Tests;
 /// in an ItemGroup, its id and version escaped, whether the file is written on one line or many; and which file that is,
 /// as a project's evaluation names it.</summary>
 [Collection(Beside.Name)]
+[SameOnEverySystem]
 public sealed class CentralVersionTests
 {
     [Fact]

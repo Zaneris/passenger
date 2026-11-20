@@ -14,6 +14,7 @@ namespace Passenger.Tests;
 /// shown before it, its neighbour only where none was; Close Tabs to the Left and to the Right leave the pinned ones;
 /// Unsplit and Unsplit All join the splits, keeping every tab; the open tab of a changed file shows its dot as the
 /// others do.</summary>
+[SameOnEverySystem]
 public sealed class EditorTabsTests : IDisposable
 {
     private static readonly string[] Five = ["One.cs", "Two.cs", "Three.cs", "Four.cs", "Five.cs"];

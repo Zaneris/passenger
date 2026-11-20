@@ -516,6 +516,7 @@ public sealed class TestsLeaveNothingBehindAttribute : BeforeAfterTestAttribute
             Passenger.App.UiThread.Own();
             BackgroundWork.Forget();
             Passenger.Core.InFlight.Forget();
+            OpenWindows.Following = SameOnEverySystemAttribute.Marks(methodUnderTest);
             OpenWindows.Watch();
         }
         TestFolders.Begin(test.UniqueID);
@@ -524,7 +525,7 @@ public sealed class TestsLeaveNothingBehindAttribute : BeforeAfterTestAttribute
     public override void After(MethodInfo methodUnderTest, IXunitTest test)
     {
         // Read before the windows close, said once they have.
-        string? unlike = IsWindowTest(methodUnderTest) ? SameOnEverySystemAttribute.Unlike(methodUnderTest, OpenWindows.RanOnThisSystem) : null;
+        string? unlike = IsWindowTest(methodUnderTest) ? SameOnEverySystemAttribute.Unlike(methodUnderTest, OpenWindows.RanUnlike) : null;
         try
         {
             if (IsWindowTest(methodUnderTest) && !OpenWindows.CloseAll())
@@ -569,26 +570,65 @@ public static class OpenWindows
     /// what they started.</summary>
     private static readonly TimeSpan Landing = TimeSpan.FromSeconds(30);
 
-    /// <summary>What the IDE's windows opened since the test began ran that another system could do otherwise, each read as
-    /// it closed (<see cref="SameOnEverySystemAttribute.Ran"/>).</summary>
-    private static readonly List<string> RanByClosed = [];
+    private static readonly List<string> ranUnlike = [];
 
-    /// <summary>What the IDE's windows opened since the test began ran that another system could do otherwise: those
-    /// closed as they closed, those open now.</summary>
-    public static IReadOnlyList<string> RanOnThisSystem =>
-        [.. RanByClosed, .. Open.OfType<Passenger.App.MainWindow>().SelectMany(SameOnEverySystemAttribute.Ran)];
+    /// <summary>The IDE's windows followed since the test began, by whose folders the programs it starts are told apart
+    /// from those of the classes beside it.</summary>
+    private static readonly List<Passenger.App.MainWindow> followed = [];
+
+    /// <summary>Whether the IDE's windows the test opens are followed for what another system could do otherwise, as a
+    /// test of a class marked [SameOnEverySystem]'s are (<see cref="SameOnEverySystemAttribute.Follow"/>).</summary>
+    public static bool Following { get; set; }
+
+    /// <summary>What the IDE's windows followed since the test began ran that another system could do otherwise, those
+    /// open now as they stand.</summary>
+    public static IReadOnlyList<string> RanUnlike
+    {
+        get
+        {
+            lock (followed)
+            {
+                return [.. ranUnlike, .. Following ? Open.OfType<Passenger.App.MainWindow>().SelectMany(SameOnEverySystemAttribute.Standing) : []];
+            }
+        }
+    }
+
+    /// <summary>A program the IDE started, on whatever thread started it: what another system could do otherwise where it
+    /// runs in a followed window's folder.</summary>
+    private static void Heard(object? sender, ChildStart start)
+    {
+        lock (followed)
+        {
+            if (followed.Any(window => window.Session.Folder is { } folder && start.Folder.Length > 0 && (PathNames.Same(start.Folder, folder) || PathNames.IsUnder(start.Folder, folder)))
+                && SameOnEverySystemAttribute.Started(start) is { } ran)
+            {
+                ranUnlike.Add(ran);
+            }
+        }
+    }
 
     public static void Watch()
     {
         if (!watching)
         {
             watching = true;
+            ChildProcesses.Started += Heard;
             Window.WindowOpenedEvent.AddClassHandler<Window>((window, _) =>
             {
                 Open.Add(window);
-                if (window is Passenger.App.MainWindow ide)
+                if (window is Passenger.App.MainWindow ide && Following)
                 {
-                    ide.Closing += (_, _) => RanByClosed.AddRange(SameOnEverySystemAttribute.Ran(ide));
+                    lock (followed)
+                    {
+                        followed.Add(ide);
+                    }
+                    SameOnEverySystemAttribute.Follow(ide, ran =>
+                    {
+                        lock (followed)
+                        {
+                            ranUnlike.Add(ran);
+                        }
+                    });
                 }
             });
             Window.WindowClosedEvent.AddClassHandler<Window>((window, _) =>
@@ -602,7 +642,11 @@ public static class OpenWindows
         }
         Open.Clear();
         Ending.Clear();
-        RanByClosed.Clear();
+        lock (followed)
+        {
+            ranUnlike.Clear();
+            followed.Clear();
+        }
     }
 
     /// <summary>Keeps what a closed window started ending, which its own Closed sets, if it has not yet.</summary>

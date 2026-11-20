@@ -8,6 +8,7 @@ namespace Passenger.Tests;
 /// next opening of the folder parses only the files changed since, and finds every test the first found and those the
 /// change made, the tests of an attribute the project derives and those an abstract class leaves to the classes deriving
 /// from it read as the first read them.</summary>
+[SameOnEverySystem]
 public sealed class TestsCacheTests : IDisposable
 {
     private const int Sums = 12;

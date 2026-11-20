@@ -8,11 +8,12 @@ using System.Text.RegularExpressions;
 namespace Passenger.Tests;
 
 /// <summary>What a class marked [SameOnEverySystem] may run, read from the built tests: the mark keeps it to one system's
-/// report lane, so nothing it runs may behave otherwise on another. Read are its tests, constructors and disposal, its
-/// bases', its class fixtures' and every method of the tests they reach (a lambda's, an async method's body); a call out of
-/// the tests is held to <see cref="Differing"/>, a helper of theirs to <see cref="DifferingHelpers"/>, its own words to
-/// naming no system and no file a program of its own reads. What the IL cannot show, the windows a test opens and what
-/// they find there, the mark itself holds (<see cref="SameOnEverySystemAttribute.Ran"/>).</summary>
+/// report lane, so nothing it runs may behave otherwise on another, the C# language server, the project host's reads and
+/// the language servers whose answers it reads counted alike everywhere. Read are its tests, constructors and disposal,
+/// its bases', its class fixtures' and every method of the tests they reach (a lambda's, an async method's body): a call
+/// out of the tests is held to <see cref="Differing"/>, a helper of theirs to <see cref="DifferingHelpers"/>, the actions
+/// they name to <see cref="Starting"/>, its own words to naming no system and no Godot project's file. What the IL cannot
+/// show, what its windows ran, the mark itself holds (<see cref="SameOnEverySystemAttribute"/>).</summary>
 [Collection(Beside.Name)]
 public sealed partial class SameOnEverySystemRulesTests
 {
@@ -36,7 +37,6 @@ public sealed partial class SameOnEverySystemRulesTests
         ("Passenger.App.Debugging.HotReload", "runs Hot Reload"),
         ("Passenger.App.Debugging.UpdateHandlerHook", "runs Hot Reload"),
         ("Passenger.Profiler.", "profiles a process"),
-        ("Passenger.Host.", "runs MSBuild"),
         ("Passenger.App.BuildRunController", "builds and runs"),
         ("Passenger.Packages.", "restores or reads NuGet's packages"),
         ("Passenger.Vcs.", "runs Git"),
@@ -44,7 +44,10 @@ public sealed partial class SameOnEverySystemRulesTests
         ("Passenger.App.Containers.ContainerRun", "runs containers"),
         ("Passenger.App.Aspire.", "runs Aspire"),
         ("Passenger.App.Godot.", "runs Godot"),
-        ("Passenger.App.Web.", "runs a language's own server"),
+        ("Passenger.App.Web.WebLanguages::InstallAsync", "installs a language's tools"),
+        ("Passenger.App.Web.WebLanguages::UseTools", "runs a language's tools"),
+        ("Passenger.App.Web.EslintService", "runs ESLint"),
+        ("Passenger.App.Web.PrettierService", "runs Prettier"),
         ("Passenger.App.Browsers", "runs a browser"),
         ("Passenger.App.MainWindow::Browse", "opens a browser"),
         ("Passenger.App.MainWindow::ShowInFileManager", "opens the file manager"),
@@ -82,8 +85,6 @@ public sealed partial class SameOnEverySystemRulesTests
     /// <summary>The tests' own helpers whose work differs by system, by type name or Type.Method, and why.</summary>
     private static readonly Dictionary<string, string> DifferingHelpers = new(StringComparer.Ordinal)
     {
-        ["TestProjects"] = "makes projects MSBuild reads", ["SharedProject"] = "opens a project MSBuild reads",
-        ["RestoredFolders"] = "restores projects", ["ReqnrollProjects"] = "makes projects MSBuild reads",
         ["McpRig"] = "starts a Passenger of its own", ["Debuggees.Program"] = "runs a debuggee", ["Docker"] = "runs containers",
         ["ContainerPrograms"] = "runs containers", ["AspireApp"] = "runs Aspire", ["AspireFunctionsApp"] = "runs Aspire",
         ["AspireDashboardHost"] = "runs Aspire", ["AspireInteractionHost"] = "runs Aspire", ["AvaloniaApp"] = "builds and runs an app",
@@ -111,16 +112,26 @@ public sealed partial class SameOnEverySystemRulesTests
     [GeneratedRegex(@"\b(macOS|Mac OS|OS X|Linux|Ubuntu|win-(x64|arm64|x86)|osx-(x64|arm64)|linux-(x64|arm64|musl))\b|(?<!Tool )\bWindows\b")]
     private static partial Regex SystemNamed();
 
-    /// <summary>A file the test makes or opens that a program of its own reads: MSBuild a project's or solution's, Godot
-    /// its project's, Razor's compiler a component's. A file a language's own server reads is held as the test ends
-    /// (<see cref="SameOnEverySystemAttribute"/>), where the IL cannot tell a file opened from one only written.</summary>
-    [GeneratedRegex(@"\.(csproj|fsproj|vbproj|shproj|dcproj|projitems|sln|slnx|slnf|gd|tscn|tres|gdshader|razor|cshtml)\b|\bglobal\.json\b|\bnuget\.config\b|\bproject\.godot\b|\bDirectory\.(Build|Packages)\b", RegexOptions.IgnoreCase)]
+    /// <summary>A file of a Godot project the test makes or opens, which a Godot of the system's own reads.</summary>
+    [GeneratedRegex(@"\.(gd|tscn|tres|gdshader)\b|\bproject\.godot\b", RegexOptions.IgnoreCase)]
     private static partial Regex ProgramsFile();
 
-    /// <summary>A class marked [SameOnEverySystem] runs no process, terminal, debugger, build, restore, Git, container,
-    /// browser, file watcher, socket, font, shaping, screen reader, input method, system key or path separator, asks no
-    /// system's name, measures no allocation and skips nothing; it is in neither the gate, which runs on every system, nor
-    /// the Alone collection, whose classes hold to a time, debug or count every thread's allocations.</summary>
+    /// <summary>The IDE's actions that build, run, debug, profile, publish or test a program, open the terminal or a
+    /// browser, work Git, containers, Aspire, migrations or Godot, or install or update, by their ids, as a test names them
+    /// to run: any its code or a helper it reaches names.</summary>
+    private static readonly Dictionary<string, string> Starting = typeof(Passenger.App.AppActions)
+        .GetFields(BindingFlags.Public | BindingFlags.Static)
+        .Where(field => field.IsLiteral && field.FieldType == typeof(string) && StartingAction().IsMatch(field.Name))
+        .ToDictionary(field => (string)field.GetRawConstantValue()!, field => field.Name, StringComparer.Ordinal);
+
+    /// <summary>The names of the actions <see cref="Starting"/> takes.</summary>
+    [GeneratedRegex(@"^(Build|Rebuild|Publish|Run|Debug|Profile|AttachProfiler|AttachToProcess|Reattach|Rerun|ApplyHotReload|ShowTerminal|NewTerminal|OpenInTerminal|OpenInBrowser|Commit$|Push$|Fetch$|Stash$|Unstash$|CloneRepository|UpdateProject|ContinueRebase|Abort|Service(Run|Debug|Attach|Profile)|Container(Start|Stop|Restart|Pause|Remove|Scale|Pull|Prune|Shell)|AddMigration|RemoveLastMigration|UpdateDatabase|ScriptMigrations|BundleMigrations|Install|CheckForUpdates|RestartToUpdate|TestEndpoint|NuGetUpdateAll|Godot|AspireCommand)")]
+    private static partial Regex StartingAction();
+
+    /// <summary>A class marked [SameOnEverySystem] starts no process, build, run, terminal, debugger, Git or container of its
+    /// own, no browser, file watcher, socket, font, shaping, screen reader, input method, system key or path separator,
+    /// asks no system's name, measures no allocation and skips nothing; it is in neither the gate, which runs on every
+    /// system, nor the Alone collection, whose classes hold to a time, debug or count every thread's allocations.</summary>
     [Fact]
     public void A_class_marked_same_on_every_system_runs_nothing_that_behaves_otherwise_on_another()
     {
@@ -195,7 +206,11 @@ public sealed partial class SameOnEverySystemRulesTests
                         }
                         if (owned && (ProgramsFile().Match(words) is { Success: true } file) && said.Add($"file:{file.Value}"))
                         {
-                            yield return $"{type.Name} makes or opens a file a program of its own reads ({file.Value}): {path[method]}";
+                            yield return $"{type.Name} makes or opens a Godot project's file ({file.Value}), which a Godot of its own reads: {path[method]}";
+                        }
+                        if ((Starting.TryGetValue(words, out string? action) || words == Passenger.App.ToolWindowIds.Terminal) && said.Add($"action:{words}"))
+                        {
+                            yield return $"{type.Name} names {action ?? "the Terminal window"}, which starts what another system may run otherwise: {path[method]}";
                         }
                         continue;
                     }

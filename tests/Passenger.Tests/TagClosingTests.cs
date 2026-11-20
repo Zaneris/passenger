@@ -11,6 +11,7 @@ namespace Passenger.Tests;
 /// "&lt;/" writes the open element's name and its '>', or joins the element's written end tag, right after it or on a line
 /// below, which the keys then pass one by one; a self-closed tag, a comment and HTML's empty elements get none; and the
 /// setting turns it off.</summary>
+[SameOnEverySystem]
 public sealed class TagClosingTests
 {
     [AvaloniaFact]

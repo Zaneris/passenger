@@ -7,6 +7,7 @@ namespace Passenger.Tests;
 
 /// <summary>Where a project was chosen to run is the folder's: it outlasts the window's own rewrites of the folder's state
 /// and a window opening the folder again finds it.</summary>
+[SameOnEverySystem]
 public sealed class DeviceChoicesKeptTests
 {
     [AvaloniaFact]

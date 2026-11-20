@@ -6,6 +6,7 @@ namespace Passenger.Tests;
 /// <summary>The values completion offers between a property's tags in a project file, from MSBuild's schemas as the app
 /// carries them, read from the file's text alone with no evaluation.</summary>
 [Collection(Beside.Name)]
+[SameOnEverySystem]
 public sealed class ProjectFileValuesTests
 {
     [Fact]

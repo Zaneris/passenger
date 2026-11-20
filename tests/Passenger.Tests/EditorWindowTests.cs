@@ -17,6 +17,7 @@ namespace Passenger.Tests;
 /// outside the editors takes it into a window with its own tabs and splits, over the same open file as the main
 /// window's; the IDE's keys work there, a tab drags back, its last tab closed closes it, and the folder brings it back
 /// where it stood.</summary>
+[SameOnEverySystem]
 public sealed class EditorWindowTests : IDisposable
 {
     private readonly string folder = TestFolders.Create("editor-windows-");
