@@ -578,6 +578,8 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         Ui.Settle();
         Assert.True(editor.Document.Snapshot.ToString().Contains("System.Console.", StringComparison.Ordinal), editor.Document.Snapshot.ToString());
         Ui.WaitFor(() => window.Assist.IsCompletionOpen, "Console's members");
+        Ui.WaitFor(() => window.Assist.CompletionLabels.FirstOrDefault() == "BackgroundColor" && window.Assist.ItemDocumentation?.Contains("BackgroundColor", StringComparison.Ordinal) == true,
+            () => $"the card of BackgroundColor, first of the members the dot listed, before the choice moves (the card says {window.Assist.ItemDocumentation ?? "nothing"})");
         window.KeyTextInput("WriteL");
         Ui.Settle();
         window.KeyTextInput("(");
@@ -600,8 +602,6 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         window.KeyTextInput("System.Console");
         window.KeyTextInput(".");
         Ui.WaitFor(() => window.Assist.CompletionLabels.FirstOrDefault() == "BackgroundColor", "Console's members after its dot, BackgroundColor first");
-        Ui.WaitFor(() => window.Assist.ItemDocumentation?.Contains("BackgroundColor", StringComparison.Ordinal) == true,
-            "BackgroundColor's documentation beside the list before the selection moves");
 
         Ui.Press(window, "ENTER");
         Ui.Settle();
